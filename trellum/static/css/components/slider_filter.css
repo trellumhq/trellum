@@ -1,10 +1,23 @@
 .fw-filter-slider-item { min-width: 160px; }
-/* Ordinal sliders carry pip labels below the track (see .noUi-pips
-   below), which need more room than a bare numeric range -- enough for a
-   handful of short category labels (e.g. 4 tiers) to each get their own
-   pip before _pipPositions in slider_filter.js falls back to endpoints
-   only. */
-.fw-filter-slider-item--ordinal { min-width: 260px; padding-bottom: 34px; }
+/* Ordinal sliders carry pip labels below the track (see .noUi-pips below),
+   including wrapped endpoint labels, so reserve their height in the item. */
+.fw-filter-slider-item--ordinal { min-width: 260px; padding-bottom: 48px; }
+/* noUiSlider centers endpoint labels on the track ends by default. Keep the
+   long first/last category labels inside their flex item, clear of neighbors. */
+.fw-filter-slider-item--ordinal .noUi-pips-horizontal > .noUi-value-horizontal:nth-child(2) {
+    transform: translate(0, 50%);
+}
+.fw-filter-slider-item--ordinal .noUi-pips-horizontal > .noUi-value-horizontal:last-child {
+    transform: translate(-100%, 50%);
+}
+/* Keep category labels within the spacing budget used by _pipPositions(). */
+.fw-filter-slider-item--ordinal .noUi-pips-horizontal > .noUi-value-horizontal {
+    width: 55px;
+    max-width: 56px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.2;
+}
 .fw-slider-readout {
     font-size: 12px; font-weight: 600; color: var(--text-main);
     white-space: nowrap;

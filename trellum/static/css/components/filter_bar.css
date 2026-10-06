@@ -11,6 +11,9 @@
     border-bottom: 1px solid var(--border-color);
     box-shadow: 0 2px 6px rgba(0,0,0,0.08);
 }
+/* Ordinal slider pips extend below the control, so keep the other filters
+   aligned with its label instead of centering them against the extra height. */
+.fw-filter-bar:has(.fw-filter-slider-item--ordinal) { align-items: flex-start; }
 /* Section-scoped FilterBar (lives inside a titled .fw-section) sticks
    below the main FilterBar instead of overlapping it. The main bar
    measures its own height into --fw-main-fb-height; if no main bar is

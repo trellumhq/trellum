@@ -888,6 +888,11 @@ a.src.more:hover{background:var(--accent-soft)}
 .cs-rwrap{padding:14px 16px 16px}
 .cs-cap{font-size:var(--fs-xs);color:var(--hb-ink3);padding:10px 18px;border-top:1px solid var(--hb-border);font-family:var(--mono)}
 .cs-cap i{color:var(--hb-teal);font-style:normal}
+.cs-stage{display:grid}
+.cs-stage>#cs-dash,.cs-stage>#cs-report{grid-area:1/1;min-width:0}
+/* Keep the inactive view in the same grid cell so the console reserves the
+   taller view's natural height at the current viewport. */
+.cs-stage>[hidden]{display:block;visibility:hidden;pointer-events:none}
 @media (max-width:900px){.cs-grid{grid-template-columns:minmax(0,1fr)}.cs-search{min-width:0}}
 
 /* ---------- a report surface, wearing its own theme ----------
