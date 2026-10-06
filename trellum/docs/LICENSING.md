@@ -25,11 +25,13 @@ the complete terms.
 
 ## Source links
 
-Official releases link to their immutable
-`https://github.com/trellumhq/trellum/tree/v<version>` tag. A fork or modified
-deployment sets `TRELLUM_SOURCE_URL` to a public HTTP or HTTPS location
-containing its complete Corresponding Source. The portal exposes that URL to
-users and report builds record it in `_meta.json` and their HTML footer.
+Without an override, standalone framework builds link to the immutable
+`https://github.com/trellumhq/trellum/tree/v<version>` tag. Official portal and
+runner images set `TRELLUM_SOURCE_URL` to the exact source commit used to build
+the image, and portal report builds carry that URL through to `_meta.json` and
+the HTML footer. A fork or modified deployment sets `TRELLUM_SOURCE_URL` to a
+public HTTP or HTTPS location containing its complete Corresponding Source.
+The portal exposes the configured URL to users.
 
 ## Source-file notices
 

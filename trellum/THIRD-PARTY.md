@@ -89,7 +89,6 @@ downstream user may do with the AGPL-licensed framework.
 | trino | Apache-2.0 |
 | databricks-sql-connector | Apache-2.0 |
 | paramiko | LGPL-2.1-or-later |
-
 | gspread | MIT |
 | google-auth | Apache-2.0 |
 | msal | MIT |
@@ -100,22 +99,19 @@ downstream user may do with the AGPL-licensed framework.
 | aiobotocore | Apache-2.0 |
 | botocore | Apache-2.0 |
 
-Two worth knowing about specifically:
-
-- **psycopg2-binary** (LGPL-3.0, with the OpenSSL linking exception) and
-  **paramiko** (LGPL-2.1-or-later, the SSH implementation behind tunnelled
-  data sources) are the only copyleft dependencies. Each is installed as its
-  own package and imported at runtime, not bundled or statically linked, so
-  neither imposes anything on this repository or on anything built with it. A
-  user who wants no LGPL in their environment at all can install without
-  `requirements-drivers.txt` and lose only the Postgres driver and SSH tunnels.
+The table records LGPL terms for **psycopg2-binary** and **paramiko** (the SSH
+tunnel implementation). The requirements files also include `duckdb`,
+`pymssql`, and `boto3`, which are not listed in this inventory. Their package
+licences need to be checked before this document can describe all dependency
+licences or count copyleft dependencies.
 
 - **MPL-2.0** (orjson) is file-level copyleft: obligations attach to
   modified MPL files, not to software that merely depends on them.
 
 The stricter case is **bundling**, not depending: anything added under
-`static/vendor/` ships inside every copy of this repository. Everything there
-today is MIT, ISC or OFL, all of which allow redistribution provided their
-notices travel along — which is why `static/vendor/MANIFEST.json` records the
-licence of every entry. The package-specific upstream copyright notices, full
-licence texts, and authoritative sources are in `static/vendor/LICENSES.md`.
+`static/vendor/` ships inside every copy of this repository. The current set
+includes MIT JavaScript libraries, ISC packages, Inter fonts under SIL OFL 1.1,
+and the Natural Earth public-domain data distributed through the ISC-licensed
+world-atlas package. `static/vendor/MANIFEST.json` records the licence of each
+entry; the package-specific upstream copyright notices, full licence texts,
+and authoritative sources are in `static/vendor/LICENSES.md`.
