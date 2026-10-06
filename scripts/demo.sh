@@ -44,8 +44,14 @@ compose() { docker compose -p "$PROJECT" -f docker-compose.yml -f docker-compose
 
 # ── teardown ────────────────────────────────────────────────────────────────
 if [ "${1:-}" = "--down" ]; then
+  [ -f "$ENV_FILE" ] || die "Demo env file $ENV_FILE was not found. Start the demo first, or restore that file."
+  export COMPOSE_ENV_FILES="$ENV_FILE"
+  export TRELLUM_DEMO_ENV_FILE="$ENV_FILE"
+  # Teardown only needs Compose to resolve the worker's group_add setting;
+  # it does not need to probe Docker for the host's socket group.
+  export DOCKER_GID="${DOCKER_GID:-0}"
   say "Removing the demo (containers and volumes)"
-  compose down -v --remove-orphans
+  compose down -v --remove-orphans || die "Could not remove the demo project $PROJECT."
   echo "Gone. $ENV_FILE is left alone; delete it by hand if you want."
   exit 0
 fi

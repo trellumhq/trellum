@@ -42,8 +42,17 @@ function Compose { docker compose -p $Project -f docker-compose.yml -f docker-co
 
 # ── teardown ────────────────────────────────────────────────────────────────
 if ($Down) {
+    if (-not (Test-Path $EnvFile -PathType Leaf)) {
+        Die "Demo env file $EnvFile was not found. Start the demo first, or restore that file."
+    }
+    $env:COMPOSE_ENV_FILES = $EnvFile
+    $env:TRELLUM_DEMO_ENV_FILE = $EnvFile
+    # Teardown only needs Compose to resolve worker's group_add; it does not
+    # need to probe Docker for the host's socket group.
+    if (-not $env:DOCKER_GID) { $env:DOCKER_GID = '0' }
     Say 'Removing the demo (containers and volumes)'
     Compose down -v --remove-orphans
+    if ($LASTEXITCODE -ne 0) { Die "Could not remove the demo project $Project." }
     Write-Host "Gone. $EnvFile is left alone; delete it by hand if you want."
     exit 0
 }
