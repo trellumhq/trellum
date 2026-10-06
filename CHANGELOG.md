@@ -17,6 +17,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   not overlap neighboring filters.
 - Replace placeholder installation commands and outdated image-content claims
   with instructions for the published portal and runner images.
+- Load the demo configuration when removing its Docker stack from a new
+  terminal, and report teardown failures accurately.
 
 ### Changed
 
@@ -24,6 +26,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   Health and Player Overview demos.
 - Add a first-user guide for the Python package and local Docker demo, and a
   feature index linking to the framework and portal documentation.
+- Document the portal's Metrics catalog and Report Analytics.
 - Correct demo descriptions to work with both small and full synthetic data.
 
 ### Upgrade notes

@@ -75,7 +75,7 @@
       slug: portal/ai-assistant
 
 # The framework is AGPL-3.0-only and documents itself in its own README.
-# One page here points at it; restating it would only create a copy that drifts.
+# These pages orient readers and link to that reference rather than duplicating it.
 - section: The framework
   summary: The standalone AGPL-3.0-only framework included in this monorepo.
   pages:

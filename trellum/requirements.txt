@@ -1,8 +1,7 @@
 # Framework core: everything a report project needs to build and serve
-# reports, and nothing more. A control plane that runs reports (see
-# a separate product) keeps its own requirements file in its own
-# repository -- a report project must not have to install a scheduler and two
-# LLM SDKs to render a chart.
+# reports, and nothing more. The optional portal keeps its requirements at
+# the monorepo root; a report project does not need its scheduler or LLM SDKs
+# to render a chart.
 
 # Core dependencies
 pandas>=2.0.0

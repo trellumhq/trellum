@@ -1,13 +1,25 @@
 # Upgrades
 
+!!! warning "Current upgrade helper limits"
+    The upgrade and rollback helpers update `TRELLUM_IMAGE` only. They do not
+    update or verify `TRELLUM_RUNNER_IMAGE`, so using them alone can leave
+    report builds on a different release from the portal. Their default image
+    repository is also outdated; set `TRELLUM_REPO=trellumhq/trellum` when
+    using the published images. Adapt and test the procedure on a separate
+    instance, including both image pins and their rollback, before upgrading
+    an installation with real data. See the matching-image settings in the
+    [Compose guide](/docs/latest/install/docker-compose/).
+
+The existing portal-image helper is invoked with:
+
 ```bash
-scripts/upgrade.sh v1.2.3
+TRELLUM_REPO=trellumhq/trellum scripts/upgrade.sh v1.2.3
 ```
 
 That takes a verified backup, stops the application, migrates, starts the new
-version, and refuses to call it done until the running instance reports the
-version and schema you asked for. If anything fails it prints the exact command
-to go back.
+version, and checks the portal's reported version and schema. It prints a
+rollback command on failure; that command also needs the matching runner
+configuration described above.
 
 ## Before you start
 
@@ -49,12 +61,12 @@ to ten minutes if a report build is mid-flight when the worker drains.
 
 ## Air-gapped sites
 
-Load the bundle's images, then point the same script at the loaded tag:
-
-```bash
-docker load < images.tar.gz
-TRELLUM_TARGET_IMAGE=trellum:v1.2.3 scripts/upgrade.sh v1.2.3
-```
+The current bundle helper is incomplete; see
+[Verify what you received](/docs/latest/install/verify-images/#air-gapped-installs).
+An offline upgrade must transfer and verify both images and the operational
+files, and test the full upgrade and rollback procedure without network
+access. The upgrade helper still calls `docker pull`, so an already-loaded
+portal image alone does not make that script an offline upgrade path.
 
 ## How you know it worked
 
@@ -102,7 +114,7 @@ migrations.
     way back is the dump.
 
 ```bash
-scripts/rollback.sh ./upgrade-backups/pre-v1.2.3-<stamp>.dump v1.2.2
+TRELLUM_REPO=trellumhq/trellum scripts/rollback.sh ./upgrade-backups/pre-v1.2.3-<stamp>.dump v1.2.2
 ```
 
 **This discards every database change made since that dump was taken** — report
