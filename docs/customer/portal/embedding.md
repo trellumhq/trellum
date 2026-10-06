@@ -178,9 +178,10 @@ iframe.contentWindow.postMessage({
 
 ## CDN deployments
 
-Embed links inherit the share-link limitation on deployments that serve
-report content through a CDN: they're disabled there, and a visitor gets an
-unavailable message instead of the report. See
+Embed links inherit the share-link limitation on deployments configured to
+serve report content from an edge with remote object storage: they are
+unavailable there. They work with local storage and with remote storage served
+through the portal's proxy path. See
 [Share links → CDN deployments](/docs/latest/portal/share-links/#cdn-deployments).
 
 ## A worked example

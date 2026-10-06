@@ -138,11 +138,10 @@ use expiry dates and passwords for anything sensitive.
 
 ## CDN deployments
 
-On deployments that serve report content through a CDN, share links are
-currently disabled — visitors get an unavailable message instead of the
-report. This is deliberate: the CDN's access grants are scoped to a whole
-studio, not to one report, so honoring a share link there would mean
-handing an anonymous visitor access to every report the studio has ever
-published, not just the one they were given a link to. Until a
-report-scoped grant exists, share links only work on deployments serving
-report content the ordinary way.
+On deployments configured to serve report content from an edge (with remote
+object storage), share links are currently unavailable. Ordinary portal
+views receive a short-lived grant scoped to one report, while anonymous share
+links have no signed-in viewer to authorize that grant. The portal returns an
+unavailable response for the share page and its assets in this mode. Share
+links work with local storage and with remote storage served through the
+portal's proxy path.

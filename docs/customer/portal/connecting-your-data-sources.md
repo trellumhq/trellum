@@ -15,6 +15,12 @@ history, and a report never has to be edited to change where it connects.
 Every sync mirrors the declarations from the published commit, so the portal's
 list of sources always matches the repository it is serving.
 
+The portal supports PostgreSQL, MySQL, Vertica, ClickHouse, SQL Server,
+Redshift, Trino, Databricks, Snowflake, BigQuery, Google Sheets, SQLite,
+DuckDB, CSV/Excel files, image assets, and OneDrive/SharePoint. Available
+credential fields depend on the source type; the Configure form shows the
+fields for the selected source.
+
 ## Declare a source in the repository
 
 The central file is `data-sources/config.yaml`, at the top of your project:

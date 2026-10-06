@@ -72,10 +72,9 @@ Public share and embed links are separate, explicit publication. Changing
 internal group assignments does not revoke those links. The Access page
 distinguishes internal permissions from public sharing.
 
-Group editing requires the permission-groups capability. When it is disabled,
-configuration remains readable and existing permissions remain enforced.
-SSO and Security configuration follow the same readable-but-locked behavior;
-reading Audit Log requires its own capability.
+Permission groups, SSO, Security settings, and Audit Log are available in the
+open-source product without licence or entitlement gates. Retired licence and
+feature-flag values do not lock these pages or make them read-only.
 
 ## Invites
 

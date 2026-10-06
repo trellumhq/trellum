@@ -338,7 +338,7 @@ provider asserts on the way back.
 
 An instance that opted out and later needs verification — a second
 organization is joining, say — must not simply switch it on. Once the
-capability is on, only verified domains route. An organization with SSO
+setting is on, only verified domains route. An organization with SSO
 enabled whose claimed domains are not all verified loses SSO at those
 domains outright: the login page stops sending its users to the identity
 provider, and the callback refuses the identity that comes back as outside
@@ -347,13 +347,13 @@ worked the day before, so on an instance that already has SSO in use:
 
 1. While verification is still off, have each organization with SSO enabled
    claim and verify its domains in **Organization settings → Single sign-on**.
-   Verification works with the capability off; it is just not required yet.
+   Verification works with the setting off; it is just not required yet.
 2. Run `manage.py check_sso_domains` until it exits clean. It lists every
    enabled organization's claimed domains with their state and names the
-   organizations that would lose SSO if the capability were turned on now;
+   organizations that would lose SSO if verification were turned on now;
    `--verify` re-checks DNS for every pending claim first.
-3. Only then turn it back on using the instance setting, and verify the
-   resulting claims before enforcing SSO.
+3. Only then turn it back on using `TRELLUM_SSO_DOMAIN_VERIFICATION`, and
+   verify the resulting claims before enforcing SSO.
 
 Verifying needs the organization to publish a TXT record in its own DNS,
 which an operator cannot do on its behalf — plan step 1 as a request to each
