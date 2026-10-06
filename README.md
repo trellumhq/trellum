@@ -21,7 +21,7 @@
 <p align="center">
   <a href="https://github.com/trellumhq/trellum/actions/workflows/framework.yml"><img src="https://github.com/trellumhq/trellum/actions/workflows/framework.yml/badge.svg" alt="Framework CI"></a>
   <img src="https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white" alt="Python 3.11 or newer">
-  <img src="https://img.shields.io/badge/license-AGPL--3.0--only-7C6FE0" alt="AGPL-3.0-only">
+  <img src="https://img.shields.io/badge/license-AGPL--3.0--only-0F766E" alt="AGPL-3.0-only">
 </p>
 
 Trellum turns data into reports that people can explore in a browser. Report
@@ -29,6 +29,12 @@ authors write ordinary Python, SQL, and YAML. Trellum supplies interactive
 filters, charts, KPI cards, tables, themes, exports, validation, and portable
 HTML output. The source stays readable to people, coding agents, and code
 review tools.
+
+<p align="center">
+  <img src="docs/assets/store-health.jpg" alt="Store Health report in Trellum Dark, with comparison KPIs, filters, and revenue and margin trends">
+  <br>
+  <sub>Store Health is a synthetic retail report shown in Trellum Dark. It is separate from the Nova Play examples.</sub>
+</p>
 
 Use the standalone framework on a laptop, in CI, or behind your own web server.
 Add the optional self-hosted platform when reports need scheduled builds,
@@ -42,12 +48,6 @@ portal is self-hosted and needs its own backend; [try it locally with Docker](ht
 when you want a shared team home.
 
 <p align="center">
-  <img src="docs/assets/store-health.jpg" alt="Store Health report in Trellum Dark, with comparison KPIs, filters, and revenue and margin trends">
-  <br>
-  <sub>Store Health is a synthetic retail report shown in Trellum Dark. It is separate from the Nova Play examples.</sub>
-</p>
-
-<p align="center">
   <a href="https://trellum.dev/tour/"><img src="docs/assets/portal-tour.gif" alt="Captioned slideshow tour of the Trellum self-hosted portal"></a>
   <br>
   <sub><a href="https://trellum.dev/tour/">Watch the captioned portal feature tour</a> · <a href="docs/product-tour.md">read its transcript</a> · <a href="https://trellum.dev/docs/latest/install/try-it/">try Trellum locally</a></sub>
@@ -59,9 +59,7 @@ build and validate a report, then review its changes in Git. The optional
 self-hosted portal gives a team a shared place for reports, metrics, experiments,
 annotations, data sources, operations and builds, permissions, and sharing.
 Optional alerts and the separate Buddy assistant can use an administrator-
-configured AI provider. The public [demo gallery](https://trellum.dev/demo/)
-contains reports only; try the self-hosted portal with the local
-[installation guide](https://trellum.dev/docs/latest/install/try-it/).
+configured AI provider.
 
 ## What Trellum gives you
 
