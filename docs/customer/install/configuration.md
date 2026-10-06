@@ -54,6 +54,8 @@ settings for the installation.
 | Setting | Default | Effect |
 |---|---|---|
 | `WORKER_MAX_CONCURRENT` | `3` | Maximum builds admitted to one runner at once |
+| `TRELLUM_RUNNER_ROLE` | `all` | Combined worker, or `coordinator` / `runner` when running split roles; an explicit `runworker --role` overrides it |
+| `TRELLUM_RUNNER_POOLS` | empty (all pools) | Comma-separated studio pools this runner accepts: `small`, `standard`, `large`. Configure per runner; see [runner pools](/docs/latest/operations/sizing/#assign-studios-to-runner-pools) |
 | `TRELLUM_RUNNER_MEMORY_BUDGET_MB` | `0` | Total memory the runner may reserve across builds. `0` disables memory-based admission, leaving the concurrency limit in control |
 | `TRELLUM_DEFAULT_JOB_MEMORY_MB` | `1024` | Memory in MB reserved for every admitted build and used to derive its hard cap |
 | `TRELLUM_JOB_MEMORY_HEADROOM` | `1.5` | Multiplier between the reserved amount and the process/container hard cap, allowing for mapped libraries and allocator overhead |
@@ -309,8 +311,9 @@ See [Backups & restore](/docs/latest/operations/backups-and-restore/).
 
 ### Retention
 
-See [Data retention](/docs/latest/operations/data-retention/). Every window
-accepts `0`, meaning keep forever.
+See [Data retention](/docs/latest/operations/data-retention/). Setting an age
+window to `0` disables that age-based purge. `RETENTION_RUN_KEEP_PER_REPORT`
+is a count: `0` removes the protection for the newest runs.
 
 | Setting | Default | Effect |
 |---|---|---|
@@ -325,7 +328,7 @@ accepts `0`, meaning keep forever.
 
 ### Release check
 
-Off by default: the portal makes no outbound call unless you ask it to. When
+Off by default: the portal does not contact the release feed unless enabled. When
 on, the coordinator asks the public releases feed on GitHub once a day and the
 operator's `/system` page lists the latest releases, marking the one this
 instance runs. A feed it cannot reach changes nothing and logs nothing.

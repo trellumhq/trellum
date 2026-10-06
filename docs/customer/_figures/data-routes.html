@@ -3,7 +3,7 @@
     <h4>Configured data sources — the default</h4>
     <p>A source in <code>data-sources/config.yaml</code> is queryable directly, through the same connection a built report uses.</p>
     <pre>df = query("warehouse", "select ...")</pre>
-    <p class="fine">No extra services. Works offline, in CI, in a notebook.</p>
+    <p class="fine">Works in CI or a notebook. Local sources work offline; remote sources still need network access and credentials.</p>
   </div>
   <div class="yours">
     <h4>An MCP server — optional</h4>

@@ -72,9 +72,9 @@ Public share and embed links are separate, explicit publication. Changing
 internal group assignments does not revoke those links. The Access page
 distinguishes internal permissions from public sharing.
 
-Permission groups, SSO, Security settings, and Audit Log are available in the
-open-source product without licence or entitlement gates. Retired licence and
-feature-flag values do not lock these pages or make them read-only.
+Permission groups, SSO, Security settings, and Audit Log are available in every
+installation. Access remains controlled by the organization and studio roles
+described above.
 
 ## Invites
 

@@ -163,8 +163,9 @@ built-in component. See the complete
 [framework guide](trellum/README.md) for the component and authoring APIs.
 
 Projects can also keep reusable definitions in `metrics.yaml`. A report claims
-a metric by ID rather than copying its formula, so revenue or retention does
-not quietly acquire a second meaning in another dashboard.
+a metric by ID to reuse its aggregation settings and record the definition
+version. Authors still supply the underlying data and review the calculation;
+claiming an ID does not automatically execute the metric's documented SQL.
 
 <p align="center">
   <img src="docs/assets/portal-overview.jpg" alt="Trellum portal experiment portfolio with lifecycle, overlap timeline and report-backed results">
@@ -188,6 +189,9 @@ python -m trellum datasource add warehouse --type postgres --host db.example.com
 python -m trellum data warehouse
 python -m trellum query "SELECT current_date AS as_of" --source warehouse
 ```
+
+Use your own host, database, and user settings. `datasource add` tests the
+connection and may prompt for credentials; the example hostname is a placeholder.
 
 For another system, use its Python SDK in `queries.py` or a small project
 adapter and return a pandas DataFrame. Database-like sources can implement the
@@ -213,6 +217,13 @@ needs more than portable files, the included Docker platform adds:
 - Git repository publishing, scheduled and on-demand builds, and build status;
 - isolated report workers, encrypted data-source credentials, and backups;
 - controlled share links, delivery, annotations, and a searchable report home.
+
+The portal, coordinator, and runners can run as separate services. Across
+servers, they use the same PostgreSQL database, and web, coordinator, and runner services
+must mount the same persistent data directory at the same path. Optional
+S3-compatible storage holds built reports; shared files are still required
+for uploads, project files, live build logs, and scheduled cleanup. See
+[deployment sizing](https://trellum.dev/docs/latest/operations/sizing/).
 
 ```bash
 git clone https://github.com/trellumhq/trellum.git

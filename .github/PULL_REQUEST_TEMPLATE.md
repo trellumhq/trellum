@@ -12,19 +12,19 @@ DCO — nothing to sign, no sign-off trailer needed. See CONTRIBUTING.md.
 <!--
 Not "tests pass" — what did you actually run, and what did you observe?
 
-    cd demo
+    cd trellum/demo
     python -m pytest ../testing -q -m "not slow"
     python -m trellum.run --all --no-serve
 -->
 
 ## Checklist
 
-- [ ] Tests added or updated, and the suite passes from `demo/`
+- [ ] Relevant checks pass (framework tests run from `trellum/demo/`)
 - [ ] Documented behaviour changes are reflected in the docs, in this PR
 - [ ] No new `RawHTML` where an existing component would do
-- [ ] No changes to a Tier 1 surface in `docs/COMPATIBILITY.md` — or, if there are, a
+- [ ] No changes to a Tier 1 surface in `trellum/docs/COMPATIBILITY.md` — or, if there are, a
       deprecation path is included and called out below
-- [ ] No per-file licence headers added (see `docs/LICENSING.md`)
+- [ ] No per-file licence headers added (see `trellum/docs/LICENSING.md`)
 
 ## Anything reviewers should look at closely
 

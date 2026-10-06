@@ -1,7 +1,8 @@
 # Sizing
 
-Size the machine for **building** reports, not for reading them. Viewers are
-served pre-built static output, so viewer count barely moves the numbers.
+Report builds usually drive CPU and memory needs. Most viewers read pre-built
+static output; allow for serving that traffic too. Reports with opt-in live
+queries also need web and data-source capacity for interactive requests.
 
 ## Starting points
 
@@ -20,8 +21,9 @@ into memory at once, not how many reports exist.
   alone, while additional runner processes can build in parallel
 - **RAM** — the biggest single build. A report that loads a very large frame
   sets the floor for the whole instance
-- **Disk** — built output, the database, and backups; report output is small
-  relative to source data because it is aggregated. Output can be moved to
+- **Disk** — built output, the database, and backups. Output size depends on
+  the data included: reports can contain row-level datasets as well as
+  aggregates. Output can be moved to
   [object storage](/docs/latest/install/configuration/#built-report-output-in-object-storage);
   checkouts and uploaded files stay on the volume either way
 
@@ -50,23 +52,25 @@ TRELLUM_RUNNER_MEMORY_BUDGET_MB = total RAM
 
 Leaving the budget at `0` (the default) keeps the simpler behaviour: only a
 concurrency limit (`WORKER_MAX_CONCURRENT`) caps how many builds run at once,
-with no memory accounting. Set a budget before relying on memory isolation
-between tenants.
+with no memory accounting. A budget controls admission to that runner, not
+physical memory reservation. Allow headroom for builds reaching their caps,
+and divide the available memory between runner processes sharing a host.
 
 Two details worth knowing:
 
-- The hard cap enforced on a build is `TRELLUM_DEFAULT_JOB_MEMORY_MB x
-  TRELLUM_JOB_MEMORY_HEADROOM` (default 1.5) and limits *address space*, which
-  legitimately runs above resident memory for dataframe-heavy workloads. The
-  limit is what the budget packs against; the cap is a runaway guard above it.
-  Raise the headroom if healthy builds fail with an out-of-memory error; lower
-  it to catch runaways sooner.
-- This enforcement needs a POSIX host. On Windows the cap is simply absent
-  and the timeout is the only guard against a runaway build.
+- Docker sandboxes enforce a container memory cap of
+  `TRELLUM_DEFAULT_JOB_MEMORY_MB x TRELLUM_JOB_MEMORY_HEADROOM` (headroom defaults
+  to 1.5, with a minimum container cap of 256 MB) and disable swap. Admission
+  uses the base amount, so simultaneous builds can consume more than the
+  configured budget.
+- Unsandboxed builds on POSIX instead use an *address-space* limit when
+  `TRELLUM_JOB_MEMORY_ENFORCE=true`. Address space can be larger than resident
+  memory for dataframe workloads. Unsandboxed Windows builds have no such
+  memory cap; their wall-clock timeout still applies.
 
-A build that exceeds its cap ends as `error`, naming the limit and the
-observed peak. Every run also records its peak memory, so after a week of
-real traffic you can size the limit from evidence rather than guesses.
+A Docker memory kill is recorded as `oom_killed`; a Python `MemoryError` is
+recorded as `error`. Runs record sampled peak memory when it is available.
+Use those measurements and failures to size limits from real workloads.
 
 ## When one machine is not enough
 
@@ -104,18 +108,43 @@ host connects to the same PostgreSQL database and mounts the same persistent
 storage at the same `TRELLUM_DATA_DIR` path (normally `/data`). It holds studio
 checkouts and project files, uploaded data-source files, live run logs,
 audit archives, and scheduled-delivery inputs, as well as local report output
-and caches. Use shared storage such as
-NFS, EFS, or an equivalent service, and configure it for every host. The
+and caches. Use shared storage such as NFS, EFS, or an equivalent service,
+and configure it for every host. The
 Compose named volume in the single-host example does not provide this sharing.
+
+Use matching portal and sandbox image versions across the deployment, the
+same encryption keys and report-storage configuration, and consistent session
+signing keys across web nodes. Each runner host needs its own accessible Docker
+daemon and sandbox image; mount the shared data into its sandbox containers
+using the same paths. Apply the
+[sandbox host setup](/docs/latest/install/report-sandboxing/) on each runner
+host. The coordinator runs scheduled work but does not start report sandboxes.
 
 S3-compatible object storage is optional and stores built report output. It
 does not replace the shared data directory: the portal, coordinator, and
 runners still need the shared checkouts, uploads, run logs, audit archives, and
 scheduled-delivery inputs. A multi-host deployment therefore needs both
-shared PostgreSQL and shared persistent file storage;
-S3-compatible output storage may be added separately. Configure coordinator
+shared PostgreSQL and shared persistent file storage. Configure coordinator
 and runner roles in your deployment environment; the Compose split example
 above is for processes on one host.
+
+### Assign studios to runner pools
+
+Runner pools route builds to selected runners, for example a larger machine
+for a studio with heavy reports. An instance operator opens the organization's
+detail page under `/operator/orgs/` and changes the studio's **Pool** in the
+**Studios** table. The choices are `small`, `standard` (the default), and
+`large`. The assignment applies to the whole studio; already queued runs keep
+the pool recorded when they were queued.
+
+Set `TRELLUM_RUNNER_POOLS` separately for each runner service: `large` accepts
+only large-pool jobs, while `small,standard` accepts those two pools. Leaving
+it empty accepts all pools. For dedicated routing, configure every runner's
+pool list; an unrestricted runner can otherwise claim any job. Keep at least
+one runner serving each pool you use, or its jobs stay queued.
+
+Pool names do not set memory or CPU limits. Configure the runner's capacity
+with the build settings above; shared storage is still required across pools.
 
 ## Uploaded data-source files
 

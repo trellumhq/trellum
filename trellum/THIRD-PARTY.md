@@ -16,6 +16,9 @@ Bundled assets were last audited **2026-10-06** against
 `static/vendor/MANIFEST.json` and the pinned upstream package notices. The
 Python dependency tables were last audited **2026-08-16** against
 `requirements.txt` and `requirements-drivers.txt`.
+The missing DuckDB, pymssql, and boto3 entries were checked against the linked
+upstream release notices on **2026-10-07**. This is a direct-dependency
+inventory, not a complete inventory of every installed transitive dependency.
 
 ## Bundled — front-end libraries (`static/vendor/`)
 
@@ -57,9 +60,9 @@ versions, which we do not do either. The files ship unmodified.
 
 ## Depended upon — Python packages
 
-Installed from PyPI by the user, never vendored — so these are dependencies of
-a build, not code this repository redistributes. Nothing here restricts what a
-downstream user may do with the AGPL-licensed framework.
+Installed from PyPI rather than copied into this source tree. Their own
+licences and packaged notices continue to apply, including when dependencies
+are redistributed in a container image.
 
 ### `requirements.txt` — the framework core
 
@@ -86,6 +89,8 @@ downstream user may do with the AGPL-licensed framework.
 | pymysql | MIT |
 | snowflake-connector-python | Apache-2.0 |
 | clickhouse-connect | Apache-2.0 |
+| duckdb | [MIT](https://github.com/duckdb/duckdb/blob/v1.0.0/LICENSE) |
+| pymssql | [GNU LGPL 2.1](https://github.com/pymssql/pymssql/blob/v2.3.0/LICENSE) |
 | trino | Apache-2.0 |
 | databricks-sql-connector | Apache-2.0 |
 | paramiko | LGPL-2.1-or-later |
@@ -98,15 +103,11 @@ downstream user may do with the AGPL-licensed framework.
 | fsspec | BSD-3-Clause |
 | aiobotocore | Apache-2.0 |
 | botocore | Apache-2.0 |
+| boto3 | [Apache-2.0](https://github.com/boto/boto3/blob/1.36.3/LICENSE) |
 
-The table records LGPL terms for **psycopg2-binary** and **paramiko** (the SSH
-tunnel implementation). The requirements files also include `duckdb`,
-`pymssql`, and `boto3`, which are not listed in this inventory. Their package
-licences need to be checked before this document can describe all dependency
-licences or count copyleft dependencies.
-
-- **MPL-2.0** (orjson) is file-level copyleft: obligations attach to
-  modified MPL files, not to software that merely depends on them.
+The table includes LGPL packages and orjson's MPL licence expression. Refer to
+each package's notices for its applicable terms rather than treating the
+framework's own licence as a replacement for dependency licences.
 
 The stricter case is **bundling**, not depending: anything added under
 `static/vendor/` ships inside every copy of this repository. The current set

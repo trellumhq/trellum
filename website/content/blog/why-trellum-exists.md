@@ -65,7 +65,7 @@ The other half of the fix: getting the data and building the report are two sepa
 <span class="bnode">report build, in seconds</span>
 </div>
 
-{{BRAND}} pulls from pretty much anything (databases, warehouses, files, APIs) and compiles it into one efficient dataset. Reports build from that dataset, so once the data is queried, iterating takes seconds instead of minutes, even on large data. Themes and shared annotations ride on the same build: define once, every report follows.
+Report code can bring together databases, warehouses, files, and APIs through {{BRAND}}'s built-in readers or a service's Python SDK. With query caching configured, repeated builds can reuse the data while you iterate on the report. Themes and shared annotations ride on the same build: define them once and reuse them across reports.
 
 ## What's in the box
 
@@ -95,11 +95,11 @@ Everything I kept rebuilding by hand, built in:
 <span class="bcell"><i style="background:var(--scope-studio)"></i>shared annotations</span>
 </div>
 
-And when none of it fits, your agent can invent any HTML visualization it likes. The framework knows how to build it in as a first-class component: same theme, same filters, same shared data.
+And when none of it fits, your agent can write a custom HTML visualization and wire it to the framework's theme, filters, and shared data. That connection is ordinary report code, so I can inspect and change it too.
 
 ## This is for everyone
 
-Data scientists and analysts will probably feel it first. But {{BRAND}} is not a specialist tool. If you have an agent and a question, you can have a report: marketing, ops, finance, founders, anyone. Ask for it once, review it once, and every morning it rebuilds itself. Same numbers for everyone, no fiddling, no redoing, no wondering why today's version looks different.
+Data scientists and analysts will probably feel it first. But {{BRAND}} is not a specialist tool. If you have an agent and a question, you can have a report: marketing, ops, finance, founders, anyone. Ask for it, review the code, then schedule builds in the portal or your own CI. Everyone reads the same published report, with the calculation kept in Git instead of reinvented each morning.
 
 Making charts used to be the work. Now the work is asking better questions. Go ask one.
 

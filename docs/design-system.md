@@ -48,7 +48,7 @@ Alerts and Report Analytics. Report Analytics retains its developer/admin check.
 Studio settings group contains Repository, Data sources, Members and Report
 theme. Organization links follow as Org Workspace, Org People, Org Data &
 reporting and Organization groups. The Organization group remains last and uses
-the existing capability locks. There is one navigation rail.
+the existing role checks. There is one navigation rail.
 
 Organization and studio selectors sit at the top of the sidebar. Breadcrumbs,
 studio report search and the account menu sit in the utility header. Category,

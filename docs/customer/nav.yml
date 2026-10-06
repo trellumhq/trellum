@@ -1,8 +1,8 @@
 # Sidebar order and labels. The page's own H1 is its title; these labels are
 # the (often shorter) sidebar text. Adding a page = a .md file + an entry here.
 #
-# Publishing a documentation version: copy this directory to content/docs/<version>/.
-# The version dropdown lists directories, so nothing else needs updating.
+# scripts/sync-docs.sh exports this directory from stable release tags into
+# website/content/docs/<version>/. Edit these sources, not the generated copies.
 #
 - section: Recommended workflow
   summary: How teams get the most out of this. Advice, not requirements.
@@ -19,7 +19,7 @@
       slug: workflow/working-with-ai-agents
 
 - section: Install
-  summary: Get the portal running on your own VM.
+  summary: Try the framework locally or deploy the self-hosted portal.
   pages:
     - title: Try it locally
       slug: install/try-it

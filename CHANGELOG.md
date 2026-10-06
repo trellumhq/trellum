@@ -7,6 +7,17 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Documentation
+
+- Clarify multi-host deployment requirements: shared PostgreSQL and a shared
+  data directory for web, coordinator, and runner services, even with object storage.
+- Document existing studio runner pools and distinguish memory admission
+  budgets from Docker and unsandboxed process limits.
+- Align feature, installation, backup, and workflow guides with the current
+  implementation, and check canonical documentation routes and anchors before
+  release.
+- Explain documentation release snapshots and contributor test prerequisites.
+
 ## [0.2.2] — 2026-10-06
 
 ### Fixed

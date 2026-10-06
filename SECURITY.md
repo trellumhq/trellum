@@ -41,8 +41,8 @@ mistakes live:
 **The framework** (`trellum/`) is a library, and the statements below scope
 *the package*, not the product. Used standalone it has no authentication, no
 accounts, no access control and no multi-tenancy, by design — a built report
-is a self-contained HTML file and access control belongs to whatever hosts the
-output. (In this repository the control plane is that host, and it has all
+is a set of HTML, JSON, and browser assets, and access control belongs to whatever
+hosts that output. (In this repository the control plane is that host, and it has all
 four; see above.) So these are not framework vulnerabilities: "there is no
 login", "the preview server is not hardened" (it is a local authoring tool),
 or anything requiring the attacker to already control your report code, your

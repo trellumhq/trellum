@@ -15,7 +15,7 @@ that code is never trusted more than that boundary allows.
   It never sees another studio or organization, the git checkout (which holds
   the repository token), or the worker's own environment.
 - Memory, CPU and process-count limits — see
-  [Sizing](/docs/latest/operations/sizing/) for how to declare them.
+  [Sizing](/docs/latest/operations/sizing/) for operator-controlled build budgets.
 - A dedicated network that **cannot reach the rest of the deployment** — so
   even a leaked warehouse credential cannot be turned against your database or
   the portal itself. Network egress is denied by default. Reports that need a
@@ -72,8 +72,8 @@ Stated plainly, so you can judge it against your own threat model:
 
 ## Turning it off (development only)
 
-Setting `TRELLUM_SANDBOX=off` runs builds in-process again — the pre-sandboxing
-behaviour. It exists for local development, where there is no
-Docker-in-Docker support. **Never set it on a real deployment**: it runs
-tenant code unsandboxed inside the worker itself, and the worker logs a
+Setting `TRELLUM_SANDBOX=off` runs builds as unsandboxed subprocesses on the
+worker host. It exists for local development without a sandbox Docker setup.
+**Never set it on a real deployment**: it runs tenant code with the worker's
+host access, and the worker logs a
 warning on every boot while it is off outside local development.

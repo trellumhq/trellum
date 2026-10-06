@@ -21,7 +21,7 @@ shared PostgreSQL and shared persistent storage mounted at the same
 `TRELLUM_DATA_DIR` path on web, coordinator, and runner hosts. That storage
 includes checkouts, project files, uploads, live run logs, audit archives, and
 scheduled-delivery inputs; see
-[Sizing](/docs/latest/operations/sizing/#when-one-machine-is-not-enough).
+[Sizing](https://trellum.dev/docs/latest/operations/sizing/#when-one-machine-is-not-enough).
 
 ## Bring it up
 

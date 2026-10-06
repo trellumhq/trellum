@@ -45,10 +45,9 @@ all three before changing a bundled asset.
    the standard charts. Run the relevant framework tests too:
 
    ```bash
-   # Return to the trellum/ repository root first.
-   cd ..
-   python -m pytest testing/test_components.py -v
-   python -m pytest testing/test_js_runtime.py -v
+   # Still in trellum/demo/
+   python -m pytest ../testing/test_components.py -v
+   python -m pytest ../testing/test_js_runtime.py -v
    ```
 
 ## Adding an asset

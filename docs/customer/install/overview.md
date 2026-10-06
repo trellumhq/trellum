@@ -4,7 +4,8 @@
 multi-host deployment uses shared PostgreSQL and mounts the same persistent
 data directory on every web, coordinator, and runner host; see
 [Sizing](/docs/latest/operations/sizing/#when-one-machine-is-not-enough). No
-cloud services are required, and the portal never phones home.
+cloud services are required. The optional GitHub release check is off by
+default; configured data sources, email, and AI providers use their own services.
 
 ## Choose a path
 

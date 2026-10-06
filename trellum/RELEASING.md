@@ -76,7 +76,8 @@ git switch main
 git pull --ff-only origin main
 test -z "$(git status --porcelain)"
 
-VERSION=0.2.1
+# Use the new, unreleased version prepared above.
+VERSION=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' trellum_portal/__init__.py)
 PORTAL=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' trellum_portal/__init__.py)
 FRAMEWORK=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' trellum/__init__.py)
 test "$PORTAL" = "$VERSION"
@@ -164,6 +165,12 @@ under `docs/`, and the synthetic demo gallery under `/demo/`. The combined
 site is published at `https://trellum.dev/`, with the gallery at
 `https://trellum.dev/demo/`. `pages.yml` owns the deployment; `release.yml`
 dispatches it only after the GitHub Release and wheel exist.
+
+`scripts/sync-docs.sh` reads `docs/customer/` from stable release tags and copies
+the newest version to `/docs/latest/`. It does not publish uncommitted or
+unreleased documentation changes when stable tags exist. A documentation-only
+correction can ship in a patch release; existing tags remain unchanged. Website
+templates and blog content, in contrast, deploy from `main` on a Pages run.
 
 After publishing a release, `.github/workflows/release.yml` dispatches
 `.github/workflows/pages.yml` on `main` with deployment enabled. The Pages
