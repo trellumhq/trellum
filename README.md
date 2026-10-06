@@ -11,7 +11,7 @@
 
 <p align="center">
   <a href="https://trellum.dev/">Website</a> ·
-  <a href="https://trellum.dev/demo/">Live demo</a> ·
+  <a href="https://trellum.dev/demo/">Report demos</a> ·
   <a href="https://trellum.dev/docs/latest/">Documentation</a> ·
   <a href="https://github.com/trellumhq/trellum">Source</a> ·
   <a href="CONTRIBUTING.md">Contributing</a> ·
@@ -33,13 +33,33 @@ review tools.
 Use the standalone framework on a laptop, in CI, or behind your own web server.
 Add the optional self-hosted platform when reports need scheduled builds,
 authentication, controlled sharing, and a place for a team to find them.
-Visit the [Trellum website](https://trellum.dev/) for the interactive product
-tour, public demo gallery, and installation guides.
+Visit the [Trellum website](https://trellum.dev/) for the product overview,
+report gallery, and installation guides.
+
+The public [demo gallery](https://trellum.dev/demo/) contains **reports only**:
+interactive examples built from synthetic data. It is not a hosted portal. The
+portal is self-hosted and needs its own backend; [try it locally with Docker](https://trellum.dev/docs/latest/install/docker-compose/)
+when you want a shared team home.
+
+<p align="center">
+  <a href="docs/product-tour.md"><img src="docs/assets/portal-tour.gif" alt="Animated walkthrough of the Trellum self-hosted portal"></a>
+  <br>
+  <sub>Portal walkthrough · <a href="docs/product-tour.md">read the script</a> · <a href="https://trellum.dev/docs/latest/install/docker-compose/">run the portal locally</a></sub>
+</p>
+
+The framework turns Python, SQL, and YAML into interactive, portable reports.
+An author or coding agent can inspect sources and shared metric definitions,
+build and validate a report, then review its changes in Git. The optional
+self-hosted portal gives a team a shared place to publish those reports,
+configure data sources, track metric use, review experiments and annotations,
+manage access and sharing, and organize alerts and scheduled builds. A separate
+portal assistant can answer questions about built reports when an organization
+admin configures it.
 
 <p align="center">
   <img src="docs/assets/store-health.jpg" alt="Store Health report with comparison KPIs, filters, and revenue and margin trends">
   <br>
-  <sub>Store Health uses the synthetic commerce dataset included with Trellum.</sub>
+  <sub>Store Health is a synthetic retail example, separate from Nova Play's game reports.</sub>
 </p>
 
 ## What Trellum gives you
@@ -148,9 +168,9 @@ a metric by ID rather than copying its formula, so revenue or retention does
 not quietly acquire a second meaning in another dashboard.
 
 <p align="center">
-  <img src="docs/assets/player-overview.jpg" alt="Player Overview report with KPI cards, filters, and a daily active users chart">
+  <img src="docs/assets/portal-overview.jpg" alt="Trellum portal overview for the Nova Play Product Insights studio">
   <br>
-  <sub>Player Overview is another included report built from fabricated player data.</sub>
+  <sub>The portal brings Git-published reports and studio tools together. <a href="docs/product-tour.md">See the product walkthrough</a>.</sub>
 </p>
 
 ## Connect databases, files, sheets, and APIs
