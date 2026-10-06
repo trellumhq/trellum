@@ -44,6 +44,13 @@ def test_tour_page_has_accessible_self_paced_screenshot_slides(client):
     assert body.count('<h3>What to look for</h3>') == 14
     assert body.count('target="_blank"') == 14
     assert body.count('alt="') >= 14
+    assert "JavaScript is off. Scroll through the 14 features below" in body
+    assert 'id="slide-portal-repository"' in body
+    assert 'alt="Edit the repository URL, branch and reports directory settings."' in body
+    assert 'alt="Read the organization-wide rate limit for report live queries."' in body
+    assert 'alt="Review the disabled assistant’s provider, model and data-access settings."' in body
+    assert 'width="1253" height="705"' in body
+    assert 'width="1265" height="712"' in body
     assert 'static/tour.js' in body
     assert "/static/media/portal-tour.mp4" not in body
     assert 'autoplay' not in body
