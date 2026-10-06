@@ -121,7 +121,7 @@ python -m trellum.run reports/player-overview --no-serve --portable
 python -m trellum serve --background
 ```
 
-Or give your coding agent the same bounded task:
+Or give your coding agent this starting point:
 
 <div class="agentline"><span class="tag">paste to your agent</span><button class="copybtn" type="button" data-copy="agent-prompt-post">copy</button><code id="agent-prompt-post">{{AGENT_PROMPT}}</code></div>
 

@@ -178,7 +178,7 @@ product, not a picture of it.{% endcomment %}
           <span class="src"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M9 4c-2 0-2 2-2 4 0 2-2 2-2 4s2 2 2 4c0 2 0 4 2 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M15 4c2 0 2 2 2 4 0 2 2 2 2 4s-2 2-2 4c0 2 0 4-2 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>custom Python</span>
           <span class="src">+ more databases</span>
         </div>
-        <p class="combine"><b>Combine them deliberately.</b> Load a file and warehouse table, call an API through its SDK, then join the resulting DataFrames in ordinary Python.</p>
+        <p class="combine"><b>Bring your sources together.</b> Load a file and warehouse table, call an API through its SDK, then join the resulting DataFrames in ordinary Python.</p>
       </div>
       <div class="conn" aria-hidden="true"><i></i><i></i><i></i></div>
       <div class="pcol dsnode reveal">
@@ -206,7 +206,7 @@ product, not a picture of it.{% endcomment %}
       <div class="truth"><b>Cache when it helps.</b> Configure query caching for repeated builds. Changed SQL, expired entries, or a cache bypass can query the source again.</div>
     </div>
 
-    <p class="livepath"><b>⚡ live is an option, per report:</b> with a configured live-query backend, viewers can pick parameters and query at view time. Portable static output does not contact a source by itself.</p>
+    <p class="livepath"><b>⚡ live is an option, per report:</b> for reports that need fresh data at view time, configure a live-query backend and let viewers choose their parameters.</p>
   </div>
 </section>
 
@@ -236,7 +236,7 @@ product, not a picture of it.{% endcomment %}
       </div>
 
       <div class="ft reveal"><h3>The metrics layer</h3>
-        <p>Share one reviewed definition of revenue across reports. Metrics reduce drift; people still review the SQL, source data, and grain.</p>
+        <p>Reuse named definitions of revenue across reports, with the SQL and calculation rules available for review.</p>
         <div class="pchip">
           <span class="ps-code">metrics.yaml · <b>gross_revenue</b> · v2 · iap + ad · €</span>
           <div class="ps-claims"><span><b>weekly-revenue<br>€412k <i>✓</i></b>claims gross_revenue</span><span><b>board-pack<br>€412k <i>✓</i></b>claims gross_revenue</span></div>
