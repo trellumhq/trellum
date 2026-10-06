@@ -180,3 +180,49 @@ def test_desktop_dark_prepaint_expanded_nav_and_reduced_motion(
             page.screenshot(path=artifacts / "desktop-1440-dark-expanded.png", full_page=True)
         context.close()
         instance.close()
+
+
+def test_sidebar_scroll_is_restored_for_console_navigation_and_back(login, org_admin, org):
+    paths = (
+        f"/orgs/{org.slug}/settings/members",
+        f"/orgs/{org.slug}/settings/retention",
+    )
+    pages = {
+        path: _inline_shell_assets(login(org_admin).get(path).content.decode())
+        for path in paths
+    }
+
+    with sync_playwright() as playwright:
+        instance = playwright.chromium.launch(headless=True)
+        context = instance.new_context(viewport={"width": 1440, "height": 760})
+        page = context.new_page()
+
+        def serve(route):
+            path = route.request.url.removeprefix("http://shell.test")
+            if route.request.resource_type == "document" and path in pages:
+                route.fulfill(body=pages[path], content_type="text/html")
+            else:
+                route.fulfill(status=204)
+
+        page.route("http://shell.test/**", serve)
+        page.goto("http://shell.test" + paths[0], wait_until="domcontentloaded")
+        nav = page.locator(".tl-console-nav")
+        assert nav.evaluate("e => e.scrollHeight > e.clientHeight")
+        nav.evaluate("e => e.scrollTop = 180")
+        assert nav.evaluate("e => e.scrollTop") > 0
+        target = page.locator(f'a[href="{paths[1]}"]')
+        target.scroll_into_view_if_needed()
+        expected_scroll = nav.evaluate("e => e.scrollTop")
+        assert expected_scroll > 0
+        target.click()
+        page.wait_for_url("**" + paths[1])
+        assert nav.evaluate("e => e.scrollTop") == expected_scroll
+        assert page.evaluate("window.scrollY") == 0
+        active = page.locator(f'a[href="{paths[1]}"]')
+        assert active.get_attribute("aria-current") == "page"
+
+        page.go_back(wait_until="domcontentloaded")
+        page.wait_for_url("**" + paths[0])
+        assert nav.evaluate("e => e.scrollTop") == expected_scroll
+        context.close()
+        instance.close()

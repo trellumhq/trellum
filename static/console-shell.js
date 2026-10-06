@@ -61,6 +61,8 @@
         root.dataset.consoleInitialized = 'true';
         var body = document.body;
         var sidebar = root.querySelector('.tl-console-sidebar');
+        var navScroller = root.querySelector('.tl-console-nav');
+        var scrollKeyPrefix = root.dataset.consoleContext && 'tl-console-sidebar:' + root.dataset.consoleContext + ':';
         var toggle = root.querySelector('[data-console-toggle]');
         var collapse = root.querySelector('[data-console-collapse]');
         var backdrop = root.querySelector('[data-console-backdrop]');
@@ -69,6 +71,26 @@
         var search = root.querySelector('[data-console-search]');
         var inertTargets = document.querySelectorAll('[data-console-inert]');
         var returnFocus = null;
+
+        if (scrollKeyPrefix) {
+            var scrollKey = scrollKeyPrefix + window.location.pathname;
+            try {
+                var savedScroll = sessionStorage.getItem(scrollKey);
+                if (savedScroll !== null) {
+                    navScroller.scrollTop = Number(savedScroll) || 0;
+                }
+            } catch (e) {}
+            sidebar.addEventListener('click', function (event) {
+                var link = event.target.closest('.tl-console-nav-link[href]');
+                if (!link || link.target === '_blank' || link.hasAttribute('download') || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                var destination = new URL(link.href, window.location.href);
+                if (destination.origin !== window.location.origin) return;
+                try {
+                    sessionStorage.setItem(scrollKeyPrefix + window.location.pathname, String(navScroller.scrollTop));
+                    sessionStorage.setItem(scrollKeyPrefix + destination.pathname, String(navScroller.scrollTop));
+                } catch (e) {}
+            });
+        }
 
         function closeMenus(except) {
             root.querySelectorAll('details[open]').forEach(function (item) {

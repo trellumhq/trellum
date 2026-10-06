@@ -60,6 +60,10 @@ class TestPermissionGate:
         resp = login(org_admin).get(_url(org))
         assert resp.status_code == 200
         assert b"Data retention" in resp.content
+        assert (
+            b'href="/orgs/' + org.slug.encode()
+            + b'/settings/retention" aria-current="page"'
+        ) in resp.content
 
     def test_non_admin_member_cannot_view_the_page(self, login, member, org):
         assert login(member).get(_url(org)).status_code == 403

@@ -1,4 +1,4 @@
-{% load static docs %}<div class="tl-console-shell" data-console-shell data-console-default-mode="{{ org_default_mode|default:'auto' }}" data-console-ready="false" data-console-css="{% static 'console-shell.css' %}" data-console-script="{% static 'console-shell.js' %}" data-html2canvas-ignore="true">
+{% load static docs %}<div class="tl-console-shell" data-console-shell data-console-context="{{ shell_org.slug|default:'' }}" data-console-default-mode="{{ org_default_mode|default:'auto' }}" data-console-ready="false" data-console-css="{% static 'console-shell.css' %}" data-console-script="{% static 'console-shell.js' %}" data-html2canvas-ignore="true">
   <aside class="tl-console-sidebar" id="consoleSidebar" aria-label="Console sidebar">
     <button class="tl-console-drawer-close" type="button" data-console-close aria-label="Close navigation">×</button>
     <a class="tl-console-brand" href="/" aria-label="Trellum home">
