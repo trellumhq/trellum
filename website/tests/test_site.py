@@ -1,7 +1,9 @@
 import re
 import shutil
 from html import escape
+from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import unquote, urljoin, urlparse
 
 import pytest
 from django.conf import settings
@@ -140,6 +142,66 @@ def test_internal_doc_links_resolve():
             assert not re.search(r'href="[^"]+\.md', rendered.html)
             if version != "latest":
                 assert 'href="/docs/latest/' not in rendered.html
+
+
+def test_canonical_latest_docs_render_and_links_resolve(client, tmp_path, settings):
+    canonical = Path(__file__).resolve().parents[2] / "docs" / "customer"
+    shutil.copytree(canonical, tmp_path / "latest")
+    settings.DOCS_ROOT = tmp_path
+    settings.DOCS_CACHE = False
+
+    pages = nav.pages("latest")
+    listed_slugs = {page.slug for page in pages}
+    markdown_slugs = {
+        path.relative_to(canonical).with_suffix("").as_posix()
+        for path in canonical.rglob("*.md")
+    }
+    assert listed_slugs == markdown_slugs
+
+    class PageLinks(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.links = []
+            self.ids = set()
+
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            if "id" in attrs:
+                self.ids.add(attrs["id"])
+            if tag == "a" and attrs.get("href"):
+                self.links.append(attrs["href"])
+
+    rendered = {"/docs/latest/": client.get("/docs/latest/")}
+    for page in pages:
+        rendered[page.url] = client.get(page.url)
+
+    unresolved = re.compile(
+        r"\{\{(?:BRAND|AGENT_PROMPT|FRAMEWORK_REPO|DEMO_URL|figure:[a-z0-9-]+)\}\}"
+    )
+    parsed = {}
+    for route, response in rendered.items():
+        assert response.status_code == 200, route
+        body = response.content.decode()
+        assert not unresolved.search(body), route
+        parser = PageLinks()
+        parser.feed(body)
+        parsed[route] = parser
+
+    origin = "https://trellum.dev"
+    for route, parser in parsed.items():
+        for href in parser.links:
+            target = urlparse(urljoin(f"{origin}{route}", href))
+            if (
+                target.netloc != "trellum.dev"
+                or not target.path.startswith("/docs/latest/")
+            ):
+                continue
+            assert target.path in parsed, f"{route}: missing docs route for {href}"
+            if target.fragment:
+                anchor = unquote(target.fragment)
+                assert anchor in parsed[target.path].ids, (
+                    f"{route}: missing #{anchor} in {target.path} (from {href})"
+                )
 
 
 def test_relative_doc_link_keeps_the_current_version():
