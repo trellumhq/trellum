@@ -4,6 +4,7 @@
 the tokens in static/site.css, and vanilla JS in block scripts.{% endcomment %}
 
 {% block title %}{{ BRAND }} — {{ TAGLINE }}{% endblock %}
+{% block description %}Install Trellum in your Python repository. Build interactive reports with SQL, Python, and your favorite coding agent; version them in Git and publish portable HTML. Add the optional self-hosted portal for team access and scheduling.{% endblock %}
 
 {% block content %}
 
@@ -15,13 +16,13 @@ product, not a picture of it.{% endcomment %}
   <div class="rail">
 
     <div class="hb-hero">
-      <h1>Vibe-code a report.<br>Ship a <span class="grad">professional dashboard.</span></h1>
-      <p class="hb-lead">Built with your favorite AI tools: Claude Code, Cursor, Codex or anything else you like. Shared with your team, rebuilt on schedule, hosted where everyone can find them.</p>
+      <h1>Build reports in your repository.<br>Ship a <span class="grad">professional dashboard.</span></h1>
+      <p class="hb-lead">Install the Python framework in a new or existing repository. Write Python and SQL yourself or with Claude Code, Cursor, Codex, or any coding agent, then build validated, portable HTML on your laptop or in CI.</p>
       <div class="hb-ctas">
-        <a class="btn primary" href="/docs/latest/">Get started <span class="arr">→</span></a>
+        <a class="btn primary" href="#framework">Get started <span class="arr">→</span></a>
         <a class="btn" href="/docs/" rel="noopener">Read the docs</a>
       </div>
-      <p class="pipline"><span class="ps">$</span> <b>git clone https://github.com/trellumhq/trellum.git</b> <span class="note"># the full product is AGPL-3.0-only</span></p>
+      <p class="pipline"><span class="ps">$</span> <b>python -m pip install https://github.com/trellumhq/trellum/releases/download/v0.1.0/trellum-0.1.0-py3-none-any.whl</b> <span class="note"># Python 3.11+ · no portal required</span></p>
 
       <div class="hb-strip">
         <div class="hl">made by anyone</div>
@@ -46,7 +47,7 @@ product, not a picture of it.{% endcomment %}
         </div>
       </div>
 
-      <p class="hb-point">▼ the console below is <b>live</b>. Click a card, it opens.</p>
+      <p class="hb-point">▼ the synthetic portal preview below is <b>interactive</b>. Click a card, it opens.</p>
     </div>
 
     {% comment %}The console: the portal's own layout with fixture data. It
@@ -127,7 +128,7 @@ product, not a picture of it.{% endcomment %}
         </div>
       </div>
 
-      <p class="cs-cap"><i>live</i>. This is how the portal behaves, not a picture of it. Click a card, flip a theme, toggle the delivery.</p>
+      <p class="cs-cap"><i>synthetic preview</i>. Try the optional portal interactions: click a card, flip a theme, toggle the delivery.</p>
     </div>
   </div>
 </header>
@@ -137,9 +138,10 @@ product, not a picture of it.{% endcomment %}
   <div class="rail cols">
     <div>
       <div class="kick">start here · free &amp; open source</div>
-      <h2>A report is one conversation.</h2>
-      <p class="lead">You talk to your own harness, the one you already enjoy. It writes the report as plain Python and SQL in your repository. After the source install in the guide, <span class="mono">python -m trellum.run</span> turns that folder into what you saw above. No new tool. No DSL. No account.</p>
-      <p class="lead"><b>You can start right now.</b> Clone {{ BRAND }}, make reports on your own machine, and use the included portal when you want to schedule or share them.</p>
+      <h2>Install the framework. Keep your repository.</h2>
+      <p class="lead">Create a Python 3.11+ virtual environment in a new or existing repository, install the released wheel above, then run <span class="mono">python -m trellum</span> for the CLI's own guide. Reports stay plain Python, SQL, YAML, and Git. Write them manually or ask your coding agent to work in the same files.</p>
+      <p class="lead installcmd"><code>python -m pip install https://github.com/trellumhq/trellum/releases/download/v0.1.0/trellum-0.1.0-py3-none-any.whl</code></p>
+      <p class="lead"><b>The framework is enough.</b> Build and validate with <span class="mono">python -m trellum.run reports/&lt;name&gt; --no-serve --portable</span>, then open the output on your laptop, publish it from CI, or serve it from any static host. The optional self-hosted portal adds managed schedules, authentication, and team sharing.</p>
       <div class="htabs" id="htabs">
         <button class="htab on" type="button" data-h="Claude Code">Claude Code</button>
         <button class="htab" type="button" data-h="Cursor">Cursor</button>
@@ -160,58 +162,58 @@ product, not a picture of it.{% endcomment %}
 <section class="sect alt pipeline reveal" id="workflow">
   <div class="rail">
     <div class="kick">how a report is actually built</div>
-    <h2>Any source. Combined. <span class="grad">One dataset.</span></h2>
-    <p class="lead">Warehouse, files, APIs. Every source you have, compiled together into one dataset, and every report builds from it. That's the speed, and that's the end of most of your ETL.</p>
+    <h2>Your sources. Joined in Python. <span class="grad">One report.</span></h2>
+    <p class="lead">Use built-in connectors for supported databases and files. For other services, call their Python SDKs. Your report code chooses what to load, how to transform it, and which reusable datasets feed each component.</p>
 
     <div class="pflow">
       <div class="pcol reveal from-l">
-        <div class="pl">combine any source</div>
+        <div class="pl">load the sources you configure</div>
         <div class="srcs">
           <span class="src"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4 5v14c0 1.66 3.58 3 8 3s8-1.34 8-3V5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3" fill="none" stroke="currentColor" stroke-width="2"/></svg>Postgres &amp; SQL</span>
           <span class="src"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M7.602 12.4c.038-.151.076-.304.076-.456 0-.114-.038-.228-.038-.342-.114-.343-.304-.647-.646-.838l-4.87-2.777c-.685-.38-1.56-.152-1.94.533-.381.685-.153 1.56.532 1.94l2.701 1.56-2.701 1.56c-.685.38-.913 1.256-.533 1.94.38.685 1.256.914 1.94.533l4.832-2.777c.343-.267.571-.533.647-.876zm1.332 2.626c-.266-.038-.57.038-.837.19l-4.832 2.777c-.685.38-.913 1.256-.532 1.94.38.686 1.255.914 1.94.533l2.701-1.56v3.12c0 .8.647 1.408 1.446 1.408.799 0 1.407-.647 1.407-1.408v-5.592c0-.761-.57-1.37-1.293-1.408zm4.946-6.088c.266.038.57-.038.837-.19l4.832-2.777c.685-.38.913-1.256.532-1.94-.38-.686-1.255-.914-1.94-.533l-2.701 1.56V1.975c0-.799-.647-1.408-1.446-1.408-.799 0-1.446.609-1.446 1.408V7.53c0 .76.609 1.37 1.332 1.407zM3.265 5.97l4.832 2.777c.266.152.533.19.837.19.723-.038 1.331-.684 1.331-1.407V1.975c0-.799-.646-1.408-1.407-1.408-.799 0-1.446.647-1.446 1.408v3.12l-2.701-1.56c-.685-.38-1.56-.152-1.94.533-.419.646-.19 1.521.494 1.902zm14.686 12.011l-4.832-2.777c-.266-.152-.57-.19-.837-.152-.723.038-1.332.684-1.332 1.408v5.554c0 .8.647 1.408 1.408 1.408.799 0 1.446-.647 1.446-1.408v-3.12l2.7 1.56c.686.38 1.561.152 1.941-.533.419-.646.19-1.521-.494-1.94zm2.549-7.533l-2.701 1.56 2.7 1.56c.686.38.914 1.256.533 1.94-.38.685-1.255.913-1.94.533l-4.832-2.778a1.644 1.644 0 0 1-.647-.798c-.037-.153-.076-.305-.076-.457 0-.114.039-.228.039-.342.114-.343.342-.647.646-.837l4.832-2.778c.685-.38 1.56-.152 1.94.533.457.609.19 1.484-.494 1.864"/></svg>Snowflake</span>
           <span class="src"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M5.676 10.595h2.052v5.244a5.892 5.892 0 0 1-2.052-2.088v-3.156zm18.179 10.836a.504.504 0 0 1 0 .708l-1.716 1.716a.504.504 0 0 1-.708 0l-4.248-4.248a.206.206 0 0 1-.007-.007c-.02-.02-.028-.045-.043-.066a10.736 10.736 0 0 1-6.334 2.065C4.835 21.599 0 16.764 0 10.799S4.835 0 10.8 0s10.799 4.835 10.799 10.8c0 2.369-.772 4.553-2.066 6.333.025.017.052.028.074.05l4.248 4.248zm-5.028-10.632a8.015 8.015 0 1 0-8.028 8.028h.024a8.016 8.016 0 0 0 8.004-8.028zm-4.86 4.98a6.002 6.002 0 0 0 2.04-2.184v-1.764h-2.04v3.948zm-4.5.948c.442.057.887.08 1.332.072.4.025.8.025 1.2 0V7.692H9.468v9.035z"/></svg>BigQuery</span>
           <span class="src"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M12 0C5.363 0 0 5.363 0 12s5.363 12 12 12 12-5.363 12-12S18.637 0 12 0zM9.502 7.03a4.974 4.974 0 0 1 4.97 4.97 4.974 4.974 0 0 1-4.97 4.97A4.974 4.974 0 0 1 4.532 12a4.974 4.974 0 0 1 4.97-4.97zm6.563 3.183h2.351c.98 0 1.787.782 1.787 1.762s-.807 1.789-1.787 1.789h-2.351v-3.551z"/></svg>DuckDB</span>
           <span class="src"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M6 2h8l5 5v15H6z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M14 2v5h5" fill="none" stroke="currentColor" stroke-width="2"/></svg>CSV &amp; Parquet</span>
-          <span class="src"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M11.318 12.545H7.91v-1.909h3.41v1.91zM14.728 0v6h6l-6-6zm1.363 10.636h-3.41v1.91h3.41v-1.91zm0 3.273h-3.41v1.91h3.41v-1.91zM20.727 6.5v15.864c0 .904-.732 1.636-1.636 1.636H4.909a1.636 1.636 0 0 1-1.636-1.636V1.636C3.273.732 4.005 0 4.909 0h9.318v6.5h6.5zm-3.273 2.773H6.545v7.909h10.91v-7.91zm-6.136 4.636H7.91v1.91h3.41v-1.91z"/></svg>Sheets</span>
-          <span class="src"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M9 4c-2 0-2 2-2 4 0 2-2 2-2 4s2 2 2 4c0 2 0 4 2 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M15 4c2 0 2 2 2 4 0 2 2 2 2 4s-2 2-2 4c0 2 0 4-2 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>REST APIs</span>
-          <span class="src">+ many more</span>
+          <span class="src"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M11.318 12.545H7.91v-1.909h3.41v1.91zM14.728 0v6h6l-6-6zm1.363 10.636h-3.41v1.91h3.41v-1.91zm0 3.273h-3.41v1.91h3.41v-1.91zM20.727 6.5v15.864c0 .904-.732 1.636-1.636 1.636H4.909a1.636 1.636 0 0 1-1.636-1.636V1.636C3.273.732 4.005 0 4.909 0h9.318v6.5h6.5zm-3.273 2.773H6.545v7.909h10.91v-7.91zm-6.136 4.636H7.91v1.91h3.41v-1.91z"/></svg>Excel files</span>
+          <span class="src"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M9 4c-2 0-2 2-2 4 0 2-2 2-2 4s2 2 2 4c0 2 0 4 2 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M15 4c2 0 2 2 2 4 0 2 2 2 2 4s-2 2-2 4c0 2 0 4-2 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>custom Python</span>
+          <span class="src">+ more databases</span>
         </div>
-        <p class="combine">And this is the trick: <b>combine them.</b> A CSV <b>+</b> your warehouse <b>+</b> an API, joined into the same dataset, in the same report.</p>
+        <p class="combine"><b>Combine them deliberately.</b> Load a file and warehouse table, call an API through its SDK, then join the resulting DataFrames in ordinary Python.</p>
       </div>
       <div class="conn" aria-hidden="true"><i></i><i></i><i></i></div>
       <div class="pcol dsnode reveal">
-        <div class="pl">into one compiled dataset</div>
+        <div class="pl">into report datasets</div>
         <svg viewBox="0 0 120 44" width="110" aria-hidden="true"><g fill="var(--accent)"><rect x="10" y="6" width="14" height="32" rx="3" opacity=".9"/><rect x="30" y="12" width="14" height="26" rx="3" opacity=".65"/><rect x="50" y="4" width="14" height="34" rx="3" opacity=".8"/><rect x="70" y="16" width="14" height="22" rx="3" opacity=".5"/><rect x="90" y="9" width="14" height="29" rx="3" opacity=".7"/></g></svg>
-        <div class="dst">compiled dataset</div>
-        <div class="dss">columnar · cached · queried once</div>
-        <span class="tmp">temporary. not a copy of your data</span>
+        <div class="dst">report dataset</div>
+        <div class="dss">columnar · cacheable · built by your code</div>
+        <span class="tmp">built and stored where you choose</span>
       </div>
       <div class="conn" aria-hidden="true"><i></i><i></i><i></i></div>
       <div class="pcol reveal from-r">
-        <div class="pl">every report builds from it</div>
+        <div class="pl">components read your datasets</div>
         <div class="pchip">
           <div class="ps-head">weekly-revenue <span class="ps-dots"><i class="s1"></i><i class="s2"></i><i class="s3"></i></span></div>
           <div class="ps-kpis"><span>€412k <b>▲</b></span><span>9,180 <b>▲</b></span><span>€44.9 <b>▲</b></span></div>
           <svg viewBox="0 0 120 44" width="100%" aria-hidden="true"><g fill="var(--w-s1)"><rect x="10" y="16" width="14" height="22" rx="3" opacity=".9"/><rect x="30" y="22" width="14" height="16" rx="3" opacity=".65"/><rect x="50" y="12" width="14" height="26" rx="3" opacity=".8"/><rect x="70" y="24" width="14" height="14" rx="3" opacity=".5"/><rect x="90" y="8" width="14" height="30" rx="3" opacity=".7"/></g><polyline points="17,22 37,26 57,16 77,27 97,11" fill="none" stroke="var(--w-s2)" stroke-width="2"/></svg>
         </div>
-        <p class="fast">✓ rebuilds in seconds. reads the dataset, not the warehouse</p>
+        <p class="fast">✓ configured caches can speed up repeated local builds</p>
       </div>
     </div>
 
     <div class="truths reveal stagger">
-      <div class="truth"><b>Your data stays yours.</b> The dataset is a temporary compilation, rebuilt from source on refresh. It is not a replica living somewhere else.</div>
-      <div class="truth"><b>Most of your ETL, gone.</b> The combine step is the pipeline. Joins across sources happen at compile time, not in a second toolchain.</div>
-      <div class="truth"><b>Why it's fast.</b> Sources are queried once. Changing a report never re-queries the warehouse, so iteration takes seconds, even on large data.</div>
+      <div class="truth"><b>Your deployment stays yours.</b> Run locally, in CI, or on infrastructure you control. You choose where generated report data is stored and served.</div>
+      <div class="truth"><b>Transform in plain Python.</b> Joins and reshaping are explicit DataFrame operations in your report code, so reviewers can see what changed.</div>
+      <div class="truth"><b>Cache when it helps.</b> Configure query caching for repeated builds. Changed SQL, expired entries, or a cache bypass can query the source again.</div>
     </div>
 
-    <p class="livepath"><b>⚡ live is an option, per report:</b> skip the compiled dataset and query at view time. Viewers pick the parameters and get this minute's numbers. Choose it where freshness beats speed.</p>
+    <p class="livepath"><b>⚡ live is an option, per report:</b> with a configured live-query backend, viewers can pick parameters and query at view time. Portable static output does not contact a source by itself.</p>
   </div>
 </section>
 
 <section class="sect turn reveal">
   <div class="rail">
-    <h2>The framework makes the report.<br>The portal makes it <span class="grad">reporting</span>.</h2>
-    <p>Make reports today, on your machine, for free. When one is worth sharing, put it on the portal: it gets a schedule, a home and an audience, current every morning, governed by the org. That's the product you saw at the top.</p>
+    <h2>The framework builds the report.<br>The portal is <span class="grad">optional</span>.</h2>
+    <p>Build, validate, schedule, and host portable reports with the tools you already use. Add the self-hosted portal when you want managed schedules, authentication, repository builds, and team sharing in one place.</p>
   </div>
 </section>
 
@@ -234,7 +236,7 @@ product, not a picture of it.{% endcomment %}
       </div>
 
       <div class="ft reveal"><h3>The metrics layer</h3>
-        <p>One definition of revenue. Reports claim it, and the numbers cannot disagree.</p>
+        <p>Share one reviewed definition of revenue across reports. Metrics reduce drift; people still review the SQL, source data, and grain.</p>
         <div class="pchip">
           <span class="ps-code">metrics.yaml · <b>gross_revenue</b> · v2 · iap + ad · €</span>
           <div class="ps-claims"><span><b>weekly-revenue<br>€412k <i>✓</i></b>claims gross_revenue</span><span><b>board-pack<br>€412k <i>✓</i></b>claims gross_revenue</span></div>
@@ -371,7 +373,7 @@ product, not a picture of it.{% endcomment %}
     <div class="nowall studio reveal">
       <div class="nw-head">
         <h3>None of them fit? <span class="grad">There is no wall.</span></h3>
-        <p>A report is code, so a component is whatever your agent writes. Any HTML, any JS, any visualization that doesn't exist yet. It arrives themed, filtered and wired to the same dataset as every built-in. No plugin API to wait for. No marketplace. Completely open, up to you.</p>
+        <p>A report is code, so you can add HTML, JavaScript, or a visualization that does not exist yet. Use the framework APIs to wire its data, theme, and filters yourself. No plugin approval is required; the integration stays explicit in your repository.</p>
       </div>
       <div class="nw-body">
         <div class="code"><span class="c"># your agent, mid-conversation:</span>
@@ -413,8 +415,8 @@ self.add(<span class="k">RawHTML</span>(<span class="s">"""
 
 <section class="hb closing-band">
   <div class="rail">
-    <h2>Start with a conversation.<br>End with <span class="grad">reporting that runs itself.</span></h2>
-    <p class="hb-lead">You saw it behave at the top. Explore the demo gallery, then run the complete product on your own infrastructure.</p>
+    <h2>Start in your repository.<br>End with a <span class="grad">report you can ship.</span></h2>
+    <p class="hb-lead">Install the framework, build portable HTML, and publish it with your existing tools. Explore the demo gallery, then add the optional portal only if your team needs its managed services.</p>
 
     <div class="mini-demo reveal" id="mini-demo">
       <div class="cs-top">
@@ -441,20 +443,20 @@ self.add(<span class="k">RawHTML</span>(<span class="s">"""
     </div>
 
     <div class="hb-ctas center">
-      <a class="btn primary" href="/docs/latest/">Get started <span class="arr">→</span></a>
+      <a class="btn primary" href="/docs/latest/framework/the-framework/">Framework guide <span class="arr">→</span></a>
       <a class="btn" href="{{ demo_href }}" rel="noopener">Explore the demo gallery</a>
     </div>
 
     <div class="paths">
       <div class="path teal">
         <div class="t">The framework · open source</div>
-        <p>Your agent writes the first report today. Free, local, no account.</p>
-        <div class="cmd">$ git clone https://github.com/trellumhq/trellum.git · <a href="{{ github_href }}" rel="noopener">view on GitHub →</a></div>
+        <p>Write Python and SQL manually or with any coding agent. Build locally, in CI, or on your static server.</p>
+        <div class="cmd">$ python -m pip install https://github.com/trellumhq/trellum/releases/download/v0.1.0/trellum-0.1.0-py3-none-any.whl · <a href="{{ github_href }}" rel="noopener">view on GitHub →</a></div>
       </div>
       <div class="path violet">
-        <div class="t">The portal · where it runs</div>
-        <p>Published on merge. Scheduled or live. Yours to govern.</p>
-        <div class="cmd">AGPL-3.0-only · run it on your own machines</div>
+        <div class="t">The portal · optional and self-hosted</div>
+        <p>Add managed schedules, authentication, repository builds, and team sharing.</p>
+        <div class="cmd">AGPL-3.0-only · run it on infrastructure you control</div>
       </div>
     </div>
   </div>

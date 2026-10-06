@@ -10,6 +10,6 @@
 # `_figures/name.html`, which is created the first time a post needs one.
 
 - slug: why-trellum-exists
-  date: 2026-08-20
+  date: 2026-10-06
   author: Apollo
-  summary: Agents made ad-hoc analysis easy. They also made every dashboard different from the last. The story of the context folder, the hallucinated HTML, and why determinism became the whole point.
+  summary: I wanted answers faster, then learned that useful AI reports need durable Python, SQL, validation, and Git. Why I built Trellum and released it as a free AGPL project.

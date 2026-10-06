@@ -672,7 +672,9 @@ a.src.more:hover{background:var(--accent-soft)}
 .blog-wrap figure{margin:18px 0;border:1px solid var(--border);border-radius:var(--r-lg);background:var(--bg-card);padding:16px}
 .blog-wrap figcaption{font-size:var(--fs-sm);color:var(--text3);margin-top:10px;text-align:center}
 .blog-wrap blockquote{font-style:italic}
+.blog-wrap pre{max-width:100%;overflow-x:auto;background:var(--code-bg);color:var(--code-ink);border:1px solid var(--border);border-radius:var(--r-lg);padding:14px 16px;font-size:var(--fs-sm);line-height:1.65}
 .blog-wrap .agentline{margin:10px 0 0;max-width:none}
+.blog-wrap .agentline code{overflow-wrap:anywhere}
 .signoff{margin-top:30px;padding-top:18px;border-top:1px solid var(--border)}
 .signoff p{color:var(--text);font-size:var(--fs-md);max-width:72ch}
 .sig{display:block;margin-top:7px;color:var(--text3);font-size:var(--fs-sm);font-style:italic}
@@ -770,6 +772,7 @@ a.src.more:hover{background:var(--accent-soft)}
 /* ---------- landing utilities ---------- */
 .grad{background:var(--duo);-webkit-background-clip:text;background-clip:text;color:transparent}
 .mono{font-family:var(--mono);font-size:var(--fs-md)}
+.installcmd{overflow-wrap:anywhere}
 .btn .arr{transition:transform var(--speed)}
 .btn:hover .arr{transform:translateX(3px)}
 
@@ -807,7 +810,7 @@ a.src.more:hover{background:var(--accent-soft)}
 .hb .lattice .grid{stroke:var(--hb-border)}
 .pipline{font-family:var(--mono);font-size:var(--fs-md);color:var(--hb-ink2);margin-top:16px}
 .pipline .ps{color:var(--hb-teal);font-weight:700}
-.pipline b{color:var(--hb-teal);font-weight:500}
+.pipline b{color:var(--hb-teal);font-weight:500;overflow-wrap:anywhere}
 .pipline .note{opacity:.6}
 
 /* who makes them, and what they are written with */
@@ -1080,6 +1083,6 @@ a.src.more:hover{background:var(--accent-soft)}
 .path.violet{border-top:3px solid var(--hb-violet)}
 .path .t{font-weight:700;margin-bottom:6px}
 .path p{font-size:var(--fs-md);color:var(--hb-ink2)}
-.path .cmd{font-family:var(--mono);font-size:var(--fs-sm);color:var(--hb-teal);margin-top:12px}
+.path .cmd{font-family:var(--mono);font-size:var(--fs-sm);color:var(--hb-teal);margin-top:12px;overflow-wrap:anywhere}
 .path .cmd a{color:var(--hb-teal);text-decoration:underline;text-underline-offset:2px}
 @media (max-width:760px){.paths{grid-template-columns:minmax(0,1fr)}}
