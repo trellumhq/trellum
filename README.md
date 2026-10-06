@@ -48,9 +48,9 @@ portal is self-hosted and needs its own backend; [try it locally with Docker](ht
 when you want a shared team home.
 
 <p align="center">
-  <a href="https://trellum.dev/tour/"><img src="docs/assets/portal-tour.gif" alt="Captioned slideshow tour of the Trellum self-hosted portal"></a>
+  <a href="https://trellum.dev/tour/"><img src="website/static/media/tour/portal-overview.jpg" alt="Nova Play's report library in the Trellum portal — open the interactive feature tour"></a>
   <br>
-  <sub><a href="https://trellum.dev/tour/">Watch the captioned portal feature tour</a> · <a href="docs/product-tour.md">read its transcript</a> · <a href="https://trellum.dev/docs/latest/install/try-it/">try Trellum locally</a></sub>
+  <sub><a href="https://trellum.dev/tour/">Open the interactive portal tour</a> · 14 features, at your own pace · <a href="docs/product-tour.md">read the walkthrough</a> · <a href="https://trellum.dev/docs/latest/install/try-it/">try Trellum locally</a></sub>
 </p>
 
 The framework turns Python, SQL, and YAML into interactive, portable reports.
@@ -169,7 +169,7 @@ not quietly acquire a second meaning in another dashboard.
 <p align="center">
   <img src="docs/assets/portal-overview.jpg" alt="Trellum portal experiment portfolio with lifecycle, overlap timeline and report-backed results">
   <br>
-  <sub>Experiment lifecycle and report-backed results in the self-hosted portal. <a href="https://trellum.dev/tour/">See the captioned feature tour</a>.</sub>
+  <sub>Experiment lifecycle and report-backed results in the self-hosted portal. <a href="https://trellum.dev/tour/">Explore the interactive feature tour</a>.</sub>
 </p>
 
 ## Connect databases, files, sheets, and APIs

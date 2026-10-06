@@ -53,7 +53,7 @@ host-independent and does not need the optional Trellum platform.
 
 The public [demo gallery](https://trellum.dev/demo/) contains reports only.
 For scheduled builds, team access, shared metrics, experiments, annotations
-and optional AI assistance, watch the [captioned portal tour](https://trellum.dev/tour/)
+and optional AI assistance, explore the [interactive portal tour](https://trellum.dev/tour/)
 or [run the portal locally](https://trellum.dev/docs/latest/install/try-it/).
 Author reports with your preferred coding agent or editor; Python, SQL and
 YAML stay in Git for review, history and reproducible builds.
