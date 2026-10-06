@@ -36,7 +36,32 @@ def test_export_writes_the_complete_finite_artifact(tmp_path):
     routes = {relative for _, relative in Command._routes(nav.versions())}
     actual = {path.relative_to(output).as_posix() for path in output.rglob("*") if path.is_file()}
     assert routes <= actual
-    assert {"static/site.css", "static/site.js", "static/trellum-lattice.svg", "tour/index.html"} <= actual
+    tour_images = {
+        f"static/media/tour/{name}.jpg"
+        for name in (
+            "portal-overview",
+            "portal-datasources",
+            "portal-player-report",
+            "portal-metrics",
+            "portal-repository",
+            "portal-annotations",
+            "portal-experiments",
+            "portal-operations",
+            "portal-sharing",
+            "portal-analytics",
+            "portal-live-queries",
+            "portal-alerts",
+            "portal-assistant",
+            "store-health-dark",
+        )
+    }
+    assert {
+        "static/site.css",
+        "static/site.js",
+        "static/tour.js",
+        "static/trellum-lattice.svg",
+        "tour/index.html",
+    } | tour_images <= actual
     assert {"demo/index.html", "demo/report/index.html", "demo/_vendor/chart.umd.min.js"} <= actual
     assert "demo/CNAME" not in actual
     assert "demo/robots.txt" not in actual

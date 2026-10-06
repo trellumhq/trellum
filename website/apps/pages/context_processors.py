@@ -4,7 +4,7 @@ from django.conf import settings
 def _asset_version() -> str:
     """Cache-bust assets using their newest source modification time."""
     newest = 0.0
-    for name in ("site.css", "site.js"):
+    for name in ("site.css", "site.js", "tour.js"):
         path = settings.BASE_DIR / "static" / name
         if path.is_file():
             newest = max(newest, path.stat().st_mtime)

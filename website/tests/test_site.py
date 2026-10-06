@@ -33,16 +33,24 @@ def test_static_product_contract(client):
     assert settings.DATABASES["default"]["ENGINE"] == "django.db.backends.dummy"
 
 
-def test_tour_page_explains_media_and_portal_boundaries(client):
+def test_tour_page_has_accessible_self_paced_screenshot_slides(client):
     body = client.get("/tour/").content.decode()
-    assert 'controls preload="metadata"' in body
-    assert 'label="English"' in body
-    assert "/static/media/portal-tour.mp4" in body
-    assert "/static/media/portal-tour.jpg" in body
-    assert "/static/media/portal-tour.vtt" in body
+    assert 'data-tour-picker' in body
+    assert 'data-tour-prev disabled' in body
+    assert 'data-tour-next' in body
+    assert 'data-tour-position aria-live="polite">1 of 14' in body
+    assert 'data-slide="14"' in body
+    assert body.count('class="tour-slide"') == 14
+    assert body.count('<h3>What to look for</h3>') == 14
+    assert body.count('target="_blank"') == 14
+    assert body.count('alt="') >= 14
+    assert 'static/tour.js' in body
+    assert "/static/media/portal-tour.mp4" not in body
+    assert 'autoplay' not in body
     assert "/docs/latest/install/try-it/" in body
     assert "/demo/" in body
-    assert "not a recording of an agent session" in body
+    assert "do not depict an agent session" in body
+    assert "No remote Git repository, Buddy provider or email service is configured" in body
 
 
 def test_legal_pages_describe_the_static_site(client):
