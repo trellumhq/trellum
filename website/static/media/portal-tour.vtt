@@ -1,0 +1,61 @@
+WEBVTT
+
+00:00:00.000 --> 00:00:10.000
+User: Can my team explore the data themselves?
+Agent: Build reports in a repository, then use the optional portal as your team's shared home.
+
+00:00:10.000 --> 00:00:24.000
+User: Use our database and acquisition budget.
+Agent: Declare source names in the project. An admin supplies credentials. This demo uses synthetic SQLite and CSV data.
+
+00:00:24.000 --> 00:00:40.000
+User: Create a revenue and retention report.
+Agent: Use Codex, Claude Code, or your preferred agent to edit Python, SQL and YAML, build locally, and validate the output.
+
+00:00:40.000 --> 00:00:52.000
+User: Keep revenue consistent across reports.
+Agent: Define it in metrics.yaml. Reports claim metric IDs; the catalog shows their definitions, versions and usage.
+
+00:00:52.000 --> 00:01:06.000
+User: Show me the changes before publishing.
+Agent: Review the diff and commit history, then publish the reviewed revision. This screen connects your repository; the demo has no remote configured.
+
+00:01:06.000 --> 00:01:18.000
+User: Mark releases and campaigns.
+Agent: Add events.yaml declarations in Git. The portal calendar and report charts show their context.
+
+00:01:18.000 --> 00:01:30.000
+User: Which tests are running, and what changed?
+Agent: The overview reads declared tests and their built results, including confidence intervals and lifecycle status.
+
+00:01:30.000 --> 00:01:42.000
+User: Keep reports fresh and show failures.
+Agent: Operations shows schedules, build status, validation and logs. These demo builds completed successfully.
+
+00:01:42.000 --> 00:01:54.000
+User: Can we share a report safely?
+Agent: Use organization and studio roles, plus configurable share links, passwords and expiry. Sharing is disabled in this demo.
+
+00:01:54.000 --> 00:02:04.000
+User: What does the team actually read?
+Agent: Report Analytics tracks views and unique viewers so you can review report usage.
+
+00:02:04.000 --> 00:02:14.000
+User: Can some reports show current detail?
+Agent: Authors can declare live queries. They need a backend; the organization controls query limits.
+
+00:02:14.000 --> 00:02:28.000
+User: Watch for a drop in retention.
+Agent: Write a report-specific rule in plain language. This unsaved example needs an AI provider and delivery setup before it can run.
+
+00:02:28.000 --> 00:02:42.000
+User: Can readers ask a follow-up question?
+Agent: Optional Buddy uses an administrator-configured model provider. It is separate from your coding agent and is not enabled here.
+
+00:02:42.000 --> 00:02:54.000
+User: What else can a report show?
+Agent: Store Health is a separate retail example: comparison KPIs, filters, chart annotations, revenue and margin in Trellum Dark.
+
+00:02:54.000 --> 00:03:00.000
+User: Where do I start?
+Agent: pip install trellum. Browse report demos at trellum.dev/demo, or run the portal locally.
