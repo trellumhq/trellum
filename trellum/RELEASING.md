@@ -76,7 +76,7 @@ git switch main
 git pull --ff-only origin main
 test -z "$(git status --porcelain)"
 
-VERSION=0.1.1
+VERSION=0.2.0
 PORTAL=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' trellum_portal/__init__.py)
 FRAMEWORK=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' trellum/__init__.py)
 test "$PORTAL" = "$VERSION"
