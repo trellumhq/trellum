@@ -11,7 +11,7 @@ from apps.docs import markdown, nav
 
 
 @pytest.mark.parametrize(
-    "path", ["/", "/privacy/", "/terms/", "/cookies/", "/docs/latest/", "/blog/"]
+    "path", ["/", "/privacy/", "/terms/", "/cookies/", "/tour/", "/docs/latest/", "/blog/"]
 )
 def test_public_pages_render(client, path):
     assert client.get(path).status_code == 200
@@ -31,6 +31,18 @@ def test_static_product_contract(client):
     assert client.get("/healthz").status_code == 404
     assert settings.MIDDLEWARE == []
     assert settings.DATABASES["default"]["ENGINE"] == "django.db.backends.dummy"
+
+
+def test_tour_page_explains_media_and_portal_boundaries(client):
+    body = client.get("/tour/").content.decode()
+    assert 'controls preload="metadata"' in body
+    assert 'label="English"' in body
+    assert "/static/media/portal-tour.mp4" in body
+    assert "/static/media/portal-tour.jpg" in body
+    assert "/static/media/portal-tour.vtt" in body
+    assert "/docs/latest/install/try-it/" in body
+    assert "/demo/" in body
+    assert "not a recording of an agent session" in body
 
 
 def test_legal_pages_describe_the_static_site(client):
@@ -53,7 +65,7 @@ def test_robots_and_sitemap(client):
     sitemap = client.get("/sitemap.xml").content.decode()
     assert "Sitemap: https://trellum.dev/sitemap.xml" in robots
     assert "Disallow: /demo/" in robots
-    for path in ("/", "/privacy/", "/terms/", "/cookies/", "/docs/latest/"):
+    for path in ("/", "/privacy/", "/terms/", "/cookies/", "/tour/", "/docs/latest/"):
         assert f"https://trellum.dev{path}" in sitemap
 
 

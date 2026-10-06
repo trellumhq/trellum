@@ -193,6 +193,7 @@ class Command(BaseCommand):
             ("/privacy/", "privacy/index.html"),
             ("/terms/", "terms/index.html"),
             ("/cookies/", "cookies/index.html"),
+            ("/tour/", "tour/index.html"),
             ("/blog/", "blog/index.html"),
             ("/blog/rss.xml", "blog/rss.xml"),
             ("/robots.txt", "robots.txt"),

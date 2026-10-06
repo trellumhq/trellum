@@ -10,6 +10,10 @@ def landing(request):
     return render(request, "pages/landing.html")
 
 
+def tour(request):
+    return render(request, "pages/tour.html")
+
+
 def privacy(request):
     return render(request, "pages/privacy.html")
 
@@ -61,6 +65,7 @@ def sitemap(request):
         _url_entry("/privacy/", None),
         _url_entry("/terms/", None),
         _url_entry("/cookies/", None),
+        _url_entry("/tour/", None),
     ]
 
     for page in nav.pages(settings.DOCS_DEFAULT_VERSION):

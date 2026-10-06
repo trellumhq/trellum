@@ -1075,3 +1075,22 @@ a.src.more:hover{background:var(--accent-soft)}
 .path .cmd{font-family:var(--mono);font-size:var(--fs-sm);color:var(--hb-accent-ink);margin-top:12px;overflow-wrap:anywhere}
 .path .cmd a{color:var(--hb-accent-ink);text-decoration:underline;text-underline-offset:2px}
 @media (max-width:760px){.paths{grid-template-columns:minmax(0,1fr)}}
+
+/* ---------- captioned portal tour ---------- */
+.tour-wrap{max-width:1000px;margin:0 auto;padding:48px var(--page-gutter) 72px}
+.tour-wrap h1{font-size:var(--fs-2xl);letter-spacing:-.03em;margin:8px 0 12px}
+.tour-lead{max-width:72ch;color:var(--text2);font-size:var(--fs-lg);margin-bottom:24px}
+.tour-video{margin:0 0 40px}
+.tour-video video{display:block;width:100%;aspect-ratio:4/3;background:var(--bg);border:1px solid var(--border);border-radius:var(--r-lg)}
+.tour-video figcaption{font-size:var(--fs-sm);color:var(--text2);margin-top:8px}
+.tour-wrap section{margin-top:36px}
+.tour-wrap section>p{max-width:78ch;color:var(--text2);margin-top:10px}
+.tour-transcript{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:20px}
+.tour-transcript article{border:1px solid var(--border);border-radius:var(--r-lg);background:var(--bg-card);padding:16px;min-width:0}
+.tour-transcript h3{font-size:var(--fs-md);margin-bottom:10px}
+.tour-transcript p{font-size:var(--fs-sm);color:var(--text2);margin-top:8px}
+.tour-transcript p b{color:var(--text)}
+.tour-transcript a{color:var(--accent-ink);text-decoration:underline;text-underline-offset:2px}
+.tour-choices{border-top:1px solid var(--border);padding-top:24px}
+.tour-choices .btn{margin:8px 8px 0 0}
+@media (max-width:680px){.tour-wrap{padding-top:32px}.tour-transcript{grid-template-columns:minmax(0,1fr)}}

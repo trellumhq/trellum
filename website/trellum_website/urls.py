@@ -9,6 +9,7 @@ urlpatterns = [
     path("privacy/", pages.privacy, name="privacy"),
     path("terms/", pages.terms, name="terms"),
     path("cookies/", pages.cookies, name="cookies"),
+    path("tour/", pages.tour, name="tour"),
     path("robots.txt", pages.robots, name="robots"),
     path("sitemap.xml", pages.sitemap, name="sitemap"),
     path("docs/", include("apps.docs.urls")),
