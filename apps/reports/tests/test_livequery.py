@@ -7,6 +7,7 @@ import logging
 import sqlite3
 import threading
 import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -424,7 +425,7 @@ class TestCaps:
         assert response.has_header("Retry-After")
 
     def test_org_configured_rate_limit_is_enforced(
-        self, login, viewer, url, write_manifest, sqlite_source, org,
+        self, login, viewer, url, write_manifest, sqlite_source, org, monkeypatch,
     ):
         # End-to-end: an org that has configured its own (lower) limit via
         # OrgLiveQueryPolicy -- not a monkeypatch -- gets 429'd at that
@@ -434,6 +435,13 @@ class TestCaps:
         OrgLiveQueryPolicy.objects.create(org=org, rate_limit_per_minute=1)
         write_manifest(BASIC)
         client = login(viewer)
+        # Both requests must share a minute bucket even if the wall clock
+        # rolls over between them. Keep cache expiry and elapsed timing real.
+        now = time.time()
+        monkeypatch.setattr(
+            livequery, "time",
+            SimpleNamespace(time=lambda: now, monotonic=time.monotonic),
+        )
         first = _post(client, url, {"query_id": "top", "params": {"min_id": 1}})
         assert first.status_code == 200
         second = _post(client, url, {"query_id": "top", "params": {"min_id": 2}})
