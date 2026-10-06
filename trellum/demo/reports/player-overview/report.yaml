@@ -1,7 +1,7 @@
 # ─── Identity ───────────────────────────────────────────────
 name: "Player Overview"
 slug: player-overview
-description: "The Nova Play flagship: player KPIs, revenue by tier, geography, overlapping player behaviours and a year of cohort retention, from fact_daily, fact_player_segments and fact_retention."
+description: "The Nova Play flagship: player KPIs, revenue by tier, geography, overlapping player behaviours and cohort retention, from fact_daily, fact_player_segments and fact_retention."
 version: 0.2.0
 
 # ─── Scheduling ─────────────────────────────────────────────

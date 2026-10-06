@@ -28,8 +28,9 @@ every built report's datasets, columns and date coverage automatically.
   numbers as if they described the business.
 - The `economy-firehose` dataset is event-grained, not user-grained. Counting
   its rows counts events, not people.
-- Experiment reports (`*-experiment`) carry both a raw and a CUPED-adjusted
-  lift. The report's own default is the one to quote unless asked otherwise.
+- The `experiments` report covers three tests on one page. Read the metric and
+  analysis mode named in each section; checkout and pricing include adjusted
+  estimates, while onboarding is evaluated by Day-1 return.
 
 ## Vocabulary
 

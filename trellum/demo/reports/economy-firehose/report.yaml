@@ -1,7 +1,7 @@
 # ─── Identity ───────────────────────────────────────────────
 name: "A Lot of Data: Economy Firehose"
 slug: economy-firehose
-description: "A lot of data, on purpose: every coin and gem source and sink across the Nova Play games at full grain — 2.01 million rows chunk-streamed into one page and re-filtered in about 60ms, with a real economy bug hidden inside."
+description: "Every coin and gem source and sink across the Nova Play games at full event grain, with older periods streamed in chunks and filters re-applied in the browser. The report surfaces a real economy bug hidden in the data."
 version: 0.1.0
 
 # ─── Scheduling ─────────────────────────────────────────────

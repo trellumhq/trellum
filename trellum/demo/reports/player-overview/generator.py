@@ -108,6 +108,23 @@ class PlayerOverviewReport(BaseReport):
             ], dataset_id="main"),
         ])
 
+        # ── Engagement ───────────────────────────────────────────────
+        ctx.add_section("Engagement", [
+            LineChart(df, x="event_date", y="dau",
+                      stack_by="platform",
+                      title="Daily Active Users by Platform",
+                      dataset_id="main", y_format="number"),
+            ComboChart(df, x="event_date",
+                       bar_cols=["new_users"],
+                       line_cols=["sessions"],
+                       bar_labels=["New Users"],
+                       line_labels=["Sessions"],
+                       bar_format="number", line_format="number",
+                       title="Acquisition vs Session Volume · demo: dual-axis "
+                             "combo, bars and line from one DataSource",
+                       dataset_id="main"),
+        ])
+
         # ── Efficiency ───────────────────────────────────────────────
         # Claimed · demo: arpdau and avg_transaction_value are currency
         # RATIOS, which metrics.yaml deliberately defines as descriptive
@@ -126,23 +143,6 @@ class PlayerOverviewReport(BaseReport):
                 {"metric": "arpdau", "value": round(_arpdau, 4)},
                 {"metric": "avg_transaction_value", "value": round(_avg_txn, 2)},
             ]),
-        ])
-
-        # ── Engagement ───────────────────────────────────────────────
-        ctx.add_section("Engagement", [
-            LineChart(df, x="event_date", y="dau",
-                      stack_by="platform",
-                      title="Daily Active Users by Platform",
-                      dataset_id="main", y_format="number"),
-            ComboChart(df, x="event_date",
-                       bar_cols=["new_users"],
-                       line_cols=["sessions"],
-                       bar_labels=["New Users"],
-                       line_labels=["Sessions"],
-                       bar_format="number", line_format="number",
-                       title="Acquisition vs Session Volume · demo: dual-axis "
-                             "combo, bars and line from one DataSource",
-                       dataset_id="main"),
         ])
 
         # ── Revenue ──────────────────────────────────────────────────
@@ -261,8 +261,8 @@ class PlayerOverviewReport(BaseReport):
                                "denominator": "cohort_size",
                                "label": "Retention"}],
                       stack_by="day_label",
-                      title="Retention by Day Offset · demo: a year of "
-                            "cohorts, chunked -- newest months load first",
+                      title="Retention by Day Offset · demo: cohort history "
+                            "is chunked -- newest months load first",
                       y_format="percent", dataset_id="cohorts"),
             # normalize="row": D1 retains an order of magnitude more players
             # than D30, so on a global scale the D30 row is uniformly cold and

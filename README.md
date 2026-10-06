@@ -37,9 +37,9 @@ Visit the [Trellum website](https://trellum.dev/) for the interactive product
 tour, public demo gallery, and installation guides.
 
 <p align="center">
-  <img src="docs/assets/player-overview.jpg" alt="Player Overview report with KPI cards, filters, and a daily active users chart">
+  <img src="docs/assets/store-health.jpg" alt="Store Health report with comparison KPIs, filters, and revenue and margin trends">
   <br>
-  <sub>Player Overview uses the synthetic dataset included with Trellum.</sub>
+  <sub>Store Health uses the synthetic commerce dataset included with Trellum.</sub>
 </p>
 
 ## What Trellum gives you
@@ -145,9 +145,9 @@ a metric by ID rather than copying its formula, so revenue or retention does
 not quietly acquire a second meaning in another dashboard.
 
 <p align="center">
-  <img src="docs/assets/store-health.jpg" alt="Store Health report with comparison KPIs and revenue and margin trends">
+  <img src="docs/assets/player-overview.jpg" alt="Player Overview report with KPI cards, filters, and a daily active users chart">
   <br>
-  <sub>Store Health is another included report built from fabricated commerce data.</sub>
+  <sub>Player Overview is another included report built from fabricated player data.</sub>
 </p>
 
 ## Connect databases, files, sheets, and APIs

@@ -72,7 +72,8 @@ class StoreHealthReport(BaseReport):
 
         # ── What changed ─────────────────────────────────────────────
         # Static delta cards for two fixed windows (the date filter must not
-        # move a card that names its own period), then the live headline row.
+        # move a card that names its own period). The trend follows; the
+        # live headline row stays below it for readers who need exact totals.
         current, prior = self._split_periods(df, ctx.today)
         ctx.add_section(f"Last {_PERIOD_DAYS} Days vs Prior", [
             Grid([
@@ -84,6 +85,23 @@ class StoreHealthReport(BaseReport):
                 self._delta_card("Refunded", current["refunded"].sum(),
                                  prior["refunded"].sum(), "currency"),
             ], columns=4, card=False),
+        ])
+
+        # ── The trend, with the sale annotated ───────────────────────
+        ctx.add_section("Daily Trend", [
+            LineChart(df, x="event_date", y=["gross_revenue", "kept_margin"],
+                      y_labels=["Revenue", "Kept Margin"],
+                      title="Revenue and Kept Margin by Day · demo: the "
+                            "annotated sale week looks fine on revenue -- "
+                            "only the margin line says what it cost",
+                      y_format="currency", dataset_id="orders"),
+            LineChart(df, x="event_date",
+                      ratios=[{"numerator": "gross_revenue",
+                               "denominator": "orders_n",
+                               "label": "Avg Order Value"}],
+                      title="Average Order Value by Day · demo: live ratios, "
+                            "divided after your filters",
+                      y_format="currency", dataset_id="orders"),
         ])
 
         ctx.add_section("Current Selection", [
@@ -105,23 +123,6 @@ class StoreHealthReport(BaseReport):
                 # AND the highest refund_rate if its orders skew expensive.
                 {"metric": "refund_rate"},
             ], dataset_id="orders"),
-        ])
-
-        # ── The trend, with the sale annotated ───────────────────────
-        ctx.add_section("Daily Trend", [
-            LineChart(df, x="event_date", y=["gross_revenue", "kept_margin"],
-                      y_labels=["Revenue", "Kept Margin"],
-                      title="Revenue and Kept Margin by Day · demo: the "
-                            "annotated sale week looks fine on revenue -- "
-                            "only the margin line says what it cost",
-                      y_format="currency", dataset_id="orders"),
-            LineChart(df, x="event_date",
-                      ratios=[{"numerator": "gross_revenue",
-                               "denominator": "orders_n",
-                               "label": "Avg Order Value"}],
-                      title="Average Order Value by Day · demo: live ratios, "
-                            "divided after your filters",
-                      y_format="currency", dataset_id="orders"),
         ])
 
         # ── Where the money comes from ───────────────────────────────
