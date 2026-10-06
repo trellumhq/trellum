@@ -164,6 +164,38 @@ def test_assets_are_cache_busted(client):
     assert re.search(r'/static/site\.js\?v=\d+', body)
 
 
+def test_public_site_uses_the_console_palette():
+    css = (Path(settings.BASE_DIR) / "static" / "site.css").read_text(encoding="utf-8")
+    templates = Path(settings.BASE_DIR) / "templates"
+    shell = (templates / "_shell.html").read_text(encoding="utf-8")
+    landing = (templates / "pages" / "landing.html").read_text(encoding="utf-8")
+
+    for token in (
+        "--bg:#F6F7F8",
+        "--bg-card:#FFFFFF",
+        "--bg-hover:#EEF1F3",
+        "--text:#172126",
+        "--text2:#475569",
+        "--border:#E2E6EA",
+        "--bg:#111315",
+        "--bg-card:#181B1F",
+        "--bg-hover:#23272D",
+        "--text:#F3F4F6",
+        "--text2:#A7ADB8",
+        "--border:#30363D",
+        "--accent:#0F766E",
+        "--accent-hover:#115E59",
+        "--accent-ink:#2DD4BF",
+        "--r-sm:8px; --r-md:8px; --r-lg:10px",
+    ):
+        assert token in css
+
+    assert "linear-gradient" not in css
+    assert "background:var(--scope-studio)" not in css
+    assert 'class="strip"' not in shell
+    assert all(name not in landing for name in ("cs-hair", "cs-duo", "rp-strip", "hb-dot"))
+
+
 def test_no_hardcoded_colours_in_templates():
     colour = re.compile(r"#[0-9a-fA-F]{3,8}\b|\brgba?\s*\(")
     root = Path(settings.BASE_DIR) / "templates"

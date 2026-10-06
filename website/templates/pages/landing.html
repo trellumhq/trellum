@@ -8,11 +8,8 @@ the tokens in static/site.css, and vanilla JS in block scripts.{% endcomment %}
 
 {% block content %}
 
-{% comment %}The hero band is the portal's own dark surface, in both site
-themes — teal and violet live together here, and the console below it is the
-product, not a picture of it.{% endcomment %}
+{% comment %}The hero band and synthetic console use the portal's neutral dark palette.{% endcomment %}
 <header class="hb">
-  <span class="hb-dot t"></span><span class="hb-dot v"></span><span class="hb-dot t"></span><span class="hb-dot v"></span>
   <div class="rail">
 
     <div class="hb-hero">
@@ -27,12 +24,12 @@ product, not a picture of it.{% endcomment %}
       <div class="hb-strip">
         <div class="hl">made by anyone</div>
         <div class="row">
-          <span class="hmark"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" class="ic-teal"><circle cx="9" cy="7" r="3.5" fill="currentColor"/><path d="M2 20c0-4 3-6 7-6s7 2 7 6" fill="currentColor"/><path d="M19 12.5l3.2 3.2-3.2 3.2-3.2-3.2z" fill="var(--hb-violet)"/></svg>Product</span>
-          <span class="hmark"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" class="ic-violet"><circle cx="9" cy="7" r="3.5" fill="currentColor"/><path d="M2 20c0-4 3-6 7-6s7 2 7 6" fill="currentColor"/><circle cx="18" cy="15.5" r="3" fill="none" stroke="var(--hb-teal)" stroke-width="1.8"/><line x1="20.3" y1="17.8" x2="23" y2="20.5" stroke="var(--hb-teal)" stroke-width="1.8" stroke-linecap="round"/></svg>QA</span>
-          <span class="hmark"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" class="ic-teal"><circle cx="9" cy="7" r="3.5" fill="currentColor"/><path d="M2 20c0-4 3-6 7-6s7 2 7 6" fill="currentColor"/><g fill="var(--hb-violet)"><rect x="15.5" y="16" width="2" height="5" rx="1"/><rect x="18.6" y="13" width="2" height="8" rx="1"/><rect x="21.7" y="15" width="2" height="6" rx="1"/></g></svg>Analysts</span>
-          <span class="hmark"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" class="ic-violet"><circle cx="9" cy="7.5" r="3.5" fill="currentColor"/><path d="M2 20c0-4 3-6 7-6s7 2 7 6" fill="currentColor"/><path d="M4.2 7a4.8 4.8 0 0 1 9.6 0" fill="none" stroke="var(--hb-teal)" stroke-width="1.8" stroke-linecap="round"/><rect x="3.2" y="6.6" width="2" height="3.4" rx="1" fill="var(--hb-teal)"/><rect x="12.8" y="6.6" width="2" height="3.4" rx="1" fill="var(--hb-teal)"/></svg>Support</span>
-          <span class="hmark"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" class="ic-teal"><circle cx="9" cy="7" r="3.5" fill="currentColor"/><path d="M2 20c0-4 3-6 7-6s7 2 7 6" fill="currentColor"/><path d="M15.5 16.2l7-3.4v7.6l-7-3.4z" fill="var(--hb-violet)"/><rect x="15.5" y="15.4" width="1.8" height="4.4" rx="0.9" fill="var(--hb-violet)"/></svg>Marketing</span>
-          <span class="hmark"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" class="ic-violet"><circle cx="9" cy="7" r="3.5" fill="currentColor"/><path d="M2 20c0-4 3-6 7-6s7 2 7 6" fill="currentColor"/><path d="M19 12l1.2 2.6 2.8.3-2.1 1.9.6 2.8-2.5-1.5-2.5 1.5.6-2.8-2.1-1.9 2.8-.3z" fill="var(--hb-teal)"/></svg>Founders</span>
+          <span class="hmark"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" class="ic-teal"><circle cx="9" cy="7" r="3.5" fill="currentColor"/><path d="M2 20c0-4 3-6 7-6s7 2 7 6" fill="currentColor"/><path d="M19 12.5l3.2 3.2-3.2 3.2-3.2-3.2z" fill="var(--hb-accent-ink)"/></svg>Product</span>
+          <span class="hmark"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" class="ic-violet"><circle cx="9" cy="7" r="3.5" fill="currentColor"/><path d="M2 20c0-4 3-6 7-6s7 2 7 6" fill="currentColor"/><circle cx="18" cy="15.5" r="3" fill="none" stroke="var(--hb-accent-ink)" stroke-width="1.8"/><line x1="20.3" y1="17.8" x2="23" y2="20.5" stroke="var(--hb-accent-ink)" stroke-width="1.8" stroke-linecap="round"/></svg>QA</span>
+          <span class="hmark"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" class="ic-teal"><circle cx="9" cy="7" r="3.5" fill="currentColor"/><path d="M2 20c0-4 3-6 7-6s7 2 7 6" fill="currentColor"/><g fill="var(--hb-accent-ink)"><rect x="15.5" y="16" width="2" height="5" rx="1"/><rect x="18.6" y="13" width="2" height="8" rx="1"/><rect x="21.7" y="15" width="2" height="6" rx="1"/></g></svg>Analysts</span>
+          <span class="hmark"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" class="ic-violet"><circle cx="9" cy="7.5" r="3.5" fill="currentColor"/><path d="M2 20c0-4 3-6 7-6s7 2 7 6" fill="currentColor"/><path d="M4.2 7a4.8 4.8 0 0 1 9.6 0" fill="none" stroke="var(--hb-accent-ink)" stroke-width="1.8" stroke-linecap="round"/><rect x="3.2" y="6.6" width="2" height="3.4" rx="1" fill="var(--hb-accent-ink)"/><rect x="12.8" y="6.6" width="2" height="3.4" rx="1" fill="var(--hb-accent-ink)"/></svg>Support</span>
+          <span class="hmark"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" class="ic-teal"><circle cx="9" cy="7" r="3.5" fill="currentColor"/><path d="M2 20c0-4 3-6 7-6s7 2 7 6" fill="currentColor"/><path d="M15.5 16.2l7-3.4v7.6l-7-3.4z" fill="var(--hb-accent-ink)"/><rect x="15.5" y="15.4" width="1.8" height="4.4" rx="0.9" fill="var(--hb-accent-ink)"/></svg>Marketing</span>
+          <span class="hmark"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" class="ic-violet"><circle cx="9" cy="7" r="3.5" fill="currentColor"/><path d="M2 20c0-4 3-6 7-6s7 2 7 6" fill="currentColor"/><path d="M19 12l1.2 2.6 2.8.3-2.1 1.9.6 2.8-2.5-1.5-2.5 1.5.6-2.8-2.1-1.9 2.8-.3z" fill="var(--hb-accent-ink)"/></svg>Founders</span>
         </div>
       </div>
 
@@ -57,11 +54,10 @@ product, not a picture of it.{% endcomment %}
       <div class="cs-top">
         {% include "_lattice.html" with size=16 %}
         <b>{{ BRAND }}</b>
-        <span class="cs-chip org">■ acme</span><span class="cs-sep">▸</span><span class="cs-chip">■ growth ▾</span>
+        <span class="cs-chip org">■ acme</span><span class="cs-sep">▸</span><span class="cs-chip studio">■ growth ▾</span>
         <span class="cs-search">Search reports… (Ctrl+K)</span>
         <span class="cs-acct">amara@acme.com ▾</span>
       </div>
-      <div class="cs-hair"></div>
       <div class="cs-tabs" aria-hidden="true">
         <span class="on">Reports</span><span>Operations</span><span>Analytics</span><span>Metrics</span><span>Experiments</span><span>Annotations</span>
         <span class="cs-set">⚙ Settings</span>
@@ -108,7 +104,6 @@ product, not a picture of it.{% endcomment %}
         </div>
         <div class="cs-rwrap">
           <div class="report" id="cs-rp" data-th="light">
-            <div class="rp-strip"></div>
             <div class="rp-head"><b id="cs-title">Weekly Revenue</b><span id="cs-submeta">· W35 · built 07:00 · deterministic</span></div>
             <div class="kpis">
               <div class="kpi"><div class="l">Revenue</div><div class="v">€412k</div><div class="d">▲ 6.2% vs prev</div></div>
@@ -130,7 +125,7 @@ product, not a picture of it.{% endcomment %}
       </div>
       </div>
 
-      <p class="cs-cap"><i>synthetic preview</i>. Try the optional portal interactions: click a card, flip a theme, toggle the delivery.</p>
+      <p class="cs-cap"><i>synthetic preview</i>. Try the interactions here; for the full portal, follow the <a href="/docs/latest/install/try-it/">local try-it guide</a>.</p>
     </div>
   </div>
 </header>
@@ -290,7 +285,7 @@ product, not a picture of it.{% endcomment %}
         <div class="pchip">
           <svg viewBox="0 0 280 62" width="100%" aria-hidden="true">
             <text x="2" y="14" font-size="9" fill="var(--w-mut)">control</text><rect x="52" y="6" width="118" height="11" rx="3" fill="var(--w-mut)" opacity=".55"/><line x1="158" y1="11.5" x2="184" y2="11.5" stroke="var(--w-ink2)" stroke-width="1.5"/><line x1="158" y1="7" x2="158" y2="16" stroke="var(--w-ink2)" stroke-width="1.5"/><line x1="184" y1="7" x2="184" y2="16" stroke="var(--w-ink2)" stroke-width="1.5"/>
-            <text x="2" y="37" font-size="9" fill="var(--w-vio)" font-weight="700">variant B</text><rect x="52" y="29" width="152" height="11" rx="3" fill="var(--w-vio)"/><line x1="192" y1="34.5" x2="220" y2="34.5" stroke="var(--w-ink2)" stroke-width="1.5"/><line x1="192" y1="30" x2="192" y2="39" stroke="var(--w-ink2)" stroke-width="1.5"/><line x1="220" y1="30" x2="220" y2="39" stroke="var(--w-ink2)" stroke-width="1.5"/>
+            <text x="2" y="37" font-size="9" fill="var(--w-s2)" font-weight="700">variant B</text><rect x="52" y="29" width="152" height="11" rx="3" fill="var(--w-s2)"/><line x1="192" y1="34.5" x2="220" y2="34.5" stroke="var(--w-ink2)" stroke-width="1.5"/><line x1="192" y1="30" x2="192" y2="39" stroke="var(--w-ink2)" stroke-width="1.5"/><line x1="220" y1="30" x2="220" y2="39" stroke="var(--w-ink2)" stroke-width="1.5"/>
             <text x="2" y="58" font-size="9.5" fill="var(--w-ink)" font-weight="700">+4.1% uplift · 95% CI [1.2, 7.0] · <tspan fill="var(--w-good)">✓ significant</tspan></text>
           </svg>
           <div class="ps-cap">CUPED built in · plus the Experiments overview: every test, one page</div>
@@ -396,7 +391,7 @@ self.add(<span class="k">RawHTML</span>(<span class="s">"""
           </div>
           <div class="pchip game">
             <div class="ps-head">…even a game <span class="ps-dots"><i class="vio"></i><i class="s1"></i><i class="s3"></i></span></div>
-            <svg viewBox="0 0 120 40" aria-hidden="true"><g fill="var(--w-vio)"><rect x="46" y="2" width="5" height="5"/><rect x="67" y="2" width="5" height="5"/><rect x="51" y="7" width="5" height="5"/><rect x="62" y="7" width="5" height="5"/><rect x="41" y="12" width="36" height="5"/><rect x="36" y="17" width="10" height="5"/><rect x="51" y="17" width="16" height="5"/><rect x="72" y="17" width="10" height="5"/><rect x="36" y="22" width="46" height="5"/><rect x="36" y="27" width="5" height="5"/><rect x="77" y="27" width="5" height="5"/></g><rect x="52" y="34" width="14" height="4" rx="1" fill="var(--w-s1)"/></svg>
+            <svg viewBox="0 0 120 40" aria-hidden="true"><g fill="var(--w-s2)"><rect x="46" y="2" width="5" height="5"/><rect x="67" y="2" width="5" height="5"/><rect x="51" y="7" width="5" height="5"/><rect x="62" y="7" width="5" height="5"/><rect x="41" y="12" width="36" height="5"/><rect x="36" y="17" width="10" height="5"/><rect x="51" y="17" width="16" height="5"/><rect x="72" y="17" width="10" height="5"/><rect x="36" y="22" width="46" height="5"/><rect x="36" y="27" width="5" height="5"/><rect x="77" y="27" width="5" height="5"/></g><rect x="52" y="34" width="14" height="4" rx="1" fill="var(--w-s1)"/></svg>
             <div class="ps-cap">playable · in a report · yes really</div>
           </div>
         </div>
@@ -418,7 +413,7 @@ self.add(<span class="k">RawHTML</span>(<span class="s">"""
 <section class="hb closing-band">
   <div class="rail">
     <h2>Start in your repository.<br>End with a <span class="grad">report you can ship.</span></h2>
-    <p class="hb-lead">Install the framework, build portable HTML, and publish it with your existing tools. Explore the demo gallery, then add the optional portal only if your team needs its managed services.</p>
+    <p class="hb-lead">Install the framework, build portable HTML, and publish it with your existing tools. Explore the report-only demo gallery, then add the optional portal only if your team needs its managed services.</p>
 
     <div class="mini-demo reveal" id="mini-demo">
       <div class="cs-top">
@@ -426,10 +421,8 @@ self.add(<span class="k">RawHTML</span>(<span class="s">"""
         <span class="crumb"><b>{{ BRAND }}</b><span class="cs-sep">▸</span>demo<span class="cs-sep">▸</span><span class="cs-chip studio">tour ▾</span></span>
         <span class="cs-acct plain">themes still cycling →</span>
       </div>
-      <div class="cs-duo"></div>
       <div class="cs-rwrap">
         <div class="report" id="mini-rp" data-th="light">
-          <div class="rp-strip"></div>
           <div class="rp-head"><b>trellum.dev/demo/</b><span>· generated reports. click a bar, flip a theme</span></div>
           <div class="kpis">
             <div class="kpi"><div class="l">Reports</div><div class="v">Gallery</div><div class="d">interactive + exportable</div></div>
@@ -446,7 +439,7 @@ self.add(<span class="k">RawHTML</span>(<span class="s">"""
 
     <div class="hb-ctas center">
       <a class="btn primary" href="/docs/latest/framework/the-framework/">Framework guide <span class="arr">→</span></a>
-      <a class="btn" href="{{ demo_href }}" rel="noopener">Explore the demo gallery</a>
+      <a class="btn" href="{{ demo_href }}" rel="noopener">Explore report demos</a>
     </div>
 
     <div class="paths">
@@ -458,7 +451,7 @@ self.add(<span class="k">RawHTML</span>(<span class="s">"""
       <div class="path violet">
         <div class="t">The portal · optional and self-hosted</div>
         <p>Add managed schedules, authentication, repository builds, and team sharing.</p>
-        <div class="cmd">AGPL-3.0-only · run it on infrastructure you control</div>
+        <div class="cmd">AGPL-3.0-only · <a href="/docs/latest/install/try-it/">try the portal locally →</a></div>
       </div>
     </div>
   </div>
@@ -620,8 +613,8 @@ self.add(<span class="k">RawHTML</span>(<span class="s">"""
       return (i * step).toFixed(1) + ',' + (48 - (v / 54) * 42).toFixed(1);
     }).join(' ');
     tile.innerHTML =
-      '<polyline points="' + points + '" fill="none" stroke="var(--scope-studio)" stroke-width="2.5"/>' +
-      '<circle r="3.5" fill="var(--scope-studio)" cx="300" cy="' + (48 - (ticks[ticks.length - 1] / 54) * 42).toFixed(1) + '"/>';
+      '<polyline points="' + points + '" fill="none" stroke="var(--accent-ink)" stroke-width="2.5"/>' +
+      '<circle r="3.5" fill="var(--accent-ink)" cx="300" cy="' + (48 - (ticks[ticks.length - 1] / 54) * 42).toFixed(1) + '"/>';
   }
   drawTile();
 

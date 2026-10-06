@@ -80,6 +80,12 @@ Small violet indicators may identify studio scope. Broad violet backgrounds
 and decorative accent strips are outside the console language. Status colors
 carry semantic text as well as color.
 
+The public website and documentation use this same neutral token set, with a
+larger marketing type scale where needed. Links and active text use accent ink;
+filled primary actions use primary and primary hover. Violet is limited to the
+lattice mark and small studio-scope indicators. Named report-theme previews,
+such as Blossom, keep their own palette inside the report-content boundary.
+
 ## Layout and type
 
 Console content is fluid with no 1200px cap. Page gutters are 24px on desktop
