@@ -14,7 +14,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Corrected the standalone PyPI package description and documentation links,
   and clarified named `pip install trellum` instructions in the README, site,
   and agent guidance.
-- Clarified standalone onboarding and restored the original illustrated\n  personal blog.
+- Clarified standalone onboarding and restored the original illustrated
+  personal blog.
 - No runtime behavior changed.
 
 ## [0.1.0] — 2026-10-06
