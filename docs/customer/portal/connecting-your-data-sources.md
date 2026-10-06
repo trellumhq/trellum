@@ -225,7 +225,7 @@ fails halfway, and no partial output is published. Instead:
 - Opening a report that has never built shows a page headed **`<slug>` is
   waiting for a data source**, naming the source and saying whether your
   repository declares it or the report references something undeclared.
-- The **Operations** tab counts held reports under *Waiting for data source*.
+- The **Operations** page counts held reports under *Waiting for data source*.
 
 The moment a source's check passes — you configure it, upload its file, or
 press **Test** and it succeeds — every report that was waiting on it is queued

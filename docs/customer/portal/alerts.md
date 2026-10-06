@@ -8,7 +8,7 @@ assistant decides. Each time the rule runs, the assistant looks at the
 report's data, compares it with what it saw last time, and either writes an
 alert or records why it stayed quiet.
 
-Alerts live in the studio's **Alerts** tab. Studio developers and admins
+Open **Alerts** under **Studio work** in the console sidebar. Studio developers and admins
 create and edit them; viewers see the same rules and their run logs,
 read-only. Anyone who can see the studio can be a recipient.
 

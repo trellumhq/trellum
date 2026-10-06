@@ -9,8 +9,8 @@ turn it on before any studio in that org can create a link — see below.
 ## The Report sharing settings page
 
 Public share links are an org-level opt-in, not something a studio decides
-for itself. An org admin controls them at **Organization settings → Report
-sharing**, its own tab alongside Members, Groups, SSO and the rest. Every
+for itself. An org admin controls them at **Organization → Data & reporting →
+Report sharing** in the console sidebar. Every
 saved change on this page is recorded in the audit log. Edit the settings, then
 press **Save changes** to apply them together.
 

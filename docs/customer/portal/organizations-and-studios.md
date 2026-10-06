@@ -4,7 +4,7 @@
 
 ## Organization
 
-The billing, identity and administration boundary. An organization owns its
+The identity and administration boundary. An organization owns its
 members, its permission groups, its SSO configuration, and its audit log.
 Organization admins have full access to everything inside it.
 

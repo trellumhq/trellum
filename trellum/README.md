@@ -9,7 +9,9 @@
 </p>
 
 <p align="center">
-  <a href="https://trellum.dev/demo/">Live demo</a> ·
+  <a href="https://trellum.dev/">Website</a> ·
+  <a href="https://trellum.dev/demo/">Report demos</a> ·
+  <a href="https://trellum.dev/tour/">Portal tour</a> ·
   <a href="https://trellum.dev/docs/latest/framework/the-framework/">Documentation</a> ·
   <a href="https://github.com/trellumhq/trellum">Source</a> ·
   <a href="https://github.com/trellumhq/trellum/blob/main/LICENSE">AGPL-3.0-only</a>
@@ -28,7 +30,7 @@ Then install the synthetic demo and build one portable report:
 ```bash
 python -m trellum.demo --dest trellum-demo
 cd trellum-demo
-python -m trellum.run reports/player-overview --no-serve --portable
+python -m trellum.run reports/store-health --no-serve --portable
 ```
 
 SQLite and the included demo need only the base install. To add every optional
@@ -39,15 +41,22 @@ python -m pip install "trellum[drivers]"
 ```
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/trellumhq/trellum/main/docs/assets/player-overview.jpg" alt="Player Overview report with KPI cards, filters, and a daily active users chart">
+  <img src="https://raw.githubusercontent.com/trellumhq/trellum/main/docs/assets/store-health.jpg" alt="Store Health in Trellum Dark with comparison KPIs, interactive filters and annotated revenue and margin trends">
   <br>
-  <sub>Player Overview uses the synthetic dataset included with Trellum.</sub>
+  <sub>Store Health uses the synthetic retail dataset included with Trellum.</sub>
 </p>
 
 Trellum queries data in Python, turns components into HTML and JSON, and runs
 filters, charts, tables, annotations, themes, and exports in the browser. The
 result can be served locally or published to any static host. The framework is
 host-independent and does not need the optional Trellum platform.
+
+The public [demo gallery](https://trellum.dev/demo/) contains reports only.
+For scheduled builds, team access, shared metrics, experiments, annotations
+and optional AI assistance, watch the [captioned portal tour](https://trellum.dev/tour/)
+or [run the portal locally](https://trellum.dev/docs/latest/install/try-it/).
+Author reports with your preferred coding agent or editor; Python, SQL and
+YAML stay in Git for review, history and reproducible builds.
 
 This file is the complete framework reference: components, the `ctx` API,
 themes, data sources, browser runtime, validation, extension points, and CLI.
