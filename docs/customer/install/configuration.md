@@ -1,6 +1,6 @@
 # Configuration reference
 
-Every setting, for when you need to go past the seven values the
+Every setting, for when you need to go past the values the
 [install](/docs/latest/install/docker-compose/) asks for.
 
 Instance configuration lives in `.env` next to `docker-compose.yml`. Anything
@@ -87,15 +87,22 @@ uploaded data-source files. The bundled `docker-compose.yml` mounts a named
 volume at `/data`, which matches the default baked into the image, so a standard
 install never sets this.
 
-Every process that touches studio files — the portal itself and every runner —
-must see the **same** `TRELLUM_DATA_DIR`. That is why runners scale within one host
-today and not across hosts; see
+Every process that touches studio files — the portal and every runner — must
+see the **same** `TRELLUM_DATA_DIR`. This applies across hosts too: mount the
+same persistent filesystem at the same container path on every web and runner
+host. The Compose example's named volume is local to its Docker host; it does
+not share files across hosts. See
 [Sizing](/docs/latest/operations/sizing/#when-one-machine-is-not-enough).
 
 !!! warning
     Changing `TRELLUM_DATA_DIR` without moving the volume mount to match points the
     portal at an empty directory. Existing studios keep their database rows but
     their files are gone, and builds fail on a missing project root.
+
+For a multi-host deployment, all hosts must also use the same PostgreSQL
+database. S3-compatible storage holds built report output only; studio
+checkouts, project files, uploaded data-source files, and live run logs remain
+under `TRELLUM_DATA_DIR` and require shared persistent storage.
 
 To keep the data somewhere specific on the host, change the *mount source* and
 leave the container path — and so `TRELLUM_DATA_DIR` — alone:
@@ -244,7 +251,7 @@ openssl genpkey -algorithm ed25519 -out cdn-signing.pem
 Point `TRELLUM_CDN_SIGNING_KEY_FILE` at it; `manage.py doctor`'s `report access`
 line prints the matching **public** key (base64) to configure the worker with.
 
-**Cloudflare R2 + Worker** (our hosted setup — R2 has zero egress fees):
+**Example: Cloudflare R2 + Worker** (an S3-compatible object store):
 
 1. Create a private R2 bucket (no public access, no `r2.dev` URL). Point the
    portal's storage at it — R2 speaks the S3 API, so `TRELLUM_STORAGE_ENDPOINT_URL`,

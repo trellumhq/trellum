@@ -9,6 +9,9 @@ disk they would otherwise fill is the same one holding the database.
 docker compose logs -f web worker
 ```
 
+With the split topology, include the `coordinator` and `runner` services too.
+For multi-host deployments, collect logs from each host's container runtime.
+
 ## Following one report build
 
 A build crosses four processes: `web` accepts the request, a row lands in the
@@ -98,10 +101,10 @@ Two windows, both in days, both accepting `0` for "keep forever":
 | `RETENTION_AUDIT_ACCESS_DAYS` | 90 | Authentication and data-access events — sign-ins, SSO denials, report views, exports, downloads, live queries. The highest-volume categories, and the ones with the shortest forensic half-life. |
 | `RETENTION_AUDIT_DAYS` | 365 | Authorization, administration, and system events — role/group changes, config edits, impersonation, retention's own summary row. The compliance record; it stays long. |
 
-Set `RETENTION_AUDIT_ARCHIVE=true` to export the doomed window as gzip NDJSON
-under `<DATA_DIR>/archive/audit/<org>/<YYYYMM>.ndjson.gz` before it is deleted
-— off by default, so turning it on is a deliberate choice about disk you are
-willing to spend on cold storage.
+With the default `RETENTION_AUDIT_ARCHIVE=true`, cleanup exports the doomed
+window as gzip NDJSON under
+`<DATA_DIR>/archive/audit/<org>/<YYYYMM>.ndjson.gz` before it is deleted. Set
+it to `false` for hard deletion without an archive.
 
 ### GDPR posture
 

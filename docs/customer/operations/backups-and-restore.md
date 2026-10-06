@@ -83,8 +83,13 @@ An untested backup is a hope.
 
 ## Restore
 
+These commands restore the bundled Postgres service and assume its default
+database user and name. If `DATABASE_URL` points to an external database,
+restore the dump to that configured database using your database operator's
+procedure; the Compose `db` container is not running in that setup.
+
 ```bash
-docker compose stop web worker
+docker compose stop web worker coordinator runner
 docker compose exec -T db pg_restore -U trellum -d trellum_portal --clean --if-exists \
     < /path/to/db-<stamp>.dump
 docker compose run --rm web sh -c "cd /data && tar -xzf /backups/studios-<stamp>.tar.gz"

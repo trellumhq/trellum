@@ -18,8 +18,10 @@ that code is never trusted more than that boundary allows.
   [Sizing](/docs/latest/operations/sizing/) for how to declare them.
 - A dedicated network that **cannot reach the rest of the deployment** — so
   even a leaked warehouse credential cannot be turned against your database or
-  the portal itself — while still reaching the internet for the warehouses and
-  APIs a report legitimately queries.
+  the portal itself. Network egress is denied by default, including access to
+  internet-hosted warehouses and APIs. `TRELLUM_SANDBOX_EGRESS=open` enables
+  internet access as an explicit operator choice; see the
+  [configuration reference](/docs/latest/install/configuration/#security).
 
 The worker is the only process holding the Docker socket; report code never
 touches it.
@@ -57,9 +59,11 @@ Stated plainly, so you can judge it against your own threat model:
   kernel container-escape is not mitigated. If your threat model needs it,
   point Docker at a stricter runtime such as gVisor (`runsc`); the sandbox
   settings are runtime-agnostic.
-- **Internet egress is open by design.** A report legitimately holds its
-  studio's warehouse credentials and can send query results anywhere on the
-  internet. Per-studio egress restrictions are not available yet.
+- **Open internet egress is an explicit operator choice.** By default the
+  sandbox network is internal and blocks outbound access. Setting
+  `TRELLUM_SANDBOX_EGRESS=open` lets tenant report code reach the internet while
+  holding its studio's warehouse credentials; it can send query results
+  anywhere. Egress policy is instance-wide, not per studio.
 - **A build can read its own studio's project**, including other reports'
   output in the same studio. The trust boundary is the studio, not the
   individual report.

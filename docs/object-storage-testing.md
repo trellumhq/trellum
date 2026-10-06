@@ -15,8 +15,10 @@ That makes the bucket the only path from a build to a reader. A report that
 renders in the browser is a report that genuinely round-tripped through object
 storage — which is exactly the claim we need to be able to make.
 
-It is also the closest thing to a multi-host deployment you can run on one
-laptop.
+This is a local test of object-storage report output using isolated volumes,
+not a multi-host deployment test. A real multi-host installation still needs
+shared PostgreSQL and shared persistent storage for checkouts, project files,
+uploads, and live run logs; see [Sizing](/docs/latest/operations/sizing/#when-one-machine-is-not-enough).
 
 ## Bring it up
 
@@ -78,10 +80,12 @@ this working.
    it anyway would hand the reader whichever version that node last happened to
    download. Restart MinIO and everything resumes with no intervention.
 
-6. **Uploads are the known gap.** A file-backed data source will fail here, by
-   design. Uploaded files travel the other way — the web process writes them, a
-   build reads them — and still live on local disk. Use git-backed reports.
-   This is the current boundary, not a fault in the setup.
+6. **This test excludes uploaded data-source files.** A file-backed data
+   source will fail here because the isolated runner volumes do not contain
+   files written by the web process. Use git-backed reports for this test.
+   Production web and runner hosts must share the persistent data directory to
+   access uploads, checkouts, project files, and live run logs; S3 output
+   storage does not replace it.
 
 ## Storage policy
 

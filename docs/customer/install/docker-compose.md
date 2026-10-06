@@ -47,7 +47,8 @@ cp .env.example .env
 
 ### Fill in the settings (below), then build and start
 
-Fill in `.env` using the same seven values as [step 2](#2-fill-in-the-settings)
+Fill in `.env` using the settings required for this install path from
+[step 2](#2-fill-in-the-settings)
 below, then build and start with:
 
 ```bash

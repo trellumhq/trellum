@@ -1,8 +1,10 @@
 # Data retention
 
 Run history, audit rows, assistant transcripts, sessions and expired invitations
-have no natural ceiling. On a single VM the disk they share is the same one
-holding the database and every studio's data, so something has to delete them.
+have no natural ceiling. On one host they share a disk with the database and
+studio data; in a multi-host deployment, the database and persistent studio
+storage are shared across the hosts. Cleanup keeps these stores within the
+configured retention policy.
 
 Cleanup runs nightly on the coordinator. There is nothing to enable.
 
@@ -37,9 +39,11 @@ after you change any of the windows below.
 | `CLEANUP_CRON` | `17 3 * * *` | When it runs |
 | `CLEANUP_ENABLED` | `true` | Whether it runs at all |
 
-Every window is in days and **every one accepts `0`, meaning keep forever**. A
-compliance hold needs that, and a retention policy you cannot turn off is one
-people work around.
+Age windows use days except `RETENTION_TMP_RUN_HOURS`, which uses hours. Setting
+an age window to `0` disables that age-based purge or dormancy action (retaining
+the data or leaving the account active). `RETENTION_RUN_KEEP_PER_REPORT` is a
+count, not an age window. A compliance hold needs retention controls that can
+be disabled.
 
 ### The two windows an organization can set
 

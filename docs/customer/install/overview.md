@@ -1,8 +1,10 @@
 # Installation overview
 
-{{BRAND}} is self-hosted first: one VM runs the portal, its Postgres database,
-and one data volume. No cloud services are required, and the portal never
-phones home.
+{{BRAND}} can run on one VM with the portal, Postgres, and a data volume. A
+multi-host deployment uses shared PostgreSQL and mounts the same persistent
+data directory on every web and runner host; see
+[Sizing](/docs/latest/operations/sizing/#when-one-machine-is-not-enough). No
+cloud services are required, and the portal never phones home.
 
 ## Choose a path
 
@@ -21,10 +23,12 @@ is the index to the standalone API guide.
 ## What a deployment contains
 
 - **web** — the portal itself, behind your reverse proxy
-- **worker** — builds reports, one per instance, on schedule or on git push
+- **worker** — builds reports on schedule or on git push; it can run alongside
+  the web process on one host or as runner processes on multiple hosts
 - **db** — Postgres 16, which also holds the build queue, so there is no
   separate queue or cache service to run and monitor
-- **a data volume** — built report output, one directory tree per studio
+- **persistent data storage** — studio checkouts and project files, uploaded
+  data-source files, run logs, and local report output
 
 ## Requirements
 

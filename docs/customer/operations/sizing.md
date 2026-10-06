@@ -16,8 +16,8 @@ into memory at once, not how many reports exist.
 
 ## What consumes what
 
-- **CPU** — concurrent builds; one worker processes the queue, so throughput
-  is bounded by build duration
+- **CPU** — concurrent builds; the default combined worker processes the queue
+  alone, while additional runner processes can build in parallel
 - **RAM** — the biggest single build. A report that loads a very large frame
   sets the floor for the whole instance
 - **Disk** — built output, the database, and backups; report output is small
@@ -71,7 +71,7 @@ real traffic you can size the limit from evidence rather than guesses.
 ## When one machine is not enough
 
 The default deployment runs scheduling, claiming work and building reports in
-one worker process, and for a single VM that's the right answer. Two
+one worker process, which is a simple fit for a single VM. Two
 independent levers exist before you need more than one host:
 
 - **More parallelism on the same host** — raise `WORKER_MAX_CONCURRENT` (and
@@ -92,20 +92,24 @@ back to `docker compose up -d` with no profile returns to the topology you
 started with.
 
 Reach for either lever when the build queue is persistently backed up, not
-before. Both are community features: however many processes you run, one
-machine is one install.
+before. The Compose split profile scales processes on one Docker host; its
+default named volume is local to that host.
 
-Runners on **different hosts** are not supported yet: each holds its
-studio checkouts, and reads uploaded data-source files, on the local data
-volume, so a runner needs the same shared volume the portal writes to. Scale
-runners within one host, sharing that volume, until multi-host support
-lands.
+Multi-host deployments are supported when every web and runner host connects
+to the same PostgreSQL database and mounts the same persistent storage at the
+same `TRELLUM_DATA_DIR` path (normally `/data`). That shared storage holds
+studio checkouts and project files, uploaded data-source files, and live run
+logs, as well as local report output and caches. Use shared storage such as
+NFS, EFS, or an equivalent service, and configure it for every host. The
+Compose named volume in the single-host example does not provide this sharing.
 
-Spreading beyond one machine uses workers separated onto their own hosts, with
-built output published to
-[object storage](/docs/latest/install/configuration/#built-report-output-in-object-storage)
-so hosts stop needing a shared volume. Object storage and multi-host runners
-are available in the same self-hosted installation.
+S3-compatible object storage is optional and stores built report output. It
+does not replace the shared data directory: the portal and runners still need
+the shared checkouts, uploads, and live run-log files. A multi-host deployment
+therefore needs both shared PostgreSQL and shared persistent file storage;
+S3-compatible output storage may be added separately. Configure the
+coordinator and runner roles in your deployment environment; the Compose split
+example above is for processes on one host.
 
 ## Uploaded data-source files
 

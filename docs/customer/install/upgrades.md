@@ -44,10 +44,14 @@ configuration described above.
 | `doctor` preflight | Refuses to upgrade an unhealthy instance |
 | `pg_dump`, then verify it with `pg_restore --list` | An unverified dump is not a backup. `pg_dump` can exit successfully having written a truncated file if the disk filled |
 | `docker pull` | Fetch before stopping, so a slow or failed pull does not extend the outage |
-| **Stop** web and worker | The important one — see below. The worker drains first, so no in-flight build is killed |
+| **Stop** web and worker roles | The important one — see below. The worker drains first, so no in-flight build is killed |
 | `migrate` | New schema, with no old code running against it |
 | Start | The new version comes up on a schema it agrees with |
 | Verify | `/healthz`, then assert `/api/version` reports the expected version and `schema: ok` |
+
+The helper operates on the current Compose project. For a multi-host install,
+coordinate the upgrade across every web and runner host; the helper does not
+orchestrate remote hosts or update `TRELLUM_RUNNER_IMAGE`.
 
 Expect a short outage: seconds, plus however long your migrations take, plus up
 to ten minutes if a report build is mid-flight when the worker drains.
