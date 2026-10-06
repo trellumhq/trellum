@@ -21,6 +21,8 @@
 - section: Install
   summary: Get the portal running on your own VM.
   pages:
+    - title: Try it locally
+      slug: install/try-it
     - title: Overview
       slug: install/overview
     - title: Docker Compose
@@ -49,6 +51,10 @@
       slug: portal/publishing-from-git
     - title: Connecting your data sources
       slug: portal/connecting-your-data-sources
+    - title: Metrics catalog
+      slug: portal/metrics
+    - title: Report Analytics
+      slug: portal/report-analytics
     - title: Single sign-on
       slug: portal/single-sign-on
     - title: Email delivery
@@ -75,6 +81,8 @@
   pages:
     - title: What it is, and where to get it
       slug: framework/the-framework
+    - title: Framework capabilities
+      slug: framework/capabilities
 
 - section: Operations
   summary: Run it in production without surprises.

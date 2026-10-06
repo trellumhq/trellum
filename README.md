@@ -76,11 +76,14 @@ Install the synthetic demo, build one report, and start a local preview:
 ```bash
 python -m trellum.demo --dest trellum-demo
 cd trellum-demo
-python -m trellum.run reports/player-overview --no-serve --portable
+python -m trellum.run reports/store-health --no-serve --portable
 python -m trellum serve --background
 ```
 
-The build is in `output/player-overview/`. `trellum serve --background` prints
+See [Try Trellum locally](https://trellum.dev/docs/latest/install/try-it/)
+for Windows commands and the optional portal demo.
+
+The build is in `output/store-health/`. `trellum serve --background` prints
 the local URL and returns. A portable build keeps its browser assets beside the
 reports, so you can copy the output tree to another static host without assuming
 assets exist at the domain root.

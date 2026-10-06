@@ -18,6 +18,10 @@ beside the source it describes:
 
 **[github.com/trellumhq/trellum]({{FRAMEWORK_REPO}})**
 
+If you are new to the package, follow [Try Trellum locally](/docs/latest/install/try-it/).
+For a topic-by-topic route into the framework reference, see
+[Framework capabilities](/docs/latest/framework/capabilities/).
+
 The README there is the complete reference: how to install it, report
 structure, every component, filters and cross-filtering, themes, the data
 layer, multi-scope reports, and the built-in statistics. It is maintained by

@@ -1,31 +1,36 @@
 # Install with Docker Compose
 
 This is the supported way to run {{BRAND}}. The public installation is licensed
-under AGPL-3.0-only and has no activation or subscription step. Build it from the source
-checkout below, or use an image you built and verified yourself. Both produce
-the same install:
+under AGPL-3.0-only and has no activation or subscription step. You can use the
+published release images or build the images from the matching source tag:
 
-- **A verified image** (fastest — nothing builds on your machine).
-  Use an image you built and verified yourself.
-- **Build it yourself from source** (AGPL-3.0-only, no registry required — this is what
-  `git clone` gives you today). See
-  [Option B](#option-b-build-from-source).
+- **Pull the release images** (fastest — nothing builds on your machine). The
+  Compose file and operational scripts come from the same tagged source
+  checkout, so the install has everything it needs.
+- **Build from source** (AGPL-3.0-only; no image registry required). Compose
+  builds both images from the checkout.
 
 Either way, also check the requirements from the
 [overview](/docs/latest/install/overview/) first.
 
-## Option A: Pull a verified image
+## Option A: Pull the published images
 
-Use an image reference you have verified and set it in `.env`.
+Start from the source tag matching the published images. The checkout includes
+the Compose file, backup and upgrade scripts, and other files needed to operate
+the installation.
 
-### 1. Download the deployment files
+### 1. Get the matching Compose files
 
 ```bash
-mkdir trellum && cd trellum
-curl -O <verified-source>/docker-compose.yml
-curl -O <verified-source>/.env.example
+git clone --depth 1 --branch v0.1.1 https://github.com/trellumhq/trellum.git
+cd trellum
 cp .env.example .env
 ```
+
+In `.env`, set `TRELLUM_IMAGE=ghcr.io/trellumhq/trellum:v0.1.1` and
+`TRELLUM_RUNNER_IMAGE=ghcr.io/trellumhq/trellum-runner:v0.1.1`. Fill in the
+other required settings in [step 2](#2-fill-in-the-settings), then verify the
+images as described in [Verify what you received](/docs/latest/install/verify-images/).
 
 ## Option B: Build from source
 
@@ -35,7 +40,7 @@ knows how to build the image itself; there is no separate Dockerfile step.
 ### Clone and prepare `.env`
 
 ```bash
-git clone https://github.com/trellumhq/trellum.git
+git clone --depth 1 --branch v0.1.1 https://github.com/trellumhq/trellum.git
 cd trellum
 cp .env.example .env
 ```
@@ -77,13 +82,14 @@ instance down with `docker compose -p trellum-staging down -v` — never bare
 
 ## 2. Fill in the settings
 
-Open `.env` and set these seven values. Everything else has a working default
+Open `.env` and set these required values. Everything else has a working default
 and is covered in the
 [configuration reference](/docs/latest/install/configuration/).
 
 | Setting | What it is |
 |---|---|
 | `TRELLUM_IMAGE` | Which released version to run. Pin an exact version, so a restart can never silently move you to a different one. |
+| `TRELLUM_RUNNER_IMAGE` | The matching report-build sandbox image. Use the runner image with the same release tag as `TRELLUM_IMAGE`. |
 | `PORTAL_BASE_URL` | The public address people will visit, e.g. `https://bi.example.com`. Used to build links in invitation and password-reset emails, and to decide whether cookies are marked secure. |
 | `ALLOWED_HOSTS` | The hostnames the portal will answer on. A request arriving under any other name is refused, which is what stops someone pointing their own domain at your instance. |
 | `POSTGRES_PASSWORD` | The password for the bundled database. Any strong value; you will not type it again. |
@@ -140,13 +146,15 @@ Platform notes:
 
 ## 3. Start it
 
+For Option A, pull and start the release images without building them locally:
+
 ```bash
 docker compose pull
-docker compose up -d
+docker compose up -d --no-build
 ```
 
-If you built from source (Option B), you already started the stack with
-`docker compose up -d --build` — there is nothing further to run here.
+For Option B, the `docker compose up -d --build` command in that section has
+already started the stack.
 
 Services start in order: the database, then a one-shot schema migration, then
 the sandbox image, then the web server and the report worker.

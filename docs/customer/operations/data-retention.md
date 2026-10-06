@@ -25,6 +25,7 @@ after you change any of the windows below.
 | `RETENTION_AUDIT_DAYS` | 365 | Audit rows — authorization, administration, and system events |
 | `RETENTION_AUDIT_ACCESS_DAYS` | 90 | Audit rows — authentication and data-access events (higher volume, shorter forensic half-life; see [Logs & monitoring](logs-and-monitoring.md#the-audit-log)) |
 | `RETENTION_AUDIT_ARCHIVE` | `true` | Export the doomed audit window to gzip NDJSON under `DATA_DIR/archive/audit/` before deleting it, so a retention purge never destroys the record outright. Set `false` for hard delete. |
+| `RETENTION_REPORT_VIEW_EVENT_DAYS` | 90 | Raw report-view events used for unique member and share-link counts; daily view totals are retained separately |
 | `RETENTION_ASSISTANT_SESSION_DAYS` | 180 | Assistant conversation transcripts |
 | `RETENTION_INVITATION_DAYS` | 30 | Accepted or expired invitations |
 | `RETENTION_TMP_RUN_HOURS` | 48 | Build scratch directories on disk |
@@ -137,7 +138,7 @@ cannot get back:
 - **Runs that are still active.** Queued, starting or running, at any age.
 - **The newest runs per report.** A quarterly report would otherwise lose its
   entire history to a 90-day window.
-- **Anything in the current billing month.** Monthly build minutes are derived
+- **Anything in the current calendar month (UTC).** Monthly build minutes are derived
   from run records, so deleting a recent run would quietly hand quota back.
   Shortening `RETENTION_RUN_DAYS` below a month does not change this.
 - **LLM spend records.** That is a billing ledger, not a log. Assistant

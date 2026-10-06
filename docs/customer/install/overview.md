@@ -8,12 +8,15 @@ phones home.
 
 | You want to | Start at |
 |---|---|
-| Try writing reports, with no server at all | [The framework](/docs/latest/framework/the-framework/) |
+| Try writing reports, with no server at all | [Try Trellum locally](/docs/latest/install/try-it/) |
 | Run the portal for your team | [Docker Compose](/docs/latest/install/docker-compose/) |
 | Use a managed Postgres you already operate | [Configuration](/docs/latest/install/configuration/) |
 
 The framework needs no installation of the portal — you can build reports on
 your laptop first and stand up the portal later, against the same repository.
+The [framework overview](/docs/latest/framework/the-framework/) explains the
+boundary between the two; [framework capabilities](/docs/latest/framework/capabilities/)
+is the index to the standalone API guide.
 
 ## What a deployment contains
 
