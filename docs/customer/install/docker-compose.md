@@ -22,13 +22,13 @@ the installation.
 ### 1. Get the matching Compose files
 
 ```bash
-git clone --depth 1 --branch v0.2.1 https://github.com/trellumhq/trellum.git
+git clone --depth 1 --branch v0.2.2 https://github.com/trellumhq/trellum.git
 cd trellum
 cp .env.example .env
 ```
 
-In `.env`, set `TRELLUM_IMAGE=ghcr.io/trellumhq/trellum:v0.2.1` and
-`TRELLUM_RUNNER_IMAGE=ghcr.io/trellumhq/trellum-runner:v0.2.1`. Fill in the
+In `.env`, set `TRELLUM_IMAGE=ghcr.io/trellumhq/trellum:v0.2.2` and
+`TRELLUM_RUNNER_IMAGE=ghcr.io/trellumhq/trellum-runner:v0.2.2`. Fill in the
 other required settings in [step 2](#2-fill-in-the-settings), then verify the
 images as described in [Verify what you received](/docs/latest/install/verify-images/).
 
@@ -40,7 +40,7 @@ knows how to build the image itself; there is no separate Dockerfile step.
 ### Clone and prepare `.env`
 
 ```bash
-git clone --depth 1 --branch v0.2.1 https://github.com/trellumhq/trellum.git
+git clone --depth 1 --branch v0.2.2 https://github.com/trellumhq/trellum.git
 cd trellum
 cp .env.example .env
 ```
