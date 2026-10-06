@@ -32,8 +32,10 @@ copy is only ever a copy that goes stale.
 ## What the portal needs from your repository
 
 The one thing worth knowing on this side, because it is our contract rather
-than the framework's: a directory under `reports/` containing `report.yaml` and
-`generator.py` is a report. Nothing else in your repository is inspected. See
+than the framework's: report discovery uses directories under `reports/` that
+contain `report.yaml` and `generator.py`. Other project files are not needed
+to discover a report, though supported configuration such as data-source
+declarations is read when a report uses those features. See
 [The analytics repository](/docs/latest/workflow/analytics-repository/).
 
 ## What this site documents instead

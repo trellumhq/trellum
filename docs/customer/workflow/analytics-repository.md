@@ -14,15 +14,16 @@ All of it:
 Directories whose names start with `_` are skipped, and one without a
 `generator.py` is ignored. Point a studio at the repository and it works.
 
-**No other structure is inspected, expected, or enforced.** Everything else on
-this page is advice.
+No other directory structure is required for report discovery. Project files
+such as `data-sources/config.yaml`, `metrics.yaml`, and `config.yaml` are read
+when reports use the corresponding data, metric, or extension features; the
+context and assistant files below remain your own conventions.
 
 ## Everything else is yours
 
-The rest of the repository is invisible to us — the right-hand panel above is
-not a shortlist, it is the whole rule. You do not need a new repository, and
-adding a `reports/` directory to one you already have is a perfectly normal way
-to start.
+The rest of the repository does not need a prescribed layout. You do not need
+a new repository, and adding a `reports/` directory to one you already have is
+a perfectly normal way to start.
 
 ## What we recommend alongside it
 

@@ -30,10 +30,11 @@ someone has to maintain forever.
 
 When an answer turns out to matter — the team wants it weekly, or the number is
 going in front of the board — promote it to a report. Now it is a `report.yaml`,
-a generator and its SQL: reviewed in a pull request, versioned, and producing
-the same number every time it runs.
+a generator and its SQL: reviewed in a pull request and versioned, so the
+derivation can be inspected and repeated. The result can change as the source
+data or reporting window changes.
 
-This is the deterministic half. The value is not the chart; it is that a number
+This is the traceable half. The value is not the chart; it is that a number
 on a dashboard can be traced back to a commit somebody approved.
 
 ## The promotion path

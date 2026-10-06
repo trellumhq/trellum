@@ -62,7 +62,10 @@ Until then, a script is the cheaper answer. See
 
 ## What this is not
 
-This is not a live query layer for viewers. Built reports are pre-built static
-artifacts on purpose — viewer traffic never reaches your warehouse. Ad-hoc
-querying is for the people writing the analysis, not for the people reading the
-dashboard.
+Ad-hoc querying is for the people writing the analysis, not for people reading
+a dashboard. Built reports compile their data at build time by default, so
+viewers do not need a warehouse connection. A report can opt into on-demand
+lookups with the framework's `LiveDataSource`; those queries run only when the
+report is served by a host that supports live queries (the portal or the local
+`trellum serve` server). Standalone files, share links, and email snapshots
+show the build-time snapshot and do not run live queries.
