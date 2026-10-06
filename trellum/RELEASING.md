@@ -18,8 +18,9 @@ framework can also be installed independently from its wheel.
 - Published tags and releases are immutable. Fix a bad release with a new
   patch version; never move or delete a published tag.
 
-Semantic versioning has one project rule: any change under `trellum/` is at
-least a MINOR release because it changes report builds. A breaking component,
+Semantic versioning has one project rule: any change under `trellum/` that
+changes report-build behavior is at least a MINOR release. Documentation and
+packaging-metadata-only fixes may use a PATCH release. A breaking component,
 `ctx`, `report.yaml`, validator, configuration, or migration contract is a
 MAJOR release and must include concrete upgrade steps in `CHANGELOG.md`.
 
@@ -75,7 +76,7 @@ git switch main
 git pull --ff-only origin main
 test -z "$(git status --porcelain)"
 
-VERSION=0.1.0
+VERSION=0.1.1
 PORTAL=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' trellum_portal/__init__.py)
 FRAMEWORK=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' trellum/__init__.py)
 test "$PORTAL" = "$VERSION"
@@ -143,6 +144,13 @@ gh run watch <run-id> --exit-status
 
 The workflow rebuilds and tests the wheel before the protected `publish` job
 uploads it. A tag push by itself never publishes to PyPI.
+
+The wheel's full PyPI description comes from `trellum/README.md`; its short
+summary comes from the `description` field in `trellum/pyproject.toml`. Before
+the first upload of a version, inspect the built wheel's `METADATA` to confirm
+both fields and its rendered README are correct. PyPI retains the metadata from
+the first upload for that version, so a correction requires a new patch release;
+GitHub changes cannot refresh metadata already published to PyPI.
 
 ## Documentation and demo Pages
 

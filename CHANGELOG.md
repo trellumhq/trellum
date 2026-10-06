@@ -7,6 +7,16 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-10-06
+
+### Changed
+
+- Corrected the standalone PyPI package description and documentation links,
+  and clarified named `pip install trellum` instructions in the README, site,
+  and agent guidance.
+- Clarified standalone onboarding and restored the original illustrated\n  personal blog.
+- No runtime behavior changed.
+
 ## [0.1.0] — 2026-10-06
 
 Trellum brings its reporting framework, self-hosted platform, documentation,
@@ -32,5 +42,6 @@ and demos together in one AGPL-licensed project.
 - Owned Trellum code is released under AGPL-3.0-only. Third-party and
   contributor notices retain their own terms.
 
-[Unreleased]: https://github.com/trellumhq/trellum/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/trellumhq/trellum/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/trellumhq/trellum/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/trellumhq/trellum/releases/tag/v0.1.0

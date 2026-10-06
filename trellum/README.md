@@ -51,7 +51,8 @@ host-independent and does not need the optional Trellum platform.
 
 This file is the complete framework reference: components, the `ctx` API,
 themes, data sources, browser runtime, validation, extension points, and CLI.
-The [repository README](../README.md) explains the self-hosted platform.
+The [repository README](https://github.com/trellumhq/trellum/blob/main/README.md)
+explains the self-hosted platform.
 
 ---
 
@@ -147,7 +148,9 @@ The framework follows a server-side generation, client-side rendering pattern:
 
 ## Quick Start
 
-> **Working inside this monorepo?** The [`demo/`](demo/README.md) directory is
+> **Working inside this monorepo?** The
+> [`demo/`](https://github.com/trellumhq/trellum/blob/main/trellum/demo/README.md)
+> directory is
 > a self-contained project with generated data and ten reports — no database,
 > credentials, or external service required:
 >
@@ -159,7 +162,7 @@ The framework follows a server-side generation, client-side rendering pattern:
 >
 > Also `.\dev.ps1 list`, `test`, `build` and `serve`. It is the fastest way to
 > verify a framework change end to end — see
-> [`demo/README.md`](demo/README.md).
+> [`demo/README.md`](https://github.com/trellumhq/trellum/blob/main/trellum/demo/README.md).
 >
 > **Installed the framework standalone?** The package ships the same demo
 > project as an installed module:
@@ -1607,15 +1610,19 @@ version: "1.0"
 ## Licence
 
 Copyright (c) 2026 Apollo Meijer. Trellum-owned code is licensed under
-[AGPL-3.0-only](LICENSE).
+[AGPL-3.0-only](https://github.com/trellumhq/trellum/blob/main/trellum/LICENSE).
 
 Your data, SQL, and report content retain their own terms. Generated reports
 include the Trellum browser runtime under AGPL-3.0-only and link to its exact
-source. See [docs/LICENSING.md](docs/LICENSING.md) for the detailed boundary.
+source. See
+[docs/LICENSING.md](https://github.com/trellumhq/trellum/blob/main/trellum/docs/LICENSING.md)
+for the detailed boundary.
 
 The software is provided without warranty under the terms of its licence.
 
 Every third-party library, font and dataset bundled here keeps its own licence
-— [THIRD-PARTY.md](THIRD-PARTY.md) lists all of them with an audit date, and
-[docs/LICENSING.md](docs/LICENSING.md) covers the rest, including why there are
+— [THIRD-PARTY.md](https://github.com/trellumhq/trellum/blob/main/trellum/THIRD-PARTY.md)
+lists all of them with an audit date, and
+[docs/LICENSING.md](https://github.com/trellumhq/trellum/blob/main/trellum/docs/LICENSING.md)
+covers the rest, including why there are
 no per-file licence headers.
