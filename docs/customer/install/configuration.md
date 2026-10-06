@@ -87,11 +87,11 @@ uploaded data-source files. The bundled `docker-compose.yml` mounts a named
 volume at `/data`, which matches the default baked into the image, so a standard
 install never sets this.
 
-Every process that touches studio files — the portal and every runner — must
-see the **same** `TRELLUM_DATA_DIR`. This applies across hosts too: mount the
-same persistent filesystem at the same container path on every web and runner
-host. The Compose example's named volume is local to its Docker host; it does
-not share files across hosts. See
+The portal, coordinator, and every runner must see the **same** `TRELLUM_DATA_DIR`.
+This applies across hosts too: mount the same persistent filesystem at the same
+container path on every web, coordinator, and runner host. The Compose
+example's named volume is local to its Docker host; it does not share files
+across hosts. See
 [Sizing](/docs/latest/operations/sizing/#when-one-machine-is-not-enough).
 
 !!! warning
@@ -102,7 +102,8 @@ not share files across hosts. See
 For a multi-host deployment, all hosts must also use the same PostgreSQL
 database. S3-compatible storage holds built report output only; studio
 checkouts, project files, uploaded data-source files, and live run logs remain
-under `TRELLUM_DATA_DIR` and require shared persistent storage.
+under `TRELLUM_DATA_DIR` and require shared persistent storage. The coordinator
+also uses that directory for cleanup, audit archives, and scheduled delivery.
 
 To keep the data somewhere specific on the host, change the *mount source* and
 leave the container path — and so `TRELLUM_DATA_DIR` — alone:

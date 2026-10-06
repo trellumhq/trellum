@@ -87,29 +87,35 @@ docker compose --profile split up -d --scale runner=3
 docker compose stop worker      # the combined process is now redundant
 ```
 
-`/system` shows every live worker with its role and memory usage. Dropping
-back to `docker compose up -d` with no profile returns to the topology you
-started with.
+`/system` shows every live worker with its role and memory usage. To return to
+the combined worker topology, stop the split services and start `worker`:
+
+```bash
+docker compose stop coordinator runner
+docker compose up -d worker
+```
 
 Reach for either lever when the build queue is persistently backed up, not
 before. The Compose split profile scales processes on one Docker host; its
 default named volume is local to that host.
 
-Multi-host deployments are supported when every web and runner host connects
-to the same PostgreSQL database and mounts the same persistent storage at the
-same `TRELLUM_DATA_DIR` path (normally `/data`). That shared storage holds
-studio checkouts and project files, uploaded data-source files, and live run
-logs, as well as local report output and caches. Use shared storage such as
+Multi-host deployments are supported when every web, coordinator, and runner
+host connects to the same PostgreSQL database and mounts the same persistent
+storage at the same `TRELLUM_DATA_DIR` path (normally `/data`). It holds studio
+checkouts and project files, uploaded data-source files, live run logs,
+audit archives, and scheduled-delivery inputs, as well as local report output
+and caches. Use shared storage such as
 NFS, EFS, or an equivalent service, and configure it for every host. The
 Compose named volume in the single-host example does not provide this sharing.
 
 S3-compatible object storage is optional and stores built report output. It
-does not replace the shared data directory: the portal and runners still need
-the shared checkouts, uploads, and live run-log files. A multi-host deployment
-therefore needs both shared PostgreSQL and shared persistent file storage;
-S3-compatible output storage may be added separately. Configure the
-coordinator and runner roles in your deployment environment; the Compose split
-example above is for processes on one host.
+does not replace the shared data directory: the portal, coordinator, and
+runners still need the shared checkouts, uploads, run logs, audit archives, and
+scheduled-delivery inputs. A multi-host deployment therefore needs both
+shared PostgreSQL and shared persistent file storage;
+S3-compatible output storage may be added separately. Configure coordinator
+and runner roles in your deployment environment; the Compose split example
+above is for processes on one host.
 
 ## Uploaded data-source files
 

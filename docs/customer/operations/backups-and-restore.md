@@ -6,6 +6,7 @@
 |---|---|---|
 | The database | organizations, studios, users, permissions, encrypted secrets (SSO, repository tokens, data-source credentials), run history, favorites, audit log | **Yes** |
 | Data volume — uploaded files | data-source files uploaded through the portal, at studio or organization level | **Yes** — no other copy exists |
+| Data volume — audit archives | `/data/archive/audit/`, when `RETENTION_AUDIT_ARCHIVE=true` | **Back up separately** — the built-in backup job does not include this directory |
 | Data volume — built output | materialized project roots, rendered report output | No — rebuilds from your repository |
 | Object storage — built output | the same, when `TRELLUM_STORAGE_BACKEND=s3` | No — same reason, and your bucket has its own durability |
 | Data volume — git checkouts | working copies of each studio's report repository | No — re-cloned on demand |
@@ -86,15 +87,38 @@ An untested backup is a hope.
 These commands restore the bundled Postgres service and assume its default
 database user and name. If `DATABASE_URL` points to an external database,
 restore the dump to that configured database using your database operator's
-procedure; the Compose `db` container is not running in that setup.
+procedure; the Compose `db` container is not running in that setup. Before
+restoring, stop web, the combined `worker` or split coordinator and runners,
+and the backup service on all hosts so nothing is using the database or shared
+data directory. These commands show the single-host Compose case; in a
+multi-host installation, use your orchestrator to apply the stop and selected
+topology start across all hosts.
 
 ```bash
-docker compose stop web worker coordinator runner
+docker compose stop web worker coordinator runner backup
 docker compose exec -T db pg_restore -U trellum -d trellum_portal --clean --if-exists \
     < /path/to/db-<stamp>.dump
-docker compose run --rm web sh -c "cd /data && tar -xzf /backups/studios-<stamp>.tar.gz"
-docker compose run --rm web sh -c "cd /data && tar -xzf /backups/orgs-<stamp>.tar.gz"
+docker compose run --rm --no-deps web sh -c "cd /data && tar -xzf /backups/studios-<stamp>.tar.gz"
+docker compose run --rm --no-deps web sh -c "cd /data && tar -xzf /backups/orgs-<stamp>.tar.gz"
+```
+
+For the default combined-worker topology, stop any split services left running
+and start the base stack. For a split topology, enable the profile and start
+web, coordinator, and the configured number of runners (three in this
+example):
+
+```bash
+# Default combined worker
+docker compose stop coordinator runner
 docker compose up -d
+
+# Or split coordinator and runners; adjust runner count to match your install
+docker compose --profile split up -d --scale runner=3 web coordinator runner backup
+```
+
+Then run the health check:
+
+```bash
 docker compose exec web python manage.py doctor
 ```
 

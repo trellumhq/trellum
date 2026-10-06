@@ -17,8 +17,11 @@ storage — which is exactly the claim we need to be able to make.
 
 This is a local test of object-storage report output using isolated volumes,
 not a multi-host deployment test. A real multi-host installation still needs
-shared PostgreSQL and shared persistent storage for checkouts, project files,
-uploads, and live run logs; see [Sizing](/docs/latest/operations/sizing/#when-one-machine-is-not-enough).
+shared PostgreSQL and shared persistent storage mounted at the same
+`TRELLUM_DATA_DIR` path on web, coordinator, and runner hosts. That storage
+includes checkouts, project files, uploads, live run logs, audit archives, and
+scheduled-delivery inputs; see
+[Sizing](/docs/latest/operations/sizing/#when-one-machine-is-not-enough).
 
 ## Bring it up
 
@@ -83,9 +86,9 @@ this working.
 6. **This test excludes uploaded data-source files.** A file-backed data
    source will fail here because the isolated runner volumes do not contain
    files written by the web process. Use git-backed reports for this test.
-   Production web and runner hosts must share the persistent data directory to
-   access uploads, checkouts, project files, and live run logs; S3 output
-   storage does not replace it.
+   Production web, coordinator, and runner hosts must share the persistent data
+   directory to access uploads, checkouts, project files, and live run logs. S3
+   output storage does not replace it.
 
 ## Storage policy
 

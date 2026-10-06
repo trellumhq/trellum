@@ -18,9 +18,11 @@ that code is never trusted more than that boundary allows.
   [Sizing](/docs/latest/operations/sizing/) for how to declare them.
 - A dedicated network that **cannot reach the rest of the deployment** — so
   even a leaked warehouse credential cannot be turned against your database or
-  the portal itself. Network egress is denied by default, including access to
-  internet-hosted warehouses and APIs. `TRELLUM_SANDBOX_EGRESS=open` enables
-  internet access as an explicit operator choice; see the
+  the portal itself. Network egress is denied by default. Reports that need a
+  remote warehouse or API require operator-approved outbound access.
+  `TRELLUM_SANDBOX_EGRESS=open` enables broad internet access; it does not
+  provide a per-destination allowlist. Use your host or network firewall to
+  restrict access to approved destinations. See the
   [configuration reference](/docs/latest/install/configuration/#security).
 
 The worker is the only process holding the Docker socket; report code never
@@ -59,11 +61,11 @@ Stated plainly, so you can judge it against your own threat model:
   kernel container-escape is not mitigated. If your threat model needs it,
   point Docker at a stricter runtime such as gVisor (`runsc`); the sandbox
   settings are runtime-agnostic.
-- **Open internet egress is an explicit operator choice.** By default the
-  sandbox network is internal and blocks outbound access. Setting
-  `TRELLUM_SANDBOX_EGRESS=open` lets tenant report code reach the internet while
-  holding its studio's warehouse credentials; it can send query results
-  anywhere. Egress policy is instance-wide, not per studio.
+- **Outbound access requires operator approval.** The default sandbox network
+  blocks egress. Setting `TRELLUM_SANDBOX_EGRESS=open` lets tenant report code
+  reach the internet broadly while holding its studio's warehouse credentials;
+  use host or network firewall rules to constrain approved destinations. The
+  setting is instance-wide, not per studio.
 - **A build can read its own studio's project**, including other reports'
   output in the same studio. The trust boundary is the studio, not the
   individual report.

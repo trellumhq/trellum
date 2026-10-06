@@ -2,7 +2,7 @@
 
 {{BRAND}} can run on one VM with the portal, Postgres, and a data volume. A
 multi-host deployment uses shared PostgreSQL and mounts the same persistent
-data directory on every web and runner host; see
+data directory on every web, coordinator, and runner host; see
 [Sizing](/docs/latest/operations/sizing/#when-one-machine-is-not-enough). No
 cloud services are required, and the portal never phones home.
 
@@ -23,12 +23,14 @@ is the index to the standalone API guide.
 ## What a deployment contains
 
 - **web** — the portal itself, behind your reverse proxy
-- **worker** — builds reports on schedule or on git push; it can run alongside
-  the web process on one host or as runner processes on multiple hosts
+- **worker, coordinator, runner** — the default worker combines scheduling
+  and report builds. A split deployment uses one coordinator for scheduling,
+  cleanup, and scheduled delivery, plus one or more runners for builds.
 - **db** — Postgres 16, which also holds the build queue, so there is no
   separate queue or cache service to run and monitor
 - **persistent data storage** — studio checkouts and project files, uploaded
-  data-source files, run logs, and local report output
+  data-source files, live run logs, audit archives, and local report output;
+  the web, coordinator, and every runner need access to the same data directory
 
 ## Requirements
 
