@@ -7,6 +7,25 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.2.2] — 2026-10-06
+
+### Fixed
+
+- Preserve sidebar scroll position across console navigation and mark Data
+  retention as the active page.
+- Correct documentation that referenced the previous console navigation.
+
+### Changed
+
+- Align the website and documentation with the portal's neutral light/dark
+  surfaces and teal actions.
+- Add a real portal slideshow and a three-minute captioned
+  [product tour](https://trellum.dev/tour/) with a readable transcript.
+- Refresh README and package imagery with Trellum Dark, explain the coding-agent
+  and Git workflow, and distinguish report demos from the self-hosted portal.
+
+No database migration or report rebuild is required by this patch.
+
 ## [0.2.1] — 2026-10-06
 
 ### Fixed
