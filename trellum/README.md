@@ -17,11 +17,10 @@
 
 ## Install
 
-Trellum requires Python 3.11 or newer. Install the versioned wheel from the
-GitHub release:
+Trellum requires Python 3.11 or newer. Install the package from PyPI:
 
 ```bash
-python -m pip install https://github.com/trellumhq/trellum/releases/download/v0.1.0/trellum-0.1.0-py3-none-any.whl
+python -m pip install trellum
 ```
 
 Then install the synthetic demo and build one portable report:
@@ -36,7 +35,7 @@ SQLite and the included demo need only the base install. To add every optional
 database, cloud-file, and cloud-storage driver:
 
 ```bash
-python -m pip install "trellum[drivers] @ https://github.com/trellumhq/trellum/releases/download/v0.1.0/trellum-0.1.0-py3-none-any.whl"
+python -m pip install "trellum[drivers]"
 ```
 
 <p align="center">
@@ -180,15 +179,14 @@ Run the commands below from the **project root**, the directory that contains
 
 ### Installing the framework
 
-For a released standalone installation, use its versioned wheel. Python 3.11
-or newer is required:
+For a standalone installation, install the package from PyPI. Python 3.11 or
+newer is required:
 
 ```bash
-python -m pip install https://github.com/trellumhq/trellum/releases/download/v0.1.0/trellum-0.1.0-py3-none-any.whl
+python -m pip install trellum
 ```
 
-Versioned wheels are attached to their GitHub releases. Trellum is not
-currently published on PyPI.
+Versioned wheels are also attached to GitHub releases.
 
 For current development, install from a checkout:
 

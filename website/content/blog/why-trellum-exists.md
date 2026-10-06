@@ -107,7 +107,7 @@ Making charts used to be the work. Now the work is asking better questions. Go a
 
 ```
 $ python -m venv .venv && . .venv/bin/activate
-$ python -m pip install https://github.com/trellumhq/trellum/releases/download/v0.1.0/trellum-0.1.0-py3-none-any.whl
+$ python -m pip install trellum
 $ python -m trellum.demo --dest demo-project
 $ cd demo-project
 $ python -m trellum.run reports/player-overview --no-serve --portable

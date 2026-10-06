@@ -36,9 +36,8 @@ def agent_prompt() -> str:
     return (
         f"Read {settings.FRAMEWORK_REPO_URL}#readme. In this existing folder, "
         "preserve unrelated files and the existing Git history. Create a Python "
-        "3.11+ virtual environment, install "
-        "https://github.com/trellumhq/trellum/releases/download/v0.1.0/"
-        "trellum-0.1.0-py3-none-any.whl, then run `python -m trellum` for the "
+        "3.11+ virtual environment, install `trellum` with `python -m pip install trellum`, "
+        "then run `python -m trellum` for the "
         f"{settings.SITE_BRAND} CLI's own instructions and add the smallest useful "
         "report here. Do not clone another repository or overwrite this one."
     )

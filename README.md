@@ -63,12 +63,12 @@ tour, public demo gallery, and installation guides.
 
 ## Quick start
 
-Trellum requires Python 3.11 or newer. Install the versioned framework wheel:
+Trellum requires Python 3.11 or newer:
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate  # Windows PowerShell: .venv\Scripts\Activate.ps1
-python -m pip install https://github.com/trellumhq/trellum/releases/download/v0.1.0/trellum-0.1.0-py3-none-any.whl
+python -m pip install trellum
 ```
 
 Install the synthetic demo, build one report, and start a local preview:
@@ -89,7 +89,7 @@ SQLite and the demo work with the base install. Install the optional data
 drivers when you need the supported warehouses, cloud files, or object storage:
 
 ```bash
-python -m pip install "trellum[drivers] @ https://github.com/trellumhq/trellum/releases/download/v0.1.0/trellum-0.1.0-py3-none-any.whl"
+python -m pip install "trellum[drivers]"
 ```
 
 ## Build with Codex, Claude Code, Cursor, or any coding agent

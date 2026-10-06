@@ -23,7 +23,7 @@ def test_static_product_contract(client):
     assert "https://github.com/trellumhq/trellum" in body
     assert 'href="/demo/"' in body
     assert "demo." + "trellum.dev" not in body
-    assert "pip install trellum" not in body
+    assert "python -m pip install trellum" in body
     assert "who opened it" not in body
     assert "MFA on every tier" not in body
     assert "Review what ships" in body

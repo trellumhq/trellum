@@ -22,7 +22,7 @@ product, not a picture of it.{% endcomment %}
         <a class="btn primary" href="#framework">Get started <span class="arr">→</span></a>
         <a class="btn" href="/docs/" rel="noopener">Read the docs</a>
       </div>
-      <p class="pipline"><span class="ps">$</span> <b>python -m pip install https://github.com/trellumhq/trellum/releases/download/v0.1.0/trellum-0.1.0-py3-none-any.whl</b> <span class="note"># Python 3.11+ · no portal required</span></p>
+      <p class="pipline"><span class="ps">$</span> <b>python -m pip install trellum</b> <span class="note"># Python 3.11+ · no portal required</span></p>
 
       <div class="hb-strip">
         <div class="hl">made by anyone</div>
@@ -139,8 +139,8 @@ product, not a picture of it.{% endcomment %}
     <div>
       <div class="kick">start here · free &amp; open source</div>
       <h2>Install the framework. Keep your repository.</h2>
-      <p class="lead">Create a Python 3.11+ virtual environment in a new or existing repository, install the released wheel above, then run <span class="mono">python -m trellum</span> for the CLI's own guide. Reports stay plain Python, SQL, YAML, and Git. Write them manually or ask your coding agent to work in the same files.</p>
-      <p class="lead installcmd"><code>python -m pip install https://github.com/trellumhq/trellum/releases/download/v0.1.0/trellum-0.1.0-py3-none-any.whl</code></p>
+      <p class="lead">Create a Python 3.11+ virtual environment in a new or existing repository, install the package from PyPI, then run <span class="mono">python -m trellum</span> for the CLI's own guide. Reports stay plain Python, SQL, YAML, and Git. Write them manually or ask your coding agent to work in the same files.</p>
+      <p class="lead installcmd"><code>python -m pip install trellum</code></p>
       <p class="lead"><b>The framework is enough.</b> Build and validate with <span class="mono">python -m trellum.run reports/&lt;name&gt; --no-serve --portable</span>, then open the output on your laptop, publish it from CI, or serve it from any static host. The optional self-hosted portal adds managed schedules, authentication, and team sharing.</p>
       <div class="htabs" id="htabs">
         <button class="htab on" type="button" data-h="Claude Code">Claude Code</button>
@@ -451,7 +451,7 @@ self.add(<span class="k">RawHTML</span>(<span class="s">"""
       <div class="path teal">
         <div class="t">The framework · open source</div>
         <p>Write Python and SQL manually or with any coding agent. Build locally, in CI, or on your static server.</p>
-        <div class="cmd">$ python -m pip install https://github.com/trellumhq/trellum/releases/download/v0.1.0/trellum-0.1.0-py3-none-any.whl · <a href="{{ github_href }}" rel="noopener">view on GitHub →</a></div>
+        <div class="cmd">$ python -m pip install trellum · <a href="{{ github_href }}" rel="noopener">view on GitHub →</a></div>
       </div>
       <div class="path violet">
         <div class="t">The portal · optional and self-hosted</div>
