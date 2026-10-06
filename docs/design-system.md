@@ -43,8 +43,8 @@ keeps shell chrome out of report captures.
 
 ## Navigation
 
-Studio navigation is Reports, Operations, Analytics, Metrics, Experiments,
-Annotations. Analytics retains its developer/admin check. The admin-only
+Studio navigation is Reports, Operations, Metrics, Experiments, Annotations,
+Alerts and Report Analytics. Report Analytics retains its developer/admin check. The admin-only
 Studio settings group contains Repository, Data sources, Members and Report
 theme. Organization links follow as Org Workspace, Org People, Org Data &
 reporting and Organization groups. The Organization group remains last and uses

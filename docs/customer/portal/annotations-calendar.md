@@ -73,6 +73,6 @@ yesterday's.
 
 ## Reaching the page
 
-Every studio member can open it at `/s/<org>/<studio>/annotations` — from the
-studio dashboard's folder bar, or from the "This studio" menu next to the
-studio name, beside [Experiment overview](/docs/latest/portal/experiments/).
+Every studio member can open it at `/s/<org>/<studio>/annotations`. Choose
+**Annotations** under **Studio work** in the console sidebar, beside
+[Experiments](/docs/latest/portal/experiments/).

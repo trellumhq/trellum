@@ -6,9 +6,8 @@ read the whole portfolio without opening each report individually.
 Individual A/B test reports keep working in every deployment; this page is the
 cross-report view across them.
 
-Reach it from the studio's folder bar on the dashboard, or from the "This
-studio" menu on the crumb — both list it alongside the studio's other
-feature surfaces, separate from the report folders themselves.
+Open **Experiments** under **Studio work** in the console sidebar. The same
+navigation is available while viewing a report inside the portal.
 
 ## How a report joins the page
 
