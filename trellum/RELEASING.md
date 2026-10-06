@@ -76,7 +76,7 @@ git switch main
 git pull --ff-only origin main
 test -z "$(git status --porcelain)"
 
-VERSION=0.2.0
+VERSION=0.2.1
 PORTAL=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' trellum_portal/__init__.py)
 FRAMEWORK=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' trellum/__init__.py)
 test "$PORTAL" = "$VERSION"
@@ -151,6 +151,10 @@ the first upload of a version, inspect the built wheel's `METADATA` to confirm
 both fields and its rendered README are correct. PyPI retains the metadata from
 the first upload for that version, so a correction requires a new patch release;
 GitHub changes cannot refresh metadata already published to PyPI.
+
+Deleted PyPI filenames also remain reserved permanently. If an upload is
+rejected because that filename was previously used, prepare a new patch
+release; do not retry the same version or delete existing release artifacts.
 
 ## Documentation and demo Pages
 
