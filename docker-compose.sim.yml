@@ -1,0 +1,42 @@
+# Load-simulation override: a Linux worker with REAL memory behaviour
+# (RLIMIT_AS enforcement, /proc peak-RSS sampling, kernel OOM kills) driven
+# from the host by `manage.py simulate_load`. Development only — never ship.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.sim.yml up -d db migrate worker
+#
+# See docs/load-simulation.md for the full recipe. What this override does:
+#
+#  * publishes the bundled Postgres on 127.0.0.1:5433 so host-side manage.py
+#    commands (dev settings default DATABASE_URL) reach the same DB;
+#  * bind-mounts ./.data-dev over /data — studio paths are DERIVED from
+#    DATA_DIR + slugs, never stored, so the host (DATA_DIR=.data-dev) and the
+#    container (TRELLUM_DATA_DIR=/data) resolve the same tree. Seed reports from
+#    the host; the worker builds them. If your host's permissions block the
+#    container user (uid 10001; not an issue on Docker Desktop), drop this
+#    mount and run the seed commands inside the container instead;
+#  * pins the dev SECRET_ENCRYPTION_KEY (trellum_portal/settings/dev.py) so the
+#    worker can decrypt DataSource credentials created from the host;
+#  * caps the container at 2 GB so the "oom" stress profile (touches ~2 GB
+#    resident) gets SIGKILLed by the kernel -> status OOM_KILLED;
+#  * sets a 1536 MB runner budget so memory admission (head-of-queue
+#    blocking, reserved-vs-budget on /operator/) actually has to say no.
+
+services:
+  db:
+    ports:
+      # If another Postgres already owns 5433 on your host (a standalone dev
+      # container, say), pick a free port: TRELLUM_SIM_DB_PORT=5434 and point
+      # DATABASE_URL at it for the host-side manage.py commands.
+      - "127.0.0.1:${TRELLUM_SIM_DB_PORT:-5433}:5432"
+
+  worker:
+    mem_limit: 2g
+    memswap_limit: 2g
+    environment:
+      SECRET_ENCRYPTION_KEY: "5oyYd0zpeq5F1zqLBTXCzCUJ9WQ0P84qBcNPXuMUsUE="
+      WORKER_MAX_CONCURRENT: "3"
+      TRELLUM_RUNNER_MEMORY_BUDGET_MB: "1536"
+      TRELLUM_DEFAULT_JOB_MEMORY_MB: "256"
+      TRELLUM_JOB_MEMORY_ENFORCE: "true"
+    volumes:
+      - ./.data-dev:/data

@@ -1,0 +1,35 @@
+# All database drivers and cloud file sources.
+# Installed in Docker and CI. Optional for local dev.
+-r requirements.txt
+
+# Database drivers
+google-cloud-bigquery>=3.0.0
+db-dtypes>=1.0.0
+psycopg2-binary>=2.9.0
+pymysql>=1.1.0
+snowflake-connector-python[pandas]>=3.0.0
+clickhouse-connect>=0.7.0
+duckdb>=1.0.0
+pymssql>=2.3.0
+trino>=0.330.0
+databricks-sql-connector>=4.0.0
+
+# SSH tunnels to any host/port source (trellum/data/ssh_tunnel.py)
+paramiko>=3.2
+
+
+# Cloud file sources
+gspread>=5.0.0
+google-auth>=2.0.0
+msal>=1.24.0
+pyarrow>=14.0.0
+
+# Cloud storage paths (s3://, gs://)
+# These SIX packages are tightly coupled — always pin and update together.
+# aiobotocore pins botocore to a narrow range; boto3 must match botocore.
+s3fs==2026.6.0
+gcsfs==2026.5.0
+fsspec==2026.6.0
+aiobotocore==2.19.0
+botocore==1.36.3
+boto3==1.36.3

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Organizations — Operator{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div class="ui-label page-kicker">Operator</div>
+  <h1>Organizations</h1>
+</header>
+{% include "operator/_nav.html" %}
+
+<div class="panel">
+<table class="ui-table">
+  <thead><tr><th>Slug</th><th>Name</th><th>Studios</th><th>Members</th><th>Building</th><th>Status</th></tr></thead>
+  <tbody>
+  {% for org in orgs %}
+  <tr>
+    <td><a href="{% url 'operator-org-detail' org.slug %}"><strong>{{ org.slug }}</strong></a></td>
+    <td>{{ org.name }}</td>
+    <td>{{ org.studio_count }}</td>
+    <td>{{ org.member_count }}</td>
+    <td>{{ org.active_runs }}</td>
+    <td>
+      {% if org.is_active %}<span class="ui-badge ok">active</span>
+      {% else %}<span class="ui-badge fail">suspended</span>{% endif %}
+    </td>
+  </tr>
+  {% empty %}
+  <tr><td colspan="6"><div class="ui-empty">No organizations yet.</div></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

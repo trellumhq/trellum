@@ -1,0 +1,55 @@
+.fw-filter-slider-item { min-width: 160px; }
+/* Ordinal sliders carry pip labels below the track (see .noUi-pips
+   below), which need more room than a bare numeric range -- enough for a
+   handful of short category labels (e.g. 4 tiers) to each get their own
+   pip before _pipPositions in slider_filter.js falls back to endpoints
+   only. */
+.fw-filter-slider-item--ordinal { min-width: 260px; padding-bottom: 34px; }
+.fw-slider-readout {
+    font-size: 12px; font-weight: 600; color: var(--text-main);
+    white-space: nowrap;
+}
+.fw-slider {
+    margin: 10px 4px 4px; height: 4px;
+}
+
+/* Restyle noUiSlider with theme tokens instead of its stock skin. */
+.fw-slider.noUi-target {
+    background: var(--border-color); border: none; border-radius: 3px;
+    box-shadow: none;
+}
+.fw-slider .noUi-connects { border-radius: 3px; }
+.fw-slider .noUi-connect { background: var(--accent-blue); }
+.fw-slider .noUi-handle {
+    width: 14px; height: 14px; right: -7px; top: -5px;
+    border-radius: 50%; background: var(--bg-card);
+    border: 2px solid var(--accent-blue); box-shadow: none;
+    cursor: pointer;
+}
+.fw-slider .noUi-handle:before,
+.fw-slider .noUi-handle:after { display: none; }
+.fw-slider .noUi-handle:hover { background: var(--accent-blue); }
+.fw-slider .noUi-handle:focus-visible {
+    outline: 2px solid var(--accent-blue); outline-offset: 2px;
+}
+.fw-slider[disabled] .noUi-connect { background: var(--text-muted); }
+.fw-slider[disabled] .noUi-handle { border-color: var(--text-muted); cursor: not-allowed; }
+
+/* Ordinal slider pips -- one tick per category (or just the two endpoints
+   when the track is too narrow for every label; see _pipPositions in
+   slider_filter.js). Theme tokens only, same restyle-the-stock-skin
+   approach as the track/handle rules above. */
+.fw-slider .noUi-pips { color: var(--text-secondary); }
+.fw-slider .noUi-marker { background: var(--border-color); }
+.fw-slider .noUi-marker-large { background: var(--border-color); }
+.fw-slider .noUi-value {
+    font-size: var(--font-size-label); color: var(--text-secondary);
+}
+/* noUiSlider's stock pips container is 80px tall and absolutely positioned,
+   so it takes no layout space -- the labels would overlay the section below.
+   Pin it to just the label band; the item's padding-bottom (above) reserves
+   the matching in-flow room so nothing overlaps. */
+.fw-slider.noUi-target .noUi-pips-horizontal {
+    height: 26px; padding: 6px 0 0; top: 100%;
+}
+.fw-slider .noUi-value-horizontal { margin-top: 1px; }

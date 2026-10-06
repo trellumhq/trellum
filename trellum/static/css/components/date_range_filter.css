@@ -1,0 +1,63 @@
+.fw-filter-date-item { position: relative; }
+.fw-date-range { position: relative; }
+.fw-date-trigger {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; font-size: var(--font-size-interface); font-weight: 500;
+    background: var(--bg-card); color: var(--text-main);
+    border: 1px solid var(--border-color); border-radius: var(--radius-control);
+    cursor: pointer; white-space: nowrap; transition: all 0.15s;
+    font-family: inherit;
+}
+.fw-date-trigger:hover { border-color: var(--accent-red); }
+.fw-date-trigger-icon { width: 14px; height: 14px; opacity: 0.5; flex-shrink: 0; }
+.fw-date-popover {
+    display: none; position: absolute; top: calc(100% + 4px); left: 0;
+    z-index: 200; min-width: 280px;
+    background: var(--bg-card); border: 1px solid var(--border-color);
+    border-radius: var(--radius-card); padding: 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+}
+.fw-date-popover.open { display: block; }
+.fw-date-popover-row {
+    display: flex; gap: 8px; margin-bottom: 8px;
+}
+.fw-date-field { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.fw-date-field-label {
+    font-size: var(--font-size-label); text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--text-secondary); font-weight: 600;
+}
+.fw-date-popover .fw-date-input {
+    padding: 5px 8px; font-size: var(--font-size-interface); width: 100%;
+    background: var(--bg-main); color: var(--text-main);
+    border: 1px solid var(--border-color); border-radius: var(--radius-control);
+    box-sizing: border-box;
+}
+.fw-date-hour-row {
+    display: flex; align-items: center; gap: 6px;
+    margin-bottom: 8px;
+}
+.fw-date-hour {
+    padding: 4px 8px; font-size: var(--font-size-interface); flex: 1;
+    background: var(--bg-main); color: var(--text-main);
+    border: 1px solid var(--border-color); border-radius: var(--radius-control);
+    font-family: inherit;
+}
+.fw-date-sep { color: var(--text-secondary); font-size: 12px; flex-shrink: 0; }
+.fw-date-presets {
+    display: flex; gap: 4px; flex-wrap: wrap;
+    border-top: 1px solid var(--border-color); padding-top: 8px;
+}
+.fw-date-preset {
+    padding: 4px 10px; font-size: var(--font-size-interface); font-weight: 500;
+    border: 1px solid var(--border-color); border-radius: var(--radius-control);
+    background: transparent; color: var(--text-secondary);
+    cursor: pointer; white-space: nowrap; transition: all 0.15s;
+    line-height: 1.4; font-family: inherit;
+}
+.fw-date-preset:hover {
+    border-color: var(--accent-red); color: var(--accent-red);
+}
+.fw-date-preset.active {
+    background: var(--primary-fill); color: var(--on-accent);
+    border-color: var(--primary-fill); font-weight: 600;
+}

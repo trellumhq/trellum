@@ -1,0 +1,160 @@
+# Packaging for the standalone report framework inside the product monorepo.
+# __init__.py sits at this directory's root, so package-dir below maps it to
+# the installed `trellum` package.
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trellum"
+dynamic = ["version"]
+description = "Build themed, interactive BI reports as self-contained HTML + JSON."
+readme = "README.md"
+license = "AGPL-3.0-only"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+
+# Mirrors requirements.txt: core only. Drivers stay out -- a report project
+# must not have to install every database client to render a chart. They live
+# in the `drivers` extra below.
+dependencies = [
+  "pandas>=2.0.0",
+  "numpy>=1.24.0",
+  "vertica-python>=1.0.1",
+  "openpyxl>=3.0.0",
+  "python-dotenv>=1.0.0",
+  "pyyaml>=6.0",
+  "jinja2>=3.1.0",
+  "orjson>=3.9.0",
+  "requests>=2.28.0",
+  "Pillow>=10.0.0",
+]
+
+[project.urls]
+Source = "https://github.com/trellumhq/trellum"
+Documentation = "https://trellum.dev/docs/latest/"
+Issues = "https://github.com/trellumhq/trellum/issues"
+
+[project.scripts]
+# The agent-facing entry point. `python -m trellum.run` is unchanged and
+# remains the build command; this one exists so the framework can describe
+# itself without anyone reading its source.
+trellum = "trellum.cli:main"
+
+[project.optional-dependencies]
+# Keep in sync with requirements-drivers.txt.
+drivers = [
+  "google-cloud-bigquery>=3.0.0",
+  "db-dtypes>=1.0.0",
+  "psycopg2-binary>=2.9.0",
+  "pymysql>=1.1.0",
+  "snowflake-connector-python[pandas]>=3.0.0",
+  "clickhouse-connect>=0.7.0",
+  "duckdb>=1.0.0",
+  "pymssql>=2.3.0",
+  "trino>=0.330.0",
+  "databricks-sql-connector>=4.0.0",
+  "paramiko>=3.2",
+  "gspread>=5.0.0",
+  "google-auth>=2.0.0",
+  "msal>=1.24.0",
+  "pyarrow>=14.0.0",
+  "s3fs==2026.6.0",
+  "gcsfs==2026.5.0",
+  "fsspec==2026.6.0",
+  "aiobotocore==2.19.0",
+  "botocore==1.36.3",
+  "boto3==1.36.3",
+]
+
+
+[tool.setuptools.dynamic]
+# One source of truth for the version: trellum/__init__.py. setuptools reads
+# it by AST, so this does not import the package (and its dependencies) at
+# build time.
+version = { attr = "trellum.__version__" }
+
+[tool.setuptools]
+# The repo root IS the package. Without this, setuptools would publish
+# `components`, `data`, `run`, ... as separate top-level packages and
+# `import trellum` would fail -- while `import components` would start
+# shadowing anything else on the path.
+package-dir = { "trellum" = "." }
+
+# Listed explicitly rather than auto-discovered. Auto-discovery over a
+# root-package layout sweeps up demo/ and docs/, and it is better
+# for a new subpackage to fail a test loudly than to ship by accident.
+packages = [
+  "trellum",
+  "trellum.agent",
+  "trellum.cli",
+  "trellum.cli.commands",
+  "trellum.components",
+  "trellum.components.charts",
+  "trellum.components.filters",
+  "trellum.data",
+  "trellum.data.drivers",
+  "trellum.demo",
+  "trellum.demo.tools",
+  "trellum.init",
+  "trellum.new",
+  "trellum.output_backends",
+  "trellum.rendering",
+  "trellum.reporting",
+  "trellum.reporting.diagnostics",
+  "trellum.review",
+  "trellum.run",
+  "trellum.runner",
+  "trellum.scaffold",
+  "trellum.stats",
+  "trellum.stats.ab",
+  "trellum.testing",
+  "trellum.themes",
+  "trellum.validation",
+  "trellum.validation.checks",
+]
+
+[tool.setuptools.package-data]
+# The part that breaks silently when it is wrong. static/vendor carries the
+# whole client runtime -- Chart.js, Plotly, the geo topojson, the Inter fonts.
+# Omit it and `import trellum` still succeeds, builds still exit 0, and every
+# report renders with no charts.
+#
+# AGENTS.md ships too: once installed from a wheel it is the only copy an agent
+# (or `trellum guide`) can reach. See trellumhq/trellum#13.
+"trellum" = [
+  "config.yaml",
+  "AGENTS.md",
+  # AGENTS.md line 5 is `@README.md` -- an import directive, not a mention. It
+  # delegates the entire feature reference (components, ctx API, themes,
+  # validator details, fw.* namespace) to this file. Shipping the workflow
+  # guide without the reference it imports leaves an agent to reconstruct the
+  # reference by grepping charts.py, which is exactly what happened.
+  #
+  # `[project] readme` does NOT cover this: that only writes the text into the
+  # wheel METADATA, not onto disk beside the package.
+  "README.md",
+  "LICENSE",
+  "THIRD-PARTY.md",
+  "static/**/*",
+]
+
+# The demo project ships so that a fresh install has something to run --
+# `python -m trellum.demo` copies these into the user's project.
+#
+# Two things deliberately absent:
+#   demo/trellum/  the dev-only import shim; meaningless outside this repo
+#   *.sqlite         the warehouse is GENERATED on install, not shipped. It
+#                    keeps the wheel small, and it dates the data relative to
+#                    the day you install rather than the day we cut the release.
+"trellum.demo" = [
+  "config.yaml",
+  "metrics.yaml",
+  "assistant.md",
+  "README.md",
+  "reports/**/*.py",
+  "reports/**/*.yaml",
+  "data-sources/config.yaml",
+  "data-sources/uploads/*.csv",
+]

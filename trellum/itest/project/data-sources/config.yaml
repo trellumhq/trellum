@@ -1,0 +1,20 @@
+# Data sources for the itest report-build lane (itest/test_report_build.py).
+#
+# Deliberately no host/port/database here: every field flows through
+# credentials.local -> LocalEnvResolver -> BI_ITEST_<PG|CH>_* env vars,
+# which is the exact path this lane exists to prove end to end (and why
+# Phase 2 of the driver work added the `_SECURE` env suffix -- ch_db needs
+# it to reach a plain-HTTP ClickHouse container).
+
+sources:
+  pg_db:
+    type: postgres
+    description: "itest postgres container"
+    credentials:
+      local: BI_ITEST_PG
+
+  ch_db:
+    type: clickhouse
+    description: "itest clickhouse container"
+    credentials:
+      local: BI_ITEST_CH

@@ -1,0 +1,45 @@
+# Build context excludes for Dockerfile.selfhosted (built from this directory).
+# Keeps the image small and avoids baking local state or secrets into a layer.
+
+.git
+.gitignore
+.github
+
+__pycache__
+**/__pycache__
+*.py[cod]
+.pytest_cache
+.ruff_cache
+.mypy_cache
+
+# Local state and credentials — must never reach an image.
+.env
+.env.*
+*.log
+output/
+.git_cache/
+.venv/
+.data-dev/
+.data-test/
+staticfiles/
+
+# Docs, examples and tests are not needed at runtime.
+docs/
+examples/
+apps/*/tests/
+scripts/
+/*.md
+
+
+# Inside the framework, exclude only what is unambiguously dead
+# weight. trellum/demo/ matters most: it carries a ~16 MB fixture database
+# that has no business in a portal image. trellum/testing/ deliberately
+# stays -- `trellum.run --test` imports it, and the day someone wires a
+# test-mode run into the portal a missing package is a baffling failure.
+trellum/demo/
+trellum/.venv/
+# Wheel build output. `python -m build` leaves 8 MB of it beside the source,
+# and without this it lands in every image -- it is the same code twice.
+trellum/build/
+trellum/dist/
+trellum/*.egg-info/

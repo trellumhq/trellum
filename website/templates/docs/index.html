@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}Documentation — {{ BRAND }}{% endblock %}
+
+{% block content %}
+<div class="docs">
+  {% include "docs/_sidebar.html" %}
+
+  <article class="docs-main">
+    <div class="crumbs">Docs</div>
+    <h1>{{ BRAND }} documentation</h1>
+    <div class="meta">Version: {{ version }}</div>
+    {% if unreleased %}<div class="admonition warning"><p class="admonition-title">Development documentation</p><p>This version describes unreleased source from the default branch.</p></div>{% endif %}
+    <p>How to install and run {{ BRAND }}, use it day to day, and operate it in production. Troubleshooting is kept separate so you can jump straight there when something is wrong.</p>
+
+    <div class="guide-cards">
+      {% for section in sections %}
+        <div class="guide-card">
+          <h3>{{ section.title }}</h3>
+          {% if section.summary %}<p>{{ section.summary }}</p>{% endif %}
+          <ul>
+            {% for item in section.pages %}<li><a href="{{ item.url }}">{{ item.title }}</a></li>{% endfor %}
+          </ul>
+        </div>
+      {% endfor %}
+    </div>
+  </article>
+</div>
+{% endblock %}

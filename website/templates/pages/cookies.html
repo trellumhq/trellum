@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Cookies — {{ BRAND }}{% endblock %}
+{% block description %}Browser storage used by the {{ BRAND }} static website.{% endblock %}
+{% block content %}
+<div class="blog-wrap"><article class="docs-main">
+  <div class="crumbs">Legal</div>
+  <h1>Cookies</h1>
+  <p>This static site sets no cookies and includes no analytics or advertising
+     trackers.</p>
+  <p>The theme toggle saves your light or dark preference in your browser's
+     local storage. That value stays in your browser and is not sent to us.
+     Clearing this site's browser data removes it.</p>
+  <h2>Contact</h2>
+  <p><a href="mailto:{{ CONTACT_EMAIL }}">{{ CONTACT_EMAIL }}</a></p>
+</article></div>
+{% endblock %}

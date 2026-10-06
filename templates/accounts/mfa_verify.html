@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Verify — trellum{% endblock %}
+{% block content %}
+<div class="auth-shell">
+  <div class="panel auth-card">
+    <h1>Verification code</h1>
+    <p class="ui-help">Enter the 6-digit code from your authenticator app, or one
+    of your recovery codes if you've lost access to it.</p>
+    {{ form.non_field_errors }}
+    <form method="post">
+      {% csrf_token %}
+      <div class="ui-field">
+        <label for="id_code">Code</label>
+        {{ form.code }}{{ form.code.errors }}
+      </div>
+      <div class="ui-form-actions">
+        <button class="ui-btn primary" type="submit">Verify</button>
+        <a href="/login" class="auth-alt-link">Back to login</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

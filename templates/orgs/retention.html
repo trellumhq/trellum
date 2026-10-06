@@ -1,0 +1,171 @@
+{% extends "settings_base.html" %}
+{% block title %}Data retention — {{ org.name }}{% endblock %}
+{% block settings %}
+<header class="page-head">
+  <div class="ui-label page-kicker scope-org">Organization · {{ org.name }}</div>
+  <h1>Data retention</h1>
+  <p class="muted page-sub">Your reports and the files you upload are kept for as long as you
+    use them. Nothing here expires data anyone is still working with: built output stays until
+    someone deletes the report, and an uploaded file stays as long as a data source points at
+    it. What these windows govern is what is left behind afterwards — a file nothing references
+    any more, or the output of a studio that was deleted. Reports, schedules and history are
+    never touched.</p>
+</header>
+
+<div class="panel formrow">
+  <form method="post" data-settings-form>
+    {% csrf_token %}
+    <label for="retention-built-days">Built report data</label>
+    <input id="retention-built-days" type="number" min="0" max="32767" step="1"
+           name="retention_built_days" class="ui-input"
+           value="{% if built_days is not None %}{{ built_days }}{% endif %}"
+           placeholder="{{ ceiling }} (instance default)">
+    <span class="helptext">
+      {% if ceiling %}
+        This instance keeps built output for at most <strong>{{ ceiling }} days</strong> — your
+        organization can set a shorter window, never a longer one. Leave it blank to use that
+        default, or enter <strong>0</strong> to mean the same thing: 0 is not “keep forever” here,
+        it is “as short as this instance allows.”
+      {% else %}
+        Built output is kept until someone deletes the report — that is the default and nothing
+        needs changing here. Set a number of days only if your own retention policy requires
+        built data to be removed on a schedule.
+      {% endif %}
+    </span>
+    <p class="muted" style="margin:4px 0 14px">
+      {% if resolved_built %}
+        Currently expires built output after <strong>{{ resolved_built }} day{{ resolved_built|pluralize }}</strong>
+        — <span class="ui-badge {% if built_inherited %}muted{% else %}accent{% endif %}">
+          {% if built_inherited %}using the instance default{% else %}set for this organization{% endif %}</span>.
+      {% else %}
+        Built output is <strong>kept until the report is deleted</strong>
+        — <span class="ui-badge muted">no expiry</span>.
+      {% endif %}
+    </p>
+
+    <label for="retention-upload-days">Abandoned uploads</label>
+    <input id="retention-upload-days" type="number" min="0" max="32767" step="1"
+           name="retention_abandoned_upload_days" class="ui-input"
+           value="{% if upload_days is not None %}{{ upload_days }}{% endif %}"
+           placeholder="{{ default_upload }} (instance default)">
+    <span class="helptext">
+      Starts counting from the day a file stops being used by any data source — replacing it or
+      deleting the connection starts the clock, not the upload itself. No ceiling: your
+      organization may keep uploads longer than the instance default, and <strong>0 here really
+      does mean “keep forever.”</strong>
+    </span>
+    <p class="muted" style="margin:4px 0 14px">
+      Currently sweeps an abandoned upload after <strong>{{ resolved_upload }} day{{ resolved_upload|pluralize }}</strong>
+      — <span class="ui-badge {% if upload_inherited %}muted{% else %}accent{% endif %}">
+        {% if upload_inherited %}using the instance default{% else %}set for this organization{% endif %}</span>.
+    </p>
+
+    <button class="ui-btn primary" type="submit">Save changes</button>
+  </form>
+</div>
+
+<h2>Expiring in the next 7 days</h2>
+{% if expiring %}
+<div class="panel">
+<table class="ui-table">
+  <thead>
+    <tr><th>Report / file</th><th>Kind</th><th>Built / abandoned</th><th>Size</th><th>Time left</th></tr>
+  </thead>
+  <tbody>
+  {% for item in expiring %}
+  <tr>
+    <td><strong>{{ item.name }}</strong></td>
+    <td>{% if item.kind == "built" %}<span class="ui-badge">built output</span>{% else %}<span class="ui-badge">upload</span>{% endif %}</td>
+    <td class="muted">{{ item.when|date:"Y-m-d" }}</td>
+    <td class="muted">{{ item.size|filesizeformat }}</td>
+    <td><span class="ui-badge warn">{% if item.days_left <= 0 %}today{% else %}{{ item.days_left }} day{{ item.days_left|pluralize }}{% endif %}</span></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="ui-empty">Nothing is expiring in the next 7 days.</div>
+{% endif %}
+
+{% if dormant_days %}
+{% comment %}Instance policy, not one of this org's windows — so it is shown,
+never edited, here. The row shape follows Organization settings → Members:
+display name over email, one badge carrying its own meaning.{% endcomment %}
+<h2>People who are about to lose their account</h2>
+<p class="muted">This instance closes accounts nobody has signed in to for
+  {{ dormant_days }} day{{ dormant_days|pluralize }}. Everyone below is warned by email first, and
+  <strong>one sign-in cancels it</strong> — there is nothing for you to approve. If somebody here is
+  on long leave, telling them to sign in once is the whole fix.</p>
+{% if dormant %}
+<div class="panel">
+<table class="ui-table">
+  <thead>
+    <tr><th>Member</th><th>Last signed in</th><th>Stage</th><th>Next</th><th>Deleted on</th></tr>
+  </thead>
+  <tbody>
+  {% for row in dormant %}
+  <tr>
+    <td>
+      <strong>{{ row.user.display_name }}</strong><br>
+      <span class="muted">{{ row.user.email }}</span>
+    </td>
+    <td class="muted">
+      {% if row.never_signed_in %}Never — joined {{ row.last_seen|date:"Y-m-d" }}
+      {% else %}{{ row.last_seen|date:"Y-m-d" }}{% endif %}
+    </td>
+    <td>
+      {% if row.stage == "disabled" %}<span class="ui-badge warn">sign-in switched off</span>
+      {% elif row.stage == "warned" %}<span class="ui-badge warn">warned by email</span>
+      {% else %}<span class="ui-badge">not warned yet</span>{% endif %}
+    </td>
+    <td class="muted">
+      {% if row.next_at %}{{ row.next_at|date:"Y-m-d" }}
+        ({% if row.days_left <= 0 %}today{% else %}in {{ row.days_left }} day{{ row.days_left|pluralize }}{% endif %})
+      {% else %}—{% endif %}
+    </td>
+    <td class="muted">{% if row.erase_on %}{{ row.erase_on|date:"Y-m-d" }}{% else %}never{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="ui-empty">Nobody in {{ org.name }} is approaching dormancy.</div>
+{% endif %}
+{% endif %}
+
+<h2>Preview tonight's sweep</h2>
+<p class="muted">See exactly what would be removed if cleanup ran right now, without removing
+  anything.</p>
+{% if preview %}
+<div class="panel">
+  {% if preview.total_count %}
+  <p>Tonight's sweep would remove <strong>{{ preview.total_count }} item{{ preview.total_count|pluralize }}</strong>,
+    freeing <strong>{{ preview.total_freed|filesizeformat }}</strong>:</p>
+  <ul>
+    {% if preview.built_count %}<li>{{ preview.built_count }} built report output{{ preview.built_count|pluralize }}
+      ({{ preview.built_freed|filesizeformat }})</li>{% endif %}
+    {% if preview.upload_count %}<li>{{ preview.upload_count }} abandoned upload{{ preview.upload_count|pluralize }}
+      ({{ preview.upload_freed|filesizeformat }})</li>{% endif %}
+  </ul>
+  {% else %}
+  <p class="muted">Nothing is past its window right now — tonight's sweep would remove nothing.</p>
+  {% endif %}
+  <a class="ui-btn ghost" href="?preview=1">Refresh preview</a>
+</div>
+{% else %}
+<a class="ui-btn" href="?preview=1">Preview tonight's sweep</a>
+{% endif %}
+
+<footer class="muted" style="margin-top:24px">
+  {% if last_purge %}
+    Cleanup last freed {{ last_purge.freed_bytes|filesizeformat }} for this organization on
+    {{ last_purge.when|date:"Y-m-d H:i" }}.
+  {% else %}
+    Cleanup hasn't needed to remove anything for this organization yet.
+  {% endif %}
+  {% if cleanup_ran_at %}The nightly job itself last ran {{ cleanup_ran_at|timesince }} ago.{% endif %}
+  <a href="/orgs/{{ org.slug }}/settings/audit">See the audit log</a>.
+</footer>
+{% endblock %}

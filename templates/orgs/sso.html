@@ -1,0 +1,165 @@
+{% extends "settings_base.html" %}
+{% block title %}Single sign-on — {{ org.name }}{% endblock %}
+{% block settings %}
+<header class="page-head">
+  <div class="ui-label page-kicker scope-org">Organization · {{ org.name }}</div>
+  <h1>Single sign-on</h1>
+  <p class="muted page-sub">Users whose email domain matches sign in through your identity source —
+    any OpenID Connect provider (Keycloak, Okta, Google, Microsoft Entra ID, …), or an
+    LDAP / Active Directory server the portal checks the password against directly.
+    Secrets are stored encrypted and only used server-side.</p>
+</header>
+
+<div class="ui-panel">
+  <span class="ui-label">Redirect URI</span>
+  <p class="muted" style="margin:4px 0 8px">For OpenID Connect: register this portal as a client (an "app registration")
+  at your identity provider and paste this redirect URI. Grant the <code>openid</code>, <code>profile</code>,
+  <code>email</code> scopes; optionally emit a groups claim for group mapping.</p>
+  {% include "_copy_field.html" with value=redirect_uri %}
+</div>
+
+<fieldset style="border:0;padding:0;margin:0;min-width:0">
+<div class="panel formrow">
+  <form method="post" data-settings-form>
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+    <label class="ui-check-row">{{ form.enabled }} Enable SSO</label>
+    <label>Identity source</label>{{ form.auth_method }}{{ form.auth_method.errors }}
+
+    <div data-reveal="oidc">
+    <p class="ui-label" style="margin:18px 0 0">App registration</p>
+    <label>Issuer URL</label>{{ form.issuer_url }}{{ form.issuer_url.errors }}
+    <span class="helptext">Your identity provider's OpenID Connect issuer; the portal fetches
+    <code>/.well-known/openid-configuration</code> from it when you save.
+    Microsoft Entra: <code>https://login.microsoftonline.com/&lt;tenant-id&gt;/v2.0</code> ·
+    Google: <code>https://accounts.google.com</code> ·
+    Okta: <code>https://&lt;your-domain&gt;.okta.com</code> ·
+    Keycloak: <code>https://&lt;host&gt;/realms/&lt;realm&gt;</code></span>
+    <label>Client ID</label>{{ form.client_id }}{{ form.client_id.errors }}
+    <label>Client secret <span class="muted">(blank = keep current)</span></label>{{ form.client_secret }}
+    </div>
+
+    <div data-reveal="ldap">
+    <p class="ui-label" style="margin:18px 0 0">Directory</p>
+    <label>Server URI</label>{{ form.ldap_server_uri }}{{ form.ldap_server_uri.errors }}
+    <span class="helptext">{{ form.ldap_server_uri.help_text }} Every connection is TLS and the certificate is always verified.</span>
+    <label>CA certificate <span class="muted">(PEM, for a private CA)</span></label>{{ form.ldap_ca_cert }}{{ form.ldap_ca_cert.errors }}
+    <span class="helptext">{{ form.ldap_ca_cert.help_text }} Leave blank when the server's certificate is publicly trusted.</span>
+    <label>Bind DN</label>{{ form.ldap_bind_dn }}{{ form.ldap_bind_dn.errors }}
+    <span class="helptext">{{ form.ldap_bind_dn.help_text }}</span>
+    <label>Bind password <span class="muted">(blank = keep current)</span></label>{{ form.ldap_bind_password }}
+    <label>User search base</label>{{ form.ldap_user_search_base }}{{ form.ldap_user_search_base.errors }}
+    <span class="helptext">{{ form.ldap_user_search_base.help_text }}</span>
+    <label>User filter</label>{{ form.ldap_user_filter }}{{ form.ldap_user_filter.errors }}
+    <span class="helptext">{{ form.ldap_user_filter.help_text }} Exactly one entry must match.</span>
+    <label>Email attribute</label>{{ form.ldap_email_attr }}{{ form.ldap_email_attr.errors }}
+    <label>Display name attribute</label>{{ form.ldap_name_attr }}{{ form.ldap_name_attr.errors }}
+    <label>Groups attribute</label>{{ form.ldap_group_attr }}{{ form.ldap_group_attr.errors }}
+    <span class="helptext">{{ form.ldap_group_attr.help_text }}</span>
+    </div>
+
+    <p class="ui-label" style="margin:18px 0 0">Access rules</p>
+    <label>{{ form.email_domains_text.label }}</label>{{ form.email_domains_text }}{{ form.email_domains_text.errors }}
+    <span class="helptext">{{ form.email_domains_text.help_text }}</span>
+    <label class="ui-check-row">{{ form.allow_password_login }} Still allow password login for these domains</label>
+    <label class="ui-check-row">{{ form.enforce_sso }} <strong>Enforce SSO for all members</strong></label>
+    <span class="helptext">Every member of this organization must sign in through your identity source,
+    whatever their email domain. Local password login is refused for them. Instance operators
+    stay exempt so a broken SSO config can always be repaired.</span>
+    <label class="ui-check-row">{{ form.auto_provision }} Create portal accounts on first SSO login</label>
+    <label>Org role for auto-created users</label>{{ form.default_org_role }}
+    <label>Permission groups for auto-created users</label>{{ form.default_groups }}
+
+    <p class="ui-label" style="margin:18px 0 0">Group mapping</p>
+    <div data-reveal="oidc">
+    <label>Groups claim</label>{{ form.groups_claim }}{{ form.groups_claim.errors }}
+    <span class="helptext">{{ form.groups_claim.help_text }}</span>
+    </div>
+    <label>{{ form.group_map_text.label }}</label>{{ form.group_map_text }}{{ form.group_map_text.errors }}
+    <span class="helptext">{{ form.group_map_text.help_text }}</span>
+    <label>Extra scopes</label>{{ form.extra_scopes }}{{ form.extra_scopes.errors }}
+    <span class="helptext">{{ form.extra_scopes.help_text }}</span>
+
+    <p></p>
+    <button class="ui-btn primary" type="submit">Save changes</button>
+  </form>
+  {% if cfg and cfg.is_ldap %}
+  <form method="post" class="inline" style="margin-top:12px">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="test-ldap">
+    <button class="ui-btn ghost" type="submit">Test directory connection</button>
+    <span class="helptext">Binds with the saved settings and reads the search base.</span>
+  </form>
+  {% endif %}
+</div>
+
+<h2>Domain ownership</h2>
+<div class="panel">
+{% if domain_verification_required %}
+<p class="muted" style="margin-top:0">Whoever routes a domain decides who may
+sign in as its users, so on this instance a domain only routes logins once you
+have proved you own it. <strong>Claimed but unverified domains are ignored.</strong></p>
+{% else %}
+<p class="muted" style="margin-top:0">Verification is not required on this
+instance, so every domain above routes logins. You may still verify domains;
+it costs nothing and is required if this instance ever becomes shared.</p>
+{% endif %}
+
+{% if unclaimed_domains %}
+<p><strong>Not yet claimed:</strong>
+  {% for d in unclaimed_domains %}<code>{{ d }}</code>{% if not forloop.last %}, {% endif %}{% endfor %}
+</p>
+{% endif %}
+
+<table class="ui-table dense" data-mobile-cards>
+  <thead><tr><th>Domain</th><th>Status</th><th>DNS record to publish</th><th></th></tr></thead>
+  <tbody>
+  {% for d in claimed_domains %}
+  <tr>
+    <td data-label="Domain"><code>{{ d.domain }}</code></td>
+    <td data-label="Status">
+      {% if d.is_verified %}<span class="ui-badge ok">verified</span>
+      {% else %}<span class="ui-badge">pending</span>{% endif %}
+      {% if d.last_error and not d.is_verified %}
+      <div class="muted" style="font-size:var(--fs-xs)">{{ d.last_error }}</div>
+      {% endif %}
+    </td>
+    <td data-label="DNS record">
+      {% if d.is_verified %}<span class="muted">—</span>
+      {% else %}
+      <div style="font-size:var(--fs-xs)">
+        <code>{{ d.dns_record_name }}</code><br>
+        TXT <code>{{ d.dns_record_value }}</code>
+      </div>
+      {% endif %}
+    </td>
+    <td class="ui-row-actions" data-label="Actions">
+      {% if not d.is_verified %}
+      <form class="inline" method="post">{% csrf_token %}
+        <input type="hidden" name="action" value="verify-domain">
+        <input type="hidden" name="domain_id" value="{{ d.pk }}">
+        <button class="ui-btn ghost" type="submit">Verify</button>
+      </form>
+      {% endif %}
+      <form class="inline" method="post">{% csrf_token %}
+        <input type="hidden" name="action" value="remove-domain">
+        <input type="hidden" name="domain_id" value="{{ d.pk }}">
+        <button class="ui-btn ghost" type="submit">Remove</button>
+      </form>
+    </td>
+  </tr>
+  {% empty %}
+  <tr><td colspan="4"><div class="ui-empty">No domains claimed yet.</div></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<form method="post" class="inline" style="margin-top:12px">
+  {% csrf_token %}
+  <input type="hidden" name="action" value="claim-domain">
+  <input name="domain" placeholder="example.com" style="min-width:220px">
+  <button class="ui-btn ghost" type="submit">Claim domain</button>
+</form>
+</div>
+</fieldset>
+{% endblock %}

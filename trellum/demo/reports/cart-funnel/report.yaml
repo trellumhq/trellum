@@ -1,0 +1,40 @@
+# ─── Identity ───────────────────────────────────────────────
+name: "Cart Funnel"
+slug: cart-funnel
+description: "Where Northwind Threads loses buyers between landing and paying, split by device and channel, from shop_traffic."
+version: 0.1.0
+
+# ─── Scheduling ─────────────────────────────────────────────
+schedule:
+  cron: "0 6 * * *"
+  timezone: UTC
+
+# ─── Classification ─────────────────────────────────────────
+tags:
+  - commerce
+  - conversion
+  - funnel
+  - experiment
+studio: northwind
+category: Product
+
+# ─── Presentation ───────────────────────────────────────────
+theme: sunset
+
+# ─── A/B metadata ───────────────────────────────────────────
+# The fix the funnel provoked: still running, no end declared -- Northwind's
+# entry on the Experiments overview lives on the page that shows the leak
+# it is trying to plug.
+ab_test:
+  test_name: checkout_button_color
+  start_date: "2026-08-15"
+
+# ─── Data Sources ────────────────────────────────────────────
+data_sources:
+  - demo_db
+
+# ─── Display ─────────────────────────────────────────
+display:
+  icon: shopping-cart
+  color: "#e15759"
+  priority: 2

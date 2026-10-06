@@ -1,0 +1,13 @@
+{% comment %}The wizard's progress rail. Steps are not links: the pre-commit
+steps depend on session state built by the one before them, and the post-commit
+steps are a different gate entirely — a rail of clickable shortcuts would let
+you skip into a step whose prerequisites are missing.{% endcomment %}
+<ol class="setup-steps" aria-label="Setup progress">
+  {% for s in setup_steps %}
+  <li class="setup-step{% if s.current %} current{% endif %}{% if s.done %} done{% endif %}"
+      {% if s.current %}aria-current="step"{% endif %}>
+    <span class="setup-step-mark" aria-hidden="true">{% if s.done %}✓{% else %}{{ forloop.counter }}{% endif %}</span>
+    <span class="setup-step-label">{{ s.label }}</span>
+  </li>
+  {% endfor %}
+</ol>

@@ -1,0 +1,61 @@
+.tl-console-report-host {
+    position: fixed;
+    z-index: 40;
+    inset: 56px var(--assistant-w, 0px) 0 240px;
+    overflow: hidden;
+    background: var(--bg, #f6f7fb);
+}
+
+.tl-console-collapsed .tl-console-report-host { left: 64px; }
+
+.tl-console-report-host[hidden],
+.tl-console-report-host iframe[hidden],
+.tl-console-report-status[hidden] { display: none; }
+
+.tl-console-report-host iframe {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background: #fff;
+}
+
+.tl-console-report-status {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    gap: 12px;
+    padding: 24px;
+    color: var(--text2, #4b5563);
+    text-align: center;
+}
+
+.tl-console-report-status a {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 16px;
+    border: 1px solid var(--border, #d8dce6);
+    border-radius: 8px;
+    background: var(--surface, #fff);
+    color: var(--text, #111827);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+body.tl-console-report-hosting [data-console-catalog],
+body.tl-console-report-hosting [data-console-search],
+body.tl-console-report-hosting [data-console-search-toggle],
+body.tl-console-report-hosting #assistantLauncher {
+    display: none !important;
+}
+
+@media (max-width: 1023px) {
+    .tl-console-report-host { left: 0; }
+}
+
+@media print {
+    .tl-console-report-host { inset: 0; }
+}

@@ -1,0 +1,14 @@
+⚠ {{ run.title }} · {{ report.name|default:report.slug }}
+
+{{ report.studio.name }} · alert rule "{{ rule.name }}"
+
+{{ run.message }}
+{% if evidence %}
+What it looked at:
+{% for line in evidence %}- {{ line }}
+{% endfor %}{% endif %}
+View the report: {{ report_url }}
+Ask the assistant about it: {{ assistant_url }}
+
+--
+Sent by {{ instance_name }} to the recipients of the alert rule "{{ rule.name }}".

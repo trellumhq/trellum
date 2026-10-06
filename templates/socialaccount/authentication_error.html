@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Sign-in failed — trellum{% endblock %}
+{% block content %}
+<div class="panel formrow auth-card" style="margin:10vh auto 0">
+  <h1>Single sign-on didn't complete</h1>
+  <p class="muted">Your identity provider answered, but the sign-in could not be
+  finished on our side.</p>
+  <div class="ui-panel" style="margin:14px 0">
+    <span class="ui-label">Usual causes</span>
+    <ul class="muted" style="margin:6px 0 0;padding-left:18px">
+      <li>The <strong>client secret</strong> in the SSO settings is wrong or expired
+        (on Microsoft Entra, use the secret's <em>Value</em>, not its ID).</li>
+      <li>The issuer URL doesn't match the client registered at your identity provider.</li>
+      <li>The sign-in was started from a stale or reused link — just try again.</li>
+    </ul>
+  </div>
+  <p>
+    <a class="ui-btn primary" href="/login">Try again</a>
+    <span class="muted" style="margin-left:8px">Admins: check
+    Organization settings → Single sign-on, and the server log for the exact error.</span>
+  </p>
+</div>
+{% endblock %}

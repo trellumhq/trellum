@@ -1,0 +1,14 @@
+⚠ Broken · {{ report.name|default:report.slug }}
+
+{{ report.studio.name }}{% if failed_at %} · failed {{ failed_at }}{% endif %}
+
+The most recent build of this report failed.
+
+{{ error_excerpt }}
+
+{% if days_since_last_failure is not None %}This report also failed {{ days_since_last_failure }} day{{ days_since_last_failure|pluralize }} ago.{% endif %}
+
+View the report: {{ report_url }}
+
+--
+Sent by {{ instance_name }} to this studio's developers and admins.

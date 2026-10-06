@@ -1,0 +1,56 @@
+name: Feature request
+description: Propose something Trellum should be able to do
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing: [CONTRIBUTING.md](../blob/main/CONTRIBUTING.md) lists what this
+        project will not accept — new chart libraries, host-specific behaviour, and
+        breaking changes to the surfaces in `docs/COMPATIBILITY.md`. Worth a glance so
+        neither of us spends time on something that was never going to land.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: >-
+        What are you trying to do, and what stops you today? Describe the situation rather
+        than the solution — the best fix is often not the one either of us thought of first.
+    validations:
+      required: true
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: What you do instead today
+      description: >-
+        If you have a workaround, what is it and why is it unsatisfying? If you dropped to
+        `RawHTML` for this, say so — that is a strong signal a component is missing.
+    validations:
+      required: false
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you have in mind
+      description: A sketch is fine. Rough API, or the config you wish worked.
+      render: text
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of Trellum?
+      options:
+        - Components (charts, tables, KPIs, layout)
+        - Filtering and data sources
+        - Data connectors / drivers
+        - Themes and styling
+        - Build, CLI, or validation
+        - Agent-facing layer (AGENTS.md, guide, hooks)
+        - Documentation
+        - Not sure
+    validations:
+      required: true

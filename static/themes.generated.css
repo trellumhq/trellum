@@ -1,0 +1,619 @@
+/* ============================================================================
+   GENERATED FILE — DO NOT EDIT.
+
+   Written by `manage.py sync_themes` from trellum.themes.THEME_REGISTRY
+   plus apps/core/theme_overlay.py. Edit those, then regenerate. A test
+   (apps/core/tests/test_theme_sync.py) fails if this file is stale.
+
+   The framework owns the themes so a project using the framework alone can
+   pick one; the portal renders them for its dashboard chrome. The management
+   surface does NOT use this table — it has its own neutral palette in ui.css
+   and stays visually stable when a theme changes.
+   ========================================================================= */
+
+[data-theme="trellum light"] {
+    --bg: #f6f7f8;
+    --bg-card: #ffffff;
+    --bg-hover: #eef1f3;
+    --text: #172126;
+    --text2: #475569;
+    --text3: #64748b;
+    --accent: #0F766E;
+    --accent-soft: rgba(15,118,110,0.08);
+    --on-accent: #ffffff;
+    --green: #10b981;
+    --red: #ef4444;
+    --blue: #3b82f6;
+    --warn: #d97706;
+    --focus: #2563eb;
+    --border: #e2e6ea;
+    --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-hover: 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+}
+
+[data-theme="trellum dark"] {
+    --bg: #111315;
+    --bg-card: #181b1f;
+    --bg-hover: #23272d;
+    --text: #f3f4f6;
+    --text2: #a7adb8;
+    --text3: #8f96a3;
+    --accent: #0F766E;
+    --accent-soft: rgba(15,118,110,0.08);
+    --on-accent: #ffffff;
+    --green: #00c48c;
+    --red: #F87171;
+    --blue: #4C8BF5;
+    --warn: #fbbf24;
+    --focus: #4C8BF5;
+    --border: #30363d;
+    --shadow: 0 2px 8px rgba(0,0,0,0.3);
+    --shadow-hover: 0 6px 18px rgba(0,0,0,0.45), 0 2px 6px rgba(0,0,0,0.3);
+}
+
+[data-theme="light"] {
+    --bg: #f0f2f5;
+    --bg-card: #ffffff;
+    --bg-hover: #f8f9fc;
+    --text: #1e2028;
+    --text2: #6b7280;
+    --text3: #9ca3af;
+    --accent: #E84855;
+    --accent-soft: rgba(232,72,85,0.08);
+    --on-accent: #ffffff;
+    --green: #10b981;
+    --red: #d92d20;
+    --blue: #3b82f6;
+    --warn: #d97706;
+    --focus: #3b82f6;
+    --border: #e2e5ea;
+    --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-hover: 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+}
+
+[data-theme="dark"] {
+    --bg: #1A1A2E;
+    --bg-card: #2A2A3E;
+    --bg-hover: #33334D;
+    --text: #e4e6eb;
+    --text2: #9a9bb0;
+    --text3: #6b6d82;
+    --accent: #E84855;
+    --accent-soft: rgba(232,72,85,0.08);
+    --on-accent: #ffffff;
+    --green: #00c48c;
+    --red: #FF4081;
+    --blue: #4C8BF5;
+    --warn: #fbbf24;
+    --focus: #4C8BF5;
+    --border: #3A3A50;
+    --shadow: 0 2px 8px rgba(0,0,0,0.3);
+    --shadow-hover: 0 6px 18px rgba(0,0,0,0.45), 0 2px 6px rgba(0,0,0,0.3);
+}
+
+[data-theme="money"] {
+    --bg: #0d1f17;
+    --bg-card: #1a2f23;
+    --bg-hover: #243d2e;
+    --text: #e8e4d9;
+    --text2: #a09a85;
+    --text3: #7a7560;
+    --accent: #b8860b;
+    --accent-soft: rgba(184,134,11,0.08);
+    --on-accent: #ffffff;
+    --green: #2ecc71;
+    --red: #e74c3c;
+    --blue: #1abc9c;
+    --warn: #d4a017;
+    --focus: #1abc9c;
+    --border: #2a4a35;
+    --shadow: 0 2px 8px rgba(0,0,0,0.35);
+    --shadow-hover: 0 6px 18px rgba(0,0,0,0.5), 0 2px 6px rgba(0,0,0,0.35);
+}
+
+[data-theme="blossom"] {
+    --bg: #faf5ff;
+    --bg-card: #fff8fc;
+    --bg-hover: #f5eef8;
+    --text: #3d2c4e;
+    --text2: #8e7a9a;
+    --text3: #b5a3c2;
+    --accent: #d4638f;
+    --accent-soft: rgba(212,99,143,0.08);
+    --on-accent: #ffffff;
+    --green: #5cba9f;
+    --red: #c0392b;
+    --blue: #9b8ec4;
+    --warn: #c9822f;
+    --focus: #5b8def;
+    --border: #e8d5f0;
+    --shadow: 0 1px 4px rgba(150,100,180,0.1), 0 1px 2px rgba(150,100,180,0.06);
+    --shadow-hover: 0 4px 14px rgba(150,100,180,0.16), 0 2px 4px rgba(150,100,180,0.08);
+}
+
+[data-theme="midnight"] {
+    --bg: #0f1729;
+    --bg-card: #1a2744;
+    --bg-hover: #213157;
+    --text: #e2e8f0;
+    --text2: #94a3b8;
+    --text3: #64748b;
+    --accent: #2563eb;
+    --accent-soft: rgba(37,99,235,0.08);
+    --on-accent: #ffffff;
+    --green: #34d399;
+    --red: #f87171;
+    --blue: #60a5fa;
+    --warn: #f59e0b;
+    --focus: #60a5fa;
+    --border: #1e3a5f;
+    --shadow: 0 2px 8px rgba(0,0,0,0.4);
+    --shadow-hover: 0 6px 18px rgba(0,0,0,0.55), 0 2px 6px rgba(0,0,0,0.4);
+}
+
+[data-theme="sunset"] {
+    --bg: #1c1210;
+    --bg-card: #2d1f1a;
+    --bg-hover: #3a2820;
+    --text: #f5e6d8;
+    --text2: #c4a68e;
+    --text3: #8a7262;
+    --accent: #e06c3a;
+    --accent-soft: rgba(224,108,58,0.08);
+    --on-accent: #ffffff;
+    --green: #7bc67e;
+    --red: #e0405a;
+    --blue: #6aafd2;
+    --warn: #f5a623;
+    --focus: #6aafd2;
+    --border: #4a3228;
+    --shadow: 0 2px 8px rgba(0,0,0,0.35);
+    --shadow-hover: 0 6px 18px rgba(0,0,0,0.5), 0 2px 6px rgba(0,0,0,0.35);
+}
+
+[data-theme="nord"] {
+    --bg: #2e3440;
+    --bg-card: #3b4252;
+    --bg-hover: #434c5e;
+    --text: #eceff4;
+    --text2: #d8dee9;
+    --text3: #7b88a1;
+    --accent: #5e81ac;
+    --accent-soft: rgba(94,129,172,0.08);
+    --on-accent: #ffffff;
+    --green: #a3be8c;
+    --red: #bf616a;
+    --blue: #81a1c1;
+    --warn: #ebcb8b;
+    --focus: #88c0d0;
+    --border: #434c5e;
+    --shadow: 0 2px 8px rgba(0,0,0,0.3);
+    --shadow-hover: 0 6px 18px rgba(0,0,0,0.45), 0 2px 6px rgba(0,0,0,0.3);
+}
+
+[data-theme="dracula"] {
+    --bg: #282a36;
+    --bg-card: #44475a;
+    --bg-hover: #4e5270;
+    --text: #f8f8f2;
+    --text2: #c0b8d6;
+    --text3: #6272a4;
+    --accent: #bd93f9;
+    --accent-soft: rgba(189,147,249,0.08);
+    --on-accent: #201f33;
+    --green: #50fa7b;
+    --red: #ff5555;
+    --blue: #8be9fd;
+    --warn: #f1fa8c;
+    --focus: #8be9fd;
+    --border: #555770;
+    --shadow: 0 2px 8px rgba(0,0,0,0.35);
+    --shadow-hover: 0 6px 18px rgba(0,0,0,0.5), 0 2px 6px rgba(0,0,0,0.35);
+}
+
+[data-theme="solarized"] {
+    --bg: #002b36;
+    --bg-card: #073642;
+    --bg-hover: #0a4050;
+    --text: #eee8d5;
+    --text2: #93a1a1;
+    --text3: #657b83;
+    --accent: #268bd2;
+    --accent-soft: rgba(38,139,210,0.08);
+    --on-accent: #ffffff;
+    --green: #859900;
+    --red: #dc322f;
+    --blue: #268bd2;
+    --warn: #b58900;
+    --focus: #2aa198;
+    --border: #0d4a5a;
+    --shadow: 0 2px 8px rgba(0,0,0,0.35);
+    --shadow-hover: 0 6px 18px rgba(0,0,0,0.5), 0 2px 6px rgba(0,0,0,0.35);
+}
+
+[data-theme="ocean"] {
+    --bg: #0d1b2a;
+    --bg-card: #1b2838;
+    --bg-hover: #233548;
+    --text: #e0f2fe;
+    --text2: #7dd3fc;
+    --text3: #4a8ea8;
+    --accent: #0891b2;
+    --accent-soft: rgba(8,145,178,0.08);
+    --on-accent: #ffffff;
+    --green: #2dd4bf;
+    --red: #f472b6;
+    --blue: #38bdf8;
+    --warn: #fbbf24;
+    --focus: #38bdf8;
+    --border: #1e3a50;
+    --shadow: 0 2px 8px rgba(0,0,0,0.4);
+    --shadow-hover: 0 6px 18px rgba(0,0,0,0.55), 0 2px 6px rgba(0,0,0,0.4);
+}
+
+[data-theme="monokai"] {
+    --bg: #272822;
+    --bg-card: #3e3d32;
+    --bg-hover: #49483e;
+    --text: #f8f8f2;
+    --text2: #c0b8a8;
+    --text3: #75715e;
+    --accent: #a6e22e;
+    --accent-soft: rgba(166,226,46,0.08);
+    --on-accent: #14150f;
+    --green: #a6e22e;
+    --red: #f92672;
+    --blue: #66d9ef;
+    --warn: #e6db74;
+    --focus: #66d9ef;
+    --border: #49483e;
+    --shadow: 0 2px 8px rgba(0,0,0,0.35);
+    --shadow-hover: 0 6px 18px rgba(0,0,0,0.5), 0 2px 6px rgba(0,0,0,0.35);
+}
+
+
+/* ============================================================================
+   Per-viewer studio theming — the management-surface overlay.
+
+   For each theme above, the block below corrects the same palette for the
+   dense 13px management surface: `--text`/`--border`/`--shadow`/`--accent`/
+   `--on-accent`/`--focus` pass through unchanged (already checked, see
+   validate()); `--text2`/`--text3`/the semantic colors/the new `--accent-ink`
+   are ink-ramped toward the theme's own --text until they clear the floors
+   in validate_mgmt() below; `--scope-org`/`--scope-studio` pick the brand
+   ramp for the theme's mode and are ink-ramped the same way. A handful of
+   tokens on the most saturated themes are hand-tuned in
+   apps/core/theme_overlay.py MGMT_OVERLAY instead of mechanically ramped —
+   see that file for which and why.
+
+   Selected on a SECOND attribute, data-studio-theme, not data-theme: two
+   registry themes are literally named "light"/"dark", the same strings the
+   management surface's own mode boot writes into data-theme, so reusing it
+   here would collide. Portal Neutral (ui.css) is demoted with :where() so
+   this always wins when both are present. See docs/design-system.md.
+   ========================================================================= */
+
+html[data-studio-theme="trellum light"] body.mgmt {
+    --bg: #f6f7f8;
+    --bg-card: #ffffff;
+    --bg-hover: #eef1f3;
+    --text: #172126;
+    --text2: #475569;
+    --text3: #64748b;
+    --accent: #0F766E;
+    --accent-soft: rgba(15,118,110,0.10);
+    --accent-ink: #0F766E;
+    --on-accent: #ffffff;
+    --green: #13795b;
+    --red: #be3c3d;
+    --blue: #3269c1;
+    --warn: #9c5c10;
+    --focus: #2563eb;
+    --border: #e2e6ea;
+    --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-hover: 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+    --scope-org: #0e857c;
+    --scope-org-soft: rgba(14,133,124,0.10);
+    --scope-studio: #7468d0;
+    --scope-studio-soft: rgba(116,104,208,0.10);
+}
+
+html[data-studio-theme="trellum dark"] body.mgmt {
+    --bg: #111315;
+    --bg-card: #181b1f;
+    --bg-hover: #23272d;
+    --text: #f3f4f6;
+    --text2: #a7adb8;
+    --text3: #8f96a3;
+    --accent: #0F766E;
+    --accent-soft: rgba(15,118,110,0.12);
+    --accent-ink: #3c8f89;
+    --on-accent: #ffffff;
+    --green: #00c48c;
+    --red: #F87171;
+    --blue: #4f8df5;
+    --warn: #fbbf24;
+    --focus: #4C8BF5;
+    --border: #30363d;
+    --shadow: 0 2px 8px rgba(0,0,0,0.3);
+    --shadow-hover: 0 6px 18px rgba(0,0,0,0.45), 0 2px 6px rgba(0,0,0,0.3);
+    --scope-org: #2DD4BF;
+    --scope-org-soft: rgba(45,212,191,0.12);
+    --scope-studio: #9D8FF2;
+    --scope-studio-soft: rgba(157,143,242,0.12);
+}
+
+html[data-studio-theme="light"] body.mgmt {
+    --bg: #f0f2f5;
+    --bg-card: #ffffff;
+    --bg-hover: #f8f9fc;
+    --text: #1e2028;
+    --text2: #6b7280;
+    --text3: #717681;
+    --accent: #E84855;
+    --accent-soft: rgba(232,72,85,0.10);
+    --accent-ink: #d14350;
+    --on-accent: #ffffff;
+    --green: #16795c;
+    --red: #c92c21;
+    --blue: #3469c2;
+    --warn: #9d5b11;
+    --focus: #3b82f6;
+    --border: #e2e5ea;
+    --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-hover: 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+    --scope-org: #0f857c;
+    --scope-org-soft: rgba(15,133,124,0.10);
+    --scope-studio: #7468d1;
+    --scope-studio-soft: rgba(116,104,209,0.10);
+}
+
+html[data-studio-theme="dark"] body.mgmt {
+    --bg: #1A1A2E;
+    --bg-card: #2A2A3E;
+    --bg-hover: #33334D;
+    --text: #e4e6eb;
+    --text2: #9a9bb0;
+    --text3: #9092a2;
+    --accent: #E84855;
+    --accent-soft: rgba(232,72,85,0.12);
+    --accent-ink: #e76b76;
+    --on-accent: #ffffff;
+    --green: #00c48c;
+    --red: #f678a5;
+    --blue: #75a4f2;
+    --warn: #fbbf24;
+    --focus: #4C8BF5;
+    --border: #3A3A50;
+    --shadow: 0 2px 8px rgba(0,0,0,0.3);
+    --shadow-hover: 0 6px 18px rgba(0,0,0,0.45), 0 2px 6px rgba(0,0,0,0.3);
+    --scope-org: #2DD4BF;
+    --scope-org-soft: rgba(45,212,191,0.12);
+    --scope-studio: #9D8FF2;
+    --scope-studio-soft: rgba(157,143,242,0.12);
+}
+
+html[data-studio-theme="money"] body.mgmt {
+    --bg: #0d1f17;
+    --bg-card: #1a2f23;
+    --bg-hover: #243d2e;
+    --text: #e8e4d9;
+    --text2: #a09a85;
+    --text3: #96917e;
+    --accent: #b8860b;
+    --accent-soft: rgba(184,134,11,0.12);
+    --accent-ink: #b98910;
+    --on-accent: #ffffff;
+    --green: #2ecc71;
+    --red: #e78476;
+    --blue: #1abc9c;
+    --warn: #d4a017;
+    --focus: #1abc9c;
+    --border: #2a4a35;
+    --shadow: 0 2px 8px rgba(0,0,0,0.35);
+    --shadow-hover: 0 6px 18px rgba(0,0,0,0.5), 0 2px 6px rgba(0,0,0,0.35);
+    --scope-org: #2DD4BF;
+    --scope-org-soft: rgba(45,212,191,0.12);
+    --scope-studio: #9D8FF2;
+    --scope-studio-soft: rgba(157,143,242,0.12);
+}
+
+html[data-studio-theme="blossom"] body.mgmt {
+    --bg: #faf5ff;
+    --bg-card: #fff8fc;
+    --bg-hover: #f5eef8;
+    --text: #3d2c4e;
+    --text2: #816b8d;
+    --text3: #85689b;
+    --accent: #d4638f;
+    --accent-soft: rgba(212,99,143,0.10);
+    --accent-ink: #af567f;
+    --on-accent: #ffffff;
+    --green: #317360;
+    --red: #bb392c;
+    --blue: #70618e;
+    --warn: #8e5e3c;
+    --focus: #5b8def;
+    --border: #e8d5f0;
+    --shadow: 0 1px 4px rgba(150,100,180,0.1), 0 1px 2px rgba(150,100,180,0.06);
+    --shadow-hover: 0 4px 14px rgba(150,100,180,0.16), 0 2px 4px rgba(150,100,180,0.08);
+    --scope-org: #16807d;
+    --scope-org-soft: rgba(22,128,125,0.10);
+    --scope-studio: #7365cb;
+    --scope-studio-soft: rgba(115,101,203,0.10);
+}
+
+html[data-studio-theme="midnight"] body.mgmt {
+    --bg: #0f1729;
+    --bg-card: #1a2744;
+    --bg-hover: #213157;
+    --text: #e2e8f0;
+    --text2: #94a3b8;
+    --text3: #818fa2;
+    --accent: #2563eb;
+    --accent-soft: rgba(37,99,235,0.12);
+    --accent-ink: #5e8bec;
+    --on-accent: #ffffff;
+    --green: #34d399;
+    --red: #f87171;
+    --blue: #60a5fa;
+    --warn: #f59e0b;
+    --focus: #60a5fa;
+    --border: #1e3a5f;
+    --shadow: 0 2px 8px rgba(0,0,0,0.4);
+    --shadow-hover: 0 6px 18px rgba(0,0,0,0.55), 0 2px 6px rgba(0,0,0,0.4);
+    --scope-org: #2DD4BF;
+    --scope-org-soft: rgba(45,212,191,0.12);
+    --scope-studio: #9D8FF2;
+    --scope-studio-soft: rgba(157,143,242,0.12);
+}
+
+html[data-studio-theme="sunset"] body.mgmt {
+    --bg: #1c1210;
+    --bg-card: #2d1f1a;
+    --bg-hover: #3a2820;
+    --text: #f5e6d8;
+    --text2: #c4a68e;
+    --text3: #9b8575;
+    --accent: #e06c3a;
+    --accent-soft: rgba(224,108,58,0.12);
+    --accent-ink: #e06c3a;
+    --on-accent: #ffffff;
+    --green: #7bc67e;
+    --red: #e67381;
+    --blue: #6aafd2;
+    --warn: #f5a623;
+    --focus: #6aafd2;
+    --border: #4a3228;
+    --shadow: 0 2px 8px rgba(0,0,0,0.35);
+    --shadow-hover: 0 6px 18px rgba(0,0,0,0.5), 0 2px 6px rgba(0,0,0,0.35);
+    --scope-org: #2DD4BF;
+    --scope-org-soft: rgba(45,212,191,0.12);
+    --scope-studio: #9D8FF2;
+    --scope-studio-soft: rgba(157,143,242,0.12);
+}
+
+html[data-studio-theme="nord"] body.mgmt {
+    --bg: #2e3440;
+    --bg-card: #3b4252;
+    --bg-hover: #434c5e;
+    --text: #eceff4;
+    --text2: #d8dee9;
+    --text3: #a6aebf;
+    --accent: #5e81ac;
+    --accent-soft: rgba(94,129,172,0.12);
+    --accent-ink: #9ab0cb;
+    --on-accent: #ffffff;
+    --green: #b5caa5;
+    --red: #e3babe;
+    --blue: #b5c7da;
+    --warn: #ebcb8b;
+    --focus: #88c0d0;
+    --border: #434c5e;
+    --shadow: 0 2px 8px rgba(0,0,0,0.3);
+    --shadow-hover: 0 6px 18px rgba(0,0,0,0.45), 0 2px 6px rgba(0,0,0,0.3);
+    --scope-org: #2DD4BF;
+    --scope-org-soft: rgba(45,212,191,0.12);
+    --scope-studio: #aea4f2;
+    --scope-studio-soft: rgba(174,164,242,0.12);
+}
+
+html[data-studio-theme="dracula"] body.mgmt {
+    --bg: #282a36;
+    --bg-card: #44475a;
+    --bg-hover: #4e5270;
+    --text: #f8f8f2;
+    --text2: #c0b8d6;
+    --text3: #aeb6d0;
+    --accent: #bd93f9;
+    --accent-soft: rgba(189,147,249,0.12);
+    --accent-ink: #c8a7f8;
+    --on-accent: #201f33;
+    --green: #50fa7b;
+    --red: #ffbdbd;
+    --blue: #8be9fd;
+    --warn: #f1fa8c;
+    --focus: #8be9fd;
+    --border: #555770;
+    --shadow: 0 2px 8px rgba(0,0,0,0.35);
+    --shadow-hover: 0 6px 18px rgba(0,0,0,0.5), 0 2px 6px rgba(0,0,0,0.35);
+    --scope-org: #2DD4BF;
+    --scope-org-soft: rgba(45,212,191,0.12);
+    --scope-studio: #b8aef2;
+    --scope-studio-soft: rgba(184,174,242,0.12);
+}
+
+html[data-studio-theme="solarized"] body.mgmt {
+    --bg: #002b36;
+    --bg-card: #073642;
+    --bg-hover: #0a4050;
+    --text: #eee8d5;
+    --text2: #93a1a1;
+    --text3: #8d9b9b;
+    --accent: #268bd2;
+    --accent-soft: rgba(38,139,210,0.12);
+    --accent-ink: #53a0d3;
+    --on-accent: #ffffff;
+    --green: #a4b140;
+    --red: #e59085;
+    --blue: #79b1d3;
+    --warn: #c5a43c;
+    --focus: #2aa198;
+    --border: #0d4a5a;
+    --shadow: 0 2px 8px rgba(0,0,0,0.35);
+    --shadow-hover: 0 6px 18px rgba(0,0,0,0.5), 0 2px 6px rgba(0,0,0,0.35);
+    --scope-org: #2DD4BF;
+    --scope-org-soft: rgba(45,212,191,0.12);
+    --scope-studio: #9D8FF2;
+    --scope-studio-soft: rgba(157,143,242,0.12);
+}
+
+html[data-studio-theme="ocean"] body.mgmt {
+    --bg: #0d1b2a;
+    --bg-card: #1b2838;
+    --bg-hover: #233548;
+    --text: #e0f2fe;
+    --text2: #7dd3fc;
+    --text3: #5696af;
+    --accent: #0891b2;
+    --accent-soft: rgba(8,145,178,0.12);
+    --accent-ink: #1b9ab9;
+    --on-accent: #ffffff;
+    --green: #2dd4bf;
+    --red: #f472b6;
+    --blue: #38bdf8;
+    --warn: #fbbf24;
+    --focus: #38bdf8;
+    --border: #1e3a50;
+    --shadow: 0 2px 8px rgba(0,0,0,0.4);
+    --shadow-hover: 0 6px 18px rgba(0,0,0,0.55), 0 2px 6px rgba(0,0,0,0.4);
+    --scope-org: #2DD4BF;
+    --scope-org-soft: rgba(45,212,191,0.12);
+    --scope-studio: #9D8FF2;
+    --scope-studio-soft: rgba(157,143,242,0.12);
+}
+
+html[data-studio-theme="monokai"] body.mgmt {
+    --bg: #272822;
+    --bg-card: #3e3d32;
+    --bg-hover: #49483e;
+    --text: #f8f8f2;
+    --text2: #c0b8a8;
+    --text3: #aba796;
+    --accent: #a6e22e;
+    --accent-soft: rgba(166,226,46,0.12);
+    --accent-ink: #a6e22e;
+    --on-accent: #14150f;
+    --green: #a6e22e;
+    --red: #fca0c1;
+    --blue: #66d9ef;
+    --warn: #e6db74;
+    --focus: #66d9ef;
+    --border: #49483e;
+    --shadow: 0 2px 8px rgba(0,0,0,0.35);
+    --shadow-hover: 0 6px 18px rgba(0,0,0,0.5), 0 2px 6px rgba(0,0,0,0.35);
+    --scope-org: #2DD4BF;
+    --scope-org-soft: rgba(45,212,191,0.12);
+    --scope-studio: #a89bf2;
+    --scope-studio-soft: rgba(168,155,242,0.12);
+}

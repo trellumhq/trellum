@@ -1,0 +1,45 @@
+output/
+__pycache__/
+.venv/
+.playwright-mcp/
+
+# Tooling caches and coverage artifacts. Without these, running the linter or
+# the coverage job locally leaves a few hundred files staged for commit.
+.ruff_cache/
+.coverage
+coverage.json
+htmlcov/
+
+# Visual-regression baselines: large PNGs that churn on any cosmetic change.
+# Regenerate locally with `demo\dev.ps1 baseline` before a refactor.
+testing/baselines/
+.demo-out/
+
+# Demo project -- generated locally by demo/tools/make_fixtures.py
+demo/data-sources/*.sqlite
+demo/data-sources/*.sqlite-journal
+demo/events.yaml
+demo/.env
+
+# itest harness -- report-build lane output (already covered by the bare
+# `output/` rule above; listed explicitly since this is the one directory
+# the harness itself writes into and is expected to gitignore).
+itest/project/output/
+itest/*.log
+
+# Agent bench -- scratch projects, copied transcripts, the results log and the
+# generated import shim. All run output; the harness itself is tracked.
+bench/results/
+
+# Packaging build products (pyproject.toml / python -m build)
+build/
+dist/
+*.egg-info/
+
+# Agent working files. This repository is a publication
+# candidate (see the open-source track), so none of it belongs here -- and
+# .claude/worktrees/ in particular is a full second checkout carrying its own
+# .env.
+.claude/
+.lavish/
+.playwright-mcp/

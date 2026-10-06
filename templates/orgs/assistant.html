@@ -1,0 +1,137 @@
+{% extends "settings_base.html" %}
+{% block title %}AI Assistant — {{ org.name }}{% endblock %}
+{% block settings %}
+<header class="page-head">
+  <div class="ui-label page-kicker scope-org">Organization · {{ org.name }}</div>
+  <h1>AI Assistant</h1>
+  <p class="muted page-sub">The AI assistant answers questions about your built reports from inside the portal.
+    It is strictly read-only. Your organization brings its own model API key: it is stored
+    encrypted, used only server-side, and never sent to the browser.</p>
+</header>
+
+<div class="panel">
+  <form method="post" data-settings-form>
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+    <label class="ui-check-row">{{ form.enabled }} Enable the AI assistant for this organization</label>
+
+    <p class="ui-label" style="margin:18px 0 0">Provider</p>
+    <label>Provider</label>{{ form.provider }}{{ form.provider.errors }}
+    <label>API key
+      <span class="muted">{% if has_key %}(a key is stored — blank keeps it){% else %}(none stored yet){% endif %}</span>
+    </label>{{ form.api_key }}{{ form.api_key.errors }}
+    <span class="helptext">{{ form.api_key.help_text }}</span>
+    <label>Model</label>{{ form.model }}{{ form.model.errors }}
+    <span class="helptext">{{ form.model.help_text }}</span>
+    {# Shown only when the model name looks like the other vendor's; the server says the same after a save. #}
+    <span class="helptext" id="model-hint"
+          data-openai="This model looks like an Anthropic model, but the provider is OpenAI."
+          data-anthropic="This model looks like an OpenAI model, but the provider is Anthropic."></span>
+
+    <p class="ui-label" style="margin:18px 0 0">Data</p>
+    <label class="ui-check-row">{{ form.share_report_source }} Let the assistant read report source</label>
+    <span class="helptext">{{ form.share_report_source.help_text }}</span>
+    <label class="ui-check-row">{{ form.actions_enabled }} Let the assistant propose actions</label>
+    <span class="helptext">{{ form.actions_enabled.help_text }}</span>
+
+    <p class="ui-label" style="margin:18px 0 0">Budgets</p>
+    <label>Monthly budget (USD, whole org)</label>{{ form.monthly_budget_usd }}{{ form.monthly_budget_usd.errors }}
+    <span class="helptext">{{ form.monthly_budget_usd.help_text }}</span>
+    <label>Monthly budget (USD, per user)</label>{{ form.per_user_budget_usd }}{{ form.per_user_budget_usd.errors }}
+    <span class="helptext">{{ form.per_user_budget_usd.help_text }}</span>
+
+    <details{% if form.advanced_open %} open{% endif %}>
+      <summary class="ui-label" style="margin:18px 0 0;cursor:pointer">Advanced: custom endpoint and pricing</summary>
+      <label>Custom endpoint URL</label>{{ form.base_url }}{{ form.base_url.errors }}
+      <span class="helptext">{{ form.base_url.help_text }}</span>
+      {# Which dialect the endpoint must speak follows the provider select. #}
+      <span class="helptext" id="gateway-hint"
+            data-anthropic="Must implement the Anthropic Messages API, for example a LiteLLM proxy in Anthropic mode. Many gateways only speak the OpenAI format; pick OpenAI as the provider for those. Use Test connection after saving."
+            data-openai="Any OpenAI-compatible server works: LiteLLM, Azure OpenAI, vLLM, Ollama, or a corporate gateway. Use Test connection after saving."></span>
+      <label>Input price (USD per million tokens)</label>{{ form.price_in_per_mtok }}{{ form.price_in_per_mtok.errors }}
+      <span class="helptext">{{ form.price_in_per_mtok.help_text }}</span>
+      <label>Output price (USD per million tokens)</label>{{ form.price_out_per_mtok }}{{ form.price_out_per_mtok.errors }}
+      <span class="helptext">{{ form.price_out_per_mtok.help_text }}</span>
+    </details>
+
+    <p></p>
+    <button class="ui-btn primary" type="submit">Save changes</button>
+    <button class="ui-btn" type="button" id="assistant-test" title="Runs one tiny call through the settings as last saved"{% if not cfg %} disabled{% endif %}>Test connection</button>
+    <div class="ui-flash" role="status" id="assistant-test-result" style="margin-top:12px" hidden>
+      <span class="ui-flash-mark" aria-hidden="true"></span>
+      <div style="min-width:0">
+        <span id="assistant-test-message"></span> <span class="subtle" id="assistant-test-latency"></span>
+        <div id="assistant-test-hints"></div>
+        <details id="assistant-test-details" hidden><summary>Technical details</summary><pre></pre></details>
+      </div>
+    </div>
+  </form>
+</div>
+<script>
+(function () {
+  var provider = document.getElementById('{{ form.provider.id_for_label }}'),
+      hint = document.getElementById('gateway-hint'),
+      model = document.getElementById('{{ form.model.id_for_label }}'),
+      modelHint = document.getElementById('model-hint');
+  function vendorOf(name) {
+    name = name.toLowerCase();
+    return /^claude-/.test(name) ? 'anthropic' : /^(gpt-|o1|o3|o4)/.test(name) ? 'openai' : '';
+  }
+  function showHint() {
+    hint.textContent = hint.getAttribute('data-' + provider.value) || '';
+    var vendor = vendorOf(model.value);
+    modelHint.textContent = vendor && vendor !== provider.value ? modelHint.getAttribute('data-' + provider.value) : '';
+  }
+  provider.addEventListener('change', showHint);
+  model.addEventListener('input', showHint);
+  showHint();
+
+  var btn = document.getElementById('assistant-test'), out = document.getElementById('assistant-test-result'),
+      mark = out.querySelector('.ui-flash-mark'), msg = document.getElementById('assistant-test-message'),
+      latency = document.getElementById('assistant-test-latency'), tech = document.getElementById('assistant-test-details'),
+      hints = document.getElementById('assistant-test-hints');
+  function show(ok, message, ms, detail, hintList) {
+    hints.textContent = (hintList || []).join(' ');
+    out.hidden = false;
+    out.classList.toggle('success', ok === true); out.classList.toggle('error', ok === false);
+    mark.textContent = ok === true ? '\u2713' : ok === false ? '\u2715' : '';
+    msg.textContent = message;
+    latency.textContent = ms == null ? '' : ms < 1000 ? ms + ' ms' : (ms / 1000).toFixed(1) + ' s';
+    tech.hidden = !detail; tech.open = false; tech.querySelector('pre').textContent = detail || '';
+  }
+  btn.addEventListener('click', function () {
+    btn.disabled = true; show(null, 'Testing the saved settings…');
+    fetch('{% url "org-assistant-test" org.slug %}', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'X-CSRFToken': document.querySelector('input[name=csrfmiddlewaretoken]').value }
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { show(j.ok, j.message, j.latency_ms, j.detail, j.hints); })
+      .catch(function () { show(false, 'The request did not complete.'); })
+      .then(function () { btn.disabled = false; });
+  });
+})();
+</script>
+
+{% if usage %}
+<div class="panel">
+  <div style="display:flex;align-items:baseline;gap:12px">
+    <span class="ui-label">Spend this month ({{ usage.month|date:"F Y" }})</span>
+    <span class="spacer" style="flex:1"></span>
+    <strong>${{ usage.org_total|floatformat:2 }}</strong>
+  </div>
+  {% if usage.rows %}
+  <table class="ui-table dense" style="margin-top:8px">
+    <thead><tr><th>User</th><th class="num">Spend (USD)</th></tr></thead>
+    <tbody>
+      {% for row in usage.rows %}
+      <tr><td>{{ row.user.email }}</td><td class="num">${{ row.cost_usd|floatformat:2 }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="ui-empty">No assistant usage recorded yet this month.</div>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

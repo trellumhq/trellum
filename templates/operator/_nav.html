@@ -1,0 +1,10 @@
+{% comment %}Promoted from a paragraph of inline links to the canonical
+in-page section-tabs treatment (ui-consistency-punchlist.md item 15) —
+.settings-tabs already carries the active-underline convention every other
+in-page nav on the surface uses.{% endcomment %}
+<nav class="settings-tabs" aria-label="Operator console">
+  <span class="settings-tabs-title">Operator console</span>
+  {% for item in operator_nav %}
+  <a href="{% url item.url_name %}" {% if request.resolver_match.url_name == item.url_name %}class="active"{% endif %}>{{ item.label }}</a>
+  {% endfor %}
+</nav>

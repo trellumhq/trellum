@@ -1,0 +1,33 @@
+{% extends "settings_base.html" %}
+{% block title %}Console theme — {{ org.name }}{% endblock %}
+{% block settings %}
+<header class="page-head">
+  <div class="ui-label page-kicker scope-org">Organization · {{ org.name }}</div>
+  <h1>Console theme</h1>
+  <p class="muted page-sub">Set the default Light, Dark or Auto mode for the report catalog, settings and
+    other console pages. Studio report themes are configured separately.</p>
+</header>
+
+<div class="panel formrow">
+  <form method="post" data-settings-form>
+    {% csrf_token %}
+    <label for="org-default-mode">Default mode</label>
+    <select id="org-default-mode" name="default_mode" class="ui-input">
+      <option value="light" {% if org.default_mode == "light" %}selected{% endif %}>Light</option>
+      <option value="dark" {% if org.default_mode == "dark" %}selected{% endif %}>Dark</option>
+      <option value="auto" {% if org.default_mode == "auto" %}selected{% endif %}>Auto (follow the viewer's system)</option>
+    </select>
+    <span class="helptext">What members see on organization pages and settings before they've set a
+      personal preference of their own — Account → Appearance always wins over this for that one viewer.</span>
+    <p></p>
+    <label class="ui-check">
+      <input type="checkbox" name="lock_studio_theme" value="1" {% if org.lock_studio_theme %}checked{% endif %}>
+      Lock it — members cannot override a studio's palette for themselves
+    </label>
+    <span class="helptext">Studio admins still set each studio's own default palette from the studio itself.
+      This only stops individual members from picking a different one just for their own view.</span>
+    <p></p>
+    <button class="ui-btn primary" type="submit">Save changes</button>
+  </form>
+</div>
+{% endblock %}

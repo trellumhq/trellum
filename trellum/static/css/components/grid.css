@@ -1,0 +1,47 @@
+.fw-grid {
+    display: grid;
+    gap: var(--spacing-md);
+}
+.fw-grid-card {
+    background: var(--bg-card);
+    border-radius: var(--radius-card);
+    padding: 16px;
+    border: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+}
+.fw-grid-item {
+    display: flex;
+    flex-direction: column;
+}
+.fw-grid-card > .fw-chart-container,
+.fw-grid-item > .fw-chart-container {
+    flex-grow: 1;
+}
+/* A fixed-column grid has no idea how narrow it got; an auto-fill one does,
+   and dropping it to a single column at 900px would undo the two tiles that
+   still fit there. */
+@media (max-width: 900px) {
+    .fw-grid:not(.fw-grid-auto) { grid-template-columns: 1fr !important; }
+}
+
+/* ── Tile mode (Grid(min_width=...)) ──
+   A tile is a glance, not a page: the number and the shape of one series,
+   read next to a dozen others. The chart gets a tile's height rather than a
+   page's, and its own title goes -- whatever put the tile here already names
+   it, and a repeated name is the one thing a tile has no room for. */
+.fw-grid-auto .fw-chart-container { height: 200px; }
+.fw-grid-auto .fw-chart-title { display: none; }
+/* A KpiRow lays its cards out against the WINDOW (six across past 1400px) --
+   a fair reading of a row that spans the page, and nonsense for one that
+   spans a tile, where it comes out at 65px of ellipsis. A tile is the
+   container, so its cards are measured against the tile. */
+.fw-grid-auto .fw-kpi-grid {
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+/* ponytail: a chart's own breakdown toggle is DROPPED at tile width, not
+   compacted -- a row of dimension buttons beside a ~340px chart wraps into
+   more height than the chart it labels, and the same toggle is one click
+   away in the single-block view (`body.fw-only` in base.css restores it).
+   Give it a compact form here if a tile ever has to carry it. */
+.fw-grid-auto [data-stack-toggle] { display: none; }

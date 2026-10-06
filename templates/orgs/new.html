@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}New organization — trellum{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div class="ui-label page-kicker">Instance operator</div>
+  <h1>Create an organization</h1>
+  <p class="muted page-sub">Organizations are the tenant boundary: their studios, members,
+    data sources and single sign-on are entirely separate. You are added as its
+    first admin.</p>
+</header>
+
+<div class="ui-panel" style="max-width:560px">
+  <form method="post" action="{% url 'org-create' %}" class="ui-form-grid">
+    {% csrf_token %}
+    <div class="ui-field ui-field-wide">
+      <label for="org-name">Name</label>
+      <input id="org-name" name="name" required maxlength="200" autofocus>
+    </div>
+    <div class="ui-field ui-field-wide">
+      <label for="org-slug">Slug</label>
+      <input id="org-slug" name="slug" required maxlength="64" pattern="[a-z0-9-]+">
+      <span class="ui-help">Lowercase letters, digits, hyphens. It keys the
+        organization's data on disk and cannot be changed later.</span>
+    </div>
+    <div class="ui-form-actions">
+      <button class="ui-btn primary" type="submit">Create organization</button>
+      <a class="ui-btn ghost" href="/">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Recovery codes — trellum{% endblock %}
+{% block content %}
+<h1>Your recovery codes</h1>
+<p class="muted">Save these somewhere safe — <strong>this is the only time they are
+shown.</strong> Each code works once, if you ever lose access to your authenticator
+app.</p>
+
+<div class="panel">
+  <div style="font-family:var(--font-mono,monospace);font-size:1.1em;line-height:2;display:grid;grid-template-columns:repeat(2,minmax(140px,1fr));gap:4px 24px">
+    {% for code in codes %}<div>{{ code }}</div>{% endfor %}
+  </div>
+</div>
+
+<a class="ui-btn primary" href="/account">I've saved my codes — continue</a>
+{% endblock %}

@@ -1,0 +1,10 @@
+✓ Recovered · {{ report.name|default:report.slug }}
+
+{{ report.studio.name }}
+
+This report built successfully again, after a prior failure.
+
+View the report: {{ report_url }}
+
+--
+Sent by {{ instance_name }} to this studio's developers and admins.

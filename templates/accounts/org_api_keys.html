@@ -1,0 +1,61 @@
+{% extends "settings_base.html" %}
+{% block title %}API keys — {{ org.name }}{% endblock %}
+{% block settings %}
+<header class="page-head">
+  <div class="ui-label page-kicker scope-org">Organization · {{ org.name }}</div>
+  <h1>API keys</h1>
+  <p class="muted page-sub">Every personal API key issued for {{ org.name }}. Members create their own under
+    their account menu → API keys; a key acts as its owner, under that person's roles, in this organization only.</p>
+</header>
+
+<div class="panel formrow">
+  <form method="post" data-settings-form>
+    {% csrf_token %}
+    <input type="hidden" name="action" value="toggle">
+    <label class="ui-check">
+      <input type="checkbox" name="api_keys_enabled" value="1" {% if org.api_keys_enabled %}checked{% endif %}>
+      Allow API keys in this organization
+    </label>
+    <span class="helptext">Off stops every key below on its next request without deleting it; on brings
+      the ones that were not revoked back.</span>
+    <p></p>
+    <button class="ui-btn primary" type="submit">Save changes</button>
+  </form>
+</div>
+
+<h2>Keys</h2>
+<div class="panel">
+<table class="ui-table" data-mobile-cards>
+  <thead>
+    <tr><th>Owner</th><th>Name</th><th>Prefix</th><th>Scope</th><th>Created</th><th>Last used</th><th>Expires</th><th>Status</th><th></th></tr>
+  </thead>
+  <tbody>
+  {% for key in keys %}
+  <tr>
+    <td data-label="Owner"><strong>{{ key.user.email }}</strong></td>
+    <td data-label="Name">{{ key.name }}</td>
+    <td data-label="Prefix"><code>trellum_pk_{{ key.prefix }}…</code></td>
+    <td data-label="Scope">{{ key.get_scopes_display }}</td>
+    <td class="muted" data-label="Created">{{ key.created_at|date:"Y-m-d" }}</td>
+    <td class="muted" data-label="Last used">{{ key.last_used_at|date:"Y-m-d H:i"|default:"never" }}</td>
+    <td class="muted" data-label="Expires">{{ key.expires_at|date:"Y-m-d"|default:"—" }}</td>
+    <td data-label="Status">{% if key.revoked_at %}<span class="ui-badge warn">revoked {{ key.revoked_at|date:"Y-m-d" }}</span>
+      {% elif not key.is_active %}<span class="ui-badge warn">expired</span>
+      {% else %}<span class="ui-badge pass">active</span>{% endif %}</td>
+    <td class="ui-row-actions" data-label="Actions">
+      {% if not key.revoked_at %}
+      <form class="inline" method="post"
+            onsubmit="return confirm('Revoke “{{ key.name|escapejs }}” ({{ key.user.email|escapejs }})? Anything using it stops working immediately.')">
+        {% csrf_token %}<input type="hidden" name="action" value="revoke"><input type="hidden" name="key_id" value="{{ key.pk }}">
+        <button class="ui-btn danger" type="submit">Revoke</button>
+      </form>
+      {% endif %}
+    </td>
+  </tr>
+  {% empty %}
+  <tr><td colspan="9"><div class="ui-empty">Nobody in {{ org.name }} has created an API key yet.</div></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

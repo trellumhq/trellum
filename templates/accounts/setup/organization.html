@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Your organization — trellum{% endblock %}
+{% block content %}
+<div class="auth-shell">
+  <div class="panel auth-card setup-card">
+    {% include "accounts/setup/_steps.html" %}
+    <h1>Name your organization</h1>
+    <p class="ui-help">An organization holds studios, and a studio holds
+      reports. This one will start empty — you'll create its first studio right
+      after setup.</p>
+    {{ form.non_field_errors }}
+    <form method="post">
+      {% csrf_token %}
+      <div class="ui-field">
+        <label for="id_org_name">Name</label>
+        {{ form.org_name }}{{ form.org_name.errors }}
+      </div>
+      <div class="ui-field">
+        <label for="id_org_slug">Slug</label>
+        {{ form.org_slug }}{{ form.org_slug.errors }}
+        <span class="ui-help">{{ form.org_slug.help_text }}</span>
+      </div>
+      <div class="ui-form-actions">
+        <button class="ui-btn primary" type="submit">Continue</button>
+        <span style="flex:1"></span>
+        <a class="auth-alt-link" href="{% url 'setup-checks' %}">Back</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% comment %}Suggest the slug from the name while the slug field is untouched.
+A convenience only — the field stays fully editable, and the server validates
+it either way.{% endcomment %}
+<script>
+(function () {
+  var name = document.getElementById('id_org_name');
+  var slug = document.getElementById('id_org_slug');
+  if (!name || !slug) return;
+  var edited = slug.value !== '';
+  slug.addEventListener('input', function () { edited = true; });
+  name.addEventListener('input', function () {
+    if (edited) return;
+    slug.value = name.value.toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 64);
+  });
+})();
+</script>
+{% endblock %}

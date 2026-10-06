@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Report unavailable — trellum{% endblock %}
+{% block content %}
+<div class="panel ui-notice-page wide">
+  <h1>Report storage is temporarily unreachable</h1>
+  <p class="muted">
+    This report lives in object storage, and the store didn't answer just now.
+    Nothing is wrong with the report itself — this is an infrastructure outage,
+    and the report will serve again the moment the store recovers. Try again in
+    a minute.
+  </p>
+  <p style="margin-top:16px">
+    <button type="button" class="ui-btn primary" id="storageOutageRetry">Try again</button>
+  </p>
+</div>
+{% comment %}A real button + a script-src 'self' listener, not a javascript:
+href -- the latter is exactly the kind of inline script this page's own CSP
+posture (apps.core.middleware.ContentSecurityPolicyMiddleware) exists to
+catch.{% endcomment %}
+<script>
+document.getElementById('storageOutageRetry').addEventListener('click', function () {
+    location.reload();
+});
+</script>
+{% endblock %}

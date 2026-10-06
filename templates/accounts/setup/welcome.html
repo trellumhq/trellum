@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Welcome — trellum{% endblock %}
+{% block content %}
+<div class="auth-shell">
+  <div class="panel auth-card setup-card">
+    {% include "accounts/setup/_steps.html" %}
+    <h1>Hi — let's set up your portal</h1>
+    <p class="ui-help">This instance is brand new: it has no accounts and no
+      data yet. Four short steps and it's yours.</p>
+
+    <ul class="ui-checklist" style="margin:var(--sp-4) 0">
+      <li class="ui-checklist-item">
+        <span class="ui-checklist-mark" aria-hidden="true">1</span>
+        <span><strong>Check the machine</strong><br>
+          <span class="ui-help">We'll confirm the database, encryption key, data
+            volume and report framework are all in place.</span></span>
+      </li>
+      <li class="ui-checklist-item">
+        <span class="ui-checklist-mark" aria-hidden="true">2</span>
+        <span><strong>Name your organization</strong><br>
+          <span class="ui-help">The container for your studios, reports and
+            people. You can add more later.</span></span>
+      </li>
+      <li class="ui-checklist-item">
+        <span class="ui-checklist-mark" aria-hidden="true">3</span>
+        <span><strong>Create your operator account</strong><br>
+          <span class="ui-help">The first account. It administers this instance
+            and owns the organization you just named.</span></span>
+      </li>
+      <li class="ui-checklist-item">
+        <span class="ui-checklist-mark" aria-hidden="true">4</span>
+        <span><strong>Optional settings</strong><br>
+          <span class="ui-help">Public URL and outbound email — skippable, and
+            changeable afterwards from System.</span></span>
+      </li>
+    </ul>
+
+    <div class="ui-form-actions">
+      <a class="ui-btn primary" href="{% url 'setup-checks' %}">Get started</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

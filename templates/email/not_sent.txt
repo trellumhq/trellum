@@ -1,0 +1,13 @@
+Not sent · {{ report.name|default:report.slug }}
+
+{{ report.studio.name }} · last status {{ last_status }}
+
+This report was not delivered on schedule: its last build {% if last_status == "error" or last_status == "timeout" or last_status == "oom_killed" %}failed{% else %}hasn't run yet{% endif %}.
+{% if last_error %}
+Last error: {{ last_error }}
+{% endif %}
+View the report: {{ report_url }}
+
+--
+Sent by {{ instance_name }}.
+{% if unsubscribe_url %}Stop these emails: {{ unsubscribe_url }}{% endif %}

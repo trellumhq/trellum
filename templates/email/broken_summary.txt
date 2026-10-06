@@ -1,0 +1,11 @@
+{{ items|length }} report{{ items|length|pluralize }} failed in {{ studio.name }}
+
+The following reports' most recent builds failed:
+
+{% for item in items %}- {{ item.report.name|default:item.report.slug }}
+  {{ item.error_first_line }}
+  View the report: {{ item.report_url }}
+
+{% endfor %}
+--
+Sent by {{ instance_name }} to {{ studio.name }}'s developers and admins.

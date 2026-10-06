@@ -1,0 +1,83 @@
+{% extends "settings_base.html" %}
+{% comment %}Studio settings → Appearance: the studio admin's own
+default-palette control (apps.core.themes.resolve_studio_theme rung 2),
+mirroring templates/orgs/appearance.html one level down. Moved off the tab
+bar's admin-only chip after live owner testing found it sitting beside the
+viewer's personal picker as two identical unlabeled dropdowns
+(.lavish/theming-controls-design.html). Swatch cards instead of a bare
+<select> -- a palette IS its colors; see the .theme-sw rules in
+static/ui.css for how each card is colored straight from
+static/themes.generated.css with no duplicated values.{% endcomment %}
+{% block title %}Report theme — {{ studio.name }}{% endblock %}
+{% block settings %}
+<header class="page-head">
+  <div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }}</div>
+  <h1>Report theme</h1>
+  {% if studio.repo_theme %}
+  <p class="muted page-sub">The palette every member of <b>{{ studio.name }}</b> sees is declared by the
+    studio's own repository. The console uses its separate Light/Dark/Auto setting.</p>
+  {% else %}
+  <p class="muted page-sub">The palette used by reports in <b>{{ studio.name }}</b>, unless a viewer picks
+    another report theme. The console uses its separate Light/Dark/Auto setting.</p>
+  {% endif %}
+</header>
+
+{% if studio.repo_theme %}
+<div class="panel formrow">
+  <div class="theme-swatches">
+    <span class="theme-sw sel theme-sw-pinned">
+      <span class="theme-sw-strip" data-theme="{{ studio.repo_theme }}">
+        <i style="background:var(--bg)"></i><i style="background:var(--accent)"></i><i style="background:var(--text)"></i>
+      </span>
+      <span class="theme-sw-name">{{ studio.repo_theme }} <small>— set in repository</small></span>
+    </span>
+  </div>
+  {% if studio.repo_theme in theme_registry %}
+  <p class="muted">Declared in the repository's <code>config.yaml</code> (<code>theme: {{ studio.repo_theme }}</code>) —
+    a built-in theme, so it applies to both studio chrome and report content.</p>
+  {% else %}
+  <p class="muted">Declared in the repository's <code>config.yaml</code> (<code>theme: {{ studio.repo_theme }}</code>) —
+    a custom theme the repository registers itself. Reports render with its real look; this management chrome
+    stays Trellum's neutral look, since the portal has no stylesheet for a repository-custom theme.</p>
+  {% endif %}
+</div>
+<p class="theme-lockline"><b>Repository-controlled.</b> Personal member overrides and the organization's
+  theme lock do not apply while a theme is declared in the repository. To change it, edit <code>theme:</code>
+  in the repository's <code>config.yaml</code> and push.</p>
+{% else %}
+<div class="panel formrow">
+  <form method="post" action="{% url 'studio-theme-set-default' org.slug studio.slug %}" data-settings-form>
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ request.path }}">
+    <div class="theme-swatches">
+      <label class="theme-sw{% if not studio.theme %} sel{% endif %}">
+        <input type="radio" name="theme" value="" {% if not studio.theme %}checked{% endif %}>
+        <span class="theme-sw-strip" data-theme="{{ default_theme_name }}">
+          <i style="background:var(--bg)"></i><i style="background:var(--accent)"></i><i style="background:var(--text)"></i>
+        </span>
+        <span class="theme-sw-name">Default <small>(Trellum)</small></span>
+      </label>
+      {% for name in theme_registry %}
+      <label class="theme-sw{% if studio.theme == name %} sel{% endif %}">
+        <input type="radio" name="theme" value="{{ name }}" {% if studio.theme == name %}checked{% endif %}>
+        <span class="theme-sw-strip" data-theme="{{ name }}">
+          <i style="background:var(--bg)"></i><i style="background:var(--accent)"></i><i style="background:var(--text)"></i>
+        </span>
+        <span class="theme-sw-name">{{ name|title }}</span>
+      </label>
+      {% endfor %}
+    </div>
+    <button class="ui-btn primary" type="submit">Save changes</button>
+  </form>
+</div>
+
+{% if org.lock_studio_theme %}
+<p class="theme-lockline"><b>Member overrides: locked.</b> Members cannot pick a different palette for
+  themselves in this studio — change this in <a href="/orgs/{{ org.slug }}/settings/appearance">Org settings → Appearance</a>.</p>
+{% else %}
+<p class="theme-lockline"><b>Member overrides: allowed.</b> Your organization lets members pick their own
+  palette for this studio, from the studio's own tab bar — controlled in
+  <a href="/orgs/{{ org.slug }}/settings/appearance">Org settings → Appearance</a> ("Lock it").</p>
+{% endif %}
+{% endif %}
+{% endblock %}

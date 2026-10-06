@@ -1,0 +1,39 @@
+# Production overlay: use your own Postgres instead of the bundled container.
+#
+#   # in .env
+#   DATABASE_URL=postgres://user:pass@db.internal:5432/trellum_portal
+#
+#   docker compose -f docker-compose.yml -f docker-compose.external-db.yml up -d
+#
+# The bundled `db` service is convenient for evaluation, not durable by design:
+# no replication, no point-in-time recovery, no managed backups. Every serious
+# on-prem deployment should own its database.
+#
+# `!reset` clears the base file's depends_on so nothing waits on a service that
+# is no longer running. It needs Compose v2.24+.
+
+services:
+  db:
+    # Scaled to zero rather than deleted: Compose cannot remove a service from
+    # an override, and a replicas:0 service is never started.
+    deploy:
+      replicas: 0
+    profiles: ["never-start"]
+
+  migrate:
+    depends_on: !reset []
+
+  web:
+    depends_on: !reset []
+
+  worker:
+    depends_on: !reset []
+
+  coordinator:
+    depends_on: !reset []
+
+  runner:
+    depends_on: !reset []
+
+  backup:
+    depends_on: !reset []

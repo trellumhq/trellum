@@ -1,0 +1,13 @@
+# The demo project's own settings.
+#
+# `theme:` is the strongest pin there is: the portal stamps it onto
+# Studio.repo_theme, which outranks a studio admin's default and every
+# viewer's personal override (apps.core.themes.explicit_studio_theme, rung 0).
+# The demo is the first thing anyone sees of Trellum, so it shows Trellum's
+# own look rather than whatever a given viewer last picked.
+#
+# "trellum dark" is also trellum.themes.DEFAULT_THEME_NAME -- naming it here
+# anyway, rather than relying on that default, because this file is what a
+# fresh `scripts/demo.sh` copies in. Leaving it implicit is what left the
+# committed demo silent while a hand-edited running instance had the pin.
+theme: trellum dark

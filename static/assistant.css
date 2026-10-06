@@ -1,0 +1,594 @@
+/* ── AI assistant widget ──────────────────────────────────────────────────────
+ * The widget renders in two different theming contexts:
+ *   - portal pages  → portal vars (--bg, --bg-card, --text, --accent, …)
+ *   - report pages  → framework vars (--bg-main, --text-main, --bg-header, …)
+ * So every color resolves through a widget-local --assistant-* variable with a
+ * chained fallback: portal var → framework var → literal. Never use a raw
+ * page variable directly below this block.
+ *
+ * Geometry (mirrors BP_SHEET / BP_DOCK in assistant.js):
+ *   ≥ 1024px  docked right panel, full height, page padded by its width
+ *   641–1023  floating overlay, bottom-right
+ *   ≤ 640px   bottom sheet (55vh, .assistant-tall → 92vh) + full-width pill
+ */
+
+#assistantAsk,
+#assistantPill,
+#assistantPanel {
+    --assistant-bg: var(--bg, var(--bg-main, #f5f6fa));
+    --assistant-card: var(--bg-card, #ffffff);
+    --assistant-hover: var(--bg-hover, var(--bg-card-hover, rgba(127, 127, 127, 0.12)));
+    --assistant-text: var(--text, var(--text-main, #1a1a2e));
+    --assistant-text-muted: var(--text3, var(--text-muted, #8a8f9d));
+    --assistant-accent: var(--accent, var(--bg-header, #4e79a7));
+    --assistant-on-accent: var(--on-accent, #fff);
+    --assistant-border: var(--border, var(--border-color, rgba(127, 127, 127, 0.25)));
+    --assistant-blue: var(--blue, var(--accent-blue, #2563eb));
+    --assistant-danger: var(--red, var(--accent-red, #EF4444));
+    --assistant-focus: var(--focus, var(--blue, var(--accent-blue, #2563eb)));
+    --assistant-shadow: var(--shadow, 0 1px 3px rgba(0, 0, 0, 0.08));
+    --assistant-shadow-hover: var(--shadow-hover, 0 12px 40px rgba(0, 0, 0, 0.18));
+    --assistant-speed: var(--speed, 0.15s);
+    font-family: inherit;
+}
+
+.assistant-hidden { display: none !important; }
+.assistant-spark { width: 16px; height: 16px; flex: none; display: inline-block; vertical-align: -3px; }
+
+/* Focus: a visible ring in the focus colour, never the accent. */
+#assistantAsk:focus-visible,
+#assistantPill:focus-visible,
+#assistantPanel :focus-visible {
+    outline: 2px solid var(--assistant-focus);
+    outline-offset: 2px;
+}
+
+/* ── Header "Ask" button ─────────────────────────────────────────────── */
+
+/* Report header (dark accent bar): same look as the framework's Export /
+   Options buttons. */
+.assistant-ask-fw {
+    display: inline-flex; align-items: center; gap: 5px;
+    color: rgba(255, 255, 255, 0.7);
+    font: 500 13px/1.4 inherit;
+    min-height: 28px; padding: 4px 12px; border-radius: 6px;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    cursor: pointer; white-space: nowrap; transition: all var(--assistant-speed);
+}
+.assistant-ask-fw:hover,
+.assistant-ask-fw[aria-expanded="true"] { background: rgba(0, 0, 0, 0.35); color: #fff; }
+.assistant-ask-fw .assistant-spark { width: 14px; height: 14px; }
+
+/* Portal shell (light chrome): same height/tokens as the Search input. */
+.assistant-ask-shell {
+    display: inline-flex; align-items: center; gap: 5px;
+    height: 28px; padding: 0 10px;
+    font: 500 12px/1.4 inherit;
+    color: var(--assistant-text);
+    background: var(--assistant-bg);
+    border: 1px solid var(--assistant-border); border-radius: 6px;
+    cursor: pointer; white-space: nowrap; transition: background var(--assistant-speed);
+}
+.assistant-ask-shell:hover,
+.assistant-ask-shell[aria-expanded="true"] { background: var(--assistant-hover); }
+.assistant-ask-shell .assistant-spark { width: 14px; height: 14px; }
+.tl-console-header .assistant-ask-shell {
+    height: 36px; padding: 0 11px; border-radius: 8px; font-size: 14px;
+}
+
+/* Fallback when the page has neither header cluster. */
+.assistant-ask-float {
+    position: fixed; top: 10px; right: 12px; z-index: var(--z-drawer, 9001);
+    display: inline-flex; align-items: center; gap: 5px;
+    min-height: 28px; padding: 4px 12px; border-radius: 6px; font: 500 13px/1.4 inherit;
+    color: var(--assistant-text); background: var(--assistant-card);
+    border: 1px solid var(--assistant-border); box-shadow: var(--assistant-shadow); cursor: pointer;
+}
+
+/* "Ask about this chart": a spark in each section header, shown on hover
+   or keyboard focus (always faintly on touch). */
+.assistant-section-ask {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px; margin-left: 6px; vertical-align: middle;
+    background: none; border: 1px solid transparent; border-radius: 6px;
+    color: var(--text3, var(--text-muted, #8a8f9d)); cursor: pointer;
+    opacity: 0; transition: opacity var(--speed, 0.15s);
+}
+.assistant-section-ask .assistant-spark { width: 14px; height: 14px; }
+.fw-section > h2:hover .assistant-section-ask,
+.assistant-section-ask:focus-visible { opacity: 1; }
+.assistant-section-ask:hover { background: var(--bg-hover, var(--bg-card-hover, rgba(127, 127, 127, 0.12))); color: var(--accent, var(--bg-header, #4e79a7)); }
+.assistant-section-ask:focus-visible { outline: 2px solid var(--focus, var(--blue, var(--accent-blue, #2563eb))); outline-offset: 1px; }
+@media (hover: none) { .assistant-section-ask { opacity: 0.6; } }
+
+/* ── Phone launcher pill ─────────────────────────────────────────────── */
+
+#assistantPill {
+    display: none;
+    position: fixed;
+    left: 12px; right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    z-index: var(--z-drawer, 9001);
+    height: 44px;
+    align-items: center; justify-content: center; gap: 8px;
+    border: 1px solid var(--assistant-border);
+    border-radius: 22px;
+    background: var(--assistant-card);
+    color: var(--assistant-text);
+    font: 600 14px/1 inherit;
+    box-shadow: var(--assistant-shadow-hover);
+    cursor: pointer;
+}
+#assistantPill .assistant-spark { color: var(--assistant-accent); }
+
+/* ── Panel ───────────────────────────────────────────────────────────── */
+
+#assistantPanel {
+    position: fixed;
+    bottom: 22px;
+    right: 22px;
+    z-index: var(--z-drawer, 9001);
+    width: 420px;
+    max-width: calc(100vw - 32px);
+    height: 600px;
+    max-height: calc(100vh - 44px);
+    display: none;
+    flex-direction: column;
+    background: var(--assistant-card);
+    color: var(--assistant-text);
+    border: 1px solid var(--assistant-border);
+    border-radius: 10px;
+    box-shadow: var(--assistant-shadow-hover);
+    overflow: hidden;
+    font-size: 13px;
+    font-family: inherit;
+    line-height: 1.5;
+    text-align: left;
+    box-sizing: border-box;
+}
+#assistantPanel.assistant-open { display: flex; animation: assistantIn var(--assistant-speed) ease-out; }
+#assistantPanel * { box-sizing: border-box; }
+@keyframes assistantIn {
+    from { transform: translateX(16px); opacity: 0; }
+    to { transform: none; opacity: 1; }
+}
+
+/* Docked (≥1024): full-height column on the right edge; the page body is
+   padded by --assistant-w so nothing is covered. */
+#assistantPanel.assistant-dock {
+    top: 0; bottom: 0; right: 0;
+    height: auto; max-height: none; max-width: 560px;
+    border-radius: 0;
+    border-width: 0 0 0 1px;
+    box-shadow: var(--assistant-shadow);
+}
+
+/* Left-edge drag handle (dock + overlay only). */
+.assistant-resize {
+    position: absolute; top: 0; bottom: 0; left: 0; width: 6px;
+    cursor: ew-resize; z-index: 2;
+}
+.assistant-resize:hover,
+#assistantPanel.assistant-resizing .assistant-resize { background: var(--assistant-hover); }
+#assistantPanel.assistant-resizing { user-select: none; }
+
+.assistant-grab { display: none; }
+.assistant-sheet-only { display: none !important; }
+
+/* Card-surface header: hairline below, 2px accent strip above. Send stays
+   the only accent-filled control. */
+.assistant-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: var(--assistant-card);
+    color: var(--assistant-text);
+    border-top: 2px solid var(--assistant-accent);
+    border-bottom: 1px solid var(--assistant-border);
+    flex-shrink: 0;
+}
+.assistant-header > .assistant-spark { color: var(--assistant-accent); }
+.assistant-header .assistant-title { font-weight: 600; font-size: 13px; line-height: 1.3; }
+.assistant-header .assistant-sub { font-size: 11px; color: var(--assistant-text-muted); line-height: 1.3; }
+.assistant-header button {
+    display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+    min-height: 28px; min-width: 28px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--assistant-text-muted);
+    border-radius: 6px;
+    padding: 0 8px;
+    font: 500 12px/1 inherit;
+    cursor: pointer;
+    transition: background var(--assistant-speed), color var(--assistant-speed);
+}
+.assistant-header button:hover,
+.assistant-header button[aria-expanded="true"] { background: var(--assistant-hover); color: var(--assistant-text); }
+
+/* History popover, anchored under the header. */
+.assistant-history {
+    position: absolute; top: 54px; right: 10px; left: 10px; z-index: 3;
+    max-height: 50%; overflow-y: auto; padding: 6px;
+    background: var(--assistant-card); border: 1px solid var(--assistant-border);
+    border-radius: 10px; box-shadow: var(--assistant-shadow-hover);
+}
+.assistant-hnote { padding: 10px; font-size: 12px; color: var(--assistant-text-muted); text-align: center; }
+.assistant-hrow { display: flex; align-items: stretch; gap: 2px; border-radius: 6px; }
+.assistant-hrow.current { background: var(--assistant-hover); }
+.assistant-hrow:hover { background: var(--assistant-hover); }
+.assistant-hopen {
+    flex: 1; min-width: 0; min-height: 40px; padding: 6px 10px;
+    display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+    background: none; border: none; color: var(--assistant-text);
+    font: inherit; text-align: left; cursor: pointer; border-radius: 6px;
+}
+.assistant-htitle { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.assistant-hmeta { font-size: 11px; color: var(--assistant-text-muted); }
+.assistant-hdel {
+    flex: none; width: 28px; min-height: 28px; align-self: center;
+    background: none; border: none; border-radius: 6px; color: var(--assistant-text-muted);
+    font: inherit; cursor: pointer;
+}
+.assistant-hdel:hover { color: var(--assistant-danger); background: var(--assistant-hover); }
+
+/* Pinned answers: a collapsible strip above the message list. */
+.assistant-pinned {
+    flex-shrink: 0; max-height: 35%; overflow-y: auto;
+    padding: 6px 14px; border-bottom: 1px solid var(--assistant-border);
+    background: var(--assistant-bg); font-size: 12px;
+}
+.assistant-pinned summary {
+    cursor: pointer; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--assistant-text-muted); list-style: none; user-select: none;
+}
+.assistant-pinned summary::-webkit-details-marker { display: none; }
+.assistant-pinned summary::before { content: '▸'; display: inline-block; margin-right: 5px; transition: transform var(--assistant-speed); }
+.assistant-pinned[open] summary::before { transform: rotate(90deg); }
+.assistant-pinned-body { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+
+/* "About alert: …" -- a conversation opened from an alert email. */
+.assistant-about {
+    flex-shrink: 0; padding: 6px 14px; border-bottom: 1px solid var(--assistant-border);
+    background: var(--assistant-bg); font-size: 12px; color: var(--assistant-text-muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.assistant-msg.pinned {
+    max-width: 100%; padding: 8px 10px; border-left: 2px solid var(--assistant-accent);
+    background: var(--assistant-card); border-radius: 0 6px 6px 0;
+}
+
+.assistant-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background: var(--assistant-card);
+}
+
+.assistant-msg { max-width: 92%; line-height: 1.5; word-wrap: break-word; }
+.assistant-msg.user {
+    align-self: flex-end;
+    background: var(--assistant-hover);
+    border: 1px solid var(--assistant-border);
+    border-radius: 10px 10px 4px 10px;
+    padding: 8px 12px;
+    white-space: pre-wrap;
+}
+.assistant-msg.assistant { align-self: flex-start; padding: 0 2px; position: relative; }
+/* Copy / Pin: revealed on hover or keyboard focus; always shown
+   where there is no hover (touch). */
+.assistant-actions { display: flex; gap: 2px; margin-top: 4px; opacity: 0; transition: opacity var(--assistant-speed); }
+.assistant-msg.assistant:hover .assistant-actions,
+.assistant-msg.assistant:focus-within .assistant-actions,
+.assistant-actions:has([aria-pressed="true"]) { opacity: 1; }
+@media (hover: none) { .assistant-actions { opacity: 1; } }
+.assistant-actions button {
+    min-height: 28px; min-width: 28px; padding: 0 8px;
+    background: none; border: 1px solid transparent; border-radius: 6px;
+    color: var(--assistant-text-muted); font: 500 11px/1 inherit; cursor: pointer;
+}
+.assistant-actions button:hover { background: var(--assistant-hover); color: var(--assistant-text); }
+.assistant-actions button[aria-pressed="true"] { color: var(--assistant-text); border-color: var(--assistant-border); background: var(--assistant-hover); }
+.assistant-msg.assistant p { margin: 0 0 8px; }
+.assistant-msg.assistant p:last-child { margin-bottom: 0; }
+.assistant-msg.assistant a { color: var(--assistant-blue); font-weight: 600; }
+.assistant-msg.assistant code {
+    background: var(--assistant-hover);
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-size: 12px;
+}
+.assistant-msg.assistant pre {
+    background: var(--assistant-hover);
+    border-radius: 6px;
+    padding: 10px;
+    overflow-x: auto;
+    font-size: 11.5px;
+}
+.assistant-msg.assistant table {
+    border-collapse: collapse;
+    margin: 6px 0;
+    font-size: 12px;
+    width: 100%;
+}
+.assistant-msg.assistant th,
+.assistant-msg.assistant td {
+    border: 1px solid var(--assistant-border);
+    padding: 4px 8px;
+    text-align: left;
+}
+.assistant-msg.assistant th { background: var(--assistant-hover); font-weight: 600; }
+.assistant-msg.assistant td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* "How I got this": collapsible provenance footer under an answer. */
+.assistant-prov {
+    margin-top: 8px; padding: 6px 10px;
+    border: 1px solid var(--assistant-border); border-radius: 6px;
+    font-size: 11px; color: var(--assistant-text-muted);
+}
+.assistant-prov summary { cursor: pointer; font-weight: 600; list-style: none; user-select: none; }
+.assistant-prov summary::-webkit-details-marker { display: none; }
+.assistant-prov summary::before { content: '▸'; display: inline-block; margin-right: 5px; transition: transform var(--assistant-speed); }
+.assistant-prov[open] summary::before { transform: rotate(90deg); }
+.assistant-prov dl { margin: 6px 0 0; display: grid; grid-template-columns: max-content 1fr; gap: 2px 10px; }
+.assistant-prov dl > div { display: contents; }
+.assistant-prov dt { font-weight: 500; }
+.assistant-prov dd { margin: 0; color: var(--assistant-text); word-break: break-word; }
+.assistant-prov a { color: var(--assistant-blue); font-weight: 600; }
+.assistant-prov-open { display: inline-block; margin-top: 6px; }
+.assistant-badges { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.assistant-badge {
+    padding: 1px 7px; border-radius: 4px; font-size: 10px; font-weight: 600;
+}
+.assistant-badge.warn {
+    color: var(--warn, var(--accent-yellow, #b88b00));
+    background: color-mix(in srgb, var(--warn, var(--accent-yellow, #b88b00)) 12%, transparent);
+}
+.assistant-badge.fail {
+    color: var(--assistant-danger);
+    background: color-mix(in srgb, var(--assistant-danger, #EF4444) 12%, transparent);
+}
+
+.assistant-tool {
+    align-self: flex-start;
+    font-size: 11px;
+    color: var(--assistant-text-muted);
+    background: var(--assistant-hover);
+    border-radius: 6px;
+    padding: 4px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.assistant-tool .assistant-spark { width: 12px; height: 12px; }
+.assistant-tool.done::after { content: '✓'; font-weight: 700; }
+.assistant-tool.error { color: var(--assistant-danger); }
+.assistant-tool.error::after { content: '!'; font-weight: 700; }
+
+/* A proposed action: what the assistant wants to change, waiting for a decision. */
+.assistant-proposal {
+    align-self: stretch;
+    display: flex; flex-direction: column; gap: 6px;
+    padding: 8px 10px;
+    border: 1px solid var(--assistant-border);
+    border-left: 3px solid var(--assistant-blue);
+    border-radius: 6px;
+    background: var(--assistant-card);
+    font-size: 12px;
+    color: var(--assistant-text);
+}
+.assistant-proposal.settled { border-left-color: var(--assistant-border); }
+.assistant-proposal.settled > :not(.assistant-proposal-title):not(.assistant-proposal-status) { opacity: 0.6; }
+.assistant-proposal[data-status="executed"] { border-left-color: var(--ok, var(--accent-green, #16a34a)); }
+.assistant-proposal[data-status="failed"] { border-left-color: var(--assistant-danger); }
+.assistant-proposal-title { font-weight: 600; }
+.assistant-proposal dl {
+    margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 2px 10px;
+    font-size: 11px; color: var(--assistant-text-muted);
+}
+.assistant-proposal dl > div { display: contents; }
+.assistant-proposal dd { margin: 0; color: var(--assistant-text); word-break: break-word; }
+.assistant-proposal label {
+    display: flex; flex-direction: column; gap: 2px;
+    font-size: 11px; color: var(--assistant-text-muted); text-transform: capitalize;
+}
+.assistant-proposal input {
+    font: inherit; padding: 5px 8px;
+    border: 1px solid var(--assistant-border); border-radius: 4px;
+    background: var(--assistant-bg); color: var(--assistant-text);
+}
+.assistant-proposal input:focus { border-color: var(--assistant-focus); outline: none; }
+.assistant-proposal-actions { display: flex; gap: 6px; }
+.assistant-proposal-actions button {
+    min-height: 28px; padding: 0 12px;
+    border: 1px solid var(--assistant-border); border-radius: 6px;
+    background: transparent; color: inherit;
+    font: 600 12px/1 inherit; cursor: pointer;
+}
+.assistant-proposal-actions button:disabled { opacity: 0.45; cursor: default; }
+.assistant-proposal-actions .assistant-approve {
+    background: var(--assistant-accent); color: var(--assistant-on-accent); border-color: transparent;
+}
+.assistant-proposal-status { font-size: 11px; color: var(--assistant-text-muted); }
+
+.assistant-thinking {
+    align-self: flex-start;
+    color: var(--assistant-text-muted);
+    font-size: 12px;
+    padding: 2px 4px;
+}
+.assistant-thinking::after {
+    content: '…';
+    animation: assistantDots 1.2s steps(4, end) infinite;
+}
+@keyframes assistantDots {
+    0% { content: ''; }
+    25% { content: '.'; }
+    50% { content: '..'; }
+    75% { content: '...'; }
+}
+
+.assistant-input-row {
+    display: flex;
+    gap: 8px;
+    padding: 10px 12px;
+    border-top: 1px solid var(--assistant-border);
+    flex-shrink: 0;
+    background: var(--assistant-card);
+}
+.assistant-input-row textarea {
+    flex: 1;
+    resize: none;
+    border: 1px solid var(--assistant-border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font: inherit;
+    background: var(--assistant-bg);
+    color: var(--assistant-text);
+    max-height: 110px;
+    /* No scrollbar while the content fits — JS flips this to auto only
+       when the text exceeds max-height. */
+    overflow-y: hidden;
+    overflow-x: hidden;
+}
+.assistant-input-row textarea::placeholder { color: var(--assistant-text-muted); }
+.assistant-input-row textarea:focus { border-color: var(--assistant-focus); outline: none; }
+.assistant-input-row button {
+    border: none;
+    border-radius: 6px;
+    background: var(--assistant-accent);
+    color: var(--assistant-on-accent);
+    min-height: 28px;
+    padding: 0 16px;
+    cursor: pointer;
+    font: 600 13px/1 inherit;
+}
+.assistant-input-row button:disabled { opacity: 0.45; cursor: default; }
+.assistant-input-row button.assistant-stop {
+    background: var(--assistant-card); color: var(--assistant-text);
+    border: 1px solid var(--assistant-border);
+}
+
+.assistant-empty {
+    color: var(--assistant-text-muted);
+    text-align: center;
+    margin-top: 40px;
+    padding: 0 20px;
+    line-height: 1.6;
+}
+.assistant-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 14px; }
+.assistant-chip {
+    min-height: 28px; padding: 4px 10px;
+    border: 1px solid var(--assistant-border); border-radius: 10px;
+    background: var(--assistant-card); color: var(--assistant-text);
+    font: 500 12px/1.3 inherit; text-align: left; cursor: pointer;
+    transition: background var(--assistant-speed);
+}
+.assistant-chip:hover { background: var(--assistant-hover); }
+
+/* Admin-only stand-in for the Ask button when the assistant is off. */
+.assistant-setup {
+    display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 0 10px;
+    border: 1px solid var(--assistant-border, rgba(127, 127, 127, 0.25)); border-radius: 6px;
+    font: 500 12px/1 inherit; text-decoration: none; white-space: nowrap;
+    color: var(--text3, var(--text-muted, #8a8f9d));
+}
+.fw-header-right .assistant-setup { color: rgba(255, 255, 255, 0.6); border-color: rgba(255, 255, 255, 0.15); }
+.assistant-setup:hover { text-decoration: underline; }
+.assistant-setup .assistant-spark { width: 14px; height: 14px; }
+@media (max-width: 767px) {
+    .assistant-setup {
+        width: 44px; height: 44px; padding: 0; justify-content: center;
+    }
+    .assistant-setup span { display: none; }
+}
+.assistant-error-banner {
+    background: color-mix(in srgb, var(--assistant-danger, #EF4444) 12%, transparent);
+    color: var(--assistant-danger);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 12px;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.assistant-error-banner span { flex: 1; }
+.assistant-error-detail {
+    flex-basis: 100%; font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--text3, var(--text-muted, #8a8f9d)); word-break: break-word;
+}
+.assistant-error-detail a { color: inherit; font-family: inherit; }
+.assistant-retry {
+    min-height: 28px; padding: 0 10px;
+    border: 1px solid currentColor; border-radius: 6px;
+    background: transparent; color: inherit;
+    font: 600 12px/1 inherit; cursor: pointer;
+}
+
+/* ── Phone: bottom sheet ─────────────────────────────────────────────── */
+
+/* Standalone reports still full-bleed their main filter bar. When the
+   assistant is docked, account for the reserved body width so the bar ends
+   at the content edge instead of underneath the panel. Console and focus
+   reports provide their own section-gutter alignment in report_menu.js. */
+body:not(.tl-report-console):not(.tl-report-focus) .fw-container > .fw-filter-bar {
+    margin-left: calc(50% - (100vw - var(--assistant-w, 0px)) / 2);
+    margin-right: calc(50% - (100vw - var(--assistant-w, 0px)) / 2);
+    padding-left: max(24px, (100vw - var(--assistant-w, 0px)) / 2 - 680px);
+    padding-right: max(24px, (100vw - var(--assistant-w, 0px)) / 2 - 680px);
+}
+
+@media (max-width: 640px) {
+    /* The pill is the launcher here; the header button steps aside. */
+    #assistantAsk { display: none !important; }
+    #assistantPill { display: flex; }
+    body.assistant-sheet-open { overflow: hidden; }
+
+    #assistantPanel {
+        top: auto; left: 0; right: 0; bottom: 0;
+        width: 100%; max-width: 100%;
+        height: 55vh; max-height: 100vh;
+        border-radius: 10px 10px 0 0;
+        border-width: 1px 0 0 0;
+        box-shadow: var(--assistant-shadow-hover);
+    }
+    #assistantPanel.assistant-tall { height: 92vh; }
+    @keyframes assistantIn {
+        from { transform: translateY(24px); opacity: 0; }
+        to { transform: none; opacity: 1; }
+    }
+    .assistant-resize { display: none; }
+    .assistant-grab {
+        display: block; flex-shrink: 0;
+        width: 36px; height: 4px; margin: 8px auto 0;
+        border-radius: 2px; background: var(--assistant-border);
+    }
+    .assistant-sheet-only { display: inline-flex !important; }
+    .assistant-header button { min-height: 40px; min-width: 40px; }
+    .assistant-input-row button { min-height: 40px; }
+    .assistant-actions button { min-height: 40px; min-width: 40px; }
+    .assistant-history { top: 66px; }
+    .assistant-input-row {
+        padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    }
+    .assistant-input-row textarea,
+    .assistant-input-row button {
+        /* ≥16px stops iOS Safari from auto-zooming the page on focus */
+        font-size: 16px;
+    }
+    .assistant-msg { max-width: 100%; }
+    .tl-console-header .assistant-setup { min-height: 44px; }
+}
+
+/* ── Motion off ──────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+    #assistantPanel.assistant-open,
+    .assistant-ask-fw,
+    .assistant-ask-shell,
+    .assistant-header button { animation: none; transition: none; }
+    /* Static "Thinking…" instead of the cycling dots. */
+    .assistant-thinking::after { content: '…'; animation: none; }
+}

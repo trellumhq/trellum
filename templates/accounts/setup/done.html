@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Setup complete — trellum{% endblock %}
+{% block content %}
+<div class="auth-shell">
+  <div class="panel auth-card setup-card">
+    {% include "accounts/setup/_steps.html" %}
+    <h1>You're set up</h1>
+    <p class="ui-help">
+      {% if org %}<strong>{{ org.name }}</strong> exists and you administer it,
+      as well as this instance.{% else %}Your operator account is ready.{% endif %}
+      It has no studios yet — that's the next thing to do, and the hub will walk
+      you through it.
+    </p>
+
+    <ul class="ui-checklist" style="margin:var(--sp-4) 0">
+      <li class="ui-checklist-item done">
+        <span class="ui-checklist-mark" aria-hidden="true">✓</span>
+        <span>Operator account created</span>
+      </li>
+      <li class="ui-checklist-item done">
+        <span class="ui-checklist-mark" aria-hidden="true">✓</span>
+        <span>{% if org %}Organization “{{ org.name }}”{% else %}Organization{% endif %} created</span>
+      </li>
+      <li class="ui-checklist-item{% if mail_configured %} done{% endif %}">
+        <span class="ui-checklist-mark" aria-hidden="true">{% if mail_configured %}✓{% else %}—{% endif %}</span>
+        <span>Outbound email
+          {% if mail_configured %}configured{% else %}not configured — invitations
+          will show a copyable link instead{% endif %}</span>
+      </li>
+    </ul>
+
+    <p class="ui-help">From here: create a studio, point it at the git
+      repository that holds its reports, add its data sources, and invite your
+      team. Instance health and settings live under <strong>System</strong> in
+      the user menu.</p>
+
+    <form method="post">
+      {% csrf_token %}
+      <div class="ui-form-actions">
+        <button class="ui-btn primary" type="submit">Go to your portal</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,83 @@
+{% extends "settings_base.html" %}
+{% block title %}Invitations — {{ org.name }}{% endblock %}
+{% block settings %}
+<header class="page-head">
+  <div class="ui-label page-kicker scope-org">Organization · {{ org.name }}</div>
+  <h1>Invitations</h1>
+  <p class="muted page-sub">Invite someone to {{ org.name }}, or manage a link already sent.</p>
+</header>
+
+{% if new_invite %}
+<div class="ui-panel">
+  <span class="ui-label">Invitation created</span>
+  <p style="margin:4px 0 8px"><strong>{{ new_invite.email }}</strong>
+    <span class="muted">— share this link, it expires {{ new_invite.expires_at|date:"Y-m-d" }}:</span></p>
+  {% include "_copy_field.html" with value=new_invite.accept_url %}
+</div>
+{% endif %}
+
+<h2>Invite someone</h2>
+<p class="muted">A plain <em>member</em> sees <strong>no studios</strong> until something grants
+them a role — pick studio access below, attach permission groups, or do it later from
+<a href="/orgs/{{ org.slug }}/settings/members">Members</a>. Org <em>admins</em> automatically
+have admin access to every studio.</p>
+<div class="panel formrow">
+  <form method="post">
+    {% csrf_token %}
+    <label>Email</label>{{ form.email }}{{ form.email.errors }}
+    <label>Org role</label>{{ form.org_role }}{{ form.org_role.errors }}
+    <label>Permission groups</label>{{ form.groups }}{{ form.groups.errors }}
+    <label>Studio access</label>
+    <table class="ui-table dense">
+      <tbody>
+      {% for studio, field in form.studio_role_fields %}
+      <tr>
+        <td data-label="Studio">{{ studio.name }} <span class="muted">({{ studio.slug }})</span></td>
+        <td class="ui-row-actions" data-label="Role">{{ field }}</td>
+      </tr>
+      {% empty %}
+      <tr><td class="muted">No studios yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <span class="helptext">Applied as direct studio roles the moment the invitation is accepted.</span>
+    <p></p>
+    <button class="ui-btn primary" type="submit">Create invitation</button>
+  </form>
+</div>
+
+<h2>Pending</h2>
+{% include "_list_toolbar.html" with q=q placeholder="Search pending invitations…" total=total %}
+<div class="panel">
+<table class="ui-table" data-mobile-cards>
+  <thead>
+    <tr><th>Email</th><th>Org role</th><th>Invited</th><th>Expires</th><th>Link</th><th></th></tr>
+  </thead>
+  <tbody>
+  {% for inv in pending %}
+  <tr>
+    <td data-label="Email"><strong>{{ inv.email }}</strong></td>
+    <td data-label="Org role">{% if inv.org_role == "admin" %}<span class="ui-badge accent">{{ inv.org_role }}</span>{% else %}<span class="ui-badge">{{ inv.org_role }}</span>{% endif %}</td>
+    <td class="muted" data-label="Invited">{{ inv.created_at|date:"Y-m-d" }}</td>
+    <td data-label="Expires">{% if inv.is_expired %}<span class="ui-badge warn" title="Expired {{ inv.expires_at|date:"Y-m-d" }} — revoke it and invite again.">expired</span>
+        {% else %}<span class="muted">{{ inv.expires_at|date:"Y-m-d" }}</span>{% endif %}</td>
+    <td data-label="Link">{% include "_copy_field.html" with value=inv.accept_url compact=1 label="Copy link" %}</td>
+    <td class="ui-row-actions" data-label="Actions">
+      <form class="inline" method="post" action="/orgs/{{ org.slug }}/settings/invites/{{ inv.pk }}/revoke"
+            onsubmit="return confirm('Revoke the invitation for {{ inv.email|escapejs }}? The link stops working immediately.')">
+        {% csrf_token %}<button class="ui-btn danger" type="submit">Revoke</button>
+      </form>
+    </td>
+  </tr>
+  {% empty %}
+  <tr><td colspan="6"><div class="ui-empty">
+    {% if q %}No pending invitation matches “{{ q }}”.
+      <div class="ui-empty-action"><a class="ui-btn ghost" href="{% querystring q=None page=None %}">Clear search</a></div>
+    {% else %}No pending invitations.{% endif %}
+  </div></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% include "_pagination.html" with page=page %}
+{% endblock %}

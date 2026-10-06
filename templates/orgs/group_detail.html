@@ -1,0 +1,74 @@
+{% extends "settings_base.html" %}
+{% block title %}{{ group.name }} — {{ org.name }}{% endblock %}
+{% block settings %}
+<style>
+.group-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:18px 0}.group-tabs a{padding:8px 12px;border-radius:8px;color:inherit;text-decoration:none}.group-tabs a.active{background:var(--bg-card);box-shadow:inset 0 0 0 1px var(--border)}.mgmt .group-tab-select{display:none;width:100%;margin:14px 0}.group-access-card{margin-bottom:14px}.group-access-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.group-access-head h3{margin:0}.group-access-form{display:grid;grid-template-columns:minmax(130px,180px) minmax(160px,220px);gap:12px 18px;margin-top:14px}.group-access-form .report-picker{grid-column:1/-1;min-width:0}.mgmt .report-picker[hidden]{display:none!important}.report-picker>div{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:6px}.report-picker label{overflow-wrap:anywhere}.effective-source{margin:6px 0 0;padding-left:18px}
+@media(max-width:640px){.group-tabs{display:none}.mgmt .group-tab-select{display:block}.group-access-form{grid-template-columns:1fr}.group-access-form .report-picker{grid-column:auto}.report-picker>div{grid-template-columns:1fr}}
+</style>
+<header class="page-head-row"><div><div class="ui-label page-kicker scope-org">Organization · {{ org.name }}</div><h1>{{ group.name }}</h1>{% if group.description %}<p class="muted page-sub">{{ group.description }}</p>{% endif %}</div><span class="spacer"></span><a class="ui-btn ghost" href="/orgs/{{ org.slug }}/settings/groups">← All groups</a></header>
+<nav class="group-tabs" aria-label="Group sections">{% for value,label in tabs.items %}<a href="?tab={{ value }}"{% if tab == value %} class="active" aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}</nav>
+<label class="group-tab-select"><span class="ui-label">Group section</span><select aria-label="Group section" onchange="location.href=this.value">{% for value,label in tabs.items %}<option value="?tab={{ value }}"{% if tab == value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+
+{% if tab == "overview" %}
+<div class="ui-panel"><span class="ui-label">Access summary</span><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+{% if group.org_role %}<span class="ui-badge accent">organization admin</span>{% endif %}{% if group.default_studio_role %}<span class="ui-badge info">all studios: {{ group.default_studio_role }}</span>{% endif %}{% for grant in grants %}<span class="ui-badge">{{ grant.studio.slug }}: {{ grant.role }}{% if grant.role == "viewer" and grant.viewer_scope == "selected" %} · selected reports{% endif %}</span>{% endfor %}{% if not group.org_role and not group.default_studio_role and not grants %}<span class="ui-badge warn">No access yet</span>{% endif %}
+</div><p class="muted" style="margin:8px 0 0">Access is additive. A broader direct role or another group still wins.</p></div>
+<h2>Group settings</h2><div class="panel formrow"><form method="post" data-settings-form>{% csrf_token %}<input type="hidden" name="action" value="edit"><fieldset style="border:0;padding:0;margin:0;min-width:0">
+<label for="{{ form.name.id_for_label }}">Name</label>{{ form.name }}{{ form.name.errors }}<label for="{{ form.description.id_for_label }}">Description</label>{{ form.description }}{{ form.description.errors }}<label for="{{ form.org_role.id_for_label }}">Organization role</label>{{ form.org_role }}{{ form.org_role.errors }}<label for="{{ form.default_studio_role.id_for_label }}">Default studio role</label>{{ form.default_studio_role }}{{ form.default_studio_role.errors }}<span class="helptext">Applies to all current and future studios in the organization.</span><p></p><button class="ui-btn primary" type="submit">Save changes</button>
+</fieldset></form></div>
+<h2>Danger zone</h2><div class="panel"><p class="muted">Deleting this group removes its access from every member.</p><form method="post" action="/orgs/{{ org.slug }}/settings/groups/{{ group.pk }}/delete" onsubmit="return confirm('Delete group {{ group.name|escapejs }}? Members lose the access it grants.')">{% csrf_token %}<button class="ui-btn danger" type="submit">Delete group</button></form></div>
+
+{% elif tab == "members" %}
+<h2>Members</h2><p class="muted">People assigned to this reusable access bundle.</p>{% include "_list_toolbar.html" with q=q placeholder="Search group members…" total=member_total %}
+<div class="panel"><table class="ui-table" data-mobile-cards><thead><tr><th>Member</th><th></th></tr></thead><tbody>
+{% for gm in member_page.object_list %}<tr><td data-label="Member"><strong>{{ gm.user.display_name }}</strong><br><span class="muted">{{ gm.user.email }}</span></td><td class="ui-row-actions" data-label="Actions"><form method="post" onsubmit="return confirm('Remove {{ gm.user.email|escapejs }} from {{ group.name|escapejs }}?')">{% csrf_token %}<input type="hidden" name="action" value="remove_user"><input type="hidden" name="user_id" value="{{ gm.user_id }}"><button class="ui-btn danger" type="submit">Remove</button></form></td></tr>{% empty %}<tr><td colspan="2"><div class="ui-empty">{% if q %}No member matches “{{ q }}”.{% else %}Nobody is assigned to this group yet.{% endif %}</div></td></tr>{% endfor %}
+</tbody></table></div>{% include "_pagination.html" with page=member_page %}
+{% if addable_members %}<div class="panel"><form class="inline" method="post">{% csrf_token %}<input type="hidden" name="action" value="add_user"><select name="user_id" aria-label="Member to add">{% for m in addable_members %}<option value="{{ m.user_id }}">{{ m.user.email }}</option>{% endfor %}</select><button class="ui-btn primary" type="submit">Add member</button></form></div>{% endif %}
+
+{% elif tab == "access" %}
+<h2>Studio and report access</h2><p class="muted">Choose a studio role. Viewer access can include every report or only the checked reports. Developer and Admin always include every report.</p>
+{% if selected_block_reason %}<div class="ui-panel" role="note"><strong>Selected-report access is read-only</strong><p class="muted" style="margin:4px 0 0">{{ selected_block_reason }} All-report studio grants remain editable.</p></div>{% endif %}
+{% for row in access_rows %}<div class="panel group-access-card"><form method="post" data-settings-form data-studio-access{% if selected_block_reason %} data-selected-blocked{% endif %}>{% csrf_token %}<input type="hidden" name="action" value="studio_access"><fieldset style="border:0;padding:0;margin:0;min-width:0">
+<div class="group-access-head"><h3>{{ row.studio.name }}</h3><span class="muted">{{ row.studio.slug }}</span>{% if row.grant %}<span class="ui-badge">explicit grant</span>{% else %}<span class="ui-badge">no explicit grant</span>{% endif %}</div>{{ row.form.studio }}{{ row.form.non_field_errors }}
+<div class="group-access-form"><label>Studio role {{ row.form.role }}{{ row.form.role.errors }}</label><label>Report access {{ row.form.viewer_scope }}{{ row.form.viewer_scope.errors }}</label><fieldset class="report-picker" data-report-picker{% if selected_block_reason %} disabled{% endif %} style="border:0;padding:0;margin:0;min-width:0"><label><span class="ui-label">Selected reports</span><input type="search" class="ui-input" data-report-filter data-settings-ignore placeholder="Search reports…" aria-label="Search reports in {{ row.studio.name }}"></label>{{ row.form.reports }}{{ row.form.reports.errors }}</fieldset></div><button class="ui-btn primary" type="submit" style="margin-top:12px">Save changes</button>
+</fieldset></form></div>{% empty %}<div class="ui-empty">No studios yet.</div>{% endfor %}
+
+{% elif tab == "effective" %}
+<h2>Effective access</h2><p class="muted">Preview the final access for one member after their direct roles and every group are combined.</p>
+{% if effective_members %}<form method="get" class="panel inline"><input type="hidden" name="tab" value="effective"><label for="effectiveMember">Member</label><select id="effectiveMember" name="member" onchange="this.form.submit()">{% for gm in effective_members %}<option value="{{ gm.user_id }}"{% if selected_member and selected_member.user_id == gm.user_id %} selected{% endif %}>{{ gm.user.email }}</option>{% endfor %}</select><button class="ui-btn ghost" type="submit">Preview</button></form>{% endif %}
+{% if selected_member %}<div class="ui-panel"><strong>{{ selected_member.user.display_name }}</strong><br><span class="muted">{{ selected_member.user.email }}</span></div>
+{% for row in effective_rows %}<div class="panel"><div class="group-access-head"><h3>{{ row.studio.name }}</h3><span class="ui-badge {% if row.role == 'admin' %}accent{% elif row.role == 'developer' %}info{% endif %}">{{ row.role }}</span>{% if row.full %}<span class="ui-badge ok">all reports</span>{% else %}<span class="ui-badge">{{ row.reports|length }} selected</span>{% endif %}</div>{% if not row.full %}<p>{% for report in row.reports %}<span class="ui-badge">{{ report.name|default:report.slug }}</span> {% empty %}<span class="muted">No reports selected.</span>{% endfor %}</p>{% endif %}<span class="ui-label">Why</span><ul class="effective-source muted">{% for source in row.sources %}<li>{{ source }}</li>{% endfor %}</ul></div>{% empty %}<div class="ui-empty">This member has no studio access.</div>{% endfor %}
+{% else %}<div class="ui-empty">Add a member to this group to preview effective access.</div>{% endif %}
+{% endif %}
+<script>
+(function(){
+  var forms=document.querySelectorAll('[data-studio-access]');
+  function sync(form){
+    var role=form.querySelector('select[name="role"]');
+    var scope=form.querySelector('select[name="viewer_scope"]');
+    var picker=form.querySelector('[data-report-picker]');
+    if(!role||!scope||!picker)return;
+    var selected=scope.querySelector('option[value="selected"]');
+    if(selected&&form.hasAttribute('data-selected-blocked'))selected.disabled=true;
+    var isViewer=role.value==='viewer';
+    scope.disabled=!isViewer;
+    picker.hidden=!(isViewer&&scope.value==='selected');
+  }
+  for(var i=0;i<forms.length;i++){
+    sync(forms[i]);
+    forms[i].addEventListener('change',function(event){
+      if(event.target.name==='role'||event.target.name==='viewer_scope')sync(event.currentTarget);
+    });
+  }
+})();
+document.addEventListener('input',function(event){
+  if(!event.target.matches('[data-report-filter]'))return;
+  var term=event.target.value.toLowerCase();
+  var options=event.target.closest('[data-report-picker]').querySelectorAll('input[type="checkbox"]');
+  for(var i=0;i<options.length;i++){
+    var row=options[i].closest('div');
+    row.hidden=!!term&&row.textContent.toLowerCase().indexOf(term)===-1;
+  }
+});
+</script>
+{% endblock %}

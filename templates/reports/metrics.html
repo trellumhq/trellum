@@ -1,0 +1,298 @@
+{% extends "base.html" %}
+{% load docs static %}
+{% block title %}Metrics — {{ studio.name }} — trellum{% endblock %}
+{% block content %}
+
+<style>
+/* Metrics catalog -- surface 1 of .lavish/portal-surface-designs.html.
+   The chip/mono-pill vocabulary (.met-chip/.met-spec) promoted to ui.css as
+   .ui-chip/.ui-mono-pill (ui-consistency-punchlist.md item 8) -- this page
+   is the owner's reference treatment, so it now consumes the shared classes
+   like every other page instead of privately owning them. Layout-only rules
+   (row grid, name/id/usage/expand/foot) stay page-local. met- prefix keeps
+   these out of the way of ui.css's own class names. */
+/* One card per metric, three zones with one job each: who it is, what it
+   means, who depends on it. Ranked by size and tone rather than by giving
+   every fact its own border -- the label is the only thing at full strength,
+   the identifier and the owner sit under it dimmed, and a chip is reserved
+   for what is genuinely a tag. One border per card, the card's own. */
+/* Filter. One row above the grid: the box, and what it left standing. The
+   count is a live region rather than a heading, so a screen reader hears the
+   result of typing without the input losing focus. */
+.met-filter { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:0 0 14px; }
+/* By id, for the same reason .met-open is: ui.css gives every input in
+   body.mgmt `width:100%` at a specificity no page-local class selector can
+   reach, and a filter box the width of the whole grid reads as a form. */
+#metSearch { max-width:320px; }
+.met-count { margin:0; font-size:var(--fs-md); color:var(--text3); }
+.met-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:14px; }
+/* .met-card sets display:flex, which outranks the UA's own [hidden] rule --
+   this is what makes the filter's `card.hidden = true` actually hide it. */
+.met-card[hidden] { display:none; }
+.met-card {
+  display:flex; flex-direction:column; gap:14px; padding:18px 20px;
+  background:var(--bg-card); border:1px solid var(--border); border-radius:var(--r-lg);
+  cursor:pointer; transition:border-color var(--speed), background-color var(--speed);
+}
+.met-card:hover { border-color:var(--accent); background:var(--bg-hover); }
+.met-card:has(.met-open:focus-visible) { border-color:var(--accent); }
+
+/* Identity. The name is the control (a real button, so keyboard and screen
+   readers get it for free) and the card delegates its own clicks to it, so
+   the whole card is clickable without a second focusable thing to tab past.
+   The `body.mgmt main` prefix is only there to outweigh ui.css's neutral
+   <button> treatment, which would otherwise draw the name as a small boxed
+   control -- the opposite of the one thing on the card that is not a box. */
+.met-name { margin:0; font-size:var(--fs-lg); font-weight:650; line-height:1.3; color:var(--text); }
+body.mgmt main .met-card .met-open {
+  all:unset; cursor:pointer; font:inherit; color:inherit; display:inline;
+}
+body.mgmt main .met-card .met-open:focus-visible { outline:2px solid var(--accent); outline-offset:3px; border-radius:var(--r-sm); }
+.met-id { margin-top:3px; font-family:var(--mono); font-size:var(--fs-sm); color:var(--text3); }
+/* The trend, at a glance. Under the identifier rather than beside the name:
+   a 320px card has no width to spare next to a label plus a mono id line, and
+   the sparkline reads as part of who this metric is, not as a third fact.
+   No axes, no labels, no tooltip -- the shape is the whole message, and the
+   real chart is one click away in the overlay. aria-hidden for the same
+   reason: there is no value here a screen reader could usefully read out.
+   Accent-coloured through currentColor, so it follows every theme. */
+.met-spark { display:block; margin-top:9px; max-width:100%; color:var(--accent); }
+
+/* What it means. */
+.met-desc { margin-top:8px; font-size:var(--fs-md); line-height:1.55; color:var(--text2); }
+.met-tags { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }
+.met-owner { margin-top:8px; font-size:var(--fs-md); color:var(--text3); }
+.met-owner b { font-weight:600; color:var(--text3); text-transform:uppercase; font-size:var(--fs-xs); letter-spacing:.06em; margin-right:6px; }
+.met-owner span { color:var(--text2); }
+
+/* Who depends on it. One hairline, not a filled bar: it is the last zone of
+   the card, not a second card. */
+.met-usage { padding-top:12px; border-top:1px solid var(--border); font-size:var(--fs-md); color:var(--text2); }
+/* Pinned to the bottom on the card so cards in a row line up -- and only
+   there: the overlay clones this block, where pinning would push the claims
+   away from the description they belong to. */
+.met-card .met-usage { margin-top:auto; }
+.met-usage b { color:var(--text); }
+.met-usage .st { display:flex; align-items:center; gap:6px; margin-top:5px; font-size:var(--fs-sm); color:var(--text3); }
+.met-dot { width:7px; height:7px; border-radius:50%; display:inline-block; flex:0 0 auto; }
+.met-dot.g { background:var(--green); }
+.met-dot.w { background:var(--warn); }
+.met-expand { font-size:var(--fs-md); }
+.met-expand summary { cursor:pointer; color:var(--text3); font-size:var(--fs-sm); user-select:none; }
+.met-expand summary:hover { color:var(--text); }
+.met-expand-table { width:100%; border-collapse:collapse; font-size:var(--fs-sm); margin-top:8px; }
+.met-expand-table th { text-align:left; color:var(--text3); font-weight:600; font-family:var(--mono); font-size:9.5px; text-transform:uppercase; letter-spacing:.07em; padding:4px 6px; border-bottom:1px solid var(--border); }
+.met-expand-table td { padding:5px 6px; color:var(--text2); border-bottom:1px solid var(--border); }
+.met-expand-table tr:last-child td { border-bottom:0; }
+.met-foot { font-size:var(--fs-sm); color:var(--text3); margin-top:16px; }
+.met-overlay { position:fixed; inset:0; background:rgba(0,0,0,.38); z-index:var(--z-overlay); }
+/* The panel is as big as what it holds and no bigger: content height with
+   92vh only as a ceiling, and a width that fits the chart at its cap
+   (1150px) plus the facts column with no slack left over. metrics_overlay.js
+   measures the framed document and sets the iframe to it.
+   Centred with auto margins, not translate(-50%,-50%): a transform puts the
+   framed report on its own composited layer, and 50% of an odd width lands it
+   on a half pixel, which resamples every stroke and glyph inside the iframe. */
+.met-modal { position:fixed; z-index:var(--z-drawer); inset:0; margin:auto;
+  width:min(860px,94vw); height:fit-content; max-height:92vh; display:flex; flex-direction:column;
+  background:var(--bg-card); border:1px solid var(--border); border-radius:var(--r-md); box-shadow:0 10px 40px rgba(0,0,0,.28); }
+.met-modal:has(iframe) { width:min(1500px,95vw); }
+.met-modal-head { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; padding:14px 18px; border-bottom:1px solid var(--border); }
+/* Same specificity dance as the card name: ui.css gives a page <h2> 22px of
+   top margin, which here was 30px of dead chrome above a 15px title -- and
+   chrome is what the frame's height is measured against. */
+body.mgmt main .met-modal-head h2 { font-size:15px; font-weight:640; margin:0; }
+.met-modal-sub { font-family:var(--mono); font-size:11px; color:var(--text3); margin-top:2px; }
+.met-modal-close { all:unset; cursor:pointer; font-size:20px; line-height:1; color:var(--text3); padding:0 4px; }
+.met-modal-close:hover { color:var(--text); }
+.met-modal-close:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+/* Facts beside the frame, not under it: height is the scarce dimension in an
+   overlay, width is not. They drop below it when the modal gets too narrow
+   for a second column. Both columns start at the top and are as tall as they
+   are -- stretching them only moves the claims away from the description
+   they belong to. */
+.met-modal-body { flex:1; min-height:0; overflow-y:auto; padding:14px 18px; display:flex; align-items:flex-start; gap:18px; }
+/* min-height only covers the moment before the frame has loaded and been
+   measured; anything larger would fight the measured height in a short
+   window, where the whole point is that the panel gets smaller. */
+.met-modal-body iframe { flex:1; min-width:0; min-height:120px; border:0; border-radius:var(--r-md); background:var(--bg); }
+.met-modal-note { flex:1; font-size:12.5px; color:var(--text2); background:var(--bg-hover); border-radius:var(--r-md); padding:14px 16px; }
+.met-modal-facts { flex:0 0 260px; display:flex; flex-direction:column; gap:8px; padding-left:18px; border-left:1px solid var(--border); font-size:12px; color:var(--text2); }
+@media (max-width:900px) {
+  .met-modal-body { flex-direction:column; align-items:stretch; }
+  .met-modal-facts { flex:none; padding:12px 0 0; border-left:0; border-top:1px solid var(--border); }
+}
+.met-modal-foot { padding:10px 18px; border-top:1px solid var(--border); display:flex; justify-content:flex-end; }
+
+/* Compact (metrics_overlay.js owns the threshold). A window this short has no
+   height to spend on a backdrop gutter, a two-line header, a footer row or a
+   column of facts that are still on the card behind: the panel becomes the
+   screen and everything that is not the chart gets out of the way. */
+.met-modal.met-compact { inset:0; margin:0; width:auto; max-width:none; max-height:none;
+  border:0; border-radius:0; }
+.met-modal.met-compact .met-modal-head { padding:6px 12px; align-items:center; gap:12px; }
+.met-modal.met-compact .met-modal-head > div { display:flex; align-items:baseline; gap:8px; min-width:0; }
+body.mgmt main .met-modal.met-compact .met-modal-head h2 { font-size:13px; }
+.met-modal.met-compact .met-modal-sub { margin-top:0; }
+.met-modal.met-compact .met-modal-head .ui-btn { margin-left:auto; }
+.met-modal.met-compact .met-modal-body { padding:8px 12px; }
+.met-modal.met-compact .met-modal-facts,
+.met-modal.met-compact .met-modal-foot { display:none; }
+/* [hidden] is the open/closed switch, and these two set an explicit display
+   that would otherwise win over the UA's [hidden] rule. */
+.met-modal[hidden], .met-modal-foot a[hidden] { display:none; }
+</style>
+
+{% if defined_count == 0 %}
+<header class="page-head">
+  <div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }}</div>
+  <h1>Metrics</h1>
+</header>
+<div class="panel">
+  <div class="ui-empty">
+    No metrics defined in this studio yet.<br>
+    Business metrics are declared in <code>metrics.yaml</code> at the project root and arrive here on the next sync.
+    <div class="ui-empty-action">
+      <a class="ui-btn ghost" href="{% docs_url 'portal/metrics/' %}">How metrics are declared →</a>
+    </div>
+  </div>
+</div>
+{% else %}
+
+{% comment %}The catalog is the definitions; the generated Metrics report is
+the same metrics drawn side by side. Linked, not duplicated — and only once
+it has been built, since an unbuilt report is a dead link (the overlay says
+the same thing per metric).{% endcomment %}
+<header class="page-head-row">
+  <div>
+    <div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }}</div>
+    <h1>Metrics</h1>
+    <p class="muted page-sub">
+      Defined in <code>metrics.yaml</code>{% if synced_at %} · synced {{ synced_at|timesince }} ago{% endif %} ·
+      <b>{{ defined_count }} defined, {{ claimed_count }} claimed by report{{ claimed_count|pluralize }}</b>
+    </p>
+  </div>
+  <span class="spacer"></span>
+  {% if metrics_report_built %}
+  <a class="ui-btn ghost" href="{{ metrics_report_url }}">Chart overview →</a>
+  {% else %}
+  <span class="muted" style="font-size:var(--fs-sm)">Chart overview appears once the Metrics report is built.</span>
+  {% endif %}
+</header>
+
+{% if storage_unavailable %}
+<div class="ui-flash warning" role="alert" style="margin:0 0 14px">
+  Report storage is unreachable right now — usage below may be missing recent builds until it recovers.
+</div>
+{% endif %}
+
+{% comment %}Filtering the cards that are already here (metrics_overlay.js).
+data-search is built from exactly the fields worth matching -- name,
+identifier, description, tags, owner -- rather than the card's own
+textContent, which would also match the claims zone and make "current" a
+query that hits everything.{% endcomment %}
+<div class="met-filter">
+  <label class="sr-only" for="metSearch">Filter metrics</label>
+  <input type="search" id="metSearch" class="ui-input" autocomplete="off" spellcheck="false"
+         placeholder="Filter metrics…">
+  <p class="met-count" id="metCount" role="status" aria-live="polite"></p>
+</div>
+
+<div class="met-grid">
+  {% for m in metrics %}
+  <div class="met-card" data-metric="{{ m.row.name }}"
+       data-search="{{ m.row.label|default:m.row.name }} {{ m.row.name }} {{ m.row.description }} {{ m.row.tags|join:" " }} {{ m.row.owner }}"
+       data-label="{{ m.row.label|default:m.row.name }}"
+       data-embed="{{ m.embed_url }}" data-chart="{{ m.chart_url }}"
+       data-reason="{{ m.not_monitored_reason }}">
+    <div>
+      <h3 class="met-name">
+        <button type="button" class="met-open" aria-haspopup="dialog">{{ m.row.label|default:m.row.name }}</button>
+      </h3>
+      {% comment %}The format joins the identifier line: it names the metric's
+      type, so it belongs with the name rather than competing with the
+      tags.{% endcomment %}
+      <div class="met-id">{{ m.row.name }} · v{{ m.row.version }} · {{ m.row.format }}</div>
+      {% if m.spark %}
+      <svg class="met-spark" width="{{ spark_w }}" height="{{ spark_h }}"
+           viewBox="0 0 {{ spark_w }} {{ spark_h }}" aria-hidden="true" focusable="false">
+        <polyline points="{{ m.spark }}" fill="none" stroke="currentColor" stroke-width="1.5"
+                  stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+      </svg>
+      {% endif %}
+    </div>
+    <div class="met-fact">
+      <span class="ui-mono-pill">{{ m.spec }}</span>
+      {% if m.row.description %}<div class="ui-desc-clamp met-desc">{{ m.row.description }}</div>{% endif %}
+      {% if m.row.tags or not m.usage %}
+      <div class="met-tags">
+        {% for t in m.row.tags %}<span class="ui-chip">{{ t }}</span>{% endfor %}
+        {% if not m.usage %}<span class="ui-chip mute">unused</span>{% endif %}
+      </div>
+      {% endif %}
+      {% if m.row.owner %}<div class="met-owner"><b>Owner</b><span>{{ m.row.owner }}</span></div>{% endif %}
+    </div>
+    <div class="met-usage met-fact">
+      {% if not m.usage %}
+        <span class="ui-chip mute">no reports claim this</span>
+      {% else %}
+        <b>{{ m.usage|length }} report{{ m.usage|length|pluralize }}</b>
+        {% if m.all_current %}
+        <div class="st"><span class="met-dot g"></span> all current</div>
+        {% else %}
+          {% for u in m.usage %}
+          <div class="st">
+            <span class="met-dot {% if u.current %}g{% else %}w{% endif %}"></span>
+            {{ u.report.name|default:u.report.slug }}{% if not u.current %} · <b>built against {% if u.claimed_version %}v{{ u.claimed_version }}{% else %}an unknown version{% endif %}</b>{% endif %}
+          </div>
+          {% endfor %}
+        {% endif %}
+      {% if m.usage %}
+      <details class="met-expand">
+        <summary>{{ m.usage|length }} claiming report{{ m.usage|length|pluralize }} — details</summary>
+        <table class="met-expand-table">
+          <tr><th>Report</th><th>Last build</th><th>Definition</th><th></th></tr>
+          {% for u in m.usage %}
+          <tr>
+            <td>{{ u.report.name|default:u.report.slug }}</td>
+            <td>{% if u.built_at %}{{ u.built_at|date:"Y-m-d H:i" }}{% else %}never built{% endif %}</td>
+            <td>
+              {% if u.current %}<span class="ui-chip acc">current · v{{ m.row.version }}</span>
+              {% else %}<span class="ui-chip warn">stale — built against {% if u.claimed_version %}v{{ u.claimed_version }}{% else %}an unknown version{% endif %}</span>{% endif %}
+            </td>
+            <td class="ui-row-actions"><a class="ui-btn ghost" href="{{ u.report_url }}">open report</a></td>
+          </tr>
+          {% endfor %}
+        </table>
+      </details>
+      {% endif %}
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+<div class="ui-empty" id="metEmpty" hidden>No metric matches that filter.</div>
+<div class="met-foot">Read-only — the source of truth is <code>metrics.yaml</code> in this studio's repository; changes arrive on the next sync.
+  {% if repo_url %}<a href="{{ repo_url }}" rel="noopener">Edit via pull request ↗</a>{% else %}Edit via pull request.{% endif %}</div>
+
+{% comment %}One metric, opened over the catalog: its own block from the
+generated metrics report (framed with ?only=metric-<id>, see
+trellum.metrics_report) next to the facts the row already carries. Not built,
+or not bound to a dataset, and the same overlay says so instead.{% endcomment %}
+<div class="met-overlay" id="metOverlay" hidden></div>
+<div class="met-modal" id="metModal" role="dialog" aria-modal="true"
+     aria-labelledby="metModalTitle" data-built="{{ metrics_report_built|yesno:"1," }}" hidden>
+  <div class="met-modal-head">
+    <div>
+      <h2 id="metModalTitle"></h2>
+      <div class="met-modal-sub" id="metModalSub"></div>
+    </div>
+    <button type="button" class="met-modal-close" id="metModalClose" aria-label="Close">&times;</button>
+  </div>
+  <div class="met-modal-body" id="metModalBody"></div>
+  <div class="met-modal-foot"><a class="ui-btn ghost" id="metModalFull" href="#" hidden>Open full page →</a></div>
+</div>
+<script src="{% static 'metrics_overlay.js' %}"></script>
+
+{% endif %}
+{% endblock %}

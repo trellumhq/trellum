@@ -1,0 +1,198 @@
+name: Pages
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Deploy the current website with the latest stable demo gallery
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  gallery:
+    name: build demo gallery
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read published releases
+        if: github.repository == 'trellumhq/trellum' && (github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.deploy == true))
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api repos/${GITHUB_REPOSITORY}/releases --paginate --slurp > /tmp/gallery-releases.json
+
+      - name: Test gallery revision selection
+        run: python .github/workflows/test_gallery_select.py
+
+      - name: Select and validate the gallery revision
+        id: revision
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REPOSITORY: ${{ github.repository }}
+          REF_NAME: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          INPUT_DEPLOY: ${{ inputs.deploy || 'false' }}
+        run: |
+          set -euo pipefail
+          test -f /tmp/gallery-releases.json || printf '[]' > /tmp/gallery-releases.json
+          python .github/workflows/gallery_select.py < /tmp/gallery-releases.json
+
+      - name: Explain preview selection
+        if: steps.revision.outputs.preview == 'true'
+        run: echo "This is a build-only preview from ${{ steps.revision.outputs.ref }}."
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.revision.outputs.ref }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install gallery dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r trellum/requirements.txt -r trellum/requirements-drivers.txt
+
+      - name: Generate demo fixtures
+        working-directory: trellum/demo
+        run: python tools/make_fixtures.py
+
+      - name: Build every demo report
+        working-directory: trellum/demo
+        run: python -m trellum.run --all --no-serve --portable
+
+      - name: Build the gallery index
+        working-directory: trellum/demo
+        run: |
+          python -m trellum.reporting.gallery output \
+            --title "Trellum demo reports" \
+            --subtitle "Built from ${{ steps.revision.outputs.ref }}" \
+            --nojekyll
+          touch output/.nojekyll
+
+      - name: Verify the portable gallery
+        working-directory: trellum/demo/output
+        run: |
+          set -euo pipefail
+          test -f index.html || { echo "::error::no index.html"; exit 1; }
+          test -f .nojekyll || { echo "::error::no .nojekyll"; exit 1; }
+          test ! -e CNAME || { echo "::error::nested CNAME is forbidden"; exit 1; }
+          test ! -e robots.txt || { echo "::error::nested robots.txt is forbidden"; exit 1; }
+          test -f _vendor/chart.umd.min.js || { echo "::error::chart.js missing from _vendor/"; exit 1; }
+          ls _vendor/fonts/inter-*.ttf >/dev/null || { echo "::error::Inter fonts missing"; exit 1; }
+
+          if grep -rn 'src="/_vendor/\|href="/_vendor/' --include=index.html .; then
+            echo "::error::root-absolute vendor references in built output"
+            exit 1
+          fi
+          if grep -n "url('/_vendor/" _vendor/inter.css; then
+            echo "::error::absolute font URLs in inter.css"
+            exit 1
+          fi
+          if find . -type f \( -name '*.csv' -o -name '*.sqlite' -o -name '*.sqlite3' -o -name '*.db' -o -name '*.duckdb' \) -print -quit | grep -q .; then
+            echo "::error::raw warehouse data leaked into gallery output"
+            exit 1
+          fi
+
+          report_count="$(find . -mindepth 2 -maxdepth 2 -name index.html -not -path './_vendor/*' | wc -l)"
+          test "$report_count" -eq 10 || { echo "::error::expected 10 reports, found $report_count"; exit 1; }
+          echo "OK: $report_count reports, self-contained"
+
+      - name: Upload gallery artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-gallery
+          path: trellum/demo/output
+          include-hidden-files: true
+          retention-days: 14
+
+    outputs:
+      ref: ${{ steps.revision.outputs.ref }}
+      preview: ${{ steps.revision.outputs.preview }}
+      deploy: ${{ steps.revision.outputs.deploy }}
+
+  website:
+    name: build website
+    needs: gallery
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: website/constraints.txt
+
+      - name: Sync documentation
+        run: bash scripts/sync-docs.sh
+
+      - name: Install website dependencies
+        working-directory: website
+        run: python -m pip install -r requirements-test.txt -c constraints.txt
+
+      - name: Test website
+        working-directory: website
+        env:
+          DJANGO_SETTINGS_MODULE: trellum_website.settings.test
+        run: pytest -q
+
+      - name: Download gallery artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: demo-gallery
+          path: ${{ runner.temp }}/demo-gallery
+
+      - name: Export combined Pages site
+        working-directory: website
+        env:
+          DJANGO_SETTINGS_MODULE: trellum_website.settings.build
+          SITE_BASE_URL: https://trellum.dev
+        run: python manage.py export_static --output dist --base-url https://trellum.dev --demo-artifact "${{ runner.temp }}/demo-gallery"
+
+      - name: Upload inspectable site artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: trellum-pages-${{ github.run_id }}
+          path: website/dist
+          include-hidden-files: true
+          retention-days: 14
+
+      - name: Upload Pages artifact
+        if: github.repository == 'trellumhq/trellum' && needs.gallery.outputs.deploy == 'true' && (github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.deploy == true))
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: website/dist
+
+  deploy:
+    name: publish to Pages
+    needs: [gallery, website]
+    if: github.repository == 'trellumhq/trellum' && needs.gallery.outputs.deploy == 'true' && (github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.deploy == true))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

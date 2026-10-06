@@ -1,0 +1,135 @@
+{% extends "settings_base.html" %}
+{% block title %}Members — {{ org.name }}{% endblock %}
+{% block settings %}
+<header class="page-head-row">
+  <div>
+    <div class="ui-label page-kicker scope-org">Organization · {{ org.name }}</div>
+    <h1>Members</h1>
+  </div>
+  <span class="spacer"></span>
+  <a class="ui-btn ghost" href="/orgs/{{ org.slug }}/settings/invites">+ Invite member</a>
+</header>
+<p class="muted">“Effective access” is what each person can actually do per studio —
+the highest of their direct role, group grants, and the org-admin implication.
+Each chip names where its role comes from.</p>
+
+{% include "_list_toolbar.html" with q=q placeholder="Search members by name or email…" total=total %}
+<div class="panel">
+<div class="ui-table-scroll">
+<table class="ui-table" data-mobile-cards>
+  <thead>
+    <tr><th>Member</th><th>Org role</th><th>Groups</th><th>Effective access</th><th></th></tr>
+  </thead>
+  <tbody>
+  {% for row in member_rows %}
+  <tr>
+    <td data-label="Member">
+      <strong>{{ row.m.user.display_name }}</strong><br>
+      <span class="muted">{{ row.m.user.email }}</span>
+    </td>
+    <td data-label="Org role">
+      <form class="inline" method="post" data-settings-form
+            action="/orgs/{{ org.slug }}/settings/members/{{ row.m.user_id }}/role">
+        {% csrf_token %}<input type="hidden" name="q" value="{{ q|default:'' }}"><input type="hidden" name="page" value="{{ page.number }}">
+        <select name="role" aria-label="Organization role for {{ row.m.user.email }}">
+          {% for value, label in org_roles_choices %}
+          <option value="{{ value }}" {% if row.m.role == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <button class="ui-btn ghost" type="submit">Save changes</button>
+      </form>
+    </td>
+    <td data-label="Groups">
+      {% for g in row.groups %}
+        <a class="ui-badge accent" href="/orgs/{{ org.slug }}/settings/groups/{{ g.pk }}">{{ g.name }}</a>
+      {% empty %}<span class="muted">—</span>{% endfor %}
+    </td>
+    <td data-label="Effective access">
+      {% comment %}The chip says where the role comes from in words. The old
+      "·g" / "·★" suffixes needed a legend under the table to decode, which is
+      a sign the chip was not carrying its own meaning.{% endcomment %}
+      {% for e in row.effective %}
+        <span class="ui-badge {% if e.role == 'admin' %}accent{% elif e.role == 'developer' %}info{% endif %}"
+              title="{{ e.studio.name }}: {{ e.role }} — via {{ e.source }}">
+          {{ e.studio.slug }}: {{ e.role }}{% if e.source != 'direct' %}
+          <span class="ui-badge-source">via {{ e.source }}</span>{% endif %}
+        </span>
+      {% empty %}<span class="ui-badge warn" title="No studio access — use Manage to grant a role, attach a permission group, or make them an org admin.">no access</span>{% endfor %}
+    </td>
+    {% comment %}One control per row, always in the same place. Remove used to
+    sit beside it and vanish on your own row, so the right edge of the table
+    was ragged and rows were different heights.{% endcomment %}
+    <td class="ui-row-actions" data-label="Actions">
+      <details class="shell-dd">
+        <summary aria-label="Manage {{ row.m.user.email }}">Manage</summary>
+        <div class="shell-menu shell-menu-right" style="min-width:250px">
+          <span class="shell-menu-note">Studio roles</span>
+          {% for e in row.studio_editor %}
+          <form class="inline" method="post" data-settings-form
+                style="padding:4px 10px;display:flex;gap:6px;align-items:center"
+                action="/orgs/{{ org.slug }}/settings/members/{{ row.m.user_id }}/studio-role">
+            {% csrf_token %}<input type="hidden" name="q" value="{{ q|default:'' }}"><input type="hidden" name="page" value="{{ page.number }}">
+            <input type="hidden" name="studio_id" value="{{ e.studio.pk }}">
+            <span style="flex:1">{{ e.studio.slug }}</span>
+            <select name="role" aria-label="{{ e.studio.slug }} role">
+              <option value="" {% if not e.direct_role %}selected{% endif %}>none</option>
+              {% for value, label in studio_role_choices %}
+              <option value="{{ value }}" {% if e.direct_role == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+            <button class="ui-btn ghost" type="submit">Save changes</button>
+          </form>
+          {% empty %}<span class="shell-menu-note">No studios yet.</span>{% endfor %}
+          <span class="shell-menu-note">Account security</span>
+          <form method="post" style="padding:2px 10px"
+                action="/orgs/{{ org.slug }}/settings/members/{{ row.m.user_id }}/unlock">
+            {% csrf_token %}<input type="hidden" name="q" value="{{ q|default:'' }}"><input type="hidden" name="page" value="{{ page.number }}">
+            <button class="ui-btn ghost" type="submit" style="width:100%">Clear login lockout</button>
+          </form>
+          {% if row.m.user.has_mfa %}
+          <form method="post" style="padding:2px 10px 6px"
+                action="/orgs/{{ org.slug }}/settings/members/{{ row.m.user_id }}/reset-mfa"
+                onsubmit="return confirm('Reset MFA for {{ row.m.user.email }}? Their device and recovery codes are removed and their sessions end; they will be asked to re-enroll.')">
+            {% csrf_token %}<input type="hidden" name="q" value="{{ q|default:'' }}"><input type="hidden" name="page" value="{{ page.number }}">
+            <button class="ui-btn ghost" type="submit" style="width:100%">Reset MFA</button>
+          </form>
+          {% endif %}
+          <span class="shell-menu-note">Personal data</span>
+          <a href="/orgs/{{ org.slug }}/settings/members/{{ row.m.user_id }}/export.json"
+             style="padding:2px 10px">Export their data (JSON)</a>
+          {% if row.m.user_id != user.pk %}
+          <span class="shell-menu-note">Danger</span>
+          <form method="post" style="padding:0 4px 4px"
+                action="/orgs/{{ org.slug }}/settings/members/{{ row.m.user_id }}/remove"
+                onsubmit="return confirm('Remove {{ row.m.user.email }} from {{ org.name }}? Their studio roles and group memberships in this organization are removed too.')">
+            {% csrf_token %}<input type="hidden" name="q" value="{{ q|default:'' }}"><input type="hidden" name="page" value="{{ page.number }}"><button class="ui-btn danger" type="submit"
+              style="width:100%">Remove from {{ org.name }}</button>
+          </form>
+          {% comment %}Removal leaves the account standing; erasure is the one
+          that ends it. A link, not a form: erasure goes through a confirmation
+          screen that states what goes and what stays, because an admin has to
+          be able to show that to someone else.{% endcomment %}
+          <a class="ui-btn danger" style="margin:0 4px 6px;width:calc(100% - 8px)"
+             href="/orgs/{{ org.slug }}/settings/members/{{ row.m.user_id }}/erase">Erase this person…</a>
+          {% endif %}
+        </div>
+      </details>
+    </td>
+  </tr>
+  {% empty %}
+  <tr><td colspan="5"><div class="ui-empty">
+    {% if q %}No member matches “{{ q }}”.
+      <div class="ui-empty-action"><a class="ui-btn ghost" href="{% querystring q=None page=None %}">Clear search</a></div>
+    {% else %}No members yet — invite someone to get started.
+      <div class="ui-empty-action"><a class="ui-btn ghost" href="/orgs/{{ org.slug }}/settings/invites">+ Invite member</a></div>
+    {% endif %}
+  </div></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+</div>
+{% include "_pagination.html" with page=page %}
+<p class="muted">Prefer <a href="/orgs/{{ org.slug }}/settings/groups">permission groups</a>
+over per-studio assignments — a group is reusable, and it keeps this table readable.</p>
+{% endblock %}

@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}Blog — {{ BRAND }}{% endblock %}
+{% block og_title %}{{ BRAND }} blog{% endblock %}
+{% block description %}Notes from building {{ BRAND }}: what we learned making analysis repeatable, reviewable and safe to hand to someone else.{% endblock %}
+
+{% block head_extra %}<link rel="alternate" type="application/rss+xml" title="{{ BRAND }} blog" href="/blog/rss.xml">{% endblock %}
+
+{% block content %}
+<div class="blog-wrap">
+  <article class="docs-main">
+    <div class="kick">blog</div>
+    <h1>The {{ BRAND }} blog</h1>
+    <p>Why {{ BRAND }} exists, what changed, and how to get more out of it.</p>
+
+    <div class="post-list">
+      {% for entry in entries %}
+        <a class="post-card" href="{{ entry.post.url }}">
+          <time datetime="{{ entry.post.date|date:'Y-m-d' }}">{{ entry.post.date|date:"j F Y" }}</time>
+          <h3>{{ entry.title }}</h3>
+          <p>{{ entry.post.summary }}</p>
+        </a>
+      {% empty %}
+        <p>Nothing published yet.</p>
+      {% endfor %}
+    </div>
+  </article>
+</div>
+{% endblock %}

@@ -1,0 +1,13 @@
+<figure class="dgm-split">
+  <div class="req">
+    <h4>Configured data sources — the default</h4>
+    <p>A source in <code>data-sources/config.yaml</code> is queryable directly, through the same connection a built report uses.</p>
+    <pre>df = query("warehouse", "select ...")</pre>
+    <p class="fine">No extra services. Works offline, in CI, in a notebook.</p>
+  </div>
+  <div class="yours">
+    <h4>An MCP server — optional</h4>
+    <p>For letting an assistant <em>explore</em>: browsing a schema it has never seen, or reaching a system that is not a configured source at all.</p>
+    <p class="fine">Complements the above; never a prerequisite for it.</p>
+  </div>
+</figure>

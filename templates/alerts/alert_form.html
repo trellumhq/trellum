@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}{% if rule.pk %}Edit alert{% else %}New alert{% endif %} — {{ studio.name }}{% endblock %}
+{% block content %}
+<style>
+/* Checkbox lists (people, roles, groups): one column of label rows, not the
+   widget's default <div> stack with no spacing. */
+.al-checks > div { display:flex; flex-wrap:wrap; gap:4px 16px; }
+.al-checks label { display:inline-flex; align-items:center; gap:6px; font-size:var(--fs-md); color:var(--text2); }
+.al-checks input { width:auto; }
+.al-radio > div { display:flex; gap:18px; }
+.al-radio label { display:inline-flex; align-items:center; gap:6px; }
+</style>
+<header class="page-head">
+  <div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }} · <a href="{{ prefix }}">Alerts</a></div>
+  <h1>{% if rule.pk %}Edit “{{ rule.name }}”{% else %}New alert{% endif %}</h1>
+</header>
+
+<div class="panel">
+<form method="post" id="alertForm">
+  {% csrf_token %}
+  {{ form.non_field_errors }}
+  <div class="ui-form-grid">
+    <div class="ui-field">
+      <label for="id_name">Name</label>
+      {{ form.name }}{{ form.name.errors }}
+    </div>
+    <div class="ui-field">
+      <label for="id_report">Report</label>
+      {{ form.report }}{{ form.report.errors }}
+    </div>
+    <div class="ui-field ui-field-wide">
+      <label for="id_instructions">Instructions</label>
+      {{ form.instructions }}{{ form.instructions.errors }}
+      <span class="ui-help">Plain language: what to watch and when to speak up. Blank means “tell me if anything looks off”.</span>
+    </div>
+
+    <div class="ui-field ui-field-wide al-radio">
+      <label>Trigger</label>
+      {{ form.trigger }}{{ form.trigger.errors }}
+    </div>
+    <div class="ui-field" data-schedule>
+      <label for="id_freq">Frequency</label>
+      {{ form.freq }}{{ form.freq.errors }}
+    </div>
+    <div class="ui-field" data-schedule data-not-hourly>
+      <label for="id_send_hour">{{ form.send_hour.label }}</label>
+      {{ form.send_hour }}{{ form.send_hour.errors }}
+    </div>
+    <div class="ui-field" data-schedule>
+      <label for="id_send_minute">{{ form.send_minute.label }}</label>
+      {{ form.send_minute }}{{ form.send_minute.errors }}
+    </div>
+    <div class="ui-field" data-schedule data-freq="weekly">
+      <label for="id_weekday">Day</label>
+      {{ form.weekday }}{{ form.weekday.errors }}
+    </div>
+    <div class="ui-field" data-schedule data-freq="monthly">
+      <label for="id_month_day">{{ form.month_day.label }}</label>
+      {{ form.month_day }}{{ form.month_day.errors }}
+    </div>
+    <div class="ui-field" data-schedule>
+      <label for="id_timezone">Timezone</label>
+      {{ form.timezone }}{{ form.timezone.errors }}
+      <datalist id="alert-timezones">{% for tz in form.timezones %}<option value="{{ tz }}">{% endfor %}</datalist>
+    </div>
+
+    <div class="ui-field ui-field-wide al-checks">
+      <label>{{ form.recipient_roles.label }}</label>
+      {{ form.recipient_roles }}{{ form.recipient_roles.errors }}
+    </div>
+    {% if form.recipient_groups %}
+    <div class="ui-field ui-field-wide al-checks">
+      <label>{{ form.recipient_groups.label }}</label>
+      {{ form.recipient_groups }}{{ form.recipient_groups.errors }}
+    </div>
+    {% endif %}
+    <div class="ui-field ui-field-wide al-checks">
+      <label>{{ form.recipients.label }}</label>
+      {{ form.recipients }}{{ form.recipients.errors }}
+      <span class="ui-help">Recipients are always limited to people who can see this studio.</span>
+    </div>
+
+    <div class="ui-field narrow">
+      <label for="id_cooldown_hours">{{ form.cooldown_hours.label }}</label>
+      {{ form.cooldown_hours }}{{ form.cooldown_hours.errors }}
+      <span class="ui-help">After an alert fires, the rule stays quiet this long. 0 disables it.</span>
+    </div>
+    <div class="ui-field">
+      <label class="ui-check-row" style="margin-top:22px">{{ form.enabled }} Enabled</label>
+    </div>
+    <div class="ui-form-actions">
+      <button class="ui-btn primary" type="submit">{% if rule.pk %}Save{% else %}Create alert{% endif %}</button>
+      <a class="ui-btn ghost" href="{{ prefix }}">Cancel</a>
+      <span class="muted">Evaluations are billed to {% if rule.pk %}{{ rule.created_by.email|default:"the rule's owner" }}{% else %}your{% endif %} assistant budget.</span>
+    </div>
+  </div>
+</form>
+</div>
+<script>
+/* Show the schedule fields only when the trigger is a schedule, and only the
+   ones the frequency uses. Progressive: without scripting every field shows. */
+(function () {
+  var form = document.getElementById('alertForm');
+  function sync() {
+    var trigger = (form.querySelector('input[name="trigger"]:checked') || {}).value;
+    var freq = form.querySelector('[name="freq"]').value;
+    form.querySelectorAll('[data-schedule]').forEach(function (el) {
+      var on = trigger === 'schedule';
+      if (el.hasAttribute('data-freq')) on = on && el.getAttribute('data-freq') === freq;
+      if (el.hasAttribute('data-not-hourly')) on = on && freq !== 'hourly';
+      el.hidden = !on;
+    });
+  }
+  form.addEventListener('change', sync);
+  sync();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,158 @@
+# Containers for the itest harness. Never part of the default suite --
+# see itest/README.md for what this is and why it lives outside CI's
+# normal test job.
+#
+# Project name is pinned (not derived from the directory name) so
+# `docker compose ... down -v` always targets the same set of containers
+# and volumes regardless of what directory this repo is checked out into.
+#
+# Every credential/port below is also the hardcoded default in
+# itest/engines.py's EngineSpec.conn_info callables -- change one, change
+# both, or override at run time via the same ITEST_<ENGINE>_<FIELD> env
+# vars engines.py already reads.
+name: bi-framework-itest
+
+services:
+  # Host ports are env-overridable with the same ITEST_<ENGINE>_PORT vars
+  # engines.py reads, because Windows reserves shifting "excluded port
+  # ranges" for WinNAT after reboots -- a hardcoded port that worked
+  # yesterday can be unbindable today. Defaults here must match
+  # engines.py's conn_info defaults.
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "${ITEST_POSTGRES_PORT:-55432}:5432"
+    environment:
+      POSTGRES_USER: itest
+      POSTGRES_PASSWORD: itest_pw
+      POSTGRES_DB: itest
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U itest -d itest"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  # A bastion for the postgres_ssh lane: the framework tunnels through it to
+  # `postgres` -- the compose service name, which only resolves from inside
+  # this network -- proving the forward goes where a direct connection could
+  # not. Key-only auth; run.py generates the pair and passes the public half
+  # here (ITEST_SSH_PUBLIC_KEY), the private half to pytest (ITEST_SSH_KEY_PATH).
+  ssh:
+    image: lscr.io/linuxserver/openssh-server:10.3_p1-r1-ls236
+    ports:
+      - "${ITEST_SSH_PORT:-52222}:2222"
+    environment:
+      USER_NAME: itest
+      PUBLIC_KEY: ${ITEST_SSH_PUBLIC_KEY:-}
+    volumes:
+      # Read at start-up as an sshd_config.d drop-in; see the file.
+      - ./ssh-sshd.conf:/config/sshd/sshd_config.d/itest.conf:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  mysql:
+    image: mysql:8.0
+    ports:
+      - "${ITEST_MYSQL_PORT:-54306}:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: itest_root_pw
+      MYSQL_USER: itest
+      MYSQL_PASSWORD: itest_pw
+      MYSQL_DATABASE: itest
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u itest -pitest_pw --silent"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.8-alpine
+    ports:
+      - "${ITEST_CLICKHOUSE_PORT:-58123}:8123"
+    environment:
+      CLICKHOUSE_USER: itest
+      CLICKHOUSE_PASSWORD: itest_pw
+      CLICKHOUSE_DB: itest
+    healthcheck:
+      # 127.0.0.1, not localhost: this image's container has no IPv6
+      # loopback, and "localhost" resolves to ::1 first in musl/alpine's
+      # getaddrinfo order, so a wget against "localhost" gets a spurious
+      # "connection refused" even once the server is actually serving.
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8123/ping"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    ports:
+      - "${ITEST_SQLSERVER_PORT:-51433}:1433"
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      # engines.py's own default user/password ("itest"/"itest_pw") can't
+      # satisfy SQL Server's password complexity policy and there's no env
+      # var to seed a non-sa login -- so this lane authenticates as `sa`
+      # with a complex password instead. run.py exports
+      # ITEST_SQLSERVER_USER=sa / ITEST_SQLSERVER_PASS=<this value> before
+      # invoking pytest so engines.py's env-driven conn_info picks it up
+      # unchanged. See itest/README.md for the manual-run equivalent.
+      MSSQL_SA_PASSWORD: ${ITEST_SQLSERVER_PASS:-Itest!Passw0rd}
+    # No healthcheck: sqlcmd's presence/path has moved around across image
+    # revisions (mssql-tools vs mssql-tools18), so a CMD-SHELL healthcheck
+    # here is unstable. conftest.py's connect-retry loop is the real gate,
+    # backed by engines.py's startup_timeout=120 for this engine.
+
+  bigquery:
+    image: ghcr.io/goccy/bigquery-emulator:0.8.1
+    ports:
+      - "${ITEST_BIGQUERY_PORT:-59050}:9050"
+    command:
+      - "--project=itest-project"
+      - "--dataset=itest"
+
+  trino:
+    image: trinodb/trino:483
+    ports:
+      - "${ITEST_TRINO_PORT:-58080}:8080"
+    # No environment: the stock image ships a `memory` catalog and runs no
+    # authenticator, which is all engines.py's trino spec needs.
+    healthcheck:
+      # The image's own health script -- /v1/info reports `starting: false`
+      # only once every catalog is loaded and the server takes queries.
+      test: ["CMD", "/usr/lib/trino/bin/health-check"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 20s
+
+  # Vertica CE's Docker Hub image is gated behind an OpenText account
+  # (anonymous `docker pull` is denied) -- this service definition exists
+  # so `itest/run.py --profile heavy` has something to bring up for anyone
+  # who *does* have pull access, but nothing in this harness attempts to
+  # pull or run it automatically. See itest/README.md.
+  vertica:
+    image: ${ITEST_VERTICA_IMAGE:-vertica/vertica-ce:latest}
+    profiles: ["heavy"]
+    ports:
+      - "${ITEST_VERTICA_PORT:-55433}:5433"
+    environment:
+      APP_DB_USER: itest
+      APP_DB_PASSWORD: itest_pw
+      VERTICA_DB_NAME: itest
+
+  minio:
+    image: rustfs/rustfs:1.0.1@sha256:1803faef57627e2d9c2e7d89d655d712ddded5389040054987163043fecb6a3c
+    profiles: ["s3"]
+    ports:
+      - "${ITEST_MINIO_PORT:-59000}:9000"
+    environment:
+      RUSTFS_ACCESS_KEY: itest
+      RUSTFS_SECRET_KEY: itest_pw123
+      RUSTFS_CONSOLE_ENABLE: "false"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/health/ready"]
+      interval: 2s
+      timeout: 5s
+      retries: 30

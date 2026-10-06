@@ -1,0 +1,120 @@
+{% extends "settings_base.html" %}
+{% block title %}Report sharing — {{ org.name }}{% endblock %}
+{% block settings %}
+<header class="page-head">
+  <div class="ui-label page-kicker scope-org">Organization · {{ org.name }}</div>
+  <h1>Report sharing</h1>
+  <p class="muted page-sub">Allow studio developers and admins to create public share links to reports.
+    Links are revocable and audited; anyone with a link can view that report.</p>
+</header>
+
+<div class="panel formrow" id="reportSharePolicyPanel">
+  <form id="reportSharePolicyForm" data-settings-form method="post" action="/orgs/{{ org.slug }}/api/share_policy">
+    {% csrf_token %}
+    <label class="ui-check-row">
+      <input type="checkbox" name="enabled" id="reportSharePolicyToggle" {% if policy.share_links_enabled %}checked{% endif %}>
+      Enable public share links for this organization
+    </label>
+
+    {% comment %}Grouped under the toggle and visually de-emphasized while
+    sharing is off (see the JS below) -- but never actually disabled: an
+    admin can set these up before turning sharing on, and they still save.
+    {% endcomment %}
+    <div id="reportSharePolicyOptions" style="margin:16px 0 0;padding:14px 0 0;border-top:1px solid var(--border)">
+      <p class="ui-label" style="margin:0 0 10px">Options</p>
+      <label class="ui-check-row">
+        <input type="checkbox" name="require_password" id="reportSharePolicyRequirePassword" {% if policy.require_password %}checked{% endif %}>
+        Require a password on every link
+      </label>
+      <span class="helptext">New links must set a password. Existing links without one stop serving
+        until they're given one or this is turned back off.</span>
+
+      <label class="ui-check-row" style="margin-top:14px">
+        <input type="checkbox" name="embed_links_enabled" id="reportSharePolicyEmbed" {% if policy.embed_links_enabled %}checked{% endif %}>
+        Allow embed links
+      </label>
+      <span class="helptext">Embed links never expire and take no password; each is restricted
+        to the sites listed on it. They still need public share links enabled above.</span>
+
+      <div style="margin-top:14px;max-width:280px">
+        <label for="reportSharePolicyMaxExpiry">Maximum link lifetime (days)</label>
+        <input class="ui-input" type="number" min="1" step="1"
+               id="reportSharePolicyMaxExpiry" name="max_expiry_days"
+               value="{{ policy.max_expiry_days|default_if_none:'' }}"
+               placeholder="Unlimited">
+        <span class="helptext">Blank = unlimited. New links must set an expiry within this many days.
+          Existing links (including ones with no expiry) stop serving once they're older than this —
+          they resume automatically if the cap is raised or cleared.</span>
+      </div>
+    </div>
+
+    <div id="reportSharePolicyStatus" data-settings-status class="muted" role="status" aria-live="polite" style="margin-top:14px"></div>
+    <button type="submit" class="ui-btn primary" style="margin-top:14px">Save changes</button>
+  </form>
+</div>
+<script>
+(function () {
+  var form = document.getElementById('reportSharePolicyForm');
+  var toggle = document.getElementById('reportSharePolicyToggle');
+  var requirePassword = document.getElementById('reportSharePolicyRequirePassword');
+  var embed = document.getElementById('reportSharePolicyEmbed');
+  var maxExpiry = document.getElementById('reportSharePolicyMaxExpiry');
+  var options = document.getElementById('reportSharePolicyOptions');
+  var status = document.getElementById('reportSharePolicyStatus');
+  if (!form || !toggle) return;
+
+  function syncOptionsDim() {
+    options.style.opacity = toggle.checked ? '1' : '.55';
+  }
+  syncOptionsDim();
+
+  toggle.addEventListener('change', syncOptionsDim);
+  var saving = false;
+  form.addEventListener('submit', function (event) {
+    event.preventDefault();
+    if (saving) return;
+    if (!form.reportValidity()) return;
+    var raw = maxExpiry.value.trim();
+    if (raw !== '' && !/^\d+$/.test(raw)) {
+      status.textContent = 'Could not save: maximum lifetime must be a whole number of days.';
+      return;
+    }
+    var expiry = raw === '' ? null : Number(raw);
+    if (expiry !== null && (!Number.isSafeInteger(expiry) || expiry < 1)) {
+      status.textContent = 'Could not save: maximum lifetime must be a positive number of days.';
+      return;
+    }
+    var controls = form.querySelectorAll('input, button');
+    saving = true;
+    Array.prototype.forEach.call(controls, function (control) { control.disabled = true; });
+    status.textContent = 'Saving…';
+    fetch(form.action, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': form.querySelector('input[name="csrfmiddlewaretoken"]').value },
+      body: JSON.stringify({
+        enabled: toggle.checked,
+        require_password: requirePassword.checked,
+        embed_links_enabled: embed.checked,
+        max_expiry_days: expiry
+      })
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (data) {
+        if (!r.ok) throw new Error(data && data.error ? data.error : 'request');
+        return data;
+      });
+    }).then(function (data) {
+      if (!data || data.ok !== true) throw new Error('response');
+      status.textContent = 'Saved.';
+    }).catch(function (error) {
+      status.textContent = error.message === 'response' ? 'Could not save — the server returned an invalid response.' : error.message === 'request' ? 'Could not save — check your connection and try again.' : 'Could not save: ' + error.message;
+    }).finally(function () {
+      Array.prototype.forEach.call(controls, function (control) { control.disabled = false; });
+      saving = false;
+      syncOptionsDim();
+      if (status.textContent === 'Saved.') form.dispatchEvent(new Event('settings:saved', { bubbles: true }));
+    });
+  });
+})();
+</script>
+{% endblock %}

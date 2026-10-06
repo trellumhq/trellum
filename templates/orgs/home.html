@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}{% if org %}{{ org.name }}{% else %}trellum{% endif %}{% endblock %}
+{% block content %}
+{% if org %}
+{% comment %}The org overview IS the org surface's first category ("Studios"),
+sharing the one org sidebar with the settings pages — no separate hub layout.
+Organization switching lives in the user menu (top right).{% endcomment %}
+<div class="settings-wrap scope-org">
+  <div class="settings-content">
+<header class="page-head-row">
+  <div>
+    <div class="ui-label page-kicker scope-org">Organization · {{ org.name }}</div>
+    <h1>Studios</h1>
+  </div>
+  <span class="spacer"></span>
+  {% if is_org_admin %}
+  <a class="ui-btn ghost" href="/orgs/{{ org.slug }}/settings/studios">+ New studio</a>
+  <a class="ui-btn ghost" href="/orgs/{{ org.slug }}/settings/studios" title="Rename, describe or delete studios">Manage studios</a>
+  {% endif %}
+</header>
+
+{% if getting_started %}{% include "orgs/_getting_started.html" %}{% endif %}
+
+{% if cards %}
+<div class="grid" style="margin-top:14px">
+  {% for c in cards %}
+  <a class="card" href="/s/{{ org.slug }}/{{ c.studio.slug }}/">
+    <h3>{{ c.studio.name }}</h3>
+    <span class="muted">{{ c.studio.slug }}</span>
+    {% if c.studio.description %}<p class="muted ui-desc-clamp" style="margin:6px 0 0">{{ c.studio.description }}</p>{% endif %}
+    <p style="margin:10px 0 0;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+      <span class="ui-badge">{{ c.report_count }} report{{ c.report_count|pluralize }}</span>
+      {% if c.last_run %}
+        <span class="ui-badge {% if c.last_run.status == 'success' %}ok{% else %}fail{% endif %}"
+              title="Last build: {{ c.last_run.status }}">
+          {{ c.last_run.status }} · {{ c.last_run.created_at|timesince }} ago</span>
+      {% else %}
+        <span class="ui-badge">no builds yet</span>
+      {% endif %}
+    </p>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="ui-panel"><div class="ui-empty">
+  {% if is_org_admin %}
+    No studios yet — a studio is where reports live.
+    {% comment %}The checklist above already carries this call to action; two
+    primary buttons for the same step is one too many.{% endcomment %}
+    {% if not getting_started %}
+    <div class="ui-empty-action"><a class="ui-btn primary" href="/orgs/{{ org.slug }}/settings/studios">Create the first studio</a></div>
+    {% endif %}
+  {% else %}
+    No studios are visible to you yet. An org admin can grant you access
+    (directly, or through a permission group).
+  {% endif %}
+</div></div>
+{% endif %}
+</div>
+</div>
+
+{% else %}
+<div class="ui-panel"><div class="ui-empty">You are not a member of any organization yet.
+Ask an admin for an invitation link.</div></div>
+{% endif %}
+
+{% comment %}The create-an-organization form moved to /orgs/new: it is an
+instance-level operator action, and it took more room on this page than the
+studios the page exists to show.{% endcomment %}
+{% endblock %}

@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}My deliveries — trellum{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div class="ui-label page-kicker">Account</div>
+  <h1>My deliveries</h1>
+  <p class="muted page-sub">Every scheduled email you have set up, across every studio you can see.
+    Edit, pause, or delete a schedule right here — no need to open the report.</p>
+</header>
+
+<div class="panel">
+{% if schedule_rows %}
+<div class="ui-table-scroll">
+<table class="ui-table" id="deliveryTable" data-mobile-cards>
+  <thead>
+    <tr><th>Report</th><th>Studio</th><th>Cadence</th><th>Format</th><th>Recipients</th><th>Status</th><th></th></tr>
+  </thead>
+  <tbody>
+  {% for row in schedule_rows %}
+  <tr class="delivery-row" data-delivery-row
+      data-prefix="/s/{{ row.org.slug }}/{{ row.studio.slug }}"
+      data-slug="{{ row.report.slug }}">
+    <td data-label="Report">{{ row.report.name|default:row.report.slug }}</td>
+    <td data-label="Studio"><span class="muted">{{ row.org.name }}</span> / {{ row.studio.name }}</td>
+    <td data-label="Cadence" data-field="cadence">{{ row.cadence }}</td>
+    <td data-label="Format" data-field="format">{% if row.schedule.attach_pdf %}HTML + PDF{% else %}HTML{% endif %}</td>
+    <td data-label="Recipients" data-field="recipients">{{ row.recipient_summary }}</td>
+    <td data-label="Status" data-field="status">
+      {% if row.schedule.enabled %}<span class="ui-badge pass">Enabled</span>
+      {% else %}<span class="ui-badge warn">Disabled</span>{% endif %}
+    </td>
+    <td class="ui-row-actions" data-label="Actions">
+      <a class="ui-btn ghost" href="/s/{{ row.org.slug }}/{{ row.studio.slug }}/r/{{ row.report.slug }}/">View report</a>
+      <button type="button" class="ui-btn ghost" data-toggle-edit>Edit</button>
+      <button type="button" class="ui-btn ghost" data-toggle-enable>{% if row.schedule.enabled %}Disable{% else %}Enable{% endif %}</button>
+      <button type="button" class="ui-btn ghost" data-send-sample>Sample</button>
+      <button type="button" class="ui-btn danger" data-delete-row>Delete</button>
+    </td>
+  </tr>
+  <tr class="delivery-row-detail" hidden>
+    <td colspan="7">
+      <div class="delivery-flash" data-flash-slot></div>
+      <div class="delivery-form-slot" data-form-slot></div>
+      <script type="application/json" data-schedule-json>{{ row.schedule_json|safe }}</script>
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="ui-empty">No scheduled deliveries yet — open any report and use
+  "Deliveries" to set one up.</div>
+{% endif %}
+</div>
+
+<p class="muted delivery-alert-note">When a report breaks or recovers, studio developers and admins are emailed automatically — no setup.</p>
+
+<style>
+/* Row-layout only -- the expanded form itself reuses the drawer's
+   self-injected .rdw-* classes (static/report_delivery.js) so the two
+   surfaces read as one implementation, not a parallel style sheet. */
+.delivery-row-detail td { padding: 14px 16px 18px; background: var(--bg-hover, var(--bg)); }
+.delivery-flash:empty, .delivery-form-slot:empty { display: none; }
+.delivery-flash { margin-bottom: 10px; }
+</style>
+
+<script src="{% static 'report_delivery.js' %}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var table = document.getElementById('deliveryTable');
+    if (table && window.ReportDelivery && window.ReportDelivery.mountCenter) {
+        window.ReportDelivery.mountCenter(table);
+    }
+});
+</script>
+{% endblock %}

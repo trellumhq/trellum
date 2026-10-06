@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} — {{ BRAND }} docs{% endblock %}
+{% block og_title %}{{ title }} — {{ BRAND }} docs{% endblock %}
+
+{% block content %}
+<div class="docs">
+  {% include "docs/_sidebar.html" %}
+
+  <article class="docs-main">
+    {% if unreleased %}<div class="admonition warning"><p class="admonition-title">Development documentation</p><p>This version describes unreleased source from the default branch.</p></div>{% endif %}
+    <div class="crumbs">Docs / {{ page.section }} / {{ page.title }}</div>
+    <h1>{{ title }}</h1>
+    <div class="meta">Applies to: {{ version }}</div>
+    {{ body }}
+
+    <nav class="pn" aria-label="Page navigation">
+      {% if previous %}
+        <a href="{{ previous.url }}">← Previous<b>{{ previous.title }}</b></a>
+      {% else %}<span></span>{% endif %}
+      {% if next %}
+        <a href="{{ next.url }}" style="text-align:right">Next →<b>{{ next.title }}</b></a>
+      {% endif %}
+    </nav>
+  </article>
+
+  {% if toc %}
+    <aside class="docs-toc">
+      <h5>On this page</h5>
+      <ul>
+        {% for entry in toc %}<li><a href="#{{ entry.id }}">{{ entry.name }}</a></li>{% endfor %}
+      </ul>
+    </aside>
+  {% endif %}
+</div>
+{% endblock %}

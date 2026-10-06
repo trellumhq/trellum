@@ -1,0 +1,27 @@
+# Coverage scope: the framework package only.
+#
+# The measured tree is the repository root, because __init__.py sits there and
+# the repository IS the package. That means the demo project, the test suite
+# and the docs would otherwise be counted as covered code and inflate the
+# number with material nobody ships.
+
+[run]
+branch = False
+omit =
+    */demo/*
+    */testing/*
+    */docs/*
+    */init/*
+    */new/*
+    # (these two are the 3-line `python -m trellum.init|new` shims;
+    #  the code they call lives in scaffold/ and IS measured)
+    */build/*
+    */static/*
+    */.venv*/*
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
+    raise NotImplementedError
+    if TYPE_CHECKING:

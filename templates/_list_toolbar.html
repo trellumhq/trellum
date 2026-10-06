@@ -1,0 +1,21 @@
+{% comment %}Search box for a list screen.
+
+    {% include "_list_toolbar.html" with q=q placeholder="Search members…" total=total shown=shown %}
+
+GET so a filtered list is linkable and survives a reload. Paging is dropped on
+a new search (you want page 1 of the new result, not page 4 of it).
+{% endcomment %}
+<form class="ui-list-toolbar" method="get" role="search">
+  {% for key, value in request.GET.items %}
+    {% if key != "q" and key != "page" %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endif %}
+  {% endfor %}
+  <input class="ui-input" type="search" name="q" value="{{ q|default:'' }}"
+         placeholder="{{ placeholder|default:'Search…' }}" aria-label="{{ placeholder|default:'Search' }}">
+  <button class="ui-btn ghost" type="submit">Search</button>
+  {% if q %}
+    <a class="ui-btn ghost" href="{% querystring q=None page=None %}">Clear</a>
+    <span class="ui-list-count">{{ total }} match{{ total|pluralize:"es" }}</span>
+  {% elif total %}
+    <span class="ui-list-count">{{ total }} total</span>
+  {% endif %}
+</form>

@@ -1,0 +1,64 @@
+.fw-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.fw-kpi-more-btn { display: none; }
+.fw-kpi-card {
+    background: var(--bg-card);
+    border-radius: var(--radius-card);
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    text-align: left;
+    transition: all 0.2s;
+    min-width: 0;
+}
+.fw-kpi-card:hover { background: var(--bg-card-hover); }
+.fw-kpi-label {
+    font-size: var(--font-size-label); color: var(--text-secondary);
+    text-transform: uppercase; letter-spacing: 0.5px;
+    margin-bottom: 2px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fw-kpi-value {
+    font-size: var(--font-size-kpi); font-weight: 700;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fw-kpi-forecast {
+    font-size: var(--font-size-interface); font-weight: 600;
+    color: var(--accent-yellow); margin-top: 3px;
+}
+.fw-kpi-sub { font-size: var(--font-size-meta); color: var(--text-muted); margin-top: 4px; }
+.fw-kpi-delta { font-size: var(--font-size-small); margin-top: 4px; }
+.fw-kpi-delta.up { color: var(--accent-green); }
+.fw-kpi-delta.down { color: var(--accent-red); }
+@media (max-width: 900px) {
+    .fw-kpi-grid { grid-template-columns: repeat(3, 1fr); }
+    .fw-kpi-card .fw-kpi-value { font-size: var(--font-size-kpi); }
+}
+@media (max-width: 640px) {
+    .fw-kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .fw-kpi-card .fw-kpi-value { font-size: var(--font-size-kpi); }
+    .fw-kpi-card .fw-kpi-label { font-size: var(--font-size-label); }
+    .fw-kpi-card { padding: 10px; border-radius: var(--radius-card); }
+    .fw-kpi-extra { display: none; }
+    .fw-kpi-grid.open .fw-kpi-extra { display: block; }
+    .fw-kpi-more-btn {
+        display: block; width: 100%; margin: 4px 0 8px;
+        padding: 8px; border: 1px dashed var(--border-color);
+        border-radius: var(--radius-control); background: transparent;
+        color: var(--text-secondary); font-size: var(--font-size-interface); font-weight: 600;
+        cursor: pointer; text-align: center;
+        transition: all 0.2s;
+    }
+    .fw-kpi-more-btn:hover { background: var(--bg-card); }
+}
+@media (max-width: 400px) {
+    .fw-kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 6px; }
+    .fw-kpi-card .fw-kpi-value { font-size: var(--font-size-kpi); }
+    .fw-kpi-card { padding: 8px; }
+}
+@media (min-width: 1400px) {
+    .fw-kpi-grid { grid-template-columns: repeat(6, 1fr); }
+}

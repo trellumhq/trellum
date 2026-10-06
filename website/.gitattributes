@@ -1,0 +1,6 @@
+# Shell scripts run inside Linux containers: CRLF would break the shebang.
+*.sh text eol=lf
+docker/entrypoint.sh text eol=lf
+
+# Fonts are binary.
+*.ttf binary

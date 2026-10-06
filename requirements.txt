@@ -1,0 +1,15 @@
+# Portal dependencies: the control plane only.
+#
+# The portal builds reports, so it needs everything the framework needs --
+# but not the reverse. A report project installs the framework's
+# requirements.txt alone and never sees any of the packages below.
+-r trellum/requirements.txt
+
+# Scheduling and auth
+APScheduler>=3.10.0
+PyJWT[crypto]>=2.8.0
+
+# AI assistant (lazy-imported; the portal runs fine without them, the
+# features report themselves unavailable). Install the one(s) you use.
+anthropic>=0.40.0
+openai>=1.50.0

@@ -1,0 +1,66 @@
+name: Bug report
+description: A report that builds incorrectly, renders wrongly, or crashes
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file this.
+
+        **If this is a security problem, stop and read [SECURITY.md](../blob/main/SECURITY.md)
+        instead** — a public issue with a working reproduction is readable by everyone.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected, and what you got instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: >-
+        The smallest thing that triggers it. A minimal `report.yaml` plus generator, or
+        the exact command you ran. A reproduction we can run is worth more than a
+        description of one.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions
+      description: >-
+        Trellum version, Python version, and operating system. If you are unsure of the
+        version, `_meta.json` in a built report records it.
+      placeholder: |
+        Trellum: 0.7.0
+        Python:  3.11.9
+        OS:      Ubuntu 24.04
+    validations:
+      required: true
+
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation output
+      description: >-
+        If the report built at all, paste the FAIL/WARN list — `_validation.json` in the
+        output directory, or what the build printed. Often it already names the cause.
+      render: text
+    validations:
+      required: false
+
+  - type: dropdown
+    id: browser
+    attributes:
+      label: Does it involve the rendered report in a browser?
+      options:
+        - "No — it fails during the build"
+        - "Yes — the build succeeds but the report renders or behaves wrongly"
+    validations:
+      required: true

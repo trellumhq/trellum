@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}{{ rule.name }} — Alerts — {{ studio.name }}{% endblock %}
+{% block content %}
+<style>
+.al-facts { display:flex; flex-wrap:wrap; gap:6px 24px; margin:0 0 14px; font-size:var(--fs-md); color:var(--text2); }
+.al-facts b { color:var(--text3); font-weight:600; text-transform:uppercase; font-size:var(--fs-xs); letter-spacing:.06em; margin-right:6px; }
+.al-instructions { white-space:pre-wrap; margin:0 0 14px; padding:10px 12px; background:var(--bg-hover); border-radius:var(--r-md); }
+.al-run { padding:12px 0; border-top:1px solid var(--border); }
+.al-run.is-new { background:var(--accent-soft); margin:0 -12px; padding:12px; border-radius:var(--r-md); }
+.al-run-head { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.al-run-head time { color:var(--text3); font-size:var(--fs-md); }
+.al-run-title { font-weight:650; }
+.al-run-msg { margin:6px 0 0; white-space:pre-wrap; color:var(--text2); }
+.al-run-evidence { margin:6px 0 0; padding-left:18px; font-family:var(--mono); font-size:var(--fs-sm); color:var(--text2); }
+.al-run-meta { margin-top:6px; font-size:var(--fs-sm); color:var(--text3); }
+.al-run-error { margin:6px 0 0; color:var(--red); white-space:pre-wrap; }
+.al-spin { display:inline-block; width:.85em; height:.85em; border:2px solid currentColor; border-right-color:transparent; border-radius:50%; vertical-align:-.1em; animation:al-spin .7s linear infinite; }
+@keyframes al-spin { to { transform:rotate(360deg); } }
+</style>
+<header class="page-head-row">
+  <div>
+    <div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }} · <a href="{{ prefix }}">Alerts</a></div>
+    <h1>{{ rule.name }} {% if not rule.enabled %}<span class="ui-badge warn">Disabled</span>{% endif %}</h1>
+  </div>
+  <span class="spacer"></span>
+  {% if can_edit %}
+  <a class="ui-btn ghost" href="{{ prefix }}/{{ rule.pk }}/edit">Edit</a>
+  <form class="inline" method="post" action="{{ prefix }}/{{ rule.pk }}/test" data-test-now>{% csrf_token %}
+    <button class="ui-btn primary" type="submit">Test now</button></form>
+  {% endif %}
+</header>
+
+<div class="panel">
+  <div class="al-facts">
+    <span><b>Report</b><a href="/s/{{ org.slug }}/{{ studio.slug }}/r/{{ rule.report.slug }}/">{{ rule.report.name|default:rule.report.slug }}</a></span>
+    <span><b>Trigger</b>{{ trigger }}</span>
+    <span><b>Recipients</b>{{ recipients }}</span>
+    <span><b>Cooldown</b>{{ rule.cooldown_hours }} h</span>
+    <span><b>Billed to</b>{{ rule.created_by.email|default:"nobody (set an owner)" }}</span>
+    <span><b>Last alerted</b>{% if rule.last_alerted_at %}{{ rule.last_alerted_at|date:"Y-m-d H:i" }}{% else %}never{% endif %}</span>
+  </div>
+  <p class="al-instructions">{{ rule.instructions|default:"Tell me if anything looks off" }}</p>
+  {% if can_edit %}<p class="muted" style="margin:0 0 14px">Test now evaluates the rule with delivery off: the decision lands in the log below, nobody is emailed, and the cooldown is not touched.</p>{% endif %}
+
+  <h2 style="margin:0 0 8px">Run log</h2>
+  {% for run in page %}
+  <div class="al-run{% if run.pk == highlight %} is-new{% endif %}" id="run-{{ run.pk }}">
+    <div class="al-run-head">
+      {% if run.decision == "alert" %}<span class="ui-badge fail">Alert</span>
+      {% elif run.decision == "quiet" %}<span class="ui-badge">Quiet</span>
+      {% elif run.status == "error" %}<span class="ui-badge fail">Error</span>
+      {% else %}<span class="ui-badge warn">{{ run.get_status_display }}</span>{% endif %}
+      {% if run.title %}<span class="al-run-title">{{ run.title }}</span>{% endif %}
+      {% if run.pk == highlight %}<span class="ui-badge accent">Test run</span>{% endif %}
+      <time datetime="{{ run.started_at|date:'c' }}">{{ run.started_at|date:"Y-m-d H:i" }}{% if run.finished_at %} → {{ run.finished_at|date:"H:i:s" }}{% endif %}</time>
+    </div>
+    {% if run.decision == "quiet" and run.message %}<p class="al-run-msg"><span class="muted">Why it stayed quiet:</span> {{ run.message }}</p>
+    {% elif run.message %}<p class="al-run-msg">{{ run.message }}</p>{% endif %}
+    {% if run.evidence.cited %}<ul class="al-run-evidence">{% for line in run.evidence.cited %}<li>{{ line }}</li>{% endfor %}</ul>{% endif %}
+    {% if run.error %}<p class="al-run-error">{{ run.error }}</p>{% endif %}
+    <div class="al-run-meta">
+      Cost ${{ run.cost_usd|floatformat:4 }}
+      · {% if run.delivered_to %}Delivered to {{ run.delivered_to|join:", " }}{% else %}Nothing sent{% endif %}
+    </div>
+  </div>
+  {% empty %}
+  <div class="ui-empty">No runs yet.{% if can_edit %} Test now evaluates the rule once without sending anything.{% endif %}</div>
+  {% endfor %}
+  {% include "_pagination.html" with page=page %}
+</div>
+{% if can_edit %}<script>
+document.addEventListener('submit', function (ev) {
+  var form = ev.target.closest && ev.target.closest('form[data-test-now]');
+  if (!form) return;
+  var btn = form.querySelector('button');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="al-spin"></span> Testing…';
+});
+</script>{% endif %}
+{% endblock %}

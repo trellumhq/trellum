@@ -1,0 +1,13 @@
+{% comment %}Summary chips for a pending change set (StudioGitSync._pending_summary);
+zero counts are omitted. Used by the pending panel and the Publish dialog.{% endcomment %}
+{% with r=pending.reports d=pending.datasources %}
+<div class="repo-chips">
+  {% if r.modified %}<span class="ui-chip">{{ r.modified|length }} report{{ r.modified|length|pluralize }} modified</span>{% endif %}
+  {% if r.added %}<span class="ui-chip">{{ r.added|length }} report{{ r.added|length|pluralize }} added</span>{% endif %}
+  {% if r.removed %}<span class="ui-chip">{{ r.removed|length }} report{{ r.removed|length|pluralize }} removed</span>{% endif %}
+  {% if d.added %}<span class="ui-chip warn">{{ d.added|length }} data source{{ d.added|length|pluralize }} added ⚠</span>{% endif %}
+  {% if d.removed %}<span class="ui-chip">{{ d.removed|length }} data source{{ d.removed|length|pluralize }} removed</span>{% endif %}
+  {% if d.changed %}<span class="ui-chip">{{ d.changed|length }} data source{{ d.changed|length|pluralize }} changed</span>{% endif %}
+  {% for f in pending.root_files %}<span class="ui-chip">{{ f }} changed</span>{% endfor %}
+</div>
+{% endwith %}

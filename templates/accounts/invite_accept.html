@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Join {{ invite.org.name }} — trellum{% endblock %}
+{% block content %}
+<div class="panel formrow auth-card" style="margin:8vh auto 0">
+  <h1>Join {{ invite.org.name }}</h1>
+  <p class="muted">Create your account for <strong>{{ invite.email }}</strong>.</p>
+  {{ form.non_field_errors }}
+  <form method="post">
+    {% csrf_token %}
+    <label>Name</label>{{ form.name }}{{ form.name.errors }}
+    <label>Password</label>{{ form.password1 }}{{ form.password1.errors }}
+    <label>Repeat password</label>{{ form.password2 }}{{ form.password2.errors }}
+    <p></p>
+    <button class="ui-btn primary" type="submit">Create account &amp; join</button>
+  </form>
+</div>
+{% endblock %}

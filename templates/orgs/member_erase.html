@@ -1,0 +1,93 @@
+{% extends "settings_base.html" %}
+{% block title %}Erase {{ subject.email }} — {{ org.name }}{% endblock %}
+{% block settings %}
+<header class="page-head">
+  <div class="ui-label page-kicker scope-org">Organization · {{ org.name }}</div>
+  <h1>Erase {{ subject.email }}</h1>
+  {% comment %}The two scopes are genuinely different actions and the reader
+  has to know which one they are about to take before they read the lists —
+  the same admin may erase from one organization on Monday and end the whole
+  account on Friday. See apps.orgs.personal_data's module docstring.{% endcomment %}
+  {% if preview.full %}
+  <p class="muted page-sub">This person belongs to no other organization, so this ends
+    the account itself. Their name, email address and password are removed from the
+    installation, every device they are signed in on is signed out, and they cannot
+    sign in again. This cannot be undone.</p>
+  {% else %}
+  <p class="muted page-sub">This person also belongs to
+    {{ preview.other_org_count }} other organization{{ preview.other_org_count|pluralize }}.
+    You can erase what {{ org.name }} holds about them; you cannot end an account another
+    organization still relies on. Their sign-in keeps working, and this organization's audit
+    trail keeps naming them, because the account still exists. When the last organization
+    releases them, erasing here ends the account. This cannot be undone.</p>
+  {% endif %}
+</header>
+
+<div class="panel">
+  <h2>Deleted</h2>
+  <p class="muted">Gone permanently. There is no restore.</p>
+  <table class="ui-table">
+    <tbody>
+    {% for row in preview.deleted %}
+      <tr><td>{{ row.label }}</td><td style="text-align:right">{{ row.count }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="panel">
+  <h2>{% if preview.full %}Kept, with the person removed{% else %}Kept, still attributed to their account{% endif %}</h2>
+  <p class="muted">
+    {% if preview.full %}
+      These records stay, because the organization is separately obliged to keep them —
+      an audit trail, a run history, a billing ledger. They keep pointing at the erased
+      account, so “how many actions did this person take” still has an answer, and their
+      past actions stay distinguishable from anonymous and system ones. What they no
+      longer carry is a name, an email address or any way back to a person.
+    {% else %}
+      These records stay and keep naming the account, because the account is not being
+      erased — only {{ org.name }}’s copy of this person’s data is.
+    {% endif %}
+  </p>
+  <table class="ui-table">
+    <tbody>
+    {% for row in preview.anonymised %}
+      <tr><td>{{ row.label }}</td><td style="text-align:right">{{ row.count }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="panel">
+  <h2>Kept and untouched</h2>
+  <p class="muted">This is {{ org.name }}’s property that happens to name them. Deleting it
+    would be an outage for people who are still here.</p>
+  <table class="ui-table">
+    <tbody>
+    {% for row in preview.kept %}
+      <tr><td>{{ row.label }}</td><td style="text-align:right">{{ row.count }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="helptext">Reports, dashboards, data sources and everything built from them
+    belong to {{ org.name }} and are not touched.</p>
+</div>
+
+<div class="panel formrow">
+  <p class="muted">Take the export first if this is answering an access request —
+    <a href="/orgs/{{ org.slug }}/settings/members/{{ subject.pk }}/export.json">download their data</a>.
+    After erasure there is nothing left to export.</p>
+  <form method="post">
+    {% csrf_token %}
+    <label for="confirm-email">Type <b>{{ subject.email }}</b> to confirm</label>
+    <input id="confirm-email" class="ui-input" type="text" name="confirm_email"
+           autocomplete="off" spellcheck="false" placeholder="{{ subject.email }}">
+    <span class="helptext">Erasing is recorded in the audit trail against this
+      organization, with the date and who did it — and without the address above,
+      so the record does not undo the erasure.</span>
+    <p></p>
+    <button class="ui-btn danger" type="submit">Erase permanently</button>
+    <a class="ui-btn ghost" href="/orgs/{{ org.slug }}/settings/members">Cancel</a>
+  </form>
+</div>
+{% endblock %}

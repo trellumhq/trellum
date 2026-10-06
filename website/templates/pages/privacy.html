@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Privacy — {{ BRAND }}{% endblock %}
+{% block description %}Privacy information for the {{ BRAND }} static website.{% endblock %}
+{% block content %}
+<div class="blog-wrap"><article class="docs-main">
+  <div class="crumbs">Legal</div>
+  <h1>Privacy</h1>
+  <p>This is a static website hosted with GitHub Pages. It has no accounts,
+     forms, analytics, advertising pixels, or application database. The site
+     itself does not ask for or store personal information.</p>
+  <p>GitHub may process technical request data needed to provide Pages. See
+     <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" rel="noopener">GitHub's privacy statement</a>
+     for details.</p>
+  <h2>Former waitlist</h2>
+  <p>An earlier version of this website offered an email waitlist through
+     Brevo. This static site no longer accepts addresses, and the former
+     unsubscribe URL no longer processes requests. If you previously joined
+     and want your information removed, email
+     <a href="mailto:{{ CONTACT_EMAIL }}">{{ CONTACT_EMAIL }}</a>. We will
+     handle the request with the provider; this page does not claim that old
+     records were deleted automatically.</p>
+  <h2>Contact</h2>
+  <p><a href="mailto:{{ CONTACT_EMAIL }}">{{ CONTACT_EMAIL }}</a></p>
+</article></div>
+{% endblock %}

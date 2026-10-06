@@ -1,0 +1,11 @@
+{% if sample %}Sample{% else %}Fresh{% endif %} · {{ report.name|default:report.slug }}
+
+{{ report.studio.name }}{% if cadence %} · {{ cadence }}{% endif %}{% if built_at %} · built {{ built_at }}{% endif %}
+
+{{ report_url }}
+
+{% if snapshot_unavailable %}(snapshot unavailable — open the link above to view the report){% endif %}
+
+--
+Sent by {{ instance_name }}.
+{% if unsubscribe_url %}Stop these emails: {{ unsubscribe_url }}{% endif %}

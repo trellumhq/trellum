@@ -1,0 +1,24 @@
+# Framework core: everything a report project needs to build and serve
+# reports, and nothing more. A control plane that runs reports (see
+# a separate product) keeps its own requirements file in its own
+# repository -- a report project must not have to install a scheduler and two
+# LLM SDKs to render a chart.
+
+# Core dependencies
+pandas>=2.0.0
+numpy>=1.24.0
+vertica-python>=1.0.1
+openpyxl>=3.0.0
+python-dotenv>=1.0.0
+
+# Framework dependencies
+pyyaml>=6.0
+jinja2>=3.1.0
+orjson>=3.9.0
+requests>=2.28.0
+
+# Visual regression (--test-screenshot --check-baseline). Without Pillow the
+# image comparison cannot run; the suite now fails loudly rather than
+# reporting green while checking nothing. Playwright is also needed for
+# screenshots: pip install playwright && python -m playwright install chromium
+Pillow>=10.0.0

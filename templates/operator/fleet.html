@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Fleet — Operator{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div class="ui-label page-kicker">Operator</div>
+  <h1>Fleet</h1>
+</header>
+{% include "operator/_nav.html" %}
+
+<div class="panel">
+  <p style="margin:0">
+    <strong>{{ running }}</strong> building ·
+    <strong>{{ queue_depth }}</strong> queued ·
+    <a href="/system">system details</a>
+  </p>
+</div>
+
+<h2>Workers</h2>
+<div class="panel">
+<table class="ui-table dense">
+  <thead><tr><th>Worker</th><th>Role</th><th>Running</th><th>Memory</th><th>Last heartbeat</th></tr></thead>
+  <tbody>
+  {% for w in workers %}
+  <tr>
+    <td>{{ w.worker_id }}</td>
+    <td><span class="ui-badge">{{ w.get_role_display }}</span></td>
+    <td>{% if w.max_concurrent %}{{ w.running_count }}/{{ w.max_concurrent }}{% else %}—{% endif %}</td>
+    <td class="muted">{% if w.memory_budget_mb %}{{ w.reserved_memory_mb }}/{{ w.memory_budget_mb }} MB{% else %}unbounded{% endif %}</td>
+    <td class="muted">{{ w.last_beat_at|date:"Y-m-d H:i:s" }}</td>
+  </tr>
+  {% empty %}
+  <tr><td colspan="5"><div class="ui-empty">No live workers — builds will queue until one starts.</div></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<h2>Last 24 hours</h2>
+<div class="panel">
+<table class="ui-table dense">
+  <thead><tr><th>Status</th><th>Runs</th></tr></thead>
+  <tbody>
+  {% for status, n in by_status.items %}
+  <tr><td>{{ status }}</td><td>{{ n }}</td></tr>
+  {% empty %}
+  <tr><td colspan="2"><div class="ui-empty">No runs in the last 24 hours.</div></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<h2>Recent failures</h2>
+<div class="panel">
+<table class="ui-table dense">
+  <thead><tr><th>When</th><th>Organization</th><th>Report</th><th>Status</th><th>Peak memory</th></tr></thead>
+  <tbody>
+  {% for r in recent_failures %}
+  <tr>
+    <td class="muted" style="white-space:nowrap">{{ r.created_at|date:"m-d H:i" }}</td>
+    <td><a href="{% url 'operator-org-detail' r.studio.org.slug %}">{{ r.studio.org.slug }}</a></td>
+    <td>{{ r.studio.slug }}/{{ r.slug }}</td>
+    <td><span class="ui-badge fail">{{ r.status }}</span></td>
+    <td class="muted">{% if r.peak_memory_mb %}{{ r.peak_memory_mb }} MB{% else %}—{% endif %}</td>
+  </tr>
+  {% empty %}
+  <tr><td colspan="5"><div class="ui-empty">No failures in the last 24 hours.</div></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<h2>Heaviest builds (24h)</h2>
+<div class="panel">
+<p class="muted" style="margin-top:0">Size <code>TRELLUM_DEFAULT_JOB_MEMORY_MB</code> from
+these rather than from guesses.</p>
+<table class="ui-table dense">
+  <thead><tr><th>Organization</th><th>Report</th><th>Limit</th><th>Peak</th></tr></thead>
+  <tbody>
+  {% for r in heaviest %}
+  <tr>
+    <td><a href="{% url 'operator-org-detail' r.studio.org.slug %}">{{ r.studio.org.slug }}</a></td>
+    <td>{{ r.studio.slug }}/{{ r.slug }}</td>
+    <td class="muted">{% if r.memory_limit_mb %}{{ r.memory_limit_mb }} MB{% else %}—{% endif %}</td>
+    <td><strong>{{ r.peak_memory_mb }} MB</strong></td>
+  </tr>
+  {% empty %}
+  <tr><td colspan="4"><div class="ui-empty">No memory measurements yet.</div></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

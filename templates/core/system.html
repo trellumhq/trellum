@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+{% load docs %}
+{% block title %}System — trellum{% endblock %}
+{% block content %}
+<header class="page-head-row">
+  <div>
+    <div class="ui-label page-kicker">Operator</div>
+    <h1>System health</h1>
+  </div>
+  <span class="spacer"></span>
+  <a class="ui-btn ghost" href="/orgs/new">+ New organization</a>
+</header>
+<p class="muted">Instance-level view for the operator. Same checks as
+<code>manage.py doctor</code>.
+{% comment %}A dev checkout has no build metadata, and printing
+"unknown@unknown · built unknown" reads like a fault rather than an absence.{% endcomment %}
+Version: <code>{{ version.version }}</code>
+{% if version.sha and version.sha != "unknown" %}
+  <code>{{ version.sha|slice:":9" }}</code>
+  {% if version.build_time and version.build_time != "unknown" %}· built {{ version.build_time }}{% endif %}
+{% else %}
+  <span class="ui-badge">unversioned build</span>
+{% endif %}
+{% if version.framework.tag %}· framework <code>{{ version.framework.tag }}</code>{% endif %}
+{% if version.framework.meta_schema %}(meta v{{ version.framework.meta_schema }}){% endif %}
+· <a href="{{ version.source_url }}" rel="noopener">Corresponding source</a>
+</p>
+{% if version.unapplied_migrations %}
+{% comment %}The migrations health check already fails for this; the names are
+what you actually need to act on, and this is the only audience entitled to
+them.{% endcomment %}
+<p class="muted">Unapplied migrations:
+  {% for name in version.unapplied_migrations %}<code>{{ name }}</code>{% if not forloop.last %}, {% endif %}{% endfor %}
+</p>
+{% endif %}
+
+<div class="panel">
+<table class="ui-table">
+  <thead><tr><th>Check</th><th>Status</th><th>Detail</th></tr></thead>
+  <tbody>
+  {% for c in checks %}
+  <tr>
+    <td><strong>{{ c.label }}</strong></td>
+    <td>{% if c.ok %}<span class="ui-badge ok">ok</span>{% else %}<span class="ui-badge fail">FAIL</span>{% endif %}</td>
+    <td class="muted">{{ c.detail }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% comment %}Present only when the opt-in check has ever succeeded. Off, or a
+feed that never answered, means no section at all -- not an empty one.{% endcomment %}
+{% if releases %}
+<h2>Releases</h2>
+<div class="panel" role="status">
+  <p style="margin:0 0 10px">
+    {% if releases.state == "behind" %}
+    <span class="ui-badge info">update</span>
+    Trellum <strong>{{ releases.latest }}</strong> is available. This instance runs <code>{{ releases.current }}</code>.
+    &nbsp;<a href="{% docs_url 'install/upgrades/' %}">Upgrade guide</a> · <a href="{{ releases.all_url }}">All releases</a>
+    {% elif releases.state == "latest" %}
+    <span class="ui-badge ok">up to date</span>
+    This instance runs <code>{{ releases.current }}</code>, the latest release.
+    &nbsp;<a href="{{ releases.all_url }}">All releases</a>
+    {% else %}
+    {% comment %}Ahead of the feed (a dev build) or unparsable: no verdict.{% endcomment %}
+    This instance runs <code>{{ releases.current }}</code>.
+    &nbsp;<a href="{{ releases.all_url }}">All releases</a>
+    {% endif %}
+  </p>
+  <table class="ui-table dense">
+    <thead><tr><th>Release</th><th>Date</th><th>What changed</th></tr></thead>
+    <tbody>
+    {% for r in releases.releases %}
+    <tr><td><strong>{{ r.tag }}</strong>{% if r.this %} <span class="ui-badge">this instance</span>{% endif %}</td>
+        <td class="muted">{{ r.date }}</td>
+        <td class="muted">{{ r.excerpt }} <a href="{{ r.url }}">Notes</a></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="subtle" style="margin:10px 0 0">Checked {{ releases.checked_at|date:"Y-m-d H:i" }} from {{ releases.feed_host }}, once a day. <code>TRELLUM_UPDATE_CHECK=false</code> stops the check.</p>
+</div>
+{% endif %}
+
+<h2>Instance settings</h2>
+<p class="muted">Changeable without a restart. Secrets, <code>DATABASE_URL</code>
+and <code>ALLOWED_HOSTS</code> stay in <code>.env</code> — Django reads those
+before the database exists.</p>
+<div class="panel">
+<form method="post">
+  {% csrf_token %}
+  <input type="hidden" name="action" value="instance_settings">
+  <div class="ui-form-grid">
+    <div class="ui-field">
+      <label for="id_instance_name">Instance name</label>
+      {{ form.instance_name }}{{ form.instance_name.errors }}
+    </div>
+    <div class="ui-field">
+      <label for="id_public_base_url">Public URL</label>
+      {{ form.public_base_url }}{{ form.public_base_url.errors }}
+      <span class="ui-help">Blank = <code>PORTAL_BASE_URL</code> from the
+        environment. That variable still governs CSRF and secure cookies, so a
+        hostname change belongs in both places.</span>
+    </div>
+    <div class="ui-field">
+      <label for="id_max_upload_mb">Max upload size (MB)</label>
+      {{ form.max_upload_mb }}{{ form.max_upload_mb.errors }}
+      <span class="ui-help">{{ form.max_upload_mb.help_text }}</span>
+    </div>
+    <div class="ui-field">
+      <label for="id_email_host">SMTP host</label>
+      {{ form.email_host }}{{ form.email_host.errors }}
+    </div>
+    <div class="ui-field">
+      <label for="id_email_port">Port</label>
+      {{ form.email_port }}{{ form.email_port.errors }}
+    </div>
+    <div class="ui-field">
+      <label for="id_email_host_user">SMTP username</label>
+      {{ form.email_host_user }}{{ form.email_host_user.errors }}
+    </div>
+    <div class="ui-field">
+      <label for="id_email_host_password">SMTP password</label>
+      {{ form.email_host_password }}{{ form.email_host_password.errors }}
+      <span class="ui-help">{{ form.email_host_password.help_text }}</span>
+    </div>
+    <div class="ui-field">
+      <label for="id_email_from">Send mail from</label>
+      {{ form.email_from }}{{ form.email_from.errors }}
+    </div>
+  </div>
+  <label class="ui-check-row">{{ form.email_use_tls }} Use STARTTLS</label>
+  <div class="ui-form-actions">
+    <button class="ui-btn primary" type="submit">Save settings</button>
+    <button class="ui-btn ghost" type="submit" name="test_email" value="1">Save and send a test email</button>
+  </div>
+</form>
+</div>
+
+<h2>Security</h2>
+<p class="muted">Session policy, login lockout thresholds and the operator MFA
+requirement. Instance-scoped — per-organization overrides are a later step.
+Defaults reproduce today's behaviour except the absolute session cap (new).</p>
+<div class="panel">
+<form method="post">
+  {% csrf_token %}
+  <input type="hidden" name="action" value="security_settings">
+  {{ security_form.non_field_errors }}
+  <p class="ui-label" style="margin-top:0">Session policy</p>
+  <div class="ui-form-grid">
+    <div class="ui-field">
+      <label for="id_session_idle_minutes">{{ security_form.session_idle_minutes.label }}</label>
+      {{ security_form.session_idle_minutes }}{{ security_form.session_idle_minutes.errors }}
+      <span class="ui-help">{{ security_form.session_idle_minutes.help_text }}</span>
+    </div>
+    <div class="ui-field">
+      <label for="id_session_absolute_hours">{{ security_form.session_absolute_hours.label }}</label>
+      {{ security_form.session_absolute_hours }}{{ security_form.session_absolute_hours.errors }}
+      <span class="ui-help">{{ security_form.session_absolute_hours.help_text }}</span>
+    </div>
+  </div>
+  <label class="ui-check-row">{{ security_form.session_expire_at_browser_close }} {{ security_form.session_expire_at_browser_close.label }}</label>
+
+  <p class="ui-label" style="margin-top:18px">Login lockout</p>
+  <div class="ui-form-grid">
+    <div class="ui-field">
+      <label for="id_lockout_account_threshold">{{ security_form.lockout_account_threshold.label }}</label>
+      {{ security_form.lockout_account_threshold }}{{ security_form.lockout_account_threshold.errors }}
+    </div>
+    <div class="ui-field">
+      <label for="id_lockout_ip_threshold">{{ security_form.lockout_ip_threshold.label }}</label>
+      {{ security_form.lockout_ip_threshold }}{{ security_form.lockout_ip_threshold.errors }}
+    </div>
+    <div class="ui-field">
+      <label for="id_lockout_window_minutes">{{ security_form.lockout_window_minutes.label }}</label>
+      {{ security_form.lockout_window_minutes }}{{ security_form.lockout_window_minutes.errors }}
+    </div>
+    <div class="ui-field">
+      <label for="id_lockout_cooloff_minutes">{{ security_form.lockout_cooloff_minutes.label }}</label>
+      {{ security_form.lockout_cooloff_minutes }}{{ security_form.lockout_cooloff_minutes.errors }}
+      <span class="ui-help">{{ security_form.lockout_cooloff_minutes.help_text }}</span>
+    </div>
+  </div>
+
+  <p class="ui-label" style="margin-top:18px">Multi-factor authentication</p>
+  <label class="ui-check-row">{{ security_form.require_mfa_operators }} {{ security_form.require_mfa_operators.label }}</label>
+  <span class="ui-help">{{ security_form.require_mfa_operators.help_text }}</span>
+
+  <div class="ui-form-actions" style="margin-top:18px">
+    <button class="ui-btn primary" type="submit">Save security settings</button>
+  </div>
+</form>
+<hr style="margin:18px 0;border-color:var(--border)">
+<p><strong>Sign everyone out</strong></p>
+<p class="muted">Ends every session on this instance immediately, on its next
+request. {% if sessions_invalidated_at %}Last used {{ sessions_invalidated_at|date:"Y-m-d H:i" }}.{% endif %}</p>
+<form method="post" onsubmit="return confirm('Sign every user on this instance out? Everyone will need to log in again.')">
+  {% csrf_token %}
+  <input type="hidden" name="action" value="sign_everyone_out">
+  <button class="ui-btn danger" type="submit">Sign everyone out</button>
+</form>
+</div>
+
+<h2>Workers</h2>
+<div class="panel">
+<table class="ui-table dense">
+  <thead><tr><th>Worker</th><th>Role</th><th>Running</th><th>Memory</th><th>Last heartbeat</th></tr></thead>
+  <tbody>
+  {% for w in workers %}
+  <tr><td>{{ w.worker_id }}</td>
+      <td><span class="ui-badge">{{ w.get_role_display }}</span></td>
+      <td>{% if w.max_concurrent %}{{ w.running_count }}/{{ w.max_concurrent }}{% else %}—{% endif %}</td>
+      <td class="muted">{% if w.memory_budget_mb %}{{ w.reserved_memory_mb }}/{{ w.memory_budget_mb }} MB{% else %}unbounded{% endif %}</td>
+      <td class="muted">{{ w.last_beat_at|date:"Y-m-d H:i:s" }}</td></tr>
+  {% empty %}
+  <tr><td colspan="5"><div class="ui-empty">No live workers — report builds will queue until one starts.</div></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<h2>Recent runs (all studios)</h2>
+<div class="panel">
+<table class="ui-table dense">
+  <thead><tr><th>When</th><th>Studio</th><th>Report</th><th>Status</th><th>Trigger</th></tr></thead>
+  <tbody>
+  {% for r in recent_runs %}
+  <tr>
+    <td class="muted" style="white-space:nowrap">{{ r.created_at|date:"m-d H:i" }}</td>
+    {% comment %}Link the entity, never a bare id — this table was a dead end.{% endcomment %}
+    <td><a href="/s/{{ r.studio.org.slug }}/{{ r.studio.slug }}/">{{ r.studio }}</a></td>
+    <td><a href="/s/{{ r.studio.org.slug }}/{{ r.studio.slug }}/?q={{ r.slug|urlencode }}">{{ r.slug }}</a></td>
+    <td><span class="ui-badge {% if r.status == 'success' %}ok{% elif r.status == 'queued' or r.status == 'running' or r.status == 'starting' %}info{% else %}fail{% endif %}">{{ r.status }}</span></td>
+    <td class="muted">{{ r.trigger }}</td>
+  </tr>
+  {% empty %}
+  <tr><td colspan="5"><div class="ui-empty">No runs yet.</div></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

@@ -1,0 +1,6 @@
+metabase
+lightdash
+holistics
+redash
+rill ?data
+evidence\.dev

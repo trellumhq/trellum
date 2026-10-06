@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}System readiness — trellum{% endblock %}
+{% block content %}
+<div class="auth-shell">
+  <div class="panel auth-card setup-card">
+    {% include "accounts/setup/_steps.html" %}
+    <h1>Is this machine ready?</h1>
+    <p class="ui-help">The same checks as <code>manage.py doctor</code>. None of
+      them block setup — a portal with a failing check still installs, it just
+      won't do everything until you fix it.</p>
+
+    <div class="ui-table-scroll">
+      <table class="ui-table dense" data-mobile-cards>
+        <thead><tr><th>Check</th><th>Status</th><th>Detail</th></tr></thead>
+        <tbody>
+        {% for c in checks %}
+        <tr>
+          <td data-label="Check"><strong>{{ c.label }}</strong></td>
+          <td data-label="Status">{% if c.ok %}<span class="ui-badge ok">ok</span>{% else %}<span class="ui-badge fail">FAIL</span>{% endif %}</td>
+          <td class="muted" data-label="Detail">
+            {{ c.detail }}
+            {% if c.hint %}<div class="ui-help" style="margin-top:4px">{{ c.hint }}</div>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if failures %}
+    <p class="ui-help" style="margin-top:var(--sp-3)">
+      {{ failures|length }} check{{ failures|pluralize }} failed. Fix what you can
+      now — most need an edit to <code>.env</code> and a restart — or continue and
+      revisit them under <strong>System</strong> once you're in.
+    </p>
+    {% endif %}
+
+    <div class="ui-form-actions">
+      <a class="ui-btn primary" href="{% url 'setup-organization' %}">
+        {% if failures %}Continue anyway{% else %}Continue{% endif %}</a>
+      <a class="ui-btn ghost" href="{% url 'setup-checks' %}">Re-check</a>
+      <span style="flex:1"></span>
+      <a class="auth-alt-link" href="{% url 'setup' %}">Back</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

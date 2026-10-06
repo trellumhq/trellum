@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="settings-wrap {% if request.studio %}scope-studio{% else %}scope-org{% endif %}">
+  <div class="settings-content">
+    {% if request.studio %}<div class="scope-banner studio" role="note"><span class="crumb-dot" aria-hidden="true"></span><span class="scope-banner-text"><b>Studio scope</b> — changes here apply only to <b>{{ request.studio.name }}</b>.</span></div>
+    {% elif request.org %}<div class="scope-banner org" role="note"><span class="crumb-dot" aria-hidden="true"></span><span class="scope-banner-text"><b>Organization scope</b> — changes here apply to <b>every studio</b> in {{ request.org.name }}.</span></div>{% endif %}
+    {% block settings %}{% endblock %}
+  </div>
+</div>
+{% endblock %}

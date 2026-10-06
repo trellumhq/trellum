@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Instance settings — trellum{% endblock %}
+{% block content %}
+<div class="auth-shell">
+  <div class="panel auth-card setup-card">
+    {% include "accounts/setup/_steps.html" %}
+    <h1>A couple of instance settings</h1>
+    <p class="ui-help">Both optional, and both editable later under
+      <strong>System</strong>. Skip if you just want to get going.</p>
+    {{ form.non_field_errors }}
+    <form method="post">
+      {% csrf_token %}
+
+      <h2>Identity</h2>
+      <div class="ui-form-grid">
+        <div class="ui-field">
+          <label for="id_instance_name">Instance name</label>
+          {{ form.instance_name }}{{ form.instance_name.errors }}
+        </div>
+        <div class="ui-field">
+          <label for="id_public_base_url">Public URL</label>
+          {{ form.public_base_url }}{{ form.public_base_url.errors }}
+          <span class="ui-help">Used to build invitation links, SSO redirect URIs
+            and report back-links. Blank = the <code>PORTAL_BASE_URL</code> from
+            your <code>.env</code>. Note that <code>.env</code> still governs
+            CSRF and secure cookies, so if you change hostname, change it in both
+            places.</span>
+        </div>
+      </div>
+
+      <h2>Outbound email</h2>
+      <p class="ui-help">Needed for password resets and for mailing invitations.
+        Without it, invitations still work — they show a copyable link — and
+        reset mails go to the container log.</p>
+      <div class="ui-form-grid">
+        <div class="ui-field">
+          <label for="id_email_host">SMTP host</label>
+          {{ form.email_host }}{{ form.email_host.errors }}
+        </div>
+        <div class="ui-field">
+          <label for="id_email_port">Port</label>
+          {{ form.email_port }}{{ form.email_port.errors }}
+        </div>
+        <div class="ui-field">
+          <label for="id_email_host_user">SMTP username</label>
+          {{ form.email_host_user }}{{ form.email_host_user.errors }}
+        </div>
+        <div class="ui-field">
+          <label for="id_email_host_password">SMTP password</label>
+          {{ form.email_host_password }}{{ form.email_host_password.errors }}
+          <span class="ui-help">{{ form.email_host_password.help_text }}</span>
+        </div>
+        <div class="ui-field">
+          <label for="id_email_from">Send mail from</label>
+          {{ form.email_from }}{{ form.email_from.errors }}
+        </div>
+      </div>
+      <label class="ui-check-row">{{ form.email_use_tls }} Use STARTTLS</label>
+
+      <div class="ui-form-actions">
+        <button class="ui-btn primary" type="submit">Save and continue</button>
+        <button class="ui-btn ghost" type="submit" name="test_email" value="1">Save and send a test email</button>
+        <span style="flex:1"></span>
+        <a class="auth-alt-link" href="{% url 'setup-done' %}">Skip for now</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

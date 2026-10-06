@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}{{ org.slug }} — Operator{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div class="ui-label page-kicker">Operator</div>
+  <h1>{{ org.name }}</h1>
+  <p class="muted page-sub"><code>{{ org.slug }}</code></p>
+</header>
+{% include "operator/_nav.html" %}
+
+<div class="panel">
+  <form method="post" action="{% url 'operator-org-active' org.slug %}" class="inline">
+    {% csrf_token %}
+    {% if org.is_active %}
+      <span class="ui-badge ok">active</span>
+      <input type="hidden" name="is_active" value="0">
+      <button type="submit" class="ui-btn danger">Suspend</button>
+      <span class="muted">Suspending makes every URL 404 for its members.</span>
+    {% else %}
+      <span class="ui-badge fail">suspended</span>
+      <input type="hidden" name="is_active" value="1">
+      <button type="submit" class="ui-btn primary">Restore</button>
+    {% endif %}
+  </form>
+</div>
+
+<h2>Usage &amp; quota</h2>
+<div class="panel">
+{% if not quotas_enforced %}
+<p class="muted" style="margin-top:0">Quotas are <strong>not enforced</strong> on this
+instance. Values below are recorded but not applied — set
+<code>TRELLUM_QUOTAS_ENABLED=true</code> to enforce them.</p>
+{% endif %}
+<table class="ui-table dense">
+  <thead><tr><th>Resource</th><th>Used</th><th>Limit</th></tr></thead>
+  <tbody>
+    <tr><td>Concurrent builds</td><td>{{ usage.active_runs }}</td>
+        <td>{% if usage.max_concurrent_runs %}{{ usage.max_concurrent_runs }}{% else %}unlimited{% endif %}</td></tr>
+    <tr><td>Build minutes ({{ usage.month }})</td><td>{{ usage.build_minutes }}</td>
+        <td>{% if usage.monthly_build_minutes %}{{ usage.monthly_build_minutes }}{% else %}unlimited{% endif %}</td></tr>
+    <tr><td>Studios</td><td>{{ usage.studios }}</td>
+        <td>{% if usage.max_studios %}{{ usage.max_studios }}{% else %}unlimited{% endif %}</td></tr>
+    <tr><td>Reports</td><td>{{ usage.reports }}</td>
+        <td>{% if usage.max_reports %}{{ usage.max_reports }}{% else %}unlimited{% endif %}</td></tr>
+    <tr><td>Uploaded files</td><td>{{ usage.storage_mb }} MB</td>
+        <td>{% if usage.max_storage_mb %}{{ usage.max_storage_mb }} MB{% else %}unlimited{% endif %}</td></tr>
+  </tbody>
+</table>
+
+<form method="post" action="{% url 'operator-org-quota' org.slug %}">
+  {% csrf_token %}
+  <p class="muted" style="margin-top:0">Zero means no limit.</p>
+  <div class="ui-form-grid">
+    <div class="ui-field narrow">
+      <label for="quota-max-runs">Max concurrent builds</label>
+      <input class="ui-input" id="quota-max-runs" type="number" name="max_concurrent_runs" min="0" value="{{ quota.max_concurrent_runs|default:0 }}">
+    </div>
+    <div class="ui-field narrow">
+      <label for="quota-minutes">Monthly build minutes</label>
+      <input class="ui-input" id="quota-minutes" type="number" name="monthly_build_minutes" min="0" value="{{ quota.monthly_build_minutes|default:0 }}">
+    </div>
+    <div class="ui-field narrow">
+      <label for="quota-studios">Max studios</label>
+      <input class="ui-input" id="quota-studios" type="number" name="max_studios" min="0" value="{{ quota.max_studios|default:0 }}">
+    </div>
+    <div class="ui-field narrow">
+      <label for="quota-reports">Max reports</label>
+      <input class="ui-input" id="quota-reports" type="number" name="max_reports" min="0" value="{{ quota.max_reports|default:0 }}">
+    </div>
+    <div class="ui-field narrow">
+      <label for="quota-memory">Max memory per build (MB)</label>
+      <input class="ui-input" id="quota-memory" type="number" name="max_memory_mb" min="0" value="{{ quota.max_memory_mb|default:0 }}">
+    </div>
+    <div class="ui-field narrow">
+      <label for="quota-storage">Max uploaded files (MB)</label>
+      <input class="ui-input" id="quota-storage" type="number" name="max_storage_mb" min="0" value="{{ quota.max_storage_mb|default:0 }}">
+    </div>
+    <div class="ui-field ui-field-wide">
+      <label for="quota-notes">Notes</label>
+      <input class="ui-input" id="quota-notes" type="text" name="notes" maxlength="400" value="{{ quota.notes|default:'' }}">
+    </div>
+  </div>
+  <div class="ui-form-actions">
+    <button type="submit" class="ui-btn primary">Save quota</button>
+  </div>
+</form>
+</div>
+
+<h2>Studios</h2>
+<div class="panel">
+<table class="ui-table dense">
+  <thead><tr><th>Slug</th><th>Name</th><th>Pool</th><th>Reports</th></tr></thead>
+  <tbody>
+  {% for s in studios %}
+  <tr><td>{{ s.slug }}</td><td>{{ s.name }}</td>
+      <td>
+        <form method="post" action="{% url 'operator-studio-pool' org.slug s.slug %}" class="inline">
+          {% csrf_token %}
+          <select name="pool">
+            {% for value, label in pool_choices %}
+            <option value="{{ value }}" {% if s.pool == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="ui-btn ghost">Move</button>
+        </form>
+      </td>
+      <td>{{ s.report_count }}</td></tr>
+  {% empty %}
+  <tr><td colspan="4"><div class="ui-empty">No studios.</div></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<h2>Members</h2>
+<div class="panel">
+<table class="ui-table dense">
+  <thead><tr><th>Email</th><th>Role</th><th></th></tr></thead>
+  <tbody>
+  {% for m in members %}
+  <tr>
+    <td>{{ m.user.email }}</td>
+    <td>{{ m.role }}</td>
+    <td>
+      {% if can_impersonate and not m.user.is_operator %}
+      <form method="post" action="{% url 'operator-impersonate' org.slug m.user.pk %}" class="inline">
+        {% csrf_token %}<button type="submit" class="ui-btn ghost">Act as</button>
+      </form>
+      {% endif %}
+    </td>
+  </tr>
+  {% empty %}
+  <tr><td colspan="3"><div class="ui-empty">No members.</div></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<h2>Recent runs</h2>
+<div class="panel">
+<table class="ui-table dense">
+  <thead><tr><th>When</th><th>Report</th><th>Status</th><th>Peak</th></tr></thead>
+  <tbody>
+  {% for r in recent_runs %}
+  <tr>
+    <td class="muted" style="white-space:nowrap">{{ r.created_at|date:"m-d H:i" }}</td>
+    <td>{{ r.studio.slug }}/{{ r.slug }}</td>
+    <td><span class="ui-badge {% if r.status == 'success' %}ok{% elif r.status == 'queued' or r.status == 'running' %}info{% else %}fail{% endif %}">{{ r.status }}</span></td>
+    <td class="muted">{% if r.peak_memory_mb %}{{ r.peak_memory_mb }} MB{% else %}—{% endif %}</td>
+  </tr>
+  {% empty %}
+  <tr><td colspan="4"><div class="ui-empty">No runs yet.</div></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

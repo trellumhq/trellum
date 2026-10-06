@@ -1,0 +1,15 @@
+<script>
+/* Pre-paint theme boot -- ONLY included when the viewer's preference is the
+   Trellum default (templates/portal/index.html renders a named theme's
+   data-theme server-side and skips this entirely: zero FOUC, zero JS). The
+   server cannot know the visitor's OS light/dark preference, so that part
+   still resolves here. localStorage['fw-theme'] used to be read as the
+   preference itself; it is retired (apps.accounts.views.theme_set is now
+   the one source of truth) -- static/portal.js does a one-time adoption of
+   any pre-existing value so nobody's current pick is lost. */
+(function () {
+    var t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
+        ? 'trellum dark' : 'trellum light';
+    document.documentElement.setAttribute('data-theme', t);
+})();
+</script>

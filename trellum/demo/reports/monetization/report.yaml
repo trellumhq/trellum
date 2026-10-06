@@ -1,0 +1,34 @@
+# ─── Identity ───────────────────────────────────────────────
+name: "Monetization + UA"
+slug: monetization
+description: "The money over time and who pays it, then the acquisition side: UA spend against budget, and the journey from campaign to purchase."
+version: 0.1.0
+
+# ─── Scheduling ─────────────────────────────────────────────
+schedule:
+  cron: "0 7 * * *"
+  timezone: UTC
+
+# ─── Classification ─────────────────────────────────────────
+tags:
+  - revenue
+  - acquisition
+  - demo
+studio: nova-play
+category: Revenue
+
+# ─── Presentation ───────────────────────────────────────────
+theme: dark
+
+# ─── Data Sources ───────────────────────────────────────────
+# demo_db is the generated SQLite warehouse; ua_budget is a CSV on disk,
+# replaceable by an application that offers uploads.
+data_sources:
+  - demo_db
+  - ua_budget
+
+# ─── Display ─────────────────────────────────────────
+display:
+  icon: dollar-sign
+  color: "#59a14f"
+  priority: 4

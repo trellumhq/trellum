@@ -1,0 +1,14 @@
+# Security reports must never arrive as public issues, so the blank-issue escape
+# hatch is closed and the security channel is offered first.
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/trellumhq/trellum/security/advisories/new
+    about: >-
+      Never report a security problem in a public issue. Use private vulnerability
+      reporting, or email security@trellum.dev. See SECURITY.md for what is in scope.
+  - name: Ask a question or discuss an idea
+    url: https://github.com/trellumhq/trellum/discussions
+    about: >-
+      For "how do I...", design discussion, or anything without a clear bug or
+      feature request. Larger changes are worth discussing before they are built.

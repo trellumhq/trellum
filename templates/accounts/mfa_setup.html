@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Set up MFA — trellum{% endblock %}
+{% block content %}
+<h1>Set up multi-factor authentication</h1>
+<p class="muted">Scan this code with an authenticator app (1Password, Authy, Google
+Authenticator, …), then enter the 6-digit code it shows to confirm.</p>
+
+<div class="panel" style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start">
+  <div class="mfa-qr" style="width:240px;max-width:100%">{{ qr_svg|safe }}</div>
+  <div style="flex:1;min-width:240px">
+    <p class="ui-label">Can't scan? Enter this key manually</p>
+    {% include "_copy_field.html" with value=secret %}
+
+    <form method="post" style="margin-top:18px">
+      {% csrf_token %}
+      {{ form.non_field_errors }}
+      <div class="ui-field">
+        <label for="id_code">{{ form.code.label }}</label>
+        {{ form.code }}{{ form.code.errors }}
+      </div>
+      <button class="ui-btn primary" type="submit">Confirm and enable</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

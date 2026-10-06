@@ -1,0 +1,47 @@
+# ─── Identity ───────────────────────────────────────────────
+name: "Conversion"
+slug: conversion
+description: "Where Nova Play loses buyers between store view and purchase, per title and across the portfolio, from fact_funnel."
+version: 0.2.0
+
+# ─── Scheduling ─────────────────────────────────────────────
+schedule:
+  cron: "0 6 * * *"
+  timezone: UTC
+
+# ─── Classification ─────────────────────────────────────────
+tags:
+  - funnel
+  - conversion
+  - sankey
+studio: nova-play
+category: Product
+
+# ─── Presentation ───────────────────────────────────────────
+theme: nord
+
+# ─── Data Sources ────────────────────────────────────────────
+data_sources:
+  - demo_db
+
+# ─── Validation ──────────────────────────────────────────────
+validation:
+  suppress:
+    # rationale: the check greps the JS for each data_key literal, and this
+    # report's keys are per-scope ("_flow_coral_quest", ...) read dynamically
+    # as '_flow_' + window._currentScope so the one shared JS can follow the
+    # scope switcher. The keys ARE used; the access is just not literal.
+    - rawhtml-data-key-unused
+
+# ─── Optional client libraries ───────────────────────────────
+# Sankey is not a framework component and cannot be: it draws relationships
+# between stages rather than values at stages. Loaded here so no other
+# report's page pays for it.
+extra_cdn:
+  chartjs_sankey: chartjs-chart-sankey.min.js
+
+# ─── Display ─────────────────────────────────────────
+display:
+  icon: git-branch
+  color: "#59a14f"
+  priority: 5

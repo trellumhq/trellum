@@ -1,0 +1,42 @@
+# Development mail catcher: every mail the portal sends (invites, password
+# resets, "alert me when this report breaks", scheduled report deliveries,
+# the "send me a sample now" button) lands in a local inbox instead of a
+# real mailbox — nothing ever leaves the machine.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.mail.yml up -d
+#
+# Open http://localhost:8025 to read what got sent. web/worker (and, on the
+# split topology, coordinator/runner) get EMAIL_URL pointed at mailpit here —
+# nothing in .env or docker-compose.yml needs to change. Running the portal
+# outside Compose instead (`manage.py runserver`)? Point it at mailpit
+# yourself: EMAIL_URL=smtp://localhost:1025 in your local .env, after
+# starting the mailpit service on its own:
+#   docker compose -f docker-compose.yml -f docker-compose.mail.yml up -d mailpit
+#
+# Development only — never layer this onto a production compose invocation.
+
+services:
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "127.0.0.1:1025:1025"  # SMTP — where EMAIL_URL below points
+      - "127.0.0.1:8025:8025"  # web UI — the inbox
+    restart: unless-stopped
+
+  web:
+    environment:
+      EMAIL_URL: smtp://mailpit:1025
+
+  worker:
+    environment:
+      EMAIL_URL: smtp://mailpit:1025
+
+  # Split topology only (docker compose --profile split ...) — inert unless
+  # that profile is active, so harmless to include unconditionally here.
+  coordinator:
+    environment:
+      EMAIL_URL: smtp://mailpit:1025
+
+  runner:
+    environment:
+      EMAIL_URL: smtp://mailpit:1025

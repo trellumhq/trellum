@@ -1,0 +1,25 @@
+# Report-build lane for the itest harness (itest/test_report_build.py).
+#
+# Queries two real containers -- postgres and clickhouse -- through the
+# normal report.yaml -> data-sources/config.yaml -> LocalEnvResolver ->
+# driver -> query_df pipeline, proving it end to end the same way a real
+# report build would. See itest/test_report_build.py for what seeds the
+# tables and what it asserts about the output.
+
+name: "Itest Smoke"
+slug: itest-smoke
+description: "Report-build lane for the integration harness: queries real postgres and clickhouse containers."
+version: 0.1.0
+
+tags:
+  - itest
+category: Uncategorized
+
+data_sources:
+  - pg_db
+  - ch_db
+
+display:
+  icon: file-text
+  color: "#4e79a7"
+  priority: 99

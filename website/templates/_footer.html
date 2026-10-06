@@ -1,0 +1,39 @@
+<footer class="foot">
+  <div class="rail">
+    <div>
+      <span class="brand" style="font-size:var(--fs-md)">{% include "_lattice.html" with size=18 %}{{ BRAND }}</span>
+      <p class="blurb">Reports as code, built and governed on your infrastructure.</p>
+    </div>
+    <div>
+      <h4>Product</h4>
+      <ul>
+        <li><a href="/#workflow">How it works</a></li>
+        <li><a href="/#framework">The framework</a></li>
+        <li><a href="{{ demo_href }}" rel="noopener">Demo gallery</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Docs</h4>
+      <ul>
+        <li><a href="/docs/latest/install/overview/">Install</a></li>
+        <li><a href="/docs/latest/portal/organizations-and-studios/">Portal guide</a></li>
+        <li><a href="/docs/latest/troubleshooting/build-failures/">Troubleshooting</a></li>
+        <li><a href="/blog/">Blog</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Project</h4>
+      <ul>
+        <li><a href="{{ github_href }}" rel="noopener">GitHub</a></li>
+        <li><a href="mailto:{{ CONTACT_EMAIL }}">Contact</a></li>
+        <li><a href="/privacy/">Privacy</a></li>
+        <li><a href="/terms/">Terms</a></li>
+        <li><a href="/cookies/">Cookies</a></li>
+      </ul>
+    </div>
+    <div class="fine">
+      <span>© {% now "Y" %} {{ BRAND }}</span>
+      <span><a href="{{ github_href }}/blob/main/LICENSE" rel="noopener">AGPL-3.0-only</a></span>
+    </div>
+  </div>
+</footer>

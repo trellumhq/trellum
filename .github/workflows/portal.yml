@@ -1,0 +1,492 @@
+name: portal
+
+# A docs-only change cannot break the portal, and every job here pays a
+# whole billed minute whatever it does. Note what `paths-ignore` means on
+# `pull_request`: a PR touching nothing but docs runs NO job at all. That is
+# intended — no required status checks are configured on this repository, so
+# nothing is left hanging in "expected". Revisit this if that ever changes.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, develop]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+  pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+
+# A superseded run is pure cost: when a PR gets a new push, kill the old run.
+concurrency:
+  group: portal-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fast-checks:
+    # Every grep and version comparison that needs nothing but a checkout,
+    # in ONE job. They used to be two, and billing is per job rounded up to
+    # the whole minute: six seconds of work and seven seconds of work were
+    # costing two minutes on every run. Steps stay separate so each still
+    # reports its own pass/fail — only the job around them was merged.
+    name: fast checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The framework used to be a pinned submodule, and this check used to
+      # prove the pin sat on a tag. It lives here now, so there is no pin to
+      # check — but there are two files writing down one version, and a
+      # release refuses to build if they disagree (see release.yml). Catch it
+      # on the PR instead.
+      - name: trellum_portal and trellum report the same version
+        run: |
+          PORTAL=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' trellum_portal/__init__.py)
+          FRAMEWORK=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' trellum/__init__.py)
+          echo "portal=$PORTAL framework=$FRAMEWORK"
+          if [ -z "$PORTAL" ] || [ -z "$FRAMEWORK" ]; then
+            echo "ERROR: could not read one of the versions."
+            exit 1
+          fi
+          if [ "$PORTAL" != "$FRAMEWORK" ]; then
+            echo "ERROR: trellum_portal.__version__ ($PORTAL) and trellum.__version__ ($FRAMEWORK) disagree."
+            echo "They ship as one artifact; bump both."
+            exit 1
+          fi
+
+      # The web process must never touch the framework's process-global
+      # project root, and nothing in the portal may depend on AWS.
+      - name: get_project_root stays out of the portal
+        run: |
+          ! grep -rn "get_project_root" apps/ trellum_portal/ --include="*.py"
+      # The portal now owns object storage: the framework cut every cloud tie,
+      # so boto3 is a legitimate portal dependency and the old outright ban
+      # would now ban the s3 backend itself.
+      #
+      # Nor is "no AWS in the sandbox" the replacement invariant, tempting as it
+      # sounds: the framework's s3fs driver reads data SOURCES from buckets, so
+      # the runner image carries boto3 on purpose. Reading input from S3 and
+      # publishing output to it are different powers.
+      #
+      # What is left is worth keeping: the import stays lazy, so the dependency
+      # is confined to the code path that needs it.
+      - name: the AWS SDK is imported lazily, never at module scope
+        # A module-scope import would load boto3 in every web and worker
+        # process, including local-storage deployments, and would break the
+        # runner image's import check.
+        run: |
+          ! grep -rnE "^(from|import)[[:space:]]+(boto3|botocore)([.[:space:]]|$)" \
+            apps/ trellum_portal/ --include="*.py"
+
+      # Hosted-only extensions live outside this repository. The base product
+      # may be extended by them but must never depend on them.
+      - name: core never imports hosted-only extensions
+        run: |
+          ! grep -rnE "^[[:space:]]*(from|import)[[:space:]]+saas([.[:space:]]|$)" \
+            apps/ trellum_portal/ --include="*.py"
+
+      # The mirror of the framework's own rule: trellum/ must not know that any
+      # host exists, and the control plane is a host. This was a review
+      # convention in the framework repo with nothing enforcing it; the
+      # monorepo makes an accidental import much easier, so it is a gate now.
+      - name: the framework never imports the control plane
+        run: |
+          ! grep -rnE "^[[:space:]]*(from|import)[[:space:]]+(apps|trellum_portal|django)([.[:space:]]|$)"  trellum/ --include="*.py"
+
+      # An SBOM over floating version ranges is meaningless; a release build
+      # must resolve to exactly what we tested.
+      - name: runtime dependencies are pinned
+        run: |
+          if grep -nE "^[a-zA-Z].*[><~]=" requirements-django.txt; then
+            echo "ERROR: requirements-django.txt must pin exact versions (==)."
+            exit 1
+          fi
+
+      - name: test tooling stays out of the runtime requirements
+        run: |
+          if grep -nE "^(pytest|requests)([<>=~[]|$)" requirements-django.txt; then
+            echo "ERROR: test-only packages belong in requirements-test.txt."
+            echo "Anything in a shipped image is CVE surface a customer will ask about."
+            exit 1
+          fi
+
+  django-tests:
+    name: django unit tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: trellum
+          POSTGRES_PASSWORD: trellum
+          POSTGRES_DB: trellum_portal
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U trellum"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            requirements-django.txt
+            requirements-test.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # requirements-test.txt is CI-only; it is not in the shipped image.
+          pip install -r requirements-django.txt -r requirements-test.txt
+
+      - name: Install browsers for console regression tests
+        run: python -m playwright install --with-deps chromium webkit
+
+      - name: No missing migrations
+        # A model change without its migration passed CI until now: django-e2e
+        # migrates an empty database, so it only ever noticed a *broken*
+        # migration, never an absent one. The failure mode is a deployed image
+        # whose code expects a column the customer's database does not have.
+        run: python manage.py makemigrations --check --dry-run
+        env:
+          DJANGO_SETTINGS_MODULE: trellum_portal.settings.test
+
+      - name: Django test suite
+        # trellum_portal.settings.test defaults to postgres on 127.0.0.1:5433,
+        # matching the service container's mapped port.
+        run: python -m pytest apps -q
+
+      - name: The changelog mentions this version
+        # Cheap guard against the version being bumped with nothing said about
+        # why. Customers read the changelog to decide whether to upgrade.
+        run: |
+          VERSION="$(python -c 'import trellum_portal; print(trellum_portal.__version__)')"
+          grep -q "\[${VERSION}\]" CHANGELOG.md || {
+            echo "CHANGELOG.md has no [${VERSION}] section."
+            echo "Add one, or put your change under [Unreleased]."
+            exit 1
+          }
+
+  sandbox:
+    # The report sandbox: the runner image must build, and the container
+    # hardening (read-only rootfs, non-root uid, cap drop) must actually hold
+    # on a real daemon. Ubuntu runners ship Docker, so this is the only job
+    # that can prove the isolation end to end.
+    name: report sandbox
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Plain `docker build`, deliberately. A buildx layer cache
+      # (setup-buildx + build-push-action, cache-from/cache-to type=gha) was
+      # tried and MEASURED here: 215s cold, 144s warm, against ~110s for these
+      # two plain builds. Importing and exporting the layers over the network
+      # costs more than rebuilding them, so the "cache" was a full billed
+      # minute per run slower. Don't re-add it without measuring again.
+      - name: "The runner image builds (minimal — framework only, no Django)"
+        run: |
+          docker build --target runner -t trellum-runner:dev .
+          if docker run --rm trellum-runner:dev python -c "import django" 2>/dev/null; then
+            echo "ERROR: Django leaked into the runner image"; exit 1
+          fi
+          docker run --rm trellum-runner:dev python -c "import trellum"
+
+      # The PORTAL image was only ever built by release.yml, which runs on
+      # tags. So a Dockerfile that forgot to COPY a package stayed green
+      # through every PR and failed at release -- which is exactly what
+      # happened when an installed package was omitted: collectstatic died on
+      # ModuleNotFoundError. A tag is far too late to find that out.
+      - name: "The portal image builds and can start Django"
+        run: |
+          docker build --target portal -t trellum:dev .
+          # collectstatic already ran in the build, so an image that gets this
+          # far has every INSTALLED_APPS entry present. Prove the app boots.
+          docker run --rm -e DJANGO_SETTINGS_MODULE=trellum_portal.settings.build \
+            trellum:dev python manage.py check
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            requirements-django.txt
+            requirements-test.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-django.txt -r requirements-test.txt
+
+      - name: Real-daemon sandbox smoke
+        # Only the docker_sandbox-marked tests; they need a daemon, not a DB.
+        run: python -m pytest apps/runner/tests/test_sandbox.py -m docker_sandbox -q
+
+  migration-safety:
+    # Does this branch's schema still work under the PREVIOUS release's code?
+    #
+    # That is the property that makes scripts/upgrade.sh recoverable. The
+    # migration runs while the application is stopped, but the old code has been
+    # running against the pre-migration schema and will run again if the upgrade
+    # is abandoned. A migration that only works with new code is a contract-phase
+    # change -- allowed, but it must be a MAJOR release with a changelog entry
+    # rather than a surprise on a customer's instance.
+    #
+    # See docs/MIGRATIONS.md for the expand/contract rule this enforces.
+    name: previous release survives the new schema
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: trellum
+          POSTGRES_PASSWORD: trellum
+          POSTGRES_DB: trellum_portal
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U trellum"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0      # tags, so we can find the previous release
+
+      # Deliberately NOT `cache: pip`, unlike the other jobs here. Everything
+      # below is conditional on a previous release existing, and none does
+      # yet — so nothing is installed, ~/.cache/pip is never created, and the
+      # post-cache step fails the job outright ("Cache folder path is
+      # retrieved for pip but doesn't exist on disk"). There is nothing to
+      # cache until this job has real work to do.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Find the previous release
+        id: prev
+        run: |
+          # No releases yet: there is nothing to be backward-compatible WITH,
+          # and the first tag has to be able to land. Skip rather than fail.
+          TAG="$(git tag --list 'v*' --sort=-v:refname | head -1)"
+          if [ -z "$TAG" ]; then
+            echo "No v* tag exists yet — nothing to upgrade from. Skipping."
+            echo "tag=" >> "$GITHUB_OUTPUT"
+          else
+            echo "Previous release: $TAG"
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create isolated current and previous release environments
+        if: steps.prev.outputs.tag != ''
+        run: |
+          set -e
+          git worktree add --detach ../previous-release "${{ steps.prev.outputs.tag }}"
+          python -m venv /tmp/current-venv
+          /tmp/current-venv/bin/pip install -r requirements-django.txt -r requirements-test.txt
+          python -m venv /tmp/previous-venv
+          /tmp/previous-venv/bin/pip install \
+            -r ../previous-release/requirements-django.txt \
+            -r ../previous-release/requirements-test.txt
+          /tmp/previous-venv/bin/python -m playwright install --with-deps chromium webkit
+
+      - name: Apply the previous release's migrations, then this branch's
+        if: steps.prev.outputs.tag != ''
+        env:
+          DJANGO_SETTINGS_MODULE: trellum_portal.settings.test
+          DATABASE_URL: postgres://trellum:trellum@127.0.0.1:5433/test_trellum_portal
+          PGPASSWORD: trellum
+        run: |
+          set -e
+          createdb -h 127.0.0.1 -p 5433 -U trellum test_trellum_portal
+          (cd ../previous-release && /tmp/previous-venv/bin/python manage.py migrate --no-input)
+          /tmp/current-venv/bin/python manage.py migrate --no-input
+
+      - name: The previous release's tests pass against the new schema
+        if: steps.prev.outputs.tag != ''
+        env:
+          DJANGO_SETTINGS_MODULE: trellum_portal.settings.test
+          DATABASE_URL: postgres://trellum:trellum@127.0.0.1:5433/trellum_portal
+          # Reuse the migrated database rather than building a fresh one: the
+          # point is the schema this upgrade produced, not a clean install.
+          PYTEST_ADDOPTS: "--reuse-db"
+        run: |
+          set -e
+          cd ../previous-release
+          SUITES=(apps)
+          if [ -d commercial ]; then SUITES+=(commercial); fi
+          echo "running previous release: ${SUITES[*]}"
+          /tmp/previous-venv/bin/python -m pytest "${SUITES[@]}" -q || {
+            echo
+            echo "The previous release's tests fail against this branch's schema."
+            echo "That makes this a CONTRACT-phase change: it is not safe to"
+            echo "abandon an upgrade halfway. Either split it expand/contract"
+            echo "(docs/MIGRATIONS.md), or make this a MAJOR release and say so"
+            echo "in CHANGELOG.md under Upgrade notes."
+            exit 1
+          }
+
+  django-e2e:
+    # The multi-tenant pipeline end to end: bootstrap, studio, import the
+    # demo project, enqueue over the session-authenticated API, the worker
+    # builds via the framework in this repo, output carries the host-contract
+    # canaries, and the page survives a web restart.
+    #
+    # Run against BOTH supported topologies. "combined" is what a self-hosted
+    # customer runs (one worker process). "split" is our SaaS shape (one
+    # coordinator, several runners). Proving only one of them is how the other
+    # rots — and the split path is the one nobody notices is broken until a
+    # schedule silently stops firing.
+    #
+    # That reasoning is unchanged; what changed is WHEN each runs. Both
+    # topologies cost ~2 billed minutes per PR push, and the two exercise the
+    # same pipeline — "split" adds the claim/coordination path on top. So a
+    # pull request proves "combined", and the push to main proves both. Every
+    # commit that reaches main is still covered by the full pair; the split
+    # path can only rot for the length of one PR, and it is caught before the
+    # release that would ship it.
+    name: django end to end (${{ matrix.topology }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        topology: ${{ github.event_name == 'pull_request' && fromJSON('["combined"]') || fromJSON('["combined","split"]') }}
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: trellum
+          POSTGRES_PASSWORD: trellum
+          POSTGRES_DB: trellum_portal
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U trellum"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DJANGO_SETTINGS_MODULE: trellum_portal.settings.dev
+      DATABASE_URL: postgres://trellum:trellum@127.0.0.1:5433/trellum_portal
+      TRELLUM_DATA_DIR: ${{ github.workspace }}/.e2e-data
+      E2E_EMAIL: e2e@demo.local
+      E2E_PASSWORD: E2e-pass-w0rd
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            requirements-django.txt
+            requirements-test.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # requirements-test.txt is CI-only; it is not in the shipped image.
+          pip install -r requirements-django.txt -r requirements-test.txt
+
+      - name: Generate the demo project's fixtures
+        working-directory: trellum/demo
+        run: python tools/make_fixtures.py
+
+      - name: Migrate, bootstrap, import the demo project
+        run: |
+          python manage.py migrate --no-input
+          python manage.py bootstrap --email "$E2E_EMAIL" --password "$E2E_PASSWORD" \
+            --org-name Demo --org-slug demo
+          python manage.py shell -c "
+          from apps.orgs.models import Organization
+          from apps.studios.models import Studio
+          org = Organization.objects.get(slug='demo')
+          s, _ = Studio.objects.get_or_create(org=org, slug='demo', defaults={'name': 'Demo'})
+          s.ensure_dirs()
+          "
+          python manage.py import_project demo/demo trellum/demo
+
+      - name: Start web + worker(s)
+        run: |
+          python manage.py runserver 127.0.0.1:8060 --noreload > web.log 2>&1 &
+          echo $! > web.pid
+          : > worker.pids
+          if [ "${{ matrix.topology }}" = "split" ]; then
+            python manage.py runworker --role=coordinator > coordinator.log 2>&1 &
+            echo $! >> worker.pids
+            python manage.py runworker --role=runner > runner-1.log 2>&1 &
+            echo $! >> worker.pids
+            python manage.py runworker --role=runner > runner-2.log 2>&1 &
+            echo $! >> worker.pids
+          else
+            python manage.py runworker > worker.log 2>&1 &
+            echo $! >> worker.pids
+          fi
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8060/healthz >/dev/null && break
+            sleep 2
+          done
+
+      - name: The fleet reports the expected roles
+        run: |
+          sleep 20   # let every worker beat at least once
+          python manage.py shell -c "
+          from apps.runner.models import WorkerHeartbeat
+          alive = list(WorkerHeartbeat.alive())
+          roles = sorted(w.role for w in alive)
+          expected = (
+              ['coordinator', 'runner', 'runner']
+              if '${{ matrix.topology }}' == 'split' else ['all']
+          )
+          assert roles == expected, f'expected {expected}, got {roles}'
+          print('fleet ok:', roles)
+          "
+
+      - name: Build a report through the API
+        run: python scripts/e2e.py build
+
+      - name: The report was built exactly once
+        # The guarantee that makes several runners safe: SKIP LOCKED means one
+        # claimant per run. A regression here would show up as duplicate work,
+        # not as a failure, so assert on it explicitly.
+        run: |
+          python manage.py shell -c "
+          from collections import Counter
+          from apps.runner.models import Run
+          runs = list(Run.objects.all())
+          per_report = Counter(r.report_id for r in runs)
+          dupes = {k: n for k, n in per_report.items() if n > 1}
+          assert not dupes, f'a report was run more than once: {dupes}'
+          workers = {r.worker_id for r in runs if r.worker_id}
+          print(f'{len(runs)} run(s), claimed by: {sorted(workers)}')
+          assert all(r.status == 'success' for r in runs), [
+              (r.slug, r.status) for r in runs
+          ]
+          "
+
+      - name: Output survives a web restart
+        run: |
+          kill "$(cat web.pid)"
+          sleep 2
+          python manage.py runserver 127.0.0.1:8060 --noreload > web2.log 2>&1 &
+          echo $! > web.pid
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8060/healthz >/dev/null && break
+            sleep 2
+          done
+          python scripts/e2e.py verify
+
+      - name: Shut down
+        if: always()
+        run: |
+          while read -r pid; do kill "$pid" 2>/dev/null || true; done < worker.pids || true
+          kill "$(cat web.pid)" 2>/dev/null || true
+          for log in worker.log coordinator.log runner-1.log runner-2.log; do
+            [ -f "$log" ] && { echo "----- $log -----"; tail -40 "$log"; }
+          done
+          true

@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}{{ report.name }} — trellum{% endblock %}
+{% block content %}
+<div class="panel ui-notice-page wide">
+  <h1>This report's data has been deleted</h1>
+  <p class="muted">
+    “{{ report.name }}” built successfully, but its output was deleted on
+    {{ report.data_expired_at|date:"Y-m-d H:i" }} — it was older than
+    {{ org_name }}'s retention window for built data.
+  </p>
+  <p class="muted">
+    Nothing else about the report is affected: its history, favourites and
+    share links are all unchanged. Only the built output is gone.
+  </p>
+  <p class="muted">
+    Rebuilding restores it from source{% if next_run %}, and it's next due to
+    build automatically on {{ next_run|date:"Y-m-d H:i" }}{% endif %}.
+    {% if not can_rebuild %}Ask an editor to rebuild it if you need it sooner.{% endif %}
+  </p>
+  <p style="margin-top:16px">
+    {% if can_rebuild %}
+      <button type="button" class="ui-btn primary" id="reportRebuildNow"
+        data-run-url="{{ prefix }}/api/reports/{{ report.slug }}/run">Rebuild now</button>
+    {% endif %}
+    <a class="ui-btn ghost" href="{{ prefix }}/">Back to {{ studio_name }}</a>
+  </p>
+</div>
+{% if can_rebuild %}
+{% comment %}A real button + a script-src 'self' listener, matching
+report_storage_outage.html's identical reasoning: no javascript: href, no
+inline onclick.{% endcomment %}
+<script>
+(function () {
+    function getCookie(name) {
+        var m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+        return m ? decodeURIComponent(m[1]) : '';
+    }
+    var btn = document.getElementById('reportRebuildNow');
+    btn.addEventListener('click', function () {
+        btn.disabled = true;
+        btn.textContent = 'Queuing…';
+        fetch(btn.dataset.runUrl, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: '{}'
+        }).then(function (resp) {
+            if (!resp.ok) throw new Error('request failed');
+            btn.textContent = 'Rebuild queued — this can take a few minutes';
+        }).catch(function () {
+            btn.disabled = false;
+            btn.textContent = 'Rebuild now';
+        });
+    });
+})();
+</script>
+{% endif %}
+{% endblock %}

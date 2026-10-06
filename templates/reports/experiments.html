@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+{% load docs %}
+{% block title %}Experiments — {{ studio.name }} — trellum{% endblock %}
+{% block content %}
+
+{% if row_count == 0 %}
+<header class="page-head">
+  <div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }}</div>
+  <h1>Experiments</h1>
+</header>
+<div class="panel">
+  <div class="ui-empty">
+    No A/B test reports in this studio.<br>
+    A report joins this page when its <code>report.yaml</code> declares an <code>ab_test:</code> block.
+    <div class="ui-empty-action">
+      <a class="ui-btn ghost" href="{% docs_url 'portal/experiments/' %}">How experiments are declared →</a>
+    </div>
+  </div>
+</div>
+{% else %}
+
+<header class="page-head">
+  <div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }}</div>
+  <h1>Experiments</h1>
+  <p class="muted page-sub">Every report in this studio with an <code>ab_test:</code> block, as one portfolio.
+    Reports without the block are simply absent.</p>
+</header>
+
+{% if storage_unavailable %}
+<div class="ui-flash warning" role="alert" style="margin:12px 0">
+  Report storage is unreachable right now — rows below may be missing their built numbers until it recovers.
+</div>
+{% endif %}
+
+<div class="ui-stat-row">
+  <div class="ui-stat">
+    <div class="lbl">Running</div>
+    <div class="num">{{ tiles.running }}</div>
+    <div class="sub">{% if tiles.past_end_running %}{{ tiles.past_end_running }} past {% if tiles.past_end_running == 1 %}its{% else %}their{% endif %} declared end{% endif %}&nbsp;</div>
+  </div>
+  <div class="ui-stat">
+    <div class="lbl">Concluded</div>
+    <div class="num">{{ tiles.concluded }}</div>
+    <div class="sub">this studio, all time</div>
+  </div>
+  <div class="ui-stat">
+    <div class="lbl">Win rate</div>
+    <div class="num">{% if tiles.win_rate is not None %}{{ tiles.win_rate }}%{% else %}—{% endif %}</div>
+    <div class="sub">
+      {% if tiles.concluded_with_metric %}{{ tiles.wins }} of {{ tiles.concluded_with_metric }} concluded were wins
+      {% else %}no concluded experiments with a metric yet{% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="filter-row">
+  <a class="ui-pill{% if not status_filter %} active{% endif %}" href="?">All <span class="n">{{ row_count }}</span></a>
+  <a class="ui-pill{% if status_filter == 'running' %} active{% endif %}" href="?status=running">Running <span class="n">{{ tiles.running }}</span></a>
+  <a class="ui-pill{% if status_filter == 'concluded' %} active{% endif %}" href="?status=concluded">Concluded <span class="n">{{ tiles.concluded }}</span></a>
+</div>
+
+{% if timeline.lanes %}
+<div class="panel">
+  <div class="tl-title">Overlap timeline · last 4 months</div>
+  <div class="tl">
+    <div class="tl-axis">
+      {% for m in timeline.months %}<span style="flex:0 0 {{ m.width_pct }}%">{{ m.label }}</span>{% endfor %}
+    </div>
+    <div style="position:relative">
+      <div class="tl-today" style="left:{{ timeline.today_pct }}%"></div>
+      {% for lane in timeline.lanes %}
+      <div class="tl-lane">
+        <div class="tl-bar{% if lane.done %} done{% endif %}{% if lane.open_end %} open-end{% endif %}"
+             style="left:{{ lane.left_pct }}%; width:{{ lane.width_pct }}%">{{ lane.name }}{% if lane.open_end %} · no end declared{% endif %}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  <p class="subtle" style="margin:8px 0 0">Overlapping bars = concurrent tests on the same audience — a validity risk made visible.</p>
+</div>
+{% endif %}
+
+<div class="panel" style="padding:0">
+  <div class="ui-table-scroll">
+    <table class="ui-table" data-mobile-cards>
+      <thead><tr>
+        <th>Experiment</th><th>Status</th><th>Days</th><th>Primary metric</th>
+        <th>Lift</th><th>Significance</th><th></th>
+      </tr></thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td data-label="Experiment">
+            <div class="exp-name">{{ row.test_name }}</div>
+            <div class="exp-meta">{{ row.slug }}{% if row.split %} · {{ row.split }}{% endif %}{% if row.mode_label %} · {{ row.mode_label }}{% endif %}</div>
+          </td>
+          <td data-label="Status">
+            {% if row.status == 'running' %}<span class="ui-badge pass">running</span>
+            {% elif row.status == 'past_end' %}<span class="ui-badge warn">past end</span>
+            {% elif row.status == 'scheduled' %}<span class="ui-badge info">scheduled</span>
+            {% elif row.status == 'concluded' %}<span class="ui-badge">concluded</span>
+            {% else %}<span class="ui-badge">unknown</span>{% endif %}
+            {% if row.status == 'running' and row.no_end_declared %}<span class="exp-meta">no end declared</span>{% endif %}
+            {% if row.status == 'past_end' %}<span class="exp-meta">ended {{ row.ended_days_ago }} day{{ row.ended_days_ago|pluralize }} ago</span>{% endif %}
+          </td>
+          <td class="days" data-label="Days">{% if row.days is not None %}{{ row.days }}{% else %}—{% endif %}</td>
+          {% if row.storage_unavailable %}
+          <td class="subtle" data-label="Primary metric">Storage unavailable</td>
+          <td class="subtle" data-label="Lift">—</td>
+          <td class="subtle" data-label="Significance">—</td>
+          {% elif not row.built %}
+          <td class="subtle" data-label="Primary metric">Not built yet</td>
+          <td class="subtle" data-label="Lift">—</td>
+          <td class="subtle" data-label="Significance">—</td>
+          {% elif row.payload_missing %}
+          <td class="subtle" data-label="Primary metric">No A/B payload in the latest build</td>
+          <td class="subtle" data-label="Lift">—</td>
+          <td class="subtle" data-label="Significance">—</td>
+          {% elif not row.primary %}
+          <td class="subtle" data-label="Primary metric">No KPI rows in the payload</td>
+          <td class="subtle" data-label="Lift">—</td>
+          <td class="subtle" data-label="Significance">—</td>
+          {% else %}
+          <td data-label="Primary metric">{{ row.primary.metric }}</td>
+          <td data-label="Lift">
+            {% if row.primary.delta_pct is None %}
+              <span class="subtle">—</span>
+            {% elif row.primary.significant %}
+              {% if row.primary.delta_pct >= 0 %}<span class="lift-pos">+{{ row.primary.delta_pct|floatformat:1 }}%</span>
+              {% else %}<span class="lift-neg">{{ row.primary.delta_pct|floatformat:1 }}%</span>{% endif %}
+            {% else %}
+              <span class="lift-ns">{% if row.primary.delta_pct >= 0 %}+{% endif %}{{ row.primary.delta_pct|floatformat:1 }}%</span>
+            {% endif %}
+            {% if row.primary.ci_pct %}<div class="ci">95% CI [{{ row.primary.ci_pct.0|floatformat:1 }}, {{ row.primary.ci_pct.1|floatformat:1 }}]</div>{% endif %}
+          </td>
+          <td data-label="Significance">{% if row.primary.significant %}<span class="ui-badge pass">significant</span>{% else %}<span class="ui-badge">not yet</span>{% endif %}</td>
+          {% endif %}
+          <td class="ui-row-actions" data-label="Actions"><a class="ui-btn ghost" href="{{ row.url }}">View report</a></td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7"><div class="ui-empty">No experiments match this filter.
+          <div class="ui-empty-action"><a class="ui-btn ghost" href="?">Clear filter</a></div>
+        </div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="design-note">Lift only turns green/red when the statistics support calling a winner — see
+  <a href="{% docs_url 'portal/experiments/' %}">how experiments are read →</a>.</div>
+
+{% endif %}
+
+<style>
+/* Page-specific: overlap timeline, lift/CI formatting. Stat tiles and filter
+   pills promoted to ui.css as .ui-stat-row/.ui-stat/.ui-pill
+   (ui-consistency-punchlist.md item 8) -- .filter-row is just the layout
+   wrapper, kept here. Mirrors the ui.css token vocabulary rather than
+   inventing new colors -- see .lavish/experiments-overview-design.html for
+   the source layout, plus the "ab_test annotation blue" (#4C8BF5) fixed
+   across both themes so an experiment's identity color matches its chart
+   annotation elsewhere in the product (trellum/rendering/js_runtime.py's
+   ab_test annotation style). */
+:root { --exp: #4C8BF5; --exp-soft: rgba(76, 139, 245, .18); }
+
+.filter-row { display:flex; gap:6px; align-items:center; margin:0 0 14px; }
+
+.tl-title { font-size:var(--fs-xs); font-weight:600; text-transform:uppercase; letter-spacing:.08em; color:var(--text3); margin-bottom:8px; }
+.tl { position:relative; margin-top:8px; }
+/* Widths come inline (flex:0 0 <day-accurate %>) from the same day-based
+   scale the bars below use -- an even repeat(4,1fr) split drifted the axis
+   out of alignment with the bars by up to a day and a half. */
+.tl-axis { display:flex; font-size:var(--fs-xs); color:var(--text3); border-bottom:1px solid var(--border); padding-bottom:4px; margin-bottom:8px; }
+.tl-axis span { border-left:1px solid var(--border); padding-left:6px; box-sizing:border-box; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tl-lane { position:relative; height:26px; margin-bottom:6px; }
+.tl-bar { position:absolute; top:2px; height:20px; border-radius:var(--r-sm); border:1px solid var(--exp); background:var(--exp-soft); font-size:var(--fs-sm); line-height:18px; padding:0 8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text); }
+.tl-bar.done { border-color:var(--border); background:var(--bg-hover); color:var(--text2); }
+.tl-bar.open-end { border-right-style:dashed; }
+.tl-today { position:absolute; top:-4px; bottom:0; width:0; border-left:2px solid var(--accent); }
+.tl-today::after { content:"today"; position:absolute; top:-14px; left:-16px; font-size:var(--fs-xs); color:var(--accent); }
+
+.exp-name { font-weight:600; }
+.exp-meta { font-size:var(--fs-md); color:var(--text3); }
+.lift-pos { color:var(--green); font-weight:600; font-variant-numeric:tabular-nums; }
+.lift-neg { color:var(--red); font-weight:600; font-variant-numeric:tabular-nums; }
+.lift-ns { color:var(--text3); font-style:italic; font-variant-numeric:tabular-nums; }
+.ci { font-size:var(--fs-md); color:var(--text3); font-variant-numeric:tabular-nums; }
+.days { font-variant-numeric:tabular-nums; }
+.design-note { border-left:3px solid var(--scope-studio); background:var(--scope-studio-soft); padding:10px 14px; border-radius:var(--r-sm); font-size:var(--fs-md); color:var(--text2); margin:10px 0; }
+</style>
+{% endblock %}

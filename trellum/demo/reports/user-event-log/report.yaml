@@ -1,0 +1,52 @@
+# ─── Identity ───────────────────────────────────────────────
+name: "Live Ops Monitor"
+slug: user-event-log
+description: "Type a user id and the warehouse answers at view time: a live-query report whose event log is never baked into the page — one declared query drives the KPIs, charts and raw-events table."
+version: 0.1.0
+
+# ─── Scheduling ─────────────────────────────────────────────
+schedule:
+  cron: "0 6 * * *"
+  timezone: UTC
+
+# ─── Classification ─────────────────────────────────────────
+tags:
+  - live-query
+  - events
+  - showcase
+studio: nova-play
+category: Showcase
+
+# ─── Presentation ───────────────────────────────────────────
+theme: monokai
+
+# ─── Data Sources ────────────────────────────────────────────
+data_sources:
+  - demo_db
+
+# ─── Validation ──────────────────────────────────────────────
+validation:
+  suppress:
+    # "actors" (top_actors) is a grouped top-N: its bindings' "column" keys
+    # (service/day) are filter-STATE keys the propagated FilterBar values
+    # land under, not real columns of its {actor, events} result -- there is
+    # no row-level "service"/"day" to check them against post-GROUP BY. The
+    # propagate_to mapping is correct (see LiveDataSource("actors",
+    # bindings=...) in generator.py); this check just assumes propagate_to
+    # targets are always plain (non-live) DataSources. (Global, not
+    # suppress_per_dataset, because this check never sets a dataset_id --
+    # it names the DataSource in the message text instead.)
+    - propagate-column-missing
+  accept_inactive_filters:
+    # top_actors' own declared params are service/since/until only -- actor
+    # and severity apply to ops_events, not to this grouped query, by
+    # design (see queries.py's TOP_ACTORS).
+    actors:
+      - actor
+      - severity
+
+# ─── Display ─────────────────────────────────────────
+display:
+  icon: search
+  color: "#0d9488"
+  priority: 7

@@ -1,0 +1,14 @@
+{% comment %}Copy-to-clipboard field. The value is shown in a mono box with a
+Copy button next to it and an inline "copied ✓" confirmation (the click handler
+lives once in base.html). Use:
+
+    {% include "_copy_field.html" with value=webhook_url %}
+    {% include "_copy_field.html" with value=inv.accept_url compact=1 label="Copy link" %}
+
+`compact` hides the value box and leaves just the button (for table cells).
+{% endcomment %}
+<div class="ui-copy{% if compact %} compact{% endif %}">
+  <code class="ui-copy-value">{{ value }}</code>
+  <button class="ui-btn ghost" type="button" data-ui-copy>{{ label|default:"Copy" }}</button>
+  <span class="ui-badge ok ui-copy-done" role="status">copied ✓</span>
+</div>

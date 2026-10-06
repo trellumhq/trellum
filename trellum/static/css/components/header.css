@@ -1,0 +1,186 @@
+.fw-header {
+    background: var(--bg-header);
+    padding: 7px 16px;
+    display: flex; flex-wrap: nowrap;
+    justify-content: space-between; align-items: center;
+    gap: 10px;
+    position: sticky; top: 0; z-index: 100;
+}
+.fw-header-left {
+    display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1 1 auto;
+    overflow: hidden;
+}
+.fw-header h1 {
+    font-size: var(--font-size-heading); font-weight: 700; white-space: nowrap; color: #fff;
+    flex: 0 0 auto;
+}
+/* Title + subtitle + freshness on one row (desktop). The mobile query
+   flips this to a column so the title gets its own line. */
+.fw-titleblock {
+    display: flex; align-items: baseline; gap: 8px;
+    min-width: 0; overflow: hidden; flex: 1 1 auto;
+}
+/* Subtitle + freshness dot share a line, truncating together so the dot
+   never gets pushed off. */
+.fw-meta {
+    display: flex; align-items: baseline; gap: 8px;
+    min-width: 0; overflow: hidden; flex: 1 1 auto;
+}
+.fw-header .fw-subtitle {
+    font-size: 12px; color: rgba(255,255,255,0.7);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    min-width: 0; flex: 1 1 auto;
+}
+.fw-header .fw-subtitle:not(:empty)::before { content: "\00b7\0020"; }
+.fw-back-link {
+    display: inline-flex; align-items: center; gap: 4px;
+    color: rgba(255,255,255,0.7); text-decoration: none;
+    font-size: 12px; font-weight: 500;
+    padding: 4px 10px; border-radius: var(--radius-control);
+    background: rgba(0,0,0,0.2);
+    border: 1px solid rgba(255,255,255,0.15);
+    transition: all 0.2s; white-space: nowrap; flex-shrink: 0;
+}
+.fw-back-link:hover { background: rgba(0,0,0,0.35); color: #fff; }
+.fw-back-link svg { width: 14px; height: 14px; }
+.fw-nav-group { display:inline-flex; align-items:center; gap:6px; margin-right:12px; flex-shrink:0; }
+/* The brand/lattice mark: a bare svg dropped directly into the nav slot
+   (not wrapped in .fw-back-link, whose own icon keeps its 14px size via
+   the more specific rule above). Enlarged per the compact header design. */
+.fw-nav-group > svg { width: 22px; height: 22px; flex-shrink: 0; }
+.fw-header-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.fw-export-wrap { position: relative; }
+.fw-export-btn {
+    display: inline-flex; align-items: center; gap: 4px;
+    color: rgba(255,255,255,0.7);
+    font-size: var(--font-size-interface); font-weight: 500;
+    padding: 5px 12px; border-radius: var(--radius-control);
+    background: rgba(0,0,0,0.2);
+    border: 1px solid rgba(255,255,255,0.15);
+    transition: all 0.2s; white-space: nowrap; cursor: pointer;
+}
+.fw-export-btn:hover { background: rgba(0,0,0,0.35); color: #fff; }
+.fw-export-btn svg { width: 14px; height: 14px; }
+.fw-export-btn.running svg { animation: fw-spin 1s linear infinite; }
+.fw-export-menu {
+    display: none; position: absolute; right: 0; top: calc(100% + 4px);
+    background: var(--bg-card, #fff); border: 1px solid var(--border-color, #ddd);
+    border-radius: var(--radius-card); box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    min-width: 150px; z-index: 200; overflow: hidden;
+}
+.fw-export-menu.open { display: block; }
+.fw-export-menu button {
+    display: block; width: 100%; text-align: left;
+    padding: 8px 14px; border: none; background: none;
+    font-size: var(--font-size-interface); color: var(--text-main, #333);
+    cursor: pointer; transition: background 0.15s;
+}
+.fw-export-menu button:hover { background: var(--bg-main, #f5f5f5); }
+.fw-help-wrap { position: relative; }
+.fw-help-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 5px 10px; border-radius: var(--radius-control);
+    color: rgba(255,255,255,0.75);
+    font-size: var(--font-size-label); font-weight: 600; letter-spacing: 0.3px;
+    text-transform: uppercase; line-height: 1;
+    background: rgba(0,0,0,0.2);
+    border: 1px solid rgba(255,255,255,0.15);
+    transition: all 0.2s; cursor: pointer; white-space: nowrap;
+}
+.fw-help-btn:hover { background: rgba(0,0,0,0.35); color: #fff; }
+@media (max-width: 640px) {
+    .fw-help-wrap { display: none; }
+}
+.fw-help-menu {
+    display: none; position: absolute; right: 0; top: calc(100% + 4px);
+    background: var(--bg-card, #fff); border: 1px solid var(--border-color, #ddd);
+    border-radius: var(--radius-card); box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    width: 320px; z-index: 200; padding: 14px 16px;
+}
+.fw-help-menu.open { display: block; }
+.fw-help-title {
+    font-size: 13px; font-weight: 600; color: var(--text-main, #222);
+    margin-bottom: 8px;
+}
+.fw-help-body {
+    font-size: 12px; color: var(--text-secondary, #555); line-height: 1.5;
+}
+.fw-help-body b { color: var(--text-main, #222); font-weight: 600; }
+.fw-help-detected {
+    display: none; margin-top: 10px; padding: 8px 10px;
+    background: var(--bg-main, #f5f5f5); border-radius: 6px;
+    font-size: var(--font-size-meta); color: var(--accent-yellow, #b88b00);
+    border-left: 3px solid var(--accent-yellow, #b88b00);
+}
+.fw-help-detected.visible { display: block; }
+.fw-help-tip {
+    margin-top: 10px; padding-top: 8px;
+    border-top: 1px solid var(--border-color, #eee);
+    color: var(--text-main, #333); font-size: 12px;
+}
+@media (max-width: 640px) {
+    .fw-header {
+        flex-direction: row; align-items: center;
+        gap: 6px; padding: 6px 12px;
+    }
+    .fw-header h1 { font-size: var(--font-size-heading); }
+    /* Two stacked ~32px rows instead of one tall block: title on its own
+       line, subtitle + freshness sharing the line below it. */
+    .fw-titleblock { flex-direction: column; align-items: flex-start; gap: 0; }
+    .fw-header .fw-subtitle {
+        font-size: var(--font-size-meta); white-space: nowrap; overflow: hidden;
+        text-overflow: ellipsis; max-width: 100%;
+    }
+    .fw-freshness { font-size: var(--font-size-meta); }
+    .fw-nav-group > svg { width: 20px; height: 20px; }
+    .fw-back-link { font-size: 0; padding: 6px; border-radius: var(--radius-control); }
+    .fw-back-link svg { width: 18px; height: 18px; }
+    .fw-export-btn span { display: none; }
+    .fw-export-btn { padding: 6px 8px; gap: 0; }
+    .fw-nav-group { margin-right: 6px; }
+    .fw-header-right { gap: 4px; margin-left: auto; }
+    .fw-theme-select { font-size: var(--font-size-interface); padding: 6px 24px 6px 8px; }
+}
+.fw-anno-bar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+    padding: 6px 24px;
+    background: var(--bg-card); border-bottom: 1px solid var(--border-color);
+    font-size: 12px;
+    position: sticky;
+    top: var(--fw-header-h, 48px);
+    z-index: 95;
+}
+.fw-anno-label {
+    color: var(--text-secondary); font-weight: 500; margin-right: 2px;
+}
+.fw-anno-toggle {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 4px 10px; border-radius: var(--radius-control); font-size: var(--font-size-label);
+    cursor: pointer; border: 1px solid var(--border-color);
+    transition: all .15s; color: var(--text-main);
+    background: transparent; opacity: .85; user-select: none;
+}
+.fw-anno-toggle.active {
+    font-weight: 600; color: var(--text-main); opacity: 1;
+}
+.fw-anno-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.fw-freshness {
+    font-size: var(--font-size-meta); color: rgba(255,255,255,0.85);
+    display: none; align-items: center; gap: 4px; flex-shrink: 0;
+}
+.fw-freshness.visible { display: inline-flex; }
+.fw-fresh-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: rgba(255,255,255,0.5); flex-shrink: 0;
+}
+.fw-freshness.fresh .fw-fresh-dot { background: #00c48c; }
+.fw-freshness.fresh { color: rgba(255,255,255,0.85); }
+.fw-freshness.stale .fw-fresh-dot { background: #FFD166; box-shadow: 0 0 4px #FFD166; }
+.fw-freshness.stale { color: rgba(255,255,255,0.85); }
+.fw-freshness.very-stale .fw-fresh-dot { background: #FF4081; box-shadow: 0 0 4px #FF4081; }
+.fw-freshness.very-stale { color: rgba(255,255,255,0.85); }
+@media (max-width: 640px) {
+    .fw-anno-bar { padding: 6px 12px; }
+}

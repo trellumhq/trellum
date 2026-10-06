@@ -1,0 +1,34 @@
+<script>
+/* Management surface theme: ONE brand look in light/dark, independent of a
+   studio's named theme. Pref lives in localStorage 'mgmt-theme' (light|dark;
+   anything else = auto). Pre-paint.
+
+   With no personal preference, the organization's Light/Dark/Auto setting
+   supplies the default
+   (Organization.default_mode, set from Org settings -> Appearance,
+   threaded in by the shell context processor as org_default_mode) --
+   "dark" by default. When the org's own setting is itself "auto" (or the
+   value is missing/unrecognised), this still falls through to the OS
+   preference below. An explicit personal Auto choice follows the OS directly.
+   The OS is also the fallback when no org context
+   exists at all (pages the shell context processor skips, e.g. before
+   login resolves one). */
+(function () {
+    var pref;
+    try { pref = localStorage.getItem('mgmt-theme'); } catch (e) {}
+    var t = (pref === 'light' || pref === 'dark') ? pref
+        : (pref === 'auto' ? '' : '{{ org_default_mode|default:"" }}');
+    if (t !== 'light' && t !== 'dark') {
+        t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
+            ? 'dark' : 'light';
+    }
+    document.documentElement.setAttribute('data-theme', t);
+    var desktop = window.matchMedia && window.matchMedia('(min-width: 1024px)').matches;
+    var collapsed = false;
+    try { collapsed = localStorage.getItem('tl-console-collapsed') === '1'; } catch (e) {}
+    document.documentElement.setAttribute(
+        'data-console-collapsed', desktop && collapsed ? 'true' : 'false'
+    );
+    document.documentElement.setAttribute('data-console-ready', 'false');
+})();
+</script>

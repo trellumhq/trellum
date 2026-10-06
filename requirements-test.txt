@@ -1,0 +1,12 @@
+# Test-only dependencies. NOT installed into the runtime image.
+#
+# These used to sit in requirements-django.txt and therefore shipped to every
+# customer. Anything present in a shipped image is CVE surface that a security
+# review will ask about, and a test runner has no business in production.
+#
+#   pip install -r requirements-django.txt -r requirements-test.txt
+-r requirements-django.txt
+
+pytest==9.1.1
+pytest-django==4.14.0
+requests==2.34.2

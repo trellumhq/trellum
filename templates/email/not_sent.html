@@ -1,0 +1,20 @@
+{% autoescape on %}{% include "email/_base_top.html" %}
+<tr><td style="padding:22px 24px 0">
+  <h1 style="margin:0;font-size:21px;color:#0f172a;font-weight:650">{{ report.name|default:report.slug }}</h1>
+  <p style="margin:6px 0 0;color:#64748b;font-size:13px">{{ report.studio.name }}&nbsp;·&nbsp;last status {{ last_status }}</p>
+</td></tr>
+<tr><td style="padding:16px 24px 0">
+  <p style="margin:0 0 12px;color:#334155;font-size:14px">
+    This report was not delivered on schedule: its last build
+    {% if last_status == "error" or last_status == "timeout" or last_status == "oom_killed" %}failed{% else %}hasn't run yet{% endif %}.
+  </p>
+  {% if last_error %}
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px">
+    <tr><td style="padding:12px 16px;font-family:Consolas,Menlo,monospace;font-size:12px;color:#4b5563;white-space:pre-wrap">{{ last_error }}</td></tr>
+  </table>
+  {% endif %}
+</td></tr>
+<tr><td style="padding:18px 24px 24px">
+  <a href="{{ report_url }}" style="background:#0D9488;color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:14px;font-weight:bold;display:inline-block">Open report</a>
+</td></tr>
+{% include "email/_base_bottom.html" %}{% endautoescape %}

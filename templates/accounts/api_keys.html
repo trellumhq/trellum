@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}API keys — trellum{% endblock %}
+{% block content %}
+<header class="page-head">
+  <div class="ui-label page-kicker">Account</div>
+  <h1>API keys</h1>
+  <p class="muted page-sub">Personal bearer tokens for the studio JSON endpoints. A script, a CI job or your
+    own coding agent acts as you, under your own roles, inside one organization.</p>
+</header>
+
+{% if new_secret %}
+<div class="ui-panel">
+  <span class="ui-label">New key “{{ new_key.name }}” for {{ new_key.org.name }}</span>
+  <p style="margin:4px 0 8px"><strong>Copy it now — this is the only time it is shown.</strong></p>
+  {% include "_copy_field.html" with value=new_secret %}
+  <p class="muted" style="margin:12px 0 4px">Try it against any studio you can see:</p>
+  <pre class="ui-code-block">curl -H "Authorization: Bearer {{ new_secret }}" {{ portal_url }}/s/{{ new_key.org.slug }}/&lt;studio&gt;/api/registry</pre>
+  <p class="muted" style="margin:12px 0 4px">Wire a reports repository to a studio — run in the repository root. It writes
+    <code>.mcp.json</code> and <code>.cursor/mcp.json</code>, puts the key in <code>.env</code> and tells the agent the portal exists:</p>
+  {% for studio in new_key_studios %}
+  <pre class="ui-code-block">trellum setup portal --url {{ portal_url }}/s/{{ new_key.org.slug }}/{{ studio.slug }} --key {{ new_secret }}</pre>
+  {% empty %}
+  <p class="muted">No studio in {{ new_key.org.name }} is visible to you yet.</p>
+  {% endfor %}
+</div>
+{% endif %}
+
+<h2>Create a key</h2>
+{% if can_create %}
+<div class="panel formrow">
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="create">
+    <label for="id_name">Name</label>{{ form.name }}{{ form.name.errors }}
+    <span class="helptext">What it is for — “laptop agent”, “nightly CI”.</span>
+    <label for="id_org">Organization</label>{{ form.org }}{{ form.org.errors }}
+    <span class="helptext">A key works in one organization only. Make one per organization if you need more.</span>
+    <label for="id_scopes">Scope</label>{{ form.scopes }}{{ form.scopes.errors }}
+    <span class="helptext"><em>Read</em> covers every GET endpoint. <em>Read and write</em> also allows POST — run a
+      report, publish from git, test a data source — still limited by your studio role.</span>
+    <label for="id_expires_at">Expires</label>{{ form.expires_at }}{{ form.expires_at.errors }}
+    <span class="helptext">Optional. Leave blank for a key that lasts until you revoke it.</span>
+    <p></p>
+    <button class="ui-btn primary" type="submit">Create key</button>
+  </form>
+</div>
+{% else %}
+<div class="panel"><div class="ui-empty">API keys are switched off in every organization you belong to.
+  An organization admin can turn them on under Organization settings → API keys.</div></div>
+{% endif %}
+
+<h2>Your keys</h2>
+<div class="panel">
+<table class="ui-table" data-mobile-cards>
+  <thead>
+    <tr><th>Name</th><th>Organization</th><th>Prefix</th><th>Scope</th><th>Created</th><th>Last used</th><th>Expires</th><th>Status</th><th></th></tr>
+  </thead>
+  <tbody>
+  {% for key in keys %}
+  <tr>
+    <td data-label="Name"><strong>{{ key.name }}</strong></td>
+    <td data-label="Organization">{{ key.org.name }}</td>
+    <td data-label="Prefix"><code>trellum_pk_{{ key.prefix }}…</code></td>
+    <td data-label="Scope">{{ key.get_scopes_display }}</td>
+    <td class="muted" data-label="Created">{{ key.created_at|date:"Y-m-d" }}</td>
+    <td class="muted" data-label="Last used">{{ key.last_used_at|date:"Y-m-d H:i"|default:"never" }}</td>
+    <td class="muted" data-label="Expires">{{ key.expires_at|date:"Y-m-d"|default:"—" }}</td>
+    <td data-label="Status">{% if key.revoked_at %}<span class="ui-badge warn">revoked {{ key.revoked_at|date:"Y-m-d" }}</span>
+      {% elif not key.is_active %}<span class="ui-badge warn">expired</span>
+      {% else %}<span class="ui-badge pass">active</span>{% endif %}</td>
+    <td class="ui-row-actions" data-label="Actions">
+      {% if not key.revoked_at %}
+      <form class="inline" method="post"
+            onsubmit="return confirm('Revoke “{{ key.name|escapejs }}”? Anything using it stops working immediately.')">
+        {% csrf_token %}<input type="hidden" name="action" value="revoke"><input type="hidden" name="key_id" value="{{ key.pk }}">
+        <button class="ui-btn danger" type="submit">Revoke</button>
+      </form>
+      {% endif %}
+    </td>
+  </tr>
+  {% empty %}
+  <tr><td colspan="9"><div class="ui-empty">No API keys yet.</div></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

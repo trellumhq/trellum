@@ -1,0 +1,216 @@
+{% load static %}<!doctype html>
+{% comment %}Authenticated console pages use the neutral Light/Dark/Auto
+surface. Report documents resolve their named theme independently.{% endcomment %}
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}trellum{% endblock %}</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'><rect width='40' height='40' rx='8' fill='white'/><g stroke='%23c7cbe0' stroke-width='3'><line x1='8' y1='8' x2='8' y2='32'/><line x1='20' y1='8' x2='20' y2='32'/><line x1='32' y1='8' x2='32' y2='32'/></g><circle cx='8' cy='32' r='5' fill='%230D9488'/><circle cx='20' cy='20' r='5' fill='%237C6FE0'/><circle cx='32' cy='8' r='5' fill='%230D9488'/></svg>">
+<meta name="theme-color" content="#0D9488">
+{% include "_theme_boot_mgmt.html" %}
+<link href="/_vendor/inter.css" rel="stylesheet">
+{% comment %}The generated theme table is loaded so a shared component can read
+a theme token, but the management surface overrides them with Portal Neutral
+(ui.css) — it is generic by decision.{% endcomment %}
+<link href="{% static 'themes.generated.css' %}" rel="stylesheet">
+<link href="{% static 'ui.css' %}" rel="stylesheet">
+<link href="{% static 'console-shell.css' %}" rel="stylesheet">
+</head>
+{% comment %}body.mgmt scopes the management-surface rules in ui.css; the
+dashboard, which loads the same stylesheet, styles its own chrome in
+portal.css.{% endcomment %}
+<body class="mgmt{% if user.is_authenticated %} tl-console-page{% if console_page_title %} tl-console-title-known{% endif %}{% endif %}">
+{% if is_impersonating %}
+<div class="impersonation-banner" role="alert">
+  <strong>Acting as {{ user.email }}</strong>
+  {% if impersonation_operator %}(operator: {{ impersonation_operator.email }}){% endif %}
+  {% if impersonation_expires_at %}· ends {{ impersonation_expires_at|date:"H:i" }}{% endif %}
+  · everything you do is recorded against the operator account
+  <form method="post" action="{% url 'operator-impersonate-stop' %}" class="inline">
+    {% csrf_token %}<button type="submit" class="ui-btn">End session</button>
+  </form>
+</div>
+{% endif %}
+{% if user.is_authenticated %}{% include "_shell.html" %}{% endif %}
+<main{% if user.is_authenticated %} data-console-inert{% endif %}>
+{% if messages %}
+<ul class="messages">
+  {% for message in messages %}<li class="{{ message.tags }}" role="status">{{ message }}</li>{% endfor %}
+</ul>
+{% endif %}
+{% block content %}{% endblock %}
+</main>
+<footer style="padding:1rem;text-align:center;font-size:.8rem">
+  <a href="{{ trellum_source_url }}" target="_blank" rel="noopener">Trellum source code</a>
+</footer>
+<script>
+/* Ctrl/Cmd+K focuses the studio search box (_shell.html), mirroring the
+   dashboard's own shortcut (static/portal.js, which this page never loads).
+   The search box now renders identically on every studio tab
+   (ui-consistency-punchlist.md item 3), so the shortcut does too; guarded
+   because org/account/operator pages carry no search box at all. */
+document.addEventListener('keydown', function (ev) {
+  if ((ev.metaKey || ev.ctrlKey) && ev.key === 'k') {
+    var input = document.getElementById('searchInput');
+    if (input) { ev.preventDefault(); input.focus(); input.select(); }
+  }
+});
+
+/* Hover prefetch: the server answers in ~5ms, so warming the next page on
+   pointerover makes navigation feel instant. GET-only, same-origin plain
+   paths; query-string links (e.g. /?org=) are skipped because they mutate
+   session state, as are api/auth endpoints. */
+(function () {
+  var seen = {};
+  document.addEventListener('pointerover', function (ev) {
+    var a = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null;
+    if (!a) return;
+    var href = a.getAttribute('href');
+    if (!href || href[0] !== '/' || seen[href]) return;
+    if (href.indexOf('?') !== -1 || href.indexOf('/api/') !== -1 ||
+        href.indexOf('/logout') !== -1 || href.indexOf('/r/') !== -1) return;
+    seen[href] = 1;
+    var link = document.createElement('link');
+    link.rel = 'prefetch';
+    link.href = href;
+    document.head.appendChild(link);
+  }, { passive: true });
+})();
+
+/* Light/Dark/Auto for the management surface (user menu). Independent of
+   the dashboard's fw-theme picker by design. */
+function setMgmtTheme(pref) {
+  if (window.TrellumConsoleShell && window.TrellumConsoleShell.setTheme) {
+    window.TrellumConsoleShell.setTheme(pref);
+    return;
+  }
+  try {
+    localStorage.setItem('mgmt-theme', pref);
+  } catch (e) {}
+  var t = (pref === 'light' || pref === 'dark') ? pref
+      : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  document.documentElement.setAttribute('data-theme', t);
+}
+/* A row-action menu inside .ui-table-scroll gets clipped: `overflow-x: auto`
+   forces the computed `overflow-y` to `auto` as well (CSS will not pair it
+   with `visible`), so the wrapper scrolls in both directions and cuts the
+   menu off — and grows a scrollbar the moment one opens. Lift the open menu
+   out of the scroller with position:fixed. */
+(function () {
+  var open = null;
+
+  function place(details) {
+    var menu = details.querySelector('.shell-menu');
+    var summary = details.querySelector('summary');
+    if (!menu || !summary) return;
+    var r = summary.getBoundingClientRect();
+    menu.style.position = 'fixed';
+    menu.style.top = (r.bottom + 4) + 'px';
+    menu.style.left = 'auto';
+    menu.style.right = (window.innerWidth - r.right) + 'px';
+  }
+
+  function reset(details) {
+    var menu = details.querySelector('.shell-menu');
+    if (!menu) return;
+    menu.style.position = '';
+    menu.style.top = '';
+    menu.style.left = '';
+    menu.style.right = '';
+  }
+
+  document.addEventListener('toggle', function (ev) {
+    var d = ev.target;
+    if (!d.matches || !d.matches('details.shell-dd')) return;
+    if (!d.closest('.ui-table-scroll')) return;
+    if (d.open) { open = d; place(d); } else { reset(d); if (open === d) open = null; }
+  }, true);
+
+  /* A fixed menu does not travel with its row, so close rather than detach. */
+  window.addEventListener('scroll', function () {
+    if (open) { open.open = false; }
+  }, true);
+  window.addEventListener('resize', function () {
+    if (open) { open.open = false; }
+  });
+})();
+
+/* Search-as-you-type on the list screens. The results come from the server
+   (the lists are paginated), so this reloads — the caret is put back at the
+   end of what you typed so it does not feel like the page fought you. */
+(function () {
+  var forms = document.querySelectorAll('form.ui-list-toolbar');
+  for (var i = 0; i < forms.length; i++) {
+    (function (form) {
+      var input = form.querySelector('input[name="q"]');
+      if (!input) return;
+      form.classList.add('js-search-ready');
+      var timer = null;
+      input.addEventListener('input', function () {
+        clearTimeout(timer);
+        timer = setTimeout(function () { form.submit(); }, 400);
+      });
+      /* Landed here from a search submit: resume where the typing left off.
+         The test is "was a q parameter submitted", NOT "is the box non-empty" —
+         backspacing to empty still submits, and keying off the value dropped
+         focus at exactly the moment the user cleared the last character. */
+      var params = new URLSearchParams(window.location.search);
+      if (params.has('q')) {
+        input.focus();
+        var end = input.value.length;
+        try { input.setSelectionRange(end, end); } catch (e) { /* type=search quirk */ }
+        /* An empty q filters nothing, so do not leave it in the address bar
+           for the user to copy — but only tidy it AFTER it has done its job
+           of telling us the box was being typed in. */
+        if (!input.value && window.history.replaceState) {
+          params.delete('q');
+          var rest = params.toString();
+          window.history.replaceState({}, '', window.location.pathname + (rest ? '?' + rest : ''));
+        }
+      }
+    })(forms[i]);
+  }
+})();
+
+/* Studio tab bar: on narrow screens the rail scrolls horizontally, so bring
+   the active tab into view on load (a no-op when everything already fits). */
+(function () {
+  var rail = document.querySelector('.studio-tabs-rail');
+  if (!rail || rail.scrollWidth <= rail.clientWidth) return;
+  var active = rail.querySelector('.active');
+  if (active && active.scrollIntoView) {
+    active.scrollIntoView({ block: 'nearest', inline: 'center' });
+  }
+})();
+
+/* Copy buttons rendered by _copy_field.html: copy the sibling value and show
+   the inline "copied ✓" badge for a moment. One delegated handler for all. */
+document.addEventListener('click', function (ev) {
+  var btn = ev.target && ev.target.closest ? ev.target.closest('[data-ui-copy]') : null;
+  if (!btn) return;
+  var box = btn.closest('.ui-copy');
+  var value = box.querySelector('.ui-copy-value');
+  if (!value) return;
+  var text = value.textContent.trim();
+  var done = function () {
+    box.classList.add('copied');
+    setTimeout(function () { box.classList.remove('copied'); }, 2000);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done, function () {});
+  } else {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); done(); } catch (e) { /* nothing to do */ }
+    document.body.removeChild(ta);
+  }
+});
+</script>
+{% if user.is_authenticated %}<script src="{% static 'console-shell.js' %}"></script>{% endif %}
+{% if user.is_authenticated %}<script src="{% static 'settings-forms.js' %}"></script>{% endif %}
+{% if user.is_authenticated and shell_studio %}<script src="/api/assistant/widget.js" defer></script>{% endif %}
+</body>
+</html>

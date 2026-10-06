@@ -1,0 +1,456 @@
+{% extends "settings_base.html" %}
+{% block title %}Data sources — {% if org_page %}{{ org.name }}{% else %}{{ studio.name }}{% endif %}{% endblock %}
+{% block settings %}
+{% if org_page %}
+<header class="page-head">
+  <div class="ui-label page-kicker scope-org">Organization · {{ org.name }}</div>
+  <h1>Data sources</h1>
+  <p class="muted page-sub">Shared credentials and files every studio in {{ org.name }} can use.
+    A studio-level source with the same name shadows the shared one. Upload a data
+    file here and every studio's reports can read it by name — nothing has to be
+    committed to a repository.</p>
+</header>
+{% else %}
+<header class="page-head">
+  <div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }}</div>
+  <h1>Data sources</h1>
+  <p class="muted page-sub">{% if has_repo %}Declared by your repository at
+    <code>data-sources/config.yaml</code>. Add the credentials here.{% else %}Connect a
+    <a href="/s/{{ org.slug }}/{{ studio.slug }}/settings/repo">repository</a> to declare
+    sources from git, or add a portal-only source below.{% endif %}
+    Sources marked <span class="scope-chip org mini">organization</span> are managed in
+    <a href="/orgs/{{ org.slug }}/settings/datasources">Organization settings</a>.
+    Credentials are stored encrypted and injected only into report builds.</p>
+</header>
+{% endif %}
+
+{% if banner %}
+<div class="ui-flash warning" role="status">
+  <div>
+    <strong>{{ banner.count }} data source{{ banner.count|pluralize }} still
+      need{{ banner.count|pluralize:"s," }} {{ banner.noun }}</strong>
+    — {{ banner.waiting }} report{{ banner.waiting|pluralize }}
+    {{ banner.waiting|pluralize:"is,are" }} waiting for them.
+    <span class="ui-row-actions">
+      {% for s in banner.sources %}
+        {% if s.state == "needs_upload" %}
+        <a class="ui-btn ghost" href="#ds-row-{{ s.name }}">Upload {{ s.name }}</a>
+        {% else %}
+        <a class="ui-btn ghost" href="?configure={{ s.name|urlencode }}#configure">Configure {{ s.name }}</a>
+        {% endif %}
+      {% endfor %}
+    </span>
+  </div>
+</div>
+{% endif %}
+
+{% include "_list_toolbar.html" with q=q placeholder="Search data sources…" total=total %}
+<div class="panel">
+<div class="ui-table-scroll">
+<table class="ui-table" data-mobile-cards>
+  <thead>
+    <tr><th>Source</th><th>Scope</th><th>Type</th><th>Status</th><th>Used by</th><th></th></tr>
+  </thead>
+  <tbody>
+  {% for row in rows %}
+  <tr id="ds-row-{{ row.name }}">
+    <td data-label="Source"><strong>{{ row.name }}</strong>
+      {% if row.state.declared %}
+        {% if row.declared_in %}<span class="ui-chip">declared in {{ row.declared_in }}</span>
+        {% else %}<span class="ui-chip acc">from repository</span>{% endif %}
+      {% endif %}
+      {% if row.description %}<br><span class="muted">{{ row.description }}</span>{% endif %}</td>
+    <td data-label="Scope">{% if row.ds.scope == "org" %}<span class="scope-chip org">organization</span>
+        {% elif row.ds %}<span class="scope-chip studio">studio</span>
+        {% else %}<span class="muted">—</span>{% endif %}</td>
+    <td data-label="Type">{{ row.type_label }}</td>
+    <td data-label="Status">
+      <span class="ui-badge {{ row.badge }}">{{ row.label }}</span>
+      {% if row.detail %}<span class="muted">{{ row.detail }}</span>{% endif %}
+      <div class="muted" id="test-result-{{ row.key }}"></div>
+      <div class="ds-progress" id="ds-progress-{{ row.key }}" hidden>
+        <div class="ds-progress-bar"><span></span></div>
+        <div class="muted ds-progress-label"></div>
+      </div>
+    </td>
+    <td data-label="Used by">{% if org_page %}
+          {% if row.declared_by %}Declared by {{ row.declared_by }} studio{{ row.declared_by|pluralize }}
+          {% else %}<span class="muted">Not declared by any studio</span>{% endif %}
+        {% elif row.used_by %}{{ row.used_by }} report{{ row.used_by|pluralize }}
+        {% else %}<span class="muted">0 reports</span>{% endif %}</td>
+    <td class="ui-row-actions" data-label="Actions">
+      {% if row.state.state == "needs_credentials" and row.configurable %}
+        {# A link, so ghost: the page's primary action is the form it opens. #}
+        <a class="ui-btn ghost" href="?configure={{ row.name|urlencode }}#configure">Configure</a>
+        <button class="ui-btn ghost" type="button" disabled title="Add the credentials first">Test</button>
+      {% else %}
+        {% if row.upload_url %}
+        <label class="ui-btn {% if row.state.state == "needs_upload" %}primary{% else %}ghost{% endif %}"
+               title="{{ row.name }} is stored by the portal — this replaces its file">
+          <input type="file" class="ds-file-input"
+                 data-pk="{{ row.key }}" data-url="{{ row.upload_url }}"
+                 data-name="{{ row.name }}">
+          {% if row.file_available %}Replace file{% elif row.state.state == "needs_upload" %}Upload{% else %}Upload file{% endif %}
+        </label>
+        {% endif %}
+        {% if row.download_url %}
+        <a class="ui-btn ghost" href="{{ row.download_url }}">Download</a>
+        {% endif %}
+        {% if row.ds %}
+        <button class="ui-btn ghost" type="button"
+                onclick="testSource({{ row.ds.pk }}, '{{ row.name|escapejs }}', this)">Test</button>
+        {% endif %}
+        {% if row.state.declared and not org_page %}
+          {% if row.configurable and row.can_manage %}
+          <a class="ui-btn ghost" href="?configure={{ row.name|urlencode }}#configure">Edit credentials</a>
+          {% elif row.configurable and not row.ds %}
+          <a class="ui-btn ghost" href="?configure={{ row.name|urlencode }}#configure">Configure</a>
+          {% elif row.manage_url %}
+          <a class="ui-btn ghost" href="{{ row.manage_url }}"
+             title="Shared credentials are managed at organization level.">Manage in organization →</a>
+          {% endif %}
+        {% elif row.can_manage %}
+        <a class="ui-btn ghost" href="?edit={{ row.ds.pk }}">Edit</a>
+        <form class="inline" method="post"
+              onsubmit="return confirm('Delete data source “{{ row.name|escapejs }}”?{% if row.ds.scope == "org" %} It disappears from EVERY studio in the organization.{% endif %} Reports that reference it stop building.')">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="delete">
+          <input type="hidden" name="id" value="{{ row.ds.pk }}">
+          <button class="ui-btn danger" type="submit">Delete</button>
+        </form>
+        {% elif row.manage_url %}
+        <a class="ui-btn ghost" href="{{ row.manage_url }}"
+           title="Shared sources are managed at organization level.">Manage in organization →</a>
+        {% elif row.ds %}
+        <span class="muted" title="Shared sources are managed by org admins.">org-managed</span>
+        {% endif %}
+      {% endif %}
+    </td>
+  </tr>
+  {% empty %}
+  <tr><td colspan="6"><div class="ui-empty">
+    {% if org_page %}No shared credentials yet — add some below and every studio that
+      declares a source with that name will use them.
+    {% elif has_repo %}No data sources declared. Add them to
+      <code>data-sources/config.yaml</code> in your repository and publish.
+    {% else %}No data sources yet — add one below and reference it by name in a
+      report's <code>report.yaml</code>.{% endif %}</div></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+</div>
+{% include "_pagination.html" with page=page %}
+{% if not org_page %}
+<p class="ui-help">Repo-declared fields (type, host, port, database, path) are read-only
+  here. Change them in the repository and publish.</p>
+{% endif %}
+
+{% if unknown %}
+<h2>Referenced but not declared</h2>
+<div class="ui-panel">
+  <ul class="ui-help" style="padding-left:18px">
+    {% for s in unknown %}
+    <li><code>{{ s.name }}</code> — referenced by {{ s.used_by|join:", " }}</li>
+    {% endfor %}
+  </ul>
+  <p class="muted">Declare these in <code>data-sources/config.yaml</code> and publish, or
+    add a portal-only source with the same name.</p>
+</div>
+{% endif %}
+
+{% if configure %}
+<h2 id="configure">Configure <code>{{ configure.state.name }}</code></h2>
+<div class="ui-panel">
+  <form method="post" class="ui-form-grid" id="ds-configure" data-settings-form>
+    {% csrf_token %}
+    <input type="hidden" name="action" value="configure">
+    <input type="hidden" name="name" value="{{ configure.state.name }}">
+    <div class="ui-field">
+      <label>From repository</label>
+      <table class="ui-table dense"><tbody>
+        {% for label, value in configure.facts %}
+        <tr><th>{{ label }}</th><td>{{ value }}</td></tr>
+        {% endfor %}
+        <tr><th>Declared in</th><td><code>{{ configure.declared_in }}</code></td></tr>
+        <tr><th>Used by</th><td>{% if configure.state.used_by %}{{ configure.state.used_by|join:", " }}{% else %}<span class="muted">no reports yet</span>{% endif %}</td></tr>
+      </tbody></table>
+    </div>
+    <div>
+      {% for f in configure.fields %}
+      <div class="ui-field">
+        <label>{{ f.label }}{% if configure.binding and f.name != "user" %} <span class="muted">(blank = keep current)</span>{% endif %}</label>
+        {{ f }}
+      </div>
+      {% endfor %}
+      {% if configure.can_org %}
+      <div class="ui-field">
+        {% if configure.warn_shared %}
+        <span class="ui-help warn">Replaces the shared credentials used by other studios.</span>
+        {% endif %}
+        <label class="ui-check-row"><input type="checkbox" name="org_level" value="1">
+          Store at organization level so every studio declaring
+          <code>{{ configure.state.name }}</code> can use it</label>
+        <span class="ui-help org">Saved as shared credentials in Organization settings;
+          a studio-level source with the same name still takes precedence.</span>
+      </div>
+      {% endif %}
+    </div>
+    <div class="ui-form-actions">
+      <button class="ui-btn primary" type="submit">Save and test</button>
+      <a class="ui-btn ghost" href="{{ request.path }}">Cancel</a>
+    </div>
+  </form>
+  {% if configure.binding and configure.binding.studio_id %}
+  <form method="post" class="inline"
+        onsubmit="return confirm('Remove the stored credentials for “{{ configure.state.name|escapejs }}”? Reports that read from it wait until new ones are added.')">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="remove_credentials">
+    <input type="hidden" name="name" value="{{ configure.state.name }}">
+    <button class="ui-btn danger" type="submit">Remove credentials</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if org_page %}
+<h2>{% if editing %}Edit “{{ editing.name }}”{% else %}Add shared credentials{% endif %}</h2>
+<p class="muted">Studios that declare a source with this name will use these credentials.</p>
+<div class="ui-panel">
+{% else %}
+<details class="ui-panel" {% if add_open %}open{% endif %}>
+  <summary>{% if editing %}Edit “{{ editing.name }}”{% else %}Add a portal-only source (advanced){% endif %}</summary>
+{% endif %}
+  <form method="post" id="ds-form" class="ui-form-grid"{% if editing %} data-settings-form{% endif %}>
+    {% csrf_token %}
+    {% if editing %}<input type="hidden" name="id" value="{{ editing.pk }}">{% endif %}
+    {{ form.non_field_errors }}
+    <div class="ui-field"><label>Name</label>{{ form.name }}{{ form.name.errors }}</div>
+    <div class="ui-field"><label>Type</label>{{ form.type }}{{ form.type.errors }}</div>
+    <div class="ui-field ui-field-wide"><label>Description</label>{{ form.description }}</div>
+    {% if not org_page %}
+    <div class="ui-field ui-field-wide"><label>Scope</label>
+      <div><span class="scope-chip studio">This studio only</span></div>
+      {{ form.scope }}
+      {% if shell_is_org_admin %}
+      <span class="ui-help">Organization-wide sources (shared with every studio)
+      are created in <a href="/orgs/{{ org.slug }}/settings/datasources">Organization
+      settings → Data sources</a>.</span>
+      {% endif %}
+    </div>
+    {% else %}{{ form.scope }}{% endif %}
+
+    <div class="ui-field" data-f="host"><label>Host</label>{{ form.host }}</div>
+    <div class="ui-field narrow" data-f="port"><label>Port</label>{{ form.port }}</div>
+    <div class="ui-field" data-f="database"><label>Database</label>{{ form.database }}</div>
+    <div class="ui-field" data-f="user"><label>User</label>{{ form.user }}</div>
+    <div class="ui-field" data-f="password"><label>Password <span class="muted">(blank = keep current)</span></label>{{ form.password }}</div>
+    <div class="ui-field ui-field-wide" data-f="path">
+      <label>{% if org_page %}Path in the organization's files{% else %}Path in the studio project{% endif %}</label>
+      {{ form.path }}{{ form.path.errors }}
+      <span class="helptext">{% if org_page %}Relative to this organization's own
+      data-sources directory, which every studio's reports resolve to the same
+      file (e.g. files/market-extract.csv). Blank = files/&lt;name&gt;, set on first
+      upload.{% else %}{{ form.path.help_text }}{% endif %}</span>
+      <span class="ui-help" id="ds-git-warning" hidden>Heads up: git sync rewrites
+      <code>reports/</code> on every pull, so anything uploaded there is replaced
+      the next time that report changes. Put files you upload somewhere else —
+      <code>data-sources/files/…</code> is never touched by git.</span>
+    </div>
+    <div class="ui-field ui-field-wide" data-f="upload">
+      <label class="ui-check-row">{{ form.upload }} {{ form.upload.label }}</label>
+      <span class="ui-help">Adds an Upload button to this source's row. Independent
+      of where the file lives: a file committed in the repository can still be
+      refreshed here between pushes.</span>
+    </div>
+    <div class="ui-field" data-f="project"><label>Project (BigQuery)</label>{{ form.project }}</div>
+    <div class="ui-field ui-field-wide" data-f="credentials_json"><label>Credentials JSON <span class="muted">(blank = keep)</span></label>{{ form.credentials_json }}</div>
+    <div class="ui-field" data-f="credentials_path"><label>Credentials path</label>{{ form.credentials_path }}</div>
+    <div class="ui-field" data-f="account"><label>Account (Snowflake)</label>{{ form.account }}</div>
+    <div class="ui-field" data-f="warehouse"><label>Warehouse</label>{{ form.warehouse }}</div>
+    <div class="ui-field" data-f="catalog"><label>Catalog</label>{{ form.catalog }}</div>
+    <div class="ui-field" data-f="schema"><label>Schema</label>{{ form.schema }}</div>
+    <div class="ui-field ui-field-wide" data-f="http_path"><label>HTTP path <span class="muted">(the SQL warehouse's)</span></label>{{ form.http_path }}</div>
+    <div class="ui-field" data-f="access_token"><label>Access token <span class="muted">(blank = keep)</span></label>{{ form.access_token }}</div>
+    <div class="ui-field ui-field-wide" data-f="secure">
+      <label class="ui-check-row">{{ form.secure }} {{ form.secure.label }}</label>
+      <span class="ui-help">Unticked = the driver's default: HTTPS whenever a password is set.</span>
+    </div>
+    <div class="ui-field" data-f="tenant_id"><label>Tenant ID (Entra)</label>{{ form.tenant_id }}</div>
+    <div class="ui-field" data-f="client_id"><label>Client ID</label>{{ form.client_id }}</div>
+    <div class="ui-field" data-f="client_secret"><label>Client secret <span class="muted">(blank = keep)</span></label>{{ form.client_secret }}</div>
+    <div class="ui-field ui-field-wide" data-f="site_url"><label>Site URL (SharePoint)</label>{{ form.site_url }}</div>
+
+    <div class="ui-field ui-field-wide" data-f="ssh_host">
+      <h3>SSH tunnel <span class="muted">(optional)</span></h3>
+      <span class="ui-help">Reach the database through a bastion: the build connects to
+      the SSH host and forwards to the host and port above from there. Leave the host
+      blank for a direct connection.</span>
+      <label>SSH host</label>{{ form.ssh_host }}
+    </div>
+    <div class="ui-field narrow" data-f="ssh_port"><label>SSH port <span class="muted">(blank = 22)</span></label>{{ form.ssh_port }}</div>
+    <div class="ui-field" data-f="ssh_user"><label>SSH user</label>{{ form.ssh_user }}</div>
+    <div class="ui-field ui-field-wide" data-f="ssh_private_key"><label>SSH private key <span class="muted">(blank = keep)</span></label>{{ form.ssh_private_key }}</div>
+    <div class="ui-field" data-f="ssh_password"><label>SSH password <span class="muted">(blank = keep; not needed with a key)</span></label>{{ form.ssh_password }}</div>
+    <div class="ui-field ui-field-wide" data-f="ssh_host_key">
+      <label>SSH host key <span class="muted">(recommended)</span></label>{{ form.ssh_host_key }}
+      <span class="ui-help">The bastion's public host key, as <code>ssh-keyscan &lt;host&gt;</code>
+      prints it. When set, a bastion presenting any other key is refused; when blank, any key is accepted.</span>
+    </div>
+
+    <div class="ui-form-actions">
+
+      <button class="ui-btn primary" type="submit">{% if editing %}Save changes{% else %}Add source{% endif %}</button>
+      {% if editing %}<a class="ui-btn ghost" href="{{ request.path }}">Cancel</a>{% endif %}
+    </div>
+  </form>
+{% if org_page %}</div>{% else %}</details>{% endif %}
+
+{{ type_fields|json_script:"type-fields" }}
+<script>
+(function () {
+  var TYPE_FIELDS = JSON.parse(document.getElementById('type-fields').textContent);
+  var form = document.getElementById('ds-form');
+  var typeSelect = form.querySelector('select[name="type"]');
+  var pathInput = form.querySelector('input[name="path"]');
+  var uploadBox = form.querySelector('input[name="upload"]');
+  var gitWarning = document.getElementById('ds-git-warning');
+  var pathLabel = form.querySelector('[data-f="path"] > label');
+  var pathHelp = form.querySelector('[data-f="path"] .helptext');
+  var filePathLabel = pathLabel.textContent;
+
+  function applyType() {
+    var relevant = TYPE_FIELDS[typeSelect.value] || [];
+    form.querySelectorAll('[data-f]').forEach(function (row) {
+      row.style.display = relevant.indexOf(row.getAttribute('data-f')) === -1 ? 'none' : '';
+    });
+    /* Same "path" field, but for a spreadsheet it is a URL or ID, not a file. */
+    var sheet = typeSelect.value === 'google_sheets';
+    pathLabel.textContent = sheet ? 'Spreadsheet URL or ID' : filePathLabel;
+    pathHelp.hidden = sheet;
+  }
+
+  /* Uploading INTO reports/ is allowed but pointless: the next pull of that
+     report overwrites it. Warn rather than block — the combination is legal
+     and the person may know something we do not. */
+  var IS_ORG_PAGE = {% if org_page %}true{% else %}false{% endif %};
+  function applyGitWarning() {
+    var rel = (pathInput.value || '').replace(/\\/g, '/').replace(/^\.?\//, '');
+    var risky = !IS_ORG_PAGE && uploadBox.checked && rel.indexOf('reports/') === 0;
+    gitWarning.hidden = !risky;
+  }
+
+  typeSelect.addEventListener('change', applyType);
+  pathInput.addEventListener('input', applyGitWarning);
+  uploadBox.addEventListener('change', applyGitWarning);
+  applyType();
+  applyGitWarning();
+})();
+
+/* ── Uploads ──────────────────────────────────────────────────────────────
+   XHR rather than fetch: only XHR reports upload progress, and these files
+   are the ones big enough to need it. */
+var DS_MAX_UPLOAD_BYTES = {{ max_upload_bytes }};
+
+function dsFormatSize(n) {
+  var units = ['B', 'KB', 'MB', 'GB'];
+  var i = 0;
+  while (n >= 1024 && i < units.length - 1) { n /= 1024; i += 1; }
+  return (i === 0 ? n.toFixed(0) : n.toFixed(1)) + ' ' + units[i];
+}
+
+function dsUpload(input) {
+  if (!input.files || !input.files.length) return;
+  var file = input.files[0];
+  var pk = input.dataset.pk;
+  var box = document.getElementById('ds-progress-' + pk);
+  var bar = box.querySelector('.ds-progress-bar span');
+  var label = box.querySelector('.ds-progress-label');
+  var result = document.getElementById('test-result-' + pk);
+  input.value = '';
+
+  if (DS_MAX_UPLOAD_BYTES && file.size > DS_MAX_UPLOAD_BYTES) {
+    result.textContent = '✗ ' + dsFormatSize(file.size) + ' is over the '
+      + dsFormatSize(DS_MAX_UPLOAD_BYTES) + ' limit for this portal.';
+    result.style.color = 'var(--red)';
+    return;
+  }
+
+  result.textContent = '';
+  box.hidden = false;
+  bar.style.width = '0%';
+  label.textContent = 'Starting…';
+  input.disabled = true;
+
+  var data = new FormData();
+  data.append('file', file);
+  var xhr = new XMLHttpRequest();
+  xhr.open('POST', input.dataset.url);
+  xhr.setRequestHeader('X-CSRFToken', getCookie('csrftoken'));
+  xhr.withCredentials = true;
+
+  xhr.upload.addEventListener('progress', function (e) {
+    if (!e.lengthComputable) return;
+    var pct = Math.round((e.loaded / e.total) * 100);
+    bar.style.width = pct + '%';
+    label.textContent = pct + '% — ' + dsFormatSize(e.loaded)
+      + ' of ' + dsFormatSize(e.total);
+  });
+
+  xhr.addEventListener('load', function () {
+    input.disabled = false;
+    var body = {};
+    try { body = JSON.parse(xhr.responseText); } catch (e) { /* non-JSON error page */ }
+    if (xhr.status === 200 && body.ok) {
+      bar.style.width = '100%';
+      label.textContent = 'Uploaded ' + (body.size_label || '') + ' — reloading…';
+      window.location.reload();
+      return;
+    }
+    box.hidden = true;
+    result.textContent = '✗ ' + (body.error || ('Upload failed (' + xhr.status + ')'));
+    result.style.color = 'var(--red)';
+  });
+
+  xhr.addEventListener('error', function () {
+    input.disabled = false;
+    box.hidden = true;
+    result.textContent = '✗ Upload failed — the connection dropped.';
+    result.style.color = 'var(--red)';
+  });
+
+  xhr.send(data);
+}
+
+document.querySelectorAll('.ds-file-input').forEach(function (input) {
+  input.addEventListener('change', function () { dsUpload(input); });
+});
+
+function getCookie(name) {
+  var m = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+  return m ? decodeURIComponent(m.pop()) : '';
+}
+
+function testSource(id, name, btn) {
+  var out = document.getElementById('test-result-' + id);
+  btn.disabled = true;
+  out.textContent = 'Testing…';
+  out.style.color = 'var(--text2)';
+  fetch('{{ test_url_base }}' + encodeURIComponent(name) + '/test', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'X-CSRFToken': getCookie('csrftoken') }
+  })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      out.textContent = (data.ok ? '✓ ' : '✗ ') + (data.detail || data.error || '');
+      out.style.color = data.ok ? 'var(--green)' : 'var(--red)';
+    })
+    .catch(function (e) {
+      out.textContent = '✗ ' + e;
+      out.style.color = 'var(--red)';
+    })
+    .finally(function () { btn.disabled = false; });
+}
+</script>
+{% endblock %}

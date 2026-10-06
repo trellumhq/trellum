@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fleet overview · Northwind Fleet</title>
+<style>
+  :root {
+    --bg: #f4f6f8; --surface: #ffffff; --surface-2: #eef1f5; --sidebar: #ffffff;
+    --text: #16202b; --muted: #5d6b7a; --line: #dfe4ea;
+    --brand: #0f6e56; --brand-ink: #ffffff; --dot: #c3ccd6;
+    --shadow: 0 1px 2px rgba(16,24,32,.07);
+  }
+  html[data-mode="dark"] {
+    --bg: #0f1419; --surface: #161d25; --surface-2: #1d2731; --sidebar: #121820;
+    --text: #e6edf3; --muted: #93a1b0; --line: #27313d;
+    --brand: #2fbf95; --brand-ink: #06251c; --dot: #3a4757;
+    --shadow: 0 1px 2px rgba(0,0,0,.45);
+  }
+  * { box-sizing: border-box; }
+  body { display: flex; margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .i { flex: none; width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7;
+    stroke-linecap: round; stroke-linejoin: round; }
+
+  /* sidebar */
+  aside { position: fixed; inset: 0 auto 0 0; display: flex; flex-direction: column; gap: 1.25rem;
+    width: 240px; padding: 1rem .75rem; background: var(--sidebar); border-right: 1px solid var(--line); }
+  .brand { display: flex; align-items: center; gap: .6rem; padding: .25rem .4rem; font-weight: 650; font-size: 15px; }
+  .brand i { position: relative; width: 24px; height: 24px; border-radius: 7px; background: var(--brand); }
+  .brand i::after { content: ""; position: absolute; inset: 7px 6px 6px; border: 2px solid var(--brand-ink);
+    border-top-width: 4px; border-radius: 3px 3px 7px 7px; }
+  .chip { display: flex; align-items: center; gap: .5rem; padding: .5rem .6rem; border: 1px solid var(--line);
+    border-radius: 8px; background: var(--surface-2); font-size: 13px; }
+  .chip b { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px;
+    background: var(--brand); color: var(--brand-ink); font-size: 11px; }
+  .chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  aside nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+  aside nav a { display: flex; align-items: center; gap: .65rem; padding: .5rem .6rem; border-radius: 8px;
+    color: var(--muted); text-decoration: none; }
+  aside nav a:hover { background: var(--surface-2); color: var(--text); }
+  aside nav a[aria-current] { background: var(--surface-2); color: var(--text); font-weight: 600;
+    box-shadow: inset 2px 0 0 var(--brand); }
+  .grow { flex: 1; }
+
+  /* shell */
+  .shell { flex: 1; min-width: 0; margin-left: 240px; }
+  .top { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: .4rem; height: 56px;
+    padding: 0 1.5rem; background: var(--surface); border-bottom: 1px solid var(--line); }
+  .crumb { color: var(--muted); font-size: 13px; }
+  .crumb b { color: var(--text); font-weight: 600; }
+  .search { position: relative; flex: 0 1 320px; margin: 0 1rem; color: var(--muted); }
+  .search .i { position: absolute; top: 8px; left: 9px; width: 16px; height: 16px; }
+  .search input { width: 100%; padding: .4rem .6rem .4rem 2rem; font: inherit; color: var(--text);
+    background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
+  .icon { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; color: var(--muted);
+    background: none; border: 0; border-radius: 8px; cursor: pointer; }
+  .icon:hover { background: var(--surface-2); color: var(--text); }
+  .moon, html[data-mode="dark"] .sun { display: none; }
+  html[data-mode="dark"] .moon { display: block; }
+  .user { display: flex; align-items: center; gap: .5rem; margin-left: .5rem; padding-left: .75rem;
+    border-left: 1px solid var(--line); font-size: 13px; }
+  .user b { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%;
+    background: var(--brand); color: var(--brand-ink); font-size: 11px; }
+
+  /* source popover — native <details>, so no click-outside script */
+  .pop { position: relative; }
+  .pop > summary { list-style: none; }
+  .pop > summary::-webkit-details-marker { display: none; }
+  .pop[open] > summary { background: var(--surface-2); color: var(--text); }
+  .pop form { position: absolute; top: 38px; right: 0; z-index: 10; display: flex; flex-wrap: wrap; gap: .5rem;
+    width: 380px; padding: .8rem; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.16); }
+  .pop label { flex: 1 0 100%; color: var(--muted); font-size: 12px; }
+  .pop input { flex: 1 0 100%; padding: .45rem .6rem; font: inherit; color: var(--text);
+    background: var(--bg); border: 1px solid var(--line); border-radius: 7px; }
+  .pop button { padding: .4rem .8rem; font: inherit; color: var(--text); background: var(--surface-2);
+    border: 1px solid var(--line); border-radius: 7px; cursor: pointer; }
+  .pop button.primary { color: var(--brand-ink); background: var(--brand); border-color: var(--brand); }
+
+  /* page */
+  main { padding: 1.75rem 2rem 3rem; }
+  .head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 1rem; }
+  h1 { flex: 1; margin: 0; font-size: 1.5rem; letter-spacing: -.01em; }
+  .status { text-align: right; color: var(--muted); font-size: 12.5px; }
+  .pill { display: inline-flex; align-items: center; gap: .4rem; padding: .2rem .65rem; margin-bottom: .3rem;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 999px; font-size: 12px; }
+  .pill::before { content: "●"; color: var(--dot); font-size: 9px; }
+  .pill.on { color: var(--text); }
+  .pill.on::before { color: var(--brand); }
+  .tabs { display: flex; gap: 1.25rem; margin: 1.1rem 0 1.5rem; border-bottom: 1px solid var(--line); }
+  .tabs button, .tabs span { padding: 0 0 .6rem; color: var(--muted); font: inherit; background: none;
+    border: 0; border-bottom: 2px solid transparent; }
+  .tabs button { cursor: pointer; }
+  .tabs [aria-current] { color: var(--text); font-weight: 600; border-color: var(--brand); }
+  #report { display: block; width: 100%; min-height: 520px; border: 0; }
+
+  @media (max-width: 900px) {
+    aside { width: 64px; align-items: center; }
+    aside nav a { justify-content: center; }
+    .brand span, .chip span, aside nav a span { display: none; }
+    .shell { margin-left: 64px; }
+    .search { display: none; }
+  }
+</style>
+<script>try { if (localStorage.getItem('nwf-mode') === 'dark') document.documentElement.dataset.mode = 'dark'; } catch (e) {}</script>
+</head>
+<body>
+<aside>
+  <div class="brand"><i></i><span>Northwind Fleet</span></div>
+  <div class="chip"><b>RD</b><span>Rotterdam depot</span></div>
+  <nav>
+    <a href="#"><svg class="i" viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6"/></svg><span>Overview</span></a>
+    <a href="#"><svg class="i" viewBox="0 0 24 24"><path d="M3 6h11v9H3zM14 9h3.5l2.5 3v3H14"/><circle cx="7" cy="17" r="1.8"/><circle cx="17" cy="17" r="1.8"/></svg><span>Vehicles</span></a>
+    <a href="#"><svg class="i" viewBox="0 0 24 24"><path d="M4 18h4a4 4 0 000-8H7a4 4 0 010-8h5"/><circle cx="18" cy="4" r="2"/><circle cx="4" cy="20" r="2"/></svg><span>Routes</span></a>
+    <a href="#" aria-current="page"><svg class="i" viewBox="0 0 24 24"><path d="M5 20V11M12 20V4M19 20v-6"/></svg><span>Analytics</span></a>
+    <a href="#"><svg class="i" viewBox="0 0 24 24"><path d="M9.6 9.6L4 15.2V20h4.8l5.6-5.6"/><path d="M14.4 14.4a4.5 4.5 0 105.3-7l-2.4 2.4-2.6-2.6 2.4-2.4a4.5 4.5 0 00-7 5.3"/></svg><span>Maintenance</span></a>
+    <a href="#"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0114 0"/></svg><span>Drivers</span></a>
+    <span class="grow"></span>
+    <a href="#"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M18.4 5.6l-1.8 1.8M7.4 16.6l-1.8 1.8"/></svg><span>Settings</span></a>
+  </nav>
+</aside>
+
+<div class="shell">
+  <div class="top">
+    <div class="crumb">Analytics / <b>Fleet overview</b></div>
+    <div class="search">
+      <svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-3.6-3.6"/></svg>
+      <input type="search" placeholder="Search depots, vehicles, routes" aria-label="Search">
+    </div>
+    <span class="grow"></span>
+    <details class="pop" id="pop">
+      <summary class="icon" title="Report source" aria-label="Report source">
+        <svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M18.4 5.6l-1.8 1.8M7.4 16.6l-1.8 1.8"/></svg>
+      </summary>
+      <form id="loader">
+        <label for="src">Report source (embed link)</label>
+        <input id="src" type="url" placeholder="https://portal.example.com/share/&lt;token&gt;/">
+        <button class="primary" type="submit">Load</button>
+        <button type="button" id="reload">Reload report</button>
+      </form>
+    </details>
+    <button class="icon" id="mode" type="button" title="Toggle theme" aria-label="Toggle theme">
+      <svg class="i sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></svg>
+      <svg class="i moon" viewBox="0 0 24 24"><path d="M20 14A8 8 0 0110 4a8 8 0 1010 10z"/></svg>
+    </button>
+    <button class="icon" type="button" title="Notifications" aria-label="Notifications">
+      <svg class="i" viewBox="0 0 24 24"><path d="M6 10a6 6 0 1112 0c0 4.5 1.8 5.5 1.8 5.5H4.2S6 14.5 6 10"/><path d="M10 19a2 2 0 004 0"/></svg>
+    </button>
+    <div class="user"><b>DK</b><span>Dana Kowalski</span></div>
+  </div>
+
+  <main>
+    <div class="head">
+      <h1>Fleet overview</h1>
+      <div class="status"><span class="pill" id="live">live</span><br>Updated with every scheduled build</div>
+    </div>
+    <div class="tabs">
+      <button type="button" aria-current="page">Overview</button>
+      <span>Fuel &amp; energy</span>
+      <span>Maintenance</span>
+      <span>Drivers</span>
+    </div>
+    <iframe id="report" title="Fleet overview report" loading="lazy"></iframe>
+  </main>
+</div>
+
+<script>
+  var root = document.documentElement;
+  var iframe = document.getElementById('report');
+  var src = document.getElementById('src');
+  var live = document.getElementById('live');
+  var pop = document.getElementById('pop');
+
+  // Always address the portal's own origin, never "*".
+  function send(msg) {
+    if (iframe.src) iframe.contentWindow.postMessage(msg, new URL(iframe.src).origin);
+  }
+  function v(name) { return getComputedStyle(root).getPropertyValue(name).trim(); }
+
+  // This console's palette, mapped onto the report's theme variables, so the
+  // framed report paints on the same surfaces as the page around it.
+  function themeMsg() {
+    return {
+      type: 'trellum:theme',
+      theme: root.dataset.mode === 'dark' ? 'trellum dark' : 'trellum light',
+      vars: {
+        '--bg-main': v('--bg'), '--bg-card': v('--surface'), '--bg-card-hover': v('--surface-2'),
+        '--bg-header': v('--brand'), '--text-main': v('--text'), '--text-secondary': v('--muted'),
+        '--text-muted': v('--muted'), '--border-color': v('--line'), '--accent-blue': v('--brand'),
+        '--shadow': v('--shadow')
+      }
+    };
+  }
+  function load(url) {
+    live.classList.remove('on');
+    iframe.src = url;
+    src.value = url;
+    var q = new URLSearchParams(location.search);
+    q.set('src', url);
+    history.replaceState(null, '', '?' + q);
+  }
+
+  document.getElementById('loader').addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (src.value) { load(src.value); pop.open = false; }
+  });
+  document.getElementById('reload').addEventListener('click', function () { send({ type: 'trellum:reload' }); });
+  document.getElementById('mode').addEventListener('click', function () {
+    var dark = root.dataset.mode !== 'dark';
+    if (dark) root.dataset.mode = 'dark'; else delete root.dataset.mode;
+    try { localStorage.setItem('nwf-mode', dark ? 'dark' : 'light'); } catch (e) {}
+    send(themeMsg());
+  });
+
+  window.addEventListener('message', function (e) {
+    if (e.source !== iframe.contentWindow || !e.data || typeof e.data.type !== 'string') return;
+    if (e.data.type === 'trellum:ready') {
+      live.classList.add('on');
+      send(themeMsg());
+    } else if (e.data.type === 'trellum:height') {
+      iframe.style.height = Math.max(520, Number(e.data.height) || 0) + 'px';
+    }
+  });
+
+  var initial = new URLSearchParams(location.search).get('src');
+  if (initial) load(initial); else pop.open = true;
+</script>
+</body>
+</html>

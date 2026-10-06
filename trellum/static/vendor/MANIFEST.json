@@ -1,0 +1,134 @@
+{
+  "_comment": "Bundled vendor libraries and data. All MIT/ISC/OFL/public-domain licensed; recorded in THIRD-PARTY.md. See UPDATING.md for how to update.",
+  "_updated": "2026-04-13",
+  "libraries": {
+    "chart.js": {
+      "version": "4.5.1",
+      "file": "chart.umd.min.js",
+      "license": "MIT",
+      "source": "https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"
+    },
+    "hammerjs": {
+      "version": "2.0.8",
+      "file": "hammer.min.js",
+      "license": "MIT",
+      "source": "https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"
+    },
+    "chartjs-plugin-zoom": {
+      "version": "2.2.0",
+      "file": "chartjs-plugin-zoom.min.js",
+      "license": "MIT",
+      "source": "https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.2.0/dist/chartjs-plugin-zoom.min.js"
+    },
+    "chartjs-plugin-annotation": {
+      "version": "3.1.0",
+      "file": "chartjs-plugin-annotation.min.js",
+      "license": "MIT",
+      "source": "https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.1.0/dist/chartjs-plugin-annotation.min.js"
+    },
+    "chartjs-plugin-datalabels": {
+      "version": "2.2.0",
+      "file": "chartjs-plugin-datalabels.min.js",
+      "license": "MIT",
+      "source": "https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"
+    },
+    "chartjs-chart-matrix": {
+      "version": "2.0.1",
+      "file": "chartjs-chart-matrix.min.js",
+      "license": "MIT",
+      "source": "https://cdn.jsdelivr.net/npm/chartjs-chart-matrix@2.0.1/dist/chartjs-chart-matrix.min.js"
+    },
+    "chartjs-chart-funnel": {
+      "version": "4.2.5",
+      "file": "chartjs-chart-funnel.umd.min.js",
+      "license": "MIT",
+      "source": "https://cdn.jsdelivr.net/npm/chartjs-chart-funnel@4.2.5/build/index.umd.min.js"
+    },
+    "chartjs-chart-treemap": {
+      "version": "2.3.1",
+      "file": "chartjs-chart-treemap.min.js",
+      "license": "MIT",
+      "source": "https://cdn.jsdelivr.net/npm/chartjs-chart-treemap@2.3.1/dist/chartjs-chart-treemap.min.js"
+    },
+    "nouislider": {
+      "version": "15.8.1",
+      "files": [
+        "nouislider.min.js",
+        "nouislider.min.css"
+      ],
+      "license": "MIT",
+      "source_js": "https://cdn.jsdelivr.net/npm/nouislider@15.8.1/dist/nouislider.min.js",
+      "source_css": "https://cdn.jsdelivr.net/npm/nouislider@15.8.1/dist/nouislider.min.css"
+    },
+    "slim-select": {
+      "version": "2.9.2",
+      "files": [
+        "slimselect.min.js",
+        "slimselect.css"
+      ],
+      "license": "MIT",
+      "source_js": "https://cdn.jsdelivr.net/npm/slim-select@2.9.2/dist/slimselect.min.js",
+      "source_css": "https://cdn.jsdelivr.net/npm/slim-select@2.9.2/dist/slimselect.css"
+    },
+    "html2canvas": {
+      "version": "1.4.1",
+      "file": "html2canvas.min.js",
+      "license": "MIT",
+      "source": "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"
+    },
+    "jspdf": {
+      "version": "2.5.2",
+      "file": "jspdf.umd.min.js",
+      "license": "MIT",
+      "source": "https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"
+    },
+    "chartjs-chart-venn": {
+      "version": "4.3.7",
+      "file": "chartjs-chart-venn.umd.min.js",
+      "license": "MIT",
+      "source": "https://cdn.jsdelivr.net/npm/chartjs-chart-venn@4.3.7/build/index.umd.min.js"
+    },
+    "chartjs-chart-sankey": {
+      "version": "0.12.1",
+      "file": "chartjs-chart-sankey.min.js",
+      "license": "MIT",
+      "source": "https://cdn.jsdelivr.net/npm/chartjs-chart-sankey@0.12.1/dist/chartjs-chart-sankey.min.js"
+    },
+    "chartjs-chart-geo": {
+      "version": "4.3.3",
+      "file": "chartjs-chart-geo.umd.min.js",
+      "license": "MIT",
+      "source": "https://cdn.jsdelivr.net/npm/chartjs-chart-geo@4.3.3/build/index.umd.min.js"
+    },
+    "topojson-client": {
+      "version": "3.1.0",
+      "file": "topojson-client.min.js",
+      "license": "ISC",
+      "source": "https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"
+    },
+    "plotly.js": {
+      "version": "2.27.0",
+      "file": "plotly.min.js",
+      "license": "MIT",
+      "source": "https://cdn.plot.ly/plotly-2.27.0.min.js"
+    },
+    "inter-font": {
+      "version": "v20",
+      "files": [
+        "inter.css",
+        "fonts/inter-400.ttf",
+        "fonts/inter-500.ttf",
+        "fonts/inter-600.ttf",
+        "fonts/inter-700.ttf"
+      ],
+      "license": "SIL Open Font License",
+      "source": "https://fonts.google.com/specimen/Inter"
+    },
+    "world-atlas": {
+      "version": "110m",
+      "file": "countries-110m.json",
+      "license": "ISC (world-atlas); underlying Natural Earth data is public domain",
+      "source": "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json"
+    }
+  }
+}

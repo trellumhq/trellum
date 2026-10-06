@@ -1,0 +1,29 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Snapshot Fixture</title>
+  <style>
+    body { margin: 0; font-family: sans-serif; background: #fff; }
+    #marker { padding: 24px; font-size: 20px; }
+  </style>
+</head>
+<body>
+  <h1 id="marker">loading&hellip;</h1>
+  <script>
+    // Minimal stand-in for a real report page: fetch data.json (so the
+    // ephemeral server's HTTP serving is actually exercised, the way a
+    // built report's client JS does) and flip a ready marker once it
+    // resolves. render_report doesn't poll this marker -- it copies the
+    // framework's networkidle + settle wait -- but tests can assert on it
+    // as evidence the page's own JS actually ran rather than capturing a
+    // blank shell.
+    fetch("data.json")
+      .then((r) => r.json())
+      .then((data) => {
+        document.getElementById("marker").textContent = "ready:" + data.status;
+        window.__reportReady = true;
+      });
+  </script>
+</body>
+</html>

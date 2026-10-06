@@ -1,0 +1,31 @@
+name: benchmarks
+
+# The `slow` tests: report generation at 1k-100k rows, driven through a real
+# browser. Minutes per case, so they do not belong on a pull request. On
+# demand only: a nightly schedule was ~15 runner-minutes a night for a
+# rendering path that changes rarely -- run this manually after touching it,
+# and consider re-scheduling it once the repo is public (free minutes).
+on:
+  workflow_dispatch:
+
+jobs:
+  benchmarks:
+    name: browser benchmarks (slow)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r trellum/requirements.txt -r trellum/requirements-drivers.txt pytest playwright
+          python -m playwright install --with-deps chromium
+
+      - name: Run the slow benchmarks
+        working-directory: trellum/demo
+        run: python -m pytest ../testing -q -m slow -s

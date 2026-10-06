@@ -1,0 +1,70 @@
+{% extends "settings_base.html" %}
+{% block title %}Members — {{ studio.name }}{% endblock %}
+{% block settings %}
+<header class="page-head">
+  <div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }}</div>
+  <h1>Members</h1>
+  <p class="muted page-sub">Direct studio roles. Roles from
+    <a href="/orgs/{{ org.slug }}/settings/groups">permission groups</a> apply on top
+    (effective role is the highest of all sources).</p>
+</header>
+
+<div class="panel">
+<div class="ui-table-scroll">
+<table class="ui-table" data-mobile-cards>
+  <thead><tr><th>User</th><th>Role</th><th></th></tr></thead>
+  <tbody>
+  {% for sm in rows %}
+  <tr>
+    <td data-label="User"><strong>{{ sm.user.email }}</strong></td>
+    <td data-label="Role">
+      <form class="inline" method="post" action="/s/{{ org.slug }}/{{ studio.slug }}/settings/members/set" data-settings-form>
+        {% csrf_token %}
+        <input type="hidden" name="user_id" value="{{ sm.user_id }}">
+        <select name="role" class="ui-input" style="min-width:110px">
+          {% for value, label in studio_role_choices %}
+          <option value="{{ value }}" {% if sm.role == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <button class="ui-btn ghost" type="submit">Save changes</button>
+      </form>
+    </td>
+    <td class="ui-row-actions" data-label="Actions">
+      <form class="inline" method="post" action="/s/{{ org.slug }}/{{ studio.slug }}/settings/members/set"
+            onsubmit="return confirm('Remove {{ sm.user.email|escapejs }} from {{ studio.name|escapejs }}? They keep any role that comes from a permission group or from being an org admin.')">
+        {% csrf_token %}
+        <input type="hidden" name="user_id" value="{{ sm.user_id }}">
+        <input type="hidden" name="role" value="">
+        <button class="ui-btn danger" type="submit">Remove</button>
+      </form>
+    </td>
+  </tr>
+  {% empty %}
+  <tr><td colspan="3"><div class="ui-empty">No direct members yet — add someone below,
+    or hand out access through a
+    <a href="/orgs/{{ org.slug }}/settings/groups">permission group</a>.</div></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% if org_users %}
+<form class="inline settings-inline-form" method="post" action="/s/{{ org.slug }}/{{ studio.slug }}/settings/members/set">
+  {% csrf_token %}
+  <select name="user_id" class="ui-input" style="min-width:240px; max-width:360px">
+    {% for m in org_users %}<option value="{{ m.user_id }}">{{ m.user.email }}</option>{% endfor %}
+  </select>
+  <select name="role" class="ui-input" style="min-width:110px">
+    {% for value, label in studio_role_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+  </select>
+  <button class="ui-btn primary" type="submit">Add</button>
+</form>
+{% else %}
+<p class="muted" style="margin-top:12px">Everyone in {{ org.name }} already has a direct
+role here — <a href="/orgs/{{ org.slug }}/settings/invites">invite someone to the
+organization</a> first.</p>
+{% endif %}
+</div>
+<p class="muted">Legend: <span class="ui-badge accent">admin</span>
+<span class="ui-badge info">developer</span> <span class="ui-badge">viewer</span> —
+admins manage this studio's repository, data sources and members.</p>
+{% endblock %}

@@ -1,0 +1,42 @@
+# ─── Identity ───────────────────────────────────────────────
+name: "Player Overview"
+slug: player-overview
+description: "The Nova Play flagship: player KPIs, revenue by tier, geography, overlapping player behaviours and a year of cohort retention, from fact_daily, fact_player_segments and fact_retention."
+version: 0.2.0
+
+# ─── Scheduling ─────────────────────────────────────────────
+schedule:
+  cron: "0 6 * * *"
+  timezone: UTC
+
+# ─── Classification ─────────────────────────────────────────
+tags:
+  - engagement
+  - revenue
+  - retention
+  - geography
+  - segmentation
+studio: nova-play
+category: Overview
+
+# ─── Presentation ───────────────────────────────────────────
+theme: "trellum dark"
+
+# ─── Data Sources ───────────────────────────────────────────
+data_sources:
+  - demo_db
+
+# ─── Optional client libraries ───────────────────────────────
+# For the two absorbed custom sections: the choropleth (geo + topojson, with
+# the atlas fetched at runtime from /_vendor/) and the behaviour venn. Loaded
+# here so no other report pays for them.
+extra_cdn:
+  chartjs_geo: chartjs-chart-geo.umd.min.js
+  topojson_client: topojson-client.min.js
+  chartjs_venn: chartjs-chart-venn.umd.min.js
+
+# ─── Display ─────────────────────────────────────────
+display:
+  icon: activity
+  color: "#4e79a7"
+  priority: 1

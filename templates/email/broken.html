@@ -1,0 +1,18 @@
+{% autoescape on %}{% include "email/_base_top.html" %}
+<tr><td style="padding:22px 24px 0">
+  <h1 style="margin:0;font-size:21px;color:#0f172a;font-weight:650">{{ report.name|default:report.slug }}</h1>
+  <p style="margin:6px 0 0;color:#64748b;font-size:13px">{{ report.studio.name }}{% if failed_at %}&nbsp;·&nbsp;failed {{ failed_at }}{% endif %}</p>
+</td></tr>
+<tr><td style="padding:16px 24px 0">
+  <p style="margin:0 0 12px;color:#334155;font-size:14px">The most recent build of this report failed.</p>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px">
+    <tr><td style="padding:12px 16px;font-family:Consolas,Menlo,monospace;font-size:12px;color:#991b1b;white-space:pre-wrap">{{ error_excerpt }}</td></tr>
+  </table>
+  {% if days_since_last_failure is not None %}
+  <p style="margin:12px 0 0;color:#94a3b8;font-size:13px">This report also failed {{ days_since_last_failure }} day{{ days_since_last_failure|pluralize }} ago.</p>
+  {% endif %}
+</td></tr>
+<tr><td style="padding:18px 24px 24px">
+  <a href="{{ report_url }}" style="background:#0D9488;color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:14px;font-weight:bold;display:inline-block">Open report</a>
+</td></tr>
+{% include "email/_base_bottom.html" %}{% endautoescape %}

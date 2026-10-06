@@ -1,0 +1,44 @@
+name: vertica
+
+# Vertica CE: multi-GB, 1-3 min startup, and the image is pull-gated behind
+# an OpenText account -- so this lane is manual-only and needs registry
+# credentials (secrets VERTICA_REGISTRY_USER/TOKEN) plus, optionally, an
+# ITEST_VERTICA_IMAGE repository variable. See itest/README.md's
+# "Vertica: gated image".
+on:
+  workflow_dispatch:
+
+jobs:
+  integration-heavy:
+    name: integration (vertica, manual)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r trellum/itest/requirements-itest.txt
+
+      - name: Log in to the image registry
+        env:
+          USER: ${{ secrets.VERTICA_REGISTRY_USER }}
+          TOKEN: ${{ secrets.VERTICA_REGISTRY_TOKEN }}
+        run: |
+          if [ -z "$USER" ] || [ -z "$TOKEN" ]; then
+            echo "ERROR: VERTICA_REGISTRY_USER/TOKEN secrets are not set."
+            echo "The vertica-ce image is pull-gated; this manual lane needs credentials."
+            exit 1
+          fi
+          echo "$TOKEN" | docker login -u "$USER" --password-stdin
+
+      - name: Vertica integration run
+        env:
+          ITEST_VERTICA_IMAGE: ${{ vars.ITEST_VERTICA_IMAGE }}
+        working-directory: trellum
+        run: python itest/run.py --profile heavy --engines vertica

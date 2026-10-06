@@ -1,0 +1,51 @@
+.fw-tab-group {
+    display: flex; gap: 0;
+    background: var(--bg-main);
+    border-radius: var(--radius-control); overflow: hidden;
+    border: 1px solid var(--border-color);
+    width: fit-content;
+    margin-bottom: var(--spacing-md);
+}
+.fw-tab-btn {
+    padding: 6px 16px;
+    font-size: var(--font-size-interface);
+    border: none; background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer; white-space: nowrap;
+    transition: all 0.15s;
+}
+.fw-tab-btn.active {
+    background: var(--primary-fill);
+    color: var(--on-accent); font-weight: 600;
+}
+@media (max-width: 640px) {
+    .fw-tab-btn { padding: 5px 10px; font-size: var(--font-size-interface); }
+}
+.fw-tab-ss-wrap {
+    --ss-primary-color: var(--primary-fill);
+    --ss-bg-color: var(--bg-card);
+    --ss-font-color: var(--text-main);
+    --ss-font-placeholder-color: var(--text-secondary);
+    --ss-border-color: var(--border-color);
+    --ss-focus-color: var(--primary-fill);
+    --ss-border-radius: var(--radius-control);
+    --ss-font-size: var(--font-size-interface);
+}
+.fw-tab-ss-wrap .ss-main {
+    min-height: 30px;
+    height: 30px;
+}
+.fw-tab-ss-wrap .ss-main .ss-values {
+    flex: 1; min-height: 0;
+    overflow: hidden;
+    align-items: center;
+}
+.fw-tab-ss-wrap .ss-main .ss-values .ss-value .ss-value-text {
+    color: var(--on-accent);
+}
+.fw-tab-ss-wrap .ss-main .ss-values .ss-value .ss-value-delete {
+    border-left-color: rgba(255,255,255,0.3);
+}
+.fw-tab-ss-wrap .ss-main .ss-values .ss-value .ss-value-delete svg path {
+    stroke: #fff;
+}

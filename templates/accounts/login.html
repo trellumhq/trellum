@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Log in — trellum{% endblock %}
+{% block content %}
+{% comment %}Centred in the viewport rather than pinned near the top with a
+screen of empty space under it.{% endcomment %}
+<div class="auth-shell">
+  <div class="panel auth-card">
+    <h1>Log in</h1>
+    {% if reason == "idle" %}
+    <ul class="messages"><li class="warning" role="status">You were signed out due to inactivity.</li></ul>
+    {% elif reason == "expired" %}
+    <ul class="messages"><li class="warning" role="status">Your session reached its maximum age — sign in again.</li></ul>
+    {% elif reason == "revoked" %}
+    <ul class="messages"><li class="warning" role="status">Your session was ended. Sign in again to continue.</li></ul>
+    {% endif %}
+    {{ form.non_field_errors }}
+    <form method="post">
+      {% csrf_token %}
+      <div class="ui-field">
+        <label for="id_email">Email</label>
+        {{ form.email }}{{ form.email.errors }}
+      </div>
+      <div class="ui-field">
+        <label for="id_password">Password</label>
+        {{ form.password }}{{ form.password.errors }}
+      </div>
+      <p class="ui-help">If your organization uses single sign-on,
+        you'll be redirected automatically after entering your email.
+        If it signs you in against a directory, the password above is your
+        directory password.</p>
+      <div class="ui-form-actions">
+        <button class="ui-btn primary" type="submit">Continue</button>
+        <a href="/password-reset/" class="auth-alt-link">Forgot password?</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

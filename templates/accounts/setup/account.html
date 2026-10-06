@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Your account — trellum{% endblock %}
+{% block content %}
+<div class="auth-shell">
+  <div class="panel auth-card setup-card">
+    {% include "accounts/setup/_steps.html" %}
+    <h1>Create your operator account</h1>
+    <p class="ui-help">This is the instance operator: it administers the whole
+      portal and will be an admin of
+      {% if org_name %}<strong>{{ org_name }}</strong>{% else %}your organization{% endif %}.
+      Everyone else joins by invitation or single sign-on.</p>
+    {{ form.non_field_errors }}
+    <form method="post">
+      {% csrf_token %}
+      <div class="ui-field">
+        <label for="id_email">Email</label>
+        {{ form.email }}{{ form.email.errors }}
+      </div>
+      <div class="ui-field">
+        <label for="id_name">Your name</label>
+        {{ form.name }}{{ form.name.errors }}
+      </div>
+      <div class="ui-field">
+        <label for="id_password1">Password</label>
+        {{ form.password1 }}{{ form.password1.errors }}
+        <span class="ui-help">At least 10 characters, and not a common one.</span>
+      </div>
+      <div class="ui-field">
+        <label for="id_password2">Repeat password</label>
+        {{ form.password2 }}{{ form.password2.errors }}
+      </div>
+      <div class="ui-form-actions">
+        <button class="ui-btn primary" type="submit">Create account</button>
+        <span style="flex:1"></span>
+        <a class="auth-alt-link" href="{% url 'setup-organization' %}">Back</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

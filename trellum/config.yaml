@@ -1,0 +1,23 @@
+# Framework-level defaults for a project's config.yaml.
+#
+# A project's own config.yaml (at the project root) wins over this file; this
+# one is only the fallback, and it exists mainly to document the shape. See
+# `load_project_config()` / `load_extensions()` in project.py.
+
+# Markup a host application injects into every generated report. Empty here on
+# purpose: the framework renders no navigation and no scripts of its own, so a
+# report built with nothing configured is self-contained and issues no request
+# to a server that may not exist.
+#
+# Set these in YOUR project's config.yaml, or pass the same object as JSON in
+# FW_EXTENSIONS_JSON (which wins), e.g. from a control plane spawning the
+# report subprocess.
+extensions:
+  nav_html: ""   # injected into the header nav group, verbatim
+  scripts: []    # <script src="..."> entries injected before </body>
+
+# Once a day, the end of a build and `trellum doctor` ask the public releases
+# feed whether a newer trellum exists and print one line if so. A feed that
+# cannot be reached changes nothing. Uncomment to never ask from this project;
+# FW_UPDATE_CHECK=0 in the environment does the same, and CI never asks.
+# update_check: false

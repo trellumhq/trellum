@@ -1,0 +1,71 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# Local runtime state. The portal writes output and caches next to whatever
+# project it is pointed at; never commit either.
+output/
+.git_cache/
+*.log
+
+# Credentials. .env.example is the tracked template; the .env it produces
+# holds real secrets.
+.env
+.env.*
+!.env.example
+
+# Agent working files.
+#
+# .claude/settings.local.json IS tracked -- the permission set is worth sharing.
+#
+# .lavish/ is NOT. It used to be, and the two rules in this file contradicted
+# each other for months: the comment here claimed it was tracked while the
+# pattern below ignored it, so exactly one artifact got force-added and the
+# rest did not. Review artifacts are working material, and this repository is
+# a publication candidate -- some of them discuss competitors, which the
+# project's own policy keeps out of shipping repos entirely.
+#
+# .claude/worktrees/ is not tracked either: each entry is a complete second checkout of this
+# repository (772 files / 12.3 MB at the time of writing) and carries its own
+# .env, so committing it would publish real secrets.
+.claude/worktrees/
+.playwright-mcp/
+
+# Django SaaS build
+.venv/
+.data-dev/
+.data-test/
+staticfiles/
+
+# Design review artifacts (Lavish); working material, not product code.
+.lavish/
+
+# Terraform working directories and any state that escapes the S3 backend.
+# .terraform.lock.hcl is deliberately NOT ignored — it pins provider versions
+# and must be committed.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+crash.log
+# Never commit variable files: they are where an account id or a secret ends up.
+*.auto.tfvars
+terraform.tfvars
+
+# The demo path writes its own throwaway env file (scripts/demo.sh).
+.env.demo
+
+# Agent instructions and project context live in internal planning, not here.
+# They carry product reasoning, board conventions and internal repo names,
+# none of which belong in a repository that is meant to become public.
+# Root-anchored: trellum/AGENTS.md is part of the framework package and ships
+# to consumers, so it must stay tracked.
+/CLAUDE.md
+/AGENTS.md
+
+# Static website build output and generated release documentation.
+*.sqlite3
+website/dist/
+website/content/docs/

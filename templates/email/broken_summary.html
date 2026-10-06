@@ -1,0 +1,17 @@
+{% autoescape on %}{% include "email/_base_top.html" %}
+<tr><td style="padding:22px 24px 0">
+  <h1 style="margin:0;font-size:21px;color:#0f172a;font-weight:650">{{ studio.name }}</h1>
+  <p style="margin:6px 0 0;color:#64748b;font-size:13px">{{ items|length }} report{{ items|length|pluralize }} failed in the last builds</p>
+</td></tr>
+<tr><td style="padding:16px 24px 24px">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+  {% for item in items %}
+    <tr><td style="padding:11px 14px;background:#fafbfc;border:1px solid #eef1f5;border-radius:6px">
+      <a href="{{ item.report_url }}" style="color:#0f172a;font-size:14.5px;font-weight:650;text-decoration:none">{{ item.report.name|default:item.report.slug }}</a><br>
+      <span style="font-family:Consolas,Menlo,monospace;font-size:12px;color:#991b1b">{{ item.error_first_line }}</span>
+    </td></tr>
+    {% if not forloop.last %}<tr><td style="font-size:0;line-height:0;height:8px">&nbsp;</td></tr>{% endif %}
+  {% endfor %}
+  </table>
+</td></tr>
+{% include "email/_base_bottom.html" %}{% endautoescape %}

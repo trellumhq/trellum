@@ -1,0 +1,433 @@
+# Build, test, sign and publish reproducible images with dependency notices
+# and software bills of materials for the AGPL-3.0-only product.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version tag to build (e.g. v1.2.3)"
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write   # Cosign keyless signing via the OIDC token
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+# Serialize tag pushes and manual runs so two releases cannot pass the
+# existing-image check concurrently.
+concurrency:
+  group: release-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: build, scan, sign, publish
+    if: github.repository == 'trellumhq/trellum' && (github.event_name == 'push' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        env:
+          REQUESTED_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          VERSION="$REQUESTED_TAG"
+          [ -n "$VERSION" ] || VERSION="${GITHUB_REF#refs/tags/}"
+          [[ "$VERSION" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || { echo "Invalid stable version tag"; exit 1; }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building $VERSION"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ steps.version.outputs.version }}
+
+      - name: Record source revision
+        id: source
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "build_time=$(git show -s --format=%cI HEAD)" >> "$GITHUB_OUTPUT"
+          echo "source_date_epoch=$(git show -s --format=%ct HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: The tag and both versions agree
+        # Replaces the old submodule-pin gate. There is one version now, and
+        # it is written down twice — the control plane and the framework ship
+        # together and must never disagree about what they are. A release that
+        # misreports its own version produces an SBOM describing something
+        # nobody can rebuild.
+        run: |
+          TAG="${{ steps.version.outputs.version }}"
+          PORTAL=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' trellum_portal/__init__.py)
+          FRAMEWORK=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' trellum/__init__.py)
+          echo "tag=$TAG portal=$PORTAL framework=$FRAMEWORK"
+          if [ "v$PORTAL" != "$TAG" ]; then
+            echo "ERROR: tag $TAG does not match trellum_portal.__version__ ($PORTAL)."
+            exit 1
+          fi
+          if [ "$PORTAL" != "$FRAMEWORK" ]; then
+            echo "ERROR: trellum_portal.__version__ ($PORTAL) and trellum.__version__ ($FRAMEWORK) disagree."
+            echo "They ship as one artifact; bump both."
+            exit 1
+          fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Build and inspect the standalone wheel
+        env:
+          SOURCE_DATE_EPOCH: ${{ steps.source.outputs.source_date_epoch }}
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --wheel --outdir "$GITHUB_WORKSPACE/dist" trellum
+          VERSION="${{ steps.version.outputs.version }}"
+          WHEEL="dist/trellum-${VERSION#v}-py3-none-any.whl"
+          test -f "$WHEEL" || { echo "ERROR: expected $WHEEL"; ls -la dist; exit 1; }
+          python - "$WHEEL" <<'PY'
+          import sys
+          import zipfile
+
+          wheel = sys.argv[1]
+          required = {
+              "trellum/LICENSE",
+              "trellum/THIRD-PARTY.md",
+              "trellum/demo/assistant.md",
+          }
+          with zipfile.ZipFile(wheel) as archive:
+              names = set(archive.namelist())
+              missing = sorted(required - names)
+              if missing:
+                  raise SystemExit(f"wheel is missing required files: {missing}")
+              metadata_name = next(name for name in names if name.endswith(".dist-info/METADATA"))
+              metadata = archive.read(metadata_name).decode()
+              if "License-Expression: AGPL-3.0-only" not in metadata:
+                  raise SystemExit("wheel metadata is missing AGPL-3.0-only")
+              licence = archive.read("trellum/LICENSE").decode()
+              if "GNU AFFERO GENERAL PUBLIC LICENSE" not in licence:
+                  raise SystemExit("wheel does not contain the GNU AGPL text")
+          PY
+
+      - name: Keep the standalone wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: trellum-wheel-${{ steps.version.outputs.version }}
+          path: dist/*.whl
+          if-no-files-found: error
+          retention-days: 90
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Refuse to replace published image tags
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          IMAGE=$(echo "${REGISTRY}/${IMAGE_NAME}" | tr '[:upper:]' '[:lower:]')
+          for repository in "$IMAGE" "${IMAGE}-runner"; do
+            if docker manifest inspect "${repository}:${VERSION}" >/dev/null 2>/tmp/manifest-error; then
+              echo "ERROR: ${repository}:${VERSION} already exists; release a new version"
+              exit 1
+            fi
+            # Authentication and network errors are not evidence of absence.
+            if ! grep -Eiq '^(manifest unknown|no such manifest:.*)$' /tmp/manifest-error; then
+              cat /tmp/manifest-error >&2
+              exit 1
+            fi
+          done
+
+      - name: Build (load locally first — nothing unproven gets pushed)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: trellum:candidate
+          build-args: |
+            GIT_SHA=${{ steps.source.outputs.sha }}
+            GIT_BRANCH=${{ steps.version.outputs.version }}
+            BUILD_TIME=${{ steps.source.outputs.build_time }}
+            SOURCE_URL=https://github.com/${{ github.repository }}/tree/${{ steps.source.outputs.sha }}
+          provenance: false
+
+      # ── prove the hardening claims hold in the actual artifact ───────────
+      - name: Image runs unprivileged
+        run: |
+          UID_OUT=$(docker run --rm trellum:candidate id -u)
+          [ "$UID_OUT" != "0" ] || { echo "ERROR: image runs as root"; exit 1; }
+          echo "runs as uid $UID_OUT"
+
+      - name: No test tooling in the image
+        run: |
+          if docker run --rm trellum:candidate python -c "import pytest" 2>/dev/null; then
+            echo "ERROR: pytest is present in a shipped image"
+            exit 1
+          fi
+          echo "no test tooling"
+
+      - name: Private hosting code is absent
+        # Billing/subscription code lives in a private repository and must
+        # never reach a customer. Python is not compiled, so "it is only in the
+        # image" would be no protection at all.
+        run: |
+          if docker run --rm trellum:candidate sh -c "test -e /app/saas"; then
+            echo "ERROR: the saas overlay is present in the customer image"
+            exit 1
+          fi
+          if docker run --rm trellum:candidate python -c "import saas" 2>/dev/null; then
+            echo "ERROR: the saas overlay is importable in the customer image"
+            exit 1
+          fi
+          echo "overlay absent"
+
+      - name: AGPL terms and third-party disclosure ship in the image
+        run: |
+          docker run --rm trellum:candidate sh -c \
+            "test -s /app/LICENSE -a -s /app/NOTICE -a -s /app/THIRD-PARTY-LICENSES.txt" \
+            || { echo "ERROR: licence files missing from the image"; exit 1; }
+          docker run --rm trellum:candidate grep -q \
+            "GNU AFFERO GENERAL PUBLIC LICENSE" /app/LICENSE \
+            || { echo "ERROR: image does not contain the GNU AGPL text"; exit 1; }
+          echo "licence terms present"
+
+      # ── supply chain ────────────────────────────────────────────────────
+      - name: Vulnerability scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.75.0
+          image-ref: trellum:candidate
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true      # unfixed upstream CVEs are not a release gate
+          severity: CRITICAL,HIGH
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: trellum:candidate
+          format: cyclonedx-json
+          output-file: sbom.cyclonedx.json
+          upload-artifact: false
+
+      - name: Generate SBOM (SPDX)
+        # Two formats because procurement teams ask for different ones and
+        # neither is universally accepted.
+        uses: anchore/sbom-action@v0
+        with:
+          image: trellum:candidate
+          format: spdx-json
+          output-file: sbom.spdx.json
+          upload-artifact: false
+
+      # ── the sandbox runner image ────────────────────────────────────────
+      # Same prove → push → sign → attest flow, for the image that actually
+      # runs tenant code. Its security claim is the opposite of the portal's:
+      # it must be minimal — the framework and nothing else.
+      - name: Build the runner image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: runner
+          load: true
+          tags: trellum-runner:candidate
+          build-args: |
+            SOURCE_URL=https://github.com/${{ github.repository }}/tree/${{ steps.source.outputs.sha }}
+          provenance: false
+
+      - name: Runner image excludes Django and portal source
+        run: |
+          UID_OUT=$(docker run --rm trellum-runner:candidate id -u)
+          [ "$UID_OUT" = "10001" ] || { echo "ERROR: runner uid is $UID_OUT, expected 10001"; exit 1; }
+          if docker run --rm trellum-runner:candidate python -c "import django" 2>/dev/null; then
+            echo "ERROR: Django is present in the runner image"; exit 1
+          fi
+          if docker run --rm trellum-runner:candidate sh -c "test -e /app/apps -o -e /app/trellum_portal"; then
+            echo "ERROR: portal source is present in the runner image"; exit 1
+          fi
+          docker run --rm trellum-runner:candidate python -c "import trellum" \
+            || { echo "ERROR: framework not importable in the runner image"; exit 1; }
+          echo "runner image is minimal (framework only)"
+          docker run --rm trellum-runner:candidate sh -c \
+            "test -s /app/LICENSE -a -s /app/NOTICE -a -s /app/THIRD-PARTY-LICENSES.txt" \
+            || { echo "ERROR: licence files missing from the runner image"; exit 1; }
+          docker run --rm trellum-runner:candidate grep -q \
+            "GNU AFFERO GENERAL PUBLIC LICENSE" /app/LICENSE \
+            || { echo "ERROR: runner image does not contain the GNU AGPL text"; exit 1; }
+          echo "licence terms present"
+
+      - name: Vulnerability scan (runner)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.75.0
+          image-ref: trellum-runner:candidate
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+
+      - name: Generate SBOM (runner)
+        uses: anchore/sbom-action@v0
+        with:
+          image: trellum-runner:candidate
+          format: cyclonedx-json
+          output-file: sbom-runner.cyclonedx.json
+          upload-artifact: false
+
+      - name: Push the proven image
+        id: push
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          IMAGE="${REGISTRY}/${IMAGE_NAME}"
+          IMAGE=$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')
+          docker tag trellum:candidate "${IMAGE}:${VERSION}"
+          docker push "${IMAGE}:${VERSION}"
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "${IMAGE}:${VERSION}")
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+
+      - uses: sigstore/cosign-installer@v3
+
+      - name: Sign the image
+        # Keyless: the signature is bound to this workflow's OIDC identity and
+        # recorded in the public transparency log, so there is no signing key
+        # for us to lose or leak.
+        run: cosign sign --yes "${{ steps.push.outputs.digest }}"
+
+      - name: Attach the SBOM as a signed attestation
+        run: |
+          cosign attest --yes \
+            --predicate sbom.cyclonedx.json \
+            --type cyclonedx \
+            "${{ steps.push.outputs.digest }}"
+
+      - name: Verify what we just published
+        # Signing that is never verified is a ritual. Prove a customer's
+        # verification command actually succeeds against the published digest.
+        run: |
+          cosign verify \
+            --certificate-identity-regexp "^https://github.com/${{ github.repository }}/" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "${{ steps.push.outputs.digest }}"
+
+      - name: Push the runner image
+        id: push_runner
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          IMAGE="${REGISTRY}/${IMAGE_NAME}-runner"
+          IMAGE=$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')
+          docker tag trellum-runner:candidate "${IMAGE}:${VERSION}"
+          docker push "${IMAGE}:${VERSION}"
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "${IMAGE}:${VERSION}")
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Sign the runner image
+        run: cosign sign --yes "${{ steps.push_runner.outputs.digest }}"
+
+      - name: Attach the runner SBOM as a signed attestation
+        run: |
+          cosign attest --yes \
+            --predicate sbom-runner.cyclonedx.json \
+            --type cyclonedx \
+            "${{ steps.push_runner.outputs.digest }}"
+
+      - name: Verify the runner image
+        run: |
+          cosign verify \
+            --certificate-identity-regexp "^https://github.com/${{ github.repository }}/" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "${{ steps.push_runner.outputs.digest }}"
+
+      - name: Publish the SBOMs alongside the release
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ steps.version.outputs.version }}
+          path: |
+            sbom.cyclonedx.json
+            sbom.spdx.json
+            sbom-runner.cyclonedx.json
+          retention-days: 90
+
+  # ── the GitHub Release ──────────────────────────────────────────────────
+  # A bare tag is not a release: the Release is where the notes live and what
+  # `/repos/.../releases` serves to the update check. It is still
+  # created for every tag, once the images are proven.
+  #
+  # Once the release and wheel exist, this job dispatches pages.yml on main.
+  # workflow_dispatch is allowed to create a run with GITHUB_TOKEN, so no
+  # personal access token is involved.
+  github-release:
+    name: publish the GitHub Release
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ needs.release.outputs.version }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: trellum-wheel-${{ needs.release.outputs.version }}
+          path: dist
+
+      - name: Create the Release if it does not exist yet
+        # Idempotent so a re-run of the workflow does not fail on the Release
+        # it already made. The notes are the tag's own section of CHANGELOG.md
+        # (Keep a Changelog: `## [X.Y.Z] — date` up to the next `## [`); a tag
+        # with no section falls back to GitHub's generated notes. --verify-tag
+        # refuses a workflow_dispatch tag that was never pushed, instead of
+        # quietly creating it at HEAD.
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists"
+          else
+            awk -v v="${TAG#v}" \
+              '/^## \[/ { on = index($0, "## [" v "]") == 1; next } on' \
+              CHANGELOG.md > notes.md
+            if grep -q '[^[:space:]]' notes.md; then
+              gh release create "$TAG" --verify-tag --title "$TAG" --notes-file notes.md
+            else
+              gh release create "$TAG" --verify-tag --title "$TAG" --generate-notes
+            fi
+          fi
+
+      - name: Attach the standalone wheel
+        run: |
+          WHEEL="dist/trellum-${TAG#v}-py3-none-any.whl"
+          test -f "$WHEEL"
+          ASSET=$(basename "$WHEEL")
+          if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -Fxq "$ASSET"; then
+            mkdir -p /tmp/existing-release-asset
+            gh release download "$TAG" --pattern "$ASSET" --dir /tmp/existing-release-asset
+            cmp -s "$WHEEL" "/tmp/existing-release-asset/$ASSET" || {
+              echo "ERROR: release asset $ASSET already exists with different bytes"
+              exit 1
+            }
+            echo "$ASSET already exists and matches this exact-tag build"
+          else
+            gh release upload "$TAG" "$WHEEL"
+          fi
+
+      - name: Publish the website and latest stable demo gallery
+        run: gh workflow run pages.yml --ref main -f deploy=true

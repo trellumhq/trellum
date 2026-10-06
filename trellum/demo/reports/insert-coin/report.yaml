@@ -1,0 +1,30 @@
+# ─── Identity ───────────────────────────────────────────────
+name: "Insert Coin · Minigame"
+slug: insert-coin
+description: "The report that is a playable minigame: press Start and ride the DAU curve as a comet — drawn in the page's own chart language, over the same fact_daily data and filters as every other Nova Play report."
+version: 0.1.0
+
+# ─── Scheduling ─────────────────────────────────────────────
+schedule:
+  cron: "0 6 * * *"
+  timezone: UTC
+
+# ─── Classification ─────────────────────────────────────────
+tags:
+  - playable
+  - custom-section
+studio: nova-play
+category: Showcase
+
+# ─── Presentation ───────────────────────────────────────────
+theme: blossom
+
+# ─── Data Sources ────────────────────────────────────────────
+data_sources:
+  - demo_db
+
+# ─── Display ─────────────────────────────────────────
+display:
+  icon: gamepad
+  color: "#ffc400"
+  priority: 3

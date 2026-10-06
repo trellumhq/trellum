@@ -1,0 +1,40 @@
+# Control-plane (Django) dependencies. Includes everything the report
+# runner needs via the existing requirements chain.
+#
+# Pinned exactly, not by range: an enterprise customer's build must resolve to
+# the same tree we tested and shipped an SBOM for. The full transitive
+# resolution is locked in constraints.txt.
+#
+# Test-only packages live in requirements-test.txt and are deliberately absent
+# from the runtime image — every package in a shipped image is CVE surface a
+# customer's scanner will ask about.
+-r requirements.txt
+
+Django==5.2.17
+psycopg[binary]==3.3.4
+gunicorn==26.0.0
+whitenoise==6.12.0
+django-allauth[socialaccount]==65.19.0
+# LDAP / Active Directory sign-in (apps/accounts/ldap.py). Pure Python, no
+# system libraries, so the image and Windows dev boxes build unchanged.
+ldap3==2.9.1
+cryptography==50.0.0
+django-environ==0.14.0
+# First-party MFA (apps/accounts/mfa.py): RFC 6238 TOTP codes, and the
+# inline-SVG QR code rendered for enrollment. Both pure-Python, no transitive
+# deps -- see .lavish/session-security-design.md §4.1 for why this is first
+# party rather than allauth.mfa (SOCIALACCOUNT_ONLY forbids it) or django-otp.
+pyotp==2.10.0
+segno==1.6.6
+# Talks to the Docker daemon to run each report build in a sandbox container.
+docker==7.1.0
+# Headless Chromium driver for report snapshot rendering (alerts + scheduled
+# delivery attachments). apps/reports/snapshot.py imports it lazily, so its
+# absence only degrades that one feature rather than failing the whole app.
+playwright==1.62.0
+# Object storage for the s3 report backend. The framework used to own this and
+# the portal was forbidden from importing it; the framework has since cut every
+# cloud tie, so the control plane owns distribution now — see apps/core/s3.py.
+# Imported lazily, so a local deployment loads none of it.
+# Pinned to match aiobotocore's requirement; raising it alone breaks that pin.
+boto3==1.36.3

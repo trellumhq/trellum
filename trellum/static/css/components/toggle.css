@@ -1,0 +1,29 @@
+.fw-toggle-group {
+    display: inline-flex; gap: 0;
+    background: var(--bg-main);
+    border-radius: var(--radius-control); overflow: hidden;
+    border: 1px solid var(--border-color);
+    margin-bottom: 8px;
+    margin-right: 8px;
+    flex-shrink: 0;
+}
+.fw-toggle-btn {
+    padding: 4px 14px;
+    font-size: var(--font-size-interface); font-weight: 500;
+    border: none; background: transparent;
+    color: var(--text-main);
+    cursor: pointer; white-space: nowrap;
+    transition: all 0.2s;
+}
+.fw-toggle-btn.active {
+    background: var(--primary-fill);
+    color: var(--on-accent); font-weight: 600;
+}
+.fw-toggle-btn:hover:not(.active) { background: var(--bg-card-hover); }
+@media (max-width: 640px) {
+    .fw-toggle-group {
+        max-width: 100%;
+        flex-wrap: wrap;
+    }
+    .fw-toggle-btn { padding: 5px 10px; font-size: var(--font-size-interface); }
+}

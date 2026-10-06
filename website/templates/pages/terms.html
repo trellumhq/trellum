@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Terms — {{ BRAND }}{% endblock %}
+{% block description %}Terms for using the {{ BRAND }} website and source.{% endblock %}
+{% block content %}
+<div class="blog-wrap"><article class="docs-main">
+  <div class="crumbs">Legal</div>
+  <h1>Terms</h1>
+  <p>This website provides information, documentation, and links to the
+     {{ BRAND }} source code. The material is provided as is, without warranty.</p>
+  <p>The <a href="{{ github_href }}" rel="noopener">{{ BRAND }} product and
+     this website</a> are maintained in one repository. Owned code is available
+     under AGPL-3.0-only. Third-party and contributor notices retain their own
+     terms.</p>
+  <p>Please do not interfere with the site or use it unlawfully. Links to other
+     services are governed by those services' own terms.</p>
+  <h2>Contact</h2>
+  <p><a href="mailto:{{ CONTACT_EMAIL }}">{{ CONTACT_EMAIL }}</a></p>
+</article></div>
+{% endblock %}

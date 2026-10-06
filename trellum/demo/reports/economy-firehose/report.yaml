@@ -1,0 +1,40 @@
+# ─── Identity ───────────────────────────────────────────────
+name: "A Lot of Data: Economy Firehose"
+slug: economy-firehose
+description: "A lot of data, on purpose: every coin and gem source and sink across the Nova Play games at full grain — 2.01 million rows chunk-streamed into one page and re-filtered in about 60ms, with a real economy bug hidden inside."
+version: 0.1.0
+
+# ─── Scheduling ─────────────────────────────────────────────
+schedule:
+  cron: "0 6 * * *"
+  timezone: UTC
+
+# ─── Classification ─────────────────────────────────────────
+tags:
+  - economy
+  - scale
+  - sources-and-sinks
+studio: nova-play
+category: Economy
+
+# ─── Presentation ───────────────────────────────────────────
+theme: "trellum light"
+
+# ─── Data Sources ────────────────────────────────────────────
+data_sources:
+  - demo_db
+
+# ─── Validation ──────────────────────────────────────────────
+validation:
+  suppress:
+    # The "Gems" trend starts hidden behind the currency toggle by design --
+    # that is what Toggle + Visible is for, and the framework resizes the
+    # canvas when the user switches. Same accepted warning, same rationale,
+    # as the metric toggle this pattern was copied from.
+    - live-chart-in-non-default-visible
+
+# ─── Display ─────────────────────────────────────────
+display:
+  icon: database
+  color: "#e15759"
+  priority: 2

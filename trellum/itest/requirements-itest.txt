@@ -1,0 +1,15 @@
+# Dependencies for the itest harness only. Not installed by default --
+# see itest/README.md for why this lives outside requirements.txt /
+# requirements-drivers.txt (short version: this harness is opt-in and
+# never part of the default suite or its CI job).
+-r ../requirements.txt
+-r ../requirements-drivers.txt
+
+pytest
+fakesnow>=0.9
+
+# pymysql's caching_sha2_password auth plugin (MySQL 8's default) needs
+# this. Today it only rides in transitively via snowflake-connector-python
+# -- pinned explicitly here so the itest venv doesn't depend on that
+# staying true.
+cryptography>=42

@@ -1,0 +1,15 @@
+{% comment %}
+Pre-paint theme resolution, same approach as the console: run before the
+stylesheet paints so a dark-mode visitor never sees a light flash. No stored
+preference means "follow the OS", which the CSS handles on its own.
+{% endcomment %}
+<script>
+(function () {
+  try {
+    var saved = localStorage.getItem('trellum-theme');
+    if (saved === 'light' || saved === 'dark') {
+      document.documentElement.setAttribute('data-theme', saved);
+    }
+  } catch (e) { /* private mode: fall back to the OS preference */ }
+})();
+</script>

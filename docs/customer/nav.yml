@@ -1,0 +1,101 @@
+# Sidebar order and labels. The page's own H1 is its title; these labels are
+# the (often shorter) sidebar text. Adding a page = a .md file + an entry here.
+#
+# Publishing a documentation version: copy this directory to content/docs/<version>/.
+# The version dropdown lists directories, so nothing else needs updating.
+#
+- section: Recommended workflow
+  summary: How teams get the most out of this. Advice, not requirements.
+  pages:
+    - title: Two workflows
+      slug: workflow/two-workflows
+    - title: Who builds it, who it serves
+      slug: workflow/who-builds-it
+    - title: The analytics repository
+      slug: workflow/analytics-repository
+    - title: Ad-hoc analysis
+      slug: workflow/ad-hoc-analysis
+    - title: Working with AI agents
+      slug: workflow/working-with-ai-agents
+
+- section: Install
+  summary: Get the portal running on your own VM.
+  pages:
+    - title: Overview
+      slug: install/overview
+    - title: Docker Compose
+      slug: install/docker-compose
+    - title: Report sandboxing
+      slug: install/report-sandboxing
+    - title: Configuration reference
+      slug: install/configuration
+    - title: Verify what you received
+      slug: install/verify-images
+    - title: Upgrades
+      slug: install/upgrades
+
+- section: Portal guide
+  summary: "Day-to-day use: structure, access, identity."
+  pages:
+    - title: Organizations & studios
+      slug: portal/organizations-and-studios
+    - title: Access control
+      slug: portal/access-control
+    - title: API keys
+      slug: portal/api-keys
+    - title: Connecting a repository
+      slug: portal/connecting-a-repository
+    - title: Publishing from git
+      slug: portal/publishing-from-git
+    - title: Connecting your data sources
+      slug: portal/connecting-your-data-sources
+    - title: Single sign-on
+      slug: portal/single-sign-on
+    - title: Email delivery
+      slug: portal/email-delivery
+    - title: Alerts
+      slug: portal/alerts
+    - title: Share links
+      slug: portal/share-links
+    - title: Embedding
+      slug: portal/embedding
+    - title: Live queries
+      slug: portal/live-queries
+    - title: Experiment overview
+      slug: portal/experiments
+    - title: Annotations calendar
+      slug: portal/annotations-calendar
+    - title: The AI assistant
+      slug: portal/ai-assistant
+
+# The framework is AGPL-3.0-only and documents itself in its own README.
+# One page here points at it; restating it would only create a copy that drifts.
+- section: The framework
+  summary: The standalone AGPL-3.0-only framework included in this monorepo.
+  pages:
+    - title: What it is, and where to get it
+      slug: framework/the-framework
+
+- section: Operations
+  summary: Run it in production without surprises.
+  pages:
+    - title: Securing report content
+      slug: operations/securing-report-content
+    - title: Backups & restore
+      slug: operations/backups-and-restore
+    - title: Data retention
+      slug: operations/data-retention
+    - title: Logs & monitoring
+      slug: operations/logs-and-monitoring
+    - title: Key rotation
+      slug: operations/key-rotation
+    - title: Sizing
+      slug: operations/sizing
+
+- section: Troubleshooting
+  summary: "When something is wrong, start here."
+  pages:
+    - title: Build failures
+      slug: troubleshooting/build-failures
+    - title: Support bundle
+      slug: troubleshooting/support-bundle

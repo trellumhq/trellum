@@ -1,0 +1,104 @@
+{% load static %}<!DOCTYPE html>
+{% comment %}The catalog is console chrome, so it uses the neutral management
+Light/Dark/Auto preference. Named report themes apply inside reports only.{% endcomment %}
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>{{ studio.name }} - {{ console_page_title }}</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'><rect width='40' height='40' rx='8' fill='white'/><g stroke='%23c7cbe0' stroke-width='3'><line x1='8' y1='8' x2='8' y2='32'/><line x1='20' y1='8' x2='20' y2='32'/><line x1='32' y1='8' x2='32' y2='32'/></g><circle cx='8' cy='32' r='5' fill='%230D9488'/><circle cx='20' cy='20' r='5' fill='%237C6FE0'/><circle cx='32' cy='8' r='5' fill='%230D9488'/></svg>">
+<!-- PWA: installable as a fullscreen mobile app via "Add to Home Screen" -->
+<meta name="theme-color" content="#0D9488">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="trellum">
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'><rect width='40' height='40' rx='8' fill='white'/><g stroke='%23c7cbe0' stroke-width='3'><line x1='8' y1='8' x2='8' y2='32'/><line x1='20' y1='8' x2='20' y2='32'/><line x1='32' y1='8' x2='32' y2='32'/></g><circle cx='8' cy='32' r='5' fill='%230D9488'/><circle cx='20' cy='20' r='5' fill='%237C6FE0'/><circle cx='32' cy='8' r='5' fill='%230D9488'/></svg>">
+{% include "_theme_boot_mgmt.html" %}
+<link href="/_vendor/inter.css" rel="stylesheet">
+{# The 13 themes, generated from the framework's registry (manage.py sync_themes). #}
+<link href="{% static 'themes.generated.css' %}" rel="stylesheet">
+<link href="{% static 'ui.css' %}" rel="stylesheet">
+<link href="{% static 'portal.css' %}" rel="stylesheet">
+<link href="{% static 'console-shell.css' %}" rel="stylesheet">
+<link href="{% static 'console-report-host.css' %}" rel="stylesheet">
+</head>
+<body class="mgmt tl-console-page console-dashboard{% if console_page_title %} tl-console-title-known{% endif %}">
+
+{% comment %}One utility header. The dashboard search lives in the shared
+shell; the visible page title and category controls belong to this page.{% endcomment %}
+{% include "_shell.html" with dashboard_shell=1 %}
+
+<div data-console-catalog data-console-inert>
+<header class="page-head">
+  <div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }}</div>
+  <h1>{{ console_page_title }}</h1>
+</header>
+<div class="folder-bar">
+  <div class="folder-rail">
+    <div class="folder-inner" id="folderTabs"></div>
+    <div class="catalog-toolbar" id="catalogToolbar"></div>
+  </div>
+</div>
+
+<div class="studio-bar" id="studioBar">
+  <div class="studio-inner" id="studioFilters"></div>
+</div>
+
+<div class="portal-body">
+  <div class="portal-body-inner" id="content"></div>
+</div>
+</div>
+
+<section class="tl-console-report-host" data-console-report-host data-console-inert
+         aria-label="Report" hidden>
+  <div class="tl-console-report-status" data-console-report-status role="status">
+    Loading report…
+  </div>
+  <iframe data-console-report-frame title="Report" hidden></iframe>
+</section>
+
+<div class="error-log-overlay" id="errorLogOverlay" onclick="toggleErrorLog()"></div>
+<div class="error-log-drawer" id="errorLogDrawer" role="dialog" aria-modal="true" aria-label="Error log" aria-hidden="true" inert>
+  <div class="error-log-header">
+    <h2>Error Log <span class="error-log-count" id="errorLogCount"></span></h2>
+    <div class="error-log-actions">
+      <button class="error-log-btn" type="button" onclick="clearErrorLog()">Clear all</button>
+      <button class="error-log-close" type="button" onclick="toggleErrorLog()" title="Close" aria-label="Close error log">&times;</button>
+    </div>
+  </div>
+  <div class="error-log-body" id="errorLogBody"></div>
+</div>
+
+<div class="validation-overlay" id="validationOverlay" onclick="toggleValidation()"></div>
+<div class="validation-drawer" id="validationDrawer" role="dialog" aria-modal="true" aria-label="Report details" aria-hidden="true" inert>
+  <div class="validation-header">
+    <h2 id="validationTitle">Report details</h2>
+    <button class="validation-close" type="button" onclick="toggleValidation()" title="Close" aria-label="Close report details">&times;</button>
+  </div>
+  <div class="validation-body" id="validationBody"></div>
+</div>
+
+<div class="server-log-overlay" id="serverLogOverlay" onclick="closeServerLog()"></div>
+<div class="server-log-drawer" id="serverLogDrawer" role="dialog" aria-modal="true" aria-label="Server log" aria-hidden="true" inert>
+  <div class="server-log-header">
+    <h2>Server Log</h2>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="error-log-btn" type="button" id="opsServerLogRefresh">&#8635; Refresh</button>
+      <button class="error-log-btn" type="button" id="opsServerLogCopy">Copy</button>
+      <button class="error-log-close" type="button" id="serverLogClose" title="Close" aria-label="Close server log">&times;</button>
+    </div>
+  </div>
+  <div class="server-log-body" id="opsServerLogBody"></div>
+</div>
+
+<script id="portal-ctx" type="application/json">{{ portal_ctx_json|safe }}</script>
+<script>window.PORTAL_CTX = JSON.parse(document.getElementById('portal-ctx').textContent);</script>
+{# Same file the report pages load (see apps.reports.views.delivery_widget_js) — one implementation behind window.PORTAL_CTX, not a parallel widget. #}
+<script src="{% static 'report_delivery.js' %}"></script>
+<script src="{% static 'portal.js' %}"></script>
+<script src="{% static 'console-shell.js' %}"></script>
+<script src="{% static 'console-report-host.js' %}"></script>
+<script src="/api/assistant/widget.js" defer></script>
+</body>
+</html>

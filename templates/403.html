@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}No access — trellum{% endblock %}
+{% block content %}
+<div class="panel ui-notice-page">
+  <h1>403 — not allowed</h1>
+  <p class="muted">Your role doesn't permit this action. An org admin can raise
+  your role or add you to a permission group.</p>
+  <p><a class="ui-btn primary" href="/">Back to your organizations</a></p>
+</div>
+{% endblock %}

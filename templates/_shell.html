@@ -1,0 +1,51 @@
+{% load static docs %}<div class="tl-console-shell" data-console-shell data-console-default-mode="{{ org_default_mode|default:'auto' }}" data-console-ready="false" data-console-css="{% static 'console-shell.css' %}" data-console-script="{% static 'console-shell.js' %}" data-html2canvas-ignore="true">
+  <aside class="tl-console-sidebar" id="consoleSidebar" aria-label="Console sidebar">
+    <button class="tl-console-drawer-close" type="button" data-console-close aria-label="Close navigation">×</button>
+    <a class="tl-console-brand" href="/" aria-label="Trellum home">
+      <svg class="tl-console-glyph" viewBox="0 0 40 40" aria-hidden="true"><g stroke="currentColor" stroke-width="2.6"><line x1="8" y1="8" x2="8" y2="32"/><line x1="20" y1="8" x2="20" y2="32"/><line x1="32" y1="8" x2="32" y2="32"/></g><circle cx="8" cy="32" r="4.4"/><circle class="studio" cx="20" cy="20" r="4.4"/><circle cx="32" cy="8" r="4.4"/></svg>
+      <span class="tl-console-label">trellum</span>
+    </a>
+    {% if shell_org %}
+    <div class="tl-console-context tl-console-label">
+      {% if shell_orgs|length > 1 %}
+      <details class="tl-console-switcher"><summary><span class="tl-console-scope-dot org" aria-hidden="true"></span><span>{{ shell_org.name }}</span></summary><div class="tl-console-popover">{% for o in shell_orgs %}<a href="/?org={{ o.slug }}"{% if o.pk == shell_org.pk %} class="active"{% endif %}>{{ o.name }}</a>{% endfor %}</div></details>
+      {% else %}
+      <a class="tl-console-context-link" href="/?org={{ shell_org.slug }}"><span class="tl-console-scope-dot org" aria-hidden="true"></span>{{ shell_org.name }}</a>
+      {% endif %}
+      {% if shell_studios %}<details class="tl-console-switcher"><summary><span class="tl-console-scope-dot studio" aria-hidden="true"></span><span>{% if shell_nav_studio %}{{ shell_nav_studio.name }}{% else %}Choose a studio{% endif %}</span></summary><div class="tl-console-popover">{% for s in shell_studios %}<a href="/s/{{ shell_org.slug }}/{{ s.slug }}/"{% if shell_nav_studio and s.pk == shell_nav_studio.pk %} class="active"{% endif %}>{{ s.name }}</a>{% endfor %}</div></details>{% endif %}
+    </div>
+    {% endif %}
+    {% include "_console_nav.html" %}
+    <button class="tl-console-collapse" type="button" data-console-collapse aria-label="Collapse sidebar" title="Collapse sidebar"><span aria-hidden="true">‹</span><span class="tl-console-label">Collapse</span></button>
+  </aside>
+
+  <header class="tl-console-header" id="globalShell">
+    <button class="tl-console-drawer-button" type="button" data-console-toggle aria-controls="consoleSidebar" aria-expanded="false" aria-label="Open navigation">☰</button>
+    <span class="tl-console-page-title" data-console-page-title role="heading" aria-level="1">{{ console_page_title }}</span>
+    <nav class="tl-console-breadcrumbs" aria-label="Breadcrumb">
+      {% if shell_org %}<a href="/?org={{ shell_org.slug }}">{{ shell_org.name }}</a>{% endif %}
+      {% if shell_studio %}<span aria-hidden="true">/</span><a href="/s/{{ shell_org.slug }}/{{ shell_studio.slug }}/">{{ shell_studio.name }}</a>{% endif %}
+    </nav>
+    <span class="tl-console-header-spacer"></span>
+    {% if dashboard_shell %}
+    <button class="tl-console-search-button" type="button" data-console-search-toggle aria-controls="consoleSearch" aria-expanded="false" aria-label="Search reports">⌕</button>
+    <div class="tl-console-search" id="consoleSearch" data-console-search><input type="text" id="searchInput" placeholder="Search reports…" aria-label="Search reports"><kbd>⌘K</kbd></div>
+    {% elif shell_nav_studio %}
+    <button class="tl-console-search-button" type="button" data-console-search-toggle aria-controls="consoleSearch" aria-expanded="false" aria-label="Search reports">⌕</button>
+    <form class="tl-console-search" id="consoleSearch" data-console-search method="get" action="/s/{{ shell_org.slug }}/{{ shell_nav_studio.slug }}/"><input type="search" id="searchInput" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Search reports…" aria-label="Search reports"><kbd>⌘K</kbd></form>
+    {% endif %}
+    {% if console_active == "report" %}<div class="tl-console-report-actions" data-console-report-actions><button type="button" data-report-display="focus">Expand</button><button type="button" data-report-display="monitor">Monitor</button></div>{% endif %}
+    <a class="tl-console-docs-link" href="{% docs_url '' %}" target="_blank" rel="noopener" aria-label="Documentation" title="Documentation"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3.5h8l4 4v9H4zM12 3.5v4h4M7 11h6M7 14h4"/></svg><span class="tl-console-docs-label">Docs</span></a>
+    <details class="tl-console-account">
+      <summary title="{{ user.email }}" aria-label="Account menu for {{ user.display_name }}"><span class="tl-console-avatar" aria-hidden="true">{{ user.display_name|first|upper }}</span><span class="tl-console-account-name">{{ user.display_name }}</span></summary>
+      <div class="tl-console-account-menu">
+        <span>{{ user.email }}</span><a href="/account">Your account</a><a href="{% url 'my-deliveries' %}">My deliveries</a><a href="{% url 'my-api-keys' %}">API keys</a><a href="{{ trellum_source_url }}" target="_blank" rel="noopener">Source code</a>
+        {% if is_operator %}<a href="{% url 'operator-fleet' %}">Operator console</a><a href="/system">System health</a>{% if user.is_superuser %}<a href="/orgs/new">New organization</a>{% endif %}{% endif %}
+        <span>Console theme</span>
+        <div class="tl-console-theme" role="group" aria-label="Console theme"><button type="button" data-console-theme-choice="light">Light</button><button type="button" data-console-theme-choice="dark">Dark</button><button type="button" data-console-theme-choice="auto">Auto</button></div>
+        <form method="post" action="/logout">{% csrf_token %}<button type="submit">Log out</button></form>
+      </div>
+    </details>
+  </header>
+  <button class="tl-console-backdrop" type="button" data-console-backdrop aria-label="Close navigation"></button>
+</div>

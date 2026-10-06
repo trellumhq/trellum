@@ -1,0 +1,28 @@
+{% comment %}Shown on the hub to org admins until the four steps are done or an
+admin dismisses it. Steps are plain links in no particular order — a fresh
+organization is not a funnel, and someone who wants to invite their team before
+touching git should not be blocked.{% endcomment %}
+<section class="ui-panel getting-started" aria-labelledby="gs-title">
+  <div class="getting-started-head">
+    <h2 id="gs-title">Getting started</h2>
+    <span class="ui-badge">{{ getting_started.remaining }} left</span>
+    <span style="flex:1"></span>
+    <form method="post" action="{% url 'onboarding-dismiss' org.slug %}"
+          onsubmit="return confirm('Hide the getting-started checklist for {{ org.name|escapejs }}?')">
+      {% csrf_token %}
+      <button class="ui-btn ghost" type="submit">Dismiss</button>
+    </form>
+  </div>
+  <ul class="ui-checklist">
+    {% for item in getting_started.items %}
+    <li class="ui-checklist-item{% if item.done %} done{% endif %}">
+      <span class="ui-checklist-mark" aria-hidden="true">{% if item.done %}✓{% else %}{{ forloop.counter }}{% endif %}</span>
+      <span>
+        <a href="{{ item.href }}">{{ item.label }}</a>
+        {% if item.done %}<span class="ui-badge ok">done</span>{% endif %}
+        <br><span class="ui-help">{{ item.help }}</span>
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+</section>

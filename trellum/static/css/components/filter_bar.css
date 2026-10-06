@@ -1,0 +1,202 @@
+.fw-filter-bar {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;
+    padding: 8px max(24px, calc(50vw - 700px + 20px));
+    margin-top: -12px;
+    margin-left: calc(-50vw + 50%);
+    margin-right: calc(-50vw + 50%);
+    position: sticky;
+    top: var(--fw-sticky-offset, 48px);
+    z-index: 90;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border-color);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+}
+/* Section-scoped FilterBar (lives inside a titled .fw-section) sticks
+   below the main FilterBar instead of overlapping it. The main bar
+   measures its own height into --fw-main-fb-height; if no main bar is
+   on the page the variable stays 0 and section bars stick at top.
+   It must also NOT bleed to the viewport edges the way the main bar
+   does — section bars live inside the section's card and need to
+   stay constrained to its width. */
+.fw-section .fw-filter-bar {
+    top: calc(var(--fw-sticky-offset, 48px) + var(--fw-main-fb-height, 0px) + 4px);
+    z-index: 89;
+    margin-left: 0;
+    margin-right: 0;
+    padding-left: 16px;
+    padding-right: 16px;
+    border-radius: var(--radius-control);
+    border-bottom: none;
+    border: 1px solid var(--border-color);
+}
+.fw-filter-bar + .fw-section { margin-top: 16px; }
+/* The -12px pull-up above is for a bar that opens the page (tucks under
+   the header). A main bar placed AFTER a section must not be glued to
+   that section's card. */
+.fw-section ~ .fw-filter-bar { margin-top: 12px; }
+.fw-full-width .fw-filter-bar { padding-left: 20px; padding-right: 20px; }
+@media (max-width: 900px) {
+    .fw-filter-bar {
+        margin-left: -16px; margin-right: -16px;
+        padding-left: 16px; padding-right: 16px;
+    }
+}
+@media (max-width: 640px) {
+    .fw-filter-bar {
+        margin-left: -12px; margin-right: -12px;
+        padding-left: 12px; padding-right: 12px;
+    }
+}
+@media (max-width: 400px) {
+    .fw-filter-bar {
+        margin-left: -8px; margin-right: -8px;
+        padding-left: 8px; padding-right: 8px;
+    }
+}
+.fw-filter-item { display: flex; flex-direction: column; gap: 2px; }
+.fw-filter-label-row { display: flex; align-items: baseline; gap: 6px; }
+.fw-filter-label {
+    font-size: var(--font-size-label); text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--text-secondary); font-weight: 600;
+}
+.fw-filter-bar .fw-toggle-group { margin-bottom: 0; margin-right: 0; }
+.fw-filter-bar .fw-dropdown { margin-bottom: 0; }
+.fw-filter-bar {
+    --ss-primary-color: var(--primary-fill);
+    --ss-bg-color: var(--bg-card);
+    --ss-font-color: var(--text-main);
+    --ss-font-placeholder-color: var(--text-secondary);
+    --ss-border-color: var(--border-color);
+    --ss-focus-color: var(--primary-fill);
+    --ss-disabled-color: var(--bg-main);
+    --ss-border-radius: var(--radius-control);
+    --ss-spacing-l: 4px;
+    --ss-spacing-m: 2px;
+    --ss-spacing-s: 1px;
+    --ss-main-height: 30px;
+    --ss-font-size: var(--font-size-interface);
+}
+.fw-filter-bar .ss-main {
+    min-height: 34px;
+    height: 34px;
+}
+.fw-filter-bar .ss-main .ss-values {
+    flex: 1; min-height: 0;
+    overflow: hidden;
+    align-items: center;
+    gap: 3px;
+}
+.fw-filter-bar .ss-main .ss-values .ss-value {
+    padding: 0;
+    border-radius: 4px;
+    gap: 0;
+}
+.fw-filter-bar .ss-main .ss-values .ss-value .ss-value-text {
+    color: var(--on-accent);
+    padding: 2px 5px;
+    line-height: 1.2;
+    font-size: var(--font-size-label);
+}
+.fw-filter-bar .ss-main .ss-values .ss-value .ss-value-delete {
+    border-left-color: rgba(255,255,255,0.3);
+    padding: 0 4px;
+    width: auto;
+    height: auto;
+}
+.fw-filter-bar .ss-main .ss-values .ss-value .ss-value-delete svg {
+    width: 8px;
+    height: 8px;
+}
+.fw-filter-bar .ss-main .ss-values .ss-value .ss-value-delete svg path {
+    stroke: #fff;
+    stroke-width: 22;
+}
+.fw-filter-bar .ss-main .ss-deselect {
+    display: none;
+}
+.ss-content {
+    background-color: var(--bg-card);
+    border-color: var(--border-color);
+    padding: 0;
+}
+.ss-content .ss-search {
+    padding: 0;
+    margin: 0;
+}
+.ss-content .ss-search input {
+    border: none;
+    border-radius: 0;
+    border-bottom: 1px solid var(--border-color);
+    padding: 6px 8px;
+    margin: 0;
+    background-color: var(--bg-main);
+    color: var(--text-main);
+    width: 100%;
+}
+.ss-content .ss-search input:focus {
+    box-shadow: none;
+    outline: none;
+    border-bottom-color: var(--accent-red);
+}
+.ss-content .ss-search input::placeholder {
+    color: var(--text-secondary);
+}
+.ss-content .ss-list {
+    padding: 0;
+    margin: 0;
+}
+.ss-content .ss-list .ss-option {
+    padding: 5px 8px;
+    font-size: var(--font-size-interface);
+    color: var(--text-main);
+}
+.ss-content .ss-list .ss-option:hover,
+.ss-content .ss-list .ss-option.ss-highlighted,
+.ss-content .ss-list .ss-option:not(.ss-disabled).ss-selected {
+    color: var(--on-accent);
+    background-color: var(--primary-fill);
+}
+.fw-filter-actions { display: flex; gap: 6px; margin-left: auto; }
+.fw-filter-action {
+    font-size: var(--font-size-label); color: var(--text-secondary); cursor: pointer;
+    text-decoration: none; opacity: 0.6;
+}
+.fw-filter-action:hover { opacity: 1; color: var(--accent-red); }
+.fw-share-btn {
+    background: var(--bg-card); border: 1.5px solid var(--border-color);
+    border-radius: var(--radius-control); color: var(--text-main); cursor: pointer;
+    padding: 6px 10px; display: flex; align-items: center;
+    justify-content: center; transition: all 0.2s;
+    align-self: flex-end; position: relative;
+}
+.fw-share-btn svg { width: 16px; height: 16px; }
+.fw-share-btn:hover {
+    color: var(--accent-red); border-color: var(--accent-red);
+    background: var(--bg-main);
+}
+.fw-share-btn.copied::after {
+    content: 'Copied!'; position: absolute; bottom: calc(100% + 4px);
+    background: rgba(0,0,0,0.8); color: #fff; font-size: var(--font-size-meta);
+    padding: 2px 8px; border-radius: 4px; white-space: nowrap;
+    animation: fwFadeOut 1.5s ease forwards;
+}
+@keyframes fwFadeOut { 0%,70% { opacity: 1; } 100% { opacity: 0; } }
+
+/* ── Text filter (components/filters/text.py) ── */
+.fw-text-filter {
+    background: var(--bg-card);
+    color: var(--text-main);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-control);
+    padding: 4px 8px;
+    font-family: inherit;
+    font-size: var(--font-size-interface);
+    height: 30px;
+    width: 140px;
+    box-sizing: border-box;
+}
+.fw-text-filter:focus { outline: none; border-color: var(--accent-red); }
+
+/* Live-bound FilterBar disabled/note/status/badge styles live in
+   components/live_query.css (loaded alongside this file by
+   FilterBar.css() — see trellum/components/filterable.py). */

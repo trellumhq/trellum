@@ -1,0 +1,29 @@
+{% autoescape on %}{% include "email/_base_top.html" %}
+<tr><td style="padding:22px 24px 0">
+  <h1 style="margin:0;font-size:21px;color:#0f172a;font-weight:650">Sign in to keep your account</h1>
+  <p style="margin:6px 0 0;color:#64748b;font-size:13px">{% if never_signed_in %}Created {{ last_seen|date:"j F Y" }} · never signed in{% else %}Last signed in {{ last_seen|date:"j F Y" }}{% endif %}</p>
+</td></tr>
+<tr><td style="padding:16px 24px 0">
+  <p style="margin:0 0 12px;color:#334155;font-size:14px">Accounts nobody uses are closed{% if erase_on %} and then deleted, so that we are not holding personal data for people who no longer need an account{% endif %}. Unless you sign in, this is what will happen to yours:</p>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fffbeb;border:1px solid #fde68a;border-radius:6px">
+    {% if disable_on %}
+    <tr><td style="padding:12px 16px;color:#78350f;font-size:13px">
+      <strong>{{ disable_on|date:"j F Y" }}</strong> — sign-in is switched off. Nothing is deleted, and an administrator at your organization can turn it back on.
+    </td></tr>
+    {% endif %}
+    {% if erase_on %}
+    <tr><td style="padding:12px 16px;color:#78350f;font-size:13px;border-top:1px solid #fde68a">
+      <strong>{{ erase_on|date:"j F Y" }}</strong> — your account, your name and your email address are deleted. This one cannot be undone.
+    </td></tr>
+    {% endif %}
+  </table>
+  <p style="margin:12px 0 0;color:#334155;font-size:14px">To stop all of it, sign in once. That is the whole thing — one sign-in resets every date above, you do not need to reply to this email, and nobody has to approve anything.</p>
+</td></tr>
+<tr><td style="padding:18px 24px 0">
+  <a href="{{ sign_in_url }}" style="background:#0D9488;color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:14px;font-weight:bold;display:inline-block">Sign in</a>
+</td></tr>
+<tr><td style="padding:14px 24px 24px">
+  <p style="margin:0;color:#94a3b8;font-size:13px">Forgotten your password? Use the “Forgot password” link on that page — resetting it and signing in counts.</p>
+  <p style="margin:8px 0 0;color:#94a3b8;font-size:13px">If you no longer need the account, you do not have to do anything: leave this email alone and it will be closed on the dates above.</p>
+</td></tr>
+{% include "email/_base_bottom.html" %}{% endautoescape %}

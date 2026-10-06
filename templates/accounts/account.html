@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}Your account — trellum{% endblock %}
+{% block content %}
+<div class="ui-label page-kicker">Account</div>
+<h1 style="margin:6px 0 2px">Your account</h1>
+<p class="muted" style="margin:0 0 18px">{{ user.email }}{% if user.is_superuser %} · <span class="ui-badge accent">instance operator</span>{% endif %}</p>
+
+<div class="account-grid">
+  <section class="panel formrow account-card">
+    <h2>Profile</h2>
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="profile">
+      <label>Display name</label>
+      <input name="name" value="{{ user.name }}" maxlength="150">
+      <p></p>
+      <button class="ui-btn primary" type="submit">Save</button>
+    </form>
+  </section>
+
+  <section class="panel formrow account-card">
+    <h2>Appearance</h2>
+    <label>Mode — organization pages, and any studio on the Trellum theme</label>
+    <div class="shell-theme-row">
+      <button type="button" class="ui-btn ghost" onclick="setMgmtTheme('light')">Light</button>
+      <button type="button" class="ui-btn ghost" onclick="setMgmtTheme('dark')">Dark</button>
+      <button type="button" class="ui-btn ghost" onclick="setMgmtTheme('auto')">Auto</button>
+    </div>
+    <span class="helptext">This is personal — it's your own Light/Dark/Auto preference, and it always wins
+      over your organization's default. A studio's own palette (or your personal override for it) is set
+      from that studio's own header, not here.{% if shell_is_org_admin %} Your organization's default mode
+      and the per-studio override lock live in
+      <a href="/orgs/{{ shell_org.slug }}/settings/appearance">Org settings → Appearance</a>.{% endif %}</span>
+  </section>
+
+  <section class="panel formrow account-card">
+    <h2>Change password</h2>
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="password">
+      {{ password_form.non_field_errors }}
+      <label>Current password</label>{{ password_form.old_password }}{{ password_form.old_password.errors }}
+      <label>New password</label>{{ password_form.new_password1 }}{{ password_form.new_password1.errors }}
+      <label>Repeat new password</label>{{ password_form.new_password2 }}{{ password_form.new_password2.errors }}
+      <p></p>
+      <button class="ui-btn primary" type="submit">Change password</button>
+    </form>
+    {% if user.socialaccount_set.exists %}
+    <p class="muted" style="margin-bottom:0">This account is linked to single sign-on; you can always log in
+      through your organization's identity provider as well.</p>
+    {% endif %}
+  </section>
+
+  <section class="panel account-card">
+    <h2>Multi-factor authentication</h2>
+    {% if has_mfa %}
+    <p style="margin-top:0"><span class="ui-badge ok">enabled</span>
+      <span class="muted">{{ recovery_codes_remaining }} recovery code{{ recovery_codes_remaining|pluralize }} left.</span></p>
+    <form method="post" action="/account/security/mfa/regenerate" style="margin-bottom:10px">
+      {% csrf_token %}
+      <label>Current password <span class="muted">(regenerate recovery codes)</span></label>
+      <input type="password" name="password" autocomplete="current-password">
+      <button class="ui-btn ghost" type="submit">Generate new recovery codes</button>
+    </form>
+    <details>
+      <summary>Disable MFA</summary>
+      <form method="post" action="/account/security/mfa/disable" style="margin-top:10px">
+        {% csrf_token %}
+        <label>Current password</label>
+        <input type="password" name="password" autocomplete="current-password">
+        <label>Authenticator or recovery code</label>
+        <input name="code" autocomplete="one-time-code">
+        <p></p>
+        <button class="ui-btn danger" type="submit">Disable MFA</button>
+      </form>
+    </details>
+    {% else %}
+    <p style="margin-top:0"><span class="ui-badge">not enabled</span></p>
+    <a class="ui-btn ghost" href="/account/security/mfa/setup">Set up MFA</a>
+    {% endif %}
+  </section>
+</div>
+
+<section class="panel account-card">
+<h2>Where you're signed in</h2>
+<table class="ui-table dense" data-mobile-cards>
+  <thead><tr><th>Device</th><th>IP</th><th>Last seen</th><th></th></tr></thead>
+  <tbody>
+  {% for s in sessions %}
+  <tr>
+    <td data-label="Device">{{ s.user_agent|default:"—"|truncatechars:60 }}
+      {% if s.session_key == current_session_key %}<span class="ui-badge accent">this device</span>{% endif %}</td>
+    <td class="muted" data-label="IP">{{ s.ip|default:"—" }}</td>
+    <td class="muted" data-label="Last seen">{{ s.last_seen|date:"Y-m-d H:i" }}</td>
+    <td class="ui-row-actions" data-label="Actions">
+      {% if s.session_key != current_session_key %}
+      <form class="inline" method="post">{% csrf_token %}
+        <input type="hidden" name="action" value="revoke_session">
+        <input type="hidden" name="session_key" value="{{ s.session_key }}">
+        <button class="ui-btn ghost" type="submit">Sign out</button>
+      </form>
+      {% endif %}
+    </td>
+  </tr>
+  {% empty %}
+  <tr><td colspan="4"><div class="ui-empty">No sessions recorded yet.</div></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% if sessions|length > 1 %}
+<form method="post" style="margin-top:10px">{% csrf_token %}
+  <input type="hidden" name="action" value="sign_out_others">
+  <button class="ui-btn ghost" type="submit">Sign out every other session</button>
+</form>
+{% endif %}
+</section>
+
+<section class="panel formrow account-card">
+<h2>Delete this account</h2>
+<p class="muted">Deleting your account removes you from every organization you belong to.
+  It cannot be undone.</p>
+<details>
+  <summary>Delete my account permanently</summary>
+  <p class="muted" style="margin-top:10px">What goes: your name, email address, password,
+    sign-in methods, sessions, memberships, favourites and assistant conversations.
+    What stays: reports you wrote and things you configured belong to your organization,
+    and its audit history keeps its shape without your name.
+    Want a copy of your data first? Ask your organization's admin for an export —
+    afterwards there is nothing left to export.</p>
+  <form method="post" action="/account/delete">
+    {% csrf_token %}
+    <label for="delete-confirm-email">Type your email address to confirm</label>
+    <input id="delete-confirm-email" class="ui-input" type="email" name="confirm_email"
+           autocomplete="off" placeholder="{{ request.user.email }}">
+    {% if user.has_usable_password %}
+    <label for="delete-password">Current password</label>
+    <input id="delete-password" class="ui-input" type="password" name="password"
+           autocomplete="current-password">
+    {% endif %}
+    <p></p>
+    <button class="ui-btn danger" type="submit">Delete my account</button>
+  </form>
+</details>
+</section>
+{% endblock %}

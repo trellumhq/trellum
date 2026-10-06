@@ -1,0 +1,99 @@
+# Ruff — linter and formatter for Trellum.
+#
+# Deliberately a standalone ruff.toml rather than a [tool.ruff] block: the
+# packaging work adds pyproject.toml on a separate branch, and ruff.toml takes
+# precedence over pyproject.toml, so the two cannot fight when they meet.
+#
+# The ruleset is chosen, not maximal. Switching everything on produced 442
+# findings across this tree, the overwhelming majority of them stylistic
+# preferences nobody had agreed to. A gate that fires 442 times on day one is a
+# gate people learn to bypass. What is enabled below is the set where a hit
+# means something is actually wrong, plus the import hygiene that keeps diffs
+# readable. Rules can be added deliberately as the codebase is brought to them.
+
+target-version = "py311"
+line-length = 100
+
+exclude = [
+    "demo/output",
+    "static/vendor",
+    "build",
+    ".venv",
+]
+
+[lint]
+select = [
+    "E4",    # imports: shadowing, late binding
+    "E7",    # statement-level mistakes
+    "E9",    # syntax and IO errors
+    "F",     # pyflakes: undefined names, unused imports and variables
+    "I",     # import sorting -- keeps diffs about the change, not the order
+    "S102",  # exec()
+    "S105", "S106", "S107",  # hardcoded credentials
+    "UP015", # redundant open() modes
+    "B033",  # duplicate values in a set literal -- always a typo
+    "DTZ004", "DTZ005", "DTZ011",  # naive "UTC" datetimes and today(); these
+             # get stamped into _meta.json, which a host parses
+]
+
+# Staged deliberately, not forgotten. Each is a real improvement and each would
+# touch most files in the tree at once:
+#
+#   UP006/UP045/UP035/UP017  186 hits. List->list, Optional[X]->X | None.
+#                            Mechanical and safe, but it rewrites nearly every
+#                            signature in the project. Worth one deliberate
+#                            commit when nobody has work in flight -- there is
+#                            an agent on `packaging` and `demo/` right now.
+#   B905                     6 hits. zip(strict=) needs a judgement per call
+#                            about whether unequal lengths are a bug.
+#   B007, F841               19 hits. Unused loop variables and locals; each
+#                            needs reading to tell a leftover from a rename.
+#   DTZ007                   6 hits. strptime without %z, parsing dates out of
+#                            customer data where naive is arguably correct.
+#   T20                      28 hits. print() outside the CLI modules.
+#
+# Add them one rule at a time, with the fix in the same commit.
+
+ignore = [
+    "E402",  # module import not at top: the runner imports lazily on purpose,
+             # to keep cold start off the import path of every consumer
+    "E721",  # `dtype == object` is the correct pandas idiom, not a type
+             # comparison bug; ruff cannot tell the difference
+]
+
+[lint.per-file-ignores]
+# Fake credentials in mocked driver tests. Every hit here is a literal like
+# password="testpass" feeding a MagicMock.
+#
+# F841 too: `result = driver.connect(...)` where the assertion is on the mock
+# rather than the return value is a normal, readable test idiom -- the name
+# documents what was called.
+"testing/**" = ["S101", "S105", "S106", "S107", "T20", "F841"]
+# Fixture generation invents a calendar; naive local dates are the point.
+"demo/tools/**" = ["DTZ"]
+# The demo shim exists to exec the parent package into place -- that is its
+# entire job, and it is what makes `import trellum` resolve from demo/.
+"demo/trellum/__init__.py" = ["S102"]
+# The integration harness drives real servers, which here are throwaway
+# docker-compose containers. Every credential is already published in
+# docker-compose.yml and itest/README.md, and one of them is deliberately
+# wrong to prove the failure path. Its project shim execs the parent package
+# for the same reason the demo one does.
+"itest/**" = ["S102", "S105", "S106", "S107"]
+# The CLI and the runner write to a terminal for a living; so do the
+# scaffolders and the diagnostics printer.
+"runner/**" = ["T20"]
+"reporting/**" = ["T20"]
+"scaffold/**" = ["T20"]
+"demo/**" = ["T20"]
+
+[lint.isort]
+known-first-party = ["trellum"]
+
+[format]
+# Not enabled as a gate yet. Reformatting 6,000 lines in one commit would bury
+# the history of every file, and this project is about to be published with
+# `git blame` as part of its documentation. Formatting can be adopted on a
+# file-by-file basis, or in one deliberate commit when nobody has work in
+# flight.
+quote-style = "preserve"

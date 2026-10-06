@@ -1,0 +1,72 @@
+<figure class="dgm">
+  <svg viewBox="0 0 900 630" role="img" aria-label="One repository feeding two workflows: ad-hoc analysis on the left, deterministic reports on the right, with a promotion path between them and a feedback loop back to the repository.">
+    <defs>
+      <marker id="dgm-ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" class="dgm-head"/>
+      </marker>
+      <marker id="dgm-ahv" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" class="dgm-head-alt"/>
+      </marker>
+    </defs>
+
+    <rect class="dgm-box hero" x="170" y="12" width="560" height="82" rx="10"/>
+    <text class="dgm-t" x="450" y="40" text-anchor="middle">Your analytics repository</text>
+    <text class="dgm-s" x="450" y="60" text-anchor="middle">agent instructions · metric definitions</text>
+    <text class="dgm-s" x="450" y="78" text-anchor="middle">warehouse notes · data sources · reports</text>
+
+    <path class="dgm-edge" d="M450,94 V112 H250 V132" marker-end="url(#dgm-ah)"/>
+    <path class="dgm-edge" d="M450,94 V112 H650 V132" marker-end="url(#dgm-ah)"/>
+
+    <text class="dgm-cap" x="250" y="126" text-anchor="middle">ad-hoc</text>
+    <text class="dgm-cap" x="650" y="126" text-anchor="middle">reports</text>
+
+    <rect class="dgm-box" x="125" y="140" width="250" height="58" rx="8"/>
+    <text class="dgm-t" x="250" y="164" text-anchor="middle">A question</text>
+    <text class="dgm-s" x="250" y="184" text-anchor="middle">“why did signups dip last week?”</text>
+
+    <path class="dgm-edge" d="M250,198 V224" marker-end="url(#dgm-ah)"/>
+
+    <rect class="dgm-box" x="125" y="232" width="250" height="66" rx="8"/>
+    <text class="dgm-t" x="250" y="256" text-anchor="middle">A throwaway script</text>
+    <text class="dgm-s" x="250" y="275" text-anchor="middle">written against your</text>
+    <text class="dgm-s" x="250" y="291" text-anchor="middle">configured data sources</text>
+
+    <path class="dgm-edge" d="M250,298 V324" marker-end="url(#dgm-ah)"/>
+
+    <rect class="dgm-box done" x="125" y="332" width="250" height="62" rx="8"/>
+    <text class="dgm-t" x="250" y="356" text-anchor="middle">An answer, in minutes</text>
+    <text class="dgm-s" x="250" y="377" text-anchor="middle">no report · no build · no portal</text>
+
+    <rect class="dgm-box" x="525" y="140" width="250" height="58" rx="8"/>
+    <text class="dgm-t" x="650" y="164" text-anchor="middle">A recurring need</text>
+    <text class="dgm-s" x="650" y="184" text-anchor="middle">“we need this every Monday”</text>
+
+    <path class="dgm-edge" d="M650,198 V224" marker-end="url(#dgm-ah)"/>
+
+    <rect class="dgm-box" x="525" y="232" width="250" height="66" rx="8"/>
+    <text class="dgm-t" x="650" y="256" text-anchor="middle">A report, drafted</text>
+    <text class="dgm-s" x="650" y="275" text-anchor="middle">report.yaml + generator.py</text>
+    <text class="dgm-s" x="650" y="291" text-anchor="middle">+ queries.py</text>
+
+    <path class="dgm-edge" d="M650,298 V324" marker-end="url(#dgm-ah)"/>
+
+    <rect class="dgm-box" x="525" y="332" width="250" height="62" rx="8"/>
+    <text class="dgm-t" x="650" y="356" text-anchor="middle">Pull request</text>
+    <text class="dgm-s" x="650" y="377" text-anchor="middle">a human reviews code, not a chart</text>
+
+    <path class="dgm-edge" d="M650,394 V420" marker-end="url(#dgm-ah)"/>
+
+    <rect class="dgm-box done" x="525" y="428" width="250" height="66" rx="8"/>
+    <text class="dgm-t" x="650" y="452" text-anchor="middle">The portal serves it</text>
+    <text class="dgm-s" x="650" y="471" text-anchor="middle">scheduled · permissioned</text>
+    <text class="dgm-s" x="650" y="487" text-anchor="middle">· audited</text>
+
+    <path class="dgm-edge dash" d="M375,352 C 432,352 468,210 525,178" marker-end="url(#dgm-ahv)"/>
+    <text class="dgm-lab" x="474" y="330" text-anchor="middle">worth keeping?</text>
+    <text class="dgm-lab" x="474" y="346" text-anchor="middle">promote it</text>
+
+    <path class="dgm-edge dash" d="M650,494 V556 H95 V53 H162" marker-end="url(#dgm-ahv)"/>
+    <text class="dgm-lab" x="380" y="548" text-anchor="middle">new questions sharpen the definitions</text>
+  </svg>
+  <figcaption>One repository, two ways out of it — and a path from the quick answer to the durable one.</figcaption>
+</figure>

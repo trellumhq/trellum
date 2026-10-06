@@ -1,0 +1,26 @@
+<aside class="docs-side" id="docs-side">
+  {% if versions|length > 1 %}
+    <select class="ver" id="docs-version" aria-label="Documentation version">
+      {% for v in versions %}
+        <option value="{{ v }}"{% if v == version %} selected{% endif %}>{{ v }}</option>
+      {% endfor %}
+    </select>
+  {% else %}
+    <div class="ver">{{ version }}</div>
+  {% endif %}
+
+  <input class="docs-search" id="docs-search" type="search" placeholder="Search docs…"
+         aria-label="Search documentation" data-index="/docs/{{ version }}/search.json" autocomplete="off">
+  <div id="search-results"></div>
+
+  <div id="docs-nav">
+    {% for section in sections %}
+      <h5>{{ section.title }}</h5>
+      <ul>
+        {% for item in section.pages %}
+          <li><a href="{{ item.url }}"{% if item.slug == slug %} class="on" aria-current="page"{% endif %}>{{ item.title }}</a></li>
+        {% endfor %}
+      </ul>
+    {% endfor %}
+  </div>
+</aside>

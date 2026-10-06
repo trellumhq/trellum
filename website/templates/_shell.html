@@ -1,0 +1,18 @@
+<header class="shell">
+  <div class="rail shell-in">
+    <a class="brand" href="/">{% include "_lattice.html" with size=22 %}{{ BRAND }}</a>
+    <nav id="site-nav">
+      <a href="/#workflow"{% if nav_active == "product" %} class="on"{% endif %}>Product</a>
+      <a href="/#framework">Framework</a>
+      <a href="/docs/"{% if nav_active == "docs" %} class="on"{% endif %}>Docs</a>
+      <a href="/blog/"{% if nav_active == "blog" %} class="on"{% endif %}>Blog</a>
+    </nav>
+    <div class="actions">
+      <a class="btn ghost" href="{{ github_href }}" rel="noopener">View source</a>
+      <a class="btn primary" href="/docs/latest/">Get started</a>
+      <button class="theme-toggle" type="button" id="theme-toggle" aria-label="Switch between light and dark">◐</button>
+      <button class="theme-toggle nav-toggle" type="button" id="nav-toggle" aria-label="Menu" aria-expanded="false">☰</button>
+    </div>
+  </div>
+</header>
+<div class="strip"></div>

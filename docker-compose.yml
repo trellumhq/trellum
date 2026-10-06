@@ -1,0 +1,235 @@
+# trellum — self-contained deployment: app + Postgres on one host.
+#
+#   cp .env.example .env       # fill in the secrets
+#   docker compose up -d
+#
+# The project name is pinned rather than inherited from the directory: an
+# operator who clones into `portal/` or `trellum-2` would otherwise get
+# containers and volumes under that name, and the volume name is what their
+# backup script has to find.
+name: trellum
+#
+# Upgrade: docker compose pull && docker compose up -d
+#   (the migrate service completes before web/worker start serving)
+# All durable state: the pg-data and trellum-data volumes.
+#
+# PRODUCTION: the bundled `db` service is convenient, not durable-by-design —
+# it has no replication, no PITR, and no managed backups. For anything you
+# would miss, point DATABASE_URL at a managed Postgres and drop this service:
+#   docker compose -f docker-compose.yml -f docker-compose.external-db.yml up -d
+# (see https://trellum.dev/docs/latest/install/configuration/)
+
+# Docker's default json-file driver has NO size limit: container logs grow until
+# the disk fills, which on this deployment is the same disk holding the database
+# and every studio's data. Gunicorn logs every request, so `web` gets there
+# first. Applied to every service via the anchor below.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-app: &app
+  logging: *logging
+  build:
+    context: .
+    dockerfile: Dockerfile
+    # Without these a compose-built image reports its version as "unknown", so
+    # `/api/version` could not answer the first question of any upgrade or
+    # support conversation. Supply them from the environment when it matters:
+    #   GIT_SHA=$(git rev-parse HEAD) GIT_BRANCH=$(git describe --tags --exact-match) \
+    #   SOURCE_URL=https://github.com/your-org/trellum/tree/$(git rev-parse HEAD) \
+    #   BUILD_TIME=$(date -u +%FT%TZ) docker compose build
+    args:
+      GIT_SHA: ${GIT_SHA:-unknown}
+      GIT_BRANCH: ${GIT_BRANCH:-unknown}
+      BUILD_TIME: ${BUILD_TIME:-unknown}
+      SOURCE_URL: ${SOURCE_URL:-}
+  image: ${TRELLUM_IMAGE:-trellum:dev}
+  # Optional: a clean checkout has no .env, and the demo must not depend on
+  # one existing (or on what a developer's local .env happens to contain).
+  env_file:
+    - path: .env
+      required: false
+  environment:
+    # Set DATABASE_URL in .env to use your own Postgres; this default only
+    # applies when the bundled db service is running.
+    DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-trellum}:${POSTGRES_PASSWORD:-trellum}@db:5432/${POSTGRES_DB:-trellum_portal}}
+  volumes:
+    - trellum-data:/data
+    # Read-only: the app reports on backups (the `backups` health check reads
+    # status.json, restore_drill reads the dumps) but never writes them. Only
+    # the backup service does.
+    - backups:/backups:ro
+
+services:
+  db:
+    image: postgres:16-alpine
+    logging: *logging
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-trellum}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-trellum_portal}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-trellum} -d ${POSTGRES_DB:-trellum_portal}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  migrate:
+    <<: *app
+    command: ["migrate"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  web:
+    <<: *app
+    command: ["web"]
+    ports:
+      - "${TRELLUM_BIND_ADDRESS:-127.0.0.1}:${TRELLUM_PORT:-8050}:8050"
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:8050/healthz"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    restart: unless-stopped
+
+  # Coordinator + runner in one process: the single-node topology.
+  # To scale builds across processes instead, use the "split" profile below:
+  #   docker compose --profile split up -d --scale runner=3
+  #   docker compose stop worker
+  worker:
+    <<: *app
+    command: ["worker"]
+    # The worker spawns one sandbox container per report build, so it needs the
+    # Docker socket. Tenant code never gets it — it runs in the sandbox, which
+    # has no socket. group_add lets uid 10001 reach the root:docker socket.
+    # (Per-service volumes/environment replace the x-app anchor's — restate them.)
+    group_add:
+      - "${DOCKER_GID:?set DOCKER_GID to the host docker group id: getent group docker | cut -d: -f3}"
+    volumes:
+      - trellum-data:/data
+      - backups:/backups:ro     # so `doctor` here can report on backups too
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-trellum}:${POSTGRES_PASSWORD:-trellum}@db:5432/${POSTGRES_DB:-trellum_portal}}
+      TRELLUM_SANDBOX: ${TRELLUM_SANDBOX:-docker}
+      TRELLUM_SANDBOX_IMAGE: ${TRELLUM_RUNNER_IMAGE:-trellum-runner:dev}
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      sandbox-image:
+        condition: service_completed_successfully
+    # Matches the worker's SIGTERM drain: stop scheduling, let running
+    # report builds finish (up to ~9 minutes), then exit.
+    stop_grace_period: 10m
+    restart: unless-stopped
+
+  # Builds/tags the sandbox runner image so `compose up` and `compose pull`
+  # manage it alongside the portal image. Exits immediately.
+  sandbox-image:
+    image: ${TRELLUM_RUNNER_IMAGE:-trellum-runner:dev}
+    logging: *logging
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+      args:
+        SOURCE_URL: ${SOURCE_URL:-}
+    entrypoint: ["/bin/true"]
+    restart: "no"
+
+  # ── Split topology (optional) ────────────────────────────────────────────
+  # Exactly one coordinator (cron + reaper; a second stands by inert), and any
+  # number of runners. Same image, same volume — only the role differs.
+  coordinator:
+    <<: *app
+    command: ["coordinator"]
+    profiles: ["split"]
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  runner:
+    <<: *app
+    command: ["runner"]
+    profiles: ["split"]
+    # Same sandbox needs as `worker` (see there). Restates the anchor's
+    # volumes/environment because per-service keys replace, not merge.
+    group_add:
+      - "${DOCKER_GID:?set DOCKER_GID to the host docker group id: getent group docker | cut -d: -f3}"
+    volumes:
+      - trellum-data:/data
+      - backups:/backups:ro     # so `doctor` here can report on backups too
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-trellum}:${POSTGRES_PASSWORD:-trellum}@db:5432/${POSTGRES_DB:-trellum_portal}}
+      TRELLUM_SANDBOX: ${TRELLUM_SANDBOX:-docker}
+      TRELLUM_SANDBOX_IMAGE: ${TRELLUM_RUNNER_IMAGE:-trellum-runner:dev}
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      sandbox-image:
+        condition: service_completed_successfully
+    stop_grace_period: 10m
+    restart: unless-stopped
+
+  # Nightly verified pg_dump + studio/org archives.
+  #
+  # No longer behind a profile: the bundled database is the supported default
+  # topology, and it has no replication and no point-in-time recovery, so these
+  # dumps ARE the recovery story. A backup you have to remember to turn on is
+  # one that is off on the instances that needed it.
+  #
+  # Writes to its own `backups` volume, not to trellum-data. A backup that lives on
+  # the volume it protects does not survive the failure it exists for.
+  backup:
+    image: postgres:16-alpine
+    logging: *logging
+    entrypoint: ["/bin/sh", "/backup.sh"]
+    environment:
+      # Honours DATABASE_URL, so an external-Postgres install is backed up too.
+      # Hardcoding @db:5432 meant that choosing the production-grade database
+      # silently turned backups off.
+      DATABASE_URL: ${DATABASE_URL:-postgres://${POSTGRES_USER:-trellum}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-trellum_portal}}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+      BACKUP_DIR: /backups
+      # An rsync/ssh target you control. Unset means backups never leave this
+      # host, which the loop warns about on every run.
+      BACKUP_REMOTE_TARGET: ${BACKUP_REMOTE_TARGET:-}
+    volumes:
+      - trellum-data:/data:ro        # only read: this service must never mutate state
+      - backups:/backups
+      - ./docker/backup.sh:/backup.sh:ro
+      # Run with:
+      #   docker compose run --rm --entrypoint /bin/sh backup /restore_drill.sh
+      - ./docker/restore_drill.sh:/restore_drill.sh:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pg-data:
+  trellum-data:
+  # Separate from trellum-data on purpose — see the backup service above.
+  backups:

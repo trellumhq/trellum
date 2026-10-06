@@ -1,0 +1,96 @@
+/* ── Live FilterBar (a FilterBar bound to a LiveDataSource) ───────────
+   A live query is now a *dataset*: the FilterBar that controls it is an
+   ordinary FilterBar (see filter_bar.css for its base styles), just one
+   whose ".fw-filter-bar" root also carries ".fw-live-bar" and a
+   ``data-live-state`` attribute. This file is only the live-specific
+   additions -- the disabled/note treatment, the status line, and the
+   "live" badge.
+
+   Server-rendered disabled over the build-time snapshot; the live binder
+   (runtime/live_query.js) enables it only when the page has a host, the
+   host advertised a live-query endpoint, AND this isn't an anonymous
+   share-link view (window._fwShareLink). Standalone -- no host, an
+   emailed snapshot, an old host, or a share link -- nothing wires up and
+   no request is ever made; the note text tells the viewer which case
+   they're looking at.
+
+   States on .fw-live-bar[data-live-state]:
+     standalone — disabled, honest note visible (no host, or a share link)
+     ready      — endpoint present and armed, showing snapshot rows
+     live       — last commit succeeded, every subscribed component shows
+                  live rows
+   All colors are theme tokens, matching every other filter/status surface
+   in the framework. */
+
+.fw-live-bar[data-live-state="standalone"] .fw-filter-item,
+.fw-live-bar[data-live-state="standalone"] .fw-filter-actions {
+    pointer-events: none;
+    opacity: .55;
+}
+
+.fw-live-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+    align-self: center;
+}
+
+.fw-live-chip {
+    display: none;
+    align-items: center;
+    gap: 5px;
+    padding: 1px 8px;
+    border: 1px solid var(--accent-green);
+    border-radius: 999px;
+    color: var(--accent-green);
+    font-size: var(--font-size-label);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    align-self: center;
+    white-space: nowrap;
+}
+.fw-live-bar[data-live-state="ready"] .fw-live-chip,
+.fw-live-bar[data-live-state="live"] .fw-live-chip {
+    display: inline-flex;
+}
+.fw-live-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent-green);
+}
+.fw-live-bar[data-live-state="live"] .fw-live-dot {
+    animation: fw-live-pulse 1.6s ease-in-out infinite;
+}
+@keyframes fw-live-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: .25; }
+}
+
+.fw-live-freshness {
+    font-size: var(--font-size-meta);
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.fw-live-note {
+    font-size: var(--font-size-meta);
+    color: var(--text-muted);
+    align-self: center;
+}
+/* Only the standalone state shows the note -- once armed (ready/live) the
+   binder hides it, but this covers the instant before JS attaches too. */
+.fw-live-bar:not([data-live-state="standalone"]) .fw-live-note {
+    display: none;
+}
+
+.fw-live-status {
+    font-size: var(--font-size-meta);
+    color: var(--text-secondary);
+    align-self: center;
+}
+.fw-live-status.fw-live-error {
+    color: var(--accent-red);
+}

@@ -1,0 +1,74 @@
+.fw-table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.fw-table {
+    width: 100%; border-collapse: collapse;
+    font-size: var(--font-size-table); min-width: 320px;
+}
+.fw-table th {
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 2px solid var(--border-color);
+    color: var(--text-secondary);
+    font-size: var(--font-size-label); text-transform: uppercase;
+    letter-spacing: 0.3px; white-space: nowrap;
+}
+.fw-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border-color);
+    vertical-align: middle;
+}
+.fw-table tr:last-child td { border-bottom: none; }
+.fw-table tr:hover td { background: var(--bg-card-hover); }
+.fw-table-note {
+    font-size: var(--font-size-meta); color: var(--text-muted);
+    margin-top: var(--spacing-sm);
+}
+.fw-bar-cell { position: relative; min-width: 80px; }
+.fw-bar-fill {
+    position: absolute; left: 0; top: 0; bottom: 0;
+    background: var(--accent-red); opacity: 0.15;
+    border-radius: 3px; transition: width 0.3s;
+}
+.fw-bar-cell span { position: relative; z-index: 1; }
+.fw-table-header {
+    display: flex; justify-content: flex-end; align-items: center;
+    margin-bottom: 4px;
+}
+.fw-csv-btn {
+    background: transparent; border: 1px solid var(--border-color);
+    border-radius: var(--radius-control); padding: 4px 8px; cursor: pointer;
+    color: var(--text-secondary); display: inline-flex; align-items: center;
+    gap: 4px; font-size: var(--font-size-interface); transition: all 0.15s;
+}
+.fw-csv-btn:hover { background: var(--bg-card-hover, rgba(0,0,0,0.05)); color: var(--text-main); }
+.fw-table-search {
+    flex: 1; max-width: 260px;
+    padding: 5px 10px;
+    font-size: var(--font-size-table);
+    background: var(--bg-main);
+    color: var(--text-main);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-control);
+    outline: none;
+    transition: border-color 0.15s;
+}
+.fw-table-search:focus { border-color: var(--accent-red); }
+.fw-table-search::placeholder { color: var(--text-secondary); }
+.fw-table-count {
+    font-size: var(--font-size-meta); color: var(--text-secondary);
+    margin-left: 8px; white-space: nowrap;
+}
+.fw-table th.fw-sortable {
+    cursor: pointer; user-select: none;
+}
+.fw-table th.fw-sortable:hover { color: var(--text-main); }
+.fw-table th .fw-sort-arrow {
+    display: inline-block; margin-left: 4px;
+    opacity: 0.35; font-size: 9px;
+}
+.fw-table th.fw-sort-active .fw-sort-arrow { opacity: 1; }
+@media (max-width: 640px) {
+    .fw-table { font-size: var(--font-size-table); }
+    .fw-table th,
+    .fw-table td { padding: 6px 8px; }
+    .fw-table th { font-size: var(--font-size-label); }
+}

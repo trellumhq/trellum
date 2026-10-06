@@ -1,0 +1,1270 @@
+/* ============================================================================
+   trellum design tokens + shared components.
+   THE one stylesheet both halves of the product load (dashboard + management).
+
+   Contract (see docs/design-system.md):
+   - Named themes from `static/themes.generated.css` belong to report content
+     and to the report-theme preview swatches.
+   - Every console page, including the report catalog and studio settings,
+     uses the neutral Light/Dark/Auto palette below.
+   - Components consume tokens only; hardcoded colors are a bug.
+   ========================================================================= */
+
+/* ── Portal Neutral: the management surface's own palette ────────────────── */
+/* Deliberately not derived from report themes. These tokens paint the report
+   catalog, organization pages, studio management and authenticated utilities.
+   Scope tokens color the org/studio LAYER (chips, rails, banners) only —
+   the action color is always --accent (see docs/design-system.md).
+
+   Report documents may load the shared shell stylesheet, whose `.tl-console-*`
+   variables are locally scoped and never inherit the report palette. */
+:where(html[data-theme="light"]) body.mgmt, body.mgmt {
+    --bg: #F6F7F8; --bg-card: #ffffff; --bg-hover: #EEF1F3;
+    --text: #172126; --text2: #475569; --text3: #64748b;
+    --accent: #0F766E; --accent-soft: rgba(15,118,110,0.10); --accent-ink: #0F766E; --on-accent: #ffffff;
+    --primary: #0F766E; --primary-hover: #115E59;
+    --green: #15803d; --red: #b91c1c; --blue: #1d4ed8; --warn: #92400e;
+    --focus: #2563eb;
+    --border: #E2E6EA;
+    --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-hover: 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+    --scope-org: #0e857c; --scope-org-soft: rgba(14,133,124,0.10);
+    --scope-studio: #7468d2; --scope-studio-soft: rgba(116,104,210,0.10);
+}
+:where(html[data-theme="dark"]) body.mgmt {
+    --bg: #111315; --bg-card: #181B1F; --bg-hover: #23272D;
+    --text: #F3F4F6; --text2: #A7ADB8; --text3: #8f96a3;
+    --accent: #0F766E; --accent-soft: rgba(45,212,191,0.12); --accent-ink: #2DD4BF; --on-accent: #ffffff;
+    --primary: #0F766E; --primary-hover: #115E59;
+    --green: #00c48c; --red: #F87171; --blue: #4C8BF5; --warn: #fbbf24;
+    --focus: #4C8BF5;
+    --border: #30363D;
+    --shadow: 0 2px 8px rgba(0,0,0,0.3);
+    --shadow-hover: 0 6px 18px rgba(0,0,0,0.45), 0 2px 6px rgba(0,0,0,0.3);
+    --scope-org: #2DD4BF; --scope-org-soft: rgba(45,212,191,0.12);
+    --scope-studio: #9D8FF2; --scope-studio-soft: rgba(157,143,242,0.12);
+}
+
+/* ── Non-color tokens ────────────────────────────────────────────────────── */
+:root {
+    /* Scope colors are BRAND, not theme: the lattice glyph and the org/studio
+       chips must look identical on the management surface and on every one of
+       the 13 report themes. body.mgmt refines them per light/dark; these are
+       the defaults every other surface inherits. */
+    --scope-org: #0D9488; --scope-org-soft: rgba(13,148,136,0.10);
+    --scope-studio: #7C6FE0; --scope-studio-soft: rgba(124,111,224,0.10);
+    --font: 'Inter', -apple-system, 'Segoe UI', sans-serif;
+    --mono: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+    --fs-xs: 12px; --fs-sm: 12px; --fs-md: 13px; --fs-base: 14px;
+    --fs-lg: 16px; --fs-xl: 24px;
+    --r-sm: 8px; --r-md: 8px; --r-lg: 10px;
+    --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
+    --speed: 0.15s;
+    --z-nav: 50; --z-menu: 60; --z-toast: 100; --z-overlay: 200; --z-drawer: 201;
+    --shell-h: 56px;
+    --studio-tabs-h: 0px;
+    /* The one page rail. Shell, page content and the dashboard all align to it,
+       so the brand mark, the <h1> and the first table cell share an x-position. */
+    --page-max: 100%; --page-gutter: 24px;
+}
+
+/* ── Global shell (the one navigation bar) ───────────────────────────────── */
+header.shell {
+    height: var(--shell-h);
+    background: var(--bg-card);
+    /* Brand signature: the portal's accent as a thin strip under the shell. */
+    border-bottom: 2px solid var(--accent);
+    position: sticky; top: 0; z-index: calc(var(--z-nav) + 1);
+    /* Self-contained typography: the two surfaces set different body fonts
+       (mgmt 13px/1.5, dashboard 16px/normal), and the shell must not move
+       between them. */
+    font: var(--fs-base)/1.5 var(--font);
+}
+/* The shell was full-bleed while page content sat in a centred rail, so the
+   brand mark and the account menu lined up with nothing on the page. */
+/* --page-max is the CONTENT width, so the box is that plus both gutters. The
+   dashboard reaches the same content edge with an outer gutter + inner
+   max-width; both land on the same x-position at every viewport size. */
+.shell-inner {
+    display: flex; align-items: center; gap: 14px;
+    height: 100%;
+    max-width: calc(var(--page-max) + var(--page-gutter) * 2);
+    margin: 0 auto;
+    padding: 0 var(--page-gutter);
+}
+/* ── Dashboard tools in the shell (dashboard_shell branch of _shell.html) ── */
+/* Search, report theme, error log — the tools that apply to the whole
+   dashboard surface. The Cards/List view toggle lives in the dashboard's own
+   summary bar (portal.css .summary-right .view-toggle); Operations is a page
+   in the studio tab bar, not a view mode. */
+.shell-tools { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.shell-search, .shell-select {
+    font: var(--fs-md)/1.4 var(--font);
+    height: 26px; padding: 0 10px;
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: var(--r-md);
+}
+/* Flexible, not the old fixed 280px — the bar has to survive wrapping. */
+.shell-search { width: clamp(120px, 22vw, 260px); min-width: 0; }
+.shell-search::placeholder { color: var(--text3); }
+.shell-select { cursor: pointer; }
+.shell-search:focus, .shell-select:focus { border-color: var(--focus); }
+
+.shell-icon-btn {
+    position: relative; display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; padding: 0;
+    background: none; border: 1px solid transparent; border-radius: var(--r-md);
+    color: var(--text2); cursor: pointer; transition: color var(--speed), background-color var(--speed);
+}
+.shell-icon-btn:hover { color: var(--text); background: var(--bg-hover); }
+.shell-icon-btn svg { width: 17px; height: 17px; }
+.shell-icon-btn.has-errors { color: var(--red); }
+
+/* Visually hidden but present for screen readers and the document outline. */
+.sr-only {
+    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* The Appearance cluster's theme <select>, inside the user menu (unlike the
+   old dashboard-only shell-tools instance, sized by the toolbar's own flex
+   rules) needs its own full-width rule, inset to match .shell-menu-note. */
+.shell-menu-select-row { padding: 0 10px 6px; }
+.shell-menu-select-row select.shell-select { width: 100%; }
+.shell-theme-row { display: flex; gap: 4px; padding: 0 6px 6px; }
+.shell-theme-row button {
+    flex: 1; font: 500 var(--fs-sm)/1.4 var(--font); cursor: pointer;
+    padding: 3px 0; border-radius: var(--r-sm);
+    background: var(--bg); color: var(--text2); border: 1px solid var(--border);
+}
+.shell-theme-row button:hover { color: var(--accent-ink); border-color: var(--accent-ink); }
+
+/* Auth cards (login/setup/invite/reset): branded, centered. */
+.auth-card { border-top: 3px solid var(--accent); }
+/* Vertically centres the card in what is left of the viewport under the shell,
+   instead of anchoring it near the top over a screen of dead space. */
+.auth-shell {
+    min-height: calc(100vh - var(--shell-h) - 44px);
+    display: flex; align-items: center; justify-content: center;
+}
+.auth-shell .auth-card { width: 100%; max-width: 380px; margin: 0; }
+.auth-shell .auth-card h1 { margin-bottom: var(--sp-4); }
+/* A link beside the primary action still has to look like a link. */
+.auth-alt-link { font-size: var(--fs-md); }
+.shell-brand {
+    font-weight: 700; letter-spacing: .2px; color: var(--text); text-decoration: none;
+    display: inline-flex; align-items: center; gap: 7px;
+}
+.shell-brand:hover { text-decoration: none; color: var(--accent-ink); }
+.shell-glyph { width: 16px; height: 16px; flex: none; }
+.shell-glyph-grid { stroke: var(--text3); opacity: .55; }
+.shell-glyph-org { fill: var(--scope-org); }
+.shell-glyph-studio { fill: var(--scope-studio); }
+
+/* ── Breadcrumb spine: org ▸ studio (scope-colored switchers) ────────────── */
+.shell-crumbs { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.crumb-sep { color: var(--text3); font-size: var(--fs-sm); user-select: none; }
+.crumb-dot { width: 7px; height: 7px; border-radius: 2px; flex: none; }
+.crumb-org > summary, a.crumb-link {
+    color: var(--scope-org);
+    background: var(--scope-org-soft); border-color: transparent;
+}
+.crumb-org > summary .crumb-dot, a.crumb-link .crumb-dot { background: var(--scope-org); }
+.crumb-org[open] > summary { border-color: var(--scope-org); }
+/* The org crumb as a plain link: same chip clothes as a switcher summary,
+   minus the ▾ — org switching lives in the user menu. */
+a.crumb-link {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 9px; border: 1px solid transparent; border-radius: var(--r-md);
+    font-size: var(--fs-md); font-weight: 500; line-height: 1.4;
+    text-decoration: none; white-space: nowrap; overflow: hidden; max-width: 220px;
+}
+a.crumb-link:hover { border-color: var(--scope-org); text-decoration: none; }
+.crumb-studio > summary {
+    color: var(--scope-studio);
+    background: var(--scope-studio-soft); border-color: transparent;
+}
+.crumb-studio > summary .crumb-dot { background: var(--scope-studio); }
+.crumb-studio[open] > summary { border-color: var(--scope-studio); }
+/* Org-scope pages: the studio slot reads as context, not a selection. */
+.crumb-unset > summary { color: var(--text3); background: transparent; }
+.crumb-unset > summary .crumb-dot { background: var(--border); }
+.shell-spacer { flex: 1; }
+.shell-nav { display: flex; gap: 10px; }
+.shell-nav a {
+    color: var(--text2); text-decoration: none; font-size: var(--fs-md);
+    padding: 3px 8px; border-radius: var(--r-sm);
+}
+.shell-nav a:hover { color: var(--text); background: var(--bg-hover); }
+.shell-nav a.active { color: var(--accent-ink); background: var(--accent-soft); font-weight: 600; }
+.shell-dd { position: relative; min-width: 0; }
+.shell-dd > summary {
+    list-style: none; cursor: pointer; user-select: none;
+    color: var(--text); font-weight: 500;
+    padding: 3px 9px; border: 1px solid var(--border); border-radius: var(--r-md);
+    background: var(--bg); display: inline-flex; align-items: center; gap: 6px;
+    font-size: var(--fs-md); line-height: 1.4;
+    /* Long org/studio/user names truncate — the bar itself NEVER grows. */
+    white-space: nowrap; overflow: hidden; max-width: 220px;
+}
+.shell-dd.shell-user > summary { max-width: 190px; }
+.shell-dd > summary::-webkit-details-marker { display: none; }
+.shell-dd > summary::after { content: "▾"; font-size: 9px; color: var(--text3); }
+.shell-dd[open] > summary { border-color: var(--accent); }
+.shell-menu {
+    position: absolute; top: calc(100% + 4px); left: 0; min-width: 180px;
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: var(--r-md); box-shadow: var(--shadow-hover);
+    padding: 4px; z-index: var(--z-menu);
+    display: flex; flex-direction: column;
+}
+.shell-menu-right { left: auto; right: 0; }
+.shell-menu a, .shell-menu button {
+    text-align: left; padding: 6px 10px; border-radius: var(--r-sm);
+    color: var(--text); text-decoration: none; font-size: var(--fs-base);
+    background: none; border: none; cursor: pointer; width: 100%;
+    font-family: var(--font);
+}
+.shell-menu a:hover, .shell-menu button:hover { background: var(--bg-hover); text-decoration: none; }
+.shell-menu a.active { color: var(--accent-ink); font-weight: 600; }
+.shell-menu-note { padding: 6px 10px; color: var(--text3); font-size: var(--fs-sm); }
+
+/* ── Studio tab bar (_studio_nav.html) ───────────────────────────────────────
+   One navigation for every studio-scoped page, sticky directly under the
+   shell. The active tab speaks the scope-color language: violet = studio,
+   the same token the settings rail and banner use. Self-contained typography
+   for the same reason header.shell has it — the bar renders on both the
+   mgmt surface and the dashboard. */
+.studio-tabs {
+    height: var(--studio-tabs-h);
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+    padding: 0 var(--page-gutter);
+    position: sticky; top: var(--shell-h); z-index: var(--z-nav);
+    font: var(--fs-base)/1.5 var(--font);
+}
+/* The shared page rail (see .shell-inner): tabs line up with the brand mark
+   and the page content. One horizontally scrollable row — tabs never wrap,
+   and the scrollbar is suppressed the way an iOS tab strip's is (the active
+   tab is scrolled into view on load by base.html / portal.js). */
+.studio-tabs-rail {
+    max-width: var(--page-max); margin: 0 auto; height: 100%;
+    display: flex; align-items: stretch; gap: 2px;
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+}
+.studio-tabs-rail::-webkit-scrollbar { display: none; }
+.studio-tab {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 0 13px; white-space: nowrap; flex: none;
+    color: var(--text2); text-decoration: none; font-weight: 500;
+    border-bottom: 2px solid transparent;
+    /* Keeps the label from shifting as the underline appears. */
+    margin-bottom: -1px;
+}
+.studio-tab:hover { color: var(--text); text-decoration: none; }
+.studio-tab.active {
+    color: var(--scope-studio);
+    border-bottom-color: var(--scope-studio);
+    font-weight: 600;
+}
+/* ⚙ Settings sits alone at the right edge — admin-only, styled a step
+   quieter than the workaday tabs until it is the page you are on. */
+.studio-tab-settings { margin-left: auto; color: var(--text3); }
+/* The viewer's own per-studio override (studio-tab-theme-mine) -- the ONLY
+   theme control left on the rail; the admin's own default-palette chip
+   moved to Studio settings → Appearance
+   (.lavish/theming-controls-design.html). Sits at the rail's edge; when
+   Settings is absent (a non-admin never sees that tab) this alone picks up
+   the margin-left:auto. */
+.studio-tab-theme {
+    display: inline-flex; align-items: center; gap: 6px; flex: none;
+    margin-left: auto; padding: 0 13px 0 0;
+}
+.studio-tab-settings + .studio-tab-theme { margin-left: 0; }
+/* Small swatch dot + "For you" label make the control read as obviously
+   personal, not a second admin-facing default-palette twin (the read that
+   got the admin chip moved off this rail in the first place). The dot's
+   color is plain --accent, deliberately no per-theme lookup of its own:
+   --accent already IS the currently-resolved palette's accent wherever an
+   explicit theme applies (data-studio-theme swaps the whole mgmt overlay,
+   see docs/design-system.md "Theme scoping"), so the dot always shows what
+   this viewer is actually seeing right now, live, for free. */
+.studio-tab-theme-dot {
+    width: 9px; height: 9px; border-radius: 50%; flex: none;
+    background: var(--accent); border: 1px solid var(--border);
+}
+.studio-tab-theme-forlabel { color: var(--text3); font-size: var(--fs-sm); }
+.studio-tab-theme select {
+    font-size: var(--fs-sm); color: var(--text3); background: transparent;
+    border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px;
+}
+.studio-tab-theme-note { color: var(--text3); font-size: var(--fs-sm); }
+
+@media (max-width: 768px) {
+    header.shell { height: auto; min-height: var(--shell-h); }
+    .shell-inner { flex-wrap: wrap; height: auto; padding: 6px 12px; gap: 8px; }
+    .shell-nav { flex-wrap: wrap; }
+    /* With the view-toggle cluster gone the dashboard shell is brand +
+       crumbs + search/theme/error + user; a tighter search keeps that to
+       one row on most phones (the wrap above stays as the fallback for
+       long org/studio names). */
+    .shell-search { width: clamp(80px, 24vw, 160px); }
+    /* With the view toggles gone the shell usually fits one row again, but a
+       long org + studio name can still wrap it — and once it wraps,
+       --shell-h no longer describes its height. Drop the tab bar out of the
+       sticky chain here, exactly as portal.css does for the dashboard's
+       folder/studio bars. */
+    .studio-tabs { position: relative; top: auto; padding: 0 12px; }
+}
+
+/* ── Settings sidebar layout (scope-labeled hubs) ────────────────────────── */
+.settings-wrap {
+    display: block;
+}
+.settings-side {
+    position: sticky; top: calc(var(--shell-h) + 16px);
+    display: flex; flex-direction: column; gap: 4px;
+}
+.settings-side nav { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
+.settings-side nav a {
+    color: var(--text2); text-decoration: none; font-size: var(--fs-base);
+    padding: 6px 10px; border-radius: var(--r-md); border-left: 2px solid transparent;
+}
+.settings-side nav a:hover { color: var(--text); background: var(--bg-hover); text-decoration: none; }
+/* THE LAYER SYSTEM: teal = organization, violet = studio. --scope drives every
+   scoped element in the sidebar + banner; the ACTION color stays --accent
+   everywhere, so buttons never change meaning between layers. */
+.settings-wrap { --scope: var(--scope-org); --scope-soft: var(--scope-org-soft); }
+.settings-wrap.scope-studio { --scope: var(--scope-studio); --scope-soft: var(--scope-studio-soft); }
+/* Studio settings render under the studio tab bar, so their sticky sidebar
+   must clear it too; org settings have no tab bar and keep the base offset. */
+.settings-wrap.scope-studio .settings-side {
+    top: calc(var(--shell-h) + var(--studio-tabs-h) + 16px);
+}
+.settings-side nav a.active {
+    color: var(--scope); background: var(--scope-soft);
+    border-left-color: var(--scope); font-weight: 600;
+}
+.settings-content { min-width: 0; }
+/* Sidebar rail header: a 3px scope-colored rail beside kicker + name. */
+.settings-side-rail { border-left: 3px solid var(--scope); border-radius: 2px; padding-left: 10px; }
+.settings-side-kicker {
+    font-size: var(--fs-xs); font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.06em; color: var(--scope);
+}
+.settings-side-name { font-weight: 700; font-size: var(--fs-lg); margin-top: 2px; }
+.settings-side-foot {
+    margin-top: 16px; padding-top: 10px; border-top: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: 6px; font-size: var(--fs-md);
+}
+/* The cross-layer jump reads in the TARGET layer's color. */
+.settings-side-foot .foot-scope-org { color: var(--scope-org); font-weight: 600; }
+.scope-chip {
+    display: inline-block; width: fit-content;
+    font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.06em; padding: 2px 8px; border-radius: var(--r-sm);
+}
+.scope-chip.org { color: var(--scope-org); background: var(--scope-org-soft); }
+.scope-chip.studio { color: var(--scope-studio); background: var(--scope-studio-soft); }
+.scope-chip.mini { font-size: var(--fs-xs); padding: 1px 6px; margin-left: 4px; }
+/* Blast-radius banner: every settings page opens by stating its scope. */
+.scope-banner {
+    display: flex; align-items: flex-start; gap: 8px;
+    font-size: var(--fs-md); border-radius: var(--r-md);
+    padding: 5px 11px; margin-bottom: var(--sp-3);
+    color: var(--text2); background: var(--bg-card);
+    border: 1px solid var(--border);
+}
+.scope-banner .crumb-dot { flex: none; margin-top: .45em; background: var(--scope); }
+.scope-banner-text { min-width: 0; }
+/* Mini layer-map: the org box holding studio pills; you-are-here is lit. */
+.layer-map { margin-top: 14px; font-size: var(--fs-sm); }
+.layer-map-org {
+    border: 2px solid var(--scope-org); border-radius: var(--r-lg);
+    background: var(--scope-org-soft); color: var(--scope-org);
+    font-weight: 700; padding: 6px 10px;
+}
+.layer-map-org span { font-weight: 400; opacity: .75; }
+.layer-map-studios { display: flex; flex-wrap: wrap; gap: 5px; margin: 7px 0 0 14px; }
+.layer-map-studio {
+    border: 1.5px solid var(--border); border-radius: var(--r-md);
+    color: var(--text3); background: var(--bg-card); padding: 2px 8px;
+}
+.layer-map-studio.current {
+    border-color: var(--scope-studio); color: var(--scope-studio); font-weight: 700;
+}
+@media (max-width: 768px) {
+    /* minmax(0,…), not 1fr: a bare 1fr track refuses to shrink below its
+       content, so the settings tables ran off the right of the screen. */
+    .settings-wrap { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+    .settings-side { position: static; }
+    .settings-side nav { flex-direction: row; flex-wrap: wrap; }
+}
+
+/* ── Settings section tabs (inside settings pages, not the shell) ────────── */
+.settings-tabs {
+    display: flex; align-items: center; gap: 4px;
+    border-bottom: 1px solid var(--border);
+    margin: 0 0 18px; padding-bottom: 0;
+    overflow-x: auto;
+}
+.settings-tabs-title {
+    font-size: var(--fs-md); font-weight: 600; color: var(--text3);
+    margin-right: 10px; white-space: nowrap;
+}
+.settings-tabs a {
+    color: var(--text2); text-decoration: none; font-size: var(--fs-base);
+    padding: 8px 12px; border-bottom: 2px solid transparent; white-space: nowrap;
+}
+.settings-tabs a:hover { color: var(--text); text-decoration: none; }
+.settings-tabs a.active {
+    color: var(--accent-ink); border-bottom-color: var(--accent-ink); font-weight: 600;
+}
+
+/* (Cross-document view transitions were opted in here for a crossfade on
+   full-page navigations, but framework-generated report pages don't opt in,
+   so navigating from the portal to a report started a transition the report
+   could never complete -- the browser skipped it and surfaced an uncaught
+   "AbortError: Transition was skipped" on every report open. Not worth a
+   crossfade; removed. A scoped version could re-add it only for navigations
+   that stay inside the portal.) */
+
+/* ── Base ────────────────────────────────────────────────────────────────── */
+.ui body, body.ui {
+    margin: 0;
+    font: var(--fs-base)/1.5 var(--font);
+    background: var(--bg);
+    color: var(--text);
+}
+.ui-label {  /* the one uppercase-label treatment */
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text3);
+}
+
+/* Eyebrow labels — the metrics-catalog design (portal-surface-designs)
+   presents every small label in the mono family, which reads as a
+   deliberate, technical micro-label rather than shrunk body text. Match it
+   portal-wide: these labels already share uppercase + tracking + a muted
+   color; the mono family is the one ingredient that was missing, so this
+   sets ONLY font-family and leaves each selector's size/weight/color/
+   spacing alone. Lives in ui.css (loads on every management page); none of
+   the individual rules set font-family, so cascade order is irrelevant. */
+.ui-label,
+.ui-table th,
+body.mgmt main th,
+.settings-side-kicker,
+.scope-chip,
+.section-title,
+.category-label,
+.studio-badge,
+.list-table th,
+.validation-group-title,
+.validation-check-level,
+.details-totals-pill .label,
+.details-section-title,
+.details-scope-label,
+.details-matrix th,
+.ops-stat-label,
+.ops-actions-label,
+.ops-table th,
+.ops-history-table th,
+.ds-header-title,
+.ds-table th,
+.ui-stat .lbl,
+.tl-title,
+.cal-head div,
+.evlist .month-h,
+.page-kicker {
+    font-family: var(--mono);
+}
+
+/* ── Page header — THE pattern (ui-style-guide.md §1) ─────────────────────
+   A kicker (`.ui-label.page-kicker`, colored by layer) + a bare-noun <h1> +
+   an optional one-line `.muted.page-sub` provenance line. `.page-head-row`
+   is the same shape with a right-aligned action on the title line, for
+   pages whose header carries a button (Export CSV, + New group, …) instead
+   of (or as well as) a subline. Canon: see docs/design-system.md. */
+.page-head { margin: 0 0 var(--sp-3); }
+.page-head h1 { margin: 6px 0 2px; }
+.page-kicker.scope-org { color: var(--scope-org); }
+.page-kicker.scope-studio { color: var(--scope-studio); }
+.page-sub { margin: 0 0 14px; }
+.page-head-row {
+    display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+}
+.page-head-row h1 { margin: 6px 0 2px; }
+.page-head-row .spacer { flex: 1; }
+
+/* A shell title supplies the page name on narrow screens. Keep the document
+   heading for desktop and assistive technology, but avoid making the same
+   title consume the first phone viewport twice. */
+@media (max-width: 767px) {
+    body.mgmt main { margin: 16px 0; padding-inline: 16px; }
+    body.mgmt h1 { font-size: 21px; }
+    .page-head, .page-head-row { margin-bottom: 12px; }
+    .page-head-row { align-items: flex-start; gap: 8px; }
+    .page-head-row > .spacer { display: none; }
+    .page-sub { margin-bottom: 10px; }
+    .scope-banner { padding: 6px 10px; font-size: var(--fs-sm); }
+    .scope-banner-text { overflow-wrap: anywhere; }
+    body.mgmt.tl-console-title-known .page-head h1,
+    body.mgmt.tl-console-title-known .page-head-row h1 {
+        position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+        overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+    }
+}
+
+/* ── Overview description clamp (ui-style-guide.md §4, owner ruling #4) ───
+   Source text (report.yaml/metrics.yaml descriptions, studio descriptions)
+   is arbitrarily long; every overview card/row description gets a hard
+   2-line visual cap instead of running the layout. Full text stays
+   reachable via `title=` or the row's own detail view. */
+.ui-desc-clamp {
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; overflow-wrap: anywhere;
+}
+:focus-visible {
+    /* Never --accent: on a red-branded surface an accent ring reads as a
+       validation error on a form the user has not even filled in yet. */
+    outline: 2px solid var(--focus);
+    outline-offset: 1px;
+}
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+.ui-btn {
+    font: 500 var(--fs-base)/1.4 var(--font);
+    padding: 7px 14px;
+    border-radius: var(--r-md);
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background-color var(--speed), border-color var(--speed),
+                color var(--speed), filter var(--speed);
+    display: inline-flex; align-items: center; gap: 6px;
+    text-decoration: none;
+}
+.ui-btn.primary { background: var(--primary); color: #fff; }
+.ui-btn.primary:hover { background: var(--primary-hover); }
+.ui-btn.ghost {
+    background: var(--bg-card); color: var(--text2); border-color: var(--border);
+}
+.ui-btn.ghost:hover { border-color: var(--accent-ink); color: var(--accent-ink); }
+.ui-btn.danger {
+    background: transparent; color: var(--red); border-color: var(--red);
+}
+.ui-btn.danger:hover { background: var(--red); color: var(--on-accent); }
+.ui-btn:disabled, .ui-btn.loading { opacity: 0.5; pointer-events: none; }
+.ui-btn.loading::before {
+    content: ""; width: 11px; height: 11px; border-radius: 50%;
+    border: 2px solid currentColor; border-top-color: transparent;
+    animation: ui-spin 0.8s linear infinite;
+}
+@keyframes ui-spin { to { transform: rotate(360deg); } }
+
+/* ── Inputs ──────────────────────────────────────────────────────────────── */
+.ui-input,
+body.mgmt select,
+body.mgmt input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]),
+body.mgmt textarea {
+    font: var(--fs-base)/1.4 var(--font);
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 6px 10px;
+    /* Fields fill their field container. The old default (browser size=20,
+       ~200px) truncated every GUID, repo URL and redirect URI in the product. */
+    width: 100%;
+    max-width: 100%;
+}
+.ui-input.error, .error > input, .error > select, .error > textarea {
+    border-color: var(--red);
+}
+.ui-field-error { color: var(--red); font-size: var(--fs-md); margin: 4px 0 0; }
+.ui-help { color: var(--text3); font-size: var(--fs-md); margin-top: 2px; display: block; }
+/* Help that explains an organization-wide effect reads in that layer's colour. */
+.ui-help.org { color: var(--scope-org); }
+.ui-help.warn { color: var(--warn); }
+.ui-check-row { display: flex; gap: 8px; align-items: center; }
+/* Checkboxes/radios keep their intrinsic size and sit inline with their label. */
+body.mgmt input[type="checkbox"], body.mgmt input[type="radio"] { width: auto; }
+
+/* ── Form layout ─────────────────────────────────────────────────────────── */
+/* Two columns once there is room, one below. Replaces the old .formrow, which
+   pinned every form to a 460px strip regardless of page width. */
+.ui-form-grid {
+    display: grid; gap: 2px 18px;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    align-items: start;
+}
+.ui-form-grid > .ui-field-wide { grid-column: 1 / -1; }
+.ui-field { min-width: 0; margin: 0 0 12px; }
+.ui-field > label { display: block; font-size: var(--fs-md); color: var(--text2); margin: 0 0 4px; }
+/* Short by nature — ports, intervals, counts. Opt in; never the default. */
+.ui-field.narrow .ui-input,
+.ui-field.narrow input, .ui-field.narrow select { max-width: 12ch; }
+/* Actions sit on their own full-width row under the fields. */
+.ui-form-actions {
+    grid-column: 1 / -1;
+    display: flex; gap: var(--sp-2); align-items: center; flex-wrap: wrap;
+    margin-top: var(--sp-2);
+}
+.settings-content form.inline.settings-inline-form {
+    max-width: 760px; margin-top: 12px;
+    display: grid; grid-template-columns: minmax(240px, 1fr) minmax(110px, 180px) auto;
+    gap: 8px; align-items: center;
+}
+.settings-content .settings-inline-form .ui-input { min-width: 0 !important; max-width: none !important; }
+@media (max-width: 600px) {
+    .settings-content form.inline.settings-inline-form { grid-template-columns: 1fr; }
+    .settings-inline-form .ui-btn { width: fit-content; }
+}
+
+/* ── Copy-to-clipboard field (value + Copy button + inline confirmation) ─── */
+.ui-copy { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.ui-copy > code {
+    flex: 1 1 240px;
+    background: var(--bg); border: 1px dashed var(--border);
+    border-radius: var(--r-md); padding: 8px 12px;
+    word-break: break-all; font: var(--fs-md)/1.5 var(--mono);
+}
+.ui-copy.compact > code { display: none; }
+.ui-copy .ui-copy-done { visibility: hidden; }
+.ui-copy.copied .ui-copy-done { visibility: visible; }
+
+/* ── Tables ──────────────────────────────────────────────────────────────── */
+/* Every table lives in one of these. A management table has a natural minimum
+   width (name + role control + actions); without a scroll container the row
+   simply gets clipped by the card at laptop widths. */
+.ui-table-scroll { overflow-x: auto; max-width: 100%; }
+.ui-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ui-table th {
+    font-size: var(--fs-xs); font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.06em; color: var(--text3); text-align: left;
+    padding: 10px 14px; border-bottom: 1px solid var(--border);
+}
+.ui-table td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.ui-table tr:last-child td { border-bottom: none; }
+.ui-table tbody tr:hover, .ui-table tr.hoverable:hover { background: var(--bg-hover); }
+.ui-table.dense th, .ui-table.dense td { padding: 6px 10px; }
+
+/* Management lists become readable record cards on phones. Desktop keeps the
+   semantic table, while mobile exposes each cell's heading beside its value.
+   Templates provide data-label on cells so long content never depends on a
+   brittle column order. */
+@media (max-width: 767px) {
+    body.mgmt .ui-table-scroll:has(.ui-table[data-mobile-cards]) { overflow: visible; }
+    body.mgmt .ui-table[data-mobile-cards] { display: block; font-size: var(--fs-base); }
+    body.mgmt .ui-table[data-mobile-cards] thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    body.mgmt .ui-table[data-mobile-cards] tbody { display: grid; gap: 10px; }
+    body.mgmt .ui-table[data-mobile-cards] tbody tr {
+        display: grid; gap: 0; padding: 4px 12px;
+        background: var(--bg-card); border: 1px solid var(--border);
+        border-radius: var(--r-md); box-shadow: var(--shadow);
+    }
+    body.mgmt .ui-table[data-mobile-cards] tbody tr:hover { background: var(--bg-card); }
+    body.mgmt .ui-table[data-mobile-cards] tbody tr:has(.ui-empty) { display: block; padding: 0; box-shadow: none; }
+    body.mgmt .ui-table[data-mobile-cards] tbody td {
+        display: block; min-width: 0; padding: 9px 0;
+        border-bottom: 1px solid var(--border); overflow-wrap: anywhere;
+    }
+    body.mgmt .ui-table[data-mobile-cards] tbody td:last-child { border-bottom: 0; }
+    body.mgmt .ui-table[data-mobile-cards] tbody td::before {
+        content: attr(data-label); display: block; margin-bottom: 3px;
+        color: var(--text3); font-size: var(--fs-xs);
+        font-weight: 600; text-transform: uppercase; letter-spacing: .05em;
+    }
+    body.mgmt .ui-table[data-mobile-cards] tbody td.ui-row-actions {
+        display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-start;
+    }
+    body.mgmt .ui-table[data-mobile-cards] tbody td.ui-row-actions::before { content: none; }
+    body.mgmt .ui-table[data-mobile-cards] tbody td > form.inline { min-width: 0; flex-wrap: wrap; }
+    body.mgmt .ui-table[data-mobile-cards] tbody td[style*="min-width"] { min-width: 0 !important; }
+    body.mgmt .ui-table[data-mobile-cards] tbody td input,
+    body.mgmt .ui-table[data-mobile-cards] tbody td select,
+    body.mgmt .ui-table[data-mobile-cards] tbody td textarea { min-width: 0; }
+    body.mgmt .ui-table[data-mobile-cards] tbody td .ui-copy { min-width: 0; }
+    body.mgmt .ui-table[data-mobile-cards] tbody td .ui-btn { min-height: 44px; }
+    body.mgmt .ui-table[data-mobile-cards] tbody tr[hidden] { display: none !important; }
+    body.mgmt .ui-table[data-mobile-cards] tbody tr.delivery-row-detail { display: block; }
+    body.mgmt .ui-table[data-mobile-cards] tbody tr.delivery-row-detail td { display: block; }
+    body.mgmt .ui-table[data-mobile-cards] tbody tr.delivery-row-detail td::before { content: none; }
+    body.mgmt .ui-table[data-mobile-cards] tbody tr.delivery-row-detail td[colspan] { grid-column: 1 / -1; }
+    body.mgmt .ui-table[data-mobile-cards].dense tbody td { padding: 8px 0; }
+    body.mgmt .settings-content,
+    body.mgmt .settings-content > * { min-width: 0; }
+    body.mgmt .settings-content form.inline,
+    body.mgmt .settings-content form.inline input,
+    body.mgmt .settings-content form.inline select { max-width: 100%; }
+    body.mgmt .settings-content .shell-menu { min-width: min(280px, calc(100vw - 40px)) !important; }
+    body.mgmt .analytics-search { width: 100%; max-width: 100%; }
+    body.mgmt input:not([type="checkbox"]):not([type="radio"]),
+    body.mgmt select, body.mgmt textarea { font-size: 16px; }
+    /* report_delivery.js injects its widget stylesheet after ui.css; keep
+       editable center/drawer fields at the phone-safe size despite that
+       widget's compact desktop default. */
+    body.mgmt .rdw-input, body.mgmt .rdw-select { font-size: 16px !important; }
+    /* Repeat the full base selector: its three type exclusions otherwise
+       outrank the shorter mobile rule on real Django forms. */
+    body.mgmt main input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="hidden"]),
+    body.mgmt main select, body.mgmt main textarea { font-size: 16px !important; }
+    body.mgmt main form.inline { max-width: 100%; flex-wrap: wrap; }
+    body.mgmt main form.inline input:not([type="hidden"]),
+    body.mgmt main form.inline select { min-width: 0 !important; flex: 1 1 12rem; }
+}
+
+/* ── Badges (the one system: replaces the legacy four) ───────────────────── */
+/* Soft-fill, per the Metrics-page color canon (ui-style-guide.md §3): a
+   semantic badge is `color: var(--x)` + a 12% tint of that color over the
+   card, no border. The bare/neutral variant is the one exception that keeps
+   a border (bg-hover + --border) — it is the neutral CHIP treatment, not a
+   status word, so it needs the outline to read as a pill at all. Previously
+   every variant was an outlined pill; that "bordered pill" look is what the
+   owner flagged on Experiments, and it is gone everywhere in this one edit. */
+.ui-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: var(--fs-sm); font-weight: 500;
+    padding: 1px 8px; border-radius: 99px;
+    border: 1px solid var(--border); color: var(--text2);
+    background: var(--bg-hover);
+    /* A pill that wraps is not a pill — it becomes a lopsided blob. Let the
+       column scroll (.ui-table-scroll) rather than break the shape. */
+    white-space: nowrap;
+}
+/* Constrain an optional leading glyph (e.g. the "unseen" badge's eye-off) to
+   the text size, so it reads as part of the label rather than blowing up to
+   the SVG's intrinsic box. */
+.ui-badge svg { width: 1em; height: 1em; flex: none; }
+.ui-badge.pass, .ui-badge.ok {
+    color: var(--green); border-color: transparent;
+    background: color-mix(in srgb, var(--green) 12%, transparent);
+}
+.ui-badge.warn {
+    color: var(--warn); border-color: transparent;
+    background: color-mix(in srgb, var(--warn) 12%, transparent);
+}
+.ui-badge.fail, .ui-badge.error {
+    color: var(--red); border-color: transparent;
+    background: color-mix(in srgb, var(--red) 12%, transparent);
+}
+.ui-badge.info {
+    color: var(--blue); border-color: transparent;
+    background: color-mix(in srgb, var(--blue) 12%, transparent);
+}
+.ui-badge.accent { color: var(--accent-ink); border-color: transparent; background: var(--accent-soft); }
+
+/* MFA setup QR: the segno SVG carries no large intrinsic size, so it must be
+   stretched to fill its box. The white pad is not decorative — QR modules are
+   black, so on a dark theme the code is unscannable without a light backing. */
+.mfa-qr { background: #fff; padding: 12px; border-radius: 10px; box-sizing: border-box; }
+.mfa-qr svg { display: block; width: 100%; height: auto; }
+
+/* Account page: a compact two-column card grid for the small settings blocks,
+   so the page reads as a dashboard rather than a tall single column. The wide
+   sessions table stays outside the grid at full width. */
+.account-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; margin-bottom: 16px; }
+@media (max-width: 720px) { .account-grid { grid-template-columns: 1fr; } }
+.account-card { margin: 0; }
+.account-card > h2:first-child { margin-top: 0; }
+.account-divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+
+/* ── Feedback (dismissable, stackable; role=status/alert in markup) ──────── */
+.ui-flash-stack { display: flex; flex-direction: column; gap: 8px; margin: 0 0 16px; }
+.ui-flash {
+    display: flex; align-items: baseline; gap: 10px;
+    padding: 9px 12px; border-radius: var(--r-md);
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-left: 3px solid var(--border);
+    font-size: var(--fs-base);
+}
+.ui-flash.success { border-left-color: var(--green); }
+.ui-flash.error   { border-left-color: var(--red); }
+.ui-flash.warning { border-left-color: var(--warn); }
+.ui-flash.info    { border-left-color: var(--blue); }
+.ui-flash .ui-flash-close {
+    margin-left: auto; background: none; border: none; cursor: pointer;
+    color: var(--text3); font-size: var(--fs-lg); line-height: 1; padding: 0 2px;
+}
+.ui-flash .ui-flash-close:hover { color: var(--text); }
+/* Author display:flex beats the UA's [hidden] rule; see .folder-menu-item[hidden]. */
+.ui-flash[hidden] { display: none; }
+/* A state mark (✓/✕) in the rail colour, and a folded technical line that
+   wraps instead of pushing the panel wide. */
+.ui-flash.success > .ui-flash-mark { color: var(--green); }
+.ui-flash.error   > .ui-flash-mark { color: var(--red); }
+.ui-flash details > summary { cursor: pointer; color: var(--text3); font-size: var(--fs-md); margin-top: 4px; }
+.ui-flash details > pre {
+    white-space: pre-wrap; overflow-wrap: anywhere; margin: 4px 0 0;
+    font: var(--fs-md)/1.5 var(--mono); color: var(--text2);
+}
+
+/* ── List screens: search toolbar + pager ────────────────────────────────── */
+.ui-list-toolbar {
+    display: flex; align-items: center; gap: var(--sp-2);
+    margin: 0 0 var(--sp-3); flex-wrap: wrap;
+}
+/* The base field rule is `body.mgmt input:not([type=checkbox]):not([type=radio])
+   :not([type=submit])` — three attribute selectors, so it outranks the obvious
+   `.ui-list-toolbar .ui-input` and stretches the search box across the toolbar.
+   This selector carries enough weight to win. */
+body.mgmt form.ui-list-toolbar input.ui-input[name="q"] {
+    width: auto; flex: 1 1 240px; max-width: 340px;
+}
+.ui-list-count { color: var(--text3); font-size: var(--fs-md); }
+.ui-pager {
+    display: flex; align-items: center; gap: var(--sp-3);
+    margin-top: var(--sp-3);
+}
+.ui-pager-status { color: var(--text2); font-size: var(--fs-md); }
+.ui-pager [aria-disabled="true"] { opacity: .45; pointer-events: none; }
+
+/* Likewise the Search button once typing filters on its own. */
+.js-search-ready button[type="submit"] { display: none; }
+/* One action control per row, in the same place on every row. */
+.ui-row-actions { white-space: nowrap; text-align: right; }
+/* Numeric table columns: right-aligned, and digits that line up column to
+   column instead of each number's width wobbling with its own glyphs. */
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+/* Provenance reads as a word inside the chip, so the table needs no legend. */
+.ui-badge-source {
+    font-size: var(--fs-xs); opacity: .75; font-weight: 400;
+    padding-left: 2px;
+}
+
+/* ── Empty state (the one treatment) ─────────────────────────────────────── */
+.ui-empty {
+    text-align: center; padding: 40px 20px; color: var(--text3);
+    font-size: var(--fs-base);
+}
+.ui-empty .ui-empty-action { margin-top: 10px; }
+
+/* ── Checklist (the one treatment for "steps you still have to do") ──────── */
+/* Used by the first-run wizard's welcome/recap screens and by the hub's
+   getting-started card. A done item is stated by colour AND by the ✓ glyph the
+   template swaps in — colour alone is not a status. */
+.ui-checklist { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-2); }
+.ui-checklist-item {
+    display: flex; gap: var(--sp-3); align-items: flex-start;
+    font-size: var(--fs-base); color: var(--text);
+}
+.ui-checklist-mark {
+    flex: 0 0 auto;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 20px; border-radius: 99px;
+    border: 1px solid var(--border); color: var(--text3);
+    font-size: var(--fs-sm); font-weight: 600; line-height: 1;
+}
+.ui-checklist-item.done { color: var(--text2); }
+.ui-checklist-item.done .ui-checklist-mark {
+    border-color: var(--green); color: var(--green);
+    background: color-mix(in srgb, var(--green) 12%, transparent);
+}
+.ui-checklist-item.done > span > a { color: var(--text2); }
+
+/* ── Getting-started card (hub) ──────────────────────────────────────────── */
+/* Qualified with .ui-panel deliberately: that rule sets the `border`
+   shorthand and is defined later in this file, so a bare .getting-started
+   selector loses and the accent edge silently never renders. */
+.ui-panel.getting-started { border-left: 3px solid var(--accent); }
+.getting-started-head {
+    display: flex; align-items: center; gap: var(--sp-2);
+    flex-wrap: wrap; margin-bottom: var(--sp-3);
+}
+.getting-started-head h2 { margin: 0; }
+.getting-started-head form { margin: 0; }
+
+/* ── First-run wizard ────────────────────────────────────────────────────── */
+/* The step rail. Not links: each step depends on the one before it. */
+.setup-steps {
+    list-style: none; margin: 0 0 var(--sp-4); padding: 0 0 var(--sp-3);
+    display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-3);
+    border-bottom: 1px solid var(--border);
+}
+.setup-step {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: var(--fs-sm); color: var(--text3);
+}
+.setup-step-mark {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px; border-radius: 99px;
+    border: 1px solid var(--border); font-size: var(--fs-xs);
+    font-weight: 600; line-height: 1;
+}
+.setup-step.done { color: var(--text2); }
+.setup-step.done .setup-step-mark { border-color: var(--green); color: var(--green); }
+.setup-step.current { color: var(--accent-ink); font-weight: 600; }
+.setup-step.current .setup-step-mark {
+    border-color: var(--accent); color: var(--on-accent); background: var(--accent);
+}
+/* The wizard's cards carry more than a login form, so they are allowed past
+   the 380px .auth-card strip. One width for every step — sized to the widest
+   (the readiness table and the settings grid). The card used to shrink to
+   600px on the narrow steps, so the panel jumped in and out as you advanced
+   and the step rail re-wrapped underneath you. */
+.auth-shell .auth-card.setup-card { max-width: 760px; }
+.setup-card h2 {
+    font-size: var(--fs-base); margin: var(--sp-4) 0 var(--sp-2);
+}
+.setup-card h2:first-of-type { margin-top: var(--sp-3); }
+
+/* ── Panels / cards ──────────────────────────────────────────────────────── */
+.ui-panel {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: var(--r-lg); padding: 16px 18px; margin-bottom: 16px;
+}
+/* A collapsed panel (advanced/secondary forms): the summary is its heading. */
+details.ui-panel > summary { cursor: pointer; font-weight: 600; font-size: var(--fs-lg); }
+details.ui-panel[open] > summary { margin-bottom: 12px; }
+/* Table-bearing panels used `style="padding:0"` (metrics/experiments/audit);
+   one variant instead of that inline style repeated per page. */
+.ui-panel.flush { padding: 0; }
+.ui-card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: var(--r-lg); padding: 16px; box-shadow: var(--shadow);
+    transition: box-shadow var(--speed), transform var(--speed);
+}
+a.ui-card { display: block; color: inherit; text-decoration: none; }
+.ui-card.interactive:hover { box-shadow: var(--shadow-hover); transform: translateY(-2px); }
+
+/* ── Stat tiles (overview KPI row) ─────────────────────────────────────────
+   Promoted verbatim from the page-local copies pasted into Experiments and
+   Audit log (ui-consistency-punchlist.md item 8) — it already consumed only
+   tokens, so promoting it changed nothing visually, just the one place it
+   is now defined. */
+.ui-stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin: 18px 0; }
+.ui-stat {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: var(--r-lg); padding: 14px 16px;
+}
+.ui-stat .lbl { font-size: var(--fs-xs); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--text3); }
+.ui-stat .num { font-size: 28px; font-weight: 700; line-height: 1.2; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.ui-stat .sub { font-size: var(--fs-md); color: var(--text3); min-height: 1.4em; max-height: 1.4em; overflow: hidden; }
+
+/* ── Chips (taxonomy/metadata — mono, uppercase, tiny) ────────────────────
+   Promoted from the Metrics catalog's page-local `.met-chip`/`.met-spec`
+   (the owner's reference treatment, ui-style-guide.md §1/§3) so it stops
+   being private to one page. `.ui-chip` is the neutral/bordered variant —
+   the ONE bordered chip, per the soft-fill canon below — `.acc`/`.warn`/
+   `.mute` are its soft-fill siblings. `.ui-mono-pill` is the standalone
+   monospace value pill (spec strings, cron expressions, short hashes). */
+.ui-chip {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: .04em;
+    text-transform: uppercase; font-weight: 600; padding: 2px 7px; border-radius: 9px;
+    background: var(--bg-hover); color: var(--text2); border: 1px solid var(--border);
+    display: inline-block;
+}
+.ui-chip.acc { background: var(--accent-soft); color: var(--accent-ink); border-color: transparent; }
+.ui-chip.warn { background: color-mix(in srgb, var(--warn) 12%, transparent); color: var(--warn); border-color: transparent; }
+.ui-chip.mute { opacity: .65; }
+.ui-mono-pill {
+    font-family: var(--mono); font-size: 11.5px; color: var(--text);
+    background: var(--bg-hover); border-radius: var(--r-sm); padding: 2px 7px;
+    display: inline-block;
+}
+
+/* ── Filter pills (toolbar) ────────────────────────────────────────────────
+   Canon replacing five near-duplicate variants (`.fpill`, Analytics'
+   solid-accent range buttons, `.ops-filter-pill`, `.studio-pill`,
+   `.anno-pill` — ui-consistency-punchlist.md item 6): idle is a bordered
+   neutral pill, active is soft-fill (accent-soft + accent-ink text), never
+   solid accent. `.n` is the trailing count. */
+.ui-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    font: 500 var(--fs-md)/1.4 var(--font); padding: 3px 12px; border-radius: 99px;
+    border: 1px solid var(--border); color: var(--text2); background: var(--bg-card);
+    text-decoration: none; cursor: pointer;
+}
+.ui-pill:hover { text-decoration: none; background: var(--bg-hover); }
+.ui-pill.active {
+    border-color: transparent; background: var(--accent-soft); color: var(--accent-ink); font-weight: 600;
+}
+.ui-pill .n { opacity: .7; font-size: var(--fs-sm); padding-left: 3px; }
+
+/* ── One centered-notice layout (403/404/report_unbuilt/storage outage) ────
+   Replaces two near-duplicate ad-hoc layouts (ui-consistency-punchlist.md
+   item 14) with one vertical rhythm. 403/404 are short and centered, at the
+   default width; the two report-outage pages carry a paragraph plus
+   (sometimes) a stack trace, so .wide keeps them left-aligned and wider. */
+.ui-notice-page {
+    max-width: 560px; margin: 10vh auto 0; text-align: center;
+}
+.ui-notice-page.wide { max-width: 860px; margin-top: 8vh; text-align: left; }
+
+/* Deliberately theme-independent: terminals are dark (see the same rule for
+   .ops-terminal-* in portal.css and "Deliberate exceptions" in
+   docs/design-system.md). A build's captured stderr, shown on the "this
+   report failed to build" page, is read the same way console output is. */
+.ui-code-block {
+    white-space: pre-wrap; overflow: auto; max-height: 40vh;
+    padding: 12px; border-radius: var(--r-md);
+    background: #1e1e1e; color: #eee; font: var(--fs-base)/1.5 var(--mono);
+}
+
+/* ── Studio settings → Repository (templates/studios/repo.html) ──────────
+   Published/remote columns, the segmented Publishing control (radios styled
+   as a joined pair of ghost buttons; the checked one takes the filter-pill
+   active tint) and the native <dialog> the Publish flow uses. */
+.text-warn { color: var(--warn); }
+.repo-status { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.repo-status > div { display: grid; gap: 6px; align-content: start; }
+.repo-mode { margin-top: 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.repo-mode .helptext { flex-basis: 100%; margin: 0; }
+.repo-actions { justify-content: flex-end; }
+.repo-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+.repo-commit-list { margin: 6px 0 0; padding-left: 16px; font-size: var(--fs-md); color: var(--text2); }
+.ui-seg { display: inline-flex; }
+.ui-seg .ui-btn { border-radius: 0; margin-left: -1px; position: relative; }
+.ui-seg .ui-btn:first-child { border-radius: var(--r-md) 0 0 var(--r-md); margin-left: 0; }
+.ui-seg .ui-btn:last-child { border-radius: 0 var(--r-md) var(--r-md) 0; }
+.ui-seg .ui-btn:has(:checked) { background: var(--accent-soft); color: var(--accent-ink); border-color: var(--accent-ink); z-index: 1; }
+.ui-seg .ui-btn:has(:focus-visible) { outline: 2px solid var(--focus); outline-offset: 1px; }
+.ui-seg input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
+.ui-dialog {
+    border: 1px solid var(--border); border-radius: var(--r-lg); padding: 18px 20px;
+    background: var(--bg-card); color: var(--text); width: min(520px, calc(100% - 32px));
+    font: var(--fs-base)/1.5 var(--font);
+}
+.ui-dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
+.ui-dialog h2 { margin: 0 0 10px; }
+
+/* ── Upload progress (data-source files, which run to hundreds of MB) ─────── */
+/* The file input is the label's own hit area, so the label can be a .ui-btn
+   and still open the picker without any script. */
+.ds-file-input {
+    position: absolute; width: 1px; height: 1px;
+    opacity: 0; overflow: hidden; clip: rect(0 0 0 0);
+}
+.ds-progress { margin-top: 6px; min-width: 140px; }
+.ds-progress-bar {
+    height: 6px; border-radius: var(--r-sm);
+    background: var(--bg-hover); overflow: hidden;
+}
+.ds-progress-bar > span {
+    display: block; height: 100%; width: 0;
+    background: var(--accent); transition: width 0.15s linear;
+}
+.ds-progress-label { margin-top: 4px; font-size: var(--fs-md); }
+
+/* ============================================================================
+   Management surface
+   ---------------------------------------------------------------------------
+   These rules used to live in an inline <style> in base.html, duplicating the
+   .ui-* components above. There is now one implementation: the legacy class
+   names below are aliases onto it, so templates keep rendering while they
+   migrate. Element-level rules are scoped to body.mgmt because the dashboard
+   loads this same stylesheet and styles its own chrome in portal.css.
+   ========================================================================= */
+* { box-sizing: border-box; }
+/* Always reserve the scrollbar on BOTH surfaces so the centred rails
+   (.shell-inner, main) don't shift sideways between short and long pages. */
+html { overflow-y: scroll; }
+
+body.mgmt {
+    margin: 0;
+    font: var(--fs-base)/1.5 var(--font);
+    background: var(--bg);
+    color: var(--text);
+}
+/* Content links only — the shell paints its own brand mark and menu items. */
+body.mgmt main a { color: var(--accent-ink); text-decoration: none; }
+body.mgmt main a:hover { text-decoration: underline; }
+
+/* The page rail — same content edge as .shell-inner and the dashboard bars. */
+body.mgmt main {
+    max-width: none;
+    margin: 22px 0;
+    padding: 0 var(--page-gutter);
+}
+body.mgmt h1 { font-size: var(--fs-xl); margin: 0 0 14px; }
+body.mgmt h2 { font-size: var(--fs-lg); margin: 22px 0 8px; }
+
+/* Tables: the bare-element treatment mirrors .ui-table exactly. */
+body.mgmt main table { width: 100%; border-collapse: collapse; font-size: 13px; }
+body.mgmt main th {
+    color: var(--text3); text-align: left; font-weight: 600;
+    font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .06em;
+    padding: 8px 10px; border-bottom: 1px solid var(--border);
+}
+body.mgmt main td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+body.mgmt main tbody tr:last-child td { border-bottom: none; }
+body.mgmt main tbody tr:hover { background: var(--bg-hover); }
+
+body.mgmt label { display: block; font-size: var(--fs-sm); color: var(--text2); margin: 10px 0 4px; }
+/* Exception: a label that IS a button (it wraps a hidden file input so the
+   picker opens with no script). The block rule above would stretch it across
+   its cell and push the buttons beside it onto their own line. */
+body.mgmt label.ui-btn { display: inline-flex; margin: 0; }
+body.mgmt form.inline { display: inline-flex; gap: 6px; align-items: center; margin: 0; }
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+/* A bare <button> is NEUTRAL. It used to default to the accent background,
+   which made every Save, Filter and Copy on the surface shout as loudly as the
+   one real primary action — and made navigation links styled as buttons the
+   loudest thing on the page. Primary is now opt-in, one per screen. */
+body.mgmt main button:not(.ui-btn), body.mgmt main .btn:not(.ui-btn) {
+    font: 500 var(--fs-base)/1.5 var(--font);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 7px 14px;
+    background: var(--bg-card);
+    color: var(--text2);
+    cursor: pointer;
+    transition: background-color var(--speed), border-color var(--speed),
+                color var(--speed), filter var(--speed);
+    text-decoration: none;
+    display: inline-block;
+}
+body.mgmt main button:not(.ui-btn):hover, body.mgmt main .btn:not(.ui-btn):hover {
+    border-color: var(--accent-ink); color: var(--accent-ink); text-decoration: none;
+}
+body.mgmt main button.primary:not(.ui-btn), body.mgmt main .btn.primary:not(.ui-btn) {
+    background: var(--primary); color: #fff; border-color: transparent;
+}
+body.mgmt main button.primary:not(.ui-btn):hover, body.mgmt main .btn.primary:not(.ui-btn):hover {
+    background: var(--primary-hover); color: #fff;
+}
+/* .secondary is now what a plain button already is; kept so existing markup
+   keeps rendering until the sweep removes it. */
+body.mgmt main button.danger:not(.ui-btn), body.mgmt main .btn.danger:not(.ui-btn) {
+    background: transparent; color: var(--red); border-color: var(--red);
+}
+body.mgmt main button.danger:not(.ui-btn):hover {
+    background: var(--red); color: var(--on-accent);
+}
+body.mgmt main button:disabled { opacity: .5; pointer-events: none; }
+
+/* ── Legacy aliases onto the .ui-* components ────────────────────────────── */
+.panel {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: var(--r-lg); padding: 14px 16px; margin-bottom: 14px;
+}
+.card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: var(--r-lg); padding: 14px 16px; box-shadow: var(--shadow);
+    transition: box-shadow var(--speed), transform var(--speed);
+}
+body.mgmt a.card { color: inherit; }
+body.mgmt a.card:hover {
+    box-shadow: var(--shadow-hover); transform: translateY(-2px); text-decoration: none;
+}
+.card h3 { margin: 0 0 4px; font-size: var(--fs-lg); }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.muted { color: var(--text2); }
+/* Two classes several pages already assumed existed (Experiments' "Storage
+   unavailable"/"Not built yet" cells, Annotations' scope label, Audit's
+   timestamp/IP/metadata columns) but that had no rule anywhere, so they
+   rendered as plain body text. Defined once, here, rather than per-page. */
+.subtle { color: var(--text3); font-size: var(--fs-md); }
+.mono { font-family: var(--mono); }
+.helptext { display: block; color: var(--text3); font-size: var(--fs-md); margin-top: 2px; }
+.errorlist { color: var(--red); list-style: none; padding: 0; margin: 4px 0; font-size: var(--fs-md); }
+.pill {
+    display: inline-block; font-size: var(--fs-sm); padding: 1px 8px;
+    border-radius: 99px; border: 1px solid var(--border); color: var(--text2);
+    white-space: nowrap;
+}
+.pill.admin { color: var(--accent-ink); border-color: var(--accent-ink); }
+code.copy {
+    display: block; background: var(--bg); border: 1px dashed var(--border);
+    border-radius: var(--r-md); padding: 8px 12px; word-break: break-all;
+    font: var(--fs-md)/1.5 var(--mono); margin-top: 8px;
+}
+/* Django messages — the same treatment as .ui-flash. */
+.messages { list-style: none; padding: 0; margin: 0 0 14px; display: flex; flex-direction: column; gap: 8px; }
+.messages li {
+    padding: 9px 12px; border-radius: var(--r-md);
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-left: 3px solid var(--border);
+}
+.messages li.success { border-left-color: var(--green); }
+.messages li.error   { border-left-color: var(--red); }
+.messages li.warning { border-left-color: var(--warn); }
+.messages li.info    { border-left-color: var(--blue); }
+
+/* .formrow pinned every form to a 460px strip. It now simply bounds a
+   single-column form; multi-field forms use .ui-form-grid instead. */
+.formrow { max-width: 760px; }
+
+/* ── Studio settings → Appearance: default-palette swatch grid ──────────
+   templates/studios/appearance.html (.lavish/theming-controls-design.html).
+   A card per registered theme instead of a bare <select> -- a palette IS
+   its colors. Each card's three chips read `var(--bg)`/`var(--accent)`/
+   `var(--text)` off its OWN `data-theme` attribute, the same selector
+   static/themes.generated.css already keys its `[data-theme="X"] { ... }`
+   block on -- CSS custom-property inheritance does the coloring, no theme
+   values are duplicated here or computed server-side. */
+.theme-swatches {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+    gap: 8px; margin-bottom: var(--sp-3);
+}
+.theme-sw {
+    position: relative; display: flex; flex-direction: column; gap: 7px;
+    border: 1px solid var(--border); border-radius: var(--r-md);
+    padding: 9px 10px; cursor: pointer;
+}
+.theme-sw input { position: absolute; opacity: 0; pointer-events: none; }
+/* Selected follows the CHECKED radio only -- one single source of truth, so
+   exactly one swatch is lit and it moves with each click. (The saved value
+   arrives pre-checked from the server, so it highlights on load too; the
+   template's .sel class is now cosmetic-dead and ignored here.) */
+.theme-sw:has(input:checked) { border-color: var(--scope); box-shadow: 0 0 0 1px var(--scope); }
+.theme-sw:hover { border-color: var(--scope); }
+/* Repo-declared theme (Studio.repo_theme): a read-only pinned row, not a
+   pickable control -- no pointer cursor, no hover highlight implying a
+   click does something. See templates/studios/appearance.html. */
+.theme-sw.theme-sw-pinned { cursor: default; }
+.theme-sw.theme-sw-pinned:hover { border-color: var(--scope); }
+.theme-sw-strip { display: flex; gap: 4px; }
+.theme-sw-strip i { height: 14px; border-radius: 4px; flex: 1; }
+.theme-sw-name { font-size: var(--fs-md); color: var(--text); }
+.theme-sw:has(input:checked) .theme-sw-name { font-weight: 600; }
+.theme-sw-name small { color: var(--text3); }
+.theme-lockline {
+    margin-top: 14px; font-size: var(--fs-md); color: var(--text2);
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: var(--r-md); padding: 8px 12px;
+}
+.theme-lockline b { color: var(--text); }
+
+/* Impersonation banner. Deliberately loud and full-bleed: a borrowed account
+   that looks like your own is how a support session turns into a customer
+   incident. Sits above the shell so it is the first thing on the page. */
+.impersonation-banner {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 8px 20px;
+    background: var(--warn); color: #fff;
+    font-size: var(--fs-md);
+}
+.impersonation-banner button {
+    background: #fff; color: #000; border-color: #fff; padding: 4px 10px;
+}
+
+@media (max-width: 768px) {
+    :root { --page-gutter: 16px; }
+    body.mgmt main { margin: 14px 0; padding: 0 var(--page-gutter); }
+    .panel { overflow-x: auto; }
+    .impersonation-banner { padding: 8px 12px; }
+}
+
+@media (max-width: 767px) {
+    /* The record-card table is already width-contained; the surrounding
+       panel must not become a second horizontal scroll surface. */
+    body.mgmt main { padding-inline: 16px; }
+    body.mgmt .panel:has(.ui-table[data-mobile-cards]) { overflow: visible; }
+    /* Main-content actions and native selects share the phone hit target;
+       shell controls and portal filters live outside main and keep their own
+       sizing contracts. */
+    body.mgmt main .ui-btn:not([hidden]),
+    body.mgmt main button:not([hidden]),
+    body.mgmt main select:not([hidden]) { min-height: 44px; }
+}

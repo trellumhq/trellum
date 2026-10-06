@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Unsubscribe — trellum{% endblock %}
+{% block content %}
+<div class="panel" style="max-width:520px;margin:12vh auto 0">
+  {% if invalid %}
+    <h1>This link isn't valid</h1>
+    <p class="muted">
+      It may have expired or already been used. If you still want to stop
+      these emails, open the report in trellum and manage your subscriptions
+      there instead.
+    </p>
+  {% elif done %}
+    <h1>You're unsubscribed</h1>
+    <p class="muted">You won't receive any more of these emails for "{{ label }}".</p>
+  {% else %}
+    <h1>Unsubscribe from "{{ label }}"?</h1>
+    <p class="muted">
+      This stops these emails for {{ target_email }}. You can always turn it
+      back on from the report page.
+    </p>
+    <form method="post">
+      {% csrf_token %}
+      <button type="submit" class="ui-btn primary">Unsubscribe</button>
+    </form>
+  {% endif %}
+</div>
+{% endblock %}

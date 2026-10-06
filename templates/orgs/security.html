@@ -1,0 +1,26 @@
+{% extends "settings_base.html" %}
+{% block title %}Security — {{ org.name }}{% endblock %}
+{% block settings %}
+<h1>Security</h1>
+<p class="muted">Multi-factor authentication is free for everyone and can be turned
+on right now from <a href="/account/security/mfa/setup">Account settings</a> —
+this page is only for making it <strong>mandatory</strong> across the organization.</p>
+<div class="panel formrow">
+  <form method="post" data-settings-form><fieldset style="border:0;padding:0;margin:0;min-width:0">
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+    <label class="ui-check-row">{{ form.require_mfa }} {{ form.require_mfa.label }}</label>
+    <span class="helptext">Applies to members who sign in with a password. Anyone
+    who signs in through this organization's identity provider is exempt — the
+    IdP owns MFA for them.</span>
+
+    <label style="margin-top:14px">{{ form.mfa_grace_days.label }}</label>
+    {{ form.mfa_grace_days }}{{ form.mfa_grace_days.errors }}
+    <span class="helptext">{{ form.mfa_grace_days.help_text }}</span>
+
+    <p></p>
+    <button class="ui-btn primary" type="submit">Save changes</button>
+  </fieldset></form>
+</div>
+
+{% endblock %}

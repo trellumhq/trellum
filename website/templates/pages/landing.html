@@ -1,0 +1,666 @@
+{% extends "base.html" %}
+
+{% comment %}The product landing page: server-rendered, hand-written CSS from
+the tokens in static/site.css, and vanilla JS in block scripts.{% endcomment %}
+
+{% block title %}{{ BRAND }} — {{ TAGLINE }}{% endblock %}
+
+{% block content %}
+
+{% comment %}The hero band is the portal's own dark surface, in both site
+themes — teal and violet live together here, and the console below it is the
+product, not a picture of it.{% endcomment %}
+<header class="hb">
+  <span class="hb-dot t"></span><span class="hb-dot v"></span><span class="hb-dot t"></span><span class="hb-dot v"></span>
+  <div class="rail">
+
+    <div class="hb-hero">
+      <h1>Vibe-code a report.<br>Ship a <span class="grad">professional dashboard.</span></h1>
+      <p class="hb-lead">Built with your favorite AI tools: Claude Code, Cursor, Codex or anything else you like. Shared with your team, rebuilt on schedule, hosted where everyone can find them.</p>
+      <div class="hb-ctas">
+        <a class="btn primary" href="/docs/latest/">Get started <span class="arr">→</span></a>
+        <a class="btn" href="/docs/" rel="noopener">Read the docs</a>
+      </div>
+      <p class="pipline"><span class="ps">$</span> <b>git clone https://github.com/trellumhq/trellum.git</b> <span class="note"># the full product is AGPL-3.0-only</span></p>
+
+      <div class="hb-strip">
+        <div class="hl">made by anyone</div>
+        <div class="row">
+          <span class="hmark"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" class="ic-teal"><circle cx="9" cy="7" r="3.5" fill="currentColor"/><path d="M2 20c0-4 3-6 7-6s7 2 7 6" fill="currentColor"/><path d="M19 12.5l3.2 3.2-3.2 3.2-3.2-3.2z" fill="var(--hb-violet)"/></svg>Product</span>
+          <span class="hmark"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" class="ic-violet"><circle cx="9" cy="7" r="3.5" fill="currentColor"/><path d="M2 20c0-4 3-6 7-6s7 2 7 6" fill="currentColor"/><circle cx="18" cy="15.5" r="3" fill="none" stroke="var(--hb-teal)" stroke-width="1.8"/><line x1="20.3" y1="17.8" x2="23" y2="20.5" stroke="var(--hb-teal)" stroke-width="1.8" stroke-linecap="round"/></svg>QA</span>
+          <span class="hmark"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" class="ic-teal"><circle cx="9" cy="7" r="3.5" fill="currentColor"/><path d="M2 20c0-4 3-6 7-6s7 2 7 6" fill="currentColor"/><g fill="var(--hb-violet)"><rect x="15.5" y="16" width="2" height="5" rx="1"/><rect x="18.6" y="13" width="2" height="8" rx="1"/><rect x="21.7" y="15" width="2" height="6" rx="1"/></g></svg>Analysts</span>
+          <span class="hmark"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" class="ic-violet"><circle cx="9" cy="7.5" r="3.5" fill="currentColor"/><path d="M2 20c0-4 3-6 7-6s7 2 7 6" fill="currentColor"/><path d="M4.2 7a4.8 4.8 0 0 1 9.6 0" fill="none" stroke="var(--hb-teal)" stroke-width="1.8" stroke-linecap="round"/><rect x="3.2" y="6.6" width="2" height="3.4" rx="1" fill="var(--hb-teal)"/><rect x="12.8" y="6.6" width="2" height="3.4" rx="1" fill="var(--hb-teal)"/></svg>Support</span>
+          <span class="hmark"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" class="ic-teal"><circle cx="9" cy="7" r="3.5" fill="currentColor"/><path d="M2 20c0-4 3-6 7-6s7 2 7 6" fill="currentColor"/><path d="M15.5 16.2l7-3.4v7.6l-7-3.4z" fill="var(--hb-violet)"/><rect x="15.5" y="15.4" width="1.8" height="4.4" rx="0.9" fill="var(--hb-violet)"/></svg>Marketing</span>
+          <span class="hmark"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" class="ic-violet"><circle cx="9" cy="7" r="3.5" fill="currentColor"/><path d="M2 20c0-4 3-6 7-6s7 2 7 6" fill="currentColor"/><path d="M19 12l1.2 2.6 2.8.3-2.1 1.9.6 2.8-2.5-1.5-2.5 1.5.6-2.8-2.1-1.9 2.8-.3z" fill="var(--hb-teal)"/></svg>Founders</span>
+        </div>
+      </div>
+
+      <div class="hb-strip">
+        <div class="hl">written with</div>
+        <div class="row">
+          <span class="hmark"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></svg>Claude Code</span>
+          <span class="hmark"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M11.503.131 1.891 5.678a.84.84 0 0 0-.42.726v11.188c0 .3.162.575.42.724l9.609 5.55a1 1 0 0 0 .998 0l9.61-5.55a.84.84 0 0 0 .42-.724V6.404a.84.84 0 0 0-.42-.726L12.497.131a1.01 1.01 0 0 0-.996 0M2.657 6.338h18.55c.263 0 .43.287.297.515L12.23 22.918c-.062.107-.229.064-.229-.06V12.335a.59.59 0 0 0-.295-.51l-9.11-5.257c-.109-.063-.064-.23.061-.23"/></svg>Cursor</span>
+          <span class="hmark"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/></svg>Codex</span>
+          <span class="hmark"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81"/></svg>Gemini CLI</span>
+          <span class="hmark">…any agent</span>
+        </div>
+      </div>
+
+      <p class="hb-point">▼ the console below is <b>live</b>. Click a card, it opens.</p>
+    </div>
+
+    {% comment %}The console: the portal's own layout with fixture data. It
+    behaves — the cards open, the themes cycle, the live report ticks — because
+    a picture of a product proves nothing about it.{% endcomment %}
+    <div class="console" id="console">
+      <div class="cs-top">
+        {% include "_lattice.html" with size=16 %}
+        <b>{{ BRAND }}</b>
+        <span class="cs-chip org">■ acme</span><span class="cs-sep">▸</span><span class="cs-chip">■ growth ▾</span>
+        <span class="cs-search">Search reports… (Ctrl+K)</span>
+        <span class="cs-acct">amara@acme.com ▾</span>
+      </div>
+      <div class="cs-hair"></div>
+      <div class="cs-tabs" aria-hidden="true">
+        <span class="on">Reports</span><span>Operations</span><span>Analytics</span><span>Metrics</span><span>Experiments</span><span>Annotations</span>
+        <span class="cs-set">⚙ Settings</span>
+      </div>
+      <div class="cs-folders" aria-hidden="true">
+        <span class="on">📁 All <b>12</b></span><span>★ Favorites <b>3</b></span><span>Product <b>2</b></span><span>Experiments <b>4</b></span><span>Revenue <b>2</b></span>
+      </div>
+
+      <div id="cs-dash">
+        <div class="cs-meta"><b>12</b> reports · <span class="ok">● 12 healthy</span> · <span>0 errors</span><span class="hint">click a card, it opens</span></div>
+        <div class="cs-sec">★ favorites</div>
+        <div class="cs-grid">
+          <button class="cs-card" type="button" data-rep="weekly">
+            <span class="t">Weekly Revenue <span class="ic">✉ ★ <i class="dot"></i></span></span>
+            <span class="d">The week's money by channel. Built every Monday at 07:00, the same numbers on every run.</span>
+            <span class="tags"><span class="tg hot">revenue</span><span class="tg">scheduled</span></span>
+            <span class="f">Updated 07:00 · sent to 12 people<span>Daily</span></span>
+          </button>
+          <button class="cs-card" type="button" data-rep="live">
+            <span class="t">Revenue Today <span class="ic">☆ <i class="dot v"></i></span></span>
+            <span class="d">This minute's numbers. Viewers pick the region and window themselves.</span>
+            <span class="tags"><span class="tg vio">live</span><span class="tg">revenue</span></span>
+            <span class="f">Live at view · 9 views (30d)<span class="livef">● live</span></span>
+          </button>
+          <button class="cs-card" type="button" data-rep="ab">
+            <span class="t">Checkout Experiment <span class="ic">✉ ★ <i class="dot"></i></span></span>
+            <span class="d">A/B of checkout_v2 with CUPED variance reduction and bootstrap intervals.</span>
+            <span class="tags"><span class="tg">experiment</span><span class="tg">statistics</span></span>
+            <span class="f">Updated 07:00 · ✓ significant<span>Daily</span></span>
+          </button>
+        </div>
+      </div>
+
+      <div id="cs-report" hidden>
+        <div class="cs-rbar">
+          <button class="cs-back" type="button" id="cs-back">← all reports</button>
+          <span class="lab">theme</span>
+          <button class="thchip" type="button" data-th="acme">acme dark</button>
+          <button class="thchip on" type="button" data-th="light">{{ BRAND }} light</button>
+          <button class="thchip" type="button" data-th="blossom">blossom</button>
+          <button class="thchip custom" type="button" data-th="custom">yours ✦</button>
+          <span class="auto" id="cs-auto">cycling. click to hold</span>
+        </div>
+        <div class="cs-rwrap">
+          <div class="report" id="cs-rp" data-th="light">
+            <div class="rp-strip"></div>
+            <div class="rp-head"><b id="cs-title">Weekly Revenue</b><span id="cs-submeta">· W35 · built 07:00 · deterministic</span></div>
+            <div class="kpis">
+              <div class="kpi"><div class="l">Revenue</div><div class="v">€412k</div><div class="d">▲ 6.2% vs prev</div></div>
+              <div class="kpi"><div class="l">Orders</div><div class="v">9,180</div><div class="d">▲ 4.8%</div></div>
+              <div class="kpi"><div class="l">AOV</div><div class="v">€44.9</div><div class="d">▲ 1.3%</div></div>
+            </div>
+            <div class="rp-chart">
+              <div class="t"><span id="cs-charttitle">Weekly revenue</span> <span id="cs-fresh"></span></div>
+              <svg id="cs-chart" viewBox="0 0 560 110" width="100%" height="110" preserveAspectRatio="none" aria-hidden="true"></svg>
+              <span class="rp-anno"><b>⚑ W8</b> pricing change. A shared annotation: added once, it appears on every report.</span>
+            </div>
+            <div class="rp-row">
+              <div class="rp-box"><b>A/B · pricing v2</b><br>uplift +4.1% · CI [1.2, 7.0] · CUPED</div>
+              <div class="rp-box"><b>Export</b><br>PDF · CSV · share link (scoped)</div>
+              <button class="rp-box rp-mail on" type="button" id="cs-mail" role="switch" aria-checked="true"><span class="sw"></span><span><b>✉ email a copy</b> · <span id="cs-mailwho">12 recipients</span></span></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <p class="cs-cap"><i>live</i>. This is how the portal behaves, not a picture of it. Click a card, flip a theme, toggle the delivery.</p>
+    </div>
+  </div>
+</header>
+
+{% comment %}The hook. #framework is the shell nav's "Framework" anchor.{% endcomment %}
+<section class="sect reveal" id="framework">
+  <div class="rail cols">
+    <div>
+      <div class="kick">start here · free &amp; open source</div>
+      <h2>A report is one conversation.</h2>
+      <p class="lead">You talk to your own harness, the one you already enjoy. It writes the report as plain Python and SQL in your repository. After the source install in the guide, <span class="mono">python -m trellum.run</span> turns that folder into what you saw above. No new tool. No DSL. No account.</p>
+      <p class="lead"><b>You can start right now.</b> Clone {{ BRAND }}, make reports on your own machine, and use the included portal when you want to schedule or share them.</p>
+      <div class="htabs" id="htabs">
+        <button class="htab on" type="button" data-h="Claude Code">Claude Code</button>
+        <button class="htab" type="button" data-h="Cursor">Cursor</button>
+        <button class="htab" type="button" data-h="Codex">Codex</button>
+        <button class="htab" type="button" data-h="Gemini CLI">Gemini CLI</button>
+      </div>
+    </div>
+    <div class="chatmock">
+      <div class="who you">you → <span class="hookname">Claude Code</span></div>
+      <div class="m you">weekly revenue by channel, our brand theme, flag the W8 pricing change</div>
+      <div class="who"><span class="hookname">Claude Code</span></div>
+      <div class="m">Wrote <code>reports/weekly-revenue/</code>: query, KPI row, trend chart, shared annotation. Built in 4.1s. Pushed <code>report/weekly-revenue</code>.</div>
+    </div>
+  </div>
+</section>
+
+{% comment %}The pipeline. #workflow is the shell nav's "Product" anchor.{% endcomment %}
+<section class="sect alt pipeline reveal" id="workflow">
+  <div class="rail">
+    <div class="kick">how a report is actually built</div>
+    <h2>Any source. Combined. <span class="grad">One dataset.</span></h2>
+    <p class="lead">Warehouse, files, APIs. Every source you have, compiled together into one dataset, and every report builds from it. That's the speed, and that's the end of most of your ETL.</p>
+
+    <div class="pflow">
+      <div class="pcol reveal from-l">
+        <div class="pl">combine any source</div>
+        <div class="srcs">
+          <span class="src"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4 5v14c0 1.66 3.58 3 8 3s8-1.34 8-3V5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3" fill="none" stroke="currentColor" stroke-width="2"/></svg>Postgres &amp; SQL</span>
+          <span class="src"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M7.602 12.4c.038-.151.076-.304.076-.456 0-.114-.038-.228-.038-.342-.114-.343-.304-.647-.646-.838l-4.87-2.777c-.685-.38-1.56-.152-1.94.533-.381.685-.153 1.56.532 1.94l2.701 1.56-2.701 1.56c-.685.38-.913 1.256-.533 1.94.38.685 1.256.914 1.94.533l4.832-2.777c.343-.267.571-.533.647-.876zm1.332 2.626c-.266-.038-.57.038-.837.19l-4.832 2.777c-.685.38-.913 1.256-.532 1.94.38.686 1.255.914 1.94.533l2.701-1.56v3.12c0 .8.647 1.408 1.446 1.408.799 0 1.407-.647 1.407-1.408v-5.592c0-.761-.57-1.37-1.293-1.408zm4.946-6.088c.266.038.57-.038.837-.19l4.832-2.777c.685-.38.913-1.256.532-1.94-.38-.686-1.255-.914-1.94-.533l-2.701 1.56V1.975c0-.799-.647-1.408-1.446-1.408-.799 0-1.446.609-1.446 1.408V7.53c0 .76.609 1.37 1.332 1.407zM3.265 5.97l4.832 2.777c.266.152.533.19.837.19.723-.038 1.331-.684 1.331-1.407V1.975c0-.799-.646-1.408-1.407-1.408-.799 0-1.446.647-1.446 1.408v3.12l-2.701-1.56c-.685-.38-1.56-.152-1.94.533-.419.646-.19 1.521.494 1.902zm14.686 12.011l-4.832-2.777c-.266-.152-.57-.19-.837-.152-.723.038-1.332.684-1.332 1.408v5.554c0 .8.647 1.408 1.408 1.408.799 0 1.446-.647 1.446-1.408v-3.12l2.7 1.56c.686.38 1.561.152 1.941-.533.419-.646.19-1.521-.494-1.94zm2.549-7.533l-2.701 1.56 2.7 1.56c.686.38.914 1.256.533 1.94-.38.685-1.255.913-1.94.533l-4.832-2.778a1.644 1.644 0 0 1-.647-.798c-.037-.153-.076-.305-.076-.457 0-.114.039-.228.039-.342.114-.343.342-.647.646-.837l4.832-2.778c.685-.38 1.56-.152 1.94.533.457.609.19 1.484-.494 1.864"/></svg>Snowflake</span>
+          <span class="src"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M5.676 10.595h2.052v5.244a5.892 5.892 0 0 1-2.052-2.088v-3.156zm18.179 10.836a.504.504 0 0 1 0 .708l-1.716 1.716a.504.504 0 0 1-.708 0l-4.248-4.248a.206.206 0 0 1-.007-.007c-.02-.02-.028-.045-.043-.066a10.736 10.736 0 0 1-6.334 2.065C4.835 21.599 0 16.764 0 10.799S4.835 0 10.8 0s10.799 4.835 10.799 10.8c0 2.369-.772 4.553-2.066 6.333.025.017.052.028.074.05l4.248 4.248zm-5.028-10.632a8.015 8.015 0 1 0-8.028 8.028h.024a8.016 8.016 0 0 0 8.004-8.028zm-4.86 4.98a6.002 6.002 0 0 0 2.04-2.184v-1.764h-2.04v3.948zm-4.5.948c.442.057.887.08 1.332.072.4.025.8.025 1.2 0V7.692H9.468v9.035z"/></svg>BigQuery</span>
+          <span class="src"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M12 0C5.363 0 0 5.363 0 12s5.363 12 12 12 12-5.363 12-12S18.637 0 12 0zM9.502 7.03a4.974 4.974 0 0 1 4.97 4.97 4.974 4.974 0 0 1-4.97 4.97A4.974 4.974 0 0 1 4.532 12a4.974 4.974 0 0 1 4.97-4.97zm6.563 3.183h2.351c.98 0 1.787.782 1.787 1.762s-.807 1.789-1.787 1.789h-2.351v-3.551z"/></svg>DuckDB</span>
+          <span class="src"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M6 2h8l5 5v15H6z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M14 2v5h5" fill="none" stroke="currentColor" stroke-width="2"/></svg>CSV &amp; Parquet</span>
+          <span class="src"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M11.318 12.545H7.91v-1.909h3.41v1.91zM14.728 0v6h6l-6-6zm1.363 10.636h-3.41v1.91h3.41v-1.91zm0 3.273h-3.41v1.91h3.41v-1.91zM20.727 6.5v15.864c0 .904-.732 1.636-1.636 1.636H4.909a1.636 1.636 0 0 1-1.636-1.636V1.636C3.273.732 4.005 0 4.909 0h9.318v6.5h6.5zm-3.273 2.773H6.545v7.909h10.91v-7.91zm-6.136 4.636H7.91v1.91h3.41v-1.91z"/></svg>Sheets</span>
+          <span class="src"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M9 4c-2 0-2 2-2 4 0 2-2 2-2 4s2 2 2 4c0 2 0 4 2 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M15 4c2 0 2 2 2 4 0 2 2 2 2 4s-2 2-2 4c0 2 0 4-2 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>REST APIs</span>
+          <span class="src">+ many more</span>
+        </div>
+        <p class="combine">And this is the trick: <b>combine them.</b> A CSV <b>+</b> your warehouse <b>+</b> an API, joined into the same dataset, in the same report.</p>
+      </div>
+      <div class="conn" aria-hidden="true"><i></i><i></i><i></i></div>
+      <div class="pcol dsnode reveal">
+        <div class="pl">into one compiled dataset</div>
+        <svg viewBox="0 0 120 44" width="110" aria-hidden="true"><g fill="var(--accent)"><rect x="10" y="6" width="14" height="32" rx="3" opacity=".9"/><rect x="30" y="12" width="14" height="26" rx="3" opacity=".65"/><rect x="50" y="4" width="14" height="34" rx="3" opacity=".8"/><rect x="70" y="16" width="14" height="22" rx="3" opacity=".5"/><rect x="90" y="9" width="14" height="29" rx="3" opacity=".7"/></g></svg>
+        <div class="dst">compiled dataset</div>
+        <div class="dss">columnar · cached · queried once</div>
+        <span class="tmp">temporary. not a copy of your data</span>
+      </div>
+      <div class="conn" aria-hidden="true"><i></i><i></i><i></i></div>
+      <div class="pcol reveal from-r">
+        <div class="pl">every report builds from it</div>
+        <div class="pchip">
+          <div class="ps-head">weekly-revenue <span class="ps-dots"><i class="s1"></i><i class="s2"></i><i class="s3"></i></span></div>
+          <div class="ps-kpis"><span>€412k <b>▲</b></span><span>9,180 <b>▲</b></span><span>€44.9 <b>▲</b></span></div>
+          <svg viewBox="0 0 120 44" width="100%" aria-hidden="true"><g fill="var(--w-s1)"><rect x="10" y="16" width="14" height="22" rx="3" opacity=".9"/><rect x="30" y="22" width="14" height="16" rx="3" opacity=".65"/><rect x="50" y="12" width="14" height="26" rx="3" opacity=".8"/><rect x="70" y="24" width="14" height="14" rx="3" opacity=".5"/><rect x="90" y="8" width="14" height="30" rx="3" opacity=".7"/></g><polyline points="17,22 37,26 57,16 77,27 97,11" fill="none" stroke="var(--w-s2)" stroke-width="2"/></svg>
+        </div>
+        <p class="fast">✓ rebuilds in seconds. reads the dataset, not the warehouse</p>
+      </div>
+    </div>
+
+    <div class="truths reveal stagger">
+      <div class="truth"><b>Your data stays yours.</b> The dataset is a temporary compilation, rebuilt from source on refresh. It is not a replica living somewhere else.</div>
+      <div class="truth"><b>Most of your ETL, gone.</b> The combine step is the pipeline. Joins across sources happen at compile time, not in a second toolchain.</div>
+      <div class="truth"><b>Why it's fast.</b> Sources are queried once. Changing a report never re-queries the warehouse, so iteration takes seconds, even on large data.</div>
+    </div>
+
+    <p class="livepath"><b>⚡ live is an option, per report:</b> skip the compiled dataset and query at view time. Viewers pick the parameters and get this minute's numbers. Choose it where freshness beats speed.</p>
+  </div>
+</section>
+
+<section class="sect turn reveal">
+  <div class="rail">
+    <h2>The framework makes the report.<br>The portal makes it <span class="grad">reporting</span>.</h2>
+    <p>Make reports today, on your machine, for free. When one is worth sharing, put it on the portal: it gets a schedule, a home and an audience, current every morning, governed by the org. That's the product you saw at the top.</p>
+  </div>
+</section>
+
+<section class="sect alt show" id="features">
+  <div class="rail">
+    <div class="reveal">
+      <div class="kick studio">the portal, feature by feature</div>
+      <h2>Everything the portal does.</h2>
+      <p class="lead">Real behaviours, not marketing shots. The live tile is ticking right now.</p>
+    </div>
+    <div class="fgrid">
+
+      <div class="ft reveal"><h3>Custom themes, everywhere</h3>
+        <p>Defined once. Every report, email and PDF follows your brand.</p>
+        <div class="pchip">
+          <div class="ps-swatches"><span class="ps-sw acme">acme dark</span><span class="ps-sw light">{{ BRAND }} light</span><span class="ps-sw blossom">blossom</span><span class="ps-sw custom">yours ✦</span></div>
+          <div class="ps-claims"><span><b>13 built in</b>charts, emails, PDFs</span><span><b>+ yours</b>tokens, type, palette</span></div>
+          <div class="ps-cap">open a report in the console above and watch these cycle</div>
+        </div>
+      </div>
+
+      <div class="ft reveal"><h3>The metrics layer</h3>
+        <p>One definition of revenue. Reports claim it, and the numbers cannot disagree.</p>
+        <div class="pchip">
+          <span class="ps-code">metrics.yaml · <b>gross_revenue</b> · v2 · iap + ad · €</span>
+          <div class="ps-claims"><span><b>weekly-revenue<br>€412k <i>✓</i></b>claims gross_revenue</span><span><b>board-pack<br>€412k <i>✓</i></b>claims gross_revenue</span></div>
+          <div class="ps-cap">same id, same expansion at build time. consistency by construction</div>
+        </div>
+      </div>
+
+      <div class="ft reveal"><h3>Live reports</h3>
+        <p>Queried at view time; the viewer picks the parameters.</p>
+        <div class="pchip">
+          <div class="ps-head"><span class="ps-live"><i></i>LIVE</span> revenue-today <span class="ps-params"><b class="on">all</b><b>EU</b><b>NA</b></span></div>
+          <div class="ps-num">€41.2k<small>fresh as of <span id="tile-age">0</span>s ago</small></div>
+          <svg id="tile-live" viewBox="0 0 300 52" width="100%" height="52" preserveAspectRatio="none" aria-hidden="true"></svg>
+        </div>
+      </div>
+
+      <div class="ft reveal"><h3>Runs on a schedule</h3>
+        <p>Built on the clock. The published report is simply current.</p>
+        <div class="pchip">
+          <div class="ps-clock"><span class="ps-face"><span class="ps-hand"></span></span>mon 07:00 — refresh 41s · build 4.1s</div>
+          <span class="ps-upd"><i></i>weekly-revenue · updated ✓</span>
+          <div class="ps-cap left">email a copy? an option, per report</div>
+        </div>
+      </div>
+
+      <div class="ft reveal"><h3>Email delivery, built in</h3>
+        <p>Themed email with the numbers inline, and the PDF attached when you want it.</p>
+        <div class="pchip">
+          <div class="ps-row"><i></i>✉ weekly-revenue → leadership<span class="mt">07:02</span></div>
+          <div class="ps-row"><i></i>⎙ board-pack.pdf → the board<span class="mt">07:02</span></div>
+          <div class="ps-row"><i></i>✉ churn-cohorts → growth<span class="mt">mon</span></div>
+        </div>
+      </div>
+
+      <div class="ft reveal"><h3>Shared annotations</h3>
+        <p>Add "W8 · pricing change" once. Every report that shows W8 carries it.</p>
+        <div class="pchip">
+          <div class="ps-flag">⚑ W8 · pricing change. added once:</div>
+          <div class="ps-pair">
+            <svg viewBox="0 0 130 44" aria-hidden="true"><text x="2" y="8" font-size="7.5" fill="var(--w-mut)">weekly-revenue</text><polyline points="4,36 26,33 48,34 70,24 92,27 126,14" fill="none" stroke="var(--w-s1)" stroke-width="2"/><line x1="65" y1="10" x2="65" y2="42" stroke="var(--w-s3)" stroke-width="1.5" stroke-dasharray="3 2"/></svg>
+            <svg viewBox="0 0 130 44" aria-hidden="true"><text x="2" y="8" font-size="7.5" fill="var(--w-mut)">churn-cohorts</text><g fill="var(--w-s2)"><rect x="6" y="26" width="12" height="12" rx="2"/><rect x="24" y="20" width="12" height="18" rx="2" opacity=".8"/><rect x="42" y="30" width="12" height="8" rx="2" opacity=".6"/><rect x="60" y="16" width="12" height="22" rx="2"/><rect x="78" y="22" width="12" height="16" rx="2" opacity=".7"/><rect x="96" y="27" width="12" height="11" rx="2" opacity=".55"/></g><line x1="65" y1="10" x2="65" y2="42" stroke="var(--w-s3)" stroke-width="1.5" stroke-dasharray="3 2"/></svg>
+          </div>
+          <div class="ps-cap">…appears on both. plus a studio calendar of every event</div>
+        </div>
+      </div>
+
+      <div class="ft reveal"><h3>A/B testing, honest</h3>
+        <p>Not just "B looks bigger". An uplift with an interval you can sign.</p>
+        <div class="pchip">
+          <svg viewBox="0 0 280 62" width="100%" aria-hidden="true">
+            <text x="2" y="14" font-size="9" fill="var(--w-mut)">control</text><rect x="52" y="6" width="118" height="11" rx="3" fill="var(--w-mut)" opacity=".55"/><line x1="158" y1="11.5" x2="184" y2="11.5" stroke="var(--w-ink2)" stroke-width="1.5"/><line x1="158" y1="7" x2="158" y2="16" stroke="var(--w-ink2)" stroke-width="1.5"/><line x1="184" y1="7" x2="184" y2="16" stroke="var(--w-ink2)" stroke-width="1.5"/>
+            <text x="2" y="37" font-size="9" fill="var(--w-vio)" font-weight="700">variant B</text><rect x="52" y="29" width="152" height="11" rx="3" fill="var(--w-vio)"/><line x1="192" y1="34.5" x2="220" y2="34.5" stroke="var(--w-ink2)" stroke-width="1.5"/><line x1="192" y1="30" x2="192" y2="39" stroke="var(--w-ink2)" stroke-width="1.5"/><line x1="220" y1="30" x2="220" y2="39" stroke="var(--w-ink2)" stroke-width="1.5"/>
+            <text x="2" y="58" font-size="9.5" fill="var(--w-ink)" font-weight="700">+4.1% uplift · 95% CI [1.2, 7.0] · <tspan fill="var(--w-good)">✓ significant</tspan></text>
+          </svg>
+          <div class="ps-cap">CUPED built in · plus the Experiments overview: every test, one page</div>
+        </div>
+      </div>
+
+      <div class="ft reveal"><h3>Buddy, the AI assistant</h3>
+        <p>Ask the portal about your own reports. It answers from the builds, with sources.</p>
+        <div class="pchip">
+          <div class="ps-bub them">why did EU revenue dip in W12?</div>
+          <div class="ps-bub you">Paid spend paused 5 days in W12 — EU Paid only. <span class="ref">→ weekly-revenue, W12, EU</span></div>
+          <div class="ps-cap">answers link to the exact report, filter and week</div>
+        </div>
+      </div>
+
+      <div class="ft reveal"><h3>Share links, safely</h3>
+        <p>Send a report outside the studio. Scoped, password protected, revocable.</p>
+        <div class="pchip">
+          <span class="ps-code">{{ BRAND }}.dev/s/w-rev-8f3a1 · <b>weekly-revenue</b></span>
+          <div class="ps-claims"><span><b>🔒 password</b>set by you</span><span><b>⏳ expires</b>in 14 days</span><span><b>⌫ revoke</b>one click</span></div>
+          <div class="ps-cap">a link, not an attachment. always the current build, never a stale copy</div>
+        </div>
+      </div>
+
+      <div class="ft reveal"><h3>Review what ships</h3>
+        <p>Fetch repository changes, inspect the diff, and publish the exact commit you reviewed.</p>
+        <div class="pchip">
+          <div class="ps-row"><i></i>remote main fetched<span class="mt">3 commits</span></div>
+          <div class="ps-row"><i class="vio"></i>reports changed<span class="mt">4</span></div>
+          <div class="ps-row"><i class="warn"></i>reviewed head<span class="mt">publish</span></div>
+        </div>
+      </div>
+
+      <div class="ft reveal"><h3>One overview</h3>
+        <p>Every report, every studio, state at a glance.</p>
+        <div class="pchip">
+          <div class="ps-row"><i></i>weekly-revenue · ✓ current<span class="mt">mon 07:00</span></div>
+          <div class="ps-row"><i class="vio"></i>revenue-today · live<span class="mt">now</span></div>
+          <div class="ps-row"><i class="warn"></i>churn-v2 · ⎇ in review<span class="mt">preview ✓</span></div>
+        </div>
+      </div>
+
+      <div class="ft reveal"><h3>Governed &amp; observed</h3>
+        <p>Your directory signs people in; the org frames studios; the audit log remembers.</p>
+        <div class="pchip">
+          <div class="ps-gov"><span class="sso"><b>SSO</b> →</span><div class="org"><span class="ot">ORG · ACME</span><div class="studios"><span>growth · 8</span><span>finance · 5</span></div></div></div>
+          <div class="ps-cap">SSO, MFA and audit logging included</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section class="sect toolbox" id="toolbox">
+  <div class="rail">
+    <div class="reveal">
+      <div class="kick">the toolbox · from the framework</div>
+      <h2>Every chart you'd reach for.<br>And zero walls when you don't.</h2>
+      <p class="lead">Built in so you never build them. And never a limit on what your agent can invent on top.</p>
+    </div>
+
+    <div class="wall reveal stagger" aria-hidden="true">
+      <div class="tile"><svg viewBox="0 0 120 64" preserveAspectRatio="none"><path d="M4,50 24,42 44,46 64,30 84,34 104,16 116,12 L116,60 4,60 Z" fill="var(--ch1)" opacity=".12"/><polyline points="4,50 24,42 44,46 64,30 84,34 104,16 116,12" fill="none" stroke="var(--ch1)" stroke-width="3"/><polyline points="4,56 24,52 44,54 64,46 84,48 104,38 116,36" fill="none" stroke="var(--ch2)" stroke-width="2.5"/></svg><div class="tl">Line</div></div>
+      <div class="tile"><svg viewBox="0 0 120 64" preserveAspectRatio="none"><path d="M4,52 24,44 44,48 64,32 84,36 104,20 116,16 L116,60 4,60 Z" fill="var(--ch1)" opacity=".35"/><path d="M4,52 24,44 44,48 64,32 84,36 104,20 116,16" fill="none" stroke="var(--ch1)" stroke-width="2"/></svg><div class="tl">Area</div></div>
+      <div class="tile"><svg viewBox="0 0 120 64" preserveAspectRatio="none"><rect x="8" y="20" width="16" height="40" rx="2" fill="var(--ch1)"/><rect x="34" y="32" width="16" height="28" rx="2" fill="var(--ch2)"/><rect x="60" y="12" width="16" height="48" rx="2" fill="var(--ch1)"/><rect x="86" y="40" width="16" height="20" rx="2" fill="var(--ch3)"/></svg><div class="tl">Bar</div></div>
+      <div class="tile"><svg viewBox="0 0 120 64" preserveAspectRatio="none"><rect x="8" y="34" width="16" height="26" fill="var(--ch1)"/><rect x="8" y="20" width="16" height="14" fill="var(--ch2)"/><rect x="34" y="40" width="16" height="20" fill="var(--ch1)"/><rect x="34" y="26" width="16" height="14" fill="var(--ch2)"/><rect x="60" y="30" width="16" height="30" fill="var(--ch1)"/><rect x="60" y="14" width="16" height="16" fill="var(--ch2)"/><rect x="86" y="44" width="16" height="16" fill="var(--ch1)"/><rect x="86" y="32" width="16" height="12" fill="var(--ch2)"/></svg><div class="tl">Stacked bar</div></div>
+      <div class="tile"><svg viewBox="0 0 120 64" preserveAspectRatio="none"><rect x="10" y="28" width="14" height="32" rx="2" fill="var(--ch2)" opacity=".7"/><rect x="38" y="36" width="14" height="24" rx="2" fill="var(--ch2)" opacity=".7"/><rect x="66" y="22" width="14" height="38" rx="2" fill="var(--ch2)" opacity=".7"/><rect x="94" y="30" width="14" height="30" rx="2" fill="var(--ch2)" opacity=".7"/><polyline points="17,36 45,28 73,14 101,20" fill="none" stroke="var(--ch3)" stroke-width="2.5"/></svg><div class="tl">Combo</div></div>
+      <div class="tile"><svg viewBox="0 0 120 64"><g transform="translate(60,32)"><circle r="22" fill="none" stroke="var(--ch1)" stroke-width="11" stroke-dasharray="62 138"/><circle r="22" fill="none" stroke="var(--ch2)" stroke-width="11" stroke-dasharray="45 155" stroke-dashoffset="-62"/><circle r="22" fill="none" stroke="var(--ch3)" stroke-width="11" stroke-dasharray="31 169" stroke-dashoffset="-107"/></g></svg><div class="tl">Doughnut</div></div>
+      <div class="tile"><svg viewBox="0 0 120 64"><g fill="var(--ch1)"><rect x="8" y="8" width="24" height="14" opacity=".95"/><rect x="36" y="8" width="24" height="14" opacity=".5"/><rect x="64" y="8" width="24" height="14" opacity=".25"/><rect x="92" y="8" width="24" height="14" opacity=".7"/><rect x="8" y="26" width="24" height="14" opacity=".35"/><rect x="36" y="26" width="24" height="14" opacity=".85"/><rect x="64" y="26" width="24" height="14" opacity=".6"/><rect x="92" y="26" width="24" height="14" opacity=".2"/><rect x="8" y="44" width="24" height="14" opacity=".6"/><rect x="36" y="44" width="24" height="14" opacity=".3"/><rect x="64" y="44" width="24" height="14" opacity=".9"/><rect x="92" y="44" width="24" height="14" opacity=".45"/></g></svg><div class="tl">Heatmap</div></div>
+      <div class="tile"><svg viewBox="0 0 120 64" preserveAspectRatio="none"><path d="M10,8 110,8 96,22 24,22 Z" fill="var(--ch1)"/><path d="M24,26 96,26 84,40 36,40 Z" fill="var(--ch2)"/><path d="M36,44 84,44 74,58 46,58 Z" fill="var(--ch3)"/></svg><div class="tl">Funnel</div></div>
+      <div class="tile"><svg viewBox="0 0 120 64" preserveAspectRatio="none"><rect x="6" y="6" width="52" height="52" fill="var(--ch1)" opacity=".85"/><rect x="62" y="6" width="34" height="30" fill="var(--ch2)" opacity=".8"/><rect x="100" y="6" width="14" height="30" fill="var(--ch2)" opacity=".5"/><rect x="62" y="40" width="26" height="18" fill="var(--ch3)" opacity=".7"/><rect x="92" y="40" width="22" height="18" fill="var(--ch1)" opacity=".4"/></svg><div class="tl">Treemap</div></div>
+      <div class="tile"><svg viewBox="0 0 120 64"><g fill="var(--ch1)"><circle cx="18" cy="46" r="4"/><circle cx="34" cy="38" r="4"/><circle cx="46" cy="44" r="4"/><circle cx="58" cy="28" r="4"/><circle cx="72" cy="32" r="4"/></g><g fill="var(--ch2)"><circle cx="66" cy="18" r="4"/><circle cx="84" cy="22" r="4"/><circle cx="94" cy="14" r="4"/><circle cx="104" cy="24" r="4"/><circle cx="88" cy="40" r="4"/></g></svg><div class="tl">Scatter</div></div>
+      <div class="tile"><svg viewBox="0 0 120 64" preserveAspectRatio="none"><rect x="6" y="12" width="34" height="40" rx="4" fill="none" stroke="var(--border)" stroke-width="2"/><rect x="43" y="12" width="34" height="40" rx="4" fill="none" stroke="var(--border)" stroke-width="2"/><rect x="80" y="12" width="34" height="40" rx="4" fill="none" stroke="var(--border)" stroke-width="2"/><rect x="11" y="30" width="24" height="6" rx="2" fill="var(--ch1)"/><rect x="48" y="30" width="24" height="6" rx="2" fill="var(--ch2)"/><rect x="85" y="30" width="24" height="6" rx="2" fill="var(--ch3)"/></svg><div class="tl">KPI rows</div></div>
+      <div class="tile"><svg viewBox="0 0 120 64" preserveAspectRatio="none"><g stroke="var(--border)" stroke-width="1.5"><line x1="6" y1="18" x2="114" y2="18"/><line x1="6" y1="32" x2="114" y2="32"/><line x1="6" y1="46" x2="114" y2="46"/><line x1="44" y1="8" x2="44" y2="58"/><line x1="80" y1="8" x2="80" y2="58"/></g><rect x="6" y="8" width="108" height="10" fill="var(--ch1)" opacity=".25"/><rect x="48" y="36" width="28" height="6" rx="2" fill="var(--ch2)" opacity=".7"/><rect x="84" y="50" width="22" height="6" rx="2" fill="var(--ch3)" opacity=".7"/></svg><div class="tl">Tables &amp; pivots</div></div>
+      <div class="tile"><svg viewBox="0 0 120 64" preserveAspectRatio="none"><rect x="20" y="26" width="24" height="34" rx="2" fill="var(--ch1)"/><line x1="32" y1="16" x2="32" y2="36" stroke="var(--ch1)" stroke-width="2"/><line x1="26" y1="16" x2="38" y2="16" stroke="var(--ch1)" stroke-width="2"/><rect x="72" y="14" width="24" height="46" rx="2" fill="var(--ch2)"/><line x1="84" y1="6" x2="84" y2="24" stroke="var(--ch2)" stroke-width="2"/><line x1="78" y1="6" x2="90" y2="6" stroke="var(--ch2)" stroke-width="2"/></svg><div class="tl">A/B compare</div></div>
+      <div class="tile"><svg viewBox="0 0 120 64" preserveAspectRatio="none"><rect x="44" y="8" width="32" height="52" fill="var(--ch2)" opacity=".15"/><line x1="60" y1="8" x2="60" y2="60" stroke="var(--ch2)" stroke-width="1.5" stroke-dasharray="3 3"/><path d="M6,58 C30,58 40,10 60,10 C80,10 90,58 114,58" fill="none" stroke="var(--ch2)" stroke-width="2.5"/></svg><div class="tl">CUPED &amp; bootstrap CIs</div></div>
+      <div class="tile"><svg viewBox="0 0 120 64"><rect x="14" y="8" width="92" height="48" rx="6" fill="none" stroke="var(--border)" stroke-width="2"/><rect x="14" y="8" width="4" height="48" rx="2" fill="var(--ch1)"/><path d="M30,20 l2.4,6 6,2.4 -6,2.4 -2.4,6 -2.4,-6 -6,-2.4 6,-2.4 Z" fill="var(--ch3)"/><rect x="46" y="20" width="48" height="5" rx="2.5" fill="var(--ch1)" opacity=".55"/><rect x="46" y="30" width="56" height="5" rx="2.5" fill="var(--ch1)" opacity=".3"/><rect x="46" y="40" width="40" height="5" rx="2.5" fill="var(--ch1)" opacity=".3"/></svg><div class="tl">AI context widgets</div></div>
+      <div class="tile"><svg viewBox="0 0 120 64"><path d="M44,6 h22 l12,12 v40 h-34 Z" fill="none" stroke="var(--ch3)" stroke-width="2.5"/><path d="M66,6 v12 h12" fill="none" stroke="var(--ch3)" stroke-width="2.5"/><line x1="61" y1="26" x2="61" y2="42" stroke="var(--ch1)" stroke-width="3"/><path d="M54,37 61,45 68,37" fill="none" stroke="var(--ch1)" stroke-width="3"/></svg><div class="tl">PDF export</div></div>
+    </div>
+
+    <div class="nowall studio reveal">
+      <div class="nw-head">
+        <h3>None of them fit? <span class="grad">There is no wall.</span></h3>
+        <p>A report is code, so a component is whatever your agent writes. Any HTML, any JS, any visualization that doesn't exist yet. It arrives themed, filtered and wired to the same dataset as every built-in. No plugin API to wait for. No marketplace. Completely open, up to you.</p>
+      </div>
+      <div class="nw-body">
+        <div class="code"><span class="c"># your agent, mid-conversation:</span>
+self.add(<span class="k">RawHTML</span>(<span class="s">"""
+  &lt;canvas id="anything"&gt; … &lt;/canvas&gt;
+"""</span>))  <span class="c"># any HTML it can imagine</span></div>
+        <svg class="farrow" viewBox="0 0 24 10" width="30" height="13" aria-hidden="true"><path d="M0 5 H18 M14 1.5 L19 5 L14 8.5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+        <div class="nw-opts">
+          <div class="pchip">
+            <div class="ps-head">3D surface <span class="ps-dots"><i class="s1"></i><i class="s2"></i><i class="s3"></i></span></div>
+            <svg viewBox="0 0 120 40" aria-hidden="true"><polyline points="6,34 20,30 34,24 48,20 62,23 76,28 90,31 104,32 114,33" fill="none" stroke="var(--w-s1)" stroke-width="1.8"/><polyline points="12,29 26,24 40,17 54,12 68,16 82,22 96,26 110,27" fill="none" stroke="var(--w-s2)" stroke-width="1.8"/><polyline points="18,25 32,20 46,12 60,7 74,11 88,17 102,22 116,23" fill="none" stroke="var(--w-s3)" stroke-width="1.8" opacity=".8"/></svg>
+            <div class="ps-cap">themed · filterable · shared data</div>
+          </div>
+          <div class="pchip">
+            <div class="ps-head">flow diagram <span class="ps-dots"><i class="s1"></i><i class="s2"></i><i class="s3"></i></span></div>
+            <svg viewBox="0 0 120 40" aria-hidden="true"><rect x="4" y="4" width="8" height="14" rx="2" fill="var(--w-s1)"/><rect x="4" y="22" width="8" height="10" rx="2" fill="var(--w-s2)"/><rect x="108" y="4" width="8" height="9" rx="2" fill="var(--w-s1)"/><rect x="108" y="17" width="8" height="8" rx="2" fill="var(--w-s3)"/><rect x="108" y="29" width="8" height="7" rx="2" fill="var(--w-s2)"/><path d="M12,5 C60,5 60,5 108,5 L108,12 C60,12 60,12 12,12 Z" fill="var(--w-s1)" opacity=".3"/><path d="M12,12 C60,12 60,18 108,18 L108,24 C60,24 60,18 12,18 Z" fill="var(--w-s3)" opacity=".3"/><path d="M12,22 C60,22 60,29 108,29 L108,35 C60,35 60,31 12,31 Z" fill="var(--w-s2)" opacity=".3"/></svg>
+            <div class="ps-cap">themed · filterable · shared data</div>
+          </div>
+          <div class="pchip game">
+            <div class="ps-head">…even a game <span class="ps-dots"><i class="vio"></i><i class="s1"></i><i class="s3"></i></span></div>
+            <svg viewBox="0 0 120 40" aria-hidden="true"><g fill="var(--w-vio)"><rect x="46" y="2" width="5" height="5"/><rect x="67" y="2" width="5" height="5"/><rect x="51" y="7" width="5" height="5"/><rect x="62" y="7" width="5" height="5"/><rect x="41" y="12" width="36" height="5"/><rect x="36" y="17" width="10" height="5"/><rect x="51" y="17" width="16" height="5"/><rect x="72" y="17" width="10" height="5"/><rect x="36" y="22" width="46" height="5"/><rect x="36" y="27" width="5" height="5"/><rect x="77" y="27" width="5" height="5"/></g><rect x="52" y="34" width="14" height="4" rx="1" fill="var(--w-s1)"/></svg>
+            <div class="ps-cap">playable · in a report · yes really</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="wallchips reveal">
+      <span class="gchip"><i></i>filters &amp; cross-filtering</span>
+      <span class="gchip"><i></i>date selectors</span>
+      <span class="gchip"><i></i>tab groups</span>
+      <span class="gchip"><i></i>comparison tables</span>
+      <span class="gchip"><i></i>CSV export</span>
+      <span class="gchip"><i></i>themes &amp; custom themes</span>
+      <span class="gchip"><i></i>shared annotations</span>
+    </div>
+  </div>
+</section>
+
+<section class="hb closing-band">
+  <div class="rail">
+    <h2>Start with a conversation.<br>End with <span class="grad">reporting that runs itself.</span></h2>
+    <p class="hb-lead">You saw it behave at the top. Explore the demo gallery, then run the complete product on your own infrastructure.</p>
+
+    <div class="mini-demo reveal" id="mini-demo">
+      <div class="cs-top">
+        {% include "_lattice.html" with size=15 %}
+        <span class="crumb"><b>{{ BRAND }}</b><span class="cs-sep">▸</span>demo<span class="cs-sep">▸</span><span class="cs-chip studio">tour ▾</span></span>
+        <span class="cs-acct plain">themes still cycling →</span>
+      </div>
+      <div class="cs-duo"></div>
+      <div class="cs-rwrap">
+        <div class="report" id="mini-rp" data-th="light">
+          <div class="rp-strip"></div>
+          <div class="rp-head"><b>trellum.dev/demo/</b><span>· generated reports. click a bar, flip a theme</span></div>
+          <div class="kpis">
+            <div class="kpi"><div class="l">Reports</div><div class="v">Gallery</div><div class="d">interactive + exportable</div></div>
+            <div class="kpi"><div class="l">Sources</div><div class="v">Offline</div><div class="d">synthetic demo data</div></div>
+            <div class="kpi"><div class="l">Themes</div><div class="v">13+1</div><div class="d">including yours</div></div>
+          </div>
+          <div class="rp-chart">
+            <div class="t">the same report, still running</div>
+            <svg viewBox="0 0 560 76" width="100%" height="76" preserveAspectRatio="none" aria-hidden="true"><polyline points="6,62 62,55 118,58 174,44 230,48 286,34 342,38 398,26 454,30 550,14" fill="none" stroke="var(--rp-s1)" stroke-width="2.5"/><polyline points="6,70 62,66 118,68 174,60 230,62 286,54 342,56 398,49 454,51 550,42" fill="none" stroke="var(--rp-s2)" stroke-width="2" opacity=".75"/><circle r="4" fill="var(--rp-s1)" cx="550" cy="14"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hb-ctas center">
+      <a class="btn primary" href="/docs/latest/">Get started <span class="arr">→</span></a>
+      <a class="btn" href="{{ demo_href }}" rel="noopener">Explore the demo gallery</a>
+    </div>
+
+    <div class="paths">
+      <div class="path teal">
+        <div class="t">The framework · open source</div>
+        <p>Your agent writes the first report today. Free, local, no account.</p>
+        <div class="cmd">$ git clone https://github.com/trellumhq/trellum.git · <a href="{{ github_href }}" rel="noopener">view on GitHub →</a></div>
+      </div>
+      <div class="path violet">
+        <div class="t">The portal · where it runs</div>
+        <p>Published on merge. Scheduled or live. Yours to govern.</p>
+        <div class="cmd">AGPL-3.0-only · run it on your own machines</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* The landing page's behaviour: the console widget, the ambient ticks and the
+ * scroll choreography. Vanilla, no build step, and no colour literals — every
+ * stroke is a --rp-* / --w-* custom property defined in site.css, so a report
+ * surface recolours with the theme it is showing. Data is a fixture; the point
+ * is the behaviour, not the numbers. */
+(function () {
+  'use strict';
+  var console_ = document.getElementById('console');
+  if (!console_) { return; }
+
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var $ = function (id) { return document.getElementById(id); };
+
+  /* ---- reveals ---------------------------------------------------------
+   * The hidden state is applied by script, so a page whose JS never runs is
+   * fully visible rather than blank. */
+  document.documentElement.classList.add('js-reveal');
+  var reveals = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (!entry.isIntersecting) { return; }
+      if (entry.target.classList.contains('stagger')) {
+        Array.prototype.forEach.call(entry.target.children, function (child, i) {
+          child.style.transitionDelay = (i * 55) + 'ms';
+        });
+      }
+      entry.target.classList.add('in');
+      reveals.unobserve(entry.target);
+    });
+  }, { threshold: 0.12 });
+  Array.prototype.forEach.call(
+    document.querySelectorAll('.reveal, .stagger'),
+    function (el) { reveals.observe(el); }
+  );
+
+  /* ---- ambient loops pause off-screen ----------------------------------
+   * .offstage pauses CSS animations; the interval callbacks below check the
+   * same flag, so nothing animates or recomputes for a section nobody sees. */
+  var staged = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      entry.target.classList.toggle('offstage', !entry.isIntersecting);
+    });
+  }, { threshold: 0 });
+  Array.prototype.forEach.call(
+    document.querySelectorAll('#console, .pipeline, .show, #mini-demo'),
+    function (el) { staged.observe(el); }
+  );
+  function onstage(el) { return el && !el.closest('.offstage'); }
+
+  /* ---- report themes ---------------------------------------------------- */
+  var THEMES = ['acme', 'light', 'blossom', 'custom'];
+  var report = $('cs-rp');
+  var mini = $('mini-rp');
+  var auto = $('cs-auto');
+  var chips = document.querySelectorAll('.thchip');
+  var theme = 1;
+  var held = false;
+
+  function setTheme(i) {
+    theme = i;
+    report.dataset.th = THEMES[i];
+    if (mini) { mini.dataset.th = THEMES[(i + 1) % THEMES.length]; }
+    Array.prototype.forEach.call(chips, function (chip, j) {
+      chip.classList.toggle('on', j === i);
+    });
+  }
+  Array.prototype.forEach.call(chips, function (chip, i) {
+    chip.addEventListener('click', function () {
+      held = true;
+      auto.textContent = 'held — your pick';
+      setTheme(i);
+    });
+  });
+
+  /* ---- the report's chart, themed and gently ticking --------------------- */
+  var chart = $('cs-chart');
+  var series = [31, 33, 32, 36, 35, 39, 38, 42, 41, 45, 44, 48];
+  var MAX = 52;
+
+  function y(v) { return (104 - (v / MAX) * 92).toFixed(1); }
+  function drawChart() {
+    var step = 560 / (series.length - 1);
+    var line = function (scale) {
+      return series.map(function (v, i) {
+        return (i * step).toFixed(1) + ',' + y(v * scale);
+      }).join(' ');
+    };
+    chart.innerHTML =
+      '<polyline points="' + line(1) + '" fill="none" stroke="var(--rp-s1)" stroke-width="2.5"/>' +
+      '<polyline points="' + line(0.55) + '" fill="none" stroke="var(--rp-s2)" stroke-width="2" opacity=".75"/>' +
+      '<line x1="336" y1="6" x2="336" y2="104" stroke="var(--rp-s3)" stroke-width="1.5" stroke-dasharray="3 3"/>' +
+      '<circle r="4" fill="var(--rp-s1)" cx="560" cy="' + y(series[series.length - 1]) + '"/>';
+  }
+  drawChart();
+
+  /* ---- dashboard ⇄ report ----------------------------------------------- */
+  var REPORTS = {
+    weekly: { title: 'Weekly Revenue', meta: '· W35 · built 07:00 · deterministic', chart: 'Weekly revenue', live: false },
+    live: { title: 'Revenue Today', meta: '· queried at view time · viewer-picked filters', chart: 'Revenue today', live: true },
+    ab: { title: 'Checkout Experiment', meta: '· W35 · built 07:00 · CUPED', chart: 'Conversion by arm', live: false }
+  };
+  var dash = $('cs-dash');
+  var view = $('cs-report');
+  var fresh = $('cs-fresh');
+  var liveMode = false;
+  var touched = false;
+  var age = 0;
+
+  function open(key) {
+    var spec = REPORTS[key];
+    if (!spec) { return; }
+    $('cs-title').textContent = spec.title;
+    $('cs-submeta').textContent = spec.meta;
+    $('cs-charttitle').textContent = spec.chart;
+    liveMode = spec.live;
+    age = 0;
+    fresh.textContent = liveMode ? 'fresh as of 0s ago' : '';
+    dash.hidden = true;
+    view.hidden = false;
+    drawChart();
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('.cs-card'), function (card) {
+    card.addEventListener('click', function () {
+      touched = true;
+      open(card.dataset.rep);
+    });
+  });
+  $('cs-back').addEventListener('click', function () {
+    view.hidden = true;
+    dash.hidden = false;
+    liveMode = false;
+  });
+
+  /* ---- email delivery toggle -------------------------------------------- */
+  var mail = $('cs-mail');
+  mail.addEventListener('click', function () {
+    var on = mail.classList.toggle('on');
+    mail.setAttribute('aria-checked', String(on));
+    $('cs-mailwho').textContent = on ? '12 recipients' : 'off — report stays current anyway';
+  });
+
+  /* ---- the live feature tile -------------------------------------------- */
+  var tile = $('tile-live');
+  var tileAge = $('tile-age');
+  var ticks = [38, 40, 39, 43, 42, 46, 45, 49];
+  var tileSeconds = 0;
+
+  function drawTile() {
+    var step = 300 / (ticks.length - 1);
+    var points = ticks.map(function (v, i) {
+      return (i * step).toFixed(1) + ',' + (48 - (v / 54) * 42).toFixed(1);
+    }).join(' ');
+    tile.innerHTML =
+      '<polyline points="' + points + '" fill="none" stroke="var(--scope-studio)" stroke-width="2.5"/>' +
+      '<circle r="3.5" fill="var(--scope-studio)" cx="300" cy="' + (48 - (ticks[ticks.length - 1] / 54) * 42).toFixed(1) + '"/>';
+  }
+  drawTile();
+
+  function drift(values, low, high) {
+    var next = values[values.length - 1] + (Math.random() * 4 - 1.7);
+    values.push(Math.max(low, Math.min(high, next)));
+    values.shift();
+  }
+
+  /* ---- the harness the conversation is with ----------------------------- */
+  var tabs = document.querySelectorAll('.htab');
+  Array.prototype.forEach.call(tabs, function (tab) {
+    tab.addEventListener('click', function () {
+      Array.prototype.forEach.call(tabs, function (other) { other.classList.remove('on'); });
+      tab.classList.add('on');
+      Array.prototype.forEach.call(document.querySelectorAll('.hookname'), function (name) {
+        name.textContent = tab.dataset.h;
+      });
+    });
+  });
+
+  /* ---- the clocks -------------------------------------------------------
+   * Reduced motion gets the same page, standing still: no cycling, no ticking
+   * and no report opening itself. */
+  if (reduced) { return; }
+
+  setInterval(function () { if (!held && onstage(report)) { setTheme((theme + 1) % THEMES.length); } }, 3600);
+  setInterval(function () {
+    if (!onstage(chart)) { return; }
+    drift(series, 30, 50);
+    drawChart();
+  }, 2400);
+  setInterval(function () {
+    if (!onstage(tile)) { return; }
+    drift(ticks, 34, 52);
+    tileSeconds = 0;
+    drawTile();
+  }, 2000);
+  setInterval(function () {
+    if (onstage(tile)) { tileSeconds += 1; tileAge.textContent = String(tileSeconds); }
+    if (liveMode && !view.hidden) { age += 1; fresh.textContent = 'fresh as of ' + age + 's ago'; }
+  }, 1000);
+  setTimeout(function () { if (!touched) { open('weekly'); } }, 6000);
+})();
+</script>
+{% endblock %}

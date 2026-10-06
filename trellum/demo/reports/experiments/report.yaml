@@ -1,0 +1,61 @@
+# ─── Identity ───────────────────────────────────────────────
+name: "Experiments"
+slug: experiments
+description: "Nova Play's whole A/B program on one page: a checkout test with CUPED and bootstrap CIs, a pricing test where conversion lifts but revenue doesn't follow, and a concluded onboarding test read by Day-1 return."
+version: 0.1.0
+
+# ─── Scheduling ─────────────────────────────────────────────
+schedule:
+  cron: "0 9 * * *"
+  timezone: UTC
+
+# ─── Classification ─────────────────────────────────────────
+tags:
+  - experiment
+  - statistics
+  - demo
+studio: nova-play
+category: Experiments
+
+# ─── Presentation ───────────────────────────────────────────
+theme: dracula
+
+# ─── A/B metadata ───────────────────────────────────────────
+# One entry per experiment on the page, in section order; each keeps its own
+# row and lifecycle on the portal's Experiments overview, matched to its
+# ABCompare payload by test_name. Declaring start dates also suppresses the
+# date-range validation warning: an experiment page is pinned to its tests'
+# own windows, not a rolling one.
+ab_test:
+  # Running: started, no end declared.
+  - test_name: checkout_v2
+    name: "Checkout Experiment"
+    start_date: "2026-07-14"
+  # Past its declared end with this page still on a daily schedule -- the
+  # overview's amber "past_end" nudge: the test outran its own horizon and
+  # nobody stopped the pipeline.
+  - test_name: starter_pack_price
+    name: "Pricing Experiment"
+    start_date: "2026-07-09"
+    end_date: "2026-08-06"
+  # Concluded: ended AND closed. `closed: true` is what marks a finished
+  # test as decided on a page that still rebuilds daily for the tests
+  # beside it -- without it this entry would read past_end too.
+  - test_name: onboarding_v2
+    name: "Onboarding Experiment"
+    start_date: "2026-05-25"
+    end_date: "2026-06-15"
+    closed: true
+    # The overview's headline number: Day-1 Return, not the (flat) revenue
+    # row every A/B report leads with by default.
+    primary_metric: conv_rate
+
+# ─── Data Sources ───────────────────────────────────────────
+data_sources:
+  - demo_db
+
+# ─── Display ─────────────────────────────────────────
+display:
+  icon: git-branch
+  color: "#e15759"
+  priority: 6

@@ -1,0 +1,132 @@
+{% extends "settings_base.html" %}
+{% block title %}Studios — {{ org.name }}{% endblock %}
+{% block settings %}
+<header class="page-head">
+  <div class="ui-label page-kicker scope-org">Organization · {{ org.name }}</div>
+  <h1>Studios</h1>
+  <p class="muted page-sub">A studio is the sharing boundary: its reports come from its git
+    repository and are visible only to people with a role in it. Slugs are permanent
+    (they key data on disk); display names are free to change.</p>
+</header>
+
+{% if usage.enforced %}
+<h2>Plan usage</h2>
+<div class="panel">
+<p class="muted" style="margin-top:0">Builds queue rather than fail when the
+concurrency limit is reached. Contact your provider to change these.</p>
+<table class="ui-table dense">
+  <thead><tr><th>Resource</th><th>Used</th><th>Limit</th></tr></thead>
+  <tbody>
+    <tr><td data-label="Resource">Builds running now</td><td data-label="Used">{{ usage.active_runs }}</td>
+        <td data-label="Limit">{% if usage.max_concurrent_runs %}{{ usage.max_concurrent_runs }}{% else %}unlimited{% endif %}</td></tr>
+    <tr><td data-label="Resource">Build minutes ({{ usage.month }})</td><td data-label="Used">{{ usage.build_minutes }}</td>
+        <td data-label="Limit">{% if usage.monthly_build_minutes %}{{ usage.monthly_build_minutes }}{% else %}unlimited{% endif %}</td></tr>
+    <tr><td data-label="Resource">Studios</td><td data-label="Used">{{ usage.studios }}</td>
+        <td data-label="Limit">{% if usage.max_studios %}{{ usage.max_studios }}{% else %}unlimited{% endif %}</td></tr>
+    <tr><td data-label="Resource">Reports</td><td data-label="Used">{{ usage.reports }}</td>
+        <td data-label="Limit">{% if usage.max_reports %}{{ usage.max_reports }}{% else %}unlimited{% endif %}</td></tr>
+    {% if usage.max_memory_mb %}
+    <tr><td data-label="Resource">Memory per build</td><td data-label="Used">—</td><td data-label="Limit">{{ usage.max_memory_mb }} MB</td></tr>
+    {% endif %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+{% include "_list_toolbar.html" with q=q placeholder="Search studios…" total=total %}
+<div class="panel">
+<div class="ui-table-scroll">
+<table class="ui-table" data-mobile-cards>
+  <thead><tr><th>Studio</th><th>Name &amp; description</th><th>Members</th><th>Reports</th><th></th></tr></thead>
+  <tbody>
+  {% for s in rows %}
+  <tr>
+    <td data-label="Studio"><span class="ui-badge">{{ s.slug }}</span></td>
+    <td data-label="Name &amp; description" style="min-width:340px">
+      <form class="inline" method="post" style="display:flex;gap:6px;align-items:center;width:100%" data-settings-form>
+        {% csrf_token %}
+        <input type="hidden" name="action" value="rename">
+        <input type="hidden" name="studio_id" value="{{ s.pk }}">
+        <input name="name" value="{{ s.name }}" maxlength="200" style="width:140px;flex-shrink:0">
+        <input name="description" value="{{ s.description }}" maxlength="400" placeholder="description" style="flex:1;min-width:120px">
+        <button class="ui-btn ghost" type="submit" style="flex-shrink:0">Save changes</button>
+      </form>
+    </td>
+    <td data-label="Members">{{ s.member_count }}</td>
+    <td data-label="Reports">{{ s.report_count }}</td>
+    <td class="ui-row-actions" data-label="Actions">
+      <details class="shell-dd">
+        <summary aria-label="Manage {{ s.slug }}">Manage</summary>
+        <div class="shell-menu shell-menu-right" style="min-width:280px">
+          <a href="/s/{{ org.slug }}/{{ s.slug }}/settings/repo">Studio settings</a>
+          <a href="/s/{{ org.slug }}/{{ s.slug }}/">Open dashboard</a>
+          <span class="shell-menu-note">Danger</span>
+          <span class="shell-menu-note">Type the slug <code>{{ s.slug }}</code> to confirm.
+          Reports and runs are removed from the portal; files on disk are retained.</span>
+          <form method="post" action="/orgs/{{ org.slug }}/studios/{{ s.slug }}/delete"
+                style="display:flex;gap:6px;padding:6px 10px">
+            {% csrf_token %}
+            <input name="confirm_slug" placeholder="{{ s.slug }}">
+            <button class="ui-btn danger" type="submit">Delete</button>
+          </form>
+        </div>
+      </details>
+    </td>
+  </tr>
+  {% empty %}
+  <tr><td colspan="5"><div class="ui-empty">
+    {% if q %}No studio matches “{{ q }}”.
+      <div class="ui-empty-action"><a class="ui-btn ghost" href="{% querystring q=None page=None %}">Clear search</a></div>
+    {% else %}No studios yet.
+      <div class="ui-empty-action"><a class="ui-btn ghost" href="#new-studio">+ New studio</a></div>
+    {% endif %}
+  </div></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+</div>
+{% include "_pagination.html" with page=page %}
+
+<h2 id="new-studio">New studio</h2>
+<div class="ui-panel">
+  <form method="post" action="/orgs/{{ org.slug }}/studios/new" class="ui-form-grid">
+    {% csrf_token %}
+    <div class="ui-field">
+      <label for="studio-name">Name</label>
+      <input id="studio-name" name="name" required maxlength="200">
+    </div>
+    <div class="ui-field">
+      <label for="studio-slug">Slug</label>
+      <input id="studio-slug" name="slug" required maxlength="64" pattern="[a-z0-9-]+">
+      <span class="ui-help">Lowercase letters, digits, hyphens. Cannot be changed later.</span>
+    </div>
+    <div class="ui-field ui-field-wide">
+      <label for="studio-description">Description</label>
+      <input id="studio-description" name="description" maxlength="400">
+    </div>
+    <div class="ui-form-actions">
+      <button class="ui-btn primary" type="submit">Create studio</button>
+    </div>
+  </form>
+</div>
+
+<div class="panel formrow" style="margin-top:16px">
+  <h2>Delete this organization</h2>
+  <p class="muted">Removes {{ org.name }} from the portal: its
+    {{ total }} studio{{ total|pluralize }}, memberships, schedules and
+    settings. Members keep their accounts, files on disk are retained until
+    pruned, and the audit history survives. It cannot be undone.</p>
+  <details>
+    <summary>Delete {{ org.name }} permanently</summary>
+    <form method="post" action="/orgs/{{ org.slug }}/delete" style="margin-top:10px">
+      {% csrf_token %}
+      <label for="org-delete-confirm">Type the organization slug <code>{{ org.slug }}</code> to confirm</label>
+      <input id="org-delete-confirm" class="ui-input" name="confirm_slug"
+             autocomplete="off" placeholder="{{ org.slug }}">
+      <p></p>
+      <button class="ui-btn danger" type="submit">Delete organization</button>
+    </form>
+  </details>
+</div>
+{% endblock %}

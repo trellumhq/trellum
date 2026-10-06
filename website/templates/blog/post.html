@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} — {{ BRAND }}{% endblock %}
+{% block og_title %}{{ title }} — {{ BRAND }}{% endblock %}
+{% block description %}{{ post.summary }}{% endblock %}
+
+{% block head_extra %}<link rel="alternate" type="application/rss+xml" title="{{ BRAND }} blog" href="/blog/rss.xml">{% endblock %}
+
+{% block content %}
+<div class="blog-wrap">
+  <article class="docs-main">
+    <div class="crumbs">Blog / {{ title }}</div>
+    <h1>{{ title }}</h1>
+    <div class="post-meta">
+      <time datetime="{{ post.date|date:'Y-m-d' }}">{{ post.date|date:"j F Y" }}</time>{% if post.author %} · {{ post.author }}{% endif %}
+    </div>
+    {{ body }}
+
+    <nav class="pn" aria-label="Page navigation">
+      <a href="/blog/">← Back<b>All posts</b></a>
+    </nav>
+  </article>
+</div>
+{% endblock %}

@@ -1,0 +1,15 @@
+# The blog's index — newest first, and the only place post order is decided.
+#
+# Publishing a post is two things: one `<slug>.md` file in this directory whose
+# first `# H1` is the title, and one entry here. Nothing else — no database, no
+# admin, no build step, exactly like the documentation next door.
+#
+# Fields: slug (the filename and the URL), date, author, summary (the listing
+# card's blurb and the RSS description).
+# Diagrams work as they do in the docs — `{{figure:name}}` pulls in
+# `_figures/name.html`, which is created the first time a post needs one.
+
+- slug: why-trellum-exists
+  date: 2026-08-20
+  author: Apollo
+  summary: Agents made ad-hoc analysis easy. They also made every dashboard different from the last. The story of the context folder, the hallucinated HTML, and why determinism became the whole point.

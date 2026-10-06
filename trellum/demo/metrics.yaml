@@ -1,0 +1,244 @@
+# Business metric definitions for the demo project.
+#
+# A KPI component CLAIMS one of these by id -- {"metric": "gross_revenue"} --
+# and the definition expands at build time into the exact aggregation the
+# client engine executes, so every claimant computes the same number by
+# construction. `python -m trellum metrics` lists them; `trellum guide
+# metrics` explains the contract.
+#
+# Adoption is broad on purpose: every report whose data can genuinely compute
+# a definition claims it, so most metrics here show 2-4 claiming reports in
+# the catalog rather than one. Claims stay opt-in per KPI -- reports (and
+# sections) whose data does not support a definition (cart-funnel,
+# conversion, economy-firehose, user-event-log, and the experiments page's
+# onboarding section) keep their inline KPI dicts instead of stretching a
+# claim across a business or a grain it was not defined for.
+#
+# A RATIO's scaling follows its FORMAT. `agg: ratio` aggregates to
+# numerator / denominator, and only `format: percent` reads that as a
+# percentage and multiplies by a hundred. So a currency ratio (arpdau,
+# avg_transaction_value) and a plain one (sessions_per_dau) are ordinary live
+# metrics: bind them, claim them, and they filter and re-aggregate like
+# anything else. A report may still pass a Python-computed `value=` where it
+# has a reason to -- player-overview does, over its own frame -- but it is no
+# longer the only way to put one of these on a card.
+#
+# `ad_share` is version 2 on purpose -- it demonstrates the catalog's amber
+# "stale" badge. v1 defined it as ad revenue's share of TOTAL revenue
+# (ad_revenue / total_revenue); v2 redefines the denominator to isolate ads
+# against paid revenue instead (ad_revenue / iap_revenue), a real spec change
+# finance asked for so the ads channel's scale reads against IAP rather than
+# diluting itself into the total. To see the badge: build every report
+# (`python -m trellum.run --all --no-serve`), sync the portal's studio scan so
+# `MetricDefinition.definition_hash` picks up v2, then rebuild only ONE of
+# ad_share's claimants (`python -m trellum.run reports/player-overview
+# --no-serve`, say) -- its `_meta.json` now carries the v2 hash while the
+# other claimant's still carries v1, so the Metrics catalog shows one green
+# "current" usage row and one amber "stale -- built against v1" row on the
+# same `ad_share` entry. See demo/README.md's "Showing the stale badge"
+# section for the full walkthrough.
+
+version: 1
+
+# A dataset is the grain a metric binds to: one table (or provider), one time
+# axis, the dimensions it can be filtered by. `ctx.metrics([...])` fetches one
+# request per dataset; `python -m trellum metrics --report` monitors every
+# bound metric. Descriptive metrics (no agg) stay unbound on purpose.
+datasets:
+  daily:
+    source: demo_db
+    table: fact_daily
+    time: {column: event_date, grain: day}
+    dimensions: [title, platform, region, spender_tier]
+    # Derived once here, where the rows are, instead of in every report.
+    columns: {total_revenue: "iap_revenue + ad_revenue"}
+    lookback: 90
+  ret_d1:
+    source: demo_db
+    table: fact_retention
+    where: "day_number = 1"
+    time: {column: cohort_date, grain: day}
+    dimensions: [title, platform]
+  ret_d7:
+    source: demo_db
+    table: fact_retention
+    where: "day_number = 7"
+    time: {column: cohort_date, grain: day}
+    dimensions: [title, platform]
+  orders:
+    source: demo_db
+    table: shop_orders
+    time: {column: order_date, grain: day}
+    dimensions: [channel, device, category]
+    # Revenue-weighted refunds, the same derivation store-health makes in pandas.
+    columns: {refunded: "gross_revenue * returned"}
+
+metrics:
+  - name: gross_revenue
+    label: "Gross Revenue"
+    description: "Total revenue booked per day -- in-app purchase revenue plus ad revenue, gross of platform fees, from fact_daily."
+    owner: finance@demo.example
+    format: currency
+    agg: sum
+    column: total_revenue
+    sql: "iap_revenue + ad_revenue"
+    dimensions: [event_date, title, platform, region, spender_tier]
+    dataset: daily
+    tags: [revenue]
+
+  - name: iap_revenue
+    label: "IAP Revenue"
+    description: "In-app purchase revenue per day, gross of platform fees, from fact_daily -- the paid half of gross_revenue."
+    owner: finance@demo.example
+    format: currency
+    agg: sum
+    column: iap_revenue
+    sql: "iap_revenue"
+    dimensions: [event_date, title, platform, region, spender_tier]
+    dataset: daily
+    tags: [revenue]
+
+  - name: ad_revenue
+    label: "Ad Revenue"
+    description: "Advertising revenue per day from fact_daily, earned across every spender tier including non-spenders."
+    owner: finance@demo.example
+    format: currency
+    agg: sum
+    column: ad_revenue
+    sql: "ad_revenue"
+    dimensions: [event_date, title, platform, region, spender_tier]
+    dataset: daily
+    tags: [revenue, ads]
+
+  - name: transactions
+    label: "Transactions"
+    description: "Count of completed in-app purchase transactions per day from fact_daily, pairing with iap_revenue for purchase-value ratios."
+    owner: finance@demo.example
+    format: number
+    agg: sum
+    column: transactions
+    sql: "transactions"
+    dimensions: [event_date, title, platform, region, spender_tier]
+    dataset: daily
+    tags: [revenue, engagement]
+
+  - name: payer_share
+    label: "Payer Share"
+    description: "Share of daily active users who made a purchase that day, from fact_daily."
+    owner: product@demo.example
+    format: percent
+    agg: ratio
+    numerator: payers
+    denominator: dau
+    sql: "payers / dau"
+    dimensions: [event_date, title, platform, region, spender_tier]
+    dataset: daily
+    tags: [revenue, engagement]
+
+  - name: dau
+    label: "DAU"
+    description: "Daily active users from fact_daily, summed across the dropped dimensions per day and averaged over the window -- the one metric here that rolls up across time by average, not by sum."
+    owner: product@demo.example
+    format: number
+    agg: sum
+    column: dau
+    time_agg: avg
+    dataset: daily
+    sql: "COUNT(DISTINCT user_id)"
+    dimensions: [event_date, title, platform, region, spender_tier]
+    tags: [engagement]
+
+  - name: arpdau
+    label: "ARPDAU"
+    description: "Average in-app-purchase revenue per daily active user, from fact_daily."
+    owner: finance@demo.example
+    format: currency
+    agg: ratio
+    numerator: iap_revenue
+    denominator: dau
+    sql: "iap_revenue / dau"
+    dimensions: [event_date, title, platform, region, spender_tier]
+    dataset: daily
+    tags: [revenue, engagement]
+
+  - name: avg_transaction_value
+    label: "Avg Transaction Value"
+    description: "Average in-app-purchase revenue per completed transaction, from fact_daily."
+    owner: finance@demo.example
+    format: currency
+    agg: ratio
+    numerator: iap_revenue
+    denominator: transactions
+    sql: "iap_revenue / transactions"
+    dimensions: [event_date, title, platform, region, spender_tier]
+    dataset: daily
+    tags: [revenue]
+
+  - name: sessions_per_dau
+    label: "Sessions per DAU"
+    description: "Average sessions per daily active user, an engagement-depth signal from fact_daily."
+    owner: product@demo.example
+    format: ratio
+    # A plain ratio: no percent reading, so it renders as "2.98x".
+    agg: ratio
+    numerator: sessions
+    denominator: dau
+    sql: "sessions / dau"
+    dimensions: [event_date, title, platform, region, spender_tier]
+    dataset: daily
+    tags: [engagement]
+
+  - name: ad_share
+    label: "Ad Revenue Share"
+    description: "Share of IAP revenue that ad revenue matches, from fact_daily -- v2, redefined against iap_revenue instead of total revenue so the ads channel's scale reads on its own axis."
+    owner: finance@demo.example
+    format: percent
+    version: 2
+    agg: ratio
+    numerator: ad_revenue
+    denominator: iap_revenue
+    # v1 was ad_revenue / (iap_revenue + ad_revenue) -- see the file header
+    # on why this is the demo's stale-badge case.
+    sql: "ad_revenue / iap_revenue"
+    dimensions: [event_date, title, platform, region, spender_tier]
+    dataset: daily
+    tags: [revenue, ads]
+
+  - name: retention_d1
+    label: "Day-1 Retention"
+    description: "Share of a cohort still active exactly one day after install, from fact_retention."
+    owner: product@demo.example
+    format: percent
+    agg: ratio
+    numerator: retained_users
+    denominator: cohort_size
+    sql: "retained_users / cohort_size WHERE day_number = 1"
+    dimensions: [cohort_date, title, platform, day_number]
+    dataset: ret_d1
+    tags: [retention]
+
+  - name: retention_d7
+    label: "Day-7 Retention"
+    description: "Share of a cohort still active exactly seven days after install, from fact_retention."
+    owner: product@demo.example
+    format: percent
+    agg: ratio
+    numerator: retained_users
+    denominator: cohort_size
+    sql: "retained_users / cohort_size WHERE day_number = 7"
+    dimensions: [cohort_date, title, platform, day_number]
+    dataset: ret_d7
+    tags: [retention]
+
+  - name: refund_rate
+    label: "Refund Rate"
+    description: "Share of gross revenue later returned by customers, from shop_orders."
+    owner: finance@demo.example
+    format: percent
+    agg: ratio
+    numerator: refunded
+    denominator: gross_revenue
+    sql: "refunded / gross_revenue"
+    dimensions: [event_date, channel, device, category, product]
+    dataset: orders
+    tags: [returns, commerce]

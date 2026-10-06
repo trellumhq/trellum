@@ -1,0 +1,32 @@
+# ─── Identity ───────────────────────────────────────────────
+name: "Store Health"
+slug: store-health
+description: "The whole Northwind Threads picture at order grain: revenue, margin and return rate by category, channel, device and product, from shop_orders."
+version: 0.2.0
+
+# ─── Scheduling ─────────────────────────────────────────────
+schedule:
+  cron: "0 6 * * *"
+  timezone: UTC
+
+# ─── Classification ─────────────────────────────────────────
+tags:
+  - commerce
+  - revenue
+  - margin
+  - returns
+studio: northwind
+category: Revenue
+
+# ─── Presentation ───────────────────────────────────────────
+theme: ocean
+
+# ─── Data Sources ────────────────────────────────────────────
+data_sources:
+  - demo_db
+
+# ─── Display ─────────────────────────────────────────
+display:
+  icon: shopping-bag
+  color: "#4e79a7"
+  priority: 1

@@ -1,0 +1,25 @@
+
+.fw-pivot-controls {
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;
+    margin-bottom: 10px; font-size: 12px;
+}
+.fw-pivot-group {
+    display: flex; flex-direction: column; gap: 4px; min-width: 120px;
+}
+.fw-pivot-group label {
+    color: var(--text-secondary); font-weight: 600;
+    font-size: var(--font-size-label); text-transform: uppercase; letter-spacing: 0.3px;
+    white-space: nowrap;
+}
+.fw-pivot-table th.fw-pivot-col-header {
+    text-align: right; font-weight: 600;
+}
+.fw-pivot-table td.fw-pivot-value {
+    text-align: right; font-variant-numeric: tabular-nums;
+}
+.fw-pivot-table td.fw-pivot-row-header {
+    font-weight: 600; white-space: nowrap;
+}
+.fw-pivot-table tr.fw-pivot-total td {
+    font-weight: 700; border-top: 2px solid var(--border-color);
+}

@@ -1,0 +1,420 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+    --font-size-interface: var(--font-size-base, 14px);
+    --font-size-table: 13px;
+    --font-size-label: var(--font-size-small, 12px);
+    --font-size-meta: var(--font-size-small, 12px);
+    --font-size-axis: var(--font-size-small, 12px);
+    --font-size-tooltip: var(--font-size-small, 12px);
+    --font-size-section: 16px;
+    --font-size-heading: 24px;
+    --radius-control: 8px;
+    --radius-card: var(--border-radius, 10px);
+    --on-accent: #fff;
+    --primary-fill: #0F766E;
+}
+/* Full-bleed elements sized from `vw` (the sticky filter bar's
+   `margin: calc(-50vw + 50%)`) end up a scrollbar-width too wide,
+   because `100vw` counts the vertical scrollbar and the client width
+   does not -- so any page tall enough to scroll also got a horizontal
+   scrollbar. `clip` and not `hidden`: `hidden` makes a scroll container,
+   which breaks `position: sticky` inside. Both selectors: on the root
+   alone Chrome keeps reporting the overflow in `scrollWidth`; the pair
+   clips it for real. Chrome 90+, Firefox 81+, Safari 16+. */
+html, body { overflow-x: clip; }
+body {
+    font-family: var(--font-family);
+    background: var(--bg-main);
+    color: var(--text-main);
+    font-size: var(--font-size-base);
+    line-height: 1.5;
+    padding: 0;
+    min-height: 100vh;
+    -webkit-text-size-adjust: 100%;
+}
+button, input, select, textarea { font: inherit; }
+button:focus-visible, a:focus-visible, input:focus-visible,
+select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 2px;
+}
+.fw-kpi-value, .fw-table td, .fw-pivot-table td,
+.fw-kpi-delta { font-variant-numeric: tabular-nums; }
+.fw-container { max-width: 1400px; margin: 0 auto; padding: 12px 20px; }
+.fw-container.fw-full-width { max-width: none; }
+
+/* ── Loading Overlay ── */
+.fw-loading {
+    position: fixed; inset: 0;
+    background: var(--bg-main);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    z-index: 9999; gap: 10px;
+    transition: opacity 0.3s;
+}
+.fw-loading.fade-out { opacity: 0; pointer-events: none; }
+.fw-spinner {
+    width: 36px; height: 36px;
+    border: 3px solid var(--border-color);
+    border-top-color: var(--accent-blue);
+    border-radius: 50%;
+    animation: fw-spin 0.8s linear infinite;
+    margin-bottom: 4px;
+}
+@keyframes fw-spin { to { transform: rotate(360deg); } }
+.fw-loading-title { color: var(--text-main); font-size: 15px; font-weight: 600; }
+.fw-loading-text { color: var(--text-secondary); font-size: 13px; }
+
+/* ── Chunk loading banner (non-blocking, appears bottom-right) ── */
+#fwChunkBanner {
+    position: fixed; bottom: 20px; right: 20px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    padding: 7px 14px;
+    font-size: 12px; color: var(--text-secondary);
+    display: flex; align-items: center; gap: 8px;
+    z-index: 9000;
+    box-shadow: var(--shadow);
+    opacity: 0; transform: translateY(6px);
+    transition: opacity 0.2s, transform 0.2s;
+    pointer-events: none;
+}
+#fwChunkBanner.visible { opacity: 1; transform: translateY(0); }
+.fw-chunk-spinner {
+    width: 12px; height: 12px;
+    border: 2px solid var(--border-color);
+    border-top-color: var(--accent-blue);
+    border-radius: 50%;
+    animation: fw-spin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+/* ── Sections (used by _render_section_list) ── */
+.fw-section {
+    background: var(--bg-card);
+    border-radius: var(--radius-card);
+    padding: 16px 20px;
+    margin-bottom: 12px;
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow);
+    min-width: 0;
+}
+.fw-section h2 {
+    font-size: var(--font-size-section); font-weight: 600; line-height: 1.35;
+    margin-bottom: 10px;
+    color: var(--text-main);
+}
+/* A section nested inside a section is a block within a group, not a card on
+   a card: it keeps the heading and loses the second frame. */
+.fw-section .fw-section {
+    background: none; border: 0; box-shadow: none;
+    padding: 0; margin-bottom: 18px;
+}
+.fw-section .fw-section:last-child { margin-bottom: 0; }
+.fw-section .fw-section h2 { font-size: 14px; }
+/* ?only=<id>: one block, no page chrome (see the filter script in
+   rendering/html_builder.py). The block is as tall as it is -- a host frames
+   it and sizes the frame to what comes back, so there is nothing here to
+   stretch to and `min-height: 100vh` would only invent a void under the
+   chart. The full-bleed main bar is dropped too: there is no page for it to
+   bleed across, and its `-50vw` measures past a frame's own scrollbar, which
+   is what put a horizontal scrollbar under an embedded chart. */
+body.fw-only { min-height: 0; }
+body.fw-only .fw-header { display: none; }
+/* No bottom inset: a host insets the frame itself, and padding here is
+   padding inside padding -- 12px of frame height spent on nothing. */
+body.fw-only .fw-container { max-width: none; margin: 0; padding: 12px 20px 0; }
+/* One flat panel, not a cropped page. The cards, the rules and the headings
+   are how a page separates its blocks from each other; a frame holds one
+   block and its host already named it, so they only crop the design. What is
+   left aligns to a single inset: the shared controls, then the number and
+   the breakdown side by side, then the chart. */
+body.fw-only .fw-section {
+    background: none; border: 0; box-shadow: none; padding: 0; margin: 0;
+}
+body.fw-only .fw-section h2,
+body.fw-only .fw-chart-title { display: none; }
+body.fw-only .fw-filter-bar {
+    position: static;
+    background: none; border: 0; box-shadow: none;
+    margin-left: 0; margin-right: 0;
+    padding-left: 0; padding-right: 0;
+}
+/* The innermost section IS the block; an outer one is only the group kept
+   around it for context, and stays a plain block. Every row is `auto`: the
+   block is content-height, so nothing here has spare space to hand out. */
+body.fw-only .fw-section:not(:has(.fw-section)) {
+    display: grid; gap: 10px 16px;
+    grid-template-columns: auto 1fr;
+    grid-template-areas: "kpi toggle" "legend legend" "chart chart";
+}
+/* A tile grid is a way of showing MANY blocks at once; only-mode is showing
+   exactly one, so the grid stops being a grid and the surviving block takes
+   the frame's whole width. */
+body.fw-only .fw-grid { display: block; }
+body.fw-only .fw-kpi-grid { grid-area: kpi; margin: 0; }
+/* `display` restores what tile mode dropped: the breakdown toggle is hidden
+   at tile width (grid.css) and belongs back beside the number here, where
+   the block has the width for it. */
+body.fw-only .fw-toggle-group {
+    display: inline-flex;
+    grid-area: toggle; justify-self: end; align-self: center; margin: 0;
+}
+/* The legend is a row of chips: it gets the row it needs and no more.
+   Without a place of its own it lands in the chart's row and every chip is
+   stretched to the height of the chart. */
+body.fw-only .fw-chart-legend { grid-area: legend; align-self: start; margin: 0; }
+/* Fill the width up to a readable size and stop there. A trend is read badly
+   against a near-square and badly again blown across a whole wall; past this
+   the block simply ends, and the frame around it ends with it. */
+body.fw-only .fw-chart-container {
+    grid-area: chart; justify-self: center;
+    width: 100%; height: auto; margin: 0;
+    aspect-ratio: 16 / 9;
+    max-width: 1150px; max-height: 500px; min-height: 140px;
+}
+@media (max-width: 620px) {
+    body.fw-only .fw-section:not(:has(.fw-section)) {
+        grid-template-columns: 1fr;
+        grid-template-areas: "kpi" "toggle" "legend" "chart";
+    }
+    body.fw-only .fw-toggle-group { justify-self: start; }
+}
+/* `fw-compact` is set by the host when the frame is too short for the block
+   at its usual proportions (the host owns the threshold; see the overlay in
+   the portal's metrics page). The controls give up their labels' own lines
+   and their padding so the chart keeps a readable height instead of being
+   reduced to a sliver above a scrollbar. */
+body.fw-only.fw-compact .fw-container { padding-top: 8px; }
+body.fw-only.fw-compact .fw-filter-bar {
+    margin-top: 0; padding-top: 0; padding-bottom: 0;
+    gap: 12px; align-items: center;
+}
+body.fw-only.fw-compact .fw-filter-item { flex-direction: row; align-items: center; gap: 8px; }
+body.fw-only.fw-compact .fw-filter-bar + .fw-section { margin-top: 0; }
+body.fw-only.fw-compact .fw-section:not(:has(.fw-section)) { gap: 8px 12px; }
+body.fw-only.fw-compact .fw-kpi-card { padding: 4px 10px; }
+body.fw-only.fw-compact .fw-kpi-card .fw-kpi-label { font-size: 9px; }
+body.fw-only.fw-compact .fw-kpi-card .fw-kpi-value { font-size: 17px; }
+.fw-collapsible-toggle {
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    user-select: none; -webkit-user-select: none;
+}
+.fw-chevron {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border-right: 2px solid var(--text-secondary);
+    border-bottom: 2px solid var(--text-secondary);
+    transform: rotate(45deg);
+    transition: transform .2s ease;
+    flex-shrink: 0;
+    margin-left: 12px;
+}
+.fw-collapsible.fw-collapsed .fw-chevron {
+    transform: rotate(-45deg);
+}
+.fw-collapsible.fw-collapsed .fw-collapsible-toggle {
+    margin-bottom: 0;
+}
+.fw-collapsible-body {
+    overflow: hidden;
+    transition: max-height .3s ease, opacity .2s ease;
+    max-height: 5000px; opacity: 1;
+}
+.fw-collapsible.fw-collapsed .fw-collapsible-body {
+    max-height: 0; opacity: 0;
+}
+
+/* ── Chart Legend (fwLegend global plugin) ── */
+.fw-chart-legend {
+    display: flex; flex-wrap: wrap; gap: 4px;
+    margin-bottom: 8px;
+}
+.fw-chart-legend .cl {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 4px 8px; border-radius: var(--radius-control); font-size: var(--font-size-label);
+    cursor: pointer; border: 1px solid var(--border-color);
+    transition: all .15s; color: var(--text-secondary);
+    background: transparent; opacity: .7;
+    /* Disables mobile's double-tap-to-zoom on legend chips so a fast
+       double-tap fires a `dblclick` event (used for "isolate this series"). */
+    touch-action: manipulation;
+    -webkit-user-select: none; user-select: none;
+}
+.fw-chart-legend .cl.active {
+    font-weight: 600; color: var(--text-main); opacity: 1;
+}
+.fw-chart-legend .cl .dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+
+/* ── Theme Switcher ── */
+.fw-theme-select {
+    appearance: none; -webkit-appearance: none;
+    background: rgba(0,0,0,0.2);
+    color: rgba(255,255,255,0.85);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: var(--radius-control);
+    padding: 5px 28px 5px 10px;
+    font-size: var(--font-size-interface); font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.7)' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.fw-theme-select:hover {
+    background-color: rgba(0,0,0,0.35);
+    color: #fff;
+}
+.fw-theme-select option {
+    background: #333;
+    color: #fff;
+}
+
+/* ── Responsive (base shell only) ── */
+@media (max-width: 900px) {
+    .fw-container { padding: 16px; }
+}
+@media print {
+    .fw-header, .fw-anno-bar, .fw-filter-bar,
+    .fw-export-wrap, .fw-csv-btn, .fw-chart-dl, .fw-table-search,
+    .fw-table-count, .fw-loading { display: none !important; }
+    .fw-container { max-width: none; padding: 0; }
+    .fw-section { break-inside: avoid; box-shadow: none; border: none; }
+    body { background: #fff; color: #000; }
+}
+@media (max-width: 640px) {
+    .fw-container { padding: 12px; }
+    .fw-section { padding: 14px; }
+}
+@media (max-width: 400px) {
+    .fw-container { padding: 8px; }
+}
+
+/* ── Mock-data banner (admin-only, in-report) ──────────── */
+.fw-mock-banner {
+    background: rgba(253, 203, 110, 0.20);
+    border: 1px solid rgba(253, 203, 110, 0.6);
+    color: #8a4f00;
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin: 0 0 12px 0;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.4;
+    text-align: center;
+}
+@media print { .fw-mock-banner { display: none !important; } }
+
+/* ── Per-chart filter health badge ──────────────────────── */
+.fw-filter-health-badge {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    margin: 0 0 6px 0;
+    font-size: var(--font-size-meta);
+    font-weight: 600;
+    line-height: 1.3;
+    cursor: help;
+    padding: 3px 8px;
+    border-radius: 4px;
+    user-select: none;
+    letter-spacing: 0.2px;
+    border: 1px solid transparent;
+    z-index: 1;
+}
+.fw-filter-health-badge.fw-fhb-inactive {
+    background: rgba(214, 48, 49, 0.12);
+    color: #d63031;
+    border-color: rgba(214, 48, 49, 0.35);
+}
+.fw-filter-health-badge.fw-fhb-untracked {
+    background: rgba(150, 150, 150, 0.12);
+    color: var(--text-secondary, #888);
+    border-color: rgba(150, 150, 150, 0.3);
+}
+.fw-fhb-popover {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    min-width: 280px;
+    max-width: 460px;
+    padding: 10px 12px;
+    background: var(--bg-card, #fff);
+    color: var(--text-main, #222);
+    border: 1px solid var(--border-color, rgba(0,0,0,0.15));
+    border-radius: 6px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+    font-size: 12px;
+    font-weight: 400;
+    letter-spacing: 0;
+    line-height: 1.4;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(-4px);
+    transition: opacity 0.12s, transform 0.12s, visibility 0.12s;
+    z-index: 5;
+}
+.fw-filter-health-badge:hover .fw-fhb-popover,
+.fw-filter-health-badge:focus-within .fw-fhb-popover {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+.fw-fhb-popover-head {
+    font-weight: 600;
+    font-size: var(--font-size-meta);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary, #777);
+    margin-bottom: 6px;
+}
+.fw-fhb-popover-list {
+    list-style: none; padding: 0; margin: 0;
+    display: flex; flex-direction: column; gap: 6px;
+}
+.fw-fhb-popover-item {
+    display: grid;
+    grid-template-columns: 14px auto auto;
+    gap: 6px;
+    align-items: baseline;
+}
+.fw-fhb-popover-glyph {
+    font-family: 'SF Mono', Menlo, monospace;
+    font-weight: 700;
+    text-align: center;
+}
+.fw-fhb-popover-col { font-family: 'SF Mono', Menlo, monospace; }
+.fw-fhb-popover-status {
+    font-size: var(--font-size-meta);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary, #888);
+    justify-self: end;
+}
+.fw-fhb-popover-reason {
+    grid-column: 1 / 4;
+    font-size: var(--font-size-meta);
+    color: var(--text-secondary, #777);
+    margin-top: 2px;
+    padding-left: 20px;
+    line-height: 1.4;
+}
+.fw-fhb-st-active .fw-fhb-popover-glyph,
+.fw-fhb-st-active .fw-fhb-popover-status { color: #00b894; }
+.fw-fhb-st-propagated .fw-fhb-popover-glyph,
+.fw-fhb-st-propagated .fw-fhb-popover-status { color: #0984e3; }
+.fw-fhb-st-inactive .fw-fhb-popover-glyph,
+.fw-fhb-st-inactive .fw-fhb-popover-status { color: #d63031; }
+.fw-fhb-st-untracked .fw-fhb-popover-glyph,
+.fw-fhb-st-untracked .fw-fhb-popover-status { color: var(--text-secondary, #888); }
+@media print { .fw-filter-health-badge { display: none !important; } }

@@ -1,0 +1,116 @@
+# Labelled use cases for the alert evaluator, run by `manage.py alert_scenarios`
+# against the demo warehouse. Not CI: it calls the org's real model and costs
+# money. Design: vault Architecture/design/portal-agent/00-plan §11.
+#
+# The warehouse is generated ONCE at this anchor, days and seed (the anomalies
+# in make_fixtures.py sit at fixed offsets from the anchor, and events.yaml
+# labels them for it). Each scenario then pins the report clock with FW_NOW:
+# one build at `before`, one at `after`, an evaluation after each, so the
+# labelled event "arrives" between the two evaluations. Every evaluation is a
+# dry run: nothing is mailed, cooldown is untouched.
+#
+# The model's calendar is pinned to the same date as the build (in production
+# an after-build evaluation runs right after the build); `evaluate_at` moves
+# only the calendar of the second evaluation, for a scenario where days must
+# pass while the data does not.
+#
+# `must_mention` is matched case-insensitively over title + message + evidence.
+# A scenario with a `note` needs a fixture knob the generator does not have
+# yet; its row is reported but never fails the run.
+anchor: 2026-08-28
+days: 180
+seed: 42
+scenarios:
+  - id: outage
+    report: player-overview
+    instructions: Tell me if DAU or sessions drop sharply in any region.
+    before: 2026-07-27
+    after: 2026-07-30
+    decision: alert
+    must_mention: [APAC, dau]
+
+  - id: launch
+    report: player-overview
+    # The report's column is total_revenue and the model writes "revenue";
+    # the metric id gross_revenue is an internal label the message need not
+    # echo (run 1, 2026-09-08).
+    instructions: >-
+      We launched Neon Racer on 2026-06-29; tell me whether it moved revenue
+      and DAU.
+    before: 2026-06-28
+    after: 2026-07-06
+    decision: alert
+    must_mention: [Neon Racer, revenue]
+
+  - id: promo
+    report: metrics
+    instructions: >-
+      The weekend coin sale ran 2026-08-23 to 2026-08-27; tell me if IAP
+      revenue rose and whether refund rate rose with it.
+    before: 2026-08-22
+    after: 2026-08-27
+    decision: alert
+    must_mention: [iap_revenue, refund_rate]
+    note: >-
+      Half present: IAP revenue lifts 22% on sale days. refund_rate is bound
+      to shop_orders (the apparel business) and does not respond to the coin
+      sale, so the refund half needs a fixture knob (a refund bump on
+      coin-sale days in fact_daily). Until then the right message says IAP
+      rose and refunds are on a different business.
+
+  - id: quiet
+    report: player-overview
+    instructions: ""
+    before: 2026-08-01
+    after: 2026-08-08
+    decision: quiet
+    must_mention: []
+
+  - id: retention
+    report: metrics
+    instructions: >-
+      Alert me if D1 retention is below its four-week average for three days
+      running.
+    before: 2026-08-10
+    after: 2026-08-20
+    decision: quiet
+    must_mention: [retention_d1]
+    note: >-
+      Per fixture: build_fact_retention is a power law with noise and no dip,
+      so this needs a fixture knob (a D1 step on a chosen date). Run as-is and
+      record what the data says; the point is that the agent computes the
+      rule from query_report_data rather than guessing.
+
+  # Scenario 1's rule evaluated once more the next day, with the outage alert
+  # in its last-five-decisions context. cooldown 0 so it tests judgment, not
+  # the backstop.
+  - id: novelty
+    reuses: outage
+    report: player-overview
+    after: 2026-07-31
+    decision: quiet
+    must_mention: []
+    cooldown_hours: 0
+
+  - id: stale
+    report: player-overview
+    instructions: Tell me if the data stops updating.
+    before: 2026-08-20
+    after: 2026-08-20
+    # The same build twice; two days pass on the calendar, none in the data.
+    evaluate_at: 2026-08-22
+    decision: alert
+    must_mention: ["2026-08-20"]
+
+  - id: spend
+    report: monetization
+    instructions: Alert if UA spend rises while installs do not.
+    before: 2026-08-01
+    after: 2026-08-08
+    decision: quiet
+    must_mention: []
+    note: >-
+      Quiet as-is: build_fact_ua_spend derives installs from spend / CPI, so
+      the two never diverge; quiet is correct today and doubles as a second
+      false-positive check. The positive case needs a fixture knob (a CPI
+      step).

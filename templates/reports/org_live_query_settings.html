@@ -1,0 +1,81 @@
+{% extends "settings_base.html" %}
+{% block title %}Live queries — {{ org.name }}{% endblock %}
+{% block settings %}
+<h1>Live queries</h1>
+<p class="muted">Most reports are compiled: the data is baked into the build and the page
+  just draws it. A <strong>live</strong> report is the exception — a few of its components
+  run a query against your warehouse <em>when someone opens or filters it</em>, so viewers
+  see current, per-entity detail that would be too large to bake. Whether a report is live
+  is a build-time choice by whoever authors it; this page governs, for the whole
+  organization, how hard those live lookups may run.</p>
+
+<div class="panel formrow" id="liveQueryPolicyPanel">
+  <form id="liveQueryPolicyForm" data-settings-form method="post" action="/orgs/{{ org.slug }}/api/live_query_policy">
+    {% csrf_token %}
+    <div style="max-width:320px">
+      <label for="liveQueryPolicyRateLimit">Rate limit (queries / minute / user)</label>
+      <input class="ui-input" type="number" min="0" step="1"
+             id="liveQueryPolicyRateLimit" name="rate_limit_per_minute"
+             value="{{ rate_limit_per_minute|default_if_none:'' }}"
+             placeholder="{{ default_rate_limit_per_minute }} (default)">
+      <span class="helptext">Blank = the framework default
+        ({{ default_rate_limit_per_minute }}/min). A filter change can fan out into several
+        linked queries at once, so raise this if your reports link more than one live query
+        to a shared filter. Cache hits don't count — only queries that reach the warehouse do.
+        <strong>Set to 0 to turn live queries off</strong> for this organization: live reports
+        then serve only their baked snapshot and lose the "Live" marker.</span>
+    </div>
+    <div id="liveQueryPolicyStatus" data-settings-status class="muted" role="status" aria-live="polite" style="margin-top:14px"></div>
+    <button type="submit" class="ui-btn primary" style="margin-top:14px">Save changes</button>
+  </form>
+</div>
+<script>
+(function () {
+  var form = document.getElementById('liveQueryPolicyForm');
+  var rateLimit = document.getElementById('liveQueryPolicyRateLimit');
+  var status = document.getElementById('liveQueryPolicyStatus');
+  if (!form || !rateLimit) return;
+
+  var saving = false;
+  form.addEventListener('submit', function (event) {
+    event.preventDefault();
+    if (saving) return;
+    if (!form.reportValidity()) return;
+    var raw = rateLimit.value.trim();
+    if (raw !== '' && !/^\d+$/.test(raw)) {
+      status.textContent = 'Could not save: rate limit must be a whole number.';
+      return;
+    }
+    var value = raw === '' ? null : Number(raw);
+    if (value !== null && (!Number.isSafeInteger(value) || value < 0)) {
+      status.textContent = 'Could not save: rate limit must be zero or a positive whole number.';
+      return;
+    }
+    var controls = form.querySelectorAll('input, button');
+    saving = true;
+    Array.prototype.forEach.call(controls, function (control) { control.disabled = true; });
+    status.textContent = 'Saving…';
+    fetch(form.action, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': form.querySelector('input[name="csrfmiddlewaretoken"]').value },
+      body: JSON.stringify({ rate_limit_per_minute: value })
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (data) {
+        if (!r.ok) throw new Error(data && data.error ? data.error : 'request');
+        return data;
+      });
+    }).then(function (data) {
+      if (!data || data.ok !== true) throw new Error('response');
+      status.textContent = 'Saved.';
+    }).catch(function (error) {
+      status.textContent = error.message === 'response' ? 'Could not save — the server returned an invalid response.' : error.message === 'request' ? 'Could not save — check your connection and try again.' : 'Could not save: ' + error.message;
+    }).finally(function () {
+      Array.prototype.forEach.call(controls, function (control) { control.disabled = false; });
+      saving = false;
+      if (status.textContent === 'Saved.') form.dispatchEvent(new Event('settings:saved', { bubbles: true }));
+    });
+  });
+})();
+</script>
+{% endblock %}

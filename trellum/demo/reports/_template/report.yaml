@@ -1,0 +1,34 @@
+# Copy this directory to reports/<your-slug>/ and rename.
+#
+# Directories starting with "_" are skipped by the runner, so this template
+# never shows up in --all or in any listing.
+
+# ─── Identity ───────────────────────────────────────────────
+name: "Template Report"
+slug: template-report
+# Descriptions under 60 characters raise a validation warning, and the
+# a search or assistant layer uses this text to route questions -- be specific.
+description: "Starting point for a new report: one data source, a filter bar, and a live chart."
+version: 0.1.0
+
+# ─── Scheduling ─────────────────────────────────────────────
+schedule:
+  cron: "0 6 * * *"
+  timezone: UTC
+
+# ─── Classification ─────────────────────────────────────────
+tags:
+  - demo
+studio: nova-play
+category: Uncategorized
+
+# ─── Data Sources ───────────────────────────────────────────
+# Names refer to entries in data-sources/config.yaml.
+data_sources:
+  - demo_db
+
+# ─── Display ─────────────────────────────────────────
+display:
+  icon: file-text
+  color: "#4e79a7"
+  priority: 99

@@ -1,0 +1,26 @@
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{{ BRAND }}{% endblock %}</title>
+<meta name="description" content="{% block description %}{{ BRAND }} turns a git repository of Python and SQL reports into governed, scheduled, access-controlled analytics on your own infrastructure.{% endblock %}">
+<link rel="icon" href="{% static 'trellum-lattice.svg' %}" type="image/svg+xml">
+<link rel="canonical" href="{{ SITE_BASE_URL }}{{ request.path }}">
+<meta property="og:site_name" content="{{ BRAND }}">
+<meta property="og:title" content="{% block og_title %}{{ BRAND }} — {{ TAGLINE }}{% endblock %}">
+<meta property="og:type" content="website">
+<meta property="og:url" content="{{ SITE_BASE_URL }}{{ request.path }}">
+{% include "_theme_boot.html" %}
+<link rel="stylesheet" href="{% static 'site.css' %}?v={{ ASSET_V }}">
+{% block head_extra %}{% endblock %}
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+{% include "_shell.html" %}
+<main id="main">{% block content %}{% endblock %}</main>
+{% include "_footer.html" %}
+<script src="{% static 'site.js' %}?v={{ ASSET_V }}" defer></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,271 @@
+{% extends "settings_base.html" %}
+{% block title %}Repository — {{ studio.name }}{% endblock %}
+{% block settings %}
+<header class="page-head">
+  <div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }}</div>
+  <h1>Repository</h1>
+  <p class="muted page-sub">The studio's reports live in this git repository. Push to it,
+    the portal pulls and rebuilds — that pipeline is the core of the product.</p>
+</header>
+
+{% if repo and repo.repo_url %}
+{% if repo.publish_requested %}
+<div class="ui-flash info" role="status">Publishing <code>{{ repo.remote_sha|slice:":7" }}</code>…
+  the runner will pick it up within a few seconds.</div>
+{% endif %}
+
+<div class="ui-panel">
+  <div class="repo-status">
+    <div>
+      <span class="ui-label">Published</span>
+      {% if last_publish %}
+      <div><code>{{ last_publish.to_sha|slice:":7" }}</code> · {{ last_publish.published_at|timesince }} ago
+        · by {% if last_publish.published_by %}{{ last_publish.published_by.name|default:last_publish.published_by.email }}{% else %}the runner{% endif %}
+        ({{ last_publish.trigger }})</div>
+      {% elif repo.last_synced_sha %}
+      <div><code>{{ repo.last_synced_sha|slice:":7" }}</code> · {{ repo.last_sync_at|timesince }} ago</div>
+      {% else %}
+      <div class="muted">Nothing published yet</div>
+      {% endif %}
+      <div>{% if repo.last_error %}<span class="ui-badge error">error</span>
+            <span class="muted">{{ repo.last_error }}</span>
+          {% elif repo.sync_requested %}<span class="ui-badge warn">sync scheduled</span>
+          {% else %}<span class="ui-badge ok">ok</span>{% endif %}</div>
+    </div>
+    <div>
+      <span class="ui-label">Remote <code>{{ repo.branch }}</code></span>
+      {% if repo.remote_sha %}
+      <div><code>{{ repo.remote_sha|slice:":7" }}</code> ·
+        <span{% if remote_stale %} class="text-warn" title="The runner has not checked recently."{% endif %}>checked {{ repo.remote_checked_at|timesince }} ago</span></div>
+      <div>{% if pending %}<b class="text-warn">{{ ahead }} commit{{ ahead|pluralize }} ahead</b>
+          {% else %}<span class="ui-badge ok">Up to date</span>{% endif %}</div>
+      {% else %}
+      <div class="muted">Not checked yet</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <form method="post" id="modeForm" class="repo-mode" data-settings-form>
+    {% csrf_token %}<input type="hidden" name="set_mode" value="1">
+    <span class="ui-label">Publishing</span>
+    <div class="ui-seg" role="radiogroup" aria-label="Publishing">
+      <label class="ui-btn ghost"><input type="radio" name="publish_mode" value="auto"{% if repo.publish_mode == "auto" %} checked{% endif %}>Automatically</label>
+      <label class="ui-btn ghost"><input type="radio" name="publish_mode" value="manual"{% if repo.publish_mode == "manual" %} checked{% endif %}>Manually</label>
+    </div>
+    <button class="ui-btn ghost" type="submit">Save changes</button>
+    <span class="helptext">{% if repo.publish_mode == "auto" %}Every push to <code>{{ repo.branch }}</code> goes live as soon as the runner sees it.{% else %}The portal fetches and shows what changed; nothing goes live until you press Publish.{% endif %}</span>
+  </form>
+
+  <div class="ui-form-actions repo-actions">
+    <form class="inline" method="post">
+      {% csrf_token %}<input type="hidden" name="sync_now" value="1">
+      <button class="ui-btn ghost" type="submit">{% if repo.publish_mode == "manual" %}Check for changes{% else %}Sync now{% endif %}</button>
+    </form>
+    {% if repo.publish_mode == "manual" %}
+      {% if repo.publish_requested %}<button class="ui-btn primary" type="button" disabled>Publishing…</button>
+      {% elif pending %}<button class="ui-btn primary" type="button" id="reviewBtn" data-remote="{{ repo.remote_sha }}">Review &amp; publish</button>
+      {% else %}<button class="ui-btn primary" type="button" disabled title="Up to date">Up to date</button>{% endif %}
+    {% endif %}
+  </div>
+</div>
+
+{% if repo.publish_mode == "manual" or pending %}
+{% if pending %}
+  {% if pending.initial %}<h2>Initial import</h2>
+  {% elif pending.rewritten %}<h2 class="text-warn">History was rewritten — showing the full contents of <code>{{ repo.branch }}</code></h2>
+  {% else %}<h2>Pending changes ({{ ahead }} commit{{ ahead|pluralize }})</h2>{% endif %}
+<div class="ui-panel">
+  {% include "studios/_pending_chips.html" %}
+  <div class="ui-flash-stack">
+    {% for name in pending.datasources.added %}
+    <div class="ui-flash warning" role="status">Adds data source <code>{{ name }}</code> — not configured yet.
+      Reports that use it will wait for it after publishing.
+      <a class="ui-btn ghost" href="/s/{{ org.slug }}/{{ studio.slug }}/settings/datasources?configure={{ name|urlencode }}">Configure now</a></div>
+    {% endfor %}
+    {% for w in pending.warnings %}<div class="ui-flash warning" role="status">{{ w }}</div>{% endfor %}
+    {% for slug in pending.reports.removed %}
+    <div class="ui-flash warning" role="status">Removes <code>{{ slug }}</code> — its page will show it was
+      removed from the repository; built output is kept.</div>
+    {% endfor %}
+  </div>
+  <div class="ui-table-scroll">
+    <table class="ui-table dense">
+      <thead><tr><th>Commit</th><th>Message</th><th>Author</th><th>When</th><th>Files</th></tr></thead>
+      <tbody>
+        {% for c in pending.commits %}
+        <tr>
+          <td><code>{{ c.sha|slice:":7" }}</code></td>
+          <td>{{ c.message }}</td>
+          <td>{{ c.author }}</td>
+          <td title="{{ c.date }}">{% if c.when %}{{ c.when|timesince }} ago{% else %}{{ c.date }}{% endif %}</td>
+          <td class="subtle" title="{{ c.files|join:"&#10;" }}">{{ c.files|length }} file{{ c.files|length|pluralize }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if ahead > pending.commits|length %}<p class="subtle">Showing the latest {{ pending.commits|length }} of {{ ahead }} commits.</p>{% endif %}
+</div>
+{% else %}
+<h2>Pending changes</h2>
+<div class="ui-panel">
+  <div class="ui-empty">Nothing pending. <code>{{ repo.branch }}</code> is published at
+    <code>{{ repo.last_synced_sha|slice:":7"|default:"—" }}</code>.</div>
+</div>
+{% endif %}
+{% endif %}
+
+{% if pending and repo.publish_mode == "manual" and not repo.publish_requested %}
+<dialog class="ui-dialog" id="publishDialog">
+  <h2>Publish {{ ahead }} commit{{ ahead|pluralize }} to {{ studio.name }}?</h2>
+  {% include "studios/_pending_chips.html" %}
+  <ul>
+    {% if rebuild_count %}<li>{{ rebuild_count }} report{{ rebuild_count|pluralize }} will be updated</li>{% endif %}
+    {% if pending.datasources.added %}<li>{{ pending.datasources.added|length }} data source{{ pending.datasources.added|length|pluralize }} will need credentials</li>{% endif %}
+    {% if pending.reports.removed %}<li>{{ pending.reports.removed|length }} report{{ pending.reports.removed|length|pluralize }} removed</li>{% endif %}
+  </ul>
+  {% if rebuild_count %}
+  <label class="ui-check-row"><input type="checkbox" id="publishRebuild"{% if repo.auto_run_changed %} checked{% endif %}>
+    Rebuild the {{ rebuild_count }} changed report{{ rebuild_count|pluralize }} after publishing</label>
+  {% endif %}
+  <p class="ui-flash warning" id="publishNote" role="alert" hidden>New commits arrived — review again.</p>
+  <div class="ui-form-actions">
+    <button class="ui-btn primary" type="button" id="publishGo">Publish</button>
+    <form method="dialog"><button class="ui-btn ghost">Cancel</button></form>
+  </div>
+</dialog>
+<dialog class="ui-dialog" id="modeConfirm">
+  <h2>Switch to automatic publishing?</h2>
+  <p>This publishes the {{ ahead }} pending commit{{ ahead|pluralize }} now.</p>
+  <div class="ui-form-actions">
+    <button class="ui-btn primary" type="button" data-go>Switch and publish</button>
+    <form method="dialog"><button class="ui-btn ghost">Cancel</button></form>
+  </div>
+</dialog>
+{% endif %}
+
+<h2>History</h2>
+<div class="ui-panel">
+  {% if publishes %}
+  <div class="ui-table-scroll">
+    <table class="ui-table">
+      <thead><tr><th>Date</th><th>Range</th><th>By</th><th>Commits</th><th class="num">Reports changed</th><th>Status</th></tr></thead>
+      <tbody>
+        {% for p in publishes %}
+        <tr>
+          <td title="{{ p.published_at|date:"c" }}">{{ p.published_at|timesince }} ago</td>
+          <td class="mono">{% if p.from_sha %}{{ p.from_sha|slice:":7" }}{% else %}—{% endif %} → {{ p.to_sha|slice:":7" }}</td>
+          <td>{% if p.trigger == "manual" %}{% if p.published_by %}{{ p.published_by.name|default:p.published_by.email }}{% else %}the runner{% endif %} · manual
+              {% elif p.trigger == "webhook" %}webhook · auto
+              {% elif p.trigger == "auto" %}schedule · auto
+              {% else %}{{ p.trigger }}{% endif %}</td>
+          <td>{% if p.summary.commits %}
+            <details><summary>{{ p.summary.commits|length }} commit{{ p.summary.commits|length|pluralize }}</summary>
+              <ul class="repo-commit-list">{% for c in p.summary.commits %}<li><code>{{ c.sha|slice:":7" }}</code> {{ c.message }}</li>{% endfor %}</ul>
+            </details>{% else %}—{% endif %}</td>
+          <td class="num">{{ p.reports_changed }}</td>
+          <td>{% if p.status == "ok" %}<span class="ui-badge ok">Published</span>
+              {% else %}<span class="ui-badge fail">Failed</span> <span class="subtle">{{ p.error }}</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if history_more and history_limit < 200 %}<p class="ui-pager"><a class="ui-btn ghost" href="?history={{ history_limit|add:30 }}">Load more</a></p>{% endif %}
+  {% else %}
+  <div class="ui-empty">No publishes yet.</div>
+  {% endif %}
+</div>
+{% endif %}
+
+<h2>Connection</h2>
+<div class="panel formrow">
+  <form method="post" data-settings-form>
+    {% csrf_token %}
+    <p class="ui-label" style="margin:0">Repository</p>
+    <label>Repository URL (https)</label>{{ form.repo_url }}{{ form.repo_url.errors }}
+    <label>Branch</label>{{ form.branch }}{{ form.branch.errors }}
+    <label>Reports directory in the repo</label>{{ form.path }}{{ form.path.errors }}
+    <label>Authentication</label>{{ form.auth_method }}{{ form.auth_method.errors }}
+    <label>Access token</label>{{ form.token }}
+    <span class="helptext">{{ form.token.help_text }}</span>
+
+    <p class="ui-label" style="margin:18px 0 0">Sync behavior</p>
+    <label>Poll interval (minutes, 0 = manual/webhook only)</label>{{ form.sync_interval_minutes }}{{ form.sync_interval_minutes.errors }}
+    <label class="ui-check-row">{{ form.auto_run_changed }} Rebuild reports changed by a push</label>
+    {# The mode is set by the Publishing control above; the form still carries it. #}
+    {{ form.publish_mode.as_hidden }}
+
+    <p class="ui-label" style="margin:18px 0 0">Webhook</p>
+    <label>Webhook secret</label>{{ form.webhook_secret }}
+    <span class="helptext">{{ form.webhook_secret.help_text }}</span>
+
+    <p></p>
+    <button class="ui-btn primary" type="submit">Save changes</button>
+  </form>
+</div>
+
+<div class="ui-panel">
+  <span class="ui-label">Push webhook URL</span>
+  <p class="muted" style="margin:4px 0 8px">Add this URL as a push webhook in your git host
+    (content type JSON, secret = the webhook secret above, signature header
+    <code>X-Hub-Signature-256</code>):</p>
+  {% include "_copy_field.html" with value=webhook_url %}
+</div>
+
+<script>
+/* Switching a manual repo with pending commits to automatic confirms on save,
+   since saving that setting publishes them. */
+(function () {
+  var form = document.getElementById('modeForm');
+  if (!form) return;
+  var confirm = document.getElementById('modeConfirm'), go = false;
+  form.addEventListener('submit', function (ev) {
+    var mode = form.querySelector('[name="publish_mode"]:checked');
+    if (!go && mode && mode.value === 'auto' && confirm && confirm.showModal) {
+      ev.preventDefault(); confirm.showModal();
+    }
+  });
+  if (confirm) {
+    confirm.querySelector('[data-go]').addEventListener('click', function () { go = true; form.requestSubmit(); });
+  }
+})();
+/* Review & publish: the dialog re-checks the remote head when it opens and
+   Publish stays disabled until that check confirms the commit shown here.
+   The request names that commit too, so the runner refuses to publish a
+   branch that moved on after the check. */
+(function () {
+  var btn = document.getElementById('reviewBtn'), dlg = document.getElementById('publishDialog');
+  if (!btn || !dlg) return;
+  var api = '/s/{{ org.slug|escapejs }}/{{ studio.slug|escapejs }}/api/system/git/';
+  var go = document.getElementById('publishGo'), note = document.getElementById('publishNote');
+  function warn(text) { note.textContent = text; note.hidden = false; go.disabled = true; }
+  btn.addEventListener('click', function () {
+    note.hidden = true; go.disabled = true;
+    dlg.showModal();
+    fetch(api + 'status', {credentials: 'same-origin'})
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (s) {
+        if (s.remote_sha !== btn.dataset.remote) warn('New commits arrived \u2014 review again.');
+        else go.disabled = false;
+      }).catch(function () { warn('Could not confirm the remote \u2014 try again.'); });
+  });
+  go.addEventListener('click', function () {
+    go.disabled = true;
+    var cb = document.getElementById('publishRebuild');
+    var body = {to: btn.dataset.remote};
+    if (cb) body.rebuild = cb.checked;
+    fetch(api + 'publish', {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
+      body: JSON.stringify(body)
+    }).then(function (r) {
+      if (!r.ok) throw new Error(r.status);
+      location.reload();
+    }).catch(function () {
+      warn('Publishing failed \u2014 try again.'); go.disabled = false;
+    });
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,30 @@
+# Demo overlay -- scripts/demo.sh (and demo.ps1) add this file so the
+# generated .env.demo reaches the containers themselves, not only compose
+# interpolation. env_file lists merge across files: a developer's local .env
+# (if present) loads first, then .env.demo overrides per key, so the demo
+# behaves identically on a clean checkout and on a developer machine with a
+# stale .env.
+#
+# The path is a variable, not a literal ".env.demo", so a second demo
+# started with TRELLUM_DEMO_PROJECT set (see scripts/demo.sh) reads its own
+# env file instead of the default instance's -- COMPOSE_ENV_FILES alone
+# does not do this, because env_file paths are plain strings, not affected
+# by which file supplied top-level compose interpolation. demo.sh/demo.ps1
+# export TRELLUM_DEMO_ENV_FILE as a real OS environment variable so it wins
+# regardless of which file COMPOSE_ENV_FILES points at.
+services:
+  migrate:
+    env_file:
+      - path: ${TRELLUM_DEMO_ENV_FILE:-.env.demo}
+  web:
+    env_file:
+      - path: ${TRELLUM_DEMO_ENV_FILE:-.env.demo}
+  worker:
+    env_file:
+      - path: ${TRELLUM_DEMO_ENV_FILE:-.env.demo}
+  coordinator:
+    env_file:
+      - path: ${TRELLUM_DEMO_ENV_FILE:-.env.demo}
+  runner:
+    env_file:
+      - path: ${TRELLUM_DEMO_ENV_FILE:-.env.demo}

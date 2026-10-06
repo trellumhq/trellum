@@ -1,0 +1,16 @@
+# Central registry of data sources for the demo project.
+#
+# Both sources here are fully offline -- no credentials, no network, no env
+# vars. Reports reference them by name in their report.yaml.
+
+sources:
+  demo_db:
+    type: sqlite
+    description: "Generated demo warehouse. Build with: python tools/make_fixtures.py"
+    path: data-sources/demo.sqlite
+
+  ua_budget:
+    type: file
+    description: "Monthly user-acquisition budget by title and region"
+    path: data-sources/uploads/ua_budget.csv
+    upload: true

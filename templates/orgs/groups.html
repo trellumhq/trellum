@@ -1,0 +1,21 @@
+{% extends "settings_base.html" %}
+{% block title %}Permission groups — {{ org.name }}{% endblock %}
+{% block settings %}
+<header class="page-head-row">
+  <div><div class="ui-label page-kicker scope-org">Organization · {{ org.name }}</div><h1>Permission groups</h1></div>
+  <span class="spacer"></span>
+  <a class="ui-btn primary" href="/orgs/{{ org.slug }}/settings/groups/new">+ New group</a>
+</header>
+<p class="muted">Bundle organization, studio, and report access once, then assign it to members.</p>
+{% include "_list_toolbar.html" with q=q placeholder="Search groups…" total=total %}
+<div class="panel"><div class="ui-table-scroll"><table class="ui-table" data-mobile-cards>
+  <thead><tr><th>Group</th><th>Organization</th><th>Default studio access</th><th>Overrides</th><th>Members</th></tr></thead>
+  <tbody>{% for g in groups %}<tr>
+    <td data-label="Group"><a href="/orgs/{{ org.slug }}/settings/groups/{{ g.pk }}"><strong>{{ g.name }}</strong></a>{% if g.description %}<br><span class="muted">{{ g.description }}</span>{% endif %}</td>
+    <td data-label="Organization">{% if g.org_role %}<span class="ui-badge accent">org admin</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+    <td data-label="Default studio access">{% if g.default_studio_role %}<span class="ui-badge info">all studios: {{ g.default_studio_role }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+    <td data-label="Overrides">{{ g.grants.all|length }} studio{{ g.grants.all|length|pluralize }}</td><td data-label="Members">{{ g.memberships.count }}</td>
+  </tr>{% empty %}<tr><td colspan="5"><div class="ui-empty">{% if q %}No group matches “{{ q }}”.<div class="ui-empty-action"><a class="ui-btn ghost" href="{% querystring q=None page=None %}">Clear search</a></div>{% else %}No groups yet.<div class="ui-empty-action"><a class="ui-btn ghost" href="/orgs/{{ org.slug }}/settings/groups/new">+ New group</a></div>{% endif %}</div></td></tr>{% endfor %}</tbody>
+</table></div></div>
+{% include "_pagination.html" with page=page %}
+{% endblock %}

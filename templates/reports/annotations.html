@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+{% load static %}
+{% load docs %}
+{% block title %}Annotations — {{ studio.name }}{% endblock %}
+{% block content %}
+<style>
+/* ── Annotation type colors: VERBATIM from the framework's _ANNO_STYLES
+   (trellum/rendering/js_runtime.py, ~line 642) so chart markers and this
+   calendar read as one system. Duplicated on purpose — js_runtime is a
+   rendering internal and the control plane must not import past the
+   contract in trellum/docs/COMPATIBILITY.md. Kept honest by
+   apps/studios/tests/test_annotations.py; keep in sync manually. ── */
+:root {
+  --anno-campaign:#FFD166; --anno-campaign-soft:rgba(255,209,102,.22);
+  --anno-ab:#4C8BF5;       --anno-ab-soft:rgba(76,139,245,.18);
+  --anno-release:#00c48c;  --anno-release-soft:rgba(0,196,140,.16);
+  --anno-incident:#FF4081; --anno-incident-soft:rgba(255,64,129,.14);
+  --anno-event:#c47db8;    --anno-event-soft:rgba(176,122,161,.14);
+}
+.t-campaign { --c:var(--anno-campaign); --cs:var(--anno-campaign-soft); }
+.t-ab       { --c:var(--anno-ab);       --cs:var(--anno-ab-soft); }
+.t-release  { --c:var(--anno-release);  --cs:var(--anno-release-soft); }
+.t-incident { --c:var(--anno-incident); --cs:var(--anno-incident-soft); }
+.t-event    { --c:var(--anno-event);    --cs:var(--anno-event-soft); }
+.dot.t-campaign { background:var(--anno-campaign); } .dot.t-ab { background:var(--anno-ab); }
+.dot.t-release { background:var(--anno-release); } .dot.t-incident { background:var(--anno-incident); }
+.dot.t-event { background:var(--anno-event); }
+
+/* ── calendar toolbar ── */
+.cal-bar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:14px 0; }
+.cal-title { font-size:var(--fs-lg); font-weight:700; min-width:150px; }
+.cal-nav { display:flex; gap:4px; }
+/* body.mgmt main prefixes tie the specificity of ui.css's global
+   button:not(.ui-btn) rule; this page block loads later, so ties win here. */
+body.mgmt main .cal-nav button, body.mgmt main .view-toggle button { font:500 var(--fs-md)/1.5 var(--font); background:var(--bg-card); color:var(--text2); border:1px solid var(--border); border-radius:var(--r-md); padding:3px 10px; cursor:pointer; }
+body.mgmt main .cal-nav button:hover, body.mgmt main .view-toggle button:hover { background:var(--bg-hover); color:var(--text); border-color:var(--border); }
+.view-toggle { display:flex; gap:2px; padding:2px; border:1px solid var(--border); border-radius:var(--r-md); margin-left:auto; }
+body.mgmt main .view-toggle button { border:none; }
+body.mgmt main .view-toggle button.active { background:var(--accent-soft); color:var(--accent); font-weight:600; }
+
+/* type/scope filter pills — same interaction as the report annotation bar.
+   Scoped under #annoPills: the mgmt surface styles every bare button element
+   (body.mgmt main button:not(.ui-btn) in ui.css) with more specificity than a
+   single class carries — that rule's display:inline-block flattened the flex
+   layout (no gap, mis-centred dot) and its r-md radius squared the pills. The
+   id outranks it without touching the global rule. */
+.anno-pills { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin:0 0 14px; }
+#annoPills .anno-pill { display:inline-flex; align-items:center; gap:6px; font:500 var(--fs-md)/1.5 var(--font); padding:4px 12px; border-radius:99px; border:1px solid var(--border); background:var(--bg-card); color:var(--text2); cursor:pointer; }
+#annoPills .anno-pill .dot { width:9px; height:9px; border-radius:99px; flex:0 0 auto; }
+#annoPills .anno-pill .n { opacity:.7; font-size:var(--fs-sm); }
+#annoPills .anno-pill.off { opacity:.45; }
+#annoPills .anno-pill.off .dot { background:transparent !important; box-shadow:inset 0 0 0 1.5px currentColor; }
+#annoPills .anno-pill:hover { background:var(--bg-hover); border-color:var(--border); color:var(--text); }
+#annoPills .anno-pill.scope-on { border-color:var(--scope-studio); color:var(--scope-studio); background:var(--scope-studio-soft); font-weight:600; }
+.pill-sep { width:1px; align-self:stretch; background:var(--border); margin:0 4px; }
+
+/* ── month grid (built entirely by annotations_calendar.js) ── */
+.cal { border:1px solid var(--border); border-radius:var(--r-lg); overflow:hidden; background:var(--bg-card); }
+.cal-head, .cal-week { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); }
+.cal-head div { font-size:var(--fs-xs); font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--text3); padding:8px 10px; border-bottom:1px solid var(--border); }
+.cal-week { border-bottom:1px solid var(--border); position:relative; }
+.cal-week:last-child { border-bottom:none; }
+.day { min-height:86px; padding:6px 8px 22px; border-right:1px solid var(--border); position:relative; }
+.day:last-child { border-right:none; }
+.day .dnum { font-size:var(--fs-md); color:var(--text3); font-variant-numeric:tabular-nums; }
+.day.dim .dnum { opacity:.4; }
+.day.today { background:var(--accent-soft); }
+.day.today .dnum { color:var(--accent); font-weight:700; }
+.day:focus { outline:2px solid var(--focus); outline-offset:-2px; }
+
+.chip { display:block; font-size:var(--fs-sm); line-height:1.35; margin-top:3px; padding:1px 6px; border-radius:var(--r-sm); border-left:3px solid var(--c); background:var(--cs); color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; }
+.more { display:block; font-size:var(--fs-xs); color:var(--text3); margin-top:3px; cursor:pointer; background:none; border:none; padding:0; text-align:left; width:100%; }
+
+.span-bar { position:absolute; bottom:4px; height:16px; border-radius:99px; border:1px solid var(--c); background:var(--cs); font-size:var(--fs-xs); line-height:14px; padding:0 8px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; z-index:1; cursor:pointer; }
+.span-bar.cont-l { border-top-left-radius:0; border-bottom-left-radius:0; border-left-style:dashed; }
+.span-bar.cont-r { border-top-right-radius:0; border-bottom-right-radius:0; border-right-style:dashed; }
+
+.pop { position:absolute; z-index:5; width:250px; background:var(--bg-card); border:1px solid var(--border); border-radius:var(--r-md); box-shadow:0 6px 18px rgba(0,0,0,.18); padding:10px 12px; font-size:var(--fs-md); }
+.pop h4 { margin:0 0 4px; font-size:var(--fs-base); display:flex; align-items:center; gap:6px; }
+.pop .dot { width:9px; height:9px; border-radius:99px; flex:0 0 auto; }
+.pop dl { margin:6px 0 0; display:grid; grid-template-columns:auto 1fr; gap:2px 10px; }
+.pop dt { color:var(--text3); } .pop dd { margin:0; }
+.pop-close { position:absolute; top:6px; right:8px; background:none; border:none; color:var(--text3); cursor:pointer; font-size:var(--fs-md); }
+
+/* ── list view (server-rendered; also the no-JS fallback) ── */
+.evlist { border:1px solid var(--border); border-radius:var(--r-lg); overflow:hidden; background:var(--bg-card); }
+.evlist .month-h { font-size:var(--fs-xs); font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--text3); padding:8px 14px; background:var(--bg); border-bottom:1px solid var(--border); }
+.evrow { display:flex; align-items:center; gap:12px; padding:8px 14px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+.evrow:last-child { border-bottom:none; }
+.evrow:hover { background:var(--bg-hover); }
+.evrow .dates { width:190px; flex:0 0 auto; color:var(--text2); font-variant-numeric:tabular-nums; font-size:var(--fs-md); }
+.evrow .dot { width:9px; height:9px; border-radius:99px; flex:0 0 auto; }
+.evrow .lbl { font-weight:500; }
+.evrow .spacer { flex:1; }
+.evrow .src { font-size:var(--fs-md); color:var(--text3); }
+.evrow.evrow-anchor { background:var(--accent-soft); }
+[hidden] { display:none !important; }
+</style>
+
+<header class="page-head">
+  <div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }}</div>
+  <h1>Annotations</h1>
+  <p class="muted page-sub">Every event from this studio's <code>events.yaml</code> and per-report
+    annotations, on the dates they happened. Read-only — events are edited in the repository and arrive on sync.</p>
+</header>
+
+{% if payload.parse_error %}
+<div class="ui-flash warning" role="alert" style="margin-top:14px">
+  <b>events.yaml has a problem.</b>
+  <span class="muted">{{ payload.parse_error }} — showing the events that did parse.</span>
+</div>
+{% endif %}
+
+{% if payload.too_many %}
+<div class="ui-flash warning" role="alert" style="margin-top:14px">
+  <b>This studio has a lot of events.</b>
+  <span class="muted">{{ payload.total_count }} events found — all are shown below; filtering may be slow.</span>
+</div>
+{% endif %}
+
+{% if payload.total_count == 0 %}
+<div class="panel">
+  <div class="ui-empty">
+    Nothing has happened yet — or nothing has been written down.<br>
+    Events live in <code>events.yaml</code> at your project root and arrive here on the next sync.
+    <div class="ui-empty-action">
+      <a class="ui-btn ghost" href="{% docs_url 'portal/annotations-calendar/' %}">How annotations work →</a>
+    </div>
+  </div>
+</div>
+{% else %}
+
+<div class="cal-bar">
+  <span class="cal-title" id="calTitle">&nbsp;</span>
+  <div class="cal-nav">
+    <button type="button" class="cal-btn" id="calPrev" aria-label="Previous month">‹</button>
+    <button type="button" class="cal-btn" id="calToday">Today</button>
+    <button type="button" class="cal-btn" id="calNext" aria-label="Next month">›</button>
+  </div>
+  <div class="view-toggle" role="tablist">
+    <button type="button" class="cal-btn" id="calViewMonth" role="tab" aria-selected="true" aria-controls="calGrid">Month</button>
+    <button type="button" class="cal-btn" id="calViewList" role="tab" aria-selected="false" aria-controls="calList">List</button>
+  </div>
+</div>
+
+<div class="anno-pills" id="annoPills">
+  {% for row in payload.type_counts %}
+  <button type="button" class="anno-pill" data-filter="type" data-value="{{ row.value }}">
+    <span class="dot t-{{ row.css }}"></span>{{ row.label }} <span class="n">{{ row.count }}</span>
+  </button>
+  {% endfor %}
+  <span class="pill-sep"></span>
+  <span class="subtle" style="font-size:var(--fs-md)">Scope:</span>
+  <button type="button" class="anno-pill scope-on" data-filter="scope" data-value="">
+    All <span class="n">{{ payload.total_count }}</span>
+  </button>
+  {% comment %}Scopes have no colour identity, so no dot — a ring here read as
+  a stray "O" glued to the label. Text + count is the whole encoding.{% endcomment %}
+  {% for row in payload.scope_counts %}
+  <button type="button" class="anno-pill" data-filter="scope" data-value="{{ row.value }}">
+    {{ row.value }} <span class="n">{{ row.count }}</span>
+  </button>
+  {% endfor %}
+</div>
+
+{# Mount point only -- annotations_calendar.js owns every cell inside this. #}
+<div class="cal" id="calGrid" role="grid" aria-label="Month view" hidden></div>
+
+{% comment %}Server-rendered list, grouped by month (newest first). This is
+BOTH the no-JS fallback (visible by default) and the JS "List" toggle target —
+the script re-filters these rows by data-type/data-scope rather than
+re-rendering them.{% endcomment %}
+<div class="evlist" id="calList">
+  {% for group in payload.list_groups %}
+  <div class="month-h">{{ group.month_label }}</div>
+  {% for ev in group.events %}
+  <div class="evrow" data-date="{{ ev.date }}" data-end-date="{{ ev.end_date }}" data-type="{{ ev.type }}" data-scope="{{ ev.scope }}">
+    <span class="dates">{{ ev.dates_display }}</span>
+    <span class="dot t-{{ ev.type_css }}"></span>
+    <span class="lbl">{{ ev.label }}</span>
+    <span class="ui-badge">{{ ev.scope }}</span>
+    <span class="spacer"></span>
+    {% if ev.report_url %}
+    <a class="src" href="{{ ev.report_url }}">{{ ev.source_label }}</a>
+    {% else %}
+    <span class="src">{{ ev.source_label }}</span>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% endfor %}
+</div>
+<p class="subtle" style="margin:8px 0 0">Full history — no 90-day cutoff here (charts keep theirs). Old events stay findable.
+  Keyboard, in month view: arrows move by day · PageUp/PageDown by month · Shift+PageUp/PageDown by year · Home = today · Enter opens the day's events.</p>
+
+{{ client_payload|json_script:"calendar-data" }}
+<script src="{% static 'annotations_calendar.js' %}"></script>
+{% endif %}
+{% endblock %}

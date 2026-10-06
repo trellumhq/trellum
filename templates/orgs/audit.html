@@ -1,0 +1,202 @@
+{% extends "settings_base.html" %}
+{% block title %}Audit log — {{ org.name }}{% endblock %}
+{% block settings %}
+<header class="page-head-row">
+  <div>
+    <div class="ui-label page-kicker scope-org">Organization · {{ org.name }}</div>
+    <h1>Audit log</h1>
+  </div>
+  <span class="spacer"></span>
+  <a class="ui-btn ghost" href="/orgs/{{ org.slug }}/settings/audit/export.csv{% querystring page=None %}">Export CSV</a>
+</header>
+<p class="muted" style="margin:0 0 4px">Every recorded action in this organization, newest first.</p>
+
+<div class="ui-stat-row">
+  <div class="ui-stat">
+    <div class="lbl">Events</div>
+    <div class="num">{{ tiles.events }}</div>
+    <div class="sub">last 30 days</div>
+  </div>
+  <div class="ui-stat">
+    <div class="lbl">Denials</div>
+    <div class="num">{{ tiles.denials }}</div>
+    <div class="sub">SSO refusals, denied &amp; failed actions</div>
+  </div>
+  <div class="ui-stat">
+    <div class="lbl">Failed logins</div>
+    <div class="num">{{ tiles.failed_logins }}</div>
+    <div class="sub">password sign-in attempts</div>
+  </div>
+  <div class="ui-stat">
+    <div class="lbl">Active actors</div>
+    <div class="num">{{ tiles.actors }}</div>
+    <div class="sub">distinct users, last 30 days</div>
+  </div>
+</div>
+
+<div class="filter-row">
+  <a class="ui-pill{% if not applied.category %} active{% endif %}" href="{% querystring category=None page=None %}">
+    All <span class="n">{{ tiles.events }}</span>
+  </a>
+  {% for pill in pills %}
+  <a class="ui-pill{% if applied.category == pill.category %} active{% endif %}"
+     href="{% querystring category=pill.category page=None %}">
+    {{ pill.label }} <span class="n">{{ pill.count }}</span>
+  </a>
+  {% endfor %}
+</div>
+
+{% include "_list_toolbar.html" with q=applied.q placeholder="Search action, target, metadata…" total=page.paginator.count %}
+
+<form class="audit-filters" method="get">
+  {% for key, value in hidden_carry %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+  <select name="actor" aria-label="Actor">
+    <option value="">All actors</option>
+    {% for id, email in actor_choices %}
+    <option value="{{ id }}" {% if applied.actor == id|stringformat:"s" %}selected{% endif %}>{{ email }}</option>
+    {% endfor %}
+  </select>
+  <select name="action" aria-label="Action">
+    <option value="">All actions</option>
+    {% for name, label in action_choices %}
+    <option value="{{ name }}" {% if applied.action == name %}selected{% endif %}>{{ label }} ({{ name }})</option>
+    {% endfor %}
+  </select>
+  <select name="outcome" aria-label="Outcome">
+    <option value="">All outcomes</option>
+    <option value="success" {% if applied.outcome == "success" %}selected{% endif %}>Success</option>
+    <option value="denied" {% if applied.outcome == "denied" %}selected{% endif %}>Denied</option>
+    <option value="failure" {% if applied.outcome == "failure" %}selected{% endif %}>Failure</option>
+  </select>
+  <label class="audit-date-field">From
+    <input type="date" name="from" value="{{ applied.from }}">
+  </label>
+  <label class="audit-date-field">To
+    <input type="date" name="to" value="{{ applied.to }}">
+  </label>
+  <button class="ui-btn ghost" type="submit">Apply</button>
+  {% if any_filter_active %}
+  <a class="ui-btn ghost" href="{% querystring category=None action=None actor=None outcome=None from=None to=None target_type=None target_id=None q=None page=None %}">Clear filters</a>
+  {% endif %}
+</form>
+
+{% if recent_denials %}
+<div class="panel audit-denials">
+  <div class="ui-label" style="margin-bottom:8px">Recent denials</div>
+  {% for denial in recent_denials %}
+  <div class="audit-denial-row">
+    <span class="mono">{{ denial.row.created_at|date:"H:i:s" }}</span>
+    <span class="ui-badge">{{ denial.row.action }}</span>
+    <span>{{ denial.who }}</span>
+    <span class="muted">{{ denial.row.metadata.reason_code }}</span>
+    <span class="muted">{{ denial.row.ip|default:"" }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="panel" style="padding:0">
+<div class="ui-table-scroll">
+<table class="ui-table dense audit-table">
+  <thead><tr class="audit-cols">
+    <th>When</th><th>Actor</th><th>Action</th><th>Target</th><th>Outcome</th><th>IP</th>
+  </tr></thead>
+  <tbody>
+  {% for row in page %}
+  <tr>
+    <td colspan="6" style="padding:0">
+      <details class="audit-row">
+        <summary class="audit-cols audit-summary">
+          <span class="muted">{{ row.created_at|date:"Y-m-d H:i:s" }}</span>
+          <span>{{ row.actor.email|default:"system" }}{% if row.impersonator_id %}<span class="audit-imp-chip">via {{ row.impersonator.email }}</span>{% endif %}</span>
+          <span><span class="ui-badge">{{ row.action }}</span></span>
+          <span>{% if row.target_type %}<a href="{% querystring target_type=row.target_type target_id=row.target_id page=None %}">{{ row.target_type }} #{{ row.target_id }}</a>{% else %}<span class="muted">—</span>{% endif %}</span>
+          <span>
+            {% if row.outcome == "success" %}<span class="ui-badge ok">success</span>
+            {% elif row.outcome == "denied" %}<span class="ui-badge fail">⛔ denied</span>
+            {% else %}<span class="ui-badge warn">failure</span>{% endif %}
+          </span>
+          <span class="muted mono">{{ row.ip|default:"—" }}</span>
+        </summary>
+        <div class="audit-detail">
+          <div class="audit-detail-grid">
+            <div><span class="ui-label">Actor</span><div>{{ row.actor.email|default:"system" }}</div></div>
+            <div><span class="ui-label">Impersonator</span><div{% if row.impersonator_id %} class="audit-imp-value"{% endif %}>{{ row.impersonator.email|default:"—" }}</div></div>
+            <div><span class="ui-label">IP</span><div class="mono">{{ row.ip|default:"—" }}</div></div>
+            <div><span class="ui-label">Category</span><div>{{ row.category|default:"—" }}</div></div>
+          </div>
+          <div><span class="ui-label">User agent</span><div class="mono audit-ua">{{ row.user_agent|default:"—" }}</div></div>
+          <div>
+            <span class="ui-label">Metadata</span>
+            {% if row.metadata %}
+            <table class="audit-meta-table">
+              {% for k, v in row.metadata.items %}<tr><td class="mono">{{ k }}</td><td class="mono">{{ v }}</td></tr>{% endfor %}
+            </table>
+            {% else %}<div class="muted">—</div>{% endif %}
+          </div>
+        </div>
+      </details>
+    </td>
+  </tr>
+  {% empty %}
+  <tr><td colspan="6"><div class="ui-empty">
+    {% if any_filter_active %}No events match these filters.
+      <div class="ui-empty-action"><a class="ui-btn ghost" href="/orgs/{{ org.slug }}/settings/audit">Clear filters</a></div>
+    {% else %}Nothing logged yet.{% endif %}
+  </div></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+</div>
+{% include "_pagination.html" with page=page %}
+
+<style>
+/* Page-specific: the details-as-table-row pattern. Stat tiles and filter
+   pills promoted to ui.css as .ui-stat-row/.ui-stat/.ui-pill
+   (ui-consistency-punchlist.md item 8); .filter-row is just the layout
+   wrapper, kept here. Mirrors the ui.css token vocabulary rather than
+   inventing new colors, same convention as
+   templates/reports/experiments.html. */
+.filter-row { display:flex; gap:6px; align-items:center; margin:0 0 14px; flex-wrap:wrap; }
+
+.audit-filters { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0 0 var(--sp-3); }
+.audit-filters select { width:auto; max-width:220px; }
+.audit-date-field { display:flex; align-items:center; gap:4px; font-size:var(--fs-md); color:var(--text2); }
+.audit-date-field input { width:auto; }
+
+.audit-denials { border-left:3px solid var(--red); margin-bottom:14px; }
+.audit-denial-row { display:grid; grid-template-columns:80px 1fr 1fr 1fr 140px; gap:10px; align-items:center; padding:4px 0; font-size:var(--fs-md); }
+
+/* The details-as-table-row pattern: a real <table>/<th> so the mono eyebrow
+   header treatment (ui.css's grouped `.ui-table th` rule) applies for free,
+   but each body row is one <td colspan> holding a <details> whose <summary>
+   IS the visible row -- no JS, and a shared grid template keeps the header
+   and every row's columns aligned without the table layout algorithm having
+   to agree with a foreign element's box model. */
+.audit-cols {
+    display:grid;
+    grid-template-columns: 150px 1.3fr 1.3fr 160px 110px 120px;
+    gap:10px; align-items:center;
+}
+.audit-table thead tr.audit-cols { padding:0 14px; }
+.audit-row { border-bottom:1px solid var(--border); }
+.audit-row:last-child { border-bottom:none; }
+.audit-summary { padding:6px 14px; cursor:pointer; list-style:none; }
+.audit-summary::-webkit-details-marker { display:none; }
+.audit-summary:hover { background:var(--bg-hover); }
+.audit-imp-chip { display:inline-block; margin-left:6px; font-size:var(--fs-xs); color:var(--warn); }
+.audit-detail { padding:10px 14px 14px 14px; background:var(--bg); border-top:1px dashed var(--border); }
+.audit-detail-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px; margin-bottom:10px; }
+.audit-imp-value { color:var(--warn); font-weight:600; }
+.audit-ua { word-break:break-all; }
+.audit-meta-table { width:100%; border-collapse:collapse; margin-top:4px; }
+.audit-meta-table td { padding:2px 8px 2px 0; font-size:var(--fs-sm); vertical-align:top; }
+.audit-meta-table td:first-child { color:var(--text3); white-space:nowrap; }
+
+@media (max-width: 900px) {
+  .audit-cols { grid-template-columns: 110px 1fr 1fr 90px; }
+  .audit-cols > span:nth-child(4) { display:none; }
+}
+</style>
+{% endblock %}

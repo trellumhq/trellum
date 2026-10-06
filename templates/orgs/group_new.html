@@ -1,0 +1,10 @@
+{% extends "settings_base.html" %}
+{% block title %}New permission group — {{ org.name }}{% endblock %}
+{% block settings %}
+<header class="page-head-row"><div><div class="ui-label page-kicker scope-org">Organization · {{ org.name }}</div><h1>New permission group</h1></div><span class="spacer"></span><a class="ui-btn ghost" href="/orgs/{{ org.slug }}/settings/groups">← All groups</a></header>
+<div class="panel formrow"><form method="post">{% csrf_token %}<fieldset style="border:0;padding:0;margin:0;min-width:0">
+  <label for="{{ form.name.id_for_label }}">Name</label>{{ form.name }}{{ form.name.errors }}<label for="{{ form.description.id_for_label }}">Description</label>{{ form.description }}{{ form.description.errors }}
+  <label for="{{ form.org_role.id_for_label }}">Organization role</label>{{ form.org_role }}{{ form.org_role.errors }}<label for="{{ form.default_studio_role.id_for_label }}">Default studio role</label>{{ form.default_studio_role }}{{ form.default_studio_role.errors }}<span class="helptext">{{ form.default_studio_role.help_text }}</span>
+  <p></p><button class="ui-btn primary" type="submit">Create group</button>
+</fieldset></form></div>
+{% endblock %}

@@ -1,0 +1,28 @@
+Sign in to keep your {{ instance_name }} account
+
+{% if never_signed_in %}Your {{ instance_name }} account was created on {{ last_seen|date:"j F Y" }} and has never been signed in to.{% else %}You last signed in to {{ instance_name }} on {{ last_seen|date:"j F Y" }}.{% endif %}
+
+Accounts nobody uses are closed{% if erase_on %} and then deleted, so that we are not holding
+personal data for people who no longer need an account{% endif %}. Unless you sign in,
+this is what will happen to yours:
+{% if disable_on %}
+  {{ disable_on|date:"j F Y" }} — sign-in is switched off. Nothing is deleted, and an
+  administrator at your organization can turn it back on.
+{% endif %}{% if erase_on %}  {{ erase_on|date:"j F Y" }} — your account, your name and your email address are
+  deleted. This one cannot be undone.
+{% endif %}
+To stop all of it, sign in once:
+
+  {{ sign_in_url }}
+
+That is the whole thing. One sign-in resets every date above, you do not need
+to reply to this email, and nobody has to approve anything.
+
+If you have forgotten your password, use the "Forgot password" link on that
+page — resetting it and signing in counts.
+
+If you no longer need the account, you do not have to do anything: leave this
+email alone and it will be closed on the dates above.
+
+--
+Sent by {{ instance_name }}.

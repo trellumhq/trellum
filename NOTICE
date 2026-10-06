@@ -1,0 +1,32 @@
+Trellum
+Copyright (c) 2026 Apollo Meijer
+
+Owned Trellum code is released under the GNU Affero General Public License,
+version 3 only (AGPL-3.0-only). Third-party components and pre-existing
+contributor-authored files retain their original licences and notices. See
+LICENSE and trellum/THIRD-PARTY.md.
+
+--------------------------------------------------------------------------------
+
+Third-party components
+
+The reporting framework in `trellum/` bundles front-end libraries and depends
+on Python packages that carry their own licences. They are audited and listed
+in `trellum/THIRD-PARTY.md`, which distinguishes:
+
+  - BUNDLED components, whose code ships inside built reports
+    (`trellum/static/vendor/`), and
+  - DEPENDED-UPON packages, installed from PyPI at build time.
+
+The control plane's own runtime dependencies are pinned in
+`requirements-django.txt`. A CycloneDX and an SPDX SBOM are generated for every
+released image and published alongside it, signed with the release; see
+`.github/workflows/release.yml`.
+
+All third-party components remain under the licences granted by their
+respective authors. Nothing in this NOTICE modifies them.
+
+The website includes the Inter typeface.
+Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter).
+Licensed under the SIL Open Font License, Version 1.1; see
+website/static/fonts/OFL.txt.

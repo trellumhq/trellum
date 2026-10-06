@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}{{ report.name }} — trellum{% endblock %}
+{% block content %}
+<div class="panel ui-notice-page wide">
+  {% if blocked %}
+    <h1><code>{{ report.slug }}</code> is waiting for a data source</h1>
+    {% for b in blocked %}
+    <p class="muted">This report reads from <code>{{ b.name }}</code>, which
+      {% if b.declared %}your repository declares but this studio hasn't configured yet.
+      {% else %}is referenced by the report but not declared in <code>data-sources/config.yaml</code>.{% endif %}</p>
+    {% endfor %}
+    {% if not can_configure %}
+    <p class="muted">Ask a studio admin to configure it.</p>
+    <p class="muted">Last successful build: none.</p>
+    {% endif %}
+    <p style="margin-top:16px">
+      {% if can_configure %}
+        {% for b in blocked %}
+        <a class="ui-btn primary" href="{{ prefix }}/settings/datasources?configure={{ b.name|urlencode }}#configure">Configure {{ b.name }}</a>
+        {% endfor %}
+      {% endif %}
+      {% if can_operate %}<a class="ui-btn ghost" href="{{ prefix }}/operations">View operations</a>{% endif %}
+      <a class="ui-btn ghost" href="{{ prefix }}/">Back to {{ studio_name }}</a>
+    </p>
+  {% elif failure %}
+    <h1><code>{{ report.slug }}</code> can't build: data source <code>{{ failure.0 }}</code> is failing</h1>
+    {# The check's message can carry a host or user name: admins only. #}
+    {% if not can_configure %}
+    <p class="muted">Ask a studio admin to check its credentials.</p>
+    {% else %}
+    <p class="muted">{{ failure.1 }}</p>
+    {% if error %}<pre class="ui-code-block">{{ error }}</pre>{% endif %}
+    {% endif %}
+    <p style="margin-top:16px">
+      {% if can_configure %}
+      <a class="ui-btn primary" href="{{ prefix }}/settings/datasources?configure={{ failure.0|urlencode }}#configure">Configure {{ failure.0 }}</a>
+      {% endif %}
+      {% if can_operate %}<a class="ui-btn ghost" href="{{ prefix }}/operations">View operations</a>{% endif %}
+      <a class="ui-btn ghost" href="{{ prefix }}/">Back to {{ studio_name }}</a>
+    </p>
+  {% else %}
+    {% if status == "error" %}
+      <h1>This report failed to build</h1>
+      <p class="muted">
+        “{{ report.name }}” exists, but its most recent build ended in an error,
+        so there's no page to show yet. Fix the cause and run it again.
+      </p>
+      {% if error and can_configure %}
+        <pre class="ui-code-block">{{ error }}</pre>
+      {% endif %}
+    {% else %}
+      <h1>This report hasn't been built yet</h1>
+      <p class="muted">
+        “{{ report.name }}” exists but hasn't produced any output yet. Run it from
+        the studio to generate the page.
+      </p>
+    {% endif %}
+    <p style="margin-top:16px">
+      <a class="ui-btn primary" href="{{ prefix }}/">Back to {{ studio_name }}</a>
+      <a class="ui-btn ghost" href="{{ prefix }}/?report={{ report.slug }}">Open in the studio</a>
+    </p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% load docs %}
+{% block title %}Alerts — {{ studio.name }}{% endblock %}
+{% block content %}
+<header class="page-head-row">
+  <div>
+    <div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }}</div>
+    <h1>Alerts</h1>
+    <p class="muted page-sub">A rule is a report, plain-language instructions and a cadence; the assistant
+      looks at the data and decides whether to tell anyone.
+      <a href="{% docs_url 'portal/alerts/' %}">How alerts work →</a></p>
+  </div>
+  <span class="spacer"></span>
+  {% if can_edit %}<a class="ui-btn primary" href="{{ prefix }}/new">New alert</a>{% endif %}
+</header>
+
+<div class="panel">
+{% if rows %}
+<div class="ui-table-scroll">
+<table class="ui-table" data-mobile-cards>
+  <thead><tr>
+    <th>Name</th><th>Report</th><th>Trigger</th><th>Recipients</th><th>Cooldown</th>
+    <th>Status</th><th>Last run</th><th>Last alerted</th><th></th>
+  </tr></thead>
+  <tbody>
+  {% for row in rows %}{% with rule=row.rule %}
+  <tr>
+    <td data-label="Name"><a href="{{ prefix }}/{{ rule.pk }}"><strong>{{ rule.name }}</strong></a></td>
+    <td data-label="Report">{{ rule.report.name|default:rule.report.slug }}</td>
+    <td data-label="Trigger">{{ row.trigger }}</td>
+    <td data-label="Recipients">{{ row.recipients }}</td>
+    <td data-label="Cooldown">{{ rule.cooldown_hours }} h</td>
+    <td data-label="Status">{% if rule.enabled %}<span class="ui-badge pass">Enabled</span>{% else %}<span class="ui-badge warn">Disabled</span>{% endif %}</td>
+    <td data-label="Last run">{% if rule.last_run_at %}
+      {% if row.last == "alert" %}<span class="ui-badge fail">Alert</span>{% elif row.last == "quiet" %}<span class="ui-badge">Quiet</span>{% elif row.last %}<span class="ui-badge warn">{{ row.last }}</span>{% endif %}
+      <span class="muted">{{ rule.last_run_at|date:"Y-m-d H:i" }}</span>
+      {% else %}<span class="muted">Never</span>{% endif %}</td>
+    <td data-label="Last alerted">{% if rule.last_alerted_at %}{{ rule.last_alerted_at|date:"Y-m-d H:i" }}{% else %}<span class="muted">Never</span>{% endif %}</td>
+    <td class="ui-row-actions" data-label="Actions">
+      <a class="ui-btn ghost" href="{{ prefix }}/{{ rule.pk }}">Run log</a>
+      {% if can_edit %}
+      <a class="ui-btn ghost" href="{{ prefix }}/{{ rule.pk }}/edit">Edit</a>
+      <form class="inline" method="post" action="{{ prefix }}/{{ rule.pk }}/toggle">{% csrf_token %}
+        <button class="ui-btn ghost" type="submit">{% if rule.enabled %}Disable{% else %}Enable{% endif %}</button></form>
+      <form class="inline" method="post" action="{{ prefix }}/{{ rule.pk }}/delete"
+            onsubmit="return confirm('Delete “{{ rule.name|escapejs }}” and its run log?')">{% csrf_token %}
+        <button class="ui-btn danger" type="submit">Delete</button></form>
+      {% endif %}
+    </td>
+  </tr>
+  {% endwith %}{% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="ui-empty">No alert rules yet.
+  {% if can_edit %}<div class="ui-empty-action"><a class="ui-btn primary" href="{{ prefix }}/new">Write the first one</a></div>{% endif %}
+</div>
+{% endif %}
+</div>
+{% endblock %}

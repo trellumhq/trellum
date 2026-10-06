@@ -1,0 +1,25 @@
+{% comment %}Pager for any paginated list.
+
+    {% include "_pagination.html" with page=page %}
+
+Preserves every other query parameter (search, filters) via `querystring`,
+which Django builds from request.GET minus the keys you override — so paging
+never silently drops the filter the user is looking at.
+{% endcomment %}
+{% if page.paginator.num_pages > 1 %}
+<nav class="ui-pager" aria-label="Pagination">
+  {% if page.has_previous %}
+    <a class="ui-btn ghost" href="{% querystring page=page.previous_page_number %}">← Previous</a>
+  {% else %}
+    <span class="ui-btn ghost" aria-disabled="true">← Previous</span>
+  {% endif %}
+  <span class="ui-pager-status">
+    {{ page.start_index }}–{{ page.end_index }} of {{ page.paginator.count }}
+  </span>
+  {% if page.has_next %}
+    <a class="ui-btn ghost" href="{% querystring page=page.next_page_number %}">Next →</a>
+  {% else %}
+    <span class="ui-btn ghost" aria-disabled="true">Next →</span>
+  {% endif %}
+</nav>
+{% endif %}
