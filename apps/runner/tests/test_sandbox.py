@@ -7,6 +7,7 @@ behind the ``docker_sandbox`` marker and skips when no daemon is present.
 """
 from __future__ import annotations
 
+import shlex
 import sys
 import types
 from pathlib import Path
@@ -614,6 +615,7 @@ class TestRealDaemon:
 
         data = tmp_path / "data"
         settings.DATA_DIR = data
+        settings.TRELLUM_SANDBOX_IMAGE = "busybox:latest"
         settings.TRELLUM_SANDBOX_NETWORK = "none"
         settings.TRELLUM_SANDBOX_PROJECT_RW = False
         settings.TRELLUM_JOB_MEMORY_HEADROOM = 1.5
@@ -629,17 +631,11 @@ class TestRealDaemon:
         (shared / "shared.txt").write_text("shared")
         (sibling / "secret.txt").write_text("sibling-secret")
         (repo / "credentials.txt").write_text("repo-credential")
-        (project / "escape").symlink_to("/data/studios/org/sibling/secret.txt")
+        (project / "escape").symlink_to(sibling / "secret.txt")
+        (project / "relative-escape").symlink_to("../../sibling/secret.txt")
 
-        # Docker runs the probe as uid 10001, so make the temporary bind tree
-        # traversable and its ordinary files writable for the rw mount checks.
-        ancestors = []
-        current = data
-        while current != Path("/tmp") and current != current.parent:
-            ancestors.append((current, current.stat().st_mode & 0o777))
-            current = current.parent
-        for directory, _ in ancestors:
-            directory.chmod(0o777)
+        # The daemon resolves sources; only the mounted directories need to be
+        # accessible to uid 10001. Do not change permissions on host ancestors.
         for path in data.rglob("*"):
             if path.is_dir():
                 path.chmod(0o777)
@@ -647,24 +643,26 @@ class TestRealDaemon:
                 path.chmod(0o666)
 
         run_id = str(uuid4())
+        q = lambda path: shlex.quote(str(path))
         probe = " && ".join([
-            "test -r /data/studios/org/studio/project/report.py",
-            "test -r /data/orgs/org/data-sources/shared.txt",
-            "test ! -e /data/studios/org/sibling/secret.txt",
-            "test ! -e /data/repo/credentials.txt",
-            "test ! -e /data/studios/org/studio/project/escape",
-            "! touch /data/studios/org/studio/project/ro-probe 2>/dev/null",
-            "! touch /data/orgs/org/data-sources/ro-probe 2>/dev/null",
-            "touch /data/studios/org/studio/project/output/allowed-probe",
-            "test -e /data/studios/org/studio/project/output/allowed-probe",
-            "touch /data/tmp/run-alpha-xyz/allowed-probe",
-            "touch /data/tmp/runs/rid-1/allowed-probe",
+            f"test -r {q(project / 'report.py')}",
+            f"test -r {q(shared / 'shared.txt')}",
+            f"test ! -e {q(sibling / 'secret.txt')}",
+            f"test ! -e {q(repo / 'credentials.txt')}",
+            f"test ! -e {q(project / 'escape')}",
+            f"test ! -e {q(project / 'relative-escape')}",
+            "test ! -e /var/run/docker.sock",
+            f"! touch {q(project / 'ro-probe')} 2>/dev/null",
+            f"! touch {q(shared / 'ro-probe')} 2>/dev/null",
+            f"touch {q(Path(paths['output_dir']) / 'allowed-probe')}",
+            f"touch {q(Path(paths['run_dir_base']) / 'allowed-probe')}",
+            f"touch {q(Path(paths['log_dir']) / 'allowed-probe')}",
         ])
         original_run = ContainerCollection.run
         observed = {}
 
         def run_probe(collection, *args, **kwargs):
-            if collection.client is client.api:
+            if collection.client is client:
                 observed["mounts"] = kwargs["mounts"]
                 kwargs["image"] = "busybox:latest"
                 kwargs["command"] = ["sh", "-c", probe]
@@ -675,6 +673,7 @@ class TestRealDaemon:
         monkeypatch.setattr(sandbox, "data_volume", lambda: ("bind", str(data)))
         proc = None
         try:
+            sandbox.preflight()
             proc = sandbox.start(
                 run=types.SimpleNamespace(id=run_id),
                 cmd_flags=[], run_report_dir=paths["run_report_dir"],
@@ -684,8 +683,9 @@ class TestRealDaemon:
                 stdout_path=paths["stdout_path"], stderr_path=paths["stderr_path"],
                 memory_mb=256, cpus=1.0,
             )
-            result = proc.container.wait()
-            output = proc.container.logs().decode(errors="replace")
+            container = client.containers.get(proc.container_id)
+            result = container.wait(timeout=30)
+            output = container.logs().decode(errors="replace")
             assert result["StatusCode"] == 0, output
             mounts = observed["mounts"]
             assert all(mount["Type"] == "bind" for mount in mounts)
@@ -695,5 +695,4 @@ class TestRealDaemon:
         finally:
             if proc is not None:
                 proc.cleanup()
-            for directory, mode in reversed(ancestors):
-                directory.chmod(mode)
+            client.close()

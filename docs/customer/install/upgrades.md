@@ -166,9 +166,11 @@ Report builds now run in disposable per-build containers instead of inside
 the worker process. Crossing that change needs two things on the host, the
 first time only:
 
-- **Docker Engine 26+** — the worker checks this at boot and refuses to start
-  on an older engine; `manage.py doctor` and the boot log both name the
-  requirement if you forget.
+- **Docker Engine 26+** for named-volume storage, or **25+** with
+  [host-folder storage](/docs/latest/install/docker-compose/#docker-25-with-host-folder-storage).
+  Before changing the stack, run `bash scripts/check-docker.sh` (add
+  `--bind-data` only for the host-folder setup). The worker also checks its
+  actual storage type and API version at startup.
 - **`DOCKER_GID`** — add it to `.env` (see
   [Configuration](/docs/latest/install/configuration/)); without it the
   worker cannot reach the socket it needs to start build containers.

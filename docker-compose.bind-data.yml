@@ -1,0 +1,34 @@
+# Linux host-folder storage, including Docker Engine 25.
+# See docs/customer/install/docker-compose.md#docker-25-with-host-folder-storage.
+# Compose merges volumes by container target, retaining /backups and the socket.
+x-data-bind: &data-bind
+  type: bind
+  source: ${TRELLUM_DATA_HOST_PATH:?set TRELLUM_DATA_HOST_PATH to an existing absolute host directory}
+  target: /data
+  bind:
+    create_host_path: false
+
+services:
+  migrate:
+    volumes:
+      - *data-bind
+  web:
+    volumes:
+      - *data-bind
+  worker:
+    volumes:
+      - *data-bind
+    environment:
+      TRELLUM_DATA_VOLUME: ""
+  coordinator:
+    volumes:
+      - *data-bind
+  runner:
+    volumes:
+      - *data-bind
+    environment:
+      TRELLUM_DATA_VOLUME: ""
+  backup:
+    volumes:
+      - <<: *data-bind
+        read_only: true
