@@ -303,7 +303,7 @@ def test_studio_member_role_controls_align_at_desktop(mobile_browser, theme):
 
 def test_org_member_role_controls_align_at_desktop(mobile_browser):
     context, page = _rendered_management_page(
-        mobile_browser, _org_members_html(), 1000
+        mobile_browser, _org_members_html(), 1440
     )
     try:
         form = page.locator("tbody form[data-settings-form]").first
@@ -311,6 +311,22 @@ def test_org_member_role_controls_align_at_desktop(mobile_browser):
         button_box = form.locator("button").bounding_box()
         assert abs(select_box["height"] - button_box["height"]) <= 1
         assert abs(select_box["y"] - button_box["y"]) <= 1
+        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+    finally:
+        context.close()
+
+
+def test_org_member_role_controls_wrap_whole_when_table_is_crowded(mobile_browser):
+    context, page = _rendered_management_page(
+        mobile_browser, _org_members_html(), 900
+    )
+    try:
+        form = page.locator("tbody form[data-settings-form]").first
+        select_box = form.locator("select").bounding_box()
+        button_box = form.locator("button").bounding_box()
+        assert abs(select_box["height"] - button_box["height"]) <= 1
+        assert abs(select_box["x"] - button_box["x"]) <= 1
+        assert button_box["y"] >= select_box["y"] + select_box["height"]
         assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
     finally:
         context.close()
