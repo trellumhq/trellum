@@ -113,6 +113,10 @@ Use the shared `.ui-*` components from `static/ui.css`. Primary actions use
 use `.ui-btn.danger`. Filter pills use `.ui-pill` and status uses `.ui-badge`.
 Bare buttons are neutral. A form has at most one primary action.
 
+Inline forms align single-line fields and buttons at the same height. Dropdowns
+reserve space for their arrow; crowded rows wrap whole controls instead of
+squeezing action labels. Keep the full-width field treatment for stacked forms.
+
 Drawers and menus close with Escape, trap focus while modal, return focus to
 their opener, and expose the relevant dialog/menu state. Forms provide visible
 labels and inline errors. Entity names link to their records rather than

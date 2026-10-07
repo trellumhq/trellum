@@ -16,6 +16,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Align the report table's sort label, dropdown, and direction control.
 - Make System health reachable from the operator sidebar and show a live
   header warning when worker or other quick health checks need attention.
+- Align inline settings dropdowns and action buttons, reserve space for select
+  arrows, and let crowded rows wrap controls without squeezing action labels.
+- Keep account recovery codes within narrow phone layouts.
+- Align audit-log date filters with their actions and keep table action menus
+  inside the viewport, including their inline role controls.
 
 ### Changed
 
