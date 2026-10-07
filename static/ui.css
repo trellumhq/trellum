@@ -213,21 +213,24 @@ a.crumb-link:hover { border-color: var(--scope-org); text-decoration: none; }
 .shell-dd[open] > summary { border-color: var(--accent); }
 .shell-menu {
     position: absolute; top: calc(100% + 4px); left: 0; min-width: 180px;
+    max-width: calc(100vw - 24px);
     background: var(--bg-card); border: 1px solid var(--border);
     border-radius: var(--r-md); box-shadow: var(--shadow-hover);
     padding: 4px; z-index: var(--z-menu);
     display: flex; flex-direction: column;
 }
 .shell-menu-right { left: auto; right: 0; }
-.shell-menu a, .shell-menu button {
+.shell-menu a:not(.ui-btn), .shell-menu button:not(.ui-btn) {
     text-align: left; padding: 6px 10px; border-radius: var(--r-sm);
     color: var(--text); text-decoration: none; font-size: var(--fs-base);
     background: none; border: none; cursor: pointer; width: 100%;
     font-family: var(--font);
 }
-.shell-menu a:hover, .shell-menu button:hover { background: var(--bg-hover); text-decoration: none; }
+.shell-menu a:not(.ui-btn):hover, .shell-menu button:not(.ui-btn):hover { background: var(--bg-hover); text-decoration: none; }
 .shell-menu a.active { color: var(--accent-ink); font-weight: 600; }
 .shell-menu-note { padding: 6px 10px; color: var(--text3); font-size: var(--fs-sm); }
+.shell-menu form.inline > span:not([data-settings-dirty-status]) { min-width: 100%; }
+body.mgmt main .shell-menu form.inline > select { flex: 1 1 0; }
 
 /* ── Studio tab bar (_studio_nav.html) ───────────────────────────────────────
    One navigation for every studio-scoped page, sticky directly under the

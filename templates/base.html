@@ -104,11 +104,30 @@ function setMgmtTheme(pref) {
     var menu = details.querySelector('.shell-menu');
     var summary = details.querySelector('summary');
     if (!menu || !summary) return;
+    var gutter = 12;
     var r = summary.getBoundingClientRect();
     menu.style.position = 'fixed';
-    menu.style.top = (r.bottom + 4) + 'px';
-    menu.style.left = 'auto';
-    menu.style.right = (window.innerWidth - r.right) + 'px';
+    menu.style.left = '0';
+    menu.style.right = 'auto';
+    menu.style.maxHeight = '';
+    menu.style.overflowY = '';
+
+    var box = menu.getBoundingClientRect();
+    var left = Math.min(
+      Math.max(gutter, r.right - box.width),
+      window.innerWidth - box.width - gutter
+    );
+    menu.style.left = Math.max(gutter, left) + 'px';
+
+    var below = window.innerHeight - r.bottom - gutter - 4;
+    var above = r.top - gutter - 4;
+    var opensAbove = box.height > below && above > below;
+    var available = Math.max(0, opensAbove ? above : below);
+    menu.style.maxHeight = available + 'px';
+    if (box.height > available) menu.style.overflowY = 'auto';
+    menu.style.top = opensAbove
+      ? Math.max(gutter, r.top - Math.min(box.height, available) - 4) + 'px'
+      : (r.bottom + 4) + 'px';
   }
 
   function reset(details) {
@@ -118,6 +137,8 @@ function setMgmtTheme(pref) {
     menu.style.top = '';
     menu.style.left = '';
     menu.style.right = '';
+    menu.style.maxHeight = '';
+    menu.style.overflowY = '';
   }
 
   document.addEventListener('toggle', function (ev) {
@@ -128,8 +149,8 @@ function setMgmtTheme(pref) {
   }, true);
 
   /* A fixed menu does not travel with its row, so close rather than detach. */
-  window.addEventListener('scroll', function () {
-    if (open) { open.open = false; }
+  window.addEventListener('scroll', function (ev) {
+    if (open && !open.contains(ev.target)) { open.open = false; }
   }, true);
   window.addEventListener('resize', function () {
     if (open) { open.open = false; }
