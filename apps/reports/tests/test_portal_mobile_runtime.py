@@ -438,9 +438,31 @@ def test_mobile_category_and_saved_list_mode_are_reachable(mobile_browser, width
     expected_display = "grid" if width < 768 else "table-row"
     assert row.evaluate("el => getComputedStyle(el).display") == expected_display
     if width < 768:
-        assert page.locator("#listSortSelect").is_visible()
-        page.locator("#listSortSelect").select_option("category")
+        sort_select = page.locator("#listSortSelect")
+        assert sort_select.is_visible()
+        assert sort_select.evaluate("el => getComputedStyle(el).minHeight") == "44px"
+        assert page.locator(".list-sort-label").evaluate(
+            "el => getComputedStyle(el).display"
+        ) == "flex"
+        direction = page.locator("#listSortDirection")
+        toggle = page.locator(".summary-right .view-toggle")
+        assert direction.is_visible()
+        assert direction.bounding_box()["height"] >= 44
+        assert toggle.locator(".view-btn").first.bounding_box()["height"] >= 44
+        sort_select.select_option("category")
     else:
+        sort_select = page.locator("#listSortSelect")
+        direction = page.locator("#listSortDirection")
+        toggle = page.locator(".summary-right .view-toggle")
+        assert sort_select.is_visible() and direction.is_visible()
+        assert page.locator(".list-sort-label").evaluate(
+            "el => getComputedStyle(el).display"
+        ) == "flex"
+        centers = [
+            (element.bounding_box()["y"] + element.bounding_box()["height"] / 2)
+            for element in (sort_select, direction, toggle)
+        ]
+        assert max(centers) - min(centers) < 1
         page.locator('[data-sort="category"]').first.click()
     assert page.evaluate("localStorage.getItem('trellum_portal_view')") == "list"
     assert page.evaluate("localStorage.getItem('trellum_portal_sort_col')") == "category"

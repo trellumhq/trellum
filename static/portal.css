@@ -719,18 +719,26 @@ html[data-theme="dark"] .console-dashboard select { color-scheme: dark; }
 .summary-right .view-btn svg { width: 15px; height: 15px; }
 
 /* ── Card sort select ── */
-.card-sort-select {
+.summary-right .card-sort-select, .summary-right .list-sort-select {
     font-size: 12px; padding: 4px 8px;
     border: 1px solid var(--border); border-radius: 6px;
     background: var(--bg-card); color: var(--text2);
     cursor: pointer; outline: none;
 }
-.card-sort-select:focus { border-color: var(--focus); }
-.summary-right .card-sort-label {
+.summary-right .card-sort-select:focus, .summary-right .list-sort-select:focus {
+    border-color: var(--focus);
+}
+.summary-right .card-sort-label, .summary-right label.list-sort-label {
     display: flex; align-items: center; gap: 6px; margin: 0;
     color: var(--text3); font-size: 11px; white-space: nowrap;
 }
-.list-sort-label, .list-sort-direction { display: none; }
+.summary-right button.list-sort-direction {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; padding: 0;
+    border: 1px solid var(--border); border-radius: 6px;
+    background: var(--bg-card); color: var(--text2); font-size: 14px;
+    cursor: pointer;
+}
 
 /* ── Clickable tags ── */
 .tag[data-tag] { cursor: pointer; transition: all 0.15s; }
@@ -1098,7 +1106,7 @@ html[data-theme="dark"] .console-dashboard select { color-scheme: dark; }
     .summary-right .view-toggle { margin-left: auto; }
     .summary-right .view-btn, .summary-right .shell-icon-btn,
     .list-sort-direction { min-width: 44px; height: 44px; }
-    .list-sort-label {
+    .summary-right label.list-sort-label {
         display: flex; align-items: center; gap: 6px; color: var(--text2);
         font-size: 12px;
     }
@@ -1107,8 +1115,9 @@ html[data-theme="dark"] .console-dashboard select { color-scheme: dark; }
         border: 1px solid var(--border); border-radius: 8px;
         background: var(--bg-card); color: var(--text); font: 16px/1.4 var(--font);
     }
-    .list-sort-direction {
+    .summary-right button.list-sort-direction {
         display: inline-flex; align-items: center; justify-content: center;
+        min-width: 44px; height: 44px;
         border: 1px solid var(--border); border-radius: 8px;
         background: var(--bg-card); color: var(--text); font-size: 18px;
     }
