@@ -7,8 +7,10 @@ behind the ``docker_sandbox`` marker and skips when no daemon is present.
 """
 from __future__ import annotations
 
+import sys
 import types
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
@@ -437,6 +439,16 @@ class TestPreflight:
             assert "upgrade" in str(exc.value).lower()
             assert "install/docker-compose/" in str(exc.value)
 
+    def test_old_bind_api_only_recommends_engine_upgrade(self, sbox_dir, settings):
+        settings.TRELLUM_DATA_VOLUME = ""
+        client = FakeClient(api="1.43", self_mounts=[
+            {"Destination": "/data", "Type": "bind", "Source": str(sbox_dir)}
+        ])
+        with pytest.raises(SandboxError) as exc:
+            DockerSandbox(client=client).preflight()
+        assert "Engine 25 or newer" in str(exc.value)
+        assert "configure" not in str(exc.value).lower()
+
     @pytest.mark.parametrize("api", [None, "", "garbage", "1", "1.x", "1.44.0"])
     def test_unreadable_or_malformed_api_fails_closed(self, sbox_dir, api):
         client = FakeClient(api=api)
@@ -585,3 +597,103 @@ class TestRealDaemon:
             security_opt=["no-new-privileges:true"], remove=True,
         )
         assert b"READONLY" in logs
+
+    @pytest.mark.skipif(sys.platform != "linux", reason="bind mount probe requires Linux")
+    def test_start_mounts_only_allowed_data_and_enforces_access(
+        self, tmp_path, settings, monkeypatch
+    ):
+        """Run DockerSandbox's generated binds in a real hardened BusyBox container."""
+        import docker
+        from docker.models.containers import ContainerCollection
+
+        client = docker.from_env()
+        try:
+            client.images.get("busybox:latest")
+        except docker.errors.ImageNotFound:
+            client.images.pull("busybox:latest")
+
+        data = tmp_path / "data"
+        settings.DATA_DIR = data
+        settings.TRELLUM_SANDBOX_NETWORK = "none"
+        settings.TRELLUM_SANDBOX_PROJECT_RW = False
+        settings.TRELLUM_JOB_MEMORY_HEADROOM = 1.5
+        paths = _run_paths(data)
+        project = Path(paths["project_root"])
+        shared = data / "orgs" / "org" / "data-sources"
+        sibling = data / "studios" / "org" / "sibling"
+        repo = data / "repo"
+        shared.mkdir(parents=True)
+        sibling.mkdir(parents=True)
+        repo.mkdir(parents=True)
+        (project / "report.py").write_text("report")
+        (shared / "shared.txt").write_text("shared")
+        (sibling / "secret.txt").write_text("sibling-secret")
+        (repo / "credentials.txt").write_text("repo-credential")
+        (project / "escape").symlink_to("/data/studios/org/sibling/secret.txt")
+
+        # Docker runs the probe as uid 10001, so make the temporary bind tree
+        # traversable and its ordinary files writable for the rw mount checks.
+        ancestors = []
+        current = data
+        while current != Path("/tmp") and current != current.parent:
+            ancestors.append((current, current.stat().st_mode & 0o777))
+            current = current.parent
+        for directory, _ in ancestors:
+            directory.chmod(0o777)
+        for path in data.rglob("*"):
+            if path.is_dir():
+                path.chmod(0o777)
+            elif not path.is_symlink():
+                path.chmod(0o666)
+
+        run_id = str(uuid4())
+        probe = " && ".join([
+            "test -r /data/studios/org/studio/project/report.py",
+            "test -r /data/orgs/org/data-sources/shared.txt",
+            "test ! -e /data/studios/org/sibling/secret.txt",
+            "test ! -e /data/repo/credentials.txt",
+            "test ! -e /data/studios/org/studio/project/escape",
+            "! touch /data/studios/org/studio/project/ro-probe 2>/dev/null",
+            "! touch /data/orgs/org/data-sources/ro-probe 2>/dev/null",
+            "touch /data/studios/org/studio/project/output/allowed-probe",
+            "test -e /data/studios/org/studio/project/output/allowed-probe",
+            "touch /data/tmp/run-alpha-xyz/allowed-probe",
+            "touch /data/tmp/runs/rid-1/allowed-probe",
+        ])
+        original_run = ContainerCollection.run
+        observed = {}
+
+        def run_probe(collection, *args, **kwargs):
+            if collection.client is client.api:
+                observed["mounts"] = kwargs["mounts"]
+                kwargs["image"] = "busybox:latest"
+                kwargs["command"] = ["sh", "-c", probe]
+            return original_run(collection, *args, **kwargs)
+
+        monkeypatch.setattr(ContainerCollection, "run", run_probe)
+        sandbox = DockerSandbox(client=client)
+        monkeypatch.setattr(sandbox, "data_volume", lambda: ("bind", str(data)))
+        proc = None
+        try:
+            proc = sandbox.start(
+                run=types.SimpleNamespace(id=run_id),
+                cmd_flags=[], run_report_dir=paths["run_report_dir"],
+                run_dir_base=paths["run_dir_base"], log_dir=paths["log_dir"],
+                output_dir=paths["output_dir"], project_root=paths["project_root"],
+                extra_ro_paths=[shared], env={"PATH": "/bin"},
+                stdout_path=paths["stdout_path"], stderr_path=paths["stderr_path"],
+                memory_mb=256, cpus=1.0,
+            )
+            result = proc.container.wait()
+            output = proc.container.logs().decode(errors="replace")
+            assert result["StatusCode"] == 0, output
+            mounts = observed["mounts"]
+            assert all(mount["Type"] == "bind" for mount in mounts)
+            assert all("VolumeOptions" not in mount for mount in mounts)
+            assert all(mount["Target"] != "/data" for mount in mounts)
+            assert len(mounts) == 5
+        finally:
+            if proc is not None:
+                proc.cleanup()
+            for directory, mode in reversed(ancestors):
+                directory.chmod(mode)

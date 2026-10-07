@@ -203,11 +203,12 @@ class DockerSandbox:
         storage = "bind-backed /data" if kind == "bind" else "named-volume /data"
         try:
             api = self.client.version().get("ApiVersion")
-            if not isinstance(api, str) or not api or not all(
-                part.isascii() and part.isdigit() for part in api.split(".")
-            ) or len(api.split(".")) != 2:
+            version_parts = api.split(".") if isinstance(api, str) else []
+            if len(version_parts) != 2 or not all(
+                part.isascii() and part.isdigit() for part in version_parts
+            ):
                 raise ValueError(f"invalid ApiVersion {api!r}")
-            parts = tuple(int(x) for x in api.split("."))
+            parts = tuple(int(part) for part in version_parts)
         except Exception as exc:  # noqa: BLE001 - version is a trust boundary
             raise SandboxError(
                 f"[SANDBOX] cannot determine the Docker API version for {storage} "
@@ -216,8 +217,7 @@ class DockerSandbox:
             ) from exc
         if parts < minimum:
             setup = (
-                "Upgrade Docker on this host, or configure /data as a bind mount "
-                "using the documented setup"
+                "Upgrade Docker on this host to Engine 25 or newer"
                 if kind == "bind"
                 else "Upgrade Docker on this host or configure the documented "
                 "bind-backed /data setup"
