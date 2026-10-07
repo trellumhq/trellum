@@ -32,7 +32,7 @@ class Report(models.Model):
 
     studio = models.ForeignKey("studios.Studio", on_delete=models.CASCADE, related_name="reports")
     slug = models.CharField(max_length=200)
-    kind = models.CharField(max_length=16, choices=KIND_CHOICES, default=KIND_REPORT)
+    kind = models.CharField(max_length=16, choices=KIND_CHOICES, default=KIND_REPORT, db_default=KIND_REPORT)
     name = models.CharField(max_length=300, blank=True)
     description = models.TextField(blank=True)
     category = models.CharField(max_length=200, blank=True, default="Uncategorized")

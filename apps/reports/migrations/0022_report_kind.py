@@ -11,6 +11,8 @@ class Migration(migrations.Migration):
             field=models.CharField(
                 choices=[("report", "Report"), ("analysis", "Analysis")],
                 default="report",
+                # Previous releases omit kind on INSERT after an application rollback.
+                db_default="report",
                 max_length=16,
             ),
         ),
