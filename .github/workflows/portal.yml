@@ -367,6 +367,10 @@ jobs:
         if: steps.prev.outputs.tag != ''
         timeout-minutes: 8
         run: |
+          # The runner's Azure HTTP mirror can stall browser dependency downloads.
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            printf '%s\n' 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          fi
           /tmp/previous-venv/bin/python -m playwright install --with-deps chromium webkit
 
       - name: Apply the previous release's migrations, then this branch's

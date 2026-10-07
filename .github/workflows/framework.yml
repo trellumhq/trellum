@@ -140,7 +140,13 @@ jobs:
       # the only tests that exercise the client-side runtime at all, so CI
       # pays the ~1 min to install Chromium rather than pretend.
       - name: Install Chromium for the browser tests
-        run: python -m playwright install --with-deps chromium
+        timeout-minutes: 8
+        run: |
+          # The runner's Azure HTTP mirror can stall browser dependency downloads.
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            printf '%s\n' 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          fi
+          python -m playwright install --with-deps chromium
 
       # The WHOLE suite, not a hand-listed subset -- an unlisted file is a file
       # nobody runs, which is how test_interactions.py sat dead for months.
