@@ -1,8 +1,8 @@
 # Install with Docker Compose
 
-This is the supported way to run {{BRAND}}. The public installation is licensed
-under AGPL-3.0-only and has no activation or subscription step. You can use the
-published release images or build the images from the matching source tag:
+This is the supported way to run {{BRAND}}. Trellum is distributed under
+AGPL-3.0-only. You can use the published release images or build the images
+from the matching source tag:
 
 - **Pull the release images** (fastest — nothing builds on your machine). The
   Compose file and operational scripts come from the same tagged source

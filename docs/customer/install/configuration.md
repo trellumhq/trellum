@@ -291,13 +291,11 @@ switching viewers over.
     a node stateless — see
     [Sizing](/docs/latest/operations/sizing/#when-one-machine-is-not-enough).
 
-## Licence and availability
+## License
 
-All capabilities are available in the installation licensed under
-AGPL-3.0-only. There is no licence token, activation server, expiry, paid tier,
-or growth cap. Roles, tenant
-controls, MFA policy, audit history, encryption, and resource bounds remain
-enabled for every installation.
+Trellum is distributed under the terms in the repository's
+[AGPL-3.0-only license](https://github.com/trellumhq/trellum/blob/main/LICENSE).
+Configuration and security controls are documented throughout this guide.
 
 ### Backups
 

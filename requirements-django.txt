@@ -1,8 +1,8 @@
 # Control-plane (Django) dependencies. Includes everything the report
 # runner needs via the existing requirements chain.
 #
-# Pinned exactly, not by range: an enterprise customer's build must resolve to
-# the same tree we tested and shipped an SBOM for. The full transitive
+# Pinned exactly, not by range: each deployment build must resolve to the same
+# tree we tested and shipped an SBOM for. The full transitive
 # resolution is locked in constraints.txt.
 #
 # Test-only packages live in requirements-test.txt and are deliberately absent
@@ -32,9 +32,7 @@ docker==7.1.0
 # delivery attachments). apps/reports/snapshot.py imports it lazily, so its
 # absence only degrades that one feature rather than failing the whole app.
 playwright==1.62.0
-# Object storage for the s3 report backend. The framework used to own this and
-# the portal was forbidden from importing it; the framework has since cut every
-# cloud tie, so the control plane owns distribution now — see apps/core/s3.py.
-# Imported lazily, so a local deployment loads none of it.
+# Object storage for the S3 report backend (apps/core/s3.py). Imported lazily,
+# so a local deployment loads none of it.
 # Pinned to match aiobotocore's requirement; raising it alone breaks that pin.
 boto3==1.36.3

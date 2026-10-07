@@ -55,10 +55,8 @@ needs a focused test. Do not add per-file licence headers.
 
 Keep one concern per change and explain why it belongs in the affected layer.
 Add an entry under `[Unreleased]` in `CHANGELOG.md`. There is no CLA or DCO;
-submitting a change offers the files you touched under AGPL-3.0-only. Never
-add activation, paid-tier, expiry, or growth-cap behavior.
+submitting a change offers the files you touched under AGPL-3.0-only.
 
 Before opening a PR, check documentation links and navigation, parse changed
-YAML, and run the smallest relevant test command. Do not include private
-planning, hosted-service credentials, or historical commercial material in
-public documentation. Report security issues through [SECURITY.md](SECURITY.md).
+YAML, and run the smallest relevant test command. Never commit credentials.
+Report security issues through [SECURITY.md](SECURITY.md).

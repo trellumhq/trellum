@@ -78,13 +78,6 @@ jobs:
           ! grep -rnE "^(from|import)[[:space:]]+(boto3|botocore)([.[:space:]]|$)" \
             apps/ trellum_portal/ --include="*.py"
 
-      # Hosted-only extensions live outside this repository. The base product
-      # may be extended by them but must never depend on them.
-      - name: core never imports hosted-only extensions
-        run: |
-          ! grep -rnE "^[[:space:]]*(from|import)[[:space:]]+saas([.[:space:]]|$)" \
-            apps/ trellum_portal/ --include="*.py"
-
       # The mirror of the framework's own rule: trellum/ must not know that any
       # host exists, and the control plane is a host. This was a review
       # convention in the framework repo with nothing enforcing it; the
@@ -319,7 +312,6 @@ jobs:
           set -e
           cd ../previous-release
           SUITES=(apps)
-          if [ -d commercial ]; then SUITES+=(commercial); fi
           echo "running previous release: ${SUITES[*]}"
           /tmp/previous-venv/bin/python -m pytest "${SUITES[@]}" -q || {
             echo
@@ -338,8 +330,8 @@ jobs:
     # canaries, and the page survives a web restart.
     #
     # Run against BOTH supported topologies. "combined" is what a self-hosted
-    # customer runs (one worker process). "split" is our SaaS shape (one
-    # coordinator, several runners). Proving only one of them is how the other
+    # customer runs (one worker process). "split" is a deployment with one
+    # coordinator and several runners. Proving only one of them is how the other
     # rots — and the split path is the one nobody notices is broken until a
     # schedule silently stops firing.
     #

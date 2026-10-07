@@ -1,8 +1,7 @@
 # Single sign-on
 
 Each organization configures its own SSO in the UI — no instance-wide identity
-configuration. OpenID Connect and LDAP/Active Directory SSO are available in
-every installation; there is no licence or activation step.
+configuration. OpenID Connect and LDAP/Active Directory SSO are supported.
 
 ## Identity provider side
 

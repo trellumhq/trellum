@@ -60,5 +60,4 @@ The repository includes `scripts/airgap_bundle.sh` to assemble a transfer
 archive with image files, Compose files, documentation, a manifest, and
 checksums. It does not include the report-runner image, backup and restore
 scripts, or cosign verification material, so it is not a complete offline
-installer. The self-hosted portal has no activation step or required
-phone-home.
+installer.

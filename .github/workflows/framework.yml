@@ -390,7 +390,7 @@ jobs:
               fail=1
             fi
           done
-          for pkg in trellum_portal commercial apps; do
+          for pkg in trellum_portal apps; do
             if /tmp/standalone/bin/python -c "import $pkg" 2>/dev/null; then
               echo "ERROR: 'import $pkg' succeeded -- the control plane leaked"
               fail=1

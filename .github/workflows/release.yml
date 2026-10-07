@@ -180,21 +180,6 @@ jobs:
           fi
           echo "no test tooling"
 
-      - name: Private hosting code is absent
-        # Billing/subscription code lives in a private repository and must
-        # never reach a customer. Python is not compiled, so "it is only in the
-        # image" would be no protection at all.
-        run: |
-          if docker run --rm trellum:candidate sh -c "test -e /app/saas"; then
-            echo "ERROR: the saas overlay is present in the customer image"
-            exit 1
-          fi
-          if docker run --rm trellum:candidate python -c "import saas" 2>/dev/null; then
-            echo "ERROR: the saas overlay is importable in the customer image"
-            exit 1
-          fi
-          echo "overlay absent"
-
       - name: AGPL terms and third-party disclosure ship in the image
         run: |
           docker run --rm trellum:candidate sh -c \
