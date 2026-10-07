@@ -6,8 +6,21 @@
 shown.</strong> Each code works once, if you ever lose access to your authenticator
 app.</p>
 
+<style>
+.recovery-code-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 24px;
+  font-family: var(--font-mono, monospace);
+  font-size: 1.1em;
+  line-height: 2;
+}
+@media (max-width: 384px) {
+  .recovery-code-grid { grid-template-columns: 1fr; }
+}
+</style>
 <div class="panel">
-  <div style="font-family:var(--font-mono,monospace);font-size:1.1em;line-height:2;display:grid;grid-template-columns:repeat(2,minmax(140px,1fr));gap:4px 24px">
+  <div class="recovery-code-grid">
     {% for code in codes %}<div>{{ code }}</div>{% endfor %}
   </div>
 </div>
