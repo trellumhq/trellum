@@ -186,7 +186,9 @@ jobs:
           DJANGO_SETTINGS_MODULE: trellum_portal.settings.test
 
       - name: Django test suite
-        run: python -m pytest apps -q -ra
+        # Docker integration runs in the sandbox jobs, where bind-mount paths
+        # belong to the daemon's host rather than this test container.
+        run: python -m pytest apps -q -ra -m "not docker_sandbox"
 
       - name: The changelog mentions this version
         # Cheap guard against the version being bumped with nothing said about
