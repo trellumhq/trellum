@@ -7,8 +7,11 @@ behind the ``docker_sandbox`` marker and skips when no daemon is present.
 """
 from __future__ import annotations
 
+import shlex
+import sys
 import types
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
@@ -267,10 +270,41 @@ class TestStartMounts:
         # DATA_DIR is tmp_path; make the bind source match so relpaths resolve.
         settings.DATA_DIR = sbox_dir
         _, run = _start(client, sbox_dir)
-        # bind mounts carry no VolumeOptions; sources are host paths under /host/data
+        # Bind mounts carry exact paths, never a broad /data mount or volume options.
+        assert {m["Source"] for m in run["mounts"]} == {
+            "/host/data/tmp/run-alpha-xyz",
+            "/host/data/tmp/runs/rid-1",
+            "/host/data/studios/org/studio/project",
+            "/host/data/studios/org/studio/project/output/alpha",
+        }
         for m in run["mounts"]:
             assert m["Type"] == "bind"
-            assert str(m["Source"]).startswith("/host/data")
+            assert "VolumeOptions" not in m
+            assert m["Target"] != "/data"
+        by_source = {m["Source"]: m for m in run["mounts"]}
+        assert by_source["/host/data/studios/org/studio/project"]["ReadOnly"] is True
+        assert by_source["/host/data/tmp/run-alpha-xyz"]["ReadOnly"] is False
+        assert by_source["/host/data/tmp/runs/rid-1"]["ReadOnly"] is False
+        assert by_source["/host/data/studios/org/studio/project/output/alpha"]["ReadOnly"] is False
+
+    def test_outside_data_path_is_rejected(self, sbox_dir):
+        client = FakeClient()
+        outside = sbox_dir.parent / "outside-project"
+        outside.mkdir()
+        with pytest.raises(ValueError):
+            _start(client, sbox_dir, project_root=str(outside))
+
+    def test_symlink_cannot_escape_data_mount(self, sbox_dir):
+        outside = sbox_dir.parent / "outside-shared"
+        outside.mkdir()
+        link = sbox_dir / "orgs" / "escape"
+        link.parent.mkdir(parents=True)
+        try:
+            link.symlink_to(outside, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            pytest.skip("platform cannot create directory symlinks")
+        with pytest.raises(ValueError):
+            _start(FakeClient(), sbox_dir, extra_ro_paths=[link])
 
 
 # ── SandboxProc facade ──────────────────────────────────────────────────────
@@ -388,11 +422,67 @@ class TestPreflight:
             DockerSandbox(client=client).preflight()
         assert "sandbox-image" in str(exc.value)
 
-    def test_old_api_version_rejected(self, sbox_dir):
-        client = FakeClient(api="1.43")
+    @pytest.mark.parametrize("api,kind,accepted", [
+        ("1.43", "volume", False), ("1.44", "volume", False),
+        ("1.45", "volume", True), ("1.43", "bind", False),
+        ("1.44", "bind", True), ("1.45", "bind", True),
+    ])
+    def test_api_version_depends_on_storage(self, sbox_dir, settings, api, kind, accepted):
+        settings.TRELLUM_DATA_VOLUME = "" if kind == "bind" else "trellum-data"
+        mounts = ([{"Destination": "/data", "Type": "bind", "Source": str(sbox_dir)}]
+                  if kind == "bind" else None)
+        client = FakeClient(api=api, self_mounts=mounts)
+        if accepted:
+            DockerSandbox(client=client).preflight()
+        else:
+            with pytest.raises(SandboxError, match="too old") as exc:
+                DockerSandbox(client=client).preflight()
+            assert "upgrade" in str(exc.value).lower()
+            assert "install/docker-compose/" in str(exc.value)
+
+    def test_old_bind_api_only_recommends_engine_upgrade(self, sbox_dir, settings):
+        settings.TRELLUM_DATA_VOLUME = ""
+        client = FakeClient(api="1.43", self_mounts=[
+            {"Destination": "/data", "Type": "bind", "Source": str(sbox_dir)}
+        ])
         with pytest.raises(SandboxError) as exc:
             DockerSandbox(client=client).preflight()
-        assert "Engine 26" in str(exc.value) or "too old" in str(exc.value)
+        assert "Engine 25 or newer" in str(exc.value)
+        assert "configure" not in str(exc.value).lower()
+
+    @pytest.mark.parametrize("api", [None, "", "garbage", "1", "1.x", "1.44.0"])
+    def test_unreadable_or_malformed_api_fails_closed(self, sbox_dir, api):
+        client = FakeClient(api=api)
+        with pytest.raises(SandboxError, match="cannot determine.*API version"):
+            DockerSandbox(client=client).preflight()
+
+    def test_api_lookup_error_fails_closed(self, sbox_dir):
+        client = FakeClient()
+        client.version = lambda: (_ for _ in ()).throw(RuntimeError("offline"))
+        with pytest.raises(SandboxError, match="cannot determine.*API version"):
+            DockerSandbox(client=client).preflight()
+
+    def test_explicit_volume_override_uses_named_volume_minimum(self, sbox_dir, settings):
+        settings.TRELLUM_DATA_VOLUME = "configured-volume"
+        client = FakeClient(api="1.44", self_mounts=[
+            {"Destination": "/data", "Type": "bind", "Source": str(sbox_dir)}
+        ])
+        with pytest.raises(SandboxError, match="named-volume"):
+            DockerSandbox(client=client).preflight()
+
+    def test_data_mount_discovery_failure_is_actionable(self, sbox_dir, settings):
+        settings.TRELLUM_DATA_VOLUME = ""
+        client = FakeClient(self_mounts=[])
+        with pytest.raises(SandboxError, match="TRELLUM_DATA_VOLUME") as exc:
+            DockerSandbox(client=client).preflight()
+        assert "install/docker-compose/" in str(exc.value)
+
+    def test_data_mount_inspection_error_is_actionable(self, sbox_dir, settings):
+        settings.TRELLUM_DATA_VOLUME = ""
+        client = FakeClient()
+        client.containers.get = lambda name: (_ for _ in ()).throw(RuntimeError("denied"))
+        with pytest.raises(SandboxError, match="could not inspect.*data mount"):
+            DockerSandbox(client=client).preflight()
 
     def test_network_create_race_tolerated(self, sbox_dir):
         client = FakeClient(network_exists=False)
@@ -508,3 +598,101 @@ class TestRealDaemon:
             security_opt=["no-new-privileges:true"], remove=True,
         )
         assert b"READONLY" in logs
+
+    @pytest.mark.skipif(sys.platform != "linux", reason="bind mount probe requires Linux")
+    def test_start_mounts_only_allowed_data_and_enforces_access(
+        self, tmp_path, settings, monkeypatch
+    ):
+        """Run DockerSandbox's generated binds in a real hardened BusyBox container."""
+        import docker
+        from docker.models.containers import ContainerCollection
+
+        client = docker.from_env()
+        try:
+            client.images.get("busybox:latest")
+        except docker.errors.ImageNotFound:
+            client.images.pull("busybox:latest")
+
+        data = tmp_path / "data"
+        settings.DATA_DIR = data
+        settings.TRELLUM_SANDBOX_IMAGE = "busybox:latest"
+        settings.TRELLUM_SANDBOX_NETWORK = "none"
+        settings.TRELLUM_SANDBOX_PROJECT_RW = False
+        settings.TRELLUM_JOB_MEMORY_HEADROOM = 1.5
+        paths = _run_paths(data)
+        project = Path(paths["project_root"])
+        shared = data / "orgs" / "org" / "data-sources"
+        sibling = data / "studios" / "org" / "sibling"
+        repo = data / "repo"
+        shared.mkdir(parents=True)
+        sibling.mkdir(parents=True)
+        repo.mkdir(parents=True)
+        (project / "report.py").write_text("report")
+        (shared / "shared.txt").write_text("shared")
+        (sibling / "secret.txt").write_text("sibling-secret")
+        (repo / "credentials.txt").write_text("repo-credential")
+        (project / "escape").symlink_to(sibling / "secret.txt")
+        (project / "relative-escape").symlink_to("../../sibling/secret.txt")
+
+        # The daemon resolves sources; only the mounted directories need to be
+        # accessible to uid 10001. Do not change permissions on host ancestors.
+        for path in data.rglob("*"):
+            if path.is_dir():
+                path.chmod(0o777)
+            elif not path.is_symlink():
+                path.chmod(0o666)
+
+        run_id = str(uuid4())
+        q = lambda path: shlex.quote(str(path))
+        probe = " && ".join([
+            f"test -r {q(project / 'report.py')}",
+            f"test -r {q(shared / 'shared.txt')}",
+            f"test ! -e {q(sibling / 'secret.txt')}",
+            f"test ! -e {q(repo / 'credentials.txt')}",
+            f"test ! -e {q(project / 'escape')}",
+            f"test ! -e {q(project / 'relative-escape')}",
+            "test ! -e /var/run/docker.sock",
+            f"! touch {q(project / 'ro-probe')} 2>/dev/null",
+            f"! touch {q(shared / 'ro-probe')} 2>/dev/null",
+            f"touch {q(Path(paths['output_dir']) / 'allowed-probe')}",
+            f"touch {q(Path(paths['run_dir_base']) / 'allowed-probe')}",
+            f"touch {q(Path(paths['log_dir']) / 'allowed-probe')}",
+        ])
+        original_run = ContainerCollection.run
+        observed = {}
+
+        def run_probe(collection, *args, **kwargs):
+            if collection.client is client:
+                observed["mounts"] = kwargs["mounts"]
+                kwargs["image"] = "busybox:latest"
+                kwargs["command"] = ["sh", "-c", probe]
+            return original_run(collection, *args, **kwargs)
+
+        monkeypatch.setattr(ContainerCollection, "run", run_probe)
+        sandbox = DockerSandbox(client=client)
+        monkeypatch.setattr(sandbox, "data_volume", lambda: ("bind", str(data)))
+        proc = None
+        try:
+            sandbox.preflight()
+            proc = sandbox.start(
+                run=types.SimpleNamespace(id=run_id),
+                cmd_flags=[], run_report_dir=paths["run_report_dir"],
+                run_dir_base=paths["run_dir_base"], log_dir=paths["log_dir"],
+                output_dir=paths["output_dir"], project_root=paths["project_root"],
+                extra_ro_paths=[shared], env={"PATH": "/bin"},
+                stdout_path=paths["stdout_path"], stderr_path=paths["stderr_path"],
+                memory_mb=256, cpus=1.0,
+            )
+            container = client.containers.get(proc.container_id)
+            result = container.wait(timeout=30)
+            output = container.logs().decode(errors="replace")
+            assert result["StatusCode"] == 0, output
+            mounts = observed["mounts"]
+            assert all(mount["Type"] == "bind" for mount in mounts)
+            assert all("VolumeOptions" not in mount for mount in mounts)
+            assert all(mount["Target"] != "/data" for mount in mounts)
+            assert len(mounts) == 5
+        finally:
+            if proc is not None:
+                proc.cleanup()
+            client.close()

@@ -35,7 +35,9 @@ is the index to the standalone API guide.
 
 ## Requirements
 
-- Docker Engine 26+ with the compose plugin
+- Docker Engine 26+ for the default named-volume storage, or Docker Engine 25+
+  with [host-folder storage](/docs/latest/install/docker-compose/#docker-25-with-host-folder-storage).
+  Use a current patched engine and the Compose plugin (v2.24+).
 - 2+ CPUs and 4+ GB RAM to start; report builds are the hungry part, so size
   to your reports rather than your viewer count
 - A DNS name and a reverse proxy (Caddy, Traefik, nginx) terminating TLS,

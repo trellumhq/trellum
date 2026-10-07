@@ -13,6 +13,10 @@ from the matching source tag:
 Either way, also check the requirements from the
 [overview](/docs/latest/install/overview/) first.
 
+The default storage needs Docker Engine 26+. Docker Engine 25 can use the
+[host-folder setup](#docker-25-with-host-folder-storage) below with report
+isolation enabled. Configure that setup before any build-and-start command.
+
 ## Option A: Pull the published images
 
 Start from the source tag matching the published images. The checkout includes
@@ -47,7 +51,9 @@ cp .env.example .env
 
 ### Fill in the settings (below), then build and start
 
-Fill in `.env` using the settings required for this install path from
+Run `bash scripts/check-docker.sh` before starting (or add `--bind-data` for
+the host-folder setup). Fill in `.env` using the settings required for this
+install path from
 [step 2](#2-fill-in-the-settings)
 below, then build and start with:
 
@@ -147,6 +153,14 @@ Platform notes:
 
 ## 3. Start it
 
+Check the daemon before changing the stack. For default named-volume storage:
+
+```bash
+bash scripts/check-docker.sh
+```
+
+For the host-folder setup, use `bash scripts/check-docker.sh --bind-data`.
+
 For Option A, pull and start the release images without building them locally:
 
 ```bash
@@ -159,6 +173,85 @@ already started the stack.
 
 Services start in order: the database, then a one-shot schema migration, then
 the sandbox image, then the web server and the report worker.
+
+### Docker 25 with host-folder storage
+
+Use matching deployment files and images from a release containing this feature.
+Adding this override to an earlier image does not change its worker version check.
+
+This Linux setup keeps report builds in isolated containers. Each build gets
+only its own directories, its studio project, and authorized shared data.
+The worker accepts API 1.44 (Docker 25) for bind mounts; named volumes still
+need API 1.45 (Docker 26) for their subdirectory mounts. Use a maintained,
+patched engine; versions older than Docker 25 are not supported.
+
+For a **new installation**, prepare an empty directory on the Docker daemon's
+host, owned by the application's user. Use a separate directory for each
+independent installation:
+
+```bash
+bash scripts/check-docker.sh --bind-data
+sudo install -d -o 10001 -g 10001 -m 0750 /srv/trellum/data
+```
+
+Add these settings to `.env`:
+
+```dotenv
+COMPOSE_FILE=docker-compose.yml:docker-compose.bind-data.yml
+TRELLUM_DATA_HOST_PATH=/srv/trellum/data
+```
+
+Leave `TRELLUM_DATA_VOLUME` unset. The override clears it on workers and
+runners so they discover the host folder. `TRELLUM_DATA_HOST_PATH` must be
+an absolute path on the daemon host, not a path on a remote client machine.
+If the host enforces SELinux, ensure its policy allows all Trellum containers
+to share this directory; do not disable SELinux to work around permissions.
+
+Verify the merged configuration with `docker compose --profile split config`
+before starting. Every `/data` mount must be a bind to the same directory;
+the backup service's mount remains read-only. The override preserves the
+backup volume and the worker/runner Docker sockets. It refuses to create a
+missing host directory automatically.
+
+Then continue with the normal pull/build and startup commands. Keeping
+`COMPOSE_FILE` in `.env` ensures later backups, upgrades and restarts keep using
+this storage. Explicit `-f` arguments override that setting: if you use them,
+include `-f docker-compose.bind-data.yml` as well. With an external database,
+append `:docker-compose.external-db.yml` to `COMPOSE_FILE`.
+
+#### Moving an existing named volume
+
+Changing the mount does **not** move existing files. Before adding the override:
+
+1. Verify a current database backup and data archive, following
+   [Backups](/docs/latest/operations/backups-and-restore/). Keep the existing named volume.
+2. Record the volume backing `/data` from the existing web container:
+   `docker inspect "$(docker compose ps -q web)" --format '{{json .Mounts}}'`.
+   Use the actual volume name; a custom Compose project changes its prefix.
+3. Stop every service that can write data, including workers and runners on
+   other hosts. Drain active builds first. Use `docker compose --profile split stop`
+   for a single-host installation. Do not use `down -v`.
+4. Prepare an **empty** destination directory. Copy the recorded volume into
+   it while stopped, preserving ownership, permissions and symlinks. For
+   example, replace `ACTUAL_DATA_VOLUME` below and use an already available
+   Trellum image that includes `cp` and `diff`:
+
+   ```bash
+   sudo install -d -o 10001 -g 10001 -m 0750 /srv/trellum/data
+   docker run --rm --user 0 --entrypoint sh \
+     --mount type=volume,src=ACTUAL_DATA_VOLUME,dst=/from,readonly \
+     --mount type=bind,src=/srv/trellum/data,dst=/to \
+     YOUR_TRELLUM_IMAGE -ec 'cp -a /from/. /to/; diff -qr /from /to'
+   ```
+
+5. After verifying the copy and its ownership, add the `.env` settings above,
+   run the compatibility check and inspect the merged Compose configuration.
+   Start with an image containing this compatibility change, then verify
+   `manage.py doctor`, a report build and publication, and a new backup.
+
+Retain the old volume until validation finishes. If reverting after writes
+have resumed, stop the services and reconcile the newer files first; simply
+pointing back at the old volume would discard those newer writes.
 
 ## 4. Harden the sandbox network
 

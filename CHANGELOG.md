@@ -7,6 +7,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Fixed
+
+- Allow Docker Engine 25 for report sandboxes with bind-backed data storage,
+  while retaining the Engine 26 requirement for named-volume subpath mounts.
+  Add a Compose override, an installation compatibility check, and storage
+  migration instructions. Unknown Docker API versions now stop worker startup.
+
 ## [0.3.0] — 2026-10-07
 
 ### Fixed
