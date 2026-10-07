@@ -13,6 +13,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - Make selected report toggles, tabs, date presets, and dropdown items follow
   the active theme, with readable text across all built-in palettes.
+- Align the report table's sort label, dropdown, and direction control.
+- Make System health reachable from the operator sidebar and show a live
+  header warning when worker or other quick health checks need attention.
 
 ### Changed
 
