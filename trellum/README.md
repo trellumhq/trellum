@@ -664,8 +664,8 @@ The framework ships with **13 built-in themes**:
 |---|---|
 | `trellum dark` | Dark ground, teal header accent (**default** when `theme` is unset) |
 | `trellum light` | The same identity on a light ground |
-| `light` | The pre-v0.6.0 default: white background, red header |
-| `dark` | The pre-v0.6.0 dark: navy background, red header |
+| `light` | White background, red header |
+| `dark` | Navy background, red header |
 | `money` | Deep green/gold palette |
 | `blossom` | Soft pink/purple/lavender |
 | `midnight` | Deep blue/navy palette |

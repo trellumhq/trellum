@@ -3,7 +3,14 @@
 The portal and report-runner images are signed at release. Each has a signed
 CycloneDX software bill of materials (SBOM) attestation attached to its image
 digest. The commands below verify the `v0.3.0` release; change both the image
-tag and workflow identity when verifying another release.
+tag and workflow identity together by changing `TRELLUM_VERSION` when verifying
+another release.
+
+Set the tag once and use it for both the image and the certificate identity:
+
+```bash
+TRELLUM_VERSION=v0.3.0
+```
 
 ## Check the signature
 
@@ -12,14 +19,14 @@ identity is the release workflow running for the exact Git tag:
 
 ```bash
 cosign verify \
-  --certificate-identity 'https://github.com/trellumhq/trellum/.github/workflows/release.yml@refs/tags/v0.3.0' \
+  --certificate-identity "https://github.com/trellumhq/trellum/.github/workflows/release.yml@refs/tags/${TRELLUM_VERSION}" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  ghcr.io/trellumhq/trellum:v0.3.0
+  "ghcr.io/trellumhq/trellum:${TRELLUM_VERSION}"
 
 cosign verify \
-  --certificate-identity 'https://github.com/trellumhq/trellum/.github/workflows/release.yml@refs/tags/v0.3.0' \
+  --certificate-identity "https://github.com/trellumhq/trellum/.github/workflows/release.yml@refs/tags/${TRELLUM_VERSION}" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  ghcr.io/trellumhq/trellum-runner:v0.3.0
+  "ghcr.io/trellumhq/trellum-runner:${TRELLUM_VERSION}"
 ```
 
 ## Check the bill of materials
@@ -28,14 +35,14 @@ Verify the CycloneDX attestation for each image before handing it to a scanner:
 
 ```bash
 cosign verify-attestation --type cyclonedx \
-  --certificate-identity 'https://github.com/trellumhq/trellum/.github/workflows/release.yml@refs/tags/v0.3.0' \
+  --certificate-identity "https://github.com/trellumhq/trellum/.github/workflows/release.yml@refs/tags/${TRELLUM_VERSION}" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  ghcr.io/trellumhq/trellum:v0.3.0
+  "ghcr.io/trellumhq/trellum:${TRELLUM_VERSION}"
 
 cosign verify-attestation --type cyclonedx \
-  --certificate-identity 'https://github.com/trellumhq/trellum/.github/workflows/release.yml@refs/tags/v0.3.0' \
+  --certificate-identity "https://github.com/trellumhq/trellum/.github/workflows/release.yml@refs/tags/${TRELLUM_VERSION}" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  ghcr.io/trellumhq/trellum-runner:v0.3.0
+  "ghcr.io/trellumhq/trellum-runner:${TRELLUM_VERSION}"
 ```
 
 The verified attestation identifies the SBOM for that exact image digest. The

@@ -32,7 +32,11 @@ MAJOR release and must include concrete upgrade steps in `CHANGELOG.md`.
    `CHANGELOG.md`. Keep `[Unreleased]` above it for future work. Include every
    manual upgrade step under **Upgrade notes**.
 3. Set the same version in both package files.
-4. Run the full framework workflow on the exact `main` revision. This dispatch
+4. Update the exact `TRELLUM_VERSION` pins in the current installation and
+   image-verification guides to the new tag. Keep each Cosign certificate
+   identity on the same tag as its image, then run
+   `python3 scripts/check_install_version_pins.py`.
+5. Run the full framework workflow on the exact `main` revision. This dispatch
    runs the test/demo, data-source integration, and standalone-wheel jobs even
    when the release preparation itself changed only documentation:
 
@@ -42,7 +46,7 @@ MAJOR release and must include concrete upgrade steps in `CHANGELOG.md`.
    gh run watch <run-id> --exit-status
    ```
 
-5. Confirm the latest `portal.yml` run on `main` passed. That workflow runs on
+6. Confirm the latest `portal.yml` run on `main` passed. That workflow runs on
    every non-documentation push to `main` and covers version agreement, Django,
    sandbox, migration-safety, and both end-to-end topologies:
 
@@ -51,7 +55,7 @@ MAJOR release and must include concrete upgrade steps in `CHANGELOG.md`.
    gh run watch <run-id> --exit-status
    ```
 
-6. Run the on-demand lanes when their protected surface changed. Browser
+7. Run the on-demand lanes when their protected surface changed. Browser
    benchmarks cover rendering performance; the Vertica lane requires its
    registry credentials and covers Vertica/data-driver changes:
 

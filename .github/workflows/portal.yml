@@ -54,6 +54,11 @@ jobs:
             exit 1
           fi
 
+      - name: installation guide pins match the package versions
+        run: |
+          python3 scripts/check_install_version_pins.py
+          python3 scripts/test_check_install_version_pins.py
+
       # The web process must never touch the framework's process-global
       # project root, and nothing in the portal may depend on AWS.
       - name: get_project_root stays out of the portal

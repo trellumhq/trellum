@@ -94,7 +94,8 @@ internet or use it for real data.
 Clone the released source on macOS or Linux:
 
 ```bash
-git clone --depth 1 --branch v0.3.0 https://github.com/trellumhq/trellum.git
+TRELLUM_VERSION=v0.3.0
+git clone --depth 1 --branch "$TRELLUM_VERSION" https://github.com/trellumhq/trellum.git
 cd trellum
 ./scripts/demo.sh
 ```
@@ -102,7 +103,8 @@ cd trellum
 On Windows PowerShell:
 
 ```powershell
-git clone --depth 1 --branch v0.3.0 https://github.com/trellumhq/trellum.git
+$env:TRELLUM_VERSION = 'v0.3.0'
+git clone --depth 1 --branch $env:TRELLUM_VERSION https://github.com/trellumhq/trellum.git
 cd trellum
 .\scripts\demo.ps1
 ```
