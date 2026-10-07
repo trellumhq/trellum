@@ -115,7 +115,9 @@ def _write_meta(
     meta = {
         "schema_version": META_SCHEMA_VERSION,
         "slug": slug,
-        "name": name,
+        "kind": config.get("kind", "report"),
+        "author": config.get("author", "") if config.get("kind") == "analysis" else "",
+        "name": config.get("name", name),
         "description": config.get("description", ""),
         "version": config.get("version", "0.1.0"),
         "studio": config.get("studio", ""),

@@ -4,7 +4,7 @@
 the tokens in static/site.css, and vanilla JS in block scripts.{% endcomment %}
 
 {% block title %}{{ BRAND }} — {{ TAGLINE }}{% endblock %}
-{% block description %}Install Trellum in your Python repository. Build interactive reports with SQL, Python, and your favorite coding agent; version them in Git and publish portable HTML. Add the optional self-hosted portal for team access and scheduling.{% endblock %}
+{% block description %}Install Trellum in your Python repository. Build interactive reports and publish written analyses with SQL, Python, Markdown, and your favorite coding agent; review them in Git. Add the optional self-hosted portal for team access and scheduling.{% endblock %}
 
 {% block content %}
 
@@ -340,6 +340,15 @@ the tokens in static/site.css, and vanilla JS in block scripts.{% endcomment %}
         </div>
       </div>
 
+      <div class="ft reveal"><h3>Published analyses</h3>
+        <p>Keep a written finding, its assumptions, recommendation, and fixed report evidence together in a Git-reviewed article. <a href="{{ demo_href }}checkout-findings/">Read the demo analysis →</a></p>
+        <div class="pchip">
+          <div class="ps-row"><i></i>Where Northwind loses buyers<span class="mt">analysis</span></div>
+          <div class="ps-row"><i class="vio"></i>2 captured views<span class="mt">PNG + source context</span></div>
+          <div class="ps-cap">shown in the studio's Analyses section; evidence stays fixed as source reports refresh</div>
+        </div>
+      </div>
+
       <div class="ft reveal"><h3>Governed &amp; observed</h3>
         <p>Your directory signs people in; the org frames studios; the audit log remembers.</p>
         <div class="pchip">
@@ -425,7 +434,7 @@ self.add(<span class="k">RawHTML</span>(<span class="s">"""
 <section class="hb closing-band">
   <div class="rail">
     <h2>Start in your repository.<br>End with a <span class="grad">report you can ship.</span></h2>
-    <p class="hb-lead">Install the framework, build portable HTML, and publish it with your existing tools. Explore the report-only demo gallery, then add the optional portal only if your team needs its managed services.</p>
+    <p class="hb-lead">Install the framework, build portable HTML reports, and publish fixed-evidence analyses with your existing tools. Explore the synthetic report demos and the Northwind analysis article, then add the optional portal if your team needs managed services.</p>
 
     <div class="mini-demo reveal" id="mini-demo">
       <div class="cs-top">

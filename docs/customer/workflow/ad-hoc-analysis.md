@@ -50,6 +50,11 @@ None of it requires the report machinery.
 
 ## When to promote it to a report
 
+To preserve the explanation of a finding, publish an
+[analysis article](/docs/latest/workflow/published-analyses/) with written
+conclusions and captured evidence. It keeps the result readable without
+adding a recurring data query.
+
 Move an ad-hoc script into `reports/` when any of these is true:
 
 - Someone wants it on a schedule

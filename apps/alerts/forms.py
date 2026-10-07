@@ -58,7 +58,7 @@ class AlertRuleForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.timezones = COMMON_TIMEZONES
         self.fields["report"].queryset = Report.objects.filter(
-            studio=studio, present_in_scan=True
+            studio=studio, present_in_scan=True, kind=Report.KIND_REPORT
         ).order_by("name", "slug")
         self.fields["report"].empty_label = None
         # Same eligibility as the delivery drawer's picker (reports.views.

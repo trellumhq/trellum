@@ -97,6 +97,36 @@ def _fresh_repo(studio_repo):
 
 
 class TestSync:
+    def test_publish_generatorless_analysis_markdown_evidence_and_removal(
+        self, studio_repo, studio_tree, upstream,
+    ):
+        upstream["write_file"]("reports/article/report.yaml", b"slug: article\nkind: analysis\nname: Analysis\n")
+        upstream["write_file"]("reports/article/content.md", b"# Finding\n\n![Evidence](evidence/chart.png)\n")
+        upstream["write_file"]("reports/article/evidence/chart.png", b"\x89PNG\r\n\x1a\n")
+        upstream["push"]("add analysis")
+        result = StudioGitSync(_fresh_repo(studio_repo)).sync()
+        assert result["ok"], result
+        row = Report.objects.get(studio=studio_tree, slug="article")
+        assert row.kind == "analysis"
+        assert not (studio_tree.reports_dir / "article" / "generator.py").exists()
+        upstream["write_file"]("reports/article/content.md", b"# Revised finding\n")
+        upstream["push"]("edit article")
+        result = StudioGitSync(_fresh_repo(studio_repo)).sync()
+        assert result["ok"] and result["changed"] == ["article"], result
+        assert (studio_tree.reports_dir / "article" / "content.md").read_text().startswith("# Revised")
+        upstream["write_file"]("reports/article/evidence/chart.png", b"new evidence")
+        upstream["push"]("edit evidence")
+        result = StudioGitSync(_fresh_repo(studio_repo)).sync()
+        assert result["ok"] and result["changed"] == ["article"], result
+        assert (studio_tree.reports_dir / "article" / "evidence" / "chart.png").read_bytes() == b"new evidence"
+        upstream["delete_report"]("article")
+        upstream["push"]("remove article")
+        result = StudioGitSync(_fresh_repo(studio_repo)).sync()
+        assert result["ok"] and "article" in result["changed"], result
+        row.refresh_from_db()
+        assert row.present_in_scan is False
+        assert not (studio_tree.reports_dir / "article").exists()
+
     def test_initial_clone_copies_and_registers(self, studio_repo, studio_tree):
         result = StudioGitSync(_fresh_repo(studio_repo)).sync()
         assert result["ok"], result
@@ -843,6 +873,53 @@ def _set(studio_repo, **fields):
 class TestPublishMode:
     """fetch() records what a publish would change; publish() applies it
     only when the mode or a request allows."""
+
+    @pytest.mark.parametrize("mode", ("auto", "manual"))
+    def test_analysis_add_and_edit_follow_publish_mode_and_queue_git_build(
+        self, studio_repo, studio_tree, upstream, published, mode,
+    ):
+        _set(studio_repo, publish_mode=mode, auto_run_changed=True)
+        article = studio_tree.reports_dir / "article"
+        upstream["write_file"]("reports/article/report.yaml", b"slug: article\nkind: analysis\nname: Analysis\n")
+        previous_content = None
+        previous_pk = None
+        for index, change in enumerate(("added", "modified"), start=1):
+            content = f"# Finding {index}\n\n![Evidence](evidence/chart.png)\n"
+            png = b"\x89PNG\r\n\x1a\n\x00" + bytes([index])
+            upstream["write_file"]("reports/article/content.md", content.encode())
+            upstream["write_file"]("reports/article/evidence/chart.png", png)
+            upstream["push"](f"{change} analysis")
+            before_sha = _fresh_repo(studio_repo).last_synced_sha
+            result = _sync(studio_repo)
+            assert result["ok"], result
+            if mode == "manual":
+                repo = _fresh_repo(studio_repo)
+                assert not result["had_changes"] and result["changed"] == []
+                assert repo.last_synced_sha == before_sha
+                assert repo.pending_changes["reports"][change] == ["article"]
+                assert Run.objects.count() == index - 1
+                if previous_content is None:
+                    assert not article.exists()
+                    assert not Report.objects.filter(studio=studio_tree, slug="article").exists()
+                else:
+                    assert (article / "content.md").read_text(encoding="utf-8") == previous_content
+                _set(studio_repo, publish_requested=True)
+                result = _sync(studio_repo)
+                assert result["ok"], result
+            assert result["had_changes"] and result["changed"] == ["article"]
+            row = Report.objects.get(studio=studio_tree, slug="article")
+            assert row.kind == "analysis"
+            assert previous_pk is None or row.pk == previous_pk
+            assert not (article / "generator.py").exists()
+            assert (article / "content.md").read_text(encoding="utf-8") == content
+            assert (article / "evidence" / "chart.png").read_bytes() == png
+            assert not _fresh_repo(studio_repo).pending_changes
+            queued = Run.objects.get(report=row, status=Run.QUEUED)
+            assert (queued.trigger, queued.cache_mode) == ("git", "normal")
+            assert Run.objects.count() == index
+            # Complete this queued build so the next edit can enqueue another.
+            Run.objects.filter(pk=queued.pk).update(status=Run.SUCCESS)
+            previous_content, previous_pk = content, row.pk
 
     @pytest.fixture
     def published(self, studio_repo, upstream):

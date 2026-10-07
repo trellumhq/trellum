@@ -186,6 +186,8 @@ def _card(meta: dict) -> str:
     name = html.escape(meta.get("name") or slug)
     desc = html.escape(meta.get("description") or "")
     category = html.escape(meta.get("category") or "")
+    kind = "Analysis" if meta.get("kind") == "analysis" else "Report"
+    category = f"{kind} · {category}" if category else kind
     when = _format_when(meta.get("last_run"))
 
     tags = "".join(

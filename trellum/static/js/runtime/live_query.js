@@ -39,6 +39,7 @@
         var CLIENT_BUDGET_PER_MINUTE = 30;
 
         var _registry = {};  // dsId -> binder state (see registerDataset)
+        var _appliedRevision = 0;
 
         function _cookie(name) {
             var m = document.cookie.match(
@@ -108,6 +109,9 @@
                 inflight: false,
                 dirty: false,
                 debounceTimer: null,
+                retryTimer: null,
+                failed: false,
+                errorMessage: '',
                 bar: null
             };
             _registry[dsId] = entry;
@@ -343,7 +347,8 @@
                     var ra = parseInt(r.headers.get('Retry-After') || '1', 10);
                     if (isNaN(ra) || ra < 0) ra = 1;
                     _status(entry, 'busy — retrying', true);
-                    setTimeout(function() {
+                    entry.retryTimer = setTimeout(function() {
+                        entry.retryTimer = null;
                         entry.inflight = false;
                         _send(dsId, params, true);
                     }, Math.min(ra, 30) * 1000);
@@ -363,13 +368,18 @@
                 if (mySeq < entry.latestSeq) return;  // stale response for older params
                 entry.latestSeq = mySeq;
                 entry.lastApplied = params;
+                entry.failed = false;
+                entry.errorMessage = '';
                 window._fwFilterEngine.setLiveRows(dsId, data.columns || [], data.rows || []);
+                _appliedRevision++;
                 if (entry.bar) entry.bar.setAttribute('data-live-state', 'live');
                 _freshness(entry, 'live · just now' + (data.truncated ? ' · truncated' : ''));
                 _status(entry, '', false);
             })['catch'](function(err) {
                 entry.inflight = false;
-                _status(entry, (err && err.message) || 'Lookup failed', true);
+                entry.failed = true;
+                entry.errorMessage = (err && err.message) || 'Lookup failed';
+                _status(entry, entry.errorMessage, true);
             }).then(function() {
                 if (entry.dirty) {
                     entry.dirty = false;
@@ -381,6 +391,19 @@
         return {
             registerDataset: registerDataset,
             attachFilterBar: attachFilterBar,
-            isArmed: isArmed
+            isArmed: isArmed,
+            getCaptureStatus: function() {
+                var pending = false;
+                var failure = '';
+                for (var dsId in _registry) {
+                    if (!_registry.hasOwnProperty(dsId)) continue;
+                    var entry = _registry[dsId];
+                    if (entry.debounceTimer || entry.retryTimer || entry.inflight || entry.dirty)
+                        pending = true;
+                    else if (entry.failed)
+                        failure = failure || entry.errorMessage || 'A live data query failed.';
+                }
+                return {pending: pending, error: failure, revision: _appliedRevision};
+            }
         };
     })();

@@ -48,10 +48,15 @@ authentication, controlled sharing, and a place for a team to find them.
 Visit the [Trellum website](https://trellum.dev/) for the product overview,
 report gallery, and installation guides.
 
-The public [demo gallery](https://trellum.dev/demo/) contains **reports only**:
-interactive examples built from synthetic data. It is not a hosted portal. The
-portal is self-hosted and needs its own backend; [try it locally with Docker](docs/customer/install/try-it.md#try-the-self-hosted-portal)
-when you want a shared team home.
+The public [demo gallery](https://trellum.dev/demo/) presents ten interactive
+reports and one written analysis, all built from synthetic data. Analyses keep a
+finding, assumptions, recommendation, and fixed report captures together in
+Git. See [how to publish an analysis](docs/customer/workflow/published-analyses.md)
+and the worked [Northwind checkout article](trellum/demo/reports/checkout-findings/content.md).
+The gallery is not a hosted portal. The optional portal is self-hosted and needs
+its own backend; [try it locally
+with Docker](docs/customer/install/try-it.md#try-the-self-hosted-portal) for a
+shared team home.
 
 <p align="center">
   <a href="https://trellum.dev/tour/"><img src="website/static/media/tour/portal-overview.jpg" alt="Nova Play's report library in the Trellum portal — open the interactive feature tour"></a>
@@ -59,10 +64,11 @@ when you want a shared team home.
   <sub><a href="https://trellum.dev/tour/">Open the interactive portal tour</a> · 14 features, at your own pace · <a href="docs/product-tour.md">read the walkthrough</a> · <a href="https://trellum.dev/docs/latest/install/try-it/">try Trellum locally</a></sub>
 </p>
 
-The framework turns Python, SQL, and YAML into interactive, portable reports.
-An author or coding agent can inspect sources and shared metric definitions,
-build and validate a report, then review its changes in Git. The optional
-self-hosted portal gives a team a shared place for reports, metrics, experiments,
+The framework turns Python, SQL, and YAML into interactive, portable reports,
+and Markdown plus captured images into published analyses. An author or coding
+agent can inspect sources and shared metric definitions, build and validate a
+report or article, then review its changes in Git. The optional self-hosted
+portal gives a team a shared place for reports, analyses, metrics, experiments,
 annotations, data sources, operations and builds, permissions, and sharing.
 Optional alerts and the separate Buddy assistant can use an administrator-
 configured AI provider.
@@ -82,6 +88,9 @@ configured AI provider.
 - **Portable builds.** A report compiles to HTML, JSON, and local assets that
   can be served from a simple web server, object storage, or the Trellum
   platform.
+- **Published analyses.** Keep a written finding, its assumptions and
+  recommendation beside fixed report captures. Review and publish the Markdown
+  and evidence through Git; later report refreshes do not change the article.
 - **A normal Git workflow.** Review the SQL and Python in a pull request, see
   why a number changed, rebuild an earlier commit, or revert a report change
   with the tools your team already uses.

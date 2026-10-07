@@ -312,19 +312,35 @@ jobs:
         run: |
           python - <<'PY'
           import glob
+          from pathlib import Path
           import zipfile
 
           wheel, = glob.glob("dist/*.whl")
+          analyses = list(Path("trellum/demo/reports").glob("*/content.md"))
+          if not analyses:
+              raise SystemExit("demo source has no analysis content.md")
+          analysis_files = [
+              path for content in analyses
+              for path in (content, *content.parent.glob("evidence/*"))
+              if path.is_file()
+          ]
+          if not any(path.parent.name == "evidence" for path in analysis_files):
+              raise SystemExit("demo analysis has no packaged evidence files")
           required = {
               "trellum/LICENSE",
               "trellum/THIRD-PARTY.md",
               "trellum/demo/assistant.md",
+              *(path.as_posix() for path in analysis_files),
           }
           with zipfile.ZipFile(wheel) as archive:
               names = set(archive.namelist())
               missing = sorted(required - names)
               if missing:
                   raise SystemExit(f"wheel is missing required files: {missing}")
+              for path in analysis_files:
+                  packaged = path.as_posix()
+                  if archive.read(packaged) != path.read_bytes():
+                      raise SystemExit(f"wheel changed demo analysis file: {packaged}")
               metadata_name = next(name for name in names if name.endswith(".dist-info/METADATA"))
               metadata = archive.read(metadata_name).decode()
               if "License-Expression: AGPL-3.0-only" not in metadata:

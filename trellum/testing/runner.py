@@ -259,13 +259,12 @@ def test_report(
         os.makedirs(output_dir, exist_ok=True)
 
     try:
-        report_cls = discover_report(report_dir)
-        report = report_cls()
-
-        from trellum.themes import resolve_theme
+        from trellum.runner.execute import _prepare_report, _resolve_report_theme
+        report = (_prepare_report(report_dir, config) if config.get("kind") == "analysis"
+                  else discover_report(report_dir)())
         theme = None
         try:
-            theme = resolve_theme(config.get("theme"))
+            theme = _resolve_report_theme(config)
         except ValueError:
             pass
 
@@ -307,15 +306,17 @@ def test_report(
             print(f"  [{slug}] Generation OK", flush=True)
 
         from trellum.runner import _load_events, local_annotation_events
-        events = _load_events(config)
-        events.extend(local_annotation_events(config))
+        events = []
+        if config.get("kind", "report") != "analysis":
+            events = _load_events(config)
+            events.extend(local_annotation_events(config))
 
         from trellum.reporting.diagnostics import (
             compute_details,
             enrich_details_with_disk,
             write_details,
         )
-        details = compute_details(ctx, mock_data=True)
+        details = compute_details(ctx, mock_data=config.get("kind", "report") != "analysis")
 
         from trellum.validation import validate_report
         validation = validate_report(ctx, events=events, details=details)
@@ -633,6 +634,7 @@ def test_all_reports(
     Returns:
         List of TestResult objects.
     """
+    from trellum.report import BaseReport
     if reports_dir is None:
         from trellum.project import get_project_root
         reports_dir = os.path.join(get_project_root(), "reports")
@@ -654,10 +656,12 @@ def test_all_reports(
         if entry.startswith("_"):
             continue
         report_dir = os.path.join(reports_dir, entry)
-        gen_path = os.path.join(report_dir, "generator.py")
         yaml_path = os.path.join(report_dir, "report.yaml")
-
-        if not os.path.isfile(gen_path) or not os.path.isfile(yaml_path):
+        if not os.path.isfile(yaml_path):
+            continue
+        config = BaseReport.load_config(report_dir)
+        source = "content.md" if config.get("kind", "report") == "analysis" else "generator.py"
+        if not os.path.isfile(os.path.join(report_dir, source)):
             continue
 
         slug = entry

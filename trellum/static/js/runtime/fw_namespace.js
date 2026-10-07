@@ -24,6 +24,8 @@
 
         exportPNG: _exportPNG,
         exportPDF: _exportPDF,
+        captureForAnalysis: _fwCaptureForAnalysis,
+        captureElementForAnalysis: _fwCaptureElementForAnalysis,
 
         filterEngine: window._fwFilterEngine,
         aggregate: window._fwAggregate,

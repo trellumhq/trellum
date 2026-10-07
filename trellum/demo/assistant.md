@@ -24,6 +24,12 @@ every built report's datasets, columns and date coverage automatically.
 
 ## Traps in this data
 
+- `checkout-findings` ("Where Northwind loses buyers") is a written analysis
+  of synthetic September 2026 data. Its committed captures stay fixed when
+  the demo warehouse and `cart-funnel` report refresh. Use the current report
+  for current totals; do not treat the article's capture or build time as its
+  reporting period. Its device comparison suggests an investigation, not a
+  proven cause or experiment lift.
 - `insert-coin` is a demo report built from synthetic data. Never quote its
   numbers as if they described the business.
 - The `economy-firehose` dataset is event-grained, not user-grained. Counting

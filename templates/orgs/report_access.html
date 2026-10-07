@@ -1,7 +1,7 @@
 {% extends "settings_base.html" %}
 {% block title %}Access to {{ report.name|default:report.slug }} — {{ studio.name }}{% endblock %}
 {% block settings %}
-<header class="page-head-row"><div><div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }}</div><h1>Report access</h1><p class="muted page-sub">{{ report.name|default:report.slug }}</p></div><span class="spacer"></span><a class="ui-btn ghost" href="/s/{{ org.slug }}/{{ studio.slug }}/r/{{ report.slug }}/?display=console">← Report</a></header>
+<header class="page-head-row"><div><div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }}</div><h1>{{ report.get_kind_display }} access</h1><p class="muted page-sub">{{ report.name|default:report.slug }}</p></div><span class="spacer"></span><a class="ui-btn ghost" href="/s/{{ org.slug }}/{{ studio.slug }}/r/{{ report.slug }}/?display=console">← {{ report.get_kind_display }}</a></header>
 {% if selected_block_reason %}<div class="ui-panel" role="note"><strong>Selected-report access is read-only</strong><p class="muted" style="margin:4px 0 0">{{ selected_block_reason }}</p></div>{% endif %}
 <div class="ui-panel"><strong>Signed-in access</strong><p class="muted" style="margin:4px 0 0">Add this report to existing organization groups. Broader studio roles remain unchanged and already include every report.</p></div>
 {% include "_list_toolbar.html" with q=q placeholder="Search groups…" total=total %}

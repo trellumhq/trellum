@@ -65,6 +65,7 @@ class ReportHeader(Component):
             f'<div class="fw-export-menu" id="fwExportMenu">'
             f'<button data-export="png">PNG image</button>'
             f'<button data-export="pdf">PDF document</button>'
+            f'<button data-export="analysis">Capture for analysis</button>'
             f'</div>'
             f'</div>'
         )

@@ -210,7 +210,7 @@ def _cmd_review_poll(args: argparse.Namespace) -> int:
             else:
                 _print_review_batches(resp.get("batches") or [])
                 slug = (resp.get("batches") or [{}])[0].get("slug", "<slug>")
-                print(f"\nNext: edit reports/{slug}/generator.py, then rebuild:")
+                print(f"\nNext: edit the source in reports/{slug}/, then rebuild:")
                 print(f"  python -m trellum.run reports/{slug} --no-serve")
                 print("(the browser reloads itself) and acknowledge with:")
                 print("  python -m trellum review poll "

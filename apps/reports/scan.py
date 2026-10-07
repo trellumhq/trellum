@@ -121,11 +121,14 @@ def sync_studio_registry(studio) -> int:
         config = entry.get("config") or {}
         slug = entry["slug"]
         seen.add(slug)
-        schedule = config.get("schedule") or {}
+        kind = config.get("kind", Report.KIND_REPORT)
+        # Analyses are published snapshots; a YAML cron must never refresh them.
+        schedule = (config.get("schedule") or {}) if kind == Report.KIND_REPORT else {}
         Report.objects.update_or_create(
             studio=studio,
             slug=slug,
             defaults={
+                "kind": kind,
                 "name": config.get("name", slug),
                 "description": config.get("description", ""),
                 "category": config.get("category", "Uncategorized"),
@@ -416,6 +419,7 @@ def build_registry_payload(studio) -> dict:
         reports.append(
             {
                 "id": row.pk,
+                "kind": row.kind,
                 "slug": row.slug,
                 "name": row.name or row.slug,
                 "description": row.description,
@@ -451,7 +455,7 @@ def build_registry_payload(studio) -> dict:
                 "stale": views_30d == 0 and _built_recently(last_status, last_run),
                 # Runs live queries at view time (and the org allows them), so
                 # the overview can mark it "live" rather than a static snapshot.
-                "live": live_enabled and (row.slug in live_slugs),
+                "live": row.kind == Report.KIND_REPORT and live_enabled and (row.slug in live_slugs),
                 # The generated metrics report: the build behind the Metrics
                 # page's charts, not a report anyone wrote. The dashboard
                 # leaves it to that page instead of showing a card for it

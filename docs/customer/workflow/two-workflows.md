@@ -39,6 +39,12 @@ on a dashboard can be traced back to a commit somebody approved.
 
 ## The promotion path
 
+An explanation can also become a published
+[analysis article](/docs/latest/workflow/published-analyses/). Capture the
+relevant report views and write down the findings and assumptions. The article
+preserves that evidence while the source reports keep updating, and uses the
+same Git review and portal access as a report.
+
 The two are not separate worlds. The usual life of a good report is:
 
 1. Someone asks a question

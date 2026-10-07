@@ -92,6 +92,7 @@ def _report_entry(toolbox, report: dict) -> str:
     if desc:
         lines.append(desc)
     meta_bits = []
+    meta_bits.append("kind: " + report.get("kind", "report"))
     if report.get("category"):
         meta_bits.append(f"category: {report['category']}")
     if report.get("tags"):

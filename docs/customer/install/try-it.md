@@ -37,13 +37,26 @@ report:
 python -m trellum.demo --dest trellum-demo
 cd trellum-demo
 python -m trellum.run reports/store-health --no-serve --portable
+python -m trellum.run reports/checkout-findings --no-serve --portable
 python -m trellum serve --background
 ```
 
-Open the URL printed by `serve`. The report is in `output/store-health/`;
-the portable output can be copied to a static web host. To create a project
-without the examples, run `python -m trellum.init`, then create reports with
-`python -m trellum.new <name>`.
+Open the URL printed by `serve`. The reports are in `output/`; portable output
+can be copied to a static web host. The demo includes the written analysis
+[Where Northwind loses buyers](https://trellum.dev/demo/checkout-findings/),
+which builds from its committed article and evidence without querying the
+warehouse. If you only want to try that article, install the demo files without
+generating sample data:
+
+```bash
+python -m trellum.demo --dest trellum-analysis-demo --no-data
+cd trellum-analysis-demo
+python -m trellum.run reports/checkout-findings --no-serve --portable
+python -m trellum serve --background
+```
+
+To create a project without the examples, run `python -m trellum.init`, then
+create reports with `python -m trellum.new <name>`.
 
 ### Make your first change from the report
 
@@ -95,7 +108,10 @@ cd trellum
 ```
 
 Wait for the script to print the local URL and sign-in details, then open them
-in a browser. Remove the demo and its containers and data when finished:
+in a browser. Once the builds finish, open **Analyses → Where Northwind loses
+buyers** to view the worked article and its captured evidence.
+
+Remove the demo and its containers and data when finished:
 
 ```bash
 ./scripts/demo.sh --down

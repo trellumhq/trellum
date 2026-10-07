@@ -48,7 +48,7 @@ _SKIP_DIRS = {
 #: don't. That is what this test is for.
 _LONG_FUNCTION_BUDGET = {
     ("validation/checks/columns.py", "_check_columns"): 371,
-    ("runner/execute.py", "run_report"): 295,
+    ("runner/execute.py", "_run_report"): 295,
     ("validation/checks/datasource.py", "_check_datasource_filterbar"): 294,
     ("runner/__init__.py", "main"): 242,
     ("reporting/diagnostics/filters.py", "_compute_view_matrix"): 191,

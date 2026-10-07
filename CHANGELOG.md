@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- Publish Git-authored analysis articles with Markdown, contents navigation,
+  captured evidence, author metadata, and report permissions and sharing.
+- Capture chart and section views with filter and source context, then import
+  them into an analysis using the framework CLI. Captures remain fixed when
+  the source report changes.
+
 ### Fixed
 
 - Allow Docker Engine 25 for report sandboxes with bind-backed data storage,

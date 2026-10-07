@@ -21,7 +21,7 @@
   <tr class="delivery-row" data-delivery-row
       data-prefix="/s/{{ row.org.slug }}/{{ row.studio.slug }}"
       data-slug="{{ row.report.slug }}">
-    <td data-label="Report">{{ row.report.name|default:row.report.slug }}</td>
+    <td data-label="Report">{{ row.report.name|default:row.report.slug }} <span class="muted">· {{ row.report.get_kind_display }}</span></td>
     <td data-label="Studio"><span class="muted">{{ row.org.name }}</span> / {{ row.studio.name }}</td>
     <td data-label="Cadence" data-field="cadence">{{ row.cadence }}</td>
     <td data-label="Format" data-field="format">{% if row.schedule.attach_pdf %}HTML + PDF{% else %}HTML{% endif %}</td>

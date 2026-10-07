@@ -1,0 +1,17 @@
+.fw-article { max-width: 920px; margin: 0 auto; color: var(--text-main); line-height: 1.7; overflow-wrap: anywhere; }
+.fw-article h1, .fw-article h2, .fw-article h3, .fw-article h4, .fw-article h5, .fw-article h6 { line-height: 1.3; margin-top: 1.8em; scroll-margin-top: 110px; }
+.fw-article h1.fw-article-title { margin: .3rem 0 .8rem; font-size: clamp(1.6rem, 4vw, 2.2rem); white-space: normal; overflow-wrap: anywhere; }
+.fw-article a { color: var(--accent-blue); text-decoration: underline; }
+.fw-article-toc { padding: 1.2rem; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; }
+.fw-article-toc ol { padding-left: 1.5rem; }
+.fw-toc-h3, .fw-toc-h4, .fw-toc-h5, .fw-toc-h6 { margin-left: 1rem; }
+.fw-article-author, .fw-evidence-caption { color: var(--text-muted); font-size: .9rem; }
+.fw-evidence { display: block; margin: 1.4rem 0; }
+.fw-evidence img { display: block; max-width: 100%; height: auto; border-radius: 6px; border: 1px solid var(--border-color); }
+.fw-evidence-caption { display: block; margin-top: .6rem; }
+.fw-article table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; margin: 1.5rem 0; }
+.fw-article th, .fw-article td { border: 1px solid var(--border-color); padding: .5rem .8rem; text-align: left; overflow-wrap: normal; }
+.fw-article th { background: var(--bg-card); }
+.fw-article pre { overflow-x: auto; padding: 1rem; background: var(--bg-card); border-radius: 6px; }
+.fw-article blockquote { margin-left: 0; padding-left: 1rem; border-left: 3px solid var(--accent-blue); color: var(--text-muted); }
+@media (max-width: 600px) { .fw-article { font-size: 1rem; } .fw-article-toc { padding: .8rem; } }

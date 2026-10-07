@@ -26,8 +26,13 @@ logger = logging.getLogger(__name__)
 
 
 class Report(models.Model):
+    KIND_REPORT = "report"
+    KIND_ANALYSIS = "analysis"
+    KIND_CHOICES = [(KIND_REPORT, "Report"), (KIND_ANALYSIS, "Analysis")]
+
     studio = models.ForeignKey("studios.Studio", on_delete=models.CASCADE, related_name="reports")
     slug = models.CharField(max_length=200)
+    kind = models.CharField(max_length=16, choices=KIND_CHOICES, default=KIND_REPORT)
     name = models.CharField(max_length=300, blank=True)
     description = models.TextField(blank=True)
     category = models.CharField(max_length=200, blank=True, default="Uncategorized")

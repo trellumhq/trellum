@@ -114,9 +114,9 @@ def _visible_registry_payload(request) -> dict:
 # ── Dashboard shell ─────────────────────────────────────────────────────────
 
 def _dashboard_page(request, *, initial_view: str):
-    """The SPA shell shared by the Reports dashboard and the Operations
-    page. ``initial_view`` ("reports" | "ops") rides in the portal context;
-    portal.js boots the matching surface — the two are pages with URLs, not
+    """The SPA shell shared by Reports, Analyses and Operations.
+    ``initial_view`` ("reports" | "analyses" | "ops") rides in the portal context;
+    portal.js boots the matching surface — these are pages with URLs, not
     client-side view modes (the studio tab bar navigates between them)."""
     from django.middleware.csrf import get_token
 
@@ -134,7 +134,7 @@ def _dashboard_page(request, *, initial_view: str):
         "production": not settings.DEBUG,
         "initial_view": initial_view,
     }
-    page_title = "Operations" if initial_view == "ops" else "Reports"
+    page_title = {"ops": "Operations", "analyses": "Analyses"}.get(initial_view, "Reports")
     return render(
         request,
         "portal/index.html",
@@ -162,6 +162,11 @@ def dashboard(request, org_slug, studio_slug):  # noqa: ARG001
         qs = f"?{params.urlencode()}" if params else ""
         return redirect(f"/s/{org_slug}/{studio_slug}/operations{qs}")
     return _dashboard_page(request, initial_view="reports")
+
+
+@require_studio_role(roles.VIEWER)
+def analyses(request, org_slug, studio_slug):  # noqa: ARG001
+    return _dashboard_page(request, initial_view="analyses")
 
 
 @require_studio_role(roles.VIEWER)
@@ -371,7 +376,7 @@ def api_system_status(request, org_slug, studio_slug):  # noqa: ARG001
 
     scheduled = []
     scheduled_reports = Report.objects.filter(
-        studio=studio, present_in_scan=True, disabled=False
+        studio=studio, present_in_scan=True, disabled=False, kind=Report.KIND_REPORT
     ).exclude(schedule_cron="")
     if scope is not None:
         scheduled_reports = scheduled_reports.filter(pk__in=scope)
@@ -1758,7 +1763,7 @@ def report_shell(request, org_slug, studio_slug):  # noqa: ARG001
         "reports/report_shell.html",
         {
             "report": report,
-            "console_active": "report",
+            "console_active": "analysis" if report.kind == Report.KIND_ANALYSIS else "report",
             "console_page_title": report.name or report.slug,
         },
     )
@@ -1978,7 +1983,7 @@ def _inject_report_chrome(raw: bytes, org, studio, user=None) -> bytes:
 
 
 def _serve_report_file(
-    target: Path, *, org, studio, user=None, extra_head: bytes = b""
+    target: Path, *, org, studio, user=None, extra_head: bytes = b"", kind="report"
 ) -> HttpResponse:
     """Content-type + HTML chrome injection for one already-guarded report
     output file. ``extra_head`` (used by the public share routes) is spliced
@@ -1994,6 +1999,9 @@ def _serve_report_file(
     ct = _CONTENT_TYPES.get(ext) or mimetypes.guess_type(str(target))[0] or "text/plain"
     if ext == ".html":
         raw = target.read_bytes()
+        if b"data-content-kind=" not in raw:
+            marker = b"analysis" if kind == Report.KIND_ANALYSIS else b"report"
+            raw = re.sub(rb"<html\b", b'<html data-content-kind="' + marker + b'"', raw, count=1)
         raw = _inject_report_chrome(raw, org, studio, user=user)
         if extra_head:
             if b"</head>" in raw:
@@ -2035,7 +2043,7 @@ def report_asset(request, org_slug, studio_slug, slug, asset):  # noqa: ARG001
             asset=asset, ext=Path(asset).suffix.lower(),
         )
     response = _serve_report_file(
-        target, org=request.org, studio=request.studio, user=request.user
+        target, org=request.org, studio=request.studio, user=request.user, kind=report.kind
     )
     if (
         is_entry
@@ -2234,7 +2242,7 @@ def _share_response(link, target, studio):
     ``frame-ancestors`` has no implicit self, so without it the preview is a
     blank frame."""
     # ponytail: 410/503 pages for an embed link keep X-Frame-Options: DENY and render blank in the frame; upgrade = pass link to _share_gone and exempt there too
-    resp = _serve_report_file(target, org=studio.org, studio=studio, extra_head=_share_head_extra(link))
+    resp = _serve_report_file(target, org=studio.org, studio=studio, extra_head=_share_head_extra(link), kind=link.report.kind)
     if link.embed:
         resp.xframe_options_exempt = True  # honoured by the stock XFrameOptionsMiddleware
         resp["Content-Security-Policy"] = "frame-ancestors " + " ".join(
@@ -3003,6 +3011,7 @@ def api_favorites(request):
             "studio_slug": fav.report.studio.slug,
             "slug": fav.report.slug,
             "name": fav.report.name or fav.report.slug,
+            "kind": fav.report.kind,
         }
         for fav in _visible_favorite_rows(request)
     ]

@@ -33,6 +33,9 @@ THEME_REGISTRY: dict[str, Theme] = {
     "monokai": MonokaiTheme,
 }
 
+# Articles never load or render executable project theme definitions.
+BUILTIN_THEMES = dict(THEME_REGISTRY)
+
 
 # The look a report gets when it does not ask for one. Kept as a single named
 # constant because three separate places used to decide this independently --

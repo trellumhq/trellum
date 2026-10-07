@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from trellum.project import get_project_root
 from trellum.rendering.html_builder import render_report
-from trellum.report import BaseReport, ReportContext
+from trellum.report import BaseReport, ReportContext, _validate_output_filename
 from trellum.runner.console import _ts
 from trellum.runner.discovery import (
     _discover_all_reports,
@@ -38,6 +38,10 @@ def _validate_report_slug(slug: object) -> str:
         raise ValueError(
             f"Report slug {slug!r} is invalid: use a single path-safe name"
         )
+    try:
+        _validate_output_filename(slug)
+    except ValueError as exc:
+        raise ValueError(f"Report slug {slug!r} is invalid: use a single path-safe name") from exc
     return slug
 
 
@@ -88,6 +92,53 @@ def run_report(
     fail_on_validation: bool | None = None,
     debug: bool = False,
 ) -> str:
+    """Build a report; analysis artifacts are staged until the entire build succeeds."""
+    config = BaseReport.load_config(os.path.abspath(report_dir))
+    slug = _validate_report_slug(config.get("slug", os.path.basename(os.path.abspath(report_dir))))
+    out = output_dir if output_dir is not None else _standard_output_dir(slug)
+    options = dict(production=production, auto_refresh=auto_refresh, max_age=max_age,
+                   fail_on_validation=fail_on_validation, debug=debug)
+    if (config.get("kind", "report") == "analysis" and not config.get("disabled")
+            and not (max_age > 0 and _output_is_fresh(out, max_age))):
+        from trellum.runner.analysis_build import staged_analysis_build
+        return staged_analysis_build(report_dir, out, **options)
+    return _run_report(report_dir, output_dir, **options)
+
+
+def _prepare_report(report_dir: str, config: dict):
+    report = discover_report(report_dir)()
+    if config.get("kind", "report") == "analysis":
+        from trellum.themes import BUILTIN_THEMES, DEFAULT_THEME_NAME, effective_theme_name
+        if effective_theme_name(config.get("theme")) not in BUILTIN_THEMES:
+            print("  Warning: unknown analysis theme, using framework default", flush=True)
+            config["theme"] = DEFAULT_THEME_NAME
+    else:
+        _discover_project_themes(get_project_root())
+        _discover_project_components(get_project_root())
+    return report
+
+
+def _resolve_report_theme(config: dict):
+    from trellum.themes import (
+        BUILTIN_THEMES,
+        DEFAULT_THEME_NAME,
+        effective_theme_name,
+        resolve_theme,
+    )
+    if config.get("kind") == "analysis":
+        return BUILTIN_THEMES.get(effective_theme_name(config.get("theme")), BUILTIN_THEMES[DEFAULT_THEME_NAME])
+    return resolve_theme(config.get("theme"))
+
+
+def _run_report(
+    report_dir: str,
+    output_dir: str | None = None,
+    production: bool = False,
+    auto_refresh: bool = True,
+    max_age: int = 0,
+    fail_on_validation: bool | None = None,
+    debug: bool = False,
+) -> str:
     """Run a single report and write output.
 
     Args:
@@ -118,14 +169,9 @@ def run_report(
         print(f"[{_ts()}] Skipping {slug} (output is fresh)", flush=True)
         return output_dir
 
-    report_cls = discover_report(report_dir)
-    report = report_cls()
-
-    _discover_project_themes(get_project_root())
-    _discover_project_components(get_project_root())
+    report = _prepare_report(report_dir, config)
 
     from trellum.rendering.cdn import register_cdn
-    from trellum.themes import resolve_theme
 
     # Register extra CDNs from report.yaml
     for cdn_name, cdn_url in config.get("extra_cdn", {}).items():
@@ -134,7 +180,7 @@ def run_report(
     theme = None
     theme_name = config.get("theme")
     try:
-        theme = resolve_theme(theme_name)
+        theme = _resolve_report_theme(config)
     except ValueError:
         print(f"  Warning: unknown theme '{theme_name}', using default")
 
@@ -182,8 +228,9 @@ def run_report(
         # Scopes are declared inside generate() via ctx.set_scope. Load
         # events now so multi-scope reports also pick up per-scope events
         # (see _load_events docstring for the studio filter semantics).
-        events = _load_events(config, ctx)
-        events.extend(local_annotation_events(config))
+        if config.get("kind", "report") != "analysis":
+            events = _load_events(config, ctx)
+            events.extend(local_annotation_events(config))
         if debug and events:
             event_types: dict[str, int] = {}
             for ev in events:

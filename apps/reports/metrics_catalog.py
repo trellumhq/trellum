@@ -327,7 +327,7 @@ def studio_metrics_overview(studio) -> dict:
         Max("last_scanned_at")
     )["last_scanned_at__max"]
 
-    reports = list(Report.objects.filter(studio=studio, present_in_scan=True))
+    reports = list(Report.objects.filter(studio=studio, present_in_scan=True, kind=Report.KIND_REPORT))
     claims_by_id, built_slugs, storage_down = _claims_by_metric_id(studio, reports)
 
     # The generated metrics report is where a metric's own chart comes from:

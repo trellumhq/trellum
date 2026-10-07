@@ -11,8 +11,11 @@ All of it:
 
 {{figure:repository-contract}}
 
-Directories whose names start with `_` are skipped, and one without a
-`generator.py` is ignored. Point a studio at the repository and it works.
+Directories whose names start with `_` are skipped. A report needs
+`report.yaml` and `generator.py`. An analysis uses the same directory convention
+with `kind: analysis` in `report.yaml` and `content.md` instead of a generator.
+See [Publish an analysis](/docs/latest/workflow/published-analyses/) for the
+article and evidence format. Point a studio at the repository and it works.
 
 No other directory structure is required for report discovery. Project files
 such as `data-sources/config.yaml`, `metrics.yaml`, and `config.yaml` are read
@@ -119,8 +122,9 @@ the configured sources above.
 ### `analysis/` — optional
 
 Somewhere for ad-hoc scripts to land. Some teams keep them as a record of what
-has been asked; others delete them freely. Either is fine — they are not reports
-and nothing schedules them.
+has been asked; others delete them freely. These scripts are not discovered or
+scheduled. Published analysis articles go under `reports/<slug>/` with
+`kind: analysis`, so the portal can discover and publish them.
 
 ## Start with definitions, not reports
 

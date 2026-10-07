@@ -27,7 +27,7 @@ class GroupForm(forms.ModelForm):
 
 class ReportChoiceField(forms.ModelMultipleChoiceField):
     def label_from_instance(self, report):
-        label = report.name or report.slug
+        label = f"{report.name or report.slug} · {report.get_kind_display()}"
         if not report.present_in_scan:
             return f"{label} (missing from repository)"
         if report.disabled:

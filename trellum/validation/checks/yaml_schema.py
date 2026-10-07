@@ -10,6 +10,11 @@ from trellum.validation.result import ValidationResult
 def _check_yaml_schema(ctx: Any, result: ValidationResult) -> None:
     """Category 9: report.yaml schema."""
     config = ctx.config
+    from trellum.report_config import validate_content_config
+    try:
+        validate_content_config(config)
+    except ValueError as exc:
+        result.fail("yaml-content-kind", str(exc))
     recommended = ["name", "description", "studio", "category"]
     missing = [k for k in recommended if not config.get(k)]
     if missing:
@@ -43,7 +48,7 @@ def _check_yaml_schema(ctx: Any, result: ValidationResult) -> None:
 
     schedule = config.get("schedule", {})
     cron = schedule.get("cron", "") if isinstance(schedule, dict) else ""
-    if not cron:
+    if not cron and config.get("kind", "report") != "analysis":
         result.info(
             "yaml-cron-invalid",
             "No schedule.cron defined. Auto-refresh will not work.",

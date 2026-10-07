@@ -132,6 +132,79 @@ def mobile_browser(request):
         browser.close()
 
 
+@pytest.mark.parametrize("view,expected", (("reports", "report"), ("analyses", "analysis")))
+def test_catalog_kind_filter_search_categories_and_favorites(mobile_browser, view, expected):
+    rows = [
+        {**REPORT, "slug": "report", "id": 1, "name": "Data report", "category": "Data", "tags": ["raw"]},
+        {**REPORT, "slug": "analysis", "id": 2, "kind": "analysis", "name": "Quarterly finding", "category": "Strategy", "tags": ["evidence"]},
+    ]
+    context = mobile_browser.new_context(viewport={"width": 1024, "height": 740})
+    page = context.new_page()
+
+    def respond(route):
+        path = urlsplit(route.request.url).path
+        if path.endswith("/static/portal.js"):
+            route.fulfill(content_type="application/javascript", body=PORTAL_JS)
+        elif path.endswith("/api/registry"):
+            route.fulfill(content_type="application/json", body=json.dumps({"reports": rows}))
+        elif path.endswith("/api/me/favorites"):
+            route.fulfill(content_type="application/json", body=json.dumps({"favorites": [
+                {"org_slug": "acme", "studio_slug": "analytics", "slug": r["slug"]} for r in rows
+            ]}))
+        elif "/api/" in path:
+            route.fulfill(content_type="application/json", body='{"studios":[],"reports":{}}')
+        elif path.endswith(".css") or path.endswith(".js"):
+            route.fulfill(body="")
+        else:
+            route.fulfill(content_type="text/html", body=PORTAL_HTML.replace("initial_view:'reports'", f"initial_view:'{view}'"))
+
+    page.route("**/*", respond)
+    try:
+        page.goto("http://portal.test/s/acme/analytics/" + ("analyses" if view == "analyses" else ""))
+        page.wait_for_selector(f'#content tr[data-slug="{expected}"]')
+        assert set(page.locator("#content tr[data-slug]").evaluate_all("rows => rows.map(r => r.dataset.slug)")) == {expected}
+        assert page.evaluate("Array.from(getCategories().keys())") == (["Strategy"] if expected == "analysis" else ["Data"])
+        page.wait_for_function("isFav('report') && isFav('analysis')")
+        page.evaluate("activeFolder='_favorites';render()")
+        assert page.locator('#folderTabs [data-folder="_favorites"] .count').inner_text() == "1"
+        page.set_viewport_size({"width": 390, "height": 844})
+        page.evaluate("render()")
+        assert page.locator('#folderTabs option[value="all"]').inner_text() == "All (1)"
+        assert page.locator('#folderTabs option[value="_favorites"]').inner_text() == "Favorites (1)"
+        assert page.locator(f'#content tr[data-slug="{expected}"]').count() == 1
+        page.locator("#searchInput").fill("evidence")
+        assert bool(page.locator('#content tr[data-slug="analysis"]').count()) == (expected == "analysis")
+    finally:
+        context.close()
+
+
+@pytest.mark.parametrize("kind,allow_export,capture", (("report", True, True), ("analysis", True, False), ("report", False, False)))
+@pytest.mark.parametrize("marker", ("html", "body"))
+def test_capture_menu_calls_framework_only_for_exportable_data_reports(mobile_browser, kind, allow_export, capture, marker):
+    menu = (settings.BASE_DIR / "static" / "report_menu.js").read_text(encoding="utf-8")
+    body = f'''<html {f'data-content-kind="{kind}"' if marker == 'html' else ''}><head><style>
+        .fw-export-wrap{{display:{"block" if allow_export else "none"}}}
+        </style></head><body {f'data-content-kind="{kind}"' if marker == 'body' else ''}><div class="fw-header-right">
+        <div class="fw-export-wrap"><div id="fwExportMenu"></div></div></div>
+        <script>window.captures=0;window.fw={{captureForAnalysis:function(){{captures++;return Promise.resolve();}}}};</script>
+        <script>{menu}</script></body></html>'''
+    context = mobile_browser.new_context()
+    page = context.new_page()
+    page.route("**/*", lambda route: route.fulfill(content_type="text/html", body=body))
+    try:
+        page.goto("http://portal.test/share/example/")
+        item = page.locator('[data-item-id="capture-analysis"]')
+        assert item.count() == (1 if capture else 0)
+        if capture:
+            page.locator("#fwOptionsBtn").click()
+            item.click()
+            assert page.evaluate("window.captures") == 1
+        else:
+            assert page.evaluate("window.captures") == 0
+    finally:
+        context.close()
+
+
 @pytest.mark.parametrize("width", (390, 1024))
 def test_catalog_defaults_to_grouped_list(mobile_browser, width):
     context = mobile_browser.new_context(

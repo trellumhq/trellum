@@ -51,10 +51,15 @@ filters, charts, tables, annotations, themes, and exports in the browser. The
 result can be served locally or published to any static host. The framework is
 host-independent and does not need the optional Trellum platform.
 
-The public [demo gallery](https://trellum.dev/demo/) contains reports only.
-For scheduled builds, team access, shared metrics, experiments, annotations
-and optional AI assistance, explore the [interactive portal tour](https://trellum.dev/tour/)
-or [run the portal locally](https://trellum.dev/docs/latest/install/try-it/).
+The public [demo gallery](https://trellum.dev/demo/) contains interactive
+reports built from synthetic data. The demo project also includes a written
+[Northwind checkout analysis](https://github.com/trellumhq/trellum/blob/main/trellum/demo/reports/checkout-findings/content.md)
+with fixed captured evidence. For the article format and Git workflow, see
+[Publish an analysis](https://trellum.dev/docs/latest/workflow/published-analyses/).
+For scheduled builds, team access, shared metrics, experiments, annotations,
+published analyses and optional AI assistance, explore the
+[interactive portal tour](https://trellum.dev/tour/) or
+[run the portal locally](https://trellum.dev/docs/latest/install/try-it/).
 Author reports with your preferred coding agent or editor; Python, SQL and
 YAML stay in Git for review, history and reproducible builds.
 
@@ -288,7 +293,8 @@ python3 -m trellum.run --all --serve --port 8060
 <!-- topic: report-yaml -->
 ## Report Structure
 
-Every report is a directory under `reports/` with three required files and one optional:
+A report is a directory under `reports/` with a manifest and generator. Query
+and custom-section modules are only needed when the generator uses them:
 
 ```
 reports/{slug}/
@@ -301,6 +307,10 @@ reports/{slug}/
 - **`generator.py`** -- Subclass `BaseReport` and implement `generate(self, ctx)`. Use `ctx.get_connection()` to query data, then `ctx.add_section()` with components like `DataSource`, `FilterBar`, `LineChart`, `KpiRow`, etc. The scaffolded template from `python -m trellum.new` provides a working starting point.
 - **`queries.py`** -- SQL queries as module-level string constants with `:param_name` placeholders. Referenced from the generator via `from . import queries`.
 - **`custom_sections.py`** -- Optional. Contains `CUSTOM_CSS`, `CUSTOM_HTML`, and `CUSTOM_JS` string constants for advanced `RawHTML` dashboards.
+
+An analysis is the Markdown variant of this contract: `kind: analysis` in
+`report.yaml`, `content.md`, and local evidence assets instead of a generator.
+See `trellum guide analysis` for the authoring workflow.
 
 ### ReportContext (`ctx`)
 
@@ -1543,6 +1553,53 @@ Subclass `ReportHeader` and pass to `ctx.set_header_component()`.
 
 ---
 
+<!-- topic: analysis -->
+## Analysis articles
+
+Publish a finding as a readable article with fixed evidence. Analyses use the
+same Git repository, build command, output format, and portal access controls
+as reports, and appear under **Analyses** in the portal.
+
+```bash
+trellum analysis new september-conversion
+trellum analysis import reports/september-conversion capture.trellum-capture.json --name conversion
+python -m trellum.run reports/september-conversion --no-serve
+trellum review start reports/september-conversion
+```
+
+The scaffold writes `reports/september-conversion/report.yaml` with
+`kind: analysis`, plus `content.md`. Set `name`, `description`, `author`,
+`category`, and `tags` in the manifest. Write the question, findings, evidence,
+assumptions, and recommendation in Markdown. Headings generate a contents
+menu and section anchors; tables, lists, links, and local PNG images are supported.
+Raw HTML is disabled. Images must remain inside the analysis directory.
+Analyses use built-in themes; custom Python components and themes are not loaded.
+
+Choose **Capture for analysis** from a report's Export menu (Options in the
+portal), then select a chart or section. The JSON download contains a PNG,
+active filters, a safe source reference, the capture time, and the source build
+time when known. It contains no raw dataset. Capture/build times are distinct
+from the reporting period, which the author should describe explicitly.
+
+The import command writes `evidence/<name>.png` and `evidence/<name>.json`,
+then prints the Markdown reference to insert in `content.md`. Commit both
+files; the JSON supplies the figure's source caption. An existing filename is
+never silently overwritten. Clicking an article image opens the full image.
+
+Analysis builds need no Python generator, warehouse credentials, data-source
+declarations, or data-refresh schedule. The evidence remains fixed as source
+reports update or disappear. Revise the Markdown or import a new capture under
+a new name and publish a Git change to update the analysis. Rebuilding a broken
+article retains its last successful output. Existing output retention still
+applies; committed evidence can recreate the article.
+
+In the portal, the analysis's own permissions govern its article and evidence.
+Publishing it deliberately shares the captured evidence with that audience.
+Source report links require their own access. Sharing, embedding, favorites,
+activity, exports, and snapshot delivery reuse the report features and their
+existing deployment restrictions.
+
+<!-- topic: config-reference -->
 ## Configuration Reference
 
 ### report.yaml -- Full Schema
@@ -1552,6 +1609,8 @@ Subclass `ReportHeader` and pass to `ctx.set_header_component()`.
 name: "Human Readable Name"
 slug: my-slug                      # URL-safe identifier (default: directory name)
 description: "What this report shows"
+kind: report                      # report (default) | analysis
+author: "Analytics team"          # Optional article author
 
 # ── Schedule ──
 schedule:

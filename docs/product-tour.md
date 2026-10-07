@@ -34,6 +34,11 @@ Buddy assistant is separate from the coding agent used to author reports.
 - The public [demo gallery](https://trellum.dev/demo/) serves interactive
   reports only. It is not a hosted portal. The portal is a self-hosted backend;
   see [Try Trellum locally](https://trellum.dev/docs/latest/install/try-it/).
+- The demo repository includes a separate worked analysis, **Where Northwind
+  loses buyers**, with two fixed synthetic September 2026 captures. Capture and
+  build timestamps describe artifact creation, not the reporting period. The
+  analysis format and local workflow are covered in
+  [Publish an analysis](https://trellum.dev/docs/latest/workflow/published-analyses/).
 - The portal screens use the Nova Play organization and Product Insights
   studio. Demo sources are synthetic local SQLite (`demo_db`) and CSV
   (`ua_budget`); there is no live warehouse connection.

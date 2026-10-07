@@ -9,6 +9,13 @@ function _createFunnel(id, canvas, labels, values, showPct) {
     var colors = tc.chart_colors;
     var bgColors = labels.map(function(_, i) { return colors[i % colors.length] + 'cc'; });
     var borderColors = labels.map(function(_, i) { return colors[i % colors.length]; });
+    function shortBar(ctx) {
+        var meta = ctx.chart.getDatasetMeta(ctx.datasetIndex);
+        var bar = meta && meta.data[ctx.dataIndex];
+        if (!bar) return false;
+        var width = bar.getProps ? bar.getProps(['width'], true).width : bar.width;
+        return width < labelFont * 10;
+    }
 
     var plugins = {
         legend: { display: false },
@@ -29,7 +36,11 @@ function _createFunnel(id, canvas, labels, values, showPct) {
             display: showPct !== false,
             color: function() { return getThemeColors().tick_color; },
             font: { size: labelFont, weight: 600 },
-            anchor: 'center',
+            anchor: function(ctx) { return shortBar(ctx) ? 'end' : 'center'; },
+            align: function(ctx) { return shortBar(ctx) ? 'end' : 'center'; },
+            offset: 6,
+            clamp: true,
+            clip: false,
             formatter: function(val, ctx) {
                 var idx = ctx.dataIndex;
                 var line1 = fmtCompact(val);

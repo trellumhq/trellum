@@ -1,0 +1,17 @@
+kind: analysis
+name: Where Northwind loses buyers
+slug: checkout-findings
+description: A worked analysis of September's synthetic checkout funnel, with frozen mobile and desktop evidence and a recommendation for the next experiment.
+author: Northwind Analytics (demo)
+version: 0.1.0
+studio: northwind
+category: Product
+tags:
+  - commerce
+  - conversion
+  - findings
+theme: trellum light
+display:
+  icon: file-text
+  color: '#e15759'
+  priority: 3

@@ -37,7 +37,7 @@ def _prefix(request) -> str:
 
 def _rule(request, rule_id) -> AlertRule:
     reports = visible_reports(
-        request.user, Report.objects.filter(studio=request.studio, present_in_scan=True)
+        request.user, Report.objects.filter(studio=request.studio, present_in_scan=True, kind=Report.KIND_REPORT)
     )
     return get_object_or_404(
         AlertRule.objects.select_related("report__studio", "created_by"),
@@ -75,7 +75,7 @@ def _context(request, **extra) -> dict:
 def alerts_page(request, org_slug, studio_slug):  # noqa: ARG001
     last = AlertRun.objects.filter(rule=OuterRef("pk")).order_by("-started_at")
     reports = visible_reports(
-        request.user, Report.objects.filter(studio=request.studio, present_in_scan=True)
+        request.user, Report.objects.filter(studio=request.studio, present_in_scan=True, kind=Report.KIND_REPORT)
     )
     rules = (
         AlertRule.objects.filter(studio=request.studio, report__in=reports)

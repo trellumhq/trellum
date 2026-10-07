@@ -86,6 +86,18 @@ def test_failed_builds_are_flagged_but_still_linked(tmp_path):
     assert html.count("did not build") == 1
 
 
+def test_analysis_card_is_labeled_as_analysis(tmp_path):
+    _make_report(tmp_path, "northwind-finding", kind="analysis",
+                 category="Product", name="Where Northwind loses buyers")
+    _make_report(tmp_path, "cart-funnel", kind="report", category="Product")
+
+    gallery.build_gallery(tmp_path)
+    html = (tmp_path / "index.html").read_text(encoding="utf-8")
+
+    assert "Analysis · Product" in html
+    assert "Product</div>" in html
+
+
 def test_sorted_by_category_then_name(tmp_path):
     _make_report(tmp_path, "z-one", category="Alpha", name="Z One")
     _make_report(tmp_path, "a-one", category="Beta", name="A One")

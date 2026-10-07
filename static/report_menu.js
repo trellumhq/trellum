@@ -314,6 +314,15 @@
                 if (b) b.click();
             }
         });
+        var contentKind = document.body.getAttribute('data-content-kind')
+            || document.documentElement.getAttribute('data-content-kind');
+        if (contentKind !== 'analysis'
+                && window.fw && typeof window.fw.captureForAnalysis === 'function') {
+            window.__reportMenu.register({
+                id: 'capture-analysis', order: 25, label: 'Capture for analysis',
+                onSelect: function () { window.fw.captureForAnalysis(); }
+            });
+        }
     })();
 
     // Eager and synchronous: guarantees the stylesheet is already in <head>

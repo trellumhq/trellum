@@ -8,8 +8,6 @@ import os
 import sys
 from pathlib import Path
 
-import yaml
-
 from trellum.project import get_project_root
 from trellum.report import BaseReport
 
@@ -21,6 +19,10 @@ def discover_report(report_dir: str) -> type[BaseReport]:
     ``from . import queries``) work correctly.
     """
     report_dir = os.path.abspath(report_dir)
+    if BaseReport.load_config(report_dir).get("kind", "report") == "analysis":
+        from trellum.analysis import AnalysisReport
+        # Preserve the class-returning discovery API for hosts and the test runner.
+        return type("AnalysisReport", (AnalysisReport,), {"report_dir": report_dir})
     gen_path = os.path.join(report_dir, "generator.py")
     if not os.path.exists(gen_path):
         raise FileNotFoundError(f"No generator.py found in {report_dir}")
@@ -142,14 +144,15 @@ def scan_report_configs(
         gen_path = os.path.join(reports_dir, entry, "generator.py")
         if not os.path.isfile(yaml_path):
             continue
-        if not include_hidden and not os.path.isfile(gen_path):
-            continue
 
         # UTF-8 explicitly: without it Windows falls back to the ANSI code
         # page and a report name like "Insert Coin · Minigame" reaches the
         # gallery as mojibake.
-        with open(yaml_path, encoding="utf-8") as f:
-            config = yaml.safe_load(f)
+        config = BaseReport.load_config(os.path.dirname(yaml_path))
+        content_path = os.path.join(reports_dir, entry, "content.md")
+        required = content_path if config.get("kind", "report") == "analysis" else gen_path
+        if not include_hidden and not os.path.isfile(required):
+            continue
 
         if config.get("disabled"):
             continue

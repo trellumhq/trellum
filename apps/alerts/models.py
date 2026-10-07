@@ -86,6 +86,8 @@ class AlertRule(models.Model):
             pk=self.report_id, studio_id=self.studio_id
         ).exists():
             errors["report"] = "The report must belong to the rule's studio."
+        if self.report_id and Report.objects.filter(pk=self.report_id, kind=Report.KIND_ANALYSIS).exists():
+            errors["report"] = "Analyses do not support alert rules."
         if errors:
             raise ValidationError(errors)
 

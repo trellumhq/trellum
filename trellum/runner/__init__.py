@@ -106,6 +106,22 @@ __all__ = [
     "_weekday_highlight_config",
 ]
 
+def _load_project_bootstrap(args) -> None:
+    if (not args.all and args.report_dir
+            and BaseReport.load_config(os.path.abspath(args.report_dir)).get("kind", "report") == "analysis"):
+        return
+    # Ordinary reports and batch builds can register project/cloud plugins.
+    bootstrap_path = os.path.join(get_project_root(), "bootstrap.py")
+    if os.path.isfile(bootstrap_path):
+        spec = importlib.util.spec_from_file_location("bootstrap", bootstrap_path)
+        if spec and spec.loader:
+            mod = importlib.util.module_from_spec(spec)
+            try:
+                spec.loader.exec_module(mod)
+            except Exception as exc:
+                print(f"  Warning: bootstrap.py failed: {exc}", flush=True)
+
+
 def main():
     _force_utf8_console()
 
@@ -174,16 +190,7 @@ def main():
                         help="Allow generation even with validation FAILs")
     args = parser.parse_args()
 
-    # Auto-import project bootstrap if it exists (registers cloud plugins)
-    bootstrap_path = os.path.join(get_project_root(), "bootstrap.py")
-    if os.path.isfile(bootstrap_path):
-        spec = importlib.util.spec_from_file_location("bootstrap", bootstrap_path)
-        if spec and spec.loader:
-            mod = importlib.util.module_from_spec(spec)
-            try:
-                spec.loader.exec_module(mod)
-            except Exception as exc:
-                print(f"  Warning: bootstrap.py failed: {exc}", flush=True)
+    _load_project_bootstrap(args)
 
     # Must happen before anything renders: the vendor URL base is baked into the
     # HTML at build time, so switching it afterwards would leave already-written

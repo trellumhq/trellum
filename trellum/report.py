@@ -9,6 +9,7 @@ from typing import Any
 
 import yaml
 
+from trellum.report_config import validate_content_config
 from trellum.themes import DEFAULT_THEME, Theme
 
 #: Live-query ids travel into ``_live_queries.json``, data.json and the host's
@@ -589,4 +590,4 @@ class BaseReport:
         # UTF-8 explicitly, or Windows decodes non-ASCII names via the ANSI
         # code page and the header renders mojibake.
         with open(yaml_path, encoding="utf-8") as f:
-            return yaml.safe_load(f)
+            return validate_content_config(yaml.safe_load(f))

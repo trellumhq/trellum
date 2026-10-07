@@ -36,6 +36,7 @@ PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 #: Each must resolve to an anchored section in one of the documents below.
 TOPICS: dict[str, str] = {
     "answer": "A number, not a report: metric first, query the source by name, what to reply",
+    "analysis": "Publish a Markdown article with captured evidence, Git history and report access",
     "queries": "Writing queries: what belongs in SQL and what belongs in pandas",
     "format": "Long vs wide format, and why charts need long",
     "generator": "The step-by-step process for writing generator.py",

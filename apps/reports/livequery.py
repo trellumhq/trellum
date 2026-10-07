@@ -312,6 +312,8 @@ def api_live_query(request, org_slug, studio_slug, slug):  # noqa: ARG001
     from apps.reports.views import _get_report
 
     report = _get_report(request, slug)  # 404: absent (or invisible) report
+    if report.kind == "analysis":
+        return _bad("Analyses do not support live queries")
 
     body = json_body(request)
     query_id = body.get("query_id")

@@ -13,6 +13,7 @@ types.  Components self-describe via ``render_html()``, ``css()``, and
 
 from __future__ import annotations
 
+import html as html_lib
 import os
 import time
 from datetime import datetime, timezone
@@ -35,7 +36,7 @@ from trellum.rendering.artifacts import (
 from trellum.rendering.cdn import build_cdn_tags
 from trellum.rendering.js_runtime import generate_js_runtime, host_flag_scripts
 from trellum.rendering.sections import _inject_nav, _render_section_list
-from trellum.themes import DEFAULT_THEME_NAME, THEME_REGISTRY, effective_theme_name
+from trellum.themes import BUILTIN_THEMES, DEFAULT_THEME_NAME, THEME_REGISTRY, effective_theme_name
 from trellum.themes.theme import Theme
 
 #: ``?only=<section id>``: render ONE block -- the section with that id, its
@@ -96,12 +97,13 @@ def _generate_data_loader_js() -> str:
     return f"\n<script>\n{load_js('data_loader.js')}\n</script>"
 
 
-def _theme_select_html(default_theme_name: str, enabled: bool) -> str:
+def _theme_select_html(default_theme_name: str, enabled: bool, themes=None) -> str:
     """The header's theme <select>, empty when switching is off or moot."""
-    if not enabled or len(THEME_REGISTRY) < 2:
+    themes = THEME_REGISTRY if themes is None else themes
+    if not enabled or len(themes) < 2:
         return ""
     opts = []
-    for tname in THEME_REGISTRY:
+    for tname in themes:
         label = tname.replace("_", " ").title()
         sel_attr = " selected" if tname == default_theme_name else ""
         opts.append(f'<option value="{tname}"{sel_attr}>{label}</option>')
@@ -113,7 +115,7 @@ def _theme_select_html(default_theme_name: str, enabled: bool) -> str:
 # Top-level render
 # ═══════════════════════════════════════════════════════════════
 
-def _flash_script() -> str:
+def _flash_script(themes=None) -> str:
     """Flash-prevention: apply a saved 'fw-theme' before first paint.
 
     Guarded: localStorage throws in sandboxed iframes, and this script runs
@@ -130,7 +132,7 @@ def _flash_script() -> str:
     data-theme stands -- the baked default, or a host's serve-time override
     of it, which a fallback stamp here used to clobber.
     """
-    known_themes_js = orjson.dumps(list(THEME_REGISTRY)).decode()
+    known_themes_js = orjson.dumps(list(THEME_REGISTRY if themes is None else themes)).decode()
     return f"""<script>
 (function(){{var v={known_themes_js};var t=null;try{{t=localStorage.getItem('fw-theme');}}catch(e){{}}
 if(v.indexOf(t)>=0)document.documentElement.setAttribute('data-theme',t);}})();
@@ -167,7 +169,10 @@ def render_report(
 
     theme = ctx.theme
     config = ctx.config
+    themes = BUILTIN_THEMES if config.get("kind") == "analysis" else THEME_REGISTRY
     name = config.get("name", "Report")
+    if config.get("kind") == "analysis":
+        name = html_lib.escape(name, quote=True)
     slug = ctx.slug
 
     # Host-supplied markup slots. Empty unless something is serving these
@@ -323,12 +328,12 @@ def render_report(
     # runner, but stamping the raw string into data-theme would leave every
     # var(--...) unresolved -- an unstyled page -- while the build log claims
     # the fallback worked. Validation's `theme-invalid` check reports the typo.
-    if default_theme_name not in THEME_REGISTRY:
+    if default_theme_name not in themes:
         default_theme_name = DEFAULT_THEME_NAME
     theme_switcher_enabled = config.get("theme_switcher", True)
 
     theme_select_html = _theme_select_html(default_theme_name,
-                                           theme_switcher_enabled)
+                                           theme_switcher_enabled, themes)
 
     # Build the header component (use custom if set, else default)
     from trellum.components.header import ReportHeader
@@ -368,14 +373,14 @@ def render_report(
     )
 
     t0 = time.time()
-    base_css = _generate_base_css(default_theme_name, THEME_REGISTRY)
+    base_css = _generate_base_css(default_theme_name, themes)
     js_runtime = generate_js_runtime(
-        default_theme_name, THEME_REGISTRY, refresh_seconds,
+        default_theme_name, themes, refresh_seconds,
     )
     data_loader = _generate_data_loader_js()
     raw_js_html = "\n".join(f"<script>{js}</script>" for js in raw_js_collected)
 
-    flash_script = _flash_script()
+    flash_script = _flash_script(themes)
 
     # Host extension slots: `_fwHasHost`, `_fwLiveQueryUrl`, script tags.
     # See host_flag_scripts — no host, no request; `{slug}` resolves here.
@@ -407,7 +412,7 @@ def render_report(
     <style>{base_css}
 {component_css}</style>
 </head>
-<body data-report-slug="{slug}">
+<body data-report-slug="{slug}" data-content-kind="{config.get('kind', 'report')}">
 <div class="fw-loading" id="fwLoading">
     <div class="fw-spinner"></div>
     <div class="fw-loading-title">{name}</div>
@@ -456,6 +461,7 @@ setTimeout(function(){
         "refresh_seconds": cron_interval,
     }
     report_data["_framework_version"] = trellum.__version__
+    report_data["_content_kind"] = config.get("kind", "report")
 
     # `_metrics`: claimed metrics.yaml definitions; see COMPATIBILITY.md.
     from trellum.metrics import claimed_metrics_block, metrics_used_entries
@@ -520,7 +526,7 @@ setTimeout(function(){
     # home screen yields a standalone-mode app icon labelled with the report
     # name that always opens this specific dashboard (start_url + scope are
     # both per-report, so the app stays inside this report's URL space).
-    _write_manifest(out, slug, name)
+    _write_manifest(out, slug, config.get("name", name))
 
     _write_meta(out, slug, name, config, validation=validation,
                 timings=ctx._timings, details=details,

@@ -20,7 +20,7 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 import pytest
 
-from trellum.assets import load_css
+from trellum.assets import load_css, load_js
 from trellum.rendering.cdn import get_cdn_url
 from trellum.rendering.html_builder import _generate_base_css
 from trellum.rendering.js_runtime import generate_js_runtime
@@ -92,7 +92,8 @@ def browser_page():
 
     pw = sync_playwright().start()
     browser = pw.chromium.launch(headless=True)
-    page = browser.new_page()
+    context = browser.new_context()
+    page = context.new_page()
 
     js_errors = []
     page.on("pageerror", lambda e: js_errors.append(str(e)))
@@ -102,9 +103,30 @@ def browser_page():
 
     yield page
 
+    context.close()
     browser.close()
     pw.stop()
     server.shutdown()
+
+
+@pytest.fixture
+def capture_page(browser_page):
+    """Capture tests get a fresh document so browser globals cannot leak."""
+    page = browser_page.context.new_page()
+    page.goto(browser_page.url.split("?", 1)[0].split("#", 1)[0], wait_until="networkidle")
+    page.evaluate("window._reportData = {components: {}, _freshness: {generated_at: null}};")
+    yield page
+    page.close()
+
+
+@pytest.fixture
+def live_query_page(browser_page):
+    """Fresh runtime with live-query host flags set before runtime startup."""
+    page = browser_page.context.new_page()
+    page.add_init_script("window._fwHasHost = true; window._fwLiveQueryUrl = '/live-query';")
+    page.goto(browser_page.url.split("?", 1)[0].split("#", 1)[0], wait_until="networkidle")
+    yield page
+    page.close()
 
 
 # ── Formatter tests ──────────────────────────────────────────
@@ -1148,6 +1170,8 @@ class TestFwApiSnapshot:
         "aggregate",
         "annoVisible",
         "buildAnnotations",
+        "captureElementForAnalysis",
+        "captureForAnalysis",
         "chartInstances",
         "currentScope",
         "data",
@@ -1180,6 +1204,303 @@ class TestFwApiSnapshot:
             f"  Removed: {sorted(set(self.EXPECTED_KEYS) - set(actual))}\n"
             f"Update EXPECTED_KEYS in test_js_runtime.py if intentional."
         )
+
+
+class TestAnalysisCapture:
+    def test_section_capture_ignores_hidden_charts_and_their_filters(self, capture_page):
+        result = capture_page.evaluate("""async () => {
+            document.body.innerHTML = '<section class="fw-section" id="visible-section">' +
+                '<h2>Visible</h2><canvas id="visible-chart" data-fw-kind="LineChart"></canvas>' +
+                '<div style="display:none"><canvas id="hidden-chart" data-fw-kind="LineChart"></canvas></div>' +
+                '</section>';
+            var components = {
+                'visible-chart': {type: 'chart', dataset_id: 'visible_ds'},
+                'hidden-chart': {type: 'chart', dataset_id: 'hidden_ds'}
+            };
+            window._reportData = {defaultScope: 'main', components: components,
+                _freshness: {generated_at: '2026-10-07T09:00:00Z'}};
+            window._currentScope = 'main'; window._scopeCache = {main: components};
+            fw.filterEngine.initColumnar('visible_ds', [{country: 'NL'}, {country: 'US'}]);
+            fw.filterEngine.setFilter('visible_ds', 'country-filter', 'country', 'equals', 'NL');
+            fw.filterEngine.initColumnar('hidden_ds', [{channel: 'web'}, {channel: 'store'}]);
+            fw.filterEngine.setFilter('hidden_ds', 'channel-filter', 'channel', 'equals', 'web');
+            var visibleUpdates = 0, hiddenUpdates = 0;
+            window._chartInstances = {
+                'visible-chart': {stop() {}, update() {visibleUpdates++;}},
+                'hidden-chart': {stop() {}, update() {hiddenUpdates++;}}
+            };
+            window.html2canvas = () => Promise.resolve({toDataURL: () => 'data:image/png;base64,cGl4ZWw='});
+            URL.createObjectURL = blob => { window.__download = blob; return 'blob:test'; };
+            URL.revokeObjectURL = () => {};
+            HTMLAnchorElement.prototype.click = function() {};
+            var ok = await fw.captureElementForAnalysis(document.getElementById('visible-section'));
+            return {ok, visibleUpdates, hiddenUpdates,
+                payload: window.__download ? JSON.parse(await window.__download.text()) : null,
+                message: document.querySelector('.fw-analysis-error span')?.textContent || ''};
+        }""")
+        assert result["ok"] is True, result["message"]
+        assert result["visibleUpdates"] == 1
+        assert result["hiddenUpdates"] == 0
+        filters = result["payload"]["source"]["filters"]
+        assert filters["visible_ds"]["country-filter"]["value"] == "NL"
+        assert "hidden_ds" not in filters
+
+    def test_capture_payload_filters_and_sanitized_share_url(self, capture_page):
+        result = capture_page.evaluate("""async () => {
+            document.body.setAttribute('data-report-slug', 'sales-report');
+            document.body.innerHTML = '<div class="fw-header"><h1>Sales</h1></div>' +
+                '<div class="fw-section" id="sec-revenue" data-fw-section-title="Revenue">' +
+                '<h2>Revenue</h2>' +
+                '<div class="fw-chart-title">Revenue by country</div>' +
+                '<div class="fw-chart-container"><canvas id="sales-chart"></canvas>' +
+                '<button class="fw-chart-dl">CSV</button></div>' +
+                '<div id="table-1" data-fw-kind="DataTable"></div></div>';
+            window._reportData = {components: {"sales-chart": {dataset_id: 'sales_ds'},
+                "table-1": {dataset_id: 'summary_ds'}},
+                _freshness: {generated_at: '2026-10-07T09:00:00Z'}};
+            fw.filterEngine.initColumnar('sales_ds', [{country: 'NL'}, {country: 'US'}]);
+            fw.filterEngine.setFilter('sales_ds', 'country-filter', 'country', 'equals', 'NL');
+            fw.filterEngine.initColumnar('summary_ds', [{channel: 'web'}]);
+            fw.filterEngine.setFilter('summary_ds', 'channel-filter', 'channel', 'equals', 'web');
+            history.replaceState({}, '', '/share/secret-token?private=1#top');
+            window.__download = null;
+            URL.createObjectURL = blob => { window.__download = blob; return 'blob:test'; };
+            URL.revokeObjectURL = () => {};
+            HTMLAnchorElement.prototype.click = function() { window.__filename = this.download; };
+            window.html2canvas = target => Promise.resolve({toDataURL: () =>
+                'data:image/png;base64,iVBORw0KGgo='});
+            var ok = await fw.captureElementForAnalysis(document.querySelector('.fw-section'));
+            var payload = window.__download ? JSON.parse(await window.__download.text()) : null;
+            return {ok, payload, message: document.querySelector('.fw-analysis-error span')?.textContent || '',
+                filename: window.__filename,
+                targetTitle: document.querySelector('.fw-chart-title').textContent,
+                dlDisplay: document.querySelector('.fw-chart-dl').style.display};
+        }""")
+        assert result["ok"] is True, result["message"]
+        payload = result["payload"]
+        assert payload["format"] == "trellum-analysis-capture"
+        assert payload["version"] == 1
+        assert set(payload) == {"format", "version", "image", "source"}
+        assert set(payload["source"]) == {"report_slug", "report_name", "url", "component_id",
+            "component_title", "captured_at", "source_built_at", "filters"}
+        assert payload["image"] == {"mime_type": "image/png", "data_base64": "iVBORw0KGgo="}
+        assert payload["source"]["report_slug"] == "sales-report"
+        assert payload["source"]["report_name"] == "Sales"
+        assert payload["source"]["url"] == ""
+        assert "/share/" not in payload["source"]["url"]
+        assert payload["source"]["component_id"] == "sec-revenue"
+        assert payload["source"]["component_title"] == "Revenue"
+        assert payload["source"]["source_built_at"] == "2026-10-07T09:00:00Z"
+        assert payload["source"]["filters"]["sales_ds"]["country-filter"]["value"] == "NL"
+        assert payload["source"]["filters"]["summary_ds"]["channel-filter"]["value"] == "web"
+        assert result["filename"] == "sales-report-sec-revenue.trellum-capture.json"
+        assert result["dlDisplay"] == ""
+
+    def test_multiscope_capture_uses_active_components_and_scoped_parent_filters(self, capture_page):
+        result = capture_page.evaluate("""async () => {
+            document.body.innerHTML = '<div class="fw-section" id="monthly">' +
+                '<canvas id="monthly-chart"></canvas></div>';
+            var defaultComponents = {"daily-chart": {dataset_id: 'daily_ds'}};
+            var activeComponents = {
+                "monthly-chart": {dataset_id: 'child_ds'},
+                "scoped-source": {type: 'scoped_data_source', dataset_id: 'child_ds', parent_id: 'parent_ds'}
+            };
+            window._reportData = {defaultScope: 'daily', components: defaultComponents,
+                _freshness: {generated_at: '2026-10-07T09:00:00Z'}};
+            window._currentScope = 'monthly';
+            window._scopeCache = {daily: defaultComponents, monthly: activeComponents};
+            fw.filterEngine.initColumnar('parent_ds', [{country: 'NL'}, {country: 'US'}]);
+            fw.filterEngine.setFilter('parent_ds', 'parent-country', 'country', 'equals', 'NL');
+            fw.filterEngine.addScopedChild('child_ds', 'parent_ds');
+            fw.filterEngine.setFilter('child_ds', 'local-channel', 'channel', 'equals', 'web');
+            URL.createObjectURL = blob => { window.__download = blob; return 'blob:test'; };
+            URL.revokeObjectURL = () => {};
+            HTMLAnchorElement.prototype.click = function() {};
+            window.html2canvas = () => Promise.resolve({toDataURL: () =>
+                'data:image/png;base64,cGl4ZWw='});
+            var ok = await fw.captureElementForAnalysis(document.getElementById('monthly'));
+            return {ok, payload: window.__download ? JSON.parse(await window.__download.text()) : null,
+                message: document.querySelector('.fw-analysis-error span')?.textContent || ''};
+        }""")
+        assert result["ok"] is True, result["message"]
+        filters = result["payload"]["source"]["filters"]
+        assert filters["parent_ds"]["parent-country"]["value"] == "NL"
+        assert filters["child_ds"]["local-channel"]["value"] == "web"
+        assert "daily_ds" not in filters
+
+    def test_filter_change_during_async_capture_discards_image(self, capture_page):
+        result = capture_page.evaluate("""async () => {
+            document.body.innerHTML = '<div class="fw-section" id="section">' +
+                '<canvas id="chart"></canvas></div>';
+            window._reportData = {defaultScope: 'main', components: {chart: {dataset_id: 'sales_ds'}},
+                _freshness: {generated_at: '2026-10-07T09:00:00Z'}};
+            window._currentScope = 'main';
+            window._scopeCache = {main: window._reportData.components};
+            fw.filterEngine.initColumnar('sales_ds', [{country: 'NL'}, {country: 'US'}]);
+            fw.filterEngine.setFilter('sales_ds', 'country-filter', 'country', 'equals', 'NL');
+            var started;
+            var start = new Promise(resolve => { started = resolve; });
+            var finish;
+            window.html2canvas = () => {
+                started();
+                return new Promise(resolve => { finish = resolve; });
+            };
+            window.__downloads = 0;
+            URL.createObjectURL = () => { window.__downloads++; return 'blob:test'; };
+            URL.revokeObjectURL = () => {};
+            HTMLAnchorElement.prototype.click = function() {};
+            var capture = fw.captureElementForAnalysis(document.getElementById('section'));
+            await start;
+            fw.filterEngine.setFilter('sales_ds', 'country-filter', 'country', 'equals', 'US');
+            finish({toDataURL: () => 'data:image/png;base64,cGl4ZWw='});
+            var ok = await capture;
+            return {ok, downloads: window.__downloads,
+                message: document.querySelector('.fw-analysis-error span')?.textContent || ''};
+        }""")
+        assert result["ok"] is False
+        assert result["downloads"] == 0
+        assert "changed while capture was rendering" in result["message"]
+
+    def test_pending_live_query_debounce_and_failure_state(self, live_query_page):
+        result = live_query_page.evaluate("""async () => {
+            window.fetch = () => Promise.reject(new Error('offline'));
+            window._fwLiveQuery.registerDataset('live_ds', {
+                query_id: 'query', params: [{name: 'country', type: 'str'}],
+                bindings: [{column: 'country', filter_type: 'dropdown', param: 'country'}],
+                defaults: {country: 'all'}
+            });
+            fw.filterEngine.setFilter('live_ds', 'country-filter', 'country', 'equals', 'NL');
+            var duringDebounce = window._fwLiveQuery.getCaptureStatus();
+            document.body.innerHTML = '<div class="fw-section" id="live-section">' +
+                '<canvas id="live-chart"></canvas></div>';
+            window.html2canvas = () => { throw new Error('must not render while query is pending'); };
+            var blockedCapture = await fw.captureElementForAnalysis(document.getElementById('live-section'));
+            var captureMessage = document.querySelector('.fw-analysis-error span')?.textContent || '';
+            await new Promise(resolve => setTimeout(resolve, 350));
+            return {duringDebounce, blockedCapture, captureMessage,
+                afterFailure: window._fwLiveQuery.getCaptureStatus()};
+        }""")
+        assert result["duringDebounce"]["pending"] is True
+        assert result["blockedCapture"] is False
+        assert "live data query is still running" in result["captureMessage"]
+        assert result["afterFailure"]["pending"] is False
+        assert result["afterFailure"]["error"] == "offline"
+
+    def test_lazy_visual_component_fails_with_actionable_readiness_message(self, capture_page):
+        result = capture_page.evaluate("""async () => {
+            document.body.innerHTML = '<div class="fw-section" id="lazy-section">' +
+                '<canvas id="lazy-chart" data-fw-kind="LineChart"></canvas></div>';
+            window._reportData = {defaultScope: 'main', components: {
+                'lazy-chart': {type: 'chart', dataset_id: 'sales_ds'}
+            }, _freshness: {generated_at: '2026-10-07T09:00:00Z'}};
+            window._currentScope = 'main';
+            window._scopeCache = {main: window._reportData.components};
+            fw.filterEngine.initColumnar('sales_ds', [{country: 'NL'}]);
+            window.html2canvas = () => { throw new Error('blank placeholder captured'); };
+            var ok = await fw.captureElementForAnalysis(document.getElementById('lazy-section'));
+            return {ok, message: document.querySelector('.fw-analysis-error span')?.textContent || ''};
+        }""")
+        assert result["ok"] is False
+        assert "has not finished rendering" in result["message"]
+
+    def test_cancel_restores_selection_and_pending_query_blocks_capture(self, capture_page):
+        result = capture_page.evaluate("""async () => {
+            document.body.innerHTML = '<div class="fw-section" id="select-me" tabindex="3">' +
+            '<h2>Section</h2><canvas id="chart"></canvas></div>' +
+                '<div class="fw-live-status" data-live-state="loading">updating</div>';
+            var loading = document.createElement('div');
+            loading.id = 'fwLoading'; loading.style.cssText = 'position:fixed;display:block';
+            document.body.appendChild(loading);
+            var loadResult = await fw.captureForAnalysis();
+            var loadMessage = document.querySelector('.fw-analysis-error span')?.textContent || '';
+            loading.remove();
+            var stateSeen = !!document.querySelector('[data-live-state="loading"]');
+            var pending = await fw.captureForAnalysis();
+            var selectionStarted = !!document.querySelector('.fw-analysis-selectable');
+            var error = document.querySelector('.fw-analysis-error span')?.textContent || '';
+            document.querySelector('.fw-live-status').remove();
+            var done = fw.captureForAnalysis();
+            document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+            var cancelled = await done;
+            return {loadResult, loadMessage, pending, error, cancelled, stateSeen, selectionStarted,
+                tabIndex: document.getElementById('select-me').getAttribute('tabindex'),
+                selectable: document.querySelector('.fw-analysis-selectable'),
+                notice: document.querySelector('[role="status"]')?.textContent || '',
+                ui: document.querySelector('.fw-analysis-capture-ui')};
+        }""")
+        assert result["loadResult"] is False
+        assert result["loadMessage"] == "The report is still loading."
+        assert result["pending"] is False
+        assert result["stateSeen"] is True
+        assert result["selectionStarted"] is False
+        assert "live data query is still running" in (result["error"] or result["notice"])
+        assert result["cancelled"] is False
+        assert result["tabIndex"] == "3"
+        assert result["selectable"] is None
+        assert result["ui"] is None
+
+    def test_keyboard_selection_captures_the_focused_target(self, capture_page):
+        result = capture_page.evaluate("""async () => {
+            document.body.innerHTML = '<div class="fw-section" id="keyboard-section" tabindex="4">' +
+                '<h2>Keyboard target</h2></div>';
+            window.__download = null;
+            URL.createObjectURL = blob => { window.__download = blob; return 'blob:test'; };
+            URL.revokeObjectURL = () => {};
+            HTMLAnchorElement.prototype.click = function() {};
+            window.html2canvas = target => {
+                window.__capturedTarget = target.id;
+                return Promise.resolve({toDataURL: () => 'data:image/png;base64,cGl4ZWw='});
+            };
+            var capture = fw.captureForAnalysis();
+            document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+            var ok = await capture;
+            return {ok, target: window.__capturedTarget,
+                tabIndex: document.getElementById('keyboard-section').getAttribute('tabindex'),
+                controls: document.querySelector('.fw-analysis-selectable,.fw-analysis-capture-ui button'),
+                payload: JSON.parse(await window.__download.text())};
+        }""")
+        assert result["ok"] is True
+        assert result["target"] == "keyboard-section"
+        assert result["tabIndex"] == "4"
+        assert result["controls"] is None
+        assert result["payload"]["image"]["data_base64"] == "cGl4ZWw="
+
+    def test_capture_failure_is_visible_and_report_remains_interactive(self, capture_page):
+        result = capture_page.evaluate("""async () => {
+            document.body.innerHTML = '<div class="fw-section" id="section"><h2>Revenue</h2></div>';
+            window.html2canvas = () => Promise.reject(new Error('render broke'));
+            var capture = fw.captureForAnalysis();
+            document.getElementById('section').dispatchEvent(new MouseEvent('click', {bubbles: true}));
+            var ok = await capture;
+            return {ok, message: document.querySelector('.fw-analysis-error span')?.textContent || '',
+                target: document.getElementById('section').isConnected,
+                selectable: document.querySelector('.fw-analysis-selectable'),
+                controls: document.querySelector('.fw-analysis-capture-ui:not(.fw-analysis-error)'),
+                tabIndex: document.getElementById('section').getAttribute('tabindex')};
+        }""")
+        assert result == {"ok": False, "message": "render broke", "target": True,
+                          "selectable": None, "controls": None, "tabIndex": None}
+
+    def test_header_exposes_capture_action_only_for_reports(self, capture_page):
+        capture_page.evaluate("""() => {
+            document.body.setAttribute('data-content-kind', 'analysis');
+            document.body.innerHTML = '<div class="fw-section"></div>' +
+                '<button id="fwExportBtn"></button><div id="fwExportMenu">' +
+                '<button data-export="analysis">Capture</button></div>';
+            window.__captureCalls = 0;
+            window.fw.captureForAnalysis = () => { window.__captureCalls++; };
+        }""")
+        capture_page.add_script_tag(content=load_js("components/header.js"))
+        result = capture_page.evaluate("""() => {
+            document.dispatchEvent(new Event('DOMContentLoaded'));
+            var analysisItem = document.querySelector('[data-export="analysis"]');
+            var hiddenForAnalysis = analysisItem.hidden;
+            document.body.setAttribute('data-content-kind', 'report');
+            analysisItem.hidden = false;
+            analysisItem.click();
+            return {hiddenForAnalysis, calls: window.__captureCalls};
+        }""")
+        assert result == {"hiddenForAnalysis": True, "calls": 1}
 
 
 class TestBackwardCompatAliases:

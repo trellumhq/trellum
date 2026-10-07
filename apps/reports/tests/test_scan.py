@@ -9,6 +9,18 @@ pytestmark = pytest.mark.django_db
 
 
 class TestSync:
+    def test_generatorless_analysis_discovered_and_removed(self, studio_tree, write_report):
+        directory = write_report("article", kind="analysis")
+        (directory / "generator.py").unlink()
+        (directory / "content.md").write_text("# Analysis\n\nA published finding.", encoding="utf-8")
+        assert sync_studio_registry(studio_tree) == 1
+        row = Report.objects.get(studio=studio_tree, slug="article")
+        assert row.kind == "analysis"
+        (directory / "report.yaml").unlink()
+        assert sync_studio_registry(studio_tree) == 0
+        row.refresh_from_db()
+        assert row.present_in_scan is False
+
     def test_scan_upserts_rows(self, studio_tree, write_report):
         write_report(
             "alpha",
@@ -147,7 +159,7 @@ class TestPayload:
         assert set(payload) == {"reports", "source_states", "generated_at"}
         entry = payload["reports"][0]
         expected_keys = {
-            "id", "slug", "name", "description", "category", "studio", "tags",
+            "id", "slug", "kind", "name", "description", "category", "studio", "tags",
             "schedule", "last_run", "last_status", "last_error",
             "has_output", "html_entry", "validation", "details", "framework_version",
             # View analytics (internal planning#4): apps.reports.scan._view_stats_for.

@@ -1,7 +1,7 @@
 /* Server-rendered context injected by templates/portal/index.html:
    {org, studio, prefix, user:{email,name,role,is_org_admin}, production,
-    initial_view} — initial_view is "ops" on the Operations page
-   (/s/<org>/<studio>/operations) and "reports" on the dashboard. */
+    initial_view} — initial_view is "ops" on Operations, "analyses" on
+   Analyses, and "reports" on the dashboard. */
 var P = window.PORTAL_CTX;
 
 /* Operations is a PAGE (studio tab bar), not a client-side view mode: the
@@ -9,6 +9,7 @@ var P = window.PORTAL_CTX;
    apart. On the ops page the Cards/List toggle never renders and viewMode
    is pinned; navigating between the two surfaces is a normal page load. */
 var IS_OPS_PAGE = !!(P && P.initial_view === 'ops');
+var IS_ANALYSES_PAGE = !!(P && P.initial_view === 'analyses');
 
 // Must be `let` -- pollReportRun reassigns this after a report run so
 // the freshly-fetched registry (with new validation data) replaces the
@@ -265,7 +266,9 @@ function escAttr(s) { return esc(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;
    a card among the hand-written ones. Operations keeps using `reports`
    directly: it still has to be runnable, schedulable and diagnosable there. */
 function dashboardReports() {
-    return reports.filter(function(r) { return !r.metrics_report; });
+    return reports.filter(function(r) {
+        return !r.metrics_report && (r.kind || 'report') === (IS_ANALYSES_PAGE ? 'analysis' : 'report');
+    });
 }
 
 function getCategories() {
@@ -361,7 +364,7 @@ function renderSummary() {
             + '<option value="category"' + (sortCol === 'category' ? ' selected' : '') + '>Category</option>'
             + '<option value="studio"' + (sortCol === 'studio' ? ' selected' : '') + '>Studio</option>'
             + '<option value="status"' + (sortCol === 'status' ? ' selected' : '') + '>Status</option>'
-            + '<option value="schedule"' + (sortCol === 'schedule' ? ' selected' : '') + '>Schedule</option>'
+            + (IS_ANALYSES_PAGE ? '' : '<option value="schedule"' + (sortCol === 'schedule' ? ' selected' : '') + '>Schedule</option>')
             + '<option value="last_run"' + (sortCol === 'last_run' ? ' selected' : '') + '>Last updated</option>'
             + '</select></label>'
             + '<button class="list-sort-direction" id="listSortDirection" aria-label="Reverse sort order" title="Reverse sort order">'
@@ -628,16 +631,16 @@ function listTableHtml(groups) {
     var html = '<div class="list-view"><table class="list-table"><thead><tr>';
     html += '<th class="list-fav" aria-label="Favorite"></th>';
     html += '<th class="list-email" aria-label="Deliveries"></th>';
-    html += thHtml('name', 'Report');
+    html += thHtml('name', IS_ANALYSES_PAGE ? 'Analysis' : 'Report');
     html += thHtml('category', 'Category');
     html += thHtml('studio', 'Studio');
     html += thHtml('status', 'Status');
-    html += thHtml('schedule', 'Schedule');
+    if (!IS_ANALYSES_PAGE) html += thHtml('schedule', 'Schedule');
     html += thHtml('last_run', 'Last Updated');
     html += '</tr></thead><tbody>';
     groups.forEach(function(group) {
         if (group.kind !== 'plain') {
-            html += '<tr class="list-group-row"><td class="list-group-cell" colspan="8">'
+            html += '<tr class="list-group-row"><td class="list-group-cell" colspan="' + (IS_ANALYSES_PAGE ? '7' : '8') + '">'
                 + catalogGroupHeaderHtml(group) + '</td></tr>';
         }
         group.items.forEach(function(r) {
@@ -654,7 +657,7 @@ function listTableHtml(groups) {
         html += '<tr' + cls + rowTarget + ' data-slug="' + r.slug + '">';
         html += '<td class="list-fav" data-label="Favorite">' + favBtnHtml(r.slug) + '</td>';
         html += '<td class="list-email" data-label="Deliveries">' + emailBtnHtml(r.slug) + '</td>';
-        html += '<td class="list-report" data-label="Report"><div class="list-name">'
+        html += '<td class="list-report" data-label="' + (IS_ANALYSES_PAGE ? 'Analysis' : 'Report') + '"><div class="list-name">'
             + (disabled ? '<span class="list-title">' + esc(r.name) + '</span>'
                 : '<a class="list-title" href="' + escAttr(href) + '" data-console-report-title="'
                     + escAttr(r.name) + '">' + esc(r.name) + '</a>')
@@ -663,7 +666,7 @@ function listTableHtml(groups) {
         html += '<td data-label="Category">' + esc(r.category || '') + '</td>';
         html += '<td data-label="Studio">' + (r.studio ? '<span class="studio-badge">' + r.studio.toUpperCase() + '</span>' : '—') + '</td>';
         html += '<td data-label="Status"><span class="list-status ' + dot.cls + '"' + (dot.title ? ' title="' + escAttr(dot.title) + '"' : '') + '></span><span class="list-status-label">' + esc(dot.label) + '</span></td>';
-        html += '<td data-label="Schedule">' + cronLabel(r.schedule) + '</td>';
+        if (!IS_ANALYSES_PAGE) html += '<td data-label="Schedule">' + cronLabel(r.schedule) + '</td>';
         html += '<td data-label="Last updated">' + (r.last_run ? relativeTime(r.last_run) : '<span style="color:var(--text3)">Never</span>') + '</td>';
         html += '</tr>';
         });
@@ -731,11 +734,11 @@ function catTabHtml(cat, count) {
 }
 
 function categorySelectHtml(cats, favCount, recentCount) {
-    var options = [['all', 'All', reports.length]];
+    var options = [['all', 'All', dashboardReports().length]];
     if (favCount > 0) options.push(['_favorites', 'Favorites', favCount]);
     if (recentCount > 0) options.push(['_recent', 'Recent', recentCount]);
     cats.forEach(function(cat) { options.push([cat[0], cat[0], cat[1]]); });
-    return '<label class="category-select"><span>Category</span><select aria-label="Report category">'
+    return '<label class="category-select"><span>Category</span><select aria-label="' + (IS_ANALYSES_PAGE ? 'Analysis' : 'Report') + ' category">'
         + options.map(function(option) {
             return '<option value="' + escAttr(option[0]) + '"'
                 + (activeFolder === option[0] ? ' selected' : '') + '>'
@@ -746,7 +749,7 @@ function categorySelectHtml(cats, favCount, recentCount) {
 function renderTabs() {
     const cats = Array.from(getCategories());
     const tabsEl = document.getElementById('folderTabs');
-    const favCount = reports.filter(function(r) { return isFav(r.slug); }).length;
+    const favCount = dashboardReports().filter(function(r) { return isFav(r.slug); }).length;
     const recentSlugs = getRecent();
     const recentCount = recentSlugs.filter(function(s) { return dashboardReports().some(function(r) { return r.slug === s; }); }).length;
 
@@ -870,6 +873,11 @@ function filterMoreMenu(tabsEl, query) {
 
 /* ── Empty states ── */
 function emptyStateHtml(isSearching) {
+    var contentLabel = IS_ANALYSES_PAGE ? 'analyses' : 'reports';
+    if (IS_ANALYSES_PAGE && !isSearching && dashboardReports().length === 0) {
+        return '<div class="empty-state">' + SEARCH_SVG
+            + '<p>No analyses yet. Publish an article from your analytics repository to share a finding here.</p></div>';
+    }
     /* First run: the studio has no reports at all. Point an admin at the one
        action that fixes it — connecting the studio's reports repository. */
     if (reports.length === 0) {
@@ -884,7 +892,7 @@ function emptyStateHtml(isSearching) {
         return html + '</div>';
     }
     return '<div class="empty-state">' + SEARCH_SVG
-        + '<p>' + (isSearching ? 'No reports match your search' : 'No reports in this category') + '</p>'
+        + '<p>No ' + contentLabel + (isSearching ? ' match your search' : ' in this category') + '</p>'
         + '</div>';
 }
 
@@ -1859,7 +1867,7 @@ function _buildOpsHTML(status, reportList) {
         var isRunning = !!running[r.slug], isQueued = queueSlugs.indexOf(r.slug) >= 0;
         var expanded = !!_opsExpandedSlugs[r.slug];
         html += '<tr' + (expanded ? ' class="expanded"' : '') + ' data-ops-row="' + r.slug + '">';
-        html += '<td class="ops-report-cell" data-label="Report"><div class="ops-report-name">' + esc(r.name) + '</div><div class="ops-report-slug">' + esc(r.slug) + '</div></td>';
+        html += '<td class="ops-report-cell" data-label="Report"><div class="ops-report-name">' + esc(r.name) + '</div><div class="ops-report-slug">' + (r.kind === 'analysis' ? 'Analysis' : 'Report') + ' · ' + esc(r.slug) + '</div></td>';
         html += '<td data-label="Data">' + _opsDataCell(r) + '</td>';
         html += '<td data-label="Schedule">' + _opsCronCell(r, status) + '</td>';
         html += '<td data-label="Status">' + _opsStatusCell(r, running, isQueued) + '</td>';

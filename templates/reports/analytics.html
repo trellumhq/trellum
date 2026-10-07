@@ -68,7 +68,7 @@ buttons, tabular-nums numbers, mono last-viewed, .ui-empty.{% endcomment %}
           data-last-viewed="{% if row.last_viewed %}{{ row.last_viewed|date:'c' }}{% endif %}">
         <td data-label="Report">
           <div class="analytics-report-cell">
-            <a href="/s/{{ org.slug }}/{{ studio.slug }}/r/{{ row.report.slug }}/?display=console">{{ row.report.name|default:row.report.slug }}</a>
+            <a href="/s/{{ org.slug }}/{{ studio.slug }}/r/{{ row.report.slug }}/?display=console">{{ row.report.name|default:row.report.slug }}</a> <span class="muted">· {{ row.report.get_kind_display }}</span>
             {% if row.stale %}<span class="ui-badge info" title="Built recently, but no one has viewed it yet"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8.2 4.2A6.8 6.8 0 0110 4c4 0 7 4 7 6a7.9 7.9 0 01-1.6 2.3M5 5.7C3.1 7 2 8.8 2 10c0 2 3 6 8 6a7 7 0 003-.7"/><path d="M8.6 8.6a2 2 0 002.8 2.8"/><path d="M3 3l14 14"/></svg>unseen</span>{% endif %}
           </div>
         </td>

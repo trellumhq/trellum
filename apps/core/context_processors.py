@@ -28,6 +28,7 @@ CONSOLE_PAGE_TITLES = {
     "org-security": "Security",
     "org-audit": "Audit log",
     "studio-dashboard": "Reports",
+    "studio-analyses": "Analyses",
     "studio-operations": "Operations",
     "studio-analytics": "Report Analytics",
     "studio-metrics": "Metrics",

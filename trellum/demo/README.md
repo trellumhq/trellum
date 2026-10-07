@@ -73,18 +73,20 @@ Extra arguments pass straight through to the framework:
 
 Missing fixtures are generated automatically the first time you need them.
 
-## Two businesses, nine reports -- and one generated
+## Two businesses, ten reports, and one analysis
 
 The demo is organised the way the product is meant to be used: **per business,
 around the questions that business asks** — not as a catalogue of chart types.
 Few reports, each one big, because a feature reads better as a section of a
-real page than as a page of its own — nine cards is what a visitor will
-actually browse, and every one of them answers a different question. The
-tenth, `metrics`, is not written at all: `python -m trellum metrics --report`
-generates it from `metrics.yaml`, one KPI and trend per bound metric. Two
-fictional companies share the warehouse, each with its own `studio` and its
-own annotated events. Signature charts state what they demonstrate in a
-`· demo:` suffix — this is a demo, and the feature is the content.
+real page than as a page of its own — visitors can browse ten report cards.
+Every report answers a different question. The `metrics` report is generated
+rather than hand-written: `python -m trellum metrics
+--report` builds it from `metrics.yaml`, with one KPI and trend per bound
+metric. A separate Northwind analysis turns the checkout question into a
+written finding with evidence. Two fictional companies share the warehouse,
+each with its own `studio` and its own annotated events. Signature charts state
+what they demonstrate in a `· demo:` suffix — this is a demo, and the feature
+is the content.
 
 ### Nova Play — a mobile-games publisher
 
@@ -104,6 +106,29 @@ own annotated events. Signature charts state what they demonstrate in a
 |---|---|
 | `store-health` | The Monday-morning page: revenue, margin, mix, and the restock decision ranked by *kept* margin — the sale that gave its lift away and the returns lag trap are both in here |
 | `cart-funnel` | Where does the money leak, and for whom? The animated leak (pure canvas), the funnel, per-channel conversion — and **The Fix We Tried**: the blue-vs-green checkout button test the leak provoked, the smallest test in the warehouse, not guaranteed to win |
+
+### A fixed-evidence analysis
+
+`reports/checkout-findings` is a written Product analysis titled **Where
+Northwind loses buyers**. It answers the cart-funnel question with findings,
+captured evidence, assumptions, and a recommendation. Its September 2026
+reporting period is synthetic and fixed in the article; capture and build
+timestamps describe when artifacts were made, not the data period. The two
+PNG captures and their provenance files are committed under `evidence/`.
+
+The article has no warehouse dependency and can be rebuilt with the ordinary
+runner:
+
+```powershell
+python -m trellum.run reports/checkout-findings --no-serve
+```
+
+Scaffold another article with `python -m trellum analysis new <slug>`, import a
+capture with `python -m trellum analysis import reports/<slug> <capture-file>
+--name <evidence-name>`, then read `python -m trellum guide analysis`. In a
+connected portal, published articles appear under **Analyses** in the studio.
+See the [complete customer guide](https://trellum.dev/docs/latest/workflow/published-analyses/)
+for capture, review, sharing, and publication details.
 
 ## The metrics catalog
 

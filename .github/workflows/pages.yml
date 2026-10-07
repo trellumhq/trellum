@@ -79,7 +79,7 @@ jobs:
         working-directory: trellum/demo
         run: |
           python -m trellum.reporting.gallery output \
-            --title "Trellum demo reports" \
+            --title "Trellum demo reports and analyses" \
             --subtitle "Built from ${{ steps.revision.outputs.ref }}" \
             --nojekyll
           touch output/.nojekyll
@@ -108,9 +108,19 @@ jobs:
             exit 1
           fi
 
-          report_count="$(find . -mindepth 2 -maxdepth 2 -name index.html -not -path './_vendor/*' | wc -l)"
-          test "$report_count" -eq 10 || { echo "::error::expected 10 reports, found $report_count"; exit 1; }
-          echo "OK: $report_count reports, self-contained"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          kinds = {}
+          for meta_path in Path('.').glob('*/_meta.json'):
+              kind = json.loads(meta_path.read_text()).get('kind', 'report')
+              kinds[kind] = kinds.get(kind, 0) + 1
+          expected = {'report': 10, 'analysis': 1}
+          if kinds != expected:
+              raise SystemExit(f'expected {expected}, found {kinds}')
+          print('OK: 10 reports and 1 analysis, self-contained')
+          PY
 
       - name: Upload gallery artifact
         uses: actions/upload-artifact@v4

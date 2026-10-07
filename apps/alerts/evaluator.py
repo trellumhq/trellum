@@ -141,6 +141,9 @@ def _evaluate(rule: AlertRule, run: AlertRun, deliver: bool, now) -> None:
     from apps.datasources.status import report_blockers
 
     report = rule.report
+    if report.kind == "analysis":
+        run.status, run.error = AlertRun.STATUS_ERROR, "Analyses do not support alert rules."
+        return
     if rule.studio_id != report.studio_id or rule.org_id != report.studio.org_id:
         run.status = AlertRun.STATUS_ERROR
         run.error = "The rule's organization, studio and report do not match."
@@ -371,7 +374,8 @@ def _evaluate_after_build(report_id: int) -> None:
     close_old_connections()
     try:
         rules = AlertRule.objects.filter(
-            report_id=report_id, trigger=AlertRule.TRIGGER_AFTER_BUILD, enabled=True
+            report_id=report_id, trigger=AlertRule.TRIGGER_AFTER_BUILD, enabled=True,
+            report__kind="report",
         ).select_related("report", "studio", "org", "created_by")
         for rule in rules:
             evaluate(rule)

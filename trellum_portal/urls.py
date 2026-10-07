@@ -26,6 +26,7 @@ from apps.studios import views as studio_views
 # adapted portal.js keeps working.
 studio_patterns = [
     path("", report_views.dashboard, name="studio-dashboard"),
+    path("analyses", report_views.analyses, name="studio-analyses"),
     # The Operations tab (studio tab bar): the dashboard template booted with
     # the ops surface active. Old ?view=ops/?view=health deep links redirect
     # here from the dashboard view.

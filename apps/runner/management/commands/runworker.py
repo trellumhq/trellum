@@ -591,7 +591,7 @@ class _SchedulerManager:
         flush_broken_buffers()
 
         desired: dict[str, tuple[int, str, str]] = {}
-        rows = Report.objects.filter(present_in_scan=True, disabled=False).exclude(
+        rows = Report.objects.filter(present_in_scan=True, disabled=False, kind=Report.KIND_REPORT).exclude(
             schedule_cron=""
         )
         for r in rows:
@@ -608,7 +608,7 @@ class _SchedulerManager:
         # Schedule-triggered alert rules (apps.alerts): same cadence fields,
         # same trigger builder, a different job target.
         alert_rows = AlertRule.objects.filter(
-            enabled=True, trigger=AlertRule.TRIGGER_SCHEDULE
+            enabled=True, trigger=AlertRule.TRIGGER_SCHEDULE, report__kind=Report.KIND_REPORT
         ).select_related("report")
         for a in alert_rows:
             if a.report.present_in_scan and not a.report.disabled:
@@ -708,7 +708,7 @@ def _enqueue_scheduled(report_id: int) -> None:
     from apps.runner.services import enqueue
 
     report = (
-        Report.objects.filter(pk=report_id, present_in_scan=True, disabled=False)
+        Report.objects.filter(pk=report_id, present_in_scan=True, disabled=False, kind=Report.KIND_REPORT)
         .select_related("studio", "studio__org")
         .first()
     )
@@ -761,7 +761,8 @@ def _evaluate_alert(rule_id: int) -> None:
     try:
         rule = (
             AlertRule.objects.filter(
-                pk=rule_id, enabled=True, report__present_in_scan=True, report__disabled=False
+                pk=rule_id, enabled=True, report__present_in_scan=True, report__disabled=False,
+                report__kind="report",
             )
             .select_related("report", "studio", "org", "created_by")
             .first()

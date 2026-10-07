@@ -737,15 +737,15 @@ class AssistantToolbox:
             return "No reports matched."
 
         lines = [
-            "| Slug | Name | Category | Last run | Status | Link | Description |",
-            "| --- | --- | --- | --- | --- | --- | --- |",
+            "| Slug | Name | Kind | Category | Last run | Status | Link | Description |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- |",
         ]
         for r in sorted(reports, key=lambda r: (r.get("category") or "", r.get("slug") or "")):
             desc = (r.get("description") or "").replace("|", "\\|").replace("\n", " ")
             if len(desc) > 110:
                 desc = desc[:107] + "…"
             lines.append(
-                f"| {r.get('slug')} | {r.get('name')} | {r.get('category') or ''} "
+                f"| {r.get('slug')} | {r.get('name')} | {r.get('kind', 'report')} | {r.get('category') or ''} "
                 f"| {str(r.get('last_run') or '')[:16]} "
                 f"| {r.get('last_status') or 'not_run'} | {self.link(r.get('slug') or '')} | {desc} |"
             )

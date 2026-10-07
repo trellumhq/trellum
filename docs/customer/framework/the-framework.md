@@ -33,7 +33,8 @@ copy is only ever a copy that goes stale.
 
 The one thing worth knowing on this side, because it is our contract rather
 than the framework's: report discovery uses directories under `reports/` that
-contain `report.yaml` and `generator.py`. Other project files are not needed
+contain `report.yaml` and `generator.py`. Analysis articles use `kind: analysis`
+in `report.yaml` and `content.md` instead of a generator. Other project files are not needed
 to discover a report, though supported configuration such as data-source
 declarations is read when a report uses those features. See
 [The analytics repository](/docs/latest/workflow/analytics-repository/).

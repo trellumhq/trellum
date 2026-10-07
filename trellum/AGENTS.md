@@ -15,7 +15,7 @@ trellum validate <dir>     the current validation state of a built report
 
 `trellum guide` topics: `answer`, `queries`, `format`, `generator`,
 `components`, `metrics`, `filters`, `live-queries`, `rawhtml`, `validation`,
-`report-yaml`, `themes`, `review`, `portal`.
+`report-yaml`, `themes`, `review`, `portal`, `analysis`.
 
 **Why this shape.** Your whole context is re-read on every API round-trip, so a
 large always-loaded reference is paid for dozens of times per task. A command is
@@ -47,6 +47,7 @@ useful.
 | Goal | Where it goes |
 |---|---|
 | Recurring, interactive report — served standalone, on a schedule, or embedded in another application | `reports/{slug}/` (the framework) |
+| Publish a written finding with fixed evidence | `trellum analysis new <slug>`; Markdown in `reports/{slug}/content.md`, `kind: analysis` in `report.yaml`. See `trellum guide analysis` |
 | A number or an answer — "what was X yesterday", a one-off check, quick exploration | `trellum query "SELECT ..."` or `from trellum import query` in Python, against the configured source by name. No report. See `trellum guide answer` |
 | Unsure | Answer first. Promote to a report when it needs a schedule, more than one reader, a consequential number that should be reviewed, or the same question comes back a third time |
 
@@ -83,11 +84,14 @@ When you do serve, two things are not guessable and both have cost real time:
 <!-- topic: answer -->
 ## Answering a question without a report
 
-A user's ask has two shapes, and they are routed differently. **A number or
+A user's ask has different shapes. **A number or
 an answer** ("what was revenue yesterday?", "how many players churned in
 June?") wants a reply, not a build: no `reports/<slug>/`, no generator, no
 validator. **A report** wants a schedule, an audience beyond the asker, or
-interactive filters — that is the framework proper. **Unsure? Answer first.**
+interactive filters — that is the framework proper. **An analysis article**
+preserves a written explanation and fixed captured evidence; use
+`trellum guide analysis` rather than scaffolding a Python generator.
+**Unsure? Answer first.**
 An answer is one call; a report is a session.
 
 How to answer:

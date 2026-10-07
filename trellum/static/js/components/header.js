@@ -3,6 +3,20 @@ document.addEventListener('DOMContentLoaded', function(){
   var menu = document.getElementById('fwExportMenu');
   if (!btn || !menu) return;
 
+  var analysisItem = menu.querySelector('[data-export="analysis"]');
+  if (analysisItem) {
+    var contentKind = document.body.getAttribute('data-content-kind') || 'report';
+    var hasTargets = Array.prototype.some.call(
+      document.querySelectorAll('.fw-section,.fw-chart-container'), function(el) {
+        var style = getComputedStyle(el);
+        return el.getClientRects().length > 0 && style.display !== 'none'
+          && style.visibility !== 'hidden' && style.visibility !== 'collapse'
+          && style.opacity !== '0';
+      });
+    if (contentKind === 'analysis' || !hasTargets)
+      analysisItem.hidden = true;
+  }
+
   btn.addEventListener('click', function(e) {
     e.stopPropagation();
     menu.classList.toggle('open');
@@ -16,6 +30,7 @@ document.addEventListener('DOMContentLoaded', function(){
       var fmt = b.getAttribute('data-export');
       if (fmt === 'png') fw.exportPNG();
       else if (fmt === 'pdf') fw.exportPDF();
+      else if (fmt === 'analysis') fw.captureForAnalysis();
     });
   });
 

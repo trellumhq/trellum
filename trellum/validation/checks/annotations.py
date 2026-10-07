@@ -24,7 +24,7 @@ def _check_annotations(
     from trellum.components.layout import RawHTML as RawHTMLComp
 
     anno_cfg = ctx.config.get("annotations", True)
-    if anno_cfg is False:
+    if anno_cfg is False or ctx.config.get("kind") == "analysis":
         return
 
     # ── Weekday highlight config sanity ────────────────────

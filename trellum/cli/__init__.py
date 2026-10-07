@@ -22,6 +22,7 @@ import argparse
 import sys
 
 from trellum.agent import agentdoc
+from trellum.cli.commands.analysis import add_analysis_commands
 from trellum.cli.commands.data import _cmd_data, _cmd_query
 from trellum.cli.commands.datasource import add_datasource_commands
 from trellum.cli.commands.doctor import _cmd_doctor
@@ -183,6 +184,7 @@ def main(argv: list[str] | None = None) -> int:
     sv.set_defaults(fn=_cmd_serve)
 
     add_datasource_commands(sub)
+    add_analysis_commands(sub)
     _add_review_commands(sub)
 
     args = ap.parse_args(argv)

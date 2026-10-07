@@ -31,6 +31,7 @@ class TestToggle:
                 "studio_slug": report_row.studio.slug,
                 "slug": "player-overview",
                 "name": "Player-Overview",
+                "kind": "report",
             }
         ]
 
