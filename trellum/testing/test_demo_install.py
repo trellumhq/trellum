@@ -1,6 +1,7 @@
 """Demo installs keep offline analyses and their evidence together."""
 
 import json
+import subprocess
 import sys
 
 from trellum.demo import __main__ as demo
@@ -49,11 +50,12 @@ def test_packaged_analysis_installs_and_builds_offline(tmp_path, monkeypatch):
         if path.is_file():
             assert (installed / path.relative_to(source)).read_bytes() == path.read_bytes()
 
-    monkeypatch.chdir(destination)
-    monkeypatch.setattr(
-        sys, "argv", ["trellum.run", "reports/checkout-findings", "--no-serve"]
+    # A real consumer starts a fresh CLI process, without another test's
+    # process-global project-root override.
+    monkeypatch.delenv("FW_PROJECT_ROOT", raising=False)
+    result = subprocess.run(
+        [sys.executable, "-m", "trellum.run", "reports/checkout-findings", "--no-serve"],
+        cwd=destination, capture_output=True, text=True, timeout=60,
     )
-    from trellum.runner import main
-
-    main()
+    assert result.returncode == 0, result.stdout + result.stderr
     assert (destination / "output" / "checkout-findings" / "index.html").is_file()
