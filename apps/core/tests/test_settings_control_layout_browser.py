@@ -200,7 +200,6 @@ def test_tall_member_menu_scrolls_without_closing_then_page_scroll_closes(browse
             }"""
         )
         menu = page.locator("td.ui-row-actions .shell-menu")
-        details = page.locator("td.ui-row-actions details")
         assert menu.evaluate("el => el.scrollHeight > el.clientHeight")
         menu.evaluate("el => { el.scrollTop = el.scrollHeight; }")
         page.wait_for_function(
