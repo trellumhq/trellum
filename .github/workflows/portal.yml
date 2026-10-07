@@ -307,6 +307,7 @@ jobs:
     # See docs/MIGRATIONS.md for the expand/contract rule this enforces.
     name: previous release survives the new schema
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:16-alpine
@@ -361,6 +362,11 @@ jobs:
           /tmp/previous-venv/bin/pip install \
             -r ../previous-release/requirements-django.txt \
             -r ../previous-release/requirements-test.txt
+
+      - name: Install the previous release's browsers
+        if: steps.prev.outputs.tag != ''
+        timeout-minutes: 8
+        run: |
           /tmp/previous-venv/bin/python -m playwright install --with-deps chromium webkit
 
       - name: Apply the previous release's migrations, then this branch's
