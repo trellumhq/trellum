@@ -14,6 +14,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   Add a Compose override, an installation compatibility check, and storage
   migration instructions. Unknown Docker API versions now stop worker startup.
 
+### Documentation
+
+- Add a clearer chooser for single-server deployment, build scaling, distributed
+  runners, and shared storage.
+- Document the local browser review loop and distinguish it from portal Q&A.
+
 ## [0.3.0] — 2026-10-07
 
 ### Fixed

@@ -1,5 +1,8 @@
 # Configuration reference
 
+Choose a deployment shape in [Choose how to run Trellum](/docs/latest/install/overview/),
+then use this page for its settings.
+
 Every setting, for when you need to go past the values the
 [install](/docs/latest/install/docker-compose/) asks for.
 

@@ -1,5 +1,8 @@
 # Try Trellum locally
 
+This is an evaluation path. For a production portal, start with [Choose how to
+run Trellum](/docs/latest/install/overview/).
+
 Trellum has two ways to try it. The Python framework builds a portable report
 without a server or portal. The repository also includes a Docker demo of the
 optional self-hosted portal. Both use generated sample data; neither needs a
@@ -41,6 +44,17 @@ Open the URL printed by `serve`. The report is in `output/store-health/`;
 the portable output can be copied to a static web host. To create a project
 without the examples, run `python -m trellum.init`, then create reports with
 `python -m trellum.new <name>`.
+
+### Make your first change from the report
+
+Ask your coding agent to start a live review, then select a chart or type a
+request in the local preview:
+
+> Start a live review of reports/store-health. Keep listening for my browser
+> feedback, update and rebuild the report, and reply in the review panel.
+
+Follow [Refine reports in your browser](../workflow/refine-reports.md) for the
+full loop.
 
 The demo command keeps files that already exist. In a Git project, merge these
 patterns into its `.gitignore` before committing generated files; if the file

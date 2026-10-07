@@ -17,16 +17,24 @@
       slug: workflow/ad-hoc-analysis
     - title: Working with AI agents
       slug: workflow/working-with-ai-agents
+    - title: Refine reports in your browser
+      slug: workflow/refine-reports
 
 - section: Install
   summary: Try the framework locally or deploy the self-hosted portal.
   pages:
     - title: Try it locally
       slug: install/try-it
-    - title: Overview
+    - title: Choose how to run Trellum
       slug: install/overview
-    - title: Docker Compose
+    - title: Deploy on one server
       slug: install/docker-compose
+    - title: Scale builds on one server
+      slug: install/scale-builds
+    - title: Run across multiple servers
+      slug: install/multiple-servers
+    - title: Storage
+      slug: install/storage
     - title: Report sandboxing
       slug: install/report-sandboxing
     - title: Configuration reference

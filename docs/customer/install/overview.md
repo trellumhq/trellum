@@ -1,25 +1,36 @@
-# Installation overview
+# Choose how to run Trellum
 
-{{BRAND}} can run on one VM with the portal, Postgres, and a data volume. A
-multi-host deployment uses shared PostgreSQL and mounts the same persistent
-data directory on every web, coordinator, and runner host; see
-[Sizing](/docs/latest/operations/sizing/#when-one-machine-is-not-enough). No
-cloud services are required. The optional GitHub release check is off by
-default; configured data sources, email, and AI providers use their own services.
+Choose the shape that matches the job you need to do. A deployment is the whole
+installation; a host is one machine in it.
 
 ## Choose a path
 
 | You want to | Start at |
 |---|---|
-| Try writing reports, with no server at all | [Try Trellum locally](/docs/latest/install/try-it/) |
-| Run the portal for your team | [Docker Compose](/docs/latest/install/docker-compose/) |
-| Use a managed Postgres you already operate | [Configuration](/docs/latest/install/configuration/) |
+| Try it locally | [Try Trellum locally](/docs/latest/install/try-it/) — framework examples and an optional disposable portal demo |
+| Run the portal on one server | [Deploy on one server](/docs/latest/install/docker-compose/) — web, worker, database, and persistent files |
+| Build more reports at once on one server | [Scale builds on one server](/docs/latest/install/scale-builds/) — more runners on the same host |
+| Run builds across multiple servers | [Run across multiple servers](/docs/latest/install/multiple-servers/) — runner hosts with shared PostgreSQL and files |
+
+You can also build in CI and serve portable reports from a static host without
+the portal. A managed PostgreSQL database and optional object storage are
+choices inside these deployment shapes, not separate install methods.
 
 The framework needs no installation of the portal — you can build reports on
 your laptop first and stand up the portal later, against the same repository.
 The [framework overview](/docs/latest/framework/the-framework/) explains the
 boundary between the two; [framework capabilities](/docs/latest/framework/capabilities/)
 is the index to the standalone API guide.
+
+## What the terms mean
+
+- **web** — the portal service
+- **combined worker** — scheduling and report builds in one process
+- **coordinator** — scheduling and maintenance; keep one active coordinator
+- **runner** — claims queued work and builds reports
+- **sandbox** — a temporary isolated container for one build
+
+Additional coordinators stand by until they can acquire the coordinator lock.
 
 ## What a deployment contains
 
@@ -46,10 +57,12 @@ is the index to the standalone API guide.
   [Sizing](/docs/latest/operations/sizing/#uploaded-data-source-files)
 
 !!! note
-    Viewer traffic does not touch your warehouse — reports are pre-built — so
-    you size the machine for building reports, not for reading them.
+    Build workload usually drives CPU and RAM. Serving pre-built reports also
+    needs capacity, and reports with opt-in live queries use web and data-source
+    capacity too.
 
 ## Next
 
-Continue to [Docker Compose](/docs/latest/install/docker-compose/) for the
-install itself.
+Continue to [Deploy on one server](/docs/latest/install/docker-compose/) for the
+complete installation, or choose [Storage](/docs/latest/install/storage/) before
+planning a multi-host layout.

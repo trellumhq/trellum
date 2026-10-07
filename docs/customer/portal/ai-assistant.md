@@ -182,6 +182,10 @@ validation suppressions and `metrics.yaml` stay a change you make in git.
 When the fix is in the repository, the assistant explains which file and
 which key; it does not make the change.
 
+If you want to change report source from a local browser preview, use the
+[coding-agent review workflow](/docs/latest/workflow/refine-reports/). The
+portal assistant remains a Q&A and approved portal-actions feature.
+
 The same actions reach your own coding agent over MCP, where there is no
 card: the agent asks you before each call instead, and the key it uses must
 carry `write` scope — see

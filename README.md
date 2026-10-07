@@ -6,7 +6,7 @@
 
 <p align="center">
   Build interactive reports in Python and SQL.<br>
-  Work with any coding agent, review every definition in Git, and self-host when a team needs a shared home.
+  Build with your agent, refine in the report, review every definition in Git, and self-host when a team needs a shared home.
 </p>
 
 <p align="center">
@@ -30,6 +30,12 @@ filters, charts, KPI cards, tables, themes, exports, validation, and portable
 HTML output. The source stays readable to people, coding agents, and code
 review tools.
 
+Build with your agent. Refine in the report. Share with your team. Open a
+report in local review mode, click a chart or type what you want changed, and
+send the request to your coding agent. The agent updates Python or SQL,
+rebuilds the report, and the preview refreshes while the source stays
+reviewable in Git.
+
 <p align="center">
   <img src="docs/assets/store-health.jpg" alt="Store Health report in Trellum Dark, with comparison KPIs, filters, and revenue and margin trends">
   <br>
@@ -44,7 +50,7 @@ report gallery, and installation guides.
 
 The public [demo gallery](https://trellum.dev/demo/) contains **reports only**:
 interactive examples built from synthetic data. It is not a hosted portal. The
-portal is self-hosted and needs its own backend; [try it locally with Docker](https://trellum.dev/docs/latest/install/docker-compose/)
+portal is self-hosted and needs its own backend; [try it locally with Docker](docs/customer/install/try-it.md#try-the-self-hosted-portal)
 when you want a shared team home.
 
 <p align="center">
@@ -106,6 +112,18 @@ The build is in `output/store-health/`. `trellum serve --background` prints
 the local URL and returns. A portable build keeps its browser assets beside the
 reports, so you can copy the output tree to another static host without assuming
 assets exist at the domain root.
+
+### Refine the report in your browser
+
+After the first preview, ask your coding agent to keep a live review open:
+
+> Start a live review of reports/store-health. Keep listening for my browser
+> feedback, update and rebuild the report, and reply in the review panel.
+
+Follow the [browser refinement guide](docs/customer/workflow/refine-reports.md)
+for the command loop and the boundary between local source editing and the
+optional portal assistant.
+
 
 SQLite and the demo work with the base install. Install the optional data
 drivers when you need the supported warehouses, cloud files, or object storage:
@@ -224,6 +242,15 @@ must mount the same persistent data directory at the same path. Optional
 S3-compatible storage holds built reports; shared files are still required
 for uploads, project files, live build logs, and scheduled cleanup. See
 [deployment sizing](https://trellum.dev/docs/latest/operations/sizing/).
+
+Choose a deployment shape:
+
+| Goal | Guide |
+|---|---|
+| Try it locally | [Try it locally](docs/customer/install/try-it.md) |
+| One production server | [Deploy on one server](docs/customer/install/docker-compose.md) |
+| More builds on that server | [Scale builds](docs/customer/install/scale-builds.md) |
+| Runners across servers | [Run across multiple servers](docs/customer/install/multiple-servers.md) |
 
 ```bash
 git clone https://github.com/trellumhq/trellum.git

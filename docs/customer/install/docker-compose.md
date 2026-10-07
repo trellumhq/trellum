@@ -1,6 +1,7 @@
-# Install with Docker Compose
+# Deploy on one server
 
-This is the supported way to run {{BRAND}}. Trellum is distributed under
+This is the complete production shape for one server: web, database, persistent
+data, and a combined worker share one Docker host. Trellum is distributed under
 AGPL-3.0-only. You can use the published release images or build the images
 from the matching source tag:
 

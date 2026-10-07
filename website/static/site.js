@@ -33,6 +33,27 @@
     });
   }
 
+  // Keep the docs outline in place while moving between pages. This is
+  // sidebar state only: the browser remains responsible for article/history
+  // scroll and hash navigation.
+  if (side) {
+    var sideKey = 'trellum-docs-side:' + window.location.pathname.split('/').slice(0, 3).join('/');
+    function restoreSideScroll() {
+      if (window.matchMedia && window.matchMedia('(max-width: 860px)').matches) { return; }
+      try {
+        var saved = Number(window.sessionStorage.getItem(sideKey));
+        if (Number.isFinite(saved) && saved >= 0) {
+          side.scrollTop = Math.min(saved, Math.max(0, side.scrollHeight - side.clientHeight));
+        }
+      } catch (e) { /* storage may be disabled */ }
+    }
+    restoreSideScroll();
+    window.addEventListener('pagehide', function () {
+      if (window.matchMedia && window.matchMedia('(max-width: 860px)').matches) { return; }
+      try { window.sessionStorage.setItem(sideKey, String(side.scrollTop)); } catch (e) { /* storage may be disabled */ }
+    });
+  }
+
   // ---- copy buttons ------------------------------------------------------
   // The agent prompt is meant to be pasted, so it gets a copy button wherever
   // it appears — the landing page and the blog post carry the same markup, so

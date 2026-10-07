@@ -31,6 +31,18 @@ is where you put what a new colleague would need on day one:
 Be specific and be blunt. "Do not guess a definition — ask" prevents more bad
 reports than any amount of prompting.
 
+## Refine a local preview
+
+After the first build, keep your coding agent listening while you inspect the
+report in a browser. In review mode you can select a chart or table, or send a
+general change request. The agent edits the Python or SQL in your repository,
+rebuilds, and the preview reloads. See [Refine reports in your browser](refine-reports.md)
+for the prompt and command loop.
+
+This local source-editing loop is separate from the portal assistant. The
+assistant answers questions about portal reports and never edits your Git
+repository.
+
 ## Give it real data access
 
 An assistant that can check a column writes SQL that runs. One that cannot will
