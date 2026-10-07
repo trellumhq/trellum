@@ -6,6 +6,9 @@ identity/spec/description always come from the synced MetricDefinition row
 from comparing that row's definition_hash against what the report's own
 _meta.json says it was built against -- never a report's data.json.
 """
+import json
+import shutil
+import subprocess
 from datetime import timedelta
 
 import pytest
@@ -389,15 +392,37 @@ class TestGeneratedMetricsReportIsNotACard:
                  for r in build_registry_payload(studio_tree)["reports"]}
         assert flags == {"metrics": True, "player-overview": False, "metrics-ish": False}
 
-    def test_the_dashboard_script_filters_on_that_flag(self):
-        """The card grid is client-side, so the contract is that portal.js
-        reads the flag -- pinned here so the payload key and its one consumer
-        cannot drift apart silently."""
+    @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+    def test_dashboard_reports_filters_the_records(self):
+        """Run the actual client-side filter against records for both pages."""
         from pathlib import Path
 
         js = Path("static/portal.js").read_text(encoding="utf-8")
-        assert "function dashboardReports()" in js
-        assert "return !r.metrics_report;" in js
+        start = js.index("function dashboardReports()")
+        end = js.index("\n}\n", start) + 2
+        dashboard_reports = js[start:end]
+        script = f"""
+const vm = require('node:vm');
+const functionSource = {json.dumps(dashboard_reports)};
+const reports = [
+  {{ slug: 'generated-metrics', metrics_report: true, kind: 'analysis' }},
+  {{ slug: 'analysis', kind: 'analysis' }},
+  {{ slug: 'report', kind: 'report' }},
+  {{ slug: 'legacy-report' }}
+];
+function filtered(isAnalysesPage) {{
+  const context = {{ reports, IS_ANALYSES_PAGE: isAnalysesPage }};
+  vm.createContext(context);
+  vm.runInContext(functionSource + '\\ndashboardReportsResult = dashboardReports().map(r => r.slug)', context);
+  return context.dashboardReportsResult;
+}}
+const result = {{ reports: filtered(false), analyses: filtered(true) }};
+if (JSON.stringify(result) !== JSON.stringify({{
+  reports: ['report', 'legacy-report'], analyses: ['analysis']
+}})) process.exit(1);
+"""
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True)
+        assert result.returncode == 0, result.stderr
 
 
 #: The generated metrics report's own shape, minimised: a `_metrics` entry per
