@@ -87,6 +87,7 @@ class TestCategoryResolution:
         assert category_for("auth.sso_denied") == "auth"
         assert category_for("report.view") == "access"
         assert category_for("org.retention_set") == "admin"
+        assert category_for("retention.purge") == "system"
 
     def test_unregistered_action_raises_in_debug(self):
         with pytest.raises(UnknownAuditAction):

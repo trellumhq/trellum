@@ -139,6 +139,7 @@ class TestPostures:
         settings.TRELLUM_STORAGE_BACKEND = "local"
         assert cdn.serves_from_edge() is False
 
+
 class TestPathsAndScope:
     def test_content_path_mirrors_the_bucket_key(self, studio):
         assert cdn.content_path(studio, "sales", "b1", "index.html") == (
