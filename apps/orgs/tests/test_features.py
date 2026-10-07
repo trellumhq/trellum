@@ -1,4 +1,4 @@
-"""Acceptance tests for the unrestricted open-source product."""
+"""Management feature availability and authorization tests."""
 from __future__ import annotations
 
 import pytest
@@ -28,18 +28,11 @@ FEATURE_PAGES = (
 )
 
 
-class TestOpenFeatures:
+class TestFeatureAvailability:
     @pytest.mark.parametrize("path", FEATURE_PAGES)
-    def test_feature_pages_ignore_retired_entitlement_state(
-        self, client, login, org_admin, org, settings, path
+    def test_management_pages_are_available_to_org_admins(
+        self, client, login, org_admin, org, path
     ):
-        settings.TRELLUM_LICENCE = "expired.or.malformed"
-        settings.TRELLUM_FEATURES = {
-            "permission_groups": False,
-            "sso": False,
-            "org_security_policy": False,
-            "audit_log": False,
-        }
         login(org_admin)
         assert client.get(path.format(org=org.slug)).status_code == 200
 

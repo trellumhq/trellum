@@ -200,7 +200,6 @@ ACTIONS: dict[str, ActionSpec] = {
     "operator.impersonate.start": _m(CATEGORY_ADMIN, "Impersonation started"),
     "operator.impersonate.stop": _m(CATEGORY_ADMIN, "Impersonation ended"),
     "operator.impersonate.expired": _m(CATEGORY_ADMIN, "Impersonation expired"),
-    "licence.changed": _m(CATEGORY_ADMIN, "Licence changed"),
     # The tombstone. This row is the only thing left that says an erasure
     # happened, so it identifies its subject by target_id (the primary key the
     # scrubbed User row keeps) and never by address -- see
@@ -264,7 +263,6 @@ _PREFIX_FALLBACK: dict[str, str] = {
     "sso": CATEGORY_ADMIN,
     "share_policy": CATEGORY_ADMIN,
     "operator": CATEGORY_ADMIN,
-    "licence": CATEGORY_ADMIN,
     "person": CATEGORY_ADMIN,
     "run": CATEGORY_SYSTEM,
     "cache": CATEGORY_SYSTEM,

@@ -157,14 +157,6 @@ class TestAuditLogIsAppendOnly:
 
 
 class TestSystemPolicyPanel:
-    def test_retired_entitlement_state_is_not_rendered(self, login, superuser, settings):
-        settings.TRELLUM_LICENCE = "malformed"
-        settings.TRELLUM_FEATURES = {"audit_log": False}
-        html = login(superuser).get("/system").content.decode()
-        assert "Tier and licence" not in html
-        assert "Capabilities" not in html
-        assert "malformed" not in html
-
     def test_instance_settings_still_render(self, login, superuser):
         html = login(superuser).get("/system").content.decode()
         assert "Instance settings" in html

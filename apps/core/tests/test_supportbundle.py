@@ -137,11 +137,10 @@ class TestContent:
         assert "TRELLUM_QUOTA_BACKEND" not in cfg
         assert "TRELLUM_EXTRA_URLCONFS" not in cfg
 
-    def test_schema_three_omits_entitlement_sections(self, loaded):
+    def test_schema_three_contains_current_sections(self, loaded):
         bundle = supportbundle.build()
         assert bundle["schema"] == 3
-        assert "licence" not in bundle
-        assert "edition" not in bundle
+        assert {"health", "fleet", "runs", "settings", "tenancy"} <= bundle.keys()
 
     def test_carries_operational_policy(self, loaded):
         settings_section = supportbundle.build()["settings"]

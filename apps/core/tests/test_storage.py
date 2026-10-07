@@ -307,7 +307,6 @@ class TestObjectStorageSelection:
 
     def test_s3_is_selected_directly(self, settings):
         settings.TRELLUM_STORAGE_BACKEND = "s3"
-        settings.TRELLUM_FEATURES = {"object_storage": False}
         assert storage.is_remote() is True
 
     def test_local_remains_local(self, settings):

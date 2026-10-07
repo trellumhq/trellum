@@ -1285,16 +1285,7 @@ class TestEmbedLinks:
         assert ".fw-header{display:none" not in html
         assert "scrollbar-width:none" not in html
 
-    def test_embed_badge_is_hidden(self, client, built_report, embed_link, settings):
-        settings.TRELLUM_LICENCE = "malformed-retired-value"
-        settings.TRELLUM_FEATURES = {"white_label": False}
-        html = client.get(f"/share/{embed_link.token}/").content.decode()
-        assert "window._fwEmbedBadge=false;" in html
-
-    def test_embed_badge_stays_hidden_with_retired_flags(
-        self, client, built_report, embed_link, settings
-    ):
-        settings.TRELLUM_FEATURES = {"white_label": True}
+    def test_embed_badge_is_hidden(self, client, built_report, embed_link):
         html = client.get(f"/share/{embed_link.token}/").content.decode()
         assert "window._fwEmbedBadge=false;" in html
 

@@ -248,28 +248,8 @@ class TestGroupScreens:
         assert "all reports" in html
 
 
-class TestUnrestrictedManagement:
-    @pytest.mark.parametrize("path", ["groups", "sso", "security"])
-    def test_management_pages_remain_editable_with_retired_flags(
-        self, login, org_admin, org, path, settings
-    ):
-        settings.TRELLUM_LICENCE = "expired.or.malformed"
-        settings.TRELLUM_FEATURES = {
-            "permission_groups": False,
-            "sso": False,
-            "org_security_policy": False,
-        }
-        html = (
-            login(org_admin).get(f"/orgs/{org.slug}/settings/{path}").content.decode()
-        )
-        assert "Read-only" not in html
-        assert "requires a licence" not in html
-
-    def test_existing_group_detail_remains_writable_with_retired_flags(
-        self, login, org_admin, org, make_group, settings
-    ):
-        settings.TRELLUM_LICENCE = "expired.or.malformed"
-        settings.TRELLUM_FEATURES = {"permission_groups": False}
+class TestGroupEditing:
+    def test_org_admin_can_edit_group(self, login, org_admin, org, make_group):
         group = make_group("Existing")
         client = login(org_admin)
         response = client.get(_group_url(org, group))
@@ -388,11 +368,9 @@ class TestReportAccess:
         assert not PermissionGroupGrant.objects.filter(group=foreign).exists()
 
 
-def test_retired_flags_do_not_block_report_access_writes(
-    login, org_admin, org, studio, report_row, make_group, scoped_access_ready, settings
+def test_org_admin_can_assign_report_access(
+    login, org_admin, org, studio, report_row, make_group, scoped_access_ready
 ):
-    settings.TRELLUM_LICENCE = "expired.or.malformed"
-    settings.TRELLUM_FEATURES = {"permission_groups": False}
     group = make_group("Analysts")
     url = f"/s/{org.slug}/{studio.slug}/r/{report_row.slug}/access"
     client = login(org_admin)

@@ -61,13 +61,15 @@ class TestContextProcessor:
 
 
 class TestShellRendering:
-    def test_security_navigation_has_no_tier_markers(self):
+    def test_security_navigation_links_are_present(self):
         from django.conf import settings
 
         source = (settings.BASE_DIR / "templates" / "_org_nav.html").read_text()
         security = source.split('data-console-nav-group="org-security"', 1)[1]
-        assert "capability_chip" not in security
-        assert "tl-console-edition" not in security
+        assert 'href="/orgs/{{ shell_org.slug }}/settings/groups"' in security
+        assert 'href="/orgs/{{ shell_org.slug }}/settings/sso"' in security
+        assert 'href="/orgs/{{ shell_org.slug }}/settings/security"' in security
+        assert 'href="/orgs/{{ shell_org.slug }}/settings/audit"' in security
 
     def test_management_page_has_shell_with_active_nav(self, login, org_admin, org):
         html = login(org_admin).get(f"/orgs/{org.slug}/settings/members").content.decode()

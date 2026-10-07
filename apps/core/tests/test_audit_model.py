@@ -71,63 +71,10 @@ class TestRegistryCompleteness:
 
     def test_taxonomy_size_is_a_deliberate_number(self):
         """Changes here should be a deliberate registry edit, not a typo or
-        an accidental duplicate key silently dropping an entry.
-
-        internal planning#78 (account security) activated the six names the
-        auditing feature reserved for it and added three more of its own
-        (auth.mfa_reset, auth.mfa_recovery_used, security_policy.update) --
-        73 + 3 = 76, and nothing is reserved-but-unemitted any more. The
-        live-query redesign then added live_query_policy.update (its per-org
-        rate-limit settings page audits) -- 77. The theming redesign then
-        added org.theme_set (later renamed org.appearance_set, when the
-        controls-relocation pass moved what it audits from a default
-        *palette* to the default *mode* + lock, on Org settings ->
-        Appearance) and studio.theme_set (the admin-facing default-theme
-        setters -- the per-viewer override setter is deliberately NOT
-        audited, same as every other personal appearance preference) -- 79.
-        The data-retention windows then added the two per-organization rows
-        retention.purge's instance-wide row cannot carry
-        (retention.built_data_purged, retention.orphaned_data_purged) -- 81.
-        Erase-and-export a person (internal planning ticket #077) then added person.export and
-        person.erase -- 83. The erase row is load-bearing in a way the others
-        are not: it is the only record that survives its own subject, so it
-        must exist in this registry or it degrades to the prefix fallback.
-        The org settings -> Data retention page then added org.retention_set
-        (the two per-org window fields, alongside org.appearance_set) -- 84.
-        The account dormancy policy then added its three stages
-        (retention.dormancy_warned / _disabled / _erased) -- 87. Like
-        person.erase these outlive their subject, and unlike it they are the
-        only record of *why* an account went, so the fallback category would
-        lose the one thing that distinguishes a policy erasure from an
-        operator's. Organization deletion then activated org.delete -- 88 --
-        the name the orphan sweep's _deletion_times had been querying since
-        before anything emitted it; its row outlives the org it names, so it
-        too must be registered rather than fall back. Repository publish
-        mode (internal planning ticket #129) then added git.check and git.publish -- 90.
-        The BA Buddy -> AI assistant rename then made buddy.config.update a
-        retained alias of assistant.config.update, so that pre-rename rows
-        keep their label instead of degrading to a raw slug -- 91. That is
-        one action with two names, not a new action; it is the only such
-        pair, and a second one would be a smell rather than a precedent.
-        assistant.session.delete records a viewer deleting one of their own
-        AI assistant conversations -- a transcript gone for good -- 92.
-        LDAP / Active Directory sign-in (internal planning ticket #075) then added
-        sso.ldap.test, the settings page's connection test -- 93.
-        Personal API keys (internal planning ticket #002) then added apikey.create and
-        apikey.revoke, plus org.api_keys_set for the org-wide kill switch
-        that stops every key at once -- 96.
-        Assistant actions (internal planning ticket #145) then added assistant.proposal.approve
-        and assistant.proposal.reject, the decision on a proposed action;
-        the action itself audits under its own name with the proposal id --
-        98.
-        Agentic alerts (internal planning ticket #146) then added the rule lifecycle
-        (alert.create / update / delete, emitted by the studio Alerts page)
-        and alert.fire, written by the evaluator when a decision is
-        delivered -- 102.
-        Selected report assignments add group.report_grant and
-        group.report_ungrant -- 104.
+        an accidental duplicate key silently dropping an entry. The size
+        assertion makes additions and removals deliberate.
         """
-        assert len(ACTIONS) == 104
+        assert len(ACTIONS) == 103
         reserved = [name for name, spec in ACTIONS.items() if spec.reserved]
         assert len(reserved) == 0
 
@@ -139,8 +86,7 @@ class TestCategoryResolution:
         assert category_for("member.invite") == "authz"
         assert category_for("auth.sso_denied") == "auth"
         assert category_for("report.view") == "access"
-        assert category_for("licence.changed") == "admin"
-        assert category_for("retention.purge") == "system"
+        assert category_for("org.retention_set") == "admin"
 
     def test_unregistered_action_raises_in_debug(self):
         with pytest.raises(UnknownAuditAction):
@@ -305,8 +251,10 @@ class TestAuditSystem:
         assert row.metadata == {"removed": {"runs": 3}}
 
     def test_org_none_is_allowed(self):
-        row = audit_system("licence.changed", fingerprint="abc123")
+        row = audit_system("org.retention_set", retention_built_days=30)
         assert row.org_id is None
+        assert row.category == "admin"
+        assert row.metadata == {"retention_built_days": 30}
 
     def test_never_raises_on_a_write_failure(self, monkeypatch, org):
         def boom(**kwargs):  # noqa: ARG001

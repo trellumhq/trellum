@@ -139,12 +139,6 @@ class TestPostures:
         settings.TRELLUM_STORAGE_BACKEND = "local"
         assert cdn.serves_from_edge() is False
 
-    def test_retired_feature_flag_does_not_disable_edge(self, settings):
-        settings.TRELLUM_REPORT_ACCESS_MODEL = "edge-signed"
-        settings.TRELLUM_FEATURES = {"object_storage": False}
-        assert cdn.serves_from_edge() is True
-
-
 class TestPathsAndScope:
     def test_content_path_mirrors_the_bucket_key(self, studio):
         assert cdn.content_path(studio, "sales", "b1", "index.html") == (

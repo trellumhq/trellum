@@ -93,18 +93,6 @@ class TestLocalBackend:
         assert _storage_check()["ok"] is True
 
 
-class TestRemoteSelection:
-    def test_retired_feature_flag_does_not_disable_s3(self, settings, monkeypatch):
-        settings.TRELLUM_STORAGE_BACKEND = "s3"
-        settings.TRELLUM_FEATURES = {"object_storage": False}
-        settings.TRELLUM_REPORTS_BUCKET = "reports-prod"
-        backend = FakeBackend()
-        monkeypatch.setattr(storage, "_s3", lambda: backend)
-        result = _storage_check()
-        assert result["ok"] is True
-        assert "s3://reports-prod" in result["detail"]
-
-
 class TestRemoteBackend:
     def test_a_reachable_bucket_passes(self, settings, monkeypatch):
         settings.TRELLUM_STORAGE_BACKEND = "s3"
