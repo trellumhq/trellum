@@ -7,6 +7,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.2.3] — 2026-10-07
+
+### Changed
+
+- Align documentation and feature checks with the current open-source platform.
+- Add an interactive portal walkthrough with fourteen feature screenshots.
+
 ### Documentation
 
 - Clarify multi-host deployment requirements: shared PostgreSQL and a shared
@@ -17,6 +24,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   implementation, and check canonical documentation routes and anchors before
   release.
 - Explain documentation release snapshots and contributor test prerequisites.
+
+No database migration or report rebuild is required by this patch.
 
 ## [0.2.2] — 2026-10-06
 
