@@ -74,14 +74,20 @@ def shell(request):
     from apps.core import impersonation
 
     impersonating = impersonation.is_impersonating(request)
+    is_operator = bool(getattr(user, "is_operator", False)) and not impersonating
     impersonation_ctx = {
         "is_impersonating": impersonating,
         "impersonation_operator": impersonation.operator_of(request) if impersonating else None,
         "impersonation_expires_at": impersonation.expires_at(request) if impersonating else None,
         # An impersonated session belongs to the target user, so the console
         # link must disappear while it lasts.
-        "is_operator": bool(getattr(user, "is_operator", False)) and not impersonating,
+        "is_operator": is_operator,
+        "shell_health": None,
     }
+    if is_operator:
+        from apps.core.health import quick_health_summary
+
+        impersonation_ctx["shell_health"] = quick_health_summary()
 
     from apps.core.permissions import visible_studios
     from apps.orgs.models import Organization

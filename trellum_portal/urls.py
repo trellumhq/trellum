@@ -338,6 +338,7 @@ urlpatterns = [
         name="org-datasource-download",
     ),
     path("system", core_views.system_page, name="system"),
+    path("api/system/health", core_views.system_health, name="system-health"),
     # Cross-organization operator console (404s for non-operators).
     path("operator/", include("apps.operator.urls")),
     path("orgs/<slug:org_slug>/settings/members", org_views.members, name="org-members"),

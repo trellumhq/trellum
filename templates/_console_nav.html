@@ -26,5 +26,11 @@ mounted reports. Both the current studio and its organization stay reachable.{% 
   {% endif %}
   {% endif %}
   {% if shell_org %}{% include "_org_nav.html" %}{% endif %}
+  {% if is_operator %}
+  <div class="tl-console-nav-section" data-console-nav-group="operator">
+    <span class="tl-console-nav-heading tl-console-label">Operator</span>
+    <a class="tl-console-nav-link{% if url_name == 'system' %} active{% endif %}" href="/system" title="System health"{% if url_name == 'system' %} aria-current="page"{% endif %}><span class="tl-console-nav-icon" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M3.5 10h3l2-4 3 8 2-4h3"/><circle cx="10" cy="10" r="7"/></svg></span><span class="tl-console-label">System health</span></a>
+  </div>
+  {% endif %}
 </nav>
 {% endwith %}

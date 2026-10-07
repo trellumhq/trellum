@@ -35,6 +35,8 @@ class TestSystemPage:
         assert "database" in html
         assert "SECRET_ENCRYPTION_KEY" in html
         assert "worker" in html
+        assert 'data-console-nav-group="operator"' in html
+        assert 'href="/system"' in html and 'aria-current="page"' in html
 
     def test_upload_limit_is_editable(self, login, superuser):
         """The form field alone is not enough — /system renders its fields one

@@ -79,6 +79,33 @@ def version(request):  # noqa: ARG001
     return JsonResponse(version_info())
 
 
+def _is_current_operator(request) -> bool:
+    """Operator access for the current identity, excluding borrowed sessions."""
+    from apps.core import impersonation
+
+    return bool(
+        request.user.is_authenticated
+        and getattr(request.user, "is_operator", False)
+        and not impersonation.is_impersonating(request)
+    )
+
+
+def system_health(request):
+    """Bounded health summary for the persistent operator shell."""
+    if not request.user.is_authenticated:
+        return JsonResponse({"detail": "Authentication required"}, status=401)
+    if not _is_current_operator(request):
+        from django.http import Http404
+
+        raise Http404
+
+    from apps.core.health import quick_health_summary
+
+    response = JsonResponse(quick_health_summary())
+    response["Cache-Control"] = "no-store"
+    return response
+
+
 def send_test_email_and_report(request, *, redirect_to: str):
     """Send the operator a test message and flash the outcome.
 
@@ -118,7 +145,7 @@ def system_page(request):
     # given the operator flag in order to read, and the rest of the operator
     # console already gates on it (apps/core/permissions.require_operator).
     # 404 rather than 403 — the page is not advertised to people without it.
-    if not request.user.is_operator:
+    if not _is_current_operator(request):
         from django.http import Http404
 
         raise Http404

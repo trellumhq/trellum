@@ -53,6 +53,14 @@ the encryption key, disk space, the framework pin, the worker fleet, the report
 sandbox, the storage configuration, **whether the schema matches the running code**, whether
 **backups** are recent and verified, and whether **retention** is still running.
 
+Instance operators also have a permanent **System health** link in the console
+sidebar. A warning appears in the header when the local worker, migration, disk,
+backup, or retention checks need attention and refreshes about every 30 seconds.
+Worker and coordinator warnings call out when repository sync, report builds, or
+scheduled reports are paused. The header stays quiet when these quick checks are
+clear; `/system` remains the full diagnosis. The summary endpoint at
+`GET /api/system/health` is session-authenticated, operator-only, and not cached.
+
 `GET /healthz` is the liveness endpoint the compose healthcheck uses: database
 reachable, 503 if not.
 

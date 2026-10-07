@@ -226,3 +226,57 @@ def test_sidebar_scroll_is_restored_for_console_navigation_and_back(login, org_a
         assert nav.evaluate("e => e.scrollTop") == expected_scroll
         context.close()
         instance.close()
+
+
+def test_operator_health_warning_polls_and_clears(login, superuser, monkeypatch):
+    from apps.core import health
+
+    monkeypatch.setattr(
+        health,
+        "quick_health_summary",
+        lambda: {"status": "ok", "message": "", "detail": "", "failure_count": 0},
+    )
+    html = _inline_shell_assets(login(superuser).get("/").content.decode())
+    replies = [
+        '{"status":"error","message":"Worker offline","detail":"Repository sync and scheduled reports are paused"}',
+        '{"status":"ok","message":"","detail":""}',
+    ]
+
+    with sync_playwright() as playwright:
+        instance = playwright.chromium.launch(headless=True)
+        context = instance.new_context(viewport={"width": 320, "height": 760})
+        page = context.new_page()
+
+        def serve(route):
+            if route.request.resource_type == "document":
+                route.fulfill(body=html, content_type="text/html")
+            elif route.request.url.endswith("/api/system/health"):
+                route.fulfill(body=replies.pop(0), content_type="application/json")
+            else:
+                route.fulfill(status=204)
+
+        page.route("http://shell.test/**", serve)
+        page.goto("http://shell.test/", wait_until="domcontentloaded")
+        alert = page.locator("[data-console-health-alert]")
+        assert alert.is_hidden()
+        assert page.evaluate("!!window.__trellumHealthTimer")
+
+        page.evaluate(
+            "Promise.all([window.TrellumConsoleShell.refreshHealth(), "
+            "window.TrellumConsoleShell.refreshHealth()])"
+        )
+        assert len(replies) == 1  # overlapping polls share one request
+        assert alert.is_visible()
+        assert alert.get_attribute("data-health-status") == "error"
+        assert alert.get_attribute("aria-label") == (
+            "Worker offline. Repository sync and scheduled reports are paused"
+        )
+        assert _box(page, ".tl-console-header")["height"] == 56
+        assert _box(page, "[data-console-health-alert]")["width"] == 44
+        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+
+        page.evaluate("window.TrellumConsoleShell.refreshHealth()")
+        assert alert.is_hidden()
+        assert alert.get_attribute("aria-label") == "System health"
+        context.close()
+        instance.close()

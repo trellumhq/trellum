@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import time
 from datetime import datetime, timezone
 
 from django.conf import settings
@@ -14,6 +15,8 @@ FREE_SPACE_WARN_GB = 2.0
 #: org's storage quota says — the volume is shared by every tenant and by the
 #: builds themselves.
 FREE_SPACE_RESERVE_BYTES = 1024 ** 3
+_QUICK_SCHEMA_TTL_SECONDS = 30
+_quick_schema_cache: tuple[float, tuple[str, list[str]]] | None = None
 
 
 def free_bytes() -> int:
@@ -85,8 +88,28 @@ def _reclaimable_detail() -> str:
     return f"{freed:.1f} GB"
 
 
-def run_checks() -> list[dict]:
-    """[{label, ok, detail}] — never raises."""
+def _cached_schema_state() -> tuple[str, list[str]]:
+    """Migration state cached for one shell polling interval."""
+    global _quick_schema_cache
+
+    now = time.monotonic()
+    if _quick_schema_cache and now - _quick_schema_cache[0] < _QUICK_SCHEMA_TTL_SECONDS:
+        return _quick_schema_cache[1]
+
+    from apps.core.version import schema_state
+
+    state = schema_state()
+    _quick_schema_cache = (now, state)
+    return state
+
+
+def run_checks(*, quick: bool = False) -> list[dict]:
+    """[{label, ok, detail}] — never raises.
+
+    ``quick`` is the local-only subset used by the persistent operator shell.
+    It deliberately avoids network, Docker, subprocess, crypto, and directory
+    walk probes so normal page loads stay bounded.
+    """
     results: list[dict] = []
 
     def check(label: str, fn):
@@ -100,7 +123,8 @@ def run_checks() -> list[dict]:
             cur.execute("SELECT version()")
             return cur.fetchone()[0].split(",")[0]
 
-    check("database", db)
+    if not quick:
+        check("database", db)
 
     def crypto():
         from apps.core.crypto import decrypt_str, encrypt_str
@@ -108,7 +132,8 @@ def run_checks() -> list[dict]:
         assert decrypt_str(encrypt_str("doctor")) == "doctor"
         return "encrypt/decrypt round-trip"
 
-    check("SECRET_ENCRYPTION_KEY", crypto)
+    if not quick:
+        check("SECRET_ENCRYPTION_KEY", crypto)
 
     def volume():
         root = settings.DATA_DIR
@@ -135,7 +160,8 @@ def run_checks() -> list[dict]:
             ) from exc
         return str(root)
 
-    check("data volume writable", volume)
+    if not quick:
+        check("data volume writable", volume)
 
     def report_storage():
         """Prove the configured store is reachable before a build depends on it.
@@ -147,7 +173,8 @@ def run_checks() -> list[dict]:
 
         return storage.probe()
 
-    check("report storage", report_storage)
+    if not quick:
+        check("report storage", report_storage)
 
     def report_access():
         """Prove report content is not readable without authentication.
@@ -170,7 +197,8 @@ def run_checks() -> list[dict]:
             detail += "; grant signing key ok"
         return detail
 
-    check("report access", report_access)
+    if not quick:
+        check("report access", report_access)
 
     def free_space():
         usage = shutil.disk_usage(settings.DATA_DIR)
@@ -191,7 +219,8 @@ def run_checks() -> list[dict]:
             raise RuntimeError("git is not installed (required for reports-repo sync)")
         return subprocess.check_output(["git", "--version"], text=True).strip()
 
-    check("git", git)
+    if not quick:
+        check("git", git)
 
     def framework():
         import trellum  # noqa: F401
@@ -203,7 +232,8 @@ def run_checks() -> list[dict]:
             f"release {framework_tag()}"
         )
 
-    check("framework", framework)
+    if not quick:
+        check("framework", framework)
 
     def migrations():
         """Is the schema in step with the code?
@@ -216,7 +246,7 @@ def run_checks() -> list[dict]:
         """
         from apps.core.version import SCHEMA_OK, SCHEMA_PENDING, schema_state
 
-        state, pending = schema_state()
+        state, pending = _cached_schema_state() if quick else schema_state()
         if state == SCHEMA_OK:
             return "schema matches the code"
         if state == SCHEMA_PENDING:
@@ -320,10 +350,8 @@ def run_checks() -> list[dict]:
         if not row.ok:
             failed = ", ".join((row.payload or {}).get("failures", {})) or "unknown"
             raise RuntimeError(f"last cleanup had failing target(s): {failed}")
-        return (
-            f"ran {age_h:.0f}h ago, removed {removed} item(s), "
-            f"{_reclaimable_detail()} reclaimable"
-        )
+        detail = f"ran {age_h:.0f}h ago, removed {removed} item(s)"
+        return detail if quick else f"{detail}, {_reclaimable_detail()} reclaimable"
 
     check("retention", retention)
 
@@ -345,7 +373,8 @@ def run_checks() -> list[dict]:
             )
         if not coordinators:
             raise RuntimeError(
-                "no live coordinator — scheduled reports will not fire "
+                "no live coordinator — repository sync is paused and scheduled reports "
+                "will not fire "
                 f"({len(runners)} runner(s) alive)"
             )
         running = sum(w.running_count for w in runners)
@@ -390,7 +419,8 @@ def run_checks() -> list[dict]:
         egress = _sandbox_egress_state()
         return f"docker on {len(runners)} runner(s), egress {egress}"
 
-    check("report sandbox", sandbox)
+    if not quick:
+        check("report sandbox", sandbox)
 
     def production_readiness():
         """Configuration that is fine to evaluate with and wrong to run on.
@@ -441,5 +471,59 @@ def run_checks() -> list[dict]:
             return "; ".join(notes)
         return "no evaluation-only settings in use"
 
-    check("production readiness", production_readiness)
+    if not quick:
+        check("production readiness", production_readiness)
     return results
+
+
+def health_summary(checks: list[dict]) -> dict:
+    """Small, non-sensitive operator-shell summary of quick health checks."""
+    failures = [check for check in checks if not check.get("ok")]
+    if not failures:
+        return {
+            "status": "ok",
+            "message": "",
+            "detail": "",
+            "failure_count": 0,
+        }
+
+    worker = next((check for check in failures if check.get("label") == "worker"), None)
+    status = "error"
+    if worker:
+        worker_detail = str(worker.get("detail", "")).lower()
+        if worker_detail.startswith("no live coordinator"):
+            message = "Coordinator offline"
+            detail = "Repository sync and scheduled reports are paused"
+        elif worker_detail.startswith("no live runner"):
+            message = "Worker offline"
+            detail = "Report builds are paused"
+        elif worker_detail.startswith("no live worker heartbeat"):
+            message = "Worker offline"
+            detail = "Repository sync, report builds, and scheduled reports are paused"
+        else:
+            status = "unknown"
+            message = "System health unavailable"
+            detail = "Open System health for details"
+    else:
+        message = f"System needs attention ({len(failures)})"
+        detail = "Open System health for details"
+
+    return {
+        "status": status,
+        "message": message,
+        "detail": detail,
+        "failure_count": len(failures),
+    }
+
+
+def quick_health_summary() -> dict:
+    """Quick shell status that degrades safely if the checker itself fails."""
+    try:
+        return health_summary(run_checks(quick=True))
+    except Exception:  # noqa: BLE001 — status UI must never break its host page
+        return {
+            "status": "unknown",
+            "message": "System health unavailable",
+            "detail": "Open System health for details",
+            "failure_count": 0,
+        }

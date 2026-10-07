@@ -55,9 +55,63 @@
         return root;
     }
 
+    function updateHealth(root, summary) {
+        var alert = root && root.querySelector('[data-console-health-alert]');
+        if (!alert) return;
+        var status = summary && summary.status;
+        var text = alert.querySelector('[data-console-health-message]');
+        if (status === 'ok') {
+            alert.hidden = true;
+            alert.dataset.healthStatus = 'ok';
+            alert.title = '';
+            alert.setAttribute('aria-label', 'System health');
+            if (text) text.textContent = '';
+            return;
+        }
+        var message = summary && summary.message || 'System health unavailable';
+        var detail = summary && summary.detail || 'Open System health for details';
+        alert.hidden = false;
+        alert.dataset.healthStatus = status === 'error' ? 'error' : 'unknown';
+        alert.title = detail;
+        alert.setAttribute('aria-label', message + '. ' + detail);
+        if (text) text.textContent = message;
+    }
+
+    function pollHealth() {
+        if (window.__trellumHealthInFlight) return window.__trellumHealthInFlight;
+        var root = document.querySelector('[data-console-shell][data-console-health-url]');
+        if (!root) return Promise.resolve();
+        var controller = new AbortController();
+        var timeout = window.setTimeout(function () { controller.abort(); }, 10000);
+        window.__trellumHealthInFlight = fetch(root.dataset.consoleHealthUrl, {
+            credentials: 'same-origin', cache: 'no-store', signal: controller.signal,
+            headers: { Accept: 'application/json' }
+        }).then(function (response) {
+            if (!response.ok) throw new Error('health request failed');
+            return response.json();
+        }).then(function (summary) {
+            updateHealth(document.querySelector('[data-console-shell]'), summary);
+        }).catch(function () {
+            updateHealth(document.querySelector('[data-console-shell]'), {
+                status: 'unknown', message: 'System health unavailable',
+                detail: 'Open System health for details'
+            });
+        }).finally(function () {
+            window.clearTimeout(timeout);
+            window.__trellumHealthInFlight = null;
+        });
+        return window.__trellumHealthInFlight;
+    }
+
+    function startHealthPolling(root) {
+        if (!root.dataset.consoleHealthUrl || window.__trellumHealthTimer) return;
+        window.__trellumHealthTimer = window.setInterval(pollHealth, 30000);
+    }
+
     function init(root) {
         if (!root || root.dataset.consoleInitialized) return;
         prepare(root);
+        startHealthPolling(root);
         root.dataset.consoleInitialized = 'true';
         var body = document.body;
         var sidebar = root.querySelector('.tl-console-sidebar');
@@ -239,7 +293,8 @@
     }
 
     window.TrellumConsoleShell = {
-        init: init, prepare: prepare, setPageTitle: setPageTitle, setTheme: setTheme
+        init: init, prepare: prepare, setPageTitle: setPageTitle, setTheme: setTheme,
+        refreshHealth: pollHealth
     };
     document.querySelectorAll('[data-console-shell]').forEach(init);
 }());
