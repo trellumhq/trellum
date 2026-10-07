@@ -71,7 +71,8 @@ def test_compose_data_mounts_preserve_service_boundaries(tmp_path, bind):
         assert bool(mounts["/backups"].get("read_only")) is (name != "backup")
         assert ("/var/run/docker.sock" in mounts) is (name in ("worker", "runner"))
         if bind:
-            assert data["bind"]["create_host_path"] is False
+            # Older Compose serializers omit false boolean fields.
+            assert data.get("bind", {}).get("create_host_path", False) is False
             if name in ("worker", "runner"):
                 assert services[name]["environment"]["TRELLUM_DATA_VOLUME"] == ""
                 assert services[name]["environment"]["TRELLUM_SANDBOX"] == "docker"
