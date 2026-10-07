@@ -106,6 +106,16 @@ jobs:
   django-tests:
     name: django unit tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container:
+      # Keep this tag aligned with the Playwright pin in requirements-django.txt.
+      image: mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:51d31fdfacb0cff99a1a724152e34ae408d2bd4e7da310ff157450f49261cc59
+      options: --ipc=host
+    defaults:
+      run:
+        shell: bash
+    env:
+      DATABASE_URL: postgres://trellum:trellum@postgres:5432/trellum_portal
     services:
       postgres:
         image: postgres:16-alpine
@@ -113,8 +123,6 @@ jobs:
           POSTGRES_USER: trellum
           POSTGRES_PASSWORD: trellum
           POSTGRES_DB: trellum_portal
-        ports:
-          - 5433:5432
         options: >-
           --health-cmd "pg_isready -U trellum"
           --health-interval 5s
@@ -131,14 +139,41 @@ jobs:
             requirements-django.txt
             requirements-test.txt
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           # requirements-test.txt is CI-only; it is not in the shipped image.
           pip install -r requirements-django.txt -r requirements-test.txt
 
-      - name: Install browsers for console regression tests
-        run: python -m playwright install --with-deps chromium webkit
+      - name: Verify bundled browsers for console regression tests
+        run: |
+          node --version
+          python - <<'PY'
+          from importlib.metadata import version
+          from pathlib import Path
+
+          from playwright.sync_api import sync_playwright
+
+          expected = "1.62.0"
+          actual = version("playwright")
+          if actual != expected:
+              raise RuntimeError(f"expected Playwright {expected}, found {actual}")
+
+          with sync_playwright() as playwright:
+              for engine in (playwright.chromium, playwright.webkit):
+                  executable = Path(engine.executable_path)
+                  if not executable.is_file():
+                      raise RuntimeError(f"missing {engine.name} binary: {executable}")
+                  browser = engine.launch(headless=True)
+                  try:
+                      print(f"{engine.name}: {browser.version} ({executable})")
+                  finally:
+                      browser.close()
+          PY
 
       - name: No missing migrations
         # A model change without its migration passed CI until now: django-e2e
@@ -150,9 +185,7 @@ jobs:
           DJANGO_SETTINGS_MODULE: trellum_portal.settings.test
 
       - name: Django test suite
-        # trellum_portal.settings.test defaults to postgres on 127.0.0.1:5433,
-        # matching the service container's mapped port.
-        run: python -m pytest apps -q
+        run: python -m pytest apps -q -ra
 
       - name: The changelog mentions this version
         # Cheap guard against the version being bumped with nothing said about
