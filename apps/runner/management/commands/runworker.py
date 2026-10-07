@@ -1,12 +1,11 @@
 """The worker process, in two roles that compose into one.
 
-    --role=all           coordinator + runner in one process (the default,
-                         and byte-for-byte the historical worker)
+    --role=all           coordinator + runner in one process (the default)
     --role=coordinator   cron scheduler + stale-run reaper. Exactly one, held
-                         by a Postgres advisory lock. Pure database work: it
-                         touches no studio files, so it can run anywhere.
+                         by a Postgres advisory lock. Scheduled tasks also
+                         use the shared studio data and audit archive paths.
     --role=runner        claims runs, spawns builds, and git-syncs the studios
-                         it holds on local disk. Scale to N replicas.
+                         on shared persistent storage. Scale to N replicas.
 
 The split exists because the queue was never the bottleneck — ``Run`` with
 ``SELECT ... FOR UPDATE SKIP LOCKED`` already supports many consumers. What
@@ -14,8 +13,9 @@ forced a single worker was that the cron scheduler lived in the same process as
 the executor, so the lock protecting the scheduler also serialised the builds.
 Separating the roles removes that without adding any infrastructure.
 
-A self-hosted install keeps one ``worker`` service on ``--role=all`` and sees no
-change; our SaaS runs one coordinator and N runners off the same image.
+A deployment can use one combined ``worker`` service or one active coordinator
+and multiple runners from the same image. Hosts share PostgreSQL and the
+persistent data directory.
 """
 from __future__ import annotations
 

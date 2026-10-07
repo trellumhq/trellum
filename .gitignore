@@ -32,7 +32,7 @@ output/
 .claude/worktrees/
 .playwright-mcp/
 
-# Django SaaS build
+# Portal development and build output
 .venv/
 .data-dev/
 .data-test/

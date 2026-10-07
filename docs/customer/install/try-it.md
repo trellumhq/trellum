@@ -67,7 +67,7 @@ internet or use it for real data.
 Clone the released source on macOS or Linux:
 
 ```bash
-git clone --depth 1 --branch v0.2.2 https://github.com/trellumhq/trellum.git
+git clone --depth 1 --branch v0.2.3 https://github.com/trellumhq/trellum.git
 cd trellum
 ./scripts/demo.sh
 ```
@@ -75,7 +75,7 @@ cd trellum
 On Windows PowerShell:
 
 ```powershell
-git clone --depth 1 --branch v0.2.2 https://github.com/trellumhq/trellum.git
+git clone --depth 1 --branch v0.2.3 https://github.com/trellumhq/trellum.git
 cd trellum
 .\scripts\demo.ps1
 ```
