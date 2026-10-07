@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-10-08
+
 ### Added
 
 - Publish Git-authored analysis articles with Markdown, contents navigation,
@@ -14,6 +16,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Capture chart and section views with filter and source context, then import
   them into an analysis using the framework CLI. Captures remain fixed when
   the source report changes.
+- Include a complete Northwind checkout analysis in the packaged demo, portal
+  demo, and public gallery, with fixed evidence and reproducibility notes.
 
 ### Fixed
 
@@ -21,16 +25,6 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   while retaining the Engine 26 requirement for named-volume subpath mounts.
   Add a Compose override, an installation compatibility check, and storage
   migration instructions. Unknown Docker API versions now stop worker startup.
-
-### Documentation
-
-- Add a clearer chooser for single-server deployment, build scaling, distributed
-  runners, and shared storage.
-- Document the local browser review loop and distinguish it from portal Q&A.
-
-## [0.3.0] — 2026-10-07
-
-### Fixed
 
 - Make selected report toggles, tabs, date presets, and dropdown items follow
   the active theme, with readable text across all built-in palettes.
@@ -42,6 +36,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Keep account recovery codes within narrow phone layouts.
 - Align audit-log date filters with their actions and keep table action menus
   inside the viewport, including their inline role controls.
+- Give documentation more reading space, preserve sidebar scroll position,
+  and prevent active links and long table content from shifting the layout.
+- Keep narrow funnel-stage labels clear of the chart's axis labels.
 
 ### Changed
 
@@ -50,6 +47,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Documentation
 
+- Add a clearer chooser for single-server deployment, build scaling, distributed
+  runners, and shared storage.
+- Explain how to request changes from a report through the local browser review
+  loop, and distinguish source editing from the portal's Q&A assistant.
 - Clarify multi-host deployment requirements: shared PostgreSQL and a shared
   data directory for web, coordinator, and runner services, even with object storage.
 - Document existing studio runner pools and distinguish memory admission
@@ -61,8 +62,18 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Upgrade notes
 
-No database migration is required. Upgrade the framework used by report builders
-and rebuild existing reports to apply the corrected theme colors.
+The standard portal upgrade applies the additive `reports.0022_report_kind`
+migration. Existing entries remain reports; analyses use the same access and
+sharing controls, with their own audience. Captured evidence is republished to
+that audience independently of access to the source report.
+
+Upgrade the framework used by report builders and rebuild existing reports to
+apply the corrected theme colors. Analysis articles and their evidence stay
+fixed until their Git sources are changed and rebuilt.
+
+The default named-volume sandbox still requires Docker Engine 26 or newer.
+Engine 25 installations can use the documented bind-backed storage setup;
+existing installations do not need to change storage mode.
 
 ## [0.2.2] — 2026-10-06
 
