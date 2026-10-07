@@ -42,7 +42,8 @@ LEGACY_SANDBOX_LABEL = "bi.sandbox"
 LEGACY_RUN_ID_LABEL = "bi.run-id"
 
 #: Minimum Docker Engine API for `volume-subpath` mounts (Engine 26 / 1.45).
-_MIN_API = (1, 45)
+_MIN_VOLUME_API = (1, 45)
+_MIN_BIND_API = (1, 44)
 
 
 class SandboxError(RuntimeError):
@@ -192,22 +193,40 @@ class DockerSandbox:
                 f"{docs_url('install/docker-compose/')}."
             ) from exc
 
-        self._check_api_version()
+        kind, _ = self.data_volume()
+        self._check_api_version(kind)
         self._check_image()
-        self.data_volume()          # raises if /data can't be resolved
         self.ensure_network()
 
-    def _check_api_version(self) -> None:
+    def _check_api_version(self, kind: str) -> None:
+        minimum = _MIN_BIND_API if kind == "bind" else _MIN_VOLUME_API
+        storage = "bind-backed /data" if kind == "bind" else "named-volume /data"
         try:
-            api = self.client.version().get("ApiVersion", "")
+            api = self.client.version().get("ApiVersion")
+            if not isinstance(api, str) or not api or not all(
+                part.isascii() and part.isdigit() for part in api.split(".")
+            ) or len(api.split(".")) != 2:
+                raise ValueError(f"invalid ApiVersion {api!r}")
             parts = tuple(int(x) for x in api.split("."))
-        except Exception:  # noqa: BLE001 - if we can't read it, don't block
-            return
-        if parts and parts < _MIN_API:
+        except Exception as exc:  # noqa: BLE001 - version is a trust boundary
             raise SandboxError(
-                f"[SANDBOX] Docker Engine API {api} is too old; need "
-                f"{_MIN_API[0]}.{_MIN_API[1]}+ (Engine 26+) for volume-subpath "
-                "mounts. Upgrade Docker on this host."
+                f"[SANDBOX] cannot determine the Docker API version for {storage} "
+                f"({type(exc).__name__}: {exc}). Upgrade Docker or check that the "
+                f"daemon is reachable. See {docs_url('install/docker-compose/')}."
+            ) from exc
+        if parts < minimum:
+            setup = (
+                "Upgrade Docker on this host, or configure /data as a bind mount "
+                "using the documented setup"
+                if kind == "bind"
+                else "Upgrade Docker on this host or configure the documented "
+                "bind-backed /data setup"
+            )
+            raise SandboxError(
+                f"[SANDBOX] Docker Engine API {api} is too old for {storage}; "
+                f"need {minimum[0]}.{minimum[1]}+ "
+                f"({'Engine 26+' if kind == 'volume' else 'Docker Engine 25+'}). "
+                f"{setup}: {docs_url('install/docker-compose/')}"
             )
 
     def _check_image(self) -> None:
@@ -250,11 +269,18 @@ class DockerSandbox:
                         return ("volume", m["Name"])
                     if m.get("Type") == "bind":
                         return ("bind", m["Source"])
-        except Exception:  # noqa: BLE001 - fall through to the actionable error
-            pass
+        except Exception as exc:  # noqa: BLE001 - fail closed with context
+            raise SandboxError(
+                "[SANDBOX] could not inspect the worker's /data mount "
+                f"({type(exc).__name__}: {exc}). Set TRELLUM_DATA_VOLUME to a "
+                f"named volume or configure the documented bind-backed /data "
+                f"setup: {docs_url('install/docker-compose/')}"
+            ) from exc
         raise SandboxError(
             "[SANDBOX] could not discover the Docker volume backing /data. "
-            "Set TRELLUM_DATA_VOLUME to the volume name (docker volume ls)."
+            "Set TRELLUM_DATA_VOLUME to the volume name (docker volume ls), or "
+            "configure the documented bind-backed /data setup: "
+            f"{docs_url('install/docker-compose/')}"
         )
 
     def ensure_network(self) -> None:
