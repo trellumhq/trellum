@@ -5,6 +5,7 @@ DraculaTheme = Theme(
     bg_card="#44475a",
     bg_card_hover="#4e5270",
     bg_header="#bd93f9",
+    on_accent="#172126",
 
     text_main="#f8f8f2",
     text_secondary="#c0b8d6",

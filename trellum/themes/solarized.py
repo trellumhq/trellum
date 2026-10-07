@@ -5,6 +5,7 @@ SolarizedTheme = Theme(
     bg_card="#073642",
     bg_card_hover="#0a4050",
     bg_header="#268bd2",
+    on_accent="#111111",
 
     text_main="#eee8d5",
     text_secondary="#93a1a1",

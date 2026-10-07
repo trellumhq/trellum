@@ -5,6 +5,7 @@ MoneyTheme = Theme(
     bg_card="#1a2f23",
     bg_card_hover="#243d2e",
     bg_header="#b8860b",
+    on_accent="#172126",
 
     text_main="#e8e4d9",
     text_secondary="#a09a85",

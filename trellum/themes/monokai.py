@@ -5,6 +5,7 @@ MonokaiTheme = Theme(
     bg_card="#3e3d32",
     bg_card_hover="#49483e",
     bg_header="#a6e22e",
+    on_accent="#172126",
 
     text_main="#f8f8f2",
     text_secondary="#c0b8a8",

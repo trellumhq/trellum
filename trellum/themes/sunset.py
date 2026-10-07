@@ -5,6 +5,7 @@ SunsetTheme = Theme(
     bg_card="#2d1f1a",
     bg_card_hover="#3a2820",
     bg_header="#e06c3a",
+    on_accent="#172126",
 
     text_main="#f5e6d8",
     text_secondary="#c4a68e",

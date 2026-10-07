@@ -5,6 +5,7 @@ BlossomTheme = Theme(
     bg_card="#fff8fc",
     bg_card_hover="#f5eef8",
     bg_header="#d4638f",
+    on_accent="#172126",
 
     text_main="#3d2c4e",
     text_secondary="#8e7a9a",

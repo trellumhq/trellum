@@ -15,11 +15,14 @@ import os
 import socket
 import tempfile
 import threading
+from dataclasses import replace
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 import pytest
 
+from trellum.assets import load_css
 from trellum.rendering.cdn import get_cdn_url
+from trellum.rendering.html_builder import _generate_base_css
 from trellum.rendering.js_runtime import generate_js_runtime
 from trellum.themes import THEME_REGISTRY
 
@@ -772,6 +775,46 @@ class TestTheme:
         browser_page.evaluate("switchTheme('dark')")
         result = browser_page.evaluate("getActiveTheme()")
         assert result == "dark"
+
+    def test_switchTheme_applies_generated_toggle_colors(self, browser_page):
+        themes = dict(THEME_REGISTRY)
+        themes["ocean"] = replace(themes["ocean"], primary_fill="#123456")
+        css = _generate_base_css("light", themes) + "\n" + load_css("components/toggle.css")
+
+        def rgb(color):
+            channels = [int(color[i:i + 2], 16) for i in (1, 3, 5)]
+            return f"rgb({channels[0]}, {channels[1]}, {channels[2]})"
+
+        expected = {
+            name: {
+                "background": rgb(theme.bg_header if theme.primary_fill == "var(--bg-header)"
+                                   else theme.primary_fill),
+                "color": rgb(theme.on_accent),
+            }
+            for name, theme in themes.items()
+        }
+        browser_page.evaluate("""css => {
+            const style = document.createElement('style');
+            style.id = 'theme-toggle-regression';
+            style.textContent = css;
+            document.head.appendChild(style);
+            document.body.insertAdjacentHTML('beforeend',
+                `<button id="theme-toggle" class="fw-toggle-btn active" style="transition:none">Selected</button>`);
+        }""", css)
+
+        actual = browser_page.evaluate("""expected => {
+            const button = document.getElementById('theme-toggle');
+            const result = {};
+            Object.keys(expected).forEach(name => {
+                switchTheme(name);
+                const style = getComputedStyle(button);
+                result[name] = {background: style.backgroundColor, color: style.color};
+            });
+            document.getElementById('theme-toggle-regression').remove();
+            button.remove();
+            return result;
+        }""", expected)
+        assert actual == expected
 
     def test_getThemeColors_changes_with_theme(self, browser_page):
         browser_page.evaluate("switchTheme('light')")

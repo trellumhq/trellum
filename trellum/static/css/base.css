@@ -1,5 +1,5 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
-:root {
+:where(:root) {
     --font-size-interface: var(--font-size-base, 14px);
     --font-size-table: 13px;
     --font-size-label: var(--font-size-small, 12px);
@@ -11,7 +11,7 @@
     --radius-control: 8px;
     --radius-card: var(--border-radius, 10px);
     --on-accent: #fff;
-    --primary-fill: #0F766E;
+    --primary-fill: var(--bg-header);
 }
 /* Full-bleed elements sized from `vw` (the sticky filter bar's
    `margin: calc(-50vw + 50%)`) end up a scrollbar-width too wide,

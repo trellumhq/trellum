@@ -67,7 +67,7 @@ class Theme:
     radius_control: str = "8px"
     radius_card: str = "var(--border-radius)"
     on_accent: str = "#ffffff"
-    primary_fill: str = "#0F766E"
+    primary_fill: str = "var(--bg-header)"
 
     # Spacing
     spacing_sm: str = "8px"

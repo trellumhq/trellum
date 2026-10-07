@@ -5,6 +5,7 @@ OceanTheme = Theme(
     bg_card="#1b2838",
     bg_card_hover="#233548",
     bg_header="#0891b2",
+    on_accent="#111111",
 
     text_main="#e0f2fe",
     text_secondary="#7dd3fc",

@@ -97,13 +97,18 @@ class TestThemeComponentTokens:
         assert "--primary-fill: #123456;" in css
         assert "--on-accent: #fefefe;" in css
 
-    def test_default_component_scale_and_primary_contrast(self):
-        theme = Theme()
-        assert theme.font_size_base == "14px"
-        assert theme.font_size_table == "13px"
-        assert theme.font_size_axis == theme.font_size_label == "var(--font-size-small)"
-        assert theme.font_size_section == "16px"
-        assert theme.font_size_heading == theme.font_size_kpi == "24px"
+    def test_primary_fill_follows_header_and_explicit_values_still_win(self):
+        theme = Theme(bg_header="#abcdef")
+        assert theme.primary_fill == "var(--bg-header)"
+        assert "--primary-fill: var(--bg-header);" in theme.to_css_vars()
+
+        override = Theme(bg_header="#abcdef", primary_fill="#123456")
+        assert "--primary-fill: #123456;" in override.to_css_vars()
+
+    @pytest.mark.parametrize("name", THEME_REGISTRY)
+    def test_builtin_primary_text_contrast(self, name):
+        theme = THEME_REGISTRY[name]
+        fill = theme.bg_header if theme.primary_fill == "var(--bg-header)" else theme.primary_fill
 
         def luminance(hex_color):
             channels = [int(hex_color[i:i + 2], 16) / 255 for i in (1, 3, 5)]
@@ -111,6 +116,15 @@ class TestThemeComponentTokens:
                       for c in channels]
             return .2126 * linear[0] + .7152 * linear[1] + .0722 * linear[2]
 
-        lighter, darker = sorted((luminance(theme.on_accent),
-                                  luminance(theme.primary_fill)), reverse=True)
-        assert (lighter + .05) / (darker + .05) >= 4.5
+        lighter, darker = sorted((luminance(theme.on_accent), luminance(fill)), reverse=True)
+        assert (lighter + .05) / (darker + .05) >= 4.5, name
+
+    def test_default_component_scale(self):
+        theme = Theme()
+        assert theme.font_size_base == "14px"
+        assert theme.font_size_table == "13px"
+        assert theme.font_size_axis == theme.font_size_label == "var(--font-size-small)"
+        assert theme.font_size_section == "16px"
+        assert theme.font_size_heading == theme.font_size_kpi == "24px"
+
+        assert theme.primary_fill == "var(--bg-header)"

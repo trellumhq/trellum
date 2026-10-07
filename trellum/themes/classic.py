@@ -16,6 +16,7 @@ ClassicLightTheme = Theme(
     bg_card="#ffffff",
     bg_card_hover="#f8f9fc",
     bg_header="#E84855",
+    on_accent="#111111",
 
     text_main="#1e2028",
     text_secondary="#6b7280",
@@ -47,6 +48,7 @@ ClassicDarkTheme = Theme(
     bg_card="#2A2A3E",
     bg_card_hover="#33334D",
     bg_header="#E84855",
+    on_accent="#111111",
 
     text_main="#e4e6eb",
     text_secondary="#9a9bb0",
