@@ -213,7 +213,8 @@ a.crumb-link:hover { border-color: var(--scope-org); text-decoration: none; }
 .shell-dd[open] > summary { border-color: var(--accent); }
 .shell-menu {
     position: absolute; top: calc(100% + 4px); left: 0; min-width: 180px;
-    max-width: calc(100vw - 24px);
+    max-width: calc(100vw - 24px); white-space: normal; overflow-wrap: anywhere;
+    text-align: left;
     background: var(--bg-card); border: 1px solid var(--border);
     border-radius: var(--r-md); box-shadow: var(--shadow-hover);
     padding: 4px; z-index: var(--z-menu);
