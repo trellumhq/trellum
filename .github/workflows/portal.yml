@@ -131,10 +131,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
       - uses: actions/cache@v4
         with:
           path: ~/.cache/pip
@@ -146,9 +142,10 @@ jobs:
 
       - name: Install dependencies
         run: |
+          python -c "import sys; assert sys.version_info[:2] == (3, 12), sys.version"
           python -m pip install --upgrade pip
           # requirements-test.txt is CI-only; it is not in the shipped image.
-          pip install -r requirements-django.txt -r requirements-test.txt
+          python -m pip install -r requirements-django.txt -r requirements-test.txt
 
       - name: Verify bundled browsers for console regression tests
         run: |
