@@ -7,6 +7,12 @@ from django.conf import settings
 from django.template.loader import render_to_string
 
 UI_CSS = (settings.BASE_DIR / "static" / "ui.css").read_text(encoding="utf-8")
+CONSOLE_SHELL_CSS = (settings.BASE_DIR / "static" / "console-shell.css").read_text(
+    encoding="utf-8"
+)
+SETTINGS_FORMS_JS = (settings.BASE_DIR / "static" / "settings-forms.js").read_text(
+    encoding="utf-8"
+)
 ARTIFACTS = settings.BASE_DIR / ".artifacts" / "management"
 
 
@@ -55,6 +61,85 @@ def _delivery_row():
         schedule=schedule,
         schedule_json='{"enabled": true}',
     )
+
+
+def _studio_members_html():
+    org = S(name="Example Organization", slug="example-org")
+    studio = S(name="Example Studio", slug="example-studio")
+    return render_to_string(
+        "studios/members.html",
+        {
+            "org": org,
+            "studio": studio,
+            "rows": [
+                S(
+                    user=S(email="avery.long.synthetic.member.address@example.invalid"),
+                    user_id=1,
+                    role="viewer",
+                )
+            ],
+            "org_users": [
+                S(user=S(email="another.synthetic.member@example.invalid"), user_id=2)
+            ],
+            "studio_role_choices": (
+                ("viewer", "Viewer"),
+                ("developer", "Developer"),
+                ("admin", "Admin"),
+            ),
+            "request": S(studio=studio, org=org),
+            "user": S(is_authenticated=False),
+        },
+    )
+
+
+def _org_members_html():
+    org = S(name="Example Organization", slug="example-org")
+    member = S(
+        user=S(
+            display_name="Synthetic Member",
+            email="avery.long.synthetic.member.address@example.invalid",
+            has_mfa=False,
+        ),
+        user_id=1,
+        role="member",
+    )
+    page = S(
+        number=1,
+        has_previous=False,
+        has_next=False,
+        paginator=S(num_pages=1),
+    )
+    return render_to_string(
+        "orgs/members.html",
+        {
+            "org": org,
+            "member_rows": [
+                S(m=member, groups=(), effective=(), studio_editor=())
+            ],
+            "org_roles_choices": (("member", "Member"), ("admin", "Admin")),
+            "studio_role_choices": (
+                ("viewer", "Viewer"),
+                ("developer", "Developer"),
+                ("admin", "Admin"),
+            ),
+            "q": "",
+            "total": 1,
+            "page": page,
+            "request": S(studio=None, org=org),
+            "user": S(is_authenticated=False, pk=2),
+        },
+    )
+
+
+def _rendered_management_page(browser, html, width, theme="light"):
+    context = browser.new_context(viewport={"width": width, "height": 820})
+    page = context.new_page()
+    html = html.replace(
+        "</head>", f"<style>{UI_CSS}{CONSOLE_SHELL_CSS}</style></head>"
+    ).replace("</body>", f"<script>{SETTINGS_FORMS_JS}</script></body>")
+    page.set_content(html, wait_until="load")
+    page.evaluate("theme => document.documentElement.dataset.theme = theme", theme)
+    return context, page
 
 
 @pytest.mark.parametrize("width", (320, 390, 430))
@@ -184,5 +269,117 @@ def test_sso_claim_form_fits_and_uses_phone_font_size(mobile_browser):
         domain = page.locator("input[name='domain']")
         assert domain.evaluate("el => getComputedStyle(el).fontSize") == "16px"
         assert domain.evaluate("el => getComputedStyle(el).minWidth") == "0px"
+    finally:
+        context.close()
+
+
+@pytest.mark.parametrize("theme", ("light", "dark"))
+def test_studio_member_role_controls_align_at_desktop(mobile_browser, theme):
+    context, page = _rendered_management_page(
+        mobile_browser, _studio_members_html(), 1000, theme
+    )
+    try:
+        form = page.locator("tbody form[data-settings-form]")
+        select = form.locator("select")
+        button = form.locator("button")
+        select_box = select.bounding_box()
+        button_box = button.bounding_box()
+
+        assert abs(select_box["height"] - button_box["height"]) <= 1
+        assert abs(select_box["y"] - button_box["y"]) <= 1
+        assert button.evaluate("el => getComputedStyle(el).whiteSpace") == "nowrap"
+        assert select.evaluate("el => getComputedStyle(el).appearance") == "none"
+        assert select.evaluate("el => getComputedStyle(el).paddingRight") == "28px"
+        assert select.evaluate("el => getComputedStyle(el).backgroundImage") != "none"
+
+        status = form.locator("[data-settings-dirty-status]")
+        assert status.text_content() == ""
+        select.select_option("admin")
+        assert status.text_content() == "Unsaved changes"
+        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+    finally:
+        context.close()
+
+
+def test_org_member_role_controls_align_at_desktop(mobile_browser):
+    context, page = _rendered_management_page(
+        mobile_browser, _org_members_html(), 1000
+    )
+    try:
+        form = page.locator("tbody form[data-settings-form]").first
+        select_box = form.locator("select").bounding_box()
+        button_box = form.locator("button").bounding_box()
+        assert abs(select_box["height"] - button_box["height"]) <= 1
+        assert abs(select_box["y"] - button_box["y"]) <= 1
+        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+    finally:
+        context.close()
+
+
+@pytest.mark.parametrize("width", (320, 390))
+def test_studio_member_controls_fit_and_wrap_as_whole_controls(mobile_browser, width):
+    context, page = _rendered_management_page(
+        mobile_browser, _studio_members_html(), width
+    )
+    try:
+        form = page.locator("tbody form[data-settings-form]")
+        select = form.locator("select")
+        button = form.locator("button")
+        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+        assert select.evaluate("el => getComputedStyle(el).minHeight") == "44px"
+        assert button.evaluate("el => getComputedStyle(el).minHeight") == "44px"
+        assert button.evaluate("el => getComputedStyle(el).whiteSpace") == "normal"
+
+        select.select_option("admin")
+        assert form.locator("[data-settings-dirty-status]").text_content() == "Unsaved changes"
+        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+    finally:
+        context.close()
+
+
+def test_listbox_keeps_native_appearance(mobile_browser):
+    html = '<main><select multiple><option selected>Viewer</option></select></main>'
+    context, page = _page(mobile_browser, html, 1000)
+    try:
+        select = page.locator("select")
+        assert select.evaluate("el => getComputedStyle(el).appearance") == "auto"
+        assert select.evaluate("el => getComputedStyle(el).backgroundImage") == "none"
+    finally:
+        context.close()
+
+
+def test_single_select_restores_native_affordance_in_forced_colors(mobile_browser):
+    context = mobile_browser.new_context(
+        viewport={"width": 1000, "height": 820}, forced_colors="active"
+    )
+    page = context.new_page()
+    page.set_content(
+        '<!doctype html><style>'
+        + UI_CSS
+        + '</style><body class="mgmt"><main><select><option>Viewer</option></select></main>'
+    )
+    try:
+        select = page.locator("select")
+        assert select.evaluate("el => getComputedStyle(el).appearance") == "auto"
+        assert select.evaluate("el => getComputedStyle(el).backgroundImage") == "none"
+    finally:
+        context.close()
+
+
+def test_long_inline_action_can_wrap_on_phone(mobile_browser):
+    html = (
+        '<main><form class="inline" style="width:180px">'
+        '<button class="ui-btn ghost">Save this unusually long action label</button>'
+        "</form></main>"
+    )
+    context, page = _page(mobile_browser, html, 320)
+    try:
+        form = page.locator("form")
+        button = page.locator("button")
+        assert button.evaluate("el => getComputedStyle(el).whiteSpace") == "normal"
+        assert button.bounding_box()["width"] <= form.bounding_box()["width"]
+        assert button.bounding_box()["height"] > 44
+        assert button.evaluate("el => el.scrollWidth <= el.clientWidth")
+        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
     finally:
         context.close()

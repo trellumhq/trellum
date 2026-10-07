@@ -581,11 +581,35 @@ body.mgmt textarea {
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: var(--r-md);
-    padding: 6px 10px;
+    padding: 7px 10px;
     /* Fields fill their field container. The old default (browser size=20,
        ~200px) truncated every GUID, repo URL and redirect URI in the product. */
     width: 100%;
     max-width: 100%;
+}
+/* Keep single-line native selects aligned with the shared buttons and give
+   their affordance a reliable inset in Chromium and WebKit. Listboxes retain
+   the platform rendering that communicates their different interaction. */
+body.mgmt select:not([multiple]):not([size]) {
+    -webkit-appearance: none;
+    appearance: none;
+    padding-right: 28px;
+    background-image:
+        linear-gradient(45deg, transparent 50%, currentColor 50%),
+        linear-gradient(135deg, currentColor 50%, transparent 50%);
+    background-position:
+        calc(100% - 13px) calc(50% - 1px),
+        calc(100% - 9px) calc(50% - 1px);
+    background-repeat: no-repeat;
+    background-size: 4px 4px;
+}
+@media (forced-colors: active) {
+    body.mgmt select:not([multiple]):not([size]) {
+        -webkit-appearance: auto;
+        appearance: auto;
+        padding-right: 10px;
+        background-image: none;
+    }
 }
 .ui-input.error, .error > input, .error > select, .error > textarea {
     border-color: var(--red);
@@ -721,6 +745,7 @@ body.mgmt input[type="checkbox"], body.mgmt input[type="radio"] { width: auto; }
     body.mgmt main form.inline { max-width: 100%; flex-wrap: wrap; }
     body.mgmt main form.inline input:not([type="hidden"]),
     body.mgmt main form.inline select { min-width: 0 !important; flex: 1 1 12rem; }
+    body.mgmt main form.inline > .ui-btn { flex-shrink: 1; max-width: 100%; }
 }
 
 /* ── Badges (the one system: replaces the legacy four) ───────────────────── */
@@ -1104,7 +1129,16 @@ body.mgmt label { display: block; font-size: var(--fs-sm); color: var(--text2); 
    picker opens with no script). The block rule above would stretch it across
    its cell and push the buttons beside it onto their own line. */
 body.mgmt label.ui-btn { display: inline-flex; margin: 0; }
-body.mgmt form.inline { display: inline-flex; gap: 6px; align-items: center; margin: 0; }
+body.mgmt form.inline {
+    display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 0;
+}
+body.mgmt form.inline:not(.settings-inline-form) > select {
+    width: auto; max-width: 100%; min-width: 0;
+}
+body.mgmt form.inline > .ui-btn { flex: 0 0 auto; }
+@media (min-width: 768px) {
+    body.mgmt main form.inline > .ui-btn { white-space: nowrap; }
+}
 
 /* ── Buttons ─────────────────────────────────────────────────────────────── */
 /* A bare <button> is NEUTRAL. It used to default to the accent background,
