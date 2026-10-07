@@ -24,9 +24,19 @@ class InstallVersionPinCheckTests(unittest.TestCase):
     def test_matching_pins_pass(self):
         self.assertEqual(check(self.root), [])
 
+    def test_powershell_assignment_passes(self):
+        path = self.root / INSTALL_GUIDES[0]
+        path.write_text("$env:TRELLUM_VERSION = 'v0.3.0'\n", encoding="utf-8")
+        self.assertEqual(check(self.root), [])
+
     def test_stale_install_pin_fails(self):
         path = self.root / INSTALL_GUIDES[0]
         path.write_text("TRELLUM_VERSION=v0.2.9\n", encoding="utf-8")
+        self.assertTrue(any(INSTALL_GUIDES[0] in error for error in check(self.root)))
+
+    def test_missing_guide_pin_fails(self):
+        path = self.root / INSTALL_GUIDES[0]
+        path.write_text("No release pin here.\n", encoding="utf-8")
         self.assertTrue(any(INSTALL_GUIDES[0] in error for error in check(self.root)))
 
     def test_package_version_mismatch_fails(self):

@@ -23,6 +23,7 @@ isolation enabled. Configure that setup before any build-and-start command.
 Start from the source tag matching the published images. The checkout includes
 the Compose file, backup and upgrade scripts, and other files needed to operate
 the installation.
+
 Set `TRELLUM_VERSION` in `.env` to the exact release tag used by these commands;
 the Compose image settings use that same value.
 
@@ -33,7 +34,11 @@ TRELLUM_VERSION=v0.3.0
 git clone --depth 1 --branch "$TRELLUM_VERSION" https://github.com/trellumhq/trellum.git
 cd trellum
 cp .env.example .env
-printf '\nTRELLUM_VERSION=%s\nTRELLUM_IMAGE=ghcr.io/trellumhq/trellum:${TRELLUM_VERSION}\nTRELLUM_RUNNER_IMAGE=ghcr.io/trellumhq/trellum-runner:${TRELLUM_VERSION}\n' "$TRELLUM_VERSION" >> .env
+cat >> .env <<EOF
+TRELLUM_VERSION=$TRELLUM_VERSION
+TRELLUM_IMAGE=ghcr.io/trellumhq/trellum:$TRELLUM_VERSION
+TRELLUM_RUNNER_IMAGE=ghcr.io/trellumhq/trellum-runner:$TRELLUM_VERSION
+EOF
 ```
 
 Fill in the other required settings in [step 2](#2-fill-in-the-settings), then

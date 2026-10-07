@@ -2,9 +2,8 @@
 
 The portal and report-runner images are signed at release. Each has a signed
 CycloneDX software bill of materials (SBOM) attestation attached to its image
-digest. The commands below verify the `v0.3.0` release; change both the image
-tag and workflow identity together by changing `TRELLUM_VERSION` when verifying
-another release.
+digest. Change `TRELLUM_VERSION` to the exact tag when verifying another
+release; the commands use it for both the image tag and workflow identity.
 
 Set the tag once and use it for both the image and the certificate identity:
 
