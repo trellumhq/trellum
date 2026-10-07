@@ -1,8 +1,7 @@
 from trellum.themes.theme import Theme
 
-# The palettes that were the default light/dark before the trellum identity
-# (pre-v0.6.0). Kept in the registry as "light" / "dark" so nobody loses a
-# look they had chosen; the trellum pair carries the defaults now.
+# Classic palettes remain available as "light" / "dark"; the Trellum pair
+# supplies the default themes.
 
 # Both classics share one chart palette (they always did) -- keep it in one
 # place so an edit cannot fork the light and dark variants silently.

@@ -59,6 +59,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   implementation, and check canonical documentation routes and anchors before
   release.
 - Explain documentation release snapshots and contributor test prerequisites.
+- Remove unnecessary version callouts, share exact release pins within
+  installation and image-verification examples, and check those pins in CI.
 
 ### Upgrade notes
 

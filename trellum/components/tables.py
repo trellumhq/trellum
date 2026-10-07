@@ -19,14 +19,9 @@ _DOWNLOAD_SVG = (
     '<line x1="12" y1="15" x2="12" y2="3"></line></svg>'
 )
 
-#: The M1 live-query control (DataTable(live=...)) was replaced by
-#: LiveDataSource + FilterBar param bindings (trellum.components.filterable)
-#: -- a clean break, not a shim: the framework is at v0.1.0 with exactly one
-#: first-party consumer of the old shape (the user-event-log demo, since
-#: migrated). DataTable.render_html raises this below; the validation check
-#: `live-query-legacy-config` (validation/checks/live_query.py) names the
-#: section as a build-time FAIL for anyone who still has old config lying
-#: around, so the mistake surfaces before the loud crash does.
+#: DataTable(live=...) is replaced by LiveDataSource + FilterBar parameter
+#: bindings. The `live-query-legacy-config` validation check reports the
+#: unsupported configuration before render_html raises this error.
 _LIVE_LEGACY_ERROR = (
     "DataTable(live=...) was replaced by LiveDataSource + FilterBar param "
     "bindings — see docs/COMPATIBILITY.md"
@@ -64,10 +59,6 @@ class DataTable(Component):
 
     def render_html(self, ctx: RenderContext) -> str:
         if self.live:
-            # Loud, not silent (owner decision, clean break: v0.1.0, one
-            # first-party consumer). The validation check
-            # `live-query-legacy-config` also FAILs this at build time, so
-            # the mistake is named before this crash is ever reached.
             raise ValueError(_LIVE_LEGACY_ERROR)
 
         cid = ctx.next_id()
