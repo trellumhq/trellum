@@ -72,6 +72,21 @@ def test_export_writes_the_complete_finite_artifact(tmp_path):
     assert f'href="/docs/{nav.versions()[0]}/"' in redirect
     assert "That page isn't here" in (output / "404.html").read_text(encoding="utf-8")
     assert '<link rel="canonical" href="https://trellum.dev/">' in (output / "index.html").read_text(encoding="utf-8")
+    landing = (output / "index.html").read_text(encoding="utf-8")
+    assert 'href="/demo/">Explore demos →</a>' in landing
+
+
+def test_export_links_analysis_only_when_gallery_contains_it(tmp_path):
+    gallery = tmp_path / "gallery"
+    shutil.copytree(DEMO_FIXTURE, gallery)
+    article = gallery / "checkout-findings" / "index.html"
+    article.parent.mkdir()
+    article.write_text("<title>Demo analysis</title>", encoding="utf-8")
+
+    output = tmp_path / "site"
+    export(output, demo_artifact=gallery)
+    landing = (output / "index.html").read_text(encoding="utf-8")
+    assert 'href="/demo/checkout-findings/">Read the demo analysis →</a>' in landing
 
 
 @pytest.mark.parametrize(

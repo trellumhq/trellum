@@ -63,7 +63,10 @@ class Command(BaseCommand):
         output.mkdir(parents=True, exist_ok=True)
         origin = urlsplit(base_url)
         client = Client()
-        with override_settings(SITE_BASE_URL=base_url):
+        with override_settings(
+            SITE_BASE_URL=base_url,
+            ANALYSIS_DEMO_AVAILABLE=(demo_artifact / "checkout-findings" / "index.html").is_file(),
+        ):
             for route, relative in routes:
                 if route == "/docs/":
                     body = self._docs_redirect(versions[0])

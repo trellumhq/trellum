@@ -341,7 +341,7 @@ the tokens in static/site.css, and vanilla JS in block scripts.{% endcomment %}
       </div>
 
       <div class="ft reveal"><h3>Published analyses</h3>
-        <p>Keep a written finding, its assumptions, recommendation, and fixed report evidence together in a Git-reviewed article. <a href="{{ demo_href }}checkout-findings/">Read the demo analysis →</a></p>
+        <p>Keep a written finding, its assumptions, recommendation, and fixed report evidence together in a Git-reviewed article. {% if analysis_demo_available %}<a href="{{ demo_href }}checkout-findings/">Read the demo analysis →</a>{% else %}<a href="{{ demo_href }}">Explore demos →</a>{% endif %}</p>
         <div class="pchip">
           <div class="ps-row"><i></i>Where Northwind loses buyers<span class="mt">analysis</span></div>
           <div class="ps-row"><i class="vio"></i>2 captured views<span class="mt">PNG + source context</span></div>

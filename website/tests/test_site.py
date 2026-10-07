@@ -24,6 +24,8 @@ def test_static_product_contract(client):
     assert "AGPL-3.0-only" in body
     assert "https://github.com/trellumhq/trellum" in body
     assert 'href="/demo/"' in body
+    assert 'href="/demo/">Explore demos →</a>' in body
+    assert 'checkout-findings/">Read the demo analysis' not in body
     assert "demo." + "trellum.dev" not in body
     assert "python -m pip install trellum" in body
     assert "who opened it" not in body

@@ -111,15 +111,33 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
+          import re
+          import yaml
 
-          kinds = {}
+          manifests = {}
+          for manifest_path in Path('../reports').glob('*/report.yaml'):
+              if manifest_path.parent.name.startswith('_'):
+                  continue
+              manifest = yaml.safe_load(manifest_path.read_text()) or {}
+              if manifest.get('disabled'):
+                  continue
+              slug = manifest.get('slug', manifest_path.parent.name)
+              manifests[slug] = manifest.get('kind', 'report')
+
+          index = Path('index.html').read_text()
+          linked = set(re.findall(r'href=["\']([^"\']+/index\.html)["\']', index))
+          linked_slugs = {Path(href).parent.name for href in linked}
+          built = {}
           for meta_path in Path('.').glob('*/_meta.json'):
-              kind = json.loads(meta_path.read_text()).get('kind', 'report')
-              kinds[kind] = kinds.get(kind, 0) + 1
-          expected = {'report': 10, 'analysis': 1}
-          if kinds != expected:
-              raise SystemExit(f'expected {expected}, found {kinds}')
-          print('OK: 10 reports and 1 analysis, self-contained')
+              slug = meta_path.parent.name
+              if not (meta_path.parent / 'index.html').is_file():
+                  raise SystemExit(f'{slug}: built _meta.json has no index.html')
+              built[slug] = json.loads(meta_path.read_text()).get('kind', 'report')
+          if built != manifests:
+              raise SystemExit(f'manifest/build mismatch: expected {manifests}, found {built}')
+          if linked_slugs != set(manifests):
+              raise SystemExit(f'gallery index slug mismatch: expected {sorted(manifests)}, found {sorted(linked_slugs)}')
+          print(f'OK: {len(manifests)} manifest reports, self-contained')
           PY
 
       - name: Upload gallery artifact

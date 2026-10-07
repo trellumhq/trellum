@@ -23,6 +23,7 @@ def brand(request):
         "github_href": settings.GITHUB_URL,
         "WEBSITE_REPO_URL": settings.WEBSITE_REPO_URL,
         "demo_href": settings.DEMO_URL,
+        "analysis_demo_available": getattr(settings, "ANALYSIS_DEMO_AVAILABLE", False),
         "agent_prompt": agent_prompt(),
         "ASSET_V": _asset_version(),
     }
