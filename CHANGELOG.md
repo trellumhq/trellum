@@ -7,6 +7,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Changed
+
+- Raise the default report build timeout from 10 to 30 minutes. Explicit
+  `TRELLUM_RUN_TIMEOUT` settings continue to take precedence.
+
 ## [0.3.0] — 2026-10-08
 
 ### Added

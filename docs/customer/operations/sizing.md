@@ -32,7 +32,7 @@ into memory at once, not how many reports exist.
 The starting points above get you running; once you have real traffic, size
 memory from evidence instead. Every build gets the same limit,
 `TRELLUM_DEFAULT_JOB_MEMORY_MB` (1024 by default), and the same wall-clock
-limit, `TRELLUM_RUN_TIMEOUT` (600 seconds by default). `report.yaml` carries
+limit, `TRELLUM_RUN_TIMEOUT` (1800 seconds / 30 minutes by default). `report.yaml` carries
 no sandbox limits, so size both for the largest report on the instance. Give
 the runner a budget sized to what's left once the rest of the stack has what
 it needs:
