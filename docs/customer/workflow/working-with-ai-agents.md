@@ -19,7 +19,8 @@ is where you put what a new colleague would need on day one:
 - `orders_legacy` is deprecated — use `orders`.
 
 ## Reports
-- SQL lives in queries.py, never inline in generator.py.
+- Keep database SQL in `queries.py`; use source-specific Python readers where
+  needed, and keep transformations and report composition in the generator.
 - One report per directory under reports/.
 - Every report declares its data sources in report.yaml.
 
@@ -35,9 +36,9 @@ reports than any amount of prompting.
 
 After the first build, keep your coding agent listening while you inspect the
 report in a browser. In review mode you can select a chart or table, or send a
-general change request. The agent edits the Python or SQL in your repository,
-rebuilds, and the preview reloads. See [Refine reports in your browser](refine-reports.md)
-for the prompt and command loop.
+general change request. The agent edits the report definition or source files
+in your repository, rebuilds, and the preview reloads. See
+[Refine reports in your browser](refine-reports.md) for the prompt and command loop.
 
 This local source-editing loop is separate from the portal assistant. The
 assistant answers questions about portal reports and never edits your Git
@@ -45,9 +46,10 @@ repository.
 
 ## Give it real data access
 
-An assistant that can check a column writes SQL that runs. One that cannot will
-invent column names that look plausible and fail at build time — or worse,
-silently return the wrong grain.
+For database-backed reports, an assistant that can check a column writes SQL
+that runs. One that cannot will invent column names that look plausible and
+fail at build time — or worse, silently return the wrong grain. Other sources
+can be read with their built-in reader or a project-specific Python adapter.
 
 Two ways to provide access, and you do not need both:
 
@@ -215,15 +217,15 @@ part of that prompt.
 
 The diff is the review surface, so review the diff:
 
-- **Does the SQL match the definition?** The most common failure is code that
-  runs perfectly and computes the wrong thing.
+- **Does the calculation match the definition?** Code can run perfectly and
+  compute the wrong thing, whatever source it reads.
 - **Is the grain right?** A join that duplicates rows inflates a total without
   any error appearing.
-- **Are filters where they belong?** A `where` clause in the wrong place quietly
+- **Are filters where they belong?** A filter applied at the wrong step quietly
   changes what a number means.
 - **Did it invent a column?** If the build succeeded, it did not — which is why
   it should build before you review.
-- **Is it in `queries.py`?** Inline SQL is harder to review and harder to reuse.
+- **Is SQL in `queries.py`?** Inline SQL is harder to review and harder to reuse.
 
 !!! warning
     An assistant is fast at producing plausible analysis. The reviewer supplies

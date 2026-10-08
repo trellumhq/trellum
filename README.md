@@ -5,7 +5,7 @@
 <h1 align="center">Trellum</h1>
 
 <p align="center">
-  Build interactive reports in Python and SQL.<br>
+  Build interactive reports from your data.<br>
   Build with your agent, refine in the report, review every definition in Git, and self-host when a team needs a shared home.
 </p>
 
@@ -24,17 +24,18 @@
   <img src="https://img.shields.io/badge/license-AGPL--3.0--only-0F766E" alt="AGPL-3.0-only">
 </p>
 
-Trellum turns data into reports that people can explore in a browser. Report
-authors write ordinary Python, SQL, and YAML. Trellum supplies interactive
-filters, charts, KPI cards, tables, themes, exports, validation, and portable
-HTML output. The source stays readable to people, coding agents, and code
-review tools.
+Trellum turns data from spreadsheets, files, APIs, and databases into reports
+that people can explore in a browser. SQL is optional. Report authors use
+Python to load data and compose reports, with definitions kept in ordinary
+project files. Trellum supplies interactive filters, charts, KPI cards, tables, themes, exports,
+validation, and portable HTML output. The source stays readable to people,
+coding agents, and code review tools.
 
 Build with your agent. Refine in the report. Share with your team. Open a
 report in local review mode, click a chart or type what you want changed, and
-send the request to your coding agent. The agent updates Python or SQL,
-rebuilds the report, and the preview refreshes while the source stays
-reviewable in Git.
+send the request to your coding agent. The agent updates the report definition
+and source files, rebuilds the report, and the preview refreshes while the
+source stays reviewable in Git.
 
 <p align="center">
   <img src="docs/assets/store-health.jpg" alt="Store Health report in Trellum Dark, with comparison KPIs, filters, and revenue and margin trends">
@@ -64,11 +65,11 @@ shared team home.
   <sub><a href="https://trellum.dev/tour/">Open the interactive portal tour</a> · 14 features, at your own pace · <a href="docs/product-tour.md">read the walkthrough</a> · <a href="https://trellum.dev/docs/latest/install/try-it/">try Trellum locally</a></sub>
 </p>
 
-The framework turns Python, SQL, and YAML into interactive, portable reports,
-and Markdown plus captured images into published analyses. An author or coding
-agent can inspect sources and shared metric definitions, build and validate a
-report or article, then review its changes in Git. The optional self-hosted
-portal gives a team a shared place for reports, analyses, metrics, experiments,
+The framework turns report definitions and source data into interactive,
+portable reports, and Markdown plus captured images into published analyses.
+An author or coding agent can inspect sources and shared metric definitions,
+build and validate a report or article, then review its changes in Git. The
+optional self-hosted portal gives a team a shared place for reports, analyses, metrics, experiments,
 annotations, data sources, operations and builds, permissions, and sharing.
 Optional alerts and the separate Buddy assistant can use an administrator-
 configured AI provider.
@@ -91,9 +92,9 @@ configured AI provider.
 - **Published analyses.** Keep a written finding, its assumptions and
   recommendation beside fixed report captures. Review and publish the Markdown
   and evidence through Git; later report refreshes do not change the article.
-- **A normal Git workflow.** Review the SQL and Python in a pull request, see
-  why a number changed, rebuild an earlier commit, or revert a report change
-  with the tools your team already uses.
+- **A normal Git workflow.** Review report definitions and source files in a
+  pull request, see why a number changed, rebuild an earlier commit, or revert
+  a report change with the tools your team already uses.
 
 ## Quick start
 
@@ -158,9 +159,9 @@ python -m trellum metrics
 ```
 
 Those commands explain the report contract, show configured sources and their
-columns, and list shared metric definitions before anyone invents new SQL. The
-included demo provides working reports and fabricated data to copy from. A
-typical edit loop is equally ordinary:
+columns, and list shared metric definitions before anyone writes
+data-loading or calculation logic. The included demo provides working reports
+and fabricated data to copy from. A typical edit loop is equally ordinary:
 
 ```bash
 python -m trellum.run reports/my-report --test --no-serve
@@ -169,7 +170,7 @@ python -m trellum validate output/my-report
 ```
 
 An agent can propose a change, run the same validation as CI, and leave a small
-Python or SQL diff for review. Credentials remain in the local, ignored `.env`;
+diff of the report code for review. Credentials remain in the local, ignored `.env`;
 the report source and `.env.example` can stay in Git.
 
 ## What a report looks like
@@ -179,7 +180,7 @@ Each report is a small directory with familiar files:
 ```text
 reports/revenue-overview/
 ├── report.yaml    # name, description, theme, schedule, data sources
-├── queries.py     # parameterized SQL or source reads
+├── queries.py     # optional module for data loading or SQL queries
 └── generator.py   # pandas transformations and report components
 ```
 
@@ -221,16 +222,18 @@ Use your own host, database, and user settings. `datasource add` tests the
 connection and may prompt for credentials; the example hostname is a placeholder.
 
 For another system, use its Python SDK in `queries.py` or a small project
-adapter and return a pandas DataFrame. Database-like sources can implement the
-framework's `ConnectionDriver` protocol and register a new type. Custom sources
+adapter and return a pandas DataFrame. For data in documents, use a Python
+reader or extraction library to prepare the needed rows and columns for the
+report. Database-like sources can implement the framework's `ConnectionDriver`
+protocol and register a new type. Custom sources
 stay in ordinary Python, where each service can use its own authentication,
 pagination, and query model.
 
 ## Git-native from the first report
 
 Your report project is an ordinary Git repository. Branches can hold report
-experiments, pull requests can review SQL and metric changes, commits provide a
-version history, and a revert restores a previous definition. Pinning a Trellum
+experiments, pull requests can review data-loading and metric changes, commits
+provide a version history, and a revert restores a previous definition. Pinning a Trellum
 version and rebuilding from a known project commit makes the code and checks
 behind a report reproducible. Teams can tag important report states and use
 their normal CI and deployment process to publish them.

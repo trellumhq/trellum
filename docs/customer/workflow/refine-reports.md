@@ -12,9 +12,9 @@ your repository; the agent edits the source, rebuilds, and the preview reloads.
    session is a relay between your browser and an active external agent.
 3. **Select a chart or table, or type a general request, and send it.** Both
    an element selection and an element-free message are supported.
-4. **Let the agent edit and rebuild.** It changes the Python or SQL source,
-   runs the build, and replies in the panel. The browser refreshes when the
-   rebuild is ready.
+4. **Let the agent edit and rebuild.** It changes the report definition or its
+   source files, runs the build, and replies in the panel. The browser refreshes
+   when the rebuild is ready.
 5. **Repeat, then inspect the source diff.** Keep the resulting source in
    your normal Git review and publishing process.
 

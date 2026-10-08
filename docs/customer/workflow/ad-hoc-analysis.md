@@ -6,6 +6,10 @@ you — with no report, no build, and no portal involved.
 
 ## Query a configured source
 
+This SQL example is for a database source. For files and APIs, use the
+framework's built-in readers or a Python adapter; document files need an
+explicit extraction step that returns a pandas DataFrame.
+
 ```bash
 trellum query --source warehouse "
     select channel, sum(revenue) as revenue

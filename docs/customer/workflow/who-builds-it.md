@@ -8,9 +8,8 @@ and everyone else gets to stand on it.
 
 ## 1. The data team builds and owns the context
 
-Metric definitions, warehouse knowledge, connections, conventions, and the
-reports that matter are built and maintained by the people who are professionals
-at it.
+Metric definitions, source knowledge, connections, conventions, and the reports
+that matter are built and maintained by the people who are professionals at it.
 
 This is expert work and it stays expert work. It is the part that does *not* get
 delegated to a model, because being wrong here is both invisible and expensive:
@@ -24,9 +23,9 @@ Product, operations, commercial — people who are not analysts and never will b
 own questions.
 
 The important part is what they are *not* doing. They are not guessing which
-table to use, not inventing a definition of revenue, and not waiting three days
-for someone to run a query. They are working inside the definitions your team
-wrote, whether they realise it or not.
+source or fields to use, not inventing a definition of revenue, and not waiting
+three days for someone to run a query. They are working inside the definitions
+your team wrote, whether they realise it or not.
 
 !!! tip
     This is the difference from self-service BI. A query builder hands the hard

@@ -928,16 +928,11 @@ a.src.more:hover{background:var(--accent-soft)}
 .rp-mail.on .sw::after{left:14px;background:var(--rp-bg)}
 @media (max-width:700px){.rp-row{grid-template-columns:minmax(0,1fr)}}
 
-/* ---------- the hook: one conversation ---------- */
-.htabs{display:flex;gap:var(--sp-2);flex-wrap:wrap;margin-top:18px}
-.htab{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border);border-radius:99px;padding:6px 14px;font:inherit;font-size:var(--fs-sm);font-weight:600;color:var(--text2);cursor:pointer;background:var(--bg-card);transition:border-color var(--speed),color var(--speed)}
-.htab.on{border-color:var(--accent-ink);color:var(--accent-ink);background:var(--accent-soft)}
+/* ---------- the copyable agent prompt ---------- */
 .chatmock{background:var(--code-bg);color:var(--code-ink);border-radius:var(--r-lg);padding:16px;font-size:var(--fs-md);display:grid;gap:9px}
 .chatmock .who{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--code-comment)}
-.chatmock .who.you{justify-self:end}
-.chatmock .m{background:var(--hb-card2);border-radius:var(--r-md);padding:9px 12px;max-width:46ch}
-.chatmock .m.you{border:1px solid var(--code-key);justify-self:end}
-.chatmock code{font-family:var(--mono);font-size:var(--fs-sm);color:var(--code-key)}
+.chatmock .prompt{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.55}
+.agent-prompt-card .copybtn{justify-self:start}
 
 /* ---------- the pipeline: sources → dataset → report ---------- */
 /* clip, not hidden: the columns slide in from ±26px, and at narrow widths that

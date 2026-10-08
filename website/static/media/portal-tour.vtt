@@ -10,7 +10,7 @@ Agent: Declare source names in the project. An admin supplies credentials. This 
 
 00:00:24.000 --> 00:00:40.000
 User: Create a revenue and retention report.
-Agent: Use Codex, Claude Code, or your preferred agent to edit Python, SQL and YAML, build locally, and validate the output.
+Agent: Use Codex, Claude Code, or your preferred agent to edit the report code and configuration, build locally, and validate the output.
 
 00:00:40.000 --> 00:00:52.000
 User: Keep revenue consistent across reports.

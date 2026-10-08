@@ -139,6 +139,11 @@ authoring contract.
 <!-- topic: queries -->
 ## How to write queries (MANDATORY — read before touching `queries.py`)
 
+Reports can load spreadsheets, files, APIs, or database data into pandas
+DataFrames. Use the appropriate reader for the source, such as
+`ctx.read_source("name")` for configured files. The SQL guidance below applies
+when reading a database; SQL is not required for other sources.
+
 **Exploring the data first?** `python -m trellum query "SELECT ..."` runs
 ad-hoc SQL against a configured source by NAME — never hunt for the database
 file or hardcode its path, both of which break the day the source is a
@@ -269,7 +274,7 @@ fixed rollup (e.g. period-over-period reference rollups).
 ## The 5-step process to write generator.py
 
 1. Subclass `BaseReport` and implement `generate(self, ctx)`.
-2. `conn = ctx.get_connection("primary_warehouse")` (or whatever name the project uses in `data-sources/config.yaml`); query with `query_df(conn, queries.X, params={...})`.
+2. Load a DataFrame using the reader for your source. For configured files, use `ctx.read_source("name")`; for databases, use `conn = ctx.get_connection("name")` and `query_df(conn, queries.X, params={...})`. Source names come from `data-sources/config.yaml`.
 3. Wrap each DataFrame in a `DataSource` + a `FilterBar` placed together in an **untitled section**: `ctx.add_section("", [DataSource(...), FilterBar(...)])`. Untitled is required for sticky positioning.
 4. Add content sections: `ctx.add_section(title, [...])`.
 5. **Every chart, KPI, and table component MUST carry `dataset_id="..."`** pointing to its DataSource. Without it the component renders statically and silently ignores filters — this is the most common mistake.

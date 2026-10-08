@@ -11,7 +11,7 @@ builds, and per-run logs that survive restarts.
 | `success` | It built | — |
 | `error` | The report code raised | Read the traceback in the run log |
 | `timeout` | Exceeded the operator's build timeout | Make the query cheaper, or ask the operator to raise `TRELLUM_RUN_TIMEOUT` |
-| `oom_killed` | Killed for memory | Aggregate in SQL rather than in memory |
+| `oom_killed` | Killed for memory | Reduce the data loaded or the size of in-memory transformations |
 | `stopped` | Stopped by a person or by a worker drain | Re-run it |
 
 The distinction between `timeout` and `oom_killed` matters: they look identical

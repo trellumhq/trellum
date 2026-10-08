@@ -21,6 +21,11 @@ DuckDB, CSV/Excel files, image assets, and OneDrive/SharePoint. Available
 credential fields depend on the source type; the Configure form shows the
 fields for the selected source.
 
+These built-in readers expose supported tabular sources to report code. Other
+formats, including document files, need a Python reader or extraction step in
+your project code that turns the relevant content into a pandas DataFrame;
+declaring a file source alone does not parse arbitrary documents.
+
 ## Declare a source in the repository
 
 The central file is `data-sources/config.yaml`, at the top of your project:

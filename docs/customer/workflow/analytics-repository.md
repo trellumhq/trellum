@@ -44,14 +44,14 @@ your-analytics/
     └── weekly-revenue/
         ├── report.yaml
         ├── generator.py
-        └── queries.py
+        └── queries.py      # optional; SQL or source reads
 ```
 
 ### `AGENTS.md`
 
-The house rules an assistant reads first: which warehouse is authoritative,
-naming conventions, which tables are deprecated, that SQL belongs in
-`queries.py`, and that nothing merges without review.
+The house rules an assistant reads first: which sources and definitions are
+authoritative, naming conventions, which fields or tables are deprecated,
+that database SQL belongs in `queries.py`, and that nothing merges without review.
 
 ### `context/metrics.md`
 
@@ -62,9 +62,9 @@ fastest.
 
 ### `context/warehouse.md`
 
-The grain of the important tables, which joins are safe, and the traps. What you
-would tell a new analyst in their first week, written down once instead of
-repeated ten times.
+For database sources, document the grain of important tables, safe joins, and
+common traps. For other source types, record their fields, meaning, and known
+limitations. Write down what you would tell a new analyst in their first week.
 
 ### `data-sources/config.yaml` — the sources, never the secrets
 

@@ -6,9 +6,10 @@ real screenshot, an explanation of what to look for, and relevant documentation.
 Nothing advances automatically; open any screenshot at full size for detail.
 
 The illustrative user/agent dialogue describes ordinary repository work with
-Python, SQL and YAML. Screenshots show the actual portal and reports; they are
-not a recording of a coding agent performing the work. The portal's optional
-Buddy assistant is separate from the coding agent used to author reports.
+report definitions and source files. Screenshots show the actual portal and
+reports; they are not a recording of a coding agent performing the work. The
+portal's optional Buddy assistant is separate from the coding agent used to
+author reports.
 
 ## Walkthrough
 
@@ -16,7 +17,7 @@ Buddy assistant is separate from the coding agent used to author reports.
 |---|---|---|
 | 1 | A shared home for reports | **User:** Can my team explore the data themselves? **Agent:** Build reports in a repository, then use the optional portal as your team's shared home. |
 | 2 | Connect your sources | **User:** Use our database and acquisition budget. **Agent:** Declare source names in the project. An admin supplies credentials. This demo uses synthetic SQLite and CSV data. |
-| 3 | Build with your coding agent | **User:** Create a revenue and retention report. **Agent:** Use Codex, Claude Code, or your preferred agent to edit Python, SQL and YAML, build locally, and validate the output. |
+| 3 | Build with your coding agent | **User:** Create a revenue and retention report. **Agent:** Use Codex, Claude Code, or your preferred agent to edit the report code and configuration, build locally, and validate the output. |
 | 4 | Define metrics once | **User:** Keep revenue consistent across reports. **Agent:** Define it in metrics.yaml. Reports claim metric IDs; the catalog shows their definitions, versions and usage. |
 | 5 | Review and publish with Git | **User:** Show me the changes before publishing. **Agent:** Review the diff and commit history, then publish the reviewed revision. This screen connects your repository; the demo has no remote configured. |
 | 6 | Put events beside the numbers | **User:** Mark releases and campaigns. **Agent:** Add events.yaml declarations in Git. The portal calendar and report charts show their context. |

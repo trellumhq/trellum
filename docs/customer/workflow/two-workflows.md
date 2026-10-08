@@ -18,9 +18,8 @@ So there are two workflows here, and they share one repository.
 
 Someone asks why signups dipped last week. You — or the person who asked,
 working in their own AI assistant — open the repository. The assistant already
-knows which warehouse is authoritative, how signups are defined, and which
-tables to trust, because that is written down there. It queries the configured
-data source, writes a short script, and answers.
+knows which sources and definitions are authoritative, because that is written
+down there. It reads the configured source, writes a short script, and answers.
 
 No report is created. No build runs. Nothing is scheduled. That is the point:
 answering a one-off question should cost minutes, not produce a dashboard
@@ -30,9 +29,9 @@ someone has to maintain forever.
 
 When an answer turns out to matter — the team wants it weekly, or the number is
 going in front of the board — promote it to a report. Now it is a `report.yaml`,
-a generator and its SQL: reviewed in a pull request and versioned, so the
-derivation can be inspected and repeated. The result can change as the source
-data or reporting window changes.
+a generator and any source files it needs, reviewed in a pull request and
+versioned so the derivation can be inspected and repeated. The result can
+change as the source data or reporting window changes.
 
 This is the traceable half. The value is not the chart; it is that a number
 on a dashboard can be traced back to a commit somebody approved.
@@ -58,9 +57,9 @@ Letting a question prove itself first is cheaper and leaves less behind.
 ## What they share
 
 One repository, one set of data sources, one set of definitions. An ad-hoc
-script and a built report reach your warehouse through the same configured
-connection, so a question answered on Tuesday and a report shipped on Friday
-cannot quietly disagree about what "revenue" means.
+script and a built report use the same configured sources, so a question
+answered on Tuesday and a report shipped on Friday cannot quietly disagree
+about what "revenue" means.
 
 ## And then the portal
 

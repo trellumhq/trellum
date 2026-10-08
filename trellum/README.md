@@ -60,8 +60,9 @@ For scheduled builds, team access, shared metrics, experiments, annotations,
 published analyses and optional AI assistance, explore the
 [interactive portal tour](https://trellum.dev/tour/) or
 [run the portal locally](https://trellum.dev/docs/latest/install/try-it/).
-Author reports with your preferred coding agent or editor; Python, SQL and
-YAML stay in Git for review, history and reproducible builds.
+Author reports in Python with your preferred coding agent or editor. Load
+spreadsheets, files, APIs, or databases; SQL is optional. Report code and
+configuration stay in Git for review, history and reproducible builds.
 
 This file is the complete framework reference: components, the `ctx` API,
 themes, data sources, browser runtime, validation, extension points, and CLI.
@@ -266,12 +267,12 @@ python3 -m trellum.run reports/my-report
 
 `trellum.run` serves **one** report at a time. Output is written under `output/<slug>/` (e.g. `index.html`, `data.json`).
 
-**No database yet?** The scaffold from `trellum.new` queries a real data
+**No source configured yet?** The scaffold from `trellum.new` uses a real data
 source (`vertica` by default) and will fail with a credentials error until
 `data-sources/config.yaml` / `.env` point at something real. Add `--test` to
-build the same report against auto-generated mock data instead — no DB, no
+build the same report against auto-generated mock data instead — no source or
 `.env` needed — which is the fastest way to see the report render while you
-are still writing the query:
+are still authoring it:
 
 ```bash
 python3 -m trellum.run reports/my-report --test
@@ -300,12 +301,12 @@ and custom-section modules are only needed when the generator uses them:
 reports/{slug}/
 ├── report.yaml          # Metadata, schedule, data sources, display config
 ├── generator.py         # Python class that builds the report
-├── queries.py           # SQL queries as module-level constants
+├── queries.py           # optional SQL queries or source reads
 └── custom_sections.py   # (optional) CSS/HTML/JS for advanced dashboards
 ```
 
-- **`generator.py`** -- Subclass `BaseReport` and implement `generate(self, ctx)`. Use `ctx.get_connection()` to query data, then `ctx.add_section()` with components like `DataSource`, `FilterBar`, `LineChart`, `KpiRow`, etc. The scaffolded template from `python -m trellum.new` provides a working starting point.
-- **`queries.py`** -- SQL queries as module-level string constants with `:param_name` placeholders. Referenced from the generator via `from . import queries`.
+- **`generator.py`** -- Subclass `BaseReport` and implement `generate(self, ctx)`. Load data with a reader such as `ctx.read_source()` for files or `ctx.get_connection()` for database queries, then use `ctx.add_section()` with components like `DataSource`, `FilterBar`, `LineChart`, `KpiRow`, etc. The scaffolded template from `python -m trellum.new` provides a working starting point.
+- **`queries.py`** -- Optional module for data loading or database SQL, referenced from the generator via `from . import queries`. SQL queries use module-level string constants with `:param_name` placeholders.
 - **`custom_sections.py`** -- Optional. Contains `CUSTOM_CSS`, `CUSTOM_HTML`, and `CUSTOM_JS` string constants for advanced `RawHTML` dashboards.
 
 An analysis is the Markdown variant of this contract: `kind: analysis` in
@@ -744,6 +745,12 @@ Set `annotations: false` in `report.yaml` to disable annotations for a specific 
 
 <!-- topic: queries -->
 ## Data Layer
+
+Report components use pandas DataFrames, whether the data comes from a
+spreadsheet, file, API, or database. Use a built-in reader for supported sources
+or a Python reader of your choice. For documents, extract the relevant content
+into rows and columns first. SQL is one way to load database data; it is not a
+requirement for building a report.
 
 ### Central Data Source Configuration
 

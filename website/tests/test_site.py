@@ -28,6 +28,12 @@ def test_static_product_contract(client):
     assert 'checkout-findings/">Read the demo analysis' not in body
     assert "demo." + "trellum.dev" not in body
     assert "python -m pip install trellum" in body
+    assert 'id="agent-prompt"' in body
+    assert 'data-copy="agent-prompt"' in body
+    assert "run the relevant checks, and open a live browser review" in body
+    assert 'class="htab' not in body
+    assert "virtual environment" not in body
+    assert "python -m trellum" not in body
     assert "who opened it" not in body
     assert "MFA on every tier" not in body
     assert "Review what ships" in body

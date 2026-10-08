@@ -20,9 +20,11 @@ can change freely.
 
 ## Report
 
-A directory in your repository — `report.yaml`, a Python generator, SQL — that
-builds into a served dashboard. Reports are grouped by the category and tags
-declared in `report.yaml`, not by a folder structure in the UI.
+A directory in your repository — `report.yaml`, a Python generator, and any
+source files it uses — that builds into a served dashboard. Database-backed
+reports may include SQL; other sources can use built-in readers or Python
+adapters. Reports are grouped by the category and tags declared in
+`report.yaml`, not by a folder structure in the UI.
 
 ## What lives where
 
