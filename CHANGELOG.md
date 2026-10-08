@@ -7,18 +7,55 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-10-08
+
 ### Added
 
+- Configure separate default audiences for new reports and analyses. A
+  repository manifest can set `initial_audience` to `studio` or `private` for
+  the first import; later imports preserve the item's audience.
 - Save, test and select named outbound email API connections alongside SMTP.
   Built-in choices cover SendGrid, Amazon SES, Mailgun, Postmark, Brevo,
   Resend, Mailjet, MailerSend and Mailtrap Email Sending. Custom HTTPS supports
   a bounded JSON mapping editor with synthetic previews and revision-bound
   simple/report tests.
 
+### Fixed
+
+- Prevent runner concurrency races during report builds and data-source
+  materialization, and refresh repository sync status after queued work.
+- Fix the Pages export test fixture for the checkout analysis.
+
 ### Changed
 
 - Raise the default report build timeout from 10 to 30 minutes. Explicit
   `TRELLUM_RUN_TIMEOUT` settings continue to take precedence.
+- Set SSO domain verification off in supplied new-install and demo
+  configuration. Existing environment files retain their configured behavior.
+
+### Documentation
+
+- Start website onboarding with a copyable prompt for an AI coding agent.
+  Explain reports from spreadsheets, files, APIs, databases and extracted
+  document data, and show browser review in the Trellum Dark theme.
+
+### Upgrade notes
+
+The portal upgrade applies additive migrations for email API connections,
+report audiences, and studio audience defaults. Existing reports and analyses
+start in the Studio audience, preserving existing access; the new defaults
+apply to items discovered later.
+
+Deploy this release to every web and worker process before enabling Private
+items. Keep `TRELLUM_REPORT_SCOPED_ACCESS_READY=false` until the rollout is
+complete. In `edge-signed` mode, also wait at least
+`TRELLUM_CDN_COOKIE_TTL_SECONDS` after removing the last old process before
+setting readiness to `true`, so legacy studio-wide grant cookies expire.
+Follow the [report-content security guide](https://trellum.dev/docs/latest/operations/securing-report-content/)
+for rollout and rollback restrictions.
+
+Existing `.env` and demo environment files keep their SSO domain-verification
+setting; if it is absent, verification remains enabled.
 
 ## [0.3.0] — 2026-10-08
 
