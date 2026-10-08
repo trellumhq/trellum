@@ -453,6 +453,7 @@ class DockerSandbox:
                 if c.id not in seen:
                     seen.add(c.id)
                     containers.append(c)
+        # Check liveness after listing: a build may have started during the list.
         active = {
             str(pk)
             for pk in Run.objects.filter(status__in=Run.ACTIVE_STATUSES).values_list(

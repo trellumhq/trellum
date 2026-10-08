@@ -382,6 +382,16 @@ class TestRoles:
         self._run(role="coordinator")
         assert Run.objects.get(pk=run.pk).status == Run.QUEUED
 
+    def test_runner_claims_and_starts(self, make_run, monkeypatch):
+        started = []
+        monkeypatch.setattr(
+            "apps.runner.executor.Executor.start_run",
+            lambda self, run, extra_env=None: started.append(run.pk) or True,
+        )
+        run = make_run()
+        self._run(role="runner")
+        assert started == [run.pk]
+
     def test_runner_beats_before_claiming_work(self, make_run, monkeypatch):
         import threading
 

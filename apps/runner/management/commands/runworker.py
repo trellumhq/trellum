@@ -191,6 +191,7 @@ class Command(BaseCommand):
         # and that must not depend on how long the current tick takes.
         # (A truly wedged tick keeps beating; the per-run timeout is what
         # covers runaway builds.)
+        # Register before claiming work so another worker cannot reap our runs.
         self._beat(worker_id, executor, role=effective_role)
         beat_thread = None
         if not opts["once"]:
@@ -262,6 +263,7 @@ class Command(BaseCommand):
         ``self_worker_id`` is never reaped: we are the ones calling, so we are
         alive by definition, even if a DB stall let our heartbeat go stale.
         """
+        # Evaluate liveness in the UPDATE so newly registered workers are visible.
         orphaned = (
             Run.objects.filter(status__in=(Run.STARTING, Run.RUNNING))
             .exclude(worker_id__in=WorkerHeartbeat.alive().values("worker_id"))
