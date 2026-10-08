@@ -185,24 +185,37 @@ def test_read_timeout_after_submission_is_unconfirmed_without_retry(monkeypatch)
     assert attempts == [1]
 
 
-def test_deep_payload_and_required_response_are_sanitized(monkeypatch):
-    nested = []
-    payload = {"value": nested}
-    for _ in range(5000):
-        child = []
-        nested.append(child)
-        nested = child
-    with pytest.raises(EmailDeliveryError) as error:
-        post_json("https://api.example.com/send", headers={}, payload=payload)
-    assert error.value.category == "invalid_message" and error.value.__cause__ is None
+@pytest.mark.parametrize("operation,category", [
+    ("encode", "invalid_message"),
+    ("decode", "response_invalid"),
+])
+def test_json_recursion_errors_are_sanitized_without_network(monkeypatch, operation, category):
+    def recurse(*args, **kwargs):
+        raise RecursionError("sensitive payload detail")
 
-    response = HttpResponse(200, b"[" * 5000 + b"0" + b"]" * 5000, 1, "api.example.com")
+    if operation == "encode":
+        monkeypatch.setattr("apps.core.email_http.json.dumps", recurse)
+
+        def unexpected_dns(*args, **kwargs):
+            raise AssertionError("JSON encoding failure must happen before DNS")
+
+        monkeypatch.setattr(socket, "getaddrinfo", unexpected_dns)
+        request = lambda: post_json("https://api.example.com/send", headers={}, payload={})
+    else:
+        monkeypatch.setattr("apps.core.email_http.json.loads", recurse)
+        response = HttpResponse(200, b"{}", 1, "api.example.com")
+        request = lambda: evaluate_response(
+            response, accepted_statuses=[200], condition={"pointer": "", "equals": True}
+        )
+
     with pytest.raises(EmailDeliveryError) as error:
-        evaluate_response(response, accepted_statuses=[200], condition={"pointer": "", "equals": True})
-    assert error.value.category == "response_invalid" and error.value.outcome == "unconfirmed"
-    assert error.value.__cause__ is None
-    assert post_json.sensitive_variables == "__ALL__"
-    assert evaluate_response.sensitive_variables == "__ALL__"
+        request()
+    assert error.value.category == category
+    assert error.value.outcome == ("not_submitted" if operation == "encode" else "unconfirmed")
+    assert error.value.__cause__ is None and error.value.__suppress_context__
+    assert "sensitive payload detail" not in str(error.value)
+    sensitive_function = post_json if operation == "encode" else evaluate_response
+    assert sensitive_function.sensitive_variables == "__ALL__"
 
 
 def test_compressed_response_is_unconfirmed(monkeypatch):
