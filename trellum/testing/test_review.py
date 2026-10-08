@@ -532,6 +532,88 @@ class TestServerIntegration:
         code, _ = _http("GET", review_server["base"] + "/_fw/review/nonsense")
         assert code == 404
 
+    @pytest.mark.parametrize("mode", ["single", "all"])
+    def test_review_keeps_live_query_flags(self, mode, tmp_path, monkeypatch):
+        from trellum import runner
+        from trellum.review import http as review_http
+        from trellum.review import inject as review_inject
+        from trellum.review.state import ReviewState
+        from trellum.runner import serve as serve_mod
+
+        # The process-global STATE binds its served directory once. Give this
+        # test its own instance so its temporary path cannot leak to siblings.
+        isolated_state = ReviewState()
+        monkeypatch.setattr(review_mod, "STATE", isolated_state)
+        monkeypatch.setattr(review_http, "STATE", isolated_state)
+        monkeypatch.setattr(review_inject, "STATE", isolated_state)
+
+        output = tmp_path / "out"
+        report = output if mode == "single" else output / "alpha"
+        report.mkdir(parents=True)
+        html = b"<html><head></head><body><script>runtime</script>report</body></html>"
+        (report / "index.html").write_bytes(html)
+        (report / "_live_queries.json").write_text(
+            '{"version": 1, "queries": {"q": {}}}', encoding="utf-8"
+        )
+
+        servers = []
+        serve_forever = serve_mod._ReuseHTTPServer.serve_forever
+
+        def tracked_serve_forever(server, *args, **kwargs):
+            servers.append(server)
+            return serve_forever(server, *args, **kwargs)
+
+        monkeypatch.setattr(
+            serve_mod._ReuseHTTPServer, "serve_forever", tracked_serve_forever
+        )
+        port = _free_port()
+        serve = runner._serve if mode == "single" else runner._serve_all
+        served_dir = output if mode == "all" else report
+        thread = threading.Thread(
+            target=serve, args=(str(served_dir), port), daemon=True
+        )
+        thread.start()
+        base = f"http://127.0.0.1:{port}"
+        try:
+            for _ in range(100):
+                try:
+                    _http("GET", base + "/_fw/server.json", timeout=1)
+                    break
+                except OSError:
+                    time.sleep(0.05)
+            else:
+                pytest.fail(f"{mode} server did not start")
+
+            path = "/index.html" if mode == "single" else "/alpha/index.html"
+            directory_path = "/" if mode == "single" else "/alpha/"
+            live_url = "/_fw/live-query" if mode == "single" else "/alpha/_fw/live-query"
+            disk_bytes = (report / "index.html").read_bytes()
+
+            code, body = _http("GET", base + path)
+            assert code == 200 and b"_fwHasHost" in body
+            assert body.count(live_url.encode()) == 1
+            assert body.index(b"_fwHasHost") < body.index(b"</head>") < body.index(b"runtime")
+            assert b"review.js" not in body
+
+            assert _http("POST", base + "/_fw/review/start", {})[0] == 200
+            code, body = _http("GET", base + directory_path)
+            assert code == 200
+            assert body.count(b"_fwHasHost") == 1 and body.count(b"review.js") == 1
+            assert body.count(live_url.encode()) == 1
+            assert body.index(b"_fwHasHost") < body.index(b"</head>") < body.index(b"runtime")
+
+            assert _http("POST", base + "/_fw/review/end", {})[0] == 200
+            code, body = _http("GET", base + path)
+            assert code == 200 and b"_fwHasHost" in body
+            assert live_url.encode() in body and b"review.js" not in body
+            assert (report / "index.html").read_bytes() == disk_bytes
+        finally:
+            if servers:
+                servers[0].shutdown()
+                servers[0].server_close()
+            thread.join(timeout=5)
+            isolated_state.reset_for_tests()
+
 
 class TestLoopbackOnly:
     class _FakeHandler:

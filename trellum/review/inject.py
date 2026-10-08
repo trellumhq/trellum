@@ -104,9 +104,13 @@ def maybe_serve_injected_html(handler, served_dir: str) -> bool:
         return False
     try:
         with open(fs_path, "rb") as fh:
-            body = inject_overlay(fh.read())
+            body = fh.read()
     except OSError:
         return False
+    # Review takes over the HTML response before the live-query handler can
+    # run, so compose both dev-only additions into this served copy.
+    from trellum.runner.live_query_dev import inject_dev_live_query_flags
+    body = inject_overlay(inject_dev_live_query_flags(body, handler))
     handler.send_response(200)
     handler.send_header("Content-Type", "text/html; charset=utf-8")
     handler.send_header("Content-Length", str(len(body)))

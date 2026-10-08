@@ -96,11 +96,9 @@ def maybe_serve_injected_html(handler) -> bool:
     only when) the report being requested actually declared a live query.
 
     Mirrors ``trellum.review.inject.maybe_serve_injected_html`` — same
-    shape, same place in the caller's dispatch chain — but deliberately
-    independent of review mode: the two dev conveniences do not need to
-    know about each other, and a page with no live query pays only the one
-    cheap manifest-existence check before falling through unchanged to the
-    server's normal (gzip-optimized) file serving.
+    shape and dispatch position. When review takes over HTML first, its
+    injector composes these flags into the served page. A page with no live
+    query pays only the manifest check before normal file serving.
     """
     if handler.command != "GET":
         return False
