@@ -1,4 +1,5 @@
 {% extends "settings_base.html" %}
+{% load static %}
 {% block title %}Repository — {{ studio.name }}{% endblock %}
 {% block settings %}
 <header class="page-head">
@@ -9,6 +10,7 @@
 </header>
 
 {% if repo and repo.repo_url %}
+<span data-repo-status data-status-url="/s/{{ org.slug }}/{{ studio.slug }}/api/system/git/status" data-sync-requested="{{ repo.sync_requested|yesno:'true,false' }}" data-publish-requested="{{ repo.publish_requested|yesno:'true,false' }}" hidden></span>
 {% if repo.publish_requested %}
 <div class="ui-flash info" role="status">Publishing <code>{{ repo.remote_sha|slice:":7" }}</code>…
   the runner will pick it up within a few seconds.</div>
@@ -57,9 +59,9 @@
   </form>
 
   <div class="ui-form-actions repo-actions">
-    <form class="inline" method="post">
+    <form class="inline" method="post" id="repoSyncForm">
       {% csrf_token %}<input type="hidden" name="sync_now" value="1">
-      <button class="ui-btn ghost" type="submit">{% if repo.publish_mode == "manual" %}Check for changes{% else %}Sync now{% endif %}</button>
+      <button class="ui-btn ghost" type="submit" id="repoSyncButton" data-idle-label="{% if repo.publish_mode == 'manual' %}Check for changes{% else %}Sync now{% endif %}"{% if repo.sync_requested or repo.publish_requested %} disabled{% endif %}>{% if repo.publish_requested %}Publishing…{% elif repo.sync_requested %}Checking for changes…{% elif repo.publish_mode == "manual" %}Check for changes{% else %}Sync now{% endif %}</button>
     </form>
     {% if repo.publish_mode == "manual" %}
       {% if repo.publish_requested %}<button class="ui-btn primary" type="button" disabled>Publishing…</button>
@@ -68,6 +70,7 @@
     {% endif %}
   </div>
 </div>
+<p id="repoPollStatus" class="muted" role="status" aria-live="polite"{% if not repo.sync_requested and not repo.publish_requested %} hidden{% endif %}>{% if repo.publish_requested %}Publishing…{% elif repo.sync_requested %}Checking for changes…{% endif %}</p>
 
 {% if repo.publish_mode == "manual" or pending %}
 {% if pending %}
@@ -177,6 +180,7 @@
   {% endif %}
 </div>
 {% endif %}
+{% if repo and repo.repo_url %}<script src="{% static 'repo-status.js' %}" defer></script>{% endif %}
 
 <h2>Connection</h2>
 <div class="panel formrow">
