@@ -489,6 +489,34 @@ class TestProjectContextFile:
         assert "STUDIO SECRET" not in build_system_prompt(toolbox)[0]["text"]
 
 
+@pytest.mark.parametrize("model", ["proxy", "edge-external"])
+def test_full_toolbox_private_content_readiness_preserves_management_sources(
+    studio_tree, report_row, built, org_admin, settings, model,
+):
+    report_row.audience = report_row.AUDIENCE_PRIVATE
+    report_row.save(update_fields=["audience"])
+    catalog.invalidate()
+    settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = True
+    settings.TRELLUM_REPORT_ACCESS_MODEL = "proxy"
+    full = AssistantToolbox(studio_tree, actor=org_admin, scope="full")
+    assert full.read_data(built / "data.json")
+    assert full.data_files(report_row.slug)
+    settings.TRELLUM_REPORT_ACCESS_MODEL = model
+    settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = model != "proxy"
+    assert full.read_data(built / "data.json") is None
+    assert full.data_files(report_row.slug) == []
+    assert "temporarily unavailable" in full.execute("query_report_data", {
+        "slug": report_row.slug, "dataset_id": "revenue_daily",
+    })
+    # The prechecked execution path still rechecks the content boundary.
+    full._executing_prechecked = True
+    assert full.read_data(built / "data.json") is None
+    full._executing_prechecked = False
+    assert full._access_error() is None
+    trusted = AssistantToolbox(studio_tree)
+    assert trusted.read_data(built / "data.json")
+
+
 class TestReportBoundToolbox:
     @pytest.fixture
     def bound(self, selected_viewer, studio_tree, report_row):

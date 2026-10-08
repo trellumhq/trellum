@@ -13,7 +13,6 @@ from apps.core import roles
 from apps.core.crypto import EncryptedTextField
 from apps.orgs.models import ImmutableSlugMixin, Organization, slug_validator
 
-
 #: Runner pools. A runner serves the pools named in TRELLUM_RUNNER_POOLS (empty =
 #: all), so a single box runs one process serving everything while a fleet can
 #: dedicate high-memory nodes to the "large" pool. Studios, not reports, carry
@@ -29,10 +28,20 @@ POOL_CHOICES = [
 
 
 class Studio(ImmutableSlugMixin):
+    AUDIENCE_STUDIO = "studio"
+    AUDIENCE_PRIVATE = "private"
+    AUDIENCE_CHOICES = ((AUDIENCE_STUDIO, "Studio audience"), (AUDIENCE_PRIVATE, "Private"))
+
     org = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="studios")
     slug = models.SlugField(max_length=64, validators=[slug_validator])
     name = models.CharField(max_length=200)
     description = models.CharField(max_length=400, blank=True)
+    default_report_audience = models.CharField(
+        max_length=16, choices=AUDIENCE_CHOICES, default=AUDIENCE_STUDIO, db_default=AUDIENCE_STUDIO
+    )
+    default_analysis_audience = models.CharField(
+        max_length=16, choices=AUDIENCE_CHOICES, default=AUDIENCE_STUDIO, db_default=AUDIENCE_STUDIO
+    )
     pool = models.CharField(max_length=32, choices=POOL_CHOICES, default=POOL_STANDARD)
     #: The studio's own default look -- recolors the studio's whole chrome
     #: (management pages AND report content, see apps.core.themes.

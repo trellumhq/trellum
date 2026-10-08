@@ -8,6 +8,21 @@
     the portal pulls and rebuilds — that pipeline is the core of the product.</p>
 </header>
 
+<h2 id="default-audiences">Default audiences</h2>
+<div class="panel formrow">
+  <p>Choose signed-in access for newly discovered reports and analyses. Existing items keep their audience when these defaults change or they are rebuilt. A repository manifest can set an initial audience for a new item.</p>
+  <p class="muted">Studio audience includes Viewers with access to the whole studio. Private includes organization admins, studio Admins and Developers, plus explicitly assigned Viewer groups. Internet sharing uses separate public links.</p>
+  {% if audience_block_reason %}<p class="muted" role="note">Private defaults cannot be enabled: {{ audience_block_reason }}.</p>{% endif %}
+  <form method="post" data-settings-form>
+    {% csrf_token %}<input type="hidden" name="set_default_audiences" value="1">
+    {{ audience_form.non_field_errors }}
+    <label for="{{ audience_form.default_report_audience.id_for_label }}">New reports</label>{{ audience_form.default_report_audience }}{{ audience_form.default_report_audience.errors }}
+    <label for="{{ audience_form.default_analysis_audience.id_for_label }}">New analyses</label>{{ audience_form.default_analysis_audience }}{{ audience_form.default_analysis_audience.errors }}
+    <p><button class="ui-btn primary" type="submit">Save default audiences</button></p>
+  </form>
+  <p class="muted">For an existing item, open its <a href="/s/{{ org.slug }}/{{ studio.slug }}/">studio page</a> and choose Access in the Options menu to change its audience or assign groups.</p>
+</div>
+
 {% if repo and repo.repo_url %}
 {% if repo.publish_requested %}
 <div class="ui-flash info" role="status">Publishing <code>{{ repo.remote_sha|slice:":7" }}</code>…

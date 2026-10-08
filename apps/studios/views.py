@@ -13,9 +13,11 @@ from django.views.decorators.http import require_POST
 from apps.core import roles
 from apps.core.audit import audit
 from apps.core.permissions import require_studio_role
+from apps.core.report_access import selected_report_access_block_reason
 from apps.orgs.models import OrgMembership
+from apps.reports.models import Report
 
-from .forms import StudioRepoForm
+from .forms import DefaultAudiencesForm, StudioRepoForm
 from .models import RepoPublish, StudioMembership, StudioRepo
 
 
@@ -56,6 +58,27 @@ def members(request, org_slug, studio_slug):  # noqa: ARG001
 @require_studio_role(roles.ADMIN)
 def repo_settings(request, org_slug, studio_slug):  # noqa: ARG001
     repo = StudioRepo.objects.filter(studio=request.studio).first()
+    audience_form = DefaultAudiencesForm(instance=request.studio)
+    if request.method == "POST" and "set_default_audiences" in request.POST:
+        fields = DefaultAudiencesForm.Meta.fields
+        prior = {field: getattr(request.studio, field) for field in fields}
+        audience_form = DefaultAudiencesForm(request.POST, instance=request.studio)
+        if audience_form.is_valid():
+            new = {field: audience_form.cleaned_data[field] for field in fields}
+            block_reason = selected_report_access_block_reason()
+            if block_reason and any(
+                new[field] == Report.AUDIENCE_PRIVATE and prior[field] != new[field]
+                for field in fields
+            ):
+                audience_form.add_error(None, block_reason)
+            else:
+                audience_form.save(commit=False).save(update_fields=fields)
+                audit(
+                    request, "studio.default_audiences_set", target=request.studio,
+                    prior=prior, new=new,
+                )
+                messages.success(request, "Default audiences saved for new reports and analyses.")
+                return redirect(request.path + "#default-audiences")
     if request.method == "POST" and "sync_now" in request.POST:
         # The "Sync now" button: flag the repo and let the worker's git thread
         # pull. A redirect back (not a JSON API call) keeps it consistent with
@@ -98,7 +121,7 @@ def repo_settings(request, org_slug, studio_slug):  # noqa: ARG001
             else "Pushes now wait for you to publish them.",
         )
         return redirect(request.path)
-    if request.method == "POST":
+    if request.method == "POST" and "set_default_audiences" not in request.POST:
         # Captured before the form binds: is_valid() writes onto ``repo``.
         was_manual = repo is not None and repo.publish_mode == "manual"
         form = StudioRepoForm(request.POST, instance=repo)
@@ -158,6 +181,8 @@ def repo_settings(request, org_slug, studio_slug):  # noqa: ARG001
             "org": request.org,
             "studio": request.studio,
             "form": form,
+            "audience_form": audience_form,
+            "audience_block_reason": selected_report_access_block_reason(),
             "repo": repo,
             "webhook_url": webhook_url,
             "pending": pending,

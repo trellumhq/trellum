@@ -11,6 +11,13 @@ Articles live in your analytics Git repository and appear under **Analyses**
 in the studio. They use the same access groups, favorites, sharing policies,
 activity tracking, exports, and snapshot delivery as reports.
 
+The studio has a separate default audience for new analyses. It is applied on
+first discovery, before the article becomes visible, and later rebuilds keep
+the article's audience. Administrators can set a different audience for an
+individual article from **Options → Access**. See
+[Access control](/docs/latest/portal/access-control/) for Studio audience,
+Private, and explicit group grants.
+
 ## Capture the evidence
 
 Open a report and set its filters to the view you want to explain. Choose
@@ -95,8 +102,10 @@ chat. A signed-in reader needs access to the analysis. Administrators can
 assign selected groups using **Options → Access**, just as for a report.
 
 The analysis has its own audience. Its included evidence is published to that
-audience; the reader does not need access to every source report. Opening a
-source link still requires the source report's normal permissions.
+audience; the reader does not need access to every source report. A Private
+analysis is hidden from ordinary studio Viewers unless they are explicitly
+granted access. Opening a source link still requires the source report's
+normal permissions.
 
 Public [share links](/docs/latest/portal/share-links/) and
 [embeds](/docs/latest/portal/embedding/) follow the existing organization

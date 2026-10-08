@@ -309,9 +309,11 @@ def api_live_query(request, org_slug, studio_slug, slug):  # noqa: ARG001
     """POST {"query_id", "params"} → {"columns", "rows", "truncated",
     "elapsed_ms"}. See the module docstring for the full posture."""
     from apps.core.http import json_body
-    from apps.reports.views import _get_report
+    from apps.reports.views import _get_report, _selected_content_block
 
     report = _get_report(request, slug)  # 404: absent (or invisible) report
+    if _selected_content_block(request, report):
+        return JsonResponse({"error": "selected_report_access_unavailable"}, status=503)
     if report.kind == "analysis":
         return _bad("Analyses do not support live queries")
 

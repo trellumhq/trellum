@@ -34,6 +34,20 @@ commit it is serving; the next push simply waits for you.
 
 Both modes keep a full publish history, and both fetch on the same schedule.
 
+The Repository page also has a **Default audiences** section with separate
+choices for **New reports** and **New analyses**: **Studio audience** or
+**Private**. These defaults are saved independently of repository connection
+and take effect when each item is first discovered, before it appears in the
+studio. This includes the first import in either publishing mode. Changing a
+default does not change existing items; use **Options → Access** on an item to change its
+audience. Rebuilds preserve that audience.
+
+An optional `initial_audience` field in `report.yaml` can override the studio
+default on first discovery with `studio` or `private`. It is only an initial
+setting: later manifest edits and rebuilds do not change the live audience.
+Use the item's Access page for later changes. This field protects portal
+content only; it does not protect a standalone HTML report hosted elsewhere.
+
 ## What the top of the page tells you
 
 Two columns, side by side:

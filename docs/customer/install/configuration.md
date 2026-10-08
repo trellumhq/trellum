@@ -232,16 +232,18 @@ cannot forge access.
 | `TRELLUM_CDN_BASE_URL` | — | public origin content is served from, e.g. `https://reports.example.com` |
 | `TRELLUM_CDN_SIGNING_KEY_FILE` | — | path to the Ed25519 private key (PEM). `TRELLUM_CDN_SIGNING_KEY` takes it inline |
 | `TRELLUM_CDN_COOKIE_TTL_SECONDS` | `3600` | grant lifetime — **also the revocation latency**: a viewer whose access is removed can keep fetching already-granted content for at most this long |
-| `TRELLUM_REPORT_SCOPED_ACCESS_READY` | `false` | operator confirmation that selected-report permissions are safe to activate |
+| `TRELLUM_REPORT_SCOPED_ACCESS_READY` | `false` | operator confirmation that selected-report and Private item permissions are safe to activate |
 
-Before enabling selected-report permissions, deploy this version to **every** web
-and worker process. Older processes interpret a Viewer group grant as access to
-the whole studio. Keep `TRELLUM_REPORT_SCOPED_ACCESS_READY=false` until the
-rollout is complete. In `edge-signed` mode, wait at least
+Before enabling selected-report or Private item permissions, deploy this
+version to **every** web and worker process. Older processes interpret a Viewer
+group grant as access to the whole studio. Keep
+`TRELLUM_REPORT_SCOPED_ACCESS_READY=false` until the rollout is complete. In
+`edge-signed` mode, wait at least
 `TRELLUM_CDN_COOKIE_TTL_SECONDS` after the last old process is removed before
 setting it to `true`; this lets every legacy studio-wide grant cookie expire.
 The default wait is 3600 seconds. `manage.py doctor` fails if selected grants
-exist while readiness is disabled or while `edge-external` is configured.
+or Private items exist while readiness is disabled or while `edge-external` is
+configured.
 
 Do not roll back to a version without selected-report enforcement while selected
 grants exist. Remove or disable those limited memberships first, or restore a

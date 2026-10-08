@@ -13,6 +13,7 @@ import threading
 import time as _time
 from datetime import datetime, timedelta, timezone
 
+from django.core.exceptions import ValidationError
 from django.db.models import Max, Sum
 from django.utils import timezone as dj_tz
 
@@ -107,6 +108,8 @@ def sync_studio_registry(studio) -> int:
     """
     from trellum.runner import scan_report_configs
 
+    # A repository sync may have retained this instance while settings changed.
+    studio.refresh_from_db(fields=["default_report_audience", "default_analysis_audience"])
     reports_dir = str(studio.reports_dir)
     entries = scan_report_configs(reports_dir, include_hidden=False) if os.path.isdir(reports_dir) else []
 
@@ -122,25 +125,33 @@ def sync_studio_registry(studio) -> int:
         slug = entry["slug"]
         seen.add(slug)
         kind = config.get("kind", Report.KIND_REPORT)
+        audience = config.get("initial_audience", (
+            studio.default_analysis_audience if kind == Report.KIND_ANALYSIS
+            else studio.default_report_audience
+        ))
+        if audience not in (Report.AUDIENCE_STUDIO, Report.AUDIENCE_PRIVATE):
+            raise ValidationError("initial_audience must be studio or private.")
         # Analyses are published snapshots; a YAML cron must never refresh them.
         schedule = (config.get("schedule") or {}) if kind == Report.KIND_REPORT else {}
+        defaults = {
+            "kind": kind,
+            "name": config.get("name", slug),
+            "description": config.get("description", ""),
+            "category": config.get("category", "Uncategorized"),
+            "tags": config.get("tags", []) or [],
+            "schedule_cron": (schedule.get("cron") or "").strip(),
+            "schedule_timezone": str(schedule.get("timezone") or "UTC"),
+            "disabled": bool(config.get("disabled", False)),
+            "priority": _priority(config),
+            "config": config,
+            "present_in_scan": True,
+            "last_scanned_at": now,
+        }
         Report.objects.update_or_create(
             studio=studio,
             slug=slug,
-            defaults={
-                "kind": kind,
-                "name": config.get("name", slug),
-                "description": config.get("description", ""),
-                "category": config.get("category", "Uncategorized"),
-                "tags": config.get("tags", []) or [],
-                "schedule_cron": (schedule.get("cron") or "").strip(),
-                "schedule_timezone": str(schedule.get("timezone") or "UTC"),
-                "disabled": bool(config.get("disabled", False)),
-                "priority": _priority(config),
-                "config": config,
-                "present_in_scan": True,
-                "last_scanned_at": now,
-            },
+            defaults=defaults,
+            create_defaults={**defaults, "audience": audience},
         )
     Report.objects.filter(studio=studio, present_in_scan=True).exclude(slug__in=seen).update(
         present_in_scan=False, last_scanned_at=now

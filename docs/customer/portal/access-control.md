@@ -38,16 +38,38 @@ Group details have four sections: **Overview**, **Members**, **Access**, and
 members. Effective access explains the combined permissions of a selected
 person, including direct memberships and other groups.
 
-### All reports or selected reports
+### Studio audience, private items, and selected reports
 
-A group's Viewer grant for a studio can cover **All reports** or **Selected
-reports**. Existing studio memberships and grants continue to cover all
-reports. Developer and Admin roles always cover all reports.
+A report or analysis is either in the **Studio audience** or **Private**. The
+Studio audience includes signed-in Viewers with access to the whole studio; it does not
+make content available on the internet. Public share links and embeds are a
+separate, explicit publication.
+
+Studio administrators set independent defaults for **New reports** and **New
+analyses** in **Studio settings → Repository → Default audiences**. The
+defaults apply when an item is first discovered, including the first import
+from Git. They are saved even when no repository is configured. Changing a
+default affects future items only. Rebuilds and later Git changes keep an
+item's current audience.
+
+Administrators can change an individual item's **Signed-in audience** from
+**Options → Access**. The control is labelled **Report audience** or
+**Analysis audience**. A Private item is hidden from ordinary Viewers,
+including Viewers whose studio access comes from a full-studio grant or the
+organization's default Viewer group. Developers and studio or organization
+administrators can still access it. Administrators can also explicitly assign
+a permission group to a Private item; this can grant access to a Viewer group
+without making the item visible to other studio Viewers.
+
+A group's Viewer grant for a studio can also cover **All reports** or
+**Selected reports**. Existing full-studio grants cover every item in the
+Studio audience. A Private item remains private unless the group is explicitly
+assigned to it. Developer and Admin roles always cover all items.
 
 Selected grants combine: membership in two groups gives access to both groups'
 selections. A full-studio grant from any source still gives access to every
-report; a selected grant cannot narrow it. New reports are not automatically
-added to selected grants.
+item in the Studio audience; a selected grant cannot narrow it. New reports
+are not automatically added to selected grants.
 
 To give someone a selected set of reports:
 
@@ -63,14 +85,21 @@ AI assistant and configure deliveries. Studio-wide operations, metrics,
 annotations, experiments, analytics and settings are unavailable to selected
 viewers.
 
-Organization and studio administrators can also open **Options → Access** on
-a report to assign existing groups. A studio administrator can create a
-selected Viewer grant when the group has none in that studio, but cannot
-change an existing broader grant or the group's membership.
+When a studio contains Private items, ordinary Viewers use these same scoped
+surfaces: their report and analysis lists contain only accessible items, and
+their AI assistant works within one accessible item at a time. Studio-wide
+summaries remain available to Developers and administrators.
 
-Public share and embed links are separate, explicit publication. Changing
-internal group assignments does not revoke those links. The Access page
-distinguishes internal permissions from public sharing.
+Organization and studio administrators can open **Options → Access** on a
+report or analysis to change its audience and assign existing groups. A studio
+administrator can create an item-specific Viewer grant when the group has no
+grant in that studio, but cannot change an existing broader studio grant or
+the group's membership.
+
+Public share and embed links are separate, explicit publication. Changing an
+item's internal audience or group assignments does not revoke those links.
+The Access page shows active public links separately. Review or revoke those
+links when an item should no longer be available through them.
 
 Permission groups, SSO, Security settings, and Audit Log are available in every
 installation. Access remains controlled by the organization and studio roles

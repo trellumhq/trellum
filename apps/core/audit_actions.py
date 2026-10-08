@@ -139,6 +139,8 @@ ACTIONS: dict[str, ActionSpec] = {
     "group.ungrant": _m(CATEGORY_AUTHZ, "Permission group grant removed"),
     "group.report_grant": _m(CATEGORY_AUTHZ, "Report access granted to group"),
     "group.report_ungrant": _m(CATEGORY_AUTHZ, "Report access removed from group"),
+    "studio.default_audiences_set": _m(CATEGORY_AUTHZ, "Default content audiences changed"),
+    "report.audience_set": _m(CATEGORY_AUTHZ, "Content audience changed"),
     "group.add_user": _m(CATEGORY_AUTHZ, "Added to permission group"),
     "group.remove_user": _m(CATEGORY_AUTHZ, "Removed from permission group"),
 

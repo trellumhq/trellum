@@ -13,7 +13,7 @@ from django.views.decorators.http import require_http_methods, require_POST
 from apps.core import roles
 from apps.core.audit import audit
 from apps.core.permissions import effective_roles, require_org_role, require_studio_role
-from apps.core.report_access import selected_report_access_block_reason
+from apps.core.report_access import selected_report_access_block_reason, visible_reports
 from apps.orgs.models import (
     OrgMembership,
     PermissionGroup,
@@ -103,6 +103,13 @@ def _save_group_access(request, group, form):
             )
         )
         selected_ids = report_ids if grant.viewer_scope == "selected" else set()
+        if grant.role == roles.VIEWER and grant.viewer_scope == "all":
+            # Whole-studio Viewer access does not replace explicit Private assignments.
+            selected_ids = set(
+                ReportPermissionGrant.objects.filter(
+                    grant=grant, report__audience=Report.AUDIENCE_PRIVATE
+                ).values_list("report_id", flat=True)
+            )
         ReportPermissionGrant.objects.filter(grant=grant).exclude(
             report_id__in=selected_ids
         ).delete()
@@ -181,14 +188,17 @@ def _effective_member(request, group):
         role = er.role_for(studio)
         if role is None:
             continue
-        scope = er.report_scope_for(studio)
+        full = roles.at_least(role, roles.DEVELOPER)
         sources = []
         if membership.role == roles.ORG_ADMIN:
             sources.append("Direct organization admin: Admin with all reports")
         if direct_roles.get(studio.pk):
+            access_label = (
+                "Studio audience" if direct_roles[studio.pk] == roles.VIEWER else "all reports"
+            )
             sources.append(
                 "Direct studio role: "
-                f"{direct_roles[studio.pk].title()} with all reports"
+                f"{direct_roles[studio.pk].title()} with {access_label}"
             )
         for source_group in member_groups:
             if source_group.org_role == roles.ORG_ADMIN:
@@ -209,19 +219,21 @@ def _effective_member(request, group):
                     count = len(grant.report_grants.all())
                     label += f" for {count} selected report{'s' if count != 1 else ''}"
                 else:
-                    label += " with all reports"
+                    label += " with Studio audience" if grant.role == roles.VIEWER else " with all reports"
+                    if grant.role == roles.VIEWER and grant.report_grants.all():
+                        label += f" plus {len(grant.report_grants.all())} explicit Private assignments"
                 sources.append(f"{source_group.name}: {label}")
         rows.append(
             {
                 "studio": studio,
                 "role": role,
-                "full": scope is None,
+                "full": full,
                 "reports": list(
-                    Report.objects.filter(studio=studio, pk__in=scope).order_by(
+                    visible_reports(user, Report.objects.filter(studio=studio)).order_by(
                         "name", "slug"
                     )
                 )
-                if scope is not None
+                if not full
                 else [],
                 "sources": sources,
             }
@@ -423,7 +435,13 @@ def group_detail(request, org_slug, group_id):  # noqa: ARG001
                 if access_form and str(access_form.data.get("studio")) == str(studio.pk)
                 else StudioAccessForm(org=request.org, studio=studio, initial=initial)
             )
-            access_rows.append({"studio": studio, "grant": grant, "form": row_form})
+            access_rows.append({
+                "studio": studio, "grant": grant, "form": row_form,
+                "private_reports": Report.objects.filter(
+                    studio=studio, audience=Report.AUDIENCE_PRIVATE,
+                    pk__in=selected_by_grant.get(grant.pk, []) if grant else [],
+                ).order_by("name", "slug"),
+            })
     selected_member, effective_rows = (
         _effective_member(request, group) if tab == "effective" else (None, [])
     )
@@ -481,6 +499,33 @@ def report_access(request, org_slug, studio_slug, slug):  # noqa: ARG001
     if request.method == "POST":
         group_id = request.POST.get("group_id")
         action = request.POST.get("action")
+        if action == "set_audience":
+            audience = request.POST.get("audience")
+            if audience not in dict(Report.AUDIENCE_CHOICES):
+                messages.error(request, "Choose a valid audience.")
+                return redirect(request.path)
+            block_reason = selected_report_access_block_reason()
+            if block_reason:
+                messages.error(request, block_reason)
+                return redirect(request.path)
+            with transaction.atomic():
+                report = get_object_or_404(
+                    Report.objects.select_for_update(), pk=report.pk, studio=request.studio
+                )
+                prior = report.audience
+                report.audience = audience
+                report.save(update_fields=["audience"])
+                if audience == Report.AUDIENCE_STUDIO:
+                    # All-scope Viewer assignments are valid only for Private items.
+                    ReportPermissionGrant.objects.filter(
+                        report=report, grant__viewer_scope="all"
+                    ).delete()
+                audit(
+                    request, "report.audience_set", target=report,
+                    prior_audience=prior, audience=audience,
+                )
+            messages.success(request, f"{report.get_kind_display()} audience saved.")
+            return redirect(request.path)
         with transaction.atomic():
             group = _group_or_404(request.org, group_id, lock=True)
             studio = get_object_or_404(
@@ -502,16 +547,20 @@ def report_access(request, org_slug, studio_slug, slug):  # noqa: ARG001
             )
             broader = bool(
                 group.org_role == roles.ORG_ADMIN
-                or group.default_studio_role
+                or roles.at_least(group.default_studio_role, roles.DEVELOPER)
+                or (report.audience == Report.AUDIENCE_STUDIO and group.default_studio_role)
                 or (
                     grant
-                    and (grant.role != roles.VIEWER or grant.viewer_scope == "all")
+                    and (
+                        grant.role != roles.VIEWER
+                        or (report.audience == Report.AUDIENCE_STUDIO and grant.viewer_scope == "all")
+                    )
                 )
             )
             if broader:
                 messages.info(
                     request,
-                    f"{group.name} already has access to every report in this studio.",
+                    f"{group.name} already has inherited access to this {report.get_kind_display().lower()}.",
                 )
             elif action == "grant_report":
                 try:
@@ -571,9 +620,12 @@ def report_access(request, org_slug, studio_slug, slug):  # noqa: ARG001
         full_reason = ""
         if group.org_role == roles.ORG_ADMIN:
             full_reason = (
-                "Organization admins have Admin access to every studio and report."
+                "Organization admins have Admin access to every studio, report and analysis."
             )
-        elif group.default_studio_role:
+        elif group.default_studio_role and (
+            roles.at_least(group.default_studio_role, roles.DEVELOPER)
+            or report.audience == Report.AUDIENCE_STUDIO
+        ):
             full_reason = (
                 f"The group default grants {group.default_studio_role.title()} "
                 "access to every studio."
@@ -581,10 +633,10 @@ def report_access(request, org_slug, studio_slug, slug):  # noqa: ARG001
         elif grant and grant.role != roles.VIEWER:
             full_reason = (
                 f"This studio grant is {grant.role.title()}, "
-                "which includes every report."
+                "which includes every report and analysis."
             )
-        elif grant and grant.viewer_scope == "all":
-            full_reason = "This Viewer grant includes every report in the studio."
+        elif grant and grant.viewer_scope == "all" and report.audience == Report.AUDIENCE_STUDIO:
+            full_reason = "This Viewer grant includes the Studio audience."
         selected = bool(
             grant
             and ReportPermissionGrant.objects.filter(
@@ -609,6 +661,8 @@ def report_access(request, org_slug, studio_slug, slug):  # noqa: ARG001
             "org": request.org,
             "studio": request.studio,
             "report": report,
+            "audience_choices": Report.AUDIENCE_CHOICES,
+            "console_page_title": f"{report.get_kind_display()} access",
             "rows": rows,
             "q": q,
             "total": total,

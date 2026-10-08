@@ -86,8 +86,8 @@ def _get_report(request, slug: str) -> Report:
     return report
 
 
-def _selected_content_block(request):
-    if request.org_roles.has_full_studio_visibility(request.studio):
+def _selected_content_block(request, report):
+    if report.audience != Report.AUDIENCE_PRIVATE and request.org_roles.has_full_studio_visibility(request.studio):
         return None
     if not selected_report_access_block_reason():
         return None
@@ -1628,7 +1628,7 @@ def report_page(request, org_slug, studio_slug, slug):
     # content prefix, is what the edge verifies on every request. A report that
     # never published falls through to the unbuilt page below.
     from apps.core import cdn
-    blocked = _selected_content_block(request)
+    blocked = _selected_content_block(request, report)
     if blocked:
         return blocked
 
@@ -2016,7 +2016,7 @@ def _serve_report_file(
 @xframe_options_sameorigin  # the entry HTML report_page redirects to — see there
 def report_asset(request, org_slug, studio_slug, slug, asset):  # noqa: ARG001
     report = _get_report(request, slug)
-    blocked = _selected_content_block(request)
+    blocked = _selected_content_block(request, report)
     if blocked:
         return blocked
     try:

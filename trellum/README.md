@@ -1594,6 +1594,10 @@ article retains its last successful output. Existing output retention still
 applies; committed evidence can recreate the article.
 
 In the portal, the analysis's own permissions govern its article and evidence.
+New analyses inherit the studio's analysis audience default. To request a
+different initial audience, set `initial_audience: private` or
+`initial_audience: studio` in `report.yaml` before its first import. Later Git
+changes preserve the audience; use the analysis's Access page to change it.
 Publishing it deliberately shares the captured evidence with that audience.
 Source report links require their own access. Sharing, embedding, favorites,
 activity, exports, and snapshot delivery reuse the report features and their
@@ -1611,6 +1615,7 @@ slug: my-slug                      # URL-safe identifier (default: directory nam
 description: "What this report shows"
 kind: report                      # report (default) | analysis
 author: "Analytics team"          # Optional article author
+initial_audience: studio          # Optional first-discovery override: studio | private
 
 # ── Schedule ──
 schedule:
@@ -1672,6 +1677,15 @@ validation:
 # ── Version ──
 version: "1.0"
 ```
+
+In the Trellum portal, a studio can set separate default audiences for new
+reports and analyses: `studio` (the signed-in studio audience) or `private`.
+The optional `initial_audience: private` or `initial_audience: studio` field
+overrides that default only on first discovery. Omit it to use the studio's
+default for the item's kind. Later manifest edits and rebuilds do not change
+the item's live audience; change it from the item's **Access** page instead.
+This portal setting does not protect a standalone HTML file hosted outside
+the portal. A public share link or embed is a separate explicit publication.
 
 ---
 

@@ -7,6 +7,8 @@ def validate_content_config(config: object) -> dict:
         raise ValueError("report.yaml must contain a mapping")
     if config.get("kind", "report") not in ("report", "analysis"):
         raise ValueError("report.yaml kind must be 'report' or 'analysis'")
+    if "initial_audience" in config and config["initial_audience"] not in ("studio", "private"):
+        raise ValueError("report.yaml initial_audience must be 'studio' or 'private'")
     if config.get("kind") == "analysis":
         for key in ("data_sources", "schedule", "extra_cdn"):
             if key in config:

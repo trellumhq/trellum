@@ -25,7 +25,8 @@ function catches broadly, logs, and returns.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone as _dt_timezone
+from datetime import datetime
+from datetime import timezone as _dt_timezone
 
 from django.core import signing
 from django.core.mail import EmailMultiAlternatives
@@ -717,6 +718,10 @@ def _send_sample(schedule_or_report, user) -> None:
         attach_pdf = False
     else:  # pragma: no cover - defensive; callers pass one of the above
         raise TypeError(f"expected EmailSchedule or Report, got {type(schedule_or_report)!r}")
+    from apps.core.report_access import can_view_report
+
+    if not user.is_active or not can_view_report(user, report):
+        return
     _deliver(report, [user], attach_pdf=attach_pdf, schedule=None, sample=True)
 
 

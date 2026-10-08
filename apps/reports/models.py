@@ -29,10 +29,16 @@ class Report(models.Model):
     KIND_REPORT = "report"
     KIND_ANALYSIS = "analysis"
     KIND_CHOICES = [(KIND_REPORT, "Report"), (KIND_ANALYSIS, "Analysis")]
+    AUDIENCE_STUDIO = "studio"
+    AUDIENCE_PRIVATE = "private"
+    AUDIENCE_CHOICES = ((AUDIENCE_STUDIO, "Studio audience"), (AUDIENCE_PRIVATE, "Private"))
 
     studio = models.ForeignKey("studios.Studio", on_delete=models.CASCADE, related_name="reports")
     slug = models.CharField(max_length=200)
     kind = models.CharField(max_length=16, choices=KIND_CHOICES, default=KIND_REPORT, db_default=KIND_REPORT)
+    audience = models.CharField(
+        max_length=16, choices=AUDIENCE_CHOICES, default=AUDIENCE_STUDIO, db_default=AUDIENCE_STUDIO
+    )
     name = models.CharField(max_length=300, blank=True)
     description = models.TextField(blank=True)
     category = models.CharField(max_length=200, blank=True, default="Uncategorized")
@@ -83,7 +89,7 @@ class Report(models.Model):
 
 
 class ReportPermissionGrant(models.Model):
-    """One report included by a permission group's selected Viewer grant."""
+    """One explicit report assignment for a permission group's Viewer grant."""
 
     grant = models.ForeignKey(
         "orgs.PermissionGroupGrant", on_delete=models.CASCADE, related_name="report_grants"
@@ -106,8 +112,11 @@ class ReportPermissionGrant(models.Model):
             grant = self.grant
             if grant.studio_id != self.report.studio_id:
                 errors["report"] = "The report must belong to the grant's studio."
-            if grant.role != "viewer" or grant.viewer_scope != "selected":
-                errors["grant"] = "Report assignments require a selected Viewer grant."
+            if grant.role != "viewer" or not (
+                grant.viewer_scope == "selected"
+                or (grant.viewer_scope == "all" and self.report.audience == Report.AUDIENCE_PRIVATE)
+            ):
+                errors["grant"] = "Report assignments require a selected Viewer grant or a private report."
             if grant.group.org_id != self.report.studio.org_id:
                 errors["grant"] = "The group and report must belong to the same organization."
             reason = selected_report_access_block_reason()

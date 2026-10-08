@@ -48,7 +48,21 @@ reference](/docs/latest/install/configuration/#serving-report-content-the-access
     works for any colleague who can sign in. Choose it only when "any
     authenticated org member may see any report" is acceptable, or when your
     identity layer itself enforces the finer rules. To hide a report from some
-    people **inside** your organization, use `proxy` or `edge-signed`.
+    people **inside** your organization, including Private items, use `proxy`
+    or `edge-signed`.
+
+Private report and analysis audiences require the portal's selected-access
+enforcement to be ready. Keep the existing
+`TRELLUM_REPORT_SCOPED_ACCESS_READY` rollout guard in place when deploying
+this enforcement. `edge-external` cannot enforce private audiences and fails
+closed when they are present. In `edge-signed`, internal audience changes
+take effect through the portal's normal authorization checks; a grant already
+issued at the edge can remain valid until its cookie expires, so the cookie
+TTL is the revocation delay.
+
+This internal audience check does not revoke explicit public share links or
+embeds. Those are separate publication paths; review and revoke active links
+on the item's Access page when the content must no longer be available there.
 
 ## The default is safe — you may be done already
 
@@ -132,8 +146,9 @@ work and fails loudly when the answer is wrong:
 - `manage.py doctor` → `report access` is **green** (it treats a redirect to
   auth as protected, and a `200` as a leak).
 - Selected-report permissions are unavailable because the external identity
-  layer cannot enforce portal report assignments. Existing selected grants
-  make `doctor` fail, and the portal refuses report bytes.
+  layer cannot enforce portal report assignments or Private item audiences.
+  Existing selected grants or Private items make `doctor` fail, and the portal
+  refuses report bytes.
 
 ## Verify it yourself
 

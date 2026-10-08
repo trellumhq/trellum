@@ -445,6 +445,14 @@ class AssistantToolbox:
 
     def _access_error(self, slug: str | None = None) -> str | None:
         """Re-resolve access at each data boundary so revocation takes effect."""
+        if self.actor is not None and self.scope == "full" and slug:
+            from apps.core.report_access import selected_report_access_block_reason
+            from apps.reports.models import Report
+
+            if selected_report_access_block_reason() and Report.objects.filter(
+                studio=self.studio, slug=slug, audience=Report.AUDIENCE_PRIVATE,
+            ).exists():
+                return "Private report access is temporarily unavailable."
         if self._executing_prechecked:
             return None
         if self.actor is None:  # Trusted internal callers and existing unit tests.
@@ -530,8 +538,10 @@ class AssistantToolbox:
         Treat it as read-only; nothing here mutates it, and the dataframes
         built from it are copies.
         """
-        if self.actor is not None and self._access_error():
-            return None
+        if self.actor is not None:
+            slug = next((slug for slug, files in self._files.items() if f in files), f.parent.name)
+            if self._access_error(slug):
+                return None
         if self.is_report_bound:
             try:
                 f.resolve().relative_to(self._report_output(self.report_slug).resolve())

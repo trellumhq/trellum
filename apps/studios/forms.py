@@ -1,6 +1,17 @@
 from django import forms
 
-from .models import StudioRepo
+from apps.reports.models import Report
+
+from .models import Studio, StudioRepo
+
+
+class DefaultAudiencesForm(forms.ModelForm):
+    default_report_audience = forms.ChoiceField(choices=Report.AUDIENCE_CHOICES)
+    default_analysis_audience = forms.ChoiceField(choices=Report.AUDIENCE_CHOICES)
+
+    class Meta:
+        model = Studio
+        fields = ("default_report_audience", "default_analysis_audience")
 
 
 class StudioRepoForm(forms.ModelForm):

@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from functools import wraps
 
 from django.contrib.auth.views import redirect_to_login
+from django.db.models import Prefetch
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 
@@ -33,6 +34,8 @@ class EffectiveRoles:
     default_studio_role: str | None = None  # best group-default across all studios
     full_report_studios: set[int] = field(default_factory=set)
     report_ids_by_studio: dict[int, set[int]] = field(default_factory=dict)
+    studio_report_ids: dict[int, set[int]] = field(default_factory=dict)
+    private_report_ids: dict[int, set[int]] = field(default_factory=dict)
 
     @property
     def is_member(self) -> bool:
@@ -48,10 +51,19 @@ class EffectiveRoles:
 
     def report_scope_for(self, studio) -> frozenset[int] | None:
         """Visible report ids, or ``None`` when every report is visible."""
-        if self.role_for(studio) is None:
+        role = self.role_for(studio)
+        if role is None:
             return frozenset()
-        if self.is_org_admin or self.default_studio_role or studio.pk in self.full_report_studios:
+        if roles.at_least(role, roles.DEVELOPER):
             return None
+        if self.default_studio_role or studio.pk in self.full_report_studios:
+            private = self.private_report_ids.get(studio.pk)
+            if not private:
+                return None
+            return frozenset(
+                (self.studio_report_ids.get(studio.pk, set()) - private)
+                | self.report_ids_by_studio.get(studio.pk, set())
+            )
         return frozenset(self.report_ids_by_studio.get(studio.pk, ()))
 
     def has_full_studio_visibility(self, studio) -> bool:
@@ -59,9 +71,12 @@ class EffectiveRoles:
 
 
 def _bulk_effective_roles(users, org) -> dict[int, EffectiveRoles]:
-    """The membership / studio / group walk for many users at once, three
-    queries total. Callers handle the superuser and inactive-org cases."""
-    from apps.orgs.models import OrgMembership, PermissionGroup
+    """Resolve many users with a bounded membership / report / group walk.
+
+    Callers handle superusers and inactive organizations.
+    """
+    from apps.orgs.models import OrgMembership, PermissionGroup, PermissionGroupGrant
+    from apps.reports.models import Report
     from apps.studios.models import StudioMembership
 
     ids = [u.pk for u in users]
@@ -76,6 +91,22 @@ def _bulk_effective_roles(users, org) -> dict[int, EffectiveRoles]:
     if not result:
         return result
 
+    report_rows = {
+        pk: (studio_id, audience)
+        for pk, studio_id, audience in Report.objects.filter(studio__org=org).values_list(
+            "pk", "studio_id", "audience"
+        )
+    }
+    studio_report_ids: dict[int, set[int]] = {}
+    private_report_ids: dict[int, set[int]] = {}
+    for pk, (studio_id, audience) in report_rows.items():
+        studio_report_ids.setdefault(studio_id, set()).add(pk)
+        if audience == Report.AUDIENCE_PRIVATE:
+            private_report_ids.setdefault(studio_id, set()).add(pk)
+    for er in result.values():
+        er.studio_report_ids = studio_report_ids
+        er.private_report_ids = private_report_ids
+
     member_ids = set(result)
     for uid, studio_id, role in StudioMembership.objects.filter(
         user_id__in=member_ids, studio__org=org
@@ -87,7 +118,10 @@ def _bulk_effective_roles(users, org) -> dict[int, EffectiveRoles]:
     groups = (
         PermissionGroup.objects.filter(org=org, memberships__user_id__in=member_ids)
         .distinct()
-        .prefetch_related("grants__report_grants", "memberships")
+        .prefetch_related(
+            Prefetch("grants", queryset=PermissionGroupGrant.objects.filter(studio__org=org)),
+            "grants__report_grants", "memberships",
+        )
     )
     for group in groups:
         for m in group.memberships.all():
@@ -104,17 +138,21 @@ def _bulk_effective_roles(users, org) -> dict[int, EffectiveRoles]:
                 er.studio_roles[grant.studio_id] = roles.max_role(
                     er.studio_roles.get(grant.studio_id), grant.role
                 )
-                if grant.viewer_scope == grant.REPORT_SCOPE_SELECTED and grant.role == roles.VIEWER:
+                if grant.role == roles.VIEWER:
                     er.report_ids_by_studio.setdefault(grant.studio_id, set()).update(
                         row.report_id for row in grant.report_grants.all()
+                        if row.report_id in report_rows
+                        and report_rows[row.report_id][0] == grant.studio_id
+                        and (grant.viewer_scope == grant.REPORT_SCOPE_SELECTED
+                             or report_rows[row.report_id][1] == Report.AUDIENCE_PRIVATE)
                     )
-                else:
+                if grant.viewer_scope != grant.REPORT_SCOPE_SELECTED or grant.role != roles.VIEWER:
                     er.full_report_studios.add(grant.studio_id)
     return result
 
 
 def effective_roles(user, org) -> EffectiveRoles:
-    """Resolve a user's effective roles in one organization (2 queries)."""
+    """Resolve a user's effective roles with a bounded set of queries."""
     if user is None or not user.is_authenticated or not org.is_active:
         return EffectiveRoles()
     if user.is_superuser:
