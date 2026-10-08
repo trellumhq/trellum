@@ -196,6 +196,28 @@ class TestSettingsPage:
         assert record.dns_record_name in body
         assert record.verification_token in body
 
+    def test_optional_verification_controls_are_collapsed(
+        self, login, org_admin, org, settings
+    ):
+        settings.TRELLUM_SSO_DOMAIN_VERIFICATION = False
+        page = login(org_admin)
+        body = page.get(f"/orgs/{org.slug}/settings/sso").content.decode()
+
+        assert '<details>' in body
+        assert '<summary>Advanced: optional domain verification</summary>' in body
+        assert 'email-domain' in body
+        assert 'Claimed but unverified domains are ignored.' not in body
+
+    def test_required_verification_controls_remain_visible(
+        self, login, org_admin, org, settings
+    ):
+        settings.TRELLUM_SSO_DOMAIN_VERIFICATION = True
+        page = login(org_admin)
+        body = page.get(f"/orgs/{org.slug}/settings/sso").content.decode()
+
+        assert '<details>' not in body
+        assert 'Claimed but unverified domains are ignored.' in body
+
     def test_verify_button_reports_failure_without_crashing(
         self, login, org_admin, org, dns
     ):

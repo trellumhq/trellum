@@ -1,16 +1,11 @@
 """Email-domain ownership verification via DNS TXT.
 
-The problem this closes: ``OrgSSOConfig.email_domains`` is a claim an org admin
-types in. On a single-tenant install that is fine — the only person who can lie
-already owns the instance. On a shared instance it is a tenant-takeover vector:
-claim ``victim.com`` and every login at that domain is routed to your identity
-provider, where you decide who authenticates.
+When enforcement is enabled, a claimed domain must be proved by publishing a
+TXT record controlled by the domain owner before it can route SSO logins.
 
-So a claim now has to be proved by publishing a TXT record, which only someone
-with control of the domain's DNS can do.
-
-Enforcement defaults on. An operator may disable it only for a deployment
-whose tenant boundary is already controlled outside the portal.
+Enforcement defaults on for existing deployments. Fresh-install templates
+explicitly disable it for trusted single-organization deployments; shared
+deployments must explicitly enable it.
 """
 from __future__ import annotations
 

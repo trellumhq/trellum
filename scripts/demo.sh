@@ -82,6 +82,7 @@ POSTGRES_PASSWORD=$(gen 'import secrets;print(secrets.token_urlsafe(24))')
 PORTAL_BASE_URL=http://localhost:${PORT}
 ALLOWED_HOSTS=localhost,127.0.0.1
 WORKER_MAX_CONCURRENT=2
+TRELLUM_SSO_DOMAIN_VERIFICATION=false
 EOF
   # Only needed when running alongside another instance from the same
   # checkout -- the default project keeps the shared trellum:dev tags.
