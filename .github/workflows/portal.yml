@@ -393,12 +393,17 @@ jobs:
           # Reuse the migrated database rather than building a fresh one: the
           # point is the schema this upgrade produced, not a clean install.
           PYTEST_ADDOPTS: "--reuse-db"
+          TRELLUM_PREVIOUS_SCHEMA_TEST_DB: test_trellum_portal
         run: |
           set -e
+          # Only this harness loads cascading cleanup for new FK tables that
+          # the previous release's app registry cannot include in its flush.
+          export PYTHONPATH="$PWD/.github/workflows${PYTHONPATH:+:$PYTHONPATH}"
+          /tmp/current-venv/bin/python -m pytest .github/workflows/test_previous_schema.py -q
           cd ../previous-release
           SUITES=(apps)
           echo "running previous release: ${SUITES[*]}"
-          /tmp/previous-venv/bin/python -m pytest "${SUITES[@]}" -q || {
+          /tmp/previous-venv/bin/python -m pytest -p previous_schema "${SUITES[@]}" -q || {
             echo
             echo "The previous release's tests fail against this branch's schema."
             echo "That makes this a CONTRACT-phase change: it is not safe to"
