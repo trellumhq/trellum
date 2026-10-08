@@ -14,6 +14,7 @@ env-var convention it always has.
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
 
 import yaml
@@ -87,14 +88,24 @@ def materialize(studio) -> dict[str, str]:
 
     config_path = studio.datasources_dir / "config.yaml"
     config_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(config_path, "w", encoding="utf-8") as fh:
-        fh.write(
-            "# Managed by the portal — edits here are overwritten before every run.\n"
-        )
-        yaml.dump(
-            {"sources": sources}, fh,
-            default_flow_style=False, sort_keys=False, allow_unicode=True,
-        )
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", prefix=f".{config_path.name}.",
+            suffix=".tmp", dir=config_path.parent, delete=False,
+        ) as fh:
+            tmp_path = Path(fh.name)
+            fh.write(
+                "# Managed by the portal — edits here are overwritten before every run.\n"
+            )
+            yaml.dump(
+                {"sources": sources}, fh,
+                default_flow_style=False, sort_keys=False, allow_unicode=True,
+            )
+        os.replace(tmp_path, config_path)
+    finally:
+        if tmp_path is not None:
+            tmp_path.unlink(missing_ok=True)
     return env
 
 

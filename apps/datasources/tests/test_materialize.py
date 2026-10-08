@@ -1,8 +1,14 @@
 """THE contract test: what the materializer writes + injects must satisfy
 the bundled framework's LocalEnvResolver field-for-field."""
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from threading import Barrier
+from types import SimpleNamespace
+
 import yaml as yaml_lib
 import pytest
 
+import apps.datasources.materialize as materialize_module
 from apps.datasources.materialize import materialize
 from apps.datasources.models import (
     CONFIG_KEYS,
@@ -81,6 +87,79 @@ def _read_yaml(studio):
     path = studio.datasources_dir / "config.yaml"
     with open(path, encoding="utf-8") as fh:
         return yaml_lib.safe_load(fh)
+
+
+def test_config_is_replaced_only_after_complete_serialization(tmp_path, monkeypatch):
+    studio = SimpleNamespace(datasources_dir=tmp_path)
+    config = tmp_path / "config.yaml"
+    previous = "# previous config\nsources:\n  old:\n    type: sqlite\n    path: old.db\n"
+    config.write_text(previous, encoding="utf-8")
+    replace = materialize_module.os.replace
+    observed = []
+
+    def observe_then_replace(source, destination):
+        assert yaml_lib.safe_load(Path(destination).read_text(encoding="utf-8")) == {
+            "sources": {"old": {"type": "sqlite", "path": "old.db"}}
+        }
+        observed.append(Path(source).read_text(encoding="utf-8"))
+        replace(source, destination)
+
+    monkeypatch.setattr(materialize_module, "source_states", lambda _studio: [])
+    monkeypatch.setattr(materialize_module.os, "replace", observe_then_replace)
+    assert materialize(studio) == {}
+    assert len(observed) == 1
+    assert yaml_lib.safe_load(config.read_text(encoding="utf-8")) == {"sources": {}}
+    assert "# Managed by the portal" in observed[0]
+    assert not list(tmp_path.glob(".config.yaml.*.tmp"))
+
+
+@pytest.mark.parametrize("failure", ["serialization", "replacement"])
+def test_config_failure_preserves_previous_file_and_cleans_temp(
+    tmp_path, monkeypatch, failure,
+):
+    studio = SimpleNamespace(datasources_dir=tmp_path)
+    config = tmp_path / "config.yaml"
+    previous = "# previous config\nsources: {old: {type: sqlite, path: old.db}}\n"
+    config.write_text(previous, encoding="utf-8")
+    monkeypatch.setattr(materialize_module, "source_states", lambda _studio: [])
+
+    if failure == "serialization":
+        def fail_after_partial_write(_data, stream, **_kwargs):
+            stream.write("partial")
+            raise RuntimeError("serialization failed")
+
+        monkeypatch.setattr(materialize_module.yaml, "dump", fail_after_partial_write)
+    else:
+        def fail_replace(_source, _destination):
+            raise OSError("replacement failed")
+
+        monkeypatch.setattr(materialize_module.os, "replace", fail_replace)
+
+    with pytest.raises((RuntimeError, OSError)):
+        materialize(studio)
+    assert config.read_text(encoding="utf-8") == previous
+    assert not list(tmp_path.glob(".config.yaml.*.tmp"))
+
+
+def test_concurrent_materializations_use_distinct_temp_files(tmp_path, monkeypatch):
+    studio = SimpleNamespace(datasources_dir=tmp_path)
+    barrier = Barrier(2)
+    paths = []
+    monkeypatch.setattr(materialize_module, "source_states", lambda _studio: [])
+
+    def hold_both_writes(_data, stream, **_kwargs):
+        paths.append(Path(stream.name))
+        stream.write("sources: {}\n")
+        barrier.wait(timeout=5)
+
+    monkeypatch.setattr(materialize_module.yaml, "dump", hold_both_writes)
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        list(workers.map(materialize, [studio, studio]))
+
+    assert len(paths) == 2
+    assert len(set(paths)) == 2
+    assert all(path.parent == tmp_path for path in paths)
+    assert not list(tmp_path.glob(".config.yaml.*.tmp"))
 
 
 class TestMaterializedYaml:
