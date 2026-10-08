@@ -435,12 +435,6 @@ class DockerSandbox:
         in-flight builds — only containers whose run is no longer ACTIVE go."""
         from apps.runner.models import Run
 
-        active = {
-            str(pk)
-            for pk in Run.objects.filter(status__in=Run.ACTIVE_STATUSES).values_list(
-                "pk", flat=True
-            )
-        }
         removed = 0
         containers = []
         # LEGACY_* too: a container started by the previous release carries the
@@ -459,6 +453,12 @@ class DockerSandbox:
                 if c.id not in seen:
                     seen.add(c.id)
                     containers.append(c)
+        active = {
+            str(pk)
+            for pk in Run.objects.filter(status__in=Run.ACTIVE_STATUSES).values_list(
+                "pk", flat=True
+            )
+        }
         for c in containers:
             run_id = c.labels.get(RUN_ID_LABEL) or c.labels.get(LEGACY_RUN_ID_LABEL)
             if run_id in active:
