@@ -61,16 +61,18 @@ class FakeImages:
 
 
 class FakeNetworks:
-    def __init__(self, exists=False, *, internal=True, icc="false"):
+    def __init__(self, exists=False, *, internal=True, icc="false", driver="bridge"):
         self.exists = exists
         self.internal = internal
         self.icc = icc
+        self.driver = driver
         self.created: list = []
 
     def get(self, name):
         if self.exists:
             return types.SimpleNamespace(attrs={
                 "Internal": self.internal,
+                "Driver": self.driver,
                 "Options": {"com.docker.network.bridge.enable_icc": self.icc},
             })
         raise docker.errors.NotFound(name)
@@ -528,6 +530,7 @@ class TestPreflight:
                 raise docker.errors.NotFound(name)
             return types.SimpleNamespace(attrs={
                 "Internal": True,
+                "Driver": "bridge",
                 "Options": {"com.docker.network.bridge.enable_icc": "false"},
             })
 
@@ -542,6 +545,12 @@ class TestPreflight:
         with pytest.raises(SandboxError, match="deliberately remove and recreate"):
             DockerSandbox(client=client).ensure_network()
         assert not client.networks.created
+
+    def test_bridge_options_do_not_validate_other_drivers(self, sbox_dir):
+        client = FakeClient(network_exists=True)
+        client.networks.driver = "overlay"
+        with pytest.raises(SandboxError):
+            DockerSandbox(client=client).ensure_network()
 
     def test_no_data_mount_asks_for_override(self, sbox_dir, settings):
         settings.TRELLUM_DATA_VOLUME = ""

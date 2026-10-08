@@ -333,7 +333,7 @@ class DockerSandbox:
             return
         internal = settings.TRELLUM_SANDBOX_EGRESS != "open"
         options = attrs.get("Options", {}) or {}
-        if attrs.get("Internal") is not internal or options.get(
+        if attrs.get("Driver") != "bridge" or attrs.get("Internal") is not internal or options.get(
             "com.docker.network.bridge.enable_icc"
         ) != "false":
             raise SandboxError(
