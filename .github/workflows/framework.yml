@@ -210,7 +210,7 @@ jobs:
 
       # Every optional dependency is installed above. The only expected skip
       # is the Windows-only NTFS stream test, which cannot run on this Linux
-      # runner. Match its exact source location and reason; all other skips
+      # runner. Match its source file and exact reason; all other skips
       # remain fatal.
       - name: No test silently skipped
         run: |

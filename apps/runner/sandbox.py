@@ -328,6 +328,9 @@ class DockerSandbox:
         except AttributeError:
             pass
         attrs = getattr(network, "attrs", {}) or {}
+        # Docker's built-in null driver gives containers only a loopback device.
+        if name == "none" and attrs.get("Name") == "none" and attrs.get("Driver") == "null":
+            return
         internal = settings.TRELLUM_SANDBOX_EGRESS != "open"
         options = attrs.get("Options", {}) or {}
         if attrs.get("Internal") is not internal or options.get(

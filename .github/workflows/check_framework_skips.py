@@ -9,7 +9,6 @@ from pathlib import Path
 
 ALLOWED = (
     "../testing/test_private_artifacts.py",
-    74,
     "NTFS stream alias requires Windows",
 )
 MAX_ALLOWED = 2
@@ -39,7 +38,7 @@ def check(output: str) -> list[str]:
 
     allowed_count = 0
     for count, path, line, reason in details:
-        if (path, line, reason) == ALLOWED:
+        if (path, reason) == ALLOWED:
             allowed_count += count
         else:
             errors.append(f"unexpected skip [{count}]: {path}:{line}: {reason}")
@@ -50,7 +49,7 @@ def check(output: str) -> list[str]:
 
 
 def self_test() -> None:
-    allowed = """SKIPPED [2] ../testing/test_private_artifacts.py:74: NTFS stream alias requires Windows
+    allowed = """SKIPPED [2] ../testing/test_private_artifacts.py:73: NTFS stream alias requires Windows
 1527 passed, 2 skipped, 12 deselected in 13.09s
 """
     clean = "1527 passed, 12 deselected in 13.09s"
@@ -58,11 +57,11 @@ def self_test() -> None:
     unexpected = """SKIPPED [1] ../testing/test_other.py:20: optional dependency missing
 1527 passed, 1 skipped, 12 deselected in 13.09s
 """
-    additional = """SKIPPED [2] ../testing/test_private_artifacts.py:74: NTFS stream alias requires Windows
+    additional = """SKIPPED [2] ../testing/test_private_artifacts.py:73: NTFS stream alias requires Windows
 SKIPPED [1] ../testing/test_other.py:20: optional dependency missing
 1527 passed, 3 skipped, 12 deselected in 13.09s
 """
-    over_limit = """SKIPPED [3] ../testing/test_private_artifacts.py:74: NTFS stream alias requires Windows
+    over_limit = """SKIPPED [3] ../testing/test_private_artifacts.py:73: NTFS stream alias requires Windows
 1527 passed, 3 skipped, 12 deselected in 13.09s
 """
     assert check(clean) == []

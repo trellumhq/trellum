@@ -412,6 +412,23 @@ class TestSandboxMode:
 
 # ── preflight ───────────────────────────────────────────────────────────────
 class TestPreflight:
+    @pytest.mark.parametrize("egress", ["closed", "open"])
+    def test_builtin_none_network_has_no_external_access(self, settings, egress):
+        settings.TRELLUM_SANDBOX_EGRESS = egress
+        network = types.SimpleNamespace(attrs={
+            "Name": "none", "Driver": "null", "Internal": False, "Options": {},
+        })
+        DockerSandbox._validate_network(network, "none")
+
+    @pytest.mark.parametrize("name,driver", [("none", "bridge"), ("host", "host"), ("other", "null")])
+    def test_none_exception_requires_builtin_identity(self, settings, name, driver):
+        settings.TRELLUM_SANDBOX_EGRESS = "closed"
+        network = types.SimpleNamespace(attrs={
+            "Name": name, "Driver": driver, "Internal": False, "Options": {},
+        })
+        with pytest.raises(SandboxError):
+            DockerSandbox._validate_network(network, "none")
+
     def test_happy_path_creates_network(self, sbox_dir):
         client = FakeClient(network_exists=False)
         DockerSandbox(client=client).preflight()
