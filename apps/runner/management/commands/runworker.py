@@ -191,10 +191,9 @@ class Command(BaseCommand):
         # and that must not depend on how long the current tick takes.
         # (A truly wedged tick keeps beating; the per-run timeout is what
         # covers runaway builds.)
+        self._beat(worker_id, executor, role=effective_role)
         beat_thread = None
-        if opts["once"]:
-            self._beat(worker_id, executor, role=effective_role)
-        else:
+        if not opts["once"]:
             beat_thread = threading.Thread(
                 target=self._beat_loop,
                 args=(worker_id, executor, effective_role, shutdown),
@@ -263,17 +262,16 @@ class Command(BaseCommand):
         ``self_worker_id`` is never reaped: we are the ones calling, so we are
         alive by definition, even if a DB stall let our heartbeat go stale.
         """
-        live = set(WorkerHeartbeat.alive().values_list("worker_id", flat=True))
-        if self_worker_id:
-            live.add(self_worker_id)
-        n = (
+        orphaned = (
             Run.objects.filter(status__in=(Run.STARTING, Run.RUNNING))
-            .exclude(worker_id__in=live)
-            .update(
-                status=Run.ERROR,
-                finished_at=timezone.now(),
-                stderr_tail="worker restarted while this run was in flight",
-            )
+            .exclude(worker_id__in=WorkerHeartbeat.alive().values("worker_id"))
+        )
+        if self_worker_id:
+            orphaned = orphaned.exclude(worker_id=self_worker_id)
+        n = orphaned.update(
+            status=Run.ERROR,
+            finished_at=timezone.now(),
+            stderr_tail="worker restarted while this run was in flight",
         )
         if n:
             logger.info(f"marked {n} orphaned run(s) as error")

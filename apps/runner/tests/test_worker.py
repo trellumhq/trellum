@@ -184,6 +184,28 @@ class TestRecovery:
 
         assert Run.objects.get(pk=run.pk).status == Run.RUNNING
 
+    def test_newly_registered_worker_is_visible_to_recovery_update(
+        self, make_run, monkeypatch
+    ):
+        from django.db.models.query import QuerySet
+
+        new_run = []
+        original_update = QuerySet.update
+
+        def register_worker_before_update(queryset, **kwargs):
+            if queryset.model is Run and not new_run:
+                WorkerHeartbeat.objects.create(worker_id="runner-arriving")
+                new_run.append(
+                    make_run(status=Run.RUNNING, worker_id="runner-arriving")
+                )
+            return original_update(queryset, **kwargs)
+
+        monkeypatch.setattr(QuerySet, "update", register_worker_before_update)
+
+        Command()._recover_stale_runs()
+
+        assert Run.objects.get(pk=new_run[0].pk).status == Run.RUNNING
+
     def test_heartbeat_upsert_and_alive_window(self):
         stub = StubExecutor()
         Command()._beat("w-test", stub)
@@ -360,14 +382,62 @@ class TestRoles:
         self._run(role="coordinator")
         assert Run.objects.get(pk=run.pk).status == Run.QUEUED
 
-    def test_runner_claims_and_starts(self, make_run, monkeypatch):
+    def test_runner_beats_before_claiming_work(self, make_run, monkeypatch):
+        import threading
+
+        import apps.runner.management.commands.runworker as runworker
+
         started = []
+        events = []
+        shutdown = threading.Event()
+        original_beat = Command._beat
+
+        class StubThread:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def start(self):
+                pass
+
+            def join(self, timeout=None):
+                pass
+
+        class StubGitSyncThread:
+            def start(self):
+                pass
+
+            def stop(self):
+                pass
+
+        def record_beat(self, *args, **kwargs):
+            events.append("beat")
+            return original_beat(self, *args, **kwargs)
+
+        def record_start(self, run, extra_env=None):
+            events.append("claim")
+            started.append(run.pk)
+            return True
+
+        monkeypatch.setattr(Command, "_beat", record_beat)
+        monkeypatch.setattr(runworker.threading, "Event", lambda: shutdown)
+        monkeypatch.setattr(runworker.threading, "Thread", StubThread)
+        monkeypatch.setattr(runworker.time, "sleep", lambda _: shutdown.set())
+        monkeypatch.setattr("apps.runner.executor.Executor.tick", lambda self: None)
         monkeypatch.setattr(
-            "apps.runner.executor.Executor.start_run",
-            lambda self, run, extra_env=None: started.append(run.pk) or True,
+            "apps.runner.executor.Executor.drain", lambda self, timeout: None
         )
+        monkeypatch.setattr(
+            "apps.runner.executor.Executor.start_run", record_start
+        )
+        monkeypatch.setattr(
+            "apps.runner.management.commands.runworker.Command._sweep_orphan_sandboxes",
+            lambda self: None,
+        )
+        monkeypatch.setattr("apps.runner.sandbox.sandbox_mode", lambda: "off")
+        monkeypatch.setattr("apps.runner.gitsync.GitSyncThread", StubGitSyncThread)
         run = make_run()
-        self._run(role="runner")
+        Command().handle(once=False, role="runner")
+        assert events[:2] == ["beat", "claim"]
         assert started == [run.pk]
 
     def test_runner_does_not_reap(self, make_run):
