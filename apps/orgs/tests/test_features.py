@@ -82,6 +82,37 @@ class TestOperationalPolicy:
         assert django_settings.TRELLUM_IMPERSONATION_ENABLED is True
         assert django_settings.TRELLUM_SSO_DOMAIN_VERIFICATION is True
 
+    def test_fresh_install_example_disables_domain_verification(self, monkeypatch):
+        import environ
+        from pathlib import Path
+
+        monkeypatch.setattr(environ.Env, "ENVIRON", {})
+        config = environ.Env()
+        config.read_env(Path(__file__).resolve().parents[3] / ".env.example")
+
+        assert config.bool("TRELLUM_SSO_DOMAIN_VERIFICATION", default=True) is False
+
+    def test_example_does_not_override_explicit_true(self, monkeypatch):
+        import environ
+        from pathlib import Path
+
+        monkeypatch.setattr(environ.Env, "ENVIRON", {
+            "TRELLUM_SSO_DOMAIN_VERIFICATION": "true",
+        })
+        config = environ.Env()
+        config.read_env(Path(__file__).resolve().parents[3] / ".env.example")
+
+        assert config.bool("TRELLUM_SSO_DOMAIN_VERIFICATION", default=True) is True
+
+    def test_explicit_true_and_unset_keep_the_secure_runtime_value(self, monkeypatch):
+        import environ
+
+        config = environ.Env()
+        monkeypatch.setenv("TRELLUM_SSO_DOMAIN_VERIFICATION", "true")
+        assert config.bool("TRELLUM_SSO_DOMAIN_VERIFICATION", default=True) is True
+        monkeypatch.delenv("TRELLUM_SSO_DOMAIN_VERIFICATION")
+        assert config.bool("TRELLUM_SSO_DOMAIN_VERIFICATION", default=True) is True
+
     def test_operator_values_drive_policy(self, member, org):
         from apps.orgs.views import may_create_org
 

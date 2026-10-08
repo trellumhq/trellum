@@ -45,7 +45,15 @@ python -c "import secrets; print(secrets.token_urlsafe(50))"
 | `TRELLUM_ORG_SELF_SIGNUP` | `False` | Keep organization self-signup disabled unless this is an intentionally open development instance |
 | `TRELLUM_QUOTAS_ENABLED` | `False` | Enable per-organization limits configured by the operator. Runner admission and sandbox limits remain active when this is off |
 | `TRELLUM_IMPERSONATION_ENABLED` | `True` | Enables the audited operator support workflow |
-| `TRELLUM_SSO_DOMAIN_VERIFICATION` | `True` | Require verified DNS claims before SSO routing |
+| `TRELLUM_SSO_DOMAIN_VERIFICATION` | `False` in new-install configuration; `True` when unset | Require verified DNS claims before SSO routing. Enable for instances shared by organizations that do not trust each other |
+
+The supplied `.env.example` explicitly disables SSO domain verification for a
+new installation run by one trusted organization. Newly generated demo
+environments do the same. Existing `.env` and demo environment files are kept;
+an explicit value still applies, and an absent setting retains the previous
+verification-on behavior. Keep your existing environment file when upgrading.
+Before sharing an instance with unrelated organizations, follow the
+[domain verification steps](/docs/latest/portal/single-sign-on/#turning-verification-back-on).
 
 ### Build memory and time limits
 

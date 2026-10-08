@@ -318,7 +318,8 @@ could claim a domain they don't own and capture logins meant for someone
 else.
 
 **Organization settings → Single sign-on** has a domain ownership section.
-Claim a domain, publish the TXT record it shows you, then verify:
+When verification is optional, expand the advanced domain verification section
+to use it. Claim a domain, publish the TXT record it shows you, then verify:
 
 ```
 _trellum-verification.example.com   TXT   trellum-verification=<token>
@@ -327,11 +328,17 @@ _trellum-verification.example.com   TXT   trellum-verification=<token>
 The token is per claim, so publishing someone else's proves nothing, and a
 domain can be held by only one organization at a time.
 
-Verification is enabled by default. A trusted single-organization development
-instance may opt out temporarily, but shared or production installations
-should keep it enabled. Once on, only verified domains route, both when
-choosing where to send a login and when accepting the identity the identity
-provider asserts on the way back.
+New installations using the supplied `.env.example`, and newly generated demo
+environments, set `TRELLUM_SSO_DOMAIN_VERIFICATION=false`. This suits an instance
+run by one trusted organization: configure the email domains and identity
+provider without a separate DNS ownership step. The email-domain allowlist,
+provider authentication and organization membership checks still apply.
+
+Existing environment files retain their behavior on upgrade. An explicit
+`true` or `false` is honored; when the setting is absent, verification remains
+on. Instances shared by organizations that do not trust each other should set
+it to `true`. Once on, only verified domains route, both when choosing where
+to send a login and when accepting the identity the provider asserts on return.
 
 ### Turning verification back on
 
@@ -351,8 +358,8 @@ worked the day before, so on an instance that already has SSO in use:
    enabled organization's claimed domains with their state and names the
    organizations that would lose SSO if verification were turned on now;
    `--verify` re-checks DNS for every pending claim first.
-3. Only then turn it back on using `TRELLUM_SSO_DOMAIN_VERIFICATION`, and
-   verify the resulting claims before enforcing SSO.
+3. Only then set `TRELLUM_SSO_DOMAIN_VERIFICATION=true` and restart the services.
+   Verify the resulting claims before enforcing SSO.
 
 Verifying needs the organization to publish a TXT record in its own DNS,
 which an operator cannot do on its behalf — plan step 1 as a request to each

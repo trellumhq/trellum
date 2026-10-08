@@ -95,14 +95,17 @@
 
 <h2>Domain ownership</h2>
 <div class="panel">
+{% if not domain_verification_required %}
+<details>
+  <summary>Advanced: optional domain verification</summary>
+  <p class="muted">Verification is optional on this instance. The email-domain
+  list above still determines which addresses may use SSO. You can verify now
+  to prepare for a future shared installation.</p>
+{% endif %}
 {% if domain_verification_required %}
 <p class="muted" style="margin-top:0">Whoever routes a domain decides who may
 sign in as its users, so on this instance a domain only routes logins once you
 have proved you own it. <strong>Claimed but unverified domains are ignored.</strong></p>
-{% else %}
-<p class="muted" style="margin-top:0">Verification is not required on this
-instance, so every domain above routes logins. You may still verify domains;
-it costs nothing and is required if this instance ever becomes shared.</p>
 {% endif %}
 
 {% if unclaimed_domains %}
@@ -160,6 +163,9 @@ it costs nothing and is required if this instance ever becomes shared.</p>
   <input name="domain" placeholder="example.com" style="min-width:220px">
   <button class="ui-btn ghost" type="submit">Claim domain</button>
 </form>
+{% if not domain_verification_required %}
+</details>
+{% endif %}
 </div>
 </fieldset>
 {% endblock %}

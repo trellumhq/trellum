@@ -90,6 +90,7 @@ if (-not (Test-Path $EnvFile)) {
       "PORTAL_BASE_URL=http://localhost:$Port"
       'ALLOWED_HOSTS=localhost,127.0.0.1'
       'WORKER_MAX_CONCURRENT=2'
+      'TRELLUM_SSO_DOMAIN_VERIFICATION=false'
     )
     # Only needed when running alongside another instance from the same
     # checkout -- the default project keeps the shared trellum:dev tags.
