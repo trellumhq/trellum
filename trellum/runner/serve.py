@@ -14,6 +14,8 @@ from trellum.runner.ports import (
     _claim_port,
 )
 
+_COMPRESSIBLE = {".json", ".html", ".js", ".css", ".svg"}
+
 
 class _PublicReportHandler(SimpleHTTPRequestHandler):
     def _deny_private(self) -> bool:
@@ -57,7 +59,6 @@ def _serve_all(output_base: str, port: int) -> None:
 
     _claim_port(port, output_base)
 
-    _COMPRESSIBLE = {".json", ".html", ".js", ".css", ".svg"}
 
     class Handler(_PublicReportHandler):
         def __init__(self, *args, **kwargs):
@@ -183,8 +184,6 @@ def _serve(output_dir: str, port: int):
     import gzip as _gzip
 
     _claim_port(port, output_dir)
-
-    _COMPRESSIBLE = {".json", ".html", ".js", ".css", ".svg"}
 
     class Handler(_PublicReportHandler):
         def __init__(self, *args, **kwargs):
