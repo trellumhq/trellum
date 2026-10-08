@@ -532,6 +532,40 @@ class TestSweepOrphans:
         assert orphan.removed is True
         assert live.removed is False
 
+    def test_run_created_during_container_listing_is_kept(self, report_row):
+        from apps.runner.models import Run
+
+        gone_id = "00000000-0000-0000-0000-000000000000"
+        orphan = FakeContainer(
+            cid="orphan", labels={"trellum.sandbox": "1", "trellum.run-id": gone_id}
+        )
+        client = FakeClient(listing=[orphan])
+        original_list = client.containers.list
+        created = []
+
+        def list_and_start_other_run(*args, **kwargs):
+            if not created:
+                run = Run.objects.create(
+                    report=report_row, studio=report_row.studio,
+                    slug=report_row.slug, status=Run.RUNNING,
+                    worker_id="another-worker",
+                )
+                container = FakeContainer(
+                    cid="new-live",
+                    labels={"trellum.sandbox": "1", "trellum.run-id": str(run.pk)},
+                )
+                client.containers._listing.append(container)
+                created.append(container)
+            return original_list(*args, **kwargs)
+
+        client.containers.list = list_and_start_other_run
+
+        removed = DockerSandbox(client=client).sweep_orphans()
+
+        assert removed == 1
+        assert orphan.removed is True
+        assert created[0].removed is False
+
     def test_containers_from_before_the_rename_are_still_swept(self, report_row):
         """A sandbox that outlived the upgrade wears the old label. Nothing
         else ever looks for it, so the sweep has to."""

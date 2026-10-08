@@ -310,7 +310,7 @@ TRELLUM_JOB_MEMORY_ENFORCE = env.bool("TRELLUM_JOB_MEMORY_ENFORCE", default=True
 # Wall-clock limit for every report build (seconds): SIGTERM at this point,
 # SIGKILL 5 s later. Like the memory limit, an operator setting, not a
 # report.yaml key.
-TRELLUM_RUN_TIMEOUT = env.int("TRELLUM_RUN_TIMEOUT", default=600)
+TRELLUM_RUN_TIMEOUT = env.int("TRELLUM_RUN_TIMEOUT", default=1800)
 
 # Live queries (apps/reports/livequery.py): simultaneous in-process executions
 # per web process. Acquired non-blocking — a full pool answers 429 with

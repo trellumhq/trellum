@@ -184,6 +184,28 @@ class TestRecovery:
 
         assert Run.objects.get(pk=run.pk).status == Run.RUNNING
 
+    def test_newly_registered_worker_is_visible_to_recovery_update(
+        self, make_run, monkeypatch
+    ):
+        from django.db.models.query import QuerySet
+
+        new_run = []
+        original_update = QuerySet.update
+
+        def register_worker_before_update(queryset, **kwargs):
+            if queryset.model is Run and not new_run:
+                WorkerHeartbeat.objects.create(worker_id="runner-arriving")
+                new_run.append(
+                    make_run(status=Run.RUNNING, worker_id="runner-arriving")
+                )
+            return original_update(queryset, **kwargs)
+
+        monkeypatch.setattr(QuerySet, "update", register_worker_before_update)
+
+        Command()._recover_stale_runs()
+
+        assert Run.objects.get(pk=new_run[0].pk).status == Run.RUNNING
+
     def test_heartbeat_upsert_and_alive_window(self):
         stub = StubExecutor()
         Command()._beat("w-test", stub)
@@ -192,6 +214,76 @@ class TestRecovery:
             last_beat_at=timezone.now() - timezone.timedelta(minutes=5)
         )
         assert WorkerHeartbeat.alive().count() == 0
+
+
+class TestSandboxSweep:
+    def _sweep(self, monkeypatch, root):
+        monkeypatch.setattr(
+            "apps.runner.management.commands.runworker._tmp_root", lambda: root
+        )
+        monkeypatch.setattr("apps.runner.sandbox.sandbox_mode", lambda: "local")
+        Command()._sweep_orphan_sandboxes()
+
+    @pytest.mark.parametrize("status", [Run.STARTING, Run.RUNNING, Run.QUEUED])
+    def test_live_run_preserves_shared_scratch_and_its_logs(
+        self, make_run, monkeypatch, tmp_path, status
+    ):
+        run = make_run(status=status, worker_id="another-worker")
+        root = tmp_path / "tmp"
+        scratch = root / "run-shared-random"
+        scratch.mkdir(parents=True)
+        (scratch / "build.txt").write_text("in use")
+        logs = root / "runs" / str(run.pk)
+        logs.mkdir(parents=True)
+        (logs / "worker.log").write_text("in use")
+
+        self._sweep(monkeypatch, root)
+
+        assert scratch.is_dir()
+        assert logs.is_dir()
+
+    def test_quiescent_sweep_removes_orphans_and_preserves_unrelated_files(
+        self, monkeypatch, tmp_path
+    ):
+        root = tmp_path / "tmp"
+        scratch = root / "run-orphan-random"
+        scratch.mkdir(parents=True)
+        orphan_logs = root / "runs" / "00000000-0000-0000-0000-000000000001"
+        orphan_logs.mkdir(parents=True)
+        unrelated_dir = root / "runs" / "keep-this"
+        unrelated_dir.mkdir(parents=True)
+        unrelated_file = root / "readme.txt"
+        root.mkdir(exist_ok=True)
+        unrelated_file.write_text("keep")
+
+        self._sweep(monkeypatch, root)
+
+        assert not scratch.exists()
+        assert not orphan_logs.exists()
+        assert unrelated_dir.is_dir()
+        assert unrelated_file.read_text() == "keep"
+
+    def test_paths_created_after_candidate_snapshot_are_not_swept(
+        self, make_run, monkeypatch, tmp_path
+    ):
+        run = make_run(status=Run.RUNNING)
+        root = tmp_path / "tmp"
+        root.mkdir()
+        late_scratch = root / "run-created-during-snapshot"
+        late_logs = root / "runs" / "00000000-0000-0000-0000-000000000002"
+        original_filter = Run.objects.filter
+
+        def create_paths_then_filter(**kwargs):
+            late_scratch.mkdir()
+            late_logs.mkdir(parents=True)
+            return original_filter(**kwargs)
+
+        monkeypatch.setattr(Run.objects, "filter", create_paths_then_filter)
+
+        self._sweep(monkeypatch, root)
+
+        assert late_scratch.is_dir()
+        assert late_logs.is_dir()
 
 
 @pytest.fixture
@@ -298,6 +390,64 @@ class TestRoles:
         )
         run = make_run()
         self._run(role="runner")
+        assert started == [run.pk]
+
+    def test_runner_beats_before_claiming_work(self, make_run, monkeypatch):
+        import threading
+
+        import apps.runner.management.commands.runworker as runworker
+
+        started = []
+        events = []
+        shutdown = threading.Event()
+        original_beat = Command._beat
+
+        class StubThread:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def start(self):
+                pass
+
+            def join(self, timeout=None):
+                pass
+
+        class StubGitSyncThread:
+            def start(self):
+                pass
+
+            def stop(self):
+                pass
+
+        def record_beat(self, *args, **kwargs):
+            events.append("beat")
+            return original_beat(self, *args, **kwargs)
+
+        def record_start(self, run, extra_env=None):
+            events.append("claim")
+            started.append(run.pk)
+            return True
+
+        monkeypatch.setattr(Command, "_beat", record_beat)
+        monkeypatch.setattr(runworker.threading, "Event", lambda: shutdown)
+        monkeypatch.setattr(runworker.threading, "Thread", StubThread)
+        monkeypatch.setattr(runworker.time, "sleep", lambda _: shutdown.set())
+        monkeypatch.setattr("apps.runner.executor.Executor.tick", lambda self: None)
+        monkeypatch.setattr(
+            "apps.runner.executor.Executor.drain", lambda self, timeout: None
+        )
+        monkeypatch.setattr(
+            "apps.runner.executor.Executor.start_run", record_start
+        )
+        monkeypatch.setattr(
+            "apps.runner.management.commands.runworker.Command._sweep_orphan_sandboxes",
+            lambda self: None,
+        )
+        monkeypatch.setattr("apps.runner.sandbox.sandbox_mode", lambda: "off")
+        monkeypatch.setattr("apps.runner.gitsync.GitSyncThread", StubGitSyncThread)
+        run = make_run()
+        Command().handle(once=False, role="runner")
+        assert events[:2] == ["beat", "claim"]
         assert started == [run.pk]
 
     def test_runner_does_not_reap(self, make_run):

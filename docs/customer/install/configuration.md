@@ -71,7 +71,7 @@ settings for the installation.
 | `TRELLUM_DEFAULT_JOB_MEMORY_MB` | `1024` | Memory in MB reserved for every admitted build and used to derive its hard cap |
 | `TRELLUM_JOB_MEMORY_HEADROOM` | `1.5` | Multiplier between the reserved amount and the process/container hard cap, allowing for mapped libraries and allocator overhead |
 | `TRELLUM_JOB_MEMORY_ENFORCE` | `True` | Apply the address-space cap to unsandboxed POSIX builds. Sandboxed Docker builds always receive a container memory cap |
-| `TRELLUM_RUN_TIMEOUT` | `600` | Wall-clock seconds before a build receives `SIGTERM`; it is force-killed five seconds later if still running |
+| `TRELLUM_RUN_TIMEOUT` | `1800` | Wall-clock seconds before a build receives `SIGTERM` (30 minutes by default); it is force-killed five seconds later if still running |
 
 Size the runner budget from memory left after the database, web process, and
 host overhead. Admission reserves `TRELLUM_DEFAULT_JOB_MEMORY_MB` per running

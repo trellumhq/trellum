@@ -1,8 +1,16 @@
 """THE contract test: what the materializer writes + injects must satisfy
 the bundled framework's LocalEnvResolver field-for-field."""
+from concurrent.futures import ThreadPoolExecutor
+import os
+from pathlib import Path
+import stat
+from threading import Barrier
+from types import SimpleNamespace
+
 import yaml as yaml_lib
 import pytest
 
+import apps.datasources.materialize as materialize_module
 from apps.datasources.materialize import materialize
 from apps.datasources.models import (
     CONFIG_KEYS,
@@ -81,6 +89,189 @@ def _read_yaml(studio):
     path = studio.datasources_dir / "config.yaml"
     with open(path, encoding="utf-8") as fh:
         return yaml_lib.safe_load(fh)
+
+
+def test_config_is_replaced_only_after_complete_serialization(tmp_path, monkeypatch):
+    studio = SimpleNamespace(datasources_dir=tmp_path)
+    config = tmp_path / "config.yaml"
+    previous = "# previous config\nsources:\n  old:\n    type: sqlite\n    path: old.db\n"
+    config.write_text(previous, encoding="utf-8")
+    replace = materialize_module.os.replace
+    observed = []
+
+    def observe_then_replace(source, destination):
+        assert yaml_lib.safe_load(Path(destination).read_text(encoding="utf-8")) == {
+            "sources": {"old": {"type": "sqlite", "path": "old.db"}}
+        }
+        observed.append(Path(source).read_text(encoding="utf-8"))
+        replace(source, destination)
+
+    monkeypatch.setattr(materialize_module, "source_states", lambda _studio: [])
+    monkeypatch.setattr(materialize_module.os, "replace", observe_then_replace)
+    assert materialize(studio) == {}
+    assert len(observed) == 1
+    assert yaml_lib.safe_load(config.read_text(encoding="utf-8")) == {"sources": {}}
+    assert "# Managed by the portal" in observed[0]
+    assert not list(tmp_path.glob(".config.yaml.*.tmp"))
+
+
+@pytest.mark.parametrize("failure", ["serialization", "replacement"])
+def test_config_failure_preserves_previous_file_and_cleans_temp(
+    tmp_path, monkeypatch, failure,
+):
+    studio = SimpleNamespace(datasources_dir=tmp_path)
+    config = tmp_path / "config.yaml"
+    previous = "# previous config\nsources: {old: {type: sqlite, path: old.db}}\n"
+    config.write_text(previous, encoding="utf-8")
+    monkeypatch.setattr(materialize_module, "source_states", lambda _studio: [])
+
+    if failure == "serialization":
+        def fail_after_partial_write(_data, stream, **_kwargs):
+            stream.write("partial")
+            raise RuntimeError("serialization failed")
+
+        monkeypatch.setattr(materialize_module.yaml, "dump", fail_after_partial_write)
+    else:
+        def fail_replace(_source, _destination):
+            raise OSError("replacement failed")
+
+        monkeypatch.setattr(materialize_module.os, "replace", fail_replace)
+
+    with pytest.raises((RuntimeError, OSError)):
+        materialize(studio)
+    assert config.read_text(encoding="utf-8") == previous
+    assert not list(tmp_path.glob(".config.yaml.*.tmp"))
+
+
+def _windows_error(code):
+    error = OSError("simulated Windows replacement error")
+    error.winerror = code
+    return error
+
+
+def test_windows_sharing_error_retries_then_replaces(tmp_path, monkeypatch):
+    studio = SimpleNamespace(datasources_dir=tmp_path)
+    config = tmp_path / "config.yaml"
+    config.write_text("sources: {old: {type: sqlite}}\n", encoding="utf-8")
+    original_replace = materialize_module.os.replace
+    attempts = []
+    delays = []
+
+    def replace_with_transient_error(source, destination):
+        attempts.append(None)
+        if len(attempts) == 1:
+            raise _windows_error(32)
+        original_replace(source, destination)
+
+    monkeypatch.setattr(materialize_module, "source_states", lambda _studio: [])
+    monkeypatch.setattr(materialize_module.os, "replace", replace_with_transient_error)
+    monkeypatch.setattr(materialize_module.time, "sleep", delays.append)
+
+    materialize(studio)
+
+    assert len(attempts) == 2
+    assert delays == [materialize_module._REPLACE_RETRY_DELAYS[0]]
+    assert yaml_lib.safe_load(config.read_text(encoding="utf-8")) == {"sources": {}}
+    assert not list(tmp_path.glob(".config.yaml.*.tmp"))
+
+
+def test_exhausted_windows_retries_preserve_config_and_clean_temp(tmp_path, monkeypatch):
+    studio = SimpleNamespace(datasources_dir=tmp_path)
+    config = tmp_path / "config.yaml"
+    previous = "sources: {old: {type: sqlite}}\n"
+    config.write_text(previous, encoding="utf-8")
+    attempts = []
+    delays = []
+
+    def fail_with_sharing_error(_source, _destination):
+        attempts.append(None)
+        raise _windows_error(33)
+
+    monkeypatch.setattr(materialize_module, "source_states", lambda _studio: [])
+    monkeypatch.setattr(materialize_module.os, "replace", fail_with_sharing_error)
+    monkeypatch.setattr(materialize_module.time, "sleep", delays.append)
+
+    with pytest.raises(OSError):
+        materialize(studio)
+
+    assert len(attempts) == len(materialize_module._REPLACE_RETRY_DELAYS) + 1
+    assert delays == list(materialize_module._REPLACE_RETRY_DELAYS)
+    assert config.read_text(encoding="utf-8") == previous
+    assert not list(tmp_path.glob(".config.yaml.*.tmp"))
+
+
+def test_non_sharing_windows_replacement_error_fails_without_retry(tmp_path, monkeypatch):
+    studio = SimpleNamespace(datasources_dir=tmp_path)
+    config = tmp_path / "config.yaml"
+    previous = "sources: {old: {type: sqlite}}\n"
+    config.write_text(previous, encoding="utf-8")
+    attempts = []
+    delays = []
+
+    def fail_with_other_error(_source, _destination):
+        attempts.append(None)
+        raise _windows_error(13)
+
+    monkeypatch.setattr(materialize_module, "source_states", lambda _studio: [])
+    monkeypatch.setattr(materialize_module.os, "replace", fail_with_other_error)
+    monkeypatch.setattr(materialize_module.time, "sleep", delays.append)
+
+    with pytest.raises(OSError):
+        materialize(studio)
+
+    assert len(attempts) == 1
+    assert delays == []
+    assert config.read_text(encoding="utf-8") == previous
+    assert not list(tmp_path.glob(".config.yaml.*.tmp"))
+
+
+def test_concurrent_materializations_use_distinct_temp_files(tmp_path, monkeypatch):
+    studio = SimpleNamespace(datasources_dir=tmp_path)
+    barrier = Barrier(2)
+    paths = []
+    monkeypatch.setattr(materialize_module, "source_states", lambda _studio: [])
+
+    def hold_both_writes(_data, stream, **_kwargs):
+        paths.append(Path(stream.name))
+        stream.write("sources: {}\n")
+        barrier.wait(timeout=5)
+
+    monkeypatch.setattr(materialize_module.yaml, "dump", hold_both_writes)
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        list(workers.map(materialize, [studio, studio]))
+
+    assert len(paths) == 2
+    assert len(set(paths)) == 2
+    assert all(path.parent == tmp_path for path in paths)
+    assert not list(tmp_path.glob(".config.yaml.*.tmp"))
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permission bits only")
+def test_replacement_preserves_existing_config_permissions(tmp_path, monkeypatch):
+    studio = SimpleNamespace(datasources_dir=tmp_path)
+    config = tmp_path / "config.yaml"
+    config.write_text("sources: {}\n", encoding="utf-8")
+    config.chmod(0o640)
+    monkeypatch.setattr(materialize_module, "source_states", lambda _studio: [])
+
+    materialize(studio)
+
+    assert stat.S_IMODE(config.stat().st_mode) == 0o640
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permission bits only")
+def test_new_config_uses_normal_file_creation_permissions(tmp_path, monkeypatch):
+    studio = SimpleNamespace(datasources_dir=tmp_path)
+    expected = tmp_path / "normal-open.txt"
+    with expected.open("w", encoding="utf-8"):
+        pass
+    monkeypatch.setattr(materialize_module, "source_states", lambda _studio: [])
+
+    materialize(studio)
+
+    assert stat.S_IMODE((tmp_path / "config.yaml").stat().st_mode) == (
+        stat.S_IMODE(expected.stat().st_mode)
+    )
 
 
 class TestMaterializedYaml:

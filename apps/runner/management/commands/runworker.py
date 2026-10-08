@@ -191,10 +191,10 @@ class Command(BaseCommand):
         # and that must not depend on how long the current tick takes.
         # (A truly wedged tick keeps beating; the per-run timeout is what
         # covers runaway builds.)
+        # Register before claiming work so another worker cannot reap our runs.
+        self._beat(worker_id, executor, role=effective_role)
         beat_thread = None
-        if opts["once"]:
-            self._beat(worker_id, executor, role=effective_role)
-        else:
+        if not opts["once"]:
             beat_thread = threading.Thread(
                 target=self._beat_loop,
                 args=(worker_id, executor, effective_role, shutdown),
@@ -263,38 +263,47 @@ class Command(BaseCommand):
         ``self_worker_id`` is never reaped: we are the ones calling, so we are
         alive by definition, even if a DB stall let our heartbeat go stale.
         """
-        live = set(WorkerHeartbeat.alive().values_list("worker_id", flat=True))
-        if self_worker_id:
-            live.add(self_worker_id)
-        n = (
+        # Evaluate liveness in the UPDATE so newly registered workers are visible.
+        orphaned = (
             Run.objects.filter(status__in=(Run.STARTING, Run.RUNNING))
-            .exclude(worker_id__in=live)
-            .update(
-                status=Run.ERROR,
-                finished_at=timezone.now(),
-                stderr_tail="worker restarted while this run was in flight",
-            )
+            .exclude(worker_id__in=WorkerHeartbeat.alive().values("worker_id"))
+        )
+        if self_worker_id:
+            orphaned = orphaned.exclude(worker_id=self_worker_id)
+        n = orphaned.update(
+            status=Run.ERROR,
+            finished_at=timezone.now(),
+            stderr_tail="worker restarted while this run was in flight",
         )
         if n:
             logger.info(f"marked {n} orphaned run(s) as error")
 
     def _sweep_orphan_sandboxes(self) -> None:
         import shutil
+        from uuid import UUID
 
         root = _tmp_root()
-        for entry in root.glob("run-*"):
-            shutil.rmtree(entry, ignore_errors=True)
+        scratch_candidates = list(root.glob("run-*"))
         runs_dir = root / "runs"
-        if runs_dir.is_dir():
-            active_ids = {
-                str(pk)
-                for pk in Run.objects.filter(status__in=Run.ACTIVE_STATUSES).values_list(
-                    "pk", flat=True
-                )
-            }
-            for entry in runs_dir.iterdir():
-                if entry.name not in active_ids:
+        log_candidates = list(runs_dir.iterdir()) if runs_dir.is_dir() else []
+        active_ids = {
+            str(pk)
+            for pk in Run.objects.filter(status__in=Run.ACTIVE_STATUSES).values_list(
+                "pk", flat=True
+            )
+        }
+        # Scratch paths have no persisted owner, so a live run may own any of them.
+        if not active_ids:
+            for entry in scratch_candidates:
+                if entry.is_dir():
                     shutil.rmtree(entry, ignore_errors=True)
+        for entry in log_candidates:
+            if entry.is_dir() and entry.name not in active_ids:
+                try:
+                    UUID(entry.name)
+                except ValueError:
+                    continue
+                shutil.rmtree(entry, ignore_errors=True)
 
         # Containers left behind by a crashed runner (their Run is no longer
         # active). Skips containers whose run is still ACTIVE — another runner
