@@ -19,6 +19,7 @@ import time
 from datetime import timedelta
 
 import pyotp
+from django.db import transaction
 
 #: 30s steps, ±1 step accepted (90s total drift window) -- design §4.4.
 _STEP_SECONDS = 30
@@ -78,17 +79,14 @@ def qr_svg(uri: str) -> str:
     return svg
 
 
+@transaction.atomic
 def confirm_enrollment(device, code: str) -> list[str] | None:
     """Verify the first code from a pending enrollment. On success, confirms
     the device and returns ten freshly-generated recovery codes (plaintext,
     shown exactly once -- the caller is responsible for displaying them and
     never storing the plaintext). Returns ``None`` on a wrong code."""
-    if not _check_code(device, code):
+    if not _consume_code(device, code, enrolling=True):
         return None
-    from django.utils import timezone
-
-    device.confirmed_at = timezone.now()
-    device.save(update_fields=["confirmed_at", "last_used_step"])
     return generate_recovery_codes(device.user)
 
 
@@ -96,12 +94,31 @@ def verify_login_code(device, code: str) -> bool:
     """Verify a code from a CONFIRMED device (login step-up, or a self-serve
     disable/regenerate that re-checks a live factor). Persists the advanced
     replay-guard step on success."""
-    if device.confirmed_at is None:
+    return _consume_code(device, code, enrolling=False)
+
+
+@transaction.atomic
+def _consume_code(device, code: str, *, enrolling: bool) -> bool:
+    from django.utils import timezone
+
+    from apps.accounts.models import TotpDevice
+
+    current = TotpDevice.objects.select_for_update().filter(pk=device.pk).first()
+    if current is None or (current.confirmed_at is None) != enrolling:
         return False
-    if _check_code(device, code):
-        device.save(update_fields=["last_used_step"])
-        return True
-    return False
+    previous_step = current.last_used_step
+    if not _check_code(current, code):
+        return False
+    confirmed_at = timezone.now() if enrolling else current.confirmed_at
+    # The conditional update also enforces one winner on databases without row locks.
+    won = TotpDevice.objects.filter(
+        pk=current.pk, last_used_step=previous_step, confirmed_at=current.confirmed_at,
+    ).update(last_used_step=current.last_used_step, confirmed_at=confirmed_at)
+    if not won:
+        return False
+    device.last_used_step = current.last_used_step
+    device.confirmed_at = confirmed_at
+    return True
 
 
 def _check_code(device, code: str) -> bool:
@@ -151,14 +168,17 @@ def verify_recovery_code(user, code: str):
     from django.contrib.auth.hashers import check_password
     from django.utils import timezone
 
+    from apps.accounts.models import RecoveryCode
+
     code = (code or "").strip()
     if not code:
         return None
     for row in user.recovery_codes.filter(used_at__isnull=True):
         if check_password(code, row.code_hash):
             row.used_at = timezone.now()
-            row.save(update_fields=["used_at"])
-            return row
+            if RecoveryCode.objects.filter(pk=row.pk, used_at__isnull=True).update(used_at=row.used_at):
+                return row
+            return None
     return None
 
 

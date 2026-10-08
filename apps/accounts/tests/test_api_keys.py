@@ -78,11 +78,11 @@ class TestBearerAuth:
 
         response = client.get(f"{prefix}/api/registry", **headers)
         assert [row["id"] for row in response.json()["reports"]] == [report_row.pk]
-        assert client.get(f"{prefix}/r/private-report/data.json", **headers).status_code == 404
+        assert client.get(f"{prefix}/r/private-report/data.json", **headers).status_code == 403
         assert client.get(f"{prefix}/operations", **headers).status_code == 403
         assignment.delete()
         assert client.get(f"{prefix}/api/registry", **headers).json()["reports"] == []
-        assert client.get(f"{prefix}/r/{report_row.slug}/", **headers).status_code == 404
+        assert client.get(f"{prefix}/r/{report_row.slug}/", **headers).status_code == 403
 
     def test_read_key_reads(self, client, developer, org, prefix):
         _, secret = mint(developer, org)

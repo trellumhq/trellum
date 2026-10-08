@@ -190,12 +190,9 @@ class SessionSecurityMiddleware:
 
     #: Paths the forced-MFA-enrollment redirect-lock must never intercept, or
     #: the user could never reach the page that lets them finish enrolling,
-    #: nor log out. Narrower than the design's literal "/account/security" +
-    #: "/logout" + static list only in that JSON/API calls are exempted
-    #: wholesale below (see _mfa_lock) rather than enumerated here -- a
-    #: redirect response handed to `fetch()` is a worse failure mode than
-    #: simply not enforcing the lock on XHR traffic.
-    _MFA_LOCK_EXEMPT_PREFIXES = ("/account/security", "/logout")
+    #: nor log out. Compare exact paths so unrelated security actions cannot
+    #: be reached before enrollment.
+    _MFA_LOCK_EXEMPT_PATHS = ("/account/security/mfa/setup", "/logout")
 
     def __init__(self, get_response):
         self.get_response = get_response
@@ -279,14 +276,19 @@ class SessionSecurityMiddleware:
     def _mfa_lock(self, request, user):
         from apps.core.permissions import wants_json
 
-        if wants_json(request):
-            return None
         from apps.accounts import mfa as mfa_mod
 
         if not mfa_mod.enrollment_required(request, user):
             return None
-        if request.path.startswith(self._MFA_LOCK_EXEMPT_PREFIXES) or request.path.startswith("/static/"):
+        if request.path in self._MFA_LOCK_EXEMPT_PATHS or request.path.startswith("/static/"):
             return None
+        if wants_json(request):
+            from django.http import JsonResponse
+
+            return JsonResponse(
+                {"error": "mfa_enrollment_required", "enrollment_url": "/account/security/mfa/setup"},
+                status=403,
+            )
         from django.shortcuts import redirect
 
         return redirect("/account/security/mfa/setup")

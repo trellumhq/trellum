@@ -203,6 +203,9 @@ def conn_info_for(ds) -> dict:
         if path is None or not path.is_file():
             raise SourceUnusable("the data source's file is missing")
         info["path"] = str(path)
+    if ds.type == "duckdb":
+        # Trusted portal policy, never an author-provided driver setting.
+        info["portal_live_query"] = True
     return info
 
 

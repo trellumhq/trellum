@@ -34,3 +34,27 @@ See [Configuration](/docs/latest/install/configuration/#built-report-output-in-o
 for object-storage keys, preflight, and access, and [Backups & restore](/docs/latest/operations/backups-and-restore/)
 for recovery. Do not copy partial active data or switch backends without a
 planned migration.
+
+### Private live-query manifests
+
+New remote builds keep browser assets under
+`{org}/{studio}/{report}/builds/{build}/` and host SQL manifests under
+`_private/{org}/{studio}/{report}/builds/{build}/_live_queries.json`. The portal's
+storage credentials need read, write, list and delete access to both namespaces.
+The bucket must remain private. A report-scoped browser grant covers only the
+public build prefix. Private manifests upload before the current-build pointer
+changes and follow the same build-pruning and report/studio retention lifecycle.
+
+When upgrading, deploy the updated `edge/report-access-worker.js` with the
+portal. Custom `edge-external` gateways must deny `_live_queries.json`, its gzip
+sibling, case variants, encoded path aliases and trailing dots/spaces for both
+GET and HEAD, including NTFS stream suffixes such as `::$DATA`, and must never
+serve `_private/`. The supplied worker denies these
+requests before looking up an object, even with a valid report grant.
+
+Existing builds can retain manifests in their old public build prefix; the host
+reader supports them for compatibility, while portal and updated edge routes
+deny downloads. Plan an operator-controlled migration or rebuild and removal of
+those legacy manifests, and purge any previously cached manifest responses from
+your CDN. Updating the portal alone does not update an external gateway or erase
+cached responses. This upgrade does not automatically delete production objects.

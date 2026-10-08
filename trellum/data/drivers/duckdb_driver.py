@@ -19,6 +19,17 @@ class DuckDBDriver:
 
     def connect(self, conn_info: dict) -> Any:
         import duckdb
+        if conn_info.get("portal_live_query"):
+            return duckdb.connect(
+                conn_info["path"], read_only=True,
+                config={
+                    "autoinstall_known_extensions": False,
+                    "autoload_known_extensions": False,
+                    "python_enable_replacements": False,
+                    "enable_external_access": False,
+                    "lock_configuration": True,
+                },
+            )
         return duckdb.connect(conn_info["path"])
 
 

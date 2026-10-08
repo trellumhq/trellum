@@ -37,6 +37,7 @@ from apps.core.audit import audit
 #: _denied() stays free-text for the human on the 403 page.
 REASON_NOT_ENABLED = "sso_not_enabled"
 REASON_NO_EMAIL = "no_email_claim"
+REASON_UNVERIFIED_EMAIL = "unverified_email_claim"
 REASON_OUTSIDE_DOMAINS = "outside_verified_domains"
 REASON_EXISTING_NON_MEMBER = "existing_non_member_account"
 REASON_AUTO_PROVISION_OFF = "auto_provision_disabled"
@@ -88,6 +89,32 @@ def admission(cfg, email: str):
             ),
         )
     return None, None
+
+
+def _trusted_entra_upn(cfg, sociallogin, email: str) -> bool:
+    """Only a tenant-specific Entra ID token can vouch for a mailbox-less UPN."""
+    from urllib.parse import urlsplit
+    from uuid import UUID
+
+    issuer = urlsplit(cfg.issuer_url)
+    if (
+        issuer.scheme != "https" or issuer.netloc != "login.microsoftonline.com"
+        or issuer.query or issuer.fragment
+    ):
+        return False
+    parts = issuer.path.strip("/").split("/")
+    if len(parts) != 2 or parts[1] != "v2.0":
+        return False
+    try:
+        tenant = str(UUID(parts[0]))
+    except ValueError:
+        return False
+    token = (sociallogin.account.extra_data or {}).get("id_token") or {}
+    return (
+        not sso.claims(sociallogin).get("email")
+        and token.get("tid", "").lower() == tenant
+        and token.get("preferred_username", "").strip().lower() == email.lower()
+    )
 
 
 class NoSignupAccountAdapter(DefaultAccountAdapter):
@@ -164,18 +191,7 @@ class OrgSSOAdapter(DefaultSocialAccountAdapter):
                 )
             )
 
-        # Some IdPs (Entra, for mailbox-less users) send no 'email' claim, so allauth
-        # sees zero provider emails and refuses auto-signup. The UPN passed
-        # the org's domain allowlist and came from the org's own IdP — that
-        # IS the verification; assert it explicitly.
-        if not sociallogin.email_addresses:
-            from allauth.account.models import EmailAddress
-
-            sociallogin.email_addresses = [
-                EmailAddress(email=email, verified=True, primary=True)
-            ]
-
-        if sociallogin.is_existing:
+        if sociallogin.is_existing and sociallogin.account.pk is not None:
             # Returning SSO user: refresh the group mapping and move on.
             # (Membership is NOT re-created: if an admin removed them, SSO
             # login still works but shows an empty portal.)
@@ -183,6 +199,29 @@ class OrgSSOAdapter(DefaultSocialAccountAdapter):
                 sociallogin.user, cfg, sso.claims(sociallogin)
             )
             return
+
+        identity_claims = sso.claims(sociallogin)
+        verified = (
+            (
+                identity_claims.get("email_verified") is True
+                and identity_claims.get("email", "").lower() == email.lower()
+            )
+            or any(a.email.lower() == email.lower() and a.verified is True for a in sociallogin.email_addresses)
+        )
+        if ("email_verified" in identity_claims and identity_claims["email_verified"] is not True) or not (
+            verified or _trusted_entra_upn(cfg, sociallogin, email)
+        ):
+            raise ImmediateHttpResponse(
+                denied(
+                    request, "Your identity provider must verify your email before linking an account.",
+                    reason_code=REASON_UNVERIFIED_EMAIL, provider=provider,
+                    asserted_email=email, org=cfg.org,
+                )
+            )
+        if not sociallogin.email_addresses:
+            from allauth.account.models import EmailAddress
+
+            sociallogin.email_addresses = [EmailAddress(email=email, verified=True, primary=True)]
 
         existing, refusal = admission(cfg, email)
         if refusal is not None:

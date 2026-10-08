@@ -40,7 +40,8 @@ def test_auto_provision_signup_full_flow(org):
     auto-provision on → allauth signup must create the member, not 500."""
     OrgSSOConfig.objects.create(
         org=org, enabled=True, auto_provision=True,
-        issuer_url="https://idp.example/realms/demo", client_id="cid", client_secret="s",
+        issuer_url="https://login.microsoftonline.com/11111111-2222-3333-4444-555555555555/v2.0",
+        client_id="cid", client_secret="s",
         email_domains=["meijerapollogmail.onmicrosoft.com"],
     )
     email = "apollo@meijerapollogmail.onmicrosoft.com"
@@ -57,6 +58,7 @@ def test_auto_provision_signup_full_flow(org):
             "userinfo": {"sub": "entra-oid-123", "name": "Apollo Test"},
             "id_token": {
                 "sub": "entra-oid-123",
+                "tid": "11111111-2222-3333-4444-555555555555",
                 "preferred_username": email,
                 "name": "Apollo Test",
             },

@@ -12,6 +12,7 @@ import pytest
 
 import apps.datasources.materialize as materialize_module
 from apps.datasources.materialize import materialize
+from apps.datasources.materialize import stored_file
 from apps.datasources.models import (
     CONFIG_KEYS,
     CREDENTIAL_KEYS,
@@ -24,6 +25,115 @@ from apps.datasources.models import (
 )
 
 pytestmark = pytest.mark.django_db
+
+
+def test_stored_file_contains_relative_and_in_root_absolute_paths(tmp_path):
+    from types import SimpleNamespace
+
+    root = tmp_path / "studio"
+    root.mkdir()
+    inside = root / "data.csv"
+    inside.write_text("synthetic")
+    ds = SimpleNamespace(
+        config={"path": str(inside)}, org_id=None,
+        studio=SimpleNamespace(project_root=root),
+    )
+    assert stored_file(ds) == inside.resolve()
+    ds.config["path"] = "data.csv"
+    assert stored_file(ds) == inside.resolve()
+    outside = tmp_path / "outside.csv"
+    outside.write_text("synthetic sentinel")
+    ds.config["path"] = str(outside)
+    assert stored_file(ds) is None
+    assert outside.read_text() == "synthetic sentinel"
+
+
+def test_stored_file_rejects_symlink_escape(tmp_path):
+    from types import SimpleNamespace
+
+    root = tmp_path / "studio"
+    root.mkdir()
+    outside = tmp_path / "outside.csv"
+    outside.write_text("synthetic sentinel")
+    ds = SimpleNamespace(
+        config={}, org_id=None, studio=SimpleNamespace(project_root=root),
+    )
+    link = root / "escape.csv"
+    try:
+        link.symlink_to(outside)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"symlink creation unavailable on this platform: {exc}")
+    ds.config["path"] = "escape.csv"
+    assert stored_file(ds) is None
+    assert outside.read_text() == "synthetic sentinel"
+
+
+def test_org_stored_file_uses_org_root(tmp_path):
+    from types import SimpleNamespace
+
+    root = tmp_path / "org"
+    root.mkdir()
+    inside = root / "shared.csv"
+    inside.write_text("shared")
+    ds = SimpleNamespace(
+        config={"path": str(inside)}, org_id=1,
+        org=SimpleNamespace(datasources_dir=root),
+    )
+    assert stored_file(ds) == inside.resolve()
+    ds.config["path"] = str(tmp_path / "external.csv")
+    assert stored_file(ds) is None
+
+
+def test_datasource_form_rejects_external_path_and_accepts_internal_absolute(studio_tree, tmp_path):
+    from apps.datasources.forms import DataSourceForm
+
+    inside = studio_tree.project_root / "data-sources" / "inside.csv"
+    inside.parent.mkdir(parents=True, exist_ok=True)
+    inside.write_text("ok")
+    payload = {"name": "local_file", "type": "file", "scope": "studio",
+               "path": str(inside), "upload": "on"}
+    valid = DataSourceForm(payload, studio=studio_tree)
+    assert valid.is_valid(), valid.errors
+    outside = tmp_path / "outside.csv"
+    outside.write_text("synthetic")
+    payload["name"] = "external_file"
+    payload["path"] = str(outside)
+    invalid = DataSourceForm(payload, studio=studio_tree)
+    assert not invalid.is_valid()
+    assert "path" in invalid.errors
+
+
+def test_org_datasource_form_uses_organization_storage_root(studio_tree, tmp_path):
+    from apps.datasources.forms import DataSourceForm
+
+    org = studio_tree.org
+    inside = org.datasources_dir / "files" / "shared.csv"
+    inside.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"name": "shared_file", "type": "file", "scope": "org",
+               "path": str(inside), "upload": "on"}
+    valid = DataSourceForm(payload, org=org, allow_org_scope=True)
+    assert valid.is_valid(), valid.errors
+    outside = tmp_path / "outside.csv"
+    payload["name"] = "external_shared"
+    payload["path"] = str(outside)
+    invalid = DataSourceForm(payload, org=org, allow_org_scope=True)
+    assert not invalid.is_valid()
+    assert "path" in invalid.errors
+
+
+def test_uncontained_uploaded_path_is_never_cleanup_owned(studio_tree, tmp_path):
+    from types import SimpleNamespace
+
+    from apps.datasources.views import _owned_file
+
+    outside = tmp_path / "outside.csv"
+    outside.write_text("preserve")
+    ds = SimpleNamespace(
+        config={"path": str(outside), "upload": True},
+        org_id=None, studio=studio_tree, is_uploaded=True,
+    )
+    assert _owned_file(ds) is None
+    assert outside.read_text() == "preserve"
 
 #: type -> (config, credentials, what the framework must hand its driver).
 _SEAM = {

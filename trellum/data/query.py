@@ -517,7 +517,8 @@ _BACKSLASH_ESCAPING_TYPES = frozenset({"mysql", "clickhouse", "snowflake"})
 
 def sql_dialect_for(source_type: str) -> str:
     """String-literal dialect for a datasource *type* (``"mysql"``,
-    ``"bigquery"``, ...): ``"googlesql"``, ``"backslash"`` or ``"standard"``.
+    ``"bigquery"``, ...): ``"googlesql"``, ``"backslash"``, ``"bracket"``
+    (standard literals with bracket identifiers), or ``"standard"``.
 
     Hosts that bind parameters without a live connection key on this;
     ``_sql_dialect`` is the same decision for a connection object.
@@ -526,6 +527,8 @@ def sql_dialect_for(source_type: str) -> str:
         return "googlesql"
     if source_type in _BACKSLASH_ESCAPING_TYPES:
         return "backslash"
+    if source_type in ("sqlserver", "sqlite"):
+        return "bracket"
     return "standard"
 
 
@@ -549,6 +552,8 @@ def _sql_dialect(conn: Any) -> str:
         return "googlesql"
     if any(m in type_name for m in ("pymysql", "MySQLdb", "clickhouse", "snowflake")):
         return "backslash"
+    if any(m in type_name for m in ("pymssql", "pyodbc", "sqlite3")):
+        return "bracket"
     return "standard"
 
 
@@ -559,9 +564,13 @@ def bind_params(sql: str, params: dict, dialect: str = "standard") -> str:
     String escaping follows ``dialect`` (see ``_sql_dialect``): ``standard``
     doubles ``'``; ``backslash`` also doubles ``\``; ``googlesql``
     backslash-escapes both.
+
+    Only placeholders in the original SQL's executable text are replaced;
+    strings, identifiers, comments and PostgreSQL casts are left intact.
+    Unknown placeholders remain unchanged for the driver to reject.
     """
-    for key, val in sorted(params.items(), key=lambda kv: len(kv[0]), reverse=True):
-        pattern = rf":{key}\b"
+    literals = {}
+    for key, val in params.items():
         if isinstance(val, (int, float)):
             replacement = str(val)
         elif dialect == "googlesql":
@@ -573,7 +582,63 @@ def bind_params(sql: str, params: dict, dialect: str = "standard") -> str:
         else:
             safe = str(val).replace("'", "''")
             replacement = f"'{safe}'"
-        # Replacement via a callable: a plain replacement string would have
-        # its own backslashes interpreted as group references by re.sub.
-        sql = re.sub(pattern, lambda _m, _r=replacement: _r, sql)
-    return sql
+        literals[key] = replacement
+
+    parts = []
+    pos = 0
+    for start, end, name in _sql_param_spans(sql, dialect):
+        parts.extend((sql[pos:start], literals.get(name, sql[start:end])))
+        pos = end
+    parts.append(sql[pos:])
+    return "".join(parts)
+
+
+def _sql_param_spans(sql: str, dialect: str = "standard"):
+    """Yield original executable placeholder spans for binding and validation."""
+    # Walk only the original SQL: inserted values must never become SQL tokens.
+    tokens = re.compile(r'''--|/\*|['"`\[]|\$(?:[A-Za-z_]\w*)?\$|(?<![:\w]):[A-Za-z_]\w*|#''')
+    pos = 0
+    while match := tokens.search(sql, pos):
+        start, end = match.span()
+        lexeme = match.group()
+        if lexeme.startswith(":"):
+            yield start, end, lexeme[1:]
+            pos = end
+            continue
+        if lexeme == "--" or (lexeme == "#" and dialect == "backslash"):
+            newline = re.search(r"[\r\n]", sql[end:])
+            end = end + newline.start() if newline else len(sql)
+        elif lexeme == "/*":
+            depth = 1
+            while depth and end < len(sql):
+                boundary = re.search(r"/\*|\*/", sql[end:])
+                if boundary is None:
+                    end = len(sql)
+                    break
+                depth += 1 if boundary.group() == "/*" else -1
+                end += boundary.end()
+        elif lexeme.startswith("$"):
+            closing = sql.find(lexeme, end)
+            end = closing + len(lexeme) if closing >= 0 else len(sql)
+        elif lexeme not in ("#", "[") or (lexeme == "[" and dialect == "bracket"):
+            closing = "]" if lexeme == "[" else lexeme
+            if dialect == "googlesql" and sql.startswith(lexeme * 3, start):
+                closing = lexeme * 3
+                end = start + 3
+            # PostgreSQL E'...' also uses backslash escapes.
+            escapes = dialect in ("backslash", "googlesql") or (
+                lexeme == "'" and start > 0 and sql[start - 1] in "eE"
+                and (start == 1 or not (sql[start - 2].isalnum() or sql[start - 2] == "_"))
+            )
+            while end < len(sql):
+                if escapes and sql[end] == "\\":
+                    end += 2
+                elif sql.startswith(closing, end):
+                    end += len(closing)
+                    if len(closing) == 1 and sql.startswith(closing, end):
+                        end += 1
+                    else:
+                        break
+                else:
+                    end += 1
+        pos = end

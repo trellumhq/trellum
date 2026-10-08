@@ -288,14 +288,15 @@ class DockerSandbox:
 
         name = settings.TRELLUM_SANDBOX_NETWORK
         try:
-            self.client.networks.get(name)
+            network = self.client.networks.get(name)
+            self._validate_network(network, name)
             return
         except docker.errors.NotFound:
             pass
         from docker.types import IPAMConfig, IPAMPool
 
         try:
-            self.client.networks.create(
+            network = self.client.networks.create(
                 name,
                 driver="bridge",
                 # internal=True is the default: report code is arbitrary tenant
@@ -315,9 +316,29 @@ class DockerSandbox:
                 # Sandboxes must not talk to each other either.
                 options={"com.docker.network.bridge.enable_icc": "false"},
             )
+            self._validate_network(network, name)
         except docker.errors.APIError:
             # A racing runner created it between our get and create; re-get.
-            self.client.networks.get(name)
+            self._validate_network(self.client.networks.get(name), name)
+
+    @staticmethod
+    def _validate_network(network, name: str) -> None:
+        try:
+            network.reload()
+        except AttributeError:
+            pass
+        attrs = getattr(network, "attrs", {}) or {}
+        internal = settings.TRELLUM_SANDBOX_EGRESS != "open"
+        options = attrs.get("Options", {}) or {}
+        if attrs.get("Internal") is not internal or options.get(
+            "com.docker.network.bridge.enable_icc"
+        ) != "false":
+            raise SandboxError(
+                f"[SANDBOX] Docker network {name!r} does not match the configured "
+                f"egress policy (Internal={internal}, inter-container communication disabled). "
+                "Stop sandbox jobs, then deliberately remove and recreate this network "
+                "with the configured policy; it was left untouched."
+            )
 
     # ── spawn ────────────────────────────────────────────────────────────
     def start(

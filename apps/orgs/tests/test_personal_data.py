@@ -26,7 +26,7 @@ from apps.core.models import AuditLog
 from apps.orgs import personal_data
 from apps.orgs.models import OrgMembership
 from apps.reports.models import EmailSchedule, ReportFavorite
-from apps.studios.models import StudioMembership
+from apps.studios.models import StudioMembership, StudioPreference
 
 pytestmark = pytest.mark.django_db
 
@@ -226,6 +226,28 @@ class TestErase:
 
 
 class TestMultiOrgErasure:
+    @pytest.mark.parametrize("retained_membership", [False, True])
+    def test_preferences_follow_erasure_scope(
+        self, rf, subject, org, studio, other_org, other_studio, org_admin, retained_membership
+    ):
+        if retained_membership:
+            OrgMembership.objects.create(user=subject, org=other_org, role=roles.ORG_MEMBER)
+        StudioPreference.objects.create(user=subject, studio=studio, theme="ocean")
+        StudioPreference.objects.create(user=subject, studio=other_studio, theme="nord")
+        exported = personal_data.export(subject, org)
+        assert exported["studio_preferences"] == [{"studio": studio.slug, "theme": "ocean"}]
+        preview = personal_data.preview(subject, org)
+        expected = 1 if retained_membership else 2
+        assert {row["label"]: row["count"] for row in preview["deleted"]}[
+            "Studio appearance preferences"
+        ] == expected
+
+        request = rf.post("/")
+        request.user = org_admin
+        personal_data.erase(request, subject, org)
+        assert not StudioPreference.objects.filter(user=subject, studio=studio).exists()
+        assert StudioPreference.objects.filter(user=subject, studio=other_studio).exists() == retained_membership
+
     def test_the_account_survives_when_another_organization_holds_it(
         self, rf, subject, org, other_org, org_admin
     ):

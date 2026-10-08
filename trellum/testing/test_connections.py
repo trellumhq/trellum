@@ -1014,13 +1014,13 @@ class TestQueryDfBackwardCompat:
             assert sql_dialect_for(source_type) == "backslash"
         for source_type in (
             "postgres",
-            "sqlite",
             "duckdb",
-            "sqlserver",
             "vertica",
             "redshift",
         ):
             assert sql_dialect_for(source_type) == "standard"
+        for source_type in ("sqlserver", "sqlite"):
+            assert sql_dialect_for(source_type) == "bracket"
 
     def test_backslash_in_value_survives_binding(self):
         """A backslash in a bound value must not be eaten as a regex group

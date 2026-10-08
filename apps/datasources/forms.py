@@ -127,6 +127,21 @@ class DataSourceForm(forms.Form):
         # A file source needs SOMEWHERE to read from: either a path that is
         # already populated, or permission for the portal to create one.
         if ds_type in INLINE_TYPES:
+            path = (cleaned.get("path") or "").strip()
+            if path:
+                from types import SimpleNamespace
+
+                from apps.datasources.materialize import resolve_path
+
+                candidate = SimpleNamespace(
+                    org_id=self.org.pk if scope == "org" else None,
+                    org=self.org,
+                    studio=self.studio,
+                )
+                try:
+                    resolve_path(candidate, path)
+                except ValueError as exc:
+                    self.add_error("path", str(exc))
             if not (cleaned.get("path") or "").strip() and not cleaned.get("upload"):
                 self.add_error(
                     "path",

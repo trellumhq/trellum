@@ -75,7 +75,7 @@ class Organization(ImmutableSlugMixin):
         default="dark",
     )
     #: When on, a studio's resolved theme (its own, or the org default) is
-    #: final -- StudioMembership.theme personal overrides are ignored at
+    #: final -- StudioPreference.theme personal overrides are ignored at
     #: resolution time and the setter refuses to write new ones. "Brand
     #: enforced": org admins can require every viewer to see the same look.
     #: Set from Org settings -> Appearance, alongside default_mode.

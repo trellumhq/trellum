@@ -242,7 +242,7 @@ def explicit_studio_theme(user, studio) -> str:
          so the chrome falls through to Trellum. Report CONTENT, which
          built its own CSS for that custom name, is handled separately —
          see :func:`apps.reports.views._inject_report_chrome`.
-      1. ``StudioMembership.theme`` for (user, studio) — the viewer's
+      1. ``StudioPreference.theme`` for (user, studio) — the viewer's
          personal per-studio override — unless ``studio.org.lock_studio_theme``
          is on, in which case overrides are ignored entirely (even a value
          already stored from before the lock was turned on), or the stored
@@ -272,10 +272,10 @@ def explicit_studio_theme(user, studio) -> str:
     org = studio.org
 
     if user is not None and getattr(user, "is_authenticated", False) and not org.lock_studio_theme:
-        from apps.studios.models import StudioMembership
+        from apps.studios.models import StudioPreference
 
         override = (
-            StudioMembership.objects.filter(user=user, studio=studio)
+            StudioPreference.objects.filter(user=user, studio=studio)
             .values_list("theme", flat=True)
             .first()
         )
@@ -314,7 +314,7 @@ def resolve_studio_theme(user, studio) -> str:
 
 
 def viewer_theme_override(user, studio) -> str:
-    """The raw ``StudioMembership.theme`` stored for (user, studio), or ""
+    """The raw ``StudioPreference.theme`` stored for (user, studio), or ""
     -- unlike :func:`resolve_studio_theme`, this does NOT walk the
     studio/org fallback chain and does NOT apply the org lock. It exists
     for UI reflection only: the studio header's picker must show what this
@@ -324,10 +324,10 @@ def viewer_theme_override(user, studio) -> str:
     """
     if user is None or not getattr(user, "is_authenticated", False):
         return ""
-    from apps.studios.models import StudioMembership
+    from apps.studios.models import StudioPreference
 
     return (
-        StudioMembership.objects.filter(user=user, studio=studio)
+        StudioPreference.objects.filter(user=user, studio=studio)
         .values_list("theme", flat=True)
         .first()
         or ""

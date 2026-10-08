@@ -10,6 +10,24 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Fixed
 
 - Keep local live queries available while review mode is active.
+- Keep live-query parameter values literal, restrict portal DuckDB file access,
+  and render ordinary table, pivot and dropdown values as text.
+- Enforce API credential scope, MFA enrollment and single-use codes, verified
+  SSO identity linking, and safe login redirects.
+- Store personal studio themes separately from access grants, and revoke public
+  report access when an organization is suspended.
+- Confine datasource paths and repository staging to their owning storage,
+  validate existing runner networks, and keep live-query manifests private
+  across local serving, object storage and the supplied edge worker.
+- Update authentication and datasource dependencies with publisher fixes.
+
+### Upgrade notes
+
+Apply the studio-preference migration and rebuild generated reports. Existing
+access grants are preserved and should be reviewed against approved access.
+Deploy the updated edge worker with the portal; custom gateways, legacy manifest
+objects and cached responses need the steps in the
+[storage guide](docs/customer/install/storage.md#private-live-query-manifests).
 
 ## [0.4.0] — 2026-10-08
 

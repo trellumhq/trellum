@@ -28,8 +28,10 @@ Bucket layout — builds are immutable, currency is a pointer::
     {org}/{studio}/{slug}/_meta.json           status; updated after EVERY run
     {org}/{studio}/{slug}/_current             {"build": <id>}; flipped only
                                                after a complete upload
-    {org}/{studio}/{slug}/builds/{build}/...   one build's full output;
+    {org}/{studio}/{slug}/builds/{build}/...   one build's browser assets;
                                                written once, never mutated
+    _private/{org}/{studio}/{slug}/builds/{build}/_live_queries.json
+                                             host-only SQL manifest
 
 Why a pointer and not a timestamp: uploads are many PUTs and take time, so any
 scheme that overwrites a live prefix has a window where the store holds half of
@@ -165,6 +167,10 @@ def _build_prefix(prefix: str, build: str) -> str:
     return f"{prefix}/builds/{build}"
 
 
+def _private_prefix(prefix: str) -> str:
+    return f"_private/{prefix}"
+
+
 def read_meta(studio, slug: str) -> dict:
     """``_meta.json`` for one report, without materialising its whole output.
 
@@ -215,7 +221,7 @@ def read_live_queries(studio, slug: str) -> dict:
 
     Mirrors :func:`read_meta`: a single small read, never a directory pull.
     Unlike ``_meta.json`` the manifest is part of one build's immutable
-    output, so on the remote backend it lives under ``builds/{build}/`` and
+    output, so on the remote backend it lives under ``_private/.../builds/{build}/`` and
     the read is pointer-gated exactly like serving is.
     """
     if not is_remote():
@@ -227,11 +233,16 @@ def read_live_queries(studio, slug: str) -> dict:
         build = _current_build(studio, slug)
         if not build:
             return {}
-        key = f"{_build_prefix(_remote_prefix(studio, slug), build)}/{_LIVE_QUERIES_NAME}"
-        try:
-            raw = _get_object_bytes(key)
-        except FileNotFoundError:
-            return {}
+        prefix = _remote_prefix(studio, slug)
+        raw = b""
+        # Older builds kept the manifest beside public assets. Only the host
+        # reader retains this fallback; HTTP readers deny the filename.
+        for base in (_private_prefix(prefix), prefix):
+            try:
+                raw = _get_object_bytes(f"{_build_prefix(base, build)}/{_LIVE_QUERIES_NAME}")
+                break
+            except FileNotFoundError:
+                continue
     if not raw:
         return {}
     try:
@@ -474,9 +485,9 @@ def live_query_index(studio) -> set[str]:
     """Slugs whose current build published ``_live_queries.json`` — reports
     that run queries at view time rather than serving a static snapshot.
 
-    One bulk listing per studio, the same shape as :func:`html_index`, so the
-    registry can flag live reports without a per-report round trip. The file's
-    presence is the whole signal; its contents are never read here.
+    Bulk listings find manifests in private and legacy build prefixes. Only
+    manifests belonging to the current pointer count; failed uploads and
+    retained older builds cannot flag a static report as live.
     """
     if not is_remote():
         out: set[str] = set()
@@ -490,26 +501,19 @@ def live_query_index(studio) -> set[str]:
                 out.add(report_dir.name)
         return out
 
-    # Remote: per slug, which builds exist and whether each carries the
-    # manifest; the newest build wins (build ids embed the run timestamp, so
-    # lexicographic max is chronological — the same rule html_index uses).
     prefix = f"{studio.org.slug}/{studio.slug}/"
-    per_slug: dict[str, dict[str, bool]] = {}
+    per_slug: dict[str, set[str]] = {}
     paginator = _client().get_paginator("list_objects_v2")
-    for page in paginator.paginate(Bucket=_bucket(), Prefix=prefix):
-        for obj in page.get("Contents", []):
-            rest = obj["Key"][len(prefix):]
-            parts = rest.split("/")
-            if len(parts) != 4:
-                continue
-            slug, marker, build, filename = parts
-            if marker != "builds":
-                continue
-            builds = per_slug.setdefault(slug, {})
-            builds.setdefault(build, False)
-            if filename == "_live_queries.json":
-                builds[build] = True
-    return {slug for slug, builds in per_slug.items() if builds[max(builds)]}
+    for base in (prefix, _private_prefix(prefix)):
+        for page in paginator.paginate(Bucket=_bucket(), Prefix=base):
+            for obj in page.get("Contents", []):
+                parts = obj["Key"][len(base):].split("/")
+                if len(parts) != 4:
+                    continue
+                slug, marker, build, filename = parts
+                if marker == "builds" and filename == _LIVE_QUERIES_NAME:
+                    per_slug.setdefault(slug, set()).add(build)
+    return {slug for slug, builds in per_slug.items() if _current_build(studio, slug) in builds}
 
 
 def entry_for(names: list[str]) -> str:
@@ -529,7 +533,8 @@ def publish_build(studio, slug: str, output_dir: str, run_id) -> None:
 
     Order matters and is the whole point:
 
-    1. the full output goes to a fresh, immutable ``builds/{build}/`` prefix —
+    1. browser assets and the private manifest go to separate fresh, immutable
+       ``builds/{build}/`` prefixes —
        nothing readers currently use is touched;
     2. ``_meta.json`` lands at the report's top level, so the registry's
        status reflects this run;
@@ -544,6 +549,15 @@ def publish_build(studio, slug: str, output_dir: str, run_id) -> None:
     build = _build_id(output_dir, run_id)
 
     _s3().publish(output_dir, _build_prefix(prefix, build))
+    manifest = Path(output_dir) / _LIVE_QUERIES_NAME
+    if manifest.is_file():
+        _client().put_object(
+            Bucket=_bucket(),
+            Key=f"{_build_prefix(_private_prefix(prefix), build)}/{_LIVE_QUERIES_NAME}",
+            Body=manifest.read_bytes(),
+            ContentType="application/json",
+            CacheControl="no-store",
+        )
     _publish_meta_file(output_dir, prefix)
     _put_pointer(prefix, build)
     # This node should serve what it just made live, not a memoised "5 seconds
@@ -621,19 +635,21 @@ def _prune_remote_builds(prefix: str, keep: str) -> None:
     """
     try:
         client = _client()
-        base = f"{prefix}/builds/"
+        bases = [f"{base}/builds/" for base in (prefix, _private_prefix(prefix))]
         paginator = client.get_paginator("list_objects_v2")
         builds: set[str] = set()
-        for page in paginator.paginate(Bucket=_bucket(), Prefix=base, Delimiter="/"):
-            for cp in page.get("CommonPrefixes", []):
-                name = cp["Prefix"][len(base):].rstrip("/")
-                if name:
-                    builds.add(name)
+        for base in bases:
+            for page in paginator.paginate(Bucket=_bucket(), Prefix=base, Delimiter="/"):
+                for cp in page.get("CommonPrefixes", []):
+                    name = cp["Prefix"][len(base):].rstrip("/")
+                    if name:
+                        builds.add(name)
         stale = sorted(b for b in builds if b != keep)[:-1]
         for build in stale:
             keys: list[str] = []
-            for page in paginator.paginate(Bucket=_bucket(), Prefix=f"{base}{build}/"):
-                keys.extend(o["Key"] for o in page.get("Contents", []))
+            for base in bases:
+                for page in paginator.paginate(Bucket=_bucket(), Prefix=f"{base}{build}/"):
+                    keys.extend(o["Key"] for o in page.get("Contents", []))
             for i in range(0, len(keys), 1000):
                 client.delete_objects(
                     Bucket=_bucket(),
@@ -781,7 +797,9 @@ def _sweep_output(studio, slug: str | None, *, delete: bool) -> int:
     # finishes the job. Deleting locally first would leave the bucket serving a
     # report the sweep believes it removed.
     if is_remote():
-        total += _sweep_remote_prefix(_remote_prefix(studio, slug), delete=delete)
+        prefix = _remote_prefix(studio, slug)
+        total += _sweep_remote_prefix(prefix, delete=delete)
+        total += _sweep_remote_prefix(_private_prefix(prefix), delete=delete)
     if delete:
         shutil.rmtree(local, ignore_errors=True)
         clear_cache(studio, slug)

@@ -93,11 +93,11 @@ def login_view(request):
         elif password:
             user = authenticate(request, username=email, password=password)
         if user is not None:
-            throttle.clear(email, request)
             if user.has_mfa:
                 return _start_mfa_stepup(request, user, next_url=request.GET.get("next") or "/")
             auth_login(request, user)
-            return redirect(request.GET.get("next") or "/")
+            throttle.clear(email, request)
+            return redirect(_safe_next(request.GET.get("next") or "/"))
         throttle.record_failure(email, request)
         form.add_error(None, "Invalid email or password.")
     return render(
@@ -254,7 +254,6 @@ def mfa_verify_view(request):
                 method = "recovery"
 
         if method is not None:
-            throttle.clear(user.email, request)
             next_url = request.session.get("mfa_next") or "/"
             request._trellum_login_method = request.session.get("mfa_login_method", "")
             _clear_mfa_stash(request)
@@ -262,6 +261,7 @@ def mfa_verify_view(request):
             # which factor completed the login, with no new receiver needed.
             request._trellum_mfa_method = method
             auth_login(request, user)
+            throttle.clear(user.email, request)
             if method == "recovery":
                 remaining = mfa.remaining_recovery_codes(user)
                 audit(

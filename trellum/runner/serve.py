@@ -8,10 +8,25 @@ import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from trellum.artifacts import is_private_artifact
 from trellum.runner.ports import (
     _answer_identity,
     _claim_port,
 )
+
+
+class _PublicReportHandler(SimpleHTTPRequestHandler):
+    def _deny_private(self) -> bool:
+        if is_private_artifact(self.path) or is_private_artifact(os.path.realpath(self.translate_path(self.path))):
+            self.send_error(404)
+            return True
+        return False
+
+    def send_head(self):
+        # SimpleHTTPRequestHandler's HEAD path must enforce the same boundary.
+        if self._deny_private():
+            return None
+        return super().send_head()
 
 
 def _render_output_index(output_base: str) -> bytes:
@@ -44,7 +59,7 @@ def _serve_all(output_base: str, port: int) -> None:
 
     _COMPRESSIBLE = {".json", ".html", ".js", ".css", ".svg"}
 
-    class Handler(SimpleHTTPRequestHandler):
+    class Handler(_PublicReportHandler):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, directory=output_base, **kwargs)
 
@@ -52,6 +67,8 @@ def _serve_all(output_base: str, port: int) -> None:
             pass
 
         def do_GET(self):
+            if self._deny_private():
+                return
             from trellum import review
             from trellum.runner import live_query_dev
             if _answer_identity(self, output_base):
@@ -169,7 +186,7 @@ def _serve(output_dir: str, port: int):
 
     _COMPRESSIBLE = {".json", ".html", ".js", ".css", ".svg"}
 
-    class Handler(SimpleHTTPRequestHandler):
+    class Handler(_PublicReportHandler):
         def __init__(self, *args, **kwargs):
             self._gzip_handled = False
             super().__init__(*args, directory=output_dir, **kwargs)
@@ -178,6 +195,8 @@ def _serve(output_dir: str, port: int):
             pass
 
         def do_GET(self):
+            if self._deny_private():
+                return
             from trellum import review
             from trellum.rendering.cdn import serve_vendor_request
             from trellum.runner import live_query_dev

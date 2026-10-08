@@ -52,6 +52,12 @@ is stored encrypted) and set:
 Group mapping is re-applied on every login, so revoking a group in your
 directory revokes the corresponding access at next sign-in.
 
+New identities must provide a verified email (`email_verified: true`) before
+the portal links an existing member or provisions an account. An explicitly
+unverified email is refused. Returning identities use their existing provider
+subject link. The mailbox-less Entra exception below uses a tenant-managed UPN;
+other providers must issue a verified email for new identities.
+
 An internal provider whose certificate comes from a private CA works without
 disabling verification: point `REQUESTS_CA_BUNDLE` at your CA bundle in the
 portal's environment. Discovery and the login flow share one HTTP client, so
@@ -76,7 +82,11 @@ scopes** stays empty unless a subsection below says otherwise.
   overview page.
 - Email: `email` is present for accounts that have one. Accounts without a
   mailbox carry only `preferred_username` (the UPN), which the portal uses
-  instead — so list the UPN domain under **Email domains** too.
+  instead — so list the UPN domain under **Email domains** too. This fallback
+  requires the exact tenant-specific Microsoft issuer above and an ID token
+  whose `tid` matches its tenant ID. Configure this only for a tenant whose
+  administrators control those UPNs; generic username claims are not trusted
+  for linking. If an `email` claim is present, it must be verified.
 - Groups: **Token configuration → Add groups claim**, pick **Security
   groups** (or **Groups assigned to the application** in a large tenant),
   ID token format **Group ID**. Values are group object IDs, so the mapping

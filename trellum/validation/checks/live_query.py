@@ -9,30 +9,22 @@ or a driver error on somebody's production host.
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 from trellum.validation.result import ValidationResult
 
 _PARAM_TYPES = ("int", "float", "str", "date", "enum")
 
-#: A named placeholder: ``:name`` not preceded by a colon (``::type`` casts)
-#: or a word character.
-_PLACEHOLDER_RE = re.compile(r"(?<![:\w]):([A-Za-z_][A-Za-z0-9_]*)")
-
-
-def _sql_placeholders(sql: str) -> set[str]:
+def _sql_placeholders(sql: str, dialect: str = "standard") -> set[str]:
     """Named ``:param`` placeholders in the SQL.
 
-    String literals, quoted identifiers, and comments are masked out first,
+    String literals, quoted identifiers, and comments are skipped,
     so a colon inside ``'12:30'``, ``"a:b"`` or ``-- :note`` never reads as
-    a placeholder, and ``::type`` casts are skipped by the regex guard.
+    a placeholder, and ``::type`` casts are skipped by the shared tokenizer.
     """
-    masked = re.sub(r"'(?:[^']|'')*'", "''", sql)
-    masked = re.sub(r'"[^"]*"', '""', masked)
-    masked = re.sub(r"--[^\n]*", "", masked)
-    masked = re.sub(r"/\*.*?\*/", " ", masked, flags=re.S)
-    return set(_PLACEHOLDER_RE.findall(masked))
+    from trellum.data.query import _sql_param_spans
+
+    return {name for _, _, name in _sql_param_spans(sql, dialect)}
 
 
 def _source_type(ctx: Any, name: str) -> str | None:
@@ -76,7 +68,11 @@ def _check_live_queries(ctx: Any, comps: list[tuple[Any, str]], result: Validati
 def _check_declarations(ctx: Any, registry: dict[str, dict], result: ValidationResult) -> None:
     """Param schema, SQL/param agreement, and datasource type -- for every
     declared query, independent of whether anything references it yet."""
+    from trellum.data.query import sql_dialect_for
+
     for qid, q in registry.items():
+        ds_name = q.get("datasource") or ""
+        ds_type = _source_type(ctx, ds_name)
         for p in q.get("params") or []:
             _check_one_param_schema(qid, p, result)
 
@@ -84,7 +80,9 @@ def _check_declarations(ctx: Any, registry: dict[str, dict], result: ValidationR
         declared_names = {
             str(p.get("name")) for p in q.get("params") or [] if p.get("name")
         }
-        placeholders = _sql_placeholders(str(q.get("sql") or ""))
+        placeholders = _sql_placeholders(
+            str(q.get("sql") or ""), sql_dialect_for(ds_type or ""),
+        )
         for name in sorted(placeholders - declared_names):
             result.fail(
                 "live-query-sql-params",
@@ -103,8 +101,6 @@ def _check_declarations(ctx: Any, registry: dict[str, dict], result: ValidationR
                 component="declare_live_query",
             )
 
-        ds_name = q.get("datasource") or ""
-        ds_type = _source_type(ctx, ds_name)
         if ds_type is None:
             result.fail(
                 "live-query-source-not-sql",

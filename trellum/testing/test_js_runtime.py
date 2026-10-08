@@ -1439,6 +1439,69 @@ class TestAnalysisCapture:
         assert result["selectable"] is None
         assert result["ui"] is None
 
+
+    def test_ordinary_table_and_pivot_data_render_as_text(self, capture_page):
+        """Data cells, headers and pivot dimensions must stay inert in Chromium."""
+        from pathlib import Path
+
+        from trellum.assets import load_js
+
+        marker = '<svg onload="window.__xss=1"></svg>'
+        result = capture_page.evaluate("""async ({tableJs, pivotJs, dropdownJs, slimJs, marker}) => {
+            window.__xss = 0;
+            window._fwRenderers = {};
+            document.body.innerHTML = '<div id="static"></div><div id="live"></div><div id="pivot"></div>' +
+                '<div id="pivot_ctrl"></div><div id="filters"><select class="fw-dropdown" data-filter-id="f"></select></div>';
+            function load(source) { var s = document.createElement('script'); s.textContent = source; document.head.appendChild(s); }
+            load(slimJs); load(tableJs); load(pivotJs); load(dropdownJs);
+            window._fwRenderers.table('static', {columns: [marker], rows: [[marker]], totalRows: 1,
+                maxRows: 10, sortable: true});
+            window._fwLiveWrap = function(id, cfg, draw) { draw([{[marker]: '4' + marker}]); };
+            window._fwRenderers.table('live', {dataset_id: 'ds', columns: [marker], maxRows: 10,
+                rows: [], totalRows: 1, barColumn: 0});
+            window._fwRenderers.pivot('pivot', {default_rows: [marker], default_col: marker,
+                default_value: 'amount', default_agg: 'sum', value_format: 'number', dim_cols: [marker], num_cols: ['amount'],
+                data: [{[marker]: marker, amount: 2}]});
+            var fc = {id: 'f', column: 'country', options: [marker], multi: true};
+            var handlers = {urlLookup: function() {}, findFc: function() { return fc; }, setFilter: function() {},
+                propagate: function() {}, urlWrite: function() {}};
+            window._fwFilterTypes = {};
+            load(dropdownJs);
+            window._fwFilterTypes.dropdown.wireControls(document.getElementById('filters'), {}, 'ds', handlers);
+            var select = document.querySelector('#filters select');
+            var ss = select._fwSlimSelect;
+            ss.setSelected([marker]);
+            ss.open();
+            var search = document.querySelector('.ss-search input');
+            search.value = 'svg'; search.dispatchEvent(new Event('input', {bubbles: true}));
+            await new Promise(resolve => setTimeout(resolve, 30));
+            return {staticText: document.querySelector('#static th').textContent + '|' + document.querySelector('#static td').textContent,
+                liveText: document.querySelector('#live th').textContent + '|' + document.querySelector('#live td').textContent,
+                hasBar: !!document.querySelector('#live .fw-bar-cell'),
+                pivotText: Array.from(document.querySelectorAll('#pivot th,#pivot td')).map(e => e.textContent),
+                controlsText: document.querySelector('#pivot_ctrl').textContent,
+                dropdownText: document.querySelector('.ss-option').textContent,
+                dropdownValue: Array.from(select.options).find(o => o.textContent === marker).value,
+                selected: ss.getSelected(),
+                active: !!document.querySelector('#static svg[onload],#live svg[onload],#pivot svg[onload],#pivot_ctrl svg[onload],#filters svg[onload],.ss-content svg[onload],#static script,#live script,#pivot script,#pivot_ctrl script,#filters script,.ss-content script'),
+                executed: window.__xss};
+        }""", {"tableJs": load_js("components/data_table.js"), "pivotJs": load_js("components/pivot_table.js"),
+            "dropdownJs": load_js("components/dropdown_filter.js"),
+            "slimJs": (Path(__file__).parents[1] / "static/vendor/slimselect.min.js").read_text(encoding="utf-8"),
+            "marker": marker})
+        assert result["staticText"].startswith(marker)
+        assert "|" in result["staticText"]
+        assert result["staticText"].endswith("|" + marker)
+        assert result["liveText"] == marker + "|4" + marker
+        assert result["hasBar"] is True
+        assert marker in result["pivotText"]
+        assert marker in result["controlsText"]
+        assert result["dropdownText"] == marker
+        assert result["dropdownValue"] == marker
+        assert result["selected"] == [marker]
+        assert result["active"] is False
+        assert result["executed"] == 0
+
     def test_keyboard_selection_captures_the_focused_target(self, capture_page):
         result = capture_page.evaluate("""async () => {
             document.body.innerHTML = '<div class="fw-section" id="keyboard-section" tabindex="4">' +

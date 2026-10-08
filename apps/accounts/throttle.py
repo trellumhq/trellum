@@ -20,7 +20,7 @@ Deliberately *not a permanent lock*: a counter that permanently locks an
 account on failures lets anyone lock out a user they can name forever. What
 crossing a threshold buys instead is an **escalating, bounded cooloff** --
 the DB-configured base minutes, doubling on each consecutive lockout of the
-same key within 24h, capped at 240. A correct password, or an admin's
+same key within 24h, capped at 240. A completed login, or an admin's
 "clear login lockout", clears everything for that key including the
 escalation state.
 
@@ -144,7 +144,7 @@ def _lock(request, cfg, scope: _Scope, email: str, failures: int) -> None:
 
 
 def clear(email: str, request) -> None:
-    """A correct password means this was not an attack: clear counters,
+    """After complete authentication, clear counters,
     lock flags and escalation state for every applicable scope."""
     for scope in _scopes(email, request):
         cache.delete_many([scope.counter_key, scope.locked_key, scope.escalation_key])

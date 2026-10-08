@@ -122,19 +122,21 @@ class S3Backend:
         return s3_client(read_timeout=15, region=self.region)
 
     def publish(self, output_dir: str, prefix: str) -> None:
-        """Upload every file in *output_dir* to ``s3://{bucket}/{prefix}/``.
+        """Upload browser assets in *output_dir* to ``s3://{bucket}/{prefix}/``.
 
         Compressible files go up gzipped with ``ContentEncoding: gzip`` so the
         CDN can serve them pre-compressed.
         """
         from botocore.exceptions import ClientError, NoCredentialsError
+        from trellum.artifacts import is_private_artifact
 
         s3 = self._client()
 
         files = [
             f
             for f in os.listdir(output_dir)
-            if os.path.isfile(os.path.join(output_dir, f)) and not f.endswith(".gz")
+            if os.path.isfile(os.path.join(output_dir, f))
+            and not f.endswith(".gz") and not is_private_artifact(f)
         ]
         logger.info("publishing %d file(s) to s3://%s/%s/", len(files), self.bucket, prefix)
 

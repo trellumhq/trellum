@@ -8,7 +8,7 @@ from apps.core import roles
 from apps.orgs.models import PermissionGroupGrant
 from apps.reports.models import Report, ReportPermissionGrant
 from apps.runner.models import Run
-from apps.studios.models import StudioMembership
+from apps.studios.models import StudioPreference
 
 pytestmark = pytest.mark.django_db
 
@@ -641,7 +641,7 @@ class TestReportServing:
     ):
         studio_tree.theme = "money"
         studio_tree.save(update_fields=["theme"])
-        StudioMembership.objects.filter(user=viewer, studio=studio_tree).update(theme="dracula")
+        StudioPreference.objects.create(user=viewer, studio=studio_tree, theme="dracula")
         html = login(viewer).get(f"{prefix}/r/player-overview/index.html").content.decode()
         assert 'data-theme="dracula"' in html
 
@@ -764,7 +764,7 @@ class TestReportServing:
         )
         studio_tree.repo_theme = "a-repo-custom-theme"
         studio_tree.save(update_fields=["repo_theme"])
-        StudioMembership.objects.filter(user=viewer, studio=studio_tree).update(theme="dracula")
+        StudioPreference.objects.create(user=viewer, studio=studio_tree, theme="dracula")
         html = login(viewer).get(f"{prefix}/r/player-overview/index.html").content.decode()
         assert 'data-theme="a-repo-custom-theme"' in html
         assert 'data-theme="dracula"' not in html

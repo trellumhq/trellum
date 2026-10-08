@@ -14,7 +14,7 @@ Django==5.2.17
 psycopg[binary]==3.3.4
 gunicorn==26.0.0
 whitenoise==6.12.0
-django-allauth[socialaccount]==65.19.0
+django-allauth[socialaccount]==65.19.7
 # LDAP / Active Directory sign-in (apps/accounts/ldap.py). Pure Python, no
 # system libraries, so the image and Windows dev boxes build unchanged.
 ldap3==2.9.1

@@ -26,6 +26,12 @@ Access is the **highest** role granted by any of these paths:
 The Members page shows each person's effective access with its provenance, so
 you can see which of the three paths produced it.
 
+After upgrading from a release that stored personal themes on studio
+memberships, review direct memberships against your approval records. The
+upgrade preserves those memberships and roles because it cannot reliably
+distinguish an approved grant from a row created while saving a theme; it
+never removes or downgrades access automatically.
+
 ## Permission groups
 
 Reusable, organization-scoped bundles of studio grants. Assign a group to

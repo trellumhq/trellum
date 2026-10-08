@@ -114,15 +114,8 @@ class StudioMembership(models.Model):
     )
     studio = models.ForeignKey(Studio, on_delete=models.CASCADE, related_name="memberships")
     role = models.CharField(max_length=16, choices=roles.STUDIO_ROLE_CHOICES)
-    #: This member's personal override of the studio's theme -- the report
-    #: page's own picker and the studio header's Appearance control both
-    #: write here (apps.core.themes.resolve_studio_theme, rung 1). ""
-    #: falls through to Studio.theme, then Organization.default_theme, then
-    #: the Trellum default. Ignored (not merely defaulted) when the org has
-    #: turned on Organization.lock_studio_theme, even if a value is already
-    #: stored here from before the lock -- the setter also refuses new
-    #: writes while locked. Same "registry key, not model choices" rule as
-    #: every other theme field (see Studio.theme).
+    # Retained for compatibility with the previous release's ORM queries.
+    # Active theme preferences are stored in StudioPreference.
     theme = models.CharField(max_length=64, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -133,6 +126,21 @@ class StudioMembership(models.Model):
 
     def __str__(self) -> str:
         return f"{self.user} @ {self.studio} ({self.role})"
+
+
+class StudioPreference(models.Model):
+    """Appearance preference, stored independently from access grants."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="studio_preferences"
+    )
+    studio = models.ForeignKey(Studio, on_delete=models.CASCADE, related_name="preferences")
+    theme = models.CharField(max_length=64, blank=True, default="")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["user", "studio"], name="uniq_studio_preference")
+        ]
 
 
 class StudioRepo(models.Model):

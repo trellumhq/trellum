@@ -452,13 +452,13 @@ class ShareLink(models.Model):
 
     def is_active_under(self, policy: "OrgSharePolicy | None") -> bool:
         """The serve-time check (``apps.reports.views.share_entry`` /
-        ``share_asset``): not revoked, not past its policy-capped expiry,
+        ``share_asset``): organization active, not revoked, not past its policy-capped expiry,
         and -- when the org's policy currently requires one -- carrying a
         password. A link that fails only this (not :attr:`is_active`) is
         "blocked by org policy" rather than genuinely dead: it resumes
         serving the moment the policy relaxes, with nothing to recreate.
         """
-        if self.revoked_at is not None:
+        if not self.report.studio.org.is_active or self.revoked_at is not None:
             return False
         if self.embed:
             return policy is not None and policy.embed_links_enabled

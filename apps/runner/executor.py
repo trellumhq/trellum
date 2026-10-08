@@ -41,6 +41,7 @@ from django.conf import settings
 from django.utils import timezone as dj_tz
 
 from apps.runner.models import Run
+from apps.runner.safe_copy import safe_copyfile, safe_copytree
 from apps.runner.sandbox import DockerSandbox, sandbox_mode
 
 logger = logging.getLogger("trellum.runner")
@@ -497,12 +498,13 @@ class Executor:
             run_dir_base = tempfile.mkdtemp(prefix=f"run-{slug}-", dir=str(_tmp_root()))
             run_report_dir = os.path.join(run_dir_base, "reports", slug)
             os.makedirs(os.path.dirname(run_report_dir), exist_ok=True)
-            shutil.copytree(report_dir, run_report_dir)
+            safe_copytree(Path(report_dir), Path(run_report_dir), root=studio.project_root)
             reports_dir = studio.reports_dir
             for entry in os.listdir(reports_dir):
                 if entry.startswith("_") and (reports_dir / entry).is_dir():
-                    shutil.copytree(
-                        reports_dir / entry, os.path.join(run_dir_base, "reports", entry)
+                    safe_copytree(
+                        reports_dir / entry, Path(run_dir_base) / "reports" / entry,
+                        root=studio.project_root,
                     )
             # Project-root config the framework reads DURING the build: a
             # metrics.yaml claim expands at build time (an unstaged one fails
@@ -512,7 +514,7 @@ class Executor:
             for name in PROJECT_ROOT_BUILD_FILES:
                 src_file = studio.project_root / name
                 if src_file.is_file():
-                    shutil.copyfile(src_file, os.path.join(run_dir_base, name))
+                    safe_copyfile(src_file, Path(run_dir_base) / name, root=studio.project_root)
 
             timeout = self.default_timeout
 

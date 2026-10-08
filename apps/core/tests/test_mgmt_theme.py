@@ -17,7 +17,7 @@ the catalog or management templates.
 import pytest
 
 from apps.core import roles
-from apps.studios.models import StudioMembership
+from apps.studios.models import StudioPreference
 
 pytestmark = pytest.mark.django_db
 
@@ -67,7 +67,7 @@ class TestPageSplit:
         studio_tree.theme = "money"
         studio_tree.save(update_fields=["theme"])
         grant_studio(member, studio_tree, roles.VIEWER)
-        StudioMembership.objects.filter(user=member, studio=studio_tree).update(theme="dracula")
+        StudioPreference.objects.create(user=member, studio=studio_tree, theme="dracula")
         html = login(member).get(f"/s/{org.slug}/{studio_tree.slug}/metrics").content.decode()
         assert "data-studio-theme" not in html
 

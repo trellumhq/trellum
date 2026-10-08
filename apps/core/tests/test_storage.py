@@ -65,11 +65,12 @@ class FakeS3:
             target.write_bytes(body)
 
     def publish(self, output_dir: str, prefix: str) -> None:
+        from trellum.artifacts import is_private_artifact
         self.publishes.append((output_dir, prefix))
         self.calls.append(("publish", prefix))
         for name in sorted(os.listdir(output_dir)):
             path = Path(output_dir) / name
-            if path.is_file() and not name.endswith(".gz"):
+            if path.is_file() and not name.endswith(".gz") and not is_private_artifact(name):
                 self.objects[f"{prefix}/{name}"] = path.read_bytes()
 
 

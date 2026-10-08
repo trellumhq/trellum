@@ -53,7 +53,7 @@ def rf_request():
 
 def _sociallogin(provider="oidc-demo", email="sso.user@demo.example", uid="oid-1", **claims):
     account = SocialAccount(
-        provider=provider, uid=uid, extra_data={"email": email, **claims}
+        provider=provider, uid=uid, extra_data={"email": email, "email_verified": True, **claims}
     )
     user = User(email=email)
     return SocialLogin(user=user, account=account)

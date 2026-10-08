@@ -5,6 +5,12 @@ window._fwRenderers['pivot'] = function renderPivot(id, cfg) {
     var fmtMap = { currency: fmtCompact$, number: fmtCompact, percent: fmtPercent };
     var valFmt = fmtMap[cfg.value_format] || fmtCompact;
 
+    function _escapeHtml(value) {
+        return String(value).replace(/[&<>"']/g, function(ch) {
+            return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[ch];
+        });
+    }
+
     var _rowDims = cfg.default_rows.slice();
     var _colDim = cfg.default_col || null;
     var _valCol = cfg.default_value;
@@ -74,14 +80,14 @@ window._fwRenderers['pivot'] = function renderPivot(id, cfg) {
         var p = _pivot(rows);
         var nDims = _rowDims.length;
 
-        var hdr = _rowDims.map(function(d) { return '<th>' + d + '</th>'; }).join('');
+        var hdr = _rowDims.map(function(d) { return '<th>' + _escapeHtml(d) + '</th>'; }).join('');
         if (p.hasCols) {
-            hdr += p.colLabels.map(function(c) { return '<th class="fw-pivot-col-header">' + c + '</th>'; }).join('');
+            hdr += p.colLabels.map(function(c) { return '<th class="fw-pivot-col-header">' + _escapeHtml(c) + '</th>'; }).join('');
         }
-        hdr += '<th class="fw-pivot-col-header">' + (p.hasCols ? 'Total' : _valCol) + '</th>';
+        hdr += '<th class="fw-pivot-col-header">' + (p.hasCols ? 'Total' : _escapeHtml(_valCol)) + '</th>';
 
         var body = p.rows.map(function(row) {
-            var cells = row._dims.map(function(d) { return '<td class="fw-pivot-row-header">' + d + '</td>'; }).join('');
+            var cells = row._dims.map(function(d) { return '<td class="fw-pivot-row-header">' + _escapeHtml(d) + '</td>'; }).join('');
             if (p.hasCols) {
                 cells += p.colLabels.map(function(c) {
                     return '<td class="fw-pivot-value">' + valFmt(row._cells[c]) + '</td>';
@@ -110,7 +116,7 @@ window._fwRenderers['pivot'] = function renderPivot(id, cfg) {
         if (typeof SlimSelect === 'undefined') return;
 
         function _mkOpts(arr) {
-            return arr.map(function(c) { return '<option value="' + c + '">' + c + '</option>'; }).join('');
+            return arr.map(function(c) { var safe = _escapeHtml(c); return '<option value="' + safe + '">' + safe + '</option>'; }).join('');
         }
 
         var colOpts = '<option value="">None</option>' + _mkOpts(cfg.dim_cols);

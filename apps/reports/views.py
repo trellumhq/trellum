@@ -1780,10 +1780,16 @@ def _traversal_guarded_path(output_root: Path, asset: str) -> Path:
     route (``share_asset``) below — so the guard exists exactly once rather
     than being reimplemented per caller.
     """
+    from trellum.artifacts import is_private_artifact
+
+    if is_private_artifact(asset):
+        raise Http404
     target = (output_root / asset).resolve()
     if not str(target).startswith(str(output_root) + os.sep) and target != output_root:
         raise Http404
     if not target.is_file():
+        raise Http404
+    if is_private_artifact(str(target)):
         raise Http404
     return target
 

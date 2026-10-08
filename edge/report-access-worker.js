@@ -39,6 +39,24 @@ function deny(status, msg) {
   });
 }
 
+// Keep in step with trellum.artifacts.is_private_artifact at HTTP/upload boundaries.
+function isPrivateArtifact(path) {
+  while (path.includes("%")) {
+    try {
+      const decoded = decodeURIComponent(path);
+      if (decoded === path) break;
+      path = decoded;
+    } catch {
+      return true;
+    }
+  }
+  return path.replace(/\\/g, "/").split("/").some((part) => {
+    let name = part.split(":", 1)[0].replace(/[ .]+$/, "").toLowerCase();
+    if (name.endsWith(".gz")) name = name.slice(0, -3).replace(/[ .]+$/, "");
+    return name === "_live_queries.json";
+  });
+}
+
 function b64urlToBytes(s) {
   s = s.replace(/-/g, "+").replace(/_/g, "/");
   while (s.length % 4) s += "=";
@@ -118,13 +136,23 @@ export default {
       return deny(405, "method not allowed");
     }
 
+    let key;
+    try {
+      key = decodeURIComponent(url.pathname.slice(PREFIX.length));
+    } catch {
+      return deny(404, "not found");
+    }
+    if (!key || key.endsWith("/") || key.includes("..") || key.includes("\\") ||
+        key.startsWith("_private/") || isPrivateArtifact(key)) {
+      return deny(404, "not found");
+    }
+
     const token = readCookie(request.headers.get("cookie"), "trellum_grant");
     const scope = await grantScope(env, token, url.pathname);
     if (!scope) return deny(403, "forbidden");
 
-    // Strip `/content/` — the remainder is the R2 object key.
-    const key = decodeURIComponent(url.pathname.slice(PREFIX.length));
-    if (!key || key.endsWith("/") || key.includes("..")) {
+    // Decoding must not move the key outside the scope that was verified.
+    if (!(PREFIX + key).startsWith(scope)) {
       return deny(404, "not found");
     }
 

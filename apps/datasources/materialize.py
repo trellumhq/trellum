@@ -190,8 +190,6 @@ def stored_file(ds) -> Path | None:
     rel = ((ds.config or {}).get("path") or "").strip()
     if not rel:
         return None
-    if os.path.isabs(rel):
-        return Path(rel)
     try:
         return resolve_path(ds, rel)
     except ValueError:

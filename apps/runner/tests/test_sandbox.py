@@ -49,7 +49,10 @@ class FakeImages:
 
     def get(self, name):
         if self.present:
-            return object()
+            return types.SimpleNamespace(attrs={
+                "Internal": True,
+                "Options": {"com.docker.network.bridge.enable_icc": "false"},
+            })
         raise docker.errors.ImageNotFound(name)
 
     def pull(self, name):
@@ -58,19 +61,26 @@ class FakeImages:
 
 
 class FakeNetworks:
-    def __init__(self, exists=False):
+    def __init__(self, exists=False, *, internal=True, icc="false"):
         self.exists = exists
+        self.internal = internal
+        self.icc = icc
         self.created: list = []
 
     def get(self, name):
         if self.exists:
-            return object()
+            return types.SimpleNamespace(attrs={
+                "Internal": self.internal,
+                "Options": {"com.docker.network.bridge.enable_icc": self.icc},
+            })
         raise docker.errors.NotFound(name)
 
     def create(self, name, **kwargs):
         self.created.append((name, kwargs))
         self.exists = True
-        return object()
+        self.internal = kwargs["internal"]
+        self.icc = kwargs["options"]["com.docker.network.bridge.enable_icc"]
+        return self.get(name)
 
 
 class FakeContainers:
@@ -499,10 +509,22 @@ class TestPreflight:
             calls["n"] += 1
             if calls["n"] == 1:
                 raise docker.errors.NotFound(name)
-            return object()
+            return types.SimpleNamespace(attrs={
+                "Internal": True,
+                "Options": {"com.docker.network.bridge.enable_icc": "false"},
+            })
 
         client.networks.get = _get
         DockerSandbox(client=client).ensure_network()  # must not raise
+
+    @pytest.mark.parametrize("internal,icc", [(False, "false"), (True, "true"), (True, None)])
+    def test_existing_network_mismatch_fails_closed(self, sbox_dir, internal, icc):
+        client = FakeClient(network_exists=True)
+        client.networks.internal = internal
+        client.networks.icc = icc
+        with pytest.raises(SandboxError, match="deliberately remove and recreate"):
+            DockerSandbox(client=client).ensure_network()
+        assert not client.networks.created
 
     def test_no_data_mount_asks_for_override(self, sbox_dir, settings):
         settings.TRELLUM_DATA_VOLUME = ""

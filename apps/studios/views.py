@@ -230,24 +230,14 @@ def theme_set(request, org_slug, studio_slug):  # noqa: ARG001
         messages.error(request, "That theme is not available.")
         return _theme_redirect(request)
 
-    membership = StudioMembership.objects.filter(
-        user=request.user, studio=request.studio
-    ).first()
-    if membership is not None:
-        membership.theme = theme
-        membership.save(update_fields=["theme"])
-    else:
-        # This viewer has studio access without an explicit StudioMembership
-        # row -- an org admin, or a permission group's default_studio_role /
-        # per-studio grant (apps.core.permissions.effective_roles). Persisting
-        # a personal preference materializes a row at exactly the role they
-        # already effectively hold (request.studio_role, resolved by
-        # require_studio_role above), never more -- and never role="", which
-        # apps.studios.views.member_set treats as "no membership" elsewhere.
-        StudioMembership.objects.create(
-            user=request.user, studio=request.studio,
-            role=request.studio_role, theme=theme,
+    from apps.studios.models import StudioPreference
+
+    if theme:
+        StudioPreference.objects.update_or_create(
+            user=request.user, studio=request.studio, defaults={"theme": theme}
         )
+    else:
+        StudioPreference.objects.filter(user=request.user, studio=request.studio).delete()
     return _theme_redirect(request)
 
 

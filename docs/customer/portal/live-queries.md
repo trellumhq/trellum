@@ -105,3 +105,20 @@ enforcement — parameter validation, a read-only check on the query, and a
 row limit — applies whether the request lands on the portal or on
 `trellum serve`, so a report author testing locally sees the same guard
 rails the production endpoint holds a viewer to.
+
+Portal live queries against DuckDB use a read-only connection with external
+access, extension installation and automatic loading disabled, and configuration
+locked before the query runs. DuckDB retains its internal allowances for the
+configured database, its WAL files and its own database-specific temporary
+directory; it does not allow access to neighboring files or other host paths.
+File-reader functions such as `read_csv` and `read_text`, external-file views,
+and database attachments referring to other paths are unavailable. Import those
+files into database tables during the report build instead. Trusted standalone
+builds retain their configured DuckDB file access.
+
+The portal and `trellum serve` reject browser requests for `_live_queries.json`
+and its compressed sibling, including filename aliases. Remote builds publish
+the host manifest outside the browser-granted report prefix. Operators upgrading
+an existing deployment should follow the
+[private-manifest storage upgrade notes](/docs/latest/install/storage/#private-live-query-manifests)
+for gateway updates and legacy object/cache cleanup.

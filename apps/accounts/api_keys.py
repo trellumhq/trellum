@@ -19,9 +19,9 @@ _SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
 class ApiKeyMiddleware:
     """After ``AuthenticationMiddleware`` and ``SessionSecurityMiddleware``
     (see ``trellum_portal/settings/base.py``). Sets ``request.user``,
-    ``request.api_key`` and ``request._dont_enforce_csrf_checks``; the view
-    guards in ``apps.core.permissions`` do the rest, and ``get_effective``
-    keeps the key inside its own org."""
+    ``request.api_key`` and ``request._dont_enforce_csrf_checks``. Only studio
+    JSON and MCP routes accept this identity; their view guards still check
+    the user's roles, and ``get_effective`` confines the key to its org."""
 
     def __init__(self, get_response):
         self.get_response = get_response
@@ -45,7 +45,15 @@ class ApiKeyMiddleware:
         endpoint, where every method is a POST and only mutating tools
         write). The same shape as ``csrf_exempt``."""
         key = getattr(request, "api_key", None)
-        if key is None or key.can_write or request.method in _SAFE_METHODS:
+        if key is None:
+            return None
+        route = request.resolver_match.route
+        studio_prefix = "s/<slug:org_slug>/<slug:studio_slug>/"
+        if not (route.startswith(studio_prefix + "api/") or route == studio_prefix + "mcp"):
+            return JsonResponse({"error": "session_required"}, status=403)
+        if view_kwargs.get("org_slug") != key.org.slug:
+            return JsonResponse({"error": "not_found"}, status=404)
+        if key.can_write or request.method in _SAFE_METHODS:
             return None
         if getattr(view_func, "checks_api_key_scope", False):
             return None

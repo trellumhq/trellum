@@ -849,6 +849,9 @@ def member_reset_mfa(request, org_slug, user_id):  # noqa: ARG001
     from apps.accounts import mfa
 
     m = _target_membership(request, request.org, user_id)
+    if m.user.is_operator:
+        messages.error(request, "Instance operators' MFA cannot be reset from an organization.")
+        return _members_redirect(request)
     if not m.user.has_mfa:
         messages.error(request, f"{m.user.email} does not have MFA enrolled.")
         return _members_redirect(request)

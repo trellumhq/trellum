@@ -5,6 +5,12 @@ the portal as you — under your own roles, in one organization — without a
 browser session. The studio JSON endpoints the portal's own pages already
 use accept it; there is no separate API to learn.
 
+Keys are accepted only on studio JSON endpoints and the studio MCP endpoint.
+Account settings, key creation and revocation, organization management, and
+instance management require a browser session. Browser sessions must finish
+any required MFA enrollment before accessing JSON endpoints too. Scoped keys
+authenticate automation independently of that browser enrollment flow.
+
 ## Creating a key
 
 Open your account menu (top right) and choose **API keys**. A key has:

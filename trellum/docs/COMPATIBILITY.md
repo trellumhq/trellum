@@ -120,3 +120,15 @@ Anything prefixed with `_` that is not listed above, including:
 | 0.2.x | v1 | `_meta.json` `META_SCHEMA_VERSION` 1 → 2: `metrics_used` entries carry `definition_hash`/`version`, not just an id — see MIGRATIONS.md. Additive to the report contract itself (no report.yaml/component change), so the contract version stays v1. |
 
 0.1.0 is the first release. See `MIGRATIONS.md` for what changed since.
+
+## Security compatibility notes
+
+Ordinary `DataTable` cell/header strings and `PivotTable` dimension labels display
+literally. Reports that relied on embedded HTML strings should use explicitly
+authored `RawHTML` content. CSV exports retain the literal data.
+
+`_live_queries.json` remains an internal host artifact. Preview servers deny its
+URL, compressed sibling and filename aliases for GET and HEAD. Portal remote
+builds store it under a separate `_private/` namespace; operators must update
+their edge gateway and plan legacy manifest/cache cleanup as described in the
+portal's storage upgrade notes. The host still reads older build manifests.

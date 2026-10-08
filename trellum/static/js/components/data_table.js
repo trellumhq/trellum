@@ -16,12 +16,17 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
     var _sortCol = -1;   /* -1 = no active sort */
     var _sortDir = 1;    /* 1 = asc, -1 = desc */
 
-    /* Extract a comparable number from a cell value. Handles
-       HTML-wrapped values (strip tags), currency/percent/comma
-       formatting, and K/M/B/T suffixes produced by fmtCompact. */
+    function _escapeHtml(value) {
+        return String(value).replace(/[&<>"']/g, function(ch) {
+            return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[ch];
+        });
+    }
+
+    /* Extract a comparable number from a cell value. Handles currency,
+       percent, comma formatting, and K/M/B/T suffixes produced by fmtCompact. */
     function _sortKey(v) {
         if (v == null) return { n: NaN, s: '' };
-        var s = String(v).replace(/<[^>]+>/g, '').trim();
+        var s = String(v).trim();
         var lower = s.toLowerCase();
         var t = s.replace(/[$,%\s]/g, '');
         var m = t.match(/^(-?\d*\.?\d+)\s*([kmbt])?$/i);
@@ -92,13 +97,14 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
             });
         }
         var hdr = columns.map(function(c, idx) {
-            if (!cfg.sortable) return '<th>' + c + '</th>';
+            var label = _escapeHtml(c);
+            if (!cfg.sortable) return '<th>' + label + '</th>';
             var active = (idx === _sortCol);
             var arrow = '<span class="fw-sort-arrow">' +
                 (active ? (_sortDir > 0 ? '▲' : '▼') : '▲▼') + '</span>';
             var cls = 'fw-sortable' + (active ? ' fw-sort-active' : '');
             return '<th class="' + cls + '" data-col-idx="' + idx + '">'
-                + c + arrow + '</th>';
+                + label + arrow + '</th>';
         }).join('');
         var body = filtered.map(function(row) {
             return '<tr>' + row.map(function(v, i) {
@@ -112,9 +118,9 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
                     var num = parseFloat(String(v).replace(/[^0-9.\-]/g, ''));
                     var pct = isNaN(num) ? 0 : (num / barMax * 100);
                     return '<td' + style + '><div class="fw-bar-cell"><div class="fw-bar-fill" style="width:'
-                        + pct.toFixed(1) + '%"></div><span>' + v + '</span></div></td>';
+                        + pct.toFixed(1) + '%"></div><span>' + _escapeHtml(v != null ? v : '') + '</span></div></td>';
                 }
-                return '<td' + style + '>' + (v != null ? v : '') + '</td>';
+                return '<td' + style + '>' + _escapeHtml(v != null ? v : '') + '</td>';
             }).join('') + '</tr>';
         }).join('');
         var note = '';
@@ -209,14 +215,9 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
 
     /* ── CSV download wiring ──
        CSV exports ALL filtered rows (not just visible ones -- maxRows
-       caps the rendered table, not the download) and strips any HTML
-       markup cells (linkified IDs, etc.) so the output is plain text. */
+       caps the rendered table, not the download). */
     function _csvClean(v) {
-        if (v == null) return '';
-        if (typeof v === 'string' && v.indexOf('<') >= 0) {
-            return v.replace(/<[^>]+>/g, '');
-        }
-        return v;
+        return v == null ? '' : v;
     }
     /* ── Live lookup wiring ──
        cfg.live marks this table as a declared live query's surface.

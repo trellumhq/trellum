@@ -372,14 +372,14 @@ class TestOrgPolicyEnforcement:
         assert resp.status_code == 302
         assert resp.url == "/account/security/mfa/setup"
 
-    def test_redirect_lock_does_not_break_json_api_calls(self, client, login, member, org):
+    def test_enrollment_lock_denies_json_api_calls(self, client, login, member, org):
         from apps.orgs.models import OrgSecurityPolicy
 
         OrgSecurityPolicy.objects.create(org=org, require_mfa=True, mfa_grace_days=0)
         c = login(member)
         resp = c.get("/api/me")
-        assert resp.status_code == 200
-        assert resp.json()["authenticated"] is True
+        assert resp.status_code == 403
+        assert resp.json()["error"] == "mfa_enrollment_required"
 
     def test_the_enrollment_page_itself_stays_reachable(self, client, login, member, org):
         from apps.orgs.models import OrgSecurityPolicy

@@ -66,7 +66,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     #: rather than a timestamp: no clock comparison, no "same second" edge.
     auth_epoch = models.PositiveIntegerField(default=0)
     #: SUPERSEDED -- theme is a per-studio property now (Studio.theme,
-    #: StudioMembership.theme; see apps.core.themes.resolve_studio_theme --
+    #: StudioPreference.theme; see apps.core.themes.resolve_studio_theme --
     #: Organization.default_theme is itself retired from that chain too,
     #: same "keep the field" treatment). This column is kept only to
     #: avoid a destructive migration on an unreleased field; nothing reads

@@ -88,6 +88,31 @@ class TestShareEntry:
         assert resp.status_code == 200
         assert b"hi" in resp.content
 
+    @pytest.mark.parametrize("embed", [False, True])
+    @pytest.mark.parametrize("asset", ["", "data.json"])
+    def test_org_suspension_blocks_entry_and_assets(
+        self, client, built_report, make_link, org, sharing_on, embed, asset
+    ):
+        sharing_on.embed_links_enabled = True
+        sharing_on.save(update_fields=["embed_links_enabled"])
+        link = make_link(embed=embed, embed_origins=["https://example.test"] if embed else [])
+        url = f"/share/{link.token}/{asset}"
+        response = client.get(url)
+        assert response.status_code == 200
+        if response.streaming:
+            b"".join(response.streaming_content)
+
+        org.is_active = False
+        org.save(update_fields=["is_active"])
+        assert client.get(url).status_code == 410
+
+        org.is_active = True
+        org.save(update_fields=["is_active"])
+        response = client.get(url)
+        assert response.status_code == 200
+        if response.streaming:
+            b"".join(response.streaming_content)
+
     def test_expired_link_returns_410(self, client, built_report, make_link):
         link = make_link(expires_at=timezone.now() - timezone.timedelta(hours=1))
         resp = client.get(f"/share/{link.token}/")
@@ -146,11 +171,11 @@ class TestShareEntryTheming:
     def test_share_page_never_carries_a_members_personal_override(
         self, client, built_report, make_link, studio_tree, viewer
     ):
-        from apps.studios.models import StudioMembership
+        from apps.studios.models import StudioPreference
 
         studio_tree.theme = "sunset"
         studio_tree.save(update_fields=["theme"])
-        StudioMembership.objects.filter(user=viewer, studio=studio_tree).update(theme="dracula")
+        StudioPreference.objects.create(user=viewer, studio=studio_tree, theme="dracula")
         link = make_link()
         html = client.get(f"/share/{link.token}/").content.decode()
         assert 'data-theme="sunset"' in html

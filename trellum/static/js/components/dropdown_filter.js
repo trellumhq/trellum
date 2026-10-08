@@ -45,7 +45,7 @@ window._fwFilterTypes['dropdown'] = {
                     allowDeselect: true,
                     closeOnSelect: false,
                     showSearch: true,
-                    searchHighlight: true,
+                    searchHighlight: false,
                     placeholderText: (fc && fc.placeholder) ? fc.placeholder : '(All)',
                     maxValuesShown: 5
                 },

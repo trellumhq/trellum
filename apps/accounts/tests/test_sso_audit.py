@@ -53,7 +53,7 @@ def rf_request():
 
 
 def _sociallogin(provider="oidc-demo", email="sso.user@demo.example", uid="oid-1", **claims):
-    account = SocialAccount(provider=provider, uid=uid, extra_data={"email": email, **claims})
+    account = SocialAccount(provider=provider, uid=uid, extra_data={"email": email, "email_verified": True, **claims})
     user = User(email=email)
     return SocialLogin(user=user, account=account)
 
@@ -179,7 +179,7 @@ class TestMemberProvisioned:
         sociallogin = provider.sociallogin_from_response(
             request,
             {
-                "userinfo": {"sub": "entra-oid-9", "name": "Fresh User"},
+                "userinfo": {"sub": "entra-oid-9", "name": "Fresh User", "email": email, "email_verified": True},
                 "id_token": {
                     "sub": "entra-oid-9", "preferred_username": email, "name": "Fresh User",
                 },

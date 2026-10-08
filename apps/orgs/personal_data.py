@@ -44,7 +44,7 @@ from apps.reports.models import (
     ShareLink,
 )
 from apps.runner.models import Run
-from apps.studios.models import StudioMembership
+from apps.studios.models import StudioMembership, StudioPreference
 
 from .models import OrgMembership, PermissionGroup, PermissionGroupMembership
 
@@ -103,11 +103,14 @@ def footprint(user, org, *, full: bool = False) -> dict[str, object]:
     # them goes, wherever it was sent from -- and the admin is never told
     # where that was, which is why this is one line and not a second bucket.
     invitations = Invitation.objects.filter(email__iexact=user.email)
+    preferences = StudioPreference.objects.filter(user=user)
     if not full:
         invitations = invitations.filter(org=org)
+        preferences = preferences.filter(studio__org=org)
     return {
         "Organization membership": OrgMembership.objects.filter(user=user, org=org),
         "Studio roles": StudioMembership.objects.filter(user=user, studio__org=org),
+        "Studio appearance preferences": preferences,
         "Permission group memberships": PermissionGroupMembership.objects.filter(
             user=user, group__org=org
         ),
@@ -290,6 +293,12 @@ def export(user, org) -> dict:
             ],
         },
         "access": _export_access(user, org),
+        "studio_preferences": [
+            {"studio": preference.studio.slug, "theme": preference.theme}
+            for preference in StudioPreference.objects.filter(
+                user=user, studio__org=org
+            ).select_related("studio")
+        ],
         "activity": _export_activity(user, org),
     }
 

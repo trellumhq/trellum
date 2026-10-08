@@ -512,6 +512,52 @@ class TestResultCache:
 # ── Happy path + audit ──────────────────────────────────────────────────────
 
 class TestHappyPath:
+    @pytest.mark.parametrize("external", [False, True])
+    def test_portal_duckdb_connection_is_confined(
+        self, login, viewer, url, write_manifest, studio_tree, tmp_path, external,
+    ):
+        from apps.datasources.models import DataSource
+
+        duckdb = pytest.importorskip("duckdb")
+        source = studio_tree.project_root / "data-sources" / "files" / "live.duckdb"
+        source.parent.mkdir(parents=True, exist_ok=True)
+        with duckdb.connect(str(source)) as conn:
+            conn.execute("CREATE TABLE intended AS SELECT 42 AS value")
+        ds = DataSource.objects.create(
+            studio=studio_tree, name="lake", type="duckdb",
+            config={"path": "data-sources/files/live.duckdb", "portal_live_query": False},
+        )
+        assert livequery.conn_info_for(ds)["portal_live_query"] is True
+        sentinel = tmp_path / "sentinel.txt"
+        sentinel.write_text("synthetic-outside-value", encoding="utf-8")
+        sql = (f"SELECT content FROM read_text('{sentinel.as_posix()}')" if external
+               else "SELECT value FROM intended")
+        write_manifest({"duck": {"sql": sql, "datasource": "lake", "params": []}})
+        response = _post(login(viewer), url, {"query_id": "duck", "params": {}})
+        if external:
+            assert response.status_code == 400
+            assert response.json() == {"error": "query failed"}
+        else:
+            assert response.status_code == 200, response.content
+            assert response.json()["rows"] == [[42]]
+
+    def test_parameter_shaped_value_stays_literal(
+        self, login, viewer, url, write_manifest, sqlite_source,
+    ):
+        write_manifest({"literal": {
+            "sql": "SELECT :longname AS first, :x AS second",
+            "datasource": "lqdb",
+            "params": [
+                {"name": "longname", "type": "str", "required": True},
+                {"name": "x", "type": "str", "required": True},
+            ],
+        }})
+        response = _post(login(viewer), url, {
+            "query_id": "literal", "params": {"longname": ":x", "x": " || 42 || "},
+        })
+        assert response.status_code == 200, response.content
+        assert response.json()["rows"] == [[":x", " || 42 || "]]
+
     def test_bind_sql_uses_backslash_dialect_for_mysql(self):
         """MySQL reads a backslash inside a literal as an escape, so a bound
         value ending in one must not be able to close the literal early."""

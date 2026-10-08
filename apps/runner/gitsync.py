@@ -51,6 +51,8 @@ import threading
 from pathlib import Path
 
 import yaml
+
+from apps.runner.safe_copy import reject_symlinks, safe_copyfile, safe_copytree
 from django.conf import settings
 from django.utils import timezone
 
@@ -479,14 +481,21 @@ class StudioGitSync:
         # set as falsy and fell through to a full re-copy of every report,
         # which is exactly wrong for an events-only change.
         slugs = os.listdir(src_reports) if only_slugs is None else only_slugs
+        inputs = []
+        for slug in slugs:
+            src = Path(src_reports) / slug
+            if src.is_dir():
+                reject_symlinks(src, root=Path(self.cache_dir))
+                inputs.append((src, Path(dst_reports) / slug))
+        # Reject every changed report before replacing any last-good copy.
+        for src, dst in inputs:
+            if dst.is_dir():
+                shutil.rmtree(dst)
+            safe_copytree(src, dst, root=Path(self.cache_dir))
         for slug in slugs:
             src = os.path.join(src_reports, slug)
             dst = os.path.join(dst_reports, slug)
-            if os.path.isdir(src):
-                if os.path.isdir(dst):
-                    shutil.rmtree(dst)
-                shutil.copytree(src, dst)
-            elif only_slugs and os.path.isdir(dst):
+            if not os.path.isdir(src) and only_slugs and os.path.isdir(dst):
                 shutil.rmtree(dst)  # deleted in git
                 logger.info(f"{self.studio}: removed deleted report {slug}")
 
@@ -514,7 +523,7 @@ class StudioGitSync:
             dst.parent.mkdir(parents=True, exist_ok=True)
             tmp = dst.with_name(dst.name + f".tmp{os.getpid()}")
             try:
-                shutil.copyfile(src, tmp)
+                safe_copyfile(src, tmp, root=Path(self.cache_dir))
                 os.replace(tmp, dst)
             finally:
                 if tmp.exists():

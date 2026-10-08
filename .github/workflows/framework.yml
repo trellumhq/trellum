@@ -208,22 +208,14 @@ jobs:
               )
           PY
 
-      # A test that skips is protecting nothing. Every optional dependency is
-      # installed above, so a skip here means something self-disabled -- a
-      # browser that failed to install, or a suite that quietly stopped
-      # finding its fixtures. That is precisely how test_interactions.py sat
-      # dead for months while CI stayed green, so make it loud.
+      # Every optional dependency is installed above. The only expected skip
+      # is the Windows-only NTFS stream test, which cannot run on this Linux
+      # runner. Match its exact source location and reason; all other skips
+      # remain fatal.
       - name: No test silently skipped
         run: |
-          skipped=$(grep -oE '[0-9]+ skipped' /tmp/pytest.out | grep -oE '^[0-9]+' | head -1)
-          skipped=${skipped:-0}
-          echo "skipped: $skipped"
-          if [ "$skipped" -gt 0 ]; then
-            echo "ERROR: $skipped test(s) skipped. Every optional dependency is installed in CI,"
-            echo "so a skip means a suite disabled itself rather than running. Reasons:"
-            grep -i "^SKIPPED" /tmp/pytest.out || true
-            exit 1
-          fi
+          python .github/workflows/check_framework_skips.py --self-test
+          python .github/workflows/check_framework_skips.py /tmp/pytest.out
 
       - name: Build every demo report
         working-directory: trellum/demo

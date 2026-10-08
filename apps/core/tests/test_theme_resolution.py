@@ -12,7 +12,6 @@ apps/reports/tests/test_api.py for the report-content injection.
 """
 import pytest
 
-from apps.core import roles
 from apps.core.themes import (
     explicit_studio_theme,
     has_custom_repo_theme,
@@ -20,7 +19,7 @@ from apps.core.themes import (
     theme_mode_for,
     viewer_theme_override,
 )
-from apps.studios.models import StudioMembership
+from apps.studios.models import StudioPreference
 
 pytestmark = pytest.mark.django_db
 
@@ -41,9 +40,7 @@ class TestResolutionChain:
     def test_viewer_override_is_rung_one_and_wins_over_the_studio_default(self, member, studio):
         studio.theme = "money"
         studio.save(update_fields=["theme"])
-        StudioMembership.objects.create(
-            user=member, studio=studio, role=roles.VIEWER, theme="dracula"
-        )
+        StudioPreference.objects.create(user=member, studio=studio, theme="dracula")
         assert resolve_studio_theme(member, studio) == "dracula"
 
     def test_an_explicit_pick_of_the_trellum_pair_still_counts_as_explicit(
@@ -64,9 +61,7 @@ class TestResolutionChain:
         assert resolve_studio_theme(None, studio) == "sunset"
 
     def test_a_deleted_themes_name_falls_through_every_rung(self, member, studio):
-        StudioMembership.objects.create(
-            user=member, studio=studio, role=roles.VIEWER, theme="not-a-real-theme"
-        )
+        StudioPreference.objects.create(user=member, studio=studio, theme="not-a-real-theme")
         studio.theme = "also-not-real"
         studio.save(update_fields=["theme"])
         assert resolve_studio_theme(member, studio) == "trellum dark"
@@ -75,9 +70,7 @@ class TestResolutionChain:
     def test_a_deleted_viewer_override_falls_through_to_studio_not_default(
         self, member, org, studio
     ):
-        StudioMembership.objects.create(
-            user=member, studio=studio, role=roles.VIEWER, theme="not-a-real-theme"
-        )
+        StudioPreference.objects.create(user=member, studio=studio, theme="not-a-real-theme")
         studio.theme = "money"
         studio.save(update_fields=["theme"])
         assert resolve_studio_theme(member, studio) == "money"
@@ -85,9 +78,7 @@ class TestResolutionChain:
 
 class TestOrgLock:
     def test_lock_ignores_the_viewer_override(self, member, org, studio):
-        StudioMembership.objects.create(
-            user=member, studio=studio, role=roles.VIEWER, theme="dracula"
-        )
+        StudioPreference.objects.create(user=member, studio=studio, theme="dracula")
         org.lock_studio_theme = True
         org.save(update_fields=["lock_studio_theme"])
         assert resolve_studio_theme(member, studio) == "trellum dark"
@@ -95,13 +86,11 @@ class TestOrgLock:
     def test_lock_ignores_an_override_stored_before_the_lock_was_turned_on(
         self, member, org, studio
     ):
-        membership = StudioMembership.objects.create(
-            user=member, studio=studio, role=roles.VIEWER, theme="dracula"
-        )
+        preference = StudioPreference.objects.create(user=member, studio=studio, theme="dracula")
         org.lock_studio_theme = True
         org.save(update_fields=["lock_studio_theme"])
-        membership.refresh_from_db()
-        assert membership.theme == "dracula"  # not cleared -- just ignored
+        preference.refresh_from_db()
+        assert preference.theme == "dracula"  # not cleared -- just ignored
         assert resolve_studio_theme(member, studio) == "trellum dark"
 
     def test_lock_does_not_affect_the_studio_rung(self, member, org, studio):
@@ -137,12 +126,8 @@ class TestRetiredOrgRung:
 
 class TestPerStudioIndependence:
     def test_same_user_two_studios_two_overrides(self, member, studio, studio2):
-        StudioMembership.objects.create(
-            user=member, studio=studio, role=roles.VIEWER, theme="ocean"
-        )
-        StudioMembership.objects.create(
-            user=member, studio=studio2, role=roles.VIEWER, theme="money"
-        )
+        StudioPreference.objects.create(user=member, studio=studio, theme="ocean")
+        StudioPreference.objects.create(user=member, studio=studio2, theme="money")
         assert resolve_studio_theme(member, studio) == "ocean"
         assert resolve_studio_theme(member, studio2) == "money"
 
@@ -165,9 +150,7 @@ class TestRepoTheme:
     def test_registry_name_wins_over_everything(self, member, org, studio):
         studio.theme = "money"
         studio.save(update_fields=["theme"])
-        StudioMembership.objects.create(
-            user=member, studio=studio, role=roles.VIEWER, theme="dracula"
-        )
+        StudioPreference.objects.create(user=member, studio=studio, theme="dracula")
         studio.repo_theme = "nord"
         studio.save(update_fields=["repo_theme"])
         assert resolve_studio_theme(member, studio) == "nord"
@@ -185,9 +168,7 @@ class TestRepoTheme:
         # because rung 0 itself answered "".
         studio.theme = "money"
         studio.save(update_fields=["theme"])
-        StudioMembership.objects.create(
-            user=member, studio=studio, role=roles.VIEWER, theme="dracula"
-        )
+        StudioPreference.objects.create(user=member, studio=studio, theme="dracula")
         studio.repo_theme = "a-repo-custom-theme"
         studio.save(update_fields=["repo_theme"])
         assert resolve_studio_theme(member, studio) == "trellum dark"
@@ -228,9 +209,7 @@ class TestViewerThemeOverride:
         assert viewer_theme_override(member, studio) == ""
 
     def test_reflects_an_explicit_override(self, member, studio):
-        StudioMembership.objects.create(
-            user=member, studio=studio, role=roles.VIEWER, theme="blossom"
-        )
+        StudioPreference.objects.create(user=member, studio=studio, theme="blossom")
         assert viewer_theme_override(member, studio) == "blossom"
 
     def test_anonymous_is_empty(self, studio):
