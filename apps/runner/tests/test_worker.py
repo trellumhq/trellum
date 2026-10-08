@@ -194,6 +194,76 @@ class TestRecovery:
         assert WorkerHeartbeat.alive().count() == 0
 
 
+class TestSandboxSweep:
+    def _sweep(self, monkeypatch, root):
+        monkeypatch.setattr(
+            "apps.runner.management.commands.runworker._tmp_root", lambda: root
+        )
+        monkeypatch.setattr("apps.runner.sandbox.sandbox_mode", lambda: "local")
+        Command()._sweep_orphan_sandboxes()
+
+    @pytest.mark.parametrize("status", [Run.STARTING, Run.RUNNING, Run.QUEUED])
+    def test_live_run_preserves_shared_scratch_and_its_logs(
+        self, make_run, monkeypatch, tmp_path, status
+    ):
+        run = make_run(status=status, worker_id="another-worker")
+        root = tmp_path / "tmp"
+        scratch = root / "run-shared-random"
+        scratch.mkdir(parents=True)
+        (scratch / "build.txt").write_text("in use")
+        logs = root / "runs" / str(run.pk)
+        logs.mkdir(parents=True)
+        (logs / "worker.log").write_text("in use")
+
+        self._sweep(monkeypatch, root)
+
+        assert scratch.is_dir()
+        assert logs.is_dir()
+
+    def test_quiescent_sweep_removes_orphans_and_preserves_unrelated_files(
+        self, monkeypatch, tmp_path
+    ):
+        root = tmp_path / "tmp"
+        scratch = root / "run-orphan-random"
+        scratch.mkdir(parents=True)
+        orphan_logs = root / "runs" / "00000000-0000-0000-0000-000000000001"
+        orphan_logs.mkdir(parents=True)
+        unrelated_dir = root / "runs" / "keep-this"
+        unrelated_dir.mkdir(parents=True)
+        unrelated_file = root / "readme.txt"
+        root.mkdir(exist_ok=True)
+        unrelated_file.write_text("keep")
+
+        self._sweep(monkeypatch, root)
+
+        assert not scratch.exists()
+        assert not orphan_logs.exists()
+        assert unrelated_dir.is_dir()
+        assert unrelated_file.read_text() == "keep"
+
+    def test_paths_created_after_candidate_snapshot_are_not_swept(
+        self, make_run, monkeypatch, tmp_path
+    ):
+        run = make_run(status=Run.RUNNING)
+        root = tmp_path / "tmp"
+        root.mkdir()
+        late_scratch = root / "run-created-during-snapshot"
+        late_logs = root / "runs" / "00000000-0000-0000-0000-000000000002"
+        original_filter = Run.objects.filter
+
+        def create_paths_then_filter(**kwargs):
+            late_scratch.mkdir()
+            late_logs.mkdir(parents=True)
+            return original_filter(**kwargs)
+
+        monkeypatch.setattr(Run.objects, "filter", create_paths_then_filter)
+
+        self._sweep(monkeypatch, root)
+
+        assert late_scratch.is_dir()
+        assert late_logs.is_dir()
+
+
 @pytest.fixture
 def release_advisory_locks():
     """Advisory locks are session-scoped, so a test that takes one leaks it

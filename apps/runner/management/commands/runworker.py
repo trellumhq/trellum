@@ -280,21 +280,30 @@ class Command(BaseCommand):
 
     def _sweep_orphan_sandboxes(self) -> None:
         import shutil
+        from uuid import UUID
 
         root = _tmp_root()
-        for entry in root.glob("run-*"):
-            shutil.rmtree(entry, ignore_errors=True)
+        scratch_candidates = list(root.glob("run-*"))
         runs_dir = root / "runs"
-        if runs_dir.is_dir():
-            active_ids = {
-                str(pk)
-                for pk in Run.objects.filter(status__in=Run.ACTIVE_STATUSES).values_list(
-                    "pk", flat=True
-                )
-            }
-            for entry in runs_dir.iterdir():
-                if entry.name not in active_ids:
+        log_candidates = list(runs_dir.iterdir()) if runs_dir.is_dir() else []
+        active_ids = {
+            str(pk)
+            for pk in Run.objects.filter(status__in=Run.ACTIVE_STATUSES).values_list(
+                "pk", flat=True
+            )
+        }
+        # Scratch paths have no persisted owner, so a live run may own any of them.
+        if not active_ids:
+            for entry in scratch_candidates:
+                if entry.is_dir():
                     shutil.rmtree(entry, ignore_errors=True)
+        for entry in log_candidates:
+            if entry.is_dir() and entry.name not in active_ids:
+                try:
+                    UUID(entry.name)
+                except ValueError:
+                    continue
+                shutil.rmtree(entry, ignore_errors=True)
 
         # Containers left behind by a crashed runner (their Run is no longer
         # active). Skips containers whose run is still ACTIVE — another runner
