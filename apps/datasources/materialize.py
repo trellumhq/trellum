@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 import stat
+import time
 import uuid
 from pathlib import Path
 
@@ -25,6 +26,18 @@ from apps.datasources.status import SourceState, effective_fields, source_states
 
 #: Nothing to write for these: the build would be blocked before it started.
 _OMITTED = (SourceState.NEEDS_CREDENTIALS, SourceState.NEEDS_UPLOAD, SourceState.UNKNOWN)
+_REPLACE_RETRY_DELAYS = (0.01, 0.03, 0.06)
+
+
+def _replace_config(source: Path, destination: Path) -> None:
+    for delay in (*_REPLACE_RETRY_DELAYS, None):
+        try:
+            os.replace(source, destination)
+            return
+        except OSError as exc:
+            if getattr(exc, "winerror", None) not in (5, 32, 33) or delay is None:
+                raise
+            time.sleep(delay)
 
 
 def materialize(studio) -> dict[str, str]:
@@ -109,7 +122,7 @@ def materialize(studio) -> dict[str, str]:
             )
         if config_mode is not None:
             os.chmod(tmp_path, config_mode)
-        os.replace(tmp_path, config_path)
+        _replace_config(tmp_path, config_path)
     finally:
         if tmp_path is not None:
             tmp_path.unlink(missing_ok=True)
