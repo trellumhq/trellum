@@ -52,6 +52,20 @@ def repo(studio_tree):
 
 
 class TestRepoScreen:
+    def test_polling_is_wired_only_for_a_configured_queued_repo(self, html, prefix, repo, studio_tree):
+        page = html(f"{prefix}/settings/repo")
+        assert 'data-repo-status' in page and 'data-sync-requested="false"' in page
+        assert "repo-status.js" in page and 'id="repoPollStatus"' in page
+        assert 'id="repoSyncButton"' in page
+        StudioRepo.objects.filter(pk=repo.pk).update(sync_requested=True)
+        page = html(f"{prefix}/settings/repo")
+        assert 'data-sync-requested="true"' in page
+        assert re.search(r'id="repoSyncButton"[^>]*disabled', page)
+        assert "Checking for changes…" in page
+        repo.delete()
+        page = html(f"{prefix}/settings/repo")
+        assert 'data-repo-status' not in page and "repo-status.js" not in page
+
     def test_status_uses_badges_and_the_webhook_is_copyable(self, html, prefix, repo):
         page = html(f"{prefix}/settings/repo")
         assert 'class="repo-status"' in page
