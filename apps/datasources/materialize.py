@@ -14,7 +14,8 @@ env-var convention it always has.
 from __future__ import annotations
 
 import os
-import tempfile
+import stat
+import uuid
 from pathlib import Path
 
 import yaml
@@ -88,13 +89,17 @@ def materialize(studio) -> dict[str, str]:
 
     config_path = studio.datasources_dir / "config.yaml"
     config_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        config_mode = stat.S_IMODE(config_path.stat().st_mode)
+    except FileNotFoundError:
+        config_mode = None
     tmp_path = None
     try:
-        with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", prefix=f".{config_path.name}.",
-            suffix=".tmp", dir=config_path.parent, delete=False,
-        ) as fh:
-            tmp_path = Path(fh.name)
+        candidate = config_path.with_name(
+            f".{config_path.name}.{uuid.uuid4().hex}.tmp"
+        )
+        with candidate.open("x", encoding="utf-8") as fh:
+            tmp_path = candidate
             fh.write(
                 "# Managed by the portal — edits here are overwritten before every run.\n"
             )
@@ -102,6 +107,8 @@ def materialize(studio) -> dict[str, str]:
                 {"sources": sources}, fh,
                 default_flow_style=False, sort_keys=False, allow_unicode=True,
             )
+        if config_mode is not None:
+            os.chmod(tmp_path, config_mode)
         os.replace(tmp_path, config_path)
     finally:
         if tmp_path is not None:

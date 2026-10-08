@@ -1,7 +1,9 @@
 """THE contract test: what the materializer writes + injects must satisfy
 the bundled framework's LocalEnvResolver field-for-field."""
 from concurrent.futures import ThreadPoolExecutor
+import os
 from pathlib import Path
+import stat
 from threading import Barrier
 from types import SimpleNamespace
 
@@ -160,6 +162,34 @@ def test_concurrent_materializations_use_distinct_temp_files(tmp_path, monkeypat
     assert len(set(paths)) == 2
     assert all(path.parent == tmp_path for path in paths)
     assert not list(tmp_path.glob(".config.yaml.*.tmp"))
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permission bits only")
+def test_replacement_preserves_existing_config_permissions(tmp_path, monkeypatch):
+    studio = SimpleNamespace(datasources_dir=tmp_path)
+    config = tmp_path / "config.yaml"
+    config.write_text("sources: {}\n", encoding="utf-8")
+    config.chmod(0o640)
+    monkeypatch.setattr(materialize_module, "source_states", lambda _studio: [])
+
+    materialize(studio)
+
+    assert stat.S_IMODE(config.stat().st_mode) == 0o640
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permission bits only")
+def test_new_config_uses_normal_file_creation_permissions(tmp_path, monkeypatch):
+    studio = SimpleNamespace(datasources_dir=tmp_path)
+    expected = tmp_path / "normal-open.txt"
+    with expected.open("w", encoding="utf-8"):
+        pass
+    monkeypatch.setattr(materialize_module, "source_states", lambda _studio: [])
+
+    materialize(studio)
+
+    assert stat.S_IMODE((tmp_path / "config.yaml").stat().st_mode) == (
+        stat.S_IMODE(expected.stat().st_mode)
+    )
 
 
 class TestMaterializedYaml:
