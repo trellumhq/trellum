@@ -36,7 +36,7 @@ decorator==5.3.1
 distro==1.9.0
 Django==5.2.17
 django-anymail==15.2
-django-allauth==65.19.7
+django-allauth==65.19.5
 django-environ==0.14.0
 docker==7.1.0
 docstring_parser==0.18.0
@@ -82,7 +82,9 @@ mdurl==0.1.2
 msal==1.37.0
 multidict==6.9.1
 numpy==2.5.2
-oauthlib==4.0.0
+# Databricks 4.6.0 requires OAuthLib <4; allauth 65.19.5 is compatible.
+# Upgrade both once the connector's OAuthLib 4 support is released.
+oauthlib==3.3.1
 openai==3.0.0
 openpyxl==3.1.5
 orjson==3.11.9
