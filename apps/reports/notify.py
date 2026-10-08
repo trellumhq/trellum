@@ -35,7 +35,7 @@ from django.utils import timezone
 from django.utils.safestring import mark_safe
 
 from apps.core.instance import base_url, instance_name
-from apps.core.mail import default_from_email
+from apps.core.mail import resolve_delivery_connection
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +92,11 @@ def alert_recipients(report, kind: str) -> list:  # noqa: ARG001 - kind kept for
     recipients = [
         user for user in members if roles.at_least(role_by_id.get(user.pk), roles.DEVELOPER)
     ]
+    if report.audience == report.AUDIENCE_PRIVATE and recipients:
+        from apps.core.report_access import bulk_can_view_report
+
+        allowed = bulk_can_view_report(recipients, report)
+        recipients = [user for user in recipients if allowed.get(user.pk, False)]
     return sorted(recipients, key=lambda u: u.email)
 
 
@@ -588,7 +593,7 @@ def _send_broken_summary(pending) -> None:
             _send_simple(subject, "email/broken_summary", ctx, user)
         except Exception:  # noqa: BLE001
             logger.exception(
-                "notify: failed to send broken_summary to %s for studio %s", user.email, studio.pk
+                "notify: failed to send broken_summary for studio %s", studio.pk
             )
 
 
@@ -601,7 +606,7 @@ def _send_alert_mail(subject, template_base, ctx, report, user) -> None:
         _send_simple(subject, template_base, ctx, user)
     except Exception:  # noqa: BLE001
         logger.exception(
-            "notify: failed to send %s to %s for report %s", template_base, user.email, report.pk
+            "notify: failed to send %s for report %s", template_base, report.pk
         )
 
 
@@ -609,8 +614,10 @@ def _send_simple(subject: str, template_base: str, ctx: dict, user) -> None:
     """Text + HTML mail with no attachments, addressed to one user."""
     text_body = render_to_string(f"{template_base}.txt", ctx)
     html_body = render_to_string(f"{template_base}.html", ctx)
+    connection = resolve_delivery_connection()
     msg = EmailMultiAlternatives(
-        subject=subject, body=text_body, from_email=default_from_email(), to=[user.email]
+        subject=subject, body=text_body, from_email=connection.from_email,
+        to=[user.email], connection=connection,
     )
     msg.attach_alternative(html_body, "text/html")
     msg.send(fail_silently=False)
@@ -652,7 +659,7 @@ def send_alert(rule, run) -> list[str]:
             _send_simple(subject, "email/alert", ctx, user)
             sent.append(user.email)
         except Exception:  # noqa: BLE001
-            logger.exception("notify: failed to send alert to %s for rule %s", user.email, rule.pk)
+            logger.exception("notify: failed to send alert for rule %s", rule.pk)
     return sent
 
 
@@ -694,7 +701,7 @@ def send_sample(schedule_or_report, user) -> None:
     try:
         _send_sample(schedule_or_report, user)
     except Exception:  # noqa: BLE001
-        logger.exception("notify.send_sample failed for %r / %s", schedule_or_report, user)
+        logger.exception("notify.send_sample failed for object %s", getattr(schedule_or_report, "pk", None))
 
 
 def send_sample_or_raise(schedule_or_report, user) -> None:
@@ -747,7 +754,7 @@ def _deliver(report, recipients, *, attach_pdf: bool, schedule=None, sample: boo
                 meta=meta,
             )
         except Exception:  # noqa: BLE001
-            logger.exception("notify: failed to send delivery mail to %s", getattr(user, "email", user))
+            logger.exception("notify: failed to send delivery mail for report %s", report.pk)
 
 
 def _try_render(output_dir):
@@ -810,6 +817,7 @@ class _DeliveryEmail(EmailMultiAlternatives):
 
 
 def _send_delivery_mail(report, user, render_result, *, attach_pdf, schedule, sample, meta=None) -> None:
+    connection = resolve_delivery_connection()
     meta = meta or {}
     png = getattr(render_result, "png", None) if render_result else None
     pdf = getattr(render_result, "pdf", None) if render_result else None
@@ -827,6 +835,7 @@ def _send_delivery_mail(report, user, render_result, *, attach_pdf, schedule, sa
         "instance_name": instance_name(),
         "has_image": bool(png),
         "snapshot_unavailable": not png,
+        "snapshot_attached": bool(png) and connection.snapshot.screenshot_mode == "attachment",
         "sample": sample,
         "cadence": cadence,
         "built_at": built_at,
@@ -855,9 +864,10 @@ def _send_delivery_mail(report, user, render_result, *, attach_pdf, schedule, sa
     msg = _DeliveryEmail(
         subject=subject,
         body=text_body,
-        from_email=default_from_email(),
+        from_email=connection.from_email,
         to=[user.email],
         inline_image=inline_image,
+        connection=connection,
     )
     msg.attach_alternative(html_body, "text/html")
     if attach_pdf and pdf:
@@ -893,4 +903,4 @@ def _send_not_sent(report, recipients, meta, schedule=None) -> None:
                 local_ctx["unsubscribe_url"] = unsubscribe_url("schedule", schedule.pk, user.pk)
             _send_simple(subject, "email/not_sent", local_ctx, user)
         except Exception:  # noqa: BLE001
-            logger.exception("notify: failed to send not-sent notice to %s", getattr(user, "email", user))
+            logger.exception("notify: failed to send not-sent notice for report %s", report.pk)

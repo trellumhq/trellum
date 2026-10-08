@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- Save, test and select named outbound email API connections alongside SMTP.
+  Built-in choices cover SendGrid, Amazon SES, Mailgun, Postmark, Brevo,
+  Resend, Mailjet, MailerSend and Mailtrap Email Sending. Custom HTTPS supports
+  a bounded JSON mapping editor with synthetic previews and revision-bound
+  simple/report tests.
+
 ### Changed
 
 - Raise the default report build timeout from 10 to 30 minutes. Explicit

@@ -4,7 +4,7 @@
   <p style="margin:6px 0 0;color:#64748b;font-size:13px">{{ report.studio.name }}{% if cadence %}&nbsp;·&nbsp;{{ cadence }}{% endif %}{% if built_at %}&nbsp;·&nbsp;built {{ built_at }}{% endif %}</p>
 </td></tr>
 <tr><td style="padding:16px 24px 0">
-  {% if has_image %}<img src="cid:report-snapshot" alt="{{ report.name|default:report.slug }} snapshot" style="width:100%;max-width:552px;height:auto;display:block;border:1px solid #e2e8f0;border-radius:6px">{% elif snapshot_unavailable %}<p style="margin:0;color:#6b7280;font-size:14px">snapshot unavailable — open the report to view it</p>{% endif %}
+  {% if snapshot_attached %}<p style="margin:0;color:#475569;font-size:14px">Snapshot attached as snapshot.png.</p>{% elif has_image %}<img src="cid:report-snapshot" alt="{{ report.name|default:report.slug }} snapshot" style="width:100%;max-width:552px;height:auto;display:block;border:1px solid #e2e8f0;border-radius:6px">{% elif snapshot_unavailable %}<p style="margin:0;color:#6b7280;font-size:14px">snapshot unavailable — open the report to view it</p>{% endif %}
 </td></tr>
 <tr><td style="padding:18px 24px 24px">
   <a href="{{ report_url }}" style="background:#0D9488;color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:14px;font-weight:bold;display:inline-block">Open report</a>

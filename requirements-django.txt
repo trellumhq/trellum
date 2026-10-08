@@ -36,3 +36,7 @@ playwright==1.62.0
 # so a local deployment loads none of it.
 # Pinned to match aiobotocore's requirement; raising it alone breaks that pin.
 boto3==1.36.3
+# Per-connection transactional API backends; SES uses the existing boto3 pin.
+django-anymail==15.2
+# Custom HTTPS sender uses the already-locked urllib3 directly.
+urllib3==2.8.0

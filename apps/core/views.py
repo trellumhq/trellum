@@ -8,6 +8,7 @@ import re
 from django.conf import settings
 from django.db import connections
 from django.http import JsonResponse
+from django.views.decorators.debug import sensitive_post_parameters, sensitive_variables
 
 
 def healthz(request):  # noqa: ARG001
@@ -107,25 +108,26 @@ def system_health(request):
 
 
 def send_test_email_and_report(request, *, redirect_to: str):
-    """Send the operator a test message and flash the outcome.
-
-    Shared by the first-run wizard and /system: the button exists to surface a
-    misconfiguration, so the exception text is what gets shown.
-    """
+    """Send the operator a test message and show only sanitized failure text."""
     from django.contrib import messages
     from django.shortcuts import redirect
 
     from apps.core.mail import send_test_email
 
+    from apps.core.email_errors import EmailDeliveryError
+
     try:
         send_test_email(request.user.email)
-    except Exception as exc:  # noqa: BLE001 - showing it is the whole point
+    except EmailDeliveryError as exc:
         messages.error(request, f"Test email failed: {exc}")
+    except Exception:  # noqa: BLE001 - never expose provider exceptions or secrets
+        messages.error(request, "Test email failed. Check the delivery configuration and server logs.")
     else:
         messages.success(request, f"Test email sent to {request.user.email}.")
     return redirect(redirect_to)
 
 
+@sensitive_post_parameters()
 def system_page(request):
     """Instance health and settings for the operator: doctor checks, the
     instance configuration, security policy, workers, version."""
@@ -135,7 +137,7 @@ def system_page(request):
     from apps.core.audit import audit
     from apps.core.forms import InstanceSettingsForm, SecuritySettingsForm
     from apps.core.health import run_checks
-    from apps.core.models import InstanceConfig
+    from apps.core.models import EmailApiConnection, InstanceConfig
     from apps.core.version import version_info
     from apps.runner.models import Run, WorkerHeartbeat
 
@@ -207,6 +209,12 @@ def system_page(request):
             "checks": run_checks(),
             "releases": releases.current(),
             "form": form,
+            "email_connections": EmailApiConnection.objects.defer("credentials").order_by("name"),
+            "active_email_connection_id": instance.active_email_api_connection_id,
+            "legacy_email_route": (
+                "Saved SMTP" if instance.email_host else
+                "Environment SMTP" if getattr(settings, "EMAIL_URL_CONFIGURED", False) else "Console only"
+            ),
             "security_form": security_form,
             "sessions_invalidated_at": instance.sessions_invalidated_at,
             "workers": WorkerHeartbeat.alive(),
@@ -217,3 +225,210 @@ def system_page(request):
             "version": version_info(detailed=True),
         },
     )
+
+
+def _require_email_operator(request):
+    """Return a response for forbidden access, otherwise None."""
+    from django.http import Http404
+    from django.shortcuts import redirect
+
+    if not request.user.is_authenticated:
+        return redirect("login")
+    if not _is_current_operator(request):
+        raise Http404
+    return None
+
+
+@sensitive_post_parameters()
+@sensitive_variables()
+def email_connection_editor(request, connection_id=None):
+    """Create/edit one saved connection; POST preview is network-free."""
+    import json
+
+    from django.contrib import messages
+    from django.core.exceptions import ValidationError
+    from django.db import transaction
+    from django.http import Http404
+    from django.shortcuts import get_object_or_404, redirect, render
+
+    from apps.core.audit import audit
+    from apps.core.email_mapping import render_payload, synthetic_message_context
+    from apps.core.forms import EmailApiConnectionForm
+    from apps.core.models import EmailApiConnection, InstanceConfig
+
+    class ActiveCustomContractError(Exception):
+        pass
+
+    gate = _require_email_operator(request)
+    if gate is not None:
+        return gate
+    instance = get_object_or_404(EmailApiConnection.objects.defer("credentials"), pk=connection_id) if connection_id else None
+    copy_from = None
+    if not instance and request.method == "GET" and request.GET.get("copy"):
+        try:
+            copy_id = int(request.GET["copy"])
+        except ValueError:
+            raise Http404 from None
+        copy_from = get_object_or_404(EmailApiConnection.objects.defer("credentials"),
+                                      pk=copy_id, provider="custom_https")
+    form = EmailApiConnectionForm(request.POST if request.method == "POST" else None,
+                                  instance=instance, copy_from=copy_from)
+    preview = None
+    preview_config = None
+    if request.method == "POST" and form.is_valid():
+        if request.POST.get("action") == "preview":
+            if form.cleaned_data["provider"] != "custom_https":
+                form.add_error(None, "Preview is available for Custom HTTPS connections.")
+            else:
+                try:
+                    _, config, _ = form.build_profile(preview=True)
+                    preview_config = config
+                    kind = request.POST.get("kind", "simple")
+                    if kind not in {"simple", "report"}:
+                        raise ValidationError("Choose a preview type.")
+                    preview = json.dumps(
+                        render_payload(config["payload"], synthetic_message_context(kind)),
+                        indent=2, ensure_ascii=False,
+                    )
+                except (ValidationError, ValueError):
+                    form.add_error(None, "The custom contract could not be previewed. Check its mapping fields.")
+        elif request.POST.get("action", "save") == "save":
+            with transaction.atomic():
+                if instance:
+                    active_id = InstanceConfig.objects.select_for_update().get(pk=InstanceConfig.load().pk).active_email_api_connection_id
+                    current = get_object_or_404(EmailApiConnection.objects.select_for_update(), pk=instance.pk)
+                    form.instance = current
+                else:
+                    active_id = None
+                    current = EmailApiConnection()
+                try:
+                    provider_config, custom_config, credentials = form.build_profile()
+                    name = form.cleaned_data["name"].strip()
+                    from_email = form.cleaned_data["from_email"]
+                    if instance and current.provider == "custom_https" and (
+                        active_id == current.pk
+                        and current.custom_config != custom_config
+                    ):
+                        raise ActiveCustomContractError
+                    contract_changed = not instance or (
+                        current.from_email != from_email or current.provider_config != provider_config
+                        or current.custom_config != custom_config or current.credentials != credentials
+                    )
+                    current.name = name
+                    current.from_email = from_email
+                    current.provider = form.cleaned_data["provider"]
+                    current.provider_config = provider_config
+                    current.custom_config = custom_config
+                    current.credentials = credentials
+                    if instance and contract_changed:
+                        current.config_revision += 1
+                    current.full_clean()
+                    current.save()
+                except ActiveCustomContractError:
+                    form.add_error(None, "Create an inactive copy to change an active Custom HTTPS contract.")
+                except ValidationError:
+                    form.add_error(None, "Could not save connection. Check the fields and credential requirements.")
+                else:
+                    audit(request, "instance.email_connection_update" if instance else "instance.email_connection_create",
+                          target_id=str(current.pk), provider=current.provider)
+                    messages.success(request, "Email connection saved. Select Use to activate it.")
+                    return redirect("system")
+        else:
+            raise Http404
+    return render(request, "core/email_connection_form.html", {
+        "form": form, "connection": instance, "copy_from": copy_from,
+        "preview": preview, "preview_config": preview_config,
+    })
+
+
+@sensitive_post_parameters()
+@sensitive_variables()
+def email_connection_action(request, connection_id=None, action=None):
+    """Explicit selection, test and delete operations on saved connections."""
+    from django.contrib import messages
+    from django.db import transaction
+    from django.http import Http404
+    from django.shortcuts import get_object_or_404, redirect
+    from django.utils import timezone
+
+    from apps.core.audit import audit
+    from apps.core.email_errors import EmailDeliveryError
+    from apps.core.email_providers import validate_api_profile
+    from apps.core.mail import resolve_delivery_connection, send_report_test_email, send_test_email
+    from apps.core.models import EmailApiConnection, InstanceConfig
+
+    gate = _require_email_operator(request)
+    if gate is not None:
+        return gate
+    if request.method != "POST":
+        raise Http404
+    if action == "use-smtp" and connection_id is None:
+        with transaction.atomic():
+            config = InstanceConfig.objects.select_for_update().get(pk=InstanceConfig.load().pk)
+            config.active_email_api_connection = None
+            config.save(update_fields=["active_email_api_connection"])
+        audit(request, "instance.email_connection_select", route="legacy")
+        messages.success(request, "SMTP / environment route selected.")
+        return redirect("system")
+    profile = get_object_or_404(EmailApiConnection, pk=connection_id)
+    if action == "use":
+        with transaction.atomic():
+            config = InstanceConfig.objects.select_for_update().get(pk=InstanceConfig.load().pk)
+            profile = get_object_or_404(EmailApiConnection.objects.select_for_update(), pk=profile.pk)
+            try:
+                validate_api_profile(profile.provider, profile.provider_config, profile.custom_config,
+                                     profile.credentials)
+            except Exception:  # noqa: BLE001 - validation details may contain operator input
+                messages.error(request, "Connection is invalid. Review its settings before selecting it.")
+                return redirect("system")
+            config.active_email_api_connection = profile
+            config.save(update_fields=["active_email_api_connection"])
+        audit(request, "instance.email_connection_select", target_id=str(profile.pk), provider=profile.provider)
+        messages.success(request, "Email connection selected for future mail.")
+    elif action == "delete":
+        with transaction.atomic():
+            config = InstanceConfig.objects.select_for_update().get(pk=InstanceConfig.load().pk)
+            profile = get_object_or_404(EmailApiConnection.objects.select_for_update(), pk=profile.pk)
+            if config.active_email_api_connection_id == profile.pk:
+                messages.error(request, "Select another delivery route before deleting this connection.")
+                return redirect("system")
+            audit(request, "instance.email_connection_delete", target_id=str(profile.pk), provider=profile.provider)
+            profile.delete()
+        messages.success(request, "Inactive email connection deleted.")
+    elif action == "test":
+        kind = request.POST.get("kind")
+        if kind not in {"simple", "report"}:
+            raise Http404
+        revision = profile.config_revision
+        outcome, category, status = "accepted", "", None
+        try:
+            connection = resolve_delivery_connection(api_profile=profile)
+            revision = connection.snapshot.config_revision
+            if kind == "report":
+                send_report_test_email(request.user.email, connection=connection)
+            else:
+                send_test_email(request.user.email, connection=connection)
+        except EmailDeliveryError as exc:
+            outcome, category, status = exc.outcome, exc.category, exc.status
+        except Exception:  # noqa: BLE001 - provider/SDK error text must not be exposed
+            outcome, category = "unconfirmed", "unexpected_error"
+        with transaction.atomic():
+            current = EmailApiConnection.objects.select_for_update().filter(pk=profile.pk).first()
+            if current:
+                results = dict(current.last_test_results or {})
+                previous = results.get(kind, {})
+                if previous.get("revision", 0) <= revision:
+                    results[kind] = {"revision": revision, "checked_at": timezone.now().isoformat(),
+                                     "outcome": outcome, "category": category, "status": status}
+                    current.last_test_results = results
+                    current.save(update_fields=["last_test_results"])
+        audit(request, "instance.email_connection_test", target_id=str(profile.pk),
+              provider=profile.provider, kind=kind, delivery_outcome=outcome,
+              outcome="success" if outcome == "accepted" else "failure")
+        if outcome == "accepted":
+            messages.success(request, f"{kind.title()} test accepted by the provider. Delivery is not guaranteed.")
+        else:
+            messages.error(request, f"{kind.title()} test: {outcome.replace('_', ' ')} ({category}).")
+    else:
+        raise Http404
+    return redirect("system")

@@ -74,7 +74,7 @@ class TestRegistryCompleteness:
         an accidental duplicate key silently dropping an entry. The size
         assertion makes additions and removals deliberate.
         """
-        assert len(ACTIONS) == 105
+        assert len(ACTIONS) == 110
         reserved = [name for name, spec in ACTIONS.items() if spec.reserved]
         assert len(reserved) == 0
 

@@ -105,9 +105,64 @@ fine, see [Alerts](/docs/latest/portal/alerts/).
 
 ## Operator notes
 
-Outgoing mail uses the instance's configured SMTP settings — see
-[Configuration reference](/docs/latest/install/configuration/) for where
-that's managed.
+Outgoing mail uses the instance's selected delivery route. An operator can
+save several named API connections under **System → Email delivery**, test each
+one, and explicitly select one for all instance mail. The original SMTP or
+`EMAIL_URL` route remains available. Only one route is active at a time.
+An active API error stops that send; it does not switch routes automatically.
+
+The built-in API choices are SendGrid, Amazon SES, Mailgun, Postmark, Brevo,
+Resend, Mailjet, MailerSend and Mailtrap Email Sending. Each asks for a verified
+sender address and its own service credentials. SES can use the deployment's
+AWS credential chain or separately stored access keys. SendGrid's integration
+uses its Web API v3 directly; its Anymail integration is currently unsupported.
+Brevo sends the PNG snapshot as a file attachment and labels it accordingly;
+other built-in services retain inline snapshot presentation when supported.
+Trellum caps the encoded request at 10 MB for the seven other managed HTTP
+presets, 25 MiB for SendGrid JSON, and 28 MiB for Amazon SES raw MIME. Custom
+HTTPS defaults to 10 MiB and can be set no higher than 25 MiB. These caps
+include attachment encoding; your provider or account may impose a lower
+limit. Managed HTTP and Custom HTTPS responses are read up to 64 KiB.
+
+**Custom HTTPS** is for a public HTTPS POST JSON mail API. Configure the exact
+endpoint, bearer/API-key-header/Basic authentication, optional encrypted extra
+headers, typed JSON field mapping, attachment mode and accepted response rules.
+The editor offers synthetic simple and report payload previews without sending
+or showing credentials. It does not support private-network endpoints,
+non-443 ports, OAuth refresh, signing, multipart upload or raw MIME. A saved
+active custom connection can rotate credentials or change its display name;
+create and test an inactive copy to change its endpoint or send contract.
+
+The editor starts with an object-shaped example. A gateway expecting address
+strings and a different content structure can instead use a mapping like:
+
+```json
+{
+  "from": {"$value": "message.from.formatted"},
+  "recipients": {"$each": "message.to", "$template": {"$value": "item.address"}},
+  "carbon": {"$value": "message.cc", "$omit_if_empty": true},
+  "blind": {"$value": "message.bcc", "$omit_if_empty": true},
+  "reply": {"$value": "message.reply_to", "$omit_if_empty": true},
+  "title": {"$value": "message.subject"},
+  "content": {
+    "plain": {"$value": "message.text"},
+    "rich": {"$value": "message.html"}
+  },
+  "files": {"$value": "message.attachments"}
+}
+```
+
+These keys are examples, not provider field names. Use your service's JSON
+contract and preview both message types before a test send. The typed mapping
+does not expand strings or run expressions.
+
+**Send simple test** and **Send report test** address only the current operator.
+The report test includes synthetic image and PDF content. A test result belongs
+to the shown configuration revision; an older result is marked stale. “Accepted”
+means the service accepted the request, not that the recipient received it.
+Changing routes does not resend previously failed messages. See the
+[Configuration reference](/docs/latest/install/configuration/) for the setup
+route and SMTP fallback.
 
 Rendering the inline snapshot needs a headless Chromium available via
 Playwright in the runtime image; if that's missing, delivery mail still

@@ -1,0 +1,67 @@
+<section aria-labelledby="email-connections-title">
+  <div class="page-head-row">
+    <h2 id="email-connections-title">Email delivery</h2>
+    <span class="spacer"></span>
+    <a class="ui-btn ghost" href="{% url 'email-connection-new' %}">Add API connection</a>
+  </div>
+  <p class="muted">One route sends all instance mail: invitations, password resets, reports and alerts. A test sends synthetic mail only to your account. Provider acceptance does not guarantee delivery.</p>
+  <div class="panel">
+    <div class="page-head-row">
+      <div><strong>SMTP / environment</strong>
+        {% if not active_email_connection_id %}<span class="ui-badge ok">Active</span>{% endif %}
+        <p class="ui-help">Configured route: {{ legacy_email_route }}.{% if legacy_email_route == 'Console only' %} Selecting it writes mail to the server log.{% endif %}</p>
+      </div>
+      {% if active_email_connection_id %}
+      <form method="post" action="{% url 'email-connection-use-smtp' %}">
+        {% csrf_token %}<button class="ui-btn ghost" type="submit">Use SMTP / environment</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  {% for connection in email_connections %}
+  <div class="panel">
+    <div class="page-head-row">
+      <div>
+        <strong>{{ connection.name }}</strong> <span class="ui-badge">{{ connection.get_provider_display }}</span>
+        {% if connection.pk == active_email_connection_id %}<span class="ui-badge ok">Active</span>{% endif %}
+        <p class="ui-help">Sender: {{ connection.from_email }} · Revision {{ connection.config_revision }}</p>
+        {% if connection.provider == 'brevo' %}<p class="ui-help">Report screenshots are attached as files; optional report PDFs remain attached.</p>{% endif %}
+      </div>
+      <span class="spacer"></span>
+      <a class="ui-btn ghost" href="{% url 'email-connection-edit' connection.pk %}">Edit</a>
+      {% if connection.provider == 'custom_https' %}
+      <a class="ui-btn ghost" href="{% url 'email-connection-new' %}?copy={{ connection.pk }}">Create inactive copy</a>
+      {% endif %}
+      {% if connection.pk != active_email_connection_id %}
+      <form method="post" action="{% url 'email-connection-action' connection.pk 'use' %}">
+        {% csrf_token %}<button class="ui-btn primary" type="submit">Use</button>
+      </form>
+      <form method="post" action="{% url 'email-connection-action' connection.pk 'delete' %}">
+        {% csrf_token %}<button class="ui-btn danger" type="submit">Delete</button>
+      </form>
+      {% endif %}
+    </div>
+    <div class="ui-form-actions">
+      <form method="post" action="{% url 'email-connection-action' connection.pk 'test' %}">
+        {% csrf_token %}<input type="hidden" name="kind" value="simple">
+        <button class="ui-btn ghost" type="submit">Send simple test to me</button>
+      </form>
+      <form method="post" action="{% url 'email-connection-action' connection.pk 'test' %}">
+        {% csrf_token %}<input type="hidden" name="kind" value="report">
+        <button class="ui-btn ghost" type="submit">Send report test to me</button>
+      </form>
+    </div>
+    <p class="ui-help">Simple test:
+      {% with result=connection.last_test_results.simple %}
+      {% if result %}{{ result.outcome|capfirst }} · {{ result.checked_at }}{% if result.revision != connection.config_revision %} <strong>Stale: configuration changed</strong>{% endif %}{% if result.status %} · HTTP {{ result.status }}{% endif %}
+      {% else %}Never tested{% endif %}{% endwith %}
+      <br>Report test:
+      {% with result=connection.last_test_results.report %}
+      {% if result %}{{ result.outcome|capfirst }} · {{ result.checked_at }}{% if result.revision != connection.config_revision %} <strong>Stale: configuration changed</strong>{% endif %}{% if result.status %} · HTTP {{ result.status }}{% endif %}
+      {% else %}Never tested{% endif %}{% endwith %}
+    </p>
+  </div>
+  {% empty %}
+  <p class="muted">No API connections saved yet.</p>
+  {% endfor %}
+</section>

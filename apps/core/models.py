@@ -2,7 +2,7 @@
 from django.conf import settings
 from django.db import models
 
-from apps.core.crypto import EncryptedTextField
+from apps.core.crypto import EncryptedJSONField, EncryptedTextField
 
 
 def _default_lockout_account_threshold() -> int:
@@ -46,6 +46,10 @@ class InstanceConfig(models.Model):
     email_host_user = models.CharField(max_length=255, blank=True, default="")
     email_host_password = EncryptedTextField(blank=True, default="")
     email_from = models.EmailField(blank=True, default="")
+    active_email_api_connection = models.ForeignKey(
+        "EmailApiConnection", null=True, blank=True, on_delete=models.PROTECT,
+        related_name="active_instances",
+    )
     max_upload_mb = models.PositiveIntegerField(
         default=512,
         help_text=(
@@ -141,6 +145,44 @@ class InstanceConfig(models.Model):
     @classmethod
     def load(cls) -> "InstanceConfig":
         return cls.objects.get_or_create(pk=1)[0]
+
+
+class EmailApiConnection(models.Model):
+    """Named, encrypted outbound API configuration for this installation."""
+
+    PROVIDER_CHOICES = (
+        ("sendgrid", "SendGrid"),
+        ("amazon_ses", "Amazon SES"),
+        ("mailgun", "Mailgun"),
+        ("postmark", "Postmark"),
+        ("brevo", "Brevo"),
+        ("resend", "Resend"),
+        ("mailjet", "Mailjet"),
+        ("mailersend", "MailerSend"),
+        ("mailtrap", "Mailtrap Email Sending"),
+        ("custom_https", "Custom HTTPS"),
+    )
+    name = models.CharField(max_length=100, unique=True)
+    provider = models.CharField(max_length=24, choices=PROVIDER_CHOICES)
+    credentials = EncryptedJSONField(default=dict, blank=True)
+    provider_config = models.JSONField(default=dict, blank=True)
+    custom_config = models.JSONField(default=dict, blank=True)
+    from_email = models.EmailField()
+    config_revision = models.PositiveIntegerField(default=1)
+    last_test_results = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def clean(self):
+        super().clean()
+        from apps.core.email_providers import validate_api_profile
+
+        validate_api_profile(
+            self.provider, self.provider_config, self.custom_config, self.credentials,
+        )
+
+    def __str__(self):
+        return self.name
 
 
 class OpsState(models.Model):

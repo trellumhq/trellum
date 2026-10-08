@@ -68,3 +68,39 @@ def test_wrong_key_raises():
     with override_settings(SECRET_ENCRYPTION_KEY=key_b):
         with pytest.raises(ImproperlyConfigured):
             crypto.decrypt_str(stored)
+
+
+@pytest.mark.django_db
+def test_api_credentials_rotate_with_all_encrypted_fields(settings):
+    from django.core.management import call_command
+    from django.db import connection
+
+    from apps.core.models import EmailApiConnection
+
+    old_key = settings.SECRET_ENCRYPTION_KEY
+    new_key = Fernet.generate_key().decode()
+    profiles = [
+        EmailApiConnection.objects.create(
+            name="ses", provider="amazon_ses", from_email="from@example.test",
+            provider_config={"region": "eu-west-1", "credential_source": "access_keys"},
+            credentials={"aws_access_key_id": "id", "aws_secret_access_key": "secret", "aws_session_token": "session"},
+        ),
+        EmailApiConnection.objects.create(
+            name="custom", provider="custom_https", from_email="from@example.test",
+            credentials={"token": "token", "headers": {"X-Test": "extra"}},
+        ),
+    ]
+    assert any(model is EmailApiConnection and "credentials" in names
+               for model, names in crypto.encrypted_field_targets())
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT credentials FROM core_emailapiconnection ORDER BY id")
+        before = [row[0] for row in cursor.fetchall()]
+    with override_settings(SECRET_ENCRYPTION_KEY=f"{new_key},{old_key}"):
+        call_command("rotate_encryption", verbosity=0)
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT credentials FROM core_emailapiconnection ORDER BY id")
+        after = [row[0] for row in cursor.fetchall()]
+    assert all(a.startswith("enc$1$") and a != b for a, b in zip(after, before))
+    with override_settings(SECRET_ENCRYPTION_KEY=new_key):
+        assert EmailApiConnection.objects.get(pk=profiles[0].pk).credentials["aws_session_token"] == "session"
+        assert EmailApiConnection.objects.get(pk=profiles[1].pk).credentials["headers"] == {"X-Test": "extra"}

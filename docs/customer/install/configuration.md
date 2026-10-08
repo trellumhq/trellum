@@ -375,12 +375,26 @@ See [Logs & monitoring](/docs/latest/operations/logs-and-monitoring/).
 
 ## Settings that live in the UI instead
 
-Instance name, the public URL used for outbound links, and SMTP are managed on
-the operator `/system` page and take effect without a restart — no file edit,
-no downtime.
+Instance name, the public URL used for outbound links, SMTP, and API email
+connections are managed on the operator `/system` page and take effect without
+a restart. You can save more than one API connection, including multiple
+accounts with the same provider, then choose **Use** on one. Creating or testing
+a connection does not make it active. **Use SMTP / environment** restores the
+existing route: database SMTP if configured, then `EMAIL_URL`, then console
+output. The page identifies when that choice would produce console output.
 
-Secrets, `DATABASE_URL`, `ALLOWED_HOSTS` and `PORTAL_BASE_URL` stay in `.env`
-because they are read at startup, before the database is reachable.
+For an API connection, supply a verified sender address and the credentials
+required by its preset. A blank secret on edit keeps the stored value; optional
+session tokens and custom headers have explicit removal controls. Provider
+selection cannot be changed on an existing connection. Select another route
+before deleting an active one. The simple and report tests send only to the
+operator who presses the button; a service acceptance response is not proof of
+recipient delivery. [Email delivery](/docs/latest/portal/email-delivery/)
+describes the preset choices and Custom HTTPS editor.
+
+Startup secrets, `DATABASE_URL`, `ALLOWED_HOSTS` and `PORTAL_BASE_URL` stay in
+`.env` because they are read before the database is reachable. API service
+credentials entered on System are encrypted in the database.
 `PORTAL_BASE_URL` is also what cookie security keys off, so if you change the
 hostname, change it in both places.
 

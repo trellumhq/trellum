@@ -8,6 +8,7 @@ from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.utils import timezone
+from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_POST
 
 from apps.core import roles
@@ -450,6 +451,7 @@ def setup_account_view(request):
     )
 
 
+@sensitive_post_parameters()
 def setup_settings_view(request):
     """Step 5 — instance settings. Entirely optional; Skip jumps to Done."""
     gate = _post_commit_gate(request)

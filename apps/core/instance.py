@@ -38,21 +38,18 @@ def instance_name() -> str:
 
 
 def mail_is_configured() -> bool:
-    """True when outbound mail will actually leave the building.
-
-    Either the operator filled in SMTP in the portal, or ``EMAIL_URL`` was set
-    in the environment. When neither is true, mail goes to the container log
-    and the UI must keep offering copyable links instead.
-
-    Deliberately not a test of ``settings.EMAIL_HOST``: Django defaults that to
-    ``"localhost"``, so an unconfigured instance would claim it could send mail.
-    """
+    """Whether a usable route is selected; never contacts the provider."""
     try:
-        if config().email_host:
-            return True
-    except Exception:  # noqa: BLE001
-        pass
-    return bool(getattr(settings, "EMAIL_URL_CONFIGURED", False))
+        from apps.core.email_providers import validate_api_profile
+
+        row = config()
+        profile = row.active_email_api_connection
+        if profile is not None:
+            validate_api_profile(profile.provider, profile.provider_config, profile.custom_config, profile.credentials)
+            return bool(profile.from_email)
+        return bool(row.email_host or getattr(settings, "EMAIL_URL_CONFIGURED", False))
+    except Exception:  # Database failure cannot prove the API route is inactive.
+        return False
 
 
 def max_upload_bytes() -> int:

@@ -339,6 +339,13 @@ urlpatterns = [
         name="org-datasource-download",
     ),
     path("system", core_views.system_page, name="system"),
+    path("system/email-connections/new", core_views.email_connection_editor, name="email-connection-new"),
+    path("system/email-connections/<int:connection_id>", core_views.email_connection_editor,
+         name="email-connection-edit"),
+    path("system/email-connections/use-smtp", core_views.email_connection_action,
+         {"action": "use-smtp"}, name="email-connection-use-smtp"),
+    path("system/email-connections/<int:connection_id>/<str:action>", core_views.email_connection_action,
+         name="email-connection-action"),
     path("api/system/health", core_views.system_health, name="system-health"),
     # Cross-organization operator console (404s for non-operators).
     path("operator/", include("apps.operator.urls")),

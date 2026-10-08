@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}{% if connection %}Edit{% else %}Add{% endif %} email connection — trellum{% endblock %}
+{% block content %}
+<header class="page-head-row">
+  <div><div class="ui-label page-kicker">Operator · Email delivery</div>
+    <h1>{% if connection %}Edit {{ connection.name }}{% else %}Add API connection{% endif %}</h1></div>
+  <span class="spacer"></span><a class="ui-btn ghost" href="{% url 'system' %}">Back to System</a>
+</header>
+<p class="muted">Save a connection before selecting it for instance mail. Secrets are write-only.{% if copy_from %} Enter fresh credentials and header values for this copy.{% elif connection %} Leave a secret blank to keep its current value.{% else %} Enter the credentials required by the provider.{% endif %} Provider tests send synthetic mail only to your own address.</p>
+<div class="panel">
+<form method="post" id="email-connection-form" novalidate>
+  {% csrf_token %}
+  {{ form.non_field_errors }}
+  {% if connection %}<input type="hidden" name="provider" value="{{ connection.provider }}">{% endif %}
+  <div class="ui-form-grid">
+    <div class="ui-field"><label for="{{ form.name.id_for_label }}">Connection name</label>{{ form.name }}{{ form.name.errors }}</div>
+    <div class="ui-field"><label for="{{ form.provider.id_for_label }}">Provider</label>{{ form.provider }}{{ form.provider.errors }}</div>
+    <div class="ui-field"><label for="{{ form.from_email.id_for_label }}">Verified sender address</label>{{ form.from_email }}{{ form.from_email.errors }}</div>
+  </div>
+  {% if connection %}<p class="ui-help">To change provider, add a new connection. Renaming does not reset test results.</p>{% endif %}
+  <p class="ui-help" data-email-providers="brevo" hidden>Brevo sends report screenshots as file attachments, with the optional report PDF alongside them. The message labels the screenshot as attached.</p>
+  <p class="ui-help" data-email-providers="amazon_ses" hidden>Verify the sender in the selected AWS region. SES sandbox accounts can send only to verified recipients until production access is granted in that region.</p>
+  <p class="ui-help" data-email-providers="mailtrap" hidden>Use a Mailtrap Email Sending token. This route uses transactional sending, not Sandbox or bulk sending.</p>
+  <div data-email-providers="sendgrid mailgun amazon_ses" hidden>
+    <h2>Region and sending domain</h2>
+    <p class="ui-help" data-email-providers="sendgrid">SendGrid Global or EU. EU is for a configured EU regional subuser.</p>
+    <p class="ui-help" data-email-providers="mailgun">Mailgun US or EU.</p>
+    <div class="ui-form-grid">
+      <div class="ui-field"><label for="{{ form.region.id_for_label }}">Region</label>{{ form.region }}{{ form.region.errors }}<span class="ui-help">SendGrid: global/eu · Mailgun: us/eu · SES: supported AWS region, such as eu-west-1.</span></div>
+      <div class="ui-field" data-email-providers="mailgun"><label for="{{ form.sender_domain.id_for_label }}">Sending domain</label>{{ form.sender_domain }}{{ form.sender_domain.errors }}</div>
+      <div class="ui-field" data-email-providers="amazon_ses"><label for="{{ form.credential_source.id_for_label }}">AWS credential source</label>{{ form.credential_source }}{{ form.credential_source.errors }}<span class="ui-help">Deployment uses the server's AWS credential chain. Access keys are stored encrypted here.</span></div>
+    </div>
+  </div>
+  <div class="ui-field" data-email-providers="postmark" hidden><label for="{{ form.message_stream.id_for_label }}">Transactional message stream (optional)</label>{{ form.message_stream }}{{ form.message_stream.errors }}</div>
+
+  <h2 data-email-providers="sendgrid amazon_ses mailgun postmark brevo resend mailjet mailersend mailtrap" data-credential-source="access_keys" hidden>Service credentials</h2>
+  <div class="ui-form-grid">
+    <div class="ui-field" data-email-providers="sendgrid mailgun brevo resend mailjet custom_https" data-auth-types="api_key_header" hidden><label for="{{ form.api_key.id_for_label }}">API key</label>{{ form.api_key }}{{ form.api_key.errors }}</div>
+    <div class="ui-field" data-email-providers="mailjet" hidden><label for="{{ form.secret_key.id_for_label }}">Secret key</label>{{ form.secret_key }}{{ form.secret_key.errors }}</div>
+    <div class="ui-field" data-email-providers="postmark" hidden><label for="{{ form.server_token.id_for_label }}">Server API token</label>{{ form.server_token }}{{ form.server_token.errors }}</div>
+    <div class="ui-field" data-email-providers="mailersend mailtrap" hidden><label for="{{ form.api_token.id_for_label }}">API token</label>{{ form.api_token }}{{ form.api_token.errors }}</div>
+    <div class="ui-field" data-email-providers="amazon_ses" data-credential-source="access_keys" hidden><label for="{{ form.aws_access_key_id.id_for_label }}">AWS access key ID</label>{{ form.aws_access_key_id }}{{ form.aws_access_key_id.errors }}</div>
+    <div class="ui-field" data-email-providers="amazon_ses" data-credential-source="access_keys" hidden><label for="{{ form.aws_secret_access_key.id_for_label }}">AWS secret access key</label>{{ form.aws_secret_access_key }}{{ form.aws_secret_access_key.errors }}</div>
+    <div class="ui-field" data-email-providers="amazon_ses" data-credential-source="access_keys" hidden><label for="{{ form.aws_session_token.id_for_label }}">AWS session token (optional)</label>{{ form.aws_session_token }}{{ form.aws_session_token.errors }}<label class="ui-check-row">{{ form.clear_aws_session_token }} Remove saved session token</label></div>
+  </div>
+
+  <div data-email-providers="custom_https" hidden>
+    <h2>Custom HTTPS request</h2>
+    <p class="ui-help">Public HTTPS POST JSON on port 443. TLS verification, DNS checks and size limits apply to tests and live sends.</p>
+    <div class="ui-form-grid">
+      <div class="ui-field"><label for="{{ form.endpoint.id_for_label }}">Exact endpoint URL</label>{{ form.endpoint }}{{ form.endpoint.errors }}</div>
+      <div class="ui-field"><label for="{{ form.auth_type.id_for_label }}">Authentication</label>{{ form.auth_type }}{{ form.auth_type.errors }}</div>
+      <div class="ui-field" data-auth-types="api_key_header" hidden><label for="{{ form.auth_header_name.id_for_label }}">API key header name</label>{{ form.auth_header_name }}{{ form.auth_header_name.errors }}</div>
+      <div class="ui-field" data-auth-types="bearer" hidden><label for="{{ form.token.id_for_label }}">Bearer token</label>{{ form.token }}{{ form.token.errors }}</div>
+      <div class="ui-field" data-auth-types="basic" hidden><label for="{{ form.username.id_for_label }}">Basic username</label>{{ form.username }}{{ form.username.errors }}</div>
+      <div class="ui-field" data-auth-types="basic" hidden><label for="{{ form.password.id_for_label }}">Basic password</label>{{ form.password }}{{ form.password.errors }}</div>
+    </div>
+    <details {% if form.errors or connection.custom_config.header_names or copy_from.custom_config.header_names %}open{% endif %}>
+    <summary><strong>Extra headers (optional)</strong></summary>
+    <p class="ui-help">Values are encrypted. To remove a saved header, check Remove header. Blank values keep the saved value.</p>
+    {% for name, value, clear in form.header_rows %}
+    <div class="ui-form-grid">
+      <div class="ui-field"><label for="{{ name.id_for_label }}">Header {{ forloop.counter }} name</label>{{ name }}{{ name.errors }}</div>
+      <div class="ui-field"><label for="{{ value.id_for_label }}">Header {{ forloop.counter }} value</label>{{ value }}{{ value.errors }}<label class="ui-check-row">{{ clear }} Remove header</label></div>
+    </div>
+    {% endfor %}
+    </details>
+    <h3>JSON payload mapping</h3>
+    <p class="ui-help">Use typed bindings such as <code>{"$value":"message.subject"}</code> and collection bindings such as <code>{"$each":"message.to","$template":{"email":{"$value":"item.address"}}}</code>. Literal text is never executed.</p>
+    <div class="ui-form-grid">
+      <div class="ui-field"><label for="email-mapping-field">Insert binding at cursor</label>
+        <select id="email-mapping-field"><option value="">Choose a field</option>
+          <option value="message.from.address">Sender address</option><option value="message.to">To recipients</option>
+          <option value="message.cc">Cc recipients</option><option value="message.bcc">Bcc recipients</option>
+          <option value="message.reply_to">Reply-To recipients</option><option value="message.subject">Subject</option>
+          <option value="message.text">Text</option><option value="message.html">HTML</option>
+          <option value="message.attachments">Attachments</option>
+        </select></div>
+      <div class="ui-field"><label for="{{ form.snapshot_mode.id_for_label }}">Report snapshot presentation</label>{{ form.snapshot_mode }}{{ form.snapshot_mode.errors }}</div>
+    </div>
+    <div class="ui-field"><label for="{{ form.payload.id_for_label }}">Payload mapping JSON</label>{{ form.payload }}{{ form.payload.errors }}</div>
+    <h3>Accepted response</h3>
+    <div class="ui-form-grid">
+      <div class="ui-field"><label for="{{ form.accepted_statuses.id_for_label }}">Allowed 2xx HTTP statuses</label>{{ form.accepted_statuses }}{{ form.accepted_statuses.errors }}</div>
+      <div class="ui-field"><label for="{{ form.max_request_bytes.id_for_label }}">Maximum request bytes</label>{{ form.max_request_bytes }}{{ form.max_request_bytes.errors }}</div>
+      <div class="ui-field"><label for="{{ form.response_condition_pointer.id_for_label }}">JSON pointer for required body condition (optional)</label>{{ form.response_condition_pointer }}{{ form.response_condition_pointer.errors }}</div>
+      <div class="ui-field"><label for="{{ form.response_condition_equals.id_for_label }}">Expected JSON scalar (optional)</label>{{ form.response_condition_equals }}{{ form.response_condition_equals.errors }}</div>
+      <div class="ui-field"><label for="{{ form.message_id_pointer.id_for_label }}">Message ID JSON pointer (optional)</label>{{ form.message_id_pointer }}{{ form.message_id_pointer.errors }}</div>
+    </div>
+    <div class="ui-form-actions">
+      <button class="ui-btn ghost" type="submit" name="action" value="preview" data-preview-kind="simple">Preview simple payload</button>
+      <button class="ui-btn ghost" type="submit" name="action" value="preview" data-preview-kind="report">Preview report payload</button>
+      <input type="hidden" id="preview-kind" name="kind" value="simple">
+    </div>
+    {% if preview %}
+    <h3>Preview · synthetic data</h3>
+    <p class="ui-help">POST {{ preview_config.endpoint }} · {{ preview_config.auth.type }} authentication.
+      {% for name in preview_config.header_names %}{{ name }}: [configured value hidden]{% if not forloop.last %}; {% endif %}{% endfor %}
+    </p>
+    <pre class="ui-code" style="overflow:auto;max-width:100%" role="status">{{ preview }}</pre>
+    {% endif %}
+  </div>
+  <div class="ui-form-actions"><button class="ui-btn primary" type="submit" name="action" value="save">Save connection</button></div>
+</form>
+</div>
+<script src="{% static 'email-connection-editor.js' %}" defer></script>
+{% endblock %}

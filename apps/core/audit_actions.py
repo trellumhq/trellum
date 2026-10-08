@@ -164,6 +164,11 @@ ACTIONS: dict[str, ActionSpec] = {
     # ── admin ───────────────────────────────────────────────────────────
     "instance.setup": _m(CATEGORY_ADMIN, "Instance set up"),
     "instance.settings_update": _m(CATEGORY_ADMIN, "Instance settings updated"),
+    "instance.email_connection_create": _m(CATEGORY_ADMIN, "Email connection created"),
+    "instance.email_connection_update": _m(CATEGORY_ADMIN, "Email connection updated"),
+    "instance.email_connection_delete": _m(CATEGORY_ADMIN, "Email connection deleted"),
+    "instance.email_connection_select": _m(CATEGORY_ADMIN, "Email delivery route selected"),
+    "instance.email_connection_test": _a(CATEGORY_ADMIN, "Email connection tested"),
     "org.create": _m(CATEGORY_ADMIN, "Organization created"),
     "org.appearance_set": _m(CATEGORY_ADMIN, "Organization appearance (default mode / lock) updated"),
     "org.retention_set": _m(CATEGORY_ADMIN, "Organization data retention windows updated"),

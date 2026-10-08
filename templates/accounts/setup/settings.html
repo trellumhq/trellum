@@ -31,7 +31,8 @@
       <h2>Outbound email</h2>
       <p class="ui-help">Needed for password resets and for mailing invitations.
         Without it, invitations still work — they show a copyable link — and
-        reset mails go to the container log.</p>
+        reset mails go to the container log. Save this step first, then add an
+        API connection from System if you prefer an email service.</p>
       <div class="ui-form-grid">
         <div class="ui-field">
           <label for="id_email_host">SMTP host</label>
@@ -64,6 +65,7 @@
         <a class="auth-alt-link" href="{% url 'setup-done' %}">Skip for now</a>
       </div>
     </form>
+    <p class="ui-help"><a href="{% url 'email-connection-new' %}">Set up an email API connection</a> after saving these settings.</p>
   </div>
 </div>
 {% endblock %}

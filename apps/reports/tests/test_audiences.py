@@ -253,6 +253,18 @@ def test_sample_delivery_checks_private_access_before_rendering(
     assert delivered == ([] if blocked else [org_admin])
 
 
+def test_private_transition_alerts_respect_report_access_gate(
+    private, member, grant_studio, settings,
+):
+    from apps.reports.notify import alert_recipients
+
+    grant_studio(member, private.studio, roles.DEVELOPER)
+    settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = True
+    assert member in alert_recipients(private, "failure")
+    settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = False
+    assert member not in alert_recipients(private, "failure")
+
+
 def test_bulk_permission_query_count_does_not_grow_per_user(
     private, org, make_user, make_group, attach_group, django_assert_num_queries,
 ):

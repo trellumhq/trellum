@@ -11,10 +11,12 @@ cadence) still carries an unsubscribe link."""
 import json
 import sys
 import types
+from datetime import timedelta
 
 import pytest
 from django.core import mail
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 from apps.core import roles
 from apps.orgs.models import PermissionGroupGrant
@@ -32,6 +34,24 @@ from apps.reports.notify import run_finished as notify_run_finished
 from apps.runner.models import Run
 
 pytestmark = pytest.mark.django_db
+
+
+def test_api_send_failure_log_excludes_recipient_and_report_content(monkeypatch, caplog, report_row, make_user):
+    from apps.core.email_errors import EmailDeliveryError
+    from apps.reports import notify
+
+    user = make_user("private-recipient@example.test")
+
+    def fail(*args, **kwargs):
+        raise EmailDeliveryError("http_rejected", outcome="rejected", status=401)
+
+    monkeypatch.setattr(notify, "_send_simple", fail)
+    notify._send_alert_mail("Private subject", "email/broken",
+                            {"error_excerpt": "private-report-content"}, report_row, user)
+    assert "private-recipient@example.test" not in caplog.text
+    assert "private-report-content" not in caplog.text
+    assert "Private subject" not in caplog.text
+    assert "http_rejected" in caplog.text
 
 
 @pytest.fixture
@@ -75,6 +95,12 @@ def prefix(org, studio_tree):
 
 
 def _make_run(report_row, status, **kwargs):
+    # Fast Windows fixture inserts can share a clock tick; production rows use
+    # created_at ordering, so make the synthetic order explicit.
+    if "created_at" not in kwargs:
+        previous = Run.objects.filter(report=report_row).order_by("-created_at").values_list("created_at", flat=True).first()
+        created_at = timezone.now()
+        kwargs["created_at"] = max(created_at, previous + timedelta(microseconds=1)) if previous else created_at
     return Run.objects.create(
         report=report_row, studio=report_row.studio, slug=report_row.slug, status=status, **kwargs
     )
