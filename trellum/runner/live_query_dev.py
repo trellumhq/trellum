@@ -241,17 +241,28 @@ def _run(ds_name: str, sql: str, params: dict) -> tuple[list, list, bool]:
     from trellum.data.connections import resolve_connection
     from trellum.data.live_query_guard import ROW_CAP, shape_rows
     from trellum.data.query import _sql_dialect, bind_params
+    from trellum.data.retry import run_with_retry
 
     conn = resolve_connection(ds_name, [ds_name] if ds_name else [])
     try:
         bound = bind_params(sql, params, dialect=_sql_dialect(conn))
-        cur = conn.cursor()
-        cur.execute(bound)
-        columns = [d[0] for d in (cur.description or [])]
-        fetchmany = getattr(cur, "fetchmany", None)
-        raw_rows = fetchmany(ROW_CAP + 1) if callable(fetchmany) else list(cur.fetchall())[: ROW_CAP + 1]
-        rows, truncated = shape_rows(raw_rows)
-        return columns, rows, truncated
+
+        def read(raw):
+            cur = raw.cursor()
+            try:
+                cur.execute(bound)
+                columns = [d[0] for d in (cur.description or [])]
+                fetchmany = getattr(cur, "fetchmany", None)
+                raw_rows = fetchmany(ROW_CAP + 1) if callable(fetchmany) else list(cur.fetchall())[: ROW_CAP + 1]
+                rows, truncated = shape_rows(raw_rows)
+                return columns, rows, truncated
+            finally:
+                try:
+                    cur.close()
+                except Exception:
+                    pass
+
+        return run_with_retry(conn, read, sql=bound)
     finally:
         try:
             conn.close()

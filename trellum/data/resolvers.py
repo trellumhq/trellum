@@ -113,6 +113,7 @@ _ENV_SUFFIXES: dict[str, str] = {
     "CLIENT_SECRET": "client_secret", "SITE_URL": "site_url",
     # File sources, and the plain-HTTP transport flag
     "PATH": "path", "SECURE": "secure",
+    "NEW_CONNECTION_PER_QUERY": "new_connection_per_query",
     # SSH tunnel to any host/port source (trellum.data.ssh_tunnel)
     "SSH_HOST": "ssh_host", "SSH_PORT": "ssh_port", "SSH_USER": "ssh_user",
     "SSH_KEY_PATH": "ssh_key_path", "SSH_PRIVATE_KEY": "ssh_private_key",
@@ -130,6 +131,19 @@ def _truthy(value: object) -> bool:
     if isinstance(value, bool):
         return value
     return str(value).strip().lower() in ("1", "true", "yes")
+
+
+def parse_new_connection_per_query(value: object) -> bool:
+    """Parse the lifecycle flag without echoing invalid configuration values."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (str, int)):
+        normalized = str(value).strip().lower()
+        if normalized in ("true", "1", "yes", "on"):
+            return True
+        if normalized in ("false", "0", "no", "off"):
+            return False
+    raise ValueError("new_connection_per_query must be a boolean (true/false, 1/0, yes/no, on/off)")
 
 
 class LocalEnvResolver:
@@ -179,6 +193,8 @@ class LocalEnvResolver:
 
         if "secure" in result:
             result["secure"] = _truthy(result["secure"])
+        if "new_connection_per_query" in result:
+            result["new_connection_per_query"] = parse_new_connection_per_query(result["new_connection_per_query"])
         for key in ("port", "ssh_port"):
             if key in result:
                 result[key] = int(result[key])
@@ -246,7 +262,13 @@ def resolve_credentials(source: dict) -> dict | None:
     """
     for _, resolver in _resolvers:
         if resolver.can_resolve(source):
-            return resolver.resolve(source)
+            result = dict(resolver.resolve(source))
+            option = "new_connection_per_query"
+            if option not in result and option in source:
+                result[option] = source[option]
+            if option in result:
+                result[option] = parse_new_connection_per_query(result[option])
+            return result
     return None
 
 

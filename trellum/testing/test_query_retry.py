@@ -70,10 +70,10 @@ def no_sleep(monkeypatch):
     monkeypatch.setattr(retry.time, "sleep", Mock())
 
 
-def managed(monkeypatch, *connections_or_errors):
+def managed(monkeypatch, *connections_or_errors, per_query=False):
     factory = Mock(side_effect=connections_or_errors)
     monkeypatch.setattr(drivers, "connect", factory)
-    return retry.connect_managed("postgres", {"password": "secret"}), factory
+    return retry.connect_managed("postgres", {"password": "secret", "new_connection_per_query": per_query}), factory
 
 
 @pytest.mark.parametrize("stage", ["execute", "fetch"])
@@ -110,7 +110,8 @@ def test_initial_open_retry_and_safe_logs(monkeypatch, caplog):
     assert "secret" not in repr(handle)
 
 
-def test_exact_vertica_fetch_eof_uses_fresh_connection(monkeypatch):
+@pytest.mark.parametrize("per_query", [False, True])
+def test_exact_vertica_fetch_eof_uses_fresh_connection(monkeypatch, per_query):
     try:
         from vertica_python.errors import ConnectionError as VerticaError
     except ImportError:
@@ -118,9 +119,10 @@ def test_exact_vertica_fetch_eof_uses_fresh_connection(monkeypatch):
     old, fresh = Connection(VerticaError("Connection closed by Vertica")), Connection()
     factory = Mock(side_effect=[old, fresh])
     monkeypatch.setattr(drivers, "connect", factory)
-    handle = retry.connect_managed("vertica", {})
+    handle = retry.connect_managed("vertica", {"new_connection_per_query": per_query})
     assert query.query_df(handle, "SELECT n FROM t", cache_ttl=0).n.tolist() == [1, 2]
     assert old.closes == 1 and old.cursors[0].closes == 1 and factory.call_count == 2
+    assert fresh.closes == int(per_query)
 
 
 @pytest.mark.parametrize("error", [PermissionError("permission denied"), ValueError("bad configuration"),
@@ -133,10 +135,11 @@ def test_initial_permanent_failure_or_cancellation_is_not_retried(monkeypatch, e
     assert caught.value is error and factory.call_count == 1
 
 
-def test_connect_reconnect_share_one_budget_and_exhaustion_leaves_no_stale_connection(monkeypatch, tmp_path):
+@pytest.mark.parametrize("per_query", [False, True])
+def test_connect_reconnect_share_one_budget_and_exhaustion_leaves_no_stale_connection(monkeypatch, tmp_path, per_query):
     failed = Connection(ConnectionResetError())
     final = TimeoutError("secret")
-    handle, factory = managed(monkeypatch, failed, TimeoutError(), final, Connection())
+    handle, factory = managed(monkeypatch, failed, TimeoutError(), final, Connection(), per_query=per_query)
     monkeypatch.setattr(query, "_cache_dir", lambda: tmp_path)
     with pytest.raises(TimeoutError) as caught:
         query.query_df(handle, "SELECT n FROM t", cache_ttl=60)
@@ -152,13 +155,15 @@ def test_connect_reconnect_share_one_budget_and_exhaustion_leaves_no_stale_conne
 
 @pytest.mark.parametrize("error", [ValueError("bad SQL"), PermissionError("permission denied"),
                                   MemoryError(), KeyboardInterrupt(), SystemExit()])
-def test_permanent_or_cancelled_queries_never_reconnect(monkeypatch, error):
+@pytest.mark.parametrize("per_query", [False, True])
+def test_permanent_or_cancelled_queries_never_reconnect(monkeypatch, error, per_query):
     raw = Connection(error)
-    handle, factory = managed(monkeypatch, raw)
+    handle, factory = managed(monkeypatch, raw, per_query=per_query)
     with pytest.raises(type(error)) as caught:
         query.query_df(handle, "SELECT n FROM t", cache_ttl=0)
     assert caught.value is error and factory.call_count == 1
     assert raw.cursors[0].closes == 1
+    assert raw.closes == int(per_query)
 
 
 @pytest.mark.parametrize("sql", [
@@ -170,8 +175,9 @@ def test_permanent_or_cancelled_queries_never_reconnect(monkeypatch, error):
     "SELECT n FROM t /*! INTO OUTFILE '/tmp/export' */",
     "SELECT n FROM t /*M! INTO OUTFILE '/tmp/export' */",
 ])
-def test_stateful_and_unsupported_sql_is_not_replayed(monkeypatch, sql):
-    handle, factory = managed(monkeypatch, Connection(ConnectionResetError()))
+@pytest.mark.parametrize("per_query", [False, True])
+def test_stateful_and_unsupported_sql_is_not_replayed(monkeypatch, sql, per_query):
+    handle, factory = managed(monkeypatch, Connection(ConnectionResetError()), per_query=per_query)
     with pytest.raises(ConnectionResetError):
         query.query_df(handle, sql, cache_ttl=0)
     assert factory.call_count == 1
@@ -314,7 +320,8 @@ def test_native_factory_reopens_ssh_tunnel_and_driver(monkeypatch):
 
 @pytest.mark.parametrize("module,method", [("google.cloud.bigquery.client", "query"),
                                            ("clickhouse_connect.driver.client", "query_df")])
-def test_managed_native_clients_still_dispatch_and_retry(monkeypatch, module, method):
+@pytest.mark.parametrize("per_query", [False, True])
+def test_managed_native_clients_still_dispatch_and_retry(monkeypatch, module, method, per_query):
     client_type = type("Client", (), {"__module__": module})
     clients = [client_type(), client_type()]
     expected = pd.DataFrame({"n": [1]})
@@ -322,13 +329,15 @@ def test_managed_native_clients_still_dispatch_and_retry(monkeypatch, module, me
         client.close = Mock()
         response = Mock(to_dataframe=Mock(return_value=expected)) if method == "query" else expected
         setattr(client, method, Mock(side_effect=ConnectionResetError()) if index == 0 else Mock(return_value=response))
-    handle, factory = managed(monkeypatch, *clients)
+    handle, factory = managed(monkeypatch, *clients, per_query=per_query)
     pd.testing.assert_frame_equal(query.query_df(handle, "SELECT n FROM t", cache_ttl=0), expected)
     assert factory.call_count == 2
     clients[0].close.assert_called_once()
+    assert clients[1].close.call_count == int(per_query)
 
 
-def test_snowflake_fetch_pandas_error_closes_cursor_and_retries(monkeypatch):
+@pytest.mark.parametrize("per_query", [False, True])
+def test_snowflake_fetch_pandas_error_closes_cursor_and_retries(monkeypatch, per_query):
     connection_type = type("Connection", (Connection,), {"__module__": "snowflake.connector.connection"})
     clients = [connection_type(), connection_type()]
     expected = pd.DataFrame({"n": [1]})
@@ -337,10 +346,11 @@ def test_snowflake_fetch_pandas_error_closes_cursor_and_retries(monkeypatch):
     cursors[1].fetch_pandas_all = Mock(return_value=expected)
     for client, cursor in zip(clients, cursors):
         client.cursor = Mock(return_value=cursor)
-    handle, factory = managed(monkeypatch, *clients)
+    handle, factory = managed(monkeypatch, *clients, per_query=per_query)
     pd.testing.assert_frame_equal(query.query_df(handle, "SELECT n FROM t", cache_ttl=0), expected)
     assert [cursor.closes for cursor in cursors] == [1, 1]
     assert factory.call_count == 2
+    assert clients[1].closes == int(per_query)
 
 
 def test_concurrent_queries_cannot_use_connection_during_replacement(monkeypatch):
@@ -368,3 +378,179 @@ def test_concurrent_queries_cannot_use_connection_during_replacement(monkeypatch
         release.set()
         assert first.result(2) is fresh and second.result(2) is fresh
     assert failed.closes == 1 and factory.call_count == 2
+
+
+def test_per_query_lazy_queries_close_distinct_connections_and_cache_opens_none(monkeypatch, tmp_path):
+    first, second = Connection(), Connection()
+    handle, factory = managed(monkeypatch, first, second, per_query=True)
+    assert factory.call_count == 0 and not handle.closed
+    monkeypatch.setattr(query, "_cache_dir", lambda: tmp_path)
+    query.enable_cache()
+    for sql in ("SELECT n FROM t", "SELECT n FROM t", "SELECT n FROM t WHERE n > 0"):
+        assert query.query_df(handle, sql, cache_ttl=60).n.tolist() == [1, 2]
+    assert factory.call_count == 2
+    assert first.closes == second.closes == 1
+    assert first.cursors[0].closes == second.cursors[0].closes == 1
+    assert factory.call_args.args == ("postgres", {"password": "secret"})
+    handle.close()
+    handle.close()
+    assert handle.closed and handle._factory is None
+    with pytest.raises(RuntimeError, match="explicitly closed"):
+        query.query_df(handle, "SELECT n FROM t", cache_ttl=60)
+    assert factory.call_count == 2
+
+
+@pytest.mark.parametrize("stage", ["execute", "fetch"])
+def test_per_query_failure_recovers_then_next_query_opens_again(monkeypatch, stage):
+    error = ConnectionResetError("secret SQL")
+    failed = Connection(error if stage == "fetch" else None,
+                        execute_error=error if stage == "execute" else None)
+    fresh, next_query = Connection(), Connection()
+    handle, factory = managed(monkeypatch, failed, fresh, next_query, per_query=True)
+    for _ in range(2):
+        assert query.query_df(handle, "SELECT n FROM t", cache_ttl=0).n.tolist() == [1, 2]
+    assert factory.call_count == 3
+    assert [raw.closes for raw in (failed, fresh, next_query)] == [1, 1, 1]
+    assert [raw.cursors[0].closes for raw in (failed, fresh, next_query)] == [1, 1, 1]
+
+
+@pytest.mark.parametrize("error", [PermissionError("denied"), KeyboardInterrupt(), SystemExit()])
+def test_per_query_open_failure_is_lazy_not_retried_and_next_query_can_open(monkeypatch, error):
+    raw = Connection()
+    handle, factory = managed(monkeypatch, error, raw, per_query=True)
+    assert factory.call_count == 0
+    with pytest.raises(type(error)) as caught:
+        query.query_df(handle, "SELECT n FROM t", cache_ttl=0)
+    assert caught.value is error and factory.call_count == 1
+    assert query.query_df(handle, "SELECT n FROM t", cache_ttl=0).n.tolist() == [1, 2]
+    assert raw.closes == 1
+
+
+@pytest.mark.parametrize("error", [None, ConnectionResetError()])
+def test_per_query_unsupported_sql_cannot_poison_independent_read_retry(monkeypatch, error):
+    session, failed, fresh = Connection(error), Connection(ConnectionResetError()), Connection()
+    handle, factory = managed(monkeypatch, session, failed, fresh, per_query=True)
+    if error:
+        with pytest.raises(ConnectionResetError):
+            query.query_df(handle, "SET search_path = reporting", cache_ttl=0)
+    else:
+        query.query_df(handle, "SET search_path = reporting", cache_ttl=0)
+    assert factory.call_count == 1 and session.closes == 1
+    assert query.query_df(handle, "SELECT n FROM t", cache_ttl=0).n.tolist() == [1, 2]
+    assert factory.call_count == 3 and failed.closes == fresh.closes == 1
+
+
+@pytest.mark.parametrize("access", [lambda c: c.cursor(), lambda c: c.commit(), lambda c: c.rollback(),
+                                     lambda c: c.autocommit, lambda c: setattr(c, "autocommit", False)])
+def test_per_query_rejects_direct_session_access_without_opening(monkeypatch, access):
+    handle, factory = managed(monkeypatch, per_query=True)
+    with pytest.raises(RuntimeError, match="use framework query helpers or disable"):
+        access(handle)
+    assert factory.call_count == 0 and "secret" not in repr(handle)
+
+
+@pytest.mark.parametrize("error", [None, ValueError("bad query")])
+def test_per_query_context_manager_owns_only_handle_lifetime(monkeypatch, error):
+    raw = Connection(error)
+    raw.__enter__ = Mock(side_effect=AssertionError("native transaction entered"))
+    handle, factory = managed(monkeypatch, raw, per_query=True)
+    try:
+        with handle as entered:
+            assert entered is handle and factory.call_count == 0
+            query.query_df(entered, "SELECT n FROM t", cache_ttl=0)
+    except ValueError as caught:
+        assert caught is error
+    assert handle.closed and handle._factory is None and raw.closes == 1
+    raw.__enter__.assert_not_called()
+
+
+def test_per_query_concurrent_queries_are_serialized_and_never_share_sessions(monkeypatch):
+    first_raw, second_raw = Connection(), Connection()
+    handle, factory = managed(monkeypatch, first_raw, second_raw, per_query=True)
+    entered, release, second_started, second_entered = (threading.Event() for _ in range(4))
+
+    def first_operation(raw):
+        entered.set()
+        assert release.wait(2)
+        return raw
+
+    def second_query():
+        second_started.set()
+        return retry.run_with_retry(handle, lambda raw: (second_entered.set(), raw)[1], sql="SELECT 1")
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(retry.run_with_retry, handle, first_operation, sql="SELECT 1")
+        assert entered.wait(2)
+        second = pool.submit(second_query)
+        assert second_started.wait(2)
+        assert not second_entered.wait(0.05) and factory.call_count == 1
+        release.set()
+        assert first.result(2) is first_raw and second.result(2) is second_raw
+    assert first_raw.closes == second_raw.closes == 1 and factory.call_count == 2
+
+
+@pytest.mark.parametrize("failure", [None, ConnectionResetError(), KeyboardInterrupt()])
+def test_per_query_native_ssh_factory_cleans_every_connection_and_tunnel(monkeypatch, failure):
+    tunnels = [Mock(local_port=1001), Mock(local_port=1002)]
+    tunnel_factory = Mock(side_effect=tunnels)
+    monkeypatch.setattr("trellum.data.ssh_tunnel.SSHTunnel", tunnel_factory)
+    raws = [Connection(failure), Connection()]
+    driver = Mock(default_port=5433)
+    driver.connect.side_effect = raws
+    monkeypatch.setattr(drivers, "get_driver", lambda name: driver)
+    handle = retry.connect_managed("vertica", {
+        "host": "db", "ssh_host": "bastion", "new_connection_per_query": True,
+    })
+    assert tunnel_factory.call_count == driver.connect.call_count == 0
+    if isinstance(failure, BaseException) and not isinstance(failure, Exception):
+        with pytest.raises(type(failure)):
+            query.query_df(handle, "SELECT n FROM t", cache_ttl=0)
+        count = 1
+    else:
+        query.query_df(handle, "SELECT n FROM t", cache_ttl=0)
+        count = 2 if failure else 1
+    for index in range(count):
+        assert raws[index].closes == 1
+        tunnels[index].close.assert_called_once()
+        assert driver.connect.call_args_list[index].args[0] == {"host": "127.0.0.1", "port": 1001 + index}
+
+
+@pytest.mark.parametrize("source,expected", [
+    ("bigquery", "SELECT 'O\\'Brien'"), ("databricks", "SELECT 'O\\'Brien'"),
+    ("mysql", "SELECT 'O''Brien'"), ("sqlserver", "SELECT 'O''Brien'"),
+])
+def test_per_query_parameter_dialect_needs_no_probe(monkeypatch, source, expected):
+    raw = Connection()
+    factory = Mock(return_value=raw)
+    monkeypatch.setattr(drivers, "connect", factory)
+    handle = retry.connect_managed(source, {"new_connection_per_query": True})
+    assert factory.call_count == 0
+    query.query_df(handle, "SELECT :name", {"name": "O'Brien"}, cache_ttl=0)
+    assert raw.cursors[0].sql == expected and raw.closes == 1
+
+
+@pytest.mark.parametrize("error", [None, PermissionError("denied"), KeyboardInterrupt()])
+def test_per_query_cleanup_failure_never_masks_query_outcome(monkeypatch, error):
+    raw = Connection(error)
+    raw.close = Mock(side_effect=ValueError("cleanup failed"))
+    handle, factory = managed(monkeypatch, raw, per_query=True)
+    if error:
+        with pytest.raises(type(error)) as caught:
+            query.query_df(handle, "SELECT n FROM t", cache_ttl=0)
+        assert caught.value is error
+    else:
+        assert query.query_df(handle, "SELECT n FROM t", cache_ttl=0).n.tolist() == [1, 2]
+    assert factory.call_count == 1 and handle._inner is None
+    raw.close.assert_called_once()
+
+
+def test_per_query_close_before_first_query_is_terminal_and_releases_credentials(monkeypatch):
+    handle, factory = managed(monkeypatch, per_query=True)
+    handle.close()
+    handle.close()
+    assert handle.closed and handle._factory is None
+    with pytest.raises(RuntimeError, match="explicitly closed"):
+        query.query_df(handle, "SELECT 1", cache_ttl=0)
+    with pytest.raises(RuntimeError, match="explicitly closed"):
+        handle.__enter__()
+    factory.assert_not_called()

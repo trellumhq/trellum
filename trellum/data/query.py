@@ -149,6 +149,9 @@ def query_df(
     Returns:
         pandas DataFrame with query results.
     """
+    if isinstance(conn, ManagedConnection) and conn._new_connection_per_query:
+        with conn._lock:
+            conn._ensure_open()
     if params:
         sql = bind_params(sql, params, dialect=_sql_dialect(conn))
 

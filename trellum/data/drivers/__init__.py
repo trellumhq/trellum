@@ -73,6 +73,9 @@ def connect(type_name: str, conn_info: dict) -> Any:
     closes both. The driver never sees ``ssh_*`` keys; it gets ``127.0.0.1``
     and the tunnel's local port as ``host``/``port``.
     """
+    if "new_connection_per_query" in conn_info:
+        conn_info = dict(conn_info)
+        conn_info.pop("new_connection_per_query")
     driver = get_driver(type_name)
     if not conn_info.get("ssh_host"):
         return driver.connect(conn_info)

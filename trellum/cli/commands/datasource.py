@@ -193,9 +193,15 @@ def _test_connection(name: str, password: str | None) -> int:
     """
     from trellum.data.connections import resolve_connection
     from trellum.data.resolvers import _SOURCE_CONN_KEYS
+    from trellum.data.retry import ManagedConnection, run_with_retry
 
     try:
         conn = resolve_connection(name, [name])
+        if isinstance(conn, ManagedConnection) and conn._new_connection_per_query:
+            try:
+                run_with_retry(conn, lambda raw: None, sql="SELECT 1")
+            finally:
+                conn.close()
     except Exception as exc:  # noqa: BLE001 -- driver errors are not a fixed type
         detail = _scrub(str(exc), password)
         if isinstance(exc, KeyError) and exc.args and exc.args[0] in _SOURCE_CONN_KEYS:
