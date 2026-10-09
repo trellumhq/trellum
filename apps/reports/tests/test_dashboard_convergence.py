@@ -96,5 +96,5 @@ def test_drawers_are_labelled_dialogs():
         encoding="utf-8"
     )
     assert html.count('role="dialog"') == 3
-    for label in ("Error log", "Report details", "Server log"):
+    for label in ("Error log", "Report details", "Build activity"):
         assert f'aria-label="{label}"' in html

@@ -13,7 +13,7 @@
 </header>
 
 <div class="panel formrow">
-  <form method="post" data-settings-form>
+  <form id="orgRetentionForm" method="post" data-settings-form data-settings-save>
     {% csrf_token %}
     <label for="retention-built-days">Built report data</label>
     <input id="retention-built-days" type="number" min="0" max="32767" step="1"
@@ -32,7 +32,7 @@
         built data to be removed on a schedule.
       {% endif %}
     </span>
-    <p class="muted" style="margin:4px 0 14px">
+    <p class="muted" style="margin:4px 0 14px" data-settings-refresh="retention-built">
       {% if resolved_built %}
         Currently expires built output after <strong>{{ resolved_built }} day{{ resolved_built|pluralize }}</strong>
         — <span class="ui-badge {% if built_inherited %}muted{% else %}accent{% endif %}">
@@ -54,7 +54,7 @@
       organization may keep uploads longer than the instance default, and <strong>0 here really
       does mean “keep forever.”</strong>
     </span>
-    <p class="muted" style="margin:4px 0 14px">
+    <p class="muted" style="margin:4px 0 14px" data-settings-refresh="retention-upload">
       Currently sweeps an abandoned upload after <strong>{{ resolved_upload }} day{{ resolved_upload|pluralize }}</strong>
       — <span class="ui-badge {% if upload_inherited %}muted{% else %}accent{% endif %}">
         {% if upload_inherited %}using the instance default{% else %}set for this organization{% endif %}</span>.
@@ -64,6 +64,7 @@
   </form>
 </div>
 
+<section data-settings-refresh="retention-expiring">
 <h2>Expiring in the next 7 days</h2>
 {% if expiring %}
 <div class="panel">
@@ -88,6 +89,7 @@
 <div class="ui-empty">Nothing is expiring in the next 7 days.</div>
 {% endif %}
 
+</section>
 {% if dormant_days %}
 {% comment %}Instance policy, not one of this org's windows — so it is shown,
 never edited, here. The row shape follows Organization settings → Members:
@@ -135,6 +137,7 @@ display name over email, one badge carrying its own meaning.{% endcomment %}
 {% endif %}
 {% endif %}
 
+<section data-settings-refresh="retention-preview">
 <h2>Preview tonight's sweep</h2>
 <p class="muted">See exactly what would be removed if cleanup ran right now, without removing
   anything.</p>
@@ -158,6 +161,7 @@ display name over email, one badge carrying its own meaning.{% endcomment %}
 <a class="ui-btn" href="?preview=1">Preview tonight's sweep</a>
 {% endif %}
 
+</section>
 <footer class="muted" style="margin-top:24px">
   {% if last_purge %}
     Cleanup last freed {{ last_purge.freed_bytes|filesizeformat }} for this organization on

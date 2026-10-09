@@ -33,6 +33,32 @@ def prefix(org, studio_tree):
 
 
 class TestRegistryApi:
+    @pytest.mark.parametrize("status", [choice[0] for choice in Run.STATUS_CHOICES])
+    def test_build_state_uses_latest_run_without_rewriting_artifact_status(
+        self, login, viewer, prefix, report_row, write_meta, status
+    ):
+        from django.utils import timezone
+
+        write_meta(report_row.slug, last_status="error")
+        Run.objects.create(
+            studio=report_row.studio, report=report_row, slug=report_row.slug,
+            status=Run.SUCCESS, created_at=timezone.now() - timezone.timedelta(hours=1),
+        )
+        Run.objects.create(
+            studio=report_row.studio, report=report_row, slug=report_row.slug, status=status,
+        )
+        row = login(viewer).get(f"{prefix}/api/registry").json()["reports"][0]
+        assert row["build_status"] == status
+        assert row["last_status"] == "error"
+
+    @pytest.mark.parametrize("status", ["success", "not_run"])
+    def test_build_state_falls_back_to_artifact_without_runs(
+        self, login, viewer, prefix, report_row, write_meta, status
+    ):
+        write_meta(report_row.slug, last_status=status)
+        row = login(viewer).get(f"{prefix}/api/registry").json()["reports"][0]
+        assert row["build_status"] == status
+
     def test_registry_shape(self, login, viewer, prefix, report_row):
         body = login(viewer).get(f"{prefix}/api/registry").json()
         assert "reports" in body and "generated_at" in body

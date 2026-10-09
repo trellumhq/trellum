@@ -356,6 +356,10 @@ See [Logs & monitoring](/docs/latest/operations/logs-and-monitoring/).
 |---|---|---|
 | `LOG_FORMAT` | `text` | `json` for one object per line, with the request id as a field |
 | `LOG_LEVEL` | `INFO` | Root log level |
+| `SERVER_LOG_CAPTURE_ENABLED` | `true` | Retain application logs in the shared database for the operator Server logs page |
+| `SERVER_LOG_RETENTION_DAYS` | `7` | Maximum age of retained server events |
+| `SERVER_LOG_MAX_ROWS` | `20000` | Maximum retained server events; oldest entries are pruned |
+| `SERVER_LOG_SERVICE` | inferred | Optional service label, such as `web`, `worker`, `runner` or `coordinator` |
 | `TRELLUM_TRUSTED_PROXIES` | `0` | How many proxies **you** operate. Needed for audit rows to record the real client address rather than your proxy |
 
 ### Security

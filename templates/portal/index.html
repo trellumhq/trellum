@@ -80,13 +80,13 @@ shell; the visible page title and category controls belong to this page.{% endco
 </div>
 
 <div class="server-log-overlay" id="serverLogOverlay" onclick="closeServerLog()"></div>
-<div class="server-log-drawer" id="serverLogDrawer" role="dialog" aria-modal="true" aria-label="Server log" aria-hidden="true" inert>
+<div class="server-log-drawer" id="serverLogDrawer" role="dialog" aria-modal="true" aria-label="Build activity" aria-hidden="true" inert>
   <div class="server-log-header">
-    <h2>Server Log</h2>
+    <h2>Build activity</h2>
     <div style="display:flex;gap:8px;align-items:center">
       <button class="error-log-btn" type="button" id="opsServerLogRefresh">&#8635; Refresh</button>
       <button class="error-log-btn" type="button" id="opsServerLogCopy">Copy</button>
-      <button class="error-log-close" type="button" id="serverLogClose" title="Close" aria-label="Close server log">&times;</button>
+      <button class="error-log-close" type="button" id="serverLogClose" title="Close" aria-label="Close build activity">&times;</button>
     </div>
   </div>
   <div class="server-log-body" id="opsServerLogBody"></div>

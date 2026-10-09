@@ -22,7 +22,53 @@
     var active = null;
     var serial = 0;
     var timeout = null;
+    var scrollSavePending = false;
+    var catalogContent = document.getElementById('content');
+    var catalogReady = !catalogContent || catalogContent.dataset.catalogReady === 'true';
+    var restoringCatalogScroll = false;
+    var pendingCatalogScroll = null;
+    var restoreGeneration = 0;
     if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+
+    function saveCatalogScroll() {
+        scrollSavePending = false;
+        if (active || restoringCatalogScroll || pendingCatalogScroll) return;
+        var state = Object.assign({}, history.state || {});
+        state.tlConsoleCatalog = Object.assign({}, state.tlConsoleCatalog || {}, {
+            url: window.location.pathname + window.location.search + window.location.hash,
+            x: window.scrollX,
+            y: window.scrollY
+        });
+        history.replaceState(state, '', window.location.href);
+    }
+
+    function restoreCatalogScroll(state) {
+        if (state) pendingCatalogScroll = state;
+        if (!pendingCatalogScroll || !catalogReady) return;
+        var generation = ++restoreGeneration;
+        restoringCatalogScroll = true;
+        window.requestAnimationFrame(function () {
+            if (generation !== restoreGeneration) return;
+            var target = pendingCatalogScroll;
+            if (target) window.scrollTo(target.x || 0, target.y || 0);
+            window.requestAnimationFrame(function () {
+                if (generation !== restoreGeneration) return;
+                restoringCatalogScroll = false;
+                pendingCatalogScroll = null;
+            });
+        });
+    }
+
+    window.addEventListener('trellum:catalog-ready', function () {
+        catalogReady = true;
+        restoreCatalogScroll();
+    });
+
+    window.addEventListener('scroll', function () {
+        if (active || restoringCatalogScroll || pendingCatalogScroll || scrollSavePending) return;
+        scrollSavePending = true;
+        window.requestAnimationFrame(saveCatalogScroll);
+    }, { passive: true });
 
     function reportTarget(value) {
         var url;
@@ -121,9 +167,7 @@
         document.title = catalogTitle;
         notifyAssistant(null);
         var state = history.state && history.state.tlConsoleCatalog;
-        window.requestAnimationFrame(function () {
-            if (state) window.scrollTo(state.x || 0, state.y || 0);
-        });
+        restoreCatalogScroll(state);
     }
 
     function open(value, options) {
@@ -218,7 +262,16 @@
                 showReport(target, report.title, token, report.depth);
             }
         } else {
+            var catalogState = event.state && event.state.tlConsoleCatalog;
             hideReport();
+            restoreCatalogScroll(catalogState);
+        }
+    });
+
+    window.addEventListener('pageshow', function () {
+        var catalogState = history.state && history.state.tlConsoleCatalog;
+        if (catalogState && !(history.state && history.state.tlConsoleReport)) {
+            restoreCatalogScroll(catalogState);
         }
     });
 

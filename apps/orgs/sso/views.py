@@ -8,6 +8,7 @@ from apps.accounts import ldap
 from apps.accounts.sso import redirect_uri_for_org
 from apps.core import roles
 from apps.core.audit import audit
+from apps.core.form_responses import is_settings_request, settings_error, settings_success
 from apps.core.permissions import require_org_role
 from apps.orgs import domains as domain_service
 from apps.orgs.models import OrgDomain, OrgSSOConfig
@@ -81,6 +82,8 @@ def sso_settings(request, org_slug):  # noqa: ARG001
                 request, "sso.update", target=request.org,
                 enabled=form.instance.enabled, auth_method=form.instance.auth_method,
             )
+            if is_settings_request(request):
+                return settings_success(request, "SSO settings saved.", values={"client_secret": "", "ldap_bind_password": ""}, refresh=["sso-directory-test", "sso-unclaimed-domains"])
             doc = form.discovery
             messages.success(
                 request,
@@ -92,6 +95,8 @@ def sso_settings(request, org_slug):  # noqa: ARG001
                 ),
             )
             return redirect(request.path)
+        if is_settings_request(request):
+            return settings_error(request, form=form)
     else:
         form = SSOConfigForm(instance=cfg, org=request.org)
 

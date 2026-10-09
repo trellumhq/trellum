@@ -1,10 +1,14 @@
 """Queue operations shared by web views and the worker."""
 from __future__ import annotations
 
+import logging
+
 from django.db import transaction
 from django.db.models import Count, Min
 
 from apps.runner.models import Run
+
+logger = logging.getLogger("trellum.queue")
 
 
 def enqueue(report, *, cache_mode: str = "normal", trigger: str = "manual", user=None) -> str:
@@ -22,8 +26,14 @@ def enqueue(report, *, cache_mode: str = "normal", trigger: str = "manual", user
             .first()
         )
         if active is not None:
+            logger.info(
+                "Build request reused an active run",
+                extra={"run_id": str(active.pk), "report_slug": report.slug,
+                       "trigger": trigger, "status": active.status,
+                       "worker_id": active.worker_id, "reason": "already_active"},
+            )
             return "already_running" if active.status != Run.QUEUED else "queued"
-        Run.objects.create(
+        run = Run.objects.create(
             report=report,
             studio=report.studio,
             slug=report.slug,
@@ -33,6 +43,11 @@ def enqueue(report, *, cache_mode: str = "normal", trigger: str = "manual", user
             trigger=trigger,
             requested_by=user,
         )
+        transaction.on_commit(lambda: logger.info(
+            "Build queued",
+            extra={"run_id": str(run.pk), "report_slug": report.slug,
+                   "studio": str(report.studio), "trigger": trigger, "status": Run.QUEUED},
+        ))
     return "queued"
 
 
@@ -113,6 +128,11 @@ def next_run_ids(pools=None, limit: int = 8) -> list:
 
 def request_stop(report) -> bool:
     """Stop a queued run outright; flag a running one for the worker."""
+    logger.info(
+        "Stop requested for report",
+        extra={"report_slug": report.slug, "studio": str(report.studio),
+               "reason": "stop_requested"},
+    )
     stopped_queued = (
         Run.objects.filter(report=report, status=Run.QUEUED).update(
             status=Run.STOPPED, stop_requested=True

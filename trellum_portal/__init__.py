@@ -18,4 +18,4 @@ step, or a contract-phase migration (one that is not rollback-safe — see
 docs/MIGRATIONS.md).
 """
 
-__version__ = "0.4.0"
+__version__ = "0.4.1"

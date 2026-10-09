@@ -1,0 +1,41 @@
+.server-logs { --log-border: var(--border); }
+.server-logs .logs-filters { margin: 18px 0 10px; }
+.logs-filter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0 14px; align-items: start; }
+.logs-extra-filters { margin: 0 0 12px; }
+.logs-extra-filters summary { min-height: 44px; display: flex; align-items: center; color: var(--accent-ink); cursor: pointer; }
+.logs-extra-filters .ui-field { padding-top: 8px; }
+.logs-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.logs-note { margin: 6px 0 10px; }
+.logs-coverage { padding: 10px 14px; border-left: 3px solid var(--accent); margin: 12px 0; }
+.logs-coverage-text { margin: 0; color: var(--text2); }
+.logs-table-panel { padding: 0; overflow: hidden; }
+.logs-status { margin: 0; padding: 12px 14px; border-bottom: 1px solid var(--log-border); color: var(--text2); }
+.logs-status[data-state="error"] { color: var(--red); }
+.logs-scroll { max-height: min(68vh, 820px); overflow: auto; overscroll-behavior: contain; }
+.logs-table { min-width: 800px; }
+.logs-table th { position: sticky; top: 0; z-index: 1; background: var(--bg-card); }
+.logs-time { white-space: nowrap; color: var(--text2); }
+.logs-origin { min-width: 135px; }
+.logs-origin span { display: block; color: var(--text3); font-size: var(--fs-sm); }
+.logs-message { min-width: 240px; max-width: 720px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.logs-entry-controls { white-space: nowrap; }
+.logs-small-button { min-height: 34px; padding: 5px 8px; margin: 2px; font-size: var(--fs-sm); }
+.logs-level { text-transform: uppercase; }
+.logs-level-error, .logs-level-critical, .logs-level-fatal { color: var(--red); }
+.logs-level-warning, .logs-level-warn { color: var(--warn); }
+.logs-level-info { color: var(--blue); }
+.logs-detail-row > td { background: var(--bg); padding: 12px 16px; }
+.logs-detail { display: grid; gap: 8px; }
+.logs-detail h3 { margin: 4px 0 0; font-size: var(--fs-md); }
+.logs-meta { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; margin: 0; font-size: var(--fs-sm); }
+.logs-meta dt { color: var(--text3); }
+.logs-meta dd { margin: 0; overflow-wrap: anywhere; }
+.logs-pre { margin: 0; max-height: 360px; overflow: auto; padding: 12px; color: #e5e7eb; background: #111315; border-radius: var(--r-sm); font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.server-logs :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+@media (max-width: 767px) {
+  .server-logs .page-head-row { align-items: center; }
+  .logs-filter-grid { grid-template-columns: 1fr; }
+  .logs-actions > .ui-btn, .logs-actions > a { flex: 1 1 calc(50% - 8px); justify-content: center; }
+  .logs-scroll { max-height: 70vh; }
+  .logs-meta { grid-template-columns: minmax(86px, max-content) minmax(0, 1fr); }
+}

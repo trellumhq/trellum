@@ -52,7 +52,7 @@ def repo(studio_tree):
 
 
 class TestRepoScreen:
-    def test_polling_is_wired_only_for_a_configured_queued_repo(self, html, prefix, repo, studio_tree):
+    def test_controller_is_wired_with_status_marker_only_for_configured_repo(self, html, prefix, repo, studio_tree):
         page = html(f"{prefix}/settings/repo")
         assert 'data-repo-status' in page and 'data-sync-requested="false"' in page
         assert "repo-status.js" in page and 'id="repoPollStatus"' in page
@@ -64,7 +64,9 @@ class TestRepoScreen:
         assert "Checking for changes…" in page
         repo.delete()
         page = html(f"{prefix}/settings/repo")
-        assert 'data-repo-status' not in page and "repo-status.js" not in page
+        assert 'data-repo-status' not in page
+        assert "repo-status.js" in page and 'data-repo-results' in page
+        assert 'id="repoConnectionForm"' in page
 
     def test_status_uses_badges_and_the_webhook_is_copyable(self, html, prefix, repo):
         page = html(f"{prefix}/settings/repo")
@@ -254,7 +256,7 @@ class TestRepoPublishing:
         RepoPublish.objects.create(
             studio=repo.studio, from_sha="2" * 40, to_sha="3" * 40, trigger="auto", summary=summary,
         )
-        RepoPublish.objects.create(
+        manual_publish = RepoPublish.objects.create(
             studio=repo.studio, from_sha="3" * 40, to_sha="4" * 40, trigger="manual",
             published_by=org_admin, status="error", summary=summary,
             error="report.yaml invalid in churn \u2014 studio kept on 3333333",
@@ -268,12 +270,12 @@ class TestRepoPublishing:
         assert '<span class="ui-badge ok">Published</span>' in page
         assert '<span class="ui-badge fail">Failed</span>' in page
         assert "report.yaml invalid in churn" in page
-        assert "<details><summary>2 commits</summary>" in page
+        assert f'<details data-preserve-key="publish-{manual_publish.pk}"><summary>2 commits</summary>' in page
         assert "<code>ccccccc</code> Drop the legacy funnel" in page
         assert '<td class="num">3</td>' in page
         assert "Load more" not in page
         page = html(f"{prefix}/settings/repo?history=2")
-        assert page.count("<details>") == 2  # the two newest rows: error + auto
+        assert page.count('<details data-preserve-key="publish-') == 2  # the two newest rows: error + auto
         assert 'href="?history=32">Load more</a>' in page
 
     def test_load_more_stops_at_the_cap(self, html, prefix, repo):
@@ -361,19 +363,23 @@ class TestDataSourceScreen:
         )
         page = html(f"{prefix}/settings/datasources")
 
-        assert '<span class="ui-badge fail">Needs credentials</span>' in page
+        for name, color, label in (
+            ("warehouse", "fail", "Needs credentials"),
+            ("budget", "warn", "Needs upload"),
+            ("crm", "ok", "Connected"),
+            ("events", "fail", "Failing"),
+            ("scratch", "", "Not in repository"),
+        ):
+            row = re.search(r'<tr\b[^>]*id="ds-row-' + name + r'"[^>]*>(.*?)</tr>', page, re.S).group(1)
+            assert re.search(r'<span\b[^>]*class="ui-badge ' + color + r'"[^>]*>' + label + r'</span>', row)
         assert "user, password" in page
-        assert '<span class="ui-badge warn">Needs upload</span>' in page
         assert "upload allowed" in page
-        assert '<span class="ui-badge ok">Connected</span>' in page
         assert "checked 4" in page and "minutes ago" in page
-        assert '<span class="ui-badge fail">Failing</span>' in page
         assert "connection refused" in page and "since 2" in page
-        assert '<span class="ui-badge ">Not in repository</span>' in page
         assert "portal-only" in page
         assert 'class="ui-chip acc">from repository' in page
 
-        assert 'class="ui-btn ghost" href="?configure=warehouse#configure">Configure' in page
+        assert re.search(r'<a\b(?=[^>]*class="ui-btn ghost")[^>]*href="\?configure=warehouse#configure"[^>]*>Configure</a>', page)
         assert 'href="?configure=crm#configure">Edit credentials' in page
         # The upload row's primary action is the file picker itself.
         assert f'data-url="{prefix}/api/datasources/budget/upload"' in page
@@ -471,7 +477,7 @@ class TestDataSourceScreen:
         )
         page = client.get(f"{prefix}/settings/datasources").content.decode()
         assert "saved but the connection test failed: refused" in page
-        assert '<span class="ui-badge fail">Failing</span>' in page
+        assert re.search(r'<span\b[^>]*class="ui-badge fail"[^>]*>Failing</span>', page)
 
     def test_org_level_checkbox_saves_a_shared_row(self, login, org_admin, org, prefix, studio_tree, monkeypatch):
         from apps.datasources import testing

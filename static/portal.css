@@ -845,6 +845,7 @@ html[data-theme="dark"] .console-dashboard select { color-scheme: dark; }
 .ops-table tr.expanded { background: var(--bg); }
 .ops-table tr.expanded:hover { background: var(--bg); }
 .ops-expand-row td { padding: 0 !important; }
+[data-ops-row][hidden], .ops-expand-row[hidden] { display: none !important; }
 
 .ops-report-name { font-weight: 600; color: var(--text); }
 .ops-report-cell { overflow-wrap: anywhere; }
@@ -863,13 +864,13 @@ html[data-theme="dark"] .console-dashboard select { color-scheme: dark; }
 .ops-status.running .ops-status-dot { background: var(--blue); animation: opsPulse 1.5s ease-in-out infinite; }
 .ops-status.queued .ops-status-dot { background: var(--accent); }
 .ops-status.success .ops-status-dot { background: var(--green); }
-.ops-status.error .ops-status-dot { background: var(--red); }
-.ops-status.not_run .ops-status-dot { background: var(--text3); }
+.ops-status.error .ops-status-dot, .ops-status.oom_killed .ops-status-dot, .ops-status.timeout .ops-status-dot { background: var(--red); }
+.ops-status.not_run .ops-status-dot, .ops-status.stopped .ops-status-dot { background: var(--text3); }
 .ops-status.waiting .ops-status-dot { background: var(--warn); }
 .ops-status.waiting .ops-status-text { color: var(--warn); }
 .ops-status-text { color: var(--text2); }
 .ops-status-detail { font-size: 12px; color: var(--text3); margin-top: 2px; }
-.ops-status.error .ops-status-text { color: var(--red); }
+.ops-status.error .ops-status-text, .ops-status.oom_killed .ops-status-text, .ops-status.timeout .ops-status-text { color: var(--red); }
 
 /* Duration / Memory columns */
 .ops-metric { font-size: 12px; color: var(--text2); font-variant-numeric: tabular-nums; }

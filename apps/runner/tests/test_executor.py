@@ -11,6 +11,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import pytest
+import requests
 from django.utils import timezone
 
 from apps.runner import executor as executor_mod
@@ -439,7 +440,7 @@ class TestCompletionAndTimeouts:
 
         assert read_meta(str(studio_tree.output_dir / run.slug)).get("last_status") == "error"
 
-    def test_timeout_ladder_sigterm_then_kill(self, fake_popen, queued_run):
+    def test_timeout_ladder_sigterm_then_kill(self, fake_popen, queued_run, caplog):
         ex, proc = self._start(fake_popen, queued_run)
         rp = ex._procs[queued_run.pk]
         rp.timeout_seconds = 10
@@ -458,12 +459,22 @@ class TestCompletionAndTimeouts:
         ex.tick()
         run = Run.objects.get(pk=queued_run.pk)
         assert run.status == Run.TIMEOUT  # our intent beats exit-code archaeology
+        signals = [r for r in caplog.records if getattr(r, "signal", None)]
+        assert [r.signal for r in signals] == ["SIGTERM", "SIGKILL"]
+        assert all(r.run_id == str(run.pk) and r.worker_id == ex.worker_id for r in signals)
+        completion = next(r for r in caplog.records if getattr(r, "status", None) == Run.TIMEOUT)
+        assert completion.levelname == "ERROR"
+        assert completion.memory_allocation_mb == rp.memory_limit_mb
+        assert completion.memory_cap_mb == rp.memory_cap_mb
 
-    def test_stop_request_marks_stopped(self, fake_popen, queued_run):
+    def test_stop_request_marks_stopped(self, fake_popen, queued_run, caplog):
         ex, proc = self._start(fake_popen, queued_run)
         Run.objects.filter(pk=queued_run.pk).update(stop_requested=True)
         ex.tick()  # picks up the flag -> SIGTERM
         assert signal.SIGTERM in proc.signals
+        stop = next(r for r in caplog.records if getattr(r, "signal", None) == "SIGTERM")
+        assert stop.reason == "stop requested"
+        assert stop.run_id == str(queued_run.pk)
         proc.finish(-signal.SIGTERM if os.name != "nt" else 1)
         ex.tick()
         assert Run.objects.get(pk=queued_run.pk).status == Run.STOPPED
@@ -473,13 +484,121 @@ class TestMemory:
         self, fake_popen, queued_run, settings
     ):
         settings.TRELLUM_DEFAULT_JOB_MEMORY_MB = 777
+        settings.TRELLUM_JOB_MEMORY_ENFORCE = os.name != "nt"
+        settings.TRELLUM_JOB_MEMORY_HEADROOM = 1.5
         ex = Executor("w1")
         ex.start_run(queued_run)
-        assert ex._procs[queued_run.pk].memory_limit_mb == 777
+        running = ex._procs[queued_run.pk]
+        assert running.memory_limit_mb == 777
+        if os.name != "nt":
+            assert running.memory_cap_mb == int(777 * 1.5)
+            assert running.memory_cap_kind == "address space (RLIMIT_AS)"
+        else:
+            assert running.memory_cap_mb is None
+            assert running.memory_cap_kind == "none (Windows)"
+        settings.TRELLUM_JOB_MEMORY_HEADROOM = 4.0
+        settings.TRELLUM_JOB_MEMORY_ENFORCE = False
+        assert running.memory_cap_mb == (None if os.name == "nt" else int(777 * 1.5))
         queued_run.refresh_from_db()
         # Recorded on the run so a later change to the setting cannot
         # retroactively change what this build was admitted against.
         assert queued_run.memory_limit_mb == 777
+
+    def test_memory_diagnostic_is_persisted_with_allocation_cap_and_peak(
+        self, fake_popen, queued_run, studio_tree, settings, monkeypatch
+    ):
+        settings.TRELLUM_DEFAULT_JOB_MEMORY_MB = 512
+        settings.TRELLUM_JOB_MEMORY_ENFORCE = os.name != "nt"
+        settings.TRELLUM_JOB_MEMORY_HEADROOM = 2.0
+        ex = Executor("w1")
+        ex.start_run(queued_run)
+        rp = ex._procs[queued_run.pk]
+        rp.peak_memory_mb = 401
+        settings.TRELLUM_DEFAULT_JOB_MEMORY_MB = 9999
+        run = Run.objects.get(pk=queued_run.pk)
+        long_trace = (
+            "Traceback...\n" + "intermediate frame\n" * 90
+            + "MemoryError\nConcreteFinalException: allocation failed"
+        )
+        Path(run.log_dir, "stderr.log").write_text(long_trace, encoding="utf-8")
+        threads = []
+        monkeypatch.setattr(
+            executor_mod.threading, "Thread", lambda **kwargs: threads.append(kwargs)
+        )
+        fake_popen["procs"][-1].finish(1)
+        ex.tick()
+
+        run.refresh_from_db()
+        from trellum.meta import read_meta
+
+        error = read_meta(str(studio_tree.output_dir / run.slug)).get("last_error") or ""
+        assert "MEMORY ALLOCATION FAILED" in run.stderr_tail
+        assert "operator allocation 512 MB" in run.stderr_tail
+        assert "observed peak 401 MB" in run.stderr_tail
+        assert long_trace in run.stderr_tail
+        assert error.startswith("MEMORY ALLOCATION FAILED:")
+        assert "MEMORY ALLOCATION FAILED" in error
+        assert "operator allocation 512 MB" in error
+        assert threads == []
+        if os.name == "nt":
+            assert "no enforced hard cap" in error
+        else:
+            assert "applied address space (RLIMIT_AS) cap 1024 MB" in error
+        assert error.endswith("ConcreteFinalException: allocation failed")
+
+    def test_137_without_docker_oom_flag_is_not_oom(
+        self, fake_popen, queued_run, studio_tree, monkeypatch
+    ):
+        ex = Executor("w1")
+        ex.start_run(queued_run)
+        run = Run.objects.get(pk=queued_run.pk)
+        Path(run.log_dir, "stderr.log").write_text("terminated", encoding="utf-8")
+        threads = []
+        monkeypatch.setattr(
+            executor_mod.threading, "Thread", lambda **kwargs: threads.append(kwargs)
+        )
+        fake_popen["procs"][-1].finish(137)
+        ex.tick()
+        run.refresh_from_db()
+        assert run.status == Run.ERROR
+        assert "consistent with SIGKILL" in run.stderr_tail
+        assert "cause unknown" in run.stderr_tail
+        from trellum.meta import read_meta
+
+        error = read_meta(str(studio_tree.output_dir / run.slug)).get("last_error") or ""
+        assert "cause unknown" in error
+        assert "OOM" not in error
+        assert threads == []
+
+    def test_vertica_connection_loss_does_not_claim_oom(self, fake_popen, queued_run, studio_tree):
+        ex = Executor("w1")
+        ex.start_run(queued_run)
+        run = Run.objects.get(pk=queued_run.pk)
+        Path(run.log_dir, "stderr.log").write_text(
+            "Connection closed by Vertica", encoding="utf-8"
+        )
+        fake_popen["procs"][-1].finish(1)
+        ex.tick()
+        run.refresh_from_db()
+        assert run.status == Run.ERROR
+        assert "cause is unconfirmed" in run.stderr_tail
+        assert "operator allocation" in run.stderr_tail
+        assert "TRELLUM_DEFAULT_JOB_MEMORY_MB" in run.stderr_tail
+        assert "observed peak unavailable" in run.stderr_tail
+        assert "OOM" not in run.stderr_tail
+
+    def test_memory_note_reports_no_cap_when_enforcement_is_disabled(self):
+        proc = RunningProc(
+            run_id="a", slug="s", studio_id=1, process=None,
+            started_at=timezone.now(), stdout_path="", stderr_path="",
+            run_dir="", output_dir="", memory_limit_mb=512,
+            memory_cap_kind="none (enforcement disabled)",
+        )
+        note = executor_mod._memory_note(proc)
+        assert "operator allocation 512 MB" in note
+        assert "TRELLUM_DEFAULT_JOB_MEMORY_MB" in note
+        assert "no enforced hard cap" in note
+        assert "observed peak unavailable" in note
 
     @pytest.mark.skipif(os.name == "nt", reason="preexec_fn is POSIX-only")
     def test_rlimit_is_applied_with_headroom(
@@ -571,7 +690,7 @@ class TestMemory:
 
         meta = read_meta(str(studio_tree.output_dir / run.slug))
         error = meta.get("last_error") or ""
-        assert "MEMORY LIMIT" in error
+        assert "MEMORY ALLOCATION FAILED" in error
         assert "512 MB" in error
         assert "TRELLUM_DEFAULT_JOB_MEMORY_MB" in error
 
@@ -657,13 +776,26 @@ class TestSandboxMode:
         assert run.container_id == "cont-123"
         assert run.pid is None
 
-    def test_oom_flag_maps_to_oom_killed(self, fake_popen, queued_run):
+    def test_oom_flag_maps_to_oom_killed(self, fake_popen, queued_run, studio_tree):
         proc = FakeSandboxProc()
         ex = self._executor_with(FakeSandbox(proc=proc))
         ex.start_run(queued_run)
+        run = Run.objects.get(pk=queued_run.pk)
+        long_trace = "MemoryError misleading diagnostic\n" + "frame\n" * 90 + "FinalContainerError: OOM"
+        Path(run.log_dir, "stderr.log").write_text(long_trace, encoding="utf-8")
         proc.finish(137, oom=True)
         ex.tick()
-        assert Run.objects.get(pk=queued_run.pk).status == Run.OOM_KILLED
+        run.refresh_from_db()
+        assert run.status == Run.OOM_KILLED
+        assert "CONTAINER OOM" in run.stderr_tail
+        assert "MEMORY ALLOCATION FAILED" not in run.stderr_tail
+        assert long_trace in run.stderr_tail
+        from trellum.meta import read_meta
+
+        error = read_meta(str(studio_tree.output_dir / run.slug)).get("last_error") or ""
+        assert error.startswith("CONTAINER OOM: Docker reported an out-of-memory kill.")
+        assert "FinalContainerError: OOM" in error
+        assert "exceeding its memory cap" not in error
         assert proc.cleaned is True  # container was removed
 
     def test_success_records_peak_and_cleans_up(self, fake_popen, queued_run):
@@ -680,6 +812,104 @@ class TestSandboxMode:
         assert run.status == Run.SUCCESS
         assert run.peak_memory_mb == 123
         assert proc.cleaned is True
+
+    def test_inspection_outage_keeps_live_run_and_allows_stop(self, fake_popen, queued_run):
+        from apps.runner.sandbox import SandboxProc
+
+        class FlakyContainer:
+            id = "cont-outage"
+            attrs = {"State": {"Running": True}}
+            failed = False
+            removed = False
+            killed = []
+
+            def reload(self):
+                if not self.failed:
+                    self.failed = True
+                    raise requests.exceptions.ReadTimeout("slow daemon")
+
+            def stats(self, stream=False):
+                return {"memory_stats": {"max_usage": 0}}
+
+            def kill(self, signal=None):
+                self.killed.append(signal or "SIGKILL")
+
+            def remove(self, force=False):
+                self.removed = True
+
+        container = FlakyContainer()
+        proc = SandboxProc(container, run_id=str(queued_run.pk))
+        ex = self._executor_with(FakeSandbox(proc=proc))
+        ex.start_run(queued_run)
+
+        Run.objects.filter(pk=queued_run.pk).update(stop_requested=True)
+        ex.tick()
+        run = Run.objects.get(pk=queued_run.pk)
+        assert queued_run.pk in ex._procs
+        assert run.status == Run.RUNNING
+        assert not container.removed
+        assert container.killed == ["SIGTERM"]
+
+        container.attrs["State"] = {"Running": False, "ExitCode": 143, "OOMKilled": False}
+        ex.tick()
+        run.refresh_from_db()
+        assert queued_run.pk not in ex._procs
+        assert run.status == Run.STOPPED
+        assert container.removed
+
+    def test_timeout_escalates_during_inspection_outage_until_terminal(
+        self, fake_popen, queued_run
+    ):
+        from apps.runner.sandbox import SandboxProc
+
+        class UnavailableContainer:
+            id = "cont-timeout-outage"
+            attrs = {"State": {"Running": True}}
+            removed = False
+            killed = []
+
+            def reload(self):
+                raise requests.exceptions.ConnectionError("daemon unavailable")
+
+            def stats(self, stream=False):
+                return {"memory_stats": {"max_usage": 0}}
+
+            def kill(self, signal=None):
+                self.killed.append(signal or "SIGKILL")
+
+            def remove(self, force=False):
+                self.removed = True
+
+        container = UnavailableContainer()
+        proc = SandboxProc(container, run_id=str(queued_run.pk))
+        ex = self._executor_with(FakeSandbox(proc=proc))
+        ex.start_run(queued_run)
+        running = ex._procs[queued_run.pk]
+        running.timeout_seconds = 10
+        running.started_at = timezone.now() - timedelta(seconds=60)
+
+        ex.tick()
+        assert queued_run.pk in ex._procs
+        assert container.killed == ["SIGTERM"]
+        assert not container.removed
+        run = Run.objects.get(pk=queued_run.pk)
+        assert run.status == Run.RUNNING
+
+        running.sigterm_at = timezone.now() - timedelta(seconds=10)
+        ex.tick()
+        assert queued_run.pk in ex._procs
+        assert container.killed == ["SIGTERM", "SIGKILL"]
+        assert not container.removed
+        run.refresh_from_db()
+        assert run.status == Run.RUNNING
+
+        container.reload = lambda: None
+        container.attrs["State"] = {"Running": False, "ExitCode": 137, "OOMKilled": False}
+        ex.tick()
+        run.refresh_from_db()
+        assert queued_run.pk not in ex._procs
+        assert run.status == Run.TIMEOUT
+        assert container.removed
 
     def test_start_failure_frees_the_slot(self, fake_popen, queued_run):
         from apps.runner.sandbox import SandboxError
@@ -862,19 +1092,26 @@ class TestDataSourcePreflight:
         again.refresh_from_db()
         assert again.stderr_tail == "Waiting for data source 'warehouse': still refused"
 
-    def test_failing_check_names_the_source(
+    def test_failing_followup_check_is_secondary_evidence(
         self, fake_popen, queued_run, bound_report, studio_tree, monkeypatch
     ):
         from trellum.meta import read_meta
+        from apps.datasources.status import source_failure
 
         run = self._fail_with(fake_popen, queued_run, monkeypatch, (False, "refused"))
         assert run.status == Run.ERROR
-        _wait_until(lambda: Run.objects.get(pk=run.pk).stderr_tail.startswith("Data source"))
+        _wait_until(
+            lambda: "Subsequent data source check" in Run.objects.get(pk=run.pk).stderr_tail
+        )
         run.refresh_from_db()
-        assert run.stderr_tail.startswith("Data source 'warehouse': refused\n\n")
-        assert run.stderr_tail.endswith("Traceback: KeyError\n")
+        assert run.stderr_tail.startswith("BUILD FAILED:")
+        assert "Traceback: KeyError\n" in run.stderr_tail
+        assert "Subsequent data source check for 'warehouse' failed: refused." in run.stderr_tail
+        assert "This does not establish the cause of the build failure." in run.stderr_tail
+        assert source_failure(run.stderr_tail) is None
         meta = read_meta(str(studio_tree.output_dir / run.slug))
-        assert meta["last_error"].startswith("Data source 'warehouse': refused")
+        assert meta["last_error"].startswith("BUILD FAILED:")
+        assert meta["last_error"].endswith("Traceback: KeyError\n")
         assert meta["blocked_by"] == []
         bound_report.refresh_from_db()
         assert bound_report.last_check_ok is False
@@ -891,7 +1128,7 @@ class TestDataSourcePreflight:
         _wait_until(lambda: DataSource.objects.get(pk=bound_report.pk).last_check_at is not None)
         time.sleep(0.3)  # the thread's remaining step is deciding NOT to rewrite
         run.refresh_from_db()
-        assert run.stderr_tail == "Traceback: KeyError\n"
+        assert run.stderr_tail.endswith("Traceback: KeyError\n")
         bound_report.refresh_from_db()
         assert bound_report.last_check_ok is True
 
@@ -907,11 +1144,10 @@ class TestDataSourcePreflight:
         started = time.monotonic()
         run = self._fail_with(fake_popen, queued_run, monkeypatch, None, check=slow)
         assert time.monotonic() - started < 1.0
-        assert run.status == Run.ERROR and run.stderr_tail == "Traceback: KeyError\n"
+        assert run.status == Run.ERROR and run.stderr_tail.endswith("Traceback: KeyError\n")
         _wait_until(
-            lambda: Run.objects.get(pk=run.pk).stderr_tail.startswith(
-                "Data source 'warehouse': slow refusal"
-            )
+            lambda: "Subsequent data source check for 'warehouse' failed: slow refusal"
+            in Run.objects.get(pk=run.pk).stderr_tail
         )
 
     def test_a_newer_run_keeps_its_own_error(
@@ -932,4 +1168,4 @@ class TestDataSourcePreflight:
         _wait_until(lambda: DataSource.objects.get(pk=bound_report.pk).last_check_at is not None)
         time.sleep(0.3)
         run.refresh_from_db()
-        assert run.stderr_tail == "Traceback: KeyError\n"
+        assert run.stderr_tail.endswith("Traceback: KeyError\n")

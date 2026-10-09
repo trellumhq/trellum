@@ -13,6 +13,7 @@ from django.views.decorators.http import require_POST
 from apps.accounts.models import Invitation
 from apps.core import roles
 from apps.core.audit import audit
+from apps.core.form_responses import is_settings_request, settings_error, settings_success
 from apps.core.permissions import (
     get_effective,
     require_org_role,
@@ -303,7 +304,11 @@ def studios_settings(request, org_slug):  # noqa: ARG001
             studio.description = (request.POST.get("description") or "").strip()
             studio.save(update_fields=["name", "description"])
             audit(request, "studio.rename", target=studio, name=name)
+            if is_settings_request(request):
+                return settings_success(request, "Studio updated.", values={"name": studio.name, "description": studio.description})
             messages.success(request, "Studio updated.")
+        if is_settings_request(request):
+            return settings_error(request, errors={"name": ["Enter a studio name."]})
         return redirect(request.path)
 
     from django.db.models import Q
@@ -445,6 +450,8 @@ def appearance_settings(request, org_slug):  # noqa: ARG001
         mode = (request.POST.get("default_mode") or "").strip()
         valid_modes = {choice for choice, _ in Organization._meta.get_field("default_mode").choices}
         if mode not in valid_modes:
+            if is_settings_request(request):
+                return settings_error(request, "That mode is not available.", errors={"default_mode": ["That mode is not available."]})
             messages.error(request, "That mode is not available.")
             return redirect(request.path)
 
@@ -455,6 +462,8 @@ def appearance_settings(request, org_slug):  # noqa: ARG001
             request, "org.appearance_set", target=request.org,
             default_mode=mode, lock=request.org.lock_studio_theme,
         )
+        if is_settings_request(request):
+            return settings_success(request, "Organization appearance saved.", default_mode=mode)
         messages.success(request, "Organization appearance saved.")
         return redirect(request.path)
 
@@ -514,6 +523,8 @@ def retention_settings(request, org_slug):  # noqa: ARG001
             request.POST.get("retention_abandoned_upload_days", "")
         )
         if not built_ok or not upload_ok:
+            if is_settings_request(request):
+                return settings_error(request, errors={name: ["Enter a whole number of days, or leave blank."] for name, valid in [("retention_built_days", built_ok), ("retention_abandoned_upload_days", upload_ok)] if not valid})
             messages.error(
                 request,
                 "Enter a whole number of days for each window, or leave it "
@@ -522,6 +533,8 @@ def retention_settings(request, org_slug):  # noqa: ARG001
             return redirect(request.path)
 
         if ceiling and built_value and built_value > ceiling:
+            if is_settings_request(request):
+                return settings_error(request, errors={"retention_built_days": [f"Enter {ceiling} days or fewer, or leave blank."]})
             messages.error(
                 request,
                 f"Built data cannot be kept longer than {ceiling} days on "
@@ -532,11 +545,12 @@ def retention_settings(request, org_slug):  # noqa: ARG001
 
         if built_value == 0 and ceiling:
             built_value = None
-            messages.info(
-                request,
-                f"0 means the {ceiling}-day instance default, not “keep "
-                f"forever” — saved as “use the default.”",
-            )
+            if not is_settings_request(request):
+                messages.info(
+                    request,
+                    f"0 means the {ceiling}-day instance default, not “keep "
+                    f"forever” — saved as “use the default.”",
+                )
 
         org.retention_built_days = built_value
         org.retention_abandoned_upload_days = upload_value
@@ -546,6 +560,10 @@ def retention_settings(request, org_slug):  # noqa: ARG001
             retention_built_days=built_value,
             retention_abandoned_upload_days=upload_value,
         )
+        if is_settings_request(request):
+            return settings_success(request, "Data retention settings saved.",
+                values={"retention_built_days": built_value, "retention_abandoned_upload_days": upload_value},
+                refresh=["retention-built", "retention-upload", "retention-expiring", "retention-preview"])
         messages.success(request, "Data retention settings saved.")
         return redirect(request.path)
 
@@ -690,6 +708,8 @@ def member_set_role(request, org_slug, user_id):  # noqa: ARG001
     m = _target_membership(request, request.org, user_id)
     role = request.POST.get("role")
     if role not in dict(roles.ORG_ROLE_CHOICES):
+        if is_settings_request(request):
+            return settings_error(request, "Invalid role.", errors={"role": ["Invalid role."]})
         messages.error(request, "Invalid role.")
         return _members_redirect(request)
     if (
@@ -699,11 +719,15 @@ def member_set_role(request, org_slug, user_id):  # noqa: ARG001
         .exclude(pk=m.pk)
         .exists()
     ):
+        if is_settings_request(request):
+            return settings_error(request, "An organization needs at least one direct admin.", errors={"role": ["An organization needs at least one direct admin."]})
         messages.error(request, "An organization needs at least one direct admin.")
         return _members_redirect(request)
     m.role = role
     m.save(update_fields=["role"])
     audit(request, "member.set_role", target=m.user, role=role)
+    if is_settings_request(request):
+        return settings_success(request, f"{m.user.email} is now an organization {role}.", refresh=[f"member-effective-{m.user_id}"])
     messages.success(request, f"{m.user.email} is now an organization {role}.")
     return _members_redirect(request)
 
@@ -812,14 +836,20 @@ def member_set_studio_role(request, org_slug, user_id):  # noqa: ARG001
     if role == "":
         StudioMembership.objects.filter(user=m.user, studio=studio).delete()
         audit(request, "member.revoke_studio", target=m.user, studio=studio.slug)
+        if is_settings_request(request):
+            return settings_success(request, f"{m.user.email} no longer has a direct role in {studio.name}.", refresh=[f"member-effective-{m.user_id}"])
         messages.success(request, f"{m.user.email} no longer has a direct role in {studio.name}.")
     elif role in dict(roles.STUDIO_ROLE_CHOICES):
         StudioMembership.objects.update_or_create(
             user=m.user, studio=studio, defaults={"role": role}
         )
         audit(request, "member.set_studio_role", target=m.user, studio=studio.slug, role=role)
+        if is_settings_request(request):
+            return settings_success(request, f"{m.user.email} is now {role} in {studio.name}.", refresh=[f"member-effective-{m.user_id}"])
         messages.success(request, f"{m.user.email} is now {role} in {studio.name}.")
     else:
+        if is_settings_request(request):
+            return settings_error(request, "Invalid role.", errors={"role": ["Invalid role."]})
         messages.error(request, "Invalid role.")
     return _members_redirect(request)
 
@@ -886,12 +916,17 @@ def assistant_settings(request, org_slug):  # noqa: ARG001
                 enabled=form.instance.enabled, provider=form.instance.provider,
                 model=form.instance.model,
             )
-            messages.success(request, "AI assistant settings saved.")
             from apps.assistant import llm
 
-            for hint in llm.mismatch_hints(llm.LLMConfig.from_config(form.instance)):
+            hints = llm.mismatch_hints(llm.LLMConfig.from_config(form.instance))
+            if is_settings_request(request):
+                return settings_success(request, "AI assistant settings saved." + (" " + " ".join(hints) if hints else ""), values={"api_key": ""}, has_key=bool(form.instance.api_key), updates={"assistant-key-stored": "(a key is stored — blank keeps it)" if form.instance.api_key else "(none stored yet)"})
+            messages.success(request, "AI assistant settings saved.")
+            for hint in hints:
                 messages.info(request, hint)
             return redirect(request.path)
+        if is_settings_request(request):
+            return settings_error(request, form=form)
     else:
         form = AssistantConfigForm(instance=cfg, org=request.org)
 

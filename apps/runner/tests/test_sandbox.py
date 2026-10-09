@@ -14,6 +14,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+import requests
 
 import docker.errors
 
@@ -335,6 +336,62 @@ class TestSandboxProc:
         assert p.poll() == 137
         assert p.oom_killed is True
 
+    @pytest.mark.parametrize(
+        ("failure", "exit_code", "oom_killed"),
+        [
+            pytest.param(requests.exceptions.ReadTimeout("slow"), 7, False, id="read-timeout"),
+            pytest.param(requests.exceptions.ConnectionError("offline"), 7, False, id="connection-error"),
+            pytest.param(docker.errors.APIError("daemon error"), 7, False, id="docker-api-error"),
+            pytest.param(requests.exceptions.ReadTimeout("slow"), 137, True, id="oom-exit"),
+        ],
+    )
+    def test_transient_inspection_failures_retry_and_recover(
+        self, failure, exit_code, oom_killed, caplog
+    ):
+        class Flaky(FakeContainer):
+            failures = 1
+
+            def reload(self):
+                if self.failures:
+                    self.failures -= 1
+                    raise failure
+
+        c = Flaky(state={"Running": True}, labels={"trellum.run-id": "rid-1"})
+        p = SandboxProc(c, run_id="rid-1")
+        assert p.poll() is None
+        assert p._exit is None
+        assert p.poll() is None
+        c.failures = 2
+        assert p.poll() is None
+        assert p.poll() is None
+        c.failures = 0
+        c.attrs["State"] = {
+            "Running": False,
+            "ExitCode": exit_code,
+            "OOMKilled": oom_killed,
+        }
+        assert p.poll() == exit_code
+        assert p.poll() == exit_code
+        assert p.oom_killed is oom_killed
+        warnings = [r for r in caplog.records if r.message.startswith("Sandbox container inspection failed")]
+        recoveries = [r for r in caplog.records if r.message == "Sandbox container inspection recovered"]
+        assert len(warnings) == 2
+        assert all(r.error_type == type(failure).__name__ for r in warnings)
+        assert all(r.run_id == "rid-1" and r.container_id == "c1" for r in warnings)
+        assert len(recoveries) == 2
+        assert all(r.run_id == "rid-1" and r.container_id == "c1" for r in recoveries)
+
+    def test_not_found_is_terminal_and_logged(self, caplog):
+        class Missing(FakeContainer):
+            def reload(self):
+                raise docker.errors.NotFound("gone")
+
+        p = SandboxProc(Missing(), run_id="rid-2")
+        assert p.poll() == 1
+        assert p.poll() == 1
+        assert caplog.records[-1].run_id == "rid-2"
+        assert caplog.records[-1].reason == "container_missing"
+
     def test_signals_map_to_kill(self):
         c = FakeContainer()
         p = SandboxProc(c)
@@ -563,7 +620,7 @@ class TestPreflight:
 # ── orphan sweep ────────────────────────────────────────────────────────────
 @pytest.mark.django_db
 class TestSweepOrphans:
-    def test_only_inactive_runs_removed(self, report_row):
+    def test_only_inactive_runs_removed(self, report_row, caplog):
         from apps.runner.models import Run
 
         active = Run.objects.create(
@@ -579,6 +636,10 @@ class TestSweepOrphans:
         assert removed == 1
         assert orphan.removed is True
         assert live.removed is False
+        cleanup = [r for r in caplog.records if getattr(r, "reason", None) == "orphan_cleanup"]
+        assert len(cleanup) == 1
+        assert cleanup[0].run_id == gone_id
+        assert cleanup[0].container_id == "orphan"
 
     def test_run_created_during_container_listing_is_kept(self, report_row):
         from apps.runner.models import Run

@@ -17,8 +17,9 @@ into memory at once, not how many reports exist.
 
 ## What consumes what
 
-- **CPU** — concurrent builds; the default combined worker processes the queue
-  alone, while additional runner processes can build in parallel
+- **CPU** — concurrent builds; one worker process can run several builds at
+  once (`WORKER_MAX_CONCURRENT` defaults to 3). Additional runner processes
+  each have their own concurrency limit
 - **RAM** — the biggest single build. A report that loads a very large frame
   sets the floor for the whole instance
 - **Disk** — built output, the database, and backups. Output size depends on
@@ -30,7 +31,7 @@ into memory at once, not how many reports exist.
 ## Sizing report-build memory precisely
 
 The starting points above get you running; once you have real traffic, size
-memory from evidence instead. Every build gets the same limit,
+memory from evidence instead. Every build gets the same admission allocation,
 `TRELLUM_DEFAULT_JOB_MEMORY_MB` (1024 by default), and the same wall-clock
 limit, `TRELLUM_RUN_TIMEOUT` (1800 seconds / 30 minutes by default). `report.yaml` carries
 no sandbox limits, so size both for the largest report on the instance. Give
@@ -68,9 +69,44 @@ Two details worth knowing:
   memory for dataframe workloads. Unsandboxed Windows builds have no such
   memory cap; their wall-clock timeout still applies.
 
-A Docker memory kill is recorded as `oom_killed`; a Python `MemoryError` is
-recorded as `error`. Runs record sampled peak memory when it is available.
+A Docker-confirmed memory kill is recorded as `oom_killed`; a Python
+`MemoryError` is recorded as `error` and means an allocation failed. An
+unexplained SIGKILL (exit 137) is recorded as `error`: that exit code alone
+cannot establish an out-of-memory kill. Runner diagnoses are included in both
+the completed run log and the report error summary. The log preserves the
+original stderr tail; the shorter summary retains the diagnosis and final
+exception. Memory diagnoses distinguish the admission allocation from the
+applied container or address-space cap and the sampled peak. A later failed
+connection check is secondary evidence, not a replacement for the build error.
+
+Operations shows observed memory use. Its **max observed** value is the largest
+sampled peak among completed runs in the displayed history window, not a
+configured limit. Sampling can miss the final spike before termination.
+A database connection-closed message alone does not identify which side or
+resource caused the failure. Compare the runner diagnosis and original trace
+with the container/host and database logs before attributing it to memory.
 Use those measurements and failures to size limits from real workloads.
+
+### Run heavy reports one at a time
+
+With one runner process, set `WORKER_MAX_CONCURRENT=1` to leave other builds
+queued until the active build finishes. One worker container alone does not
+ensure serial execution. Each additional runner process can still admit its
+own build.
+
+Serial execution does not raise the per-build cap. Adding host RAM also does
+not change `TRELLUM_DEFAULT_JOB_MEMORY_MB` or its headroom multiplier. Size the
+applied cap for the largest report while leaving measured room for the OS,
+database, portal and other services. A nonzero runner admission budget must
+also accommodate the configured job allocation. These settings are read when
+the runner process starts; existing build containers keep their original caps.
+
+To reduce a report's peak, first identify whether it occurs while fetching,
+transforming or rendering. Reduce unnecessary result rows and columns, perform
+appropriate aggregation in the database, and avoid retaining redundant frames.
+Fetching in batches only bounds memory when each batch can be processed and
+released; collecting every batch into a final full frame still requires that
+frame to fit. Browser data chunking does not make the build stream its input.
 
 ## When one machine is not enough
 

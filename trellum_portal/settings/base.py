@@ -577,13 +577,16 @@ LOGIN_ATTEMPT_WINDOW_SECONDS = env.int("LOGIN_ATTEMPT_WINDOW_SECONDS", default=9
 # when shipping them somewhere that parses them.
 LOG_FORMAT = env("LOG_FORMAT", default="text")
 LOG_LEVEL = env("LOG_LEVEL", default="INFO")
+SERVER_LOG_CAPTURE_ENABLED = env.bool("SERVER_LOG_CAPTURE_ENABLED", default=True)
+SERVER_LOG_RETENTION_DAYS = env.int("SERVER_LOG_RETENTION_DAYS", default=7)
+SERVER_LOG_MAX_ROWS = env.int("SERVER_LOG_MAX_ROWS", default=20_000)
+SERVER_LOG_SERVICE = env("SERVER_LOG_SERVICE", default="")
 
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "filters": {
-        # Puts the current request id on every record, so one build can be
-        # followed across web, worker and sandbox logs.
+        # Adds the current request id to web records; cross-process runs use run_id.
         "request_id": {"()": "apps.core.logging.RequestIdFilter"},
     },
     "formatters": {
@@ -594,22 +597,26 @@ LOGGING = {
         "json": {"()": "apps.core.logging.JsonFormatter"},
     },
     "handlers": {
+        "server_logs": {
+            "class": "apps.core.server_logs.DatabaseLogHandler",
+            "filters": ["request_id"],
+        },
         "console": {
             "class": "logging.StreamHandler",
             "formatter": "json" if LOG_FORMAT == "json" else "simple",
             "filters": ["request_id"],
         },
     },
-    "root": {"handlers": ["console"], "level": LOG_LEVEL},
+    "root": {"handlers": ["console", "server_logs"], "level": LOG_LEVEL},
     "loggers": {
         # SSO failures must name themselves in the web log (token exchange
         # errors, discovery problems) instead of dying as a bare 401.
-        "allauth": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
+        "allauth": {"handlers": ["console", "server_logs"], "level": "DEBUG", "propagate": False},
         # Django logs 4xx at WARNING and 5xx at ERROR here. Without it, a 500 in
         # production reaches the user and appears in no log at all.
-        "django.request": {"handlers": ["console"], "level": "WARNING", "propagate": False},
+        "django.request": {"handlers": ["console", "server_logs"], "level": "WARNING", "propagate": False},
         # Host-header rejections and suspicious operations. These are the first
         # sign of someone probing, and they were previously silent.
-        "django.security": {"handlers": ["console"], "level": "WARNING", "propagate": False},
+        "django.security": {"handlers": ["console", "server_logs"], "level": "WARNING", "propagate": False},
     },
 }

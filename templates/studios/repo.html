@@ -14,7 +14,7 @@
   <p>Choose signed-in access for newly discovered reports and analyses. Existing items keep their audience when these defaults change or they are rebuilt. A repository manifest can set an initial audience for a new item.</p>
   <p class="muted">Studio audience includes Viewers with access to the whole studio. Private includes organization admins, studio Admins and Developers, plus explicitly assigned Viewer groups. Internet sharing uses separate public links.</p>
   {% if audience_block_reason %}<p class="muted" role="note">Private defaults cannot be enabled: {{ audience_block_reason }}.</p>{% endif %}
-  <form method="post" data-settings-form>
+  <form method="post" id="defaultAudienceForm" data-settings-form data-settings-save>
     {% csrf_token %}<input type="hidden" name="set_default_audiences" value="1">
     {{ audience_form.non_field_errors }}
     <label for="{{ audience_form.default_report_audience.id_for_label }}">New reports</label>{{ audience_form.default_report_audience }}{{ audience_form.default_report_audience.errors }}
@@ -24,8 +24,9 @@
   <p class="muted">For an existing item, open its <a href="/s/{{ org.slug }}/{{ studio.slug }}/">studio page</a> and choose Access in the Options menu to change its audience or assign groups.</p>
 </div>
 
+<section id="repoResults" data-repo-results data-status-url="/s/{{ org.slug }}/{{ studio.slug }}/api/system/git/status">
 {% if repo and repo.repo_url %}
-<span data-repo-status data-status-url="/s/{{ org.slug }}/{{ studio.slug }}/api/system/git/status" data-sync-requested="{{ repo.sync_requested|yesno:'true,false' }}" data-publish-requested="{{ repo.publish_requested|yesno:'true,false' }}" hidden></span>
+<span data-repo-status data-status-url="/s/{{ org.slug }}/{{ studio.slug }}/api/system/git/status" data-sync-requested="{{ repo.sync_requested|yesno:'true,false' }}" data-publish-mode="{{ repo.publish_mode }}" data-publish-requested="{{ repo.publish_requested|yesno:'true,false' }}" hidden></span>
 {% if repo.publish_requested %}
 <div class="ui-flash info" role="status">Publishing <code>{{ repo.remote_sha|slice:":7" }}</code>…
   the runner will pick it up within a few seconds.</div>
@@ -62,7 +63,7 @@
     </div>
   </div>
 
-  <form method="post" id="modeForm" class="repo-mode" data-settings-form>
+  <form method="post" id="modeForm" class="repo-mode" data-settings-form data-settings-save>
     {% csrf_token %}<input type="hidden" name="set_mode" value="1">
     <span class="ui-label">Publishing</span>
     <div class="ui-seg" role="radiogroup" aria-label="Publishing">
@@ -74,7 +75,7 @@
   </form>
 
   <div class="ui-form-actions repo-actions">
-    <form class="inline" method="post" id="repoSyncForm">
+    <form class="inline" method="post" id="repoSyncForm" data-settings-save>
       {% csrf_token %}<input type="hidden" name="sync_now" value="1">
       <button class="ui-btn ghost" type="submit" id="repoSyncButton" data-idle-label="{% if repo.publish_mode == 'manual' %}Check for changes{% else %}Sync now{% endif %}"{% if repo.sync_requested or repo.publish_requested %} disabled{% endif %}>{% if repo.publish_requested %}Publishing…{% elif repo.sync_requested %}Checking for changes…{% elif repo.publish_mode == "manual" %}Check for changes{% else %}Sync now{% endif %}</button>
     </form>
@@ -85,7 +86,7 @@
     {% endif %}
   </div>
 </div>
-<p id="repoPollStatus" class="muted" role="status" aria-live="polite"{% if not repo.sync_requested and not repo.publish_requested %} hidden{% endif %}>{% if repo.publish_requested %}Publishing…{% elif repo.sync_requested %}Checking for changes…{% endif %}</p>
+
 
 {% if repo.publish_mode == "manual" or pending %}
 {% if pending %}
@@ -178,7 +179,7 @@
               {% elif p.trigger == "auto" %}schedule · auto
               {% else %}{{ p.trigger }}{% endif %}</td>
           <td>{% if p.summary.commits %}
-            <details><summary>{{ p.summary.commits|length }} commit{{ p.summary.commits|length|pluralize }}</summary>
+            <details data-preserve-key="publish-{{ p.pk }}"><summary>{{ p.summary.commits|length }} commit{{ p.summary.commits|length|pluralize }}</summary>
               <ul class="repo-commit-list">{% for c in p.summary.commits %}<li><code>{{ c.sha|slice:":7" }}</code> {{ c.message }}</li>{% endfor %}</ul>
             </details>{% else %}—{% endif %}</td>
           <td class="num">{{ p.reports_changed }}</td>
@@ -195,11 +196,13 @@
   {% endif %}
 </div>
 {% endif %}
-{% if repo and repo.repo_url %}<script src="{% static 'repo-status.js' %}" defer></script>{% endif %}
+</section>
+<p id="repoPollStatus" class="muted" role="status" aria-live="polite" tabindex="-1" hidden></p>
+<script src="{% static 'repo-status.js' %}" defer></script>
 
 <h2>Connection</h2>
 <div class="panel formrow">
-  <form method="post" data-settings-form>
+  <form method="post" id="repoConnectionForm" data-settings-form data-settings-save>
     {% csrf_token %}
     <p class="ui-label" style="margin:0">Repository</p>
     <label>Repository URL (https)</label>{{ form.repo_url }}{{ form.repo_url.errors }}
@@ -232,59 +235,4 @@
   {% include "_copy_field.html" with value=webhook_url %}
 </div>
 
-<script>
-/* Switching a manual repo with pending commits to automatic confirms on save,
-   since saving that setting publishes them. */
-(function () {
-  var form = document.getElementById('modeForm');
-  if (!form) return;
-  var confirm = document.getElementById('modeConfirm'), go = false;
-  form.addEventListener('submit', function (ev) {
-    var mode = form.querySelector('[name="publish_mode"]:checked');
-    if (!go && mode && mode.value === 'auto' && confirm && confirm.showModal) {
-      ev.preventDefault(); confirm.showModal();
-    }
-  });
-  if (confirm) {
-    confirm.querySelector('[data-go]').addEventListener('click', function () { go = true; form.requestSubmit(); });
-  }
-})();
-/* Review & publish: the dialog re-checks the remote head when it opens and
-   Publish stays disabled until that check confirms the commit shown here.
-   The request names that commit too, so the runner refuses to publish a
-   branch that moved on after the check. */
-(function () {
-  var btn = document.getElementById('reviewBtn'), dlg = document.getElementById('publishDialog');
-  if (!btn || !dlg) return;
-  var api = '/s/{{ org.slug|escapejs }}/{{ studio.slug|escapejs }}/api/system/git/';
-  var go = document.getElementById('publishGo'), note = document.getElementById('publishNote');
-  function warn(text) { note.textContent = text; note.hidden = false; go.disabled = true; }
-  btn.addEventListener('click', function () {
-    note.hidden = true; go.disabled = true;
-    dlg.showModal();
-    fetch(api + 'status', {credentials: 'same-origin'})
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (s) {
-        if (s.remote_sha !== btn.dataset.remote) warn('New commits arrived \u2014 review again.');
-        else go.disabled = false;
-      }).catch(function () { warn('Could not confirm the remote \u2014 try again.'); });
-  });
-  go.addEventListener('click', function () {
-    go.disabled = true;
-    var cb = document.getElementById('publishRebuild');
-    var body = {to: btn.dataset.remote};
-    if (cb) body.rebuild = cb.checked;
-    fetch(api + 'publish', {
-      method: 'POST', credentials: 'same-origin',
-      headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
-      body: JSON.stringify(body)
-    }).then(function (r) {
-      if (!r.ok) throw new Error(r.status);
-      location.reload();
-    }).catch(function () {
-      warn('Publishing failed \u2014 try again.'); go.disabled = false;
-    });
-  });
-})();
-</script>
 {% endblock %}

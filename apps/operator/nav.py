@@ -13,6 +13,7 @@ class NavItem:
 _ITEMS = (
     NavItem(label="Fleet", url_name="operator-fleet"),
     NavItem(label="Organizations", url_name="operator-orgs"),
+    NavItem(label="Server logs", url_name="operator-logs"),
 )
 
 

@@ -10,7 +10,7 @@
 </header>
 
 <div class="panel">
-  <form method="post" data-settings-form>
+  <form id="orgAssistantForm" method="post" data-settings-form data-settings-save>
     {% csrf_token %}
     {{ form.non_field_errors }}
     <label class="ui-check-row">{{ form.enabled }} Enable the AI assistant for this organization</label>
@@ -18,7 +18,7 @@
     <p class="ui-label" style="margin:18px 0 0">Provider</p>
     <label>Provider</label>{{ form.provider }}{{ form.provider.errors }}
     <label>API key
-      <span class="muted">{% if has_key %}(a key is stored — blank keeps it){% else %}(none stored yet){% endif %}</span>
+      <span class="muted" data-settings-text="assistant-key-stored">{% if has_key %}(a key is stored — blank keeps it){% else %}(none stored yet){% endif %}</span>
     </label>{{ form.api_key }}{{ form.api_key.errors }}
     <span class="helptext">{{ form.api_key.help_text }}</span>
     <label>Model</label>{{ form.model }}{{ form.model.errors }}
@@ -99,16 +99,60 @@
     latency.textContent = ms == null ? '' : ms < 1000 ? ms + ' ms' : (ms / 1000).toFixed(1) + ' s';
     tech.hidden = !detail; tech.open = false; tech.querySelector('pre').textContent = detail || '';
   }
+  var form = document.getElementById('orgAssistantForm'), hasSavedSettings = !btn.disabled;
+  var generation = 0, controller = null, testing = false;
+  function syncButton() {
+    btn.disabled = !hasSavedSettings || testing || form.getAttribute('aria-busy') === 'true';
+  }
+  function invalidate() {
+    ++generation;
+    if (controller) controller.abort();
+    controller = null;
+    testing = false;
+    out.hidden = true;
+    syncButton();
+  }
+  form.addEventListener('input', invalidate);
+  form.addEventListener('change', invalidate);
+  form.addEventListener('submit', invalidate);
+  form.addEventListener('settings:success', function () {
+    invalidate();
+    hasSavedSettings = true;
+    syncButton();
+  });
+  new MutationObserver(function () {
+    if (form.getAttribute('aria-busy') === 'true') invalidate();
+    else syncButton();
+  }).observe(form, { attributes: true, attributeFilter: ['aria-busy'] });
   btn.addEventListener('click', function () {
-    btn.disabled = true; show(null, 'Testing the saved settings…');
+    if (!hasSavedSettings || testing || form.getAttribute('aria-busy') === 'true') return;
+    var token = ++generation, requestController = new AbortController(), timedOut = false;
+    controller = requestController;
+    testing = true;
+    syncButton();
+    show(null, 'Testing the saved settings…');
+    var timeout = setTimeout(function () { timedOut = true; requestController.abort(); }, 30000);
     fetch('{% url "org-assistant-test" org.slug %}', {
-      method: 'POST', credentials: 'same-origin',
-      headers: { 'X-CSRFToken': document.querySelector('input[name=csrfmiddlewaretoken]').value }
+      method: 'POST', credentials: 'same-origin', signal: requestController.signal,
+      headers: { 'X-CSRFToken': form.querySelector('input[name=csrfmiddlewaretoken]').value }
     })
-      .then(function (r) { return r.json(); })
-      .then(function (j) { show(j.ok, j.message, j.latency_ms, j.detail, j.hints); })
-      .catch(function () { show(false, 'The request did not complete.'); })
-      .then(function () { btn.disabled = false; });
+      .then(function (response) {
+        if (!response.ok) throw new Error('The connection test did not complete.');
+        return response.json();
+      })
+      .then(function (result) {
+        if (token === generation) show(result.ok, result.message, result.latency_ms, result.detail, result.hints);
+      })
+      .catch(function () {
+        if (token === generation) show(false, timedOut ? 'The connection test timed out. Try again.' : 'The request did not complete.');
+      })
+      .finally(function () {
+        clearTimeout(timeout);
+        if (token !== generation) return;
+        controller = null;
+        testing = false;
+        syncButton();
+      });
   });
 })();
 </script>

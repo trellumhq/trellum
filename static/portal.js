@@ -54,6 +54,25 @@ function apiFetch(url, options) {
     });
 }
 
+function boundedFetch(url, options, timeoutMs) {
+    var controller = new AbortController();
+    var timer = setTimeout(function() { controller.abort(); }, timeoutMs || 8000);
+    options = Object.assign({}, options || {}, { signal: controller.signal });
+    function finish() { clearTimeout(timer); }
+    return apiFetch(url, options).then(function(response) {
+        if (!response.body) finish();
+        ['json', 'text', 'arrayBuffer', 'blob', 'formData'].forEach(function(method) {
+            if (typeof response[method] !== 'function') return;
+            var consume = response[method].bind(response);
+            response[method] = function() { return consume().finally(finish); };
+        });
+        return response;
+    }, function(error) {
+        finish();
+        throw error;
+    });
+}
+
 let activeFolder = localStorage.getItem('trellum_portal_tab') || 'all';
 let searchQuery = '';
 /* The dashboard only knows cards/list now; a stored 'ops'/'health'/'chat'
@@ -120,6 +139,8 @@ const EYE_OFF_SVG = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" 
 /* ── Favorites (server-side, per user; /api/me/favorites) ── */
 var _favSlugs = new Set();      /* slugs favorited in THIS studio */
 var _favIds = {};               /* slug -> report_id */
+var _favoritesReady = false;
+var _favoritesFailed = false;
 
 function isFav(slug) { return _favSlugs.has(slug); }
 
@@ -130,8 +151,8 @@ function _favReportId(slug) {
 }
 
 function loadFavorites() {
-    return apiFetch('/api/me/favorites')
-        .then(function(r) { return r.ok ? r.json() : { favorites: [] }; })
+    return boundedFetch('/api/me/favorites')
+        .then(function(r) { if (!r.ok) throw new Error('Favorites request failed'); return r.json(); })
         .then(function(data) {
             _favSlugs = new Set();
             (data.favorites || []).forEach(function(f) {
@@ -140,8 +161,10 @@ function loadFavorites() {
                     _favIds[f.slug] = f.report_id;
                 }
             });
+            _favoritesReady = true;
+            _favoritesFailed = false;
         })
-        .catch(function() {});
+        .catch(function() { _favoritesReady = false; _favoritesFailed = true; });
 }
 
 /* ── Envelope state (server-side, per user; /api/my-subscriptions) ──
@@ -156,7 +179,7 @@ function isSubscribed(slug) { return _subSlugs.has(slug); }
 function subCount(slug) { return _subCounts[slug] || 0; }
 
 function loadSubscriptions() {
-    return studioFetch('/api/my-subscriptions')
+    return boundedFetch(apiUrl('/api/my-subscriptions'))
         .then(function(r) { return r.ok ? r.json() : { reports: {} }; })
         .then(function(data) {
             _subSlugs = new Set();
@@ -199,11 +222,11 @@ function migrateLegacyFavorites() {
         localStorage.removeItem('trellum_portal_favs');
         return Promise.resolve();
     }
-    return apiFetch('/api/me/favorites/import', {
+    return boundedFetch('/api/me/favorites/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ slugs: legacy })
-    }).then(function(r) {
+    }, 8000).then(function(r) {
         if (r.ok) localStorage.removeItem('trellum_portal_favs');
     }).catch(function() {});
 }
@@ -874,6 +897,13 @@ function filterMoreMenu(tabsEl, query) {
 /* ── Empty states ── */
 function emptyStateHtml(isSearching) {
     var contentLabel = IS_ANALYSES_PAGE ? 'analyses' : 'reports';
+    if (activeFolder === '_favorites' && _favoritesFailed) {
+        return '<div class="empty-state">' + SEARCH_SVG + '<p>Favorites could not be loaded.</p>'
+            + '<button type="button" class="ops-action-btn" data-favorites-retry>Try again</button></div>';
+    }
+    if (activeFolder === '_favorites' && !_favoritesReady) {
+        return '<div class="empty-state">' + SEARCH_SVG + '<p>Loading favorites…</p></div>';
+    }
     if (IS_ANALYSES_PAGE && !isSearching && dashboardReports().length === 0) {
         return '<div class="empty-state">' + SEARCH_SVG
             + '<p>No analyses yet. Publish an article from your analytics repository to share a finding here.</p></div>';
@@ -894,6 +924,12 @@ function emptyStateHtml(isSearching) {
     return '<div class="empty-state">' + SEARCH_SVG
         + '<p>No ' + contentLabel + (isSearching ? ' match your search' : ' in this category') + '</p>'
         + '</div>';
+}
+
+function signalCatalogReady(container) {
+    if (activeFolder === '_favorites' && !_favoritesReady && !_favoritesFailed) return;
+    container.dataset.catalogReady = 'true';
+    window.dispatchEvent(new Event('trellum:catalog-ready'));
 }
 
 /* ── Main render ── */
@@ -954,6 +990,7 @@ function render() {
     if (!pool.length) {
         html += emptyStateHtml(isSearching);
         container.innerHTML = html;
+        signalCatalogReady(container);
         syncToUrl();
         return;
     }
@@ -961,6 +998,7 @@ function render() {
     if (viewMode === 'list') {
         html += listTableHtml(catalogGroups(sortReports(pool), isSearching));
         container.innerHTML = html;
+        signalCatalogReady(container);
         syncToUrl();
         return;
     }
@@ -975,6 +1013,7 @@ function render() {
     });
 
     container.innerHTML = html;
+    signalCatalogReady(container);
 
     /* Bind card sort dropdown. The control is replaced whenever render()
        rebuilds the catalog toolbar, so this listener stays single-use. */
@@ -1039,6 +1078,13 @@ document.getElementById('folderTabs').addEventListener('toggle', function(e) {
 }, true);
 
 document.addEventListener('click', function(e) {
+    if (e.target.closest && e.target.closest('[data-favorites-retry]')) {
+        _favoritesFailed = false;
+        _favoritesReady = false;
+        render();
+        loadFavorites().then(function() { if (activeFolder === '_favorites') render(); });
+        return;
+    }
     const menu = document.querySelector('.folder-more[open]');
     if (menu && !menu.contains(e.target)) menu.open = false;
 });
@@ -1216,14 +1262,15 @@ function runReport(slug, cacheMode) {
 }
 
 function pollReportRun(slug, cacheMode) {
-    var iv = setInterval(function() {
-        studioFetch('/api/reports/' + encodeURIComponent(slug) + '/status')
+    function schedule() { setTimeout(poll, 2000); }
+    function poll() {
+        if (!_runningSet[slug]) return;
+        boundedFetch(apiUrl('/api/reports/' + encodeURIComponent(slug) + '/status'))
             .then(function(resp) { return resp.json(); })
             .then(function(st) {
-                if (st.state === 'running' || st.state === 'queued') return;
-                clearInterval(iv);
+                if (st.state === 'running' || st.state === 'queued') { schedule(); return; }
                 delete _runningSet[slug];
-                studioFetch('/api/registry')
+                return studioFetch('/api/registry')
                     .then(function(resp) { return resp.json(); })
                     .then(function(reg) {
                         reports = reg.reports;
@@ -1245,11 +1292,11 @@ function pollReportRun(slug, cacheMode) {
                     });
             })
             .catch(function() {
-                clearInterval(iv);
                 delete _runningSet[slug];
                 render();
             });
-    }, 2000);
+    }
+    setTimeout(poll, 0);
 }
 
 /* ── Error log panel ── */
@@ -1691,6 +1738,17 @@ var _opsExpandedSlugs = {};
 var _opsLivePollers = {};
 var _opsUserRoles = null;
 var _opsSystemActions = {};
+var _opsRenderSerial = 0;
+var _opsStatusRevision = 0;
+var _opsStatusCycle = 0;
+var _opsStatusInFlight = false;
+var _opsStatusTimer = null;
+var _opsStatusDelay = 2000;
+var _opsSystemStatusRequest = null;
+var _opsSystemStatusController = null;
+var _opsPageActive = true;
+var _opsLiveRequests = {};
+var _opsHistoryRequests = {};
 window.matchMedia('(min-width: 768px)').addEventListener('change', function() {
     document.querySelectorAll('.ops-secondary').forEach(function(menu) {
         menu.open = false;
@@ -1717,6 +1775,7 @@ function opsHasRole() {
 }
 
 function renderOperations() {
+    _opsRenderSerial++;
     Object.keys(_opsLivePollers).forEach(function(s) { clearInterval(_opsLivePollers[s]); });
     _opsLivePollers = {};
     opsEnsureRoles(function() { _renderOpsContent(); });
@@ -1724,10 +1783,16 @@ function renderOperations() {
 
 function _renderOpsContent() {
     var container = document.getElementById('content');
+    var serial = _opsRenderSerial;
+    var revision = _opsStatusRevision;
+    var isCurrent = function() {
+        return serial === _opsRenderSerial && revision === _opsStatusRevision
+            && viewMode === 'ops' && _opsPageActive;
+    };
     /* Check git sync status once to determine whether to show the button */
     var gitReady = window._gitSyncChecked
         ? Promise.resolve()
-        : studioFetch('/api/system/git/status').then(function(r) { return r.json(); }).then(function(gs) {
+        : boundedFetch(apiUrl('/api/system/git/status')).then(function(r) { return r.json(); }).then(function(gs) {
             window._gitSyncConfigured = gs && gs.configured;
             window._gitStatus = gs || {};
             window._gitSyncChecked = true;
@@ -1735,17 +1800,22 @@ function _renderOpsContent() {
 
     gitReady.then(function() {
         Promise.all([
-            studioFetch('/api/system/status').then(function(r) { return r.json(); }),
-            studioFetch('/api/registry').then(function(r) { return r.json(); }),
-            _opsFetchRunStats()
+            _opsFetchSystemStatus(),
+            boundedFetch(apiUrl('/api/registry')).then(function(r) { return r.json(); }),
+            _opsFetchRunStats(isCurrent)
         ]).then(function(results) {
+            if (!isCurrent()) return;
             var status = results[0], reg = results[1];
+            reports = reg.reports || reports;
             container.innerHTML = _buildOpsHTML(status, reg.reports || reports);
+            signalCatalogReady(container);
             _opsBindEvents(status, reg.reports || reports);
             _restoreDsState();
             _opsStartLivePollers(status);
         }).catch(function() {
+            if (!isCurrent()) return;
             container.innerHTML = _buildOpsHTML({running:{},queue:[],max_concurrent:10}, reports);
+            signalCatalogReady(container);
             _opsBindEvents({running:{},queue:[]}, reports);
             _restoreDsState();
         });
@@ -1756,10 +1826,34 @@ function _renderOpsContent() {
    Kept in a module-level cache so table cells can be built synchronously;
    a fetch failure keeps the previous snapshot and cells degrade to em-dash. */
 var _opsRunStats = {};
-function _opsFetchRunStats() {
-    return studioFetch('/api/system/run-stats')
+function _opsFetchSystemStatus() {
+    if (_opsSystemStatusRequest) return _opsSystemStatusRequest;
+    var controller = new AbortController();
+    _opsSystemStatusController = controller;
+    var timer = setTimeout(function() { controller.abort(); }, 8000);
+    var request = studioFetch('/api/system/status', { signal: controller.signal })
+        .then(function(r) {
+            if (!r.ok) throw new Error('Status request failed');
+            return r.json();
+        })
+        .finally(function() { clearTimeout(timer); });
+    _opsSystemStatusRequest = request.finally(function() {
+        if (_opsSystemStatusController === controller) {
+            _opsSystemStatusController = null;
+            _opsSystemStatusRequest = null;
+        }
+    });
+    return _opsSystemStatusRequest;
+}
+
+function _opsFetchRunStats(isCurrent) {
+    return boundedFetch(apiUrl('/api/system/run-stats'))
         .then(function(r) { return r.json(); })
-        .then(function(data) { _opsRunStats = (data && data.stats) || {}; })
+        .then(function(data) {
+            if (isCurrent && !isCurrent()) return false;
+            _opsRunStats = (data && data.stats) || {};
+            return true;
+        })
         .catch(function() {});
 }
 
@@ -1787,15 +1881,13 @@ function _buildOpsHTML(status, reportList) {
     var running = status.running || {};
     var queue = status.queue || [];
     var queueSlugs = queue.map(function(q) { return q.slug || q; });
-    var counts = {total:reportList.length, running:Object.keys(running).length, queued:queue.length, ok:0, error:0, not_run:0, waiting:0};
+    var counts = {total:reportList.length, running:0, queued:0, ok:0, error:0, oom:0, timeout:0, stopped:0, not_run:0, waiting:0};
     reportList.forEach(function(r) {
-        if (running[r.slug] || queueSlugs.indexOf(r.slug) >= 0) return;
-        var s = r.last_status || 'not_run';
-        if (r.waiting) counts.waiting++;
-        else if (s === 'success') counts.ok++;
-        else if (s === 'error') counts.error++;
-        else counts.not_run++;
+        var state = _opsReportState(r, running, queueSlugs);
+        if (state === 'oom' || state === 'timeout') counts.error++;
+        counts[state]++;
     });
+    window._opsLatestStatus = status;
     var uptime = status.server_uptime_seconds ? _fmtDuration(status.server_uptime_seconds) : '-';
 
     /* Data sources that need someone's attention sit above everything else;
@@ -1834,7 +1926,7 @@ function _buildOpsHTML(status, reportList) {
             html += _opsActionBtn('git-sync', '&#8635; ' + (gs.publish_mode === 'manual' ? 'Check for changes' : 'Sync now'));
         }
         html += _opsActionBtn('refresh', '&#8635; Reload Registry');
-        html += '<button class="ops-action-btn" data-ops-action="server-log">&#128196; Server Log</button>';
+        html += '<button class="ops-action-btn" data-ops-action="server-log">&#128196; Build activity</button>';
         html += '</div>';
         if (window._gitSyncConfigured) html += _opsRepoCard(gs);
     }
@@ -1854,19 +1946,19 @@ function _buildOpsHTML(status, reportList) {
 
     [['all','All',counts.total],['running','Running',counts.running],['queued','Queued',counts.queued],
      ['waiting','Waiting',counts.waiting],
-     ['error','Errors',counts.error],['ok','OK',counts.ok],['not_run','Not Run',counts.not_run],
+     ['error','Failed',counts.error],['oom','Out of memory',counts.oom],['timeout','Timed out',counts.timeout],
+     ['stopped','Stopped',counts.stopped],['ok','Success',counts.ok],['not_run','Not run',counts.not_run],
      ['v_fail','Validation Fails',vCounts.v_fail],['v_warn','Warnings',vCounts.v_warn],['healthy','No issues',vCounts.healthy]].forEach(function(f) {
-        html += '<button class="ops-filter-pill' + (_opsFilter === f[0] ? ' active' : '') + '" data-ops-filter="' + f[0] + '">'
+        html += '<button class="ops-filter-pill' + (_opsFilter === f[0] ? ' active' : '') + '" data-ops-filter="' + f[0] + '" aria-pressed="' + (_opsFilter === f[0]) + '">'
             + f[1] + '<span class="ops-filter-count">' + f[2] + '</span></button>';
     });
     html += '</div>';
 
-    var filtered = _opsFilterReports(reportList, running, queueSlugs);
     html += '<div class="ops-table-wrap"><table class="ops-table"><thead><tr><th>Report</th><th>Data</th><th>Schedule</th><th>Status</th><th>Duration</th><th>Memory</th><th>Details</th><th>Actions</th></tr></thead><tbody>';
-    filtered.forEach(function(r) {
+    reportList.forEach(function(r) {
         var isRunning = !!running[r.slug], isQueued = queueSlugs.indexOf(r.slug) >= 0;
         var expanded = !!_opsExpandedSlugs[r.slug];
-        html += '<tr' + (expanded ? ' class="expanded"' : '') + ' data-ops-row="' + r.slug + '">';
+        html += '<tr' + (expanded ? ' class="expanded"' : '') + ' data-ops-row="' + r.slug + '"' + (_opsFilterMatches(r, running, queueSlugs) ? '' : ' hidden') + '>';
         html += '<td class="ops-report-cell" data-label="Report"><div class="ops-report-name">' + esc(r.name) + '</div><div class="ops-report-slug">' + (r.kind === 'analysis' ? 'Analysis' : 'Report') + ' · ' + esc(r.slug) + '</div></td>';
         html += '<td data-label="Data">' + _opsDataCell(r) + '</td>';
         html += '<td data-label="Schedule">' + _opsCronCell(r, status) + '</td>';
@@ -1877,8 +1969,9 @@ function _buildOpsHTML(status, reportList) {
         html += '<td class="ops-actions-cell" data-label="Actions">' + _opsActionsCell(r, isRunning, isQueued) + '</td>';
         html += '</tr>';
         if (expanded) {
-            var mode = isRunning ? 'live' : ((r.last_status || '') === 'error' ? 'error' : 'log');
-            var title = isRunning ? 'Running' : ((r.last_status || '') === 'error' ? 'Failed' : 'Last run');
+            var isStarting = !!((window._opsRunPending || {})[r.slug]) && !isRunning && !isQueued;
+            var mode = isRunning ? 'live' : (isQueued ? 'queued' : (isStarting ? 'starting' : (_opsIsFailedStatus(r.build_status || r.last_status) ? 'error' : 'log')));
+            var title = isRunning ? 'Running' : (isQueued ? 'Queued' : (isStarting ? 'Starting' : (_opsIsFailedStatus(r.build_status || r.last_status) ? 'Failed' : 'Last run')));
             /* Report meta info shown in the expanded row */
             var metaInfo = '<div style="padding:8px 14px;font-size:11px;color:var(--text3);display:flex;gap:16px;flex-wrap:wrap">';
             if (r.framework_version) metaInfo += '<span>Framework: <strong style="color:var(--text2)">' + esc(r.framework_version) + '</strong></span>';
@@ -1892,6 +1985,7 @@ function _buildOpsHTML(status, reportList) {
                 + '</td></tr>';
         }
     });
+    html += '<tr data-ops-empty hidden><td colspan="8" style="text-align:center;color:var(--text3);padding:24px">No reports match this filter.</td></tr>';
     html += '</tbody></table></div>';
     return html;
 }
@@ -1944,25 +2038,31 @@ function _opsCronCell(r, status) {
         + (next ? '<div class="ops-next-run">' + next + '</div>' : '');
 }
 function _opsStatusCell(r, running, isQueued) {
+    if ((window._opsRunPending || {})[r.slug]) {
+        return '<div class="ops-status running"><span class="ops-status-dot"></span><span class="ops-status-text">Starting...</span></div>';
+    }
     if (running[r.slug]) {
         var el = Math.round(running[r.slug].elapsed_seconds || 0);
         return '<div class="ops-status running"><span class="ops-status-dot"></span><span class="ops-status-text">Running</span></div>'
             + '<div class="ops-status-detail">' + el + 's elapsed</div>';
     }
     if (isQueued) return '<div class="ops-status queued"><span class="ops-status-dot"></span><span class="ops-status-text">Queued</span></div>';
-    var s = r.last_status || 'not_run';
+    var s = r.build_status || r.last_status || 'not_run';
+    if (s === 'running' || s === 'starting') return '<div class="ops-status running"><span class="ops-status-dot"></span><span class="ops-status-text">' + (s === 'starting' ? 'Starting...' : 'Running') + '</span></div>';
+    if (s === 'queued') return '<div class="ops-status queued"><span class="ops-status-dot"></span><span class="ops-status-text">Queued</span></div>';
     if (r.waiting) {
         /* Held before it started: not a failure of the build. */
         return '<div class="ops-status waiting"><span class="ops-status-dot"></span><span class="ops-status-text">Waiting for data source</span></div>'
             + '<div class="ops-status-detail"><code>' + esc((r.blocked_by || []).join(', ')) + '</code></div>';
     }
-    var label = s === 'success' ? 'OK' : s === 'error' ? 'Error' : 'Not run';
+    var labels = {success:'Success', error:'Failed', oom_killed:'Out of memory', timeout:'Timed out', stopped:'Stopped'};
+    var label = labels[s] || 'Not run';
     var failure = s === 'error' ? sourceFailure(r.last_error) : null;
     if (failure) label += ' \u00b7 data source <code>' + esc(failure.name) + '</code>';
     var detail = '';
     if (r.last_run) {
         detail = _timeAgo(r.last_run);
-        if (s === 'error' && r.last_error) detail += ' \u2014 ' + (failure ? failure.message : r.last_error).substring(0, 60);
+        if (_opsIsFailedStatus(s) && r.last_error) detail += ' \u2014 ' + (failure ? failure.message : r.last_error).substring(0, 60);
     }
     return '<div class="ops-status ' + s + '"><span class="ops-status-dot"></span><span class="ops-status-text">' + label + '</span></div>'
         + (detail ? '<div class="ops-status-detail">' + esc(detail) + '</div>' : '');
@@ -1981,8 +2081,8 @@ function _opsMemoryCell(slug) {
     if (!st || !st.agg || !st.agg.runs) return '<span class="ops-metric">\u2014</span>';
     var last = st.last || {};
     var main = _fmtMB(last.peak_memory_mb);
-    var sub = st.agg.max_peak_memory_mb != null ? 'max ' + _fmtMB(st.agg.max_peak_memory_mb) : '';
-    return '<div class="ops-metric">' + main + '</div>'
+    var sub = st.agg.max_peak_memory_mb != null ? 'max observed ' + _fmtMB(st.agg.max_peak_memory_mb) : '';
+    return '<div class="ops-metric" title="Observed peak memory of the latest completed run; not a configured limit">' + main + '</div>'
         + (sub ? '<div class="ops-metric-sub">' + sub + '</div>' : '');
 }
 function _opsDetailsCell(r) {
@@ -2013,7 +2113,9 @@ function _opsDetailsCell(r) {
 function _opsActionsCell(r, isRunning, isQueued) {
     if (!opsHasRole('developer', 'admin')) return '';
     var h = '<div class="ops-row-actions">';
-    if (isRunning || isQueued) {
+    if ((window._opsRunPending || {})[r.slug]) {
+        h += '<button class="ops-row-btn" disabled>Starting...</button>';
+    } else if (isRunning || isQueued) {
         h += '<button class="ops-row-btn stop" onclick="event.stopPropagation(); opsStop(\'' + r.slug + '\')">Stop</button>';
     } else {
         h += '<div class="ops-run-dropdown">'
@@ -2048,34 +2150,96 @@ function _opsActionsCell(r, isRunning, isQueued) {
 }
 function _opsTerminal(slug, mode, title) {
     var cls = mode === 'error' ? ' error' : '';
-    var bodyClass = mode === 'live' ? ' live' : '';
+    var bodyClass = mode === 'live' || mode === 'starting' ? ' live' : '';
     return '<div class="ops-terminal' + cls + '" id="opsTerm_' + slug + '">'
         + '<div class="ops-terminal-header"><div class="ops-terminal-dots"><span></span><span></span><span></span></div>'
         + '<span class="ops-terminal-title">' + esc(title) + '</span></div>'
-        + '<div class="ops-terminal-body' + bodyClass + '" id="opsTermBody_' + slug + '">Loading...</div></div>';
+        + '<div class="ops-terminal-body' + bodyClass + '" id="opsTermBody_' + slug + '">' + (mode === 'queued' ? '(queued...)' : (mode === 'starting' ? '(starting...)' : 'Loading...')) + '</div></div>';
 }
-function _opsFilterReports(list, running, queueSlugs) {
-    return list.filter(function(r) {
-        if (_opsFilter !== 'all') {
-            var isR = !!running[r.slug], isQ = queueSlugs.indexOf(r.slug)>=0, s = r.last_status||'not_run';
-            if (_opsFilter==='running' && !isR) return false;
-            if (_opsFilter==='queued' && !isQ) return false;
-            if (_opsFilter==='waiting' && (isR||isQ||!r.waiting)) return false;
-            if (_opsFilter==='error' && (isR||isQ||s!=='error'||r.waiting)) return false;
-            if (_opsFilter==='ok' && (isR||isQ||s!=='success')) return false;
-            if (_opsFilter==='not_run' && (isR||isQ||s!=='not_run')) return false;
-            /* Validation filters */
-            var v = r.validation && r.validation.summary;
-            if (_opsFilter==='v_fail' && !(v && v.fail > 0)) return false;
-            if (_opsFilter==='v_warn' && !(v && v.warn > 0 && (!v.fail || v.fail === 0))) return false;
-            if (_opsFilter==='healthy' && !(v && (!v.fail || v.fail === 0) && (!v.warn || v.warn === 0))) return false;
+function _opsSetTerminalState(slug, title, failed, body) {
+    var terminal = document.getElementById('opsTerm_' + slug);
+    var heading = terminal && terminal.querySelector('.ops-terminal-title');
+    var output = document.getElementById('opsTermBody_' + slug);
+    if (terminal) terminal.classList.toggle('error', !!failed);
+    if (heading) heading.textContent = title + ' — ' + slug;
+    if (output) output.classList.toggle('live', title === 'Running' || title === 'Starting');
+    if (output && body != null) {
+        output.textContent = body;
+    }
+}
+function _opsIsFailedStatus(status) {
+    return ['error', 'oom_killed', 'timeout'].indexOf(status) >= 0;
+}
+function _opsReportState(r, running, queueSlugs) {
+    if ((window._opsRunPending || {})[r.slug] || running[r.slug]) return 'running';
+    if (queueSlugs.indexOf(r.slug) >= 0) return 'queued';
+    var status = r.build_status || r.last_status || 'not_run';
+    if (status === 'running' || status === 'starting') return 'running';
+    if (status === 'queued') return 'queued';
+    if (r.waiting) return 'waiting';
+    if (status === 'success') return 'ok';
+    if (status === 'oom_killed') return 'oom';
+    if (status === 'timeout') return 'timeout';
+    if (status === 'stopped') return 'stopped';
+    if (status === 'error') return 'error';
+    return 'not_run';
+}
+function _opsFilterMatches(r, running, queueSlugs) {
+    var state = _opsReportState(r, running, queueSlugs);
+    if (_opsFilter === 'error') return ['error', 'oom', 'timeout'].indexOf(state) >= 0;
+    if (_opsFilter === 'oom') return state === 'oom';
+    if (_opsFilter === 'timeout') return state === 'timeout';
+    if (_opsFilter === 'stopped') return state === 'stopped';
+    if (_opsFilter === 'ok') return state === 'ok';
+    if (_opsFilter === 'v_fail' || _opsFilter === 'v_warn' || _opsFilter === 'healthy') {
+        var v = r.validation && r.validation.summary;
+        if (_opsFilter === 'v_fail') return !!(v && v.fail > 0);
+        if (_opsFilter === 'v_warn') return !!(v && v.warn > 0 && (!v.fail || v.fail === 0));
+        return !!(v && (!v.fail || v.fail === 0) && (!v.warn || v.warn === 0));
+    }
+    return _opsFilter === 'all' || state === _opsFilter;
+}
+function _opsFocusedRowSlug() {
+    var owner = document.activeElement && document.activeElement.closest('[data-ops-row], .ops-expand-row');
+    if (owner && owner.classList.contains('ops-expand-row')) owner = owner.previousElementSibling;
+    return owner && owner.dataset.opsRow;
+}
+function _opsApplyFilterToRows(status, focusedSlug) {
+    var running = (status && status.running) || {};
+    window._opsLatestStatus = status || window._opsLatestStatus || {};
+    var queueSlugs = ((status && status.queue) || []).map(function(q) { return q.slug || q; });
+    var counts = {running:0, queued:0, waiting:0, error:0, oom:0, timeout:0, stopped:0, ok:0, not_run:0};
+    document.querySelectorAll('[data-ops-row]').forEach(function(row) {
+        var r = reports.find(function(item) { return item.slug === row.dataset.opsRow; });
+        if (!r) return;
+        var state = _opsReportState(r, running, queueSlugs);
+        if (counts[state] != null) counts[state]++;
+        if (state === 'oom' || state === 'timeout') counts.error++;
+        var visible = _opsFilterMatches(r, running, queueSlugs);
+        var details = row.nextElementSibling;
+        if (details && !details.classList.contains('ops-expand-row')) details = null;
+        if (!visible && (row.contains(document.activeElement) || (details && details.contains(document.activeElement)) || focusedSlug === row.dataset.opsRow)) {
+            var activePill = document.querySelector('[data-ops-filter="' + _opsFilter + '"]');
+            if (activePill) activePill.focus({preventScroll:true});
         }
-        return true;
+        row.hidden = !visible;
+        if (details) details.hidden = !visible;
     });
+    Object.keys(counts).forEach(function(state) {
+        var pill = document.querySelector('[data-ops-filter="' + state + '"] .ops-filter-count');
+        if (pill) pill.textContent = counts[state];
+    });
+    document.querySelectorAll('[data-ops-filter]').forEach(function(pill) {
+        pill.classList.toggle('active', pill.dataset.opsFilter === _opsFilter);
+        pill.setAttribute('aria-pressed', pill.dataset.opsFilter === _opsFilter ? 'true' : 'false');
+    });
+    var anyVisible = Array.from(document.querySelectorAll('[data-ops-row]')).some(function(row) { return !row.hidden; });
+    var empty = document.querySelector('[data-ops-empty]');
+    if (empty) empty.hidden = anyVisible;
 }
 function _opsBindEvents(status, reportList) {
     document.querySelectorAll('[data-ops-filter]').forEach(function(b) {
-        b.addEventListener('click', function() { _opsFilter = this.dataset.opsFilter; renderOperations(); });
+        b.addEventListener('click', function() { _opsFilter = this.dataset.opsFilter; _opsApplyFilterToRows(window._opsLatestStatus || status); });
     });
     document.querySelectorAll('[data-ops-action]').forEach(function(b) {
         b.addEventListener('click', function() { _opsDoAction(this.dataset.opsAction); });
@@ -2084,19 +2248,27 @@ function _opsBindEvents(status, reportList) {
         tr.addEventListener('click', function() { opsToggleExpand(this.dataset.opsRow); });
     });
     Object.keys(_opsExpandedSlugs).forEach(function(slug) {
-        if ((status.running || {})[slug]) _opsStartLivePoll(slug);
-        else _opsLoadLog(slug);
+        if ((window._opsRunPending || {})[slug]) _opsSetTerminalState(slug, 'Starting', false, '(starting...)');
+        else if ((status.running || {})[slug]) _opsStartLivePoll(slug);
+        else if ((status.queue || []).some(function(item) { return (item.slug || item) === slug; })) {
+            _opsSetTerminalState(slug, 'Queued', false, '(queued...)');
+        } else _opsLoadLog(slug);
         _opsLoadHistory(slug);
     });
+    _opsApplyFilterToRows(status);
 }
 function _opsLoadHistory(slug) {
-    studioFetch('/api/reports/' + encodeURIComponent(slug) + '/status')
+    var requestId = (_opsHistoryRequests[slug] || 0) + 1;
+    _opsHistoryRequests[slug] = requestId;
+    boundedFetch(apiUrl('/api/reports/' + encodeURIComponent(slug) + '/status'))
         .then(function(r) { return r.json(); })
         .then(function(data) {
+            if (_opsHistoryRequests[slug] !== requestId || !_opsExpandedSlugs[slug]) return;
             var el = document.getElementById('opsHist_' + slug);
             if (el) el.innerHTML = _opsHistoryHTML(data.aggregates || {}, data.history || []);
         })
         .catch(function() {
+            if (_opsHistoryRequests[slug] !== requestId || !_opsExpandedSlugs[slug]) return;
             var el = document.getElementById('opsHist_' + slug);
             if (el) el.innerHTML = '';
         });
@@ -2113,7 +2285,7 @@ function _opsHistoryHTML(agg, history) {
     html += _opsStat(agg.avg_duration_s != null ? _fmtDuration(agg.avg_duration_s) : '—', 'Avg duration', '');
     html += _opsStat(agg.p95_duration_s != null ? _fmtDuration(agg.p95_duration_s) : '—', 'P95 duration', '');
     html += _opsStat(_fmtMB(agg.avg_peak_memory_mb), 'Avg peak mem', '');
-    html += _opsStat(_fmtMB(agg.max_peak_memory_mb), 'Max peak mem', '');
+    html += _opsStat(_fmtMB(agg.max_peak_memory_mb), 'Max observed mem', '');
     html += '</div>';
     html += '<div class="ops-history-scroll"><table class="ops-history-table"><thead><tr>'
         + '<th>Started</th><th>Trigger</th><th>Status</th><th>Queue wait</th><th>Duration</th><th>Peak mem</th>'
@@ -2161,55 +2333,30 @@ function opsToggleRunMenu(slug) {
 }
 /* Immediately update a row's status + actions after an action */
 function _opsRefreshAfterAction(slug, needsExpand) {
+    _opsStatusRevision++;
+    if (_opsSystemStatusController) _opsSystemStatusController.abort();
+    _opsSystemStatusController = null;
+    _opsSystemStatusRequest = null;
     if (needsExpand && !_opsExpandedSlugs[slug]) {
         _opsExpandedSlugs[slug] = true;
         renderOperations();
         return;
     }
-    /* Quick poll to update just this row */
-    setTimeout(function() {
-        studioFetch('/api/system/status').then(function(r) { return r.json(); }).then(function(status) {
-            var running = status.running || {};
-            var queue = status.queue || [];
-            var queueSlugs = queue.map(function(q) { return q.slug || q; });
-            var tr = document.querySelector('[data-ops-row="' + slug + '"]');
-            if (!tr) return;
-            var tds = tr.querySelectorAll('td');
-            if (tds.length < 7) return;
-
-            var r = null;
-            reports.forEach(function(rep) { if (rep.slug === slug) r = rep; });
-
-            var isRunning = !!running[slug];
-            var isQueued = queueSlugs.indexOf(slug) >= 0;
-
-            /* Update status */
-            if (isRunning) {
-                var el = Math.round(running[slug].elapsed_seconds || 0);
-                tds[3].innerHTML = '<div class="ops-status running"><span class="ops-status-dot"></span><span class="ops-status-text">Running</span></div>'
-                    + '<div class="ops-status-detail">' + el + 's elapsed</div>';
-            } else if (isQueued) {
-                tds[3].innerHTML = '<div class="ops-status queued"><span class="ops-status-dot"></span><span class="ops-status-text">Queued</span></div>';
-            } else {
-                tds[3].innerHTML = '<div class="ops-status success"><span class="ops-status-dot"></span><span class="ops-status-text">Stopped</span></div>'
-                    + '<div class="ops-status-detail">just now</div>';
-            }
-
-            /* Update actions */
-            if (r) tds[7].innerHTML = _opsActionsCell(r, isRunning, isQueued);
-
-            /* Update summary stats */
-            var stats = document.querySelectorAll('.ops-stat-value');
-            if (stats.length >= 6) {
-                stats[1].textContent = Object.keys(running).length;
-                stats[2].textContent = queue.length;
-            }
-        });
-    }, 300); /* Short delay so the server registers the state change */
+    /* Use the serialized poll so an old status response cannot overwrite an action. */
+    setTimeout(function() { _opsScheduleStatusPoll(0); }, 300);
 }
 
 function opsRun(slug, mode) {
+    if ((window._opsRunPending || {})[slug]) return;
+    var focusedSlug = _opsFocusedRowSlug();
     document.querySelectorAll('.ops-run-menu.open').forEach(function(m) { m.classList.remove('open'); });
+    _opsStatusRevision++;
+    _opsLiveRequests[slug] = (_opsLiveRequests[slug] || 0) + 1;
+    if (!window._opsRunPending) window._opsRunPending = {};
+    window._opsRunPending[slug] = true;
+    if (_opsSystemStatusController) _opsSystemStatusController.abort();
+    _opsSystemStatusController = null;
+    _opsSystemStatusRequest = null;
     /* Optimistic UI update — show running immediately */
     var tr = document.querySelector('[data-ops-row="' + slug + '"]');
     if (tr) {
@@ -2227,29 +2374,28 @@ function opsRun(slug, mode) {
         clearInterval(_opsLivePollers[slug]);
         delete _opsLivePollers[slug];
     }
-    /* Mark this slug as freshly started — live poller won't treat empty response as "finished" */
-    if (!window._opsRecentlyStarted) window._opsRecentlyStarted = {};
-    window._opsRecentlyStarted[slug] = Date.now();
-
     var termBody = document.getElementById('opsTermBody_' + slug);
     if (termBody) {
-        termBody.textContent = '(starting...)';
-        termBody.className = 'ops-terminal-body live';
+        _opsSetTerminalState(slug, 'Starting', false, '(starting...)');
     }
+    _opsApplyFilterToRows(window._opsLatestStatus || {}, focusedSlug);
 
     studioFetch('/api/reports/' + encodeURIComponent(slug) + '/run', {
         method:'POST', headers:{'Content-Type':'application/json'},
         body:JSON.stringify({cache:mode||'normal', cache_mode:mode||'normal'})
-    }).then(function() {
-        if (!_opsExpandedSlugs[slug]) {
-            _opsExpandedSlugs[slug] = true;
-            renderOperations();
-        }
-        /* Always start live poller after a short delay (server needs to register the subprocess) */
-        setTimeout(function() {
-            _opsStartLivePoll(slug);
-            _opsRefreshAfterAction(slug, false);
-        }, 500);
+    }).then(function(resp) {
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        return resp.json();
+    }).then(function(data) {
+        if (!data || !data.ok) throw new Error((data && (data.message || data.error)) || 'Run request was not accepted');
+        delete window._opsRunPending[slug];
+        _opsRefreshAfterAction(slug, true);
+    }).catch(function(error) {
+        delete window._opsRunPending[slug];
+        _opsSetTerminalState(slug, 'Run request unconfirmed', false,
+            'The run request could not be confirmed: ' + (error.message || 'network error'));
+        showToast('Run request could not be confirmed: ' + (error.message || 'network error'), 'error');
+        _opsRefreshAfterAction(slug, false);
     });
 }
 function opsStop(slug) {
@@ -2270,6 +2416,8 @@ function opsStop(slug) {
     });
 }
 function opsToggleExpand(slug) {
+    _opsLiveRequests[slug] = (_opsLiveRequests[slug] || 0) + 1;
+    _opsHistoryRequests[slug] = (_opsHistoryRequests[slug] || 0) + 1;
     if (_opsExpandedSlugs[slug]) {
         delete _opsExpandedSlugs[slug];
         if (_opsLivePollers[slug]) { clearInterval(_opsLivePollers[slug]); delete _opsLivePollers[slug]; }
@@ -2334,44 +2482,37 @@ function _opsStartLivePoll(slug) {
     _opsLivePollers[slug] = setInterval(function() { _opsFetchLive(slug); }, 2000);
 }
 function _opsFetchLive(slug) {
-    studioFetch('/api/reports/' + encodeURIComponent(slug) + '/log/live')
+    var requestId = (_opsLiveRequests[slug] || 0) + 1;
+    _opsLiveRequests[slug] = requestId;
+    boundedFetch(apiUrl('/api/reports/' + encodeURIComponent(slug) + '/log/live'))
         .then(function(r) { return r.json(); }).then(function(data) {
+            if (_opsLiveRequests[slug] !== requestId || !_opsExpandedSlugs[slug]) return;
             var el = document.getElementById('opsTermBody_' + slug);
             if (!el) return;
             var text = typeof data === 'string' ? data : (data.stdout_tail || data.stdout || data.output || '');
 
-            /* If empty response, report may have finished OR may not have started yet */
             if (!text || !text.trim()) {
-                /* Grace period: don't treat empty as "finished" within 10s of starting */
-                var started = (window._opsRecentlyStarted || {})[slug];
-                if (started && (Date.now() - started) < 10000) {
-                    return; /* Still starting up — keep polling */
-                }
-                if (_opsLivePollers[slug]) {
-                    clearInterval(_opsLivePollers[slug]);
-                    delete _opsLivePollers[slug];
-                }
-                el.classList.remove('live');
-                _opsLoadLog(slug);
-                delete (window._opsRecentlyStarted || {})[slug];
-                return;
+                return; /* Empty live output cannot distinguish queued, quiet or completed runs. */
             }
-            /* Got output — clear the recently-started flag */
-            if (window._opsRecentlyStarted) delete window._opsRecentlyStarted[slug];
-
             var wasAtBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 50;
             el.innerHTML = _opsColorize(text);
             if (wasAtBottom) el.scrollTop = el.scrollHeight;
         }).catch(function() {
+            if (_opsLiveRequests[slug] !== requestId || !_opsExpandedSlugs[slug]) return;
             var el = document.getElementById('opsTermBody_' + slug);
             if (el && el.textContent === 'Loading...') el.textContent = '(waiting for output...)';
         });
 }
 function _opsLoadLog(slug) {
-    studioFetch('/api/reports/' + encodeURIComponent(slug) + '/log?run=0')
+    var requestId = (_opsLiveRequests[slug] || 0) + 1;
+    _opsLiveRequests[slug] = requestId;
+    boundedFetch(apiUrl('/api/reports/' + encodeURIComponent(slug) + '/log?run=0'))
         .then(function(r) { return r.json(); }).then(function(data) {
+            if (_opsLiveRequests[slug] !== requestId || !_opsExpandedSlugs[slug]) return;
             var el = document.getElementById('opsTermBody_' + slug);
             if (!el) return;
+            var failed = _opsIsFailedStatus(data && data.status);
+            _opsSetTerminalState(slug, failed ? 'Failed' : 'Last run', failed, null);
             var text = '';
             if (data && data.stdout) text = data.stdout;
             if (data && data.stderr) text += (text ? '\n\n--- stderr ---\n' : '') + data.stderr;
@@ -2379,6 +2520,7 @@ function _opsLoadLog(slug) {
             if (!text) text = 'No log available. Run the report to generate output.';
             el.innerHTML = _opsColorize(text);
         }).catch(function() {
+            if (_opsLiveRequests[slug] !== requestId || !_opsExpandedSlugs[slug]) return;
             var el = document.getElementById('opsTermBody_' + slug);
             if (el) el.textContent = 'No log available.';
         });
@@ -2414,7 +2556,7 @@ function opsRefreshServerLog() {
 }
 function opsCopyServerLog() {
     var el = document.getElementById('opsServerLogBody');
-    if (el) navigator.clipboard.writeText(el.textContent).then(function() { showToast('Server log copied', 'success'); });
+    if (el) navigator.clipboard.writeText(el.textContent).then(function() { showToast('Build activity copied', 'success'); });
 }
 
 function _timeAgo(iso) {
@@ -2586,28 +2728,32 @@ function dsDownload(name) {
         .catch(function(err) { showToast('Download failed: ' + err, 'error'); });
 }
 
-/* Auto-refresh Operations: update numbers, status, and action buttons in-place */
-setInterval(function() {
-    if (viewMode !== 'ops') return;
-    studioFetch('/api/system/status').then(function(r) { return r.json(); }).then(function(status) {
-        var running = status.running || {};
-        var queue = status.queue || [];
-        var queueSlugs = queue.map(function(q) { return q.slug || q; });
+/* Auto-refresh Operations without overlapping requests or replacing the table. */
+function _opsApplyStatus(status, revision, cycle) {
+    var isCurrent = function() {
+        return _opsPageActive && revision === _opsStatusRevision
+            && cycle === _opsStatusCycle && viewMode === 'ops';
+    };
+    if (!isCurrent()) return Promise.resolve();
+    var focusedSlug = _opsFocusedRowSlug();
+    window._opsLatestStatus = status;
+    var running = status.running || {};
+    var queue = status.queue || [];
+    var queueSlugs = queue.map(function(q) { return q.slug || q; });
 
-        /* Update summary stat values in-place */
-        var stats = document.querySelectorAll('.ops-stat-value');
-        if (stats.length >= 7) {
-            stats[1].textContent = Object.keys(running).length;
-            stats[2].textContent = queue.length;
-            if (status.server_uptime_seconds) stats[stats.length - 1].textContent = _fmtDuration(status.server_uptime_seconds);
-        }
+    /* Update summary stat values in-place */
+    var stats = document.querySelectorAll('.ops-stat-value');
+    if (stats.length >= 7) {
+        stats[1].textContent = Object.keys(running).length;
+        stats[2].textContent = queue.length;
+        if (status.server_uptime_seconds) stats[stats.length - 1].textContent = _fmtDuration(status.server_uptime_seconds);
+    }
 
-        /* Detect rows that just transitioned out of running/queued so we can
-           pull their real last_status from the registry rather than guessing. */
-        var transitioned = [];
+    /* Pull the registry outcome for rows that just left running or queued. */
+    var transitioned = [];
 
-        /* Update each row's status + actions in-place */
-        document.querySelectorAll('[data-ops-row]').forEach(function(tr) {
+    /* Update each row's status + actions in-place. */
+    document.querySelectorAll('[data-ops-row]').forEach(function(tr) {
             var slug = tr.dataset.opsRow;
             var tds = tr.querySelectorAll('td');
             if (tds.length < 7) return;
@@ -2621,19 +2767,35 @@ setInterval(function() {
             var isQueued = queueSlugs.indexOf(slug) >= 0;
             var wasRunning = !!tr.querySelector('.ops-status.running');
             var wasQueued = !!tr.querySelector('.ops-status.queued');
+            var wasFinishing = !!tr.querySelector('.ops-status.finishing');
+
+            if ((window._opsRunPending || {})[slug]) return;
 
             /* Update status cell */
             if (isRunning) {
+                if (_opsExpandedSlugs[slug]) {
+                    if (!wasRunning && !wasQueued) {
+                        _opsLiveRequests[slug] = (_opsLiveRequests[slug] || 0) + 1;
+                        _opsSetTerminalState(slug, 'Starting', false, '(waiting for output...)');
+                    }
+                    _opsSetTerminalState(slug, 'Running', false, null);
+                }
+                if (_opsExpandedSlugs[slug]) _opsStartLivePoll(slug);
                 var el = Math.round(running[slug].elapsed_seconds || 0);
                 statusTd.innerHTML = '<div class="ops-status running"><span class="ops-status-dot"></span><span class="ops-status-text">Running</span></div>'
                     + '<div class="ops-status-detail">' + el + 's elapsed</div>';
             } else if (isQueued) {
+                if (_opsExpandedSlugs[slug]) {
+                    if (_opsLivePollers[slug]) { clearInterval(_opsLivePollers[slug]); delete _opsLivePollers[slug]; }
+                    _opsLiveRequests[slug] = (_opsLiveRequests[slug] || 0) + 1;
+                    _opsSetTerminalState(slug, 'Queued', false, '(queued...)');
+                }
                 statusTd.innerHTML = '<div class="ops-status queued"><span class="ops-status-dot"></span><span class="ops-status-text">Queued</span></div>';
-            } else if (wasRunning || wasQueued) {
+            } else if (wasRunning || wasQueued || wasFinishing) {
                 /* Just finished — defer until we get the real outcome from
                    the registry refresh below. Show a transient "Finishing…"
                    so the user sees something happening and we don't lie. */
-                statusTd.innerHTML = '<div class="ops-status"><span class="ops-status-dot"></span><span class="ops-status-text">Finishing…</span></div>';
+                statusTd.innerHTML = '<div class="ops-status finishing"><span class="ops-status-dot"></span><span class="ops-status-text">Finishing…</span></div>';
                 transitioned.push(slug);
             }
 
@@ -2641,31 +2803,99 @@ setInterval(function() {
             if ((isRunning || isQueued) !== (wasRunning || wasQueued)) {
                 if (r) actionsTd.innerHTML = _opsActionsCell(r, isRunning, isQueued);
             }
-        });
+    });
 
-        /* Pull fresh last_status / last_error from the registry for any row
-           that just finished, then redraw the table so the row reflects the
-           real outcome (success / error / oom_killed). */
-        if (transitioned.length) {
-            /* render() re-enters renderOperations(), which refetches the
-               run-stats cache and reloads any open drawer's history — so the
-               finished run's duration/memory appear without extra plumbing. */
-            studioFetch('/api/registry')
+    if (transitioned.length) {
+            transitioned.forEach(function(slug) {
+                if (_opsLivePollers[slug]) { clearInterval(_opsLivePollers[slug]); delete _opsLivePollers[slug]; }
+                _opsLiveRequests[slug] = (_opsLiveRequests[slug] || 0) + 1;
+            });
+            return boundedFetch(apiUrl('/api/registry'))
                 .then(function(resp) { return resp.json(); })
                 .then(function(reg) {
-                    reports = reg.reports;
+                    if (!isCurrent()) return;
+                    reports = reg.reports || reports;
                     transitioned.forEach(function(slug) {
                         var r = reports.find(function(x) { return x.slug === slug; });
-                        if (r && (r.last_status === 'error' || r.last_status === 'oom_killed')) {
-                            addError(slug, r.name || slug, r.last_error || (r.last_status + ': ' + slug));
+                        var row = document.querySelector('[data-ops-row="' + slug + '"]');
+                        if (r && row) {
+                            var cells = row.querySelectorAll('td');
+                            if (cells[3]) cells[3].innerHTML = _opsStatusCell(r, {}, false);
+                            if (cells[7]) cells[7].innerHTML = _opsActionsCell(r, false, false);
+                            if (_opsExpandedSlugs[slug]) {
+                                _opsLoadHistory(slug);
+                                _opsSetTerminalState(slug, _opsIsFailedStatus(r.build_status || r.last_status) ? 'Failed' : 'Last run',
+                                    _opsIsFailedStatus(r.build_status || r.last_status), null);
+                                _opsLoadLog(slug);
+                            }
+                        }
+                        if (r && _opsIsFailedStatus(r.build_status || r.last_status)) {
+                            addError(slug, r.name || slug, r.last_error || ((r.build_status || r.last_status) + ': ' + slug));
                         }
                     });
-                    render();
+                    _opsApplyFilterToRows(status, focusedSlug);
+                    return _opsFetchRunStats(isCurrent).then(function(updated) {
+                        if (!updated || !isCurrent()) return;
+                        transitioned.forEach(function(slug) {
+                            var row = document.querySelector('[data-ops-row="' + slug + '"]');
+                            if (!row) return;
+                            var cells = row.querySelectorAll('td');
+                            if (cells[4]) cells[4].innerHTML = _opsDurationCell(slug);
+                            if (cells[5]) cells[5].innerHTML = _opsMemoryCell(slug);
+                        });
+                    });
                 })
                 .catch(function() {});
+    }
+    _opsApplyFilterToRows(status, focusedSlug);
+    return Promise.resolve();
+}
+
+function _opsScheduleStatusPoll(delay) {
+    clearTimeout(_opsStatusTimer);
+    if (!_opsPageActive) return;
+    _opsStatusTimer = setTimeout(function() {
+        if (!_opsPageActive) return;
+        if (viewMode !== 'ops' || document.hidden || _opsStatusInFlight) {
+            _opsScheduleStatusPoll(_opsStatusDelay);
+            return;
         }
-    }).catch(function() {});
-}, 2000);
+        _opsStatusInFlight = true;
+        var revision = _opsStatusRevision;
+        var cycle = ++_opsStatusCycle;
+        _opsFetchSystemStatus()
+            .then(function(status) { return _opsApplyStatus(status, revision, cycle); })
+            .catch(function() {})
+            .finally(function() {
+                if (cycle !== _opsStatusCycle) return;
+                _opsStatusInFlight = false;
+                if (_opsPageActive) _opsScheduleStatusPoll(_opsStatusDelay);
+            });
+    }, delay == null ? _opsStatusDelay : delay);
+}
+_opsScheduleStatusPoll();
+window.addEventListener('pagehide', function() {
+    _opsPageActive = false;
+    _opsStatusRevision++;
+    _opsStatusCycle++;
+    clearTimeout(_opsStatusTimer);
+    if (_opsSystemStatusController) _opsSystemStatusController.abort();
+    _opsStatusInFlight = false;
+    Object.keys(_opsLivePollers).forEach(function(slug) { clearInterval(_opsLivePollers[slug]); });
+    _opsLivePollers = {};
+    Object.keys(_opsExpandedSlugs).forEach(function(slug) {
+        _opsLiveRequests[slug] = (_opsLiveRequests[slug] || 0) + 1;
+        _opsHistoryRequests[slug] = (_opsHistoryRequests[slug] || 0) + 1;
+    });
+});
+window.addEventListener('pageshow', function(event) {
+    if (!event.persisted && _opsPageActive) return;
+    _opsPageActive = true;
+    if (viewMode === 'ops') {
+        Object.keys(_opsExpandedSlugs).forEach(_opsStartLivePoll);
+        _opsScheduleStatusPoll(0);
+    }
+});
 
 /* ── Boot ──
    The registry is no longer inlined into this file: fetch it (plus the
@@ -2690,15 +2920,11 @@ function boot() {
         }
     }
 
-    var registryLoaded = studioFetch('/api/registry')
+    var registryLoaded = boundedFetch(apiUrl('/api/registry'))
         .then(function(r) { return r.ok ? r.json() : { reports: [] }; })
         .then(function(reg) { reports = reg.reports || []; })
         .catch(function() { reports = []; });
-
-    var favsLoaded = migrateLegacyFavorites().then(function() { return loadFavorites(); });
-    var subsLoaded = loadSubscriptions();
-
-    Promise.all([registryLoaded, favsLoaded, subsLoaded]).then(function() {
+    registryLoaded.then(function() {
         _seedErrorLog();
         _initStudios();
 
@@ -2709,6 +2935,12 @@ function boot() {
         // exist before updateErrorBadge() looks it up.
         render();
         updateErrorBadge();
+        migrateLegacyFavorites().then(loadFavorites).then(function() {
+            if (viewMode !== 'ops' || activeFolder === '_favorites') render();
+        }).catch(function() {});
+        loadSubscriptions().then(function() {
+            if (viewMode !== 'ops') render();
+        }).catch(function() {});
     });
 }
 boot();

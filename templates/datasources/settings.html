@@ -53,21 +53,22 @@
   </thead>
   <tbody>
   {% for row in rows %}
-  <tr id="ds-row-{{ row.name }}">
-    <td data-label="Source"><strong>{{ row.name }}</strong>
+  <tr id="ds-row-{{ row.name }}" data-source-id="{{ row.ds.pk|default:'' }}" data-source-name="{{ row.name }}">
+    <td data-label="Source"><strong data-ds-name>{{ row.name }}</strong>
       {% if row.state.declared %}
         {% if row.declared_in %}<span class="ui-chip">declared in {{ row.declared_in }}</span>
         {% else %}<span class="ui-chip acc">from repository</span>{% endif %}
       {% endif %}
-      {% if row.description %}<br><span class="muted">{{ row.description }}</span>{% endif %}</td>
+      <br data-ds-description-break{% if not row.description %} hidden{% endif %}>
+      <span class="muted" data-ds-description{% if not row.description %} hidden{% endif %}>{{ row.description }}</span></td>
     <td data-label="Scope">{% if row.ds.scope == "org" %}<span class="scope-chip org">organization</span>
         {% elif row.ds %}<span class="scope-chip studio">studio</span>
         {% else %}<span class="muted">—</span>{% endif %}</td>
     <td data-label="Type">{{ row.type_label }}</td>
     <td data-label="Status">
-      <span class="ui-badge {{ row.badge }}">{{ row.label }}</span>
-      {% if row.detail %}<span class="muted">{{ row.detail }}</span>{% endif %}
-      <div class="muted" id="test-result-{{ row.key }}"></div>
+      <span class="ui-badge {{ row.badge }}" data-ds-badge>{{ row.label }}</span>
+      <span class="muted" data-ds-detail>{{ row.detail }}</span>
+      <div class="muted" id="test-result-{{ row.key }}" data-ds-result role="status"></div>
       <div class="ds-progress" id="ds-progress-{{ row.key }}" hidden>
         <div class="ds-progress-bar"><span></span></div>
         <div class="muted ds-progress-label"></div>
@@ -81,8 +82,8 @@
     <td class="ui-row-actions" data-label="Actions">
       {% if row.state.state == "needs_credentials" and row.configurable %}
         {# A link, so ghost: the page's primary action is the form it opens. #}
-        <a class="ui-btn ghost" href="?configure={{ row.name|urlencode }}#configure">Configure</a>
-        <button class="ui-btn ghost" type="button" disabled title="Add the credentials first">Test</button>
+        <a class="ui-btn ghost" data-ds-configure href="?configure={{ row.name|urlencode }}#configure">Configure</a>
+        <button class="ui-btn ghost" type="button" data-ds-test disabled title="Add the credentials first">Test</button>
       {% else %}
         {% if row.upload_url %}
         <label class="ui-btn {% if row.state.state == "needs_upload" %}primary{% else %}ghost{% endif %}"
@@ -90,27 +91,27 @@
           <input type="file" class="ds-file-input"
                  data-pk="{{ row.key }}" data-url="{{ row.upload_url }}"
                  data-name="{{ row.name }}">
-          {% if row.file_available %}Replace file{% elif row.state.state == "needs_upload" %}Upload{% else %}Upload file{% endif %}
+          <span data-ds-upload-label>{% if row.file_available %}Replace file{% elif row.state.state == "needs_upload" %}Upload{% else %}Upload file{% endif %}</span>
         </label>
         {% endif %}
         {% if row.download_url %}
-        <a class="ui-btn ghost" href="{{ row.download_url }}">Download</a>
+        <a class="ui-btn ghost" data-ds-download href="{{ row.download_url }}">Download</a>
         {% endif %}
         {% if row.ds %}
-        <button class="ui-btn ghost" type="button"
+        <button class="ui-btn ghost" type="button" data-ds-test
                 onclick="testSource({{ row.ds.pk }}, '{{ row.name|escapejs }}', this)">Test</button>
         {% endif %}
         {% if row.state.declared and not org_page %}
           {% if row.configurable and row.can_manage %}
-          <a class="ui-btn ghost" href="?configure={{ row.name|urlencode }}#configure">Edit credentials</a>
+          <a class="ui-btn ghost" data-ds-configure href="?configure={{ row.name|urlencode }}#configure">Edit credentials</a>
           {% elif row.configurable and not row.ds %}
-          <a class="ui-btn ghost" href="?configure={{ row.name|urlencode }}#configure">Configure</a>
+          <a class="ui-btn ghost" data-ds-configure href="?configure={{ row.name|urlencode }}#configure">Configure</a>
           {% elif row.manage_url %}
           <a class="ui-btn ghost" href="{{ row.manage_url }}"
              title="Shared credentials are managed at organization level.">Manage in organization →</a>
           {% endif %}
         {% elif row.can_manage %}
-        <a class="ui-btn ghost" href="?edit={{ row.ds.pk }}">Edit</a>
+        <a class="ui-btn ghost" data-ds-edit href="?edit={{ row.ds.pk }}">Edit</a>
         <form class="inline" method="post"
               onsubmit="return confirm('Delete data source “{{ row.name|escapejs }}”?{% if row.ds.scope == "org" %} It disappears from EVERY studio in the organization.{% endif %} Reports that reference it stop building.')">
           {% csrf_token %}
@@ -162,7 +163,7 @@
 {% if configure %}
 <h2 id="configure">Configure <code>{{ configure.state.name }}</code></h2>
 <div class="ui-panel">
-  <form method="post" class="ui-form-grid" id="ds-configure" data-settings-form>
+  <form method="post" class="ui-form-grid" id="ds-configure" data-settings-form data-settings-save>
     {% csrf_token %}
     <input type="hidden" name="action" value="configure">
     <input type="hidden" name="name" value="{{ configure.state.name }}">
@@ -202,7 +203,7 @@
     </div>
   </form>
   {% if configure.binding and configure.binding.studio_id %}
-  <form method="post" class="inline"
+  <form method="post" class="inline" data-ds-remove-credentials
         onsubmit="return confirm('Remove the stored credentials for “{{ configure.state.name|escapejs }}”? Reports that read from it wait until new ones are added.')">
     {% csrf_token %}
     <input type="hidden" name="action" value="remove_credentials">
@@ -214,16 +215,16 @@
 {% endif %}
 
 {% if org_page %}
-<h2>{% if editing %}Edit “{{ editing.name }}”{% else %}Add shared credentials{% endif %}</h2>
+<h2 data-ds-form-title>{% if editing %}Edit “{{ editing.name }}”{% else %}Add shared credentials{% endif %}</h2>
 <p class="muted">Studios that declare a source with this name will use these credentials.</p>
 <div class="ui-panel">
 {% else %}
 <details class="ui-panel" {% if add_open %}open{% endif %}>
-  <summary>{% if editing %}Edit “{{ editing.name }}”{% else %}Add a portal-only source (advanced){% endif %}</summary>
+  <summary data-ds-form-title>{% if editing %}Edit “{{ editing.name }}”{% else %}Add a portal-only source (advanced){% endif %}</summary>
 {% endif %}
-  <form method="post" id="ds-form" class="ui-form-grid"{% if editing %} data-settings-form{% endif %}>
+  <form method="post" id="ds-form" class="ui-form-grid" data-settings-form data-settings-save>
     {% csrf_token %}
-    {% if editing %}<input type="hidden" name="id" value="{{ editing.pk }}">{% endif %}
+    <input type="hidden" name="id" value="{{ editing.pk|default:'' }}">
     {{ form.non_field_errors }}
     <div class="ui-field"><label>Name</label>{{ form.name }}{{ form.name.errors }}</div>
     <div class="ui-field"><label>Type</label>{{ form.type }}{{ form.type.errors }}</div>
@@ -301,7 +302,7 @@
     <div class="ui-form-actions">
 
       <button class="ui-btn primary" type="submit">{% if editing %}Save changes{% else %}Add source{% endif %}</button>
-      {% if editing %}<a class="ui-btn ghost" href="{{ request.path }}">Cancel</a>{% endif %}
+      {% if editing %}<a class="ui-btn ghost" data-ds-cancel href="{{ request.path }}">Cancel</a>{% endif %}
     </div>
   </form>
 {% if org_page %}</div>{% else %}</details>{% endif %}
@@ -367,6 +368,9 @@ function dsUpload(input) {
   var bar = box.querySelector('.ds-progress-bar span');
   var label = box.querySelector('.ds-progress-label');
   var result = document.getElementById('test-result-' + pk);
+  var row = input.closest('tr');
+  row._dsGeneration = (row._dsGeneration || 0) + 1;
+  var generation = row._dsGeneration;
   input.value = '';
 
   if (DS_MAX_UPLOAD_BYTES && file.size > DS_MAX_UPLOAD_BYTES) {
@@ -390,6 +394,7 @@ function dsUpload(input) {
   xhr.withCredentials = true;
 
   xhr.upload.addEventListener('progress', function (e) {
+    if (row._dsGeneration !== generation) return;
     if (!e.lengthComputable) return;
     var pct = Math.round((e.loaded / e.total) * 100);
     bar.style.width = pct + '%';
@@ -399,12 +404,26 @@ function dsUpload(input) {
 
   xhr.addEventListener('load', function () {
     input.disabled = false;
+    if (row._dsGeneration !== generation) return;
     var body = {};
     try { body = JSON.parse(xhr.responseText); } catch (e) { /* non-JSON error page */ }
     if (xhr.status === 200 && body.ok) {
       bar.style.width = '100%';
-      label.textContent = 'Uploaded ' + (body.size_label || '') + ' — reloading…';
-      window.location.reload();
+      label.textContent = 'Uploaded ' + (body.size_label || '') + '.';
+      row.dataset.revision = body.revision;
+      row.dataset.sourceId = body.source_id;
+      dsBadge(row, body.badge || 'ok', body.label || 'Connected', body.detail || body.size_label || 'File uploaded.');
+      input.parentElement.querySelector('[data-ds-upload-label]').textContent = 'Replace file';
+      input.parentElement.classList.remove('primary');
+      input.parentElement.classList.add('ghost');
+      if (body.download_url && !row.querySelector('[data-ds-download]')) {
+        var download = document.createElement('a');
+        download.className = 'ui-btn ghost';
+        download.dataset.dsDownload = '';
+        download.href = body.download_url;
+        download.textContent = 'Download';
+        row.querySelector('[data-label="Actions"]').appendChild(download);
+      }
       return;
     }
     box.hidden = true;
@@ -414,6 +433,7 @@ function dsUpload(input) {
 
   xhr.addEventListener('error', function () {
     input.disabled = false;
+    if (row._dsGeneration !== generation) return;
     box.hidden = true;
     result.textContent = '✗ Upload failed — the connection dropped.';
     result.style.color = 'var(--red)';
@@ -431,26 +451,283 @@ function getCookie(name) {
   return m ? decodeURIComponent(m.pop()) : '';
 }
 
+function dsBadge(row, color, text, detail) {
+  var badge = row.querySelector('[data-ds-badge]');
+  badge.className = 'ui-badge ' + color;
+  badge.textContent = text;
+  row.querySelector('[data-ds-detail]').textContent = detail || '';
+}
+
 function testSource(id, name, btn) {
-  var out = document.getElementById('test-result-' + id);
-  btn.disabled = true;
-  out.textContent = 'Testing…';
+  var row = btn.closest('tr');
+  return dsTest(row, '{{ test_url_base }}' + encodeURIComponent(name) + '/test', row.dataset.revision, null, btn);
+}
+
+function dsTest(row, url, revision, form, btn) {
+  var out = row.querySelector('[data-ds-result]');
+  row._dsGeneration = (row._dsGeneration || 0) + 1;
+  var generation = row._dsGeneration;
+  var formGeneration = form ? form._dsSubmittedGeneration : null;
+  var status = form ? form.querySelector('[data-settings-dirty-status]') : null;
+  btn = btn || row.querySelector('[data-ds-test]');
+  var token = {};
+  row._dsTestToken = token;
+  if (form) form._dsTestingRow = row;
+  function current() {
+    return row._dsGeneration === generation && (!form || form._dsGeneration === formGeneration);
+  }
+  if (btn) btn.disabled = true;
+  out.textContent = form ? 'Saved. Testing connection…' : 'Testing…';
+  row.querySelector('[data-ds-detail]').textContent = '';
   out.style.color = 'var(--text2)';
-  fetch('{{ test_url_base }}' + encodeURIComponent(name) + '/test', {
+  dsBadge(row, 'info', 'Testing…');
+  if (!current()) {
+    dsBadge(row, 'warn', 'Not confirmed');
+    out.textContent = 'Saved. There are newer unsaved changes.';
+  }
+  var body = new FormData();
+  if (revision) body.append('revision', revision);
+  var controller = new AbortController();
+  var timeout;
+  var deadline = new Promise(function (resolve, reject) {
+    timeout = setTimeout(function () {
+      controller.abort();
+      reject(new Error('Connection test timed out. Try Test again.'));
+    }, 30000);
+  });
+  var response = fetch(url, {
     method: 'POST',
     credentials: 'same-origin',
-    headers: { 'X-CSRFToken': getCookie('csrftoken') }
-  })
-    .then(function (r) { return r.json(); })
+    headers: { 'X-CSRFToken': getCookie('csrftoken') },
+    body: body,
+    signal: controller.signal
+  }).then(function (r) { return r.json(); });
+  return Promise.race([response, deadline])
     .then(function (data) {
+      if (!current() || (revision && data.revision && data.revision !== revision && !data.stale)) return;
       out.textContent = (data.ok ? '✓ ' : '✗ ') + (data.detail || data.error || '');
       out.style.color = data.ok ? 'var(--green)' : 'var(--red)';
+      dsBadge(row, data.stale ? 'warn' : (data.ok ? 'ok' : 'fail'), data.stale ? 'Test again' : (data.ok ? 'Connected' : 'Test failed'));
+      if (status) {
+        status.textContent = data.stale ? 'Saved. Configuration changed; test again.' : 'Saved. ' + (data.ok ? 'Connection confirmed.' : 'Connection test failed: ' + (data.detail || data.error || 'Try again.'));
+      }
     })
     .catch(function (e) {
-      out.textContent = '✗ ' + e;
+      if (!current()) return;
+      var detail = controller.signal.aborted ? 'Connection test timed out. Try Test again.' : 'Connection test unavailable. Try Test again.';
+      out.textContent = detail;
       out.style.color = 'var(--red)';
+      dsBadge(row, 'warn', 'Not confirmed');
+      if (status) status.textContent = 'Saved. ' + detail;
     })
-    .finally(function () { btn.disabled = false; });
+    .finally(function () {
+      clearTimeout(timeout);
+      if (btn && row._dsTestToken === token) btn.disabled = false;
+    });
 }
+
+function dsSavedRow(data) {
+  var rows = Array.from(document.querySelectorAll('tr[data-source-name]'));
+  var row = rows.find(function (r) { return r.dataset.sourceId === String(data.source_id); })
+    || rows.find(function (r) { return r.dataset.sourceName === data.source_name; });
+  if (!row) {
+    row = document.createElement('tr');
+    ['Source', 'Scope', 'Type', 'Status', 'Used by', 'Actions'].forEach(function (name) {
+      var cell = document.createElement('td');
+      cell.dataset.label = name;
+      row.appendChild(cell);
+    });
+    var badge = document.createElement('span');
+    badge.dataset.dsBadge = '';
+    var detail = document.createElement('span');
+    detail.dataset.dsDetail = '';
+    detail.className = 'muted';
+    var result = document.createElement('div');
+    result.dataset.dsResult = '';
+    result.setAttribute('role', 'status');
+    var statusCell = row.querySelector('[data-label="Status"]');
+    [badge, detail, result].forEach(function (element) { statusCell.appendChild(element); });
+    row.querySelector('[data-label="Used by"]').textContent = '—';
+    var tableBody = document.querySelector('table[data-mobile-cards] tbody');
+    var empty = tableBody.querySelector('.ui-empty');
+    if (empty) empty.closest('tr').remove();
+    tableBody.appendChild(row);
+  }
+  row.dataset.sourceId = data.source_id;
+  row.dataset.sourceName = data.source_name;
+  row.dataset.revision = data.revision;
+  row.id = 'ds-row-' + data.source_name;
+  var sourceCell = row.querySelector('[data-label="Source"]');
+  var name = sourceCell.querySelector('[data-ds-name]');
+  if (!name) {
+    name = document.createElement('strong');
+    name.dataset.dsName = '';
+    sourceCell.prepend(name);
+  }
+  name.textContent = data.source_name;
+  var description = sourceCell.querySelector('[data-ds-description]');
+  var descriptionBreak = sourceCell.querySelector('[data-ds-description-break]');
+  if (!description) {
+    descriptionBreak = document.createElement('br');
+    descriptionBreak.dataset.dsDescriptionBreak = '';
+    description = document.createElement('span');
+    description.dataset.dsDescription = '';
+    description.className = 'muted';
+    sourceCell.appendChild(descriptionBreak);
+    sourceCell.appendChild(description);
+  }
+  description.textContent = data.description || '';
+  description.hidden = descriptionBreak.hidden = !data.description;
+  var scope = document.createElement('span');
+  scope.className = 'scope-chip ' + (data.source_scope === 'org' ? 'org' : 'studio');
+  scope.textContent = data.source_scope === 'org' ? 'organization' : 'studio';
+  row.querySelector('[data-label="Scope"]').replaceChildren(scope);
+  row.querySelector('[data-label="Type"]').textContent = data.type_label;
+  row.querySelector('[data-ds-result]').id = 'test-result-' + data.source_id;
+  var actions = row.querySelector('[data-label="Actions"]');
+  var download = actions.querySelector('[data-ds-download]');
+  if (!download && data.download_url) {
+    download = document.createElement('a');
+    download.className = 'ui-btn ghost';
+    download.dataset.dsDownload = '';
+    download.textContent = 'Download';
+    actions.appendChild(download);
+  }
+  if (download && !data.download_url) download.remove();
+  else if (download) download.href = data.download_url;
+  var edit = actions.querySelector('[data-ds-edit]');
+  if (!edit && data.can_edit) {
+    edit = document.createElement('a');
+    edit.className = 'ui-btn ghost';
+    edit.dataset.dsEdit = '';
+    edit.textContent = 'Edit';
+    actions.appendChild(edit);
+  }
+  if (edit) edit.setAttribute('href', data.edit_url || '?edit=' + data.source_id);
+  var configure = actions.querySelector('[data-ds-configure]');
+  if (data.configured && configure) {
+    configure.textContent = data.configure_url ? 'Edit credentials' : 'Manage in organization →';
+    configure.setAttribute('href', data.configure_url || data.edit_url);
+  }
+  if (data.can_edit) dsDeleteForm(actions, data);
+  var upload = actions.querySelector('.ds-file-input');
+  if (data.upload_url && !upload) {
+    var uploadLabel = document.createElement('label');
+    uploadLabel.className = 'ui-btn ghost';
+    upload = document.createElement('input');
+    upload.type = 'file';
+    upload.className = 'ds-file-input';
+    var uploadText = document.createElement('span');
+    uploadText.dataset.dsUploadLabel = '';
+    uploadText.textContent = 'Upload file';
+    uploadLabel.appendChild(upload);
+    uploadLabel.appendChild(uploadText);
+    actions.appendChild(uploadLabel);
+    upload.addEventListener('change', function () { dsUpload(upload); });
+    var progress = document.createElement('div');
+    progress.className = 'ds-progress';
+    progress.hidden = true;
+    var progressBar = document.createElement('div');
+    progressBar.className = 'ds-progress-bar';
+    progressBar.appendChild(document.createElement('span'));
+    var progressLabel = document.createElement('div');
+    progressLabel.className = 'muted ds-progress-label';
+    progress.appendChild(progressBar);
+    progress.appendChild(progressLabel);
+    row.querySelector('[data-label="Status"]').appendChild(progress);
+  }
+  if (upload) {
+    if (!data.upload_url) upload.parentElement.remove();
+    else {
+      upload.dataset.pk = data.source_id;
+      upload.dataset.name = data.source_name;
+      upload.dataset.url = data.upload_url;
+      row.querySelector('.ds-progress').id = 'ds-progress-' + data.source_id;
+    }
+  }
+  var test = actions.querySelector('[data-ds-test]');
+  if (!test) {
+    test = document.createElement('button');
+    test.type = 'button';
+    test.className = 'ui-btn ghost';
+    test.dataset.dsTest = '';
+    test.textContent = 'Test';
+    actions.appendChild(test);
+  }
+  test.disabled = false;
+  test.removeAttribute('title');
+  test.onclick = function () { dsTest(row, data.test_url, row.dataset.revision); };
+  return row;
+}
+
+function dsPostForm(container, url, action, identity, text) {
+  var nativeForm = document.createElement('form');
+  nativeForm.className = 'inline';
+  nativeForm.method = 'post';
+  nativeForm.setAttribute('action', url);
+  var csrf = document.querySelector('input[name="csrfmiddlewaretoken"]');
+  [['action', action], identity, ['csrfmiddlewaretoken', csrf ? csrf.value : '']].forEach(function (entry) {
+    var field = document.createElement('input');
+    field.type = 'hidden';
+    field.name = entry[0];
+    field.value = entry[1];
+    nativeForm.appendChild(field);
+  });
+  var button = document.createElement('button');
+  button.type = 'submit';
+  button.className = 'ui-btn danger';
+  button.textContent = text;
+  nativeForm.appendChild(button);
+  container.appendChild(nativeForm);
+  return nativeForm;
+}
+
+function dsDeleteForm(actions, data) {
+  var nativeForm = Array.from(actions.querySelectorAll('form')).find(function (form) {
+    return form.querySelector('input[name="action"][value="delete"]');
+  });
+  if (!nativeForm) nativeForm = dsPostForm(actions, data.delete_url || location.pathname, 'delete', ['id', data.source_id], 'Delete');
+  nativeForm.setAttribute('action', data.delete_url || location.pathname);
+  nativeForm.querySelector('input[name="id"]').value = data.source_id;
+  nativeForm.onsubmit = function () {
+    return confirm('Delete data source “' + data.source_name + '”?' + (data.source_scope === 'org' ? ' It disappears from EVERY studio in the organization.' : '') + ' Reports that reference it stop building.');
+  };
+}
+
+document.querySelectorAll('#ds-form, #ds-configure').forEach(function (form) {
+  form._dsGeneration = 0;
+  function invalidateTest() {
+    if (!form._dsTestingRow) return;
+    form._dsTestingRow._dsGeneration += 1;
+    dsBadge(form._dsTestingRow, 'warn', 'Not confirmed');
+    form._dsTestingRow.querySelector('[data-ds-result]').textContent = 'Save changes to test the new configuration.';
+  }
+  function edited() { form._dsGeneration += 1; invalidateTest(); }
+  form.addEventListener('input', edited);
+  form.addEventListener('change', edited);
+  form.addEventListener('submit', function () { form._dsSubmittedGeneration = form._dsGeneration; invalidateTest(); }, true);
+  form.addEventListener('settings:success', function (event) {
+    var data = event.detail;
+    if (!data.test_url) return;
+    if (form.getAttribute('id') === 'ds-form') {
+      form.querySelector('button[type="submit"]').textContent = 'Save changes';
+      document.querySelector('[data-ds-form-title]').textContent = 'Edit “' + data.source_name + '”';
+      if (!form.querySelector('[data-ds-cancel]')) {
+        var cancel = document.createElement('a');
+        cancel.className = 'ui-btn ghost';
+        cancel.dataset.dsCancel = '';
+        cancel.textContent = 'Cancel';
+        cancel.setAttribute('href', location.pathname);
+        (form.querySelector('.ui-form-actions') || form).appendChild(cancel);
+      }
+    } else if (data.remove_credentials && !form.parentElement.querySelector('[data-ds-remove-credentials]')) {
+      var remove = dsPostForm(form.parentElement, form.getAttribute('action') || location.pathname, 'remove_credentials', ['name', data.source_name], 'Remove credentials');
+      remove.dataset.dsRemoveCredentials = '';
+      remove.onsubmit = function () { return confirm('Remove the stored credentials for “' + data.source_name + '”? Reports that read from it wait until new ones are added.'); };
+    }
+    var row = dsSavedRow(data);
+    dsTest(row, data.test_url, data.revision, form);
+  });
+});
 </script>
 {% endblock %}

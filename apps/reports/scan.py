@@ -440,6 +440,8 @@ def build_registry_payload(studio) -> dict:
                 "schedule": row.schedule_cron,
                 "last_run": last_run,
                 "last_status": last_status,
+                # Artifact errors collapse OOM/timeouts; Operations needs the run state.
+                "build_status": latest.status if latest is not None else last_status,
                 "last_error": build_error(runtime_meta, latest)[:500] or None,
                 "blocked_by": blocked_by,
                 "waiting": bool(blocked_by),

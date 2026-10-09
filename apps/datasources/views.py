@@ -14,6 +14,7 @@ from django.views.decorators.http import require_POST
 from apps.core import health, roles
 from apps.core import instance as instance_config
 from apps.core.audit import audit
+from apps.core.form_responses import is_settings_request, settings_error, settings_success
 from apps.core.permissions import require_org_role, require_studio_role
 from apps.core.report_access import require_full_studio_visibility
 from apps.datasources.forms import DataSourceForm
@@ -37,7 +38,7 @@ from apps.datasources.status import (
     blocked_reports,
     source_states,
 )
-from apps.datasources.testing import check_binding, fmt_size, rebuild_unblocked, run_state_check
+from apps.datasources.testing import STALE_CHECK, check_binding, check_revision, fmt_size, rebuild_unblocked, run_state_check
 from apps.orgs import quotas
 from apps.orgs.views import paginate
 
@@ -197,13 +198,16 @@ def _store_upload(request, ds: DataSource, name: str) -> JsonResponse:
     # storage quota does not count a file nothing points at any more.
     if current and current.is_file() and current != target:
         current.unlink(missing_ok=True)
-    if (ds.config or {}).get("path") != rel:
-        ds.config = {**(ds.config or {}), "path": rel}
-        ds.save(update_fields=["config", "updated_at"])
+    ds.config = {**(ds.config or {}), "path": rel}
+    ds.last_check_at = ds.last_check_ok = None
+    ds.last_check_error = ""
+    ds.save(update_fields=["config", "updated_at", "last_check_at", "last_check_ok", "last_check_error"])
 
     size = target.stat().st_size
     audit(request, "datasource.upload", target=ds, name=name, size=size)
     check_binding(ds)
+    state = binding_state(ds, getattr(request, "studio", None))
+    badge, label = _BADGES.get(state.state, ("", state.state))
     return JsonResponse(
         {
             "ok": True,
@@ -211,6 +215,12 @@ def _store_upload(request, ds: DataSource, name: str) -> JsonResponse:
             "size": size,
             "size_label": fmt_size(size),
             "uploaded_at": timezone.now().isoformat(),
+            "source_id": ds.pk,
+            "revision": check_revision(ds),
+            "download_url": _file_urls(ds, {"status": "available", "upload": True}, True, studio=getattr(request, "studio", None))["download_url"],
+            "badge": badge,
+            "label": label,
+            "detail": _status_detail(state),
         }
     )
 
@@ -248,9 +258,17 @@ def api_test(request, org_slug, studio_slug, name):  # noqa: ARG001
     ds = _resolve_source(request.studio, name)
     if ds is None:
         return JsonResponse({"ok": False, "error": f"Unknown data source: {name}"}, status=404)
-    ok, detail = check_binding(ds, request.studio)
+    return _test_response(request, ds, name, request.studio)
+
+
+def _test_response(request, ds, name, studio=None):
+    revision = check_revision(ds, studio)
+    if request.POST.get("revision") and request.POST["revision"] != revision:
+        return JsonResponse({"ok": False, "stale": True, "detail": STALE_CHECK, "revision": revision}, status=409)
+    ok, detail = check_binding(ds, studio, expected_revision=revision)
     audit(request, "datasource.test", target=ds, name=name, ok=ok)
-    return JsonResponse({"ok": ok, "detail": detail})
+    stale = getattr(ds, "_check_stale", False)
+    return JsonResponse({"ok": ok, "detail": detail, "stale": stale, "revision": revision}, status=409 if stale else 200)
 
 
 @require_studio_role(roles.DEVELOPER)
@@ -383,12 +401,8 @@ def credential_fields(decl) -> list[str]:
     return [k for k in _credential_keys(decl.type) if cfg.get("ssh_host") or not k.startswith("ssh_")]
 
 
-def save_credentials(request, decl, secrets: dict, *, org_level: bool, **audit_meta) -> tuple[bool, str]:
-    """Bind ``secrets`` (credential key -> value) to the declared source at
-    studio level or, for an org admin who asks, at organization level; then
-    test them and queue whatever the passing test unblocks. Blank values
-    keep what is stored. Returns ``(ok, sentence)`` for the caller to show.
-    Shared by the Configure form and the assistant's approved proposal."""
+def persist_credentials(request, decl, secrets: dict, *, org_level: bool, **audit_meta) -> DataSource:
+    """Persist credentials without connecting; blank values keep stored secrets."""
     studio, name = request.studio, decl.name
     if org_level and request.org_roles.is_org_admin:
         ds = DataSource.objects.filter(org=request.org, name=name).first() or DataSource(
@@ -412,13 +426,25 @@ def save_credentials(request, decl, secrets: dict, *, org_level: bool, **audit_m
             stored[key] = value  # blank = keep current
     ds.credentials = stored or None
     ds.updated_by = request.user
+    ds.last_check_at = ds.last_check_ok = None
+    ds.last_check_error = ""
     ds.save()
     audit(request, "datasource.update", target=ds, name=name, scope=ds.scope, **audit_meta)
+    return ds
+
+
+def save_credentials(request, decl, secrets: dict, *, org_level: bool, **audit_meta) -> tuple[bool, str]:
+    """Keep the assistant and native form's synchronous save-and-test contract."""
+    ds = persist_credentials(request, decl, secrets, org_level=org_level, **audit_meta)
+    name, studio = decl.name, request.studio
+    ds._check_studio = studio
 
     ok, detail = run_state_check(binding_state(ds, studio))
     if not ok:
         return False, f"“{name}” saved but the connection test failed: {detail}"
-    queued = rebuild_unblocked(ds)
+    queued = rebuild_unblocked(ds, guard_check=True)
+    if getattr(ds, "_check_stale", False):
+        return False, f"“{name}” saved. {STALE_CHECK}"
     text = f"“{name}” connected."
     if queued:
         text += f" {queued} waiting report{'s' if queued != 1 else ''} ha{'ve' if queued != 1 else 's'} been queued to build."
@@ -520,6 +546,12 @@ def _configure(request, name: str):
             messages.success(request, f"Credentials for “{name}” removed.")
         return redirect(request.path)
 
+    if is_settings_request(request):
+        ds = persist_credentials(
+            request, decl, {k: request.POST.get(k) for k in _credential_keys(decl.type)},
+            org_level=bool(request.POST.get("org_level")),
+        )
+        return _saved_response(request, ds, request.studio, configured=True)
     ok, text = save_credentials(
         request, decl, {k: request.POST.get(k) for k in _credential_keys(decl.type)},
         org_level=bool(request.POST.get("org_level")),
@@ -544,6 +576,35 @@ def _banner(states: list[SourceState], studio) -> dict | None:
         "noun": "a file" if all(s.state == SourceState.NEEDS_UPLOAD for s in needs) else "credentials",
         "sources": needs,
     }
+
+
+def _saved_response(request, ds, studio=None, *, configured=False):
+    base = (
+        f"/orgs/{request.org.slug}/settings/datasources/" if ds.org_id
+        else f"/s/{request.org.slug}/{ds.studio.slug}/api/datasources/"
+    )
+    # An org binding may be shadowed in this studio; test the actual saved row.
+    test_studio = None if ds.org_id else studio
+    state = binding_state(ds, test_studio)
+    info = _source_info(ds, state)
+    manage_path = (
+        f"/orgs/{request.org.slug}/settings/datasources" if ds.org_id
+        else f"/s/{request.org.slug}/{ds.studio.slug}/settings/datasources"
+    )
+    return settings_success(
+        request, "Saved. Testing connection…", source_id=ds.pk, source_name=ds.name,
+        test_url=base + ds.name + "/test", revision=check_revision(ds, test_studio),
+        source_type=ds.type, type_label=_TYPE_LABELS.get(ds.type, ds.type),
+        source_scope=ds.scope, description=ds.description,
+        upload_url=base + ds.name + "/upload" if (ds.config or {}).get("upload") else "",
+        values={"id": ds.pk},
+        download_url=_file_urls(ds, info, True, studio=test_studio)["download_url"],
+        edit_url=manage_path + f"?edit={ds.pk}", delete_url=manage_path,
+        declared=state.declared, configured=configured,
+        can_edit=not (state.declared and studio is not None),
+        configure_url=(f"?configure={ds.name}#configure" if configured and ds.studio_id else ""),
+        remove_credentials=bool(configured and ds.studio_id),
+    )
 
 
 @require_studio_role(roles.ADMIN)
@@ -592,9 +653,13 @@ def settings_page(request, org_slug, studio_slug):  # noqa: ARG001
             ds = form.save(user=request.user)
             _discard_orphan(owned, ds)
             audit(request, "datasource.update", target=ds, name=ds.name, scope=ds.scope)
+            if is_settings_request(request):
+                return _saved_response(request, ds, request.studio)
             check_binding(ds, request.studio)
             messages.success(request, _saved_message(ds))
             return redirect(request.path)
+        if is_settings_request(request):
+            return settings_error(request, form=form)
         editing = instance
     else:
         form = DataSourceForm(instance=editing, **form_kwargs)
@@ -679,9 +744,13 @@ def org_settings_page(request, org_slug):  # noqa: ARG001
             ds = form.save(user=request.user)
             _discard_orphan(owned, ds)
             audit(request, "datasource.update", target=ds, name=ds.name, scope="org")
+            if is_settings_request(request):
+                return _saved_response(request, ds)
             check_binding(ds)
             messages.success(request, _saved_message(ds))
             return redirect(request.path)
+        if is_settings_request(request):
+            return settings_error(request, form=form)
         editing = instance
     else:
         form = DataSourceForm(instance=editing, **form_kwargs)
@@ -731,9 +800,7 @@ def api_org_test(request, org_slug, name):  # noqa: ARG001
     ds = DataSource.objects.filter(org=request.org, name=name).first()
     if ds is None:
         return JsonResponse({"ok": False, "error": f"Unknown data source: {name}"}, status=404)
-    ok, detail = check_binding(ds)
-    audit(request, "datasource.test", target=ds, name=name, ok=ok)
-    return JsonResponse({"ok": ok, "detail": detail})
+    return _test_response(request, ds, name)
 
 
 @require_org_role(roles.ORG_ADMIN)

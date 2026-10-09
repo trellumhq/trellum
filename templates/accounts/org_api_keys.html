@@ -9,7 +9,7 @@
 </header>
 
 <div class="panel formrow">
-  <form method="post" data-settings-form>
+  <form id="orgApiKeyPolicyForm" method="post" data-settings-form data-settings-save>
     {% csrf_token %}
     <input type="hidden" name="action" value="toggle">
     <label class="ui-check">

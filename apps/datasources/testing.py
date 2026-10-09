@@ -8,8 +8,12 @@ host can't pin a gunicorn thread for minutes.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import threading
 
+from django.core.serializers.json import DjangoJSONEncoder
+from django.db import transaction
 from django.utils import timezone
 
 from apps.datasources.models import CREDENTIAL_KEYS, INLINE_TYPES, DataSource, RepoDataSource
@@ -116,13 +120,50 @@ def test_datasource(ds) -> tuple[bool, str]:
     return bool(result["ok"]), ds.scrub(str(result["detail"]))
 
 
-def run_check(binding, *, declared_type=None, declared_config=None) -> tuple[bool, str]:
+STALE_CHECK = "Configuration changed. Test the saved configuration again."
+
+
+def _declaration_snapshot(declaration):
+    if declaration is None:
+        return None
+    return [declaration.pk, declaration.type, declaration.config, declaration.present, declaration.file_error]
+
+
+def check_revision(binding, studio=None) -> str:
+    """Opaque identity of the binding and the declaration a test would use."""
+    from apps.datasources.status import declaration_for
+
+    return _revision(binding, declaration_for(binding, studio))
+
+
+def _revision(binding, declaration) -> str:
+    snapshot = [binding.pk, binding.updated_at, _declaration_snapshot(declaration)]
+    return hashlib.sha256(json.dumps(snapshot, cls=DjangoJSONEncoder, sort_keys=True).encode()).hexdigest()
+
+
+def _current_check(binding, *, lock=False) -> bool:
+    from apps.datasources.status import declaration_for
+
+    declaration = declaration_for(binding, getattr(binding, "_check_studio", None))
+    if lock and declaration is not None:
+        # Repo sync writes declarations before bindings; use the same lock order.
+        declaration = RepoDataSource.objects.select_for_update().filter(pk=declaration.pk).first()
+    qs = DataSource.objects.select_for_update() if lock else DataSource.objects
+    current = qs.filter(pk=binding.pk, updated_at=binding.updated_at).first()
+    if current is None:
+        return False
+    return _declaration_snapshot(declaration) == binding._check_declaration
+
+
+def run_check(binding, *, declared_type=None, declared_config=None, declaration=None) -> tuple[bool, str]:
     """Test ``binding`` the way a build would use it -- type and non-secret
     config from the declaration when there is one, credentials from the
     binding -- and store the outcome on the row. Never raises. Returns
     (ok, detail) like :func:`test_datasource`."""
     from apps.datasources.status import effective_fields
 
+    binding._check_stale = False
+    binding._check_declaration = _declaration_snapshot(declaration)
     probe = binding
     if declared_type:
         declaration = RepoDataSource(type=declared_type, config=declared_config or {})
@@ -139,11 +180,17 @@ def run_check(binding, *, declared_type=None, declared_config=None) -> tuple[boo
     try:
         ok, detail = test_datasource(probe)
     except Exception as exc:  # noqa: BLE001 - a check must never take its caller down
-        ok, detail = False, f"{type(exc).__name__}: {exc}"
-    binding.last_check_at = timezone.now()
-    binding.last_check_ok = ok
-    binding.last_check_error = "" if ok else detail
-    binding.save(update_fields=["last_check_at", "last_check_ok", "last_check_error"])
+        ok, detail = False, probe.scrub(f"{type(exc).__name__}: {exc}")
+    with transaction.atomic():
+        if not _current_check(binding, lock=True):
+            binding._check_stale = True
+            return False, STALE_CHECK
+        binding.last_check_at = timezone.now()
+        binding.last_check_ok = ok
+        binding.last_check_error = "" if ok else detail
+        DataSource.objects.filter(pk=binding.pk, updated_at=binding.updated_at).update(
+            last_check_at=binding.last_check_at, last_check_ok=ok, last_check_error=binding.last_check_error,
+        )
     return ok, detail
 
 
@@ -154,22 +201,30 @@ def run_state_check(state) -> tuple[bool, str]:
         state.binding,
         declared_type=declaration.type if declaration else None,
         declared_config=declaration.config if declaration else None,
+        declaration=declaration,
     )
 
 
-def check_binding(binding, studio=None) -> tuple[bool, str]:
+def check_binding(binding, studio=None, *, expected_revision=None) -> tuple[bool, str]:
     """Check ``binding`` as a build would use it (the studio's declaration;
     for an organization row, the first declaring studio's), then queue
     whatever reports the result unblocks."""
     from apps.datasources.status import binding_state
 
-    ok, detail = run_state_check(binding_state(binding, studio))
+    binding._check_studio = studio
+    state = binding_state(binding, studio)
+    if expected_revision and _revision(binding, state.declaration) != expected_revision:
+        binding._check_stale = True
+        return False, STALE_CHECK
+    ok, detail = run_state_check(state)
     if ok:
-        rebuild_unblocked(binding)
+        rebuild_unblocked(binding, guard_check=True)
+        if binding._check_stale:
+            return False, STALE_CHECK
     return ok, detail
 
 
-def rebuild_unblocked(binding) -> int:
+def rebuild_unblocked(binding, *, guard_check=False) -> int:
     """Queue the reports that use ``binding`` and were waiting on it: nothing
     blocks them any more, and they have never built or were last blocked by
     this source. Returns how many were queued."""
@@ -189,6 +244,14 @@ def rebuild_unblocked(binding) -> int:
                 continue
             blocked_by = read_meta(str(studio.output_dir / report.slug)).get("blocked_by") or []
             if report.last_built_at is None or binding.name in blocked_by:
-                if enqueue(report, trigger="manual") == "queued":
+                if guard_check:
+                    # Only the final DB decision is locked; probing and file reads stay outside.
+                    with transaction.atomic():
+                        if not _current_check(binding, lock=True):
+                            binding._check_stale = True
+                            return queued
+                        if enqueue(report, trigger="manual") == "queued":
+                            queued += 1
+                elif enqueue(report, trigger="manual") == "queued":
                     queued += 1
     return queued

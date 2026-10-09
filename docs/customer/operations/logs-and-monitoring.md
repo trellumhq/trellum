@@ -2,8 +2,21 @@
 
 ## Where logs are
 
-Everything goes to container stdout, capped at 10 MB × 5 files per service — the
-disk they would otherwise fill is the same one holding the database.
+Open **System → Server logs**, or the permanent **Server logs** sidebar link,
+as an instance operator. This page retains application events from the web,
+worker and coordinator processes in the shared database. It includes worker
+startup settings, queue activity, build outcomes, stop and timeout signals,
+orphan cleanup and application exceptions. The older report drawer is named
+**Build activity**: it summarizes report history.
+
+Filter by minimum severity, time, service, worker, report, run or request ID,
+or search message text. Pause live updates while investigating, expand an
+event for its traceback and context, and open its run for build output and
+memory evidence. Copy an event or download filtered NDJSON (at most 1,000
+events). Global logs and exports are unavailable while impersonating a user.
+
+Application logs also continue to container stdout, capped by the supplied
+Compose configuration at 10 MB × 5 files per service:
 
 ```bash
 docker compose logs -f web worker
@@ -12,18 +25,48 @@ docker compose logs -f web worker
 With the split topology, include the `coordinator` and `runner` services too.
 For multi-host deployments, collect logs from each host's container runtime.
 
+### Coverage and retention
+
+Apply database migrations and restart the web/worker/coordinator processes
+after installing this feature. Capture begins in each updated process; it
+does not import earlier container logs. Defaults retain seven days and at
+most 20,000 events, with periodic pruning. Configure
+`SERVER_LOG_CAPTURE_ENABLED`, `SERVER_LOG_RETENTION_DAYS`,
+`SERVER_LOG_MAX_ROWS` and optional `SERVER_LOG_SERVICE` in the environment.
+The root `LOG_LEVEL` controls which application messages are emitted.
+
+Capture uses a bounded asynchronous queue so a database failure or log burst
+does not block report execution. Events can be lost during overload, database
+outages or abrupt process termination. The collector reports loss when it
+recovers and falls back to stderr during persistence failures. Console logs
+remain a separate diagnostic source.
+
+The page does **not** collect Linux kernel OOM records, Docker daemon logs,
+reverse-proxy/access logs or arbitrary process stdout. Report stdout/stderr
+are available through linked runs: active files where accessible, otherwise
+the bounded tails retained with the run. These tails may omit earlier output.
+For a suspected host OOM, inspect host/kernel and Docker state alongside the
+application timeline. A connection-close message alone does not establish
+which component caused the failure.
+
+Stored events and build-output responses redact common credential keys and
+patterns. Redaction cannot recognize every possible secret in arbitrary
+report output; report code should never print credentials.
+
 ## Following one report build
 
 A build crosses four processes: `web` accepts the request, a row lands in the
 run queue, the worker claims it, and a throwaway sandbox container runs the
 report code. Comparing timestamps across four logs is not a diagnosis.
 
-Every response carries an **`X-Request-ID`**, and every log line written while
-serving that request carries the same id. Grep for it and you have the whole
-story:
+Every response carries an **`X-Request-ID`**, and log lines written while
+serving that request carry the same ID. Search for it to find the enqueue
+event, then follow its **run ID** through worker and build events. The request
+ID is request-scoped; it is not automatically propagated into the asynchronous
+report process. For console logs, search for the run ID:
 
 ```bash
-docker compose logs web worker | grep 7f3c1a92b4e05d6a
+docker compose logs web worker | grep '<run-id>'
 ```
 
 If your reverse proxy already stamps `X-Request-ID`, the portal keeps yours
@@ -40,7 +83,9 @@ Text stays the default because `docker compose logs` is read by a person. JSON
 lines carry the request id, and the fields a build cares about — run id, studio,
 slug, duration, exit code — as real fields rather than buried in a message.
 
-Keys that look like secrets are never emitted, whatever is passed.
+The JSON console formatter excludes common secret-named extra fields. Avoid
+putting credentials in message strings; console formatting is not a guarantee
+of complete redaction.
 
 ## Health
 

@@ -5,6 +5,8 @@ calls in the page, so the tests cover the client-side save contract only.
 """
 
 import json
+from email.parser import BytesParser
+from email.policy import default
 from types import SimpleNamespace
 
 import pytest
@@ -51,7 +53,20 @@ def _page(browser, html, responses):
         if "/api/" not in request.url:
             route.fulfill(status=204)
             return
-        requests.append(json.loads(request.post_data or "{}"))
+        assert request.method == "POST"
+        assert request.headers["x-trellum-form"] == "1"
+        assert request.headers["accept"] == "application/json"
+        content_type = request.headers["content-type"]
+        assert content_type.startswith("multipart/form-data;")
+        message = BytesParser(policy=default).parsebytes(
+            f"Content-Type: {content_type}\r\n\r\n".encode() + (request.post_data_buffer or b"")
+        )
+        fields = {
+            part.get_param("name", header="content-disposition"): part.get_payload(decode=True).decode()
+            for part in message.iter_parts()
+        }
+        assert fields.pop("csrfmiddlewaretoken") == "test-csrf-token"
+        requests.append(fields)
         status, body = responses.pop(0)
         route.fulfill(status=status, content_type="application/json", body=json.dumps(body))
 
@@ -77,12 +92,17 @@ def test_share_edits_wait_for_save_and_send_one_payload(browser):
     page.wait_for_timeout(50)
     assert requests == []
     assert page.locator('[data-settings-dirty-status]').text_content() == 'Unsaved changes'
-    page.locator("#reportSharePolicyForm button[type=submit]").click()
+    page.locator("#reportSharePolicyForm").evaluate("""form => {
+      const button = form.querySelector('button[type=submit]');
+      form.requestSubmit(button);
+      form.requestSubmit(button);
+    }""")
     page.wait_for_function("document.querySelector('[data-settings-status]').textContent === 'Saved.'")
-    assert page.locator('[data-settings-dirty-status]').text_content() == ''
+    assert page.locator('[data-settings-dirty-status]').text_content() == 'Saved.'
+    assert not page.locator('#reportSharePolicyForm').evaluate("form => form.classList.contains('is-dirty')")
     assert requests == [{
-        "enabled": True, "require_password": True,
-        "embed_links_enabled": True, "max_expiry_days": 30,
+        "enabled": "on", "require_password": "on",
+        "embed_links_enabled": "on", "max_expiry_days": "30",
     }]
 
 
@@ -102,7 +122,8 @@ def test_share_failure_keeps_edits_and_retry_succeeds(browser):
     page.wait_for_function("document.querySelector('[data-settings-status]').textContent.includes('invalid max_expiry_days')")
     assert page.locator("#reportSharePolicyToggle").is_checked()
     assert page.locator("#reportSharePolicyMaxExpiry").input_value() == "45"
-    assert page.locator('[data-settings-dirty-status]').text_content() == 'Unsaved changes'
+    assert page.locator('#reportSharePolicyForm').evaluate("form => form.classList.contains('is-dirty')")
+    assert requests == [{"enabled": "on", "max_expiry_days": "45"}]
     page.locator("#reportSharePolicyForm button[type=submit]").click()
     page.wait_for_function("document.querySelector('[data-settings-status]').textContent === 'Saved.'")
     assert len(requests) == 2 and requests[0] == requests[1]
@@ -124,8 +145,8 @@ def test_live_query_blank_and_invalid_input(browser):
     field.fill("")
     page.locator("#liveQueryPolicyForm button[type=submit]").click()
     page.wait_for_function("document.querySelector('[data-settings-status]').textContent === 'Saved.'")
-    assert requests == [{"rate_limit_per_minute": None}]
+    assert requests == [{"rate_limit_per_minute": ""}]
     field.fill("0")
     page.locator("#liveQueryPolicyForm button[type=submit]").click()
     page.wait_for_function("document.querySelector('[data-settings-status]').textContent === 'Saved.'")
-    assert requests[-1] == {"rate_limit_per_minute": 0}
+    assert requests[-1] == {"rate_limit_per_minute": "0"}

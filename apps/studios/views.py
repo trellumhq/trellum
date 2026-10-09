@@ -12,6 +12,7 @@ from django.views.decorators.http import require_POST
 
 from apps.core import roles
 from apps.core.audit import audit
+from apps.core.form_responses import is_settings_request, settings_error, settings_success
 from apps.core.permissions import require_studio_role
 from apps.core.report_access import selected_report_access_block_reason
 from apps.orgs.models import OrgMembership
@@ -77,25 +78,34 @@ def repo_settings(request, org_slug, studio_slug):  # noqa: ARG001
                     request, "studio.default_audiences_set", target=request.studio,
                     prior=prior, new=new,
                 )
+                if is_settings_request(request):
+                    return settings_success(request, "Default audiences saved for new reports and analyses.", values=new)
                 messages.success(request, "Default audiences saved for new reports and analyses.")
                 return redirect(request.path + "#default-audiences")
+        if is_settings_request(request):
+            return settings_error(request, form=audience_form)
     if request.method == "POST" and "sync_now" in request.POST:
         # The "Sync now" button: flag the repo and let the worker's git thread
-        # pull. A redirect back (not a JSON API call) keeps it consistent with
-        # the rest of this settings page.
+        # pull. Enhanced requests stay on the settings page; native forms redirect.
         if repo and repo.repo_url:
             repo.sync_requested = True
             repo.sync_reason = "manual"
             repo.save(update_fields=["sync_requested", "sync_reason"])
             audit(request, "git.sync_now", target=request.studio)
+            if is_settings_request(request):
+                return settings_success(request, "Sync scheduled — the worker pulls within seconds.", sync_requested=True)
             messages.success(request, "Sync scheduled — the worker pulls within seconds.")
         else:
+            if is_settings_request(request):
+                return settings_error(request, "Configure a repository first.")
             messages.error(request, "Configure a repository first.")
         return redirect(request.path)
     if request.method == "POST" and "set_mode" in request.POST:
         # The segmented Publishing control: one field, same rules as the form.
         mode = request.POST.get("publish_mode")
         if not (repo and repo.repo_url) or mode not in dict(StudioRepo.PUBLISH_CHOICES):
+            if is_settings_request(request):
+                return settings_error(request, "Configure a repository first.", errors={"publish_mode": ["Configure a repository first."]})
             messages.error(request, "Configure a repository first.")
             return redirect(request.path)
         if repo.publish_mode == "manual" and mode == "auto":
@@ -115,6 +125,8 @@ def repo_settings(request, org_slug, studio_slug):  # noqa: ARG001
             request, "studio.repo_update", target=request.studio,
             repo=repo.repo_url, publish_mode=mode,
         )
+        if is_settings_request(request):
+            return settings_success(request, "Publishing mode saved.", publish_mode=mode, repo_configured=True)
         messages.success(
             request,
             "Every push now goes live." if mode == "auto"
@@ -139,8 +151,12 @@ def repo_settings(request, org_slug, studio_slug):  # noqa: ARG001
                 request, "studio.repo_update", target=request.studio,
                 repo=obj.repo_url, publish_mode=obj.publish_mode,
             )
+            if is_settings_request(request):
+                return settings_success(request, "Repository settings saved — sync scheduled.", repo_configured=bool(obj.repo_url), publish_mode=obj.publish_mode, values={"token": "", "webhook_secret": ""})
             messages.success(request, "Repository settings saved — sync scheduled.")
             return redirect(request.path)
+        if is_settings_request(request):
+            return settings_error(request, form=form)
     else:
         form = StudioRepoForm(instance=repo)
     from apps.core.instance import base_url
@@ -257,6 +273,8 @@ def theme_set_default(request, org_slug, studio_slug):  # noqa: ARG001
 
     theme = (request.POST.get("theme") or "").strip()
     if theme and theme not in THEME_REGISTRY:
+        if is_settings_request(request):
+            return settings_error(request, "That theme is not available.", errors={"theme": ["That theme is not available."]})
         messages.error(request, "That theme is not available.")
         return _theme_redirect(request)
 
@@ -266,6 +284,8 @@ def theme_set_default(request, org_slug, studio_slug):  # noqa: ARG001
         request, "studio.theme_set", target=request.studio,
         theme=theme or "(default)",
     )
+    if is_settings_request(request):
+        return settings_success(request, "Studio theme updated.", theme=theme)
     messages.success(request, "Studio theme updated.")
     return _theme_redirect(request)
 
@@ -322,5 +342,9 @@ def member_set(request, org_slug, studio_slug):  # noqa: ARG001
             role=role,
         )
     else:
+        if is_settings_request(request):
+            return settings_error(request, "Invalid role.", errors={"role": ["Invalid role."]})
         messages.error(request, "Invalid role.")
+    if is_settings_request(request):
+        return settings_success(request, "Studio member role saved.")
     return redirect(f"/s/{request.org.slug}/{request.studio.slug}/settings/members")

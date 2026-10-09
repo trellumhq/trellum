@@ -13,6 +13,7 @@ from django.views.decorators.http import require_POST
 
 from apps.core import roles
 from apps.core.audit import audit
+from apps.core.form_responses import is_settings_request, settings_success
 from apps.core.permissions import require_org_role, visible_studios
 from apps.orgs.models import OrgMembership, PermissionGroupMembership
 from apps.studios.models import Studio, StudioMembership
@@ -935,6 +936,8 @@ def org_api_keys_view(request, org_slug):  # noqa: ARG001
             org.api_keys_enabled = bool(request.POST.get("api_keys_enabled"))
             org.save(update_fields=["api_keys_enabled"])
             audit(request, "org.api_keys_set", target=org, enabled=org.api_keys_enabled)
+            if is_settings_request(request):
+                return settings_success(request, "API key policy saved.", api_keys_enabled=org.api_keys_enabled)
             messages.success(
                 request,
                 "API keys are on for this organization."

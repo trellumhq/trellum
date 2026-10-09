@@ -7,9 +7,30 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-10-09
+
+### Added
+
+- Operator Server logs page with retained application events, live filtering,
+  tracebacks, linked build output and bounded export. Worker startup, build
+  completion, stop signals and orphan cleanup include diagnostic context.
+
 ### Fixed
 
+- Keep active report containers running when Docker status inspection temporarily
+  fails; log the monitoring outage and recovery without inventing an exit code.
+- Filter Operations by aggregate failures and individual build outcomes, keeping
+  labels and counts current as builds move between states.
+- Clear the previous failure title, color and log when retrying a report, and
+  keep queued or running attempts separate from completed run history.
+- Include runner memory and termination evidence in completed run logs, and
+  distinguish observed memory peaks from configured allocations and caps.
 - Keep local live queries available while review mode is active.
+- Refresh repository completion and uploaded-file status without reloading the
+  page or discarding other edits.
+- Render the report catalog without waiting for favorites or subscriptions,
+  reject outdated Operations responses, and restore history scroll after
+  delayed catalog content is ready.
 - Keep live-query parameter values literal, restrict portal DuckDB file access,
   and render ordinary table, pivot and dropdown values as text.
 - Enforce API credential scope, MFA enrollment and single-use codes, verified
@@ -21,13 +42,31 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   across local serving, object storage and the supplied edge worker.
 - Update authentication and datasource dependencies with publisher fixes.
 
+### Changed
+
+- Rename the report-history Server Log drawer to Build activity to distinguish
+  it from the application logs.
+- Save ordinary organization and studio settings in place, with shared progress,
+  validation and error feedback that preserves scroll, focus and newer drafts.
+- Confirm data-source settings before testing the connection, and bind test
+  results to the saved configuration so obsolete checks cannot overwrite it.
+- Document the shared form, refresh and navigation contract for contributors.
+
 ### Upgrade notes
 
-Apply the studio-preference migration and rebuild generated reports. Existing
-access grants are preserved and should be reviewed against approved access.
-Deploy the updated edge worker with the portal; custom gateways, legacy manifest
-objects and cached responses need the steps in the
-[storage guide](docs/customer/install/storage.md#private-live-query-manifests).
+Apply the additive `studios.0013_studio_preference` and
+`core.0014_server_log_event` migrations. Existing access grants are preserved
+and should be reviewed against approved access. Rebuild generated reports to
+apply the framework and runner fixes. Deploy the updated edge worker with the
+portal; custom gateways, legacy manifest objects and cached responses need the
+steps in the [storage guide](docs/customer/install/storage.md#private-live-query-manifests).
+
+After migrations complete, restart every web, worker and coordinator process so
+application log capture begins. Capture starts after upgrade and does not
+backfill historical logs. Trellum does not ingest host, kernel or Docker daemon
+logs. Log capture and retention settings remain operator-controlled through
+`SERVER_LOG_CAPTURE_ENABLED`, `SERVER_LOG_RETENTION_DAYS`,
+`SERVER_LOG_MAX_ROWS` and optional `SERVER_LOG_SERVICE` settings.
 
 ## [0.4.0] — 2026-10-08
 
@@ -241,7 +280,8 @@ and demos together in one AGPL-licensed project.
 - Owned Trellum code is released under AGPL-3.0-only. Third-party and
   contributor notices retain their own terms.
 
-[Unreleased]: https://github.com/trellumhq/trellum/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/trellumhq/trellum/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/trellumhq/trellum/releases/tag/v0.4.1
 [0.3.0]: https://github.com/trellumhq/trellum/releases/tag/v0.3.0
 [0.2.2]: https://github.com/trellumhq/trellum/releases/tag/v0.2.2
 [0.2.1]: https://github.com/trellumhq/trellum/compare/v0.2.0...v0.2.1

@@ -178,6 +178,267 @@ def test_catalog_kind_filter_search_categories_and_favorites(mobile_browser, vie
         context.close()
 
 
+def test_operations_state_filters_follow_live_state_and_scope(mobile_browser):
+    states = [
+        ("failed", "Failed report", "error"),
+        ("oom", "OOM report", "oom_killed"),
+        ("timeout", "Timed report", "timeout"),
+        ("success", "Success report", "success"),
+        ("stopped", "Stopped report", "stopped"),
+        ("never", "Not run report", "not_run"),
+        ("waiting", "Waiting report", "success"),
+        ("running", "Running report", "error"),
+        ("queued", "Queued report", "not_run"),
+    ]
+    ops_reports = [
+        {**REPORT, "id": index, "slug": slug, "name": name,
+         "category": "Data" if index <= 3 else "Other",
+         "last_status": "error" if slug == "oom" else "success" if slug in {"timeout", "stopped"} else result,
+         "build_status": result,
+         "waiting": slug == "waiting"}
+        for index, (slug, name, result) in enumerate(states, 1)
+    ]
+    ops_status = {
+        "running": {"running": {"elapsed_seconds": 4}}, "queue": ["queued"],
+    }
+    context = mobile_browser.new_context(viewport={"width": 390, "height": 844}, is_mobile=True)
+    page = context.new_page()
+
+    def respond(route):
+        path = urlsplit(route.request.url).path
+        if path.endswith("/static/ui.css"):
+            route.fulfill(content_type="text/css", body=UI_CSS)
+        elif path.endswith("/static/portal.css"):
+            route.fulfill(content_type="text/css", body=PORTAL_CSS)
+        elif path.endswith("/static/console-shell.css"):
+            route.fulfill(content_type="text/css", body=CONSOLE_CSS)
+        elif path.endswith("/static/portal.js"):
+            route.fulfill(content_type="application/javascript", body=PORTAL_JS)
+        elif path.endswith("/static/console-shell.js"):
+            route.fulfill(content_type="application/javascript", body=CONSOLE_JS)
+        elif path.endswith("/api/registry"):
+            route.fulfill(content_type="application/json", body=json.dumps({"reports": ops_reports}))
+        elif path.endswith("/api/system/status"):
+            route.fulfill(content_type="application/json", body=json.dumps(ops_status))
+        elif path.endswith("/api/system/git/status"):
+            route.fulfill(content_type="application/json", body='{"configured":false}')
+        elif path.endswith("/api/system/run-stats"):
+            route.fulfill(content_type="application/json", body='{"stats":{}}')
+        elif "/api/" in path:
+            route.fulfill(content_type="application/json", body='{}')
+        else:
+            route.fulfill(content_type="text/html", body=PORTAL_HTML.replace(
+                "initial_view:'reports'", "initial_view:'ops'"
+            ))
+
+    page.route("**/*", respond)
+    try:
+        page.goto("http://portal.test/s/acme/analytics/operations", wait_until="load")
+        page.locator('[data-ops-row="failed"]').wait_for()
+        count = lambda name: int(page.locator(f'[data-ops-filter="{name}"] .ops-filter-count').inner_text())
+        assert count("error") == 3
+        assert count("ok") == 1
+        assert count("waiting") == 1
+        assert count("running") == count("queued") == count("stopped") == 1
+        assert count("not_run") == 1
+        assert page.locator('[data-ops-row="oom"] .ops-status-text').inner_text() == "Out of memory"
+        assert page.locator('[data-ops-row="timeout"] .ops-status-text').inner_text() == "Timed out"
+        assert page.locator('[data-ops-row="stopped"] .ops-status-text').inner_text() == "Stopped"
+
+        page.locator('[data-ops-filter="error"]').click()
+        assert page.locator('[data-ops-row]:visible').count() == 3
+        page.locator('[data-ops-filter="oom"]').click()
+        assert page.locator('[data-ops-row]:visible').evaluate_all("rows => rows.map(r => r.dataset.opsRow)") == ["oom"]
+        assert page.locator('[data-ops-filter="oom"]').get_attribute("aria-pressed") == "true"
+
+        # A hidden previous row must not steal focus from its visible neighbour.
+        visible_button = page.locator('[data-ops-row="oom"] .ops-run-dropdown > .ops-row-btn')
+        visible_button.focus()
+        page.evaluate("_opsApplyStatus({running:{running:{elapsed_seconds:4}},queue:['queued']},_opsStatusRevision,_opsStatusCycle)")
+        assert visible_button.evaluate("el => el === document.activeElement")
+
+        page.locator('[data-ops-filter="all"]').click()
+        page.evaluate("activeFolder='Data';renderOperations()")
+        page.wait_for_function("document.querySelector('[data-ops-filter=all] .ops-filter-count')?.textContent === '3'")
+        assert count("error") == 3
+        page.evaluate("activeFolder='all';searchQuery='OOM';renderOperations()")
+        page.wait_for_function("document.querySelector('[data-ops-filter=all] .ops-filter-count')?.textContent === '1'")
+        assert count("oom") == 1
+        page.locator('[data-ops-filter="timeout"]').click()
+        assert page.locator('[data-ops-row]:visible').count() == 0
+        assert page.locator('[data-ops-empty]').is_visible()
+        page.locator('[data-ops-filter="all"]').click()
+
+        page.evaluate("searchQuery='';renderOperations()")
+        page.wait_for_function("document.querySelector('[data-ops-filter=all] .ops-filter-count')?.textContent === '9'")
+        page.locator('[data-ops-filter="error"]').click()
+        failed_row = page.locator('[data-ops-row="failed"]')
+        page.evaluate("_opsExpandedSlugs.failed=true;renderOperations()")
+        page.wait_for_selector('[data-ops-row="failed"]')
+        page.wait_for_selector('[data-ops-row="failed"] + .ops-expand-row')
+        failed_row = page.locator('[data-ops-row="failed"]')
+        failed_row.evaluate("row => row.nextElementSibling.querySelector('.ops-terminal-body').setAttribute('tabindex','-1')")
+        page.locator('[data-ops-row="failed"] + .ops-expand-row .ops-terminal-body').focus()
+        page.evaluate("_opsApplyStatus({running:{failed:{elapsed_seconds:8},running:{elapsed_seconds:4}},queue:['queued']},_opsStatusRevision,_opsStatusCycle)")
+        assert failed_row.is_hidden()
+        assert failed_row.evaluate("row => row.nextElementSibling.hidden")
+        assert page.locator('[data-ops-filter="error"]').evaluate("el => el === document.activeElement")
+        assert count("error") == 2
+
+        ops_reports[-1]["build_status"] = "error"
+        page.evaluate("_opsApplyStatus({running:{failed:{elapsed_seconds:8},running:{elapsed_seconds:4}},queue:[]},_opsStatusRevision,_opsStatusCycle)")
+        page.wait_for_function("document.querySelector('[data-ops-row=queued] .ops-status-text')?.textContent === 'Failed'")
+        assert count("error") == 3
+        assert not page.locator('[data-ops-row="queued"]').is_hidden()
+
+        ops_reports[0]["build_status"] = "success"
+        page.evaluate("_opsApplyStatus({running:{running:{elapsed_seconds:4}},queue:[]},_opsStatusRevision,_opsStatusCycle)")
+        page.wait_for_function("document.querySelector('[data-ops-filter=error] .ops-filter-count')?.textContent === '2'")
+        assert page.locator('[data-ops-row="failed"]').is_hidden()
+        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+    finally:
+        context.close()
+
+
+def test_catalog_renders_before_slow_favorites_and_subscriptions(mobile_browser):
+    context = mobile_browser.new_context()
+    page = context.new_page()
+    page.add_init_script("""(() => {
+      const nativeFetch = window.fetch.bind(window);
+      window.fetch = (input, init) => {
+        const url = typeof input === 'string' ? input : input.url;
+        if (url.endsWith('/api/me/favorites')) return new Promise(resolve => {
+          window.finishFavorites = body => resolve(new Response(JSON.stringify(body), {
+            status: 200, headers: {'Content-Type':'application/json'}
+          }));
+        });
+        if (url.endsWith('/api/my-subscriptions')) return new Promise(resolve => {
+          window.finishSubscriptions = body => resolve(new Response(JSON.stringify(body), {
+            status: 200, headers: {'Content-Type':'application/json'}
+          }));
+        });
+        return nativeFetch(input, init);
+      };
+    })();""")
+
+    def respond(route):
+        path = urlsplit(route.request.url).path
+        if path.endswith("/static/ui.css"):
+            route.fulfill(content_type="text/css", body=UI_CSS)
+        elif path.endswith("/static/portal.css"):
+            route.fulfill(content_type="text/css", body=PORTAL_CSS)
+        elif path.endswith("/static/console-shell.css"):
+            route.fulfill(content_type="text/css", body=CONSOLE_CSS)
+        elif path.endswith("/static/portal.js"):
+            route.fulfill(content_type="application/javascript", body=PORTAL_JS)
+        elif path.endswith("/static/console-shell.js"):
+            route.fulfill(content_type="application/javascript", body=CONSOLE_JS)
+        elif path.endswith("/api/registry"):
+            route.fulfill(content_type="application/json", body=json.dumps({"reports": REPORTS[:2]}))
+        elif "/api/" in path:
+            route.fulfill(content_type="application/json", body='{"studios":[]}')
+        else:
+            route.fulfill(content_type="text/html", body=PORTAL_HTML)
+
+    page.route("**/*", respond)
+    try:
+        page.goto("http://portal.test/s/acme/analytics/")
+        page.locator('#content tr[data-slug="revenue-overview"]').wait_for()
+        page.evaluate("activeFolder='Overview';render()")
+        assert page.locator('#content tr[data-slug="revenue-overview"]').count() == 1
+        page.evaluate("activeFolder='_favorites';render()")
+        assert "Loading favorites" in page.locator("#content").inner_text()
+        page.evaluate("finishFavorites({favorites:[{org_slug:'acme',studio_slug:'analytics',slug:'revenue-overview'}]})")
+        page.locator('#content tr[data-slug="revenue-overview"]').wait_for()
+        page.evaluate("finishSubscriptions({reports:{}})")
+        assert page.locator('#content tr[data-slug="revenue-overview"]').count() == 1
+    finally:
+        context.close()
+
+
+def test_favorites_failure_is_distinct_from_an_empty_list_and_retryable(mobile_browser):
+    context = mobile_browser.new_context()
+    page = context.new_page()
+    attempts = []
+
+    def respond(route):
+        path = urlsplit(route.request.url).path
+        if path.endswith("/static/portal.js"):
+            route.fulfill(content_type="application/javascript", body=PORTAL_JS)
+        elif path.endswith("/api/registry"):
+            route.fulfill(content_type="application/json", body=json.dumps({"reports": REPORTS[:2]}))
+        elif path.endswith("/api/me/favorites"):
+            attempts.append(1)
+            if len(attempts) == 1:
+                route.fulfill(status=503, content_type="application/json", body='{}')
+            else:
+                route.fulfill(content_type="application/json", body=json.dumps({"favorites": []}))
+        elif "/api/" in path:
+            route.fulfill(content_type="application/json", body='{"studios":[]}')
+        elif path.endswith(".css") or path.endswith(".js"):
+            route.fulfill(body="")
+        else:
+            route.fulfill(content_type="text/html", body=PORTAL_HTML)
+
+    page.route("**/*", respond)
+    try:
+        page.goto("http://portal.test/s/acme/analytics/")
+        page.locator('#content tr[data-slug="revenue-overview"]').wait_for()
+        page.evaluate("activeFolder='_favorites';render()")
+        assert "Favorites could not be loaded" in page.locator("#content").inner_text()
+        assert page.locator("[data-favorites-retry]").is_visible()
+        page.locator("[data-favorites-retry]").click()
+        page.wait_for_function("document.querySelector('#content').innerText.includes('No reports in this category')")
+        assert len(attempts) == 2
+    finally:
+        context.close()
+
+
+def test_favorites_body_timeout_remains_bounded_after_headers(mobile_browser):
+    context = mobile_browser.new_context()
+    page = context.new_page()
+    page.add_init_script("""(() => {
+      const nativeTimeout = window.setTimeout;
+      window.setTimeout = (fn, ms, ...args) => nativeTimeout(fn, ms === 8000 ? 250 : ms, ...args);
+      const nativeFetch = window.fetch.bind(window);
+      let favoritesCalls = 0;
+      window.fetch = (input, init) => {
+        const url = typeof input === 'string' ? input : input.url;
+        if (url.endsWith('/api/me/favorites') && ++favoritesCalls === 1) {
+          let streamController;
+          const body = new ReadableStream({start(controller) { streamController = controller; }});
+          init.signal.addEventListener('abort', () => streamController.error(new DOMException('Aborted', 'AbortError')));
+          return Promise.resolve(new Response(body, {status:200,headers:{'Content-Type':'application/json'}}));
+        }
+        return nativeFetch(input, init);
+      };
+    })();""")
+
+    def respond(route):
+        path = urlsplit(route.request.url).path
+        if path.endswith("/static/portal.js"):
+            route.fulfill(content_type="application/javascript", body=PORTAL_JS)
+        elif path.endswith("/api/registry"):
+            route.fulfill(content_type="application/json", body=json.dumps({"reports": REPORTS[:2]}))
+        elif path.endswith("/api/me/favorites"):
+            route.fulfill(content_type="application/json", body='{"favorites":[]}')
+        elif "/api/" in path:
+            route.fulfill(content_type="application/json", body='{"studios":[]}')
+        elif path.endswith(".css") or path.endswith(".js"):
+            route.fulfill(body="")
+        else:
+            route.fulfill(content_type="text/html", body=PORTAL_HTML)
+
+    page.route("**/*", respond)
+    try:
+        page.goto("http://portal.test/s/acme/analytics/")
+        page.locator('#content tr[data-slug="revenue-overview"]').wait_for()
+        page.evaluate("activeFolder='_favorites';render()")
+        page.wait_for_function("document.querySelector('#content').innerText.includes('Favorites could not be loaded')")
+    finally:
+        context.close()
+
+
 @pytest.mark.parametrize("kind,allow_export,capture", (("report", True, True), ("analysis", True, False), ("report", False, False)))
 @pytest.mark.parametrize("marker", ("html", "body"))
 def test_capture_menu_calls_framework_only_for_exportable_data_reports(mobile_browser, kind, allow_export, capture, marker):
@@ -722,3 +983,254 @@ def test_operations_records_and_actions_are_reachable(mobile_browser, width):
     )
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
     context.close()
+
+
+def test_operations_transition_reconciliation_cannot_overwrite_newer_action(mobile_browser):
+    context = mobile_browser.new_context()
+    page = context.new_page()
+    ops_reports = [{**REPORT, "last_status": "error", "last_error": "previous failure"}]
+    statuses = [
+        {"running": {REPORT["slug"]: {"elapsed_seconds": 12}}, "queue": []},
+        {"running": {}, "queue": []},
+        {"running": {REPORT["slug"]: {"elapsed_seconds": 30}}, "queue": []},
+    ]
+    status_calls = []
+
+    def respond(route):
+        path = urlsplit(route.request.url).path
+        if path.endswith("/static/portal.js"):
+            route.fulfill(content_type="application/javascript", body=PORTAL_JS)
+        elif path.endswith("/static/console-shell.js"):
+            route.fulfill(content_type="application/javascript", body=CONSOLE_JS)
+        elif path.endswith(".css"):
+            route.fulfill(content_type="text/css", body="")
+        elif path.endswith("/api/registry"):
+            route.fulfill(content_type="application/json", body=json.dumps({"reports": ops_reports}))
+        elif path.endswith("/api/system/status"):
+            status_calls.append(len(status_calls))
+            value = statuses[min(len(status_calls) - 1, len(statuses) - 1)]
+            route.fulfill(content_type="application/json", body=json.dumps(value))
+        elif path.endswith("/api/system/git/status"):
+            route.fulfill(content_type="application/json", body='{"configured":false}')
+        elif path.endswith("/api/system/run-stats"):
+            route.fulfill(content_type="application/json", body='{"stats":{}}')
+        elif path.endswith("/api/me/favorites"):
+            route.fulfill(content_type="application/json", body='{"favorites":[]}')
+        elif path.endswith("/api/my-subscriptions"):
+            route.fulfill(content_type="application/json", body='{"reports":{}}')
+        elif "/api/" in path:
+            route.fulfill(content_type="application/json", body="{}")
+        else:
+            route.fulfill(content_type="text/html", body=PORTAL_HTML.replace(
+                "initial_view:'reports'", "initial_view:'ops'"
+            ))
+
+    page.route("**/*", respond)
+    try:
+        page.goto("http://portal.test/s/acme/analytics/operations", wait_until="load")
+        row = page.locator(f'[data-ops-row="{REPORT["slug"]}"]')
+        row.wait_for()
+        page.evaluate("window.__rowIdentity = document.querySelector('[data-ops-row]')")
+        page.evaluate("""(() => {
+          const nativeFetch = window.fetch.bind(window);
+          window.fetch = (input, init) => {
+            const url = typeof input === 'string' ? input : input.url;
+            if (window.__holdRegistry && url.includes('/api/registry')) {
+              window.__holdRegistry = false;
+              return new Promise(resolve => { window.__releaseRegistry = () => resolve(
+                new Response(JSON.stringify({reports:[{slug:'revenue-overview',name:'Player Overview',last_status:'success'}]}),
+                  {status:200,headers:{'Content-Type':'application/json'}})); });
+            }
+            return nativeFetch(input, init);
+          };
+          window.__holdRegistry = true;
+          _opsScheduleStatusPoll(0);
+        })();""")
+        page.wait_for_function("typeof window.__releaseRegistry === 'function'")
+        assert page.evaluate("_opsStatusInFlight")
+        page.evaluate("_opsRefreshAfterAction('revenue-overview', false)")
+        page.evaluate("window.__releaseRegistry()")
+        page.wait_for_function("document.querySelector('[data-ops-row] .ops-status.running') !== null")
+        assert page.evaluate("reports[0].last_status") == "error"
+        assert page.evaluate("window.__rowIdentity === document.querySelector('[data-ops-row]')")
+        assert page.evaluate("_opsStatusInFlight") is False
+    finally:
+        context.close()
+
+
+def test_operations_rerun_replaces_terminal_only_with_current_run(mobile_browser):
+    context = mobile_browser.new_context()
+    page = context.new_page()
+    ops_reports = [{**REPORT, "last_status": "error", "last_error": "previous failure"}]
+    latest_log = {"status": "error", "stderr": "previous failure"}
+    ops_status = {"running": {}, "queue": []}
+    run_rejected = False
+
+    def respond(route):
+        path = urlsplit(route.request.url).path
+        if path.endswith("/static/portal.js"):
+            route.fulfill(content_type="application/javascript", body=PORTAL_JS)
+        elif path.endswith("/static/console-shell.js"):
+            route.fulfill(content_type="application/javascript", body=CONSOLE_JS)
+        elif path.endswith(".css"):
+            route.fulfill(content_type="text/css", body="")
+        elif path.endswith("/api/registry"):
+            route.fulfill(content_type="application/json", body=json.dumps({"reports": ops_reports}))
+        elif path.endswith("/api/system/status"):
+            route.fulfill(content_type="application/json", body=json.dumps(ops_status))
+        elif path.endswith("/api/system/git/status"):
+            route.fulfill(content_type="application/json", body='{"configured":false}')
+        elif path.endswith("/api/system/run-stats"):
+            route.fulfill(content_type="application/json", body='{"stats":{}}')
+        elif path.endswith("/api/me/favorites"):
+            route.fulfill(content_type="application/json", body='{"favorites":[]}')
+        elif path.endswith("/api/my-subscriptions"):
+            route.fulfill(content_type="application/json", body='{"reports":{}}')
+        elif path.endswith("/api/reports/revenue-overview/status"):
+            route.fulfill(content_type="application/json", body='{"aggregates":{},"history":[]}')
+        elif path.endswith("/api/reports/revenue-overview/log/live"):
+            route.fulfill(content_type="application/json", body='{"slug":"revenue-overview","stdout_tail":""}')
+        elif path.endswith("/api/reports/revenue-overview/log"):
+            route.fulfill(content_type="application/json", body=json.dumps(latest_log))
+        elif path.endswith("/api/reports/revenue-overview/run"):
+            if run_rejected:
+                route.fulfill(status=503, content_type="application/json", body='{"ok":false,"message":"queue unavailable"}')
+            else:
+                route.fulfill(content_type="application/json", body='{"ok":true,"status":"queued"}')
+        elif "/api/" in path:
+            route.fulfill(content_type="application/json", body="{}")
+        else:
+            route.fulfill(content_type="text/html", body=PORTAL_HTML.replace(
+                "initial_view:'reports'", "initial_view:'ops'"
+            ))
+
+    page.route("**/*", respond)
+    try:
+        page.goto("http://portal.test/s/acme/analytics/operations", wait_until="load")
+        row = page.locator(f'[data-ops-row="{REPORT["slug"]}"]')
+        row.wait_for()
+        queued_terminal = page.evaluate("""(() => {
+          _opsExpandedSlugs['revenue-overview'] = true;
+          const holder = document.createElement('div');
+          holder.innerHTML = _buildOpsHTML({running:{},queue:[{slug:'revenue-overview'}]}, reports);
+          const terminal = holder.querySelector('#opsTerm_revenue-overview');
+          const state = {title:terminal.querySelector('.ops-terminal-title').textContent,
+            failed:terminal.classList.contains('error'), body:terminal.querySelector('.ops-terminal-body').textContent};
+          delete _opsExpandedSlugs['revenue-overview'];
+          return state;
+        })()""")
+        assert "Queued" in queued_terminal["title"]
+        assert queued_terminal["failed"] is False
+        assert "Failed" not in queued_terminal["body"]
+        page.evaluate("""(() => {
+          const nativeFetch = window.fetch.bind(window);
+          const nativeNow = Date.now.bind(Date);
+          window.__nativeNow = nativeNow;
+          window.__runStartedAt = nativeNow();
+          window.__advanceRunClock = () => window.__runStartedAt + 11000;
+          window.fetch = (input, init) => {
+            const url = typeof input === 'string' ? input : input.url;
+            if (window.__holdRun && url.includes('/api/reports/revenue-overview/run')) {
+              window.__holdRun = false;
+              return new Promise(resolve => { window.__releaseRun = () => resolve(
+                new Response(JSON.stringify({ok:true,status:'queued'}),
+                  {status:200,headers:{'Content-Type':'application/json'}})); });
+            }
+            if (window.__holdOldStatus && url.includes('/api/system/status')) {
+              window.__holdOldStatus = false;
+              return new Promise(resolve => { window.__releaseOldStatus = () => resolve(
+                new Response(JSON.stringify({running:{},queue:[]}),
+                  {status:200,headers:{'Content-Type':'application/json'}})); });
+            }
+            if (window.__holdOldLog && url.includes('/log?run=0')) {
+              window.__holdOldLog = false;
+              return new Promise(resolve => { window.__releaseOldLog = () => resolve(
+                new Response(JSON.stringify({status:'error',stderr:'previous failure'}),
+                  {status:200,headers:{'Content-Type':'application/json'}})); });
+            }
+            return nativeFetch(input, init);
+          };
+          window.__holdOldLog = true;
+          opsToggleExpand('revenue-overview');
+        })();""")
+        page.wait_for_function("typeof window.__releaseOldLog === 'function'")
+        terminal = page.locator("#opsTerm_revenue-overview")
+        assert "Failed" in terminal.locator(".ops-terminal-title").inner_text()
+        assert "error" in (terminal.get_attribute("class") or "")
+
+        page.wait_for_function("!_opsStatusInFlight")
+        page.evaluate("window.__holdOldStatus = true; _opsScheduleStatusPoll(0)")
+        page.wait_for_function("typeof window.__releaseOldStatus === 'function'")
+        page.evaluate("window.__holdRun = true")
+        page.evaluate("opsRun('revenue-overview', 'normal')")
+        assert "Starting" in terminal.locator(".ops-terminal-title").inner_text()
+        assert "error" not in (terminal.get_attribute("class") or "")
+        page.evaluate("window.__releaseOldStatus()")
+        page.wait_for_timeout(50)
+        assert "Starting" in terminal.locator(".ops-terminal-title").inner_text()
+        page.evaluate("window.__releaseOldLog()")
+        page.wait_for_timeout(50)
+        assert "Starting" in terminal.locator(".ops-terminal-title").inner_text()
+        assert "previous failure" not in terminal.inner_text()
+        page.wait_for_function("typeof window.__releaseRun === 'function'")
+        page.evaluate("window.__pendingRow = document.querySelector('[data-ops-row]'); renderOperations()")
+        page.wait_for_function("document.querySelector('[data-ops-row]') !== window.__pendingRow")
+        assert "Starting" in terminal.locator(".ops-terminal-title").inner_text()
+        assert "error" not in (terminal.get_attribute("class") or "")
+        assert "Starting" in row.locator('[data-label="Status"]').inner_text()
+        assert row.locator(".ops-run-dropdown").count() == 0
+        page.wait_for_function("!_opsStatusInFlight")
+        page.evaluate("window.__holdOldStatus = true; delete window.__releaseOldStatus; _opsScheduleStatusPoll(0)")
+        page.wait_for_function("typeof window.__releaseOldStatus === 'function'")
+        ops_status = {"running": {}, "queue": [{"slug": REPORT["slug"]}]}
+        page.evaluate("window.__releaseRun()")
+        page.wait_for_function("!window._opsRunPending['revenue-overview']")
+        page.evaluate("window.__releaseOldStatus()")
+        page.wait_for_timeout(50)
+        assert "error" not in (terminal.get_attribute("class") or "")
+        assert "previous failure" not in terminal.inner_text()
+        assert row.locator(".ops-status.error").count() == 0
+
+        page.evaluate("_opsApplyStatus({running:{},queue:[{slug:'revenue-overview'}]},_opsStatusRevision,_opsStatusCycle)")
+        assert "Queued" in terminal.locator(".ops-terminal-title").inner_text()
+        assert "error" not in (terminal.get_attribute("class") or "")
+        ops_status = {"running": {REPORT["slug"]: {"elapsed_seconds": 12}}, "queue": []}
+        page.evaluate("_opsApplyStatus({running:{'revenue-overview':{elapsed_seconds:12}},queue:[]},_opsStatusRevision,_opsStatusCycle)")
+        page.evaluate("Date.now = window.__advanceRunClock; _opsFetchLive('revenue-overview')")
+        page.wait_for_timeout(50)
+        assert "Running" in terminal.locator(".ops-terminal-title").inner_text()
+        assert "error" not in (terminal.get_attribute("class") or "")
+        page.evaluate("Date.now = window.__nativeNow")
+
+        ops_reports[0] = {**REPORT, "last_status": "success"}
+        latest_log = {"status": "success", "stdout": "new successful output"}
+        ops_status = {"running": {}, "queue": []}
+        page.evaluate("_opsApplyStatus({running:{},queue:[]},_opsStatusRevision,_opsStatusCycle)")
+        page.wait_for_function("document.querySelector('#opsTerm_revenue-overview .ops-terminal-body')?.textContent.includes('new successful output')")
+        assert "Last run" in terminal.locator(".ops-terminal-title").inner_text()
+        assert "error" not in (terminal.get_attribute("class") or "")
+        assert terminal.locator(".ops-terminal-body").evaluate("el => !el.classList.contains('live')")
+        assert page.evaluate("!!_opsLivePollers['revenue-overview']") is False
+
+        page.evaluate("opsRun('revenue-overview', 'normal')")
+        page.wait_for_function("!window._opsRunPending['revenue-overview']")
+        assert "error" not in (terminal.get_attribute("class") or "")
+        ops_status = {"running": {REPORT["slug"]: {"elapsed_seconds": 2}}, "queue": []}
+        page.evaluate("_opsApplyStatus({running:{'revenue-overview':{elapsed_seconds:2}},queue:[]},_opsStatusRevision,_opsStatusCycle)")
+        ops_reports[0] = {**REPORT, "last_status": "error", "last_error": "new failure"}
+        latest_log = {"status": "error", "stderr": "new failure"}
+        ops_status = {"running": {}, "queue": []}
+        page.evaluate("_opsApplyStatus({running:{},queue:[]},_opsStatusRevision,_opsStatusCycle)")
+        page.wait_for_function("document.querySelector('#opsTerm_revenue-overview .ops-terminal-title')?.textContent.includes('Failed')")
+        assert "error" in (terminal.get_attribute("class") or "")
+        page.wait_for_function("document.querySelector('#opsTerm_revenue-overview .ops-terminal-body')?.textContent.includes('new failure')")
+        assert "new failure" in terminal.inner_text()
+        assert terminal.locator(".ops-terminal-body").evaluate("el => !el.classList.contains('live')")
+        assert page.evaluate("!!_opsLivePollers['revenue-overview']") is False
+
+        run_rejected = True
+        page.evaluate("opsRun('revenue-overview', 'normal')")
+        page.wait_for_function("document.querySelector('#opsTerm_revenue-overview .ops-terminal-title')?.textContent.includes('Run request unconfirmed')")
+        assert "error" not in (terminal.get_attribute("class") or "")
+    finally:
+        context.close()

@@ -122,6 +122,13 @@ their opener, and expose the relevant dialog/menu state. Forms provide visible
 labels and inline errors. Entity names link to their records rather than
 showing bare identifiers.
 
+## Form behavior
+
+Settings saves preserve the current page, scroll, focus and neighboring
+drafts. Follow the shared contract and verification requirements in
+[Forms and navigation](forms-and-navigation.md). Distinguish saving, saved,
+validation failure and unconfirmed outcomes, and refresh affected regions.
+
 ## Deliberate exceptions
 
 Terminal and log surfaces stay dark because their colors carry terminal

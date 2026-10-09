@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from urllib.parse import urlsplit
 
 import pytest
 from django.conf import settings
@@ -49,6 +50,7 @@ def _catalog_html(*, fast_timeout: bool = False) -> str:
  <button data-console-backdrop>Close</button>
 </div>
 <div data-console-catalog data-console-inert style="height:1800px;padding-top:520px">
+ <div id="content" data-catalog-ready="true"></div>
  <a id="report" href="/s/demo/casino/r/player-overview/index.html?display=console"
     data-console-report-title="Player overview">Player overview</a>
  <a id="newtab" target="_blank" href="/s/demo/casino/r/player-overview/index.html">New tab</a>
@@ -187,6 +189,52 @@ def _open(report_browser, *, fast_timeout=False, viewport=None, assistant_availa
     page.goto("http://console.test/s/demo/casino/?view=list", wait_until="load")
     top_navigations.clear()
     return context, page, errors, top_navigations, shell_requests, assistant_messages
+
+
+def test_back_restores_catalog_scroll_after_delayed_catalog_render(report_browser):
+    context = report_browser.new_context(viewport={"width": 390, "height": 720})
+    page = context.new_page()
+    catalog_loads = []
+    delayed = _catalog_html().replace(
+        'style="height:1800px;padding-top:520px"',
+        'style="height:150px;padding-top:20px"',
+    ).replace('id="content" data-catalog-ready="true"', 'id="content" data-catalog-ready="false"')
+    delayed = delayed.replace(
+        "</body>",
+        "<script>window.addEventListener('pageshow',function(){setTimeout(function(){"
+        "document.querySelector('[data-console-catalog]').style.height='1800px';"
+        "var content=document.getElementById('content');content.dataset.catalogReady='true';"
+        "window.__catalogRenderComplete=true;window.dispatchEvent(new Event('trellum:catalog-ready'));"
+        "},150);});</script></body>",
+    )
+
+    def route_request(route):
+        path = urlsplit(route.request.url).path
+        if path == "/ordinary":
+            route.fulfill(content_type="text/html", body="<html><body>Ordinary page</body></html>")
+        elif path == "/s/demo/casino/":
+            catalog_loads.append(1)
+            route.fulfill(content_type="text/html", body=_catalog_html() if len(catalog_loads) == 1 else delayed)
+        elif "/api/registry" in path:
+            route.fulfill(content_type="application/json", body='{"reports":[]}')
+        else:
+            route.fulfill(content_type="text/html", body="<html><body>Other</body></html>")
+
+    page.route("**/*", route_request)
+    try:
+        page.goto("http://console.test/s/demo/casino/", wait_until="load")
+        page.evaluate("scrollTo(0, 600)")
+        page.wait_for_function("history.state && history.state.tlConsoleCatalog && history.state.tlConsoleCatalog.y >= 590")
+        page.goto("http://console.test/ordinary", wait_until="load")
+        page.go_back(wait_until="load")
+        page.locator("#content[data-catalog-ready='false']").wait_for(state="attached")
+        assert page.evaluate("window.__catalogRenderComplete !== true")
+        assert page.evaluate("window.scrollY") < 100
+        page.wait_for_function("window.__catalogRenderComplete === true")
+        page.wait_for_function("window.scrollY >= 590")
+        assert len(catalog_loads) == 2
+    finally:
+        context.close()
 
 
 def test_report_history_filter_bridge_and_shell_identity(report_browser):

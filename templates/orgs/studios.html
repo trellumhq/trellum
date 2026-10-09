@@ -43,7 +43,7 @@ concurrency limit is reached. Contact your provider to change these.</p>
   <tr>
     <td data-label="Studio"><span class="ui-badge">{{ s.slug }}</span></td>
     <td data-label="Name &amp; description" style="min-width:340px">
-      <form class="inline" method="post" style="display:flex;gap:6px;align-items:center;width:100%" data-settings-form>
+      <form id="studio-name-{{ s.pk }}" class="inline" method="post" style="display:flex;gap:6px;align-items:center;width:100%" data-settings-form data-settings-save>
         {% csrf_token %}
         <input type="hidden" name="action" value="rename">
         <input type="hidden" name="studio_id" value="{{ s.pk }}">

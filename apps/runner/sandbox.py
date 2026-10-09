@@ -22,6 +22,7 @@ send_signal, kill, the timeout ladder, peak-memory sampling) is unchanged.
 """
 from __future__ import annotations
 
+import logging
 import shlex
 import socket
 from pathlib import Path, PurePosixPath
@@ -30,6 +31,8 @@ from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 
 from apps.core.docs import docs_url
+
+logger = logging.getLogger("trellum.sandbox")
 
 #: Every sandbox container carries this label so orphans can be swept.
 SANDBOX_LABEL = "trellum.sandbox"
@@ -104,20 +107,56 @@ class SandboxProc:
 
     pid = None  # containers have no host pid; read_peak_rss_mb(None) is a no-op
 
-    def __init__(self, container):
+    def __init__(self, container, run_id: str | None = None):
         self._c = container
         self.container_id = container.id
+        self.run_id = str(run_id or "")
         self._exit: int | None = None
         self._oom = False
+        self._inspection_unavailable = False
 
     def poll(self) -> int | None:
         if self._exit is not None:
             return self._exit
         try:
             self._c.reload()
-        except Exception:  # noqa: BLE001 - treat a vanished container as done
-            self._exit = 1
-            return self._exit
+        except Exception as exc:  # noqa: BLE001 - Docker can be temporarily unavailable
+            import docker.errors
+
+            if isinstance(exc, docker.errors.NotFound):
+                self._exit = 1
+                logger.warning(
+                    "Sandbox container is missing during inspection",
+                    extra={
+                        "run_id": self.run_id,
+                        "container_id": self.container_id,
+                        "reason": "container_missing",
+                    },
+                )
+                return self._exit
+            if not self._inspection_unavailable:
+                logger.warning(
+                    "Sandbox container inspection failed; will retry on the next poll",
+                    extra={
+                        "run_id": self.run_id,
+                        "container_id": self.container_id,
+                        "reason": "inspection_unavailable",
+                        "error_type": type(exc).__name__,
+                    },
+                    exc_info=True,
+                )
+                self._inspection_unavailable = True
+            return None
+        if self._inspection_unavailable:
+            logger.info(
+                "Sandbox container inspection recovered",
+                extra={
+                    "run_id": self.run_id,
+                    "container_id": self.container_id,
+                    "reason": "inspection_recovered",
+                },
+            )
+            self._inspection_unavailable = False
         state = self._c.attrs.get("State", {})
         if state.get("Running"):
             return None
@@ -450,7 +489,7 @@ class DockerSandbox:
                 f"[SANDBOX] failed to start container for run {run.id}: "
                 f"{type(exc).__name__}: {exc}"
             ) from exc
-        return SandboxProc(container)
+        return SandboxProc(container, run_id=str(run.id))
 
     # ── housekeeping ─────────────────────────────────────────────────────
     def sweep_orphans(self) -> int:
@@ -491,6 +530,15 @@ class DockerSandbox:
             try:
                 c.remove(force=True)
                 removed += 1
+                logger.warning(
+                    "Removed orphan sandbox: its run is no longer active",
+                    extra={"run_id": run_id or "", "container_id": c.id,
+                           "reason": "orphan_cleanup"},
+                )
             except Exception:  # noqa: BLE001
-                pass
+                logger.exception(
+                    "Could not remove orphan sandbox",
+                    extra={"run_id": run_id or "", "container_id": c.id,
+                           "reason": "orphan_cleanup"},
+                )
         return removed

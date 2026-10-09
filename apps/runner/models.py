@@ -63,7 +63,7 @@ class Run(models.Model):
     container_id = models.CharField(max_length=80, blank=True, default="")
     worker_id = models.CharField(max_length=100, blank=True, default="")
     log_dir = models.CharField(max_length=400, blank=True, default="")
-    #: Memory budget this run was admitted against and capped at (MB): the
+    #: Memory allocation this run was admitted against (MB), before headroom: the
     #: runner's TRELLUM_DEFAULT_JOB_MEMORY_MB when it started, recorded so a
     #: later change to the setting never rewrites what a past run was allowed.
     memory_limit_mb = models.PositiveIntegerField(default=0)

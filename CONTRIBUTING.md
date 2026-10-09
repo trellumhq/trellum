@@ -51,6 +51,11 @@ Run the full product with `./scripts/demo.sh` or `./scripts/demo.ps1`. New
 framework behavior needs a worked example under `trellum/demo/`; new behavior
 needs a focused test. Do not add per-file licence headers.
 
+When building or changing portal forms, saves, polling or navigation, follow
+[Forms and navigation](docs/forms-and-navigation.md) and its browser and server
+verification requirements. Use the shared settings handler and response
+helpers, preserve drafts and scroll, and reject obsolete background results.
+
 ## Pull requests
 
 Keep one concern per change and explain why it belongs in the affected layer.

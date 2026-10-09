@@ -1306,3 +1306,5 @@ code.copy {
     body.mgmt main button:not([hidden]),
     body.mgmt main select:not([hidden]) { min-height: 44px; }
 }
+
+.settings-form-status{display:inline-block;margin-left:10px;font-size:.875rem}.settings-form-error{display:block;color:var(--danger,#b42318);font-size:.875rem;margin-top:4px}form[data-settings-state="error"] .settings-form-status{color:var(--danger,#b42318)}

@@ -46,7 +46,7 @@ static/themes.generated.css with no duplicated values.{% endcomment %}
   in the repository's <code>config.yaml</code> and push.</p>
 {% else %}
 <div class="panel formrow">
-  <form method="post" action="{% url 'studio-theme-set-default' org.slug studio.slug %}" data-settings-form>
+  <form id="studioThemeForm" method="post" action="{% url 'studio-theme-set-default' org.slug studio.slug %}" data-settings-form data-settings-save>
     {% csrf_token %}
     <input type="hidden" name="next" value="{{ request.path }}">
     <div class="theme-swatches">
@@ -79,5 +79,15 @@ static/themes.generated.css with no duplicated values.{% endcomment %}
   palette for this studio, from the studio's own tab bar — controlled in
   <a href="/orgs/{{ org.slug }}/settings/appearance">Org settings → Appearance</a> ("Lock it").</p>
 {% endif %}
+<script>
+document.querySelectorAll('input[name="theme"]').forEach(function (field) {
+  field.addEventListener('change', function () {
+    document.querySelectorAll('.theme-sw').forEach(function (card) {
+      var input = card.querySelector('input');
+      if (input) card.classList.toggle('sel', input.checked);
+    });
+  });
+});
+</script>
 {% endif %}
 {% endblock %}

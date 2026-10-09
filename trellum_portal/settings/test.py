@@ -2,6 +2,7 @@
 from .base import *  # noqa: F401,F403
 
 DEBUG = False
+SERVER_LOG_CAPTURE_ENABLED = False
 SECRET_KEY = "test-secret-key"
 SECRET_ENCRYPTION_KEY = "5oyYd0zpeq5F1zqLBTXCzCUJ9WQ0P84qBcNPXuMUsUE="
 ALLOWED_HOSTS = ["*"]

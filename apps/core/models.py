@@ -293,3 +293,31 @@ class AuditLog(models.Model):
         if self.impersonator_id:
             who = f"{self.actor} (impersonated by {self.impersonator})"
         return f"{self.created_at:%Y-%m-%d %H:%M} {self.action} by {who}"
+
+
+class ServerLogEvent(models.Model):
+    """Bounded diagnostic events, independent of report history retention."""
+
+    id = models.BigAutoField(primary_key=True)
+    timestamp = models.DateTimeField()
+    level = models.CharField(max_length=16)
+    service = models.CharField(max_length=32)
+    host = models.CharField(max_length=255)
+    process = models.PositiveIntegerField()
+    logger = models.CharField(max_length=200)
+    message = models.TextField()
+    exception = models.TextField(blank=True, default="")
+    context = models.JSONField(default=dict)
+    worker_id = models.CharField(max_length=100, blank=True, default="")
+    run_id = models.CharField(max_length=36, blank=True, default="")
+    report_slug = models.CharField(max_length=200, blank=True, default="")
+    request_id = models.CharField(max_length=200, blank=True, default="")
+    trigger = models.CharField(max_length=32, blank=True, default="")
+
+    class Meta:
+        ordering = ["-id"]
+        indexes = [
+            models.Index(fields=["timestamp"], name="server_log_time_idx"),
+            models.Index(fields=["run_id", "id"], name="server_log_run_idx"),
+            models.Index(fields=["worker_id", "id"], name="server_log_worker_idx"),
+        ]

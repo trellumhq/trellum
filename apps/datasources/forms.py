@@ -200,5 +200,8 @@ class DataSourceForm(forms.Form):
         ds.config = config
         ds.credentials = stored or None
         ds.updated_by = user
+        ds.last_check_at = None
+        ds.last_check_ok = None
+        ds.last_check_error = ""
         ds.save()
         return ds

@@ -148,7 +148,7 @@ class TestRecovery:
         done = make_run(status=Run.SUCCESS)
         Command()._recover_stale_runs()
         assert Run.objects.get(pk=r1.pk).status == Run.ERROR
-        assert "worker restarted" in Run.objects.get(pk=r1.pk).stderr_tail
+        assert "Worker heartbeat missing" in Run.objects.get(pk=r1.pk).stderr_tail
         assert Run.objects.get(pk=r2.pk).status == Run.ERROR
         assert Run.objects.get(pk=done.pk).status == Run.SUCCESS
 

@@ -52,6 +52,7 @@ CONSOLE_PAGE_TITLES = {
     "operator-fleet": "Fleet",
     "operator-orgs": "Organizations",
     "operator-org-detail": "Organization",
+    "operator-logs": "Server logs",
 }
 
 _ACTIVE_STUDIOS_SESSION_KEY = "active_studio_by_org"

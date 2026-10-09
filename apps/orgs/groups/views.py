@@ -12,6 +12,7 @@ from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.core import roles
 from apps.core.audit import audit
+from apps.core.form_responses import is_settings_request, settings_error, settings_success
 from apps.core.permissions import effective_roles, require_org_role, require_studio_role
 from apps.core.report_access import selected_report_access_block_reason, visible_reports
 from apps.orgs.models import (
@@ -318,13 +319,21 @@ def group_detail(request, org_slug, group_id):  # noqa: ARG001
                 if form.is_valid():
                     form.save()
                     audit(request, "group.update", target=group)
+                    if is_settings_request(request):
+                        return settings_success(request, "Group updated.", values=form.cleaned_data, refresh=["group-heading", "group-summary"])
                     messages.success(request, "Group updated.")
                     return redirect(_group_url(request.org, group))
+            if is_settings_request(request):
+                return settings_error(request, form=form)
         elif action == "studio_access":
             access_form = StudioAccessForm(request.POST, org=request.org)
             if _save_group_access(request, group, access_form):
+                if is_settings_request(request):
+                    return settings_success(request, "Studio access updated.", updates={f"group-grant-{access_form.cleaned_data['studio'].pk}": "explicit grant" if access_form.cleaned_data["role"] else "no explicit grant"})
                 messages.success(request, "Studio access updated.")
                 return redirect(_group_url(request.org, group, "access"))
+            if is_settings_request(request):
+                return settings_error(request, form=access_form)
             tab = "access"
         elif action == "grant":  # legacy form compatibility
             studio_id = request.POST.get("studio_id")
@@ -502,10 +511,14 @@ def report_access(request, org_slug, studio_slug, slug):  # noqa: ARG001
         if action == "set_audience":
             audience = request.POST.get("audience")
             if audience not in dict(Report.AUDIENCE_CHOICES):
+                if is_settings_request(request):
+                    return settings_error(request, "Choose a valid audience.", errors={"audience": ["Choose a valid audience."]})
                 messages.error(request, "Choose a valid audience.")
                 return redirect(request.path)
             block_reason = selected_report_access_block_reason()
             if block_reason:
+                if is_settings_request(request):
+                    return settings_error(request, block_reason, errors={"audience": [block_reason]})
                 messages.error(request, block_reason)
                 return redirect(request.path)
             with transaction.atomic():
@@ -524,6 +537,8 @@ def report_access(request, org_slug, studio_slug, slug):  # noqa: ARG001
                     request, "report.audience_set", target=report,
                     prior_audience=prior, audience=audience,
                 )
+            if is_settings_request(request):
+                return settings_success(request, f"{report.get_kind_display()} audience saved.", audience=audience, refresh=["report-audience-description", "report-audience-assignments"])
             messages.success(request, f"{report.get_kind_display()} audience saved.")
             return redirect(request.path)
         with transaction.atomic():

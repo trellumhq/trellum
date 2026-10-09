@@ -6,7 +6,7 @@
 on right now from <a href="/account/security/mfa/setup">Account settings</a> —
 this page is only for making it <strong>mandatory</strong> across the organization.</p>
 <div class="panel formrow">
-  <form method="post" data-settings-form><fieldset style="border:0;padding:0;margin:0;min-width:0">
+  <form id="orgSecurityForm" method="post" data-settings-form data-settings-save><fieldset style="border:0;padding:0;margin:0;min-width:0">
     {% csrf_token %}
     {{ form.non_field_errors }}
     <label class="ui-check-row">{{ form.require_mfa }} {{ form.require_mfa.label }}</label>

@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 
 from django.conf import settings
+from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.db.models import Count, F, Q, Sum
 from django.http import (
@@ -29,6 +30,7 @@ from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.core import roles, storage
 from apps.core.audit import audit
+from apps.core.form_responses import is_settings_request, settings_error, settings_success
 from apps.core.http import int_param, json_body
 from apps.core.permissions import (
     effective_roles,
@@ -2733,10 +2735,19 @@ def api_share_policy(request, org_slug):  # noqa: ARG001
     touches only the newer fields is recorded as ``share_policy.update``.
     Every action's metadata carries exactly the fields this call changed.
     """
-    body = json_body(request)
+    form_post = request.content_type in {"application/x-www-form-urlencoded", "multipart/form-data"}
+    body = {"enabled": bool(request.POST.get("enabled")), "require_password": bool(request.POST.get("require_password")), "embed_links_enabled": bool(request.POST.get("embed_links_enabled")), "max_expiry_days": request.POST.get("max_expiry_days", "")} if form_post else json_body(request)
+
+    def invalid(message, field="__all__"):
+        if is_settings_request(request):
+            return settings_error(request, message, errors={field: [message]})
+        if form_post:
+            messages.error(request, message)
+            return redirect(f"/orgs/{request.org.slug}/settings/sharing")
+        return JsonResponse({"ok": False, "error": message}, status=400)
     recognized = set(_SHARE_POLICY_BOOL_FIELDS) | {"max_expiry_days"}
-    if not any(key in body for key in recognized):
-        return JsonResponse({"ok": False, "error": "no recognized fields"}, status=400)
+    if not any(key in body for key in recognized) or (form_post and not any(key in request.POST for key in recognized)):
+        return invalid("no recognized fields")
 
     # Validate every field BEFORE touching the database: a rejected update
     # (e.g. a bad max_expiry_days) must leave no trace, not even an
@@ -2754,9 +2765,9 @@ def api_share_policy(request, org_slug):  # noqa: ARG001
             try:
                 max_expiry_days = int(raw)
             except (TypeError, ValueError):
-                return JsonResponse({"ok": False, "error": "invalid max_expiry_days"}, status=400)
+                return invalid("invalid max_expiry_days", "max_expiry_days")
             if max_expiry_days <= 0:
-                return JsonResponse({"ok": False, "error": "invalid max_expiry_days"}, status=400)
+                return invalid("invalid max_expiry_days", "max_expiry_days")
             changed["max_expiry_days"] = max_expiry_days
 
     policy, _created = OrgSharePolicy.objects.get_or_create(org=request.org)
@@ -2777,6 +2788,12 @@ def api_share_policy(request, org_slug):  # noqa: ARG001
     else:
         action = "share_policy.update"
     audit(request, action, org=request.org, **changed)
+
+    if is_settings_request(request):
+        return settings_success(request, "Saved.")
+    if form_post:
+        messages.success(request, "Saved.")
+        return redirect(f"/orgs/{request.org.slug}/settings/sharing")
 
     return JsonResponse(
         {
@@ -2822,9 +2839,18 @@ def api_live_query_policy(request, org_slug):  # noqa: ARG001
     database, same discipline as api_share_policy: a rejected update leaves
     no trace, not even an empty-defaults row for an org that never had one.
     """
-    body = json_body(request)
-    if "rate_limit_per_minute" not in body:
-        return JsonResponse({"ok": False, "error": "no recognized fields"}, status=400)
+    form_post = request.content_type in {"application/x-www-form-urlencoded", "multipart/form-data"}
+    body = {"rate_limit_per_minute": request.POST.get("rate_limit_per_minute", "")} if form_post else json_body(request)
+
+    def invalid(message, field="__all__"):
+        if is_settings_request(request):
+            return settings_error(request, message, errors={field: [message]})
+        if form_post:
+            messages.error(request, message)
+            return redirect(f"/orgs/{request.org.slug}/settings/live-queries")
+        return JsonResponse({"ok": False, "error": message}, status=400)
+    if "rate_limit_per_minute" not in body or (form_post and "rate_limit_per_minute" not in request.POST):
+        return invalid("no recognized fields")
 
     raw = body["rate_limit_per_minute"]
     if raw is None or raw == "":
@@ -2833,12 +2859,12 @@ def api_live_query_policy(request, org_slug):  # noqa: ARG001
         try:
             value = int(raw)
         except (TypeError, ValueError):
-            return JsonResponse({"ok": False, "error": "invalid rate_limit_per_minute"}, status=400)
+            return invalid("invalid rate_limit_per_minute", "rate_limit_per_minute")
         # 0 is the org's "off" switch: live_query_rate_limit(org) returns 0,
         # which blocks every live execution and drops the "Live" marker
         # (apps/reports/scan.py). Negatives are still nonsense.
         if value < 0:
-            return JsonResponse({"ok": False, "error": "invalid rate_limit_per_minute"}, status=400)
+            return invalid("invalid rate_limit_per_minute", "rate_limit_per_minute")
 
     policy, _created = OrgLiveQueryPolicy.objects.get_or_create(org=request.org)
     policy.rate_limit_per_minute = value
@@ -2846,6 +2872,12 @@ def api_live_query_policy(request, org_slug):  # noqa: ARG001
     policy.save(update_fields=["rate_limit_per_minute", "updated_by", "updated_at"])
 
     audit(request, "live_query_policy.update", org=request.org, rate_limit_per_minute=value)
+
+    if is_settings_request(request):
+        return settings_success(request, "Saved.")
+    if form_post:
+        messages.success(request, "Saved.")
+        return redirect(f"/orgs/{request.org.slug}/settings/live-queries")
 
     return JsonResponse({
         "ok": True,

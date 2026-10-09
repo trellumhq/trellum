@@ -52,6 +52,7 @@ class TestFleet:
         assert [(item.label, item.url_name) for item in nav.items()] == [
             ("Fleet", "operator-fleet"),
             ("Organizations", "operator-orgs"),
+            ("Server logs", "operator-logs"),
         ]
 
     def test_shows_workers_and_queue(self, login, operator, report_row):

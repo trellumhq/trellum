@@ -75,7 +75,8 @@ class Command(BaseCommand):
         shutdown = threading.Event()
 
         def _sigterm(_signum, _frame):
-            logger.info("SIGTERM received: draining...")
+            logger.info("Shutdown signal received: draining builds",
+                        extra={"worker_id": worker_id, "signal": _signum, "reason": "worker_shutdown"})
             shutdown.set()
 
         signal.signal(signal.SIGTERM, _sigterm)
@@ -132,10 +133,17 @@ class Command(BaseCommand):
             logger.info(
                 f"{worker_id} starting as {effective_role} "
                 f"(max_concurrent={executor.max_concurrent}, memory budget={budget})",
-                extra={"worker_id": worker_id, "role": effective_role},
+                extra={"worker_id": worker_id, "role": effective_role,
+                       "max_concurrent": executor.max_concurrent,
+                       "memory_budget_mb": executor.memory_budget_mb,
+                       "memory_allocation_mb": settings.TRELLUM_DEFAULT_JOB_MEMORY_MB,
+                       "memory_headroom": settings.TRELLUM_JOB_MEMORY_HEADROOM,
+                       "timeout_seconds": executor.default_timeout,
+                       "sandbox_mode": settings.TRELLUM_SANDBOX},
             )
         else:
-            logger.info(f"{worker_id} starting as {effective_role}")
+            logger.info(f"{worker_id} starting as {effective_role}",
+                        extra={"worker_id": worker_id, "role": effective_role})
 
         # Only a runner spawns tenant builds, so only a runner needs a sandbox.
         # In docker mode a broken sandbox is fatal: we fail closed rather than
@@ -224,10 +232,7 @@ class Command(BaseCommand):
                         self._recover_stale_runs(self_worker_id=worker_id)
                         last_reap = now
                 except Exception as exc:  # noqa: BLE001 - the watchdog must live
-                    logger.exception(f"{type(exc).__name__}: {exc}")
-                    import traceback
-
-                    traceback.print_exc()
+                    logger.exception(f"{type(exc).__name__}: {exc}", extra={"worker_id": worker_id})
                 if opts["once"]:
                     break
                 time.sleep(1)
@@ -242,7 +247,7 @@ class Command(BaseCommand):
                 logger.info("draining running builds (max 540s)...")
                 executor.drain(timeout=540)
             WorkerHeartbeat.objects.filter(worker_id=worker_id).delete()
-            logger.info("stopped")
+            logger.info("Worker stopped", extra={"worker_id": worker_id, "reason": "worker_shutdown"})
 
     # ── pieces ───────────────────────────────────────────────────────────
 
@@ -273,10 +278,14 @@ class Command(BaseCommand):
         n = orphaned.update(
             status=Run.ERROR,
             finished_at=timezone.now(),
-            stderr_tail="worker restarted while this run was in flight",
+            stderr_tail=("Worker heartbeat missing while this run was in flight. "
+                         "The worker may have stopped, restarted or lost database connectivity."),
         )
         if n:
-            logger.info(f"marked {n} orphaned run(s) as error")
+            logger.warning(
+                f"Marked {n} in-flight run(s) as error: their workers have no live heartbeat",
+                extra={"reason": "worker_heartbeat_missing"},
+            )
 
     def _sweep_orphan_sandboxes(self) -> None:
         import shutil

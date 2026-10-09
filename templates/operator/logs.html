@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Server logs — Operator{% endblock %}
+{% block content %}
+<div class="server-logs" data-server-logs
+  data-events-url="{% url 'operator-log-events' %}"
+  data-export-url="{% url 'operator-log-export' %}"
+  data-run-url="/operator/logs/runs/">
+  <header class="page-head-row">
+    <div><div class="ui-label page-kicker">Operator</div><h1>Server logs</h1></div>
+    <span class="spacer"></span>
+    <button class="ui-btn ghost" type="button" data-refresh>Refresh</button>
+  </header>
+
+  <p class="muted">Application and retained build output. Host, kernel and container runtime logs are managed separately.</p>
+  <div class="panel logs-coverage" data-coverage hidden></div>
+
+  <form class="panel logs-filters" data-filter-form>
+    <div class="logs-filter-grid">
+      <div class="ui-field"><label for="logs-since">Since</label>
+        <select class="ui-input" id="logs-since" name="since"><option value="1h">Last hour</option><option value="24h" selected>Last 24 hours</option><option value="7d">Last 7 days</option></select>
+      </div>
+      <div class="ui-field"><label for="logs-level">Minimum level</label>
+        <select class="ui-input" id="logs-level" name="level"><option value="DEBUG">Debug</option><option value="INFO" selected>Info</option><option value="WARNING">Warning</option><option value="ERROR">Error</option><option value="CRITICAL">Critical</option></select>
+      </div>
+      <div class="ui-field"><label for="logs-service">Service</label>
+        <select class="ui-input" id="logs-service" name="service"><option value="">All services</option><option>web</option><option>worker</option><option>coordinator</option><option>runner</option><option>management</option></select>
+      </div>
+      <div class="ui-field"><label for="logs-report">Report slug</label><input class="ui-input" id="logs-report" name="report_slug" type="text" autocomplete="off"></div>
+      <div class="ui-field"><label for="logs-worker">Worker ID</label><input class="ui-input" id="logs-worker" name="worker_id" type="text" autocomplete="off"></div>
+      <div class="ui-field"><label for="logs-run">Run ID</label><input class="ui-input" id="logs-run" name="run_id" type="text" autocomplete="off"></div>
+      <div class="ui-field"><label for="logs-search">Search</label><input class="ui-input" id="logs-search" name="q" type="search" maxlength="200" autocomplete="off"></div>
+      <details class="logs-extra-filters"><summary>More filters</summary><div class="ui-field"><label for="logs-request">Request ID</label><input class="ui-input" id="logs-request" name="request_id" type="text" autocomplete="off"></div></details>
+    </div>
+    <div class="logs-actions">
+      <button class="ui-btn primary" type="submit">Apply filters</button>
+      <button class="ui-btn ghost" type="button" data-live aria-pressed="true">Pause live</button>
+      <button class="ui-btn ghost" type="button" data-load-older>Load older</button>
+      <a class="ui-btn ghost" data-download href="{% url 'operator-log-export' %}">Download NDJSON</a>
+    </div>
+  </form>
+
+  <p class="logs-note ui-help">Times are shown in your browser’s local time. Entries are newest first. Downloads are limited to 1,000 entries.</p>
+  <div class="panel logs-table-panel">
+    <p class="logs-status" data-status role="status" aria-live="polite">Loading server logs…</p>
+    <div class="ui-table-scroll logs-scroll" data-log-scroll>
+      <table class="ui-table dense logs-table">
+        <thead><tr><th>Seen</th><th>Level</th><th>Service / host / worker</th><th>Message</th><th>Details</th></tr></thead>
+        <tbody data-entries></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<noscript><p class="panel">JavaScript is required for this live log browser. Operators with API access can use the read-only events endpoint and bounded NDJSON export.</p></noscript>
+<link rel="stylesheet" href="{% static 'server-logs.css' %}">
+<script src="{% static 'server-logs.js' %}" defer></script>
+{% endblock %}

@@ -18,7 +18,7 @@
   <tr>
     <td data-label="User"><strong>{{ sm.user.email }}</strong></td>
     <td data-label="Role">
-      <form class="inline" method="post" action="/s/{{ org.slug }}/{{ studio.slug }}/settings/members/set" data-settings-form>
+      <form id="studio-member-role-{{ sm.user_id }}" class="inline" method="post" action="/s/{{ org.slug }}/{{ studio.slug }}/settings/members/set" data-settings-form data-settings-save>
         {% csrf_token %}
         <input type="hidden" name="user_id" value="{{ sm.user_id }}">
         <select name="role" class="ui-input" style="min-width:110px">

@@ -28,7 +28,7 @@ Each chip names where its role comes from.</p>
       <span class="muted">{{ row.m.user.email }}</span>
     </td>
     <td data-label="Org role">
-      <form class="inline" method="post" data-settings-form
+      <form id="org-role-{{ row.m.user_id }}" class="inline" method="post" data-settings-form data-settings-save
             action="/orgs/{{ org.slug }}/settings/members/{{ row.m.user_id }}/role">
         {% csrf_token %}<input type="hidden" name="q" value="{{ q|default:'' }}"><input type="hidden" name="page" value="{{ page.number }}">
         <select name="role" aria-label="Organization role for {{ row.m.user.email }}">
@@ -44,7 +44,7 @@ Each chip names where its role comes from.</p>
         <a class="ui-badge accent" href="/orgs/{{ org.slug }}/settings/groups/{{ g.pk }}">{{ g.name }}</a>
       {% empty %}<span class="muted">—</span>{% endfor %}
     </td>
-    <td data-label="Effective access">
+    <td data-label="Effective access" data-settings-refresh="member-effective-{{ row.m.user_id }}">
       {% comment %}The chip says where the role comes from in words. The old
       "·g" / "·★" suffixes needed a legend under the table to decode, which is
       a sign the chip was not carrying its own meaning.{% endcomment %}
@@ -65,7 +65,7 @@ Each chip names where its role comes from.</p>
         <div class="shell-menu shell-menu-right" style="min-width:250px">
           <span class="shell-menu-note">Studio roles</span>
           {% for e in row.studio_editor %}
-          <form class="inline" method="post" data-settings-form
+          <form id="studio-role-{{ row.m.user_id }}-{{ e.studio.pk }}" class="inline" method="post" data-settings-form data-settings-save
                 style="padding:4px 10px;display:flex;gap:6px;align-items:center"
                 action="/orgs/{{ org.slug }}/settings/members/{{ row.m.user_id }}/studio-role">
             {% csrf_token %}<input type="hidden" name="q" value="{{ q|default:'' }}"><input type="hidden" name="page" value="{{ page.number }}">

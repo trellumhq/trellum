@@ -9,7 +9,7 @@
 </header>
 
 <div class="panel formrow">
-  <form method="post" data-settings-form>
+  <form id="orgAppearanceForm" method="post" data-settings-form data-settings-save>
     {% csrf_token %}
     <label for="org-default-mode">Default mode</label>
     <select id="org-default-mode" name="default_mode" class="ui-input">
@@ -30,4 +30,14 @@
     <button class="ui-btn primary" type="submit">Save changes</button>
   </form>
 </div>
+<script>
+document.getElementById('orgAppearanceForm').addEventListener('settings:success', function (event) {
+  var preference;
+  try { preference = localStorage.getItem('mgmt-theme'); } catch (error) {}
+  if (preference) return;
+  var mode = event.detail.default_mode;
+  if (mode === 'auto') mode = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  document.documentElement.dataset.theme = mode;
+});
+</script>
 {% endblock %}

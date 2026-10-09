@@ -6,6 +6,7 @@ from django.shortcuts import redirect, render
 
 from apps.core import roles
 from apps.core.audit import audit
+from apps.core.form_responses import is_settings_request, settings_error, settings_success
 from apps.core.permissions import require_org_role
 from apps.orgs.models import OrgSecurityPolicy
 
@@ -25,8 +26,12 @@ def security_settings(request, org_slug):
                 require_mfa=form.instance.require_mfa,
                 mfa_grace_days=form.instance.mfa_grace_days,
             )
+            if is_settings_request(request):
+                return settings_success(request, "Security policy saved.")
             messages.success(request, "Security policy saved.")
             return redirect(request.path)
+        if is_settings_request(request):
+            return settings_error(request, form=form)
     else:
         form = SecurityPolicyForm(instance=policy, org=request.org)
 

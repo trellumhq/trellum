@@ -32,7 +32,6 @@ import subprocess
 import sys
 import tempfile
 import threading
-import traceback
 from dataclasses import dataclass, field
 from datetime import datetime, timezone as dt_tz
 from pathlib import Path
@@ -375,6 +374,8 @@ class RunningProc:
     user_stopped: bool = False
     extra_env: dict = field(default_factory=dict)
     memory_limit_mb: int = 0
+    memory_cap_mb: int | None = None
+    memory_cap_kind: str = "none"
     peak_memory_mb: int | None = None
 
 
@@ -401,6 +402,16 @@ class Executor:
         if self._sandbox is None:
             self._sandbox = DockerSandbox()
         return self._sandbox
+
+    def _log_context(self, proc: RunningProc) -> dict:
+        return {
+            "run_id": str(proc.run_id), "worker_id": self.worker_id,
+            "report_slug": proc.slug, "studio": str(proc.studio_id),
+            "memory_allocation_mb": proc.memory_limit_mb,
+            "memory_cap_mb": proc.memory_cap_mb, "memory_cap_kind": proc.memory_cap_kind,
+            "peak_memory_mb": proc.peak_memory_mb, "timeout_seconds": proc.timeout_seconds,
+            "container_id": getattr(proc.process, "container_id", ""),
+        }
 
     # ── capacity ─────────────────────────────────────────────────────────
     @property
@@ -475,7 +486,8 @@ class Executor:
                 message = "\n".join(f"{WAITING_PREFIX}{b.name}': {b.detail}" for b in blockers)
                 logger.info(
                     f"blocked {studio}/{slug}: {message.splitlines()[0]}",
-                    extra={"run_id": str(run.pk), "studio": str(studio), "slug": slug},
+                    extra={"run_id": str(run.pk), "studio": str(studio), "report_slug": slug,
+                           "worker_id": self.worker_id, "trigger": run.trigger, "reason": "source_blocked"},
                 )
                 now = dj_tz.now()
                 Run.objects.filter(pk=run.pk).update(
@@ -528,9 +540,25 @@ class Executor:
 
             flags = build_cmd_flags(run.cache_mode, production=not settings.DEBUG)
             memory_mb = self.memory_for(run)
+            sandbox_kind = sandbox_mode()
+            memory_cap_mb = None
+            memory_cap_kind = "none (Windows)" if os.name == "nt" else "none (enforcement disabled)"
+            if sandbox_kind == "docker":
+                memory_cap_mb = max(256, int(memory_mb * settings.TRELLUM_JOB_MEMORY_HEADROOM))
+                memory_cap_kind = "container"
+            elif os.name != "nt" and settings.TRELLUM_JOB_MEMORY_ENFORCE:
+                memory_cap_mb = int(memory_mb * settings.TRELLUM_JOB_MEMORY_HEADROOM)
+                memory_cap_kind = "address space (RLIMIT_AS)"
             env = child_env(studio, ds_env)
+            start_context = {
+                "run_id": str(run.pk), "studio": str(studio), "report_slug": slug,
+                "worker_id": self.worker_id, "trigger": run.trigger,
+                "memory_allocation_mb": memory_mb, "memory_cap_mb": memory_cap_mb,
+                "memory_cap_kind": memory_cap_kind, "timeout_seconds": timeout,
+                "sandbox_mode": sandbox_kind,
+            }
 
-            if sandbox_mode() == "docker":
+            if sandbox_kind == "docker":
                 # The container appends to the same log files (via its shell
                 # redirect), so the web tail is unchanged — close our handles.
                 stdout_fh.close()
@@ -539,7 +567,7 @@ class Executor:
                 logger.info(
                     f"start {studio}/{slug} ({memory_mb} MB, sandbox): "
                     f"trellum.run {run_report_dir} {' '.join(flags)}",
-                    extra={"run_id": str(run.pk), "studio": str(studio), "slug": slug},
+                    extra=start_context,
                 )
                 proc = self._get_sandbox().start(
                     run=run,
@@ -560,13 +588,13 @@ class Executor:
                 cmd = [sys.executable, "-m", "trellum.run", run_report_dir, *flags]
                 logger.info(
                     f"start {studio}/{slug} ({memory_mb} MB, UNSANDBOXED): {' '.join(cmd)}",
-                    extra={"run_id": str(run.pk), "studio": str(studio), "slug": slug},
+                    extra=start_context,
                 )
                 # preexec_fn is POSIX-only; on Windows dev machines the cap is
                 # simply absent and the timeout ladder remains the only guard.
                 popen_extra = {}
                 if os.name != "nt" and settings.TRELLUM_JOB_MEMORY_ENFORCE:
-                    cap_bytes = int(memory_mb * settings.TRELLUM_JOB_MEMORY_HEADROOM) * 1024 * 1024
+                    cap_bytes = memory_cap_mb * 1024 * 1024
                     popen_extra["preexec_fn"] = _memory_limit_preexec(cap_bytes)
 
                 proc = subprocess.Popen(
@@ -594,6 +622,8 @@ class Executor:
                 output_dir=output_dir,
                 timeout_seconds=timeout,
                 memory_limit_mb=memory_mb,
+                memory_cap_mb=memory_cap_mb,
+                memory_cap_kind=memory_cap_kind,
             )
             Run.objects.filter(pk=run.pk).update(
                 status=Run.RUNNING,
@@ -606,8 +636,11 @@ class Executor:
             )
             return True
         except Exception as exc:  # noqa: BLE001
-            logger.error(f"start failed: {studio}/{slug}: {type(exc).__name__}: {exc}")
-            traceback.print_exc()
+            logger.exception(
+                f"start failed: {studio}/{slug}: {type(exc).__name__}: {exc}",
+                extra={"run_id": str(run.pk), "studio": str(studio), "report_slug": slug,
+                       "worker_id": self.worker_id, "trigger": run.trigger, "reason": "start_failed"},
+            )
             for fh in (stdout_fh, stderr_fh):
                 if fh is not None:
                     try:
@@ -664,14 +697,15 @@ class Executor:
                     logger.warning(
                         f"{proc.slug} exceeded {proc.timeout_seconds}s, "
                         f"sending SIGTERM (5s grace)",
-                        extra={"slug": proc.slug, "reason": "timeout"},
+                        extra={**self._log_context(proc), "reason": "timeout"},
                     )
                     self._send_sigterm(proc, now, reason="timeout")
                 elif proc.sigterm_at is not None:
                     if (now - proc.sigterm_at).total_seconds() > 5:
                         logger.warning(
                             f"{proc.slug} did not exit after SIGTERM, sending SIGKILL",
-                            extra={"slug": proc.slug, "reason": "timeout"},
+                            extra={**self._log_context(proc), "signal": "SIGKILL",
+                                   "reason": "timeout" if proc.timed_out else "stop_requested"},
                         )
                         try:
                             proc.process.kill()
@@ -682,8 +716,11 @@ class Executor:
             del self._procs[proc.run_id]
             self._record_completion(proc, exit_code)
 
-    @staticmethod
-    def _send_sigterm(proc: RunningProc, now: datetime, reason: str) -> None:
+    def _send_sigterm(self, proc: RunningProc, now: datetime, reason: str) -> None:
+        logger.warning(
+            f"Sending SIGTERM to {proc.slug}: {reason}",
+            extra={**self._log_context(proc), "reason": reason, "signal": "SIGTERM"},
+        )
         try:
             proc.process.send_signal(signal.SIGTERM)
             proc.sigterm_at = now
@@ -696,13 +733,8 @@ class Executor:
         stderr = read_tail(proc.stderr_path)
 
         status = Run.SUCCESS if exit_code == 0 else Run.ERROR
-        if os.name != "nt":
-            if exit_code in (-signal.SIGTERM, 128 + signal.SIGTERM):
-                status = Run.STOPPED
-            elif exit_code in (-signal.SIGKILL, 128 + signal.SIGKILL):
-                # SIGKILL is what the kernel OOM killer sends — unless WE
-                # escalated after a timeout.
-                status = Run.OOM_KILLED
+        if os.name != "nt" and exit_code in (-signal.SIGTERM, 128 + signal.SIGTERM):
+            status = Run.STOPPED
         # A sandbox container reports OOM authoritatively via its OOMKilled
         # flag; trust that over exit-code archaeology (137 is forgeable).
         if getattr(proc.process, "oom_killed", False):
@@ -734,11 +766,35 @@ class Executor:
                 except Exception as exc:  # noqa: BLE001 - surfaced as run failure
                     status = Run.ERROR
                     msg = f"publish to object storage failed: {type(exc).__name__}: {exc}"
-                    logger.error(msg, extra={"slug": proc.slug})
-                    # Appended to stderr rather than written to _meta.json here:
-                    # the ERROR branch below writes the tail of stderr, so this
-                    # reaches the report page through the existing path.
+                    logger.error(msg, extra=self._log_context(proc))
+                    # Append the publishing failure to the captured build stderr.
                     stderr = f"{stderr}\n{msg}" if stderr else msg
+
+        diagnosis = ""
+        if status == Run.OOM_KILLED:
+            diagnosis = f"CONTAINER OOM: Docker reported an out-of-memory kill. {_memory_note(proc)}"
+        elif status == Run.TIMEOUT:
+            diagnosis = f"TIMEOUT: exceeded {proc.timeout_seconds}s and was killed."
+        elif status == Run.ERROR and exit_code in (-getattr(signal, "SIGKILL", 9), 128 + 9):
+            diagnosis = f"PROCESS KILLED: exit {exit_code} is consistent with SIGKILL; cause unknown. {_memory_note(proc)}"
+        elif status == Run.ERROR and "MemoryError" in stderr:
+            diagnosis = (
+                f"MEMORY ALLOCATION FAILED: Python raised MemoryError; this does not establish that the configured cap caused it. "
+                f"{_memory_note(proc)} Reduce peak usage or have the operator adjust TRELLUM_DEFAULT_JOB_MEMORY_MB."
+            )
+        elif status == Run.ERROR and "Connection closed by Vertica" in stderr:
+            diagnosis = (
+                "DATABASE CONNECTION ENDED: the Vertica driver reported 'Connection closed by Vertica'; "
+                f"the cause is unconfirmed. {_memory_note(proc)}"
+            )
+        elif status == Run.ERROR:
+            diagnosis = (
+                "BUILD FAILED: report output could not be published."
+                if exit_code == 0 and "publish to object storage failed" in stderr
+                else f"BUILD FAILED: subprocess exited with code {exit_code}."
+            )
+        if diagnosis:
+            stderr = f"{diagnosis}\n{stderr}" if stderr else diagnosis
 
         # The retention clock for built output, stamped here and nowhere else:
         # this is the one point where output is known to be complete AND
@@ -791,37 +847,20 @@ class Executor:
                     logger.exception(f"alerts after build: {type(exc).__name__}: {exc}")
 
         icon = {"success": "✓", "error": "✗", "stopped": "■", "timeout": "⏱", "oom_killed": "💥"}.get(status, "?")
-        logger.info(
+        logger.log(
+            logging.ERROR if status in (Run.ERROR, Run.OOM_KILLED, Run.TIMEOUT) else logging.INFO,
             f"{icon} {proc.slug} — {status} in {round(duration, 1)}s (exit {exit_code})",
             extra={
-                "slug": proc.slug, "status": status,
+                **self._log_context(proc), "status": status,
+                "trigger": run.trigger if run is not None else "",
                 "duration_seconds": round(duration, 1), "exit_code": exit_code,
             },
         )
         if status in (Run.ERROR, Run.OOM_KILLED, Run.TIMEOUT):
             for line in (stderr or "").strip().split("\n")[-3:]:
                 if line.strip():
-                    logger.info(f"{line.strip()[:120]}")
-            if status == Run.OOM_KILLED:
-                msg = (
-                    f"OOM_KILLED: subprocess SIGKILL'd by kernel (exit {exit_code}). "
-                    f"{_memory_note(proc)} "
-                    f"Last stderr:\n{stderr[-300:] if stderr else '(empty)'}"
-                )
-            elif status == Run.TIMEOUT:
-                msg = f"TIMEOUT: exceeded {proc.timeout_seconds}s and was killed."
-            elif "MemoryError" in (stderr or ""):
-                # The RLIMIT_AS cap doing its job: the build hit its own
-                # ceiling instead of the kernel picking an arbitrary victim.
-                msg = (
-                    f"MEMORY LIMIT: the build exceeded its declared memory. "
-                    f"{_memory_note(proc)} "
-                    f"Reduce peak usage (aggregate in SQL rather than loading raw "
-                    f"rows), or have the operator raise TRELLUM_DEFAULT_JOB_MEMORY_MB.\n"
-                    f"{stderr[-300:]}"
-                )
-            else:
-                msg = stderr[-500:] if stderr else f"exit code {exit_code}"
+                    logger.error(f"{line.strip()[:120]}", extra=self._log_context(proc))
+            msg = stderr or diagnosis or f"exit code {exit_code}"
             self._write_error(proc.output_dir, msg)
             # The failure has to travel too: with a remote store the registry
             # reads status from the bucket, and an error that stays on this
@@ -840,13 +879,19 @@ class Executor:
                         logger.warning(
                             f"publishing failure status for {proc.slug}: "
                             f"{type(exc).__name__}: {exc}",
-                            extra={"slug": proc.slug},
+                            extra=self._log_context(proc),
                         )
 
         # A build that died may have died on a source. Re-checking the
         # report's sources can take 30 s, so it happens off the tick; the
         # stored error is rewritten when the thread finishes.
-        if status == Run.ERROR and exit_code != 0 and run is not None:
+        preserve_diagnosis = (
+            status == Run.OOM_KILLED
+            or "MemoryError" in stderr
+            or exit_code in (-getattr(signal, "SIGKILL", 9), 128 + 9)
+            or "Connection closed by Vertica" in stderr
+        )
+        if status == Run.ERROR and exit_code != 0 and run is not None and not preserve_diagnosis:
             threading.Thread(
                 target=self._attribute_failure, args=(run.pk, proc.output_dir), daemon=True
             ).start()
@@ -870,16 +915,16 @@ class Executor:
             from trellum.meta import write_error, write_meta
 
             os.makedirs(output_dir, exist_ok=True)
-            write_error(output_dir, message)
+            write_error(output_dir, _error_summary(message))
             write_meta(output_dir, {"blocked_by": list(blocked_by)})
         except Exception:  # pragma: no cover - never mask the real failure
             pass
 
     def _attribute_failure(self, run_id, output_dir: str) -> None:
         """Worker thread: re-check the failed run's bound sources and, when one
-        fails, put ``Data source '<name>': <error>`` above the stored error --
-        unless a newer run owns the report's outcome by then. Repository files
-        the portal does not upload have nothing to check."""
+        fails, append it as secondary evidence -- unless a newer run owns the
+        report's outcome by then. Repository files the portal does not upload
+        have nothing to check."""
         import time
 
         from django.db import connection
@@ -910,13 +955,16 @@ class Executor:
             )
             if not text or latest != run.pk:
                 return
-            Run.objects.filter(pk=run.pk).update(
-                stderr_tail=f"{text}\n\n{run.stderr_tail}" if run.stderr_tail else text
+            note = (
+                f"Subsequent data source check for '{state.name}' failed: {detail}. "
+                "This does not establish the cause of the build failure."
             )
-            # ponytail: rewrites this runner's _meta.json only; with a remote
-            # store the web nodes keep the un-attributed text until Phase 2
-            # reads Run.stderr_tail instead.
-            self._write_error(output_dir, f"{text}\n{run.stderr_tail[-300:]}")
+            updated_error = f"{run.stderr_tail}\n\n{note}" if run.stderr_tail else note
+            Run.objects.filter(pk=run.pk).update(
+                stderr_tail=updated_error
+            )
+            # Keep the primary failure in metadata; the run retains the full context.
+            self._write_error(output_dir, updated_error)
         except Exception as exc:  # noqa: BLE001 - never surface attribution as a crash
             logger.warning(f"attribution skipped for run {run_id}: {type(exc).__name__}: {exc}")
         finally:
@@ -950,13 +998,38 @@ class Executor:
 
 
 def _memory_note(proc: RunningProc) -> str:
-    """Human-readable 'declared X, peaked at Y' for a failure message."""
-    parts = []
-    if proc.memory_limit_mb:
-        parts.append(f"limit {proc.memory_limit_mb} MB")
-    if proc.peak_memory_mb is not None:
-        parts.append(f"observed peak {proc.peak_memory_mb} MB")
+    """Report the admitted allocation separately from the enforced cap."""
+    parts = [
+        f"operator allocation {proc.memory_limit_mb} MB via TRELLUM_DEFAULT_JOB_MEMORY_MB"
+    ]
+    if proc.memory_cap_mb is not None:
+        parts.append(f"applied {proc.memory_cap_kind} cap {proc.memory_cap_mb} MB")
+    else:
+        parts.append("no enforced hard cap")
+    parts.append(
+        f"observed peak {proc.peak_memory_mb} MB"
+        if proc.peak_memory_mb is not None else "observed peak unavailable"
+    )
     return f"({', '.join(parts)})." if parts else ""
+
+
+def _error_summary(message: str, max_chars: int = 500) -> str:
+    """Keep the primary diagnosis and final traceback detail for _meta.json."""
+    # A later source check is appended to the run row, after the build's own
+    # stderr. Keep it out of the bounded summary so the final exception stays.
+    secondary = message.find("\n\nSubsequent data source check")
+    if secondary >= 0:
+        message = message[:secondary]
+    if len(message) <= max_chars:
+        return message
+
+    first_line, separator, body = message.partition("\n")
+    if not separator:
+        body = message
+    marker = "\n...\n"
+    head = first_line[: max_chars // 2]
+    tail = body[-(max_chars - len(head) - len(marker)) :]
+    return f"{head}{marker}{tail}"
 
 
 def _aware(dt: datetime) -> datetime:

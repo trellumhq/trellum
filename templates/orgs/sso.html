@@ -20,7 +20,7 @@
 
 <fieldset style="border:0;padding:0;margin:0;min-width:0">
 <div class="panel formrow">
-  <form method="post" data-settings-form>
+  <form id="orgSsoForm" method="post" data-settings-form data-settings-save>
     {% csrf_token %}
     {{ form.non_field_errors }}
     <label class="ui-check-row">{{ form.enabled }} Enable SSO</label>
@@ -83,6 +83,7 @@
     <p></p>
     <button class="ui-btn primary" type="submit">Save changes</button>
   </form>
+  <div data-settings-refresh="sso-directory-test">
   {% if cfg and cfg.is_ldap %}
   <form method="post" class="inline" style="margin-top:12px">
     {% csrf_token %}
@@ -91,6 +92,7 @@
     <span class="helptext">Binds with the saved settings and reads the search base.</span>
   </form>
   {% endif %}
+  </div>
 </div>
 
 <h2>Domain ownership</h2>
@@ -108,12 +110,14 @@ sign in as its users, so on this instance a domain only routes logins once you
 have proved you own it. <strong>Claimed but unverified domains are ignored.</strong></p>
 {% endif %}
 
+<div data-settings-refresh="sso-unclaimed-domains">
 {% if unclaimed_domains %}
 <p><strong>Not yet claimed:</strong>
   {% for d in unclaimed_domains %}<code>{{ d }}</code>{% if not forloop.last %}, {% endif %}{% endfor %}
 </p>
 {% endif %}
 
+</div>
 <table class="ui-table dense" data-mobile-cards>
   <thead><tr><th>Domain</th><th>Status</th><th>DNS record to publish</th><th></th></tr></thead>
   <tbody>
