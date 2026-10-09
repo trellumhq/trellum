@@ -25,6 +25,11 @@ your browser. You can also long-press **Monitor** to copy its link or open it
 in a new tab. The link includes your current filters. **Return to console**
 restores the report controls; on a keyboard, Escape does the same.
 
+Reports launched from a home-screen installation default to Monitor when the
+launch URL has no display setting. **Return to console** brings the controls
+back inside the installed app. An explicit `display=console` or `display=focus`
+in the launch URL takes precedence.
+
 Mobile **Options** uses the phone's native picker and includes report theme
 choices. Scope selection also uses a native picker to keep the toolbar compact.
 

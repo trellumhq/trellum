@@ -54,6 +54,7 @@ margin-left:calc(-50vw + 50%);margin-right:calc(-50vw + 50%)}}
   <div class="fw-header"><div class="fw-header-left"><h1>Test report</h1></div>
     <div class="fw-header-right"><div class="fw-toggle-group fw-scope-toggle" data-toggle-id="__scope__"><button class="fw-toggle-btn active" data-scope-key="north">North</button><button class="fw-toggle-btn" data-scope-key="south">South</button><button class="fw-toggle-btn" data-scope-key="combined">Combined</button></div><select class="fw-theme-select" id="fwThemeSelect"><option value="light" selected>Light</option><option value="high-contrast">High contrast</option></select><div class="fw-help-wrap">Help</div></div></div>
   <div class="fw-filter-bar">Date range</div><main id="reportBody">Report body</main>
+  <div id="assistantPill">Ask about this report</div>
 </div>
 <script>
 window.themeChanges = 0;
@@ -97,13 +98,20 @@ def open_report(report_browser):
     contexts = []
 
     def _open(
-        path: str, *, shell_status: int = 503, viewport=None, fail_console_css=False
+        path: str, *, shell_status: int = 503, viewport=None, fail_console_css=False,
+        installed=None,
     ):
         context = report_browser.new_context(
             viewport=viewport, is_mobile=bool(viewport and viewport["width"] < 768),
             has_touch=bool(viewport and viewport["width"] < 768),
         )
         contexts.append(context)
+        if installed == "standalone":
+            context.add_init_script("""const originalMatchMedia = window.matchMedia.bind(window);
+                window.matchMedia = query => query === '(display-mode: standalone)'
+                    ? {matches: true, media: query} : originalMatchMedia(query);""")
+        elif installed == "ios":
+            context.add_init_script("Object.defineProperty(navigator, 'standalone', {value: true});")
         page = context.new_page()
         shell_requests = []
         page_errors = []
@@ -339,6 +347,53 @@ def test_display_mode_does_not_write_browser_storage(open_report):
     )
     assert page.evaluate("localStorage.length") == 0
     assert page.evaluate("sessionStorage.length") == 0
+    assert errors == []
+
+
+@pytest.mark.parametrize("installed", ["standalone", "ios"])
+@pytest.mark.parametrize("path", [
+    "/s/demo/casino/r/player-overview/index.html",
+    "/content/demo/casino/player-overview/builds/b7/index.html",
+])
+def test_installed_report_defaults_to_monitor_and_can_return_to_console(open_report, installed, path):
+    page, shell_requests, errors = open_report(
+        path + "?range=30d#revenue", installed=installed,
+        viewport={"width": 390, "height": 720},
+    )
+    assert shell_requests == []
+    assert not page.locator(".fw-header").is_visible()
+    assert not page.locator(".fw-filter-bar").is_visible()
+    assert not page.locator("#assistantPill").is_visible()
+    assert parse_qs(urlsplit(page.url).query) == {"display": ["monitor"], "range": ["30d"]}
+    assert urlsplit(page.url).fragment == "revenue"
+    page.evaluate("window._fwUrlSync.write()")
+    assert parse_qs(urlsplit(page.url).query) == {"display": ["monitor"], "range": ["30d"]}
+    page.reload()
+    assert page.locator("body.tl-report-monitor").count() == 1
+    with page.expect_navigation(wait_until="load"):
+        page.locator(".tl-report-monitor-exit").click()
+    assert parse_qs(urlsplit(page.url).query) == {"display": ["console"], "range": ["30d"]}
+    assert page.locator(".fw-header").is_visible()
+    assert errors == []
+
+
+@pytest.mark.parametrize("display", ["console", "focus", "unknown"])
+def test_installed_report_respects_explicit_display_mode(open_report, display):
+    page, _requests, errors = open_report(
+        "/s/demo/casino/r/player-overview/index.html?display=" + display,
+        installed="standalone",
+    )
+    assert page.locator(".fw-header").is_visible()
+    assert page.locator(".tl-report-monitor-exit").count() == 0
+    assert errors == []
+
+
+@pytest.mark.parametrize("path", ["/share/public-token/", "/standalone/player-overview/index.html"])
+def test_installed_context_does_not_change_unsupported_report_paths(open_report, path):
+    page, requests, errors = open_report(path, installed="standalone")
+    assert requests == []
+    assert page.locator(".fw-header").is_visible()
+    assert page.locator(".tl-report-monitor-exit").count() == 0
     assert errors == []
 
 

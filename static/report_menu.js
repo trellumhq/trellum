@@ -389,8 +389,9 @@
  *
  * This lives in the frozen menu bundle so existing proxy-served reports are
  * upgraded at serve time.  It only activates on authenticated report/content
- * paths and for the three supported values; shares, standalone files, missing
- * parameters and unknown values keep their existing behaviour. */
+ * paths and for the three supported values. Installed report apps default to
+ * monitor; shares, standalone files and ordinary browser visits without a
+ * display setting keep their existing behaviour. */
 (function () {
     'use strict';
 
@@ -405,6 +406,11 @@
     } catch (error) {}
     var mode = url.searchParams.get('display');
     if (!mode && parentContext) mode = 'focus';
+    // Home-screen manifests launch index.html without the installation page's query.
+    var installedMonitor = !mode && window.parent === window
+            && (window.matchMedia('(display-mode: standalone)').matches
+                || window.navigator.standalone === true);
+    if (installedMonitor) mode = 'monitor';
     if (mode !== 'console' && mode !== 'focus' && mode !== 'monitor') return;
 
     function reportContext(pathname) {
@@ -416,6 +422,10 @@
 
     var context = reportContext(url.pathname);
     if (!context) return;
+    if (installedMonitor) {
+        url.searchParams.set('display', mode);
+        window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+    }
     if (parentContext && parentContext.report !== context.report) parentContext = null;
     var hostToken = (parentContext && parentContext.token)
         || url.searchParams.get('_console_host_token') || '';
