@@ -270,7 +270,7 @@
                         onSelect: function () {
                             var h1 = document.querySelector('.fw-header h1');
                             var name = h1 ? h1.textContent : document.title;
-                            open(prefix, slug, name, document.getElementById('fwOptionsBtn'), seed);
+                            open(prefix, slug, name, window.__reportMenu.getTrigger(), seed);
                             seed = null;  // only the first open gets the free seed
                         }
                     });

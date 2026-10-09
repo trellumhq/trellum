@@ -1123,7 +1123,7 @@
             var openNow = function () {
                 var h1 = document.querySelector('.fw-header h1');
                 var name = h1 ? h1.textContent : document.title;
-                open(prefix, slug, name, document.getElementById('fwOptionsBtn'));
+                open(prefix, slug, name, window.__reportMenu.getTrigger());
             };
 
             // No permission gate here (unlike Share/Activity): any studio

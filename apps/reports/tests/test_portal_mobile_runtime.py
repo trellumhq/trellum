@@ -441,7 +441,8 @@ def test_favorites_body_timeout_remains_bounded_after_headers(mobile_browser):
 
 @pytest.mark.parametrize("kind,allow_export,capture", (("report", True, True), ("analysis", True, False), ("report", False, False)))
 @pytest.mark.parametrize("marker", ("html", "body"))
-def test_capture_menu_calls_framework_only_for_exportable_data_reports(mobile_browser, kind, allow_export, capture, marker):
+@pytest.mark.parametrize("width", (390, 1024))
+def test_capture_menu_calls_framework_only_for_exportable_data_reports(mobile_browser, kind, allow_export, capture, marker, width):
     menu = (settings.BASE_DIR / "static" / "report_menu.js").read_text(encoding="utf-8")
     body = f'''<html {f'data-content-kind="{kind}"' if marker == 'html' else ''}><head><style>
         .fw-export-wrap{{display:{"block" if allow_export else "none"}}}
@@ -449,7 +450,7 @@ def test_capture_menu_calls_framework_only_for_exportable_data_reports(mobile_br
         <div class="fw-export-wrap"><div id="fwExportMenu"></div></div></div>
         <script>window.captures=0;window.fw={{captureForAnalysis:function(){{captures++;return Promise.resolve();}}}};</script>
         <script>{menu}</script></body></html>'''
-    context = mobile_browser.new_context()
+    context = mobile_browser.new_context(viewport={"width": width, "height": 740})
     page = context.new_page()
     page.route("**/*", lambda route: route.fulfill(content_type="text/html", body=body))
     try:
@@ -457,8 +458,11 @@ def test_capture_menu_calls_framework_only_for_exportable_data_reports(mobile_br
         item = page.locator('[data-item-id="capture-analysis"]')
         assert item.count() == (1 if capture else 0)
         if capture:
-            page.locator("#fwOptionsBtn").click()
-            item.click()
+            if width < 768:
+                page.get_by_role("combobox", name="Report options").select_option(label="Capture for analysis")
+            else:
+                page.locator("#fwOptionsBtn").click()
+                item.click()
             assert page.evaluate("window.captures") == 1
         else:
             assert page.evaluate("window.captures") == 0

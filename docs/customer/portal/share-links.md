@@ -6,6 +6,28 @@ URL can open it and see the current report — no portal account, no login.
 Sharing is **off by default for every organization**. An org admin has to
 turn it on before any studio in that org can create a link — see below.
 
+## Direct links for portal users
+
+To send another portal user the uncluttered report view, add
+`display=monitor` to the report URL. For example:
+
+```text
+/s/example/analytics/r/revenue/index.html?display=monitor
+```
+
+If the URL already has filters, keep them and replace its existing `display`
+value with `monitor`, or append `&display=monitor` when it has no display
+parameter. Keep any `#section` fragment at the end. Recipients still sign in
+and need access to the report.
+
+On a phone, tap **Monitor** in the report toolbar, then copy the address from
+your browser. You can also long-press **Monitor** to copy its link or open it
+in a new tab. The link includes your current filters. **Return to console**
+restores the report controls; on a keyboard, Escape does the same.
+
+Mobile **Options** uses the phone's native picker and includes report theme
+choices. Scope selection also uses a native picker to keep the toolbar compact.
+
 ## The Report sharing settings page
 
 Public share links are an org-level opt-in, not something a studio decides

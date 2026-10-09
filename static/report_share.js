@@ -873,7 +873,7 @@
                             // fetch above stays valid for the drawer's whole
                             // lifetime -- but only on the FIRST open (see
                             // open()'s own `seed` param docstring).
-                            open(prefix, slug, name, document.getElementById('fwOptionsBtn'), data ? null : d);
+                            open(prefix, slug, name, window.__reportMenu.getTrigger(), data ? null : d);
                         }
                     });
                 }).catch(function () {});
