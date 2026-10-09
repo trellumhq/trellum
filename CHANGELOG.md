@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Fixed
+
+- Retry recognized remote database disconnects during report queries using a
+  fresh connection and, when configured, a fresh SSH tunnel. Recovery is bounded,
+  logs each retry and keeps completed query results; failed or partial results
+  are never cached. Permanent errors and manually managed session state are not
+  automatically replayed.
+
 ## [0.4.2] — 2026-10-09
 
 ### Added

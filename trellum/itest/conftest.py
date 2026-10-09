@@ -66,6 +66,7 @@ _NON_SQL_ENGINE_NAMES = {"file", "api", "s3"}
 # in this harness, an item that doesn't qualify is simply never in the
 # collected set, so it never shows up as "skipped" in a run's results.
 _CONDITIONAL_TESTS: tuple[tuple[str, frozenset[str]], ...] = (
+    ("test_reconnect.py", frozenset({"postgres"})),
     # itest/test_report_build.py needs both containers up to build a report.
     ("test_report_build.py", frozenset({"postgres", "clickhouse"})),
     # itest/test_file_sources.py's s3:// lane needs MinIO (profile "s3").

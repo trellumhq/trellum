@@ -842,6 +842,11 @@ Supports `.xlsx`, `.csv`, and `.parquet` files. If `upload: true`, the file is m
 
 Use `ctx.get_connection("name")` in the generator. Connections are lazy-created and automatically closed after generation.
 
+Remote connections retain a factory for opening a fresh session after a
+recoverable failure. Keep using the same connection with `query_df`; later
+queries use its replacement after a successful reconnect. SQLite and DuckDB
+keep their native connection behavior.
+
 ### Ad-hoc: a DataFrame without a report
 
 Not every question is a report. For a script, a notebook, or a one-off answer, query a configured source by **name** and get a `DataFrame` back — no `reports/`, no build:
@@ -852,7 +857,7 @@ df = query("primary_warehouse", "SELECT day, revenue FROM fact_daily WHERE day =
 print(df)
 ```
 
-`sources()` lists what `data-sources/config.yaml` configures; `connect(name)` returns the raw connection for `pandas.read_sql` (close it yourself). Results go through `query_df`, so `params`, `cache_ttl` and the query cache behave exactly as in a report.
+`sources()` lists what `data-sources/config.yaml` configures; `connect(name)` returns a connection supporting the driver's methods (close it yourself). Use `query(name, ...)` or pass that connection to `query_df` for automatic query recovery. Direct driver calls, including `pandas.read_sql`, retain their own error handling. Results from `query` go through `query_df`, so `params`, `cache_ttl` and the query cache behave exactly as in a report.
 
 - **Root inference.** These three work from any subdirectory of the project: if no root is set (`set_project_root` / `FW_PROJECT_ROOT`) and the working directory has no `data-sources/config.yaml`, the nearest ancestor that has one becomes the root. Report builds are untouched — they still resolve the root as before.
 - **Read-only.** Local file databases (`sqlite`, `duckdb`) are opened read-only from this entry point; remote warehouses rely on their own permissions.
@@ -884,6 +889,32 @@ Features:
 - **Caching**: Results cached for 24h by default (keyed on fully-bound SQL, so an edited query re-runs at once). Pass `cache_ttl=0` to skip, or `--no-cache` for a whole build.
 - **Concurrency**: A process-wide semaphore (default 4) prevents overloading the database.
 - **Decimal conversion**: `decimal.Decimal` columns are automatically converted to `float`.
+
+### Connection recovery
+
+For a connection obtained through the framework, a recognized remote connection
+failure during an ordinary read query closes the broken connection, opens a
+fresh one, and reruns that query. Failures while fetching results are covered:
+partial results are discarded and never cached. Previously completed queries
+are retained. SSH connections rebuild their tunnel as well.
+
+Connection opening and each query allow three attempts total, waiting one then
+two seconds between attempts. Failed reconnects count toward the query's same
+attempt limit. Logs identify the driver, source and attempt, followed by recovery
+or exhaustion; the final driver exception is preserved. The build's existing
+timeout and stop controls still apply.
+
+Authentication, permissions, invalid SQL, cancellation and resource errors do
+not trigger recovery. SQLite/DuckDB and caller-created native connections are
+not silently recreated. Automatic replay is limited to single read statements
+the framework recognizes; unsupported quoting and ambiguous SQL run once.
+Read queries must not call functions with side effects.
+
+Calling driver methods directly, entering a driver context manager, setting
+connection attributes, or executing a statement that cannot be replayed disables
+query replay for that connection. This preserves manually managed transactions,
+temporary tables and session settings. A reconnect starts a new database
+session and may observe newer data; it does not restore a transaction snapshot.
 
 ### Cache Management
 

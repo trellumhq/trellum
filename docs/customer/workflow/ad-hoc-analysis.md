@@ -47,7 +47,7 @@ project — the project root is found by walking up to
 None of it requires the report machinery.
 
 !!! note
-    The full data API — listing configured sources, getting a raw connection
+    The full data API — listing configured sources, getting a connection
     for `pandas.read_sql`, file and API sources — is documented in the
     [framework repository]({{FRAMEWORK_REPO}}), alongside the code. This page
     only covers *when* to reach for it.

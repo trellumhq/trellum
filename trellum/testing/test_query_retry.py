@@ -1,7 +1,7 @@
 """Fresh connection recovery never publishes an incomplete report result."""
 
-from concurrent.futures import ThreadPoolExecutor
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import Mock
 
 import pandas as pd
@@ -167,6 +167,8 @@ def test_permanent_or_cancelled_queries_never_reconnect(monkeypatch, error):
     "SELECT n FROM t FOR UPDATE", "BEGIN", "SET timezone = 'UTC'",
     "SELECT n FROM t FOR KEY SHARE",
     "SELECT pg_advisory_lock(1)", "SELECT 'back\\slash'", "SELECT $$value$$", "SELECT 1 # comment",
+    "SELECT n FROM t /*! INTO OUTFILE '/tmp/export' */",
+    "SELECT n FROM t /*M! INTO OUTFILE '/tmp/export' */",
 ])
 def test_stateful_and_unsupported_sql_is_not_replayed(monkeypatch, sql):
     handle, factory = managed(monkeypatch, Connection(ConnectionResetError()))

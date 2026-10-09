@@ -13,8 +13,8 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from trellum.data.retry import connect_managed as connect
 from trellum.data.resolvers import _load_dotenv_once, resolve_credentials
+from trellum.data.retry import connect_managed as connect
 
 # Which data source each live connection came from.  The query cache keys on
 # it, so a result can say WHERE it came from and not just what was asked --

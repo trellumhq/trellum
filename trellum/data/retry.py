@@ -42,7 +42,8 @@ def _can_replay(sql: str, source_type: str = "postgres") -> bool:
         if token.isspace() or token.startswith("--"):
             continue
         if token.startswith("/*"):
-            if "/*" in token[2:]:
+            # MySQL/MariaDB can execute SQL inside versioned comments.
+            if token.startswith(("/*!", "/*M!")) or "/*" in token[2:]:
                 return False
             continue
         if token[0] in "'\"`[":
