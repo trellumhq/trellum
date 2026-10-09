@@ -7,6 +7,32 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.4.6] — 2026-10-09
+
+### Added
+
+- Add a 56px mobile report toolbar with native Options and scope pickers. Move
+  theme selection into Options and show a Monitor link that preserves filters
+  and fragments without exposing internal frame parameters.
+
+### Changed
+
+- Open top-level authenticated report apps installed on Android or iOS in
+  Monitor by default when their launch URL does not specify a display mode.
+  Explicit modes and browser and hosted navigation keep their existing behavior.
+
+### Fixed
+
+- Keep report drawers focused and correctly layered when opening or closing
+  native mobile pickers.
+
+### Upgrade notes
+
+No database migrations are required from v0.4.5. Update the portal and worker
+images and the matched report-runner image to v0.4.6, then restart the services.
+The shared menu bundle updates previously built portal reports without a
+rebuild. Reload installed apps to receive the updated runtime.
+
 ## [0.4.5] — 2026-10-09
 
 ### Added
