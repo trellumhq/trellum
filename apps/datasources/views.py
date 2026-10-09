@@ -420,12 +420,20 @@ def persist_credentials(
             ds = DataSource(
                 studio=studio, name=name,
                 credentials=dict(shared.credentials or {}) if shared else None,
+                config=(
+                    {"new_connection_per_query": shared.config["new_connection_per_query"]}
+                    if shared and "new_connection_per_query" in (shared.config or {})
+                    else None
+                ),
             )
     ds.type = decl.type
-    if new_connection_per_query is not None:
-        config = dict(ds.config or {})
-        config["new_connection_per_query"] = new_connection_per_query
-        ds.config = config
+    config = dict(ds.config or {})
+    if "new_connection_per_query" in TYPE_FIELDS.get(decl.type, []):
+        if new_connection_per_query is not None:
+            config["new_connection_per_query"] = new_connection_per_query
+    else:
+        config.pop("new_connection_per_query", None)
+    ds.config = config
     stored = dict(ds.credentials or {})
     for key in _credential_keys(decl.type):
         value = str(secrets.get(key) or "").strip()
@@ -529,6 +537,7 @@ def _configure_context(request, st: SourceState) -> dict:
 
     # Widgets only -- the POST is read field by field in _configure.
     form = DataSourceForm(instance=st.binding, studio=request.studio, org=request.org, fixed_scope="studio")
+    form.fields["new_connection_per_query"].widget.attrs["id"] = "configure-new-connection-per-query"
     form.initial["new_connection_per_query"] = effective_fields(decl, st.binding).get(
         "new_connection_per_query", False
     )
@@ -540,6 +549,9 @@ def _configure_context(request, st: SourceState) -> dict:
         "declared_in": decl.source_file,
         "fields": [form[k] for k in keys],
         "new_connection_per_query": form["new_connection_per_query"],
+        "supports_new_connection_per_query": (
+            "new_connection_per_query" in TYPE_FIELDS.get(decl.type, [])
+        ),
         "can_org": request.org_roles.is_org_admin,
         # Ticking "organization level" would overwrite shared credentials the
         # form is not showing (a studio row shadows them here).
@@ -569,7 +581,10 @@ def _configure(request, name: str):
             org_level=bool(request.POST.get("org_level")),
             new_connection_per_query=(
                 request.POST.get("new_connection_per_query") in {"true", "on"}
-                if "new_connection_per_query" in request.POST else None
+                if (
+                    "new_connection_per_query" in request.POST
+                    and "new_connection_per_query" in TYPE_FIELDS.get(decl.type, [])
+                ) else None
             ),
         )
         return _saved_response(request, ds, request.studio, configured=True)
@@ -578,7 +593,10 @@ def _configure(request, name: str):
         org_level=bool(request.POST.get("org_level")),
         new_connection_per_query=(
             request.POST.get("new_connection_per_query") in {"true", "on"}
-            if "new_connection_per_query" in request.POST else None
+            if (
+                "new_connection_per_query" in request.POST
+                and "new_connection_per_query" in TYPE_FIELDS.get(decl.type, [])
+            ) else None
         ),
     )
     (messages.success if ok else messages.error)(request, text)

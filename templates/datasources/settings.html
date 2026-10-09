@@ -184,11 +184,11 @@
         {{ f }}
       </div>
       {% endfor %}
-      <div class="ui-field ui-field-wide">
+      {% if configure.supports_new_connection_per_query %}<div class="ui-field ui-field-wide">
         <input type="hidden" name="new_connection_per_query" value="false">
         <label class="ui-check-row">{{ configure.new_connection_per_query }} {{ configure.new_connection_per_query.label }}</label>
         <span class="ui-help">{{ configure.new_connection_per_query.help_text }}</span>
-      </div>
+      </div>{% endif %}
       {% if configure.can_org %}
       <div class="ui-field">
         {% if configure.warn_shared %}

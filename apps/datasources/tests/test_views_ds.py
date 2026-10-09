@@ -442,6 +442,21 @@ class TestManagementUI:
         ds = DataSource.objects.get(org=org, name="shared_warehouse")
         assert ds.config["new_connection_per_query"] is True
 
+    def test_org_edit_preserves_explicit_false_override(self, login, org_admin, org):
+        ds = DataSource.objects.create(
+            org=org, name="warehouse", type="postgres",
+            config={"host": "db", "new_connection_per_query": False},
+            credentials={"user": "svc", "password": "pw"},
+        )
+        url = f"/orgs/{org.slug}/settings/datasources"
+        response = login(org_admin).post(url, {
+            "id": ds.pk, "name": "warehouse", "type": "postgres", "scope": "org",
+            "host": "db2", "user": "svc", "password": "",
+        })
+        assert response.status_code == 302
+        ds.refresh_from_db()
+        assert ds.config["new_connection_per_query"] is False
+
     def test_blank_password_keeps_stored(self, login, org_admin, org, studio_tree, pg_source):
         url = f"/s/{org.slug}/{studio_tree.slug}/settings/datasources"
         login(org_admin).post(
@@ -529,6 +544,56 @@ class TestManagementUI:
         client.post(url, {"action": "configure", "name": "warehouse", "user": "u"})
         ds.refresh_from_db()
         assert ds.config["new_connection_per_query"] is False
+
+    def test_configure_ignores_unsupported_crafted_option(self, login, org_admin, org, studio_tree, monkeypatch):
+        from apps.datasources import views
+        from apps.datasources.models import RepoDataSource
+
+        url = f"/s/{org.slug}/{studio_tree.slug}/settings/datasources"
+        RepoDataSource.objects.create(
+            studio=studio_tree, name="sharepoint", type="onedrive",
+            config={"tenant_id": "tid", "client_id": "cid", "site_url": "https://example.com"},
+            source_file="data-sources/config.yaml",
+        )
+        client = login(org_admin)
+        html = client.get(f"{url}?configure=sharepoint").content.decode()
+        configure_form = html.split('id="ds-configure"', 1)[1].split("</form>", 1)[0]
+        assert 'type="checkbox" name="new_connection_per_query"' not in configure_form
+        assert 'id="configure-new-connection-per-query"' not in configure_form
+        monkeypatch.setattr(views, "run_state_check", lambda _state: (True, "ok"))
+
+        client.post(url, {
+            "action": "configure", "name": "sharepoint", "client_secret": "secret",
+            "new_connection_per_query": "on",
+        })
+        ds = DataSource.objects.get(studio=studio_tree, name="sharepoint")
+        assert "new_connection_per_query" not in (ds.config or {})
+
+    def test_new_studio_binding_inherits_org_lifecycle_override_on_legacy_configure_post(
+        self, login, org_admin, org, studio_tree, monkeypatch
+    ):
+        from apps.datasources import views
+        from apps.datasources.models import RepoDataSource
+
+        url = f"/s/{org.slug}/{studio_tree.slug}/settings/datasources"
+        RepoDataSource.objects.create(
+            studio=studio_tree, name="warehouse", type="postgres",
+            config={"host": "db", "new_connection_per_query": True},
+            source_file="data-sources/config.yaml",
+        )
+        DataSource.objects.create(
+            org=org, name="warehouse", type="postgres",
+            config={"new_connection_per_query": False},
+            credentials={"user": "shared", "password": "pw"},
+        )
+        monkeypatch.setattr(views, "run_state_check", lambda _state: (True, "ok"))
+
+        login(org_admin).post(url, {
+            "action": "configure", "name": "warehouse", "user": "studio-user",
+        })
+        ds = DataSource.objects.get(studio=studio_tree, name="warehouse")
+        assert ds.config["new_connection_per_query"] is False
+        assert ds.credentials["password"] == "pw"
 
     def test_delete(self, login, org_admin, org, studio_tree, pg_source):
         url = f"/s/{org.slug}/{studio_tree.slug}/settings/datasources"

@@ -182,6 +182,15 @@ class DataSourceForm(forms.Form):
             for k, _ in _CONFIG_FIELDS
             if k in CONFIG_KEYS and k in relevant and data.get(k) not in (None, "", False)
         }
+        # New/default-off forms omit False, while an existing explicit false
+        # must keep overriding a repository declaration during an edit.
+        if (
+            self.instance is not None
+            and "new_connection_per_query" in relevant
+            and "new_connection_per_query" in (self.instance.config or {})
+            and not data.get("new_connection_per_query")
+        ):
+            config["new_connection_per_query"] = False
         if data.get("upload") and "upload" in relevant:
             config["upload"] = True
 
