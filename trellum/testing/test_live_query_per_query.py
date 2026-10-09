@@ -45,3 +45,16 @@ def test_dev_live_query_cancellation_closes_cursor_connection_and_handle(monkeyp
     assert factory.call_count == 1 and handle.closed
     cursor.close.assert_called_once()
     raw.close.assert_called_once()
+
+
+def test_dev_live_query_default_mode_retains_single_attempt_behavior(monkeypatch):
+    cursor = Mock(description=[("n",)], fetchmany=Mock(side_effect=ConnectionResetError()))
+    raw = Mock(cursor=Mock(return_value=cursor))
+    factory = Mock(return_value=raw)
+    handle = retry.ManagedConnection("postgres", factory)
+    monkeypatch.setattr(connections, "resolve_connection", lambda name, sources: handle)
+    with pytest.raises(ConnectionResetError):
+        _run("warehouse", "SELECT n FROM t", {})
+    assert factory.call_count == 1 and handle.closed
+    cursor.close.assert_called_once()
+    raw.close.assert_called_once()

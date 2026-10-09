@@ -63,7 +63,6 @@ def test_report_continues_on_a_fresh_connection_after_disconnect(monkeypatch, tm
 
 def test_report_opens_and_closes_a_distinct_connection_for_each_query(monkeypatch, tmp_path):
     info = ENGINES["postgres"].conn_info()
-    monkeypatch.setattr("trellum.data.connections.resolve_credentials", lambda source: info)
     opened = []
     native_connect = drivers.connect
 
@@ -75,6 +74,7 @@ def test_report_opens_and_closes_a_distinct_connection_for_each_query(monkeypatc
     monkeypatch.setattr(drivers, "connect", track_connect)
     context = ReportContext(
         {"data_sources": [{"name": "fresh_test", "type": "postgres",
+                           "local_env": "FRESH_QUERY_ITEST", **info,
                            "new_connection_per_query": True}]},
         "fresh-test", str(tmp_path),
     )

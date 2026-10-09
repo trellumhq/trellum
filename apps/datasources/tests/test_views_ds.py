@@ -420,7 +420,7 @@ class TestManagementUI:
         })
         assert response.status_code == 302
         ds.refresh_from_db()
-        assert "new_connection_per_query" not in ds.config
+        assert ds.config["new_connection_per_query"] is False
 
         response = client.post(url, {
             "id": ds.pk, "name": "warehouse", "type": "file", "scope": "studio",
@@ -433,7 +433,7 @@ class TestManagementUI:
     def test_new_connection_setting_can_be_saved_at_organization_scope(
         self, login, org_admin, org, studio_tree
     ):
-        url = f"/s/{org.slug}/{studio_tree.slug}/settings/datasources"
+        url = f"/orgs/{org.slug}/settings/datasources"
         response = login(org_admin).post(url, {
             "name": "shared_warehouse", "type": "trino", "scope": "org",
             "host": "db.internal", "user": "svc", "new_connection_per_query": "on",
@@ -524,6 +524,8 @@ class TestManagementUI:
         html = client.get(f"{url}?configure=warehouse").content.decode()
         checkbox = html.split('type="checkbox" name="new_connection_per_query"', 1)[1]
         assert "checked" in checkbox.split(">", 1)[0]
+        assert html.count('id="configure_new_connection_per_query"') == 1
+        assert html.count('id="id_new_connection_per_query"') == 1
         monkeypatch.setattr(views, "run_state_check", lambda _state: (True, "ok"))
 
         client.post(url, {
@@ -559,7 +561,7 @@ class TestManagementUI:
         html = client.get(f"{url}?configure=sharepoint").content.decode()
         configure_form = html.split('id="ds-configure"', 1)[1].split("</form>", 1)[0]
         assert 'type="checkbox" name="new_connection_per_query"' not in configure_form
-        assert 'id="configure-new-connection-per-query"' not in configure_form
+        assert 'id="configure_new_connection_per_query"' not in configure_form
         monkeypatch.setattr(views, "run_state_check", lambda _state: (True, "ok"))
 
         client.post(url, {

@@ -36,6 +36,7 @@ from apps.datasources.status import (
     SourceState,
     binding_state,
     blocked_reports,
+    effective_fields,
     source_states,
 )
 from apps.datasources.testing import STALE_CHECK, check_binding, check_revision, fmt_size, rebuild_unblocked, run_state_check
@@ -536,8 +537,10 @@ def _configure_context(request, st: SourceState) -> dict:
     keys = credential_fields(decl)
 
     # Widgets only -- the POST is read field by field in _configure.
-    form = DataSourceForm(instance=st.binding, studio=request.studio, org=request.org, fixed_scope="studio")
-    form.fields["new_connection_per_query"].widget.attrs["id"] = "configure-new-connection-per-query"
+    form = DataSourceForm(
+        instance=st.binding, studio=request.studio, org=request.org,
+        fixed_scope="studio", auto_id="configure_%s",
+    )
     form.initial["new_connection_per_query"] = effective_fields(decl, st.binding).get(
         "new_connection_per_query", False
     )

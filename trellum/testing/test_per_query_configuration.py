@@ -122,6 +122,7 @@ def test_native_connection_boundary_strips_framework_setting_without_mutation(mo
 def test_adhoc_query_cache_hit_uses_no_probe_connection(monkeypatch, tmp_path):
     from trellum.data import adhoc, query
 
+    monkeypatch.setattr(connections, "_source_names", {})
     monkeypatch.setattr(adhoc, "_infer_root", lambda: None)
     monkeypatch.setattr(datasource_config, "_cache", {"warehouse": {
         "name": "warehouse", "type": "vertica", "host": "db",

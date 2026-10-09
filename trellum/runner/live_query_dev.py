@@ -241,7 +241,7 @@ def _run(ds_name: str, sql: str, params: dict) -> tuple[list, list, bool]:
     from trellum.data.connections import resolve_connection
     from trellum.data.live_query_guard import ROW_CAP, shape_rows
     from trellum.data.query import _sql_dialect, bind_params
-    from trellum.data.retry import run_with_retry
+    from trellum.data.retry import ManagedConnection, run_with_retry
 
     conn = resolve_connection(ds_name, [ds_name] if ds_name else [])
     try:
@@ -262,7 +262,9 @@ def _run(ds_name: str, sql: str, params: dict) -> tuple[list, list, bool]:
                 except Exception:
                     pass
 
-        return run_with_retry(conn, read, sql=bound)
+        if isinstance(conn, ManagedConnection) and conn._new_connection_per_query:
+            return run_with_retry(conn, read, sql=bound)
+        return read(conn)
     finally:
         try:
             conn.close()
