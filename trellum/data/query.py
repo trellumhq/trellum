@@ -16,6 +16,7 @@ from typing import Any
 import pandas as pd
 
 from trellum.data.http_source import read_api as read_api  # re-export for compatibility
+from trellum.data.retry import ManagedConnection, run_with_retry
 from trellum.data.sql_params import _sql_param_spans as _sql_param_spans
 from trellum.data.ssh_tunnel import unwrap
 
@@ -97,20 +98,21 @@ def _execute_query(conn: Any, sql: str) -> pd.DataFrame:
     if "clickhouse_connect" in type_name:
         return conn.query_df(sql)
 
-    if "snowflake.connector" in type_name:
-        cursor = conn.cursor()
-        cursor.execute(sql)
-        df = cursor.fetch_pandas_all()
-        cursor.close()
-        return df
-
     cursor = conn.cursor()
-    cursor.execute(sql)
-    if cursor.description is None:
-        return pd.DataFrame()
-    columns = [desc[0] for desc in cursor.description]
-    data = cursor.fetchall()
-    return pd.DataFrame(data, columns=columns)
+    try:
+        cursor.execute(sql)
+        if "snowflake.connector" in type_name:
+            return cursor.fetch_pandas_all()
+        if cursor.description is None:
+            return pd.DataFrame()
+        columns = [desc[0] for desc in cursor.description]
+        data = cursor.fetchall()
+        return pd.DataFrame(data, columns=columns)
+    finally:
+        try:
+            cursor.close()
+        except Exception:
+            pass  # Closing a cursor must not replace execute/fetch failures.
 
 
 def query_df(
@@ -193,7 +195,7 @@ def query_df(
 
     start = time.time()
     with _query_semaphore:
-        df = _execute_query(conn, sql)
+        df = run_with_retry(conn, lambda raw: _execute_query(raw, sql), sql=sql)
         dec_cols = [c for c in df.columns if df[c].dtype == object
                     and df[c].dropna().apply(type).eq(decimal.Decimal).all()]
         if dec_cols:
@@ -546,6 +548,8 @@ def _sql_dialect(conn: Any) -> str:
     ``''`` but also read ``\`` as an escape character, so both have to be
     doubled for them. See ``sql_dialect_for`` for the by-type form.
     """
+    if isinstance(conn, ManagedConnection):
+        return sql_dialect_for(conn._source_type)
     conn = unwrap(conn)
     type_name = type(conn).__module__ + "." + type(conn).__qualname__
 

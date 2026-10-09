@@ -168,6 +168,12 @@ class TunnelledConnection:
             raise AttributeError(name)
         return getattr(self._inner, name)
 
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name.startswith("_"):
+            object.__setattr__(self, name, value)
+        else:
+            setattr(self._inner, name, value)
+
     def close(self) -> None:
         try:
             self._inner.close()
@@ -190,5 +196,9 @@ class TunnelledConnection:
 
 
 def unwrap(conn: Any) -> Any:
-    """The driver's own connection object, tunnelled or not."""
-    return conn._inner if isinstance(conn, TunnelledConnection) else conn
+    """The driver's own connection object, managed or tunnelled or not."""
+    from trellum.data.retry import ManagedConnection
+
+    while isinstance(conn, (ManagedConnection, TunnelledConnection)):
+        conn = conn._inner
+    return conn
