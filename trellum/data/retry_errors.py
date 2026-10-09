@@ -145,10 +145,22 @@ def is_retryable_connection_error(exc: Exception, source_type: str) -> bool:
             "ConfigurationError",
             "TrinoAuthError",
             "NonRetryableTlsError",
+            "AuthenticationError",
+            "Unauthorized",
+            "Forbidden",
+            "BadRequest",
+            "NotFound",
         }:
             return False
         if isinstance(current, (MemoryError, ssl.SSLCertVerificationError)):
             return False
+        if source in {"bigquery", "databricks", "trino", "clickhouse"}:
+            statuses = list(_metadata(current, "code", "status_code"))
+            for context in _metadata(current, "context"):
+                if isinstance(context, dict):
+                    statuses.append(context.get("http-code"))
+            if any(str(status) in {"400", "401", "403", "404"} for status in statuses):
+                return False
         if isinstance(current, BaseException):
             message = str(current).lower()
             if any(phrase in message for phrase in _PERMANENT_PHRASES):

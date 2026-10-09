@@ -222,3 +222,15 @@ def test_cancellation_oom_and_tls_verification_are_permanent(error):
 def test_programming_error_with_transport_word_does_not_retry():
     error = _driver_exception("pymysql.err", "ProgrammingError", "connection reset by peer")
     assert not is_retryable_connection_error(error, "mysql")
+
+
+@pytest.mark.parametrize("status", [400, 401, 403, 404])
+def test_permanent_http_status_vetoes_incidental_transport_cause(status):
+    error = _driver_exception(
+        "databricks.sql.exc", "RequestError", "request rejected",
+        context={"http-code": status, "original-exception": ConnectionResetError()},
+    )
+    assert not is_retryable_connection_error(error, "databricks")
+    error = DriverError(code=status)
+    error.__cause__ = ConnectionResetError()
+    assert not is_retryable_connection_error(error, "bigquery")
