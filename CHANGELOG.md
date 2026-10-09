@@ -19,8 +19,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Upgrade notes
 
-Update the portal and worker images together, then restart the worker processes
-so newly started builds use the matching runner image. Builds already running
+Update the portal/worker image and the configured runner image to v0.4.3,
+then restart the worker processes so newly started builds use the new runner.
+Builds already running
 continue with the runner image they started with. Rerun reports whose previous
 builds failed because of a remote database disconnect. This release does not
 include a customer database fix.
