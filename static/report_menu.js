@@ -44,6 +44,8 @@
         + '.rmw-header-icon{display:inline-flex}'
         + '.rmw-header-icon svg{width:14px;height:14px}'
         + '@media(max-width:640px){.rmw-header-btn span:not(.rmw-header-icon){display:none}.rmw-header-btn{padding:6px 8px}}'
+        + '.rmw-mobile-options{display:none;min-width:0;max-width:100%;min-height:44px;font-size:16px;box-sizing:border-box}'
+        + '@media(max-width:767px){#fwOptionsBtn{display:none!important}.rmw-mobile-options{display:inline-block}}'
         // The dropdown: right-aligned under the button (position:relative on
         // #fwOptionsWrap, not the button itself, so the dropdown's own
         // absolute positioning is unaffected by the button's :hover
@@ -163,6 +165,24 @@
 
         wrap.appendChild(btn);
         wrap.appendChild(dropdown);
+        var mobile = document.createElement('select');
+        mobile.className = 'rmw-mobile-options';
+        mobile.setAttribute('aria-label', 'Report options');
+        mobile.innerHTML = '<option value="">Options</option>';
+        mobile.addEventListener('change', function () {
+            var id = mobile.value;
+            var selected = mobile.options[mobile.selectedIndex];
+            if (selected && selected.dataset.themeValue) mobile.dataset.themeValue = selected.dataset.themeValue;
+            mobile.value = '';
+            if (id.indexOf('theme:') === 0) {
+                var theme = document.getElementById('fwThemeSelect');
+                if (theme) { theme.value = id.slice(6); theme.dispatchEvent(new Event('change', {bubbles:true})); }
+                return;
+            }
+            var idx = findIndex(id);
+            if (idx >= 0 && typeof ITEMS[idx].onSelect === 'function') ITEMS[idx].onSelect();
+        });
+        wrap.appendChild(mobile);
         right.insertBefore(wrap, right.firstChild);
 
         document.addEventListener('click', function () { closeMenu(); });
@@ -186,6 +206,29 @@
                 + '<span class="rmw-item-label">' + esc(ITEMS[i].label) + '</span></button>';
         }
         dropdown.innerHTML = html;
+        var mobile = document.querySelector('#fwOptionsWrap .rmw-mobile-options');
+        if (mobile) {
+            mobile.innerHTML = '<option value="">Options</option>';
+            for (var m = 0; m < ITEMS.length; m++) {
+                var option = document.createElement('option');
+                option.value = ITEMS[m].id;
+                option.textContent = ITEMS[m].label;
+                mobile.appendChild(option);
+            }
+            var theme = document.getElementById('fwThemeSelect');
+            if (theme && theme.options.length) {
+                var group = document.createElement('optgroup');
+                group.label = 'Report theme';
+                for (var t = 0; t < theme.options.length; t++) {
+                    var themeOption = document.createElement('option');
+                    themeOption.value = 'theme:' + theme.options[t].value;
+                    themeOption.textContent = theme.options[t].textContent;
+                    themeOption.dataset.themeValue = theme.options[t].value;
+                    group.appendChild(themeOption);
+                }
+                mobile.appendChild(group);
+            }
+        }
         var buttons = dropdown.querySelectorAll('.rmw-item');
         for (var j = 0; j < buttons.length; j++) {
             buttons[j].addEventListener('click', function (e) {
@@ -236,6 +279,11 @@
     }
 
     window.__reportMenu = {
+        getTrigger: function () {
+            var mobile = document.querySelector('#fwOptionsWrap .rmw-mobile-options');
+            return mobile && window.matchMedia('(max-width: 767px)').matches
+                ? mobile : document.getElementById('fwOptionsBtn');
+        },
         register: function (item) {
             if (!item || !item.id) return;
             var idx = findIndex(item.id);
@@ -345,6 +393,7 @@
 
     var url = new URL(window.location.href);
     var parentContext = null;
+    var updateMonitorHref = null;
     try {
         if (window.parent !== window && window.parent.TrellumConsoleReportHost
                 && typeof window.parent.TrellumConsoleReportHost.contextFor === 'function') {
@@ -419,6 +468,16 @@
         + 'body.tl-report-console-mounted .fw-header-right button,'
         + 'body.tl-report-console-mounted .fw-header-right select{min-height:44px}'
         + 'body.tl-report-console-mounted .fw-header-right select{font-size:16px}}'
+        + '.rmw-mobile-scope,.rmw-monitor-link{display:none}'
+        + '@media(max-width:767px){body.tl-report-console #fwOptionsDropdown,body.tl-report-focus #fwOptionsDropdown,body.tl-report-console-hosted #fwOptionsDropdown{display:none!important}'
+        + 'body.tl-report-console .fw-header,body.tl-report-focus .fw-header,body.tl-report-console-hosted .fw-header{min-height:44px;flex-wrap:nowrap;gap:6px}'
+        + 'body.tl-report-console .fw-header-right,body.tl-report-focus .fw-header-right,body.tl-report-console-hosted .fw-header-right{display:flex;align-items:center;flex:1;min-width:0;width:auto;gap:6px;flex-wrap:nowrap}'
+        + 'body.tl-report-console .fw-header-right>*,body.tl-report-focus .fw-header-right>*,body.tl-report-console-hosted .fw-header-right>*{min-width:0;max-width:100%}'
+        + 'body.tl-report-console .fw-header-right .fw-toggle-group[data-toggle-id="__scope__"],body.tl-report-focus .fw-header-right .fw-toggle-group[data-toggle-id="__scope__"],body.tl-report-console-hosted .fw-header-right .fw-toggle-group[data-toggle-id="__scope__"]{display:none!important}'
+        + 'body.tl-report-console .fw-header-right .fw-theme-select.rmw-theme-original,body.tl-report-focus .fw-header-right .fw-theme-select.rmw-theme-original,body.tl-report-console-hosted .fw-header-right .fw-theme-select.rmw-theme-original{display:none!important}'
+        + 'body.tl-report-console .rmw-mobile-scope,body.tl-report-focus .rmw-mobile-scope,body.tl-report-console-hosted .rmw-mobile-scope{display:inline-block;min-width:0;max-width:42%;height:44px;font-size:16px;box-sizing:border-box}'
+        + 'body.tl-report-console .rmw-monitor-link,body.tl-report-focus .rmw-monitor-link,body.tl-report-console-hosted .rmw-monitor-link{display:inline-flex;align-items:center;justify-content:center;flex:none;min-width:58px;padding:0 8px;min-height:44px;white-space:nowrap;box-sizing:border-box}'
+        + 'body.tl-report-console .fw-help-wrap,body.tl-report-focus .fw-help-wrap,body.tl-report-console-hosted .fw-help-wrap{display:none!important}}'
         + 'body.tl-report-monitor .fw-header,body.tl-report-monitor .fw-anno-bar,'
         + 'body.tl-report-monitor .fw-filter-bar,body.tl-report-monitor #assistantLauncher,'
         + 'body.tl-report-monitor #assistantAsk,body.tl-report-monitor #assistantPill,'
@@ -445,6 +504,78 @@
     document.head.appendChild(style);
     document.body.classList.add('tl-report-' + mode);
     if (hosted) document.body.classList.add('tl-report-console-hosted');
+
+    function addMobileHeaderControls() {
+        if (mode === 'monitor') return;
+        var right = document.querySelector('.fw-header-right');
+        if (!right) return;
+        var scope = right.querySelector('.fw-toggle-group.fw-scope-toggle[data-toggle-id="__scope__"]');
+        if (scope) {
+            var scopeSelect = document.createElement('select');
+            scopeSelect.className = 'rmw-mobile-scope';
+            scopeSelect.setAttribute('aria-label', 'Report scope');
+            var scopeButtons = scope.querySelectorAll('.fw-toggle-btn');
+            for (var i = 0; i < scopeButtons.length; i++) {
+                var option = document.createElement('option');
+                option.value = scopeButtons[i].getAttribute('data-scope-key') || String(i);
+                option.textContent = scopeButtons[i].textContent.trim();
+                option.disabled = scopeButtons[i].disabled;
+                scopeSelect.appendChild(option);
+            }
+            function syncScope() {
+                var active = scope.querySelector('.fw-toggle-btn.active');
+                if (!active) return;
+                var buttons = scope.querySelectorAll('.fw-toggle-btn');
+                for (var j = 0; j < buttons.length; j++) {
+                    var value = buttons[j].getAttribute('data-scope-key') || String(j);
+                    var option = scopeSelect.options[j];
+                    if (option) option.disabled = buttons[j].disabled;
+                    if (buttons[j] === active) scopeSelect.value = value;
+                }
+            }
+            scopeSelect.addEventListener('change', function () {
+                var buttons = scope.querySelectorAll('.fw-toggle-btn');
+                for (var j = 0; j < buttons.length; j++) {
+                    if ((buttons[j].getAttribute('data-scope-key') || String(j)) === scopeSelect.value) buttons[j].click();
+                }
+            });
+            scope.addEventListener('click', syncScope);
+            new MutationObserver(syncScope).observe(scope, {subtree:true, attributes:true, attributeFilter:['class','disabled']});
+            syncScope();
+            right.insertBefore(scopeSelect, right.firstChild);
+        }
+        var theme = document.getElementById('fwThemeSelect');
+        if (theme && document.querySelector('.rmw-mobile-options')) theme.classList.add('rmw-theme-original');
+        var monitor = document.createElement('a');
+        monitor.className = 'rmw-monitor-link';
+        monitor.textContent = 'Monitor';
+        monitor.title = 'Open monitor view';
+        monitor.setAttribute('aria-label', 'Monitor');
+        monitor.target = '_top';
+        updateMonitorHref = function () {
+            var path = window.location.pathname;
+            var content = path.match(/^\/content\/([^/]+)\/([^/]+)\/([^/]+)\/builds\/[^/]+(?:\/(.*))?$/);
+            if (content) path = '/s/' + content[1] + '/' + content[2] + '/r/' + content[3] + '/' + (content[4] || 'index.html');
+            var next = new URL(window.location.href);
+            next.pathname = path;
+            next.searchParams.delete('_console_host');
+            next.searchParams.delete('_console_host_token');
+            next.searchParams.set('display', 'monitor');
+            monitor.href = path + next.search + next.hash;
+        }
+        updateMonitorHref();
+        if (!hosted) {
+            var originalReplace = history.replaceState;
+            history.replaceState = function () { originalReplace.apply(this, arguments); updateMonitorHref(); };
+        }
+        window.addEventListener('popstate', updateMonitorHref);
+        window.addEventListener('hashchange', updateMonitorHref);
+        monitor.addEventListener('click', function (event) {
+            if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+            if (hosted) { event.preventDefault(); postHost('trellum:report-display', {display:'monitor'}); }
+        });
+        right.appendChild(monitor);
+    }
 
     /* The report URL runtime owns filter state but exposes this hook for
      * host state. Registering display here keeps console/focus/monitor in the
@@ -638,6 +769,7 @@
         });
     } else {
         registerDisplayItems();
+        addMobileHeaderControls();
         if (mode === 'console') mountConsole();
     }
 
@@ -645,10 +777,15 @@
         var replaceState = window.history.replaceState;
         window.history.replaceState = function () {
             replaceState.apply(window.history, arguments);
+            if (updateMonitorHref) updateMonitorHref();
             postHostState();
         };
-        window.addEventListener('popstate', postHostState);
-        window.addEventListener('hashchange', postHostState);
+        function syncHostedLocation() {
+            if (updateMonitorHref) updateMonitorHref();
+            postHostState();
+        }
+        window.addEventListener('popstate', syncHostedLocation);
+        window.addEventListener('hashchange', syncHostedLocation);
         window.addEventListener('pageshow', function () {
             try {
                 var restored = window.parent.TrellumConsoleReportHost.contextFor(window);

@@ -18,6 +18,10 @@ CONSOLE_SHELL_JS = (settings.BASE_DIR / "static" / "console-shell.js").read_text
 CONSOLE_SHELL_CSS = (settings.BASE_DIR / "static" / "console-shell.css").read_text(
     encoding="utf-8"
 )
+REPORT_HEADER_CSS = "\n".join(
+    (settings.BASE_DIR / "trellum" / "static" / "css" / path).read_text(encoding="utf-8")
+    for path in ("base.css", "components/header.css", "components/toggle.css")
+)
 SHELL_HTML = """<div class="tl-console-shell" data-console-shell
   data-console-default-mode="dark" data-console-theme="light"
   data-console-css="/static/console-shell.css"
@@ -36,18 +40,25 @@ SHELL_HTML = """<div class="tl-console-shell" data-console-shell
   <button type="button" data-console-backdrop>Close navigation</button>
 </div>"""
 REPORT_HTML = f"""<!doctype html>
-<html><head><style>
+<html><head><style>{REPORT_HEADER_CSS}
 html,body{{margin:0}} .fw-container{{box-sizing:border-box;padding:12px 20px}}
-.fw-header{{display:flex}} .fw-filter-bar{{display:block;box-sizing:border-box;
+.fw-header{{display:flex;justify-content:space-between;gap:8px;box-sizing:border-box;max-width:100%}}
+.fw-header-left{{min-width:0;white-space:nowrap}} .fw-header-right{{display:flex;align-items:center;gap:6px;min-width:0;max-width:100%}}
+.fw-toggle-group{{display:flex;gap:4px}} .fw-toggle-btn{{min-height:36px;padding:4px 9px}}
+.fw-header-right select{{max-width:100%;min-height:36px}} .fw-help-wrap{{white-space:nowrap}}
+.fw-filter-bar{{display:block;box-sizing:border-box;
 position:sticky;top:48px;width:100vw;padding:8px 24px;
 margin-left:calc(-50vw + 50%);margin-right:calc(-50vw + 50%)}}
 </style></head><body>
 <div class="fw-container" id="reportContent">
   <div class="fw-header"><div class="fw-header-left"><h1>Test report</h1></div>
-    <div class="fw-header-right"></div></div>
+    <div class="fw-header-right"><div class="fw-toggle-group fw-scope-toggle" data-toggle-id="__scope__"><button class="fw-toggle-btn active" data-scope-key="gop3">GOP3</button><button class="fw-toggle-btn" data-scope-key="monopoly">Monopoly</button><button class="fw-toggle-btn" data-scope-key="combined">Combined</button></div><select class="fw-theme-select" id="fwThemeSelect"><option value="light" selected>Light</option><option value="high-contrast">High contrast</option></select><div class="fw-help-wrap">Help</div></div></div>
   <div class="fw-filter-bar">Date range</div><main id="reportBody">Report body</main>
 </div>
 <script>
+document.querySelectorAll('.fw-scope-toggle .fw-toggle-btn').forEach(function(button){{button.addEventListener('click',function(){{
+  document.querySelectorAll('.fw-scope-toggle .fw-toggle-btn').forEach(function(other){{other.classList.toggle('active',other===button);}});
+}});}});
 window._fwUrlSync = {{_custom: {{}}, registerCustom: function(key, getter) {{
   this._custom[key] = getter;
 }}, write: function() {{
@@ -323,4 +334,36 @@ def test_display_mode_does_not_write_browser_storage(open_report):
     )
     assert page.evaluate("localStorage.length") == 0
     assert page.evaluate("sessionStorage.length") == 0
+    assert errors == []
+
+
+@pytest.mark.parametrize("width", [320, 390, 430])
+def test_mobile_toolbar_uses_native_controls_and_fits(open_report, width):
+    page, _shell_requests, errors = open_report(
+        "/s/demo/casino/r/player-overview/index.html?display=console&range=30d#revenue",
+        viewport={"width": width, "height": 720},
+    )
+    page.wait_for_timeout(80)
+    options = page.locator("select.rmw-mobile-options")
+    assert options.is_visible()
+    labels = options.locator("option").all_text_contents()
+    assert labels[0] == "Options"
+    assert "Expand" in labels and "Monitor" in labels and "Share" in labels
+    page.evaluate("window.__reportMenu.register({id:'later',label:'Later',order:100,onSelect:function(){}})")
+    assert "Later" in options.locator("option").all_text_contents()
+    assert page.locator("#fwOptionsBtn").evaluate("el => getComputedStyle(el).display") == "none"
+    assert page.locator(".rmw-mobile-scope").is_visible()
+    assert options.locator('optgroup[label="Report theme"] option').all_text_contents() == ["Light", "High contrast"]
+    page.locator(".rmw-mobile-scope").select_option("monopoly")
+    assert page.locator('.fw-scope-toggle [data-scope-key="monopoly"]').evaluate(
+        "el => el.classList.contains('active')"
+    )
+    page.locator('.fw-scope-toggle [data-scope-key="combined"]').evaluate("el => el.click()")
+    assert page.locator(".rmw-mobile-scope").input_value() == "combined"
+    options.select_option("theme:high-contrast")
+    assert page.locator("#fwThemeSelect").input_value() == "high-contrast"
+    assert page.evaluate("document.documentElement.scrollWidth") <= width
+    assert page.locator(".rmw-monitor-link").is_visible(), page.evaluate("() => [document.body.className, document.querySelector('.rmw-monitor-link').getBoundingClientRect().toJSON(), document.querySelector('.fw-header-right').getBoundingClientRect().toJSON()]")
+    monitor_href = page.locator(".rmw-monitor-link").get_attribute("href")
+    assert monitor_href == "/s/demo/casino/r/player-overview/index.html?display=monitor&range=30d#revenue"
     assert errors == []

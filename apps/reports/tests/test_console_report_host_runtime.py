@@ -276,8 +276,7 @@ def test_report_history_filter_bridge_and_shell_identity(report_browser):
             "el => getComputedStyle(el).minHeight"
         ) == "44px"
         frame.locator('[data-item-id="share"]').wait_for(state="attached")
-        frame.locator("#fwOptionsBtn").click()
-        frame.locator('[data-item-id="share"]').click()
+        frame.locator("select.rmw-mobile-options").select_option(label="Share")
         frame.locator("#rswEmbed").check()
         frame.locator("#rswEmbedOrigins").fill("https://app.example.com")
         frame.locator("#rswNewForm button[type=submit]").click()
@@ -310,6 +309,28 @@ def test_report_history_filter_bridge_and_shell_identity(report_browser):
         page.locator("#report").wait_for(state="visible")
         assert not page.evaluate("window.TrellumConsoleReportHost.isActive()")
         assert top_navigations == []
+        assert errors == []
+    finally:
+        context.close()
+
+
+def test_mobile_monitor_link_opens_canonical_report_from_hosted_console(report_browser):
+    context, page, errors, top_navigations, _shell_requests, _assistant_messages = _open(
+        report_browser, viewport={"width": 390, "height": 720}
+    )
+    try:
+        page.locator("#report").click()
+        frame = page.frame_locator("iframe[data-console-report-frame]")
+        link = frame.locator(".rmw-monitor-link")
+        link.wait_for(state="visible")
+        href = link.get_attribute("href")
+        assert href.startswith("/s/demo/casino/r/player-overview/index.html?")
+        assert "display=monitor" in href
+        assert "_console_host" not in href
+        link.click()
+        page.wait_for_url("**/s/demo/casino/r/player-overview/index.html?display=monitor")
+        assert top_navigations[-1].endswith("?display=monitor")
+        assert "_console_host" not in page.url
         assert errors == []
     finally:
         context.close()
