@@ -30,7 +30,7 @@ the Compose image settings use that same value.
 ### 1. Get the matching Compose files
 
 ```bash
-TRELLUM_VERSION=v0.4.2
+TRELLUM_VERSION=v0.4.3
 git clone --depth 1 --branch "$TRELLUM_VERSION" https://github.com/trellumhq/trellum.git
 cd trellum
 cp .env.example .env
@@ -53,7 +53,7 @@ knows how to build the image itself; there is no separate Dockerfile step.
 ### Clone and prepare `.env`
 
 ```bash
-TRELLUM_VERSION=v0.4.2
+TRELLUM_VERSION=v0.4.3
 git clone --depth 1 --branch "$TRELLUM_VERSION" https://github.com/trellumhq/trellum.git
 cd trellum
 cp .env.example .env

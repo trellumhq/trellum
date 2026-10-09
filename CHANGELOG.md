@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.4.3] — 2026-10-09
+
 ### Fixed
 
 - Retry recognized remote database disconnects during report queries using a
@@ -14,6 +16,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   logs each retry and keeps completed query results; failed or partial results
   are never cached. Permanent errors and manually managed session state are not
   automatically replayed.
+
+### Upgrade notes
+
+Update the portal and worker images together, then restart the worker processes
+so newly started builds use the matching runner image. Builds already running
+continue with the runner image they started with. Rerun reports whose previous
+builds failed because of a remote database disconnect. This release does not
+include a customer database fix.
 
 ## [0.4.2] — 2026-10-09
 
@@ -353,7 +363,8 @@ and demos together in one AGPL-licensed project.
 - Owned Trellum code is released under AGPL-3.0-only. Third-party and
   contributor notices retain their own terms.
 
-[Unreleased]: https://github.com/trellumhq/trellum/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/trellumhq/trellum/compare/v0.4.3...HEAD
+[0.4.3]: https://github.com/trellumhq/trellum/releases/tag/v0.4.3
 [0.4.2]: https://github.com/trellumhq/trellum/releases/tag/v0.4.2
 [0.4.1]: https://github.com/trellumhq/trellum/releases/tag/v0.4.1
 [0.3.0]: https://github.com/trellumhq/trellum/releases/tag/v0.3.0
