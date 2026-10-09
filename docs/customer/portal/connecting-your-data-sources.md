@@ -90,7 +90,7 @@ Press **Configure** on the row. The form has two halves:
 - **From repository** — read-only: type, host, port, database (or path),
   which file declared it, and which reports use it. These come from the
   commit; to change them, change the repository and publish.
-- The credential fields for that type, and nothing else. Postgres asks for
+- The credential fields for that type. Postgres asks for
   **User** and **Password**. BigQuery asks for **Credentials JSON**.
   Databricks asks for **Access token**. OneDrive/SharePoint asks for
   **Client secret**. Google Sheets asks for **Credentials JSON** too — the
@@ -110,6 +110,33 @@ queued to build straight away:
 **Test** on a row re-runs that check at any time. **Remove credentials** on the
 Configure form clears them again; reports that read from the source go back to
 waiting.
+
+## Use a new connection for every query
+
+For remote SQL sources, **Use a new connection for every query** is available
+in the source's settings or Configure form. It is off by default. Enable it
+when a source has unreliable persistent sessions and your report's queries
+can run independently.
+
+Each uncached framework query opens a connection, fetches the complete result,
+and closes that connection. The next query uses another connection, even if the
+previous one succeeded. Recognized transient failures still get bounded retries
+on fresh connections. Cache hits do not open a connection. The setting does not
+change Vertica's existing TLS-disabled, autocommit-enabled defaults.
+
+Connection setup adds overhead. Queries cannot share temporary tables, session
+settings or transactions in this mode. Report code must use `query_df` or `query`;
+direct cursor methods and connection attribute access are rejected. Local
+SQLite/DuckDB and file sources are unaffected.
+
+A repository may declare `new_connection_per_query: true` in its datasource
+entry. An explicit portal setting overrides that value for its binding, including
+turning it off. Standalone runs can override it with
+`<CREDENTIAL_PREFIX>_NEW_CONNECTION_PER_QUERY=true` or `false`.
+
+Saving affects subsequent report runs. **Test connection** checks whether the
+source can be reached; a successful check does not prove that every report query
+will succeed.
 
 Under the table, one line states the rule that catches people out:
 

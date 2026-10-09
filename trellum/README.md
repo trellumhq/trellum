@@ -910,11 +910,47 @@ not silently recreated. Automatic replay is limited to single read statements
 the framework recognizes; unsupported quoting and ambiguous SQL run once.
 Read queries must not call functions with side effects.
 
-Calling driver methods directly, entering a driver context manager, setting
+With the default connection reuse, calling driver methods directly, entering a driver context manager, setting
 connection attributes, or executing a statement that cannot be replayed disables
 query replay for that connection. This preserves manually managed transactions,
 temporary tables and session settings. A reconnect starts a new database
 session and may observe newer data; it does not restore a transaction snapshot.
+
+### A new connection for every query
+
+For remote sources with unreliable persistent sessions, opt into
+`new_connection_per_query: true` on the datasource:
+
+```yaml
+sources:
+  warehouse:
+    type: vertica
+    host: warehouse.internal
+    database: analytics
+    new_connection_per_query: true
+    credentials:
+      local: BI_WAREHOUSE
+```
+
+The matching environment override is `BI_WAREHOUSE_NEW_CONNECTION_PER_QUERY=true`.
+The default is `false`, which reuses healthy connections. Boolean environment
+values accept `true`/`false`, `1`/`0`, `yes`/`no`, or `on`/`off`; invalid values
+raise a configuration error.
+
+In this mode, `query_df` and `query` open a connection only when an uncached
+query runs, fetch the whole result, and close the connection afterward, including
+on failure or cancellation. Each subsequent query starts a new session. Eligible
+read queries still have the same three-attempt recovery limit, and each retry
+opens another connection. SQL that cannot be safely replayed runs once; it does
+not disable recovery for later queries in their separate sessions. An SSH tunnel
+is opened and closed with each connection.
+
+Use this mode for independent report queries. It adds connection setup cost and
+cannot share temporary tables, session settings or transactions between queries.
+Use the framework query helpers; direct driver methods, connection attribute
+access and mutation are rejected on this handle. A `with` block may manage the
+handle's lifetime, but does not create a transaction spanning its queries.
+SQLite and DuckDB keep their existing behavior.
 
 ### Cache Management
 

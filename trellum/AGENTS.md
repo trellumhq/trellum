@@ -119,7 +119,11 @@ How to answer:
    `sources()` lists what is configured; `connect(name)` returns a connection
    supporting the driver's methods. Use `query` or `query_df` for bounded
    fresh-connection retries; direct calls such as `pandas.read_sql` retain
-   their own error handling. All three work from any subdirectory of
+   their own error handling. With `new_connection_per_query: true` on a remote
+   datasource, use only `query`/`query_df`: every uncached query opens and closes
+   its own connection, and direct driver access is rejected. Queries must not
+   depend on shared temporary tables, session settings or transactions.
+   All three work from any subdirectory of
    the project: the root is found by walking up to `data-sources/config.yaml`.
    `python -m trellum data` prints each table's columns and date span — query
    outside the span and you get zero rows, not an error.

@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from engines import ENGINES
 
+from trellum.data import drivers
 from trellum.data.connections import source_of
 from trellum.data.drivers import connect
 from trellum.data.query import query_df
@@ -58,3 +59,36 @@ def test_report_continues_on_a_fresh_connection_after_disconnect(monkeypatch, tm
     finally:
         context.close_connections()
         admin.close()
+
+
+def test_report_opens_and_closes_a_distinct_connection_for_each_query(monkeypatch, tmp_path):
+    info = ENGINES["postgres"].conn_info()
+    monkeypatch.setattr("trellum.data.connections.resolve_credentials", lambda source: info)
+    opened = []
+    native_connect = drivers.connect
+
+    def track_connect(source_type, conn_info):
+        raw = native_connect(source_type, conn_info)
+        opened.append(raw)
+        return raw
+
+    monkeypatch.setattr(drivers, "connect", track_connect)
+    context = ReportContext(
+        {"data_sources": [{"name": "fresh_test", "type": "postgres",
+                           "new_connection_per_query": True}]},
+        "fresh-test", str(tmp_path),
+    )
+    try:
+        conn = context.get_connection("fresh_test")
+        assert opened == []
+        first = query_df(conn, "SELECT pg_backend_pid() AS pid, 17 AS value", cache_ttl=0)
+        assert len(opened) == 1 and opened[0].closed
+        second = query_df(conn, "SELECT pg_backend_pid() AS pid, 42 AS value", cache_ttl=0)
+        assert len(opened) == 2 and all(raw.closed for raw in opened)
+        assert int(first.iloc[0]["pid"]) != int(second.iloc[0]["pid"])
+        assert int(first.iloc[0]["value"]) == 17
+        assert int(second.iloc[0]["value"]) == 42
+        assert context.get_connection("fresh_test") is conn
+        assert source_of(conn) == "fresh_test"
+    finally:
+        context.close_connections()
