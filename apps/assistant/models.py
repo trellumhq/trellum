@@ -134,7 +134,10 @@ class AssistantSession(models.Model):
             "message_count": sum(
                 1 for m in self.transcript if m.get("role") in ("user", "assistant")
             ),
-            "cost_usd": round(float(self.usage.get("cost_usd", 0.0)), 4),
+            "cost_usd": (
+                round(float(self.usage.get("cost_usd", 0.0)), 4)
+                if self.usage.get("cost_usd", 0.0) is not None else None
+            ),
             # The panel pins "About alert: <title>" above a seeded conversation.
             "alert_title": (
                 (self.alert_run.title or self.alert_run.rule.name) if self.alert_run_id else None

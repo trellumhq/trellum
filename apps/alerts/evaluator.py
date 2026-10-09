@@ -246,7 +246,7 @@ def _evaluate(rule: AlertRule, run: AlertRun, deliver: bool, now) -> None:
     deadline = time.monotonic() + deadline_s
     state: dict = {}
     looked_at: list[dict] = []
-    cost = Decimal("0")
+    cost: Decimal | None = Decimal("0")
 
     def turn(message: str, *, force_tool: str | None = None, max_turns: int = ALERT_MAX_TURNS):
         """Drive one turn; returns its terminal event, or None once decide ran."""
@@ -260,10 +260,14 @@ def _evaluate(rule: AlertRule, run: AlertRun, deliver: bool, now) -> None:
             for event in gen:
                 kind = event.get("type")
                 if kind == "usage":
-                    delta = event.get("cost_delta_usd") or 0
-                    cost += Decimal(str(delta))
+                    delta = event.get("cost_delta_usd")
+                    if delta is None:
+                        cost = None
+                    elif cost is not None:
+                        cost += Decimal(str(delta))
                     run.cost_usd = cost  # kept current so an error run still shows its spend
-                    budget.record(rule.org, owner, delta)
+                    if delta is not None:
+                        budget.record(rule.org, owner, delta)
                 elif kind == "tool_result":
                     if event.get("provenance"):
                         looked_at.append({

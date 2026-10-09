@@ -140,6 +140,13 @@ class TestSectionedForms:
     def test_assistant_sections_and_check_rows(self, html, org):
         page = html(f"/orgs/{org.slug}/settings/assistant")
         assert "Provider" in page and "Budgets" in page
+        assert "AI settings" in page
+        assert "shared provider and model for report chats and alert evaluations" in page
+        assert "Enable AI for chats and alerts in this organization" in page
+        assert "strictly read-only" not in page
+        assert 'href="/orgs/demo/settings/assistant"' in page
+        assert '<span class="tl-console-label">AI settings</span>' in page
+        assert 'AI Assistant' not in page
         assert 'class="ui-check-row"' in page
         assert "display:flex;gap:8px;align-items:center" not in page
 

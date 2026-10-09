@@ -351,6 +351,9 @@
         window.addEventListener('popstate', function () {
             if (!(history.state && history.state.assistantSheet)) closePanel(true);
         });
+        window.addEventListener('pageshow', function (ev) {
+            if (ev.persisted) refreshAvailability();
+        });
 
         // Left-edge drag handle: 360–560px, remembered across pages.
         var handle = byId('assistantResize');
@@ -424,6 +427,7 @@
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (j) {
                 if (serial !== _suggestionSerial) return;
+                syncSetupEntry(j);
                 if (!j || !j.available) {
                     available = false;
                     ask.classList.add('assistant-hidden');
@@ -1399,16 +1403,8 @@
             .then(function (j) {
                 if (serial !== _suggestionSerial) return;
                 if (!j) return;
+                syncSetupEntry(j);
                 if (!j.available) {
-                    // An admin sees where to switch it on; everyone else
-                    // sees nothing at all.
-                    if (j.can_configure && j.settings_url && ask.parentNode) {
-                        var a = el('a', 'assistant-setup');
-                        a.innerHTML = SPARK + '<span>Set up AI →</span>';
-                        a.setAttribute('aria-label', 'Set up the AI assistant');
-                        a.href = j.settings_url;
-                        ask.parentNode.insertBefore(a, ask);
-                    }
                     return;
                 }
                 available = true;
@@ -1431,6 +1427,28 @@
                 applyLayout(true);
             })
             .catch(function () { /* leave hidden */ });
+    }
+
+    function syncSetupEntry(j) {
+        var link = ask.parentNode && ask.parentNode.querySelector('.assistant-setup');
+        if (j && !j.available && j.can_configure && j.settings_url) {
+            if (!link) {
+                link = el('a', 'assistant-setup');
+                link.innerHTML = SPARK;
+                ask.parentNode.insertBefore(link, ask);
+            }
+            var label = link.querySelector('span');
+            if (!label) { label = el('span'); link.appendChild(label); }
+            label.textContent = j.configured ? 'AI settings →' : 'Set up AI →';
+            link.href = j.settings_url;
+            link.setAttribute('aria-label', j.configured && j.reason
+                ? 'AI settings: ' + j.reason
+                : j.configured ? 'AI settings' : 'Set up AI');
+            if (j.configured && j.reason) link.title = j.reason;
+            else link.removeAttribute('title');
+        } else if (link) {
+            link.remove();
+        }
     }
 
     if (document.readyState === 'loading') {

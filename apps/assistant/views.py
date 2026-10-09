@@ -164,6 +164,7 @@ def _suggestions(toolbox, path: str) -> list[str]:
 @require_studio_role(roles.VIEWER)
 def studio_available(request, org_slug, studio_slug):  # noqa: ARG001
     from django.middleware.csrf import get_token
+    from apps.orgs.models import OrgAssistantConfig
 
     # The widget probes this before anything else, including from a built
     # report page (which renders no form). Minting the token here guarantees
@@ -192,6 +193,7 @@ def studio_available(request, org_slug, studio_slug):  # noqa: ARG001
     return JsonResponse({
         "available": ok,
         "reason": reason,
+        "configured": OrgAssistantConfig.objects.filter(org=request.org).exists(),
         "can_configure": can_configure,
         "settings_url": f"/orgs/{request.org.slug}/settings/assistant" if can_configure else None,
         "suggestions": _suggestions(toolbox, request.GET.get("path") or "") if ok else [],
@@ -460,7 +462,8 @@ def session_message(request, org_slug, studio_slug, session_id):  # noqa: ARG001
                     yield b": keepalive\n\n"
                     continue
                 if event.get("type") == "usage":
-                    budget_mod.record(org, user, event.get("cost_delta_usd") or 0)
+                    if event.get("cost_delta_usd") is not None:
+                        budget_mod.record(org, user, event["cost_delta_usd"])
                 if event.get("type") == "error" and not is_admin:
                     event.pop("detail", None)
                 yield _frame(event)

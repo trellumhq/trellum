@@ -56,6 +56,12 @@ class TestCreate:
 
 
 class TestListGetDelete:
+    def test_summary_distinguishes_missing_cost_from_unknown_cost(self, session):
+        session.state = {"usage": {}}
+        assert session.to_summary()["cost_usd"] == 0.0
+        session.state = {"usage": {"cost_usd": None}}
+        assert session.to_summary()["cost_usd"] is None
+
     def test_list_only_own_sessions(self, login, viewer, other_viewer, org, studio_tree, prefix, session):
         AssistantSession.objects.create(user=other_viewer, org=org, studio=studio_tree)
         body = login(viewer).get(f"{prefix}/sessions").json()

@@ -23,7 +23,7 @@ class StudioCreateForm(forms.Form):
 
 
 class AssistantConfigForm(forms.ModelForm):
-    """AI assistant config; the API key is write-only (blank submit = keep)."""
+    """Shared AI config; the API key is write-only (blank submit = keep)."""
 
     api_key = forms.CharField(
         required=False, widget=forms.PasswordInput(render_value=False),
@@ -67,7 +67,7 @@ class AssistantConfigForm(forms.ModelForm):
             has_stored = bool(self.instance.pk and self.instance.api_key)
             if not has_stored:
                 raise forms.ValidationError(
-                    "Add an API key (or a custom endpoint URL) before enabling the AI assistant."
+                    "Add an API key (or a custom endpoint URL) before enabling AI."
                 )
         if (cleaned.get("price_in_per_mtok") is None) != (cleaned.get("price_out_per_mtok") is None):
             raise forms.ValidationError("Set both the input and the output price, or neither.")

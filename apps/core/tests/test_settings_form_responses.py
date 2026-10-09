@@ -130,6 +130,18 @@ def test_successful_assistant_and_sso_configuration_returns_no_secrets(login, or
     response = login(org_admin).post(f"/orgs/{org.slug}/settings/assistant", assistant, **HEADERS)
     assert response.status_code == 200, response.content
     assert response.json()["values"]["api_key"] == ""
+    from apps.assistant import llm
+    readiness_ok, readiness_reason = llm.is_available(org)
+    assert response.json()["assistant_ready"] is readiness_ok
+    assert response.json()["updates"]["assistant-readiness-title"] == (
+        "AI is ready based on saved settings." if readiness_ok
+        else "AI is unavailable based on saved settings."
+    )
+    assert response.json()["updates"]["assistant-readiness-reason"] == (
+        readiness_reason or "Use Test connection below to verify provider access."
+    )
+    assert response.json()["updates"]["assistant-pricing-state"] == "Manual prices are set; cost estimates are available."
+    assert response.json()["assistant_open_pricing"] is False
     assert b"synthetic-test-key" not in response.content
     sso = {"auth_method": "oidc", "issuer_url": "", "client_id": "", "client_secret": "synthetic-secret", "default_org_role": "member", "groups_claim": "groups"}
     response = login(org_admin).post(f"/orgs/{org.slug}/settings/sso", sso, **HEADERS)

@@ -65,13 +65,24 @@ class TestForOrg:
 
 
 class TestPricingFailsClosed:
-    """A model the price list does not know is refused, not billed as free."""
+    """Budgets require prices; uncapped orgs may still use unknown models."""
 
     def test_unknown_model_is_unavailable(self, org, make_assistant_config):
-        make_assistant_config(org, model="claude-future-9")
+        make_assistant_config(org, model="claude-future-9", monthly_budget_usd=25)
         ok, reason = is_available(org)
         assert ok is False
-        assert reason == "Set a price for model 'claude-future-9' in the AI assistant settings"
+        assert reason == ("Set input and output prices for model 'claude-future-9' in AI settings "
+                          "to enforce budgets, or leave both budgets blank.")
+
+    @pytest.mark.parametrize("budget", ["monthly_budget_usd", "per_user_budget_usd"])
+    @pytest.mark.parametrize("amount", [0, 25])
+    def test_any_configured_budget_requires_price(self, org, make_assistant_config, budget, amount):
+        make_assistant_config(org, model="claude-future-9", **{budget: amount})
+        assert is_available(org)[0] is False
+
+    def test_unknown_model_available_when_budgets_are_blank(self, org, make_assistant_config):
+        make_assistant_config(org, model="claude-future-9")
+        assert is_available(org) == (True, "")
 
     def test_price_override_makes_it_available_and_charged(self, org, make_assistant_config):
         from decimal import Decimal
@@ -91,6 +102,41 @@ class TestPricingFailsClosed:
         )
         # 1000 in @ $2/MTok + 500 out @ $10/MTok
         assert compute_cost_anthropic(usage, config.model, config) == pytest.approx(0.007)
+
+    def test_explicit_zero_prices_are_valid(self, org, make_assistant_config):
+        from decimal import Decimal
+        from types import SimpleNamespace
+        from apps.assistant.llm import compute_cost_anthropic
+
+        make_assistant_config(org, model="claude-free", price_in_per_mtok=Decimal("0"),
+                              price_out_per_mtok=Decimal("0"), monthly_budget_usd=0)
+        config = LLMConfig.for_org(org)
+        usage = SimpleNamespace(input_tokens=1000, output_tokens=500,
+                                cache_read_input_tokens=0, cache_creation_input_tokens=0)
+        assert compute_cost_anthropic(usage, config.model, config) == 0
+        assert is_available(org) == (True, "")
+
+    def test_provider_costs_preserve_unknown(self):
+        from types import SimpleNamespace
+        from apps.assistant.llm import _UsageShim, compute_cost_anthropic, compute_cost_openai
+
+        usage = SimpleNamespace(input_tokens=1, output_tokens=1,
+                                cache_read_input_tokens=0, cache_creation_input_tokens=0)
+        assert compute_cost_anthropic(usage, "claude-future-9") is None
+        assert compute_cost_openai(_UsageShim(SimpleNamespace(prompt_tokens=1, completion_tokens=1)),
+                                   "gpt-future-9") is None
+
+    def test_unknown_cost_is_sticky_and_keeps_tokens(self):
+        from types import SimpleNamespace
+        from apps.assistant.llm import add_usage
+
+        state = {}
+        add_usage(state, SimpleNamespace(input_tokens=4, output_tokens=2), None)
+        add_usage(state, SimpleNamespace(input_tokens=3, output_tokens=1), 0.5)
+        assert state["usage"] == {
+            "input_tokens": 7, "output_tokens": 3, "cache_read_input_tokens": 0,
+            "cache_creation_input_tokens": 0, "cost_usd": None,
+        }
 
 
 class TestKeySecrecy:
@@ -150,3 +196,45 @@ class TestOpenAIStreamAsksForUsage:
         list(gen)  # drain; the AssertionError above surfaces as an error event
 
         assert captured["stream_options"] == {"include_usage": True}
+
+    @pytest.mark.parametrize("model,expected_cost", [("gpt-future-9", None), ("gpt-4o", 0.007375)])
+    def test_stream_completes_with_known_or_unknown_price(self, monkeypatch, model, expected_cost):
+        from types import SimpleNamespace
+
+        from apps.assistant import llm
+
+        class Stream:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def __iter__(self):
+                return iter([SimpleNamespace(type="content.delta", delta="Hello")])
+
+            def get_final_completion(self):
+                return SimpleNamespace(
+                    usage=SimpleNamespace(
+                        prompt_tokens=1000, completion_tokens=500,
+                        prompt_tokens_details=SimpleNamespace(cached_tokens=100),
+                    ),
+                    choices=[SimpleNamespace(
+                        message=SimpleNamespace(content="Hello", tool_calls=[]), finish_reason="stop",
+                    )],
+                )
+
+        client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(stream=lambda **kw: Stream())))
+        monkeypatch.setattr(llm, "_openai_client", lambda config: client)
+        state = {}
+        events = list(llm.stream_turn(
+            llm.LLMConfig(provider="openai", api_key="fake-key", model=model), state, "Hi",
+            toolbox=SimpleNamespace(schemas=[]), system_blocks=[{"type": "text", "text": "Test"}],
+        ))
+        assert [event["type"] for event in events] == ["text_delta", "usage", "done"]
+        assert events[1]["cost_delta_usd"] == expected_cost
+        assert events[1]["session_cost_usd"] == expected_cost
+        assert state["usage"]["cost_usd"] == expected_cost
+        assert state["usage"]["input_tokens"] == 900
+        assert state["usage"]["cache_read_input_tokens"] == 100
+        assert state["transcript"][-1]["content"] == [{"type": "text", "text": "Hello"}]

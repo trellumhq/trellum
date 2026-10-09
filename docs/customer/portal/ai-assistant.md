@@ -242,7 +242,7 @@ from, so it is recognisable in your history later.
 
 ## Turning it on
 
-**Organization settings → AI Assistant**, as an organization admin.
+**Organization settings → AI settings**, as an organization admin. These settings select the shared provider and model for portal chats and alert evaluations. If the assistant proposes an action, an organization member must approve it before it runs.
 
 | Setting | What it does |
 | --- | --- |
@@ -255,10 +255,17 @@ from, so it is recognisable in your history later.
 | Monthly budget | Organization-wide spend cap per calendar month. Blank means no cap. |
 | Per-user budget | The same cap, per person. Blank means no cap. |
 | Custom endpoint URL | Under *Advanced*. Optional. Sends every request to your own proxy or model server instead of the provider's API — see [below](#routing-requests-through-your-own-endpoint). |
-| Input / output price | Under *Advanced*. USD per million tokens, both or neither. Required for a model the built-in price list does not know — a model behind a custom endpoint, a new release — and it overrides the list when set. Without a price for the chosen model the assistant refuses to run rather than book its spend as zero. |
+| Input / output price | Under *Advanced*. Optional USD per million tokens, both or neither. Built-in rates are used automatically when available. For an unlisted model, prices are optional while both budgets are blank; set both prices to enforce either budget. A manual price overrides built-in rates. |
 
 The *Advanced* section is folded shut unless one of its fields is set or
 rejected, so a page with nothing under it is telling you nothing is there.
+
+The settings page shows whether the saved configuration allows the assistant
+to run and whether cost estimates are available. If it is disabled or the
+selected model needs a price to enforce a budget, the page explains what to
+change. The studio header links to **AI settings** for an
+existing configuration that needs attention; **Set up AI** means no settings
+have been saved yet.
 
 ### Budgets
 
@@ -305,17 +312,21 @@ local server needs none — the **API key** field may be left empty. Whatever
 key you do enter is sent to the endpoint in the provider's usual header, so
 a gateway that wants its own token takes that token here.
 
-A model the built-in price list does not know — most local models, anything
-a gateway renames — needs an **Input / output price** under *Advanced*.
-Without one the assistant reports itself unavailable rather than book its
-spend as zero. Enter what you actually pay; for a model that costs nothing
-per token, zero and zero is a legitimate answer.
+A model the built-in price list does not know — for example, a model behind a
+custom endpoint — has no cost estimate until you set **Input / output price**
+under *Advanced*. Both prices are required to enforce a budget for that model;
+leave both budgets blank to use it without pricing. Enter what you actually
+pay; for a model that costs nothing per token, zero and zero is a legitimate
+answer. Built-in rates may not match your provider's current charges; check
+provider billing for actual costs.
 
 **Test connection** verifies the pairing. It sends one tiny request — "Say
 OK", eight output tokens, not counted against any budget — through the
 settings *as last saved*, built the same way a real question is, so an
 endpoint that would break a question breaks this too. Save first, then
-test. It answers in one plain sentence:
+test. A successful connection confirms that the provider answered. If the
+assistant is still disabled or needs model pricing, the result also explains
+that blocker. It answers connection failures in one plain sentence:
 
 - *The provider rejected the key.* — the endpoint answered; the key, or its
   absence, is the problem.

@@ -473,16 +473,15 @@ class OrgAssistantConfig(models.Model):
     )
     monthly_budget_usd = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
     per_user_budget_usd = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
-    # USD per million tokens. Required for a model the built-in price list
-    # does not know (spend would otherwise be booked as zero); overrides the
-    # list when set. Both or neither.
+    # USD per million tokens. Optional without budgets; needed to enforce
+    # configured budgets for models outside the built-in list. Both or neither.
     price_in_per_mtok = models.DecimalField(
         max_digits=10, decimal_places=4, null=True, blank=True,
-        help_text="Input price in USD per million tokens. Required for models not in the built-in price list; overrides it otherwise.",
+        help_text="USD per million tokens. Optional with both budgets blank; required for unlisted models when either budget is set. Overrides built-in rates.",
     )
     price_out_per_mtok = models.DecimalField(
         max_digits=10, decimal_places=4, null=True, blank=True,
-        help_text="Output price in USD per million tokens.",
+        help_text="USD per million tokens. Set both prices or leave both blank.",
     )
     share_report_source = models.BooleanField(
         default=True,

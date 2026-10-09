@@ -1,19 +1,31 @@
 {% extends "settings_base.html" %}
-{% block title %}AI Assistant — {{ org.name }}{% endblock %}
+{% block title %}AI settings — {{ org.name }}{% endblock %}
 {% block settings %}
 <header class="page-head">
   <div class="ui-label page-kicker scope-org">Organization · {{ org.name }}</div>
-  <h1>AI Assistant</h1>
-  <p class="muted page-sub">The AI assistant answers questions about your built reports from inside the portal.
-    It is strictly read-only. Your organization brings its own model API key: it is stored
+  <h1>AI settings</h1>
+  <p class="muted page-sub">These settings choose the shared provider and model for report chats and alert evaluations.
+    Proposed actions wait for an organization member to approve them. Your organization brings its own model API key: it is stored
     encrypted, used only server-side, and never sent to the browser.</p>
 </header>
+
+<div id="assistant-readiness" class="ui-flash {% if readiness_ok %}success{% else %}error{% endif %}" role="status">
+  <span class="ui-flash-mark" id="assistant-readiness-mark" aria-hidden="true">{% if readiness_ok %}✓{% else %}×{% endif %}</span>
+  <div>
+    {% if readiness_ok %}
+      <strong data-settings-text="assistant-readiness-title">AI is ready based on saved settings.</strong>
+    {% else %}
+      <strong data-settings-text="assistant-readiness-title">AI is unavailable based on saved settings.</strong>
+    {% endif %}
+    <div class="subtle" data-settings-text="assistant-readiness-reason">{{ readiness_reason|default:"Use Test connection below to verify provider access." }}</div>
+  </div>
+</div>
 
 <div class="panel">
   <form id="orgAssistantForm" method="post" data-settings-form data-settings-save>
     {% csrf_token %}
     {{ form.non_field_errors }}
-    <label class="ui-check-row">{{ form.enabled }} Enable the AI assistant for this organization</label>
+    <label class="ui-check-row">{{ form.enabled }} Enable AI for chats and alerts in this organization</label>
 
     <p class="ui-label" style="margin:18px 0 0">Provider</p>
     <label>Provider</label>{{ form.provider }}{{ form.provider.errors }}
@@ -39,8 +51,9 @@
     <span class="helptext">{{ form.monthly_budget_usd.help_text }}</span>
     <label>Monthly budget (USD, per user)</label>{{ form.per_user_budget_usd }}{{ form.per_user_budget_usd.errors }}
     <span class="helptext">{{ form.per_user_budget_usd.help_text }}</span>
+    <span class="helptext" data-settings-text="assistant-pricing-state">{{ pricing_state }}</span>
 
-    <details{% if form.advanced_open %} open{% endif %}>
+    <details{% if advanced_open %} open{% endif %}>
       <summary class="ui-label" style="margin:18px 0 0;cursor:pointer">Advanced: custom endpoint and pricing</summary>
       <label>Custom endpoint URL</label>{{ form.base_url }}{{ form.base_url.errors }}
       <span class="helptext">{{ form.base_url.help_text }}</span>
@@ -69,6 +82,20 @@
 </div>
 <script>
 (function () {
+  var form = document.getElementById('orgAssistantForm');
+  form.addEventListener('settings:success', function (event) {
+    if (event.detail && event.detail.assistant_open_pricing === true) {
+      var advanced = form.querySelector('details');
+      if (advanced) advanced.open = true;
+    }
+    if (event.detail && typeof event.detail.assistant_ready === 'boolean') {
+      var ready = event.detail.assistant_ready,
+          status = document.getElementById('assistant-readiness');
+      status.classList.toggle('success', ready);
+      status.classList.toggle('error', !ready);
+      document.getElementById('assistant-readiness-mark').textContent = ready ? '\u2713' : '\u2715';
+    }
+  });
   var provider = document.getElementById('{{ form.provider.id_for_label }}'),
       hint = document.getElementById('gateway-hint'),
       model = document.getElementById('{{ form.model.id_for_label }}'),
@@ -99,7 +126,7 @@
     latency.textContent = ms == null ? '' : ms < 1000 ? ms + ' ms' : (ms / 1000).toFixed(1) + ' s';
     tech.hidden = !detail; tech.open = false; tech.querySelector('pre').textContent = detail || '';
   }
-  var form = document.getElementById('orgAssistantForm'), hasSavedSettings = !btn.disabled;
+  var hasSavedSettings = !btn.disabled;
   var generation = 0, controller = null, testing = false;
   function syncButton() {
     btn.disabled = !hasSavedSettings || testing || form.getAttribute('aria-busy') === 'true';
@@ -141,7 +168,10 @@
         return response.json();
       })
       .then(function (result) {
-        if (token === generation) show(result.ok, result.message, result.latency_ms, result.detail, result.hints);
+        if (token !== generation) return;
+        var resultHints = (result.hints || []).slice();
+        if (result.assistant_available === false && result.assistant_reason) resultHints.push(result.assistant_reason);
+        show(result.ok, result.message, result.latency_ms, result.detail, resultHints);
       })
       .catch(function () {
         if (token === generation) show(false, timedOut ? 'The connection test timed out. Try again.' : 'The request did not complete.');
@@ -160,7 +190,7 @@
 {% if usage %}
 <div class="panel">
   <div style="display:flex;align-items:baseline;gap:12px">
-    <span class="ui-label">Spend this month ({{ usage.month|date:"F Y" }})</span>
+    <span class="ui-label">Recorded spend this month ({{ usage.month|date:"F Y" }})</span>
     <span class="spacer" style="flex:1"></span>
     <strong>${{ usage.org_total|floatformat:2 }}</strong>
   </div>
@@ -174,8 +204,9 @@
     </tbody>
   </table>
   {% else %}
-  <div class="ui-empty">No assistant usage recorded yet this month.</div>
+  <div class="ui-empty">No priced usage recorded yet this month.</div>
   {% endif %}
+  <div class="helptext">Totals exclude usage without known prices. Check your provider billing for actual charges.</div>
 </div>
 {% endif %}
 {% endblock %}

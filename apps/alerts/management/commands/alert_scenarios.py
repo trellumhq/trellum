@@ -178,10 +178,10 @@ class Command(BaseCommand):
         failed = [r for r in rows if not r["ok"] and not r["note"]]
         passed = [r for r in rows if r["ok"] and not r["note"]]
         info = [r for r in rows if r["note"]]
-        total = sum(r["cost"] for r in rows)
+        total = sum((r["cost"] or 0) for r in rows)
         summary = (
             f"{len(passed)} passed, {len(failed)} failed, {len(info)} needs-knob (informational). "
-            f"Cost ${total:.4f}."
+            f"Cost {'unavailable' if any(r['cost'] is None for r in rows) else f'${total:.4f}'}."
         )
         self.stdout.write(summary)
 
@@ -213,7 +213,7 @@ class Command(BaseCommand):
         rules[s["id"]] = rule
         build(report, owner, s["after"])
         run = evaluate_alone(rule, s.get("evaluate_at", s["after"]))
-        cost += run.cost_usd
+        cost = None if cost is None or run.cost_usd is None else cost + run.cost_usd
         hits = mentions(run, must)
         got = run.decision or f"{run.status}: {run.error[:60]}"
         return {
@@ -230,7 +230,7 @@ class Command(BaseCommand):
     def format_row(r: dict) -> str:
         verdict = ("pass" if r["ok"] else "FAIL") + (" (info)" if r["note"] else "")
         return (f"{r['id']:<10} {r['expected']:<9} {r['got'][:9]:<9} {r['baseline'][:9]:<9} "
-                f"{r['hits']}/{r['total']:<7} {'$' + format(r['cost'], '.4f'):>8}  {verdict}")
+                f"{r['hits']}/{r['total']:<7} {('$' + format(r['cost'], '.4f')) if r['cost'] is not None else 'unavailable':>8}  {verdict}")
 
     @staticmethod
     def markdown(rows: list[dict], detail: list, summary: str) -> str:
@@ -240,8 +240,9 @@ class Command(BaseCommand):
         ]
         for r in rows:
             verdict = ("pass" if r["ok"] else "FAIL") + (" (info)" if r["note"] else "")
+            cost = "unavailable" if r["cost"] is None else f"${r['cost']:.4f}"
             lines.append(f"| {r['id']} | {r['expected']} | {r['got']} | {r['baseline']} "
-                         f"| {r['hits']}/{r['total']} | ${r['cost']:.4f} | {verdict} |")
+                         f"| {r['hits']}/{r['total']} | {cost} | {verdict} |")
         lines += ["", summary, ""]
         for s, r, run in detail:
             lines += [f"### {r['id']} — {r['got']}", "", f"**{run.title}**", "", run.message, ""]

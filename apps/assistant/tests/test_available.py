@@ -20,11 +20,19 @@ class TestStudioScoped:
         assert login(viewer).get(f"{prefix}/available").json() == {
             "available": True,
             "reason": "",
+            "configured": True,
             "can_configure": False,
             "settings_url": None,
             "suggestions": ["Which reports cover revenue?"],
             "deadline_s": 120,
         }
+
+    def test_unconfigured_admin_gets_setup_state(self, login, org_admin, prefix):
+        body = login(org_admin).get(f"{prefix}/available").json()
+        assert body["available"] is False
+        assert body["configured"] is False
+        assert body["can_configure"] is True
+        assert body["reason"] == "The AI assistant is not configured for this organization."
 
     def test_org_admin_is_pointed_at_the_settings(
         self, login, org_admin, org, studio_tree, grant_studio, prefix, make_assistant_config
@@ -38,6 +46,19 @@ class TestStudioScoped:
         assert body["can_configure"] is True
         assert body["settings_url"] == f"/orgs/{org.slug}/settings/assistant"
         assert body["suggestions"] == []  # nothing to suggest while it is off
+
+    def test_saved_config_reports_readiness_blocker(
+        self, login, org_admin, org, studio_tree, grant_studio, prefix, make_assistant_config
+    ):
+        from apps.core import roles
+
+        make_assistant_config(org, model="claude-future-9", monthly_budget_usd=10)
+        grant_studio(org_admin, studio_tree, roles.VIEWER)
+        body = login(org_admin).get(f"{prefix}/available").json()
+        assert body["available"] is False
+        assert body["configured"] is True
+        assert body["reason"] == "Set input and output prices for model 'claude-future-9' in AI settings to enforce budgets, or leave both budgets blank."
+        assert "api_key" not in body and "sk-test-not-a-real-key" not in str(body)
 
     def test_suggestions_for_a_report_page(
         self, login, viewer, prefix, assistant_config, studio_tree, report_row

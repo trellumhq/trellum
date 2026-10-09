@@ -449,6 +449,20 @@ class TestPersistenceAndSpend:
         assert usage["cost_delta_usd"] == 0.0105
         assert LlmUsage.user_month_total(org, viewer) == Decimal("0.0105")
 
+    def test_unpriced_model_still_answers_without_recording_unknown_spend(
+        self, login, viewer, org, prefix, session, make_assistant_config, fake_llm
+    ):
+        make_assistant_config(org, model="claude-future-9")
+        fake_llm(FakeResponse([TextBlock("ok")]))
+        events = frames(post_message(login(viewer), prefix, session))
+        usage = dict(events)["usage"]
+        assert usage["cost_delta_usd"] is None
+        assert usage["session_cost_usd"] is None
+        assert LlmUsage.user_month_total(org, viewer) == Decimal("0")
+        session.refresh_from_db()
+        assert session.usage["input_tokens"] > 0
+        assert session.to_summary()["cost_usd"] is None
+
     def test_second_turn_accumulates(
         self, login, viewer, org, prefix, session, assistant_config, fake_llm
     ):

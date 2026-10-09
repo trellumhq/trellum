@@ -130,8 +130,8 @@ class LLMConfig:
     def price(self) -> dict | None:
         """$/MTok rates for this model: the admin override, else the table, else None.
 
-        None means spend cannot be booked, and :func:`is_available` refuses
-        the turn rather than billing it as free.
+        None means spend cannot be booked. Budgets require a known price;
+        uncapped organizations can still use unpriced models.
         """
         if self.price_in is not None and self.price_out is not None:
             i, o = float(self.price_in), float(self.price_out)
@@ -178,10 +178,15 @@ def is_available(org) -> tuple[bool, str]:
     if not config.api_key:
         return False, (
             "No LLM API key configured for this organization. An org admin "
-            "can add one under Settings → AI Assistant."
+            "can add one under AI settings."
         )
-    if config.price() is None:
-        return False, f"Set a price for model '{config.model}' in the AI assistant settings"
+    if config.price() is None and (
+        cfg.monthly_budget_usd is not None or cfg.per_user_budget_usd is not None
+    ):
+        return False, (
+            f"Set input and output prices for model '{config.model}' in AI settings "
+            "to enforce budgets, or leave both budgets blank."
+        )
     return True, ""
 
 
@@ -219,7 +224,7 @@ def transcript_of(state: dict) -> list:
     return state.setdefault("transcript", [])
 
 
-def add_usage(state: dict, usage_obj: Any, cost_delta: float) -> None:
+def add_usage(state: dict, usage_obj: Any, cost_delta: float | None) -> None:
     usage = state.setdefault("usage", {})
     for name in (
         "input_tokens",
@@ -228,7 +233,11 @@ def add_usage(state: dict, usage_obj: Any, cost_delta: float) -> None:
         "cache_creation_input_tokens",
     ):
         usage[name] = (usage.get(name) or 0) + (getattr(usage_obj, name, 0) or 0)
-    usage["cost_usd"] = round((usage.get("cost_usd") or 0.0) + cost_delta, 6)
+    previous = usage.get("cost_usd", 0.0)
+    usage["cost_usd"] = (
+        None if previous is None or cost_delta is None
+        else round(previous + cost_delta, 6)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -388,10 +397,10 @@ def _pricing_model(model: str) -> str:
     return model
 
 
-def compute_cost_anthropic(usage: Any, model: str, config: LLMConfig | None = None) -> float:
+def compute_cost_anthropic(usage: Any, model: str, config: LLMConfig | None = None) -> float | None:
     p = config.price() if config is not None else _list_price("anthropic", model)
     if not p:
-        return 0.0
+        return None
     return round(
         (getattr(usage, "input_tokens", 0) or 0) * p["in"] / 1_000_000
         + (getattr(usage, "output_tokens", 0) or 0) * p["out"] / 1_000_000
@@ -473,8 +482,8 @@ def _stream_turn_anthropic(
             "output_tokens": response.usage.output_tokens,
             "cache_read": getattr(response.usage, "cache_read_input_tokens", 0) or 0,
             "cache_write": getattr(response.usage, "cache_creation_input_tokens", 0) or 0,
-            "cost_delta_usd": round(cost, 6),
-            "session_cost_usd": round(state.get("usage", {}).get("cost_usd", 0.0), 6),
+            "cost_delta_usd": round(cost, 6) if cost is not None else None,
+            "session_cost_usd": state.get("usage", {}).get("cost_usd"),
         }
 
         transcript.append({
@@ -634,10 +643,10 @@ class _UsageShim:
         self.cache_creation_input_tokens = 0
 
 
-def compute_cost_openai(shim: _UsageShim, model: str, config: LLMConfig | None = None) -> float:
+def compute_cost_openai(shim: _UsageShim, model: str, config: LLMConfig | None = None) -> float | None:
     p = config.price() if config is not None else _list_price("openai", model)
     if not p:
-        return 0.0
+        return None
     return round(
         shim.input_tokens * p["in"] / 1_000_000
         + shim.cache_read_input_tokens * p["cached_in"] / 1_000_000
@@ -784,8 +793,8 @@ def _stream_turn_openai(
             "output_tokens": shim.output_tokens,
             "cache_read": shim.cache_read_input_tokens,
             "cache_write": 0,
-            "cost_delta_usd": round(cost, 6),
-            "session_cost_usd": round(state.get("usage", {}).get("cost_usd", 0.0), 6),
+            "cost_delta_usd": round(cost, 6) if cost is not None else None,
+            "session_cost_usd": state.get("usage", {}).get("cost_usd"),
         }
 
         choice = response.choices[0]

@@ -66,11 +66,29 @@ def test_old_connection_test_cannot_replace_result_or_unlock_new_test_after_save
         assert page.evaluate("connectionTests.length") == 1
         page.wait_for_timeout(30)
         assert len(saves) == 1
-        saves[0].fulfill(json={"ok": True, "message": "Saved."})
+        saves[0].fulfill(json={
+            "ok": True, "message": "AI settings saved.",
+            "assistant_ready": True,
+            "assistant_open_pricing": True,
+            "updates": {
+                "assistant-readiness-title": "AI is ready based on saved settings.",
+                "assistant-readiness-reason": "Use Test connection below to verify provider access.",
+                "assistant-pricing-state": "Cost estimates are unavailable without pricing. Prices are optional while both budgets are blank.",
+            },
+        })
         expect(page.locator("#orgAssistantForm")).to_have_attribute("data-settings-state", "saved")
+        expect(page.locator('[data-settings-text="assistant-readiness-title"]')).to_have_text("AI is ready based on saved settings.")
+        expect(page.locator('[data-settings-text="assistant-pricing-state"]')).to_contain_text("Cost estimates are unavailable")
+        expect(page.locator("#orgAssistantForm details").nth(0)).to_have_attribute("open", "")
+        expect(page.locator("#assistant-readiness")).to_have_class("ui-flash success")
+        expect(page.locator("#assistant-readiness-mark")).to_have_text(chr(0x2713))
+        page.evaluate("document.getElementById('orgAssistantForm').dispatchEvent(new CustomEvent('settings:success', {bubbles:true, detail:{assistant_ready:false, assistant_open_pricing:false}}))")
+        expect(page.locator("#assistant-readiness")).to_have_class("ui-flash error")
+        expect(page.locator("#assistant-readiness-mark")).to_have_text(chr(0x2715))
+        page.evaluate("document.getElementById('orgAssistantForm').dispatchEvent(new CustomEvent('settings:success', {bubbles:true, detail:{assistant_ready:true, assistant_open_pricing:false}}))")
         expect(result).to_be_hidden()
         expect(button).to_be_enabled()
-        button.click()
+        button.dispatch_event("click")
         assert page.evaluate("connectionTests.length") == 2
         page.evaluate("connectionTests[0].resolve({ok:true,json:async () => ({ok:true,message:'Old settings worked'})})")
         expect(message).to_have_text("Testing the saved settings…")

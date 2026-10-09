@@ -128,7 +128,7 @@ class AlertRun(models.Model):
     #: ``{"cited": [...lines the model gave decide()], "snapshot": {...}}`` —
     #: the snapshot is what the next evaluation compares against.
     evidence = models.JSONField(default=dict, blank=True)
-    cost_usd = models.DecimalField(max_digits=11, decimal_places=6, default=Decimal("0"))
+    cost_usd = models.DecimalField(max_digits=11, decimal_places=6, null=True, blank=True, default=Decimal("0"))
     delivered_to = models.JSONField(default=list, blank=True)
     error = models.TextField(blank=True, default="")
 

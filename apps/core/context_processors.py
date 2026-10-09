@@ -17,7 +17,7 @@ CONSOLE_PAGE_TITLES = {
     "org-invites": "Invitations",
     "org-api-keys": "API keys",
     "org-datasources": "Data sources",
-    "org-assistant": "AI Assistant",
+    "org-assistant": "AI settings",
     "org-sharing": "Report sharing",
     "org-live-queries": "Live queries",
     "org-groups": "Groups",

@@ -152,6 +152,11 @@ class TestForm:
 
 
 class TestRunLog:
+    def test_renders_unknown_cost_as_unavailable(self, login, viewer, rule, prefix):
+        AlertRun.objects.create(rule=rule, status="ok", decision="quiet", cost_usd=None)
+        html = login(viewer).get(f"{prefix}/{rule.pk}").content.decode()
+        assert "Cost unavailable" in html
+
     def test_renders_quiet_and_alert_runs(self, login, viewer, rule, prefix):
         AlertRun.objects.create(
             rule=rule, decision="quiet", title="Nothing unusual",

@@ -182,7 +182,7 @@ ACTIONS: dict[str, ActionSpec] = {
     "studio.delete": _m(CATEGORY_ADMIN, "Studio deleted"),
     "studio.repo_update": _m(CATEGORY_ADMIN, "Studio repository updated"),
     "studio.theme_set": _m(CATEGORY_ADMIN, "Studio default theme updated"),
-    "assistant.config.update": _m(CATEGORY_ADMIN, "AI assistant settings updated"),
+    "assistant.config.update": _m(CATEGORY_ADMIN, "AI settings updated"),
     # A proposed action carries its own audit row too (datasource.update,
     # run.enqueue, ...) with the proposal id; these record the decision.
     "assistant.proposal.approve": _m(CATEGORY_ADMIN, "AI assistant action approved"),
@@ -190,7 +190,7 @@ ACTIONS: dict[str, ActionSpec] = {
     # Pre-rename rows still carry the old action string. The trail is
     # append-only and must stay readable back to its first entry, so the
     # old key keeps its label rather than degrading to a raw slug.
-    "buddy.config.update": _m(CATEGORY_ADMIN, "AI assistant settings updated"),
+    "buddy.config.update": _m(CATEGORY_ADMIN, "AI settings updated"),
     "sso.update": _m(CATEGORY_ADMIN, "SSO configuration updated"),
     "security_policy.update": _m(CATEGORY_ADMIN, "Organization security policy updated"),
     "live_query_policy.update": _m(CATEGORY_ADMIN, "Live-query rate limit updated"),

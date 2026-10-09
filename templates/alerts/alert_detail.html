@@ -59,7 +59,7 @@
     {% if run.evidence.cited %}<ul class="al-run-evidence">{% for line in run.evidence.cited %}<li>{{ line }}</li>{% endfor %}</ul>{% endif %}
     {% if run.error %}<p class="al-run-error">{{ run.error }}</p>{% endif %}
     <div class="al-run-meta">
-      Cost ${{ run.cost_usd|floatformat:4 }}
+      {% if run.cost_usd is None %}Cost unavailable{% else %}Cost ${{ run.cost_usd|floatformat:4 }}{% endif %}
       · {% if run.delivered_to %}Delivered to {{ run.delivered_to|join:", " }}{% else %}Nothing sent{% endif %}
     </div>
   </div>

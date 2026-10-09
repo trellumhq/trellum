@@ -29,6 +29,23 @@ def form_data(**overrides):
 
 
 class TestSave:
+    def test_invalid_native_save_keeps_saved_pricing_status_and_draft(self, login, org_admin, org, url):
+        cfg = OrgAssistantConfig.objects.create(
+            org=org, enabled=True, api_key="saved-key", model="claude-future-9",
+            price_in_per_mtok=Decimal("2"), price_out_per_mtok=Decimal("10"),
+        )
+        response = login(org_admin).post(url, form_data(
+            api_key="", model=cfg.model, price_in_per_mtok="99", price_out_per_mtok="",
+        ))
+        assert response.status_code == 200
+        assert response.context["form"].errors
+        assert response.context["form"]["price_in_per_mtok"].value() == "99"
+        assert response.context["pricing_state"] == "Manual prices are set; cost estimates are available."
+        assert response.context["readiness_ok"] is True
+        cfg.refresh_from_db()
+        assert cfg.price_in_per_mtok == Decimal("2")
+        assert cfg.price_out_per_mtok == Decimal("10")
+
     def test_creates_config(self, login, org_admin, org, url):
         resp = login(org_admin).post(url, form_data())
         assert resp.status_code == 302
@@ -80,6 +97,34 @@ class TestSave:
         assert cfg.monthly_budget_usd is None
         assert cfg.per_user_budget_usd is None
 
+    def test_unlisted_model_saves_with_both_budgets_blank(self, login, org_admin, org, url):
+        response = login(org_admin).post(
+            url,
+            form_data(model="claude-future-9", monthly_budget_usd="", per_user_budget_usd=""),
+        )
+        assert response.status_code == 302
+        assert OrgAssistantConfig.objects.get(org=org).model == "claude-future-9"
+        from apps.assistant.llm import is_available
+        assert is_available(org) == (True, "")
+        assert "Cost estimates are unavailable without pricing" in login(org_admin).get(url).content.decode()
+
+    def test_enhanced_save_returns_saved_readiness_and_opens_pricing_when_capped(self, login, org_admin, org, url):
+        response = login(org_admin).post(
+            url,
+            form_data(model="claude-future-9", monthly_budget_usd="10"),
+            HTTP_X_TRELLUM_FORM="1",
+            HTTP_ACCEPT="application/json",
+        )
+        payload = response.json()
+        assert response.status_code == 200
+        assert payload["assistant_ready"] is False
+        assert payload["assistant_open_pricing"] is True
+        assert payload["updates"]["assistant-readiness-reason"] == (
+            "Set input and output prices for model 'claude-future-9' in AI settings "
+            "to enforce budgets, or leave both budgets blank."
+        )
+        assert "Cost estimates are unavailable" in payload["updates"]["assistant-pricing-state"]
+
     def test_save_is_audited(self, login, org_admin, org, url):
         login(org_admin).post(url, form_data())
         entry = AuditLog.objects.get(action="assistant.config.update")
@@ -125,6 +170,12 @@ class TestEndpointCopy:
         assert "Must implement the Anthropic Messages API, for example a LiteLLM proxy in Anthropic mode." in html
         assert "Any OpenAI-compatible server works: LiteLLM, Azure OpenAI, vLLM, Ollama, or a corporate gateway." in html
 
+    def test_pricing_help_explains_optional_uncapped_use(self, login, org_admin, url):
+        html = login(org_admin).get(url).content.decode()
+        assert "Optional with both budgets blank" in html
+        assert "required for unlisted models when either budget is set" in html
+        assert "Set both prices or leave both blank" in html
+
 
 class TestAdvancedFold:
     def test_opens_only_when_something_is_in_it(self, login, org_admin, url):
@@ -159,7 +210,11 @@ class TestConnectionTest:
 
     def test_nothing_saved_yet(self, login, org_admin, test_url):
         j = login(org_admin).post(test_url).json()
-        assert j == {"ok": False, "message": "Save the settings first.", "latency_ms": 0}
+        assert j == {
+            "ok": False, "message": "Save the settings first.", "latency_ms": 0,
+            "assistant_available": False,
+            "assistant_reason": "The AI assistant is not configured for this organization.",
+        }
 
     def test_member_cannot_probe(self, login, member, test_url):
         assert login(member).post(test_url).status_code == 403
@@ -258,9 +313,58 @@ class TestConnectionTest:
         )
         j = login(org_admin).post(test_url).json()
         assert j["ok"] is True and j["message"] == "claude-sonnet-4-6 answered."
+        assert j["assistant_available"] is True and j["assistant_reason"] == ""
         assert calls[0]["max_tokens"] == 8 and calls[0]["timeout"] == 20
         assert calls[0]["messages"] == [{"role": "user", "content": "Say OK"}]
         assert not LlmUsage.objects.exists()  # exempt from the ledger by design
+
+    def test_successful_probe_still_reports_unknown_model_blocker(
+        self, login, org_admin, org, test_url, monkeypatch
+    ):
+        from apps.assistant import llm
+        from apps.assistant.tests.test_message_sse import FakeClient, FakeResponse, TextBlock
+
+        OrgAssistantConfig.objects.create(
+            org=org, enabled=True, api_key="secret-key", model="claude-future-9",
+            monthly_budget_usd=Decimal("10"),
+        )
+        calls = []
+        monkeypatch.setattr(
+            llm, "_anthropic_client",
+            lambda config: FakeClient([FakeResponse([TextBlock("OK")])], calls),
+        )
+        result = login(org_admin).post(test_url).json()
+        assert result["ok"] is True
+        assert result["assistant_available"] is False
+        assert result["assistant_reason"] == "Set input and output prices for model 'claude-future-9' in AI settings to enforce budgets, or leave both budgets blank."
+        assert calls and "secret-key" not in str(result)
+
+    def test_settings_page_explains_saved_config_readiness(self, login, org_admin, org, url):
+        OrgAssistantConfig.objects.create(
+            org=org, enabled=True, api_key="secret-key", model="claude-future-9",
+            per_user_budget_usd=Decimal("10"),
+        )
+        html = login(org_admin).get(url).content.decode()
+        assert "Set input and output prices for model &#x27;claude-future-9&#x27; in AI settings to enforce budgets, or leave both budgets blank." in html
+        assert "<details open>" in html
+        assert "secret-key" not in html
+
+    def test_disabled_config_is_still_probed(
+        self, login, org_admin, org, test_url, monkeypatch
+    ):
+        from apps.assistant import llm
+        from apps.assistant.tests.test_message_sse import FakeClient, FakeResponse, TextBlock
+
+        OrgAssistantConfig.objects.create(org=org, enabled=False, api_key="secret-key")
+        calls = []
+        monkeypatch.setattr(
+            llm, "_anthropic_client",
+            lambda config: FakeClient([FakeResponse([TextBlock("OK")])], calls),
+        )
+        result = login(org_admin).post(test_url).json()
+        assert result["ok"] is True and calls
+        assert result["assistant_available"] is False
+        assert result["assistant_reason"] == "The AI assistant is disabled for this organization."
 
 
 class TestAccess:
@@ -287,5 +391,7 @@ class TestAccess:
         spender = make_user("spender@demo.example", org=org)
         LlmUsage.add_cost(org, spender, Decimal("1.25"))
         html = login(org_admin).get(url).content.decode()
+        assert "Recorded spend this month" in html
+        assert "Totals exclude usage without known prices" in html
         assert "spender@demo.example" in html
         assert "1.25" in html

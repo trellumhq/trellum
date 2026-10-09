@@ -101,13 +101,17 @@ def report_browser(request):
         browser.close()
 
 
-def _open(report_browser, *, fast_timeout=False, viewport=None, assistant_available=True):
+def _open(
+    report_browser, *, fast_timeout=False, viewport=None, assistant_available=True,
+    assistant_configured=False, assistant_reason="", availability_state=None,
+):
     context = report_browser.new_context(viewport=viewport or {"width": 390, "height": 720})
     page = context.new_page()
     errors = []
     top_navigations = []
     shell_requests = []
     assistant_messages = []
+    availability_state = availability_state if availability_state is not None else {"available": None}
     page.on("pageerror", lambda error: errors.append(str(error)))
 
     def route_request(route):
@@ -122,11 +126,20 @@ def _open(report_browser, *, fast_timeout=False, viewport=None, assistant_availa
                 if "player-overview" in request.url
                 else ["Explore studio"]
             )
+            override = availability_state["available"]
+            available = assistant_available if override is None else override
+            configured = assistant_configured if override is None else True
+            reason = assistant_reason if override is None else (
+                "Set input and output prices for model 'claude-future-9' in AI settings to enforce budgets, or leave both budgets blank."
+                if not available else ""
+            )
             route.fulfill(
                 content_type="application/json",
                 body=json.dumps({
-                    "available": assistant_available,
-                    "can_configure": not assistant_available,
+                    "available": available,
+                    "can_configure": not available,
+                    "configured": configured,
+                    "reason": reason,
                     "settings_url": "/orgs/demo/settings/assistant",
                     "suggestions": suggestions,
                 }),
@@ -409,7 +422,7 @@ def test_assistant_header_and_setup_entry_fit_console(report_browser):
         setup = page.locator(".assistant-setup")
         setup.wait_for(state="visible")
         assert setup.text_content().strip() == "Set up AI →"
-        assert setup.get_attribute("aria-label") == "Set up the AI assistant"
+        assert setup.get_attribute("aria-label") == "Set up AI"
         setup_box = setup.bounding_box()
         assert setup_box["x"] + setup_box["width"] <= 390
         page.locator("#report").click()
@@ -417,6 +430,61 @@ def test_assistant_header_and_setup_entry_fit_console(report_browser):
         setup.wait_for(state="visible")
         assert page.locator("#assistantPanel").count() == 1
         assert page.locator("#assistantPill").is_hidden()
+        assert errors == []
+    finally:
+        context.close()
+
+
+def test_assistant_header_entry_tracks_availability_changes(report_browser):
+    availability_state = {"available": None}
+    context, page, errors, *_ = _open(
+        report_browser, assistant_available=True, assistant_configured=True,
+        availability_state=availability_state,
+        viewport={"width": 1280, "height": 800},
+    )
+    try:
+        ask = page.locator("#assistantAsk")
+        ask.wait_for(state="visible")
+        assert page.locator(".assistant-setup").count() == 0
+
+        availability_state["available"] = False
+        page.evaluate(
+            "window.dispatchEvent(new CustomEvent('trellum:assistant-context',"
+            "{detail:{report:'blocked'}}))"
+        )
+        settings = page.locator(".assistant-setup")
+        settings.wait_for(state="visible")
+        assert settings.text_content().strip() == "AI settings →"
+        assert "claude-future-9" in settings.get_attribute("aria-label")
+
+        availability_state["available"] = True
+        page.evaluate(
+            "window.dispatchEvent(new CustomEvent('trellum:assistant-context',"
+            "{detail:{report:'ready'}}))"
+        )
+        settings.wait_for(state="detached")
+        ask.wait_for(state="visible")
+
+        availability_state["available"] = False
+        page.evaluate("window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}))")
+        page.locator(".assistant-setup").wait_for(state="visible")
+        assert errors == []
+    finally:
+        context.close()
+
+    configured_unavailable = _open(
+        report_browser, assistant_available=False, assistant_configured=True,
+        assistant_reason="Set input and output prices for model 'claude-future-9' in AI settings to enforce budgets, or leave both budgets blank.",
+    )
+    context, page, errors, *_ = configured_unavailable
+    try:
+        settings = page.locator(".assistant-setup")
+        settings.wait_for(state="visible")
+        assert settings.text_content().strip() == "AI settings →"
+        assert settings.get_attribute("aria-label") == (
+            "AI settings: Set input and output prices for model 'claude-future-9' in AI settings to enforce budgets, or leave both budgets blank."
+        )
+        assert settings.get_attribute("title") == "Set input and output prices for model 'claude-future-9' in AI settings to enforce budgets, or leave both budgets blank."
         assert errors == []
     finally:
         context.close()

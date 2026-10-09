@@ -93,6 +93,17 @@ class TestDryRun:
         with pytest.raises(CommandError, match="1 scenario\\(s\\) failed: outage"):
             self.run(org, studio_tree, tmp_path, "outage")
 
+    def test_unpriced_runs_render_unavailable_cost_in_rows_and_aggregate(
+        self, built, owner, assistant_config, org, studio_tree, tmp_path
+    ):
+        from apps.orgs.models import OrgAssistantConfig
+
+        OrgAssistantConfig.objects.filter(org=org).update(model="claude-future-9")
+        stdout, md = self.run(org, studio_tree, tmp_path, "outage")
+        assert "unavailable" in stdout
+        assert "Cost unavailable." in stdout
+        assert "| unavailable |" in md
+
     def test_failed_scenario_with_note_is_informational_and_sees_only_its_report(
         self, built, owner, assistant_config, org, studio_tree, write_report, tmp_path, monkeypatch
     ):

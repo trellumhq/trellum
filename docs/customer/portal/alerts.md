@@ -14,6 +14,8 @@ read-only. Anyone who can see the studio can be a recipient.
 
 Alerts need the [AI assistant](/docs/latest/portal/ai-assistant/) to be
 configured for the organization — the evaluation *is* an assistant turn.
+Organization admins choose the shared provider and model for chats and alert
+evaluations under **Organization settings → AI settings**.
 
 The two meet in both directions: tell the assistant "watch this for me"
 in a conversation and it proposes the rule for approval, and every alert

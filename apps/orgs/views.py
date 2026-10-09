@@ -898,11 +898,18 @@ def member_reset_mfa(request, org_slug, user_id):  # noqa: ARG001
 
 # ── Permission groups ───────────────────────────────────────────────────────
 
-# ── AI assistant settings ───────────────────────────────────────────────────────
+# ── AI settings ─────────────────────────────────────────────────────────────────
+
+def _assistant_pricing_state(config):
+    if config.price() is None:
+        return False, "Cost estimates are unavailable without pricing. Prices are optional while both budgets are blank."
+    if config.price_in is not None and config.price_out is not None:
+        return True, "Manual prices are set; cost estimates are available."
+    return True, "Built-in model rates are available; a manual override is optional."
 
 @require_org_role(roles.ORG_ADMIN)
 def assistant_settings(request, org_slug):  # noqa: ARG001
-    """Bring-your-own-key configuration for the report assistant."""
+    """Bring-your-own-key configuration shared by chat and alert evaluations."""
     from .forms import AssistantConfigForm
     from .models import OrgAssistantConfig
 
@@ -918,17 +925,53 @@ def assistant_settings(request, org_slug):  # noqa: ARG001
             )
             from apps.assistant import llm
 
-            hints = llm.mismatch_hints(llm.LLMConfig.from_config(form.instance))
+            config = llm.LLMConfig.from_config(form.instance)
+            hints = llm.mismatch_hints(config)
+            readiness_ok, readiness_reason = llm.is_available(request.org)
+            pricing_known, pricing_state = _assistant_pricing_state(config)
+            open_pricing = (
+                not pricing_known and (
+                    form.instance.monthly_budget_usd is not None
+                    or form.instance.per_user_budget_usd is not None
+                )
+            )
+            message = "AI settings saved." + (" " + " ".join(hints) if hints else "")
             if is_settings_request(request):
-                return settings_success(request, "AI assistant settings saved." + (" " + " ".join(hints) if hints else ""), values={"api_key": ""}, has_key=bool(form.instance.api_key), updates={"assistant-key-stored": "(a key is stored — blank keeps it)" if form.instance.api_key else "(none stored yet)"})
-            messages.success(request, "AI assistant settings saved.")
+                return settings_success(
+                    request, message, values={"api_key": ""},
+                    has_key=bool(form.instance.api_key),
+                    assistant_ready=readiness_ok,
+                    assistant_open_pricing=open_pricing,
+                    updates={
+                        "assistant-key-stored": "(a key is stored — blank keeps it)" if form.instance.api_key else "(none stored yet)",
+                        "assistant-readiness-title": "AI is ready based on saved settings." if readiness_ok else "AI is unavailable based on saved settings.",
+                        "assistant-readiness-reason": readiness_reason or "Use Test connection below to verify provider access.",
+                        "assistant-pricing-state": pricing_state,
+                    },
+                )
+            messages.success(request, "AI settings saved.")
             for hint in hints:
                 messages.info(request, hint)
             return redirect(request.path)
         if is_settings_request(request):
             return settings_error(request, form=form)
+        # ModelForm validation mutates its instance; status describes saved settings.
+        cfg = OrgAssistantConfig.objects.filter(org=request.org).first()
     else:
         form = AssistantConfigForm(instance=cfg, org=request.org)
+
+    from apps.assistant import llm
+    readiness_ok, readiness_reason = llm.is_available(request.org)
+    if cfg:
+        pricing_known, pricing_state = _assistant_pricing_state(llm.LLMConfig.from_config(cfg))
+    else:
+        pricing_known, pricing_state = False, "Cost estimates are unavailable without pricing. Prices are optional while both budgets are blank."
+    pricing_blocks_budget = bool(
+        cfg and not pricing_known and (
+            cfg.monthly_budget_usd is not None or cfg.per_user_budget_usd is not None
+        )
+    )
+    advanced_open = form.advanced_open() or pricing_blocks_budget
 
     usage = None
     if cfg is not None:
@@ -951,6 +994,10 @@ def assistant_settings(request, org_slug):  # noqa: ARG001
             "form": form,
             "cfg": cfg,
             "has_key": bool(cfg and cfg.api_key),
+            "readiness_ok": readiness_ok,
+            "readiness_reason": readiness_reason,
+            "pricing_state": pricing_state,
+            "advanced_open": advanced_open,
             "usage": usage,
         },
     )
@@ -966,8 +1013,14 @@ def assistant_test(request, org_slug):  # noqa: ARG001
 
     cfg = OrgAssistantConfig.objects.filter(org=request.org).first()
     if cfg is None:
-        return JsonResponse({"ok": False, "message": "Save the settings first.", "latency_ms": 0})
-    return JsonResponse(llm.check_connection(llm.LLMConfig.from_config(cfg)))
+        available, reason = llm.is_available(request.org)
+        return JsonResponse({
+            "ok": False, "message": "Save the settings first.", "latency_ms": 0,
+            "assistant_available": available, "assistant_reason": reason,
+        })
+    result = llm.check_connection(llm.LLMConfig.from_config(cfg))
+    result["assistant_available"], result["assistant_reason"] = llm.is_available(request.org)
+    return JsonResponse(result)
 
 
 # ── Invitations ─────────────────────────────────────────────────────────────

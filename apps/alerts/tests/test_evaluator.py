@@ -93,6 +93,18 @@ class TestDecision:
         assert run.cost_usd == Decimal("0.0105")
         assert LlmUsage.user_month_total(org, rule.created_by) == Decimal("0.0105")
 
+    def test_unknown_cost_is_persisted_as_unavailable_without_ledger_entry(
+        self, rule, fake_llm, org, assistant_config
+    ):
+        from apps.orgs.models import OrgAssistantConfig
+
+        OrgAssistantConfig.objects.filter(org=org).update(model="claude-future-9")
+        fake_llm(decide(False))
+        run = evaluator.evaluate(rule)
+        assert run.status == AlertRun.STATUS_OK
+        assert run.cost_usd is None
+        assert LlmUsage.user_month_total(org, rule.created_by) == Decimal("0")
+
     def test_dry_run_never_delivers_or_touches_cooldown(self, rule, fake_llm):
         fake_llm(decide(True))
         run = evaluator.evaluate(rule, deliver=False)
