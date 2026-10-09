@@ -136,6 +136,10 @@ def effective_fields(declaration, binding) -> dict:
     if binding is None:
         return dict(declaration.config or {})
     fields = {**(binding.config or {}), **(declaration.config or {}), **(binding.credentials or {})}
+    # This framework lifecycle option is operator-owned: keep a portal
+    # override (including False) ahead of the repository declaration.
+    if "new_connection_per_query" in (binding.config or {}):
+        fields["new_connection_per_query"] = binding.config["new_connection_per_query"]
     if declaration.type in INLINE_TYPES and (binding.config or {}).get("path"):
         fields["path"] = binding.config["path"]
     return fields

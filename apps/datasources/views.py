@@ -401,7 +401,10 @@ def credential_fields(decl) -> list[str]:
     return [k for k in _credential_keys(decl.type) if cfg.get("ssh_host") or not k.startswith("ssh_")]
 
 
-def persist_credentials(request, decl, secrets: dict, *, org_level: bool, **audit_meta) -> DataSource:
+def persist_credentials(
+    request, decl, secrets: dict, *, org_level: bool,
+    new_connection_per_query: bool | None = None, **audit_meta,
+) -> DataSource:
     """Persist credentials without connecting; blank values keep stored secrets."""
     studio, name = request.studio, decl.name
     if org_level and request.org_roles.is_org_admin:
@@ -419,6 +422,10 @@ def persist_credentials(request, decl, secrets: dict, *, org_level: bool, **audi
                 credentials=dict(shared.credentials or {}) if shared else None,
             )
     ds.type = decl.type
+    if new_connection_per_query is not None:
+        config = dict(ds.config or {})
+        config["new_connection_per_query"] = new_connection_per_query
+        ds.config = config
     stored = dict(ds.credentials or {})
     for key in _credential_keys(decl.type):
         value = str(secrets.get(key) or "").strip()
@@ -433,9 +440,15 @@ def persist_credentials(request, decl, secrets: dict, *, org_level: bool, **audi
     return ds
 
 
-def save_credentials(request, decl, secrets: dict, *, org_level: bool, **audit_meta) -> tuple[bool, str]:
+def save_credentials(
+    request, decl, secrets: dict, *, org_level: bool,
+    new_connection_per_query: bool | None = None, **audit_meta,
+) -> tuple[bool, str]:
     """Keep the assistant and native form's synchronous save-and-test contract."""
-    ds = persist_credentials(request, decl, secrets, org_level=org_level, **audit_meta)
+    ds = persist_credentials(
+        request, decl, secrets, org_level=org_level,
+        new_connection_per_query=new_connection_per_query, **audit_meta,
+    )
     name, studio = decl.name, request.studio
     ds._check_studio = studio
 
@@ -516,6 +529,9 @@ def _configure_context(request, st: SourceState) -> dict:
 
     # Widgets only -- the POST is read field by field in _configure.
     form = DataSourceForm(instance=st.binding, studio=request.studio, org=request.org, fixed_scope="studio")
+    form.initial["new_connection_per_query"] = effective_fields(decl, st.binding).get(
+        "new_connection_per_query", False
+    )
     shared = DataSource.objects.filter(org=request.org, name=st.name).first()
     return {
         "state": st,
@@ -523,6 +539,7 @@ def _configure_context(request, st: SourceState) -> dict:
         "facts": [(k, v) for k, v in facts if v not in (None, "")],
         "declared_in": decl.source_file,
         "fields": [form[k] for k in keys],
+        "new_connection_per_query": form["new_connection_per_query"],
         "can_org": request.org_roles.is_org_admin,
         # Ticking "organization level" would overwrite shared credentials the
         # form is not showing (a studio row shadows them here).
@@ -550,11 +567,19 @@ def _configure(request, name: str):
         ds = persist_credentials(
             request, decl, {k: request.POST.get(k) for k in _credential_keys(decl.type)},
             org_level=bool(request.POST.get("org_level")),
+            new_connection_per_query=(
+                request.POST.get("new_connection_per_query") in {"true", "on"}
+                if "new_connection_per_query" in request.POST else None
+            ),
         )
         return _saved_response(request, ds, request.studio, configured=True)
     ok, text = save_credentials(
         request, decl, {k: request.POST.get(k) for k in _credential_keys(decl.type)},
         org_level=bool(request.POST.get("org_level")),
+        new_connection_per_query=(
+            request.POST.get("new_connection_per_query") in {"true", "on"}
+            if "new_connection_per_query" in request.POST else None
+        ),
     )
     (messages.success if ok else messages.error)(request, text)
     return redirect(request.path)

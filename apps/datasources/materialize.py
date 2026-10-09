@@ -95,7 +95,9 @@ def materialize(studio) -> dict[str, str]:
                 entry["credentials"] = {"local": ds.env_prefix}
                 for key, value in fields.items():
                     suffix = ENV_SUFFIXES.get(str(key).lower())
-                    if suffix is not None and str(value or "").strip() != "" and key != "upload":
+                    if suffix is not None and (
+                        key == "new_connection_per_query" or str(value or "").strip() != ""
+                    ) and key != "upload":
                         env[f"{ds.env_prefix}_{suffix}"] = str(value)
 
         sources[state.name] = entry

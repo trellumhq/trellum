@@ -397,6 +397,18 @@ class TestMaterializedYaml:
         assert "svc_reports" not in raw
         assert env[f"{pg_source.env_prefix}_PASS"] == "s3cret-pw"
 
+    @pytest.mark.parametrize("enabled", [True, False])
+    def test_new_connection_setting_is_materialized_as_a_boolean_env_value(
+        self, studio_tree, enabled
+    ):
+        ds = DataSource.objects.create(
+            studio=studio_tree, name="warehouse", type="postgres",
+            config={"host": "db", "new_connection_per_query": enabled},
+            credentials={"user": "svc", "password": "pw"},
+        )
+        env = materialize(studio_tree)
+        assert env[f"{ds.env_prefix}_NEW_CONNECTION_PER_QUERY"] == str(enabled)
+
     def test_inline_entries_for_sqlite_and_file(self, studio_tree):
         DataSource.objects.create(
             studio=studio_tree, name="demo_db", type="sqlite",
@@ -710,6 +722,25 @@ class TestDeclaredSources:
         assert env[f"{ds.env_prefix}_USER"] == "svc"
         assert env[f"{ds.env_prefix}_PASS"] == "pw"
         assert env[f"{ds.env_prefix}_HOST"] == "db.repo.internal"
+
+    def test_binding_lifecycle_override_reaches_env_ahead_of_repository_yaml(
+        self, studio_tree
+    ):
+        from apps.datasources.models import RepoDataSource
+
+        RepoDataSource.objects.create(
+            studio=studio_tree, name="warehouse", type="mysql",
+            config={"host": "db", "new_connection_per_query": True},
+            source_file="data-sources/config.yaml",
+        )
+        ds = DataSource.objects.create(
+            studio=studio_tree, name="warehouse", type="mysql",
+            config={"new_connection_per_query": False},
+            credentials={"user": "svc", "password": "pw"},
+        )
+        env = materialize(studio_tree)
+        assert _read_yaml(studio_tree)["sources"]["warehouse"]["new_connection_per_query"] is True
+        assert env[f"{ds.env_prefix}_NEW_CONNECTION_PER_QUERY"] == "False"
 
     def test_unbound_declaration_is_omitted(self, studio_tree, declared):
         env = materialize(studio_tree)

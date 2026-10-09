@@ -34,6 +34,7 @@ def page_html(*, test_timeout=30000):
         <input type="hidden" name="csrfmiddlewaretoken" value="csrf-form-token">
         <input type="hidden" name="id" value="1"><input name="name" value="wh">
         <input name="host" value="old"><select name="type"><option value="postgres">Postgres</option></select>
+        <label><input type="checkbox" name="new_connection_per_query">Use a new connection for every query</label>
         <div data-f="path"><label>Path</label><input name="path"><span class="helptext">Help</span></div>
         <input type="checkbox" name="upload"><span id="ds-git-warning"></span>
         <button type="submit">Save</button>
@@ -43,7 +44,7 @@ def page_html(*, test_timeout=30000):
       <script>
         window.requests = []; window.saveCount = 0;
         window.fetch = function(url, options) {
-          requests.push({url:String(url), revision:options.body.get('revision')});
+          requests.push({url:String(url), revision:options.body.get('revision'), newConnection:options.body.get('new_connection_per_query')});
           if (String(url).endsWith('/test')) {
             return new Promise(function(resolve) {
               window.completeTest = function(data) { resolve({json:function(){return Promise.resolve(data)}}); };
@@ -96,6 +97,28 @@ def test_save_confirms_before_test_and_retains_page_focus_scroll_and_other_draft
         assert page.evaluate("window.scrollY") == scroll
         assert page.evaluate("document.activeElement === window.focusedElement")
         assert page.locator('[name="other"]').input_value() == "Another draft"
+        browser.close()
+
+
+def test_save_submits_checked_and_unchecked_connection_option_without_navigation():
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page()
+        load_page(page)
+        checkbox = page.locator('[name="new_connection_per_query"]')
+        checkbox.check()
+        page.locator('#ds-form button[type="submit"]').click()
+        page.wait_for_function("window.requests.length === 2")
+        assert page.evaluate("window.requests[0].newConnection") == "on"
+        assert page.url == "http://datasources.test/settings"
+
+        page.evaluate("window.completeTest({ok:true,detail:'Connected.',revision:'revision-1'})")
+        page.wait_for_function("window.requests.length === 2")
+        checkbox.uncheck()
+        page.locator('#ds-form button[type="submit"]').click()
+        page.wait_for_function("window.requests.length === 4")
+        assert page.evaluate("window.requests[2].newConnection") is None
+        assert page.url == "http://datasources.test/settings"
         browser.close()
 
 

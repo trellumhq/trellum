@@ -184,6 +184,11 @@
         {{ f }}
       </div>
       {% endfor %}
+      <div class="ui-field ui-field-wide">
+        <input type="hidden" name="new_connection_per_query" value="false">
+        <label class="ui-check-row">{{ configure.new_connection_per_query }} {{ configure.new_connection_per_query.label }}</label>
+        <span class="ui-help">{{ configure.new_connection_per_query.help_text }}</span>
+      </div>
       {% if configure.can_org %}
       <div class="ui-field">
         {% if configure.warn_shared %}
@@ -276,6 +281,10 @@
     <div class="ui-field ui-field-wide" data-f="secure">
       <label class="ui-check-row">{{ form.secure }} {{ form.secure.label }}</label>
       <span class="ui-help">Unticked = the driver's default: HTTPS whenever a password is set.</span>
+    </div>
+    <div class="ui-field ui-field-wide" data-f="new_connection_per_query">
+      <label class="ui-check-row">{{ form.new_connection_per_query }} {{ form.new_connection_per_query.label }}</label>
+      <span class="ui-help">{{ form.new_connection_per_query.help_text }}</span>
     </div>
     <div class="ui-field" data-f="tenant_id"><label>Tenant ID (Entra)</label>{{ form.tenant_id }}</div>
     <div class="ui-field" data-f="client_id"><label>Client ID</label>{{ form.client_id }}</div>

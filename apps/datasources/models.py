@@ -49,6 +49,7 @@ ENV_SUFFIXES = {
     "ssh_private_key": "SSH_PRIVATE_KEY",
     "ssh_password": "SSH_PASSWORD",
     "ssh_host_key": "SSH_HOST_KEY",
+    "new_connection_per_query": "NEW_CONNECTION_PER_QUERY",
 }
 
 
@@ -59,6 +60,7 @@ CONFIG_KEYS = {
     "warehouse", "schema", "catalog", "http_path", "secure",
     "tenant_id", "client_id", "site_url", "credentials_path",
     "ssh_host", "ssh_port", "ssh_user", "ssh_host_key",
+    "new_connection_per_query",
 }
 CREDENTIAL_KEYS = {
     "user", "password", "client_secret", "credentials_json", "access_token",
@@ -106,17 +108,17 @@ REQUIRED_FIELDS = {
 #: Ports are left to the framework driver's default when blank (5432, 1433,
 #: 5439, 8080, ...), so no type carries a default port here.
 TYPE_FIELDS = {
-    "postgres": ["host", "port", "database", "user", "password", *SSH_FIELDS],
-    "mysql": ["host", "port", "database", "user", "password", *SSH_FIELDS],
-    "vertica": ["host", "port", "database", "user", "password", *SSH_FIELDS],
-    "clickhouse": ["host", "port", "database", "user", "password", *SSH_FIELDS],
-    "sqlserver": ["host", "port", "database", "user", "password", *SSH_FIELDS],
-    "redshift": ["host", "port", "database", "user", "password", *SSH_FIELDS],
-    "trino": ["host", "port", "user", "password", "catalog", "schema", "secure", *SSH_FIELDS],
+    "postgres": ["host", "port", "database", "user", "password", "new_connection_per_query", *SSH_FIELDS],
+    "mysql": ["host", "port", "database", "user", "password", "new_connection_per_query", *SSH_FIELDS],
+    "vertica": ["host", "port", "database", "user", "password", "new_connection_per_query", *SSH_FIELDS],
+    "clickhouse": ["host", "port", "database", "user", "password", "new_connection_per_query", *SSH_FIELDS],
+    "sqlserver": ["host", "port", "database", "user", "password", "new_connection_per_query", *SSH_FIELDS],
+    "redshift": ["host", "port", "database", "user", "password", "new_connection_per_query", *SSH_FIELDS],
+    "trino": ["host", "port", "user", "password", "catalog", "schema", "secure", "new_connection_per_query", *SSH_FIELDS],
 
-    "databricks": ["host", "http_path", "access_token", "catalog", "schema"],
-    "snowflake": ["account", "warehouse", "schema", "database", "user", "password"],
-    "bigquery": ["project", "credentials_json", "credentials_path"],
+    "databricks": ["host", "http_path", "access_token", "catalog", "schema", "new_connection_per_query"],
+    "snowflake": ["account", "warehouse", "schema", "database", "user", "password", "new_connection_per_query"],
+    "bigquery": ["project", "credentials_json", "credentials_path", "new_connection_per_query"],
     # "path" is the spreadsheet URL or ID, not a file: the framework reads it
     # through the resolver like any other connection field. The service
     # account is either stored here (credentials_json) or a file on the

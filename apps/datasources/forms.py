@@ -39,6 +39,15 @@ _CONFIG_FIELDS = [
     ("catalog", forms.CharField(required=False)),
     ("http_path", forms.CharField(required=False, label="HTTP path (Databricks)")),
     ("secure", forms.BooleanField(required=False, label="Use HTTPS")),
+    ("new_connection_per_query", forms.BooleanField(
+        required=False,
+        label="Use a new connection for every query",
+        help_text=(
+            "Framework query helpers open and close a connection for each query. "
+            "This adds connection setup time, and temporary tables, session state "
+            "and transactions are not shared across queries."
+        ),
+    )),
     ("tenant_id", forms.CharField(required=False, label="Tenant ID (Entra)")),
     ("client_id", forms.CharField(required=False)),
     ("site_url", forms.CharField(required=False, label="Site URL (SharePoint)")),

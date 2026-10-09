@@ -358,6 +358,31 @@ class TestOrgUpload:
 
 
 class TestManagementUI:
+    def test_connection_option_is_available_for_remote_query_types_only(
+        self, login, org_admin, org, studio_tree
+    ):
+        url = f"/s/{org.slug}/{studio_tree.slug}/settings/datasources"
+        html = login(org_admin).get(url).content.decode()
+        assert 'name="new_connection_per_query"' in html
+        for type_ in (
+            "postgres", "mysql", "vertica", "clickhouse", "sqlserver", "redshift",
+            "trino", "databricks", "snowflake", "bigquery",
+        ):
+            assert f'"{type_}"' in html
+        # The selector's per-type map drives visibility; local/file-like sources
+        # do not receive this option.
+        type_map = html.split('<script id="type-fields" type="application/json">', 1)[1].split("</script>", 1)[0]
+        import json
+
+        fields = json.loads(type_map)
+        assert all("new_connection_per_query" in fields[t] for t in (
+            "postgres", "mysql", "vertica", "clickhouse", "sqlserver", "redshift",
+            "trino", "databricks", "snowflake", "bigquery",
+        ))
+        assert all("new_connection_per_query" not in fields[t] for t in (
+            "file", "google_sheets", "onedrive", "sqlite", "duckdb",
+        ))
+
     def test_create_source_splits_config_and_credentials(
         self, login, org_admin, org, studio_tree
     ):
@@ -374,6 +399,48 @@ class TestManagementUI:
         ds = DataSource.objects.get(studio=studio_tree, name="warehouse")
         assert ds.config == {"host": "db.internal", "port": 5432, "database": "core"}
         assert ds.credentials == {"user": "svc", "password": "pw-secret"}
+
+    def test_new_connection_setting_saves_edits_and_is_removed_on_type_switch(
+        self, login, org_admin, org, studio_tree
+    ):
+        url = f"/s/{org.slug}/{studio_tree.slug}/settings/datasources"
+        client = login(org_admin)
+        response = client.post(url, {
+            "name": "warehouse", "type": "postgres", "scope": "studio",
+            "host": "db.internal", "user": "svc", "password": "pw",
+            "new_connection_per_query": "on",
+        })
+        assert response.status_code == 302
+        ds = DataSource.objects.get(studio=studio_tree, name="warehouse")
+        assert ds.config["new_connection_per_query"] is True
+
+        response = client.post(url, {
+            "id": ds.pk, "name": "warehouse", "type": "postgres", "scope": "studio",
+            "host": "db.internal", "user": "svc", "password": "",
+        })
+        assert response.status_code == 302
+        ds.refresh_from_db()
+        assert "new_connection_per_query" not in ds.config
+
+        response = client.post(url, {
+            "id": ds.pk, "name": "warehouse", "type": "file", "scope": "studio",
+            "path": "data-sources/files/warehouse.csv", "upload": "on",
+        })
+        assert response.status_code == 302
+        ds.refresh_from_db()
+        assert ds.config == {"path": "data-sources/files/warehouse.csv", "upload": True}
+
+    def test_new_connection_setting_can_be_saved_at_organization_scope(
+        self, login, org_admin, org, studio_tree
+    ):
+        url = f"/s/{org.slug}/{studio_tree.slug}/settings/datasources"
+        response = login(org_admin).post(url, {
+            "name": "shared_warehouse", "type": "trino", "scope": "org",
+            "host": "db.internal", "user": "svc", "new_connection_per_query": "on",
+        })
+        assert response.status_code == 302
+        ds = DataSource.objects.get(org=org, name="shared_warehouse")
+        assert ds.config["new_connection_per_query"] is True
 
     def test_blank_password_keeps_stored(self, login, org_admin, org, studio_tree, pg_source):
         url = f"/s/{org.slug}/{studio_tree.slug}/settings/datasources"
@@ -425,6 +492,43 @@ class TestManagementUI:
         })
         ds = DataSource.objects.get(studio=studio_tree, name="tunnelled")
         assert ds.credentials == {"user": "u", "password": "p", "ssh_private_key": "PEM"}
+
+    def test_configure_overrides_repository_setting_and_can_turn_it_off(
+        self, login, org_admin, org, studio_tree, monkeypatch
+    ):
+        from apps.datasources import views
+        from apps.datasources.models import RepoDataSource
+
+        url = f"/s/{org.slug}/{studio_tree.slug}/settings/datasources"
+        RepoDataSource.objects.create(
+            studio=studio_tree, name="warehouse", type="postgres",
+            config={"host": "db", "new_connection_per_query": True},
+            source_file="data-sources/config.yaml",
+        )
+        client = login(org_admin)
+        html = client.get(f"{url}?configure=warehouse").content.decode()
+        checkbox = html.split('type="checkbox" name="new_connection_per_query"', 1)[1]
+        assert "checked" in checkbox.split(">", 1)[0]
+        monkeypatch.setattr(views, "run_state_check", lambda _state: (True, "ok"))
+
+        client.post(url, {
+            "action": "configure", "name": "warehouse", "user": "u", "password": "p",
+            "new_connection_per_query": "on",
+        })
+        ds = DataSource.objects.get(studio=studio_tree, name="warehouse")
+        assert ds.config["new_connection_per_query"] is True
+
+        client.post(url, {
+            "action": "configure", "name": "warehouse", "user": "u", "password": "",
+            "new_connection_per_query": "false",
+        })
+        ds.refresh_from_db()
+        assert ds.config["new_connection_per_query"] is False
+
+        # A client that predates the checkbox retains the explicit override.
+        client.post(url, {"action": "configure", "name": "warehouse", "user": "u"})
+        ds.refresh_from_db()
+        assert ds.config["new_connection_per_query"] is False
 
     def test_delete(self, login, org_admin, org, studio_tree, pg_source):
         url = f"/s/{org.slug}/{studio_tree.slug}/settings/datasources"
