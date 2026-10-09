@@ -7,6 +7,26 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.4.5] — 2026-10-09
+
+### Added
+
+- Add the per-data-source `new_connection_per_query` opt-in. It opens a fresh
+  session for each uncached framework query and cleans it up when the query
+  finishes; existing connection reuse remains the default. Eligible remote
+  disconnects receive bounded retries. This mode supports independent queries
+  through framework helpers and does not support shared temporary tables,
+  transactions or direct driver session access. Configure it in the repository
+  data-source definition, the portal's data-source setting, or the matching
+  `<CREDENTIAL_PREFIX>_NEW_CONNECTION_PER_QUERY` environment variable.
+
+### Upgrade notes
+
+Update the portal and worker images and every configured report-runner image to
+v0.4.5, then restart those processes so newly started runs use the new code.
+After the upgrade, enable `new_connection_per_query` for the data source that
+needs it. The option is off by default, and no database migration is required.
+
 ## [0.4.4] — 2026-10-09
 
 ### Changed

@@ -8,7 +8,7 @@ release; the commands use it for both the image tag and workflow identity.
 Set the tag once and use it for both the image and the certificate identity:
 
 ```bash
-TRELLUM_VERSION=v0.4.4
+TRELLUM_VERSION=v0.4.5
 ```
 
 ## Check the signature
