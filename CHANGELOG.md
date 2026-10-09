@@ -7,6 +7,26 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.4.4] — 2026-10-09
+
+### Changed
+
+- Allow models without listed prices when both budgets are blank. Enforcing
+  either budget for an unlisted model requires input and output prices;
+  unpriced usage remains without a cost estimate rather than being counted as
+  zero.
+- Name the shared organization configuration **AI settings** for report chats
+  and alert evaluations. Show saved availability and pricing state on the page
+  and update it after an in-place save; connection tests continue to report
+  readiness from the saved configuration.
+
+### Upgrade notes
+
+Apply the additive `alerts.0002_alert_run_nullable_cost` and
+`orgs.0021_assistant_model_pricing_help_text` migrations. Update the configured
+portal/worker and report-runner images to v0.4.4, then restart web and worker
+processes so they run the upgraded code.
+
 ## [0.4.3] — 2026-10-09
 
 ### Fixed
