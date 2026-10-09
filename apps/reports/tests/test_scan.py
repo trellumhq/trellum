@@ -160,7 +160,7 @@ class TestPayload:
         entry = payload["reports"][0]
         expected_keys = {
             "id", "slug", "kind", "name", "description", "category", "studio", "tags",
-            "schedule", "last_run", "last_status", "last_error",
+            "schedule", "last_run", "last_status", "build_status", "last_error",
             "has_output", "html_entry", "validation", "details", "framework_version",
             # View analytics (internal planning#4): apps.reports.scan._view_stats_for.
             "views_30d", "last_viewed", "stale",
@@ -177,6 +177,7 @@ class TestPayload:
         assert entry["slug"] == "alpha"
         assert entry["studio"] == studio_tree.slug
         assert entry["last_status"] == "success"
+        assert entry["build_status"] == "success"
         assert entry["has_output"] is True
         assert entry["html_entry"] == "index.html"
         assert entry["details"] == {"total": 5}
