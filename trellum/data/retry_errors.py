@@ -120,17 +120,7 @@ def _numeric_args(exc: Exception):
             pass
 
 
-def is_retryable_connection_error(exc: Exception, source_type: str) -> bool:
-    """Return whether opening a fresh connection could plausibly recover ``exc``.
-
-    Local database errors are deliberately excluded: opening another SQLite or
-    DuckDB connection cannot repair a file lock, corrupt file, or closed handle.
-    """
-    source = str(source_type).lower()
-    if source not in _REMOTE_SOURCES:
-        return False
-
-    chain = tuple(_exception_chain(exc))
+def _has_permanent_error(chain: tuple, source: str) -> bool:
     # A wrapped server-side auth, permission, or SQL error vetoes a generic
     # outer ConnectionError (notably Vertica's connector wrapper).
     for current in chain:
@@ -151,20 +141,20 @@ def is_retryable_connection_error(exc: Exception, source_type: str) -> bool:
             "BadRequest",
             "NotFound",
         }:
-            return False
+            return True
         if isinstance(current, (MemoryError, ssl.SSLCertVerificationError)):
-            return False
+            return True
         if source in {"bigquery", "databricks", "trino", "clickhouse"}:
             statuses = list(_metadata(current, "code", "status_code"))
             for context in _metadata(current, "context"):
                 if isinstance(context, dict):
                     statuses.append(context.get("http-code"))
             if any(str(status) in {"400", "401", "403", "404"} for status in statuses):
-                return False
+                return True
         if isinstance(current, BaseException):
             message = str(current).lower()
             if any(phrase in message for phrase in _PERMANENT_PHRASES):
-                return False
+                return True
         for value in _metadata(current, "sqlstate", "pgcode"):
             state = str(value).upper()
             if (
@@ -173,7 +163,23 @@ def is_retryable_connection_error(exc: Exception, source_type: str) -> bool:
                 or state[:2] in _AUTH_SQLSTATES
                 or state[:2] in _PERMANENT_SQLSTATES
             ):
-                return False
+                return True
+    return False
+
+
+def is_retryable_connection_error(exc: Exception, source_type: str) -> bool:
+    """Return whether opening a fresh connection could plausibly recover ``exc``.
+
+    Local database errors are deliberately excluded: opening another SQLite or
+    DuckDB connection cannot repair a file lock, corrupt file, or closed handle.
+    """
+    source = str(source_type).lower()
+    if source not in _REMOTE_SOURCES:
+        return False
+
+    chain = tuple(_exception_chain(exc))
+    if _has_permanent_error(chain, source):
+        return False
     for current in chain:
         class_names = {cls.__name__ for cls in type(current).__mro__}
         for value in (*_metadata(current, "errno", "errorcode", "code"), *_numeric_args(current)):
