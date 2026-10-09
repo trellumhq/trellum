@@ -291,14 +291,33 @@ jobs:
         # Keyless: the signature is bound to this workflow's OIDC identity and
         # recorded in the public transparency log, so there is no signing key
         # for us to lose or leak.
-        run: cosign sign --yes "${{ steps.push.outputs.digest }}"
+        run: |
+          for attempt in 1 2 3; do
+            if cosign sign --yes "${{ steps.push.outputs.digest }}"; then
+              exit 0
+            else
+              status=$?
+            fi
+            if [ "$attempt" -eq 3 ]; then exit "$status"; fi
+            echo "Signing failed (attempt $attempt/3); retrying in 30 seconds" >&2
+            sleep 30
+          done
 
       - name: Attach the SBOM as a signed attestation
         run: |
-          cosign attest --yes \
-            --predicate sbom.cyclonedx.json \
-            --type cyclonedx \
-            "${{ steps.push.outputs.digest }}"
+          for attempt in 1 2 3; do
+            if cosign attest --yes \
+              --predicate sbom.cyclonedx.json \
+              --type cyclonedx \
+              "${{ steps.push.outputs.digest }}"; then
+              exit 0
+            else
+              status=$?
+            fi
+            if [ "$attempt" -eq 3 ]; then exit "$status"; fi
+            echo "Attestation failed (attempt $attempt/3); retrying in 30 seconds" >&2
+            sleep 30
+          done
 
       - name: Verify what we just published
         # Signing that is never verified is a ritual. Prove a customer's
@@ -322,14 +341,33 @@ jobs:
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
       - name: Sign the runner image
-        run: cosign sign --yes "${{ steps.push_runner.outputs.digest }}"
+        run: |
+          for attempt in 1 2 3; do
+            if cosign sign --yes "${{ steps.push_runner.outputs.digest }}"; then
+              exit 0
+            else
+              status=$?
+            fi
+            if [ "$attempt" -eq 3 ]; then exit "$status"; fi
+            echo "Signing failed (attempt $attempt/3); retrying in 30 seconds" >&2
+            sleep 30
+          done
 
       - name: Attach the runner SBOM as a signed attestation
         run: |
-          cosign attest --yes \
-            --predicate sbom-runner.cyclonedx.json \
-            --type cyclonedx \
-            "${{ steps.push_runner.outputs.digest }}"
+          for attempt in 1 2 3; do
+            if cosign attest --yes \
+              --predicate sbom-runner.cyclonedx.json \
+              --type cyclonedx \
+              "${{ steps.push_runner.outputs.digest }}"; then
+              exit 0
+            else
+              status=$?
+            fi
+            if [ "$attempt" -eq 3 ]; then exit "$status"; fi
+            echo "Attestation failed (attempt $attempt/3); retrying in 30 seconds" >&2
+            sleep 30
+          done
 
       - name: Verify the runner image
         run: |
