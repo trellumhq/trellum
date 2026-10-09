@@ -5,7 +5,8 @@
  * dropdown, rather than up to four separate buttons crowding the header.
  *
  * Host/registry split: this file is the HOST -- it owns the button, the
- * dropdown, and a tiny registry (window.__reportMenu.register). It does not
+ * dropdown (a native picker on mobile), and a tiny registry
+ * (window.__reportMenu.register). It does not
  * know what an "Email delivery" item does; static/report_delivery.js,
  * static/report_share.js and static/report_views.js each register their
  * own item instead of mounting their own header button (see each file's
@@ -44,8 +45,12 @@
         + '.rmw-header-icon{display:inline-flex}'
         + '.rmw-header-icon svg{width:14px;height:14px}'
         + '@media(max-width:640px){.rmw-header-btn span:not(.rmw-header-icon){display:none}.rmw-header-btn{padding:6px 8px}}'
-        + '.rmw-mobile-options{display:none;min-width:0;max-width:100%;min-height:44px;font-size:16px;box-sizing:border-box}'
-        + '@media(max-width:767px){#fwOptionsBtn{display:none!important}.rmw-mobile-options{display:inline-block}}'
+        + '.rmw-mobile-options,.rmw-mobile-scope,.rmw-monitor-link{display:none;min-width:0;min-height:44px;box-sizing:border-box;'
+        + 'padding:0 8px;border:1px solid rgba(255,255,255,.25);border-radius:6px;background:rgba(0,0,0,.2);'
+        + 'color:#fff;font-family:inherit;font-size:16px;line-height:1.2}'
+        + '.rmw-mobile-options option,.rmw-mobile-options optgroup,.rmw-mobile-scope option{background:var(--bg-card,#fff);color:var(--text-main,var(--text,#111))}'
+        + '@media(max-width:767px){#fwOptionsBtn,#fwOptionsDropdown{display:none!important}'
+        + '#fwOptionsWrap{flex:0 0 96px;max-width:100%}.fw-header-right .rmw-mobile-options{display:block;width:100%;min-height:44px}}'
         // The dropdown: right-aligned under the button (position:relative on
         // #fwOptionsWrap, not the button itself, so the dropdown's own
         // absolute positioning is unaffected by the button's :hover
@@ -171,8 +176,6 @@
         mobile.innerHTML = '<option value="">Options</option>';
         mobile.addEventListener('change', function () {
             var id = mobile.value;
-            var selected = mobile.options[mobile.selectedIndex];
-            if (selected && selected.dataset.themeValue) mobile.dataset.themeValue = selected.dataset.themeValue;
             mobile.value = '';
             if (id.indexOf('theme:') === 0) {
                 var theme = document.getElementById('fwThemeSelect');
@@ -223,7 +226,7 @@
                     var themeOption = document.createElement('option');
                     themeOption.value = 'theme:' + theme.options[t].value;
                     themeOption.textContent = theme.options[t].textContent;
-                    themeOption.dataset.themeValue = theme.options[t].value;
+                    themeOption.disabled = theme.disabled || theme.options[t].disabled;
                     group.appendChild(themeOption);
                 }
                 mobile.appendChild(group);
@@ -450,34 +453,23 @@
         + 'body.tl-report-console-pending .fw-container>.fw-filter-bar,'
         + 'body.tl-report-console-mounted .fw-container>.fw-filter-bar{'
         + 'top:calc(var(--fw-sticky-offset,48px) + 56px)}'
-        + 'body.tl-report-console-mounted .tl-console-header{z-index:9500}'
-        + 'body.tl-report-console-mounted .tl-console-backdrop{z-index:9501}'
-        + 'body.tl-report-console-mounted .tl-console-sidebar{z-index:9502}'
+        // Keep navigation above Options but below the report drawers at 9200.
+        + 'body.tl-report-console-mounted .tl-console-header{z-index:9160}'
+        + 'body.tl-report-console-mounted .tl-console-backdrop{z-index:9161}'
+        + 'body.tl-report-console-mounted .tl-console-sidebar{z-index:9162}'
         + '@media(min-width:1024px){body.tl-report-console-pending,body.tl-report-console-mounted{padding-left:240px}'
         + 'body.tl-report-console-pending.tl-console-collapsed,'
         + 'body.tl-report-console-mounted.tl-console-collapsed{padding-left:64px}}'
         + '@media(max-width:767px){body.tl-report-console-mounted.tl-console-title-known .fw-header-left{display:none}'
         + 'body.tl-report-console-hosted .fw-header-left{display:none}'
-        + 'body.tl-report-console-hosted .fw-header{min-height:44px;justify-content:flex-end;flex-wrap:wrap}'
-        + 'body.tl-report-console-hosted .fw-header-right{width:100%;justify-content:flex-end;flex-wrap:wrap}'
-        + 'body.tl-report-console-hosted .fw-header-right button,'
-        + 'body.tl-report-console-hosted .fw-header-right select{min-height:44px}'
-        + 'body.tl-report-console-hosted .fw-header-right select{font-size:16px}'
-        + 'body.tl-report-console-mounted .fw-header{min-height:44px;justify-content:flex-end;flex-wrap:wrap}'
-        + 'body.tl-report-console-mounted .fw-header-right{width:100%;justify-content:flex-end;flex-wrap:wrap}'
-        + 'body.tl-report-console-mounted .fw-header-right button,'
-        + 'body.tl-report-console-mounted .fw-header-right select{min-height:44px}'
-        + 'body.tl-report-console-mounted .fw-header-right select{font-size:16px}}'
-        + '.rmw-mobile-scope,.rmw-monitor-link{display:none}'
-        + '@media(max-width:767px){body.tl-report-console #fwOptionsDropdown,body.tl-report-focus #fwOptionsDropdown,body.tl-report-console-hosted #fwOptionsDropdown{display:none!important}'
-        + 'body.tl-report-console .fw-header,body.tl-report-focus .fw-header,body.tl-report-console-hosted .fw-header{min-height:44px;flex-wrap:nowrap;gap:6px}'
-        + 'body.tl-report-console .fw-header-right,body.tl-report-focus .fw-header-right,body.tl-report-console-hosted .fw-header-right{display:flex;align-items:center;flex:1;min-width:0;width:auto;gap:6px;flex-wrap:nowrap}'
-        + 'body.tl-report-console .fw-header-right>*,body.tl-report-focus .fw-header-right>*,body.tl-report-console-hosted .fw-header-right>*{min-width:0;max-width:100%}'
-        + 'body.tl-report-console .fw-header-right .fw-toggle-group[data-toggle-id="__scope__"],body.tl-report-focus .fw-header-right .fw-toggle-group[data-toggle-id="__scope__"],body.tl-report-console-hosted .fw-header-right .fw-toggle-group[data-toggle-id="__scope__"]{display:none!important}'
-        + 'body.tl-report-console .fw-header-right .fw-theme-select.rmw-theme-original,body.tl-report-focus .fw-header-right .fw-theme-select.rmw-theme-original,body.tl-report-console-hosted .fw-header-right .fw-theme-select.rmw-theme-original{display:none!important}'
-        + 'body.tl-report-console .rmw-mobile-scope,body.tl-report-focus .rmw-mobile-scope,body.tl-report-console-hosted .rmw-mobile-scope{display:inline-block;min-width:0;max-width:42%;height:44px;font-size:16px;box-sizing:border-box}'
-        + 'body.tl-report-console .rmw-monitor-link,body.tl-report-focus .rmw-monitor-link,body.tl-report-console-hosted .rmw-monitor-link{display:inline-flex;align-items:center;justify-content:center;flex:none;min-width:58px;padding:0 8px;min-height:44px;white-space:nowrap;box-sizing:border-box}'
-        + 'body.tl-report-console .fw-help-wrap,body.tl-report-focus .fw-help-wrap,body.tl-report-console-hosted .fw-help-wrap{display:none!important}}'
+        + 'body.tl-report-console .fw-header,body.tl-report-focus .fw-header{min-height:44px;padding:6px 12px;flex-wrap:wrap;gap:6px}'
+        + 'body.tl-report-console .fw-header-left,body.tl-report-focus .fw-header-left{flex-basis:100%}'
+        + 'body.tl-report-console .fw-header-right,body.tl-report-focus .fw-header-right{display:flex;align-items:center;flex:1 1 100%;min-width:0;width:100%;gap:6px;flex-wrap:nowrap}'
+        + 'body.tl-report-console .fw-header-right button,body.tl-report-focus .fw-header-right button{min-height:44px}'
+        + '.fw-header-right .rmw-scope-original,.fw-header-right .rmw-theme-original{display:none!important}'
+        + '.rmw-mobile-scope{display:block;flex:1 1 0;width:0;height:44px}'
+        + '.rmw-monitor-link{display:inline-flex;align-items:center;justify-content:center;flex:none;min-width:68px;font-size:14px;text-decoration:none;white-space:nowrap}'
+        + 'body.tl-report-console .fw-help-wrap,body.tl-report-focus .fw-help-wrap{display:none!important}}'
         + 'body.tl-report-monitor .fw-header,body.tl-report-monitor .fw-anno-bar,'
         + 'body.tl-report-monitor .fw-filter-bar,body.tl-report-monitor #assistantLauncher,'
         + 'body.tl-report-monitor #assistantAsk,body.tl-report-monitor #assistantPill,'
@@ -543,6 +535,7 @@
             new MutationObserver(syncScope).observe(scope, {subtree:true, attributes:true, attributeFilter:['class','disabled']});
             syncScope();
             right.insertBefore(scopeSelect, right.firstChild);
+            scope.classList.add('rmw-scope-original');
         }
         var theme = document.getElementById('fwThemeSelect');
         if (theme && document.querySelector('.rmw-mobile-options')) theme.classList.add('rmw-theme-original');
@@ -562,7 +555,7 @@
             next.searchParams.delete('_console_host_token');
             next.searchParams.set('display', 'monitor');
             monitor.href = path + next.search + next.hash;
-        }
+        };
         updateMonitorHref();
         if (!hosted) {
             var originalReplace = history.replaceState;

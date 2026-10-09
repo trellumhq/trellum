@@ -40,7 +40,7 @@ SHELL_HTML = """<div class="tl-console-shell" data-console-shell
   <button type="button" data-console-backdrop>Close navigation</button>
 </div>"""
 REPORT_HTML = f"""<!doctype html>
-<html><head><style>{REPORT_HEADER_CSS}
+<html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>{REPORT_HEADER_CSS}
 html,body{{margin:0}} .fw-container{{box-sizing:border-box;padding:12px 20px}}
 .fw-header{{display:flex;justify-content:space-between;gap:8px;box-sizing:border-box;max-width:100%}}
 .fw-header-left{{min-width:0;white-space:nowrap}} .fw-header-right{{display:flex;align-items:center;gap:6px;min-width:0;max-width:100%}}
@@ -52,10 +52,12 @@ margin-left:calc(-50vw + 50%);margin-right:calc(-50vw + 50%)}}
 </style></head><body>
 <div class="fw-container" id="reportContent">
   <div class="fw-header"><div class="fw-header-left"><h1>Test report</h1></div>
-    <div class="fw-header-right"><div class="fw-toggle-group fw-scope-toggle" data-toggle-id="__scope__"><button class="fw-toggle-btn active" data-scope-key="gop3">GOP3</button><button class="fw-toggle-btn" data-scope-key="monopoly">Monopoly</button><button class="fw-toggle-btn" data-scope-key="combined">Combined</button></div><select class="fw-theme-select" id="fwThemeSelect"><option value="light" selected>Light</option><option value="high-contrast">High contrast</option></select><div class="fw-help-wrap">Help</div></div></div>
+    <div class="fw-header-right"><div class="fw-toggle-group fw-scope-toggle" data-toggle-id="__scope__"><button class="fw-toggle-btn active" data-scope-key="north">North</button><button class="fw-toggle-btn" data-scope-key="south">South</button><button class="fw-toggle-btn" data-scope-key="combined">Combined</button></div><select class="fw-theme-select" id="fwThemeSelect"><option value="light" selected>Light</option><option value="high-contrast">High contrast</option></select><div class="fw-help-wrap">Help</div></div></div>
   <div class="fw-filter-bar">Date range</div><main id="reportBody">Report body</main>
 </div>
 <script>
+window.themeChanges = 0;
+document.getElementById('fwThemeSelect').addEventListener('change', function(){{window.themeChanges++;}});
 document.querySelectorAll('.fw-scope-toggle .fw-toggle-btn').forEach(function(button){{button.addEventListener('click',function(){{
   document.querySelectorAll('.fw-scope-toggle .fw-toggle-btn').forEach(function(other){{other.classList.toggle('active',other===button);}});
 }});}});
@@ -97,7 +99,10 @@ def open_report(report_browser):
     def _open(
         path: str, *, shell_status: int = 503, viewport=None, fail_console_css=False
     ):
-        context = report_browser.new_context(viewport=viewport)
+        context = report_browser.new_context(
+            viewport=viewport, is_mobile=bool(viewport and viewport["width"] < 768),
+            has_touch=bool(viewport and viewport["width"] < 768),
+        )
         contexts.append(context)
         page = context.new_page()
         shell_requests = []
@@ -342,28 +347,74 @@ def test_mobile_toolbar_uses_native_controls_and_fits(open_report, width):
     page, _shell_requests, errors = open_report(
         "/s/demo/casino/r/player-overview/index.html?display=console&range=30d#revenue",
         viewport={"width": width, "height": 720},
+        shell_status=200,
     )
-    page.wait_for_timeout(80)
+    page.wait_for_selector("body.tl-report-console-mounted")
+    page.locator('[data-item-id="share"]').wait_for(state="attached")
     options = page.locator("select.rmw-mobile-options")
     assert options.is_visible()
     labels = options.locator("option").all_text_contents()
     assert labels[0] == "Options"
     assert "Expand" in labels and "Monitor" in labels and "Share" in labels
-    page.evaluate("window.__reportMenu.register({id:'later',label:'Later',order:100,onSelect:function(){}})")
+    page.evaluate("window.__reportMenu.register({id:'later',label:'Later',order:100,onSelect:function(){window.laterCalls=(window.laterCalls||0)+1;}})")
     assert "Later" in options.locator("option").all_text_contents()
+    options.select_option("later")
+    assert options.input_value() == ""
+    assert page.evaluate("window.laterCalls") == 1
+    page.evaluate("window.__reportMenu.register({id:'later',label:'Updated'})")
+    assert options.locator('option[value="later"]').count() == 1
+    options.select_option("later")
+    assert page.evaluate("window.laterCalls") == 2
     assert page.locator("#fwOptionsBtn").evaluate("el => getComputedStyle(el).display") == "none"
     assert page.locator(".rmw-mobile-scope").is_visible()
     assert options.locator('optgroup[label="Report theme"] option').all_text_contents() == ["Light", "High contrast"]
-    page.locator(".rmw-mobile-scope").select_option("monopoly")
-    assert page.locator('.fw-scope-toggle [data-scope-key="monopoly"]').evaluate(
+    page.locator(".rmw-mobile-scope").select_option("south")
+    assert page.locator('.fw-scope-toggle [data-scope-key="south"]').evaluate(
         "el => el.classList.contains('active')"
     )
     page.locator('.fw-scope-toggle [data-scope-key="combined"]').evaluate("el => el.click()")
     assert page.locator(".rmw-mobile-scope").input_value() == "combined"
     options.select_option("theme:high-contrast")
     assert page.locator("#fwThemeSelect").input_value() == "high-contrast"
+    assert page.evaluate("window.themeChanges") == 1
+    assert options.input_value() == ""
+    assert not page.locator("#fwThemeSelect").is_visible()
+    assert page.locator(".fw-header").bounding_box()["height"] <= 60
+    for control in (options, page.locator(".rmw-mobile-scope"), page.locator(".rmw-monitor-link")):
+        box = control.bounding_box()
+        assert box["height"] >= 44 and box["width"] >= 60
+        assert box["x"] >= 0 and box["x"] + box["width"] <= width
     assert page.evaluate("document.documentElement.scrollWidth") <= width
-    assert page.locator(".rmw-monitor-link").is_visible(), page.evaluate("() => [document.body.className, document.querySelector('.rmw-monitor-link').getBoundingClientRect().toJSON(), document.querySelector('.fw-header-right').getBoundingClientRect().toJSON()]")
+    assert page.locator(".rmw-monitor-link").is_visible()
     monitor_href = page.locator(".rmw-monitor-link").get_attribute("href")
     assert monitor_href == "/s/demo/casino/r/player-overview/index.html?display=monitor&range=30d#revenue"
+    options.select_option("share")
+    page.locator("#rswClose").click()
+    assert options.evaluate("el => el === document.activeElement")
+    assert errors == []
+
+
+@pytest.mark.parametrize("path", [
+    "/s/demo/casino/r/player-overview/index.html",
+    "/content/demo/casino/player-overview/builds/b7/index.html",
+])
+def test_mobile_monitor_link_tracks_filters_and_opens_directly(open_report, path):
+    page, _requests, errors = open_report(
+        path + "?display=focus&range=30d#revenue",
+        viewport={"width": 390, "height": 720},
+    )
+    page.evaluate("history.replaceState(null, '', location.pathname + '?display=focus&range=7d&_console_host=1&_console_host_token=internal#chart')")
+    link = page.locator(".rmw-monitor-link")
+    assert link.get_attribute("href") == (
+        "/s/demo/casino/r/player-overview/index.html?display=monitor&range=7d#chart"
+    )
+    with page.expect_navigation(wait_until="load"):
+        link.click()
+    page.reload()
+    assert not page.locator(".fw-header").is_visible()
+    assert not page.locator(".fw-filter-bar").is_visible()
+    with page.expect_navigation(wait_until="load"):
+        page.locator(".tl-report-monitor-exit").click()
+    assert parse_qs(urlsplit(page.url).query) == {"display": ["console"], "range": ["7d"]}
+    assert urlsplit(page.url).fragment == "chart"
     assert errors == []
