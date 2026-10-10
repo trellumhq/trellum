@@ -38,9 +38,15 @@ and source files, rebuilds the report, and the preview refreshes while the
 source stays reviewable in Git.
 
 <p align="center">
-  <img src="docs/assets/store-health.jpg" alt="Store Health report in Trellum Dark, with comparison KPIs, filters, and revenue and margin trends">
+  <img src="docs/assets/store-health.jpg" alt="Store Health report with comparison KPIs, filters, and revenue and margin trends">
   <br>
-  <sub>Store Health is a synthetic retail report shown in Trellum Dark. It is separate from the Nova Play examples.</sub>
+  <sub>Store Health is a synthetic retail report, separate from the Nova Play examples.</sub>
+</p>
+
+<p align="center">
+  <img src="docs/assets/report-mobile.jpg" width="260" alt="Live Ops Monitor report shown at a mobile viewport, with event status and responsive filters">
+  <br>
+  <sub>Live Ops Monitor at a mobile viewport, using synthetic event data.</sub>
 </p>
 
 Use the standalone framework on a laptop, in CI, or behind your own web server.
@@ -60,9 +66,9 @@ with Docker](docs/customer/install/try-it.md#try-the-self-hosted-portal) for a
 shared team home.
 
 <p align="center">
-  <a href="https://trellum.dev/tour/"><img src="website/static/media/tour/portal-overview.jpg" alt="Nova Play's report library in the Trellum portal — open the interactive feature tour"></a>
+  <a href="https://trellum.dev/tour/"><img src="docs/assets/portal-reports.jpg" alt="Nova Play report library in the Trellum portal, with successful builds and the Ask AI affordance"></a>
   <br>
-  <sub><a href="https://trellum.dev/tour/">Open the interactive portal tour</a> · 14 features, at your own pace · <a href="docs/product-tour.md">read the walkthrough</a> · <a href="https://trellum.dev/docs/latest/install/try-it/">try Trellum locally</a></sub>
+  <sub>Nova Play's synthetic report library. <a href="https://trellum.dev/tour/">Explore the interactive portal tour</a> or <a href="https://trellum.dev/docs/latest/install/try-it/">try Trellum locally</a>.</sub>
 </p>
 
 The framework turns report definitions and source data into interactive,
