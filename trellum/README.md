@@ -41,7 +41,7 @@ python -m pip install "trellum[drivers]"
 ```
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/trellumhq/trellum/main/docs/assets/store-health.jpg" alt="Store Health in Trellum Dark with comparison KPIs, interactive filters and annotated revenue and margin trends">
+  <img src="https://raw.githubusercontent.com/trellumhq/trellum/main/docs/assets/store-health.png" alt="Store Health in Trellum Dark with comparison KPIs, interactive filters and annotated revenue and margin trends">
   <br>
   <sub>Store Health uses the synthetic retail dataset included with Trellum.</sub>
 </p>

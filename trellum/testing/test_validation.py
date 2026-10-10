@@ -559,3 +559,21 @@ def test_metadata_strip_follows_custom_header(tmp_path):
     container_at = html.index('class="fw-container')
     assert header_at < metadata_at < freshness_at < container_at
     assert "Last event" in html and "2026-10-10" in html
+    assert 'class="fw-report-chrome"' not in html
+
+
+def test_default_header_and_metadata_share_report_chrome(tmp_path):
+    from trellum.rendering.html_builder import render_report
+
+    ctx = _make_ctx()
+    ctx.set_header(meta={"Last event": "2026-10-10"})
+    render_report(ctx, str(tmp_path), auto_refresh=False)
+
+    html = (tmp_path / "index.html").read_text(encoding="utf-8")
+    chrome_start = html.index('<div class="fw-report-chrome">')
+    header_at = html.index('class="fw-header"', chrome_start)
+    metadata_at = html.index('id="fwReportMetadata"', chrome_start)
+    container_at = html.index('class="fw-container')
+    chrome_end = html.rindex('</div>', metadata_at, container_at)
+    assert chrome_start < header_at < metadata_at < chrome_end < container_at
+    assert "Last event" in html and "2026-10-10" in html

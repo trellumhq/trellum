@@ -124,6 +124,7 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
    bleed across, and its `-50vw` measures past a frame's own scrollbar, which
    is what put a horizontal scrollbar under an embedded chart. */
 body.fw-only { min-height: 0; }
+body.fw-only .fw-report-chrome,
 body.fw-only .fw-header { display: none; }
 body.fw-only .fw-report-metadata { display: none; }
 /* No bottom inset: a host insets the frame itself, and padding here is

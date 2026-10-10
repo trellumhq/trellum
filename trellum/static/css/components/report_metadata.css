@@ -11,6 +11,13 @@
 .fw-report-metadata-item { display: inline-flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
 .fw-report-metadata-label { color: rgba(255,255,255,0.62); overflow-wrap: anywhere; }
 .fw-report-metadata-value { overflow-wrap: anywhere; }
+.fw-report-chrome > .fw-report-metadata {
+    min-height: 18px;
+    padding: 1px 0 0;
+    background: transparent;
+    border-top: 0;
+    position: static;
+}
 .fw-freshness {
     display: none; align-items: center; gap: 4px; flex-shrink: 0;
 }
