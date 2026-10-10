@@ -377,6 +377,13 @@ def render_report(
     metadata_html, metadata_css_parts, metadata_js_parts = _render_report_metadata(
         ctx, theme, seen_css, seen_js,
     )
+    if getattr(ctx, "_header_component", None) is None:
+        header_html = (
+            '<div class="fw-report-chrome">'
+            f'{header_html}{metadata_html}'
+            '</div>'
+        )
+        metadata_html = ""
     component_css_parts.extend(metadata_css_parts)
     component_js_parts.extend(metadata_js_parts)
 
