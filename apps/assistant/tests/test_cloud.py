@@ -280,7 +280,7 @@ def test_azure_api_key_and_client_secret_refresh(monkeypatch):
     load = Mock(return_value=credential)
     monkeypatch.setattr(azure.identity, "ClientSecretCredential", load)
     cfg = config("azure", auth_mode="client_secret", cloud_config={"tenant_id": "synthetic-tenant", "client_id": "synthetic-client"}, cloud_credentials={"client_secret": "test-only-secret"})
-    cloud.azure_openai_client(cfg)
+    cloud.azure_openai_client(cfg, timeout=7)
     provider = constructor.call_args.kwargs["api_key"]
     assert provider() == "token-one"
     assert provider() == "token-two"
@@ -288,6 +288,9 @@ def test_azure_api_key_and_client_secret_refresh(monkeypatch):
     assert credential.get_token.call_count == 2
     assert load.call_args.kwargs["client_secret"] == "test-only-secret"
     assert load.call_args.kwargs["authority"] == azure.identity.AzureAuthorityHosts.AZURE_PUBLIC_CLOUD
+    assert load.call_args.kwargs["connection_timeout"] == load.call_args.kwargs["read_timeout"] == 7
+    assert load.call_args.kwargs["retry_total"] == 0
+    assert load.call_args.kwargs["disable_instance_discovery"] is True
 
 
 def test_authorized_workload_modes_use_only_the_selected_provider(settings, monkeypatch):
@@ -300,14 +303,19 @@ def test_authorized_workload_modes_use_only_the_selected_provider(settings, monk
     session = Mock()
     monkeypatch.setattr(boto3, "Session", session)
     cloud._aws_client(config(auth_mode="workload"), "bedrock", 5)
-    session.assert_called_once_with(region_name="eu-west-1")
+    assert session.call_args.kwargs["region_name"] == "eu-west-1"
+    native = session.call_args.kwargs["botocore_session"]
+    assert native.get_default_client_config().read_timeout == 5
+    assert native.get_default_client_config().retries["max_attempts"] == 0
+    assert native.get_config_variable("metadata_service_num_attempts") == 1
     credentials = Mock()
     default = Mock(return_value=(credentials, "ignored-project"))
     monkeypatch.setattr(google.auth, "default", default)
     constructor = Mock()
     monkeypatch.setattr(genai, "Client", constructor)
     cloud._vertex_client(config("vertex", auth_mode="workload", cloud_config={"project": "explicit-project", "location": "global"}), 5)
-    default.assert_called_once_with(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+    assert default.call_args.kwargs["scopes"] == ["https://www.googleapis.com/auth/cloud-platform"]
+    assert callable(default.call_args.kwargs["request"])
     assert constructor.call_args.kwargs["project"] == "explicit-project"
     assert constructor.call_args.kwargs["credentials"] is credentials
     managed, federated = Mock(), Mock()
@@ -316,11 +324,32 @@ def test_authorized_workload_modes_use_only_the_selected_provider(settings, monk
     monkeypatch.setattr(openai, "OpenAI", Mock())
     monkeypatch.delenv("AZURE_FEDERATED_TOKEN_FILE", raising=False)
     cloud.azure_openai_client(config("azure", auth_mode="workload"))
-    managed.assert_called_once()
+    managed.assert_called_once_with(connection_timeout=30, read_timeout=30, retry_total=0)
     federated.assert_not_called()
     monkeypatch.setenv("AZURE_FEDERATED_TOKEN_FILE", "operator-configured-token-file")
     cloud.azure_openai_client(config("azure", auth_mode="workload"))
-    federated.assert_called_once()
+    federated.assert_called_once_with(connection_timeout=30, read_timeout=30, retry_total=0)
+
+
+def test_google_auth_requests_share_deadline_and_disable_nested_retries(monkeypatch):
+    now = [100.0]
+    monkeypatch.setattr(cloud.time, "monotonic", lambda: now[0])
+    request = Mock(return_value=SimpleNamespace(status=200))
+    bounded = cloud._google_auth_request(request, 105)
+    bounded(url="https://oauth2.googleapis.com/token", timeout=120)
+    assert request.call_args.kwargs["timeout"] == 5
+    now[0] = 103
+    bounded(url="https://oauth2.googleapis.com/token")
+    assert request.call_args.kwargs["timeout"] == 2
+    request.return_value.status = 503
+    with pytest.raises(TransportError) as error:
+        bounded(url="https://oauth2.googleapis.com/token")
+    assert error.value.kind == "server"
+    now[0] = 105
+    count = request.call_count
+    with pytest.raises(TransportError, match="deadline"):
+        bounded(url="https://oauth2.googleapis.com/token")
+    assert request.call_count == count
 
 
 def test_azure_client_and_constructor_failure_close_identity_transport(monkeypatch):

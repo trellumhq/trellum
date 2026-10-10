@@ -5,6 +5,7 @@ import base64
 import json
 import os
 import re
+import time
 import uuid
 from urllib.parse import urlsplit
 
@@ -72,7 +73,12 @@ def _aws_client(config, service, timeout):
         )
     elif config.auth_mode == "workload":
         _workload(config)
-        session = boto3.Session(region_name=region)
+        from botocore.session import get_session
+        native_session = get_session()
+        native_session.set_default_client_config(Config(connect_timeout=timeout or 30, read_timeout=timeout or 30, retries={"max_attempts": 0}))
+        native_session.set_config_variable("metadata_service_timeout", min(timeout or 30, 1))
+        native_session.set_config_variable("metadata_service_num_attempts", 1)
+        session = boto3.Session(region_name=region, botocore_session=native_session)
     else:
         raise TransportError("authentication", "Choose AWS access keys or an authorized workload identity.")
     suffix = "amazonaws.com.cn" if region.startswith("cn-") else "amazonaws.com"
@@ -80,7 +86,7 @@ def _aws_client(config, service, timeout):
                           config=Config(connect_timeout=timeout or 30, read_timeout=timeout or 30, retries={"max_attempts": 0}))
 
 
-def azure_openai_client(config):
+def azure_openai_client(config, timeout=None):
     """Use Azure's v1 endpoint and a refreshable SDK bearer-token callback."""
     from openai import OpenAI
     credential = None
@@ -88,7 +94,7 @@ def azure_openai_client(config):
         endpoint = urlsplit(config.base_url)
         host = endpoint.hostname or ""
         if (endpoint.scheme != "https" or endpoint.username or endpoint.password or endpoint.port not in (None, 443)
-                or endpoint.query or endpoint.fragment or not re.fullmatch(r"[a-zA-Z0-9-]+\.(?:openai|services\.ai)\.azure\.com", host)
+                or endpoint.query or endpoint.fragment or not re.fullmatch(r"[a-z0-9][a-z0-9-]*\.(?:openai|services\.ai)\.azure\.com", host)
                 or endpoint.path.rstrip("/") not in ("", "/openai/v1")):
             raise TransportError("authentication", "Azure credentials require a trusted Azure OpenAI HTTPS endpoint.")
         base_url = f"https://{host}/openai/v1/"
@@ -98,15 +104,17 @@ def azure_openai_client(config):
             key = config.api_key
         else:
             from azure.identity import AzureAuthorityHosts, ClientSecretCredential, ManagedIdentityCredential, WorkloadIdentityCredential, get_bearer_token_provider
+            identity_options = {"connection_timeout": timeout or 30, "read_timeout": timeout or 30, "retry_total": 0}
             if config.auth_mode == "client_secret":
                 _required(config.cloud_config, "tenant_id", "client_id")
                 _required(config.cloud_credentials, "client_secret")
                 credential = ClientSecretCredential(tenant_id=config.cloud_config["tenant_id"], client_id=config.cloud_config["client_id"],
-                                                    client_secret=config.cloud_credentials["client_secret"], authority=AzureAuthorityHosts.AZURE_PUBLIC_CLOUD)
+                                                    client_secret=config.cloud_credentials["client_secret"], authority=AzureAuthorityHosts.AZURE_PUBLIC_CLOUD,
+                                                    disable_instance_discovery=True, **identity_options)
             elif config.auth_mode == "workload":
                 _workload(config)
                 # Only deployed workload/managed identities, never a developer CLI login.
-                credential = WorkloadIdentityCredential() if os.environ.get("AZURE_FEDERATED_TOKEN_FILE") else ManagedIdentityCredential()
+                credential = WorkloadIdentityCredential(**identity_options) if os.environ.get("AZURE_FEDERATED_TOKEN_FILE") else ManagedIdentityCredential(**identity_options)
             else:
                 raise TransportError("authentication", "Choose an Azure API key, client secret or authorized workload identity.")
             token_provider = get_bearer_token_provider(credential, "https://cognitiveservices.azure.com/.default")
@@ -130,9 +138,25 @@ def azure_openai_client(config):
         raise _failure(exc) from None
 
 
+def _google_auth_request(request, deadline):
+    def bounded_request(*args, **kwargs):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TransportError("connection", "The cloud authentication deadline expired.")
+        kwargs["timeout"] = min(kwargs.get("timeout") or remaining, remaining)
+        response = request(*args, **kwargs)
+        # Stop google-auth's inner retry loop; the common runtime owns retries.
+        if response.status >= 400:
+            kind = "rate_limit" if response.status == 429 else "server" if response.status >= 500 else "authentication"
+            raise TransportError(kind, "The Google identity service could not authenticate the request.")
+        return response
+    return bounded_request
+
+
 def _vertex_client(config, timeout):
     from google import genai
     from google.genai import types
+    deadline = time.monotonic() + (timeout or 30)
     values = config.cloud_config
     _required(values, "project", "location")
     if not re.fullmatch(r"[a-z][a-z0-9-]*", values["project"]) or not re.fullmatch(r"[a-z][a-z0-9-]*", values["location"]):
@@ -147,9 +171,14 @@ def _vertex_client(config, timeout):
     elif config.auth_mode == "workload":
         _workload(config)
         import google.auth
-        credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+        from google.auth.transport.requests import Request
+        credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"], request=_google_auth_request(Request(), deadline))
     else:
         raise TransportError("authentication", "Choose a Google service account or authorized workload identity.")
+    original_refresh = credentials.refresh
+    def refresh(request):
+        original_refresh(_google_auth_request(request, deadline))
+    credentials.refresh = refresh
     location = values["location"]
     base_url = "https://aiplatform.googleapis.com" if location == "global" else f"https://{location}-aiplatform.googleapis.com"
     return genai.Client(enterprise=True, project=values["project"], location=location, credentials=credentials,
