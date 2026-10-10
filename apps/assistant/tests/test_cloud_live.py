@@ -42,6 +42,21 @@ PROVIDER_AUTH_CASES = [("anthropic", "api_key"), ("anthropic", "none"),
                        ("vertex", "service_account"), ("vertex", "workload")]
 
 
+def _build_config(row):
+    from apps.assistant.llm import GATEWAY_PLACEHOLDER_KEY, LLMConfig
+    from apps.assistant.provider_registry import PROVIDERS, effective_base_url
+    values = dict(row)
+    provider = values["provider"]
+    values["base_url"] = effective_base_url(provider, values.get("base_url", ""))
+    values["model"] = values.get("model") or PROVIDERS[provider]["default_model"]
+    values["custom_endpoint"] = bool(row.get("base_url"))
+    if values.get("auth_mode") == "none":
+        if not row.get("base_url"):
+            raise ValueError
+        values["api_key"] = GATEWAY_PLACEHOLDER_KEY
+    return LLMConfig(**values)
+
+
 @pytest.fixture(scope="module", params=PROVIDER_AUTH_CASES, ids=[":".join(pair) for pair in PROVIDER_AUTH_CASES])
 def live_provider_result(request):
     if os.environ.get("ASSISTANT_RUN_LIVE_TESTS") != "1":
@@ -62,17 +77,9 @@ def live_provider_result(request):
     if len(selected) != 1:
         pytest.fail("Supply exactly one connection per provider/auth mode in the live probe file.", pytrace=False)
     from django.test import override_settings
-    from apps.assistant.llm import LLMConfig, check_connection
-    from apps.assistant.provider_registry import PROVIDERS, effective_base_url
+    from apps.assistant.llm import check_connection
     try:
-        values = dict(selected[0])
-        provider = values["provider"]
-        values["base_url"] = effective_base_url(provider, values.get("base_url", ""))
-        values["model"] = values.get("model") or PROVIDERS[provider]["default_model"]
-        values["custom_endpoint"] = bool(selected[0].get("base_url"))
-        if values.get("auth_mode") == "none" and not selected[0].get("base_url"):
-            raise ValueError
-        config = LLMConfig(**values)
+        config = _build_config(selected[0])
     except (TypeError, ValueError):
         pytest.fail("The live probe connection contains invalid LLMConfig fields.", pytrace=False)
     with override_settings(ASSISTANT_WORKLOAD_IDENTITY_ORGS=payload.get("workload_identity_orgs", {})):

@@ -14,6 +14,22 @@ from apps.assistant.transport import TransportError
 SCHEMAS = [{"name": "lookup", "description": "Synthetic lookup", "input_schema": {"type": "object", "properties": {"q": {"type": "string"}}}}]
 
 
+def test_live_probe_config_resolves_presets_and_explicit_none_placeholder(monkeypatch):
+    from apps.assistant import llm
+    from apps.assistant.tests.test_cloud_live import _build_config
+    monkeypatch.setattr(llm, "LLMConfig", lambda **values: SimpleNamespace(**values))
+    direct = _build_config({"provider": "openrouter", "auth_mode": "api_key", "model": "synthetic", "api_key": "synthetic-key"})
+    assert direct.base_url == "https://openrouter.ai/api/v1"
+    assert direct.custom_endpoint is False
+    for provider in ("custom", "litellm", "anthropic", "openai"):
+        cfg = _build_config({"provider": provider, "auth_mode": "none", "model": "synthetic", "base_url": "http://gateway.example/v1"})
+        assert cfg.api_key == llm.GATEWAY_PLACEHOLDER_KEY
+        assert cfg.base_url == "http://gateway.example/v1"
+        assert cfg.custom_endpoint is True
+        with pytest.raises(ValueError):
+            _build_config({"provider": provider, "auth_mode": "none"})
+
+
 def config(provider="bedrock", **kwargs):
     values = dict(provider=provider, model="synthetic-model", base_url="https://example.openai.azure.com", api_key="test-only-secret",
                   auth_mode="access_key", cloud_config={"region": "eu-west-1"}, cloud_credentials={"access_key_id": "synthetic-id", "secret_access_key": "test-only-secret"}, org_id="org-a")
