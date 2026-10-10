@@ -7,6 +7,58 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-10-10
+
+### Added
+
+- Add native AI provider connections for Anthropic, OpenAI, LiteLLM, OpenRouter,
+  DeepSeek, Azure OpenAI, Amazon Bedrock, Vertex AI and custom compatible
+  endpoints. Organization AI settings support model discovery, encrypted
+  credentials, gateway-managed authentication and operator-authorized cloud
+  workload identities for assistant chats and alert evaluations.
+- Add a persistent report status strip with the report build time and optional
+  labeled metadata such as the last event time. Authors can set metadata with
+  `ctx.set_header(meta=...)`; the strip remains visible in Monitor view, and
+  report titles use a compact 12px size.
+
+### Changed
+
+- Save AI settings in place and bind connection tests and capability checks to
+  the saved configuration revision. Cloud providers use native streaming and
+  authentication flows with bounded requests and shared tool handling.
+
+### Fixed
+
+- Preserve v0.4.6 compatibility while the new AI configuration schema is
+  installed by adding a follow-up compatibility migration for existing portal
+  releases.
+- Stop incomplete AI turns when inference or tool continuation is interrupted,
+  and avoid nested credential retries in cloud identity requests. Close Azure
+  identity transports with their OpenAI client.
+
+### Security
+
+- Require explicit operator authorization before organizations can use cloud
+  workload identities and keep private provider continuation data out of
+  session exports.
+
+### Upgrade notes
+
+Apply the additive `orgs.0022_orgassistantconfig_auth_mode_and_more` migration
+and `orgs.0023_assistant_config_previous_release_compat` before starting the
+new portal. The follow-up migration keeps inserts from the previous portal
+release compatible during an application rollback. Existing keyless gateways
+with a configured base URL are migrated to gateway-managed authentication.
+Review saved AI settings after upgrading.
+
+Workload identity is disabled by default. To enable it, configure
+`ASSISTANT_WORKLOAD_IDENTITY_ORGS` on web and alert-evaluating worker processes
+with provider-to-organization-ID lists, configure the corresponding cloud
+identity on the host, then restart those processes. Deploy the matched portal,
+worker and report-runner images. Rebuild reports to include the persistent
+status strip and metadata in their generated output. No database change is
+needed for the report metadata feature.
+
 ## [0.4.6] — 2026-10-09
 
 ### Added

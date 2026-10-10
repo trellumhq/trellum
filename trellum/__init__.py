@@ -1,6 +1,6 @@
 """BI Report Framework -- build structured, themed reports from Python."""
 
-__version__ = "0.4.6"
+__version__ = "0.5.0"
 
 from trellum.project import get_project_root, set_project_root
 from trellum.report import BaseReport, ReportContext
