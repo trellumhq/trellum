@@ -91,6 +91,40 @@ def test_missing_usage_stays_unknown_and_stops_capped_tool_execution(monkeypatch
     events, state, toolbox = run(monkeypatch, [[response([tool()], usage=None)]], config=replace(CONFIG, budgeted=True))
     assert events[0]["cost_delta_usd"] is None and state["usage"]["cost_usd"] is None
     assert events[-1]["code"] == "metering" and not toolbox.executed
+    events = list(llm.stream_turn(replace(CONFIG, budgeted=True), state, "next", toolbox=toolbox, system_blocks=[]))
+    assert events[0]["code"] == "new_conversation"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("kind,progress", [("connection", True), ("server", True), ("connection", False)])
+def test_interrupted_nonvisible_inference_blocks_later_capped_calls(org, viewer, make_assistant_config, monkeypatch, kind, progress):
+    config = llm.LLMConfig.from_config(make_assistant_config(org, monthly_budget_usd=20))
+    calls, state, toolbox = [], {}, Toolbox()
+    toolbox.actor = viewer
+    def adapter(*args, **kwargs):
+        calls.append(1)
+        if progress:
+            yield {"type": "keepalive"}
+        raise TransportError(kind, "Synthetic interrupted inference")
+    monkeypatch.setattr(llm, "_adapter", lambda provider: adapter)
+    monkeypatch.setattr(llm.time, "sleep", lambda seconds: pytest.fail("must not retry an unmetered capped request"))
+    events = list(llm.stream_turn(config, state, "synthetic", toolbox=toolbox, system_blocks=[]))
+    assert events[-1]["type"] == "error" and state["usage"]["cost_usd"] is None
+    assert not llm.is_available(org)[0] and len(calls) == 1
+    events = list(llm.stream_turn(config, state, "next", toolbox=toolbox, system_blocks=[]))
+    assert events[-1]["code"] == "budget" and len(calls) == 1
+
+
+@pytest.mark.django_db
+def test_successful_metering_recheck_cannot_replay_unfinished_calls(org, make_assistant_config, monkeypatch):
+    cfg = make_assistant_config(org, monthly_budget_usd=20)
+    config = llm.LLMConfig.from_config(cfg)
+    _, state, toolbox = run(monkeypatch, [[response([tool()], usage=None)]], config=config)
+    cfg.connection_check = {"revision": cfg.config_revision, "checks": {"chat": {"ok": True}, "usage": {"ok": True}}}
+    cfg.save()
+    assert llm.is_available(org)[0]
+    events = list(llm.stream_turn(llm.LLMConfig.from_config(cfg), state, "next", toolbox=toolbox, system_blocks=[]))
+    assert events[0]["code"] == "new_conversation" and not toolbox.executed
 
 
 def test_forced_tool_failure_is_metered(monkeypatch):
@@ -99,12 +133,13 @@ def test_forced_tool_failure_is_metered(monkeypatch):
     assert events[0]["cost_delta_usd"] > 0 and not toolbox.executed
 
 
-def test_pre_output_retry_and_midstream_no_retry(monkeypatch):
+@pytest.mark.parametrize("retry_kind", ["rate_limit", "server"])
+def test_pre_output_retry_and_midstream_no_retry(monkeypatch, retry_kind):
     calls = []
     def adapter(*args, **kwargs):
         calls.append(1)
         if len(calls) == 1:
-            raise TransportError("rate_limit", "Synthetic rate limit")
+            raise TransportError(retry_kind, "Synthetic transient failure")
         yield {"type": "text_delta", "text": "visible"}
         raise RuntimeError("secret-credential")
     monkeypatch.setattr(llm, "_adapter", lambda provider: adapter)

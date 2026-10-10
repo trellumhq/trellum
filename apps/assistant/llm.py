@@ -353,6 +353,10 @@ def stream_turn(
     Mutates ``state`` (transcript + usage). Persisting it, recording spend and
     writing SSE frames are the view's job, same contract as the legacy portal.
     """
+    if state.get("_continuation_error"):
+        yield {"type": "error", "code": "new_conversation",
+               "message": "This conversation has unfinished provider tool calls. Start a new conversation."}
+        return
     private = state.get("_provider") or {}
     identity = _connection_identity(config)
     if private and private.get("identity") != identity:
@@ -392,6 +396,7 @@ def stream_turn(
                 yield clock.expired_event()
                 return
             emitted = False
+            received_progress = False
             heartbeat = time.monotonic()
             try:
                 timeout = None if math.isinf(clock.remaining()) else max(clock.remaining(), 0.001)
@@ -403,6 +408,8 @@ def stream_turn(
                         _invalidate_metering(config)
                         yield clock.expired_event()
                         return
+                    if event.get("type") in ("text_delta", "keepalive", "response"):
+                        received_progress = True
                     if event.get("type") == "text_delta":
                         if not isinstance(event.get("text"), str):
                             raise TransportError("protocol", "The provider returned invalid text.")
@@ -424,13 +431,11 @@ def stream_turn(
                 break
             except Exception as error:
                 safe = normalize_error(error)
-                if response is None and safe.kind == "protocol":
+                if received_progress or safe.kind in ("connection", "protocol"):
                     add_usage(state, None, None)
                     _invalidate_metering(config)
-                if emitted:
-                    add_usage(state, None, None)
-                    _invalidate_metering(config)
-                    yield clock.expired_event() if clock.remaining() <= 0 else _cut_off()
+                    yield (clock.expired_event() if clock.remaining() <= 0 else
+                           _cut_off() if emitted else _provider_error(safe, config.base_url))
                     return
                 if safe.kind not in ("rate_limit", "server") or attempt == RETRY_MAX_ATTEMPTS - 1:
                     yield _call_failed(clock, safe, config.base_url)
@@ -455,6 +460,8 @@ def stream_turn(
         if validation_error is None:
             transcript.append({"role": "assistant", "content": [_block_to_dict(b) for b in response["blocks"]],
                                "ts": time.time(), "stop_reason": response["stop_reason"]})
+            if any(block["type"] == "tool_use" for block in response["blocks"]):
+                state["_continuation_error"] = True
             if response.get("provider_data"):
                 private = state.setdefault("_provider", {"identity": identity, "messages": {}})
                 private["messages"][str(len(transcript) - 1)] = response["provider_data"]
@@ -475,7 +482,7 @@ def stream_turn(
             yield {"type": "error", "code": "metering",
                    "message": "The provider omitted usage. Test the connection before another budgeted request."}
             return
-        for block in tools:
+        for tool_index, block in enumerate(tools):
             name, args = block["name"], block["input"]
             yield {"type": "tool_use", "id": block["id"], "name": name, "input": args}
             result = yield from _run_tool(toolbox, name, args, clock)
@@ -491,6 +498,8 @@ def stream_turn(
             if proposal:
                 entry["proposal"] = proposal
             transcript.append(entry)
+            if tool_index == len(tools) - 1:
+                state.pop("_continuation_error", None)
             yield {"type": "tool_result", "id": block["id"], "name": name,
                    "excerpt": _excerpt(result, 400), "is_error": is_error, "provenance": provenance}
             if proposal:
