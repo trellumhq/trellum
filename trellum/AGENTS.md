@@ -14,7 +14,7 @@ trellum validate <dir>     the current validation state of a built report
 ```
 
 `trellum guide` topics: `answer`, `queries`, `format`, `generator`,
-`components`, `metrics`, `filters`, `live-queries`, `rawhtml`, `validation`,
+`components`, `header`, `metrics`, `filters`, `live-queries`, `rawhtml`, `validation`,
 `report-yaml`, `themes`, `review`, `portal`, `analysis`.
 
 **Why this shape.** Your whole context is re-read on every API round-trip, so a
@@ -30,6 +30,7 @@ it is cheaper than it looks, and far cheaper than guessing.
 | What components exist? | `trellum` — the bare command lists all of them |
 | What does this validator check id mean? | `trellum checks`, then `trellum guide validation` |
 | How do I filter a chart? | `trellum guide filters` |
+| How do I show freshness or a last-event time in a report? | `trellum guide header` |
 | Is this KPI already a defined business metric? | `trellum metrics` — claim it by id, don't re-derive it |
 | Why is my chart empty / not reacting? | `trellum guide format` — it is almost always wide-vs-long |
 | Where does aggregation belong? | `trellum guide queries` — pandas, not SQL |

@@ -35,6 +35,7 @@ from trellum.components import (
     RawHTML,
     RenderContext,
     ReportHeader,
+    ReportMetadata,
     ScatterChart,
     Section,
     SplitPane,
@@ -1011,10 +1012,8 @@ def test_ctx_render_child_unknown():
 
 
 # ── ReportHeader tests ──────────────────────────────────────
-# Covers the compact single-line-desktop / two-row-mobile header redesign:
-# title+subtitle+freshness collapse onto one flex row (fw-titleblock /
-# fw-meta), the freshness span stays an empty JS-populated hook, and the
-# brand mark gets a dedicated enlarging selector in the header CSS.
+# Covers the compact title and subtitle layout and the dedicated metadata
+# strip that now owns freshness.
 
 def test_report_header_titleblock_wraps_title_and_meta():
     ctx = _make_ctx()
@@ -1029,7 +1028,7 @@ def test_report_header_titleblock_wraps_title_and_meta():
     assert titleblock_start < meta_start
 
 
-def test_report_header_subtitle_and_freshness_share_meta_row():
+def test_report_header_keeps_subtitle_separate_from_freshness():
     ctx = _make_ctx()
     header = ReportHeader(name="Report", subtitle="One FilterBar drives a KPI row")
     html = header.render_html(ctx)
@@ -1037,17 +1036,27 @@ def test_report_header_subtitle_and_freshness_share_meta_row():
     meta_end = html.index("</div>", meta_start)
     meta_html = html[meta_start:meta_end]
     assert "One FilterBar drives a KPI row" in meta_html
-    assert 'id="fwFreshness"' in meta_html
+    assert 'id="fwFreshness"' not in html
 
 
-def test_report_header_freshness_span_starts_empty():
-    # The freshness text (dot + short age) is populated client-side by
-    # header.js; the server-rendered span must stay empty so it starts
-    # hidden (CSS shows it only once JS adds the "visible" class).
+def test_report_metadata_always_renders_freshness_hook():
+    # Freshness is populated client-side from data.json, even when no optional
+    # values were supplied through ctx.set_header(meta=...).
     ctx = _make_ctx()
-    header = ReportHeader(name="Report", subtitle="")
-    html = header.render_html(ctx)
+    html = ReportMetadata().render_html(ctx)
     assert '<span class="fw-freshness" id="fwFreshness"></span>' in html
+
+
+def test_report_metadata_escapes_labels_and_values_and_preserves_zero():
+    html = ReportMetadata(values={
+        '<Last event>': 'A & B <latest>', 'Rows': 0,
+        'Omit None': None, 'Omit blank': '   ',
+    }).render_html(_make_ctx())
+    assert '&lt;Last event&gt;' in html
+    assert 'A &amp; B &lt;latest&gt;' in html
+    assert '>0</span>' in html
+    assert 'Omit None' not in html
+    assert 'Omit blank' not in html
 
 
 def test_report_header_empty_subtitle_renders_empty_span():
@@ -1089,12 +1098,12 @@ def test_report_header_css_enlarges_brand_mark():
     assert "width: 22px" in css
 
 
-def test_report_header_css_uses_heading_token_without_wrapping():
+def test_report_header_css_keeps_compact_title_without_wrapping():
     css = ReportHeader.css()
-    # The report title follows the shared heading scale while the header row
-    # remains a single line on desktop.
+    # Keep the report title compact even when a theme uses a larger heading
+    # scale; the header row remains a single line on desktop.
     assert "flex-wrap: nowrap" in css
-    assert "font-size: var(--font-size-heading)" in css
+    assert "font-size: 12px" in css
 
 
 def test_report_header_css_mobile_two_row_stack():
@@ -1104,10 +1113,10 @@ def test_report_header_css_mobile_two_row_stack():
     assert ".fw-titleblock { flex-direction: column" in mobile_css
 
 
-def test_report_header_client_js_condenses_freshness_text():
-    js = ReportHeader.client_js()
-    # Compact freshness reads as a dot + short age (e.g. "3h"), with the
-    # full "Updated 3h ago" sentence moved to a title tooltip instead of
-    # being in the always-visible text.
+def test_report_metadata_client_js_shows_age_label_and_preserves_thresholds():
+    js = ReportMetadata.client_js()
     assert "el.title = fullTxt" in js
     assert "'Updated ' + h + 'h ago'" in js
+    assert "hh + mh + ah" in js
+    assert "el.innerHTML = '<span class=\"fw-fresh-dot\"></span>' + fullTxt" in js
+    assert "rs * 4" in js and "rs * 2" in js

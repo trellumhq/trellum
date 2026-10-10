@@ -103,7 +103,8 @@ class UserEventLogReport(BaseReport):
         volume = query_df(conn, queries.DAILY_VOLUME, params={"start_date": vol_start})
 
         ctx.set_header(
-            subtitle="Severity / service / actor / date -- one live query, four components"
+            subtitle="Severity / service / actor / date -- one live query, four components",
+            meta={"Last event": events["ts"].max() if not events.empty else None},
         )
 
         ctx.add_section("What this page is", [RawHTML(html=_INTRO)])

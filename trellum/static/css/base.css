@@ -12,6 +12,9 @@
     --radius-card: var(--border-radius, 10px);
     --on-accent: #fff;
     --primary-fill: var(--bg-header);
+    --fw-header-h: 48px;
+    --fw-metadata-h: 30px;
+    --fw-sticky-offset: calc(var(--fw-header-h) + var(--fw-metadata-h));
 }
 /* Full-bleed elements sized from `vw` (the sticky filter bar's
    `margin: calc(-50vw + 50%)`) end up a scrollbar-width too wide,
@@ -122,6 +125,7 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
    is what put a horizontal scrollbar under an embedded chart. */
 body.fw-only { min-height: 0; }
 body.fw-only .fw-header { display: none; }
+body.fw-only .fw-report-metadata { display: none; }
 /* No bottom inset: a host insets the frame itself, and padding here is
    padding inside padding -- 12px of frame height spent on nothing. */
 body.fw-only .fw-container { max-width: none; margin: 0; padding: 12px 20px 0; }

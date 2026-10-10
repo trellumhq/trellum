@@ -41,6 +41,7 @@ from trellum.components.filterable import (
 from trellum.components.header import ReportHeader
 from trellum.components.kpis import KpiCard, KpiRow, MiniKpi
 from trellum.components.layout import Grid, Panel, RawHTML, Section, SplitPane, Visible
+from trellum.components.report_metadata import ReportMetadata
 from trellum.components.tables import ComparisonTable, DataTable, PivotTable
 
 __all__ = [
@@ -52,6 +53,6 @@ __all__ = [
     "Section", "Panel", "Grid", "SplitPane",
     "RawHTML", "Visible",
     "ABCompare", "ABMethodologyNote",
-    "ReportHeader",
+    "ReportHeader", "ReportMetadata",
     "DataSource", "FilterBar", "ScopedDataSource", "LiveDataSource",
 ]

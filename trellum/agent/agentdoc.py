@@ -41,6 +41,7 @@ TOPICS: dict[str, str] = {
     "format": "Long vs wide format, and why charts need long",
     "generator": "The step-by-step process for writing generator.py",
     "components": "The component library and the reuse policy",
+    "header": "Automatic freshness strip and optional report metadata",
     "metrics": "metrics.yaml business metrics, and claiming them by id in KPIs",
     "filters": "DataSource, FilterBar, ScopedDataSource and propagation",
     "live-queries": "Declared live queries: build-time snapshot, host-served per-entity lookups",

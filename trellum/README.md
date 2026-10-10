@@ -329,10 +329,39 @@ See `trellum guide analysis` for the authoring workflow.
 | `ctx.get_connection(name)` | Get or create a DB connection by name |
 | `ctx.close_connections()` | Close all open connections |
 | `ctx.add_section(title, components, collapsible=False)` | Add a titled section. Empty `title` = unwrapped. |
-| `ctx.set_header(subtitle=None, meta=None)` | Set header subtitle or metadata |
+| `ctx.set_header(subtitle=None, meta=None)` | Set the header subtitle and labeled values below it, e.g. `meta={"Last event": "2026-10-10"}` |
 | `ctx.set_header_component(component)` | Override the default `ReportHeader` |
 | `ctx.set_scope(name, label=None)` | Activate a named scope (for multi-game reports) |
 | `ctx.set_custom_output(html, data)` | Bypass the component tree with raw HTML |
+
+---
+
+<!-- topic: header -->
+## Report header and status strip
+
+Every component-based report has a title header and a separate, compact status strip.
+The strip shows **Updated** automatically, using the time the report was built;
+its relative age advances in the browser. Report authors do not need to create
+the strip or supply that timestamp. Regular mobile browser view keeps the title
+and annotations. In monitor view, the title, annotations, and filters are hidden
+while the status strip remains visible. Top-level authenticated report apps
+installed on Android or iOS open in monitor by default unless their launch URL
+selects another display mode.
+
+Add report-specific context from `generate(self, ctx)` when it is useful:
+
+```python
+ctx.set_header(
+    subtitle="Severity / service / actor / date",
+    meta={"Last event": events["ts"].max() if not events.empty else None},
+)
+```
+
+The subtitle stays with the title. Each nonempty `meta` entry appears in the
+status strip; `None` and blank values are omitted. These values are captured at
+build time, so a later source event appears after the report is rebuilt. This
+also works with a custom header component; there is no need to instantiate
+`ReportMetadata` in a report generator.
 
 ---
 
@@ -1397,7 +1426,7 @@ Every report generation automatically runs a post-generation validator that chec
 | Toggle / Visible wiring | `visible-target-missing`, `visible-value-missing`, `toggle-unused`, `rawhtml-toggle-id-mismatch` |
 | Scope system | `scope-empty`, `scope-no-default` |
 | YAML schema | `yaml-missing-required`, `yaml-missing-data-sources`, `yaml-cron-invalid`, `report-description-weak` |
-| Structural conventions | `datasource-not-in-untitled-section`, `missing-date-range-filter` |
+| Structural conventions | `datasource-not-in-untitled-section`, `missing-date-range-filter`, `report-metadata-invalid` |
 | Chunked DataSource | `chunk-no-date-filter`, `large-ds-no-chunking` |
 | ScopedDataSource | `scoped-ds-parent-missing`, `scoped-ds-parent-not-base`, `propagate-to-scoped-ds` |
 | Cascading filters | `filter-depends-on-missing`, `filter-depends-on-self` |

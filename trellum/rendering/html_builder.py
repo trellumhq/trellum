@@ -139,6 +139,19 @@ if(v.indexOf(t)>=0)document.documentElement.setAttribute('data-theme',t);}})();
 </script>"""
 
 
+def _render_report_metadata(ctx, theme, seen_css, seen_js):
+    from trellum.components.report_metadata import ReportMetadata
+
+    values = {key: value for key, value in ctx.header_meta.items() if key != "subtitle"}
+    component = ReportMetadata(values=values)
+    render_ctx = RenderContext(theme)
+    metadata_html = component.render_html(render_ctx)
+    css_parts, js_parts = collect_asset_parts(
+        [type(component)], seen_css, seen_js,
+    )
+    return metadata_html, css_parts, js_parts
+
+
 def render_report(
     ctx,
     output_dir: str | None = None,
@@ -352,9 +365,6 @@ def render_report(
     header_html = header_component.render_html(header_render_ctx)
     header_render_ctx._seen_types.add(type(header_component))
 
-    # Merge header assets into all_seen
-    all_seen.update(header_render_ctx._seen_types)
-
     # Re-collect CSS/JS including header. The seen_* sets carry over, so the
     # header's assets are skipped if some other component already emitted them.
     header_css_parts, header_js_parts = collect_asset_parts(
@@ -362,6 +372,13 @@ def render_report(
     )
     component_css_parts.extend(header_css_parts)
     component_js_parts.extend(header_js_parts)
+
+    # Freshness stays after either the default or a custom header.
+    metadata_html, metadata_css_parts, metadata_js_parts = _render_report_metadata(
+        ctx, theme, seen_css, seen_js,
+    )
+    component_css_parts.extend(metadata_css_parts)
+    component_js_parts.extend(metadata_js_parts)
 
     # Re-collect CDN deps including header
     all_cdn_keys.update(header_render_ctx.collect_cdn_deps())
@@ -426,6 +443,7 @@ def render_report(
 <script>window._chartInstances=window._chartInstances||{{}};window._fwRenderers=window._fwRenderers||{{}};</script>
 {component_js_html}
 {header_html}
+{metadata_html}
 <div class="fw-container{' fw-full-width' if config.get('layout', {}).get('full_width') else ''}">
     {"".join(sections_html)}
 </div>

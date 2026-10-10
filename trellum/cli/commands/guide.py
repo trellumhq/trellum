@@ -19,7 +19,7 @@ _GUIDE_MAX_CHARS = 24_000
 
 BUNDLES = {
     "all": list(agentdoc.TOPICS),
-    "report": ["queries", "format", "generator", "filters", "metrics",
+    "report": ["queries", "format", "generator", "header", "filters", "metrics",
                "validation"],
     "charts": ["components", "format", "filters", "rawhtml"],
 }

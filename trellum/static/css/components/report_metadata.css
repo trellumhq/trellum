@@ -1,0 +1,30 @@
+.fw-report-metadata {
+    min-height: 30px;
+    padding: 5px 16px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px;
+    background: var(--bg-header);
+    color: rgba(255,255,255,0.85);
+    border-top: 1px solid rgba(255,255,255,0.12);
+    font-size: var(--font-size-meta);
+    position: sticky; top: var(--fw-header-h, 48px); z-index: 99;
+}
+.fw-report-metadata-item { display: inline-flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.fw-report-metadata-label { color: rgba(255,255,255,0.62); overflow-wrap: anywhere; }
+.fw-report-metadata-value { overflow-wrap: anywhere; }
+.fw-freshness {
+    display: none; align-items: center; gap: 4px; flex-shrink: 0;
+}
+.fw-freshness.visible { display: inline-flex; }
+.fw-fresh-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: rgba(255,255,255,0.5); flex-shrink: 0;
+}
+.fw-freshness.fresh .fw-fresh-dot { background: #00c48c; }
+.fw-freshness.fresh { color: rgba(255,255,255,0.85); }
+.fw-freshness.stale .fw-fresh-dot { background: #FFD166; box-shadow: 0 0 4px #FFD166; }
+.fw-freshness.stale { color: rgba(255,255,255,0.85); }
+.fw-freshness.very-stale .fw-fresh-dot { background: #FF4081; box-shadow: 0 0 4px #FF4081; }
+.fw-freshness.very-stale { color: rgba(255,255,255,0.85); }
+@media (max-width: 640px) {
+    .fw-report-metadata { padding: 5px 12px; gap: 4px 10px; }
+}

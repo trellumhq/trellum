@@ -42,6 +42,16 @@ def _find_checks(result, check_id=None, level=None):
     return out
 
 
+def test_invalid_report_metadata_labels_and_values_are_warned():
+    ctx = _make_ctx()
+    ctx.set_header(meta={"": "bad label", "Object": {"not": "plain text"}})
+
+    result = validate_report(ctx)
+
+    hits = _find_checks(result, check_id="report-metadata-invalid", level="warn")
+    assert len(hits) == 1
+
+
 # ---------------------------------------------------------------------------
 # DataSource / FilterBar / dataset_id wiring
 # ---------------------------------------------------------------------------
@@ -528,4 +538,24 @@ def test_data_json_schema():
         html = f.read()
     assert "Trellum runtime" in html
     assert meta["framework_source_url"] in html
+    assert 'id="fwReportMetadata"' in html
+    assert 'id="fwFreshness"' in html
     assert os.path.isfile(os.path.join(outdir, "TRELLUM-LICENSE.txt"))
+
+
+def test_metadata_strip_follows_custom_header(tmp_path):
+    from trellum.components import ReportHeader
+    from trellum.rendering.html_builder import render_report
+
+    ctx = _make_ctx()
+    ctx.set_header(meta={"Last event": "2026-10-10"})
+    ctx.set_header_component(ReportHeader(name="Custom header"))
+    render_report(ctx, str(tmp_path), auto_refresh=False)
+
+    html = (tmp_path / "index.html").read_text(encoding="utf-8")
+    header_at = html.index("Custom header")
+    metadata_at = html.index('id="fwReportMetadata"')
+    freshness_at = html.index('id="fwFreshness"')
+    container_at = html.index('class="fw-container')
+    assert header_at < metadata_at < freshness_at < container_at
+    assert "Last event" in html and "2026-10-10" in html
