@@ -310,7 +310,7 @@ class ReportContext:
             self._sections.append(section)
 
     def set_header(self, subtitle: str | None = None, meta: dict | None = None) -> None:
-        """Set optional header metadata (lag indicators, freshness, etc.)."""
+        """Set the subtitle and optional labeled values shown below the header."""
         if subtitle:
             self._header_meta["subtitle"] = subtitle
         if meta:

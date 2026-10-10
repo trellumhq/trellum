@@ -22,6 +22,10 @@ REPORT_HEADER_CSS = "\n".join(
     (settings.BASE_DIR / "trellum" / "static" / "css" / path).read_text(encoding="utf-8")
     for path in ("base.css", "components/header.css", "components/toggle.css")
 )
+REPORT_METADATA_JS = (
+    settings.BASE_DIR / "trellum" / "static" / "js" / "components"
+    / "report_metadata.js"
+).read_text(encoding="utf-8")
 SHELL_HTML = """<div class="tl-console-shell" data-console-shell
   data-console-default-mode="dark" data-console-theme="light"
   data-console-css="/static/console-shell.css"
@@ -47,15 +51,27 @@ html,body{{margin:0}} .fw-container{{box-sizing:border-box;padding:12px 20px}}
 .fw-toggle-group{{display:flex;gap:4px}} .fw-toggle-btn{{min-height:36px;padding:4px 9px}}
 .fw-header-right select{{max-width:100%;min-height:36px}} .fw-help-wrap{{white-space:nowrap}}
 .fw-filter-bar{{display:block;box-sizing:border-box;
-position:sticky;top:48px;width:100vw;padding:8px 24px;
+position:sticky;top:var(--fw-sticky-offset,48px);width:100vw;padding:8px 24px;
 margin-left:calc(-50vw + 50%);margin-right:calc(-50vw + 50%)}}
+.fw-report-metadata{{display:flex;align-items:center;gap:12px;min-height:30px;
+box-sizing:border-box;padding:5px 12px;position:sticky;top:var(--fw-header-h,48px)}}
+body.fw-only .fw-header,body.fw-only .fw-report-metadata{{display:none}}
+.fw-freshness{{display:inline-flex;align-items:center;gap:4px}}
 </style></head><body>
+<div class="fw-header"><div class="fw-header-left"><h1>Test report</h1></div>
+  <div class="fw-header-right"><div class="fw-toggle-group fw-scope-toggle" data-toggle-id="__scope__"><button class="fw-toggle-btn active" data-scope-key="north">North</button><button class="fw-toggle-btn" data-scope-key="south">South</button><button class="fw-toggle-btn" data-scope-key="combined">Combined</button></div><select class="fw-theme-select" id="fwThemeSelect"><option value="light" selected>Light</option><option value="high-contrast">High contrast</option></select><div class="fw-help-wrap">Help</div></div></div>
+<div class="fw-report-metadata" id="fwReportMetadata">
+  <span class="fw-freshness" id="fwFreshness"></span>
+  <span class="fw-report-metadata-item"><span>Last event</span><span>2026-10-10</span></span>
+</div>
 <div class="fw-container" id="reportContent">
-  <div class="fw-header"><div class="fw-header-left"><h1>Test report</h1></div>
-    <div class="fw-header-right"><div class="fw-toggle-group fw-scope-toggle" data-toggle-id="__scope__"><button class="fw-toggle-btn active" data-scope-key="north">North</button><button class="fw-toggle-btn" data-scope-key="south">South</button><button class="fw-toggle-btn" data-scope-key="combined">Combined</button></div><select class="fw-theme-select" id="fwThemeSelect"><option value="light" selected>Light</option><option value="high-contrast">High contrast</option></select><div class="fw-help-wrap">Help</div></div></div>
   <div class="fw-filter-bar">Date range</div><main id="reportBody">Report body</main>
   <div id="assistantPill">Ask about this report</div>
 </div>
+<script>(function(){{var only=new URLSearchParams(location.search).get('only');
+if(only&&document.getElementById(only))document.body.classList.add('fw-only')}})();</script>
+<script>window._reportData={{_freshness:{{generated_at:new Date(Date.now()-3*3600000).toISOString(),refresh_seconds:0}}}};
+{REPORT_METADATA_JS}</script>
 <script>
 window.themeChanges = 0;
 document.getElementById('fwThemeSelect').addEventListener('change', function(){{window.themeChanges++;}});
@@ -162,6 +178,9 @@ def test_focus_transition_preserves_other_query_and_fragment(open_report):
     )
     assert page.locator("body").evaluate("el => el.classList.contains('tl-report-focus')")
     assert page.locator(".fw-header").evaluate("el => getComputedStyle(el).display") == "flex"
+    page.wait_for_function("document.getElementById('fwFreshness').textContent.includes('Updated')")
+    assert page.locator("#fwFreshness").inner_text() == "Updated 3h ago"
+    assert page.locator("#fwReportMetadata").is_visible()
     filter_bar = page.locator(".fw-filter-bar")
     assert filter_bar.evaluate("el => getComputedStyle(el).marginLeft") == "0px"
     assert filter_bar.bounding_box()["x"] + filter_bar.bounding_box()["width"] <= page.evaluate(
@@ -245,7 +264,10 @@ def test_console_mounts_shared_shell_and_transitions_to_focus(open_report):
     assert page.locator("body").evaluate("el => getComputedStyle(el).paddingLeft") == "240px"
     assert not page.locator("#reportContent").get_attribute("inert")
     filter_bar = page.locator(".fw-filter-bar")
-    assert filter_bar.evaluate("el => getComputedStyle(el).top") == "104px"
+    expected_top = page.locator(".fw-header").bounding_box()["height"] + page.locator(
+        "#fwReportMetadata"
+    ).bounding_box()["height"] + 56
+    assert abs(float(filter_bar.evaluate("el => getComputedStyle(el).top")[:-2]) - expected_top) < 1
     assert filter_bar.bounding_box()["x"] >= 240
     assert filter_bar.bounding_box()["x"] + filter_bar.bounding_box()["width"] <= 1280
 
@@ -302,13 +324,23 @@ def test_console_mobile_drawer_starts_closed_and_manages_report_inert(open_repor
 def test_monitor_hides_controls_and_has_pointer_touch_keyboard_exit(open_report):
     page, shell_requests, errors = open_report(
         "/content/demo/casino/player-overview/builds/b7/index.html"
-        "?display=monitor&range=30d#revenue"
+        "?display=monitor&range=30d#revenue",
+        viewport={"width": 390, "height": 720},
     )
     assert shell_requests == []
     assert not page.locator(".fw-header").is_visible()
     assert not page.locator(".fw-filter-bar").is_visible()
+    metadata = page.locator("#fwReportMetadata")
+    assert metadata.is_visible()
+    page.wait_for_function("document.getElementById('fwFreshness').textContent.includes('Updated')")
+    assert page.locator("#fwFreshness").inner_text() == "Updated 3h ago"
+    assert "Last event" in metadata.inner_text()
+    assert page.evaluate("document.documentElement.scrollWidth") <= 390
     exit_button = page.locator(".tl-report-monitor-exit")
     assert exit_button.count() == 1
+    exit_box = exit_button.bounding_box()
+    assert abs(exit_box["y"] + exit_box["height"] - (720 - 12)) < 1
+    assert abs(exit_box["x"] + exit_box["width"] - (390 - 12)) < 1
 
     page.mouse.move(20, 20)
     assert exit_button.evaluate("el => el.classList.contains('is-visible')")
@@ -320,6 +352,15 @@ def test_monitor_hides_controls_and_has_pointer_touch_keyboard_exit(open_report)
     target = urlsplit(page.url)
     assert parse_qs(target.query) == {"display": ["console"], "range": ["30d"]}
     assert target.fragment == "revenue"
+    assert errors == []
+
+
+def test_only_embed_hides_report_metadata_strip(open_report):
+    page, _shell_requests, errors = open_report(
+        "/s/demo/casino/r/player-overview/index.html?only=reportBody"
+    )
+    assert page.locator("body").evaluate("el => el.classList.contains('fw-only')")
+    assert not page.locator("#fwReportMetadata").is_visible()
     assert errors == []
 
 

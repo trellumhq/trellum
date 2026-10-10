@@ -97,10 +97,8 @@ class ReportHeader(Component):
             f'{self.scope_toggle_html}{export_html}{help_html}{self.theme_select_html}'
             f'</div>'
         )
-        # Title + subtitle + freshness collapse onto a single line on desktop
-        # (fw-titleblock is a row) and stack into two lines on narrow
-        # viewports (the header.css mobile query flips it to a column, with
-        # subtitle+freshness sharing the second row via fw-meta).
+        # Title and subtitle stay in the header. Freshness is a separate
+        # report metadata strip so it remains visible in monitor mode.
         return (
             f'<div class="fw-header">\n'
             f'    <div class="fw-header-left">\n'
@@ -109,7 +107,6 @@ class ReportHeader(Component):
             f'            <h1>{self.name}</h1>\n'
             f'            <div class="fw-meta">\n'
             f'                <span class="fw-subtitle">{self.subtitle}</span>\n'
-            f'                <span class="fw-freshness" id="fwFreshness"></span>\n'
             f'            </div>\n'
             f'        </div>\n'
             f'    </div>\n'

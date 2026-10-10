@@ -352,8 +352,21 @@ def render_report(
     header_html = header_component.render_html(header_render_ctx)
     header_render_ctx._seen_types.add(type(header_component))
 
+    # Freshness is page metadata, independent of whichever header component is
+    # selected. Keep it directly after the header in both default and custom
+    # header layouts.
+    from trellum.components.report_metadata import ReportMetadata
+    metadata_values = {
+        key: value for key, value in ctx.header_meta.items() if key != "subtitle"
+    }
+    metadata_component = ReportMetadata(values=metadata_values)
+    metadata_render_ctx = RenderContext(theme)
+    metadata_html = metadata_component.render_html(metadata_render_ctx)
+    metadata_render_ctx._seen_types.add(type(metadata_component))
+
     # Merge header assets into all_seen
     all_seen.update(header_render_ctx._seen_types)
+    all_seen.update(metadata_render_ctx._seen_types)
 
     # Re-collect CSS/JS including header. The seen_* sets carry over, so the
     # header's assets are skipped if some other component already emitted them.
@@ -362,6 +375,12 @@ def render_report(
     )
     component_css_parts.extend(header_css_parts)
     component_js_parts.extend(header_js_parts)
+
+    metadata_css_parts, metadata_js_parts = collect_asset_parts(
+        [type(metadata_component)], seen_css, seen_js,
+    )
+    component_css_parts.extend(metadata_css_parts)
+    component_js_parts.extend(metadata_js_parts)
 
     # Re-collect CDN deps including header
     all_cdn_keys.update(header_render_ctx.collect_cdn_deps())
@@ -426,6 +445,7 @@ def render_report(
 <script>window._chartInstances=window._chartInstances||{{}};window._fwRenderers=window._fwRenderers||{{}};</script>
 {component_js_html}
 {header_html}
+{metadata_html}
 <div class="fw-container{' fw-full-width' if config.get('layout', {}).get('full_width') else ''}">
     {"".join(sections_html)}
 </div>

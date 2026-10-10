@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+from datetime import date
 from typing import Any
 
 from trellum.validation.result import ValidationResult
@@ -17,6 +19,23 @@ def _check_structural(ctx: Any, comps: list[tuple[Any, str]], sections: list[dic
     from trellum.components.filterable import DataSource, FilterBar
 
     _DATE_COLS = {"event_date", "date", "day", "report_date"}
+
+    metadata = getattr(ctx, "header_meta", {})
+    for label, value in metadata.items():
+        if label == "subtitle":
+            continue
+        if value is None or isinstance(value, str) and not value.strip():
+            continue
+        scalar = isinstance(value, (str, int, float, bool, date))
+        finite = not isinstance(value, float) or math.isfinite(value)
+        if not isinstance(label, str) or not label.strip() or not scalar or not finite:
+            result.warn(
+                "report-metadata-invalid",
+                "Report metadata entries need a non-empty text label and "
+                "a displayable scalar value; invalid entries are omitted.",
+                component="ReportMetadata",
+            )
+            break
 
     for sec in sections:
         title = sec.get("title", "")

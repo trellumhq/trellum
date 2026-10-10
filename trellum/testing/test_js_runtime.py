@@ -49,6 +49,7 @@ def _build_test_page(tmpdir: str) -> str:
 </head>
 <body>
 <div class="fw-header"></div>
+<div id="fwReportMetadata"></div>
 {js_runtime}
 </body></html>"""
 
@@ -130,6 +131,19 @@ def live_query_page(browser_page):
 
 
 # ── Formatter tests ──────────────────────────────────────────
+
+def test_annotation_bar_follows_metadata_strip(capture_page):
+    capture_page.evaluate("""() => {
+        window._reportData = {_events: [
+            {date: '2026-04-05', label: 'Release', type: 'release'}
+        ]};
+        window._buildAnnoToggleBar();
+    }""")
+    assert capture_page.evaluate("""() => {
+        var metadata = document.getElementById('fwReportMetadata');
+        return metadata.nextElementSibling.id === 'fwAnnoBar';
+    }""")
+
 
 class TestFormatters:
     def test_fmtCompact_millions(self, browser_page):

@@ -240,12 +240,13 @@
 
         var bar = document.getElementById('fwAnnoBar');
         if (!bar) {
-            var header = document.querySelector('.fw-header');
-            if (!header) return;
+            var anchor = document.getElementById('fwReportMetadata')
+                || document.querySelector('.fw-header');
+            if (!anchor) return;
             bar = document.createElement('div');
             bar.id = 'fwAnnoBar';
             bar.className = 'fw-anno-bar';
-            header.parentElement.insertBefore(bar, header.nextSibling);
+            anchor.parentElement.insertBefore(bar, anchor.nextSibling);
         }
 
         bar.innerHTML = '<span class="fw-anno-label">Annotations:</span>';
