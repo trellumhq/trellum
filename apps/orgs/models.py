@@ -21,7 +21,8 @@ from django.core.validators import RegexValidator, URLValidator
 from django.db import models
 
 from apps.core import roles
-from apps.core.crypto import EncryptedTextField
+from apps.core.crypto import EncryptedJSONField, EncryptedTextField
+from apps.assistant.provider_registry import AUTH_CHOICES, PROVIDER_CHOICES
 
 slug_validator = RegexValidator(
     r"^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$|^[a-z0-9]$",
@@ -461,16 +462,21 @@ class OrgAssistantConfig(models.Model):
     """Per-org AI assistant configuration — the org brings
     its own LLM API key."""
 
-    PROVIDERS = [("anthropic", "Anthropic"), ("openai", "OpenAI")]
+    PROVIDERS = PROVIDER_CHOICES
 
     org = models.OneToOneField(Organization, on_delete=models.CASCADE, related_name="assistant_config")
     enabled = models.BooleanField(default=False)
-    provider = models.CharField(max_length=16, choices=PROVIDERS, default="anthropic")
+    provider = models.CharField(max_length=32, choices=PROVIDERS, default="anthropic")
     api_key = EncryptedTextField(blank=True, default="")
-    model = models.CharField(max_length=100, blank=True)
+    model = models.CharField(max_length=2048, blank=True)
     base_url = models.URLField(
-        blank=True, help_text="Optional OpenAI-compatible gateway base URL."
+        max_length=2048, blank=True, help_text="Optional provider endpoint or compatible gateway URL."
     )
+    auth_mode = models.CharField(max_length=32, choices=AUTH_CHOICES, default="api_key")
+    cloud_config = models.JSONField(default=dict, blank=True)
+    cloud_credentials = EncryptedJSONField(default=dict, blank=True)
+    config_revision = models.PositiveIntegerField(default=1)
+    connection_check = models.JSONField(default=dict, blank=True)
     monthly_budget_usd = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
     per_user_budget_usd = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
     # USD per million tokens. Optional without budgets; needed to enforce

@@ -270,6 +270,8 @@ SECRET_ENCRYPTION_KEY = env("SECRET_ENCRYPTION_KEY", default="")
 # Wall-clock ceiling on one AI assistant turn (all model calls and tool
 # iterations for a single user message). Past it the stream ends with a
 # `deadline` error and the partial transcript is kept.
+ASSISTANT_WORKLOAD_IDENTITY_ORGS = env.json("ASSISTANT_WORKLOAD_IDENTITY_ORGS", default={})
+
 ASSISTANT_TURN_DEADLINE_S = env.int("ASSISTANT_TURN_DEADLINE_S", default=120)
 
 # Operational policy switches. Product features are available in every
