@@ -19,6 +19,8 @@ Python dependency tables were last audited **2026-08-16** against
 The missing DuckDB, pymssql, and boto3 entries were checked against the linked
 upstream release notices on **2026-10-07**. This is a direct-dependency
 inventory, not a complete inventory of every installed transitive dependency.
+Native cloud AI dependencies and the coordinated AWS SDK pins were audited
+against the linked upstream licence notices on **2026-10-10**.
 
 ## Bundled — front-end libraries (`static/vendor/`)
 
@@ -104,7 +106,22 @@ are redistributed in a container image.
 | fsspec | BSD-3-Clause |
 | aiobotocore | Apache-2.0 |
 | botocore | Apache-2.0 |
-| boto3 | [Apache-2.0](https://github.com/boto/boto3/blob/1.36.3/LICENSE) |
+| boto3 | [Apache-2.0](https://github.com/boto/boto3/blob/1.43.106/LICENSE) |
+
+### `../requirements-django.txt` — native cloud AI additions
+
+These are control-plane dependencies; the standalone framework does not import
+the AI adapters. Existing google-auth and msal notices are listed above.
+
+| Package | Version | Licence |
+| --- | --- | --- |
+| google-genai | 2.29.0 | [Apache-2.0](https://github.com/googleapis/python-genai/blob/v2.29.0/LICENSE) |
+| azure-identity | 1.26.0 | [MIT](https://github.com/Azure/azure-sdk-for-python/blob/azure-identity_1.26.0/LICENSE) |
+| azure-core | 1.41.0 | [MIT](https://github.com/Azure/azure-sdk-for-python/blob/azure-core_1.41.0/LICENSE) |
+| msal-extensions | 1.3.1 | [MIT](https://github.com/AzureAD/microsoft-authentication-extensions-for-python/blob/1.3.1/LICENSE) |
+| tenacity | 9.1.4 | [Apache-2.0](https://github.com/jd/tenacity/blob/9.1.4/LICENSE) |
+| websockets | 16.0 | [BSD-3-Clause](https://github.com/python-websockets/websockets/blob/16.0/LICENSE) |
+| s3transfer | 0.19.0 | [Apache-2.0](https://github.com/boto/s3transfer/blob/0.19.0/LICENSE.txt) |
 
 The table includes LGPL packages and orjson's MPL licence expression. Refer to
 each package's notices for its applicable terms rather than treating the

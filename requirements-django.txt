@@ -35,8 +35,12 @@ playwright==1.62.0
 # Object storage for the S3 report backend (apps/core/s3.py). Imported lazily,
 # so a local deployment loads none of it.
 # Pinned to match aiobotocore's requirement; raising it alone breaks that pin.
-boto3==1.36.3
+boto3==1.43.106
 # Per-connection transactional API backends; SES uses the existing boto3 pin.
 django-anymail==15.2
 # Custom HTTPS sender uses the already-locked urllib3 directly.
 urllib3==2.8.0
+# Native cloud AI APIs and refreshable organization/workload credentials.
+google-genai==2.29.0
+google-auth==2.56.3
+azure-identity==1.26.0
