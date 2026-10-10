@@ -44,9 +44,9 @@ source stays reviewable in Git.
 </p>
 
 <p align="center">
-  <img src="docs/assets/report-mobile.jpg" width="260" alt="Live Ops Monitor report shown at a mobile viewport, with event status and responsive filters">
+  <img src="docs/assets/report-mobile.jpg" width="260" alt="Conversion report shown at a mobile viewport, with two summary KPIs and a store funnel chart">
   <br>
-  <sub>Live Ops Monitor at a mobile viewport, using synthetic event data.</sub>
+  <sub>Conversion at a mobile viewport, using synthetic data.</sub>
 </p>
 
 Use the standalone framework on a laptop, in CI, or behind your own web server.
