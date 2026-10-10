@@ -307,6 +307,28 @@ def test_authorized_workload_modes_use_only_the_selected_provider(settings, monk
     federated.assert_called_once()
 
 
+def test_azure_client_and_constructor_failure_close_identity_transport(monkeypatch):
+    import azure.identity
+    import openai
+    credential = Mock()
+    monkeypatch.setattr(azure.identity, "ClientSecretCredential", Mock(return_value=credential))
+    client = Mock()
+    original_close = client.close
+    constructor = Mock(return_value=client)
+    monkeypatch.setattr(openai, "OpenAI", constructor)
+    cfg = config("azure", auth_mode="client_secret", cloud_config={"tenant_id": "synthetic-tenant", "client_id": "synthetic-client"}, cloud_credentials={"client_secret": "test-only-secret"})
+    returned = cloud.azure_openai_client(cfg)
+    returned.close()
+    original_close.assert_called_once()
+    credential.close.assert_called_once()
+    credential.reset_mock()
+    constructor.side_effect = ValueError("test-only-secret")
+    with pytest.raises(TransportError) as error:
+        cloud.azure_openai_client(cfg)
+    credential.close.assert_called_once()
+    assert "test-only-secret" not in str(error.value)
+
+
 def test_vertex_actual_sdk_serializes_native_request_and_signature(monkeypatch):
     import httpx
     from google import genai

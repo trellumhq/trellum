@@ -83,6 +83,7 @@ def _aws_client(config, service, timeout):
 def azure_openai_client(config):
     """Use Azure's v1 endpoint and a refreshable SDK bearer-token callback."""
     from openai import OpenAI
+    credential = None
     try:
         endpoint = urlsplit(config.base_url)
         host = endpoint.hostname or ""
@@ -114,8 +115,18 @@ def azure_openai_client(config):
                     return token_provider()
                 except Exception as exc:
                     raise _failure(exc) from None
-        return OpenAI(base_url=base_url, api_key=key, max_retries=0)
+        client = OpenAI(base_url=base_url, api_key=key, max_retries=0)
+        if credential is not None:
+            original_close = client.close
+            def close():
+                try:
+                    original_close()
+                finally:
+                    _close(credential)
+            client.close = close
+        return client
     except Exception as exc:
+        _close(credential)
         raise _failure(exc) from None
 
 
