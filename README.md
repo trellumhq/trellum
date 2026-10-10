@@ -38,13 +38,13 @@ and source files, rebuilds the report, and the preview refreshes while the
 source stays reviewable in Git.
 
 <p align="center">
-  <img src="docs/assets/store-health.jpg" alt="Store Health report in Trellum Dark, with comparison KPIs, filters, and revenue and margin trends">
+  <img src="docs/assets/store-health.png" alt="Store Health report in Trellum Dark, with comparison KPIs, filters, and revenue and margin trends">
   <br>
   <sub>Store Health is a synthetic retail report in Trellum Dark, separate from the Nova Play examples.</sub>
 </p>
 
 <p align="center">
-  <img src="docs/assets/report-mobile.jpg" width="260" alt="Conversion report in Trellum Dark at a mobile viewport, with two summary KPIs and a store funnel chart">
+  <img src="docs/assets/report-mobile.png" width="260" alt="Conversion report in Trellum Dark at a mobile viewport, with two summary KPIs and a store funnel chart">
   <br>
   <sub>Conversion in Trellum Dark at a mobile viewport, using synthetic data.</sub>
 </p>
@@ -66,7 +66,7 @@ with Docker](docs/customer/install/try-it.md#try-the-self-hosted-portal) for a
 shared team home.
 
 <p align="center">
-  <a href="https://trellum.dev/tour/"><img src="docs/assets/portal-reports.jpg" alt="Nova Play report library in the Trellum portal, with successful builds and the Ask AI affordance"></a>
+  <a href="https://trellum.dev/tour/"><img src="docs/assets/portal-reports.png" alt="Nova Play report library in the Trellum portal, with successful builds and the Ask AI affordance"></a>
   <br>
   <sub>Nova Play's synthetic report library. <a href="https://trellum.dev/tour/">Explore the interactive portal tour</a> or <a href="https://trellum.dev/docs/latest/install/try-it/">try Trellum locally</a>.</sub>
 </p>
@@ -202,7 +202,7 @@ version. Authors still supply the underlying data and review the calculation;
 claiming an ID does not automatically execute the metric's documented SQL.
 
 <p align="center">
-  <img src="docs/assets/portal-overview.jpg" alt="Trellum portal experiment portfolio with lifecycle, overlap timeline and report-backed results">
+  <img src="docs/assets/portal-overview.png" alt="Trellum portal experiment portfolio with lifecycle, overlap timeline and report-backed results">
   <br>
   <sub>Experiment lifecycle and report-backed results in the self-hosted portal. <a href="https://trellum.dev/tour/">Explore the interactive feature tour</a>.</sub>
 </p>
