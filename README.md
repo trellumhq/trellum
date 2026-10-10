@@ -38,15 +38,15 @@ and source files, rebuilds the report, and the preview refreshes while the
 source stays reviewable in Git.
 
 <p align="center">
-  <img src="docs/assets/store-health.jpg" alt="Store Health report with comparison KPIs, filters, and revenue and margin trends">
+  <img src="docs/assets/store-health.jpg" alt="Store Health report in Trellum Dark, with comparison KPIs, filters, and revenue and margin trends">
   <br>
-  <sub>Store Health is a synthetic retail report, separate from the Nova Play examples.</sub>
+  <sub>Store Health is a synthetic retail report in Trellum Dark, separate from the Nova Play examples.</sub>
 </p>
 
 <p align="center">
-  <img src="docs/assets/report-mobile.jpg" width="260" alt="Conversion report shown at a mobile viewport, with two summary KPIs and a store funnel chart">
+  <img src="docs/assets/report-mobile.jpg" width="260" alt="Conversion report in Trellum Dark at a mobile viewport, with two summary KPIs and a store funnel chart">
   <br>
-  <sub>Conversion at a mobile viewport, using synthetic data.</sub>
+  <sub>Conversion in Trellum Dark at a mobile viewport, using synthetic data.</sub>
 </p>
 
 Use the standalone framework on a laptop, in CI, or behind your own web server.
