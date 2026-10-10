@@ -244,28 +244,49 @@ from, so it is recognisable in your history later.
 
 **Organization settings → AI settings**, as an organization admin. These settings select the shared provider and model for portal chats and alert evaluations. If the assistant proposes an action, an organization member must approve it before it runs.
 
+Choose **Anthropic, OpenAI, LiteLLM, OpenRouter, DeepSeek, Azure OpenAI,
+Amazon Bedrock, Vertex AI**, or a **custom OpenAI-compatible endpoint**. One
+saved connection serves both chats and alerts; gateways control their own
+routing and fallbacks.
+
 | Setting | What it does |
 | --- | --- |
-| Enabled | Off by default. Nothing runs until this is on. |
-| Provider | Anthropic or OpenAI. |
-| API key | Your organization's own key. Stored encrypted, write-only in the form — submitting a blank field keeps the existing key rather than clearing it. Leave it empty only when your custom endpoint authenticates for you. |
-| Model | Optional. Defaults to a current model for the chosen provider. |
-| Let the assistant read report source | On by default. Off means the assistant cannot read `report.yaml` or `queries.py` files, so nothing from your report source reaches the provider; it can still read the built output. |
-| Let the assistant propose actions | Off by default. On means the assistant may propose the actions in [Actions and approval](#actions-and-approval); each waits for a person to approve it in the panel. |
-| Monthly budget | Organization-wide spend cap per calendar month. Blank means no cap. |
-| Per-user budget | The same cap, per person. Blank means no cap. |
-| Custom endpoint URL | Under *Advanced*. Optional. Sends every request to your own proxy or model server instead of the provider's API — see [below](#routing-requests-through-your-own-endpoint). |
-| Input / output price | Under *Advanced*. Optional USD per million tokens, both or neither. Built-in rates are used automatically when available. For an unlisted model, prices are optional while both budgets are blank; set both prices to enforce either budget. A manual price overrides built-in rates. |
+| Enabled | Off by default. Turn it on after choosing a usable connection and model. |
+| Authentication | API key, gateway-managed authentication, cloud credentials, or operator-authorized workload identity, depending on the provider. |
+| Credentials | Encrypted and write-only. Blank fields keep stored credentials only while provider, resolved endpoint, authentication mode and cloud identity are unchanged. Changing that identity requires replacement credentials. |
+| Model | Anthropic defaults to `claude-sonnet-4-6`; OpenAI defaults to `gpt-4o`. Other providers require an explicit model ID. Azure requires a deployment name. |
+| Discover models | Optional catalog lookup using the saved connection. Manual entry always works. Azure catalog names are not deployment discovery. |
+| Let the assistant read report source | On by default. Off prevents reading `report.yaml` and `queries.py`; the assistant can still read built output. |
+| Let the assistant propose actions | Off by default. Each proposed action waits for a person to approve it. |
+| Monthly / per-user budget | Spend caps per calendar month. Blank means no cap. |
+| Custom endpoint URL | Under *Advanced*. Required for LiteLLM, custom endpoints and Azure; optional for direct APIs. Bedrock and Vertex use native cloud endpoints. |
+| Input / output price | USD per million tokens, both or neither. Required for budget enforcement when provider pricing is unknown. Zero and zero are valid for a free model. |
 
-The *Advanced* section is folded shut unless one of its fields is set or
-rejected, so a page with nothing under it is telling you nothing is there.
+For a new connection, leave **Enabled** off, enter its endpoint and credentials,
+then save. Discover or enter a model, enable AI, save again, and use **Test
+connection**. Discovery failure does not block manual model entry. Settings
+save in place and preserve drafts in neighboring forms.
 
-The settings page shows whether the saved configuration allows the assistant
-to run and whether cost estimates are available. If it is disabled or the
-selected model needs a price to enforce a budget, the page explains what to
-change. The studio header links to **AI settings** for an
-existing configuration that needs attention; **Set up AI** means no settings
-have been saved yet.
+Cloud connections use these fields:
+
+- **Azure OpenAI:** an HTTPS Azure resource endpoint, deployment name, and
+  either an API key or an Entra tenant ID, client ID and client secret.
+- **Bedrock:** AWS region and an access key ID plus secret access key; a session
+  token is optional. The model ID may also identify an inference profile.
+- **Vertex AI:** Google Cloud project and location, plus service-account JSON.
+  Only service-account credentials with the trusted Google token endpoint are
+  accepted; external-account credential configurations are not accepted here.
+
+Each cloud provider also offers **workload identity** when the instance operator
+has authorized this organization for that provider. Organization admins cannot
+add that authorization themselves. See [instance configuration](/docs/latest/install/configuration/#ai-workload-identities).
+Missing organization credentials never silently select a server identity.
+
+The page separates **Chat**, **Alerts**, and **Cost metering** capability checks
+from the overall saved-settings readiness and model pricing. Chat can work when
+an endpoint cannot force an alert tool call; alerts remain unavailable in that
+case. New providers require verification before use. Existing native provider
+configurations retain their established behavior until rechecked.
 
 ### Budgets
 
@@ -283,64 +304,34 @@ the provider too if the number matters.
 
 ### Routing requests through your own endpoint
 
-Left empty, the assistant calls the provider's own API. **Custom endpoint
-URL** (under *Advanced*) changes the address and nothing else: every request
-goes to that URL instead of the provider's cloud, in the same request format
-the provider uses. Most organizations never set it.
+Use **LiteLLM** or **Custom OpenAI-compatible endpoint** for a gateway or local
+model server. The endpoint must support Chat Completions, streaming and tools.
+**Anthropic** custom endpoints must support the Anthropic Messages format.
+Select **No authentication** only when an explicit endpoint authenticates for
+you or needs no key. Any API key supplied is sent to the selected endpoint;
+changing the destination does not reuse a stored key.
 
-Two kinds of team do:
+**OpenRouter** and **DeepSeek** have preset endpoints and require a model ID and
+API key. Cloud providers use their own authentication and endpoint rules.
 
-- **Regulated or self-hosted teams** that keep prompts and report data on
-  their own network. A local model behind a server that speaks the
-  provider's API means nothing leaves the perimeter.
-- **Companies with a central model gateway** that holds the real provider
-  key and applies its own controls — logging, rate limits, an allow-list of
-  models. The portal talks to the gateway; the gateway talks to the
-  provider.
+Gateways and cloud providers do not inherit direct-provider prices from a model
+name. Enter your actual input and output prices if needed. Without prices,
+uncapped calls may run with unknown cost; unknown charges are excluded from
+recorded totals. Budgeted calls require both pricing and verified token usage.
+If a provider stops returning usage, further budgeted inference is blocked until
+metering is checked again. Compare recorded estimates with provider billing.
 
-The endpoint has to speak the dialect of the provider you selected. The
-format is decided by the **Provider** setting, not by the URL:
+**Test connection** uses only synthetic prompts and harmless synthetic tools.
+It verifies streamed chat, a tool roundtrip, a forced alert tool, and token usage.
+It uses the settings as last saved and does not execute portal actions or send
+report data. A successful provider test can still leave AI unavailable because
+it is disabled, lacks budget pricing, or cannot meter usage.
 
-- **Anthropic** — Must implement the Anthropic Messages API, for example a
-  LiteLLM proxy in Anthropic mode. Many gateways only speak the OpenAI
-  format; pick OpenAI as the provider for those.
-- **OpenAI** — Any OpenAI-compatible server works: LiteLLM, Azure OpenAI,
-  vLLM, Ollama, or a corporate gateway.
-
-If the endpoint authenticates for you — the gateway holds the key, or the
-local server needs none — the **API key** field may be left empty. Whatever
-key you do enter is sent to the endpoint in the provider's usual header, so
-a gateway that wants its own token takes that token here.
-
-A model the built-in price list does not know — for example, a model behind a
-custom endpoint — has no cost estimate until you set **Input / output price**
-under *Advanced*. Both prices are required to enforce a budget for that model;
-leave both budgets blank to use it without pricing. Enter what you actually
-pay; for a model that costs nothing per token, zero and zero is a legitimate
-answer. Built-in rates may not match your provider's current charges; check
-provider billing for actual costs.
-
-**Test connection** verifies the pairing. It sends one tiny request — "Say
-OK", eight output tokens, not counted against any budget — through the
-settings *as last saved*, built the same way a real question is, so an
-endpoint that would break a question breaks this too. Save first, then
-test. A successful connection confirms that the provider answered. If the
-assistant is still disabled or needs model pricing, the result also explains
-that blocker. It answers connection failures in one plain sentence:
-
-- *The provider rejected the key.* — the endpoint answered; the key, or its
-  absence, is the problem.
-- *Could not reach host.* — DNS, network, or a wrong address.
-- *host did not answer like an Anthropic endpoint — check the provider and
-  custom endpoint URL.* — the endpoint answered in the other dialect, or the
-  path is wrong. This is what an Anthropic provider pointed at an
-  OpenAI-format gateway produces.
-
-Under the sentence, organization admins can unfold **Technical details**: the
-exception, the provider's own message with anything key-shaped redacted, and
-the host it hit. When the saved key or model name looks like the other
-vendor's — an Anthropic key under the OpenAI provider, a `gpt-` model under
-Anthropic — the result says so too, and the same hint appears when you save.
+Results belong to the exact configuration revision tested. Saving a new model,
+endpoint or credential clears old verification; pricing and budget changes keep
+capability results. Delayed results from older connections are discarded.
+Connection failures appear as safe messages; no credentials or signed cloud
+URLs are shown.
 
 ## Who can use it
 
@@ -376,9 +367,8 @@ API key, or that the budget cap is reached — each with the specific reason,
 so an admin knows what to fix.
 
 **The panel says the model provider returned an error.** The request left
-the portal and came back broken. Organization admins see one technical line
-under the banner — the exception, the head of its message, and the host it
-hit; everyone else sees only the sentence. Check that the provider matches
+the portal and came back broken. The panel shows a safe explanation of the failure. Organization admins can
+check streaming, tool support and metering from AI settings. Check that the provider matches
 the endpoint's dialect (an Anthropic provider needs an endpoint speaking the
 Anthropic Messages API, not the OpenAI format), then run **Test connection**
 on the settings page: it fails the same way, with the same detail, without

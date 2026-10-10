@@ -50,3 +50,13 @@ class OrgSSOConfigAdmin(admin.ModelAdmin):
 @admin.register(OrgAssistantConfig)
 class OrgAssistantConfigAdmin(admin.ModelAdmin):
     list_display = ["org", "enabled", "provider", "model"]
+    exclude = ["api_key", "cloud_credentials"]
+    readonly_fields = [field.name for field in OrgAssistantConfig._meta.fields
+                       if field.name not in {"id", "api_key", "cloud_credentials"}]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        # Connection edits use the validated write-only organization form.
+        return False

@@ -86,7 +86,7 @@ class TestSave:
 
     def test_gateway_url_counts_as_credential(self, login, org_admin, org, url):
         resp = login(org_admin).post(
-            url, form_data(api_key="", base_url="http://gateway.internal/v1")
+            url, form_data(api_key="", auth_mode="none", base_url="http://gateway.internal/v1")
         )
         assert resp.status_code == 302
         assert OrgAssistantConfig.objects.get(org=org).enabled is True

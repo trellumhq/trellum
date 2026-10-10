@@ -900,6 +900,25 @@ def member_reset_mfa(request, org_slug, user_id):  # noqa: ARG001
 
 # ── AI settings ─────────────────────────────────────────────────────────────────
 
+def _assistant_saved_connection(cfg):
+    if not cfg:
+        return None
+    from apps.assistant.provider_registry import effective_base_url
+    return {"provider": cfg.provider, "base_url": effective_base_url(cfg.provider, cfg.base_url),
+            "auth_mode": cfg.auth_mode, "cloud_config": cfg.cloud_config, "model": cfg.model}
+
+
+def _assistant_check_updates(cfg):
+    stored = cfg.connection_check if cfg else {}
+    checks = stored.get("checks", {}) if cfg and stored.get("revision") == cfg.config_revision else {}
+    updates = {}
+    for name, label in (("chat", "Chat"), ("alerts", "Alerts"), ("usage", "Cost metering")):
+        check = checks.get(name)
+        state = ("Verified" if check.get("ok") else "Unavailable") if check else "Not tested"
+        updates["assistant-" + name + "-check"] = label + ": " + state + (" — " + check.get("message", "") if check else "")
+    return updates
+
+
 def _assistant_pricing_state(config):
     if config.price() is None:
         return False, "Cost estimates are unavailable without pricing. Prices are optional while both budgets are blank."
@@ -912,12 +931,20 @@ def assistant_settings(request, org_slug):  # noqa: ARG001
     """Bring-your-own-key configuration shared by chat and alert evaluations."""
     from .forms import AssistantConfigForm
     from .models import OrgAssistantConfig
+    from apps.assistant.provider_registry import PROVIDERS
 
     cfg = OrgAssistantConfig.objects.filter(org=request.org).first()
     if request.method == "POST":
         form = AssistantConfigForm(request.POST, instance=cfg, org=request.org)
-        if form.is_valid():
-            form.save()
+        valid = form.is_valid()
+        if valid:
+            from django.core.exceptions import ValidationError
+            try:
+                form.save()
+            except ValidationError as exc:
+                form.add_error(None, exc)
+                valid = False
+        if valid:
             audit(
                 request, "assistant.config.update", target=request.org,
                 enabled=form.instance.enabled, provider=form.instance.provider,
@@ -938,8 +965,13 @@ def assistant_settings(request, org_slug):  # noqa: ARG001
             message = "AI settings saved." + (" " + " ".join(hints) if hints else "")
             if is_settings_request(request):
                 return settings_success(
-                    request, message, values={"api_key": ""},
+                    request, message,
+                    values={name: "" for name in ("api_key", "access_key_id", "secret_access_key", "session_token", "client_secret", "service_account")},
+                    config_revision=form.instance.config_revision,
+                    saved_connection=_assistant_saved_connection(form.instance),
+                    checks=form.instance.connection_check.get("checks", {}),
                     has_key=bool(form.instance.api_key),
+                    has_cloud_credentials=bool(form.instance.cloud_credentials),
                     assistant_ready=readiness_ok,
                     assistant_open_pricing=open_pricing,
                     updates={
@@ -947,6 +979,7 @@ def assistant_settings(request, org_slug):  # noqa: ARG001
                         "assistant-readiness-title": "AI is ready based on saved settings." if readiness_ok else "AI is unavailable based on saved settings.",
                         "assistant-readiness-reason": readiness_reason or "Use Test connection below to verify provider access.",
                         "assistant-pricing-state": pricing_state,
+                        **_assistant_check_updates(form.instance),
                     },
                 )
             messages.success(request, "AI settings saved.")
@@ -971,7 +1004,9 @@ def assistant_settings(request, org_slug):  # noqa: ARG001
             cfg.monthly_budget_usd is not None or cfg.per_user_budget_usd is not None
         )
     )
-    advanced_open = form.advanced_open() or pricing_blocks_budget
+    advanced_open = (form.advanced_open() or pricing_blocks_budget
+                     or form["provider"].value() in {"azure", "litellm", "custom"}
+                     or form["auth_mode"].value() == "none")
 
     usage = None
     if cfg is not None:
@@ -993,6 +1028,10 @@ def assistant_settings(request, org_slug):  # noqa: ARG001
             "org": request.org,
             "form": form,
             "cfg": cfg,
+            "provider_presets": PROVIDERS,
+            "check_updates": _assistant_check_updates(cfg),
+            "saved_connection": _assistant_saved_connection(cfg),
+            "has_cloud_credentials": bool(cfg and cfg.cloud_credentials),
             "has_key": bool(cfg and cfg.api_key),
             "readiness_ok": readiness_ok,
             "readiness_reason": readiness_reason,
@@ -1019,8 +1058,37 @@ def assistant_test(request, org_slug):  # noqa: ARG001
             "assistant_available": available, "assistant_reason": reason,
         })
     result = llm.check_connection(llm.LLMConfig.from_config(cfg))
+    checks = result.get("checks", {})
+    # The network operation ran without a database lock. Its result belongs only
+    # to the exact saved connection that was probed.
+    stored = OrgAssistantConfig.objects.filter(pk=cfg.pk, config_revision=cfg.config_revision).update(
+        connection_check={"revision": cfg.config_revision, "checks": checks},
+    )
+    result["config_revision"] = cfg.config_revision
+    result["stale"] = not bool(stored)
     result["assistant_available"], result["assistant_reason"] = llm.is_available(request.org)
     return JsonResponse(result)
+
+
+@require_org_role(roles.ORG_ADMIN)
+@require_POST
+def assistant_models(request, org_slug):  # noqa: ARG001
+    """Optional catalog discovery through the saved organization credentials."""
+    from apps.assistant import llm
+    from .models import OrgAssistantConfig
+
+    cfg = OrgAssistantConfig.objects.filter(org=request.org).first()
+    if cfg is None:
+        return JsonResponse({"ok": False, "message": "Save the settings first.", "models": []}, status=400)
+    try:
+        models = llm.list_models(llm.LLMConfig.from_config(cfg))
+    except Exception:
+        # SDK exceptions may contain credentials or signed request URLs.
+        return JsonResponse({"ok": False, "message": "Model discovery is unavailable. Enter the model ID or deployment name manually.",
+                             "models": [], "config_revision": cfg.config_revision})
+    stale = not OrgAssistantConfig.objects.filter(pk=cfg.pk, config_revision=cfg.config_revision).exists()
+    return JsonResponse({"ok": True, "models": models, "stale": stale, "config_revision": cfg.config_revision,
+                         "message": "Azure catalogs contain model IDs; enter your deployment name manually." if cfg.provider == "azure" else "Available models loaded. Select or enter a model ID."})
 
 
 # ── Invitations ─────────────────────────────────────────────────────────────

@@ -1,12 +1,12 @@
 {% extends "settings_base.html" %}
+{% load static %}
 {% block title %}AI settings — {{ org.name }}{% endblock %}
 {% block settings %}
 <header class="page-head">
   <div class="ui-label page-kicker scope-org">Organization · {{ org.name }}</div>
   <h1>AI settings</h1>
   <p class="muted page-sub">These settings choose the shared provider and model for report chats and alert evaluations.
-    Proposed actions wait for an organization member to approve them. Your organization brings its own model API key: it is stored
-    encrypted, used only server-side, and never sent to the browser.</p>
+    Proposed actions wait for an organization member to approve them. Credentials are stored encrypted, used only server-side, and never sent to the browser.</p>
 </header>
 
 <div id="assistant-readiness" class="ui-flash {% if readiness_ok %}success{% else %}error{% endif %}" role="status">
@@ -20,20 +20,55 @@
     <div class="subtle" data-settings-text="assistant-readiness-reason">{{ readiness_reason|default:"Use Test connection below to verify provider access." }}</div>
   </div>
 </div>
+<ul id="assistant-capabilities" aria-live="polite">
+  {% for key, text in check_updates.items %}<li data-settings-text="{{ key }}">{{ text }}</li>{% endfor %}
+</ul>
 
 <div class="panel">
-  <form id="orgAssistantForm" method="post" data-settings-form data-settings-save>
-    {% csrf_token %}
+  <form id="orgAssistantForm" method="post" data-settings-form data-settings-save
+        data-test-url="{% url 'org-assistant-test' org.slug %}"
+        data-models-url="{% url 'org-assistant-models' org.slug %}"
+        data-config-revision="{{ cfg.config_revision|default:1 }}">
+    {% csrf_token %}{{ form.config_revision }}
     {{ form.non_field_errors }}
     <label class="ui-check-row">{{ form.enabled }} Enable AI for chats and alerts in this organization</label>
 
     <p class="ui-label" style="margin:18px 0 0">Provider</p>
     <label>Provider</label>{{ form.provider }}{{ form.provider.errors }}
+    <label for="{{ form.auth_mode.id_for_label }}">Authentication</label>{{ form.auth_mode }}{{ form.auth_mode.errors }}
+    <span class="helptext">Workload identity requires authorization from your instance operator.</span>
+    <div data-auth-fields="api_key">
     <label>API key
       <span class="muted" data-settings-text="assistant-key-stored">{% if has_key %}(a key is stored — blank keeps it){% else %}(none stored yet){% endif %}</span>
     </label>{{ form.api_key }}{{ form.api_key.errors }}
     <span class="helptext">{{ form.api_key.help_text }}</span>
+    </div>
+    <div data-provider-fields="bedrock">
+      <label for="{{ form.region.id_for_label }}">AWS region</label>{{ form.region }}{{ form.region.errors }}
+    </div>
+    <div data-provider-fields="azure" data-auth-fields="client_secret">
+      <label for="{{ form.tenant_id.id_for_label }}">Entra tenant ID</label>{{ form.tenant_id }}{{ form.tenant_id.errors }}
+      <label for="{{ form.client_id.id_for_label }}">Entra client ID</label>{{ form.client_id }}{{ form.client_id.errors }}
+      <label for="{{ form.client_secret.id_for_label }}">Entra client secret</label>{{ form.client_secret }}{{ form.client_secret.errors }}
+    </div>
+    <div data-provider-fields="bedrock" data-auth-fields="access_key">
+      <label for="{{ form.access_key_id.id_for_label }}">AWS access key ID</label>{{ form.access_key_id }}{{ form.access_key_id.errors }}
+      <label for="{{ form.secret_access_key.id_for_label }}">AWS secret access key</label>{{ form.secret_access_key }}{{ form.secret_access_key.errors }}
+      <label for="{{ form.session_token.id_for_label }}">AWS session token (optional)</label>{{ form.session_token }}{{ form.session_token.errors }}
+    </div>
+    <div data-provider-fields="vertex">
+      <label for="{{ form.project.id_for_label }}">Google Cloud project</label>{{ form.project }}{{ form.project.errors }}
+      <label for="{{ form.location.id_for_label }}">Google Cloud location</label>{{ form.location }}{{ form.location.errors }}
+    </div>
+    <div data-provider-fields="vertex" data-auth-fields="service_account">
+      <label for="{{ form.service_account.id_for_label }}">Google service account JSON</label>{{ form.service_account }}{{ form.service_account.errors }}
+    </div>
+    <span class="helptext" id="assistant-cloud-stored">{% if has_cloud_credentials %}Cloud credentials are stored; blank fields keep them only for the same connection identity.{% endif %}</span>
     <label>Model</label>{{ form.model }}{{ form.model.errors }}
+    <datalist id="assistant-model-list"></datalist>
+    <button type="button" class="ui-btn" id="assistant-models"{% if not cfg %} disabled{% endif %}>Discover models</button>
+    <span class="helptext">For a new provider, save its connection with AI disabled, discover or enter a model, then enable AI and test the connection.</span>
+    <span class="helptext" role="status" id="assistant-model-status">Discovery uses saved credentials. You can always enter a model ID or Azure deployment manually.</span>
     <span class="helptext">{{ form.model.help_text }}</span>
     {# Shown only when the model name looks like the other vendor's; the server says the same after a save. #}
     <span class="helptext" id="model-hint"
@@ -55,12 +90,14 @@
 
     <details{% if advanced_open %} open{% endif %}>
       <summary class="ui-label" style="margin:18px 0 0;cursor:pointer">Advanced: custom endpoint and pricing</summary>
+      <div data-endpoint-fields>
       <label>Custom endpoint URL</label>{{ form.base_url }}{{ form.base_url.errors }}
       <span class="helptext">{{ form.base_url.help_text }}</span>
       {# Which dialect the endpoint must speak follows the provider select. #}
       <span class="helptext" id="gateway-hint"
             data-anthropic="Must implement the Anthropic Messages API, for example a LiteLLM proxy in Anthropic mode. Many gateways only speak the OpenAI format; pick OpenAI as the provider for those. Use Test connection after saving."
             data-openai="Any OpenAI-compatible server works: LiteLLM, Azure OpenAI, vLLM, Ollama, or a corporate gateway. Use Test connection after saving."></span>
+      </div>
       <label>Input price (USD per million tokens)</label>{{ form.price_in_per_mtok }}{{ form.price_in_per_mtok.errors }}
       <span class="helptext">{{ form.price_in_per_mtok.help_text }}</span>
       <label>Output price (USD per million tokens)</label>{{ form.price_out_per_mtok }}{{ form.price_out_per_mtok.errors }}
@@ -69,7 +106,7 @@
 
     <p></p>
     <button class="ui-btn primary" type="submit">Save changes</button>
-    <button class="ui-btn" type="button" id="assistant-test" title="Runs one tiny call through the settings as last saved"{% if not cfg %} disabled{% endif %}>Test connection</button>
+    <button class="ui-btn" type="button" id="assistant-test" title="Tests streaming, tools, forced alert tools and metering through the settings as last saved"{% if not cfg %} disabled{% endif %}>Test connection</button>
     <div class="ui-flash" role="status" id="assistant-test-result" style="margin-top:12px" hidden>
       <span class="ui-flash-mark" aria-hidden="true"></span>
       <div style="min-width:0">
@@ -80,112 +117,9 @@
     </div>
   </form>
 </div>
-<script>
-(function () {
-  var form = document.getElementById('orgAssistantForm');
-  form.addEventListener('settings:success', function (event) {
-    if (event.detail && event.detail.assistant_open_pricing === true) {
-      var advanced = form.querySelector('details');
-      if (advanced) advanced.open = true;
-    }
-    if (event.detail && typeof event.detail.assistant_ready === 'boolean') {
-      var ready = event.detail.assistant_ready,
-          status = document.getElementById('assistant-readiness');
-      status.classList.toggle('success', ready);
-      status.classList.toggle('error', !ready);
-      document.getElementById('assistant-readiness-mark').textContent = ready ? '\u2713' : '\u2715';
-    }
-  });
-  var provider = document.getElementById('{{ form.provider.id_for_label }}'),
-      hint = document.getElementById('gateway-hint'),
-      model = document.getElementById('{{ form.model.id_for_label }}'),
-      modelHint = document.getElementById('model-hint');
-  function vendorOf(name) {
-    name = name.toLowerCase();
-    return /^claude-/.test(name) ? 'anthropic' : /^(gpt-|o1|o3|o4)/.test(name) ? 'openai' : '';
-  }
-  function showHint() {
-    hint.textContent = hint.getAttribute('data-' + provider.value) || '';
-    var vendor = vendorOf(model.value);
-    modelHint.textContent = vendor && vendor !== provider.value ? modelHint.getAttribute('data-' + provider.value) : '';
-  }
-  provider.addEventListener('change', showHint);
-  model.addEventListener('input', showHint);
-  showHint();
-
-  var btn = document.getElementById('assistant-test'), out = document.getElementById('assistant-test-result'),
-      mark = out.querySelector('.ui-flash-mark'), msg = document.getElementById('assistant-test-message'),
-      latency = document.getElementById('assistant-test-latency'), tech = document.getElementById('assistant-test-details'),
-      hints = document.getElementById('assistant-test-hints');
-  function show(ok, message, ms, detail, hintList) {
-    hints.textContent = (hintList || []).join(' ');
-    out.hidden = false;
-    out.classList.toggle('success', ok === true); out.classList.toggle('error', ok === false);
-    mark.textContent = ok === true ? '\u2713' : ok === false ? '\u2715' : '';
-    msg.textContent = message;
-    latency.textContent = ms == null ? '' : ms < 1000 ? ms + ' ms' : (ms / 1000).toFixed(1) + ' s';
-    tech.hidden = !detail; tech.open = false; tech.querySelector('pre').textContent = detail || '';
-  }
-  var hasSavedSettings = !btn.disabled;
-  var generation = 0, controller = null, testing = false;
-  function syncButton() {
-    btn.disabled = !hasSavedSettings || testing || form.getAttribute('aria-busy') === 'true';
-  }
-  function invalidate() {
-    ++generation;
-    if (controller) controller.abort();
-    controller = null;
-    testing = false;
-    out.hidden = true;
-    syncButton();
-  }
-  form.addEventListener('input', invalidate);
-  form.addEventListener('change', invalidate);
-  form.addEventListener('submit', invalidate);
-  form.addEventListener('settings:success', function () {
-    invalidate();
-    hasSavedSettings = true;
-    syncButton();
-  });
-  new MutationObserver(function () {
-    if (form.getAttribute('aria-busy') === 'true') invalidate();
-    else syncButton();
-  }).observe(form, { attributes: true, attributeFilter: ['aria-busy'] });
-  btn.addEventListener('click', function () {
-    if (!hasSavedSettings || testing || form.getAttribute('aria-busy') === 'true') return;
-    var token = ++generation, requestController = new AbortController(), timedOut = false;
-    controller = requestController;
-    testing = true;
-    syncButton();
-    show(null, 'Testing the saved settings…');
-    var timeout = setTimeout(function () { timedOut = true; requestController.abort(); }, 30000);
-    fetch('{% url "org-assistant-test" org.slug %}', {
-      method: 'POST', credentials: 'same-origin', signal: requestController.signal,
-      headers: { 'X-CSRFToken': form.querySelector('input[name=csrfmiddlewaretoken]').value }
-    })
-      .then(function (response) {
-        if (!response.ok) throw new Error('The connection test did not complete.');
-        return response.json();
-      })
-      .then(function (result) {
-        if (token !== generation) return;
-        var resultHints = (result.hints || []).slice();
-        if (result.assistant_available === false && result.assistant_reason) resultHints.push(result.assistant_reason);
-        show(result.ok, result.message, result.latency_ms, result.detail, resultHints);
-      })
-      .catch(function () {
-        if (token === generation) show(false, timedOut ? 'The connection test timed out. Try again.' : 'The request did not complete.');
-      })
-      .finally(function () {
-        clearTimeout(timeout);
-        if (token !== generation) return;
-        controller = null;
-        testing = false;
-        syncButton();
-      });
-  });
-})();
-</script>
+{{ provider_presets|json_script:"assistant-provider-presets" }}
+{{ saved_connection|json_script:"assistant-saved-connection" }}
+<script src="{% static 'assistant-settings.js' %}" defer></script>
 
 {% if usage %}
 <div class="panel">

@@ -406,6 +406,7 @@ urlpatterns = [
         name="org-security",
     ),
     path("orgs/<slug:org_slug>/settings/assistant", org_views.assistant_settings, name="org-assistant"),
+    path("orgs/<slug:org_slug>/settings/assistant/models", org_views.assistant_models, name="org-assistant-models"),
     path(
         "orgs/<slug:org_slug>/settings/assistant/test",
         org_views.assistant_test,

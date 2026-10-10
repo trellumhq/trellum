@@ -55,6 +55,30 @@ verification-on behavior. Keep your existing environment file when upgrading.
 Before sharing an instance with unrelated organizations, follow the
 [domain verification steps](/docs/latest/portal/single-sign-on/#turning-verification-back-on).
 
+### AI workload identities
+
+Organization AI settings normally use encrypted organization credentials.
+Workload identity is an explicit operator opt-in for each cloud provider and
+organization. `ASSISTANT_WORKLOAD_IDENTITY_ORGS` defaults to `{}` and accepts a
+JSON mapping from `azure`, `bedrock` or `vertex` to a list of organization primary
+keys as strings:
+
+```dotenv
+ASSISTANT_WORKLOAD_IDENTITY_ORGS={"bedrock":["42"],"vertex":["42"],"azure":[]}
+```
+
+Use the organization's database ID, not its slug. Apply the setting to the web
+process and every worker that evaluates alerts. Restart those processes when
+changing it. The organization admin then chooses workload identity in **AI
+settings**. Removing the authorization prevents further identity use; the admin
+can still disable AI without replacing credentials.
+
+Configure the authorized cloud identity on the server through the cloud's normal
+workload identity mechanism. Restrict its model and discovery permissions to the
+resources that organization may use. An organization with missing encrypted
+credentials does not fall back to that identity; it must explicitly select the
+workload mode and appear in the provider's allowlist.
+
 ### Build memory and time limits
 
 Build limits belong to the operator. A report cannot set `resources.memory_mb`
