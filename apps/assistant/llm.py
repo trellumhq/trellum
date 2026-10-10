@@ -15,9 +15,9 @@ from __future__ import annotations
 
 import concurrent.futures
 import json
+import hashlib
 import logging
 import math
-import re
 import time
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -46,7 +46,8 @@ RETRY_BASE_DELAY = 1.0
 RETRY_MAX_DELAY = 90.0
 RETRY_MAX_ATTEMPTS = 5
 
-SUPPORTED_PROVIDERS = ("anthropic", "openai")
+SUPPORTED_PROVIDERS = ("anthropic", "openai", "litellm", "openrouter", "deepseek",
+                       "azure", "bedrock", "vertex", "custom")
 
 DEFAULT_MODELS = {
     "anthropic": "claude-sonnet-4-6",
@@ -96,6 +97,24 @@ class LLMConfig:
     share_report_source: bool = True
     #: May the model propose portal actions (OrgAssistantConfig.actions_enabled)?
     actions_enabled: bool = False
+    auth_mode: str = "api_key"
+    cloud_config: dict = field(default_factory=dict)
+    cloud_credentials: dict = field(default_factory=dict, repr=False)
+    org_id: str | None = None
+    config_id: int | None = None
+    config_revision: int = 1
+    connection_check: dict = field(default_factory=dict)
+    budgeted: bool = False
+    custom_endpoint: bool = False
+
+    def __post_init__(self):
+        from .provider_registry import effective_base_url
+        endpoint = effective_base_url(self.provider, self.base_url)
+        if self.base_url and endpoint != effective_base_url(self.provider):
+            object.__setattr__(self, "custom_endpoint", True)
+        object.__setattr__(self, "base_url", endpoint)
+        if not self.model:
+            object.__setattr__(self, "model", DEFAULT_MODELS.get(self.provider, ""))
 
     @classmethod
     def for_org(cls, org) -> "LLMConfig | None":
@@ -111,10 +130,13 @@ class LLMConfig:
 
     @classmethod
     def from_config(cls, cfg) -> "LLMConfig":
+        from .provider_registry import effective_base_url
+
         provider = (cfg.provider or "anthropic").strip().lower()
-        base_url = (cfg.base_url or "").strip()
+        base_url = effective_base_url(provider, cfg.base_url)
         key = (cfg.api_key or "").strip()
-        if not key and base_url:
+        auth_mode = getattr(cfg, "auth_mode", "api_key")
+        if not key and base_url and auth_mode == "none" and provider in ("custom", "litellm", "anthropic", "openai"):
             key = GATEWAY_PLACEHOLDER_KEY
         return cls(
             provider=provider,
@@ -125,6 +147,14 @@ class LLMConfig:
             price_out=cfg.price_out_per_mtok,
             share_report_source=cfg.share_report_source,
             actions_enabled=cfg.actions_enabled,
+            auth_mode=auth_mode,
+            cloud_config=getattr(cfg, "cloud_config", {}) or {},
+            cloud_credentials=getattr(cfg, "cloud_credentials", {}) or {},
+            org_id=str(cfg.org_id), config_id=cfg.pk,
+            config_revision=getattr(cfg, "config_revision", 1),
+            connection_check=getattr(cfg, "connection_check", {}) or {},
+            budgeted=cfg.monthly_budget_usd is not None or cfg.per_user_budget_usd is not None,
+            custom_endpoint=bool((cfg.base_url or "").strip()),
         )
 
     def price(self) -> dict | None:
@@ -138,19 +168,20 @@ class LLMConfig:
             # ponytail: an override bills cached tokens at the input price; the
             # tables carry provider-specific cache rates an admin cannot enter.
             return {"in": i, "out": o, "cache_write": i, "cache_read": i, "cached_in": i}
-        return _list_price(self.provider, self.model)
+        return None if self.custom_endpoint else _list_price(self.provider, self.model)
 
 
 def _list_price(provider: str, model: str) -> dict | None:
     if provider == "openai":
-        for known, p in OPENAI_PRICING.items():
+        for known in sorted(OPENAI_PRICING, key=len, reverse=True):
+            p = OPENAI_PRICING[known]
             if model == known or model.startswith(known + "-"):
                 return p
         return None
-    return ANTHROPIC_PRICING.get(_pricing_model(model))
+    return ANTHROPIC_PRICING.get(_pricing_model(model)) if provider == "anthropic" else None
 
 
-def is_available(org) -> tuple[bool, str]:
+def is_available(org, purpose="chat") -> tuple[bool, str]:
     """Return ``(ok, reason)`` for one org. Reason is user-visible."""
     from apps.orgs.models import OrgAssistantConfig
 
@@ -164,22 +195,35 @@ def is_available(org) -> tuple[bool, str]:
 
     config = LLMConfig.from_config(cfg)
     if config.provider not in SUPPORTED_PROVIDERS:
-        return False, (
-            f"Unsupported LLM provider {config.provider!r}. Use anthropic or "
-            "openai (point the base URL at a gateway for anything else)."
-        )
+        return False, "Unsupported LLM provider."
+    if not config.model:
+        return False, "Enter a model or deployment in AI settings."
     try:
-        if config.provider == "openai":
+        _validate_credentials(config)
+    except Exception as error:
+        from .transport import normalize_error
+        return False, str(normalize_error(error))
+    from .provider_registry import workload_allowed
+    if config.auth_mode == "workload" and not workload_allowed(config.provider, config.org_id):
+        return False, "Workload identity is not authorized for this organization."
+    try:
+        if config.provider in ("openai", "litellm", "openrouter", "deepseek", "azure", "custom"):
             import openai  # noqa: F401
-        else:
+        elif config.provider == "anthropic":
             import anthropic  # noqa: F401
+        elif config.provider == "bedrock":
+            import boto3  # noqa: F401
+        else:
+            from google import genai  # noqa: F401
     except ImportError:
         return False, f"The {config.provider} SDK is not installed on this server."
-    if not config.api_key:
+    if config.auth_mode == "api_key" and not config.api_key:
         return False, (
             "No LLM API key configured for this organization. An org admin "
             "can add one under AI settings."
         )
+    if config.auth_mode in ("access_key", "client_secret", "service_account") and not config.cloud_credentials:
+        return False, "Add cloud credentials in AI settings."
     if config.price() is None and (
         cfg.monthly_budget_usd is not None or cfg.per_user_budget_usd is not None
     ):
@@ -187,6 +231,14 @@ def is_available(org) -> tuple[bool, str]:
             f"Set input and output prices for model '{config.model}' in AI settings "
             "to enforce budgets, or leave both budgets blank."
         )
+    checks = config.connection_check.get("checks", {}) if config.connection_check.get("revision") == config.config_revision else {}
+    required = ["chat"] + (["alerts"] if purpose == "alert" else []) + (["usage"] if config.budgeted else [])
+    for name in required:
+        check = checks.get(name)
+        if check is not None and not check.get("ok"):
+            return False, check.get("message") or f"The connection failed its {name} check."
+        if check is None and config.provider not in ("anthropic", "openai"):
+            return False, f"Test the connection in AI settings to verify {name} support."
     return True, ""
 
 
@@ -196,23 +248,43 @@ def is_available(org) -> tuple[bool, str]:
 
 
 def _anthropic_client(config: LLMConfig):
+    _validate_credentials(config)
     from anthropic import Anthropic
 
     # The turn loops retry rate limits and 5xx themselves; SDK retries on top
     # would multiply the per-attempt timeout and overrun the turn deadline.
-    kwargs: dict[str, Any] = {"api_key": config.api_key, "max_retries": 0}
+    kwargs: dict[str, Any] = {"api_key": config.api_key or GATEWAY_PLACEHOLDER_KEY, "max_retries": 0}
     if config.base_url:
         kwargs["base_url"] = config.base_url
     return Anthropic(**kwargs)
 
 
-def _openai_client(config: LLMConfig):
+def _openai_client(config: LLMConfig, timeout=None):
+    _validate_credentials(config)
+    if getattr(config, "provider", None) == "azure":
+        from .cloud import azure_openai_client
+        return azure_openai_client(config, timeout=timeout)
     import openai
 
-    kwargs: dict[str, Any] = {"api_key": config.api_key, "max_retries": 0}  # see _anthropic_client
+    kwargs: dict[str, Any] = {"api_key": config.api_key or GATEWAY_PLACEHOLDER_KEY, "max_retries": 0}
     if config.base_url:
         kwargs["base_url"] = config.base_url
     return openai.OpenAI(**kwargs)
+
+
+def _validate_credentials(config):
+    from .provider_registry import PROVIDERS
+    from .transport import TransportError
+    provider = getattr(config, "provider", "openai")
+    mode = getattr(config, "auth_mode", "api_key")
+    if provider in ("litellm", "custom") and not config.base_url:
+        raise TransportError("connection", "Add an explicit endpoint URL in AI settings.")
+    if mode not in PROVIDERS.get(provider, {}).get("auth_modes", ()):
+        raise TransportError("authentication", "Select a supported authentication mode.")
+    if mode == "api_key" and not config.api_key:
+        raise TransportError("authentication", "Add an API key in AI settings.")
+    if mode == "none" and (not config.base_url or (provider in ("openai", "anthropic") and not getattr(config, "custom_endpoint", False))):
+        raise TransportError("authentication", "Unauthenticated connections require an explicit gateway endpoint.")
 
 
 # ---------------------------------------------------------------------------
@@ -232,7 +304,8 @@ def add_usage(state: dict, usage_obj: Any, cost_delta: float | None) -> None:
         "cache_read_input_tokens",
         "cache_creation_input_tokens",
     ):
-        usage[name] = (usage.get(name) or 0) + (getattr(usage_obj, name, 0) or 0)
+        value = usage_obj.get(name, 0) if isinstance(usage_obj, dict) else getattr(usage_obj, name, 0)
+        usage[name] = (usage.get(name) or 0) + (value or 0)
     previous = usage.get("cost_usd", 0.0)
     usage["cost_usd"] = (
         None if previous is None or cost_delta is None
@@ -258,6 +331,7 @@ def stream_turn(
     remaining: Callable[[], float] | None = None,
     deadline_s: float | None = None,
     force_tool: str | None = None,
+    purpose: str = "chat",
 ) -> Generator[dict, None, None]:
     """Run one user turn including internal tool-use iterations.
 
@@ -279,26 +353,255 @@ def stream_turn(
     Mutates ``state`` (transcript + usage). Persisting it, recording spend and
     writing SSE frames are the view's job, same contract as the legacy portal.
     """
+    private = state.get("_provider") or {}
+    identity = _connection_identity(config)
+    if private and private.get("identity") != identity:
+        yield {"type": "error", "code": "new_conversation",
+               "message": "This model cannot continue the private provider state. Start a new conversation."}
+        return
     if user_message is not None:
-        entry: dict = {"role": "user", "content": user_message, "ts": time.time()}
+        entry = {"role": "user", "content": user_message, "ts": time.time()}
         if page_context:
             entry["page"] = page_context
         transcript_of(state).append(entry)
-
     clock = _Clock(remaining, deadline_s)
-    if config.provider == "openai":
-        yield from _stream_turn_openai(
-            config, state, toolbox, system_blocks, max_turns, max_tokens, clock, force_tool
-        )
-    elif config.provider == "anthropic":
-        yield from _stream_turn_anthropic(
-            config, state, toolbox, system_blocks, max_turns, max_tokens, clock, force_tool
-        )
-    else:
-        yield {
-            "type": "error", "code": "unavailable",
-            "message": f"Unsupported LLM provider: {config.provider!r}",
-        }
+    from .transport import TransportError, normalize_error
+    try:
+        adapter = _adapter(config.provider)
+    except TransportError as error:
+        yield _provider_error(error)
+        return
+    transcript = transcript_of(state)
+    for turn in range(max_turns):
+        if config.budgeted and config.org_id and getattr(toolbox, "actor", None) is not None:
+            from . import budget
+            allowed, reason = budget.precheck(config.org_id, toolbox.actor)
+            if not allowed:
+                yield {"type": "error", "code": "budget", "message": reason}
+                return
+        if clock.remaining() <= 0 or (turn and clock.remaining() < MIN_REMAINING_S):
+            yield clock.expired_event()
+            return
+        messages = _with_page_context([dict(entry) for entry in transcript], transcript)
+        for index, metadata in (state.get("_provider", {}).get("messages", {})).items():
+            if int(index) < len(messages):
+                messages[int(index)]["_provider"] = metadata
+        response, delay = None, RETRY_BASE_DELAY
+        for attempt in range(RETRY_MAX_ATTEMPTS):
+            if clock.remaining() <= 0:
+                yield clock.expired_event()
+                return
+            emitted = False
+            heartbeat = time.monotonic()
+            try:
+                timeout = None if math.isinf(clock.remaining()) else max(clock.remaining(), 0.001)
+                for event in adapter(config, messages, system_blocks, toolbox.schemas,
+                                     max_tokens=max_tokens, force_tool=force_tool,
+                                     timeout=timeout, purpose=purpose):
+                    if clock.remaining() <= 0:
+                        add_usage(state, None, None)
+                        _invalidate_metering(config)
+                        yield clock.expired_event()
+                        return
+                    if event.get("type") == "text_delta":
+                        if not isinstance(event.get("text"), str):
+                            raise TransportError("protocol", "The provider returned invalid text.")
+                        if event["text"]:
+                            emitted = True
+                            heartbeat = time.monotonic()
+                            yield event
+                    elif event.get("type") == "response":
+                        if response is not None:
+                            raise TransportError("protocol", "The provider returned multiple final responses.")
+                        response = event
+                    elif event.get("type") == "keepalive":
+                        if time.monotonic() - heartbeat >= TOOL_WAIT_SLICE_S:
+                            heartbeat = time.monotonic()
+                            yield {"type": "keepalive"}
+                        continue
+                if response is None:
+                    raise TransportError("protocol", "The stream ended before a final response.")
+                break
+            except Exception as error:
+                safe = normalize_error(error)
+                if response is None and safe.kind == "protocol":
+                    add_usage(state, None, None)
+                    _invalidate_metering(config)
+                if emitted:
+                    add_usage(state, None, None)
+                    _invalidate_metering(config)
+                    yield clock.expired_event() if clock.remaining() <= 0 else _cut_off()
+                    return
+                if safe.kind not in ("rate_limit", "server") or attempt == RETRY_MAX_ATTEMPTS - 1:
+                    yield _call_failed(clock, safe, config.base_url)
+                    return
+                if clock.remaining() <= delay:
+                    yield clock.expired_event()
+                    return
+                yield {"type": "rate_limit", "attempt": attempt + 1, "delay_s": delay}
+                time.sleep(delay)
+                delay = min(delay * 2, RETRY_MAX_DELAY)
+                response = None
+        usage = _valid_usage(response.get("usage"))
+        cost = _normalized_cost(config, usage)
+        if usage is None:
+            _invalidate_metering(config)
+        add_usage(state, usage, cost)
+        validation_error = None
+        try:
+            _validate_response(response, toolbox.schemas, force_tool)
+        except TransportError as error:
+            validation_error = error
+        if validation_error is None:
+            transcript.append({"role": "assistant", "content": [_block_to_dict(b) for b in response["blocks"]],
+                               "ts": time.time(), "stop_reason": response["stop_reason"]})
+            if response.get("provider_data"):
+                private = state.setdefault("_provider", {"identity": identity, "messages": {}})
+                private["messages"][str(len(transcript) - 1)] = response["provider_data"]
+        yield {"type": "usage", "model": config.model,
+               "input_tokens": (usage or {}).get("input_tokens", 0),
+               "output_tokens": (usage or {}).get("output_tokens", 0),
+               "cache_read": (usage or {}).get("cache_read_input_tokens", 0),
+               "cache_write": (usage or {}).get("cache_creation_input_tokens", 0),
+               "cost_delta_usd": cost, "session_cost_usd": state["usage"]["cost_usd"]}
+        if validation_error is not None:
+            yield _provider_error(validation_error, config.base_url)
+            return
+        tools = [block for block in response["blocks"] if block["type"] == "tool_use"]
+        if not tools:
+            yield {"type": "done", "stop_reason": response["stop_reason"]}
+            return
+        if usage is None and config.budgeted:
+            yield {"type": "error", "code": "metering",
+                   "message": "The provider omitted usage. Test the connection before another budgeted request."}
+            return
+        for block in tools:
+            name, args = block["name"], block["input"]
+            yield {"type": "tool_use", "id": block["id"], "name": name, "input": args}
+            result = yield from _run_tool(toolbox, name, args, clock)
+            if result is None:
+                yield clock.expired_event()
+                return
+            is_error = result.startswith("Error")
+            framed = toolbox.frame(name, args, result)
+            provenance, proposal = getattr(toolbox, "provenance", None), getattr(toolbox, "proposal", None)
+            entry = {"role": "tool", "tool_use_id": block["id"], "name": name,
+                     "input": args, "result": framed, "is_error": is_error,
+                     "provenance": provenance, "ts": time.time()}
+            if proposal:
+                entry["proposal"] = proposal
+            transcript.append(entry)
+            yield {"type": "tool_result", "id": block["id"], "name": name,
+                   "excerpt": _excerpt(result, 400), "is_error": is_error, "provenance": provenance}
+            if proposal:
+                yield {"type": "proposal", **proposal}
+    yield _turn_limit(max_turns)
+
+
+def _adapter(provider):
+    from .transport import stream_openai, stream_anthropic, TransportError
+    if provider == "anthropic":
+        return stream_anthropic
+    if provider in ("openai", "litellm", "openrouter", "deepseek", "azure", "custom"):
+        return stream_openai
+    if provider in ("bedrock", "vertex"):
+        from .cloud import stream_bedrock, stream_vertex
+        return stream_bedrock if provider == "bedrock" else stream_vertex
+    raise TransportError("unsupported", "Unsupported LLM provider.")
+
+
+def _validate_response(response, schemas, force_tool=None):
+    from .transport import TransportError
+    blocks = response.get("blocks")
+    if not isinstance(blocks, list) or not isinstance(response.get("stop_reason"), str):
+        raise TransportError("protocol", "The provider returned an invalid final response.")
+    known = {schema["name"]: schema["input_schema"] for schema in schemas}
+    ids, names = set(), []
+    for block in blocks:
+        if not isinstance(block, dict) or block.get("type") not in ("text", "tool_use"):
+            raise TransportError("protocol", "The provider returned an unsupported response block.")
+        if block["type"] == "text":
+            if not isinstance(block.get("text"), str):
+                raise TransportError("protocol", "The provider returned invalid text.")
+            continue
+        tool_id, name, args = block.get("id"), block.get("name"), block.get("input")
+        if not isinstance(tool_id, str) or not tool_id or tool_id in ids or not isinstance(name, str) or name not in known or not isinstance(args, dict):
+            raise TransportError("protocol", "The model returned an invalid tool call.")
+        _validate_arguments(args, known[name])
+        ids.add(tool_id)
+        names.append(name)
+    if force_tool and force_tool not in names:
+        raise TransportError("unsupported", "The model did not call the required tool.")
+
+
+def _valid_usage(usage):
+    if usage is None or not isinstance(usage, dict) or any(
+        not isinstance(usage.get(key), int) or isinstance(usage.get(key), bool) or usage[key] < 0
+        for key in ("input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")
+    ):
+        return None
+    return usage
+
+
+def _validate_arguments(value, schema):
+    """Validate the JSON-schema subset used by our static tool definitions."""
+    from .transport import TransportError
+    kind = schema.get("type")
+    types = {"object": dict, "array": list, "string": str, "boolean": bool,
+             "integer": int, "number": (int, float), "null": type(None)}
+    valid = kind is None or isinstance(value, types[kind])
+    if kind in ("integer", "number") and isinstance(value, bool):
+        valid = False
+    if "enum" in schema and value not in schema["enum"]:
+        valid = False
+    if kind == "number" and isinstance(value, float) and not math.isfinite(value):
+        valid = False
+    if not valid:
+        raise TransportError("protocol", "The model returned tool arguments that do not match the tool schema.")
+    if isinstance(value, dict):
+        properties = schema.get("properties", {})
+        if any(key not in value for key in schema.get("required", [])):
+            raise TransportError("protocol", "The model omitted required tool arguments.")
+        for key, item in value.items():
+            if key in properties:
+                _validate_arguments(item, properties[key])
+            elif schema.get("additionalProperties") is False:
+                raise TransportError("protocol", "The model returned unexpected tool arguments.")
+            elif isinstance(schema.get("additionalProperties"), dict):
+                _validate_arguments(item, schema["additionalProperties"])
+    elif isinstance(value, list) and "items" in schema:
+        for item in value:
+            _validate_arguments(item, schema["items"])
+    elif isinstance(value, (int, float)) and not isinstance(value, bool):
+        if ("minimum" in schema and value < schema["minimum"]) or ("maximum" in schema and value > schema["maximum"]):
+            raise TransportError("protocol", "The model returned out-of-range tool arguments.")
+
+
+def _normalized_cost(config, usage):
+    rates = config.price()
+    if usage is None or rates is None:
+        return None
+    cache_rate = rates.get("cached_in", rates.get("cache_read", rates["in"])) if config.provider != "anthropic" else rates["cache_read"]
+    return round((usage["input_tokens"] * rates["in"] + usage["output_tokens"] * rates["out"]
+                  + usage["cache_read_input_tokens"] * cache_rate
+                  + usage["cache_creation_input_tokens"] * rates.get("cache_write", rates["in"])) / 1_000_000, 6)
+
+
+def _invalidate_metering(config):
+    if config.config_id is None:
+        return
+    from apps.orgs.models import OrgAssistantConfig
+    from django.db import transaction
+    with transaction.atomic():
+        cfg = OrgAssistantConfig.objects.select_for_update().filter(
+            pk=config.config_id, org_id=config.org_id, config_revision=config.config_revision).first()
+        if cfg is None:
+            return
+        checked = cfg.connection_check or {}
+        checks = dict(checked.get("checks", {})) if checked.get("revision") == config.config_revision else {}
+        checks["usage"] = {"ok": False, "message": "The provider omitted usage. Test the connection to verify metering."}
+        cfg.connection_check = {"revision": config.config_revision, "checks": checks}
+        cfg.save(update_fields=["connection_check"])
 
 
 class _Clock:
@@ -357,33 +660,25 @@ def _run_tool(toolbox, name: str, args: dict, clock: _Clock):
 
 
 def _with_page_context(messages: list, transcript: list) -> list:
-    """Append the page context of the LATEST user turn to its API message.
-
-    Only the live turn gets context — historical turns answer with their own
-    context already baked into the assistant replies.
-    """
-    if not messages or not transcript:
-        return messages
-    last_entry = transcript[-1] if transcript[-1].get("role") == "user" else None
-    if last_entry is None:
-        for e in reversed(transcript):
-            if e.get("role") == "user":
-                last_entry = e
-                break
-    page = (last_entry or {}).get("page")
-    if not page:
-        return messages
-    out = list(messages)
-    last = dict(out[-1])
-    if last.get("role") == "user" and isinstance(last.get("content"), str):
-        last["content"] = (
-            last["content"]
-            + f"\n\n[Context: the user is currently viewing {page}. "
-            "If the question refers to 'this report' or 'this chart', it "
-            "means that page.]"
-        )
-        out[-1] = last
+    """Decorate the private copy of each stored user message consistently."""
+    out = []
+    for message in messages:
+        copy = dict(message)
+        page = copy.get("page")
+        if page and copy.get("role") == "user" and isinstance(copy.get("content"), str):
+            copy["content"] += (f"\n\n[Context: the user is currently viewing {page}. "
+                                "If the question refers to 'this report' or 'this chart', it means that page.]")
+        out.append(copy)
     return out
+
+
+def _connection_identity(config):
+    # A fingerprint binds signed continuation without storing credentials.
+    data = {"provider": config.provider, "model": config.model, "endpoint": config.base_url,
+            "org": config.org_id, "config": config.config_id, "revision": config.config_revision,
+            "auth": config.auth_mode, "cloud": config.cloud_config,
+            "key": config.api_key, "credentials": config.cloud_credentials}
+    return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
 
 
 # ---------------------------------------------------------------------------
@@ -398,6 +693,8 @@ def _pricing_model(model: str) -> str:
 
 
 def compute_cost_anthropic(usage: Any, model: str, config: LLMConfig | None = None) -> float | None:
+    if usage is None:
+        return None
     p = config.price() if config is not None else _list_price("anthropic", model)
     if not p:
         return None
@@ -408,138 +705,6 @@ def compute_cost_anthropic(usage: Any, model: str, config: LLMConfig | None = No
         + (getattr(usage, "cache_read_input_tokens", 0) or 0) * p["cache_read"] / 1_000_000,
         6,
     )
-
-
-def _stream_turn_anthropic(
-    config, state, toolbox, system_blocks, max_turns, max_tokens, clock, force_tool=None
-) -> Generator[dict, None, None]:
-    from anthropic import APIStatusError, RateLimitError
-
-    client = _anthropic_client(config)
-    model = config.model or DEFAULT_MODELS["anthropic"]
-    transcript = transcript_of(state)
-    messages = _with_page_context(_transcript_to_api_messages(transcript), transcript)
-    forced = {"tool_choice": {"type": "tool", "name": force_tool}} if force_tool else {}
-
-    for _turn in range(max_turns):
-        if _turn and clock.remaining() < MIN_REMAINING_S:
-            yield clock.expired_event()
-            return
-        response = None
-        delay = RETRY_BASE_DELAY
-        cached_messages = _with_cache_breakpoint(messages)
-        for attempt in range(RETRY_MAX_ATTEMPTS):
-            # Text is forwarded as the model produces it. `emitted` guards the
-            # retry: once a token has reached the browser we cannot start the
-            # call over without repeating what the user has already read, so a
-            # mid-stream failure is reported rather than retried.
-            emitted = False
-            try:
-                with client.messages.stream(
-                    model=model,
-                    max_tokens=max_tokens,
-                    system=system_blocks,
-                    tools=toolbox.schemas,
-                    messages=cached_messages,
-                    **forced,
-                    **clock.timeout_kwargs(),
-                ) as stream:
-                    for chunk in stream.text_stream:
-                        if chunk:
-                            emitted = True
-                            yield {"type": "text_delta", "text": chunk}
-                    response = stream.get_final_message()
-                break
-            except RateLimitError:
-                if emitted:
-                    yield _cut_off()
-                    return
-                yield {"type": "rate_limit", "attempt": attempt + 1, "delay_s": delay}
-                time.sleep(delay)
-                delay = min(delay * 2, RETRY_MAX_DELAY)
-            except APIStatusError as e:
-                if not emitted and e.status_code and 500 <= e.status_code < 600:
-                    yield {"type": "rate_limit", "attempt": attempt + 1, "delay_s": delay}
-                    time.sleep(delay)
-                    delay = min(delay * 2, RETRY_MAX_DELAY)
-                    continue
-                yield _provider_error(e, config.base_url)
-                return
-            except Exception as e:
-                yield _call_failed(clock, e, config.base_url)
-                return
-
-        if response is None:
-            yield _retries_exhausted()
-            return
-
-        cost = compute_cost_anthropic(response.usage, model, config)
-        add_usage(state, response.usage, cost)
-        yield {
-            "type": "usage",
-            "model": model,
-            "input_tokens": response.usage.input_tokens,
-            "output_tokens": response.usage.output_tokens,
-            "cache_read": getattr(response.usage, "cache_read_input_tokens", 0) or 0,
-            "cache_write": getattr(response.usage, "cache_creation_input_tokens", 0) or 0,
-            "cost_delta_usd": round(cost, 6) if cost is not None else None,
-            "session_cost_usd": state.get("usage", {}).get("cost_usd"),
-        }
-
-        transcript.append({
-            "role": "assistant",
-            "content": [_block_to_dict(b) for b in response.content],
-            "ts": time.time(),
-            "stop_reason": response.stop_reason,
-        })
-
-        messages.append({"role": "assistant", "content": [_block_to_dict(b) for b in response.content]})
-
-        if response.stop_reason != "tool_use":
-            yield {"type": "done", "stop_reason": response.stop_reason}
-            return
-
-        tool_results = []
-        for block in response.content:
-            if block.type != "tool_use":
-                continue
-            yield {"type": "tool_use", "id": block.id, "name": block.name, "input": block.input}
-            result = yield from _run_tool(toolbox, block.name, block.input, clock)
-            if result is None:
-                yield clock.expired_event()
-                return
-            is_error = result.startswith("Error")
-            framed = toolbox.frame(block.name, block.input, result)
-            provenance = getattr(toolbox, "provenance", None)
-            proposal = getattr(toolbox, "proposal", None)
-            transcript.append({
-                "role": "tool",
-                "tool_use_id": block.id,
-                "name": block.name,
-                "input": block.input,
-                "result": framed,
-                "is_error": is_error,
-                "provenance": provenance,
-                "ts": time.time(),
-            })
-            if proposal:
-                transcript[-1]["proposal"] = proposal
-            tool_results.append({
-                "type": "tool_result",
-                "tool_use_id": block.id,
-                "content": framed,
-            })
-            yield {
-                "type": "tool_result", "id": block.id, "name": block.name,
-                "excerpt": _excerpt(result, 400), "is_error": is_error,
-                "provenance": provenance,
-            }
-            if proposal:
-                yield {"type": "proposal", **proposal}
-
-        messages.append({"role": "user", "content": tool_results})
-
-    yield _turn_limit(max_turns)
 
 
 # ---------------------------------------------------------------------------
@@ -564,44 +729,22 @@ def _call_failed(clock: "_Clock", e: Exception, base_url: str = "") -> dict:
 
 
 def _provider_error(e: Exception, base_url: str = "") -> dict:
-    # The full exception goes to the log, never to the browser: provider
-    # errors echo request details, and the org's key rides in the client.
-    # ``detail`` is the one-line exception for org admins only -- the view
-    # strips it for everyone else before the frame leaves the server.
-    logger.exception("assistant: provider call failed (%s)", type(e).__name__)
+    from .transport import normalize_error
+    safe = normalize_error(e)
+    logger.warning("assistant: provider call failed (%s)", safe.kind)
     return {
         "type": "error", "code": "provider",
         "message": "The model provider returned an error. Try again in a moment.",
-        "detail": error_detail(e, base_url),
+        "detail": error_detail(safe, base_url),
     }
 
 
-#: Anything shaped like an API key, including the masked echo providers put
-#: in their own 401 message ("sk-ant-a*****…JgAA"), and any bare asterisk run.
-_KEYISH = re.compile(r"sk-[A-Za-z0-9*_…-]{6,}|\*{6,}")
-
-
-def redact_keys(text: str) -> str:
-    return _KEYISH.sub("sk-…", text)
-
-
-def _provider_message(e: Exception) -> str:
-    """The provider's own sentence when the SDK kept the response body (the
-    inner ``error`` dict for one SDK, the whole envelope for the other), else
-    ``str(e)`` -- which for a status error is "Error code: 401 - {…the dict…}"."""
-    body = getattr(e, "body", None)
-    err = body.get("error", body) if isinstance(body, dict) else None
-    msg = err.get("message") if isinstance(err, dict) else None
-    return msg if isinstance(msg, str) and msg else str(e)
-
-
 def error_detail(e: Exception, base_url: str = "") -> str:
-    """One technical line: exception class, head of the provider's message
-    with key-like material redacted, the host it hit (the SDK's request URL
-    when it has one, else the configured gateway)."""
-    text = f"{type(e).__name__}: {redact_keys(_provider_message(e))[:200]}".rstrip(": ")
-    url = getattr(getattr(e, "request", None), "url", None) or base_url
-    host = urlsplit(str(url)).hostname if url else None
+    """Only safe transport messages may leave the runtime, even for admins."""
+    from .transport import normalize_error
+    safe = normalize_error(e)
+    text = f"{safe.kind}: {safe}"
+    host = urlsplit(base_url).hostname if base_url else None
     return f"{text} ({host})" if host else text
 
 
@@ -627,12 +770,11 @@ def _turn_limit(max_turns: int) -> dict:
 class _UsageShim:
     """Adapt OpenAI usage to the attribute names add_usage() expects.
 
-    ``usage`` is ``None`` when a streamed completion carries no usage block;
-    everything then reads as zero rather than raising, because a missing
-    meter must not cost the user their answer.
+    Missing usage is unknown cost even when the display counters remain zero.
     """
 
     def __init__(self, usage):
+        self.available = usage is not None
         cached = 0
         details = getattr(usage, "prompt_tokens_details", None)
         if details is not None:
@@ -644,6 +786,8 @@ class _UsageShim:
 
 
 def compute_cost_openai(shim: _UsageShim, model: str, config: LLMConfig | None = None) -> float | None:
+    if not shim.available:
+        return None
     p = config.price() if config is not None else _list_price("openai", model)
     if not p:
         return None
@@ -713,170 +857,6 @@ def _transcript_to_openai_messages(transcript: list[dict], system_text: str) -> 
     return out
 
 
-def _stream_turn_openai(
-    config, state, toolbox, system_blocks, max_turns, max_tokens, clock, force_tool=None
-) -> Generator[dict, None, None]:
-    import openai
-
-    client = _openai_client(config)
-    model = config.model or DEFAULT_MODELS["openai"]
-    system_text = "\n\n".join(b["text"] for b in system_blocks)
-    tools = _openai_tools(toolbox.schemas)
-    forced = (
-        {"tool_choice": {"type": "function", "function": {"name": force_tool}}} if force_tool else {}
-    )
-    transcript = transcript_of(state)
-    messages = _with_page_context(
-        _transcript_to_openai_messages(transcript, system_text), transcript
-    )
-
-    for _turn in range(max_turns):
-        if _turn and clock.remaining() < MIN_REMAINING_S:
-            yield clock.expired_event()
-            return
-        response = None
-        delay = RETRY_BASE_DELAY
-        for attempt in range(RETRY_MAX_ATTEMPTS):
-            # Same contract as the Anthropic branch: forward text as it
-            # arrives, and refuse to retry once any of it has been shown.
-            emitted = False
-            try:
-                with client.chat.completions.stream(
-                    model=model,
-                    max_tokens=max_tokens,
-                    messages=messages,
-                    tools=tools,
-                    **forced,
-                    # Not the default on a streamed completion, and without it
-                    # the final completion carries no usage block -- which
-                    # would silently stop spend being recorded and leave the
-                    # budget caps never firing for OpenAI organizations.
-                    stream_options={"include_usage": True},
-                    **clock.timeout_kwargs(),
-                ) as stream:
-                    for event in stream:
-                        if event.type == "content.delta" and event.delta:
-                            emitted = True
-                            yield {"type": "text_delta", "text": event.delta}
-                    response = stream.get_final_completion()
-                break
-            except openai.RateLimitError:
-                if emitted:
-                    yield _cut_off()
-                    return
-                yield {"type": "rate_limit", "attempt": attempt + 1, "delay_s": delay}
-                time.sleep(delay)
-                delay = min(delay * 2, RETRY_MAX_DELAY)
-            except openai.APIStatusError as e:
-                if not emitted and e.status_code and 500 <= e.status_code < 600:
-                    yield {"type": "rate_limit", "attempt": attempt + 1, "delay_s": delay}
-                    time.sleep(delay)
-                    delay = min(delay * 2, RETRY_MAX_DELAY)
-                    continue
-                yield _provider_error(e, config.base_url)
-                return
-            except Exception as e:
-                yield _call_failed(clock, e, config.base_url)
-                return
-
-        if response is None:
-            yield _retries_exhausted()
-            return
-
-        shim = _UsageShim(response.usage)  # tolerant of a missing usage block
-        cost = compute_cost_openai(shim, model, config)
-        add_usage(state, shim, cost)
-        yield {
-            "type": "usage",
-            "model": model,
-            "input_tokens": shim.input_tokens,
-            "output_tokens": shim.output_tokens,
-            "cache_read": shim.cache_read_input_tokens,
-            "cache_write": 0,
-            "cost_delta_usd": round(cost, 6) if cost is not None else None,
-            "session_cost_usd": state.get("usage", {}).get("cost_usd"),
-        }
-
-        choice = response.choices[0]
-        msg = choice.message
-        text = msg.content or ""
-        tool_calls = list(msg.tool_calls or [])
-
-        # Store using the same block shapes as Anthropic so transcripts stay
-        # provider-agnostic.
-        blocks: list[dict] = []
-        if text:
-            blocks.append({"type": "text", "text": text})
-        for tc in tool_calls:
-            try:
-                parsed_args = json.loads(tc.function.arguments or "{}")
-            except Exception:
-                parsed_args = {}
-            blocks.append({
-                "type": "tool_use",
-                "id": tc.id,
-                "name": tc.function.name,
-                "input": parsed_args,
-            })
-        transcript.append({
-            "role": "assistant",
-            "content": blocks,
-            "ts": time.time(),
-            "stop_reason": choice.finish_reason,
-        })
-
-        api_msg: dict[str, Any] = {"role": "assistant", "content": text or None}
-        if tool_calls:
-            api_msg["tool_calls"] = [
-                {"id": tc.id, "type": "function",
-                 "function": {"name": tc.function.name,
-                              "arguments": tc.function.arguments or "{}"}}
-                for tc in tool_calls
-            ]
-        messages.append(api_msg)
-
-        if choice.finish_reason != "tool_calls" or not tool_calls:
-            yield {"type": "done", "stop_reason": choice.finish_reason}
-            return
-
-        for tc in tool_calls:
-            try:
-                args = json.loads(tc.function.arguments or "{}")
-            except Exception:
-                args = {}
-            yield {"type": "tool_use", "id": tc.id, "name": tc.function.name, "input": args}
-            result = yield from _run_tool(toolbox, tc.function.name, args, clock)
-            if result is None:
-                yield clock.expired_event()
-                return
-            is_error = result.startswith("Error")
-            framed = toolbox.frame(tc.function.name, args, result)
-            provenance = getattr(toolbox, "provenance", None)
-            proposal = getattr(toolbox, "proposal", None)
-            transcript.append({
-                "role": "tool",
-                "tool_use_id": tc.id,
-                "name": tc.function.name,
-                "input": args,
-                "result": framed,
-                "is_error": is_error,
-                "provenance": provenance,
-                "ts": time.time(),
-            })
-            if proposal:
-                transcript[-1]["proposal"] = proposal
-            messages.append({"role": "tool", "tool_call_id": tc.id, "content": framed})
-            yield {
-                "type": "tool_result", "id": tc.id, "name": tc.function.name,
-                "excerpt": _excerpt(result, 400), "is_error": is_error,
-                "provenance": provenance,
-            }
-            if proposal:
-                yield {"type": "proposal", **proposal}
-
-    yield _turn_limit(max_turns)
-
-
 # ---------------------------------------------------------------------------
 # Connection test (the settings page's button)
 # ---------------------------------------------------------------------------
@@ -888,6 +868,8 @@ def mismatch_hints(config: LLMConfig) -> list[str]:
     """Cheap plausibility checks on provider vs key vs model, as hints only:
     a gateway may legitimately serve one vendor's model in the other's dialect,
     so none of this blocks a save. The key never leaves this function."""
+    if config.provider not in ("anthropic", "openai"):
+        return []
     hints = []
     key, model = config.api_key, config.model.lower()
     provider = _PROVIDER_NAMES.get(config.provider, config.provider)
@@ -902,66 +884,95 @@ def mismatch_hints(config: LLMConfig) -> list[str]:
         hints.append(f"This model looks like an {_PROVIDER_NAMES[model_vendor]} model, but the provider is {provider}.")
     return hints
 
-#: The endpoint answered, just not in this provider's dialect: the SDK got a
-#: body it could not shape into a message (the incident was an AssertionError
-#: out of ``get_final_message`` against an OpenAI-compatible gateway).
-# ponytail: class names, not imports -- both SDKs use the same names and
-# neither is guaranteed installed. Tighten if a real SDK bug lands in here.
-_FOREIGN_SHAPE = {
-    "AssertionError", "AttributeError", "IndexError", "KeyError", "TypeError",
-    "ValueError", "APIResponseValidationError",
-}
-
-
-def check_connection(config: LLMConfig, timeout: float = 20.0) -> dict:
-    """The smallest call the saved config allows, answered as one plain sentence.
-
-    Same client construction and stream call as :func:`stream_turn`, so a
-    gateway that breaks a real turn breaks this too. Deliberately exempt from
-    the budget ledger: eight output tokens once per admin click is noise next
-    to a single turn, and there is no user turn to book them against.
-    """
-    if config.provider not in SUPPORTED_PROVIDERS:
-        return {"ok": False, "message": f"Unsupported provider {config.provider!r}.", "latency_ms": 0}
-    host = urlsplit(config.base_url).hostname or f"api.{config.provider}.com"
-    prompt = [{"role": "user", "content": "Say OK"}]
-    t0 = time.monotonic()
+def list_models(config: LLMConfig, timeout: float = 10.0) -> list[dict]:
+    """Discover saved-connection models; Azure catalogs are not deployments."""
+    from .transport import TransportError, normalize_error, closing_client
+    if config.provider == "azure":
+        raise TransportError("unsupported", "Enter your Azure deployment name manually; model catalogs do not discover deployments.")
     try:
-        if config.provider == "openai":
-            with _openai_client(config).chat.completions.stream(
-                model=config.model, max_tokens=8, messages=prompt, timeout=timeout,
-            ) as stream:
-                for _ in stream:
-                    pass
-                stream.get_final_completion()
-        else:
-            with _anthropic_client(config).messages.stream(
-                model=config.model, max_tokens=8, messages=prompt, timeout=timeout,
-            ) as stream:
-                for _ in stream.text_stream:
-                    pass
-                stream.get_final_message()
-    except Exception as e:  # noqa: BLE001 -- every failure becomes a sentence
-        names = {c.__name__ for c in type(e).__mro__}
-        if "AuthenticationError" in names:
-            message = "The provider rejected the key."
-        elif "APIConnectionError" in names:
-            message = f"Could not reach {host}."
-        elif getattr(e, "status_code", None) == 404 or names & _FOREIGN_SHAPE:
-            message = (
-                f"{host} did not answer like an {_PROVIDER_NAMES[config.provider]} "
-                "endpoint — check the provider and custom endpoint URL."
-            )
-        else:
-            message = type(e).__name__
-        result = {
-            "ok": False, "message": message, "detail": error_detail(e, config.base_url),
-            "hints": mismatch_hints(config),
-        }
-    else:
-        result = {"ok": True, "message": f"{config.model} answered."}
-    result["latency_ms"] = int((time.monotonic() - t0) * 1000)
-    return result
+        _validate_credentials(config)
+        if config.provider in ("bedrock", "vertex"):
+            from .cloud import list_cloud_models
+            return list_cloud_models(config, timeout=timeout)
+        client = _anthropic_client(config) if config.provider == "anthropic" else _openai_client(config)
+        with closing_client(client):
+            page = client.models.list(timeout=timeout)
+            return [{"id": model.id, "label": model.id} for model in page if isinstance(model.id, str)]
+    except Exception as error:
+        raise normalize_error(error) from None
+
+
+def check_connection(config: LLMConfig, timeout: float = 45.0) -> dict:
+    """Synthetic streamed chat/tool roundtrip, forced alert tool and metering."""
+    from .transport import TransportError, normalize_error
+    started = time.monotonic()
+    deadline = started + timeout
+    checks, metered = {}, []
+    schema = {"name": "connection_probe", "description": "Echo a synthetic connection-test value.",
+              "input_schema": {"type": "object", "properties": {"value": {"type": "string", "enum": ["probe"]}},
+                               "required": ["value"], "additionalProperties": False}}
+    system = [{"type": "text", "text": "This is a synthetic connection test. Follow its tool instructions exactly."}]
+    def probe(messages, purpose="chat", forced=None):
+        response, streamed, counted = None, False, False
+        try:
+            left = deadline - time.monotonic()
+            if left <= 0:
+                raise TransportError("connection", "The connection test deadline expired.")
+            for event in _adapter(config.provider)(config, messages, system, [schema],
+                    max_tokens=DEFAULT_MAX_TOKENS, force_tool=forced, timeout=left, purpose=purpose):
+                if time.monotonic() >= deadline:
+                    raise TransportError("connection", "The connection test deadline expired.")
+                if event.get("type") == "text_delta" and event.get("text"):
+                    streamed = True
+                elif event.get("type") == "response":
+                    if response is not None:
+                        raise TransportError("protocol", "The provider returned multiple final responses.")
+                    response = event
+            if response is None:
+                raise TransportError("protocol", "The stream ended before a final response.")
+            metered.append(_valid_usage(response.get("usage")) is not None)
+            counted = True
+            _validate_response(response, [schema], forced)
+            return response, streamed
+        except Exception as error:
+            safe = normalize_error(error)
+            if not counted and safe.kind != "unsupported":
+                metered.append(False)
+            raise safe from None
+    original_prompt = "Call connection_probe with value probe, then say OK after the tool result."
+    try:
+        first, _ = probe([{"role": "user", "content": original_prompt}])
+        calls = [b for b in first["blocks"] if b["type"] == "tool_use"]
+        if not calls:
+            raise TransportError("unsupported", "The model did not call the synthetic chat tool.")
+        assistant = {"role": "assistant", "content": first["blocks"]}
+        if first.get("provider_data"):
+            assistant["_provider"] = first["provider_data"]
+        history = [{"role": "user", "content": original_prompt}, assistant]
+        history.extend({"role": "tool", "tool_use_id": call["id"], "name": call["name"], "input": call["input"],
+                        "result": "Synthetic probe succeeded. Now say OK without any more tools."} for call in calls)
+        final, streamed = probe(history)
+        if not streamed or not any(b["type"] == "text" and b["text"] for b in final["blocks"]):
+            raise TransportError("unsupported", "The model did not stream a chat answer after the tool result.")
+        if any(b["type"] == "tool_use" for b in final["blocks"]):
+            raise TransportError("unsupported", "The model did not complete the synthetic tool roundtrip.")
+        checks["chat"] = {"ok": True, "message": "Streaming and the synthetic tool roundtrip succeeded."}
+    except Exception as error:
+        safe = normalize_error(error)
+        checks["chat"] = {"ok": False, "message": str(safe)}
+    try:
+        probe([{"role": "user", "content": "Call connection_probe with value probe."}], "alert", "connection_probe")
+        checks["alerts"] = {"ok": True, "message": "The forced synthetic alert tool succeeded."}
+    except Exception as error:
+        safe = normalize_error(error)
+        checks["alerts"] = {"ok": False, "message": str(safe)}
+    if not checks["chat"]["ok"] and checks["alerts"]["ok"]:
+        checks["alerts"] = {"ok": False, "message": "The forced tool succeeded, but alerts also require streaming and the chat tool roundtrip."}
+    usage_ok = bool(metered) and all(metered)
+    checks["usage"] = {"ok": usage_ok, "message": "Every probe returned usage." if usage_ok else "One or more probes omitted usage or did not complete. Budgeted inference requires metering."}
+    return {"ok": checks["chat"]["ok"], "message": f"{config.model} answered." if checks["chat"]["ok"] else checks["chat"]["message"],
+            "latency_ms": int((time.monotonic() - started) * 1000), "checks": checks,
+            "hints": mismatch_hints(config)}
 
 
 # ---------------------------------------------------------------------------
@@ -984,7 +995,7 @@ def _block_to_dict(block: Any) -> dict:
     raw = block.model_dump() if hasattr(block, "model_dump") else dict(block)
     keys = _BLOCK_KEYS.get(raw.get("type"))
     if keys is None:
-        return {k: v for k, v in raw.items() if v is not None}
+        return {}
     return {k: raw[k] for k in keys if raw.get(k) is not None}
 
 
@@ -1042,8 +1053,10 @@ def _with_cache_breakpoint(messages: list) -> list:
         ]
     elif isinstance(content, list) and content:
         new_content = [dict(b) if isinstance(b, dict) else b for b in content]
-        if isinstance(new_content[-1], dict):
-            new_content[-1]["cache_control"] = {"type": "ephemeral"}
+        for block in reversed(new_content):
+            if isinstance(block, dict) and block.get("type") in ("text", "tool_use", "tool_result"):
+                block["cache_control"] = {"type": "ephemeral"}
+                break
         last["content"] = new_content
     out[-1] = last
     return out

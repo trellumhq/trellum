@@ -266,7 +266,8 @@ class TestProposal:
             login(viewer), prefix, make_session(viewer), fake_llm, "run_report", {"slug": report_row.slug}
         )
         assert "proposal" not in [n for n, _ in events]
-        assert dict(events)["tool_result"]["is_error"] is True
+        assert dict(events)["error"]["code"] == "provider"
+        assert "tool_use" not in [name for name, _ in events]
         assert not ProposedAction.objects.exists()
 
     def test_unknown_source_is_an_error_to_the_model(

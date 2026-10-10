@@ -101,7 +101,7 @@ def fake_llm(monkeypatch):
 
     def _install(*responses):
         monkeypatch.setattr(
-            llm, "_anthropic_client", lambda config: FakeClient(responses, calls)
+            llm, "_anthropic_client", lambda config, client=FakeClient(responses, calls): client
         )
         return calls
 
@@ -271,7 +271,7 @@ class TestEventProtocol:
         admin_session = AssistantSession.objects.create(user=org_admin, org=org, studio=studio_tree)
         admin_err = dict(frames(post_message(login(org_admin), prefix, admin_session)))["error"]
         assert admin_err["message"] == viewer_err["message"]
-        assert admin_err["detail"] == "AssertionError (gw.example.com)"
+        assert admin_err["detail"] == "protocol: The provider returned an invalid response. (gw.example.com)"
 
     def test_tool_results_reach_the_model_framed_as_data(
         self, login, viewer, prefix, session, assistant_config, fake_llm, report_row

@@ -176,7 +176,7 @@ def _evaluate(rule: AlertRule, run: AlertRun, deliver: bool, now) -> None:
         )
         return
 
-    ok, why = llm.is_available(rule.org)
+    ok, why = llm.is_available(rule.org, purpose="alert")
     if not ok:
         run.status, run.error = AlertRun.STATUS_ERROR, why
         return
@@ -254,7 +254,7 @@ def _evaluate(rule: AlertRule, run: AlertRun, deliver: bool, now) -> None:
         gen = llm.stream_turn(
             config, state, message, toolbox=toolbox, system_blocks=system_blocks,
             max_turns=max_turns, remaining=lambda: deadline - time.monotonic(),
-            deadline_s=deadline_s, force_tool=force_tool,
+            deadline_s=deadline_s, force_tool=force_tool, purpose="alert",
         )
         try:
             for event in gen:
@@ -277,13 +277,14 @@ def _evaluate(rule: AlertRule, run: AlertRun, deliver: bool, now) -> None:
                     if event.get("name") == "decide":
                         return None
                 elif kind in ("done", "error"):
+                    if state.get("usage", {}).get("cost_usd", 0) is None:
+                        cost = None
+                        run.cost_usd = None
                     return event
         finally:
             gen.close()  # a decided turn stops here: no closing prose, no extra call
         return {"type": "error", "message": "The model produced no output."}
 
-    # ponytail: no mid-turn budget re-check as the chat view does; the turn cap
-    # already bounds one evaluation's overspend to a handful of calls.
     end = turn(USER_MESSAGE)
     if end is not None and end.get("code") in (None, "turn_limit"):
         end = turn(FORCE_MESSAGE, force_tool="decide", max_turns=1)

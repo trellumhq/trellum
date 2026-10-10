@@ -219,104 +219,71 @@ class TestConnectionTest:
     def test_member_cannot_probe(self, login, member, test_url):
         assert login(member).post(test_url).status_code == 403
 
-    def test_failures_become_a_sentence(self, login, org_admin, org, test_url, monkeypatch):
+    def test_failures_become_a_safe_sentence(self, login, org_admin, org, test_url, monkeypatch):
         from apps.assistant import llm
-
-        OrgAssistantConfig.objects.create(
-            org=org, enabled=True, api_key="k", base_url="https://gw.example.com/v1"
-        )
-
-        class ForeignStream:  # the incident: a 200 that is not a Messages stream
+        OrgAssistantConfig.objects.create(org=org, enabled=True, api_key="k", base_url="https://gw.example.com/v1")
+        class ForeignStream:
             text_stream = ()
-
             def __enter__(self):
                 return self
-
             def __exit__(self, *exc):
                 return False
-
             def get_final_message(self):
-                raise AssertionError()
-
+                raise AssertionError("private provider payload")
         def rejected(**kwargs):
-            raise AuthenticationError(
-                "invalid x-api-key", "https://gw.example.com/v1/messages"
-            )
-
-        cases = [
-            (rejected, "The provider rejected the key.", "AuthenticationError: invalid x-api-key (gw.example.com)"),
-            (lambda **kw: ForeignStream(),
-             "gw.example.com did not answer like an Anthropic endpoint — check the provider and custom endpoint URL.",
-             "AssertionError (gw.example.com)"),
-        ]
-        for stream, message, detail in cases:
+            raise AuthenticationError("unusual-secret-token", "https://gw.example.com/v1/messages")
+        cases = [(rejected, "The provider rejected the credentials."),
+                 (lambda **kw: ForeignStream(), "The provider returned an invalid response.")]
+        for stream, message in cases:
             class Client:
                 messages = type("M", (), {"stream": staticmethod(stream)})
-
             monkeypatch.setattr(llm, "_anthropic_client", lambda config, c=Client: c())
-            j = login(org_admin).post(test_url).json()
-            assert (j["ok"], j["message"], j["detail"]) == (False, message, detail)
-            assert isinstance(j["latency_ms"], int)
+            result = login(org_admin).post(test_url).json()
+            assert (result["ok"], result["message"]) == (False, message)
+            assert not result["checks"]["chat"]["ok"]
+            assert not result["checks"]["usage"]["ok"]
+            assert "unusual-secret-token" not in str(result) and "private provider payload" not in str(result)
 
-    def test_detail_carries_the_provider_sentence_with_the_key_redacted(
-        self, login, org_admin, org, test_url, monkeypatch
-    ):
-        # An OpenAI 401 echoes the masked key inside a dict dump. The admin
-        # gets the provider's sentence, never any of the key -- on the test
-        # button and on the chat stream's error frame alike.
+    def test_raw_provider_errors_never_reach_admins(self, login, org_admin, org, test_url, monkeypatch):
         from apps.assistant import llm
-
-        OrgAssistantConfig.objects.create(
-            org=org, enabled=True, provider="openai", api_key="sk-ant-api03-secret", model="claude-sonnet-4-6"
-        )
-        # The body shape one SDK keeps on a 401: the sentence sits under
-        # "error", and it echoes the masked key back at you.
-        body = {"error": {"message": (
-            "Incorrect API key provided: sk-ant-a*****…JgAA. You can find your API key "
-            "at https://platform.openai.com/account/api-keys."
-        ), "type": "invalid_request_error", "param": None, "code": "invalid_api_key"}}
-        err = AuthenticationError(
-            f"Error code: 401 - {body}",
-            "https://api.openai.com/v1/chat/completions",
-            body=body,
-        )
-
+        OrgAssistantConfig.objects.create(org=org, enabled=True, provider="openai", api_key="sk-ant-api03-secret", model="claude-sonnet-4-6")
         def rejected(**kwargs):
-            raise err
-
+            raise AuthenticationError("unusual-secret-token private reasoning", "https://api.openai.com/v1/chat/completions")
         class Client:
             chat = type("C", (), {"completions": type("CC", (), {"stream": staticmethod(rejected)})})
-
         monkeypatch.setattr(llm, "_openai_client", lambda config: Client())
-        j = login(org_admin).post(test_url).json()
-        assert j["message"] == "The provider rejected the key."
-        assert j["detail"] == (
-            "AuthenticationError: Incorrect API key provided: sk-…. You can find your API key "
-            "at https://platform.openai.com/account/api-keys. (api.openai.com)"
-        )
-        for detail in (j["detail"], llm._provider_error(err)["detail"]):
-            assert "sk-ant-a" not in detail and "******" not in detail and "{" not in detail
-        # The stored key and the model are judged server-side; the key itself stays there.
-        assert j["hints"] == [TestMismatchHints.KEY_A, TestMismatchHints.MODEL_A]
-        assert "sk-ant-api03" not in str(j)
+        result = login(org_admin).post(test_url).json()
+        assert result["message"] == "The provider rejected the credentials."
+        assert "unusual-secret-token" not in str(result) and "private reasoning" not in str(result)
+        assert result["hints"] == [TestMismatchHints.KEY_A, TestMismatchHints.MODEL_A]
+        assert "sk-ant-api03" not in str(result)
 
-    def test_success_is_tiny_and_not_billed(self, login, org_admin, org, test_url, monkeypatch):
+    @staticmethod
+    def install_probes(monkeypatch):
         from apps.assistant import llm
-        from apps.assistant.models import LlmUsage
-        from apps.assistant.tests.test_message_sse import FakeClient, FakeResponse, TextBlock
-
-        OrgAssistantConfig.objects.create(org=org, enabled=True, api_key="k")
+        from apps.assistant.tests.test_message_sse import FakeClient, FakeResponse, TextBlock, ToolUseBlock
         calls = []
-        monkeypatch.setattr(
-            llm, "_anthropic_client",
-            lambda config: FakeClient([FakeResponse([TextBlock("OK")])], calls),
-        )
-        j = login(org_admin).post(test_url).json()
-        assert j["ok"] is True and j["message"] == "claude-sonnet-4-6 answered."
-        assert j["assistant_available"] is True and j["assistant_reason"] == ""
-        assert calls[0]["max_tokens"] == 8 and calls[0]["timeout"] == 20
-        assert calls[0]["messages"] == [{"role": "user", "content": "Say OK"}]
-        assert not LlmUsage.objects.exists()  # exempt from the ledger by design
+        client = FakeClient([
+            FakeResponse([ToolUseBlock("probe-chat", "connection_probe", {"value": "probe"})], "tool_use"),
+            FakeResponse([TextBlock("OK")]),
+            FakeResponse([ToolUseBlock("probe-alert", "connection_probe", {"value": "probe"})], "tool_use"),
+        ], calls)
+        monkeypatch.setattr(llm, "_anthropic_client", lambda config: client)
+        return calls
+
+    def test_success_is_synthetic_and_not_billed(self, login, org_admin, org, test_url, monkeypatch):
+        from apps.assistant.models import LlmUsage
+        OrgAssistantConfig.objects.create(org=org, enabled=True, api_key="k")
+        calls = self.install_probes(monkeypatch)
+        result = login(org_admin).post(test_url).json()
+        assert result["ok"] is True and result["message"] == "claude-sonnet-4-6 answered."
+        assert result["assistant_available"] is True and result["assistant_reason"] == ""
+        assert all(check["ok"] for check in result["checks"].values())
+        assert len(calls) == 3 and all(call["max_tokens"] == 4096 and 0 < call["timeout"] <= 45 for call in calls)
+        assert calls[0]["tools"][0]["name"] == "connection_probe"
+        assert calls[1]["messages"][-1]["content"][0]["tool_use_id"] == "probe-chat"
+        assert calls[2]["tool_choice"] == {"type": "tool", "name": "connection_probe"}
+        assert not LlmUsage.objects.exists()
 
     def test_successful_probe_still_reports_unknown_model_blocker(
         self, login, org_admin, org, test_url, monkeypatch
@@ -328,11 +295,7 @@ class TestConnectionTest:
             org=org, enabled=True, api_key="secret-key", model="claude-future-9",
             monthly_budget_usd=Decimal("10"),
         )
-        calls = []
-        monkeypatch.setattr(
-            llm, "_anthropic_client",
-            lambda config: FakeClient([FakeResponse([TextBlock("OK")])], calls),
-        )
+        calls = self.install_probes(monkeypatch)
         result = login(org_admin).post(test_url).json()
         assert result["ok"] is True
         assert result["assistant_available"] is False
@@ -356,11 +319,7 @@ class TestConnectionTest:
         from apps.assistant.tests.test_message_sse import FakeClient, FakeResponse, TextBlock
 
         OrgAssistantConfig.objects.create(org=org, enabled=False, api_key="secret-key")
-        calls = []
-        monkeypatch.setattr(
-            llm, "_anthropic_client",
-            lambda config: FakeClient([FakeResponse([TextBlock("OK")])], calls),
-        )
+        calls = self.install_probes(monkeypatch)
         result = login(org_admin).post(test_url).json()
         assert result["ok"] is True and calls
         assert result["assistant_available"] is False

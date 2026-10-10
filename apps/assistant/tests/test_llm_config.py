@@ -40,7 +40,7 @@ class TestForOrg:
 
     def test_unsupported_provider(self, org, make_assistant_config):
         cfg = make_assistant_config(org)
-        OrgAssistantConfig.objects.filter(pk=cfg.pk).update(provider="bedrock")
+        OrgAssistantConfig.objects.filter(pk=cfg.pk).update(provider="unknown")
         ok, reason = is_available(org)
         assert ok is False
         assert "Unsupported LLM provider" in reason
@@ -53,7 +53,7 @@ class TestForOrg:
 
     def test_gateway_without_key_is_available(self, org, make_assistant_config):
         """A gateway on the internal network legitimately has no key."""
-        make_assistant_config(org, api_key="", base_url="http://llm-gateway.internal/v1")
+        make_assistant_config(org, api_key="", auth_mode="none", base_url="http://llm-gateway.internal/v1")
         config = LLMConfig.for_org(org)
         assert config.api_key == GATEWAY_PLACEHOLDER_KEY
         assert config.base_url == "http://llm-gateway.internal/v1"

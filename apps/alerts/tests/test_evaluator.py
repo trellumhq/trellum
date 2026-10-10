@@ -23,6 +23,37 @@ def _system_text(call) -> str:
 
 
 class TestDecision:
+    def test_interrupted_provider_records_unknown_cost(self, rule, monkeypatch):
+        from apps.assistant import llm
+
+        def interrupted(*args, **kwargs):
+            assert kwargs["purpose"] == "alert"
+            yield {"type": "text_delta", "text": "Synthetic partial answer"}
+            raise RuntimeError("private provider payload")
+
+        monkeypatch.setattr(llm, "_adapter", lambda provider: interrupted)
+        run = evaluator.evaluate(rule)
+        assert run.status == AlertRun.STATUS_ERROR and run.cost_usd is None
+        assert "private provider payload" not in run.error
+
+    def test_budget_is_checked_between_provider_calls(self, rule, assistant_config, monkeypatch):
+        from apps.assistant import llm
+
+        assistant_config.monthly_budget_usd = Decimal("0.005")
+        assistant_config.save()
+        calls = []
+        def adapter(*args, **kwargs):
+            calls.append(1)
+            assert len(calls) == 1, "the exhausted budget must stop another provider request"
+            yield {"type": "response", "blocks": [{"type": "tool_use", "id": "tool-1", "name": "list_reports", "input": {}}],
+                   "stop_reason": "tool_use", "usage": {"input_tokens": 1000, "output_tokens": 500,
+                   "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}, "provider_data": None}
+
+        monkeypatch.setattr(llm, "_adapter", lambda provider: adapter)
+        run = evaluator.evaluate(rule)
+        assert run.status == AlertRun.STATUS_ERROR and "budget cap reached" in run.error
+        assert len(calls) == 1 and run.cost_usd == Decimal("0.0105")
+
     def test_every_rule_uses_a_report_bound_owner_toolbox(
         self, rule, fake_llm, monkeypatch
     ):

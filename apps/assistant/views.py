@@ -474,8 +474,8 @@ def session_message(request, org_slug, studio_slug, session_id):  # noqa: ARG001
                     if not still_ok:
                         yield _frame({"type": "error", "code": "budget", "message": why})
                         break
-        except Exception:  # never leak a traceback into the stream
-            logger.exception("assistant: turn failed (session %s)", session.pk)
+        except Exception:  # provider exceptions can contain credentials or prompts
+            logger.warning("assistant: turn failed (session %s)", session.pk)
             yield _frame({
                 "type": "error", "code": "unavailable",
                 "message": "The assistant hit an unexpected error. Try again.",

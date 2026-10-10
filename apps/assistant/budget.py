@@ -74,6 +74,12 @@ def precheck(org, user) -> tuple[bool, str]:
     org_cap, user_cap = _caps(org)
     if org_cap is None and user_cap is None:
         return True, ""
+    from apps.orgs.models import OrgAssistantConfig
+    cfg = OrgAssistantConfig.objects.filter(org=org).first()
+    checked = cfg.connection_check or {} if cfg else {}
+    usage = checked.get("checks", {}).get("usage", {}) if cfg and checked.get("revision") == cfg.config_revision else {}
+    if usage.get("ok") is False:
+        return False, usage.get("message") or "Test the AI connection to verify usage metering."
     blocked, reason = _blocked_reason(
         org_cap, user_cap, LlmUsage.month_total(org), LlmUsage.user_month_total(org, user)
     )
