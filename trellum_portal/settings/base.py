@@ -267,11 +267,13 @@ TRELLUM_REPORT_SCOPED_ACCESS_READY = env.bool(
 # Comma-separated Fernet keys; first encrypts, all decrypt (rotation).
 SECRET_ENCRYPTION_KEY = env("SECRET_ENCRYPTION_KEY", default="")
 
+# Operator allowlist: cloud provider IDs map to organization primary keys as
+# strings. Workload identity is denied unless the organization is listed.
+ASSISTANT_WORKLOAD_IDENTITY_ORGS = env.json("ASSISTANT_WORKLOAD_IDENTITY_ORGS", default={})
+
 # Wall-clock ceiling on one AI assistant turn (all model calls and tool
 # iterations for a single user message). Past it the stream ends with a
 # `deadline` error and the partial transcript is kept.
-ASSISTANT_WORKLOAD_IDENTITY_ORGS = env.json("ASSISTANT_WORKLOAD_IDENTITY_ORGS", default={})
-
 ASSISTANT_TURN_DEADLINE_S = env.int("ASSISTANT_TURN_DEADLINE_S", default=120)
 
 # Operational policy switches. Product features are available in every
