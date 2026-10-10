@@ -249,3 +249,39 @@ def test_disabled_connection_can_save_credentials_before_model_discovery(org):
     assert cfg.api_key == "new-key" and cfg.model == "" and not cfg.enabled
     f = form(org, cfg, api_key="", provider="custom", base_url=cfg.base_url, model="")
     assert not f.is_valid() and "model" in f.errors
+
+
+@pytest.mark.parametrize("key,endpoint,mode", [
+    ("stored-secret", "", "api_key"),
+    ("", "http://gateway.internal/v1", "none"),
+])
+def test_previous_release_insert_survives_current_schema(org, login, org_admin, settings, key, endpoint, mode):
+    from django.db.migrations.executor import MigrationExecutor
+    from apps.assistant.llm import GATEWAY_PLACEHOLDER_KEY, LLMConfig
+
+    # Load historical state even when local behavior checks use --nomigrations.
+    settings.MIGRATION_MODULES = {}
+    # The old model omits every column added by 0022 on INSERT.
+    historical = MigrationExecutor(connection).loader.project_state(
+        [("orgs", "0021_assistant_model_pricing_help_text")]).apps
+    Config = historical.get_model("orgs", "OrgAssistantConfig")
+    old = Config.objects.create(org_id=org.pk, enabled=True, provider="openai",
+                                api_key=key, base_url=endpoint, model="gpt-4o")
+    cfg = OrgAssistantConfig.objects.get(pk=old.pk)
+    assert all(getattr(cfg, name) is None for name in
+               ("auth_mode", "cloud_config", "cloud_credentials", "config_revision", "connection_check"))
+    runtime = LLMConfig.from_config(cfg)
+    assert runtime.auth_mode == mode
+    assert runtime.api_key == (key or GATEWAY_PLACEHOLDER_KEY)
+    assert runtime.cloud_config == runtime.cloud_credentials == runtime.connection_check == {}
+    assert login(org_admin).get(f"/orgs/{org.slug}/settings/assistant").status_code == 200
+    f = form(org, cfg, auth_mode=mode, api_key="", base_url=endpoint, config_revision=1)
+    assert f.is_valid(), f.errors
+    cfg = f.save()
+    assert cfg.api_key == key and cfg.auth_mode == mode and cfg.config_revision == 1
+    assert cfg.connection_check == cfg.cloud_credentials == {}
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT api_key, cloud_credentials FROM orgs_orgassistantconfig WHERE id = %s", [cfg.pk])
+        stored_key, stored_cloud = cursor.fetchone()
+    assert not key or (stored_key.startswith("enc$1$") and key not in stored_key)
+    assert stored_cloud.startswith("enc$1$")

@@ -69,12 +69,15 @@ class AssistantConfigForm(forms.ModelForm):
     def __init__(self, *args, org: Organization, **kwargs):
         super().__init__(*args, **kwargs)
         self.org = org
-        self.initial["config_revision"] = self.instance.config_revision
+        self.initial["config_revision"] = self.instance.config_revision or 1
+        self.initial["auth_mode"] = self.instance.effective_auth_mode
         self._original = {
             name: copy.deepcopy(getattr(self.instance, name))
             for name in ("provider", "base_url", "auth_mode", "cloud_config", "api_key",
                          "cloud_credentials", "model", "config_revision", "connection_check")
         }
+        self._original["auth_mode"] = self.instance.effective_auth_mode
+        self._original["cloud_credentials"] = self.instance.cloud_credentials or {}
         for name, value in (self.instance.cloud_config or {}).items():
             if name in self.fields:
                 self.initial[name] = value
@@ -97,7 +100,7 @@ class AssistantConfigForm(forms.ModelForm):
 
     def clean(self):
         cleaned = super().clean()
-        if cleaned.get("config_revision") not in (None, self._original["config_revision"]):
+        if cleaned.get("config_revision") not in (None, self._original["config_revision"] or 1):
             self.add_error(None, "AI settings changed since this page was loaded. Review the current connection before saving.")
         provider = cleaned.get("provider")
         preset = PROVIDERS.get(provider)
@@ -200,8 +203,9 @@ class AssistantConfigForm(forms.ModelForm):
         changed = (self.identity(self.cleaned_data) != self.identity(self._original)
                    or any(getattr(obj, name) != self._original[name]
                           for name in ("api_key", "model", "cloud_credentials")))
+        obj.config_revision = self._original["config_revision"] or 1
         if changed:
-            obj.config_revision = self._original["config_revision"] + (1 if obj.pk else 0)
+            obj.config_revision += (1 if obj.pk else 0)
             obj.connection_check = {}
         if commit:
             # Serialize only local persistence; external probes never hold this lock.
@@ -211,7 +215,7 @@ class AssistantConfigForm(forms.ModelForm):
                     if saved.config_revision != self._original["config_revision"]:
                         raise forms.ValidationError("AI settings changed while saving. Review the current connection and save again.")
                     if not changed:
-                        obj.connection_check = saved.connection_check
+                        obj.connection_check = saved.connection_check or {}
                 obj.save()
         return obj
 

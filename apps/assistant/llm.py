@@ -135,7 +135,7 @@ class LLMConfig:
         provider = (cfg.provider or "anthropic").strip().lower()
         base_url = effective_base_url(provider, cfg.base_url)
         key = (cfg.api_key or "").strip()
-        auth_mode = getattr(cfg, "auth_mode", "api_key")
+        auth_mode = getattr(cfg, "auth_mode", None) or ("none" if cfg.base_url and not key else "api_key")
         if not key and base_url and auth_mode == "none" and provider in ("custom", "litellm", "anthropic", "openai"):
             key = GATEWAY_PLACEHOLDER_KEY
         return cls(

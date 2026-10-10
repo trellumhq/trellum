@@ -905,11 +905,11 @@ def _assistant_saved_connection(cfg):
         return None
     from apps.assistant.provider_registry import effective_base_url
     return {"provider": cfg.provider, "base_url": effective_base_url(cfg.provider, cfg.base_url),
-            "auth_mode": cfg.auth_mode, "cloud_config": cfg.cloud_config, "model": cfg.model}
+            "auth_mode": cfg.effective_auth_mode, "cloud_config": cfg.cloud_config or {}, "model": cfg.model}
 
 
 def _assistant_check_updates(cfg):
-    stored = cfg.connection_check if cfg else {}
+    stored = (cfg.connection_check or {}) if cfg else {}
     checks = stored.get("checks", {}) if cfg and stored.get("revision") == cfg.config_revision else {}
     updates = {}
     for name, label in (("chat", "Chat"), ("alerts", "Alerts"), ("usage", "Cost metering")):
@@ -1064,7 +1064,7 @@ def assistant_test(request, org_slug):  # noqa: ARG001
     stored = OrgAssistantConfig.objects.filter(pk=cfg.pk, config_revision=cfg.config_revision).update(
         connection_check={"revision": cfg.config_revision, "checks": checks},
     )
-    result["config_revision"] = cfg.config_revision
+    result["config_revision"] = cfg.config_revision or 1
     result["stale"] = not bool(stored)
     result["assistant_available"], result["assistant_reason"] = llm.is_available(request.org)
     return JsonResponse(result)
@@ -1085,9 +1085,9 @@ def assistant_models(request, org_slug):  # noqa: ARG001
     except Exception:
         # SDK exceptions may contain credentials or signed request URLs.
         return JsonResponse({"ok": False, "message": "Model discovery is unavailable. Enter the model ID or deployment name manually.",
-                             "models": [], "config_revision": cfg.config_revision})
+                             "models": [], "config_revision": cfg.config_revision or 1})
     stale = not OrgAssistantConfig.objects.filter(pk=cfg.pk, config_revision=cfg.config_revision).exists()
-    return JsonResponse({"ok": True, "models": models, "stale": stale, "config_revision": cfg.config_revision,
+    return JsonResponse({"ok": True, "models": models, "stale": stale, "config_revision": cfg.config_revision or 1,
                          "message": "Azure catalogs contain model IDs; enter your deployment name manually." if cfg.provider == "azure" else "Available models loaded. Select or enter a model ID."})
 
 
