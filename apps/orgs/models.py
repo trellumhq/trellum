@@ -472,11 +472,11 @@ class OrgAssistantConfig(models.Model):
     base_url = models.URLField(
         max_length=2048, blank=True, help_text="Optional provider endpoint or compatible gateway URL."
     )
-    auth_mode = models.CharField(max_length=32, choices=AUTH_CHOICES, default="api_key")
-    cloud_config = models.JSONField(default=dict, blank=True)
-    cloud_credentials = EncryptedJSONField(default=dict, blank=True)
-    config_revision = models.PositiveIntegerField(default=1)
-    connection_check = models.JSONField(default=dict, blank=True)
+    auth_mode = models.CharField(max_length=32, choices=AUTH_CHOICES, default="api_key", null=True)
+    cloud_config = models.JSONField(default=dict, blank=True, null=True)
+    cloud_credentials = EncryptedJSONField(default=dict, blank=True, null=True)
+    config_revision = models.PositiveIntegerField(default=1, null=True)
+    connection_check = models.JSONField(default=dict, blank=True, null=True)
     monthly_budget_usd = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
     per_user_budget_usd = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
     # USD per million tokens. Optional without budgets; needed to enforce
@@ -502,6 +502,11 @@ class OrgAssistantConfig(models.Model):
         ),
     )
     updated_at = models.DateTimeField(auto_now=True)
+
+    @property
+    def effective_auth_mode(self):
+        # Old releases omit auth_mode when inserting after the schema upgrade.
+        return self.auth_mode or ("none" if self.base_url and not self.api_key else "api_key")
 
     def __str__(self) -> str:
         return f"assistant({self.org.slug}, enabled={self.enabled})"
