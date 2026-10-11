@@ -103,7 +103,7 @@ class TestTypeFieldFiltering:
             "ssh_private_key": "-----BEGIN OPENSSH PRIVATE KEY-----", "ssh_password": "spw",
         }
         # The edit form never echoes the secrets, and leaving them blank keeps them.
-        html = client.get(f"{url}?edit={ds.pk}").content.decode()
+        html = client.get(f"{url}/{ds.name}/edit").content.decode()
         assert "BEGIN OPENSSH" not in html and "spw" not in html
         client.post(url, {
             "id": ds.pk, "name": "wh", "type": "postgres", "host": "h", "user": "u",
@@ -131,7 +131,7 @@ class TestTypeFieldFiltering:
         url = f"/s/{org.slug}/{studio_tree.slug}/settings/datasources"
         client = login(org_admin)
         # A token of the secret itself: the SSH block's field is named ssh_private_key.
-        assert "service_account" not in client.get(f"{url}?edit={ds.pk}").content.decode()
+        assert "service_account" not in client.get(f"{url}/{ds.name}/edit").content.decode()
         client.post(url, {
             "id": ds.pk, "name": "gs", "type": "google_sheets",
             "path": "https://docs.google.com/spreadsheets/d/y",

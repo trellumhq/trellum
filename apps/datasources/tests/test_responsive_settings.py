@@ -35,7 +35,7 @@ def test_enhanced_save_persists_without_probe(login, org_admin, org, studio_tree
     assert body["revision"] == check_revision(ds)
     test_path = "/settings/datasources/warehouse/test" if org_scope else "/api/datasources/warehouse/test"
     assert body["test_url"] == base + test_path
-    assert body["can_edit"] and body["edit_url"] == base + f"/settings/datasources?edit={ds.pk}"
+    assert body["can_edit"] and body["edit_url"] == base + "/settings/datasources/warehouse/edit"
     assert body["delete_url"] == base + "/settings/datasources" and body["values"]["id"] == ds.pk
     assert "stored-secret" not in response.content.decode()
     probe.assert_not_called()
@@ -54,7 +54,7 @@ def test_enhanced_credentials_persist_without_probe(login, org_admin, org, studi
     assert ds.credentials == {"user": "u", "password": "secret"} and ds.last_check_ok is None
     body = response.json()
     assert body["configured"] and body["remove_credentials"] and not body["can_edit"]
-    assert body["configure_url"] == "?configure=wh#configure"
+    assert body["configure_url"] == f"/s/{org.slug}/{studio_tree.slug}/settings/datasources/wh/edit"
     probe.assert_not_called()
 
 

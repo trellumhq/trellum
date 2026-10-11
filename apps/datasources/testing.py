@@ -137,8 +137,34 @@ def check_revision(binding, studio=None) -> str:
 
 
 def _revision(binding, declaration) -> str:
-    snapshot = [binding.pk, binding.updated_at, _declaration_snapshot(declaration)]
+    snapshot = [binding.pk if binding else None, binding.updated_at if binding else None, _declaration_snapshot(declaration)]
     return hashlib.sha256(json.dumps(snapshot, cls=DjangoJSONEncoder, sort_keys=True).encode()).hexdigest()
+
+
+def draft_revision(state) -> str:
+    return _revision(state.binding, state.declaration)
+
+
+def check_draft(candidate, state, current_state, *, expected_revision) -> tuple[bool, str, bool]:
+    """Probe transient effective fields; never persist evidence or queue builds."""
+    from apps.datasources.status import effective_fields
+
+    if not expected_revision or draft_revision(state) != expected_revision:
+        return False, STALE_CHECK, True
+    fields = effective_fields(state.declaration, candidate)
+    probe = DataSource(
+        studio=candidate.studio, org=candidate.org, name=candidate.name,
+        type=state.declaration.type if state.declaration else candidate.type,
+        config={k: v for k, v in fields.items() if k not in CREDENTIAL_KEYS},
+        credentials={k: v for k, v in fields.items() if k in CREDENTIAL_KEYS},
+    )
+    try:
+        ok, detail = test_datasource(probe)
+    except Exception as exc:  # noqa: BLE001 - never expose draft credentials
+        ok, detail = False, probe.scrub(f"{type(exc).__name__}: {exc}")
+    if draft_revision(current_state()) != expected_revision:
+        return False, STALE_CHECK, True
+    return ok, probe.scrub(detail), False
 
 
 def _current_check(binding, *, lock=False) -> bool:

@@ -489,15 +489,14 @@ class TestManagementUI:
         client = login(org_admin)
 
         def configure_form(name):
-            # Only the Configure form: the portal-only form further down the
-            # page carries every field (hidden per type by script).
-            html = client.get(f"{url}?configure={name}").content.decode()
-            return html.split('id="ds-configure"')[1].split("</form>")[0]
+            # The dedicated editor contains only the declaration's credential fields.
+            html = client.get(f"{url}/{name}/edit").content.decode()
+            return html.split('id="ds-editor"')[1].split("</form>")[0]
 
         assert 'name="ssh_private_key"' not in configure_form("plain")
         html = configure_form("tunnelled")
         assert 'name="ssh_private_key"' in html and 'name="ssh_password"' in html
-        assert "bastion" in html  # shown with the other declared facts
+        assert "bastion" in client.get(f"{url}/tunnelled/edit").content.decode()
 
         # Saving runs a real connection check; not the point here.
         monkeypatch.setattr(views, "run_state_check", lambda state: (True, "ok"))
@@ -521,10 +520,9 @@ class TestManagementUI:
             source_file="data-sources/config.yaml",
         )
         client = login(org_admin)
-        html = client.get(f"{url}?configure=warehouse").content.decode()
+        html = client.get(f"{url}/warehouse/edit").content.decode()
         checkbox = html.split('type="checkbox" name="new_connection_per_query"', 1)[1]
         assert "checked" in checkbox.split(">", 1)[0]
-        assert html.count('id="configure_new_connection_per_query"') == 1
         assert html.count('id="id_new_connection_per_query"') == 1
         monkeypatch.setattr(views, "run_state_check", lambda _state: (True, "ok"))
 
@@ -558,8 +556,8 @@ class TestManagementUI:
             source_file="data-sources/config.yaml",
         )
         client = login(org_admin)
-        html = client.get(f"{url}?configure=sharepoint").content.decode()
-        configure_form = html.split('id="ds-configure"', 1)[1].split("</form>", 1)[0]
+        html = client.get(f"{url}/sharepoint/edit").content.decode()
+        configure_form = html.split('id="ds-editor"', 1)[1].split("</form>", 1)[0]
         assert 'type="checkbox" name="new_connection_per_query"' not in configure_form
         assert 'id="configure_new_connection_per_query"' not in configure_form
         monkeypatch.setattr(views, "run_state_check", lambda _state: (True, "ok"))

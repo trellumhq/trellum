@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import os
+from dataclasses import replace
+from urllib.parse import quote
 
 from django.contrib import messages
 from django.db.models import Count
@@ -39,7 +41,7 @@ from apps.datasources.status import (
     effective_fields,
     source_states,
 )
-from apps.datasources.testing import STALE_CHECK, check_binding, check_revision, fmt_size, rebuild_unblocked, run_state_check
+from apps.datasources.testing import STALE_CHECK, check_binding, check_draft, check_revision, draft_revision, fmt_size, rebuild_unblocked, run_state_check
 from apps.orgs import quotas
 from apps.orgs.views import paginate
 
@@ -208,7 +210,7 @@ def _store_upload(request, ds: DataSource, name: str) -> JsonResponse:
     audit(request, "datasource.upload", target=ds, name=name, size=size)
     check_binding(ds)
     state = binding_state(ds, getattr(request, "studio", None))
-    badge, label = _BADGES.get(state.state, ("", state.state))
+    badge, label = _badge(state)
     return JsonResponse(
         {
             "ok": True,
@@ -269,7 +271,10 @@ def _test_response(request, ds, name, studio=None):
     ok, detail = check_binding(ds, studio, expected_revision=revision)
     audit(request, "datasource.test", target=ds, name=name, ok=ok)
     stale = getattr(ds, "_check_stale", False)
-    return JsonResponse({"ok": ok, "detail": detail, "stale": stale, "revision": revision}, status=409 if stale else 200)
+    state = binding_state(ds, studio)
+    badge, label = _badge(state)
+    return JsonResponse({"ok": ok, "detail": detail, "stale": stale, "revision": revision,
+                         "badge": badge, "label": label}, status=409 if stale else 200)
 
 
 @require_studio_role(roles.DEVELOPER)
@@ -372,6 +377,18 @@ _BADGES = {
 }
 NEEDS_STATES = (SourceState.NEEDS_CREDENTIALS, SourceState.NEEDS_UPLOAD)
 _TYPE_LABELS = dict(DataSource.TYPES)
+
+
+def _badge(st):
+    if st.state == SourceState.CONNECTED or st.last_check_at and st.state == SourceState.FAILING:
+        return ("ok" if st.last_check_ok else "fail" if st.last_check_ok is False else ""), st.check_label
+    return _BADGES.get(st.state, ("", st.state))
+
+
+def _editor_url(request, name, *, org_page=False):
+    base = (f"/orgs/{request.org.slug}" if org_page
+            else f"/s/{request.org.slug}/{request.studio.slug}")
+    return base + "/settings/datasources/" + quote(name, safe="") + "/edit"
 
 
 def _status_detail(st: SourceState) -> str:
@@ -479,7 +496,7 @@ def _row(request, st: SourceState, *, studio) -> dict:
     ds = st.binding
     is_org_admin = request.org_roles.is_org_admin
     can_manage = ds is not None and (studio is None or ds.studio_id == studio.pk)
-    badge, label = _BADGES.get(st.state, ("", st.state))
+    badge, label = _badge(st)
     info = _source_info(ds, st) if ds is not None else {"upload": False, "status": ""}
     urls = {"upload_url": "", "download_url": ""}
     if ds is not None:
@@ -505,60 +522,16 @@ def _row(request, st: SourceState, *, studio) -> dict:
         "declared_in": declared_in,
         "can_manage": can_manage,
         "manage_url": (
-            f"/orgs/{request.org.slug}/settings/datasources?edit={ds.pk}"
+            _editor_url(request, ds.name, org_page=True)
             if ds is not None and ds.scope == "org" and is_org_admin and studio is not None
             else ""
         ),
         # The configure form applies to declared sources that take credentials.
         "configurable": st.declared and bool(_credential_keys(st.type)),
+        "edit_url": _editor_url(request, st.name, org_page=studio is None),
         "file_available": info.get("status") == "available",
         "used_by": len(st.used_by),
         **urls,
-    }
-
-
-def _configure_context(request, st: SourceState) -> dict:
-    """What the "Configure <name>" form shows: the declaration read-only on
-    the left, only the type's credential fields on the right."""
-    decl = st.declaration
-    cfg = decl.config or {}
-    if decl.type in INLINE_TYPES:
-        facts = [("Type", _TYPE_LABELS.get(decl.type, decl.type)), ("Path", cfg.get("path"))]
-    else:
-        facts = [
-            ("Type", _TYPE_LABELS.get(decl.type, decl.type)),
-            ("Host", cfg.get("host")),
-            ("Port", cfg.get("port")),
-            ("Database", cfg.get("database")),
-            ("HTTP path", cfg.get("http_path")),
-            ("Catalog", cfg.get("catalog")),
-            ("SSH host", cfg.get("ssh_host")),
-        ]
-    keys = credential_fields(decl)
-
-    # Widgets only -- the POST is read field by field in _configure.
-    form = DataSourceForm(
-        instance=st.binding, studio=request.studio, org=request.org,
-        fixed_scope="studio", auto_id="configure_%s",
-    )
-    form.initial["new_connection_per_query"] = effective_fields(decl, st.binding).get(
-        "new_connection_per_query", False
-    )
-    shared = DataSource.objects.filter(org=request.org, name=st.name).first()
-    return {
-        "state": st,
-        "binding": st.binding,
-        "facts": [(k, v) for k, v in facts if v not in (None, "")],
-        "declared_in": decl.source_file,
-        "fields": [form[k] for k in keys],
-        "new_connection_per_query": form["new_connection_per_query"],
-        "supports_new_connection_per_query": (
-            "new_connection_per_query" in TYPE_FIELDS.get(decl.type, [])
-        ),
-        "can_org": request.org_roles.is_org_admin,
-        # Ticking "organization level" would overwrite shared credentials the
-        # form is not showing (a studio row shadows them here).
-        "warn_shared": shared is not None and (st.binding is None or shared.pk != st.binding.pk),
     }
 
 
@@ -645,11 +618,14 @@ def _saved_response(request, ds, studio=None, *, configured=False):
         upload_url=base + ds.name + "/upload" if (ds.config or {}).get("upload") else "",
         values={"id": ds.pk},
         download_url=_file_urls(ds, info, True, studio=test_studio)["download_url"],
-        edit_url=manage_path + f"?edit={ds.pk}", delete_url=manage_path,
+        edit_url=manage_path + f"/{quote(ds.name, safe='')}/edit", delete_url=manage_path,
         declared=state.declared, configured=configured,
         can_edit=not (state.declared and studio is not None),
-        configure_url=(f"?configure={ds.name}#configure" if configured and ds.studio_id else ""),
+        configure_url=(_editor_url(request, ds.name) if configured and ds.studio_id else ""),
         remove_credentials=bool(configured and ds.studio_id),
+        badge=_badge(state)[0], label=_badge(state)[1], detail=_status_detail(state),
+        editor_revision=(draft_revision(_editor_state(request, ds.name, studio)) if configured else check_revision(ds, test_studio)),
+        org_revision=(draft_revision(_editor_state(request, ds.name, studio, org_target=True)) if configured else ""),
     )
 
 
@@ -664,10 +640,11 @@ def settings_page(request, org_slug, studio_slug):  # noqa: ARG001
     editing = None
     if request.GET.get("edit"):
         editing = _editable_source(request, request.GET["edit"])
-        if editing.scope == "org":
-            return redirect(
-                f"/orgs/{request.org.slug}/settings/datasources?edit={editing.pk}"
-            )
+        return redirect(_editor_url(request, editing.name, org_page=editing.scope == "org"))
+    if request.method == "GET" and request.GET.get("configure"):
+        name = request.GET["configure"]
+        if RepoDataSource.objects.filter(studio=request.studio, name=name, present=True).exists():
+            return redirect(_editor_url(request, name))
     if request.method == "POST" and request.POST.get("name") and request.POST.get("action") in (
         "configure", "remove_credentials"
     ):
@@ -711,18 +688,10 @@ def settings_page(request, org_slug, studio_slug):  # noqa: ARG001
         form = DataSourceForm(instance=editing, **form_kwargs)
 
     states = source_states(request.studio)
-    configure = None
     add_open = editing is not None or (request.method == "POST" and not form.is_valid())
     if request.GET.get("configure") and request.method == "GET":
-        name = request.GET["configure"]
-        st = next((s for s in states if s.name == name), None)
-        if st is not None and st.declared and _credential_keys(st.type):
-            configure = _configure_context(request, st)
-        else:
-            # Not declared (or a file source): the portal-only form, with the
-            # name filled in, is the way to give the reports something to read.
-            form = DataSourceForm(initial={"name": name}, **form_kwargs)
-            add_open = True
+        form = DataSourceForm(initial={"name": request.GET["configure"]}, **form_kwargs)
+        add_open = True
     has_repo = StudioRepo.objects.filter(studio=request.studio, repo_url__gt="").exists()
 
     rows = [
@@ -747,7 +716,6 @@ def settings_page(request, org_slug, studio_slug):  # noqa: ARG001
             "rows": page.object_list,
             "unknown": [s for s in states if s.state == SourceState.UNKNOWN],
             "banner": _banner(states, request.studio),
-            "configure": configure,
             "has_repo": has_repo,
             "add_open": add_open or not has_repo,
             "form": form,
@@ -772,6 +740,7 @@ def org_settings_page(request, org_slug):  # noqa: ARG001
     editing = None
     if request.GET.get("edit"):
         editing = get_object_or_404(DataSource, org=request.org, pk=request.GET["edit"])
+        return redirect(_editor_url(request, editing.name, org_page=True))
     if request.method == "POST":
         if request.POST.get("action") == "delete":
             ds = get_object_or_404(DataSource, org=request.org, pk=request.POST.get("id"))
@@ -838,6 +807,120 @@ def org_settings_page(request, org_slug):  # noqa: ARG001
             "total": total,
         },
     )
+
+
+def _editor_state(request, name, studio, *, org_target=False):
+    if studio is None:
+        ds = get_object_or_404(DataSource, org=request.org, name=name)
+        return binding_state(ds)
+    state = next((s for s in source_states(studio) if s.name == name), None)
+    if state is None or state.state == SourceState.UNKNOWN:
+        raise Http404
+    if org_target:
+        shared = DataSource.objects.filter(org=request.org, name=name).first()
+        state = replace(state, binding=shared)
+    return state
+
+
+def _editor(request, name, studio=None):
+    org_page = studio is None
+    state = _editor_state(request, name, studio)
+    credentials_only = studio is not None and state.declared and bool(_credential_keys(state.type))
+    if studio is not None and not credentials_only and state.binding and state.binding.org_id:
+        if not request.org_roles.is_org_admin:
+            raise Http404
+        return redirect(_editor_url(request, name, org_page=True))
+    form_kwargs = dict(instance=state.binding, studio=studio, org=request.org,
+                       fixed_scope="org" if org_page else "studio")
+    form = DataSourceForm(request.POST if request.method == "POST" else None, **form_kwargs)
+    if credentials_only:
+        # The declaration owns identity/config; only these fields may change.
+        keys = credential_fields(state.declaration)
+        keys += ["new_connection_per_query"] if "new_connection_per_query" in TYPE_FIELDS.get(state.type, []) else []
+        form.fields = {k: form.fields[k] for k in keys}
+        form.initial["new_connection_per_query"] = effective_fields(state.declaration, state.binding).get("new_connection_per_query", False)
+    if request.method == "POST":
+        if request.POST.get("action") not in {"save", "test_draft", "remove_credentials"}:
+            return settings_error(request, "Unknown data source action.")
+        if request.POST.get("action") == "remove_credentials" and not credentials_only:
+            return settings_error(request, "This source has no separate credential binding to remove.")
+        if request.POST.get("action") == "remove_credentials" and credentials_only:
+            return _configure(request, name)
+        if form.is_valid():
+            org_target = credentials_only and bool(request.POST.get("org_level"))
+            if org_target and not request.org_roles.is_org_admin:
+                return settings_error(request, "Only organization admins may change shared credentials.", status=403)
+            target_state = _editor_state(request, name, studio, org_target=org_target)
+            if credentials_only:
+                from copy import copy
+
+                candidate = copy(target_state.binding) if target_state.binding else DataSource(name=name)
+                candidate.type = state.type
+                candidate.org = request.org if org_target else None
+                candidate.studio = None if org_target else studio
+                candidate.credentials = dict(candidate.credentials or {})
+                for key in _credential_keys(state.type):
+                    if form.cleaned_data.get(key):
+                        candidate.credentials[key] = form.cleaned_data[key]
+                candidate.config = dict(candidate.config or {})
+                if "new_connection_per_query" in form.cleaned_data:
+                    candidate.config["new_connection_per_query"] = form.cleaned_data["new_connection_per_query"]
+            else:
+                candidate = form.candidate()
+            if request.POST.get("action") == "test_draft":
+                revision = request.POST.get("revision")
+                ok, detail, stale = check_draft(
+                    candidate, target_state,
+                    lambda: _editor_state(request, name, studio, org_target=org_target),
+                    expected_revision=revision,
+                )
+                return JsonResponse({"ok": ok, "detail": detail, "stale": stale, "revision": revision,
+                                     "draft": True}, status=409 if stale else 200)
+            if credentials_only:
+                ds = persist_credentials(
+                    request, state.declaration, form.cleaned_data, org_level=org_target,
+                    new_connection_per_query=form.cleaned_data.get("new_connection_per_query"),
+                )
+            else:
+                owned = _owned_file(state.binding)
+                ds = form.save(user=request.user)
+                _discard_orphan(owned, ds)
+                audit(request, "datasource.update", target=ds, name=ds.name, scope=ds.scope)
+            if is_settings_request(request):
+                return _saved_response(request, ds, studio, configured=credentials_only)
+            ok, detail = check_binding(ds, None if ds.org_id else studio)
+            (messages.success if ok else messages.error)(request, _saved_message(ds) + " " + detail)
+            return redirect(_editor_url(request, ds.name, org_page=ds.org_id is not None))
+        if is_settings_request(request) or request.POST.get("action") == "test_draft":
+            return settings_error(request, form=form)
+    badge, label = _badge(state)
+    test_studio = None if state.binding and state.binding.org_id else studio
+    test_base = (f"/orgs/{request.org.slug}/settings/datasources" if state.binding and state.binding.org_id
+                 else f"/s/{request.org.slug}/{studio.slug}/api/datasources" if studio else "")
+    return render(request, "datasources/edit.html", {
+        "org": request.org, "studio": studio, "org_page": org_page, "state": state,
+        "form": form, "credentials_only": credentials_only,
+        "can_org": credentials_only and request.org_roles.is_org_admin,
+        "facts": [(k.replace("_", " ").title(), v) for k, v in effective_fields(state.declaration, state.binding).items()
+                  if k not in CREDENTIAL_KEYS],
+        "badge": badge, "label": label, "detail": _status_detail(state),
+        "revision": draft_revision(state),
+        "saved_revision": check_revision(state.binding, test_studio) if state.binding else "",
+        "saved_test_url": test_base + f"/{quote(name, safe='')}/test" if state.binding else "",
+        "org_revision": draft_revision(_editor_state(request, name, studio, org_target=True)) if credentials_only else "",
+        "list_url": request.path.rsplit("/", 2)[0], "type_fields": TYPE_FIELDS,
+        "max_upload_bytes": instance_config.max_upload_bytes(),
+    })
+
+
+@require_studio_role(roles.ADMIN)
+def editor_page(request, org_slug, studio_slug, name):  # noqa: ARG001
+    return _editor(request, name, request.studio)
+
+
+@require_org_role(roles.ORG_ADMIN)
+def org_editor_page(request, org_slug, name):  # noqa: ARG001
+    return _editor(request, name)
 
 
 @require_org_role(roles.ORG_ADMIN)

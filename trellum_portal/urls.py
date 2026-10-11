@@ -324,6 +324,11 @@ urlpatterns = [
         name="org-datasources",
     ),
     path(
+        "orgs/<slug:org_slug>/settings/datasources/<str:name>/edit",
+        datasource_views.org_editor_page,
+        name="org-datasource-edit",
+    ),
+    path(
         "orgs/<slug:org_slug>/settings/datasources/<str:name>/test",
         datasource_views.api_org_test,
         name="org-datasource-test",
@@ -454,6 +459,11 @@ urlpatterns = [
         "s/<slug:org_slug>/<slug:studio_slug>/settings/repo",
         studio_views.repo_settings,
         name="studio-repo",
+    ),
+    path(
+        "s/<slug:org_slug>/<slug:studio_slug>/settings/datasources/<str:name>/edit",
+        datasource_views.editor_page,
+        name="studio-datasource-edit",
     ),
     path(
         "s/<slug:org_slug>/<slug:studio_slug>/settings/datasources",

@@ -115,6 +115,14 @@ class SourceState:
     def blocking(self) -> bool:
         return self.state in self.BLOCKING
 
+    @property
+    def check_label(self) -> str:
+        """Reachability evidence for display, independent of build eligibility."""
+        if self.last_check_at and self.last_check_ok is not None:
+            when = self.last_check_at.strftime("%Y-%m-%d %H:%M %Z")
+            return ("Last confirmed at " if self.last_check_ok else "Failed at ") + when
+        return "Configured / not tested"
+
 
 def referenced_names(config: dict | None) -> list[str]:
     """Source names a report.yaml ``data_sources`` list references, in order."""

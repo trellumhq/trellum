@@ -79,7 +79,7 @@ class TestScopeManagement:
         resp = login(org_admin).get(f"{url}?edit={org_source.pk}")
         assert resp.status_code == 302
         assert resp["Location"] == (
-            f"/orgs/{org.slug}/settings/datasources?edit={org_source.pk}"
+            f"/orgs/{org.slug}/settings/datasources/{org_source.name}/edit"
         )
 
     def test_studio_admin_cannot_create_org_source(

@@ -3,6 +3,8 @@ non-secret config JSON vs the encrypted credentials JSON. Secret fields are
 write-only: blank on edit = keep the stored value."""
 from __future__ import annotations
 
+from copy import copy
+
 from django import forms
 
 from apps.datasources.models import (
@@ -172,7 +174,8 @@ class DataSourceForm(forms.Form):
                 self.add_error("name", "A source with this name already exists in that scope.")
         return cleaned
 
-    def save(self, user=None) -> DataSource:
+    def candidate(self) -> DataSource:
+        """Build the submitted configuration without changing the saved row."""
         data = self.cleaned_data
         # Only the selected type's fields are kept — switching type drops
         # stale values (incl. old credentials) instead of carrying them.
@@ -203,7 +206,7 @@ class DataSourceForm(forms.Form):
             stored["user"] = data["user"]
         stored = {k: v for k, v in stored.items() if k in relevant}
 
-        ds = self.instance if self.instance is not None else DataSource()
+        ds = copy(self.instance) if self.instance is not None else DataSource()
         # Scope is switchable on edit: moving studio->org shares it with
         # every studio; org->studio pins it to this studio.
         if data["scope"] == "org":
@@ -217,6 +220,10 @@ class DataSourceForm(forms.Form):
         ds.description = data.get("description", "")
         ds.config = config
         ds.credentials = stored or None
+        return ds
+
+    def save(self, user=None) -> DataSource:
+        ds = self.candidate()
         ds.updated_by = user
         ds.last_check_at = None
         ds.last_check_ok = None

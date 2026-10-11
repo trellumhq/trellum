@@ -1,6 +1,7 @@
 {% extends "settings_base.html" %}
 {% block title %}Data sources — {% if org_page %}{{ org.name }}{% else %}{{ studio.name }}{% endif %}{% endblock %}
 {% block settings %}
+{% block datasource_content %}
 {% if org_page %}
 <header class="page-head">
   <div class="ui-label page-kicker scope-org">Organization · {{ org.name }}</div>
@@ -46,7 +47,7 @@
 
 {% include "_list_toolbar.html" with q=q placeholder="Search data sources…" total=total %}
 <div class="panel">
-<div class="ui-table-scroll">
+<div class="ui-table-scroll" data-settings-refresh="datasources">
 <table class="ui-table" data-mobile-cards>
   <thead>
     <tr><th>Source</th><th>Scope</th><th>Type</th><th>Status</th><th>Used by</th><th></th></tr>
@@ -82,7 +83,7 @@
     <td class="ui-row-actions" data-label="Actions">
       {% if row.state.state == "needs_credentials" and row.configurable %}
         {# A link, so ghost: the page's primary action is the form it opens. #}
-        <a class="ui-btn ghost" data-ds-configure href="?configure={{ row.name|urlencode }}#configure">Configure</a>
+        <a class="ui-btn ghost" data-ds-configure href="{{ row.edit_url }}">Configure</a>
         <button class="ui-btn ghost" type="button" data-ds-test disabled title="Add the credentials first">Test</button>
       {% else %}
         {% if row.upload_url %}
@@ -103,15 +104,15 @@
         {% endif %}
         {% if row.state.declared and not org_page %}
           {% if row.configurable and row.can_manage %}
-          <a class="ui-btn ghost" data-ds-configure href="?configure={{ row.name|urlencode }}#configure">Edit credentials</a>
+          <a class="ui-btn ghost" data-ds-configure href="{{ row.edit_url }}">Edit credentials</a>
           {% elif row.configurable and not row.ds %}
-          <a class="ui-btn ghost" data-ds-configure href="?configure={{ row.name|urlencode }}#configure">Configure</a>
+          <a class="ui-btn ghost" data-ds-configure href="{{ row.edit_url }}">Configure</a>
           {% elif row.manage_url %}
           <a class="ui-btn ghost" href="{{ row.manage_url }}"
              title="Shared credentials are managed at organization level.">Manage in organization →</a>
           {% endif %}
         {% elif row.can_manage %}
-        <a class="ui-btn ghost" data-ds-edit href="?edit={{ row.ds.pk }}">Edit</a>
+        <a class="ui-btn ghost" data-ds-edit href="{{ row.edit_url }}">Edit</a>
         <form class="inline" method="post"
               onsubmit="return confirm('Delete data source “{{ row.name|escapejs }}”?{% if row.ds.scope == "org" %} It disappears from EVERY studio in the organization.{% endif %} Reports that reference it stop building.')">
           {% csrf_token %}
@@ -157,65 +158,6 @@
   </ul>
   <p class="muted">Declare these in <code>data-sources/config.yaml</code> and publish, or
     add a portal-only source with the same name.</p>
-</div>
-{% endif %}
-
-{% if configure %}
-<h2 id="configure">Configure <code>{{ configure.state.name }}</code></h2>
-<div class="ui-panel">
-  <form method="post" class="ui-form-grid" id="ds-configure" data-settings-form data-settings-save>
-    {% csrf_token %}
-    <input type="hidden" name="action" value="configure">
-    <input type="hidden" name="name" value="{{ configure.state.name }}">
-    <div class="ui-field">
-      <label>From repository</label>
-      <table class="ui-table dense"><tbody>
-        {% for label, value in configure.facts %}
-        <tr><th>{{ label }}</th><td>{{ value }}</td></tr>
-        {% endfor %}
-        <tr><th>Declared in</th><td><code>{{ configure.declared_in }}</code></td></tr>
-        <tr><th>Used by</th><td>{% if configure.state.used_by %}{{ configure.state.used_by|join:", " }}{% else %}<span class="muted">no reports yet</span>{% endif %}</td></tr>
-      </tbody></table>
-    </div>
-    <div>
-      {% for f in configure.fields %}
-      <div class="ui-field">
-        <label>{{ f.label }}{% if configure.binding and f.name != "user" %} <span class="muted">(blank = keep current)</span>{% endif %}</label>
-        {{ f }}
-      </div>
-      {% endfor %}
-      {% if configure.supports_new_connection_per_query %}<div class="ui-field ui-field-wide">
-        <input type="hidden" name="new_connection_per_query" value="false">
-        <label class="ui-check-row">{{ configure.new_connection_per_query }} {{ configure.new_connection_per_query.label }}</label>
-        <span class="ui-help">{{ configure.new_connection_per_query.help_text }}</span>
-      </div>{% endif %}
-      {% if configure.can_org %}
-      <div class="ui-field">
-        {% if configure.warn_shared %}
-        <span class="ui-help warn">Replaces the shared credentials used by other studios.</span>
-        {% endif %}
-        <label class="ui-check-row"><input type="checkbox" name="org_level" value="1">
-          Store at organization level so every studio declaring
-          <code>{{ configure.state.name }}</code> can use it</label>
-        <span class="ui-help org">Saved as shared credentials in Organization settings;
-          a studio-level source with the same name still takes precedence.</span>
-      </div>
-      {% endif %}
-    </div>
-    <div class="ui-form-actions">
-      <button class="ui-btn primary" type="submit">Save and test</button>
-      <a class="ui-btn ghost" href="{{ request.path }}">Cancel</a>
-    </div>
-  </form>
-  {% if configure.binding and configure.binding.studio_id %}
-  <form method="post" class="inline" data-ds-remove-credentials
-        onsubmit="return confirm('Remove the stored credentials for “{{ configure.state.name|escapejs }}”? Reports that read from it wait until new ones are added.')">
-    {% csrf_token %}
-    <input type="hidden" name="action" value="remove_credentials">
-    <input type="hidden" name="name" value="{{ configure.state.name }}">
-    <button class="ui-btn danger" type="submit">Remove credentials</button>
-  </form>
-  {% endif %}
 </div>
 {% endif %}
 
@@ -315,19 +257,22 @@
     </div>
   </form>
 {% if org_page %}</div>{% else %}</details>{% endif %}
+{% endblock %}
 
 {{ type_fields|json_script:"type-fields" }}
 <script>
 (function () {
   var TYPE_FIELDS = JSON.parse(document.getElementById('type-fields').textContent);
-  var form = document.getElementById('ds-form');
+  var form = document.getElementById('ds-form') || document.getElementById('ds-editor');
+  if (!form) return;
   var typeSelect = form.querySelector('select[name="type"]');
+  if (!typeSelect) return;
   var pathInput = form.querySelector('input[name="path"]');
   var uploadBox = form.querySelector('input[name="upload"]');
   var gitWarning = document.getElementById('ds-git-warning');
   var pathLabel = form.querySelector('[data-f="path"] > label');
   var pathHelp = form.querySelector('[data-f="path"] .helptext');
-  var filePathLabel = pathLabel.textContent;
+  var filePathLabel = pathLabel ? pathLabel.textContent : 'Path';
 
   function applyType() {
     var relevant = TYPE_FIELDS[typeSelect.value] || [];
@@ -336,8 +281,8 @@
     });
     /* Same "path" field, but for a spreadsheet it is a URL or ID, not a file. */
     var sheet = typeSelect.value === 'google_sheets';
-    pathLabel.textContent = sheet ? 'Spreadsheet URL or ID' : filePathLabel;
-    pathHelp.hidden = sheet;
+    if (pathLabel) pathLabel.textContent = sheet ? 'Spreadsheet URL or ID' : filePathLabel;
+    if (pathHelp) pathHelp.hidden = sheet;
   }
 
   /* Uploading INTO reports/ is allowed but pointless: the next pull of that
@@ -347,7 +292,7 @@
   function applyGitWarning() {
     var rel = (pathInput.value || '').replace(/\\/g, '/').replace(/^\.?\//, '');
     var risky = !IS_ORG_PAGE && uploadBox.checked && rel.indexOf('reports/') === 0;
-    gitWarning.hidden = !risky;
+    if (gitWarning) gitWarning.hidden = !risky;
   }
 
   typeSelect.addEventListener('change', applyType);
@@ -451,8 +396,8 @@ function dsUpload(input) {
   xhr.send(data);
 }
 
-document.querySelectorAll('.ds-file-input').forEach(function (input) {
-  input.addEventListener('change', function () { dsUpload(input); });
+document.addEventListener('change', function (event) {
+  if (event.target.matches('.ds-file-input')) dsUpload(event.target);
 });
 
 function getCookie(name) {
@@ -472,12 +417,12 @@ function testSource(id, name, btn) {
   return dsTest(row, '{{ test_url_base }}' + encodeURIComponent(name) + '/test', row.dataset.revision, null, btn);
 }
 
-function dsTest(row, url, revision, form, btn) {
+function dsTest(row, url, revision, form, btn, draftBody) {
   var out = row.querySelector('[data-ds-result]');
   row._dsGeneration = (row._dsGeneration || 0) + 1;
   var generation = row._dsGeneration;
-  var formGeneration = form ? form._dsSubmittedGeneration : null;
-  var status = form ? form.querySelector('[data-settings-dirty-status]') : null;
+  var formGeneration = form ? (draftBody ? form._dsGeneration : form._dsSubmittedGeneration) : null;
+  var status = form && !draftBody ? form.querySelector('[data-settings-dirty-status]') : null;
   btn = btn || row.querySelector('[data-ds-test]');
   var token = {};
   row._dsTestToken = token;
@@ -486,7 +431,7 @@ function dsTest(row, url, revision, form, btn) {
     return row._dsGeneration === generation && (!form || form._dsGeneration === formGeneration);
   }
   if (btn) btn.disabled = true;
-  out.textContent = form ? 'Saved. Testing connection…' : 'Testing…';
+  out.textContent = draftBody ? 'Testing draft…' : form ? 'Saved. Testing connection…' : 'Testing…';
   row.querySelector('[data-ds-detail]').textContent = '';
   out.style.color = 'var(--text2)';
   dsBadge(row, 'info', 'Testing…');
@@ -494,7 +439,7 @@ function dsTest(row, url, revision, form, btn) {
     dsBadge(row, 'warn', 'Not confirmed');
     out.textContent = 'Saved. There are newer unsaved changes.';
   }
-  var body = new FormData();
+  var body = draftBody || new FormData();
   if (revision) body.append('revision', revision);
   var controller = new AbortController();
   var timeout;
@@ -516,7 +461,10 @@ function dsTest(row, url, revision, form, btn) {
       if (!current() || (revision && data.revision && data.revision !== revision && !data.stale)) return;
       out.textContent = (data.ok ? '✓ ' : '✗ ') + (data.detail || data.error || '');
       out.style.color = data.ok ? 'var(--green)' : 'var(--red)';
-      dsBadge(row, data.stale ? 'warn' : (data.ok ? 'ok' : 'fail'), data.stale ? 'Test again' : (data.ok ? 'Connected' : 'Test failed'));
+      dsBadge(row, data.stale ? 'warn' : (data.badge || (data.ok ? 'ok' : 'fail')), data.stale ? 'Test again' : (draftBody ? (data.ok ? 'Draft confirmed (unsaved)' : 'Draft test failed') : data.label || (data.ok ? 'Last confirmed just now' : 'Failed just now')));
+      if (form && form.getAttribute('id') === 'ds-editor' && !draftBody && !data.stale) {
+        document.querySelector('[data-ds-saved-evidence]').textContent = data.label || (data.ok ? 'Last confirmed just now' : 'Failed just now');
+      }
       if (status) {
         status.textContent = data.stale ? 'Saved. Configuration changed; test again.' : 'Saved. ' + (data.ok ? 'Connection confirmed.' : 'Connection test failed: ' + (data.detail || data.error || 'Try again.'));
       }
@@ -531,7 +479,7 @@ function dsTest(row, url, revision, form, btn) {
     })
     .finally(function () {
       clearTimeout(timeout);
-      if (btn && row._dsTestToken === token) btn.disabled = false;
+      if (btn && row._dsTestToken === token) btn.disabled = btn.hasAttribute('data-ds-test') && form && form.getAttribute('id') === 'ds-editor' && form.classList.contains('is-dirty');
     });
 }
 
@@ -703,21 +651,66 @@ function dsDeleteForm(actions, data) {
   };
 }
 
-document.querySelectorAll('#ds-form, #ds-configure').forEach(function (form) {
+document.querySelectorAll('#ds-form, #ds-configure, #ds-editor').forEach(function (form) {
   form._dsGeneration = 0;
+  var editor = form.getAttribute('id') === 'ds-editor';
+  if (editor) form._dsTestingRow = document.getElementById('ds-editor-status');
+  if (editor) {
+    var savedButton = form._dsTestingRow.querySelector('[data-ds-test]');
+    savedButton.onclick = function () {
+      if (form.dataset.testUrl && !form.classList.contains('is-dirty')) {
+        form._dsSubmittedGeneration = form._dsGeneration;
+        dsTest(form._dsTestingRow, form.dataset.testUrl, form.dataset.savedRevision, form, savedButton);
+      }
+    };
+  }
   function invalidateTest() {
     if (!form._dsTestingRow) return;
     form._dsTestingRow._dsGeneration += 1;
-    dsBadge(form._dsTestingRow, 'warn', 'Not confirmed');
-    form._dsTestingRow.querySelector('[data-ds-result]').textContent = 'Save changes to test the new configuration.';
+    if (editor) form._dsTestingRow.querySelector('[data-ds-test]').disabled = true;
+    dsBadge(form._dsTestingRow, 'warn', editor ? 'Draft changed' : 'Not confirmed');
+    form._dsTestingRow.querySelector('[data-ds-result]').textContent = editor ? 'Test draft or save changes to confirm this configuration.' : 'Save changes to test the new configuration.';
   }
   function edited() { form._dsGeneration += 1; invalidateTest(); }
   form.addEventListener('input', edited);
   form.addEventListener('change', edited);
   form.addEventListener('submit', function () { form._dsSubmittedGeneration = form._dsGeneration; invalidateTest(); }, true);
+  if (editor) {
+    form.querySelector('[data-ds-draft-test]').addEventListener('click', function (event) {
+      if (!form.reportValidity() || form.getAttribute('aria-busy') === 'true') return;
+      var body = new FormData(form);
+      body.set('action', 'test_draft');
+      var org = form.querySelector('[name="org_level"]');
+      var revision = org && org.checked ? form.dataset.orgRevision : form.dataset.revision;
+      dsTest(form._dsTestingRow, form.getAttribute('action') || location.href, revision, form, event.currentTarget, body);
+    });
+  }
   form.addEventListener('settings:success', function (event) {
     var data = event.detail;
     if (!data.test_url) return;
+    if (editor) {
+      form.dataset.revision = data.editor_revision || data.revision;
+      form.dataset.orgRevision = data.org_revision || '';
+      form.dataset.testUrl = data.test_url;
+      form.dataset.savedRevision = data.revision;
+      if (form.querySelector('[name="name"]')) {
+        form.setAttribute('action', data.edit_url);
+        history.replaceState(history.state, '', data.edit_url);
+      }
+      document.querySelector('[data-ds-saved-evidence]').textContent = data.label + (data.detail ? ' · ' + data.detail : '');
+      document.querySelectorAll('[data-ds-editor-name]').forEach(function (name) { name.textContent = data.source_name; });
+      var savedScope = document.querySelector('[data-ds-saved-scope]');
+      if (savedScope) savedScope.textContent = data.source_scope === 'org' ? 'Organization credentials shared with every studio.' : 'Credentials for this studio.';
+      var savedType = document.querySelector('[data-ds-editor-type]');
+      if (savedType) savedType.textContent = data.source_type;
+      var row = form._dsTestingRow;
+      row.querySelector('[data-ds-test]').disabled = form._dsGeneration !== form._dsSubmittedGeneration;
+      if (form._dsGeneration !== form._dsSubmittedGeneration) {
+        dsBadge(row, 'warn', 'Draft changed');
+        row.querySelector('[data-ds-result]').textContent = 'Saved. There are newer unsaved changes.';
+      } else dsTest(row, data.test_url, data.revision, form, row.querySelector('[data-ds-test]'));
+      return;
+    }
     if (form.getAttribute('id') === 'ds-form') {
       form.querySelector('button[type="submit"]').textContent = 'Save changes';
       document.querySelector('[data-ds-form-title]').textContent = 'Edit “' + data.source_name + '”';
@@ -737,6 +730,23 @@ document.querySelectorAll('#ds-form, #ds-configure').forEach(function (form) {
     var row = dsSavedRow(data);
     dsTest(row, data.test_url, data.revision, form);
   });
+});
+window.addEventListener('pagehide', function () {
+  document.querySelectorAll('[data-source-name], [data-ds-status]').forEach(function (row) { row._dsGeneration = (row._dsGeneration || 0) + 1; });
+});
+window.addEventListener('pageshow', function (event) {
+  if (event.persisted && document.querySelector('[data-settings-refresh="datasources"]') && window.TrellumSettingsForms) {
+    TrellumSettingsForms.refreshRegions(['datasources']).catch(function () {
+      var region = document.querySelector('[data-settings-refresh="datasources"]');
+      if (!region.querySelector('[data-ds-refresh-error]')) {
+        var error = document.createElement('p');
+        error.dataset.dsRefreshError = '';
+        error.setAttribute('role', 'status');
+        error.textContent = 'Data source status could not refresh. Return to this page again to update it.';
+        region.prepend(error);
+      }
+    });
+  }
 });
 </script>
 {% endblock %}
