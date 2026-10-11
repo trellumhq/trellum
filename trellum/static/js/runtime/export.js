@@ -160,7 +160,7 @@
         _analysisNotice.style.cssText = 'position:fixed;z-index:99999;top:12px;left:50%;transform:translateX(-50%);width:min(620px,calc(100vw - 32px));max-height:calc(100vh - 24px);overflow:auto;box-sizing:border-box;padding:16px;background:var(--bg-card,#fff);color:var(--text-main,#222);border:1px solid var(--border-color,#ccc);border-left:4px solid var(--accent-yellow,#e3b341);border-radius:8px;font:14px sans-serif;box-shadow:0 2px 12px rgba(0,0,0,.16)';
         var close = document.createElement('button');
         close.type = 'button'; close.textContent = 'Close';
-        close.style.cssText = 'float:right;padding:4px 8px;cursor:pointer';
+        close.style.cssText = 'float:right;padding:4px 8px;cursor:pointer;background:var(--bg-main,var(--bg-card,#fff));color:var(--text-main,#222);border:1px solid var(--border-color,#ccc);border-radius:6px';
         close.addEventListener('click', function() {
             clearTimeout(_analysisNoticeTimer);
             _analysisNotice.remove(); _analysisNotice = null;
@@ -168,16 +168,19 @@
         _analysisNotice.appendChild(close);
         var title = document.createElement('strong');
         title.textContent = 'Frozen evidence downloaded';
+        title.style.cssText = 'display:block;line-height:1.4;margin:4px 84px 10px 0';
         _analysisNotice.appendChild(title);
         var detail = document.createElement('p');
         detail.textContent = fileName + ' contains a PNG preview and source details, including filters and capture/build times when available. It does not contain raw data rows or a written analysis.';
+        detail.style.cssText = 'line-height:1.4;margin:0 0 10px';
         _analysisNotice.appendChild(detail);
         var preview = document.createElement('img');
         preview.src = imageUrl; preview.alt = 'Preview of the captured report view';
-        preview.style.cssText = 'display:block;max-width:100%;max-height:180px;object-fit:contain;margin:8px 0;border:1px solid var(--border-color)';
+        preview.style.cssText = 'display:block;max-width:100%;max-height:180px;object-fit:contain;margin:10px 0;border:1px solid var(--border-color,#ccc)';
         _analysisNotice.appendChild(preview);
         var next = document.createElement('p');
         next.textContent = 'Example commands: replace the sample slug, evidence name, and capture file path with yours. Import prints a Markdown reference to paste into reports/september-findings/content.md. Then review the article and publish it through your repository workflow.';
+        next.style.cssText = 'line-height:1.4;margin:10px 0';
         _analysisNotice.appendChild(next);
         var commands = [
             'trellum analysis new september-findings',
@@ -192,6 +195,7 @@
             code.style.cssText = 'flex:1;overflow-wrap:anywhere';
             var copy = document.createElement('button');
             copy.type = 'button'; copy.textContent = 'Copy';
+            copy.style.cssText = 'flex:none;padding:4px 8px;cursor:pointer;background:var(--bg-main,var(--bg-card,#fff));color:var(--text-main,#222);border:1px solid var(--border-color,#ccc);border-radius:6px';
             copy.addEventListener('click', function() {
                 if (navigator.clipboard && navigator.clipboard.writeText) {
                     navigator.clipboard.writeText(command).then(function() { copy.textContent = 'Copied'; }, function() { copy.textContent = 'Copy unavailable'; });
@@ -203,6 +207,7 @@
         doc.href = document.documentElement.getAttribute('data-analysis-guide-url')
             || 'https://trellum.dev/docs/latest/workflow/published-analyses/';
         doc.textContent = 'Read the publish an analysis guide';
+        doc.style.cssText = 'color:var(--accent-blue,#4c8bf5);text-decoration:underline';
         _analysisNotice.appendChild(doc);
         document.body.appendChild(_analysisNotice);
     }
@@ -426,10 +431,12 @@
             _analysisSelection = {targets: targets, oldTabIndex: oldTabIndex, style: style,
                 resolve: resolve, previousFocus: document.activeElement};
             _analysisMessage('Choose a highlighted chart or section. The download is a frozen PNG with filters and source times, not raw rows or a written analysis. Press Escape to cancel.');
+            clearTimeout(_analysisNoticeTimer);
+            _analysisNoticeTimer = null;
             _analysisNotice.style.width = 'min(620px,calc(100vw - 32px))';
             var cancel = document.createElement('button');
             cancel.className = 'fw-analysis-capture-ui'; cancel.type = 'button'; cancel.textContent = 'Cancel';
-            cancel.style.cssText = 'flex:none;align-self:flex-start;padding:6px 10px;cursor:pointer;background:var(--bg-card,#fff);color:var(--text-main,#222);border:1px solid var(--border-color,#ccc);border-radius:6px';
+            cancel.style.cssText = 'flex:none;align-self:flex-start;padding:6px 10px;cursor:pointer;background:var(--bg-main,var(--bg-card,#fff));color:var(--text-main,#222);border:1px solid var(--border-color,#ccc);border-radius:6px';
             cancel.addEventListener('click', function() { _analysisFinish(false); });
             _analysisNotice.appendChild(cancel);
             document.addEventListener('click', _analysisClick, true);

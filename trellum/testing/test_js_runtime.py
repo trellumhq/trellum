@@ -1453,10 +1453,12 @@ class TestAnalysisCapture:
             document.querySelector('.fw-live-status').remove();
             var done = fw.captureForAnalysis();
             var selectionMessage = document.querySelector('[role="status"]')?.textContent || '';
-            document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+            await new Promise(resolve => setTimeout(resolve, 5100));
+            var cancelAvailable = !!document.querySelector('.fw-analysis-capture-ui button');
+            document.querySelector('.fw-analysis-capture-ui button').click();
             var cancelled = await done;
             return {loadResult, loadMessage, pending, error, cancelled, stateSeen, selectionStarted,
-                selectionMessage,
+                selectionMessage, cancelAvailable,
                 tabIndex: document.getElementById('select-me').getAttribute('tabindex'),
                 selectable: document.querySelector('.fw-analysis-selectable'),
                 notice: document.querySelector('[role="status"]')?.textContent || '',
@@ -1470,6 +1472,7 @@ class TestAnalysisCapture:
         assert "frozen PNG" in result["selectionMessage"]
         assert "filters and source times" in result["selectionMessage"]
         assert "not raw rows" in result["selectionMessage"]
+        assert result["cancelAvailable"] is True
         assert "live data query is still running" in (result["error"] or result["notice"])
         assert result["cancelled"] is False
         assert result["tabIndex"] == "3"
