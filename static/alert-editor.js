@@ -120,7 +120,7 @@
     status(data.message || 'Draft tested.');
   }
   form.addEventListener('input', invalidate);
-  form.addEventListener('change', function () { if (!priorPosition) invalidate(); });
+  form.addEventListener('change', function () { if (previewRunning || !priorPosition) invalidate(); });
   form.addEventListener('submit', function (event) {
     if (event.submitter !== button) {
       cancelPending('Preview result discarded because saving started.', true);
@@ -171,8 +171,8 @@
         var focusLost = document.activeElement === document.body || document.activeElement === button;
         if (interaction === interactionAtStart) {
           if (focusLost) {
-          var focus = priorFocus && priorFocus.isConnected && priorFocus !== document.body ? priorFocus : button;
-          focus.focus({ preventScroll: true });
+            var focus = priorFocus && priorFocus.isConnected && priorFocus !== document.body ? priorFocus : button;
+            focus.focus({ preventScroll: true });
           }
           if (priorPosition) window.scrollTo(priorPosition.x, priorPosition.y);
         }

@@ -138,6 +138,36 @@ def test_browser_preview_keeps_draft_and_discards_result_after_edit(rule, login)
         browser.close()
 
 
+def test_change_during_preview_discards_stale_result_without_input_event(rule, login):
+    url = f"/s/{rule.org.slug}/{rule.studio.slug}/alerts/{rule.pk}/edit"
+    html = login(rule.created_by).get(url).content.decode()
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.route("**/*", lambda route: route.abort())
+        page.route("http://example.test" + url, lambda route: route.fulfill(body=html, content_type="text/html"))
+        page.goto("http://example.test" + url)
+        page.add_script_tag(content=(ROOT / "static/settings-forms.js").read_text(encoding="utf-8"))
+        page.add_script_tag(content=(ROOT / "static/alert-editor.js").read_text(encoding="utf-8"))
+        pending = []
+        page.route("http://example.test" + url, lambda route: pending.append(route))
+        page.locator("[data-alert-preview]").click()
+        page.wait_for_timeout(40)
+        assert len(pending) == 1
+        page.locator("[name=instructions]").evaluate(
+            "field => { field.value = 'Changed without input'; field.dispatchEvent(new Event('change', {bubbles:true})); }"
+        )
+        pending[0].fulfill(json={"ok": True, "message": "Stale result", "result": {
+            "condition": "Met", "title": "Must be discarded", "evidence": [],
+            "interpretation": {"window": "today", "timezone": "UTC", "scope": "sales", "freshness": "fresh"},
+            "simulation": "would_notify", "simulation_reason": "Eligible", "cost": "0.01", "status": "OK"
+        }})
+        expect(page.locator("#alertPreview")).to_be_hidden()
+        expect(page.locator("[data-alert-preview-status]")).to_contain_text("Draft changed")
+        expect(page.locator("[name=instructions]")).to_have_value("Changed without input")
+        browser.close()
+
+
 def test_preview_button_preserves_focus_scroll_and_sends_once(rule, login):
     url = f"/s/{rule.org.slug}/{rule.studio.slug}/alerts/{rule.pk}/edit"
     html = login(rule.created_by).get(url).content.decode()
