@@ -2920,7 +2920,7 @@ function boot() {
         }
     }
 
-    var registryLoaded = boundedFetch(apiUrl('/api/registry'))
+    var registryLoaded = boundedFetch(apiUrl('/api/registry'), { cache: 'no-store' })
         .then(function(r) { return r.ok ? r.json() : { reports: [] }; })
         .then(function(reg) { reports = reg.reports || []; })
         .catch(function() { reports = []; });

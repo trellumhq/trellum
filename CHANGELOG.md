@@ -38,6 +38,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Fetch the report registry without the browser cache so catalog changes appear
+  after Back navigation.
 - Preserve scheduled delivery settings when their creator is deleted, and skip
   ownerless schedules during delivery.
 - Keep metric detail controls visible with one modal scroll area, and preserve
