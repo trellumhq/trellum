@@ -144,7 +144,11 @@ def rule_form(request, org_slug, studio_slug, rule_id=None):  # noqa: ARG001
         if is_settings_request(request):
             return settings_success(request, "Draft evaluated. No delivery was attempted.", result=result)
     elif request.method == "POST" and form.is_valid():
-        form.save()
+        # Keep recipient membership changes inside the same settings lock.
+        with transaction.atomic():
+            if rule_id:
+                AlertRule.objects.select_for_update().get(pk=rule.pk)
+            form.save()
         audit(request, "alert.update" if rule_id else "alert.create", target=rule, rule_id=rule.pk)
         if rule_id and is_settings_request(request):
             return settings_success(request, f"Saved “{rule.name}”.")

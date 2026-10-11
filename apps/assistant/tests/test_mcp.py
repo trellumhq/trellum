@@ -21,7 +21,7 @@ from apps.runner.models import Run
 
 pytestmark = pytest.mark.django_db
 
-READ_TOOLS = ["list_reports", "get_report_details", "query_report_data", "read_doc"]
+READ_TOOLS = ["list_reports", "get_report_details", "query_report_data", "read_doc", "list_alerts", "get_alert"]
 #: ... plus the one read tool that needs the developer role (internal planning ticket #151).
 DEVELOPER_READ_TOOLS = READ_TOOLS + ["check_repo_changes"]
 
@@ -259,7 +259,7 @@ class TestVisibility:
     ):
         _, secret = key_for(developer, org, write=True)
         names = tool_names(client, url, secret)
-        assert names[:4] == READ_TOOLS
+        assert names[:len(READ_TOOLS)] == READ_TOOLS
         assert {"run_report", "test_data_source", "publish_repo_changes"} <= set(names)
         assert "configure_data_source" not in names
 
@@ -328,3 +328,47 @@ class TestWrites:
         _, secret = key_for(studio_admin, org, write=True)
         result = call(client, url, secret, "configure_data_source", {"name": "warehouse", "org_level": True})
         assert result["isError"] is True and "org_admin" in result["content"][0]["text"]
+
+
+class TestAlertDiscovery:
+    def test_reads_without_provider_and_write_uses_current_token(self, client, developer,
+            org, studio_tree, report_row, url, actions_on):
+        from apps.alerts.models import AlertRule
+        from apps.assistant.alert_access import edit_revision
+        rule = AlertRule.objects.create(org=org, studio=studio_tree, report=report_row, name="Watch")
+        _, secret = key_for(developer, org, write=True)
+        found = call(client, url, secret, "list_alerts", {"report": report_row.slug})
+        assert json.loads(found["content"][0]["text"])["alerts"][0]["alert_id"] == rule.pk
+        read = call(client, url, secret, "get_alert", {"alert_id": rule.pk})
+        token = json.loads(read["content"][0]["text"])["edit_revision"]
+        assert token == edit_revision(rule)
+        args = {"alert_id": rule.pk, "edit_revision": token, "cooldown_hours": 2}
+        updated = call(client, url, secret, "update_alert", args)
+        assert updated["isError"] is False and "edit_revision:" in updated["content"][0]["text"]
+        assert call(client, url, secret, "update_alert", args)["isError"] is True
+        assert not ProposedAction.objects.exists()
+
+    def test_selected_key_only_discovers_visible_rules(self, client, member, org,
+            studio_tree, report_row, url, make_group, attach_group, settings):
+        from apps.alerts.models import AlertRule
+        settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = True
+        group = make_group("Selected", grants=[(studio_tree, roles.VIEWER)])
+        grant = group.grants.get()
+        grant.viewer_scope = PermissionGroupGrant.REPORT_SCOPE_SELECTED
+        grant.save(update_fields=["viewer_scope"])
+        attach_group(member, group)
+        ReportPermissionGrant.objects.create(grant=grant, report=report_row)
+        visible = AlertRule.objects.create(org=org, studio=studio_tree, report=report_row, name="Visible")
+        hidden = AlertRule.objects.create(org=org, studio=studio_tree,
+            report=Report.objects.create(studio=studio_tree, slug="hidden"), name="Hidden secret")
+        _, secret = key_for(member, org)
+        read = call(client, url, secret, "list_alerts")
+        assert [r["alert_id"] for r in json.loads(read["content"][0]["text"])["alerts"]] == [visible.pk]
+        for pk in (hidden.pk, 999999):
+            result = call(client, url, secret, "get_alert", {"alert_id": pk})
+            assert result["content"][0]["text"] == "Error: alert rule not found."
+        assert call(client, url, secret, "update_alert", {"alert_id": visible.pk})["isError"] is True
+        read = call(client, url, secret, "get_alert", {"alert_id": visible.pk})
+        assert read["isError"] is False
+        ReportPermissionGrant.objects.filter(grant=grant).delete()
+        assert call(client, url, secret, "get_alert", {"alert_id": visible.pk})["isError"] is True

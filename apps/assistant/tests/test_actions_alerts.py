@@ -7,6 +7,7 @@ import pytest
 from django.conf import settings
 
 from apps.alerts.models import AlertRule, AlertRun
+from apps.assistant.alert_access import edit_revision
 from apps.assistant.models import AssistantSession, ProposedAction
 from apps.assistant.system_prompt import build_system_prompt
 from apps.assistant.tools import AssistantToolbox
@@ -154,10 +155,10 @@ class TestUpdate:
         client = login(developer)
         events, _ = propose_via_model(
             client, prefix, make_session(developer), fake_llm,
-            "update_alert", {"alert_id": rule.pk, "instructions": "Tell me if revenue drops 20%."},
+            "update_alert", {"alert_id": rule.pk, "edit_revision": edit_revision(rule), "instructions": "Tell me if revenue drops 20%."},
         )
         card = dict(events)["proposal"]
-        assert card["arguments"] == {"alert_id": rule.pk, "instructions": "Tell me if revenue drops 20%."}
+        assert card["arguments"] == {"alert_id": rule.pk, "edit_revision": edit_revision(rule), "instructions": "Tell me if revenue drops 20%."}
         assert "Revenue watch" in card["summary"] and "instructions" in card["summary"]
 
         proposal = ProposedAction.objects.get()
@@ -175,7 +176,7 @@ class TestUpdate:
     ):
         events, _ = propose_via_model(
             login(developer), prefix, make_session(developer), fake_llm,
-            "update_alert", {"alert_id": 999, "instructions": "x"},
+            "update_alert", {"alert_id": 999, "edit_revision": "unknown", "instructions": "x"},
         )
         assert dict(events)["tool_result"]["is_error"] is True
         assert not ProposedAction.objects.exists()
@@ -228,6 +229,8 @@ class TestFromAlert:
         assert "cache_control" not in blocks[1]  # the fresh block, not the cached one
         data = text.split(f'<data source="alert-run:{run.pk}">', 1)[1].split("</data>", 1)[0]
         assert "Rule: Revenue watch" in data and "Tell me if revenue drops." in data
+        assert f"Alert ID: {run.rule_id}" in data
+        assert f"/alerts/{run.rule_id}" in data and edit_revision(run.rule) in data
         assert "decision: alert" in data and "Title: Revenue fell" in data
         assert "Revenue is down 30% on the week." in data
         assert "- gross_revenue 2026-09-07: 700 vs 1000 a week earlier" in data
@@ -242,3 +245,183 @@ class TestFromAlert:
         source = (settings.BASE_DIR / "static" / "assistant.js").read_text(encoding="utf-8")
         assert "assistant=(\\d+)" in source and "_sp.delete('assistant')" in source
         assert "'About alert: ' + title" in source and "setAbout(s.alert_title)" in source
+
+
+class TestDiscovery:
+    def test_report_names_and_duplicates_are_returned_with_identity(self, run, studio_tree, developer, report_row):
+        import json
+        from apps.reports.models import Report
+        report_row.name = "Revenue report"
+        report_row.save(update_fields=["name"])
+        other = Report.objects.create(studio=studio_tree, slug="other", name="Revenue report")
+        duplicate = AlertRule.objects.create(org=studio_tree.org, studio=studio_tree,
+            report=other, name=run.rule.name)
+        box = AssistantToolbox(studio_tree, actor=developer, role=roles.DEVELOPER)
+        found = json.loads(box.execute("list_alerts", {"report": "revenue report", "name": "Revenue"}))
+        assert {r["alert_id"] for r in found["alerts"]} == {run.rule_id, duplicate.pk}
+        assert {r["report"] for r in found["alerts"]} == {report_row.slug, "other"}
+        detail = json.loads(box.execute("get_alert", {"alert_id": run.rule_id}))
+        assert detail["edit_revision"] == edit_revision(run.rule)
+        assert detail["condition_revision"] == run.rule.revision
+        assert detail["detail_url"].endswith(f"/alerts/{run.rule_id}")
+        assert "condition" in detail and "evidence" in detail and "recipients" in detail
+        assert not ProposedAction.objects.exists()
+
+    def test_bound_reads_and_foreign_ids_cannot_widen_access(self, run, studio_tree, studio2, report_row, developer):
+        import json
+        from apps.reports.models import Report
+        other = AlertRule.objects.create(org=studio_tree.org, studio=studio2,
+            report=Report.objects.create(studio=studio2, slug="secret"), name="Secret")
+        box = AssistantToolbox(studio_tree, actor=developer, role=roles.DEVELOPER,
+                               may_write=True, scope="report", report=report_row)
+        assert len(json.loads(box.execute("list_alerts", {}))["alerts"]) == 1
+        for value in (other.pk, 999999, -1, True, "1", 2**100):
+            assert box.execute("get_alert", {"alert_id": value}) == "Error: alert rule not found."
+        assert "not available" in box.execute("update_alert", {"alert_id": run.rule_id})
+        assert "only run_report may mutate" in box.capability_help()
+
+    @pytest.mark.parametrize("changed", ["recipients", "recipient_groups", "cooldown_hours", "send_minute", "instructions", "name", "enabled"])
+    def test_discovery_token_rejects_every_intervening_settings_change(self, run, studio_tree, developer, changed, make_group):
+        from apps.assistant import actions
+        token = edit_revision(run.rule)
+        if changed == "recipients":
+            run.rule.recipients.add(developer)
+        elif changed == "recipient_groups":
+            run.rule.recipient_groups.add(make_group("Recipients"))
+        else:
+            setattr(run.rule, changed, {"cooldown_hours": 6, "send_minute": 15,
+                "instructions": "new predicate", "name": "New", "enabled": False}[changed])
+            run.rule.save(update_fields=[changed])
+        result = actions.describe(studio_tree, "update_alert", {
+            "alert_id": run.rule_id, "edit_revision": token, "cooldown_hours": 3}, actor=developer)
+        assert "changed" in result
+
+    def test_evaluator_observations_do_not_invalidate_edit_token(self, run):
+        token = edit_revision(run.rule)
+        AlertRule.objects.filter(pk=run.rule_id).update(live_state={"condition": "met"})
+        run.rule.refresh_from_db()
+        assert edit_revision(run.rule) == token
+
+
+@SEES_WORKER_THREAD
+class TestSafeApproval:
+    @pytest.mark.parametrize("revoke", ["actions", "role"])
+    def test_current_permission_is_required_at_approval(self, login, developer, prefix,
+            actions_on, fake_llm, make_session, run, revoke):
+        from apps.studios.models import StudioMembership
+
+        client = login(developer)
+        propose_via_model(client, prefix, make_session(developer), fake_llm, "update_alert", {
+            "alert_id": run.rule_id, "edit_revision": edit_revision(run.rule), "name": "Proposed"})
+        if revoke == "actions":
+            actions_on.actions_enabled = False
+            actions_on.save(update_fields=["actions_enabled"])
+        else:
+            StudioMembership.objects.filter(user=developer, studio=run.rule.studio).update(role=roles.VIEWER)
+        assert approve(client, prefix, ProposedAction.objects.get()).status_code == 403
+        run.rule.refresh_from_db()
+        assert run.rule.name == "Revenue watch"
+
+    @pytest.mark.parametrize("changed", ["recipients", "cooldown_hours", "instructions"])
+    def test_approved_update_rejects_changed_settings(self, login, developer, prefix,
+            actions_on, fake_llm, make_session, run, changed):
+        client = login(developer)
+        propose_via_model(client, prefix, make_session(developer), fake_llm, "update_alert", {
+            "alert_id": run.rule_id, "edit_revision": edit_revision(run.rule), "name": "Proposed"})
+        if changed == "recipients":
+            run.rule.recipients.add(developer)
+        else:
+            setattr(run.rule, changed, 2 if changed == "cooldown_hours" else "Changed")
+            run.rule.save(update_fields=[changed])
+        response = approve(client, prefix, ProposedAction.objects.get())
+        assert response.json()["status"] == "failed"
+        assert "changed" in response.json()["result"]
+        run.rule.refresh_from_db()
+        assert run.rule.name == "Revenue watch"
+
+    def test_create_discover_propose_approve_and_preserve_episode(self, login, developer,
+            prefix, actions_on, fake_llm, make_session, report_row, studio_tree):
+        import json
+        client = login(developer)
+        session = make_session(developer)
+        propose_via_model(client, prefix, session, fake_llm, "create_alert", ARGS)
+        made = approve(client, prefix, ProposedAction.objects.get())
+        rule = AlertRule.objects.get()
+        assert f"alert_id: {rule.pk}" in made.json()["result"]
+        AlertRule.objects.filter(pk=rule.pk).update(live_state={"revision": rule.revision, "condition": "met"})
+        box = AssistantToolbox(studio_tree, actor=developer)
+        found = json.loads(box.execute("list_alerts", {"report": report_row.slug}))["alerts"][0]
+        detail = json.loads(box.execute("get_alert", {"alert_id": found["alert_id"]}))
+        propose_via_model(client, prefix, session, fake_llm, "update_alert", {
+            "alert_id": rule.pk, "edit_revision": detail["edit_revision"], "cooldown_hours": 2})
+        updated = approve(client, prefix, ProposedAction.objects.order_by("pk").last())
+        assert updated.json()["status"] == "executed"
+        rule.refresh_from_db()
+        assert rule.cooldown_hours == 2 and rule.live_state["condition"] == "met"
+
+    def test_legacy_update_requires_reproposal(self, login, developer, prefix, actions_on, make_session, run):
+        from django.utils import timezone
+
+        proposal = ProposedAction.objects.create(session=make_session(developer), org=run.rule.org,
+            studio=run.rule.studio, user=developer, tool="update_alert", summary="Legacy update",
+            arguments={"alert_id": run.rule_id, "name": "Unsafe"}, required_role=roles.DEVELOPER,
+            expires_at=timezone.now() + ProposedAction.EXPIRY)
+        response = approve(login(developer), prefix, proposal)
+        assert response.json()["status"] == "failed" and "propose again" in response.json()["result"]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_portal_recipient_save_holds_lock_until_assistant_revision_check(
+        login, developer, run, actions_on, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    from types import SimpleNamespace
+    from django.db import close_old_connections
+    from apps.alerts.forms import AlertRuleForm
+    from apps.alerts.tests.test_views import _form
+    from apps.assistant import actions
+
+    saving, release, attempting, finished = Event(), Event(), Event(), Event()
+    original = AlertRuleForm._save_m2m
+    run.rule.recipient_roles = ["developers"]
+    run.rule.save(update_fields=["recipient_roles"])
+    args = {"alert_id": run.rule_id, "edit_revision": edit_revision(run.rule), "name": "Assistant edit"}
+    client = login(developer)
+    url = f"/s/{run.rule.org.slug}/{run.rule.studio.slug}/alerts/{run.rule_id}/edit"
+
+    def held_m2m(form):
+        saving.set()
+        assert release.wait(5)
+        original(form)
+
+    monkeypatch.setattr(AlertRuleForm, "_save_m2m", held_m2m)
+
+    def portal_save():
+        try:
+            return client.post(url, _form(run.rule, recipients=[developer.pk]))
+        finally:
+            close_old_connections()
+
+    def assistant_save():
+        attempting.set()
+        try:
+            with pytest.raises(actions.ActionFailed, match="settings changed"):
+                actions.execute(SimpleNamespace(studio=run.rule.studio, user=developer), "update_alert", args, {})
+        finally:
+            finished.set()
+            close_old_connections()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        portal = pool.submit(portal_save)
+        try:
+            assert saving.wait(5)
+            assistant = pool.submit(assistant_save)
+            assert attempting.wait(5)
+            assert not finished.wait(0.2)
+        finally:
+            release.set()
+        assert portal.result(timeout=5).status_code == 302
+        assistant.result(timeout=5)
+    run.rule.refresh_from_db()
+    assert run.rule.name == "Revenue watch"
+    assert list(run.rule.recipients.all()) == [developer]

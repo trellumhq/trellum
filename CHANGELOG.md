@@ -9,6 +9,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Add permission-scoped assistant alert discovery with stable identities and
+  settings revision tokens that reject stale approved or MCP updates.
 - Add in-place alert draft tests with isolated preview results billed to the
   requesting developer.
 - Add shared delivery management for organization admins and instance

@@ -118,6 +118,9 @@ def _call(request, toolbox: AssistantToolbox, name: str, args: dict) -> dict:
         reports = Report.objects.filter(
             studio=request.studio, present_in_scan=True, pk__in=report_scope
         ).order_by("name", "slug")
+        if name == "list_alerts":
+            result = toolbox._list_alerts(args)
+            return _text(result, result.startswith("Error"))
         if name == "list_reports":
             results = []
             for report in reports:
@@ -127,6 +130,14 @@ def _call(request, toolbox: AssistantToolbox, name: str, args: dict) -> dict:
             return _text("\n\n".join(results) if results else "No reports matched.")
 
         slug = str(args.get("slug") or args.get("report") or "").strip()
+        if name == "get_alert":
+            from apps.assistant.alert_access import alert_id, visible_alerts
+
+            rule = visible_alerts(request.studio, request.user).filter(
+                pk=alert_id(args.get("alert_id")) or 0).first()
+            if rule is None:
+                return _text("Error: alert rule not found.", True)
+            slug = rule.report.slug
         if name == "read_doc":
             match = re.match(r"^reports/([^/]+)(?:/|$)", str(args.get("path") or ""))
             slug = match.group(1) if match else ""
@@ -147,7 +158,7 @@ def _call(request, toolbox: AssistantToolbox, name: str, args: dict) -> dict:
             "Error: secrets are never accepted over MCP and nothing was stored. "
             f"Enter them at {_configure_url(request, src)}.", True,
         )
-    spec = actions.describe(request.studio, name, args)
+    spec = actions.describe(request.studio, name, args, actor=request.user)
     if isinstance(spec, str):
         return _text(spec, True)
     if actions.rank(toolbox.role) < actions.rank(spec["required_role"]):
@@ -191,7 +202,7 @@ def mcp(request, org_slug, studio_slug):  # noqa: ARG001
             "protocolVersion": client_version if isinstance(client_version, str) else PROTOCOL_VERSION,
             "capabilities": {"tools": {}},
             "serverInfo": {"name": "trellum", "version": __version__},
-            "instructions": INSTRUCTIONS,
+            "instructions": INSTRUCTIONS + " " + _toolbox(request).capability_help(),
         })
     if method == "ping":
         return _rpc(id_, {})

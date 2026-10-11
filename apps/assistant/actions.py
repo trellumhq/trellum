@@ -58,12 +58,6 @@ _ALERT_INTS = ("send_hour", "send_minute", "weekday", "month_day", "cooldown_hou
 _ALERT_CLEANED = ("freq", "send_hour", "send_minute", "weekday", "month_day", "timezone", "recipient_roles")
 
 
-def alerts_url(studio) -> str:
-    from django.urls import reverse
-
-    return reverse("studio-alerts", args=[studio.org.slug, studio.slug])
-
-
 def _alert_fields(studio, args: dict, rule=None):
     """Validate the alert fields present in ``args`` the way the Alerts form
     would. Returns ``(fields, users)`` -- the plain values a proposal stores
@@ -85,7 +79,7 @@ def _alert_fields(studio, args: dict, rule=None):
             return "Error: 'name' is required."
     if "report" in args:
         slug = str(args.get("report") or "").strip()
-        if not Report.objects.filter(studio=studio, slug=slug).exists():
+        if not Report.objects.filter(studio=studio, slug=slug, present_in_scan=True, kind=Report.KIND_REPORT).exists():
             return f"Error: no report '{slug}' in this studio (check the slug with list_reports)."
         fields["report"] = slug
     if "instructions" in args:
@@ -149,7 +143,7 @@ def _alert_summary(fields: dict, report_name: str) -> str:
     )[:300]
 
 
-def describe(studio, name: str, args: dict) -> dict | str:
+def describe(studio, name: str, args: dict, *, actor=None) -> dict | str:
     """What approving this call would do, or an ``"Error: …"`` string.
 
     Returns ``{"summary", "arguments", "secret_fields", "required_role"}``.
@@ -239,11 +233,14 @@ def describe(studio, name: str, args: dict) -> dict | str:
             "required_role": roles.DEVELOPER,
         }
     if name == "update_alert":
-        from apps.alerts.models import AlertRule
+        from apps.assistant.alert_access import alert_id, edit_revision, visible_alerts
 
-        rule = AlertRule.objects.filter(studio=studio, pk=args.get("alert_id") or 0).first()
+        rule = visible_alerts(studio, actor).filter(pk=alert_id(args.get("alert_id")) or 0).first()
         if rule is None:
-            return f"Error: no alert rule #{args.get('alert_id')} in this studio."
+            return "Error: alert rule not found."
+        revision = edit_revision(rule)
+        if args.get("edit_revision") != revision:
+            return "Error: alert settings changed or edit_revision is missing. Use get_alert and propose again."
         spec = _alert_fields(studio, {k: v for k, v in args.items() if k != "alert_id"}, rule)
         if isinstance(spec, str):
             return spec
@@ -252,7 +249,7 @@ def describe(studio, name: str, args: dict) -> dict | str:
             return "Error: nothing to change -- pass at least one field."
         return {
             "summary": f"Update alert “{rule.name}”: {', '.join(k.replace('_', ' ') for k in fields)}"[:300],
-            "arguments": {"alert_id": rule.pk, **fields},
+            "arguments": {"alert_id": rule.pk, "edit_revision": revision, **fields},
             "secret_fields": [],
             "required_role": roles.DEVELOPER,
         }
@@ -279,7 +276,10 @@ def _save_alert(request, rule, fields: dict, users: list, action: str, meta: dic
         rule.recipients.set(users)
     audit(request, action, target=rule, rule_id=rule.pk, name=rule.name, changed=sorted(fields), **meta)
     verb = "created" if action == "alert.create" else "updated"
-    return f"Alert “{rule.name}” {verb} -- see the Alerts page: {alerts_url(rule.studio)}"
+    from apps.assistant.alert_access import detail_url, edit_revision
+
+    return (f"Alert “{rule.name}” {verb}; alert_id: {rule.pk}; detail: {detail_url(rule)}; "
+            f"edit_revision: {edit_revision(rule)}; condition_revision: {rule.revision}")
 
 
 def execute(request, tool: str, args: dict, secrets: dict, **meta) -> str:
@@ -342,19 +342,48 @@ def execute(request, tool: str, args: dict, secrets: dict, **meta) -> str:
         request_publish(request, repo, rebuild=args.get("rebuild"), to=args.get("to"), **meta)
         return "Publish scheduled -- the worker publishes within seconds."
     if tool in ("create_alert", "update_alert"):
+        from django.db import transaction
+        from django.contrib.auth import get_user_model
         from apps.alerts.models import AlertRule
+        from apps.assistant.alert_access import alert_id, edit_revision, visible_alerts
+        from apps.core.permissions import effective_roles
+        from apps.core.report_access import visible_reports
+        from apps.orgs.models import OrgAssistantConfig
+        from apps.reports.models import Report
 
-        # Re-validated now, not when proposed: a recipient may have left the
-        # studio, the report may be gone.
-        if tool == "create_alert":
-            rule = AlertRule(org=studio.org, studio=studio, created_by=request.user)
-            spec = _alert_fields(studio, args)
-        else:
-            rule = AlertRule.objects.filter(studio=studio, pk=args.get("alert_id") or 0).first()
-            if rule is None:
-                raise ActionFailed(f"Alert rule #{args.get('alert_id')} no longer exists.")
-            spec = _alert_fields(studio, {k: v for k, v in args.items() if k != "alert_id"}, rule)
-        if isinstance(spec, str):
-            raise ActionFailed(spec.removeprefix("Error: "))
-        return _save_alert(request, rule, *spec, "alert." + tool.split("_")[0], meta)
+        with transaction.atomic():
+            if tool == "create_alert":
+                rule = AlertRule(org=studio.org, studio=studio, created_by=request.user)
+            else:
+                rule = visible_alerts(studio, request.user).select_for_update().filter(
+                    pk=alert_id(args.get("alert_id")) or 0).first()
+                if rule is None:
+                    raise ActionFailed("Alert rule not found.")
+            permissions = effective_roles(request.user, studio.org)
+            if (not get_user_model().objects.filter(pk=request.user.pk, is_active=True).exists()
+                    or rank(permissions.role_for(studio)) < rank(roles.DEVELOPER)):
+                raise ActionFailed("You can no longer update alerts in this studio.")
+            if not OrgAssistantConfig.objects.filter(org=studio.org, actions_enabled=True).exists():
+                raise ActionFailed("Organization assistant actions are disabled.")
+            api_key = getattr(request, "api_key", None)
+            if api_key is not None:
+                from apps.accounts.models import ApiKey
+
+                key = ApiKey.objects.filter(pk=api_key.pk, org=studio.org, user=request.user).first()
+                if key is None or not key.is_active or not key.can_write:
+                    raise ActionFailed("A current write API key is required.")
+            if tool == "update_alert":
+                if args.get("edit_revision") != edit_revision(rule):
+                    raise ActionFailed("Alert settings changed. Use get_alert and propose again.")
+                spec = _alert_fields(studio, args, rule)
+            else:
+                spec = _alert_fields(studio, args)
+            if isinstance(spec, str):
+                raise ActionFailed(spec.removeprefix("Error: "))
+            fields, users = spec
+            if "report" in fields and not visible_reports(request.user, Report.objects.filter(
+                studio=studio, slug=fields["report"], present_in_scan=True, kind=Report.KIND_REPORT
+            )).exists():
+                raise ActionFailed("Report not found.")
+            return _save_alert(request, rule, fields, users, "alert." + tool.split("_")[0], meta)
     raise ActionFailed(f"Unknown action '{tool}'.")

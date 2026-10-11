@@ -37,7 +37,7 @@ pytestmark = pytest.mark.django_db
 #: built output from disk).
 SEES_WORKER_THREAD = pytest.mark.django_db(transaction=True)
 
-READ_TOOLS = ["list_reports", "get_report_details", "query_report_data", "read_doc"]
+READ_TOOLS = ["list_reports", "get_report_details", "query_report_data", "read_doc", "list_alerts", "get_alert"]
 #: ... plus the one read tool that needs the developer role (internal planning ticket #151).
 DEVELOPER_READ_TOOLS = READ_TOOLS + ["check_repo_changes"]
 

@@ -25,13 +25,37 @@ report carries the answer, the assistant says so rather than going to find
 it. A question the reports cannot answer is a question for whoever builds
 them.
 
-**It cannot change anything on its own.** Out of the box it has four read
-operations and nothing else: no creating reports, no editing them, no
-changing settings, no running builds. An organization admin can let it
+**It cannot change anything on its own.** Its read operations inspect built
+reports, report documentation and accessible alerts: no creating reports, no
+editing them, no changing settings, no running builds. An organization admin can let it
 *propose* a short list of portal actions — configure or test a data source,
 build a report, publish repository changes, set up an alert — and each one
 waits for a person to approve it in the panel. It never edits the repository. See
 [Actions and approval](#actions-and-approval).
+
+Ask it to find an alert by report name, report slug or rule name. It returns
+the rule's stable ID and detail link; when names match several rules, choose
+the report and rule you mean. `get_alert` reads settings, recipient summaries,
+the latest live condition and interpreted evidence window. These reads use
+the same report visibility as the Alerts page and do not change any settings.
+
+Updates carry the current `edit_revision` from discovery or the create/update
+result. Approval checks that all editable settings and recipient memberships
+still match. If somebody edited the rule meanwhile, the assistant must read it
+and propose again. Older pending updates without this token also require a
+new proposal. Frequency, delivery-time and recipient edits preserve the
+condition episode. Changes to the report, instructions or evaluation timezone
+change the condition revision; the edit revision covers all editable settings.
+
+The assistant can explain its currently available reads, actions and limits
+for your role, conversation scope and organization action policy. Report-bound
+conversations can discover only their report's alerts and cannot update them.
+If you have full studio access, start a studio conversation to propose an edit.
+Provider chat/tool compatibility is checked separately in AI settings.
+
+MCP uses the same discovery and update tokens. Reads need no configured model
+provider. MCP updates execute with a write key and enabled organization actions
+under the calling harness's approval; they do not create panel approval cards.
 
 **It only sees one studio.** A conversation belongs to the studio it was
 started in, and the assistant reads that studio's reports and no others.

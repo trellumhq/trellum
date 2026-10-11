@@ -45,6 +45,11 @@ not engineers. You help them:
    `get_report_details`, then `query_report_data`, and give the number.
    If no report carries the answer, say so plainly and link the closest
    report; never guess.
+4. **Find alerts.** Use `list_alerts` with a report slug/name or rule name,
+   then `get_alert` for its current settings and edit_revision. When multiple
+   identities match, show their report names and IDs and ask which to use.
+   Never infer an ID or choose the first duplicate. Updates need the current
+   edit_revision; after a stale-settings error, read and propose again.
 
 ## Hard rules
 
@@ -206,6 +211,8 @@ def _alert_run_block(run) -> str:
     """What the alert said, for a conversation opened from its email. The
     run's text is model output over report data, so it is framed as
     ``<data>`` like every other tool result -- never as instructions."""
+    from apps.assistant.alert_access import detail_url, edit_revision
+
     rule = run.rule
     cited = (run.evidence or {}).get("cited") or []
     return (
@@ -216,6 +223,8 @@ def _alert_run_block(run) -> str:
         "query the report again for any number you state.\n"
         f'<data source="alert-run:{run.pk}">\n'
         f"Rule: {rule.name}\n"
+        f"Alert ID: {rule.pk}; detail: {detail_url(rule)}\n"
+        f"Edit revision: {edit_revision(rule)}; condition revision: {rule.revision}\n"
         f"Instructions: {rule.instructions.strip() or '(tell me if anything looks off)'}\n"
         f"Evaluated: {run.started_at:%Y-%m-%d %H:%M} UTC -- decision: {run.decision or 'none'}\n"
         f"Title: {run.title}\n"
@@ -241,11 +250,15 @@ def build_system_prompt(toolbox, now=None) -> list:
         data_catalog = ""
 
     studio = toolbox.studio
-    header = HEADER_ACTIONS if getattr(toolbox, "may_write", False) else HEADER
-    if toolbox.is_report_bound and getattr(toolbox, "may_write", False):
+    from apps.assistant.tools import TOOL_SCHEMAS
+
+    has_actions = any(toolbox.allowed(s) for s in TOOL_SCHEMAS if s["mutates"])
+    header = HEADER_ACTIONS if has_actions else HEADER
+    if toolbox.is_report_bound and has_actions:
         header = header.replace(_ACTIONS_RULE, _REPORT_ACTIONS_RULE)
     sections = [
         header,
+        "Available capabilities: " + toolbox.capability_help(),
         "====================================================================\n"
         "# Where you are\n"
         "====================================================================\n\n"

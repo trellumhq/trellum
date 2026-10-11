@@ -6,11 +6,12 @@ the studio the conversation belongs to (:class:`AssistantToolbox`), so the
 assistant can only ever see output the requesting user already has viewer
 access to.
 
-Five read tools:
+Read tools:
   list_reports        the studio's report index
   get_report_details  one report's charts, datasets, validation, link
   query_report_data   filter/aggregate a report's already-built data.json
   read_doc            read report/project docs inside the studio (allowlist)
+  list_alerts/get_alert  discover and inspect accessible alert settings
   check_repo_changes  what the portal would publish from git (developers)
 
 Six actions (``mutates: True``) that never run inside a turn: calling one
@@ -229,6 +230,23 @@ TOOL_SCHEMAS = [
         "role": roles.VIEWER,
     },
     {
+        "name": "list_alerts",
+        "description": "Find alerts by report slug/name or rule name. Returns all matching identities (up to 25); ask the user to select when names are duplicated. Use get_alert before an edit.",
+        "input_schema": {"type": "object", "properties": {
+            "report": {"type": "string", "description": "Report slug or name (case-insensitive exact match)"},
+            "name": {"type": "string", "description": "Rule name contains (case-insensitive)"},
+        }},
+        "mutates": False, "role": roles.VIEWER,
+    },
+    {
+        "name": "get_alert",
+        "description": "Read an accessible alert by stable ID, including settings, current edit_revision and detail link. Never guess IDs; find them with list_alerts.",
+        "input_schema": {"type": "object", "properties": {
+            "alert_id": {"type": "integer", "minimum": 1, "maximum": 9223372036854775807},
+        }, "required": ["alert_id"]},
+        "mutates": False, "role": roles.VIEWER,
+    },
+    {
         "name": "check_repo_changes",
         "description": (
             "What the portal would publish from this studio's git repository: "
@@ -345,12 +363,14 @@ TOOL_SCHEMAS = [
         "description": (
             "Propose changing an existing alert rule -- its id comes from a "
             "create_alert result or the Alerts page. Pass only the fields to change; "
-            "the rest stay as they are."
+            "the rest stay as they are. Discover the ID and edit_revision with list_alerts/get_alert; "
+            "when several names match, ask the user which identity to edit."
         ),
         "input_schema": {
             "type": "object",
-            "properties": {"alert_id": {"type": "integer", "description": "The rule's id"}, **_ALERT_PROPERTIES},
-            "required": ["alert_id"],
+            "properties": {"alert_id": {"type": "integer", "description": "The rule's id"},
+                           "edit_revision": {"type": "string", "description": "Current edit token from get_alert or create/update result"}, **_ALERT_PROPERTIES},
+            "required": ["alert_id", "edit_revision"],
         },
         "mutates": True,
         "role": roles.DEVELOPER,
@@ -644,6 +664,8 @@ class AssistantToolbox:
             "query_report_data": self._query_report_data,
             "read_doc": self._read_doc,
             "check_repo_changes": self._check_repo_changes,
+            "list_alerts": self._list_alerts,
+            "get_alert": self._get_alert,
         }.get(name)
         if name in _MUTATING:
             fn = lambda a, _n=name: self._propose(_n, a)  # noqa: E731
@@ -683,7 +705,7 @@ class AssistantToolbox:
         schema = next(s for s in TOOL_SCHEMAS if s["name"] == name)
         if not self.allowed(schema) or self.session is None:
             return f"Error: '{name}' is not available to you in this studio."
-        spec = actions.describe(self.studio, name, args)
+        spec = actions.describe(self.studio, name, args, actor=self.actor)
         if isinstance(spec, str):
             return spec
         if rank(self.role) < rank(spec["required_role"]):
@@ -721,6 +743,8 @@ class AssistantToolbox:
             source = f"file:{args.get('path') or ''}"
         elif name == "list_reports":
             source = f"studio:{self.studio.slug}"
+        elif name in ("list_alerts", "get_alert"):
+            source = f"alerts:{self.studio.slug}"
         elif name == "check_repo_changes":
             source = f"repo:{self.studio.slug}"
         else:
@@ -741,6 +765,78 @@ class AssistantToolbox:
                 if self.is_report_bound else reports
             )
         return self._reports
+
+    def capability_help(self) -> str:
+        reads = [s["name"] for s in TOOL_SCHEMAS if not s["mutates"] and self.allowed(s)]
+        writes = [s["name"] for s in TOOL_SCHEMAS if s["mutates"] and self.allowed(s)]
+        scope = self.scope
+        limits = []
+        if self.actor is not None and not self.is_report_bound:
+            from apps.core.permissions import effective_roles
+
+            if effective_roles(self.actor, self.studio.org).report_scope_for(self.studio) is not None:
+                writes = []
+                scope = "selected reports"
+                limits.append("only currently selected reports are accessible")
+        if rank(self.role) < rank(roles.DEVELOPER):
+            limits.append("portal actions need developer or higher")
+        if not self.may_write:
+            limits.append("actions are disabled by organization policy or caller write scope")
+        if self.is_report_bound:
+            limits.append(f"only report {self.report_slug}; only run_report may mutate; open a studio conversation if you have full access to edit alerts")
+        return (f"Role: {self.role}; scope: {scope}. Reads: {', '.join(reads)}. "
+                f"Actions: {', '.join(writes) or 'none'}. Limits: {'; '.join(limits) or 'current role and scope apply'}.")
+
+    def _alert_rows(self):
+        from apps.assistant.alert_access import visible_alerts
+
+        return visible_alerts(self.studio, self.actor, self.report_id if self.is_report_bound else None)
+
+    def _list_alerts(self, args: dict) -> str:
+        from django.db.models import Q
+        from apps.assistant.alert_access import detail_url
+
+        rows = self._alert_rows().select_related("report", "studio__org")
+        for key in ("report", "name"):
+            if key in args and (not isinstance(args[key], str) or len(args[key]) > 200):
+                return f"Error: '{key}' must be a string of at most 200 characters."
+        report = (args.get("report") or "").strip()
+        name = (args.get("name") or "").strip()
+        if report:
+            rows = rows.filter(Q(report__slug__iexact=report) | Q(report__name__iexact=report))
+        if name:
+            rows = rows.filter(name__icontains=name)
+        matches = list(rows.order_by("name", "report__slug", "pk")[:26])
+        result = [{"alert_id": r.pk, "name": r.name, "report": r.report.slug,
+                   "report_name": r.report.name, "enabled": r.enabled, "detail_url": detail_url(r)}
+                  for r in matches[:25]]
+        return json.dumps({"alerts": result, "truncated": len(matches) > 25}, ensure_ascii=False)
+
+    def _get_alert(self, args: dict) -> str:
+        from apps.alerts.models import AlertRun
+        from apps.assistant.alert_access import alert_id, detail_url, edit_revision
+        from apps.reports.views import _recipient_summary
+
+        rule = self._alert_rows().select_related("report", "studio__org").filter(
+            pk=alert_id(args.get("alert_id")) or 0).first()
+        if rule is None:
+            return "Error: alert rule not found."
+        last = rule.runs.exclude(execution_mode=AlertRun.MODE_TEST).first()
+        return json.dumps({
+            "alert_id": rule.pk, "name": rule.name, "report": rule.report.slug,
+            "report_name": rule.report.name, "enabled": rule.enabled,
+            "instructions": rule.instructions[:4000], "trigger": rule.trigger,
+            "schedule": {k: getattr(rule, k) for k in ("freq", "send_hour", "send_minute", "weekday", "month_day", "timezone")},
+            "cooldown_hours": rule.cooldown_hours,
+            "notification_policy": rule.notification_policy or "repeat",
+            "recipients": _recipient_summary(rule)[:2000],
+            "condition": last.condition if last else None,
+            "interpretation": {k: str(v)[:1000] for k, v in (last.interpretation or {}).items()
+                               if k in ("window", "timezone", "scope", "freshness")} if last else {},
+            "evidence": [str(line)[:500] for line in ((last.evidence or {}).get("cited") or [])[:10]] if last else [],
+            "detail_url": detail_url(rule), "edit_revision": edit_revision(rule),
+            "condition_revision": rule.revision,
+        }, ensure_ascii=False)
 
     def _list_reports(self, args: dict) -> str:
         reports = self.reports()
