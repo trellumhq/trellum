@@ -6,60 +6,81 @@
   <span class="spacer"></span>
   <a class="ui-btn ghost" href="{% url 'system' %}">System health</a>
 </header>
-<h2>General and SMTP</h2>
-<p class="muted">Changeable without a restart. Secrets, <code>DATABASE_URL</code>
-and <code>ALLOWED_HOSTS</code> stay in <code>.env</code> — Django reads those
-before the database exists.</p>
+<section id="identity" aria-labelledby="identity-title">
+<h2 id="identity-title">Identity</h2>
+<p class="muted">Changeable without a restart.</p>
 <div class="panel">
 <form method="post" action="{% url 'instance-settings' %}" id="instance-settings-form" data-settings-form data-settings-save>
   {% csrf_token %}
-  <input type="hidden" name="action" value="instance_settings">
-  {{ form.non_field_errors }}
+  <input type="hidden" name="action" value="identity_settings">
+  {{ identity_form.non_field_errors }}
   <div class="ui-form-grid">
     <div class="ui-field">
       <label for="id_instance_name">Instance name</label>
-      {{ form.instance_name }}{{ form.instance_name.errors }}
-    </div>
-    <div class="ui-field">
-      <label for="id_public_base_url">Public URL</label>
-      {{ form.public_base_url }}{{ form.public_base_url.errors }}
-      <span class="ui-help">Blank = <code>PORTAL_BASE_URL</code> from the
-        environment. That variable still governs CSRF and secure cookies, so a
-        hostname change belongs in both places.</span>
-    </div>
-    <div class="ui-field">
-      <label for="id_max_upload_mb">Max upload size (MB)</label>
-      {{ form.max_upload_mb }}{{ form.max_upload_mb.errors }}
-      <span class="ui-help">{{ form.max_upload_mb.help_text }}</span>
-    </div>
-    <div class="ui-field">
-      <label for="id_email_host">SMTP host</label>
-      {{ form.email_host }}{{ form.email_host.errors }}
-    </div>
-    <div class="ui-field">
-      <label for="id_email_port">Port</label>
-      {{ form.email_port }}{{ form.email_port.errors }}
-    </div>
-    <div class="ui-field">
-      <label for="id_email_host_user">SMTP username</label>
-      {{ form.email_host_user }}{{ form.email_host_user.errors }}
-    </div>
-    <div class="ui-field">
-      <label for="id_email_host_password">SMTP password</label>
-      {{ form.email_host_password }}{{ form.email_host_password.errors }}
-      <span class="ui-help">{{ form.email_host_password.help_text }}</span>
-    </div>
-    <div class="ui-field">
-      <label for="id_email_from">Send mail from</label>
-      {{ form.email_from }}{{ form.email_from.errors }}
+      {{ identity_form.instance_name }}{{ identity_form.instance_name.errors }}
     </div>
   </div>
-  <label class="ui-check-row">{{ form.email_use_tls }} Use STARTTLS</label>
   <div class="ui-form-actions">
-    <button class="ui-btn primary" type="submit">Save settings</button>
+    <button class="ui-btn primary" type="submit">Save identity</button>
   </div>
 </form>
 </div>
+</section>
+
+<section id="networking" aria-labelledby="networking-title">
+<h2 id="networking-title">Networking</h2>
+<p class="muted">The database value is changeable without a restart. <code>PORTAL_BASE_URL</code>,
+<code>ALLOWED_HOSTS</code> and other settings read before startup stay in <code>.env</code>.</p>
+<div class="panel">
+<form method="post" action="{% url 'instance-settings' %}" id="networking-settings-form" data-settings-form data-settings-save>
+  {% csrf_token %}<input type="hidden" name="action" value="networking_settings">
+  {{ networking_form.non_field_errors }}
+  <div class="ui-field">
+    <label for="id_public_base_url">Public URL</label>
+    {{ networking_form.public_base_url }}{{ networking_form.public_base_url.errors }}
+    <span class="ui-help">Blank = <code>PORTAL_BASE_URL</code> from the environment. That variable also governs CSRF and secure cookies, so a hostname change belongs in both places.</span>
+  </div>
+  <div class="ui-form-actions"><button class="ui-btn primary" type="submit">Save networking</button></div>
+</form>
+</div>
+</section>
+
+<section id="limits" aria-labelledby="limits-title">
+<h2 id="limits-title">Limits</h2>
+<p class="muted">Changeable without a restart. The reverse proxy must allow at least the same upload size.</p>
+<div class="panel">
+<form method="post" action="{% url 'instance-settings' %}" id="limits-settings-form" data-settings-form data-settings-save>
+  {% csrf_token %}<input type="hidden" name="action" value="limits_settings">
+  {{ limits_form.non_field_errors }}
+  <div class="ui-field">
+    <label for="id_max_upload_mb">Max upload size (MB)</label>
+    {{ limits_form.max_upload_mb }}{{ limits_form.max_upload_mb.errors }}
+    <span class="ui-help">{{ limits_form.max_upload_mb.help_text }}</span>
+  </div>
+  <div class="ui-form-actions"><button class="ui-btn primary" type="submit">Save limits</button></div>
+</form>
+</div>
+</section>
+
+<section id="email-settings" aria-labelledby="email-settings-title">
+<h2 id="email-settings-title">Email</h2>
+<p class="muted">Database SMTP settings are changeable without a restart. Blank SMTP password keeps the stored password.</p>
+<div class="panel">
+<form method="post" action="{% url 'instance-settings' %}" id="email-settings-form" data-settings-form data-settings-save>
+  {% csrf_token %}<input type="hidden" name="action" value="email_settings">
+  {{ email_form.non_field_errors }}
+  <div class="ui-form-grid">
+    <div class="ui-field"><label for="id_email_host">SMTP host</label>{{ email_form.email_host }}{{ email_form.email_host.errors }}</div>
+    <div class="ui-field"><label for="id_email_port">Port</label>{{ email_form.email_port }}{{ email_form.email_port.errors }}</div>
+    <div class="ui-field"><label for="id_email_host_user">SMTP username</label>{{ email_form.email_host_user }}{{ email_form.email_host_user.errors }}</div>
+    <div class="ui-field"><label for="id_email_host_password">SMTP password</label>{{ email_form.email_host_password }}{{ email_form.email_host_password.errors }}<span class="ui-help">{{ email_form.email_host_password.help_text }}</span></div>
+    <div class="ui-field"><label for="id_email_from">Send mail from</label>{{ email_form.email_from }}{{ email_form.email_from.errors }}</div>
+  </div>
+  <label class="ui-check-row">{{ email_form.email_use_tls }} Use STARTTLS</label>
+  <div class="ui-form-actions"><button class="ui-btn primary" type="submit">Save email settings</button></div>
+</form>
+</div>
+</section>
 
 {% include "core/_email_connections.html" %}
 

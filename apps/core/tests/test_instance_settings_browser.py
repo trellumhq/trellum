@@ -20,7 +20,7 @@ def test_moved_forms_keep_drafts_focus_scroll_and_newer_edits(engine, width, log
     health = _rendered_page(client.get("/system").content.decode())
     requests, pending = [], []
     headers = {"HTTP_X_TRELLUM_FORM": "1", "HTTP_ACCEPT": "application/json"}
-    instance_data = {**settings_page.context["form"].initial, "instance_name": "Browser saved"}
+    instance_data = {"action": "identity_settings", "instance_name": "Browser saved"}
     security_data = {**settings_page.context["security_form"].initial, "action": "security_settings"}
     replies = [
         client.post("/instance/settings", instance_data, **headers),

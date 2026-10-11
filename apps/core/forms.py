@@ -97,6 +97,27 @@ class InstanceSettingsForm(forms.ModelForm):
         return row
 
 
+class IdentitySettingsForm(InstanceSettingsForm):
+    class Meta(InstanceSettingsForm.Meta):
+        fields = ["instance_name"]
+
+
+class NetworkingSettingsForm(InstanceSettingsForm):
+    class Meta(InstanceSettingsForm.Meta):
+        fields = ["public_base_url"]
+
+
+class EmailSettingsForm(InstanceSettingsForm):
+    class Meta(InstanceSettingsForm.Meta):
+        fields = ["email_host", "email_port", "email_use_tls", "email_host_user",
+                  "email_host_password", "email_from"]
+
+
+class LimitsSettingsForm(InstanceSettingsForm):
+    class Meta(InstanceSettingsForm.Meta):
+        fields = ["max_upload_mb"]
+
+
 class SecuritySettingsForm(forms.ModelForm):
     """Instance-scoped session policy, lockout thresholds and the operator
     MFA requirement. Rendered as its own card on ``/system`` next to

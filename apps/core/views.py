@@ -158,7 +158,10 @@ def instance_settings(request):
     from django.urls import reverse
 
     from apps.core.audit import audit
-    from apps.core.forms import InstanceSettingsForm, SecuritySettingsForm
+    from apps.core.forms import (
+        EmailSettingsForm, IdentitySettingsForm, InstanceSettingsForm,
+        LimitsSettingsForm, NetworkingSettingsForm, SecuritySettingsForm,
+    )
     from apps.core.form_responses import is_settings_request, settings_error, settings_success
     from apps.core.models import EmailApiConnection, InstanceConfig
 
@@ -167,12 +170,17 @@ def instance_settings(request):
         return gate
 
     instance = InstanceConfig.load()
-    # The same form the first-run wizard uses. Without it here, SMTP set during
-    # setup — or skipped there — would be unreachable for the rest of the
-    # instance's life.
     action = request.POST.get("action", "instance_settings")
-    form = InstanceSettingsForm(
-        request.POST if request.method == "POST" and action == "instance_settings" else None,
+    section_forms = {
+        "identity_settings": ("Identity settings saved.", IdentitySettingsForm),
+        "networking_settings": ("Networking settings saved.", NetworkingSettingsForm),
+        "email_settings": ("Email settings saved.", EmailSettingsForm),
+        "limits_settings": ("Limits settings saved.", LimitsSettingsForm),
+    }
+    section = section_forms.get(action)
+    form_type = section[1] if section else InstanceSettingsForm
+    form = form_type(
+        request.POST if request.method == "POST" and action in {*section_forms, "instance_settings"} else None,
         instance=instance,
     )
     security_form = SecuritySettingsForm(
@@ -188,7 +196,7 @@ def instance_settings(request):
         return redirect("instance-settings")
     if request.method == "POST" and action == "test_email":
         return send_test_email_and_report(request, redirect_to=reverse("instance-settings") + "#email-delivery")
-    if request.method == "POST" and action == "instance_settings":
+    if request.method == "POST" and action in {*section_forms, "instance_settings"}:
         if form.is_valid():
             saved = form.save()
             audit(request, "instance.settings_update")
@@ -196,9 +204,9 @@ def instance_settings(request):
                 messages.success(request, "Instance settings saved.")
                 return send_test_email_and_report(request, redirect_to=reverse("instance-settings") + "#email-delivery")
             if is_settings_request(request):
-                return settings_success(request, "Instance settings saved.", values={
+                return settings_success(request, section[0] if section else "Instance settings saved.", values={
                     name: getattr(saved, name) for name in form.fields if name != "email_host_password"
-                }, refresh=["email-connections"])
+                }, **({"refresh": ["email-connections"]} if "email_host" in form.fields else {}))
             messages.success(request, "Instance settings saved.")
             return redirect("instance-settings")
         if is_settings_request(request):
@@ -216,7 +224,7 @@ def instance_settings(request):
             return redirect("instance-settings")
         if is_settings_request(request):
             return settings_error(request, form=security_form)
-    if request.method == "POST" and action not in {"instance_settings", "security_settings"}:
+    if request.method == "POST" and action not in {*section_forms, "instance_settings", "security_settings"}:
         raise Http404
     if request.method == "POST":
         # Invalid ModelForms mutate their instance; summaries describe persisted settings.
@@ -227,6 +235,22 @@ def instance_settings(request):
         "core/instance_settings.html",
         {
             "form": form,
+            "identity_form": form if action == "identity_settings" else IdentitySettingsForm(
+                request.POST if request.method == "POST" and action == "instance_settings" else None,
+                instance=instance,
+            ),
+            "networking_form": form if action == "networking_settings" else NetworkingSettingsForm(
+                request.POST if request.method == "POST" and action == "instance_settings" else None,
+                instance=instance,
+            ),
+            "email_form": form if action == "email_settings" else EmailSettingsForm(
+                request.POST if request.method == "POST" and action == "instance_settings" else None,
+                instance=instance,
+            ),
+            "limits_form": form if action == "limits_settings" else LimitsSettingsForm(
+                request.POST if request.method == "POST" and action == "instance_settings" else None,
+                instance=instance,
+            ),
             "email_connections": EmailApiConnection.objects.defer("credentials").order_by("name"),
             "active_email_connection_id": instance.active_email_api_connection_id,
             "legacy_email_route": (

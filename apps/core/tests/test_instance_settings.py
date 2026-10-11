@@ -57,6 +57,8 @@ def test_invalid_instance_draft_is_retained(login, superuser, path, enhanced):
         assert response.context["form"].is_bound
         assert response.context["form"]["instance_name"].value() == INSTANCE["instance_name"]
         assert "max_upload_mb" in response.context["form"].errors
+        assert response.context["identity_form"]["instance_name"].value() == INSTANCE["instance_name"]
+        assert response.context["limits_form"]["max_upload_mb"].value() == "-1"
         assert b"Instance settings" in response.content
 
 
@@ -130,3 +132,70 @@ def test_native_invalid_smtp_draft_does_not_change_saved_route_summary(login, su
     assert response.context["form"]["email_host"].value() == "draft.example.com"
     assert response.context["legacy_email_route"] == "Console only"
     assert InstanceConfig.load().email_host == ""
+
+
+@pytest.mark.parametrize("action,fields", [
+    ("identity_settings", {"instance_name": "Identity only", "max_upload_mb": "91"}),
+    ("networking_settings", {"public_base_url": "https://changed.example", "instance_name": "Injected"}),
+    ("limits_settings", {"max_upload_mb": "91", "email_port": "2525"}),
+    ("email_settings", {"email_host": "smtp.example", "email_from": "mail@example.com",
+                         "email_port": "2525", "max_upload_mb": "91"}),
+])
+@pytest.mark.parametrize("enhanced", [False, True])
+def test_settings_sections_save_only_their_allowlisted_fields(login, superuser, action, fields, enhanced):
+    config = InstanceConfig.load()
+    config.instance_name = "Original"
+    config.public_base_url = "https://original.example"
+    config.max_upload_mb = 42
+    config.email_host = "old-smtp.example"
+    config.email_port = 587
+    config.email_from = "old@example.com"
+    config.save()
+
+    response = login(superuser).post("/instance/settings", {"action": action, **fields},
+                                    **(ENHANCED if enhanced else {}))
+    assert response.status_code == (200 if enhanced else 302)
+    config.refresh_from_db()
+    if action == "identity_settings":
+        assert config.instance_name == "Identity only"
+        assert config.max_upload_mb == 42
+    elif action == "networking_settings":
+        assert config.public_base_url == "https://changed.example"
+        assert config.instance_name == "Original"
+    elif action == "limits_settings":
+        assert config.max_upload_mb == 91
+        assert config.email_port == 587
+    else:
+        assert config.email_host == "smtp.example"
+        assert config.email_port == 2525
+        assert config.max_upload_mb == 42
+
+
+def test_instance_settings_render_distinct_sections_and_write_only_smtp(login, superuser):
+    config = InstanceConfig.load()
+    config.email_host_password = "synthetic-secret"
+    config.save()
+    response = login(superuser).get("/instance/settings")
+    html = response.content
+    for form_id in (b"instance-settings-form", b"networking-settings-form", b"email-settings-form",
+                    b"limits-settings-form", b"security-settings-form"):
+        assert form_id in html
+    assert b"synthetic-secret" not in html
+
+
+@pytest.mark.parametrize("enhanced", [False, True])
+def test_invalid_smtp_section_never_returns_secret(login, superuser, enhanced):
+    config = InstanceConfig.load()
+    config.email_host_password = "stored-secret"
+    config.save()
+    response = login(superuser).post(
+        "/instance/settings",
+        {"action": "email_settings", "email_host": "smtp.example",
+         "email_host_password": "submitted-secret", "email_from": ""},
+        **(ENHANCED if enhanced else {}),
+    )
+    assert response.status_code == (400 if enhanced else 200)
+    assert b"stored-secret" not in response.content
+    assert b"submitted-secret" not in response.content
+    config.refresh_from_db()
+    assert config.email_host_password == "stored-secret"

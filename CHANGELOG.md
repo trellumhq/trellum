@@ -28,6 +28,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Separate System Health diagnostics from Instance Settings. Keep detailed
   workers and build execution in Fleet, preserve legacy settings submissions,
   and save instance, security and email connection edits in place.
+- Group instance settings into independently saved Identity, Networking, Email
+  and Limits sections while keeping security and email delivery actions separate.
 
 ### Fixed
 
