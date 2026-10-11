@@ -31,6 +31,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - Preserve scheduled delivery settings when their creator is deleted, and skip
   ownerless schedules during delivery.
+- Keep metric detail controls visible with one modal scroll area, and preserve
+  the selected metric, date range and chart breakdown when opening its page.
+  Keep a separate Metrics overview link. Rebuild reports to include automatic
+  chart breakdowns in saved URLs.
 - Isolate alert tests from live notification history and all email paths.
   Record transport acceptance, partial delivery and failures explicitly; start
   cooldown only when at least one recipient is accepted for delivery.

@@ -377,10 +377,11 @@ def studio_metrics_overview(studio) -> dict:
             # and no series short of two points all read the same way on the
             # card: no sparkline at all, rather than a line pretending.
             "spark": sparks.get(row.name, "") if monitored else "",
-            # The one block, framed on its own; and the same block in the
-            # whole report, for "open full page".
+            # Focus the same block in the frame and on its own page;
+            # retain a separate whole-report destination for the overview.
             "embed_url": f"{gen_url}?only=metric-{row.name}" if monitored else "",
-            "chart_url": f"{gen_url}#metric-{row.name}" if monitored else "",
+            "chart_url": f"{gen_url}?only=metric-{row.name}" if monitored else "",
+            "overview_url": f"{gen_url}#metric-{row.name}" if monitored else "",
             # Only meaningful once the report HAS been built -- until then
             # "not monitored" would be a guess, so the template says the
             # report needs a run instead of naming a reason.

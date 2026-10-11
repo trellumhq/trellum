@@ -293,7 +293,8 @@ class TestCatalogOverlay:
         assert data["metrics_report_url"] == prefix
         assert entry["monitored"] is True
         assert entry["embed_url"] == prefix + "?only=metric-gross_revenue"
-        assert entry["chart_url"] == prefix + "#metric-gross_revenue"
+        assert entry["chart_url"] == prefix + "?only=metric-gross_revenue"
+        assert entry["overview_url"] == prefix + "#metric-gross_revenue"
         assert entry["not_monitored_reason"] == ""
 
     def test_descriptive_metric_says_why_it_has_no_chart(

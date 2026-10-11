@@ -97,7 +97,8 @@ body.mgmt main .met-card .met-open:focus-visible { outline:2px solid var(--accen
   width:min(860px,94vw); height:fit-content; max-height:92vh; display:flex; flex-direction:column;
   background:var(--bg-card); border:1px solid var(--border); border-radius:var(--r-md); box-shadow:0 10px 40px rgba(0,0,0,.28); }
 .met-modal:has(iframe) { width:min(1500px,95vw); }
-.met-modal-head { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; padding:14px 18px; border-bottom:1px solid var(--border); }
+.met-modal-head { display:flex; flex-shrink:0; align-items:flex-start; justify-content:space-between; gap:10px; padding:14px 18px; border-bottom:1px solid var(--border); }
+.met-modal-head > div { min-width:0; overflow-wrap:anywhere; }
 /* Same specificity dance as the card name: ui.css gives a page <h2> 22px of
    top margin, which here was 30px of dead chrome above a 15px title -- and
    chrome is what the frame's height is measured against. */
@@ -120,27 +121,32 @@ body.mgmt main .met-modal-head h2 { font-size:15px; font-weight:640; margin:0; }
 .met-modal-facts { flex:0 0 260px; display:flex; flex-direction:column; gap:8px; padding-left:18px; border-left:1px solid var(--border); font-size:12px; color:var(--text2); }
 @media (max-width:900px) {
   .met-modal-body { flex-direction:column; align-items:stretch; }
+  .met-modal-body iframe, .met-modal-note { flex:none; width:100%; }
   .met-modal-facts { flex:none; padding:12px 0 0; border-left:0; border-top:1px solid var(--border); }
 }
-.met-modal-foot { padding:10px 18px; border-top:1px solid var(--border); display:flex; justify-content:flex-end; }
+.met-modal-foot { flex-shrink:0; padding:10px 18px; border-top:1px solid var(--border); display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; }
 
-/* Compact (metrics_overlay.js owns the threshold). A window this short has no
-   height to spend on a backdrop gutter, a two-line header, a footer row or a
-   column of facts that are still on the card behind: the panel becomes the
-   screen and everything that is not the chart gets out of the way. */
-.met-modal.met-compact { inset:0; margin:0; width:auto; max-width:none; max-height:none;
+/* Compact (metrics_overlay.js owns the threshold). Use the screen's height
+   for controls and chart; the card behind retains the facts. Navigation and
+   close stay visible while the body scrolls on very short screens. */
+.met-modal.met-compact { inset:0; margin:0; width:auto; max-width:none; max-height:100vh;
   border:0; border-radius:0; }
 .met-modal.met-compact .met-modal-head { padding:6px 12px; align-items:center; gap:12px; }
-.met-modal.met-compact .met-modal-head > div { display:flex; align-items:baseline; gap:8px; min-width:0; }
+.met-modal.met-compact .met-modal-head > div { display:flex; flex-wrap:wrap; align-items:baseline; gap:8px; min-width:0; }
 body.mgmt main .met-modal.met-compact .met-modal-head h2 { font-size:13px; }
 .met-modal.met-compact .met-modal-sub { margin-top:0; }
-.met-modal.met-compact .met-modal-head .ui-btn { margin-left:auto; }
 .met-modal.met-compact .met-modal-body { padding:8px 12px; }
-.met-modal.met-compact .met-modal-facts,
-.met-modal.met-compact .met-modal-foot { display:none; }
-/* [hidden] is the open/closed switch, and these two set an explicit display
+.met-modal.met-compact .met-modal-facts { display:none; }
+.met-modal.met-compact .met-modal-foot { padding:4px 12px; }
+/* At very short heights, wrapped navigation can consume the entire dialog.
+   Scroll the whole panel so neither the message nor its exits disappear. */
+@media (max-height:260px) {
+  .met-modal { height:100vh; display:block; overflow-y:auto; }
+  .met-modal-body { overflow:visible; }
+}
+/* [hidden] is the open/closed switch, and these set an explicit display
    that would otherwise win over the UA's [hidden] rule. */
-.met-modal[hidden], .met-modal-foot a[hidden] { display:none; }
+.met-modal[hidden], .met-modal-foot a[hidden], .met-modal-body iframe[hidden] { display:none; }
 </style>
 
 {% if defined_count == 0 %}
@@ -174,7 +180,7 @@ the same thing per metric).{% endcomment %}
   </div>
   <span class="spacer"></span>
   {% if metrics_report_built %}
-  <a class="ui-btn ghost" href="{{ metrics_report_url }}">Chart overview →</a>
+  <a class="ui-btn ghost" href="{{ metrics_report_url }}">Metrics overview →</a>
   {% else %}
   <span class="muted" style="font-size:var(--fs-sm)">Chart overview appears once the Metrics report is built.</span>
   {% endif %}
@@ -203,7 +209,7 @@ query that hits everything.{% endcomment %}
   <div class="met-card" data-metric="{{ m.row.name }}"
        data-search="{{ m.row.label|default:m.row.name }} {{ m.row.name }} {{ m.row.description }} {{ m.row.tags|join:" " }} {{ m.row.owner }}"
        data-label="{{ m.row.label|default:m.row.name }}"
-       data-embed="{{ m.embed_url }}" data-chart="{{ m.chart_url }}"
+       data-embed="{{ m.embed_url }}" data-chart="{{ m.chart_url }}" data-overview="{{ m.overview_url }}"
        data-reason="{{ m.not_monitored_reason }}">
     <div>
       <h3 class="met-name">
@@ -290,7 +296,10 @@ or not bound to a dataset, and the same overlay says so instead.{% endcomment %}
     <button type="button" class="met-modal-close" id="metModalClose" aria-label="Close">&times;</button>
   </div>
   <div class="met-modal-body" id="metModalBody"></div>
-  <div class="met-modal-foot"><a class="ui-btn ghost" id="metModalFull" href="#" hidden>Open full page →</a></div>
+  <div class="met-modal-foot">
+    <a class="ui-btn ghost" id="metModalOverview" href="#" hidden>Metrics overview →</a>
+    <a class="ui-btn ghost" id="metModalFull" href="#" hidden>Open metric page →</a>
+  </div>
 </div>
 <script src="{% static 'metrics_overlay.js' %}"></script>
 

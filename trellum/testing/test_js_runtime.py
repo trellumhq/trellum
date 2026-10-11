@@ -579,6 +579,77 @@ class TestUrlSyncSlider:
         assert result == ''
 
 
+@pytest.mark.parametrize("attribute", ["data-toggle-id", "data-stack-toggle"])
+@pytest.mark.parametrize("value,expected", [("Platform", "Platform"), ("invalid", "Total"), (None, "Total")])
+def test_url_sync_restores_explicit_and_chart_breakdowns(browser_page, attribute, value, expected):
+    result = browser_page.evaluate("""({attribute, value}) => {
+        const sync = window._fwUrlSync;
+        sync._bars = []; sync._toggles = {};
+        history.replaceState(null, '', location.pathname + '?only=metric-revenue' +
+            (value === null ? '' : '&t.test-breakdown=' + value));
+        const group = document.createElement('div');
+        group.className = 'fw-toggle-group'; group.setAttribute(attribute, 'test-breakdown');
+        group.innerHTML = '<button class="fw-toggle-btn active">Total</button><button class="fw-toggle-btn">Platform</button>';
+        document.body.appendChild(group);
+        sync.initToggles();
+        const active = group.querySelector('.active').textContent;
+        sync.write();
+        const query = location.search;
+        group.remove(); sync._toggles = {};
+        history.replaceState(null, '', location.pathname);
+        return {active, query};
+    }""", {"attribute": attribute, "value": value})
+    assert result["active"] == expected
+    from urllib.parse import parse_qs
+    query = parse_qs(result["query"].lstrip("?"))
+    assert query["only"] == ["metric-revenue"]
+    assert query.get("t.test-breakdown") == (["Platform"] if expected == "Platform" else None)
+
+
+def test_chart_breakdown_click_writes_after_chart_handler(browser_page):
+    browser_page.evaluate("""() => {
+        const sync = window._fwUrlSync;
+        sync._bars = []; sync._toggles = {};
+        history.replaceState(null, '', location.pathname + '?only=metric-revenue');
+        const group = document.createElement('div');
+        group.id = 'test-chart-breakdown'; group.className = 'fw-toggle-group';
+        group.dataset.stackToggle = 'test-chart';
+        group.innerHTML = '<button class="fw-toggle-btn active">Total</button><button class="fw-toggle-btn">Platform</button>';
+        document.body.appendChild(group);
+        sync.initToggles();
+    }""")
+    browser_page.locator("#test-chart-breakdown button").nth(1).click()
+    browser_page.wait_for_function("new URLSearchParams(location.search).get('t.test-chart') === 'Platform'")
+    assert "only=metric-revenue" in browser_page.url
+    browser_page.locator("#test-chart-breakdown button").first.click()
+    browser_page.wait_for_function("!new URLSearchParams(location.search).has('t.test-chart')")
+    browser_page.evaluate("""() => {
+        document.getElementById('test-chart-breakdown').remove();
+        window._fwUrlSync._toggles = {};
+        history.replaceState(null, '', location.pathname);
+    }""")
+
+
+def test_filter_url_write_keeps_fragment_without_changing_scroll(browser_page):
+    result = browser_page.evaluate("""() => {
+        document.body.style.minHeight = '2000px';
+        window.scrollTo(0, 700);
+        history.replaceState(null, '', location.pathname + '?only=metric-revenue#metric-revenue');
+        const sync = window._fwUrlSync;
+        sync._bars = [];
+        sync.register('daily', [], () => [{column: 'event_date', type: 'date_range',
+            value: {min: '2026-09-12', max: '2026-09-24'}}]);
+        sync.write();
+        const result = {hash: location.hash, scroll: window.scrollY, search: location.search};
+        sync._bars = []; document.body.style.minHeight = '';
+        history.replaceState(null, '', location.pathname);
+        return result;
+    }""")
+    assert result["hash"] == "#metric-revenue"
+    assert result["scroll"] == 700
+    assert "event_date=2026-09-12..2026-09-24" in result["search"]
+
+
 # ── Aggregation tests ────────────────────────────────────────
 
 class TestAggregation:

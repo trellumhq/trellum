@@ -26,9 +26,13 @@
     var sub = document.getElementById('metModalSub');
     var body = document.getElementById('metModalBody');
     var full = document.getElementById('metModalFull');
+    var overview = document.getElementById('metModalOverview');
     var closeBtn = document.getElementById('metModalClose');
     var built = modal.dataset.built === '1';
     var lastTrigger = null;
+    var frameObserver = null;
+    var fitRequest = null;
+    var activeFrame = null;
 
     function esc(s) {
         var d = document.createElement('div');
@@ -61,23 +65,15 @@
 
     /* Short window: the panel stops being a dialog floating on the catalog
        and becomes the screen. Below this there is not enough height to spend
-       any of it on a backdrop gutter, a two-line header, a footer row and a
-       column of facts that are all still on the card behind. One query, read
+       any of it on a backdrop gutter or a column of facts that are all still
+       on the card behind. One query, read
        by the panel (.met-compact), by the framed block (body.fw-compact, so
        the layout lives in base.css beside the rest of only-mode) and by the
        fit below -- no second copy of the number in a stylesheet. */
     var COMPACT = window.matchMedia('(max-height: 560px)');
-    var head = modal.querySelector('.met-modal-head');
-    var foot = modal.querySelector('.met-modal-foot');
-
     function applyCompact(frame) {
         var on = COMPACT.matches;
         modal.classList.toggle('met-compact', on);
-        /* "Open full page" is the only thing in the footer, so in compact it
-           moves into the header row rather than costing a row of its own. */
-        if (on ? full.parentNode !== head : full.parentNode !== foot) {
-            if (on) head.insertBefore(full, closeBtn); else foot.appendChild(full);
-        }
         try {
             var b = frame && frame.contentDocument && frame.contentDocument.body;
             if (b) b.classList.toggle('fw-compact', on);
@@ -105,93 +101,125 @@
         }
     }
 
-    /* The frame is sized to the document inside it, not to the space left
-       over: it is same-origin, so measure it. The chrome around it is
-       measured too rather than assumed, so 92vh stays the one number here.
+    /* The body's height is independent of the iframe viewport in only mode.
+       Include collapsed trailing margins (the source notice has one), without
+       using root.scrollHeight, which is floored at the previous frame height. */
+    function contentHeight(doc) {
+        var bottom = doc.body.scrollHeight;
+        Array.prototype.forEach.call(doc.body.children, function (el) {
+            var style = doc.defaultView.getComputedStyle(el);
+            if (style.position === 'fixed') return;
+            var rect = el.getBoundingClientRect();
+            if (rect.height) bottom = Math.max(bottom, rect.bottom +
+                (parseFloat(style.marginBottom) || 0));
+        });
+        return Math.ceil(bottom);
+    }
 
-       When the block does not fit, the chart gives way -- it is the one
-       elastic thing in there, and a short window that scrolls the date range
-       and the breakdown out of sight to keep a 500px chart has it exactly
-       backwards. Everything else is measured (`rest`) and the chart gets what
-       is left. Chart.js follows its container on its own; nothing here
-       resizes it.
+    function updateLinks(frame) {
+        try {
+            var url = new URL(frame.contentWindow.location.href);
+            var initial = new URL(frame.src);
+            if (url.origin !== initial.origin) return;
+            var metric = initial.searchParams.get('only');
+            // Report entry redirects may change the path; keep the canonical
+            // destination and transfer only the framework's current URL state.
+            initial.search = url.search;
+            initial.searchParams.set('only', metric);
+            full.href = initial.href;
+            initial.searchParams.delete('only');
+            initial.hash = metric;
+            overview.href = initial.href;
+        } catch (e) { /* An inaccessible/failed frame keeps the initial links. */ }
+    }
 
-       Guarded throughout -- if the document is not reachable the CSS
-       min-height stands and the overlay still works. */
+    /* Shrink only the chart; keep the complete document inside the frame.
+       When controls/legends exceed the budget, the modal body is the single
+       scroll area. The frame itself never clips controls or gets a scrollbar. */
     function fitFrame(frame) {
         try {
             var doc = frame.contentDocument;
             if (!doc || !doc.body) return;
-            var de = doc.documentElement;
             applyCompact(frame);
-            /* Chrome measured against the scrolling body, never against the
-               frame: once the frame is taller than the panel the panel is
-               clamped at 92vh while the frame is not, and `modal - frame`
-               goes negative-ish and reports far more room than exists -- so
-               shrinking the window left the frame at its old height and the
-               panel scrolled. The body is the scroll container, so its own
-               box stays bounded whatever the frame does, and the difference
-               is head + foot + borders in both states. */
             var bs = window.getComputedStyle(body);
-            var chrome = (modal.offsetHeight - body.offsetHeight)
+            var chrome = modal.querySelector('.met-modal-head').offsetHeight
+                + modal.querySelector('.met-modal-foot').offsetHeight
+                + (modal.offsetHeight - modal.clientHeight)
                 + parseFloat(bs.paddingTop) + parseFloat(bs.paddingBottom);
-            var room = (COMPACT.matches ? window.innerHeight : window.innerHeight * 0.92) - chrome;
+            var room = parseFloat(window.getComputedStyle(modal).maxHeight) - chrome;
+            var facts = body.querySelector('.met-modal-facts');
+            if (bs.flexDirection === 'column' && facts.offsetHeight) {
+                room -= facts.offsetHeight + parseFloat(bs.gap);
+            }
 
             var chart = null, boxes = doc.querySelectorAll('.fw-chart-container');
             for (var i = 0; i < boxes.length; i++) {
                 if (boxes[i].offsetHeight > 0) { chart = boxes[i]; break; }
             }
             if (chart) {
-                /* The BODY's height, not the documentElement's: the root's
-                   scrollHeight is floored at the viewport, so once the frame
-                   had been tall it kept reporting the frame's own height as
-                   the content's and `rest` came out inflated -- which is why
-                   a chart shrunk and grown back settled smaller than one
-                   opened fresh at the same size. Reading it flushes layout,
-                   so this is current and the height read back below already
-                   has the new cap. */
-                var rest = doc.body.scrollHeight - chart.offsetHeight;
+                var rest = contentHeight(doc) - chart.offsetHeight;
                 var budget = Math.max(CHART_FLOOR, Math.min(CHART_CAP, room - rest));
                 var cap = Math.round(budget) + 'px';
-                /* Only when it actually changes: this write is what the
-                   ResizeObserver is watching, so an unconditional one would
-                   run forever. Nothing below depends on the frame's own
-                   height, so the second pass computes the same numbers,
-                   writes nothing, and the loop ends there. */
                 if (chart.style.maxHeight !== cap) chart.style.maxHeight = cap;
             }
-
-            var want = doc.body.scrollHeight;   /* the body's, for the same reason */
-            var px = Math.round(Math.min(want, room)) + 'px';
-            if (frame.style.height !== px) {
-                frame.style.height = px;
-                /* Too short even for the floor: the top is the part worth
-                   keeping, so never leave it scrolled past the controls. */
-                if (want > room) de.scrollTop = 0;
-            }
+            var px = contentHeight(doc) + 'px';
+            if (frame.style.height !== px) frame.style.height = px;
+            updateLinks(frame);
         } catch (e) { /* not reachable: leave it to the stylesheet */ }
     }
 
-    /* Re-measure when the framed content reflows, not just once on load: the
-       breakdown toggle adds and removes a legend row, and the date range can
-       change the block's height on its own. */
-    function watchFrame(frame) {
-        frame.addEventListener('load', function () {
-            applyCompact(frame);
-            fitFrame(frame);
-            try {
-                new ResizeObserver(function () { fitFrame(frame); })
-                    .observe(frame.contentDocument.documentElement);
-            } catch (e) { /* no ResizeObserver, or gone: the load fit stands */ }
+    function scheduleFit() {
+        if (fitRequest !== null) return;
+        fitRequest = window.requestAnimationFrame(function () {
+            fitRequest = null;
+            if (activeFrame && !modal.hidden) fitFrame(activeFrame);
         });
     }
 
-    window.addEventListener('resize', function () {
-        var frame = body.querySelector('iframe');
-        if (frame) fitFrame(frame);
-    });
+    function stopWatching() {
+        if (frameObserver) frameObserver.disconnect();
+        frameObserver = null;
+        if (fitRequest !== null) window.cancelAnimationFrame(fitRequest);
+        fitRequest = null;
+        activeFrame = null;
+    }
+
+    function watchFrame(frame) {
+        activeFrame = frame;
+        frame.addEventListener('load', function () {
+            if (activeFrame !== frame || modal.hidden) return;
+            if (frameObserver) frameObserver.disconnect();
+            try {
+                if (!frame.contentDocument.body.classList.contains('fw-only')) {
+                    frame.hidden = true;
+                    var note = document.createElement('p');
+                    note.className = 'met-modal-note';
+                    note.setAttribute('role', 'status');
+                    note.textContent = 'This metric’s chart is unavailable in the current build. Open the metric page or Metrics overview to continue.';
+                    body.insertBefore(note, frame);
+                    return;
+                }
+                frameObserver = new ResizeObserver(scheduleFit);
+                frameObserver.observe(frame.contentDocument.body);
+                function afterControls() {
+                    // Chart URL writes finish after their button handlers.
+                    window.setTimeout(function () {
+                        if (activeFrame === frame) scheduleFit();
+                    }, 0);
+                }
+                frame.contentDocument.addEventListener('click', afterControls);
+                frame.contentDocument.addEventListener('change', afterControls);
+            } catch (e) { /* no ResizeObserver, or gone: the load fit stands */ }
+            scheduleFit();
+        });
+    }
+
+    window.addEventListener('resize', scheduleFit);
+    full.addEventListener('click', function () { if (activeFrame) updateLinks(activeFrame); });
+    overview.addEventListener('click', function () { if (activeFrame) updateLinks(activeFrame); });
 
     function open(row, trigger) {
+        stopWatching();
         lastTrigger = trigger;
         title.textContent = row.dataset.label;
         sub.textContent = row.dataset.metric;
@@ -206,6 +234,8 @@
 
         full.hidden = !row.dataset.chart;
         if (row.dataset.chart) full.href = row.dataset.chart;
+        overview.hidden = !row.dataset.overview;
+        if (row.dataset.overview) overview.href = row.dataset.overview;
 
         overlay.hidden = false;
         modal.hidden = false;
@@ -214,11 +244,12 @@
     }
 
     function close() {
+        stopWatching();
         modal.hidden = true;
         overlay.hidden = true;
         lockScroll(false);
         body.innerHTML = '';   // stop the iframe loading/animating behind a closed dialog
-        if (lastTrigger) lastTrigger.focus();
+        if (lastTrigger) lastTrigger.focus({preventScroll: true});
         lastTrigger = null;
     }
 

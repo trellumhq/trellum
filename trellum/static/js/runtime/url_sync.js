@@ -63,7 +63,7 @@
             var toggleIds = Object.keys(toggles);
             for (var ti = 0; ti < toggleIds.length; ti++) {
                 var tid = toggleIds[ti];
-                var tg = document.querySelector('[data-toggle-id="' + tid + '"]');
+                var tg = document.querySelector('[data-toggle-id="' + tid + '"], [data-stack-toggle="' + tid + '"]');
                 if (!tg) continue;
                 var activeBtn = tg.querySelector('.fw-toggle-btn.active');
                 if (!activeBtn) continue;
@@ -127,7 +127,7 @@
             var only = new URLSearchParams(location.search).get('only');
             if (only) sp.set('only', only);
             var qs = sp.toString();
-            var newUrl = location.pathname + (qs ? '?' + qs : '');
+            var newUrl = location.pathname + (qs ? '?' + qs : '') + location.hash;
             history.replaceState(null, '', newUrl);
         },
 
@@ -178,8 +178,8 @@
 
         initToggles: function() {
             var params = this.parse();
-            document.querySelectorAll('.fw-toggle-group[data-toggle-id]').forEach(function(g) {
-                var id = g.dataset.toggleId;
+            document.querySelectorAll('.fw-toggle-group[data-toggle-id], .fw-toggle-group[data-stack-toggle]').forEach(function(g) {
+                var id = g.dataset.toggleId || g.dataset.stackToggle;
                 if (!id || id === '__scope__') return;
                 var btns = g.querySelectorAll('.fw-toggle-btn');
                 var defaultBtn = g.querySelector('.fw-toggle-btn.active');
@@ -191,6 +191,14 @@
                         if (btn.textContent.trim() === urlVal) {
                             btns.forEach(function(b) { b.classList.remove('active'); });
                             btn.classList.add('active');
+                        }
+                    });
+                }
+                if (g.dataset.stackToggle) {
+                    g.addEventListener('click', function(e) {
+                        if (e.target.closest('.fw-toggle-btn')) {
+                            // The chart and delegated button handlers must finish first.
+                            setTimeout(function() { window._fwUrlSync.write(); }, 0);
                         }
                     });
                 }
