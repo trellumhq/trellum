@@ -2904,11 +2904,6 @@ function boot() {
     /* Chrome affordances that depend only on the server context.
        Logout lives in the shell's user menu only — the dashboard's duplicate
        icon button went when the two header bars merged. */
-    var searchInput = document.getElementById('searchInput');
-    if (searchInput && /Mac|iPhone|iPad/.test(navigator.platform || '')) {
-        searchInput.placeholder = 'Search reports... (Cmd+K)';
-    }
-
     /* Studio tab bar: on narrow screens the rail scrolls horizontally, so
        bring the active tab into view (a no-op when everything fits).
        base.html carries the same snippet for the mgmt surface. */

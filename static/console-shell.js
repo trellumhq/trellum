@@ -123,8 +123,13 @@
         var close = root.querySelector('[data-console-close]');
         var searchToggle = root.querySelector('[data-console-search-toggle]');
         var search = root.querySelector('[data-console-search]');
+        var searchShortcut = search && search.querySelector('kbd');
         var inertTargets = document.querySelectorAll('[data-console-inert]');
         var returnFocus = null;
+
+        if (searchShortcut && /Mac|iPhone|iPad/.test(navigator.platform || '')) {
+            searchShortcut.textContent = '⌘K';
+        }
 
         if (scrollKeyPrefix) {
             var scrollKey = scrollKeyPrefix + window.location.pathname;

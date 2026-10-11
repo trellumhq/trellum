@@ -9,6 +9,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Offer organization Assistant access through an accessible-studio picker, with named conversation scope and visible availability reasons and retry.
 - Add permission-scoped assistant alert discovery with stable identities and
   settings revision tokens that reject stale approved or MCP updates.
 - Compare two studio metrics with shared dates, independent chart splits,
@@ -28,6 +29,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- Reserve search shortcut space beside the input, show the platform shortcut, and remove duplicate placeholder hints.
 - Evaluate alert conditions during cooldown, keeping condition truth separate
   from notification suppression; deduplicate build and schedule triggers.
 - Separate System Health diagnostics from Instance Settings. Keep detailed

@@ -1,5 +1,6 @@
 """Browser checks against complete Django-rendered console pages."""
 import re
+from itertools import pairwise
 
 import pytest
 from django.conf import settings
@@ -24,6 +25,17 @@ def _inline_shell_assets(html: str) -> str:
     return re.sub(
         r'<script src="[^\"]*console-shell\.js"></script>',
         f"<script>{js}</script>",
+        html,
+    )
+
+
+def _inline_portal_js(html: str) -> str:
+    portal = (settings.BASE_DIR / "static" / "portal.js").read_text(
+        encoding="utf-8"
+    )
+    return re.sub(
+        r'<script src="[^\"]*portal\.js"></script>',
+        lambda _: f"<script>{portal}</script>",
         html,
     )
 
@@ -283,6 +295,121 @@ def test_operator_health_warning_polls_and_clears(login, superuser, monkeypatch)
 
 
 @pytest.mark.parametrize("engine", ("chromium", "webkit"))
+@pytest.mark.parametrize(
+    "platform,modifier,label",
+    (("Win32", "Control", "Ctrl+K"), ("MacIntel", "Meta", "⌘K")),
+)
+def test_search_shortcut_layout_and_platform_label(
+    engine, platform, modifier, label, login, org_admin, org, studio_tree
+):
+    html = _inline_shell_assets(
+        login(org_admin)
+        .get(f"/s/{org.slug}/{studio_tree.slug}/settings/members")
+        .content.decode()
+    )
+    init = (
+        "Object.defineProperty(navigator, 'platform', "
+        f"{{get: () => '{platform}'}});"
+    )
+
+    with sync_playwright() as playwright:
+        instance = getattr(playwright, engine).launch(headless=True)
+        # These CSS viewport widths approximate a 1536px display at 100%,
+        # 125%, 150%, and 200% browser zoom. Browser zoom itself is not set.
+        for width in (1536, 1229, 1024, 768, 390):
+            context, page = _page(instance, html, width=width, init_script=init)
+            search = page.locator("[data-console-search]")
+            input_box = page.locator("#searchInput")
+            badge = search.locator("kbd")
+            assert page.locator("#searchInput").get_attribute("aria-label")
+            assert badge.inner_text() == label
+
+            if width < 768:
+                page.locator("[data-console-search-toggle]").click()
+                assert search.is_visible()
+
+            # Long placeholders and user queries remain in the input's own
+            # track; the adjacent badge has its own measured width.
+            input_box.evaluate(
+                "el => el.setAttribute('placeholder', 'Search ' + "
+                "'localized report names '.repeat(8))"
+            )
+            input_box.fill("evidence query " + "x" * 160)
+            assert input_box.input_value().endswith("x" * 160)
+            assert input_box.get_attribute("type") == "search"
+
+            if width >= 768:
+                entry = input_box.bounding_box()
+                shortcut = badge.bounding_box()
+                assert entry["x"] + entry["width"] <= shortcut["x"]
+                assert search.evaluate("el => el.scrollWidth <= el.clientWidth")
+            page.keyboard.press(f"{modifier}+k")
+            assert input_box.evaluate("el => el === document.activeElement")
+            assert input_box.evaluate(
+                "el => el.selectionStart === 0 && el.selectionEnd === el.value.length"
+            )
+            if width < 768:
+                page.keyboard.press("Escape")
+                assert not search.is_visible()
+
+            if engine == "chromium" and width == 1536 and platform == "Win32":
+                artifacts = (
+                    settings.BASE_DIR.parents[1]
+                    / ".artifacts"
+                    / "portal-third-batch"
+                    / "search"
+                )
+                artifacts.mkdir(parents=True, exist_ok=True)
+                page.screenshot(
+                    path=artifacts / "studio-search-1536.png", full_page=True
+                )
+            context.close()
+        instance.close()
+
+
+@pytest.mark.parametrize(
+    "platform,label", (("Win32", "Ctrl+K"), ("MacIntel", "⌘K"))
+)
+def test_dashboard_portal_boot_keeps_placeholder_and_search_shortcut(
+    platform, label, login, org_admin, org, studio_tree
+):
+    html = _inline_portal_js(
+        _inline_shell_assets(
+            login(org_admin)
+            .get(f"/s/{org.slug}/{studio_tree.slug}/")
+            .content.decode()
+        )
+    )
+    init = f"""
+      Object.defineProperty(navigator, 'platform', {{get: () => '{platform}'}});
+      window.__portalRegistryRequested = false;
+      const originalFetch = window.fetch.bind(window);
+      window.fetch = (...args) => {{
+        if (String(args[0]).includes('/api/registry')) {{
+          window.__portalRegistryRequested = true;
+        }}
+        return originalFetch(...args);
+      }};
+    """
+
+    with sync_playwright() as playwright:
+        instance = playwright.chromium.launch(headless=True)
+        context, page = _page(instance, html, width=1440, init_script=init)
+        input_box = page.locator("#searchInput")
+        page.wait_for_function("window.__portalRegistryRequested")
+        assert input_box.get_attribute("placeholder") == "Search reports…"
+        assert page.locator(".tl-console-search kbd").inner_text() == label
+        input_box.fill("report title")
+        page.keyboard.press("Meta+k" if platform == "MacIntel" else "Control+k")
+        assert input_box.evaluate("el => el === document.activeElement")
+        assert input_box.evaluate(
+            "el => el.selectionStart === 0 && el.selectionEnd === el.value.length"
+        )
+        context.close()
+        instance.close()
+
+
+@pytest.mark.parametrize("engine", ("chromium", "webkit"))
 def test_org_assistant_picker_coexists_with_docs_on_narrow_screens(
     engine, login, org_admin, org, studio_tree
 ):
@@ -308,6 +435,21 @@ def test_org_assistant_picker_coexists_with_docs_on_narrow_screens(
             )
             assert studio_link.is_visible()
             assert "Open or resume chat" in studio_link.inner_text()
+            popover = picker.locator(".tl-console-assistant-popover")
+            popover.evaluate(
+                """el => {
+                  for (let i = 0; i < 20; i++) {
+                    const a = document.createElement('a');
+                    a.textContent = 'Additional studio';
+                    el.append(a);
+                  }
+                }"""
+            )
+            popover_box = popover.bounding_box()
+            assert popover_box["x"] >= 0
+            assert popover_box["x"] + popover_box["width"] <= width + 0.5
+            assert popover.evaluate("el => el.scrollHeight > el.clientHeight")
+            assert popover.evaluate("el => getComputedStyle(el).overflowY === 'auto'")
             assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
             context.close()
         instance.close()
@@ -408,7 +550,10 @@ def test_mobile_org_header_keeps_search_health_assistant_docs_and_account_reacha
                 )
             ]
             assert all(box["x"] >= 0 and box["x"] + box["width"] <= width for box in boxes), boxes
-            assert all(left["x"] + left["width"] <= right["x"] + 0.5 for left, right in zip(boxes, boxes[1:]))
+            assert all(
+                left["x"] + left["width"] <= right["x"] + 0.5
+                for left, right in pairwise(boxes)
+            )
             assert header.evaluate("e => e.scrollWidth <= e.clientWidth")
             context.close()
         instance.close()

@@ -98,9 +98,9 @@ html[data-theme="dark"] .tl-console-shell:not([data-console-theme]),
 .tl-console-docs-link { display: inline-flex; flex: none; align-items: center; gap: 6px; min-height: 36px; padding: 4px 8px; border-radius: 8px; color: var(--tl-console-text2); font-weight: 600; text-decoration: none; }
 .tl-console-docs-link:hover { background: var(--tl-console-hover); color: var(--tl-console-text); }
 .tl-console-docs-link svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-.tl-console-search { position: relative; display: flex; align-items: center; margin: 0; }
-.tl-console-search input { width: clamp(180px, 26vw, 360px); height: 36px; padding: 0 44px 0 11px; border: 1px solid var(--tl-console-border); border-radius: 8px; background: var(--tl-console-bg); color: var(--tl-console-text); font-family: inherit; font-size: 14px; line-height: 1.4; }
-.tl-console-search kbd { position: absolute; right: 8px; padding: 1px 5px; border: 1px solid var(--tl-console-border); border-radius: 5px; color: var(--tl-console-text2); font-family: inherit; font-size: 11px; line-height: 1.4; }
+.tl-console-search { display: flex; align-items: center; width: clamp(180px, 26vw, 360px); height: 36px; margin: 0; overflow: hidden; border: 1px solid var(--tl-console-border); border-radius: 8px; background: var(--tl-console-bg); }
+.tl-console-search input { flex: 1; width: 0; min-width: 0; height: 100%; padding: 0 0 0 11px; border: 0; outline-offset: -2px; background: transparent; color: var(--tl-console-text); font-family: inherit; font-size: 14px; line-height: 1.4; }
+.tl-console-search kbd { flex: none; margin: 0 8px; padding: 1px 5px; border: 1px solid var(--tl-console-border); border-radius: 5px; color: var(--tl-console-text2); font-family: inherit; font-size: 11px; line-height: 1.4; }
 .tl-console-account { position: relative; flex: none; }
 .tl-console-account > summary { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 4px 7px; border-radius: 8px; cursor: pointer; list-style: none; }
 .tl-console-account > summary:hover { background: var(--tl-console-hover); }
@@ -158,12 +158,13 @@ body.tl-console-drawer-open { overflow: hidden; }
     .tl-console-breadcrumbs, .tl-console-account-name, .tl-console-search kbd, .tl-console-report-actions { display: none; }
     .tl-console-docs-link { width: 44px; height: 44px; justify-content: center; padding: 0; }
     .tl-console-assistant-picker > summary { min-width: 44px; min-height: 44px; justify-content: center; padding: 0 7px; }
+    .tl-console-assistant-popover { position: fixed; top: 64px; right: 12px; left: 12px; min-width: 0; max-width: none; max-height: calc(100dvh - 76px); overflow-y: auto; overscroll-behavior: contain; }
     .tl-console-docs-label { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
     .tl-console-health-alert { width: 44px; min-height: 44px; justify-content: center; padding: 0; }
     .tl-console-health-text { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-    .tl-console-search { position: fixed; top: 64px; right: 12px; left: 12px; z-index: 94; display: none; padding: 8px; border: 1px solid var(--tl-console-border); border-radius: 10px; background: var(--tl-console-card); box-shadow: 0 12px 28px rgba(0,0,0,.18); }
+    .tl-console-search { position: fixed; top: 64px; right: 12px; left: 12px; z-index: 94; display: none; width: auto; height: 62px; padding: 8px; border-radius: 10px; background: var(--tl-console-card); box-shadow: 0 12px 28px rgba(0,0,0,.18); }
     .tl-console-shell.is-search-open .tl-console-search { display: flex; }
-    .tl-console-shell .tl-console-search input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]) { width: 100%; min-width: 0; height: 44px; font-size: 16px; }
+    .tl-console-shell .tl-console-search input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]) { width: 0; min-width: 0; height: 44px; font-size: 16px; }
     .tl-console-account-menu { top: 63px; right: 12px; }
     .tl-console-account-menu a, .tl-console-account-menu form button, .tl-console-theme button { min-height: 44px; }
     .tl-console-nav-link, .tl-console-switcher summary, .tl-console-context-link { min-height: 44px; }
