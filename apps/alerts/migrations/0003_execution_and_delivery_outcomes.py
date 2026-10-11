@@ -22,26 +22,26 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='alertrun',
             name='budget_warning_sent',
-            field=models.BooleanField(default=False),
+            field=models.BooleanField(default=False, null=True),
         ),
         migrations.AddField(
             model_name='alertrun',
             name='delivery_status',
-            field=models.CharField(choices=[('unknown', 'Legacy: delivery uncertain'), ('not_attempted', 'Nothing sent'), ('no_recipients', 'No eligible recipients'), ('accepted', 'Accepted for delivery'), ('partial', 'Partial'), ('failed', 'Failed'), ('error', 'Delivery error')], default='unknown', max_length=16),
+            field=models.CharField(choices=[('unknown', 'Legacy: delivery uncertain'), ('not_attempted', 'Nothing sent'), ('no_recipients', 'No eligible recipients'), ('accepted', 'Accepted for delivery'), ('partial', 'Partial'), ('failed', 'Failed'), ('error', 'Delivery error')], default='unknown', max_length=16, null=True),
         ),
         migrations.AddField(
             model_name='alertrun',
             name='execution_mode',
-            field=models.CharField(choices=[('legacy', 'Legacy: mode unknown'), ('live', 'Live'), ('test', 'Test')], default='legacy', max_length=8),
+            field=models.CharField(choices=[('legacy', 'Legacy: mode unknown'), ('live', 'Live'), ('test', 'Test')], default='legacy', max_length=8, null=True),
         ),
         migrations.AddField(
             model_name='alertrun',
             name='failed_to',
-            field=models.JSONField(blank=True, default=list),
+            field=models.JSONField(blank=True, default=list, null=True),
         ),
         migrations.AddField(
             model_name='alertrun',
             name='history_namespace',
-            field=models.CharField(default='legacy', max_length=100),
+            field=models.CharField(default='legacy', max_length=100, null=True),
         ),
     ]

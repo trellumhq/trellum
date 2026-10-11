@@ -148,14 +148,22 @@ class AlertRun(models.Model):
     cost_usd = models.DecimalField(max_digits=11, decimal_places=6, null=True, blank=True, default=Decimal("0"))
     #: Transport-accepted addresses for new runs; legacy rows are uncertain.
     delivered_to = models.JSONField(default=list, blank=True)
-    execution_mode = models.CharField(max_length=8, choices=MODE_CHOICES, default=MODE_LEGACY)
-    history_namespace = models.CharField(max_length=100, default="legacy")
-    delivery_status = models.CharField(max_length=16, choices=DELIVERY_CHOICES, default=DELIVERY_UNKNOWN)
-    failed_to = models.JSONField(default=list, blank=True)
+    #: Nullable additions preserve older writers; NULL means legacy uncertainty.
+    execution_mode = models.CharField(max_length=8, choices=MODE_CHOICES, default=MODE_LEGACY, null=True)
+    history_namespace = models.CharField(max_length=100, default="legacy", null=True)
+    delivery_status = models.CharField(max_length=16, choices=DELIVERY_CHOICES, default=DELIVERY_UNKNOWN, null=True)
+    failed_to = models.JSONField(default=list, blank=True, null=True)
     #: The current exhaustion has an accepted owner warning; inherited across
     #: suppressed live ticks, never written by tests.
-    budget_warning_sent = models.BooleanField(default=False)
+    budget_warning_sent = models.BooleanField(default=False, null=True)
     error = models.TextField(blank=True, default="")
+
+    @property
+    def is_legacy(self) -> bool:
+        return self.execution_mode in (None, self.MODE_LEGACY)
+
+    def get_delivery_status_display(self) -> str:
+        return dict(self.DELIVERY_CHOICES).get(self.delivery_status, "Legacy: delivery uncertain")
 
     @property
     def outcome_label(self) -> str:

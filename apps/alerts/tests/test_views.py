@@ -153,6 +153,19 @@ class TestForm:
 
 
 class TestRunLog:
+    def test_null_legacy_run_renders_explicit_uncertainty(self, login, viewer, rule, prefix):
+        AlertRun.objects.create(
+            rule=rule, decision="alert", delivered_to=["historical@test.example"],
+            execution_mode=None, history_namespace=None, delivery_status=None,
+            failed_to=None, budget_warning_sent=None,
+        )
+        html = _main(login(viewer).get(f"{prefix}/{rule.pk}"))
+        assert ">Legacy: mode unknown</span>" in html
+        assert "Legacy: delivery uncertain" in html
+        assert "Historical recipients historical@test.example" in html
+        assert "Accepted for delivery to historical@test.example" not in html
+        assert "None" not in html
+
     def test_list_keeps_live_status_beside_live_timestamp_after_newer_test(self, login, viewer, rule, prefix):
         live_at = timezone.now()
         AlertRun.objects.create(rule=rule, execution_mode="live", decision="quiet", started_at=live_at)
