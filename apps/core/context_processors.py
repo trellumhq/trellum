@@ -145,6 +145,12 @@ def shell(request):
     # Admin flags computed HERE (not from request.org_roles, which only
     # exists behind the permission decorators).
     er = effective_roles(user, active_org) if active_org else None
+    from apps.reports.deliveries import can_manage_org
+
+    can_manage_deliveries = user.is_active and (
+        (user.is_superuser and getattr(request, "api_key", None) is None)
+        or any(can_manage_org(request, org) for org in orgs)
+    )
     # Keep request scope separate from the last studio used for navigation:
     # org pages must never acquire a request.studio through shell state.
     active_studio = getattr(request, "studio", None)
@@ -212,6 +218,7 @@ def shell(request):
         "shell_studio": active_studio,
         "shell_nav_studio": nav_studio,
         "shell_is_org_admin": bool(er and er.is_org_admin),
+        "shell_can_manage_deliveries": bool(can_manage_deliveries),
         "shell_studio_role": er.role_for(active_studio) if er and active_studio else None,
         "shell_nav_studio_role": er.role_for(nav_studio) if er and nav_studio else None,
         "shell_nav_full_studio_visibility": bool(

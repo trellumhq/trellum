@@ -61,6 +61,47 @@ class TestContextProcessor:
 
 
 class TestShellRendering:
+    def test_manage_deliveries_remains_visible_in_another_orgs_viewer_context(
+        self, login, org_admin, org, other_org, other_studio, grant_studio
+    ):
+        from apps.orgs.models import OrgMembership
+
+        OrgMembership.objects.create(user=org_admin, org=other_org, role=roles.ORG_MEMBER)
+        grant_studio(org_admin, other_studio, roles.VIEWER)
+        response = login(org_admin).get("/", {"org": other_org.slug})
+        assert response.context["shell_org"] == other_org
+        assert response.context["shell_is_org_admin"] is False
+        assert response.context["shell_can_manage_deliveries"] is True
+        assert b'href="/deliveries">Manage deliveries</a>' in response.content
+
+    @pytest.mark.parametrize("key_scope, expected", [("admin_org", True), ("viewer_org", False)])
+    def test_manage_deliveries_navigation_respects_api_key_org_scope(
+        self, org_admin, org, other_org, key_scope, expected
+    ):
+        from types import SimpleNamespace
+        from django.template.loader import render_to_string
+        from django.test import RequestFactory
+        from apps.orgs.models import OrgMembership
+
+        OrgMembership.objects.create(user=org_admin, org=other_org, role=roles.ORG_MEMBER)
+        request = RequestFactory().get("/")
+        request.user, request.org, request.session = org_admin, other_org, {}
+        request.api_key = SimpleNamespace(org_id=(org if key_scope == "admin_org" else other_org).pk)
+        ctx = shell(request)
+        assert ctx["shell_can_manage_deliveries"] is expected
+        html = render_to_string("_shell.html", {**ctx, "user": org_admin, "request": request})
+        assert ('href="/deliveries">Manage deliveries</a>' in html) is expected
+
+    def test_operator_without_org_admin_access_has_no_delivery_management_link(self, login, member, monkeypatch):
+        member.is_operator_flag = True
+        member.save(update_fields=["is_operator_flag"])
+        monkeypatch.setattr("apps.core.health.quick_health_summary", lambda: {
+            "status": "ok", "message": "Healthy", "detail": "",
+        })
+        response = login(member).get("/")
+        assert response.context["shell_can_manage_deliveries"] is False
+        assert b'href="/deliveries">Manage deliveries</a>' not in response.content
+
     def test_security_navigation_links_are_present(self):
         from django.conf import settings
 

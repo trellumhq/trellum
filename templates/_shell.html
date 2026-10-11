@@ -42,7 +42,7 @@
       <div class="tl-console-account-menu">
         <span>{{ user.email }}</span><a href="/account">Your account</a><a href="{% url 'my-deliveries' %}">My deliveries</a><a href="{% url 'my-api-keys' %}">API keys</a><a href="{{ trellum_source_url }}" target="_blank" rel="noopener">Source code</a>
         {% if is_operator %}<a href="{% url 'operator-fleet' %}">Operator console</a><a href="/system">System health</a><a href="{% url 'instance-settings' %}">Instance settings</a>{% if user.is_superuser %}<a href="/orgs/new">New organization</a>{% endif %}{% endif %}
-        {% if shell_is_org_admin or user.is_superuser %}<a href="{% url 'manage-deliveries' %}">Manage deliveries</a>{% endif %}
+        {% if shell_can_manage_deliveries %}<a href="{% url 'manage-deliveries' %}">Manage deliveries</a>{% endif %}
         <span>Console theme</span>
         <div class="tl-console-theme" role="group" aria-label="Console theme"><button type="button" data-console-theme-choice="light">Light</button><button type="button" data-console-theme-choice="dark">Dark</button><button type="button" data-console-theme-choice="auto">Auto</button></div>
         <form method="post" action="/logout">{% csrf_token %}<button type="submit">Log out</button></form>
