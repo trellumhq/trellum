@@ -170,6 +170,10 @@ def test_browser_recipient_and_timezone_pickers(engine, rule, login):
         timezone = page.locator("#id_timezone")
         timezone.fill("Europe/Lond")
         timezone.press("ArrowDown")
+        page.keyboard.press("Escape")
+        expect(page.locator("[data-timezone-picker] .al-timezone-results")).to_be_hidden()
+        timezone.fill("Europe/Lond")
+        timezone.press("ArrowDown")
         page.keyboard.press("Enter")
         expect(timezone).to_have_value("Europe/London")
 
@@ -187,9 +191,11 @@ def test_browser_recipient_and_timezone_pickers(engine, rule, login):
         assert field.locator("[data-picker-results] label").evaluate_all(
             "labels => labels.filter(label => !label.hidden).length"
         ) == 0
+        expect(field.locator("[data-picker-empty]")).to_have_text("No matches.")
         expect(field.locator("[data-picker-selected]")).to_contain_text("Person 99")
         assert page.locator("#alertForm").evaluate("form => new FormData(form).getAll('recipients')").count("99") == 1
         field.locator("[data-picker-selected] button").click()
+        expect(search).to_be_focused()
         assert page.locator("#alertForm").evaluate("form => new FormData(form).getAll('recipients')").count("99") == 0
 
         unknown = context.new_page()

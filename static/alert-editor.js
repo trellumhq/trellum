@@ -35,6 +35,7 @@
     function render() {
       var query = search.value.trim().toLocaleLowerCase();
       selected.replaceChildren();
+      empty.textContent = 'No matches.';
       var shown = 0;
       labels.forEach(function (label) {
         var checkbox = label.querySelector('input');
@@ -44,7 +45,11 @@
           var text = document.createElement('span'); text.textContent = name;
           var remove = document.createElement('button'); remove.type = 'button'; remove.textContent = '×';
           remove.setAttribute('aria-label', 'Remove ' + name);
-          remove.addEventListener('click', function () { checkbox.checked = false; checkbox.dispatchEvent(new Event('change', { bubbles: true })); });
+          remove.addEventListener('click', function () {
+            checkbox.checked = false;
+            checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+            search.focus({ preventScroll: true });
+          });
           chip.append(text, remove); selected.appendChild(chip);
         }
         var match = !query || name.toLocaleLowerCase().indexOf(query) >= 0;
@@ -74,6 +79,7 @@
     timezoneData.hidden = false;
     timezoneData.appendChild(choices);
     timezone.removeAttribute('list');
+    var suppressTimezoneFocus = false;
     function timezoneResults() {
       var query = timezone.value.trim().toLocaleLowerCase();
       choices.replaceChildren();
@@ -92,14 +98,21 @@
       });
       choices.hidden = !matches.length;
     }
-    timezone.addEventListener('focus', timezoneResults);
+    timezone.addEventListener('focus', function () {
+      if (suppressTimezoneFocus) { suppressTimezoneFocus = false; return; }
+      timezoneResults();
+    });
     timezone.addEventListener('input', timezoneResults);
     timezone.addEventListener('keydown', function (event) {
       if (event.key === 'Escape') choices.hidden = true;
       if (event.key === 'ArrowDown' && !choices.hidden) { event.preventDefault(); var first = choices.querySelector('button'); if (first) first.focus(); }
     });
     choices.addEventListener('keydown', function (event) {
-      if (event.key === 'Escape') { choices.hidden = true; timezone.focus(); }
+      if (event.key === 'Escape') {
+        choices.hidden = true;
+        suppressTimezoneFocus = true;
+        timezone.focus();
+      }
     });
     document.addEventListener('click', function (event) {
       if (!timezoneData.contains(event.target) && event.target !== timezone) choices.hidden = true;
