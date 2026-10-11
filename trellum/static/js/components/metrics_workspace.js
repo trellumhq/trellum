@@ -109,7 +109,9 @@
             if (ev.x < area.left || ev.x > area.right || ev.y < area.top || ev.y > area.bottom) {
                 clear(); args.changed = true; return;
             }
-            var index = chart.scales.x.getValueForPixel(ev.x);
+            // Native nearest-point tooltips can choose a different X when the pointer is far above the line.
+            var active = chart.tooltip && chart.tooltip.getActiveElements();
+            var index = active && active.length ? active[0].index : chart.scales.x.getValueForPixel(ev.x);
             stamp = values[index] == null ? null : values[index];
             align(chart); args.changed = true;
         },

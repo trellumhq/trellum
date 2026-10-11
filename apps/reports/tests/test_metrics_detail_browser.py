@@ -43,8 +43,8 @@ def generated_metrics(tmp_path_factory):
     }), encoding="utf-8")
     rows = pd.DataFrame([
         {"event_date": day.strftime("%Y-%m-%d"), "platform": f"Platform {i}: a long series label",
-         "region": f"Region {i % 3}", "revenue": 10 + i}
-        for day in pd.date_range("2026-09-01", periods=40) for i in range(12)
+         "region": f"Region {i % 3}", "revenue": 10 + i + (600 if day_index == 6 else day_index * 2)}
+        for day_index, day in enumerate(pd.date_range("2026-09-01", periods=40)) for i in range(12)
     ])
     original = get_project_root()
     set_project_root(str(project))
@@ -383,11 +383,12 @@ def test_workspace_hover_matches_dates_and_clears(open_metric):
     frame = page.locator('#metWorkspace').element_handle().content_frame()
     # Force lazy charts to render before comparing their different time arrays.
     frame.locator('#metric-orders canvas').scroll_into_view_if_needed()
-    frame.wait_for_function("window._chartInstances[document.querySelector('#metric-orders canvas').id]")
+    frame.wait_for_function("Object.keys(window._chartInstances).length === 5")
     frame.locator('#metric-gross_revenue canvas').scroll_into_view_if_needed()
+    page.wait_for_timeout(150)
     def hover(index):
         xy = frame.evaluate('''(index) => {const c=window._chartInstances[document.querySelector('#metric-gross_revenue canvas').id];
-            const r=c.canvas.getBoundingClientRect(); return {x:r.x+c.scales.x.getPixelForValue(index),y:r.y+c.chartArea.top+20};}''', index)
+            const r=c.canvas.getBoundingClientRect(); return {x:r.x+c.scales.x.getPixelForValue(index),y:r.y+c.getDatasetMeta(0).data[index].y};}''', index)
         box = page.locator('#metWorkspace').bounding_box()
         page.mouse.move(box['x'] + xy['x'], box['y'] + xy['y'])
         page.wait_for_timeout(100)
@@ -413,4 +414,33 @@ def test_workspace_hover_matches_dates_and_clears(open_metric):
         el.dispatchEvent(ev); }''')
     page.wait_for_timeout(100)
     assert frame.evaluate('Object.values(window._chartInstances).every(c => c.$metricGuide == null)')
+    assert errors == []
+
+
+def test_workspace_guide_matches_native_tooltip_far_above_line(open_metric):
+    page, errors = open_metric(workspace=True)
+    frame = page.locator('#metWorkspace').element_handle().content_frame()
+    frame.locator('#metric-orders canvas').scroll_into_view_if_needed()
+    frame.wait_for_function("Object.keys(window._chartInstances).length === 5")
+    frame.locator('#metric-gross_revenue canvas').scroll_into_view_if_needed()
+    page.wait_for_timeout(150)
+    xy = frame.evaluate('''() => { const c=window._chartInstances[document.querySelector('#metric-gross_revenue canvas').id];
+        const r=c.canvas.getBoundingClientRect(); return {x:r.x+c.scales.x.getPixelForValue(2),y:r.y+c.chartArea.top+10}; }''')
+    box = page.locator('#metWorkspace').bounding_box()
+    page.mouse.move(box['x'] + xy['x'], box['y'] + xy['y'])
+    page.wait_for_timeout(100)
+    result = frame.evaluate('''() => {
+        const source=window._chartInstances[document.querySelector('#metric-gross_revenue canvas').id];
+        const point=source.tooltip.dataPoints[0], date=source.data.labels[point.dataIndex];
+        const peers=['metric-net_revenue','metric-orders'].map(id => {
+            const c=window._chartInstances[document.querySelector('#'+id+' canvas').id];
+            const index=c.data.labels.indexOf(date);
+            return index<0 ? c.$metricGuide == null : Math.abs(c.$metricGuide-c.scales.x.getPixelForValue(index))<1;
+        });
+        return {date:date,tooltipDate:point.label,index:point.dataIndex,guide:source.$metricGuide,
+            sourceAligned:Math.abs(source.$metricGuide-source.scales.x.getPixelForValue(point.dataIndex))<1,peers:peers};
+    }''')
+    assert result['index'] != 2, 'Fixture must exercise native nearest XY selecting a different date'
+    assert result['tooltipDate'] == result['date']
+    assert result['sourceAligned'] and all(result['peers']), result
     assert errors == []
