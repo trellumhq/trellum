@@ -37,7 +37,7 @@ def test_export_writes_the_complete_finite_artifact(tmp_path):
     actual = {path.relative_to(output).as_posix() for path in output.rglob("*") if path.is_file()}
     assert routes <= actual
     tour_images = {
-        f"static/media/tour/{name}.jpg"
+        f"static/media/tour/{name}.png"
         for name in (
             "portal-overview",
             "portal-datasources",

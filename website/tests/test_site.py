@@ -59,8 +59,8 @@ def test_tour_page_has_accessible_self_paced_screenshot_slides(client):
     assert 'alt="Edit the repository URL, branch and reports directory settings."' in body
     assert 'alt="Read the organization-wide rate limit for report live queries."' in body
     assert 'alt="Review the disabled assistant’s provider, model and data-access settings."' in body
-    assert 'width="1253" height="705"' in body
-    assert 'width="1265" height="712"' in body
+    assert 'width="2530" height="1424"' in body
+    assert 'width="2530" height="1600"' in body
     assert 'static/tour.js' in body
     assert "/static/media/portal-tour.mp4" not in body
     assert 'autoplay' not in body
