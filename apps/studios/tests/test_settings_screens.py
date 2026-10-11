@@ -342,19 +342,26 @@ class TestDataSourceScreen:
     state calls for (internal planning ticket #128)."""
 
     def test_every_state_has_its_badge_and_actions(self, html, prefix, studio_tree, repo):
+        confirmed_at = timezone.now() - timedelta(minutes=4)
+        failed_at = timezone.now() - timedelta(hours=2)
         declare(studio_tree, "warehouse", host="db")                       # needs credentials
         declare(studio_tree, "budget", type="file", upload=True)            # needs upload
+        declare(studio_tree, "untested", host="db")
+        DataSource.objects.create(
+            studio=studio_tree, name="untested", type="postgres",
+            credentials={"user": "u", "password": "p"},
+        )
         declare(studio_tree, "crm", host="crm")                             # connected
         DataSource.objects.create(
             studio=studio_tree, name="crm", type="postgres",
             credentials={"user": "u", "password": "p"},
-            last_check_at=timezone.now() - timedelta(minutes=4), last_check_ok=True,
+            last_check_at=confirmed_at, last_check_ok=True,
         )
         declare(studio_tree, "events", host="ev")                           # failing
         DataSource.objects.create(
             studio=studio_tree, name="events", type="postgres",
             credentials={"user": "u", "password": "p"},
-            last_check_at=timezone.now() - timedelta(hours=2), last_check_ok=False,
+            last_check_at=failed_at, last_check_ok=False,
             last_check_error="OperationalError: connection refused by db.internal",
         )
         portal_only = DataSource.objects.create(                            # not in repo
@@ -366,8 +373,9 @@ class TestDataSourceScreen:
         for name, color, label in (
             ("warehouse", "fail", "Needs credentials"),
             ("budget", "warn", "Needs upload"),
-            ("crm", "ok", "Connected"),
-            ("events", "fail", "Failing"),
+            ("untested", "", "Configured / not tested"),
+            ("crm", "ok", "Last confirmed at " + confirmed_at.strftime("%Y-%m-%d %H:%M %Z")),
+            ("events", "fail", "Failed at " + failed_at.strftime("%Y-%m-%d %H:%M %Z")),
             ("scratch", "", "Not in repository"),
         ):
             row = re.search(r'<tr\b[^>]*id="ds-row-' + name + r'"[^>]*>(.*?)</tr>', page, re.S).group(1)
@@ -379,13 +387,13 @@ class TestDataSourceScreen:
         assert "portal-only" in page
         assert 'class="ui-chip acc">from repository' in page
 
-        assert re.search(r'<a\b(?=[^>]*class="ui-btn ghost")[^>]*href="\?configure=warehouse#configure"[^>]*>Configure</a>', page)
-        assert 'href="?configure=crm#configure">Edit credentials' in page
+        assert re.search(r'<a\b(?=[^>]*class="ui-btn ghost")[^>]*href="' + prefix + r'/settings/datasources/warehouse/edit"[^>]*>Configure</a>', page)
+        assert f'href="{prefix}/settings/datasources/crm/edit">Edit credentials' in page
         # The upload row's primary action is the file picker itself.
         assert f'data-url="{prefix}/api/datasources/budget/upload"' in page
         # Only the portal-only source can be deleted; declared ones cannot.
         assert page.count('class="ui-btn danger"') == 1
-        assert f'href="?edit={portal_only.pk}"' in page
+        assert f'href="{prefix}/settings/datasources/{portal_only.name}/edit"' in page
         assert "Repo-declared fields (type, host, port, database, path) are read-only" in page
         assert "Declared by your repository" in page
 
@@ -405,20 +413,25 @@ class TestDataSourceScreen:
         page = html(f"{prefix}/settings/datasources")
         assert "1 data source still\n      needs a file" in page
 
-    def test_configure_form_shows_the_declaration_read_only(self, html, prefix, studio_tree):
+    def test_configure_form_shows_the_declaration_read_only(self, html, login, org_admin, prefix, studio_tree):
         declare(studio_tree, "warehouse", host="db.internal", port=5432, database="core")
         report_using(studio_tree, "sales", "warehouse")
-        page = html(f"{prefix}/settings/datasources?configure=warehouse")
-        assert "Configure <code>warehouse</code>" in page
+        editor = f"{prefix}/settings/datasources/warehouse/edit"
+        response = login(org_admin).get(f"{prefix}/settings/datasources?configure=warehouse")
+        assert response.status_code == 302 and response.url == editor
+        page = html(editor)
+        assert "Data source <span data-ds-editor-name>warehouse</span>" in page
+        assert 'id="ds-form"' not in page
         assert "db.internal" in page and "5432" in page and "core" in page
         assert "<code>data-sources/config.yaml</code>" in page
         assert "sales" in page
-        form = page.split('id="ds-configure"', 1)[1].split("</form>", 1)[0]
+        form = page.split('id="ds-editor"', 1)[1].split("</form>", 1)[0]
         assert 'name="user"' in form and 'name="password"' in form
         assert 'name="host"' not in form and 'name="database"' not in form
-        assert "Save and test" in form
+        assert "Test draft" in form and "Save and test" in form
         assert 'name="org_level"' in form  # org admin
-        assert 'class="ui-help org"' in form
+        assert "Replaces shared credentials." in form
+        assert "Blank secrets keep the organization's saved values." in form
 
     def test_configure_form_for_a_sheet_asks_only_for_the_key(
         self, html, login, org_admin, prefix, studio_tree, monkeypatch
@@ -429,9 +442,12 @@ class TestDataSourceScreen:
         from apps.datasources import testing
 
         declare(studio_tree, "sheets", type="google_sheets", path="https://docs.google.com/spreadsheets/d/x")
-        page = html(f"{prefix}/settings/datasources?configure=sheets")
+        editor = f"{prefix}/settings/datasources/sheets/edit"
+        response = login(org_admin).get(f"{prefix}/settings/datasources?configure=sheets")
+        assert response.status_code == 302 and response.url == editor
+        page = html(editor)
         assert "declared in repository" in page
-        form = page.split('id="ds-configure"', 1)[1].split("</form>", 1)[0]
+        form = page.split('id="ds-editor"', 1)[1].split("</form>", 1)[0]
         assert 'name="credentials_json"' in form
         assert 'name="credentials_path"' not in form and 'name="path"' not in form
         monkeypatch.setattr(testing, "test_datasource", lambda ds: (True, "Opened the spreadsheet."))
@@ -477,7 +493,7 @@ class TestDataSourceScreen:
         )
         page = client.get(f"{prefix}/settings/datasources").content.decode()
         assert "saved but the connection test failed: refused" in page
-        assert re.search(r'<span\b[^>]*class="ui-badge fail"[^>]*>Failing</span>', page)
+        assert re.search(r'<span\b[^>]*class="ui-badge fail"[^>]*>Failed at \d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC</span>', page)
 
     def test_org_level_checkbox_saves_a_shared_row(self, login, org_admin, org, prefix, studio_tree, monkeypatch):
         from apps.datasources import testing
@@ -637,13 +653,16 @@ class TestConfigureAgainstSharedCredentials:
             org=org, name="warehouse", type="postgres",
             credentials={"user": "shared", "password": "sp"},
         )
-        warning = "Replaces the shared credentials used by other studios."
-        # The org row is what the form shows: nothing hidden to warn about.
-        assert warning not in html(f"{prefix}/settings/datasources?configure=warehouse")
+        warning = "Replaces shared credentials. Blank secrets keep the organization's saved values."
+        editor = f"{prefix}/settings/datasources/warehouse/edit"
+        # Choosing the shared target always makes the replacement and retention rules explicit.
+        page = html(editor)
+        assert warning in page and 'value="shared"' in page
         DataSource.objects.create(
             studio=studio_tree, name="warehouse", type="postgres",
             credentials={"user": "mine", "password": "mp"},
         )
-        page = html(f"{prefix}/settings/datasources?configure=warehouse")
+        page = html(editor)
         assert warning in page
-        assert 'class="ui-help warn"' in page
+        assert 'value="mine"' in page
+        assert "A studio source with the same name still takes precedence." in page

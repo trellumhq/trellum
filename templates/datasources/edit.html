@@ -14,6 +14,7 @@
   <p class="muted">A confirmation records the last test; it does not guarantee current connectivity.</p>
   {% if state.declaration %}<h3>Effective declaration</h3>
   <p class="muted">Declared in <code>{{ state.declaration.source_file }}</code>. Repository fields are read-only.</p>
+  {% if not org_page %}<p class="muted">Used by: {% if state.used_by %}{{ state.used_by|join:", " }}{% else %}no reports yet{% endif %}</p>{% endif %}
   <dl>{% for key, value in facts %}<dt>{{ key }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>{% endif %}
 </section>
 <section class="ui-panel">
