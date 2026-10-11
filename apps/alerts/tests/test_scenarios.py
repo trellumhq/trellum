@@ -80,6 +80,7 @@ class TestDryRun:
         runs = AlertRun.objects.filter(rule=rule).order_by("started_at")
         # Each evaluation lives on its build's calendar: baseline, after, novelty.
         assert [f"{r.started_at:%Y-%m-%d}" for r in runs] == ["2026-07-27", "2026-07-30", "2026-07-31"]
+        assert all(r.execution_mode == AlertRun.MODE_TEST and r.history_namespace == f"scenario:{rule.pk}" for r in runs)
         assert mail.outbox == []
         assert "**Canned alert**" in md and "Dry run: APAC, dau" in md
 

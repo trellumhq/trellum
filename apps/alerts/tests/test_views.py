@@ -3,6 +3,7 @@ and Test now. The evaluator itself is covered in test_evaluator.py; here it
 runs behind the scripted ``decide`` client."""
 import pytest
 from django.core import mail
+from django.utils import timezone
 
 from apps.alerts.models import AlertRule, AlertRun
 from apps.alerts.tests.conftest import decide
@@ -152,28 +153,56 @@ class TestForm:
 
 
 class TestRunLog:
+    def test_list_keeps_live_status_beside_live_timestamp_after_newer_test(self, login, viewer, rule, prefix):
+        live_at = timezone.now()
+        AlertRun.objects.create(rule=rule, execution_mode="live", decision="quiet", started_at=live_at)
+        AlertRule.objects.filter(pk=rule.pk).update(last_run_at=live_at)
+        AlertRun.objects.create(rule=rule, execution_mode="test", decision="alert")
+        response = login(viewer).get(prefix)
+        row = response.context["rows"][0]
+        assert row["last"] == "quiet" and row["rule"].last_run_at == live_at
+
+    def test_durable_execution_and_delivery_labels(self, login, viewer, rule, prefix):
+        for mode, status, delivery in [
+            ("test", "ok", "not_attempted"), ("live", "ok", "not_attempted"),
+            ("live", "skipped_cooldown", "not_attempted"), ("live", "ok", "accepted"),
+            ("live", "ok", "partial"), ("live", "ok", "failed"),
+            ("live", "ok", "no_recipients"),
+        ]:
+            AlertRun.objects.create(rule=rule, execution_mode=mode, status=status,
+                                    delivery_status=delivery, decision="alert" if delivery != "not_attempted" else "quiet")
+        legacy = AlertRun.objects.create(rule=rule, decision="quiet")
+        # A highlight URL may point to a live run; it cannot turn it into a test.
+        html = login(viewer).get(f"{prefix}/{rule.pk}?run={legacy.pk}").content.decode()
+        for label in ("Test", "Evaluated", "Suppressed", "Accepted for delivery", "Partial", "Failed",
+                      "No eligible recipients", "Legacy: mode unknown", "Legacy: delivery uncertain"):
+            assert f'>{label}</span>' in html or label in html
+        assert html.count('>Test</span>') == 1
+        assert "does not confirm inbox receipt" in html
+
     def test_renders_unknown_cost_as_unavailable(self, login, viewer, rule, prefix):
         AlertRun.objects.create(rule=rule, status="ok", decision="quiet", cost_usd=None)
         html = login(viewer).get(f"{prefix}/{rule.pk}").content.decode()
         assert "Cost unavailable" in html
 
     def test_renders_quiet_and_alert_runs(self, login, viewer, rule, prefix):
+        started_at = timezone.now()  # equal clocks must still render newest first
         AlertRun.objects.create(
-            rule=rule, decision="quiet", title="Nothing unusual",
+            rule=rule, decision="quiet", title="Nothing unusual", started_at=started_at,
             message="Revenue moved within its weekly range.",
             evidence={"cited": ["gross_revenue 2026-09-07: 980 vs 1000"]},
         )
         AlertRun.objects.create(
-            rule=rule, decision="alert", title="Revenue fell", message="Down 30%.",
+            rule=rule, decision="alert", title="Revenue fell", message="Down 30%.", started_at=started_at,
             evidence={"cited": ["gross_revenue 2026-09-08: 700 vs 1000"]},
             delivered_to=["a@demo.example", "b@demo.example"], cost_usd="0.0105",
         )
-        AlertRun.objects.create(rule=rule, status="error", error="RuntimeError: disk on fire")
+        AlertRun.objects.create(rule=rule, status="error", error="RuntimeError: disk on fire", started_at=started_at)
         html = login(viewer).get(f"{prefix}/{rule.pk}").content.decode()
         assert "Why it stayed quiet:" in html and "Revenue moved within its weekly range." in html
         assert "gross_revenue 2026-09-07: 980 vs 1000" in html
-        assert "Revenue fell" in html and "Delivered to a@demo.example, b@demo.example" in html
-        assert "$0.0105" in html and "Nothing sent" in html
+        assert "Revenue fell" in html and "Historical recipients a@demo.example, b@demo.example" in html
+        assert "$0.0105" in html and "Legacy: delivery uncertain" in html
         assert "disk on fire" in html
         assert html.index("disk on fire") < html.index("Revenue fell") < html.index("Nothing unusual")
 
@@ -188,11 +217,14 @@ class TestTestNow:
         assert run.decision == AlertRun.DECISION_ALERT and run.delivered_to == []
         assert mail.outbox == []
         rule.refresh_from_db()
-        assert rule.last_alerted_at is None and rule.last_run_at is not None
+        assert rule.last_alerted_at is None and rule.last_test_at is not None
+        assert rule.last_run_at is None
         html = c.get(resp["Location"]).content.decode()
         assert "Test run — nothing was sent." in html
         assert f'class="al-run is-new" id="run-{run.pk}"' in html
         assert "Revenue is down 30% on the week." in html
+        # Provenance survives an ordinary revisit without the highlight query.
+        assert '>Test</span>' in c.get(f"{prefix}/{rule.pk}").content.decode()
 
     def test_unavailable_assistant_is_a_message_not_a_500(
         self, login, owner, rule, prefix, assistant_config, fake_llm

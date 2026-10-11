@@ -25,6 +25,7 @@ function catches broadly, logs, and returns.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
 from datetime import datetime
 from datetime import timezone as _dt_timezone
 
@@ -610,7 +611,7 @@ def _send_alert_mail(subject, template_base, ctx, report, user) -> None:
         )
 
 
-def _send_simple(subject: str, template_base: str, ctx: dict, user) -> None:
+def _send_simple(subject: str, template_base: str, ctx: dict, user) -> int:
     """Text + HTML mail with no attachments, addressed to one user."""
     text_body = render_to_string(f"{template_base}.txt", ctx)
     html_body = render_to_string(f"{template_base}.html", ctx)
@@ -620,20 +621,30 @@ def _send_simple(subject: str, template_base: str, ctx: dict, user) -> None:
         to=[user.email], connection=connection,
     )
     msg.attach_alternative(html_body, "text/html")
-    msg.send(fail_silently=False)
+    return msg.send(fail_silently=False)
 
 
 # ── agentic alerts (apps.alerts) ─────────────────────────────────────────────
 
-def send_alert(rule, run) -> list[str]:
+@dataclass
+class AlertDelivery:
+    accepted: list[str] = field(default_factory=list)
+    failed: list[str] = field(default_factory=list)
+    error: str = ""
+
+
+def send_alert(rule, run) -> AlertDelivery:
     """Mail one alert decision to the rule's audience -- ``resolve_recipients``
     reads an ``AlertRule`` exactly as it reads an ``EmailSchedule``, studio
-    intersection included. Returns the addresses actually sent; never raises."""
+    intersection included. Records transport acceptance, not inbox receipt.
+    A failed recipient never discards prior acceptance or retries it."""
+    outcome = AlertDelivery(accepted=list(run.delivered_to))
     try:
         recipients = resolve_recipients(rule)
     except Exception:  # noqa: BLE001
         logger.exception("notify.send_alert: recipients failed for rule %s", rule.pk)
-        return []
+        outcome.error = "Could not resolve eligible recipients."
+        return outcome
     report = rule.report
     ctx = {
         "report": report,
@@ -653,14 +664,18 @@ def send_alert(rule, run) -> list[str]:
         "preview_text": run.title,
     }
     subject = f"⚠ {run.title or rule.name} · {report.name or report.slug}"
-    sent: list[str] = []
     for user in recipients:
+        if user.email in outcome.accepted:
+            continue
         try:
-            _send_simple(subject, "email/alert", ctx, user)
-            sent.append(user.email)
+            if _send_simple(subject, "email/alert", ctx, user):
+                outcome.accepted.append(user.email)
+            else:
+                outcome.failed.append(user.email)
         except Exception:  # noqa: BLE001
+            outcome.failed.append(user.email)
             logger.exception("notify: failed to send alert for rule %s", rule.pk)
-    return sent
+    return outcome
 
 
 # ── scheduled delivery ───────────────────────────────────────────────────────

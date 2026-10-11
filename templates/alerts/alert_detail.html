@@ -38,6 +38,8 @@
     <span><b>Cooldown</b>{{ rule.cooldown_hours }} h</span>
     <span><b>Billed to</b>{{ rule.created_by.email|default:"nobody (set an owner)" }}</span>
     <span><b>Last alerted</b>{% if rule.last_alerted_at %}{{ rule.last_alerted_at|date:"Y-m-d H:i" }}{% else %}never{% endif %}</span>
+    <span><b>Last evaluation</b>{{ rule.last_run_at|date:"Y-m-d H:i"|default:"never" }}</span>
+    <span><b>Last test</b>{{ rule.last_test_at|date:"Y-m-d H:i"|default:"never" }}</span>
   </div>
   <p class="al-instructions">{{ rule.instructions|default:"Tell me if anything looks off" }}</p>
   {% if can_edit %}<p class="muted" style="margin:0 0 14px">Test now evaluates the rule with delivery off: the decision lands in the log below, nobody is emailed, and the cooldown is not touched.</p>{% endif %}
@@ -51,7 +53,9 @@
       {% elif run.status == "error" %}<span class="ui-badge fail">Error</span>
       {% else %}<span class="ui-badge warn">{{ run.get_status_display }}</span>{% endif %}
       {% if run.title %}<span class="al-run-title">{{ run.title }}</span>{% endif %}
-      {% if run.pk == highlight %}<span class="ui-badge accent">Test run</span>{% endif %}
+      {% if run.execution_mode == "test" %}<span class="ui-badge accent">Test</span>
+      {% elif run.execution_mode == "legacy" %}<span class="ui-badge warn">Legacy: mode unknown</span>{% endif %}
+      <span class="ui-badge">{{ run.outcome_label }}</span>
       <time datetime="{{ run.started_at|date:'c' }}">{{ run.started_at|date:"Y-m-d H:i" }}{% if run.finished_at %} → {{ run.finished_at|date:"H:i:s" }}{% endif %}</time>
     </div>
     {% if run.decision == "quiet" and run.message %}<p class="al-run-msg"><span class="muted">Why it stayed quiet:</span> {{ run.message }}</p>
@@ -60,13 +64,17 @@
     {% if run.error %}<p class="al-run-error">{{ run.error }}</p>{% endif %}
     <div class="al-run-meta">
       {% if run.cost_usd is None %}Cost unavailable{% else %}Cost ${{ run.cost_usd|floatformat:4 }}{% endif %}
-      · {% if run.delivered_to %}Delivered to {{ run.delivered_to|join:", " }}{% else %}Nothing sent{% endif %}
+      · {{ run.get_delivery_status_display }}
+      {% if run.delivered_to %} · {% if run.execution_mode == "legacy" %}Historical recipients{% else %}Accepted for delivery to{% endif %} {{ run.delivered_to|join:", " }}{% endif %}
+      {% if run.failed_to %} · Failed for {{ run.failed_to|join:", " }}{% endif %}
+      {% if run.execution_mode == "legacy" %} · Historical runs are excluded from current notification history because their mode is unknown.{% endif %}
     </div>
   </div>
   {% empty %}
   <div class="ui-empty">No runs yet.{% if can_edit %} Test now evaluates the rule once without sending anything.{% endif %}</div>
   {% endfor %}
   {% include "_pagination.html" with page=page %}
+  <p class="muted">Accepted for delivery means the mail transport accepted the message; it does not confirm inbox receipt.</p>
 </div>
 {% if can_edit %}<script>
 document.addEventListener('submit', function (ev) {

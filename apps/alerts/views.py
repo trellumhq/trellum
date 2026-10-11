@@ -73,7 +73,8 @@ def _context(request, **extra) -> dict:
 
 @require_studio_role(roles.VIEWER)
 def alerts_page(request, org_slug, studio_slug):  # noqa: ARG001
-    last = AlertRun.objects.filter(rule=OuterRef("pk")).order_by("-started_at")
+    last = (AlertRun.objects.filter(rule=OuterRef("pk"))
+            .exclude(execution_mode=AlertRun.MODE_TEST).order_by("-started_at", "-pk"))
     reports = visible_reports(
         request.user, Report.objects.filter(studio=request.studio, present_in_scan=True, kind=Report.KIND_REPORT)
     )

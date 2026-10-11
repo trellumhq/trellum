@@ -26,11 +26,15 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
 from django.db import close_old_connections, connections
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.alerts.models import AlertRule, AlertRun
@@ -118,29 +122,92 @@ USER_MESSAGE = "Evaluate this rule now: look at the data, then call decide."
 FORCE_MESSAGE = "Call decide now with your decision."
 
 
-def evaluate(rule: AlertRule, *, deliver: bool = True, now=None) -> AlertRun:
-    """Evaluate one rule and record the outcome. Never raises."""
-    run = AlertRun(rule=rule, started_at=now or timezone.now())
+@dataclass(frozen=True)
+class RuleSnapshot:
+    rule_id: int | None
+    org_id: int
+    studio_id: int
+    report_id: int
+    name: str
+    instructions: str
+    cooldown_hours: int
+    last_alerted_at: datetime | None
+
+    @classmethod
+    def from_rule(cls, rule: AlertRule) -> RuleSnapshot:
+        """Validate the same rule fields for saved rules and unsaved previews."""
+        rule.full_clean()
+        return cls(rule.pk, rule.org_id, rule.studio_id, rule.report_id, rule.name,
+                   rule.instructions, rule.cooldown_hours, rule.last_alerted_at)
+
+
+def evaluate(rule: AlertRule, *, deliver: bool = True, now=None, history_namespace=None) -> AlertRun:
+    """Evaluate a saved rule; tests have their own durable provenance."""
     try:
-        _evaluate(rule, run, deliver, now)
+        snapshot = RuleSnapshot.from_rule(rule)
+    except ValidationError as exc:
+        run = AlertRun(rule=rule, started_at=now or timezone.now(), finished_at=now or timezone.now(),
+                       execution_mode=AlertRun.MODE_LIVE if deliver else AlertRun.MODE_TEST,
+                       history_namespace="live" if deliver else "test", status=AlertRun.STATUS_ERROR,
+                       delivery_status=AlertRun.DELIVERY_NONE, error=f"Invalid rule: {exc}"[:2000])
+        if "report" in exc.message_dict or "studio" in exc.message_dict:
+            run.error = "The rule's organization, studio and report do not match."
+        run.save()
+        timestamp = "last_run_at" if deliver else "last_test_at"
+        AlertRule.objects.filter(pk=rule.pk).update(**{timestamp: run.finished_at})
+        return run
+    return evaluate_snapshot(
+        snapshot, actor=rule.created_by, billing_user=rule.created_by,
+        execution_mode=AlertRun.MODE_LIVE if deliver else AlertRun.MODE_TEST,
+        history_namespace=history_namespace or ("live" if deliver else "test"), now=now,
+    )
+
+
+def evaluate_snapshot(snapshot: RuleSnapshot, *, actor, billing_user,
+                      execution_mode: str, history_namespace: str, now=None) -> AlertRun:
+    """Internal seam: an unsaved test snapshot returns an in-memory run.
+
+    The actor is also the payer: the provider checks that actor's budget
+    between calls. Production always reads the live namespace; scenario
+    replay explicitly chooses a separate test namespace.
+    """
+    if execution_mode not in (AlertRun.MODE_LIVE, AlertRun.MODE_TEST):
+        raise ValueError("Choose live or test execution.")
+    if not history_namespace or len(history_namespace) > 100 or history_namespace == "legacy":
+        raise ValueError("Choose an explicit history namespace.")
+    if execution_mode == AlertRun.MODE_LIVE and (history_namespace != "live" or snapshot.rule_id is None):
+        raise ValueError("Live evaluation requires a saved rule and live history.")
+    if execution_mode == AlertRun.MODE_TEST and history_namespace == "live":
+        raise ValueError("Test results cannot enter live history.")
+    run = AlertRun(rule_id=snapshot.rule_id, started_at=now or timezone.now(),
+                   execution_mode=execution_mode, history_namespace=history_namespace,
+                   delivery_status=AlertRun.DELIVERY_NONE)
+    try:
+        _evaluate(snapshot, run, actor, billing_user, now)
     except Exception as exc:  # noqa: BLE001 - every path records a run
-        logger.exception("alerts: evaluating rule %s failed", rule.pk)
+        logger.exception("alerts: evaluating rule %s failed", snapshot.rule_id)
         run.status = AlertRun.STATUS_ERROR
         run.error = f"{type(exc).__name__}: {exc}"[:2000]
     run.finished_at = now or timezone.now()
-    run.save()
-    AlertRule.objects.filter(pk=rule.pk).update(last_run_at=run.finished_at)
+    if snapshot.rule_id is not None:
+        run.save()
+        timestamp = "last_test_at" if execution_mode == AlertRun.MODE_TEST else "last_run_at"
+        AlertRule.objects.filter(pk=snapshot.rule_id).update(**{timestamp: run.finished_at})
     return run
 
 
-def _evaluate(rule: AlertRule, run: AlertRun, deliver: bool, now) -> None:
+def _evaluate(rule: RuleSnapshot, run: AlertRun, actor, billing_user, now) -> None:
     from apps.assistant import budget, llm
     from apps.assistant.system_prompt import build_system_prompt
     from apps.assistant.tools import AssistantToolbox
     from apps.core import storage
     from apps.datasources.status import report_blockers
 
-    report = rule.report
+    from apps.reports.models import Report
+
+    report = Report.objects.select_related("studio__org").get(pk=rule.report_id)
+    studio, org = report.studio, report.studio.org
+    deliver = run.execution_mode == AlertRun.MODE_LIVE
     if report.kind == "analysis":
         run.status, run.error = AlertRun.STATUS_ERROR, "Analyses do not support alert rules."
         return
@@ -148,24 +215,25 @@ def _evaluate(rule: AlertRule, run: AlertRun, deliver: bool, now) -> None:
         run.status = AlertRun.STATUS_ERROR
         run.error = "The rule's organization, studio and report do not match."
         return
-    owner = rule.created_by
+    owner = billing_user
     if owner is None:
         # ponytail: an erased owner parks the rule with a visible error rather
         # than billing the org anonymously; the Alerts page can reassign it.
         run.status, run.error = AlertRun.STATUS_ERROR, "This rule has no owner to bill; set created_by."
         return
-    if not _owner_can_evaluate(owner, report):
+    if actor is None or actor.pk != owner.pk or not _owner_can_evaluate(actor, report):
         run.status = AlertRun.STATUS_ERROR
         run.error = "The rule owner can no longer access this report."
         return
 
     # A dry run evaluates regardless: cooldown is a delivery backstop, and
     # Test now exists to tune the instructions while it is in effect.
-    if deliver and rule.in_cooldown(run.started_at):
+    if (deliver and rule.last_alerted_at and rule.cooldown_hours
+            and run.started_at - rule.last_alerted_at < timedelta(hours=rule.cooldown_hours)):
         run.status = AlertRun.STATUS_SKIPPED_COOLDOWN
         return
 
-    meta = storage.read_meta(rule.studio, report.slug) or {}
+    meta = storage.read_meta(studio, report.slug) or {}
     if meta.get("last_status") != "success":
         run.decision = AlertRun.DECISION_QUIET
         run.title = "Not evaluated"
@@ -176,20 +244,33 @@ def _evaluate(rule: AlertRule, run: AlertRun, deliver: bool, now) -> None:
         )
         return
 
-    ok, why = llm.is_available(rule.org, purpose="alert")
+    ok, why = llm.is_available(org, purpose="alert")
     if not ok:
         run.status, run.error = AlertRun.STATUS_ERROR, why
         return
-    allowed, why = budget.precheck(rule.org, owner)
+    allowed, why = budget.precheck(org, owner)
     if not allowed:
         run.status, run.error = AlertRun.STATUS_SKIPPED_BUDGET, why
-        _mail_owner_once(rule, why)
+        if deliver:
+            saved_rule = AlertRule.objects.get(pk=rule.rule_id)
+            run.budget_warning_sent = _mail_owner_once(saved_rule, why)
         return
 
+    namespace = "live" if run.history_namespace == "test" else run.history_namespace
+    history_rows = AlertRun.objects.filter(
+        rule_id=rule.rule_id, status=AlertRun.STATUS_OK, history_namespace=namespace,
+        execution_mode=AlertRun.MODE_LIVE if namespace == "live" else AlertRun.MODE_TEST,
+    ) if rule.rule_id is not None else AlertRun.objects.none()
+    if namespace == "live":
+        # Failed/empty sends and ambiguous legacy rows cannot mean "already notified".
+        history_rows = history_rows.filter(
+            Q(decision=AlertRun.DECISION_QUIET) |
+            Q(delivery_status__in=[AlertRun.DELIVERY_ACCEPTED, AlertRun.DELIVERY_PARTIAL])
+        )
     history = list(
-        AlertRun.objects.filter(rule=rule, status=AlertRun.STATUS_OK)
+        history_rows
         .exclude(decision="")
-        .order_by("-started_at")[:HISTORY]
+        .order_by("-started_at", "-pk")[:HISTORY]
     )
     previous = next((r.evidence for r in history if r.evidence), None)
     validation = (meta.get("validation") or {}).get("summary") or {}
@@ -221,11 +302,11 @@ def _evaluate(rule: AlertRule, run: AlertRun, deliver: bool, now) -> None:
         )
         return "Decision recorded."
 
-    config = llm.LLMConfig.for_org(rule.org)
+    config = llm.LLMConfig.for_org(org)
     toolbox = AssistantToolbox(
-        rule.studio, share_report_source=config.share_report_source,
+        studio, share_report_source=config.share_report_source,
         extra_tools=[(DECIDE_SCHEMA, decide)],
-        actor=owner, scope="report", report=report,
+        actor=actor, scope="report", report=report,
     )
     system_blocks = build_system_prompt(toolbox, now=now) + [{
         "type": "text",
@@ -267,7 +348,7 @@ def _evaluate(rule: AlertRule, run: AlertRun, deliver: bool, now) -> None:
                         cost += Decimal(str(delta))
                     run.cost_usd = cost  # kept current so an error run still shows its spend
                     if delta is not None:
-                        budget.record(rule.org, owner, delta)
+                        budget.record(org, owner, delta)
                 elif kind == "tool_result":
                     if event.get("provenance"):
                         looked_at.append({
@@ -313,13 +394,28 @@ def _evaluate(rule: AlertRule, run: AlertRun, deliver: bool, now) -> None:
             run.status = AlertRun.STATUS_ERROR
             run.error = "The rule owner can no longer access this report."
             return
+        saved_rule = AlertRule.objects.select_related("report__studio__org").get(pk=rule.rule_id)
+        if (saved_rule.org_id, saved_rule.studio_id, saved_rule.report_id, saved_rule.created_by_id,
+                saved_rule.name, saved_rule.instructions) != (
+                rule.org_id, rule.studio_id, rule.report_id, owner.pk, rule.name, rule.instructions):
+            run.status = AlertRun.STATUS_ERROR
+            run.error = "The rule changed during evaluation; nothing was sent. Evaluate the current rule again."
+            return
         run.save()  # the mail links to this run by id; evaluate() updates it after
-        run.delivered_to = send_alert(rule, run)
-        AlertRule.objects.filter(pk=rule.pk).update(last_alerted_at=timezone.now())
-        audit_system(
-            "alert.fire", org=rule.org, rule_id=rule.pk, rule=rule.name,
-            title=run.title, recipients=len(run.delivered_to),
-        )
+        outcome = send_alert(saved_rule, run)
+        run.delivered_to, run.failed_to = outcome.accepted, outcome.failed
+        if outcome.error:
+            run.delivery_status, run.error = AlertRun.DELIVERY_ERROR, outcome.error
+        elif outcome.accepted:
+            run.delivery_status = AlertRun.DELIVERY_PARTIAL if outcome.failed else AlertRun.DELIVERY_ACCEPTED
+        else:
+            run.delivery_status = AlertRun.DELIVERY_FAILED if outcome.failed else AlertRun.DELIVERY_EMPTY
+        if outcome.accepted:
+            AlertRule.objects.filter(pk=rule.rule_id).update(last_alerted_at=now or timezone.now())
+            audit_system(
+                "alert.fire", org=org, rule_id=rule.rule_id, rule=rule.name,
+                title=run.title, recipients=len(run.delivered_to),
+            )
 
 
 def _owner_can_evaluate(owner, report) -> bool:
@@ -338,24 +434,28 @@ def _format_evidence(evidence: dict) -> str:
     return "\n".join(lines) or "(the previous evaluation cited nothing)"
 
 
-def _mail_owner_once(rule: AlertRule, why: str) -> None:
+def _mail_owner_once(rule: AlertRule, why: str) -> bool:
     """One mail per exhaustion, not one per cadence tick: skip when the
     previous run already said so."""
-    last = AlertRun.objects.filter(rule=rule).order_by("-started_at").first()
-    if last is not None and last.status == AlertRun.STATUS_SKIPPED_BUDGET:
-        return
+    last = AlertRun.objects.filter(rule=rule, execution_mode=AlertRun.MODE_LIVE).order_by("-started_at", "-pk").first()
+    if last is not None and last.status == AlertRun.STATUS_SKIPPED_BUDGET and last.budget_warning_sent:
+        return True
     from apps.core.mail import default_from_email
 
-    send_mail(
-        subject=f"Alert rule paused: {rule.name}",
-        message=(
-            f"The alert rule \"{rule.name}\" on report {rule.report.name or rule.report.slug} "
-            f"was not evaluated.\n\n{why}\n\nIt resumes on its own once the budget allows."
-        ),
-        from_email=default_from_email(),
-        recipient_list=[rule.created_by.email],
-        fail_silently=True,
-    )
+    try:
+        return bool(send_mail(
+            subject=f"Alert rule paused: {rule.name}",
+            message=(
+                f"The alert rule \"{rule.name}\" on report {rule.report.name or rule.report.slug} "
+                f"was not evaluated.\n\n{why}\n\nIt resumes on its own once the budget allows."
+            ),
+            from_email=default_from_email(),
+            recipient_list=[rule.created_by.email],
+            fail_silently=False,
+        ))
+    except Exception:  # noqa: BLE001 - a rejected warning must remain retryable
+        logger.exception("alerts: budget warning failed for rule %s", rule.pk)
+        return False
 
 
 # ── after-build trigger ──────────────────────────────────────────────────────

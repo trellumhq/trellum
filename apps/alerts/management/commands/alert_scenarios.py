@@ -98,7 +98,7 @@ def evaluate_alone(rule: AlertRule, today: str) -> AlertRun:
     only_this = lambda self: [r for r in see_all(self) if r["slug"] == rule.report.slug]  # noqa: E731
     now = datetime.fromisoformat(today).replace(tzinfo=timezone.utc)
     with mock.patch.object(AssistantToolbox, "reports", only_this):
-        return evaluate(rule, deliver=False, now=now)
+        return evaluate(rule, deliver=False, now=now, history_namespace=f"scenario:{rule.pk}")
 
 
 def mentions(run: AlertRun, must: list[str]) -> list[str]:

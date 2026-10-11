@@ -23,6 +23,74 @@ def _system_text(call) -> str:
 
 
 class TestDecision:
+    def test_unsaved_snapshot_preview_is_immutable_billed_and_not_persisted(self, rule, fake_llm, org):
+        from dataclasses import FrozenInstanceError
+
+        rule.pk = None
+        snapshot = evaluator.RuleSnapshot.from_rule(rule)
+        with pytest.raises(FrozenInstanceError):
+            snapshot.name = "Changed"
+        fake_llm(decide(True))
+        run = evaluator.evaluate_snapshot(
+            snapshot, actor=rule.created_by, billing_user=rule.created_by,
+            execution_mode=AlertRun.MODE_TEST, history_namespace="preview",
+        )
+        assert run.pk is None and run.rule_id is None
+        assert run.decision == AlertRun.DECISION_ALERT and mail.outbox == []
+        assert AlertRule.objects.count() == 1 and AlertRun.objects.count() == 0
+        assert LlmUsage.user_month_total(org, rule.created_by) == Decimal("0.0105")
+
+    @pytest.mark.parametrize("mode,namespace", [("live", "preview"), ("test", "live")])
+    def test_snapshot_rejects_mixed_execution_history(self, rule, mode, namespace):
+        with pytest.raises(ValueError):
+            evaluator.evaluate_snapshot(
+                evaluator.RuleSnapshot.from_rule(rule), actor=rule.created_by,
+                billing_user=rule.created_by, execution_mode=mode, history_namespace=namespace,
+            )
+        assert AlertRun.objects.count() == 0 and mail.outbox == []
+
+    @pytest.mark.parametrize("results,status", [
+        ([0, 0], AlertRun.DELIVERY_FAILED),
+        ([1, RuntimeError("transport rejected")], AlertRun.DELIVERY_PARTIAL),
+        ([RuntimeError("transport rejected"), 1], AlertRun.DELIVERY_PARTIAL),
+    ])
+    def test_failed_and_partial_transport_results(self, rule, fake_llm, make_user, grant_studio,
+                                                org, studio_tree, monkeypatch, results, status):
+        from apps.reports import notify
+
+        for email in ("first@demo.example", "second@demo.example"):
+            user = make_user(email, org=org)
+            grant_studio(user, studio_tree, roles.VIEWER)
+            rule.recipients.add(user)
+        replies = iter(results)
+        def send(*args, **kwargs):
+            reply = next(replies)
+            if isinstance(reply, Exception):
+                raise reply
+            return reply
+        monkeypatch.setattr(notify, "_send_simple", send)
+        fake_llm(decide(True))
+        run = evaluator.evaluate(rule)
+        run.refresh_from_db()
+        rule.refresh_from_db()
+        assert run.delivery_status == status
+        assert len(run.delivered_to) == (1 if status == AlertRun.DELIVERY_PARTIAL else 0)
+        assert len(run.failed_to) == (1 if status == AlertRun.DELIVERY_PARTIAL else 2)
+        assert bool(rule.last_alerted_at) == bool(run.delivered_to)
+
+    def test_recipient_resolution_error_is_visible_without_cooldown(self, rule, fake_llm, monkeypatch):
+        from apps.reports import notify
+
+        def fail(*args):
+            raise RuntimeError("private resolver failure")
+        monkeypatch.setattr(notify, "resolve_recipients", fail)
+        fake_llm(decide(True))
+        run = evaluator.evaluate(rule)
+        assert run.delivery_status == AlertRun.DELIVERY_ERROR
+        assert run.error == "Could not resolve eligible recipients."
+        rule.refresh_from_db()
+        assert rule.last_alerted_at is None
+
     def test_interrupted_provider_records_unknown_cost(self, rule, monkeypatch):
         from apps.assistant import llm
 
@@ -143,6 +211,8 @@ class TestDecision:
         assert mail.outbox == [] and run.delivered_to == []
         rule.refresh_from_db()
         assert rule.last_alerted_at is None
+        assert run.execution_mode == AlertRun.MODE_TEST
+        assert rule.last_test_at is not None and rule.last_run_at is None
 
     def test_model_that_stops_without_deciding_is_forced(self, rule, fake_llm):
         calls = fake_llm(
@@ -181,6 +251,88 @@ class TestDecision:
 
 
 class TestPreWork:
+    def test_budget_blocked_test_does_not_mail_or_suppress_live_warning(
+        self, rule, fake_llm, assistant_config, org
+    ):
+        assistant_config.per_user_budget_usd = Decimal("1")
+        assistant_config.save()
+        LlmUsage.add_cost(org, rule.created_by, 1.5)
+        calls = fake_llm(decide(True))
+        test = evaluator.evaluate(rule, deliver=False)
+        assert test.status == AlertRun.STATUS_SKIPPED_BUDGET
+        assert mail.outbox == []
+        rule.refresh_from_db()
+        assert rule.last_alerted_at is None
+        evaluator.evaluate(rule)
+        evaluator.evaluate(rule)
+        assert len(mail.outbox) == 1 and calls == []
+
+    def test_dry_run_is_absent_from_identical_live_evaluation_history(self, rule, fake_llm):
+        rule.recipients.add(rule.created_by)
+        calls = fake_llm(decide(True, title="Test-only warning"), decide(True))
+        test = evaluator.evaluate(rule, deliver=False)
+        assert test.delivered_to == [] and mail.outbox == []
+        rule.refresh_from_db()
+        assert rule.last_alerted_at is None
+        live = evaluator.evaluate(rule)
+        text = _system_text(calls[1]).split("# ALERT EVALUATION MODE", 1)[1]
+        assert "Test-only warning" not in text
+        assert "(none yet)" in text
+        assert live.decision == AlertRun.DECISION_ALERT
+        assert live.delivery_status == AlertRun.DELIVERY_ACCEPTED
+        assert live.delivered_to == [rule.created_by.email]
+        assert len(mail.outbox) == 1 and mail.outbox[0].to == [rule.created_by.email]
+        rule.refresh_from_db()
+        assert rule.last_alerted_at is not None
+
+    def test_no_recipients_does_not_start_cooldown(self, rule, fake_llm):
+        fake_llm(decide(True))
+        run = evaluator.evaluate(rule)
+        assert run.delivered_to == []
+        assert run.delivery_status == AlertRun.DELIVERY_EMPTY
+        rule.refresh_from_db()
+        assert rule.last_alerted_at is None
+
+    def test_legacy_alert_and_failed_delivery_do_not_claim_prior_notification(self, rule, fake_llm):
+        AlertRun.objects.create(rule=rule, decision="alert", title="Legacy uncertain", delivered_to=["old@test.example"])
+        AlertRun.objects.create(rule=rule, decision="alert", title="Failed send", execution_mode="live",
+                                history_namespace="live", delivery_status="failed")
+        calls = fake_llm(decide(False))
+        evaluator.evaluate(rule)
+        text = _system_text(calls[0]).split("# ALERT EVALUATION MODE", 1)[1]
+        assert "Legacy uncertain" not in text and "Failed send" not in text
+
+    @pytest.mark.parametrize("result", [0, RuntimeError("warning rejected")])
+    def test_rejected_budget_warning_does_not_suppress_next_attempt(
+        self, rule, fake_llm, assistant_config, org, monkeypatch, result
+    ):
+        assistant_config.per_user_budget_usd = Decimal("1")
+        assistant_config.save()
+        LlmUsage.add_cost(org, rule.created_by, 1.5)
+        calls = []
+        def send(**kwargs):
+            calls.append(1)
+            if isinstance(result, Exception):
+                raise result
+            return result
+        monkeypatch.setattr(evaluator, "send_mail", send)
+        first = evaluator.evaluate(rule)
+        second = evaluator.evaluate(rule)
+        assert first.status == second.status == AlertRun.STATUS_SKIPPED_BUDGET
+        assert not first.budget_warning_sent and not second.budget_warning_sent
+        assert len(calls) == 2
+
+    def test_test_between_exhausted_live_ticks_preserves_existing_warning_state(
+        self, rule, assistant_config, org
+    ):
+        assistant_config.per_user_budget_usd = Decimal("1")
+        assistant_config.save()
+        LlmUsage.add_cost(org, rule.created_by, 1.5)
+        evaluator.evaluate(rule)
+        test = evaluator.evaluate(rule, deliver=False)
+        evaluator.evaluate(rule)
+        assert len(mail.outbox) == 1 and not test.budget_warning_sent
+
     def test_inactive_owner_stops_before_report_storage_or_model(
         self, rule, fake_llm, monkeypatch
     ):
@@ -210,6 +362,28 @@ class TestPreWork:
         run = evaluator.evaluate(rule)
 
         assert run.status == AlertRun.STATUS_ERROR
+        assert run.delivered_to == [] and mail.outbox == []
+        rule.refresh_from_db()
+        assert rule.last_alerted_at is None
+
+    @pytest.mark.parametrize("changed", ["report", "name", "instructions"])
+    def test_changed_rule_cannot_deliver_an_obsolete_snapshot(self, rule, fake_llm, monkeypatch, changed):
+        from apps.reports.models import Report
+
+        other = Report.objects.create(studio=rule.studio, slug="other", name="Other")
+        rule.recipients.add(rule.created_by)
+        checks = []
+        def access(*args):
+            checks.append(1)
+            if len(checks) == 2:
+                replacement = other if changed == "report" else "Edited during evaluation"
+                AlertRule.objects.filter(pk=rule.pk).update(**{changed: replacement})
+            return True
+        monkeypatch.setattr(evaluator, "_owner_can_evaluate", access)
+        fake_llm(decide(True))
+        run = evaluator.evaluate(rule)
+        assert run.status == AlertRun.STATUS_ERROR
+        assert "changed during evaluation" in run.error
         assert run.delivered_to == [] and mail.outbox == []
         rule.refresh_from_db()
         assert rule.last_alerted_at is None
@@ -250,6 +424,7 @@ class TestPreWork:
         for i in range(6):
             AlertRun.objects.create(
                 rule=rule, status=AlertRun.STATUS_OK, decision=AlertRun.DECISION_QUIET,
+                execution_mode=AlertRun.MODE_LIVE, history_namespace="live",
                 title=f"decision {i}", started_at=timezone.now() - timedelta(days=6 - i),
                 evidence={"cited": [f"dau {i}: 100"], "snapshot": {"built_at": f"build-{i}"}},
             )

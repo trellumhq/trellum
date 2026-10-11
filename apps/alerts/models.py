@@ -62,7 +62,7 @@ class AlertRule(models.Model):
         "orgs.PermissionGroup", related_name="alert_rules", blank=True
     )
 
-    #: After an alert fires, the rule stays quiet for this long.
+    #: After a transport accepts an alert, the rule stays quiet for this long.
     cooldown_hours = models.PositiveIntegerField(default=24)
     enabled = models.BooleanField(default=True)
     #: Who pays: LLM spend is billed to this user (EmailSchedule.created_by
@@ -72,6 +72,7 @@ class AlertRule(models.Model):
     )
     created_at = models.DateTimeField(default=dj_tz.now)
     last_run_at = models.DateTimeField(null=True, blank=True)
+    last_test_at = models.DateTimeField(null=True, blank=True)
     last_alerted_at = models.DateTimeField(null=True, blank=True)
 
     def clean(self) -> None:
@@ -105,6 +106,22 @@ class AlertRule(models.Model):
 
 
 class AlertRun(models.Model):
+    MODE_LEGACY = "legacy"
+    MODE_LIVE = "live"
+    MODE_TEST = "test"
+    MODE_CHOICES = [(MODE_LEGACY, "Legacy: mode unknown"), (MODE_LIVE, "Live"), (MODE_TEST, "Test")]
+    DELIVERY_UNKNOWN = "unknown"
+    DELIVERY_NONE = "not_attempted"
+    DELIVERY_EMPTY = "no_recipients"
+    DELIVERY_ACCEPTED = "accepted"
+    DELIVERY_PARTIAL = "partial"
+    DELIVERY_FAILED = "failed"
+    DELIVERY_ERROR = "error"
+    DELIVERY_CHOICES = [
+        (DELIVERY_UNKNOWN, "Legacy: delivery uncertain"), (DELIVERY_NONE, "Nothing sent"),
+        (DELIVERY_EMPTY, "No eligible recipients"), (DELIVERY_ACCEPTED, "Accepted for delivery"),
+        (DELIVERY_PARTIAL, "Partial"), (DELIVERY_FAILED, "Failed"), (DELIVERY_ERROR, "Delivery error"),
+    ]
     STATUS_OK = "ok"
     STATUS_ERROR = "error"
     STATUS_SKIPPED_BUDGET = "skipped_budget"
@@ -129,11 +146,31 @@ class AlertRun(models.Model):
     #: the snapshot is what the next evaluation compares against.
     evidence = models.JSONField(default=dict, blank=True)
     cost_usd = models.DecimalField(max_digits=11, decimal_places=6, null=True, blank=True, default=Decimal("0"))
+    #: Transport-accepted addresses for new runs; legacy rows are uncertain.
     delivered_to = models.JSONField(default=list, blank=True)
+    execution_mode = models.CharField(max_length=8, choices=MODE_CHOICES, default=MODE_LEGACY)
+    history_namespace = models.CharField(max_length=100, default="legacy")
+    delivery_status = models.CharField(max_length=16, choices=DELIVERY_CHOICES, default=DELIVERY_UNKNOWN)
+    failed_to = models.JSONField(default=list, blank=True)
+    #: The current exhaustion has an accepted owner warning; inherited across
+    #: suppressed live ticks, never written by tests.
+    budget_warning_sent = models.BooleanField(default=False)
     error = models.TextField(blank=True, default="")
 
+    @property
+    def outcome_label(self) -> str:
+        if self.status == self.STATUS_ERROR:
+            return "Failed"
+        if self.status in (self.STATUS_SKIPPED_BUDGET, self.STATUS_SKIPPED_COOLDOWN):
+            return "Suppressed"
+        if self.delivery_status in (self.DELIVERY_ACCEPTED, self.DELIVERY_PARTIAL, self.DELIVERY_FAILED):
+            return self.get_delivery_status_display()
+        if self.delivery_status == self.DELIVERY_ERROR:
+            return "Failed"
+        return "Evaluated"
+
     class Meta:
-        ordering = ["-started_at"]
+        ordering = ["-started_at", "-pk"]
 
     def __str__(self) -> str:
         return f"alert-run({self.rule_id}, {self.status}, {self.decision or '-'})"
