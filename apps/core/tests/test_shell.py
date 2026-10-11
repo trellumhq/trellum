@@ -198,7 +198,7 @@ class TestShellRendering:
         grant_studio(viewer, studio_tree, roles.VIEWER)
         html = login(viewer).get(f"/?org={org.slug}").content.decode()
 
-        assert 'aria-label="Open Assistant and choose a studio"' in html
+        assert 'aria-label="Open AI assistant and choose a studio"' in html
         assert f'href="/s/{org.slug}/{studio_tree.slug}/?assistant=open"' in html
         assert studio_tree.name in html
         assert f'href="/s/{org.slug}/{studio2.slug}/?assistant=open"' not in html

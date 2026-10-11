@@ -216,7 +216,7 @@ def test_assistant_unavailable_probe_can_retry_without_duplicate_entries(report_
         entry = page.locator(".assistant-unavailable")
         entry.wait_for(state="visible")
         assert page.locator(".assistant-unavailable").count() == 1
-        assert "Could not check Assistant availability" in entry.locator("summary").get_attribute("aria-label")
+        assert "Could not check AI assistant availability" in entry.locator("summary").get_attribute("aria-label")
 
         availability_state["fail"] = False
         entry.locator("summary").click()
@@ -491,7 +491,7 @@ def test_assistant_header_and_setup_entry_fit_console(report_browser):
     try:
         ask = page.locator("#assistantAsk")
         ask.wait_for(state="visible")
-        assert ask.text_content().strip() == "Ask AI"
+        assert ask.text_content().strip() == "AI assistant"
         page.locator("#report").click()
         page.frame_locator("iframe").locator("#reportBody").wait_for()
         ask.click()

@@ -26,15 +26,35 @@ standalone report. Select the chart or section; press Escape to cancel. The
 capture saves the selected view as frozen evidence so an article can cite the
 exact view you reviewed.
 
-The downloaded capture contains a PNG of the selected view and its source
-context: report name, selected filters, capture time, and source build time
-when available. It does not include raw report rows or generate an analysis
-story. Capture
+The downloaded JSON file includes the PNG image **inside the same file**, plus
+the report name, selected filters, capture time and source build time when
+available. You do not need to download or upload a separate image. Capturing
+downloads a file to your device; it does not publish an image or an article.
+It does not include raw report rows or generate an analysis story. Capture
 time and build time identify when the artifacts were made; they do not establish
 the period the data describes. State that reporting period in the article, as
 the Northwind example does for its synthetic September 2026 evidence.
 
-## Create an article
+## Turn the capture into an analysis with AI
+
+**Capture a view → attach the file to your AI authoring tool → review the draft → publish.**
+
+Use the AI tool that works with your analytics repository. Attach the downloaded
+capture file and explain the finding you want to share. For example:
+
+> Create a Trellum analysis from this capture. Explain the finding, include the
+> image and source, and show me a draft before publishing.
+
+The authoring tool imports the capture, extracts its image and source details,
+and writes an article around them. Review the text and the evidence before
+publishing. The published analysis then includes the image and source caption
+for its chosen audience. The picture stays fixed when the original report updates.
+
+The portal **AI assistant** can answer questions about reports, but cannot yet
+import capture files or write analysis articles. This authoring step uses a
+separate AI tool with access to the repository.
+
+## Advanced: create an article with commands
 
 From your analytics repository:
 

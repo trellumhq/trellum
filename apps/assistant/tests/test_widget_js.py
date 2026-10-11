@@ -68,10 +68,10 @@ class TestContextDiscovery:
         assert "syncUnavailableEntry(j)" in source
         assert "j.reason" in source
         assert "j.can_configure && j.settings_url" in source
-        assert "Could not check Assistant availability" in source
+        assert "Could not check AI assistant availability" in source
         assert "refreshAvailability();" in source
         assert "assistant-unavailable-help" in source
-        assert "AI Assistant · ' + j.studio_name" in source
+        assert "AI assistant · ' + j.studio_name" in source
 
 
 class TestProposals:
@@ -103,7 +103,7 @@ class TestPlacementAndLayout:
         assert "tools.insertBefore(ask, account || null)" in source
         assert "byId('fwOptionsWrap')" in source
         assert "ask.id = 'assistantAsk';" in source
-        assert "<span>Ask AI</span>" in source
+        assert "<span>AI assistant</span>" in source
 
     def test_breakpoints_match_the_stylesheet(self, source):
         assert "var BP_SHEET = 640;" in source

@@ -174,12 +174,11 @@ def analyses(request, org_slug, studio_slug):  # noqa: ARG001
     return _dashboard_page(request, initial_view="analyses")
 
 
-@require_studio_role(roles.VIEWER)
+@require_studio_role(roles.DEVELOPER)
 @require_full_studio_visibility
 def operations(request, org_slug, studio_slug):  # noqa: ARG001
     """The Operations tab: run/queue state, system actions, data sources.
-    Same template and permission gate as the dashboard — portal.js already
-    rendered ops as a distinct surface, this promotes it to a page."""
+    Operational details and controls belong to developers and admins."""
     return _dashboard_page(request, initial_view="ops")
 
 
@@ -347,11 +346,11 @@ def _role_safe(payload: dict, request) -> dict:
     return {
         **payload,
         "reports": [{**r, "last_error": _safe_error(r)} for r in payload.get("reports", [])],
-        "source_states": [{**s, "detail": ""} for s in payload.get("source_states", [])],
+        "source_states": [],
     }
 
 
-@require_studio_role(roles.VIEWER)
+@require_studio_role(roles.DEVELOPER)
 def api_system_status(request, org_slug, studio_slug):  # noqa: ARG001
     studio = request.studio
     now = timezone.now()
@@ -453,7 +452,7 @@ def api_system_log(request, org_slug, studio_slug):  # noqa: ARG001
     return JsonResponse({"log": "\n".join(lines), "lines": n})
 
 
-@require_studio_role(roles.VIEWER)
+@require_studio_role(roles.DEVELOPER)
 def api_report_status(request, org_slug, studio_slug, slug):  # noqa: ARG001
     report = _get_report(request, slug)
     state, elapsed = report_state(report)
@@ -475,7 +474,7 @@ def api_report_status(request, org_slug, studio_slug, slug):  # noqa: ARG001
     )
 
 
-@require_studio_role(roles.VIEWER)
+@require_studio_role(roles.DEVELOPER)
 @require_full_studio_visibility
 def api_run_stats(request, org_slug, studio_slug):  # noqa: ARG001
     """Per-report run aggregates for the Operations view (30-day window)."""

@@ -67,8 +67,8 @@ class TestTabBarOnEveryStudioPage:
         html = login(viewer).get(f"{prefix}/").content.decode()
         assert _active_tab(html) == "Reports"
 
-    def test_operations_page(self, login, viewer, prefix, report_row):
-        resp = login(viewer).get(f"{prefix}/operations")
+    def test_operations_page(self, login, developer, prefix, report_row):
+        resp = login(developer).get(f"{prefix}/operations")
         assert resp.status_code == 200
         html = resp.content.decode()
         assert _active_tab(html) == "Operations"
@@ -142,12 +142,22 @@ class TestScopeGuard:
         assert "/settings/" not in tabs
         assert "Studio settings" not in tabs
         assert "/analytics" not in tabs
+        assert "/operations" not in tabs
+
+    @pytest.mark.parametrize("path", [
+        "operations", "api/system/status", "api/system/run-stats",
+        "api/reports/player-overview/status", "api/system/log",
+        "api/reports/player-overview/log", "api/reports/player-overview/log/live",
+    ])
+    def test_viewer_cannot_open_operational_details(self, login, viewer, prefix, report_row, path):
+        assert login(viewer).get(f"{prefix}/{path}").status_code == 403
 
     def test_developer_sees_no_settings_tab(self, login, developer, prefix, report_row):
         tabs = _tab_bar(login(developer).get(f"{prefix}/").content.decode())
         assert "/settings/" not in tabs
         assert "Studio settings" not in tabs
         assert "/analytics" in tabs  # but Analytics is theirs
+        assert "/operations" in tabs
 
     def test_studio_admin_sees_the_settings_tab(
         self, login, studio_admin, prefix, report_row

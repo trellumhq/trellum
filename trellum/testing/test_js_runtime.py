@@ -1358,10 +1358,14 @@ class TestAnalysisCapture:
             Object.defineProperty(navigator, 'clipboard', {configurable: true,
                 value: {writeText: text => { window.__copied = text; return Promise.resolve(); }}});
             var ok = await fw.captureElementForAnalysis(document.querySelector('.fw-section'));
+            var notice = document.querySelector('.fw-analysis-capture-ui');
+            var initialText = notice.innerText;
+            var advancedClosed = !notice.querySelector('details').open;
+            notice.querySelector('details').open = true;
             document.querySelector('.fw-analysis-capture-ui button:not(:first-child)').click();
             await Promise.resolve();
             var payload = window.__download ? JSON.parse(await window.__download.text()) : null;
-            return {ok, payload, message: document.querySelector('.fw-analysis-error span')?.textContent || '',
+            return {ok, payload, initialText, advancedClosed, message: document.querySelector('.fw-analysis-error span')?.textContent || '',
                 filename: window.__filename,
                 successText: document.querySelector('.fw-analysis-capture-ui')?.innerText || '',
                 preview: document.querySelector('.fw-analysis-capture-ui img')?.getAttribute('alt') || '',
@@ -1390,8 +1394,13 @@ class TestAnalysisCapture:
         assert payload["source"]["filters"]["summary_ds"]["channel-filter"]["value"] == "web"
         assert result["filename"] == "sales-report-sec-revenue.trellum-capture.json"
         assert result["dlDisplay"] == ""
-        assert "Frozen evidence downloaded" in result["successText"]
-        assert "does not contain raw data rows or a written analysis" in result["successText"]
+        assert "Your capture is ready" in result["initialText"]
+        assert "chart image (PNG) is inside" in result["initialText"]
+        assert "Nothing has been published" in result["initialText"]
+        assert "AI tool you use to write your Trellum reports" in result["initialText"]
+        assert "cannot import captures or write articles yet" in result["initialText"]
+        assert result["advancedClosed"] is True
+        assert "trellum analysis import" not in result["initialText"]
         assert "trellum analysis import" in result["successText"]
         assert "content.md" in result["successText"]
         assert result["docsHref"] == "https://trellum.dev/docs/latest/workflow/published-analyses/"

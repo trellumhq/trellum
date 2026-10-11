@@ -7,12 +7,24 @@ studio the roles are, in increasing order:
 
 | Role | Can |
 |---|---|
-| `viewer` | Read reports |
-| `developer` | Trigger builds, upload data-source files, test connections, fetch and publish from git |
+| `viewer` | Read accessible reports and analyses, use their filters and exports, ask the AI assistant questions, and manage their own deliveries |
+| `developer` | Viewer capabilities plus Operations, build history and logs, trigger builds, upload data-source files, test connections, fetch and publish from git |
 | `admin` | Everything, including the studio settings pages — repository, data-source credentials — and studio membership |
 
 An organization admin is implicitly an admin of every studio in that
 organization.
+
+Operations and its status, history and run-statistics endpoints require a
+developer or administrator. Viewers still see basic report availability and
+freshness in the report catalog, but no operational navigation or controls.
+Developers can manage alert rules and report sharing under the organization's
+policy; data-source credentials and membership remain administrator settings.
+
+The AI assistant uses these same roles. Enabling its actions allows proposals;
+it does not promote a viewer or developer. The server checks current access
+when a tool is dispatched and immediately before a change executes. Shared
+organization credentials require organization admin access. A role change can
+block a pending action; it cannot undo a change already executed.
 
 ## How effective access is computed
 

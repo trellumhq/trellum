@@ -74,8 +74,8 @@ class TestRegistryApi:
 
 
 class TestSystemStatus:
-    def test_status_shape(self, login, viewer, prefix, report_row):
-        body = login(viewer).get(f"{prefix}/api/system/status").json()
+    def test_status_shape(self, login, developer, prefix, report_row):
+        body = login(developer).get(f"{prefix}/api/system/status").json()
         for key in (
             "running", "queue", "max_concurrent", "scheduled_jobs", "production",
             "worker_alive", "server_uptime_seconds", "reports_total",
@@ -85,10 +85,10 @@ class TestSystemStatus:
         assert body["reports_total"] == 1
         assert body["worker_alive"] is False  # no worker heartbeat in tests
 
-    def test_scheduled_jobs_carry_next_run(self, login, viewer, prefix, report_row):
+    def test_scheduled_jobs_carry_next_run(self, login, developer, prefix, report_row):
         report_row.schedule_cron = "0 7 * * *"
         report_row.save(update_fields=["schedule_cron"])
-        body = login(viewer).get(f"{prefix}/api/system/status").json()
+        body = login(developer).get(f"{prefix}/api/system/status").json()
         assert body["scheduled_jobs"][0]["slug"] == "player-overview"
         assert body["scheduled_jobs"][0]["next_run"]  # ISO string
 
@@ -120,10 +120,7 @@ class TestSelectedReportAccess:
         assert [row["id"] for row in registry["reports"]] == [report_row.pk]
         assert registry["source_states"] == []
 
-        status = login(selected_viewer).get(f"{prefix}/api/system/status").json()
-        assert status["reports_total"] == 1
-        assert set(status["running"]) == {report_row.slug}
-        assert status["queue"] == []
+        assert login(selected_viewer).get(f"{prefix}/api/system/status").status_code == 403
 
     @pytest.mark.parametrize(
         "path",
@@ -262,8 +259,8 @@ class TestRunStop:
 
 
 class TestStatusAndLogs:
-    def test_report_status_shape(self, login, viewer, prefix, report_row):
-        body = login(viewer).get(f"{prefix}/api/reports/player-overview/status").json()
+    def test_report_status_shape(self, login, developer, prefix, report_row):
+        body = login(developer).get(f"{prefix}/api/reports/player-overview/status").json()
         assert body == {
             "slug": "player-overview",
             "state": "idle",
@@ -285,7 +282,7 @@ class TestStatusAndLogs:
             },
         }
 
-    def test_history_after_completed_run(self, login, viewer, prefix, report_row):
+    def test_history_after_completed_run(self, login, developer, prefix, report_row):
         from django.utils import timezone
 
         Run.objects.create(
@@ -299,7 +296,7 @@ class TestStatusAndLogs:
             stdout_tail="all good",
             peak_memory_mb=123,
         )
-        body = login(viewer).get(f"{prefix}/api/reports/player-overview/status").json()
+        body = login(developer).get(f"{prefix}/api/reports/player-overview/status").json()
         assert len(body["history"]) == 1
         rec = body["history"][0]
         assert rec["status"] == "success"
@@ -310,7 +307,7 @@ class TestStatusAndLogs:
         assert body["aggregates"]["success_rate"] == 1.0
         assert body["aggregates"]["by_status"] == {"success": 1}
 
-    def test_run_stats_endpoint(self, login, viewer, member, prefix, report_row):
+    def test_run_stats_endpoint(self, login, developer, member, prefix, report_row):
         from django.utils import timezone
 
         now = timezone.now()
@@ -320,7 +317,7 @@ class TestStatusAndLogs:
             started_at=now - timezone.timedelta(seconds=60), finished_at=now,
             peak_memory_mb=256,
         )
-        body = login(viewer).get(f"{prefix}/api/system/run-stats").json()
+        body = login(developer).get(f"{prefix}/api/system/run-stats").json()
         entry = body["stats"]["player-overview"]
         assert entry["agg"]["runs"] == 1
         assert entry["agg"]["success_rate"] == 1.0
@@ -1136,13 +1133,13 @@ class TestDataSourceStatusSurfaces:
         return user
 
     def test_status_json_lists_source_states_and_what_they_block(
-        self, login, viewer, prefix, declared, write_meta
+        self, login, developer, viewer, prefix, declared, write_meta
     ):
         write_meta(
             "player-overview", last_status="error", blocked_by=["warehouse"],
             last_error="Waiting for data source 'warehouse': missing: user, password",
         )
-        body = login(viewer).get(f"{prefix}/api/system/status").json()
+        body = login(developer).get(f"{prefix}/api/system/status").json()
         [src] = body["source_states"]
         assert src["name"] == "warehouse" and src["type"] == "postgres"
         assert src["state"] == "needs_credentials"
@@ -1287,7 +1284,8 @@ class TestRoleSafeStatusJson:
         client = login(viewer)
         status = client.get(f"{prefix}/api/system/status")
         registry = client.get(f"{prefix}/api/registry")
-        assert status.json()["source_states"][0]["detail"] == ""
+        assert status.status_code == 403
+        assert registry.json()["source_states"] == []
         assert registry.json()["reports"][0]["last_error"] == (
             "Data source 'warehouse': connection check failed"
         )
@@ -1378,13 +1376,13 @@ class TestWaitingReconciliation:
         entry = login(viewer).get(f"{prefix}/api/registry").json()["reports"][0]
         assert entry["waiting"] is False and entry["blocked_by"] == []
 
-    def test_a_disabled_report_waits_for_nothing(self, login, viewer, prefix, held):
+    def test_a_disabled_report_waits_for_nothing(self, login, developer, prefix, held):
         from apps.reports.scan import invalidate_registry_cache
 
         held.disabled = True
         held.save(update_fields=["disabled"])
         invalidate_registry_cache(held.studio)
-        body = login(viewer).get(f"{prefix}/api/system/status").json()
+        body = login(developer).get(f"{prefix}/api/system/status").json()
         assert body["reports_waiting"] == 0
         assert body["source_states"][0]["blocks"] == []
 

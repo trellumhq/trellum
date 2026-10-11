@@ -359,7 +359,11 @@ URLs are shown.
 
 ## Who can use it
 
-On an organization page, select **Assistant**, then choose an accessible
+On a studio or report page, **AI assistant** opens the chat directly when the
+organization has a working provider configuration. Existing conversations can
+be resumed; setup is only shown when the assistant is unavailable.
+
+On an organization page, select **AI assistant**, then choose an accessible
 studio to open or resume its chat. The panel names that studio. Choosing a
 studio does not combine its data or conversations with another studio's.
 **Docs** remains a separate link to documentation.
@@ -390,7 +394,7 @@ one authenticated to answer for.
 
 ## When it is not available
 
-An unavailable **Assistant** entry explains whether the organization has not
+An unavailable **AI assistant** entry explains whether the organization has not
 configured it, disabled it, lacks a required credential, or has reached a
 budget cap. It links to AI settings when your role permits configuration.
 If the availability check fails, the entry offers **Retry** without requiring

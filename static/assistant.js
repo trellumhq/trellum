@@ -155,7 +155,7 @@
     ask.setAttribute('aria-label', 'Ask the AI assistant');
     ask.setAttribute('aria-expanded', 'false');
     ask.setAttribute('aria-controls', 'assistantPanel');
-    ask.innerHTML = SPARK + '<span>Ask AI</span>';
+    ask.innerHTML = SPARK + '<span>AI assistant</span>';
 
     // Phone-only launcher: a full-width pill above the safe area.
     var pill = el('button', 'assistant-pill assistant-hidden');
@@ -174,7 +174,7 @@
         '<div class="assistant-grab"></div>' +
         '<div class="assistant-header" id="assistantHeader">' +
         '  ' + SPARK +
-        '  <div><div class="assistant-title">AI Assistant</div>' +
+        '  <div><div class="assistant-title">AI assistant</div>' +
         '  <div class="assistant-sub">Ask about reports, charts &amp; data</div></div>' +
         '  <span style="flex:1"></span>' +
         '  <button id="assistantTall" class="assistant-sheet-only" title="Expand" aria-label="Expand" aria-pressed="false">⤢</button>' +
@@ -442,8 +442,8 @@
                     available = false;
                     ask.classList.add('assistant-hidden');
                     syncUnavailableEntry(j ? Object.assign({}, j, {
-                        reason: j.reason || 'Assistant is unavailable for this context.'
-                    }) : { reason: 'Could not check Assistant availability. Check your connection and retry.', retry: true });
+                        reason: j.reason || 'AI assistant is unavailable for this context.'
+                    }) : { reason: 'Could not check AI assistant availability. Check your connection and retry.', retry: true });
                     closePanel();
                     return;
                 }
@@ -463,7 +463,7 @@
                 available = false;
                 ask.classList.add('assistant-hidden');
                 closePanel();
-                syncUnavailableEntry({ reason: 'Could not check Assistant availability. Check your connection and retry.', retry: true });
+                syncUnavailableEntry({ reason: 'Could not check AI assistant availability. Check your connection and retry.', retry: true });
             });
     }
     function appendEmptyHint(intro) {
@@ -1417,18 +1417,18 @@
         var serial = ++_suggestionSerial;
         _fetch(API_BASE + '/available' + pageQuery())
             .then(function (r) {
-                if (r.status === 401) return { available: false, reason: 'Please sign in to use Assistant.' };
+                if (r.status === 401) return { available: false, reason: 'Please sign in to use AI assistant.' };
                 return r.json();
             })
             .then(function (j) {
                 if (serial !== _suggestionSerial) return;
                 if (j) setStudioLabel(j);
                 if (!j) {
-                    syncUnavailableEntry({ reason: 'Could not check Assistant availability. Check your connection and retry.', retry: true });
+                    syncUnavailableEntry({ reason: 'Could not check AI assistant availability. Check your connection and retry.', retry: true });
                     return;
                 }
                 if (!j.available) {
-                    if (!j.reason) j.reason = 'Assistant is unavailable for this context.';
+                    if (!j.reason) j.reason = 'AI assistant is unavailable for this context.';
                     syncUnavailableEntry(j);
                     return;
                 }
@@ -1454,14 +1454,14 @@
             })
             .catch(function () {
                 if (serial !== _suggestionSerial) return;
-                syncUnavailableEntry({ reason: 'Could not check Assistant availability. Check your connection and retry.', retry: true });
+                syncUnavailableEntry({ reason: 'Could not check AI assistant availability. Check your connection and retry.', retry: true });
             });
     }
 
     function setStudioLabel(j) {
         var title = panel.querySelector('.assistant-title');
         if (title && j && j.studio_name) {
-            title.textContent = 'AI Assistant · ' + j.studio_name;
+            title.textContent = 'AI assistant · ' + j.studio_name;
             panel.setAttribute('aria-label', 'AI assistant for ' + j.studio_name);
         }
     }
@@ -1475,7 +1475,7 @@
         }
         if (!entry) {
             entry = el('details', 'assistant-unavailable');
-            entry.appendChild(el('summary', '', 'Assistant'));
+            entry.appendChild(el('summary', '', 'AI assistant'));
             var popover = el('div', 'assistant-unavailable-popover');
             popover.appendChild(el('p', 'assistant-unavailable-reason'));
             popover.appendChild(el('button', 'assistant-unavailable-retry', 'Retry'));
@@ -1486,7 +1486,7 @@
                 refreshAvailability();
             });
         }
-        entry.querySelector('summary').setAttribute('aria-label', 'Assistant unavailable: ' + j.reason);
+        entry.querySelector('summary').setAttribute('aria-label', 'AI assistant unavailable: ' + j.reason);
         entry.querySelector('.assistant-unavailable-reason').textContent = j.reason;
         var config = entry.querySelector('.assistant-setup');
         if (j.can_configure && j.settings_url) {

@@ -167,21 +167,44 @@
         });
         _analysisNotice.appendChild(close);
         var title = document.createElement('strong');
-        title.textContent = 'Frozen evidence downloaded';
+        title.textContent = 'Your capture is ready';
         title.style.cssText = 'display:block;line-height:1.4;margin:4px 84px 10px 0';
         _analysisNotice.appendChild(title);
         var detail = document.createElement('p');
-        detail.textContent = fileName + ' contains a PNG preview and source details, including filters and capture/build times when available. It does not contain raw data rows or a written analysis.';
-        detail.style.cssText = 'line-height:1.4;margin:0 0 10px';
+        detail.textContent = 'One file, everything together: the chart image (PNG) is inside ' + fileName + ', along with its filters, source and dates. You do not need a separate image. Nothing has been published.';
+        detail.style.cssText = 'line-height:1.4;margin:0 0 10px;overflow-wrap:anywhere';
         _analysisNotice.appendChild(detail);
         var preview = document.createElement('img');
         preview.src = imageUrl; preview.alt = 'Preview of the captured report view';
         preview.style.cssText = 'display:block;max-width:100%;max-height:180px;object-fit:contain;margin:10px 0;border:1px solid var(--border-color,#ccc)';
         _analysisNotice.appendChild(preview);
         var next = document.createElement('p');
-        next.textContent = 'Example commands: replace the sample slug, evidence name, and capture file path with yours. Import prints a Markdown reference to paste into reports/september-findings/content.md. Then review the article and publish it through your repository workflow.';
+        next.textContent = 'Give this downloaded file to the AI tool you use to write your Trellum reports, with the finding you want to explain. It can turn the capture into an analysis for you to review.';
         next.style.cssText = 'line-height:1.4;margin:10px 0';
         _analysisNotice.appendChild(next);
+        var steps = document.createElement('ol');
+        ['Attach the capture file to your AI authoring tool.',
+            'Ask it to write an analysis using this evidence.',
+            'Review the text and image, then publish to your chosen audience.'].forEach(function(text) {
+            var step = document.createElement('li'); step.textContent = text;
+            step.style.cssText = 'padding:4px 0;line-height:1.4'; steps.appendChild(step);
+        });
+        _analysisNotice.appendChild(steps);
+        var prompt = document.createElement('p');
+        prompt.textContent = 'Try: “Create a Trellum analysis from this capture. Explain the finding, include the image and source, and show me a draft before publishing.”';
+        prompt.style.cssText = 'line-height:1.4;padding:10px;border:1px solid var(--border-color,#ccc);border-radius:6px';
+        _analysisNotice.appendChild(prompt);
+        var limit = document.createElement('p');
+        limit.textContent = 'The capture is a fixed picture, not raw data or a finished article. Use an AI tool with access to your report repository; the portal AI assistant cannot import captures or write articles yet.';
+        limit.style.cssText = 'line-height:1.4;margin:10px 0';
+        _analysisNotice.appendChild(limit);
+        var advanced = document.createElement('details');
+        var summary = document.createElement('summary');
+        summary.textContent = 'Advanced: command-line steps';
+        summary.style.cursor = 'pointer'; advanced.appendChild(summary);
+        var guidance = document.createElement('p');
+        guidance.textContent = 'Replace the example names and file path with yours. Import extracts the PNG and source details into evidence files and prints the image reference to add to content.md. Build and review before publishing.';
+        advanced.appendChild(guidance);
         var commands = [
             'trellum analysis new september-findings',
             'trellum analysis import reports/september-findings path/to/capture.trellum-capture.json --name conversion',
@@ -201,8 +224,9 @@
                     navigator.clipboard.writeText(command).then(function() { copy.textContent = 'Copied'; }, function() { copy.textContent = 'Copy unavailable'; });
                 } else copy.textContent = 'Copy unavailable';
             });
-            row.appendChild(code); row.appendChild(copy); _analysisNotice.appendChild(row);
+            row.appendChild(code); row.appendChild(copy); advanced.appendChild(row);
         });
+        _analysisNotice.appendChild(advanced);
         var doc = document.createElement('a');
         doc.href = document.documentElement.getAttribute('data-analysis-guide-url')
             || 'https://trellum.dev/docs/latest/workflow/published-analyses/';

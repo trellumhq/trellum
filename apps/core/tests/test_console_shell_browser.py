@@ -337,6 +337,11 @@ def test_search_shortcut_layout_and_platform_label(
             input_box.fill("evidence query " + "x" * 160)
             assert input_box.input_value().endswith("x" * 160)
             assert input_box.get_attribute("type") == "search"
+            input_box.focus()
+            assert search.evaluate("el => getComputedStyle(el).outlineStyle === 'solid'")
+            assert search.evaluate("el => getComputedStyle(el).outlineWidth === '2px'")
+            assert input_box.evaluate("el => getComputedStyle(el).boxShadow === 'none'")
+            assert input_box.evaluate("el => getComputedStyle(el).outlineStyle === 'none'")
 
             if width >= 768:
                 entry = input_box.bounding_box()
@@ -468,7 +473,7 @@ def test_unavailable_assistant_reason_popover_keeps_docs_and_account_reachable(
     )
     entry = (
         '<details class="assistant-unavailable" open>'
-        '<summary aria-label="Assistant unavailable: The AI assistant is disabled for this organization">Assistant</summary>'
+        '<summary aria-label="AI assistant unavailable: The AI assistant is disabled for this organization">AI assistant</summary>'
         '<div class="assistant-unavailable-popover">'
         '<p class="assistant-unavailable-reason">The AI assistant is disabled for this organization. '
         'An administrator can review the organization settings and check whether a provider is configured. '
@@ -488,8 +493,8 @@ def test_unavailable_assistant_reason_popover_keeps_docs_and_account_reachable(
             context, page = _page(instance, html, width=width)
             summary = page.locator(".assistant-unavailable > summary")
             popover_box = _box(page, ".assistant-unavailable-popover")
-            assert summary.inner_text() == "Assistant"
-            assert summary.get_attribute("aria-label").startswith("Assistant unavailable:")
+            assert summary.inner_text() == "AI assistant"
+            assert summary.get_attribute("aria-label").startswith("AI assistant unavailable:")
             assert popover_box["height"] > 100
             reason_box = _box(page, ".assistant-unavailable-reason")
             retry_box = _box(page, ".assistant-unavailable-retry")
