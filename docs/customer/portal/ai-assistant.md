@@ -359,6 +359,11 @@ URLs are shown.
 
 ## Who can use it
 
+On an organization page, select **Assistant**, then choose an accessible
+studio to open or resume its chat. The panel names that studio. Choosing a
+studio does not combine its data or conversations with another studio's.
+**Docs** remains a separate link to documentation.
+
 Any studio member who can view the studio. There is no separate permission:
 if someone can open a report, they can ask about it, and if they cannot,
 the assistant will not answer about it either.
@@ -385,10 +390,11 @@ one authenticated to answer for.
 
 ## When it is not available
 
-The panel explains itself rather than failing silently. It says the
-assistant is not configured for the organization, or is disabled, or has no
-API key, or that the budget cap is reached — each with the specific reason,
-so an admin knows what to fix.
+An unavailable **Assistant** entry explains whether the organization has not
+configured it, disabled it, lacks a required credential, or has reached a
+budget cap. It links to AI settings when your role permits configuration.
+If the availability check fails, the entry offers **Retry** without requiring
+a page reload.
 
 **The panel says the model provider returned an error.** The request left
 the portal and came back broken. The panel shows a safe explanation of the failure. Organization admins can
