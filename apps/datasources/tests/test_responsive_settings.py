@@ -31,7 +31,7 @@ def test_enhanced_save_persists_without_probe(login, org_admin, org, studio_tree
     ds.refresh_from_db()
     assert ds.config["host"] == "new" and ds.credentials["password"] == "stored-secret"
     assert ds.last_check_ok is None and ds.last_check_at is None and not ds.last_check_error
-    assert body["message"] == "Saved. Testing connection…"
+    assert body["message"] == "Saved. Use Test to verify the connection."
     assert body["revision"] == check_revision(ds)
     test_path = "/settings/datasources/warehouse/test" if org_scope else "/api/datasources/warehouse/test"
     assert body["test_url"] == base + test_path

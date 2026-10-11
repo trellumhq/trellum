@@ -611,7 +611,8 @@ def _saved_response(request, ds, studio=None, *, configured=False, redirect_to=N
         else f"/s/{request.org.slug}/{ds.studio.slug}/settings/datasources"
     )
     return settings_success(
-        request, "Saved. Testing connection…", source_id=ds.pk, source_name=ds.name,
+        request, "Saved. Use Test to verify the connection." if redirect_to else "Saved. Testing connection…",
+        source_id=ds.pk, source_name=ds.name,
         test_url=base + ds.name + "/test", revision=check_revision(ds, test_studio),
         source_type=ds.type, type_label=_TYPE_LABELS.get(ds.type, ds.type),
         source_scope=ds.scope, description=ds.description,
@@ -837,7 +838,7 @@ def _create_page(request, studio=None):
             audit(request, "datasource.create", target=ds, name=ds.name, scope=ds.scope)
             if is_settings_request(request):
                 return _saved_response(request, ds, studio, redirect_to=list_url)
-            messages.success(request, _saved_message(ds) + " Testing connection…")
+            messages.success(request, _saved_message(ds) + " Use Test to verify the connection.")
             return redirect(list_url)
         if is_settings_request(request):
             return settings_error(request, form=form)
