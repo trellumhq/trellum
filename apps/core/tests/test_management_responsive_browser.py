@@ -47,19 +47,26 @@ def _page(browser, html, width):
 
 
 def _delivery_html(rows):
-    return render_to_string("reports/my_deliveries.html", {"schedule_rows": rows})
+    return render_to_string("reports/my_deliveries.html", {
+        "schedule_rows": rows, "studio_deliveries": True,
+        "delivery_return_to": "/s/acme/studio/deliveries",
+    })
 
 
 def _delivery_row():
-    schedule = S(enabled=True, attach_pdf=False)
+    org = S(name="A very long organization name", slug="acme")
+    studio = S(name="A studio with a long name", slug="studio", org=org)
+    schedule = S(pk=7, enabled=True, attach_pdf=False)
     return S(
-        report=S(name="A report with a deliberately long title", slug="report"),
-        org=S(name="A very long organization name", slug="acme"),
-        studio=S(name="A studio with a long name", slug="studio"),
+        report=S(name="A report with a deliberately long title", slug="report", studio=studio),
+        org=org,
+        studio=studio,
         cadence="Every Monday at 09:00",
         recipient_summary="person@example.com, another@example.com",
         schedule=schedule,
-        schedule_json='{"enabled": true}',
+        editable=True,
+        edit_url="/s/acme/studio/deliveries/7/edit",
+        schedule_json='{"id": 7, "enabled": true, "delivery_revision": 0}',
     )
 
 
@@ -143,29 +150,22 @@ def _rendered_management_page(browser, html, width, theme="light"):
 
 
 @pytest.mark.parametrize("width", (320, 390, 430))
-def test_delivery_rendered_template_fits_and_keeps_editor_hidden(mobile_browser, width):
-    context, page = _page(mobile_browser, _delivery_html([_delivery_row()]), width)
+def test_delivery_rendered_template_fits_and_links_to_dedicated_editor(mobile_browser, width):
+    row = _delivery_row()
+    context, page = _page(mobile_browser, _delivery_html([row]), width)
     try:
         assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
         assert page.locator("#deliveryTable[data-mobile-cards]").count() == 1
         assert page.locator("[data-delivery-row]").count() == 1
-        editor = page.locator("[data-schedule-editor]")
-        # Native details now exposes its summary; its form remains closed.
-        assert not editor.evaluate("el => el.open")
-        assert not editor.locator("form").is_visible()
-        assert editor.locator("summary").is_visible()
-        assert editor.locator("summary").evaluate("el => getComputedStyle(el).minHeight") == "44px"
-        editor.locator("summary").click()
-        assert editor.locator("form").is_visible()
-        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
-        editor.locator("summary").click()
-        assert not editor.locator("form").is_visible()
-        assert page.locator("[data-toggle-edit]").first.evaluate(
-            "el => getComputedStyle(el).minHeight"
-        ) == "44px"
-        assert page.locator("[data-toggle-edit]").first.evaluate(
-            "el => getComputedStyle(el).fontSize"
-        ) == "14px"
+        assert page.locator("[data-schedule-editor], [data-toggle-edit]").count() == 0
+        edit = page.get_by_role("link", name="Edit", exact=True)
+        assert edit.get_attribute("href") == row.edit_url
+        assert edit.is_visible()
+        assert edit.evaluate("el => getComputedStyle(el).minHeight") == "44px"
+        assert edit.evaluate("el => getComputedStyle(el).fontSize") == "14px"
+        assert page.get_by_role("link", name="Add delivery", exact=True).get_attribute("href") == "/s/acme/studio/deliveries/new"
+        for label in ("Report", "Studio", "Creator", "Cadence", "Format", "Recipients", "Status", "Actions"):
+            assert page.locator(f'[data-delivery-row] td[data-label="{label}"]').is_visible()
         if width == 390:
             ARTIFACTS.mkdir(parents=True, exist_ok=True)
             page.screenshot(path=str(ARTIFACTS / "deliveries-390.png"), full_page=True)
@@ -177,51 +177,58 @@ def test_delivery_empty_rendered_template_has_no_table(mobile_browser):
     context, page = _page(mobile_browser, _delivery_html([]), 390)
     try:
         assert page.locator("#deliveryTable").count() == 0
-        assert "No scheduled deliveries yet" in page.locator("body").inner_text()
+        assert "No scheduled deliveries match these filters." in page.locator("body").inner_text()
     finally:
         context.close()
 
 
-def test_mobile_delivery_enhanced_edit_uses_real_shared_scripts(mobile_browser):
-    import json
+@pytest.mark.parametrize("enhanced", (True, False))
+def test_mobile_delivery_edit_navigation_uses_dedicated_template(mobile_browser, enhanced):
     from django import forms
+    from playwright.sync_api import expect
 
     class EditorForm(forms.Form):
         send_hour = forms.IntegerField(min_value=0, max_value=23, label="Send hour")
 
     row = _delivery_row()
-    row.schedule.pk = 7
-    row.form = EditorForm(initial={"send_hour": 8})
-    saved = {"id": 7, "delivery_revision": 0, "enabled": True, "attach_pdf": False,
-             "freq": "daily", "send_hour": 8, "send_minute": 0, "timezone": "UTC",
-             "owner_name": "Creator", "recipient_summary": "person@example.com"}
-    row.schedule_json = json.dumps(saved)
-    html = _delivery_html([row]).replace("</head>", f"<style>{UI_CSS}</style></head>")
-    context = mobile_browser.new_context(viewport={"width": 320, "height": 820})
+    listing = "/s/acme/studio/deliveries"
+    pages = {
+        listing: _delivery_html([row]),
+        row.edit_url: render_to_string("reports/delivery_form.html", {
+            "form": EditorForm(initial={"send_hour": 8}), "schedule": row.schedule,
+            "report": row.report, "return_to": listing,
+        }),
+    }
+    context = mobile_browser.new_context(viewport={"width": 320, "height": 820}, java_script_enabled=enhanced)
     page = context.new_page()
-    page.route("**/*", lambda route: route.fulfill(body=html, content_type="text/html")
-               if route.request.url == "https://example.test/deliveries" else route.abort())
-    page.goto("https://example.test/deliveries")
+    def respond(route):
+        path = route.request.url.removeprefix("https://example.test")
+        if path not in pages:
+            route.abort()
+            return
+        html = pages[path].replace("</head>", f"<style>{UI_CSS}</style></head>")
+        route.fulfill(body=html, content_type="text/html")
+    page.route("**/*", respond)
+    page.goto("https://example.test" + listing)
     try:
-        page.add_script_tag(content=SETTINGS_FORMS_JS)
-        page.add_script_tag(content=(settings.BASE_DIR / "static/report_delivery.js").read_text(encoding="utf-8"))
-        page.evaluate("ReportDelivery.mountCenter(document)")
-        editor = page.locator("[data-schedule-editor]")
-        assert not editor.locator("form").is_visible()
-        page.locator("[data-toggle-edit]").click()
-        assert editor.locator("form").is_visible()
-        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
-        page.locator("[data-toggle-edit]").click()
-        assert not editor.locator("form").is_visible()
-        page.locator("summary").last.click()
-        field = editor.locator("[name=send_hour]")
+        if enhanced:
+            page.add_script_tag(content=SETTINGS_FORMS_JS)
+            page.add_script_tag(content=(settings.BASE_DIR / "static/report_delivery.js").read_text(encoding="utf-8"))
+            page.evaluate("ReportDelivery.mountCenter(document)")
+        assert page.locator("[data-schedule-editor], [data-toggle-edit]").count() == 0
+        page.get_by_role("link", name="Edit", exact=True).click()
+        expect(page).to_have_url("https://example.test" + row.edit_url)
+        form = page.locator("#delivery-schedule-form")
+        expect(form).to_be_visible()
+        field = form.locator("[name=send_hour]")
+        expect(field).to_have_value("8")
         field.fill("10")
-        page.route("**/schedules/7", lambda route: route.fulfill(json={
-            "ok": True, "message": "Schedule saved.", "schedule": {**saved, "send_hour": 10, "delivery_revision": 1},
-        }))
-        editor.locator("button[type=submit]").click()
-        page.wait_for_function("document.querySelector('[data-field=cadence]').textContent.includes('10:00')")
-        assert field.input_value() == "10" and editor.evaluate("el => el.open")
+        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+        assert field.evaluate("el => getComputedStyle(el).fontSize") == "16px"
+        assert form.get_by_role("button", name="Save delivery", exact=True).evaluate("el => getComputedStyle(el).minHeight") == "44px"
+        page.get_by_role("link", name="Cancel", exact=True).click()
+        expect(page).to_have_url("https://example.test" + listing)
+        assert page.locator("[data-delivery-row]").count() == 1
         assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
     finally:
         context.close()
