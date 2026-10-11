@@ -430,3 +430,22 @@ class TestSharedDeliveryManagement:
         for form in forms:
             for label in re.findall(r'<label[^>]*for="([^"]+)"', form):
                 assert f'id="{label}"' in form
+
+    @pytest.mark.parametrize('access_change', ['deactivated', 'removed'])
+    def test_recipient_cannot_read_historical_addresses(self, access_change, login, viewer, other_viewer, report_row):
+        from apps.studios.models import StudioMembership
+        row = self.create(report_row, other_viewer)
+        row.recipients.add(viewer)
+        row.delivery_accepted_to = [other_viewer.email]
+        row.delivery_failed_to = ['former@private.example']
+        row.save(update_fields=['delivery_accepted_to', 'delivery_failed_to'])
+        if access_change == 'deactivated':
+            other_viewer.is_active = False
+            other_viewer.save(update_fields=['is_active'])
+        else:
+            StudioMembership.objects.filter(user=other_viewer, studio=report_row.studio).delete()
+        url = self.url(report_row, row).rsplit('/', 1)[0]
+        response = login(viewer).get(url)
+        schedule = response.json()['schedules'][0]
+        assert schedule['accepted_to'] == [] and schedule['failed_to'] == []
+        assert not any(person['email'] == other_viewer.email for person in schedule['recipients'])

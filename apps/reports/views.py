@@ -932,6 +932,10 @@ def _schedule_dict(schedule, *, viewer=None, request=None) -> dict:
     next_at = deliveries.next_occurrence(schedule)
     recipients = list(schedule.recipients.all())
     allowed = bulk_can_view_report(recipients, schedule.report)
+    eligible_recipients = [{"id": user.pk, "email": user.email} for user in recipients
+                           if user.is_active and allowed.get(user.pk, False)]
+    summary = _recipient_summary(schedule)
+    confirmation_recipients = " + ".join([summary] + [user["email"] for user in eligible_recipients])
     return {
         "id": schedule.pk,
         "freq": schedule.freq,
@@ -943,24 +947,21 @@ def _schedule_dict(schedule, *, viewer=None, request=None) -> dict:
         "attach_pdf": schedule.attach_pdf,
         "enabled": schedule.enabled,
         "delivery_revision": schedule.delivery_revision or 0,
-        "accepted_to": schedule.delivery_accepted_to or [],
-        "failed_to": schedule.delivery_failed_to or [],
+        "accepted_to": (schedule.delivery_accepted_to or []) if editable else [],
+        "failed_to": (schedule.delivery_failed_to or []) if editable else [],
+        "delete_confirmation": f"Delete schedule #{schedule.pk} for {schedule.report.name or schedule.report.slug}? Recipients: {confirmation_recipients}. Future sends stop; previously accepted email cannot be recalled.",
         "next_at": next_at.isoformat() if next_at else None,
         "last_sent_at": schedule.last_sent_at.isoformat() if schedule.last_sent_at else None,
         "last_attempt_at": schedule.last_attempt_at.isoformat() if schedule.last_attempt_at else None,
         "last_accepted_at": schedule.last_accepted_at.isoformat() if schedule.last_accepted_at else None,
         "delivery_outcome": schedule.delivery_outcome or "Legacy: delivery uncertain" if schedule.last_sent_at else schedule.delivery_outcome or "Not attempted",
         "owner_repair_required": deliveries.owner_repair_required(schedule),
-        "recipients": [
-            {"id": user.pk, "email": user.email}
-            for user in recipients
-            if user.is_active and allowed.get(user.pk, False)
-        ],
+        "recipients": eligible_recipients,
         "recipient_roles": schedule.recipient_roles,
         "recipient_groups": [
             {"id": g.pk, "name": g.name} for g in schedule.recipient_groups.all()
         ],
-        "recipient_summary": _recipient_summary(schedule),
+        "recipient_summary": summary,
         "editable": editable,
         "owner_name": (
             schedule.created_by.display_name or schedule.created_by.email
@@ -1658,7 +1659,7 @@ def manage_deliveries(request):
     if not request.user.is_authenticated:
         return redirect("login")
     orgs = deliveries.managed_orgs(request)
-    instance_access = request.user.is_superuser and getattr(request, "api_key", None) is None
+    instance_access = request.user.is_active and request.user.is_superuser and getattr(request, "api_key", None) is None
     if not orgs and not instance_access:
         raise Http404
     from apps.core.models import InstanceConfig

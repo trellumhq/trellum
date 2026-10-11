@@ -8,7 +8,7 @@
 <p class="muted">{% if manage_deliveries %}Shared scheduled emails across the organizations you administer.{% else %}Every scheduled email you have set up, across every studio you can see.{% endif %} Edit, pause or delete a schedule here.</p>
 </header>
 {% if manage_deliveries %}
-<p class="muted">Pause covers scheduled reports and all AI-alert mail, including owner budget warnings. Alert evaluations continue and use their normal budget. Build failure/recovery, account/security and explicit operator test mail are excluded. Instance pause always wins; resume sends future occurrences only.</p>
+<p class="muted">Pause covers scheduled reports and all AI-alert mail, including owner budget warnings. Alert evaluations continue and use their normal budget. Build failure/recovery, account/security, on-demand personal samples and explicit operator test mail are excluded. Instance pause always wins; resume sends future occurrences only.</p>
 {% for policy in policies %}
 <details class="panel"><summary>{{ policy.name }} — pause and future schedule defaults</summary>
 <form method="post" action="{% url 'manage-deliveries' %}" id="delivery-policy-{{ policy.scope }}" data-settings-form data-settings-save>

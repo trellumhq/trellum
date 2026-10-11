@@ -491,10 +491,8 @@
         var minute = schedule ? schedule.send_minute : 0;
         var weekday = schedule ? schedule.weekday : 0;
         var monthDay = schedule ? schedule.month_day : 1;
-        // New schedule: default to the browser's own zone (what the person
-        // filling the form actually experiences as "9am"), falling back to
-        // the report's configured default, then UTC. Editing an existing
-        // schedule always keeps what it was already set to.
+        // New schedules use organization/instance defaults. Editing keeps
+        // the saved zone; an explicit choice overrides the default.
         var timezone = schedule ? schedule.timezone : (opts.defaultTimezone || 'UTC');
         var attachPdf = schedule ? schedule.attach_pdf : false;
         var enabled = schedule ? schedule.enabled : opts.defaultEnabled !== false;
@@ -1010,6 +1008,7 @@
                 var toggle = row.querySelector('[data-toggle-enable]');
                 toggle.textContent = saved.enabled ? 'Disable' : 'Enable';
                 toggle.form.querySelector('[name="enabled"]').value = saved.enabled ? 'false' : 'true';
+                if (saved.delete_confirmation) row.querySelector('[data-delete-confirm]').dataset.deleteConfirm = saved.delete_confirmation;
             });
         });
         row.querySelector('[data-send-sample]').addEventListener('click', function () {

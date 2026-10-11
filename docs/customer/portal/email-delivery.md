@@ -70,7 +70,7 @@ Admins can pause delivery for an organization; superusers can pause the entire
 instance. This pauses scheduled reports and all AI-alert mail, including owner
 budget warnings. Alert evaluations continue and consume their normal budget;
 paused alerts do not advance cooldown. Instance pause overrides organization
-resume. Build failure/recovery, account/security and explicit operator tests
+resume. Build failure/recovery, account/security, on-demand personal samples and explicit operator tests
 remain outside this pause. Stored schedules stay intact. Resume uses future
 occurrences only and sends no missed-email backlog.
 

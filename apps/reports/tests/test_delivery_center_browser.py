@@ -50,17 +50,19 @@ def test_schedule_save_retains_focus_scroll_neighbor_and_new_draft(center_browse
     page.wait_for_function('document.querySelector("form[id^=delivery-schedule-]").dataset.settingsState === "saving"')
     first.locator('[name="send_hour"]').fill('11')
     saved = dict(rows[0].browser_payload)
-    saved.update(send_hour=10, delivery_revision=1)
+    saved.update(send_hour=10, delivery_revision=1, delete_confirmation='Delete schedule for new-recipient@example.test?')
     pending[0].fulfill(json={'ok': True, 'message': 'Schedule saved.', 'schedule': saved})
     expect(first.locator('[data-settings-dirty-status]')).to_have_text('Schedule saved. Newer changes are still unsaved.')
     assert first.locator('[name="send_hour"]').input_value() == '11'
     assert neighbor.locator('[name="send_hour"]').input_value() == '17'
+    assert page.locator('[data-delete-confirm]').first.get_attribute('data-delete-confirm') == saved['delete_confirmation']
     assert page.evaluate('document === originalDocument')
     assert page.evaluate('scrollY') == position
     assert page.evaluate('document.activeElement.name') == 'send_hour'
 
 
-def test_validation_keeps_draft_and_cancelled_delete_sends_nothing(center_browser):
+@pytest.mark.parametrize('enhanced', [True, False])
+def test_validation_keeps_draft_and_cancelled_delete_sends_nothing(center_browser, enhanced):
     page, rows, user = center_browser
     requests = []
     def fail(route):
@@ -75,6 +77,8 @@ def test_validation_keeps_draft_and_cancelled_delete_sends_nothing(center_browse
     assert form.locator('[name="send_hour"]').input_value() == '10'
     page.on('dialog', lambda dialog: dialog.dismiss())
     delete = page.locator('form[data-delete-confirm]').first
+    if not enhanced:
+        delete.evaluate('form => form.removeAttribute("data-settings-save")')
     assert f'#{rows[0].pk}' in delete.get_attribute('data-delete-confirm')
     delete.evaluate('form => form.requestSubmit()')
     page.wait_for_timeout(50)
