@@ -366,6 +366,15 @@ def test_workspace_visibility_splits_and_single_scroll(open_metric, size):
     assert page.evaluate('''() => { const f = document.getElementById('metWorkspace'), d=f.contentDocument;
         return d.documentElement.scrollWidth <= f.clientWidth + 1 && d.documentElement.scrollHeight <= f.clientHeight + 2;
     }''')
+    page.evaluate("dispatchEvent(new PageTransitionEvent('pagehide', {persisted:true}))")
+    assert page.evaluate('window.activeMetricObservers') == 0
+    page.evaluate("dispatchEvent(new PageTransitionEvent('pageshow', {persisted:true}))")
+    assert page.evaluate('window.activeMetricObservers') == 1
+    page.set_viewport_size({'width': 390 if size[0] > 390 else 1440, 'height': 844})
+    frame.locator('#metric-gross_revenue [data-stack-toggle]').get_by_role('button', name='Platform', exact=True).click()
+    assert page.evaluate('''() => new Promise(resolve => requestAnimationFrame(() => {
+        const f=document.getElementById('metWorkspace'); resolve(f.contentDocument.documentElement.scrollHeight <= f.clientHeight + 2);
+    }))''')
     assert errors == []
 
 

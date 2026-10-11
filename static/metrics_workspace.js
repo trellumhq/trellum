@@ -18,17 +18,28 @@
         } catch (e) { /* The open-report link remains available if the frame cannot load. */ }
     }
     function schedule() { if (!pending) pending = requestAnimationFrame(fit); }
-    frame.addEventListener('load', function () {
+    function mount() {
         if (observer) observer.disconnect();
         try {
             // ResizeObserver runs before paint; deferring it creates one frame of nested scrolling.
             observer = new ResizeObserver(fit);
             observer.observe(frame.contentDocument.body);
+        } catch (e) {}
+        fit();
+    }
+    frame.addEventListener('load', function () {
+        try {
             frame.contentDocument.addEventListener('change', fit);
             frame.contentDocument.addEventListener('click', fit);
         } catch (e) {}
-        fit();
+        mount();
     });
     window.addEventListener('resize', schedule);
-    window.addEventListener('pagehide', function () { if (observer) observer.disconnect(); });
+    window.addEventListener('pagehide', function () {
+        if (observer) observer.disconnect();
+        observer = null;
+        if (pending) cancelAnimationFrame(pending);
+        pending = null;
+    });
+    window.addEventListener('pageshow', function (event) { if (event.persisted) mount(); });
 })();
