@@ -7,17 +7,17 @@ VIEWER gets the same pages read-only. Design: vault
 from __future__ import annotations
 
 import calendar
+from uuid import uuid4
 
 from django.contrib import messages
 from django.core.paginator import Paginator
-from django.db.models import OuterRef, Subquery
+from django.db.models import OuterRef, Q, Subquery
 from django.db import transaction
 from django.http import HttpResponse
 from django.utils import timezone
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
-from apps.alerts.evaluator import evaluate
 from apps.alerts.forms import AlertRuleForm
 from apps.alerts.models import AlertRule, AlertRun
 from apps.core import roles
@@ -114,26 +114,66 @@ def rule_form(request, org_slug, studio_slug, rule_id=None):  # noqa: ARG001
         org=request.org, studio=request.studio, created_by=request.user
     )
     form = AlertRuleForm(request.POST or None, instance=rule, studio=request.studio)
-    if request.method == "POST" and form.is_valid():
+    preview = request.method == "POST" and request.POST.get("action") == "preview"
+    result = None
+    if preview and form.is_valid():
+        from apps.alerts.evaluator import RuleSnapshot, evaluate_snapshot
+
+        draft = form.save(commit=False)
+        draft.org = request.org
+        draft.studio = request.studio
+        draft.created_by = rule.created_by if rule_id else request.user
+        snapshot = RuleSnapshot.from_rule(draft)
+        run = evaluate_snapshot(
+            snapshot, actor=request.user, billing_user=request.user,
+            execution_mode=AlertRun.MODE_TEST,
+            history_namespace=f"editor:{request.user.pk}:{uuid4().hex}",
+        )
+        result = {
+            "condition": run.condition_label,
+            "title": run.title,
+            "message": run.message,
+            "evidence": (run.evidence or {}).get("cited", []),
+            "interpretation": run.interpretation or {},
+            "simulation": run.simulated_disposition,
+            "simulation_reason": run.simulated_reason,
+            "cost": str(run.cost_usd) if run.cost_usd is not None else None,
+            "error": run.error,
+            "status": run.get_status_display(),
+        }
+        if is_settings_request(request):
+            return settings_success(request, "Draft evaluated. No delivery was attempted.", result=result)
+    elif request.method == "POST" and form.is_valid():
         form.save()
         audit(request, "alert.update" if rule_id else "alert.create", target=rule, rule_id=rule.pk)
         if rule_id and is_settings_request(request):
             return settings_success(request, f"Saved “{rule.name}”.")
         messages.success(request, f"Saved “{rule.name}”.")
         return redirect(_prefix(request))
-    if request.method == "POST" and rule_id and is_settings_request(request):
+    if request.method == "POST" and is_settings_request(request) and (rule_id or preview):
         return settings_error(request, "Check the highlighted fields.", form=form)
-    return render(request, "alerts/alert_form.html", _context(request, form=form, rule=rule))
+    return render(request, "alerts/alert_form.html", _context(request, form=form, rule=rule, result=result))
 
 
 @require_studio_role(roles.VIEWER)
 def rule_detail(request, org_slug, studio_slug, rule_id):  # noqa: ARG001
     rule = _rule(request, rule_id)
-    page = Paginator(rule.runs.all(), RUNS_PER_PAGE).get_page(request.GET.get("page"))
-    new = request.GET.get("run", "")
+    runs = rule.runs.all()
+    requested = request.GET.get("run", "")
+    try:
+        run_id = int(requested) if requested.isdecimal() else 0
+    except ValueError:
+        run_id = 0
+    target = runs.filter(pk=run_id).first() if 0 < run_id < 2**63 else None
+    page_number = request.GET.get("page")
+    if target is not None and page_number is None:
+        before = runs.filter(Q(started_at__gt=target.started_at) |
+                             Q(started_at=target.started_at, pk__gt=target.pk)).count()
+        page_number = before // RUNS_PER_PAGE + 1
+    page = Paginator(runs, RUNS_PER_PAGE).get_page(page_number)
     return render(request, "alerts/alert_detail.html", _context(
         request, rule=rule, page=page, trigger=_trigger_words(rule),
-        recipients=_recipient_summary(rule), highlight=int(new) if new.isdigit() else None,
+        recipients=_recipient_summary(rule), highlight=target.pk if target else None,
     ))
 
 
@@ -141,6 +181,7 @@ def rule_detail(request, org_slug, studio_slug, rule_id):  # noqa: ARG001
 @require_POST
 def rule_test(request, org_slug, studio_slug, rule_id):  # noqa: ARG001
     from apps.assistant import llm
+    from apps.alerts.evaluator import RuleSnapshot, evaluate_snapshot
 
     rule = _rule(request, rule_id)
     ok, why = llm.is_available(request.org)
@@ -149,7 +190,11 @@ def rule_test(request, org_slug, studio_slug, rule_id):  # noqa: ARG001
         return redirect(f"{_prefix(request)}/{rule.pk}")
     # Synchronous on purpose: bounded by the evaluator's turn cap and the
     # assistant deadline, and the answer is what the person is waiting for.
-    run = evaluate(rule, deliver=False)
+    run = evaluate_snapshot(
+        RuleSnapshot.from_rule(rule), actor=request.user, billing_user=request.user,
+        execution_mode=AlertRun.MODE_TEST,
+        history_namespace=f"editor:{request.user.pk}:{uuid4().hex}",
+    )
     messages.info(request, "Test run — nothing was sent.")
     return redirect(f"{_prefix(request)}/{rule.pk}?run={run.pk}")
 

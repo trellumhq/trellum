@@ -153,6 +153,27 @@ class TestForm:
 
 
 class TestRunLog:
+    def test_run_link_selects_older_page_and_ignores_foreign_run(self, login, viewer, rule, prefix):
+        from datetime import timedelta
+
+        now = timezone.now()
+        old = AlertRun.objects.create(rule=rule, started_at=now - timedelta(days=40), title="Target old run")
+        for offset in range(30):
+            AlertRun.objects.create(rule=rule, started_at=now - timedelta(days=offset), title=f"Run {offset}")
+        foreign_rule = AlertRule.objects.create(
+            org=rule.org, studio=rule.studio, report=rule.report,
+            name="Other rule", created_by=rule.created_by,
+        )
+        foreign = AlertRun.objects.create(rule=foreign_rule, title="Foreign secret")
+        client = login(viewer)
+        response = client.get(f"{prefix}/{rule.pk}?run={old.pk}#run-{old.pk}")
+        assert response.status_code == 200
+        assert response.context["page"].number == 2
+        assert old in response.context["page"]
+        assert f'class="al-run is-new" id="run-{old.pk}"' in response.content.decode()
+        unrelated = client.get(f"{prefix}/{rule.pk}?run={foreign.pk}")
+        assert unrelated.status_code == 200 and "Foreign secret" not in unrelated.content.decode()
+
     def test_null_legacy_run_renders_explicit_uncertainty(self, login, viewer, rule, prefix):
         AlertRun.objects.create(
             rule=rule, decision="alert", delivered_to=["historical@test.example"],
@@ -221,6 +242,17 @@ class TestRunLog:
 
 
 class TestTestNow:
+    def test_test_now_bills_requesting_developer_not_rule_owner(self, login, make_user, grant_studio,
+                                                               rule, prefix, fake_llm):
+        editor = make_user("editor@demo.example", org=rule.org)
+        grant_studio(editor, rule.studio, roles.DEVELOPER)
+        fake_llm(decide(True))
+        response = login(editor).post(f"{prefix}/{rule.pk}/test")
+        run = AlertRun.objects.get(rule=rule, execution_mode=AlertRun.MODE_TEST)
+        assert response.status_code == 302 and response["Location"].endswith(f"?run={run.pk}")
+        assert run.history_namespace.startswith(f"editor:{editor.pk}:")
+        assert run.cost_usd is not None and mail.outbox == []
+
     def test_dry_run_records_and_sends_nothing(self, login, owner, rule, prefix, fake_llm):
         fake_llm(decide(True))
         c = login(owner)

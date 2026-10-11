@@ -46,7 +46,7 @@
   <p class="al-instructions">{{ rule.instructions|default:"Tell me if anything looks off" }}</p>
   {% if rule.live_state.claim %}
   <div class="ui-notice warn" role="status">
-    Delivery outcome uncertain / review required: <a href="#run-{{ rule.live_state.claim.run_id }}">run {{ rule.live_state.claim.run_id }}</a>.
+    Delivery outcome uncertain / review required: <a href="?run={{ rule.live_state.claim.run_id }}#run-{{ rule.live_state.claim.run_id }}">run {{ rule.live_state.claim.run_id }}</a>.
     This delivery may still be running. Automatic delivery is held until its outcome is confirmed; recovery does not release an unresolved claim.
     {% if can_edit %}
     <p>Check the mail provider and evaluation outcome before resolving. These actions send no mail.</p>

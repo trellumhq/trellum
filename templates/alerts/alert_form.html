@@ -16,7 +16,7 @@
 </header>
 
 <div class="panel">
-<form method="post" id="alertForm"{% if rule.pk %} data-settings-form data-settings-save{% endif %}>
+<form method="post" id="alertForm" data-alert-editor{% if rule.pk %} data-settings-form data-settings-save{% endif %}>
   {% csrf_token %}
   {{ form.non_field_errors }}
   <div class="ui-form-grid">
@@ -96,12 +96,28 @@
     </div>
     <div class="ui-form-actions">
       <button class="ui-btn primary" type="submit">{% if rule.pk %}Save{% else %}Create alert{% endif %}</button>
+      <button class="ui-btn" type="submit" name="action" value="preview" data-alert-preview>Test draft</button>
       <a class="ui-btn ghost" href="{{ prefix }}">Cancel</a>
-      <span class="muted">Evaluations are billed to {% if rule.pk %}{{ rule.created_by.email|default:"the rule's owner" }}{% else %}your{% endif %} assistant budget.</span>
+      <span class="muted">Draft tests are billed to you. Saving keeps the rule's current owner. Preview history is isolated from live history; no mail or budget warning is sent.</span>
     </div>
   </div>
 </form>
+<section id="alertPreview" class="panel" aria-live="polite" aria-busy="false"{% if not result %} hidden{% endif %}>
+  {% if result %}
+  <p class="muted">Preview only. No delivery or budget warning was sent.</p>
+  <h2>Draft test · {{ result.condition }}</h2>
+  {% if result.title %}<p><strong>{{ result.title }}</strong></p>{% endif %}
+  {% if result.message %}<p>{{ result.message }}</p>{% endif %}
+  {% if result.evidence %}<h3>Evidence</h3><ul>{% for item in result.evidence %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}
+  {% if result.interpretation %}<p>Window: {{ result.interpretation.window }} · Timezone: {{ result.interpretation.timezone }} · Scope: {{ result.interpretation.scope }} · Freshness: {{ result.interpretation.freshness }}</p>{% endif %}
+  <p>Delivery simulation: {{ result.simulation }} · {{ result.simulation_reason }}</p>
+  <p>{% if result.cost is None %}Cost unavailable{% else %}Cost ${{ result.cost }}{% endif %} · {{ result.status }}</p>
+  {% if result.error %}<p role="alert">{{ result.error }}</p>{% endif %}
+  {% endif %}
+</section>
 </div>
+{% load static %}
+<script src="{% static 'alert-editor.js' %}"></script>
 <script>
 /* Show the schedule fields only when the trigger is a schedule, and only the
    ones the frequency uses. Progressive: without scripting every field shows. */

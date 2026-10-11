@@ -9,6 +9,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Add in-place alert draft tests with isolated preview results billed to the
+  requesting developer.
 - Add shared delivery management for organization admins and instance
   superusers, with owner repair, scoped pause, future schedule defaults and
   transport outcome reporting.

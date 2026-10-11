@@ -3,10 +3,10 @@
 You rarely know what to alert on until you need to be alerted. A threshold
 written in advance is a guess; the number that matters this week was not
 the one anyone thought of last month. So an alert here is not a threshold.
-It is **a report, plain-language instructions and a cadence** — and the AI
-assistant decides. Each time the rule runs, the assistant looks at the
-report's data, compares it with what it saw last time, and either writes an
-alert or records why it stayed quiet.
+It is **a report, plain-language instructions and a cadence**. Each time the
+rule runs, the assistant looks at the report's data and decides whether the
+requested condition is met, not met or unknown. Notification policy and
+cooldown then decide whether a met condition is eligible for mail.
 
 Open **Alerts** under **Studio work** in the console sidebar. Studio developers and admins
 create and edit them; viewers see the same rules and their run logs,
@@ -125,14 +125,21 @@ rule is in cooldown, because tuning instructions is what it is for. Use it
 after writing or changing a rule, before waiting for the next build.
 The test also shows a read-only policy simulation; it never claims a production
 delivery or changes a live episode. A simulation is not a delivery result.
+On the create and edit forms, **Test draft** evaluates the current unsaved
+fields in place. It does not save the rule, send mail or send a budget warning.
+The requesting developer's assistant budget pays for that test; preview runs
+use isolated history. Saving a rule keeps its existing creator and live
+evaluations remain billed to that creator. When testing an existing rule, the
+preview may add an isolated test run and updates only that rule's last-test
+timestamp.
 
 ## What it costs, and who pays
 
-One evaluation is one assistant turn with a small cap on how many queries
-it may run, so it costs cents, not dollars; an after-build rule runs once
-per build, which the organization already pays for. Spend is billed to the
-**assistant budget of the person who created the rule** — the same
-per-user budget the assistant panel uses. If that budget is exhausted, the
-run is recorded as *Skipped: budget*, the owner gets one email, and the
-rule resumes on its own when the budget allows. Deleting the owner's account
-parks the rule with an error until someone else saves it.
+An evaluation has a small cap on how many queries it may run; the run log
+records its actual cost. Live evaluations are billed to the **assistant budget
+of the person who created the rule**, the same per-user budget the assistant
+panel uses. Draft tests are billed to the developer who requested them. If a
+live evaluation finds the creator's budget exhausted, the run is recorded as
+*Skipped: budget*, the owner gets one email, and the rule resumes on its own
+when the budget allows. Draft tests send no budget warning. A rule without an
+owner cannot be evaluated live.
