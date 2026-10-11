@@ -110,7 +110,7 @@
   {% if result.message %}<p>{{ result.message }}</p>{% endif %}
   {% if result.evidence %}<h3>Evidence</h3><ul>{% for item in result.evidence %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}
   {% if result.interpretation %}<p>Window: {{ result.interpretation.window }} · Timezone: {{ result.interpretation.timezone }} · Scope: {{ result.interpretation.scope }} · Freshness: {{ result.interpretation.freshness }}</p>{% endif %}
-  <p>Delivery simulation: {{ result.simulation }} · {{ result.simulation_reason }}</p>
+  <p>Delivery simulation: {{ result.simulation|default:"Not evaluated" }}{% if result.simulation_reason %} · {{ result.simulation_reason }}{% endif %}</p>
   <p>{% if result.cost is None %}Cost unavailable{% else %}Cost ${{ result.cost }}{% endif %} · {{ result.status }}</p>
   {% if result.error %}<p role="alert">{{ result.error }}</p>{% endif %}
   {% endif %}

@@ -8,10 +8,18 @@
   var interaction = 0, interactionAtStart = 0, previewRunning = false;
 
   document.addEventListener('focusin', function (event) {
-    if (previewRunning && event.target !== button) interaction++;
+    if (event.target !== button && event.target !== document.body) {
+      if (previewRunning) interaction++;
+    }
   });
   ['wheel', 'touchstart'].forEach(function (type) {
     document.addEventListener(type, function () { if (previewRunning) interaction++; }, { passive: true });
+  });
+  document.addEventListener('pointerdown', function (event) {
+    if (previewRunning && event.target !== button) interaction++;
+  });
+  document.addEventListener('keydown', function (event) {
+    if (previewRunning && ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].indexOf(event.key) >= 0) interaction++;
   });
 
   button.addEventListener('pointerdown', function () {
@@ -31,6 +39,8 @@
     if (controller) controller.abort();
     controller = null;
     previewRunning = false;
+    priorFocus = null;
+    priorPosition = null;
     button.disabled = false;
     result.setAttribute('aria-busy', 'false');
     if (clearResult) {
@@ -110,15 +120,19 @@
     status(data.message || 'Draft tested.');
   }
   form.addEventListener('input', invalidate);
-  form.addEventListener('change', invalidate);
+  form.addEventListener('change', function () { if (!priorPosition) invalidate(); });
   form.addEventListener('submit', function (event) {
     if (event.submitter !== button) {
-      cancelPending('Preview canceled because saving started.', true);
+      cancelPending('Preview result discarded because saving started.', true);
       clearErrors();
       return;
     }
     event.preventDefault();
     if (controller) controller.abort();
+    if (!priorPosition) {
+      priorFocus = document.activeElement;
+      priorPosition = { x: scrollX, y: scrollY };
+    }
     var requestVersion = ++version;
     var active = new AbortController();
     controller = active;
@@ -154,11 +168,13 @@
         previewRunning = false;
         button.disabled = false;
         result.setAttribute('aria-busy', 'false');
-        var positionUnchanged = priorPosition && scrollX === priorPosition.x && scrollY === priorPosition.y;
         var focusLost = document.activeElement === document.body || document.activeElement === button;
-        if (interaction === interactionAtStart && positionUnchanged && focusLost) {
+        if (interaction === interactionAtStart) {
+          if (focusLost) {
           var focus = priorFocus && priorFocus.isConnected && priorFocus !== document.body ? priorFocus : button;
           focus.focus({ preventScroll: true });
+          }
+          if (priorPosition) window.scrollTo(priorPosition.x, priorPosition.y);
         }
         priorFocus = null;
         priorPosition = null;

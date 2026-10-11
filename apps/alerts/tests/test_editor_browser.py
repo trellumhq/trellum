@@ -189,6 +189,34 @@ def test_preview_button_preserves_focus_scroll_and_sends_once(rule, login):
         browser.close()
 
 
+def test_keyboard_preview_restores_focus_after_button_is_reenabled(rule, login):
+    url = f"/s/{rule.org.slug}/{rule.studio.slug}/alerts/{rule.pk}/edit"
+    html = login(rule.created_by).get(url).content.decode()
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.route("**/*", lambda route: route.abort())
+        page.route("http://example.test" + url, lambda route: route.fulfill(body=html, content_type="text/html"))
+        page.goto("http://example.test" + url)
+        page.add_script_tag(content=(ROOT / "static/settings-forms.js").read_text(encoding="utf-8"))
+        page.add_script_tag(content=(ROOT / "static/alert-editor.js").read_text(encoding="utf-8"))
+        pending = []
+        page.route("http://example.test" + url, lambda route: pending.append(route))
+        button = page.locator("[data-alert-preview]")
+        button.focus()
+        page.keyboard.press("Enter")
+        page.wait_for_timeout(40)
+        assert len(pending) == 1
+        pending[0].fulfill(json={"ok": True, "message": "Test complete", "result": {
+            "condition": "Met", "title": "Keyboard result", "evidence": [],
+            "interpretation": {"window": "today", "timezone": "UTC", "scope": "sales", "freshness": "fresh"},
+            "simulation": "would_notify", "simulation_reason": "Eligible", "cost": "0.01", "status": "OK"
+        }})
+        expect(button).to_be_enabled()
+        assert page.evaluate("document.activeElement === document.querySelector('[data-alert-preview]')")
+        browser.close()
+
+
 def test_preview_validation_and_network_errors_keep_draft(rule, login):
     url = f"/s/{rule.org.slug}/{rule.studio.slug}/alerts/{rule.pk}/edit"
     html = login(rule.created_by).get(url).content.decode()
