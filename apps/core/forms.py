@@ -97,25 +97,33 @@ class InstanceSettingsForm(forms.ModelForm):
         return row
 
 
-class IdentitySettingsForm(InstanceSettingsForm):
+class InstanceSettingsSectionForm(InstanceSettingsForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields = {name: self.fields[name] for name in self.Meta.fields}
+
+
+class IdentitySettingsForm(InstanceSettingsSectionForm):
     class Meta(InstanceSettingsForm.Meta):
-        fields = ["instance_name"]
+        fields = ("instance_name",)
 
 
-class NetworkingSettingsForm(InstanceSettingsForm):
+class NetworkingSettingsForm(InstanceSettingsSectionForm):
     class Meta(InstanceSettingsForm.Meta):
-        fields = ["public_base_url"]
+        fields = ("public_base_url",)
 
 
-class EmailSettingsForm(InstanceSettingsForm):
+class EmailSettingsForm(InstanceSettingsSectionForm):
     class Meta(InstanceSettingsForm.Meta):
-        fields = ["email_host", "email_port", "email_use_tls", "email_host_user",
-                  "email_host_password", "email_from"]
+        fields = (
+            "email_host", "email_port", "email_use_tls", "email_host_user",
+            "email_host_password", "email_from",
+        )
 
 
-class LimitsSettingsForm(InstanceSettingsForm):
+class LimitsSettingsForm(InstanceSettingsSectionForm):
     class Meta(InstanceSettingsForm.Meta):
-        fields = ["max_upload_mb"]
+        fields = ("max_upload_mb",)
 
 
 class SecuritySettingsForm(forms.ModelForm):

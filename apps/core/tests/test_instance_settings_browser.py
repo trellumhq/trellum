@@ -61,6 +61,9 @@ def test_moved_forms_keep_drafts_focus_scroll_and_newer_edits(engine, width, log
             page.screenshot(path=output / f"settings-{width}.png", full_page=True)
         page.evaluate("window.documentIdentity = document")
         page.locator("#id_instance_name").fill("Browser saved")
+        # A malformed, unsaved limits draft must neither block nor join Identity save.
+        page.locator("#id_max_upload_mb").fill("-1")
+        expect(page.locator("#limits-settings-form")).to_have_class("is-dirty")
         page.locator("#id_session_idle_minutes").fill("81")
         page.locator("#id_session_idle_minutes").focus()
         position = page.evaluate("scrollY")
@@ -69,6 +72,8 @@ def test_moved_forms_keep_drafts_focus_scroll_and_newer_edits(engine, width, log
         complete_save()
         expect(page.locator("#instance-settings-form")).to_have_attribute("data-settings-state", "saved")
         expect(page.locator("#id_session_idle_minutes")).to_have_value("81")
+        expect(page.locator("#id_max_upload_mb")).to_have_value("-1")
+        expect(page.locator("#limits-settings-form")).to_have_class("is-dirty")
         assert page.locator("#id_session_idle_minutes").evaluate("e => e === document.activeElement")
         assert abs(page.evaluate("scrollY") - position) <= 2
         assert page.evaluate("document === window.documentIdentity")

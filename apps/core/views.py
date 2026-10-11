@@ -158,11 +158,19 @@ def instance_settings(request):
     from django.urls import reverse
 
     from apps.core.audit import audit
-    from apps.core.forms import (
-        EmailSettingsForm, IdentitySettingsForm, InstanceSettingsForm,
-        LimitsSettingsForm, NetworkingSettingsForm, SecuritySettingsForm,
+    from apps.core.form_responses import (
+        is_settings_request,
+        settings_error,
+        settings_success,
     )
-    from apps.core.form_responses import is_settings_request, settings_error, settings_success
+    from apps.core.forms import (
+        EmailSettingsForm,
+        IdentitySettingsForm,
+        InstanceSettingsForm,
+        LimitsSettingsForm,
+        NetworkingSettingsForm,
+        SecuritySettingsForm,
+    )
     from apps.core.models import EmailApiConnection, InstanceConfig
 
     gate = _require_email_operator(request)

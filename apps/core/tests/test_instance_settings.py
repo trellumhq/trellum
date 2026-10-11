@@ -135,11 +135,12 @@ def test_native_invalid_smtp_draft_does_not_change_saved_route_summary(login, su
 
 
 @pytest.mark.parametrize("action,fields", [
-    ("identity_settings", {"instance_name": "Identity only", "max_upload_mb": "91"}),
-    ("networking_settings", {"public_base_url": "https://changed.example", "instance_name": "Injected"}),
-    ("limits_settings", {"max_upload_mb": "91", "email_port": "2525"}),
+    ("identity_settings", {"instance_name": "Identity only", "max_upload_mb": "-1"}),
+    ("networking_settings", {"public_base_url": "https://changed.example", "instance_name": ""}),
+    ("limits_settings", {"max_upload_mb": "91", "email_port": "not-a-port"}),
     ("email_settings", {"email_host": "smtp.example", "email_from": "mail@example.com",
-                         "email_port": "2525", "max_upload_mb": "91"}),
+                         "email_port": "2525", "max_upload_mb": "-1",
+                         "public_base_url": "not a URL"}),
 ])
 @pytest.mark.parametrize("enhanced", [False, True])
 def test_settings_sections_save_only_their_allowlisted_fields(login, superuser, action, fields, enhanced):
@@ -155,6 +156,15 @@ def test_settings_sections_save_only_their_allowlisted_fields(login, superuser, 
     response = login(superuser).post("/instance/settings", {"action": action, **fields},
                                     **(ENHANCED if enhanced else {}))
     assert response.status_code == (200 if enhanced else 302)
+    if enhanced:
+        expected_fields = {
+            "identity_settings": {"instance_name"},
+            "networking_settings": {"public_base_url"},
+            "limits_settings": {"max_upload_mb"},
+            "email_settings": {"email_host", "email_port", "email_use_tls", "email_host_user",
+                               "email_from"},
+        }[action]
+        assert set(response.json()["values"]) == expected_fields
     config.refresh_from_db()
     if action == "identity_settings":
         assert config.instance_name == "Identity only"
@@ -169,6 +179,25 @@ def test_settings_sections_save_only_their_allowlisted_fields(login, superuser, 
         assert config.email_host == "smtp.example"
         assert config.email_port == 2525
         assert config.max_upload_mb == 42
+
+
+def test_instance_section_forms_expose_only_their_fields():
+    from apps.core.forms import (
+        EmailSettingsForm,
+        IdentitySettingsForm,
+        LimitsSettingsForm,
+        NetworkingSettingsForm,
+    )
+
+    expected = {
+        IdentitySettingsForm: {"instance_name"},
+        NetworkingSettingsForm: {"public_base_url"},
+        EmailSettingsForm: {"email_host", "email_port", "email_use_tls", "email_host_user",
+                            "email_host_password", "email_from"},
+        LimitsSettingsForm: {"max_upload_mb"},
+    }
+    for form_type, fields in expected.items():
+        assert set(form_type().fields) == fields
 
 
 def test_instance_settings_render_distinct_sections_and_write_only_smtp(login, superuser):
