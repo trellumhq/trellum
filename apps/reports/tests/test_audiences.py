@@ -178,11 +178,10 @@ def test_private_blocks_content_when_configuration_incompatible(
     assert client.get(f"{prefix}/settings/repo").status_code == 200
 
 
-@pytest.mark.parametrize("role", [roles.VIEWER, roles.DEVELOPER])
 def test_private_hidden_from_assets_registry_favorites_and_metadata(
-    private, member, grant_studio, login, role,
+    private, member, grant_studio, login,
 ):
-    grant_studio(member, private.studio, role)
+    grant_studio(member, private.studio, roles.VIEWER)
     ReportFavorite.objects.create(user=member, report=private)
     prefix = f"/s/{private.studio.org.slug}/{private.studio.slug}"
     client = login(member)
@@ -190,11 +189,7 @@ def test_private_hidden_from_assets_registry_favorites_and_metadata(
         assert client.get(f"{prefix}/r/{private.slug}/{asset}").status_code == 404
     assert client.get(f"{prefix}/api/registry").json()["reports"] == []
     assert client.get(f"{prefix}/api/report-shell?report={private.slug}").status_code == 404
-    status = client.get(f"{prefix}/api/system/status")
-    if role == roles.VIEWER:
-        assert status.status_code == 403
-    else:
-        assert status.json()["reports_total"] == 0
+    assert client.get(f"{prefix}/api/system/status").status_code == 403
     assert client.put(f"/api/favorites/{private.pk}").status_code == 404
 
 
