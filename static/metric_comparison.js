@@ -24,6 +24,7 @@
         history.pushState(entry, '', url.href);
     }
     function fit() {
+        if (fitRequest !== null) cancelAnimationFrame(fitRequest);
         fitRequest = null;
         frames.forEach(function (item) {
             if (!item.ready || !item.frame.isConnected) return;
@@ -141,7 +142,8 @@
         item.loading.disconnect(); clearTimeout(item.timeout);
         item.frame.style.visibility = '';
         item.frame.dataset.ready = '1';
-        item.resize = new ResizeObserver(scheduleFit); item.resize.observe(doc.body);
+        // Fit before paint: another animation frame briefly scrolls a new legend.
+        item.resize = new ResizeObserver(fit); item.resize.observe(doc.body);
         section.addEventListener('click', function (event) {
             if (event.target.closest('[data-stack-toggle] .fw-toggle-btn')) item.missingSplit = false;
         });

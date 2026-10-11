@@ -276,3 +276,43 @@ def test_snapshot_dates_are_truthful_and_persisted_pageshow_resumes_size(open_co
     assert actual.evaluate("Object.values(window._chartInstances).find(c => c.canvas.offsetHeight > 0).data.labels") == before
     assert actual.evaluate("document.documentElement.scrollHeight <= innerHeight + 2")
     assert errors == []
+
+
+@pytest.mark.parametrize("width", [1440, 1024, 390])
+def test_repeated_splits_and_dates_fit_generated_charts(open_comparison, width):
+    page, errors = open_comparison(width=width)
+    ready(page)
+    page.wait_for_timeout(150)
+    # A settled assertion misses the scrollbar painted during a legend rebuild.
+    page.evaluate("""() => {
+        window.comparisonResizeOverflow = [];
+        window.comparisonResizeObserver = new ResizeObserver(() => {
+            document.querySelectorAll('iframe').forEach(f => {
+                const overflow = f.contentDocument.documentElement.scrollHeight - f.clientHeight;
+                if (overflow > 2) comparisonResizeOverflow.push(overflow);
+            });
+        });
+        document.querySelectorAll('iframe').forEach(f => comparisonResizeObserver.observe(f.contentDocument.body));
+    }""")
+    heights_by_split = {}
+    for iteration, split in enumerate(["Platform", "Region", "Total"] * 3):
+        frame(page, "a").get_by_role("button", name=split, exact=True).click()
+        frame(page, "b").get_by_role("button", name=split, exact=True).click()
+        page.locator('#mcFrom').fill("2026-09-12" if iteration % 2 else "2026-09-01")
+        page.locator('#mcTo').fill("2026-09-24" if iteration % 2 else "2026-10-10")
+        page.get_by_role("button", name="Apply dates to both").click()
+        page.wait_for_timeout(150)
+        geometry = page.locator('iframe').evaluate_all("""frames => frames.map(f => {
+            const d = f.contentDocument;
+            return {frameHeight: f.clientHeight, bodyHeight: d.body.scrollHeight,
+                innerOverflow: d.documentElement.scrollHeight - f.clientHeight,
+                visibleScrollers: [...d.querySelectorAll('*')].filter(el =>
+                    el.clientHeight > 0 && el.scrollHeight > el.clientHeight + 2 &&
+                    ['auto', 'scroll'].includes(d.defaultView.getComputedStyle(el).overflowY))
+                    .map(el => ({tag: el.tagName, cls: el.className, height: el.clientHeight, scroll: el.scrollHeight}))};
+        })""")
+        assert all(g["innerOverflow"] <= 2 and not g["visibleScrollers"] for g in geometry), (split, geometry)
+        heights = [g["frameHeight"] for g in geometry]
+        assert heights == heights_by_split.setdefault(split, heights), (split, geometry)
+    assert page.evaluate("comparisonResizeOverflow") == []
+    assert errors == []
