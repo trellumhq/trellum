@@ -50,6 +50,16 @@ def _check_metrics(
     load = load_metrics_result()
     registry = load.metrics
 
+    # Visibility controls and focused URLs both depend on the metric anchor.
+    from trellum.metrics_report import _MetricBlock
+    for comp, sec in comps:
+        if isinstance(comp, _MetricBlock):
+            claims = [claim for child in comp.children for claim in getattr(child, "kpis", [])
+                      if isinstance(claim, dict) and claim.get("metric")]
+            if len(claims) != 1 or comp.anchor != f"metric-{claims[0]['metric']}":
+                result.fail("metric-workspace-anchor", "A workspace block must anchor its single metric claim.",
+                            component="Section", section=sec)
+
     # ── metrics-yaml-schema: the file's own structural problems ─────────
     # Computed once by the loader (duplicate ids, bad slugs, unknown
     # format/agg, ratio missing parts as FAIL; missing label/description as

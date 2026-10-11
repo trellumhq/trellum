@@ -193,6 +193,31 @@ class TestMetricsPageView:
         assert "Gross Revenue" in body
         assert "sum(total_revenue)" in body
 
+    def test_built_report_is_the_default_single_workspace(
+        self, studio_tree, write_metrics_yaml, write_report, write_meta, member, grant_studio, login
+    ):
+        write_metrics_yaml([GROSS_REVENUE])
+        sync_studio_metrics(studio_tree)
+        write_report(**GENERATED_METRICS_REPORT)
+        sync_studio_registry(studio_tree)
+        write_meta("metrics", last_run=_now_iso(), metrics_used=["gross_revenue"])
+        grant_studio(member, studio_tree, roles.VIEWER)
+        body = login(member).get(self._url(studio_tree)).content.decode()
+        assert body.count('<iframe') == 1
+        assert '?workspace=1" title="Metrics chart workspace"' in body
+        assert '<details class="met-definitions" >' in body
+        assert 'Metric definitions and report usage' in body
+
+    def test_no_build_keeps_definitions_open(
+        self, studio_tree, write_metrics_yaml, member, grant_studio, login
+    ):
+        write_metrics_yaml([GROSS_REVENUE])
+        sync_studio_metrics(studio_tree)
+        grant_studio(member, studio_tree, roles.VIEWER)
+        body = login(member).get(self._url(studio_tree)).content.decode()
+        assert 'id="metWorkspace"' not in body
+        assert '<details class="met-definitions" open>' in body
+
     def test_metrics_catalog_is_available_to_viewers(
         self, studio_tree, write_metrics_yaml, member, grant_studio, login
     ):

@@ -1,7 +1,15 @@
-# Metrics catalog
+# Metrics workspace
 
-The **Metrics** page in a studio collects the business metrics declared in its
-repository's `metrics.yaml`. It shows each metric's label, identifier,
+The **Metrics** page in a studio shows the generated metrics report inline:
+one chart after another, sorted by first tag (category) and then label. Each
+chart keeps its own split controls, and the date range applies to all time
+datasets. Use **Show / hide metrics** to focus on a few charts; this browser
+remembers your choices for this report. **Show all** restores every chart.
+Hover over a time observation to draw a guide at that same time on other
+visible charts that contain it. A missing time observation has no guide, and
+charts without a time axis do not participate.
+
+Expand **Metric definitions and report usage** to read each metric's identifier,
 description, aggregation or ratio specification, and the reports that claim it.
 The same file is used by the standalone framework; see the
 [framework metric guide](https://github.com/trellumhq/trellum/tree/main/trellum#data-layer)
@@ -15,12 +23,16 @@ or unverified definitions **stale**. A changed metric definition does not
 rewrite a report's existing output; rebuild the report to bring its claim up
 to date.
 
-The catalog can show a sparkline and open the generated metrics report's chart
-for a metric when that report has been built and the metric has a supported
-aggregation. Trellum generates this report from `metrics.yaml`; it is omitted
-from the regular report-card list. The catalog explains when a metric is
+The workspace uses one generated report, so charts share dates without loading
+a separate report for each metric. Trellum generates it from `metrics.yaml`;
+it is omitted from the regular report-card list. **Open metric page** retains
+the current date and split URL state for a focused view. Definitions explain when a metric is
 descriptive only, is not bound to a dataset, or needs its generated report
-built.
+built. When the generated report is not yet built, definitions stay open.
+For metrics with `time_agg: last`, the workspace shows the trend and explains
+that the latest KPI total is a build-time snapshot. That static total is
+omitted from the workspace because it does not follow selected dates; the
+focused metric page still shows it.
 
 Studio members with viewer access can read the catalog. It is available to
 members who can see the full studio; it does not reveal definitions or report

@@ -28,15 +28,18 @@ def generated_metrics(tmp_path_factory):
     project = tmp_path_factory.mktemp("metric-detail")
     metric = {"name": "gross_revenue", "label": "Gross Revenue", "agg": "sum",
               "column": "revenue", "format": "currency", "dataset": "daily",
-              "description": "Synthetic daily revenue for metric browser interactions."}
+              "description": "Synthetic daily revenue for metric browser interactions.", "tags": ["revenue"]}
     (project / "metrics.yaml").write_text(yaml.safe_dump({
         "version": 1,
         "datasets": {"daily": {"provider": "fixture:daily", "dimensions": ["platform", "region"],
                                "time": {"column": "event_date", "grain": "day"}},
-                     "snapshot": {"provider": "fixture:snapshot", "dimensions": ["platform"], "time": "none"}},
+                     "snapshot": {"provider": "fixture:snapshot", "dimensions": ["platform"], "time": "none"},
+                     "orders": {"provider": "fixture:orders", "dimensions": ["platform"],
+                                "time": {"column": "order_date", "grain": "day"}}},
         "metrics": [metric, {**metric, "name": "net_revenue", "label": "Net Revenue"},
-                    {**metric, "name": "balance", "label": "Balance", "time_agg": "last"},
-                    {**metric, "name": "inventory", "label": "Inventory", "dataset": "snapshot"}],
+                    {**metric, "name": "balance", "label": "Balance", "time_agg": "last", "tags": ["finance"]},
+                    {**metric, "name": "inventory", "label": "Inventory", "dataset": "snapshot"},
+                    {**metric, "name": "orders", "label": "Orders", "dataset": "orders", "tags": ["usage"]}],
     }), encoding="utf-8")
     rows = pd.DataFrame([
         {"event_date": day.strftime("%Y-%m-%d"), "platform": f"Platform {i}: a long series label",
@@ -56,7 +59,9 @@ def generated_metrics(tmp_path_factory):
         ids = []
         for output in ("output", "rebuilt"):
             ctx = ReportContext(config, "metrics", str(project / output))
-            ctx.metrics = lambda *args, **kwargs: rows.copy()
+            ctx.metrics = lambda ids, **kwargs: (
+                rows[rows.event_date.isin(sorted(rows.event_date.unique())[::2])]
+                .rename(columns={"event_date": "order_date"}).copy() if ids == ["orders"] else rows.copy())
             MetricsReport().generate(ctx)
             validation = validate_report(ctx)
             assert validation.summary["fail"] == 0, validation.checks
@@ -70,11 +75,15 @@ def generated_metrics(tmp_path_factory):
     return project / "output"
 
 
-def _catalog_html(*, built=True, embed=True):
+def _catalog_html(*, built=True, embed=True, workspace=False):
     source = (ROOT / "templates/reports/metrics.html").read_text(encoding="utf-8")
     style = source[source.index("<style>"):source.index("</style>") + len("</style>")]
-    modal = source[source.index('<div class="met-overlay"'):source.index('<script src="{% static')]
+    start = source.index('<div class="met-overlay"')
+    modal = source[start:source.index('<script src="{% static', start)]
     modal = Template(modal).render(Context({"metrics_report_built": built}))
+    if workspace:
+        modal = (f'<iframe id="metWorkspace" src="{REPORT_PATH}?workspace=1" title="Metrics chart workspace"></iframe>'
+                 '<script src="/static/metrics_workspace.js"></script>')
     return f"""<!doctype html><html data-theme="light"><head>
     <link rel="stylesheet" href="/_vendor/inter.css">
     <link rel="stylesheet" href="/static/themes.generated.css">
@@ -104,7 +113,7 @@ def open_metric(metrics_browser, generated_metrics):
     contexts = []
     servers = []
 
-    def open_page(size=(1440, 900), *, built=True, embed=True, failed=False, zoom=1):
+    def open_page(size=(1440, 900), *, built=True, embed=True, failed=False, zoom=1, workspace=False):
         # Browser zoom reduces the available CSS viewport; exercise that layout
         # and pixel density together without engine-specific browser chrome.
         context = metrics_browser.new_context(
@@ -141,7 +150,7 @@ def open_metric(metrics_browser, generated_metrics):
                     return
                 status, content_type = 200, "text/html"
                 if path == "/catalog":
-                    content = _catalog_html(built=built, embed=embed).encode("utf-8")
+                    content = _catalog_html(built=built, embed=embed, workspace=workspace).encode("utf-8")
                 elif path.startswith("/reports/metrics/") and failed:
                     status, content = 503, b"Build unavailable"
                 else:
@@ -169,9 +178,13 @@ def open_metric(metrics_browser, generated_metrics):
         servers.append(server)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         page.goto(f"http://127.0.0.1:{server.server_port}/catalog")
+        if workspace:
+            page.frame_locator('#metWorkspace').locator('canvas').first.wait_for(state='visible')
+            page.wait_for_timeout(350)
+            return page, errors
         page.locator(".met-open").click()
         if embed and not failed:
-            page.frame_locator("#metModal iframe").locator("canvas").first.wait_for(state="visible")
+            page.frame_locator("#metModal iframe").locator("#metric-gross_revenue canvas").wait_for(state="visible")
             page.wait_for_timeout(350)
         return page, errors
 
@@ -187,7 +200,7 @@ def _geometry(page):
     return page.evaluate("""() => {
         const m = document.getElementById('metModal'), b = document.getElementById('metModalBody');
         const f = b.querySelector('iframe'), d = f.contentDocument;
-        const chart = d.querySelector('.fw-chart-container'), toggle = d.querySelector('[data-stack-toggle]');
+        const chart = d.querySelector('#metric-gross_revenue .fw-chart-container'), toggle = d.querySelector('#metric-gross_revenue [data-stack-toggle]');
         return {modal: m.getBoundingClientRect().toJSON(), frame: f.getBoundingClientRect().toJSON(),
             outerOverflow: b.scrollHeight - b.clientHeight, innerOverflow: d.documentElement.scrollHeight - f.clientHeight,
             chartHeight: chart.getBoundingClientRect().height, innerWidth: d.documentElement.scrollWidth,
@@ -232,22 +245,22 @@ def test_metric_page_retains_dates_and_split_and_overview_link(open_metric):
 
     with page.expect_navigation():
         page.locator("#metModalFull").click()
-    page.locator("canvas").first.wait_for(state="visible")
+    page.locator("#metric-gross_revenue canvas").wait_for(state="visible")
     assert page.locator("body.fw-only").count() == 1
     assert page.locator("#metric-net_revenue").is_hidden()
-    assert page.locator('[data-stack-toggle] .fw-toggle-btn.active').first.inner_text() == "Platform"
+    assert page.locator('#metric-gross_revenue [data-stack-toggle] .fw-toggle-btn.active').inner_text() == "Platform"
     assert page.locator('.fw-date-input[data-edge="min"]').input_value() == "2026-09-12"
     assert page.locator('.fw-date-input[data-edge="max"]').input_value() == "2026-09-24"
-    page.wait_for_function("Object.values(window._chartInstances)[0]?.data.datasets.length === 12")
-    assert page.evaluate("Object.values(window._chartInstances)[0].data.datasets.length") == 12
+    page.wait_for_function("window._chartInstances[document.querySelector('#metric-gross_revenue canvas').id]?.data.datasets.length === 12")
+    assert page.evaluate("window._chartInstances[document.querySelector('#metric-gross_revenue canvas').id].data.datasets.length") == 12
     page.reload()
-    page.locator("canvas").first.wait_for(state="visible")
+    page.locator("#metric-gross_revenue canvas").wait_for(state="visible")
     assert parse_qs(urlsplit(page.url).query) == current
-    assert page.locator('[data-stack-toggle] .fw-toggle-btn.active').first.inner_text() == "Platform"
+    assert page.locator('#metric-gross_revenue [data-stack-toggle] .fw-toggle-btn.active').inner_text() == "Platform"
     page.go_back()
     page.locator(".met-open").wait_for()
     page.go_forward()
-    page.locator("canvas").first.wait_for(state="visible")
+    page.locator("#metric-gross_revenue canvas").wait_for(state="visible")
     assert parse_qs(urlsplit(page.url).query) == current
     assert errors == []
 
@@ -268,7 +281,7 @@ def test_resize_reopen_disconnects_observer_and_restores_chart(open_metric):
         assert page.locator(".met-open").evaluate("el => el === document.activeElement")
         assert page.locator("iframe").count() == 0
         page.locator(".met-open").click()
-        page.frame_locator("iframe").locator("canvas").first.wait_for(state="visible")
+        page.frame_locator("iframe").locator("#metric-gross_revenue canvas").wait_for(state="visible")
         page.wait_for_timeout(120)
         assert abs(_geometry(page)["chartHeight"] - original) <= 1, (initial, _geometry(page))
     assert errors == []
@@ -314,7 +327,7 @@ def test_unbuilt_or_failed_chart_keeps_accessible_exit(open_metric, built, faile
     assert errors == []
 
 
-def test_overview_and_existing_fragment_keep_compact_grid(open_metric):
+def test_overview_and_existing_fragment_keep_splits(open_metric):
     page, errors = open_metric()
     with page.expect_navigation():
         page.locator("#metModalOverview").click()
@@ -322,5 +335,73 @@ def test_overview_and_existing_fragment_keep_compact_grid(open_metric):
     assert "only" not in parse_qs(urlsplit(page.url).query)
     assert page.locator("body.fw-only").count() == 0
     assert page.locator("#metric-net_revenue").is_visible()
-    assert page.locator('[data-stack-toggle]').first.is_hidden()
+    assert page.locator('#metric-gross_revenue [data-stack-toggle]').is_visible()
+    assert errors == []
+
+
+@pytest.mark.parametrize("size", [(1440, 900), (800, 600), (390, 844)])
+def test_workspace_visibility_splits_and_single_scroll(open_metric, size):
+    page, errors = open_metric(size, workspace=True)
+    frame = page.locator('#metWorkspace').element_handle().content_frame()
+    assert frame.locator('.fw-metric-block').evaluate_all('(els) => els.map(el => el.id)') == [
+        'metric-balance', 'metric-gross_revenue', 'metric-inventory', 'metric-net_revenue', 'metric-orders']
+    assert frame.locator('#metric-gross_revenue [data-stack-toggle]').is_visible()
+    assert frame.locator('#metric-balance .fw-kpi-grid').is_hidden()
+    assert 'build-time snapshot' in frame.locator('#metric-balance').inner_text()
+    frame.locator('#metric-gross_revenue').scroll_into_view_if_needed()
+    frame.locator('#metric-gross_revenue [data-stack-toggle]').get_by_role('button', name='Platform', exact=True).click()
+    assert page.evaluate('''() => new Promise(resolve => requestAnimationFrame(() => {
+        const f=document.getElementById('metWorkspace'); resolve(f.contentDocument.documentElement.scrollHeight <= f.clientHeight + 2);
+    }))''')
+    frame.locator('#fwMetricsWorkspace summary').click()
+    frame.locator('input[value="metric-net_revenue"]').uncheck()
+    assert frame.locator('#metric-net_revenue').is_hidden()
+    page.reload()
+    frame = page.locator('#metWorkspace').element_handle().content_frame()
+    frame.locator('#metric-gross_revenue canvas').wait_for(state='visible')
+    assert frame.locator('#metric-net_revenue').is_hidden()
+    frame.get_by_role('button', name='Show all', exact=True).click()
+    assert frame.locator('#metric-net_revenue').is_visible()
+    page.wait_for_timeout(200)
+    assert page.evaluate('''() => { const f = document.getElementById('metWorkspace'), d=f.contentDocument;
+        return d.documentElement.scrollWidth <= f.clientWidth + 1 && d.documentElement.scrollHeight <= f.clientHeight + 2;
+    }''')
+    assert errors == []
+
+
+def test_workspace_hover_matches_dates_and_clears(open_metric):
+    page, errors = open_metric(workspace=True)
+    frame = page.locator('#metWorkspace').element_handle().content_frame()
+    # Force lazy charts to render before comparing their different time arrays.
+    frame.locator('#metric-orders canvas').scroll_into_view_if_needed()
+    frame.wait_for_function("window._chartInstances[document.querySelector('#metric-orders canvas').id]")
+    frame.locator('#metric-gross_revenue canvas').scroll_into_view_if_needed()
+    def hover(index):
+        xy = frame.evaluate('''(index) => {const c=window._chartInstances[document.querySelector('#metric-gross_revenue canvas').id];
+            const r=c.canvas.getBoundingClientRect(); return {x:r.x+c.scales.x.getPixelForValue(index),y:r.y+c.chartArea.top+20};}''', index)
+        box = page.locator('#metWorkspace').bounding_box()
+        page.mouse.move(box['x'] + xy['x'], box['y'] + xy['y'])
+        page.wait_for_timeout(100)
+    hover(2)
+    assert frame.evaluate('''() => { const c=window._chartInstances[document.querySelector('#metric-orders canvas').id];
+        return Math.abs(c.$metricGuide-c.scales.x.getPixelForValue(1))<1; }''')
+    assert frame.evaluate("window._chartInstances[document.querySelector('#metric-inventory canvas').id]?.$metricGuide == null")
+    hover(1)
+    assert frame.evaluate("window._chartInstances[document.querySelector('#metric-orders canvas').id].$metricGuide == null")
+    hover(2)
+    page.mouse.move(1, 1)
+    assert frame.evaluate('Object.values(window._chartInstances).every(c => c.$metricGuide == null)')
+    hover(2)
+    frame.locator('.fw-date-trigger').click()
+    frame.locator('.fw-date-input[data-edge="min"]').fill('2026-09-12')
+    frame.locator('.fw-date-input[data-edge="min"]').dispatch_event('change')
+    assert frame.evaluate('Object.values(window._chartInstances).every(c => c.$metricGuide == null)')
+    # A touch drag must not leave a shared hover guide on mobile.
+    frame.evaluate('''() => { const el=document.querySelector('#metric-gross_revenue canvas'), r=el.getBoundingClientRect();
+        const touch={identifier:1,target:el,clientX:r.x+100,clientY:r.y+100};
+        const ev=new Event('touchmove',{bubbles:true});
+        Object.defineProperty(ev,'touches',{value:[touch]});
+        el.dispatchEvent(ev); }''')
+    page.wait_for_timeout(100)
+    assert frame.evaluate('Object.values(window._chartInstances).every(c => c.$metricGuide == null)')
     assert errors == []

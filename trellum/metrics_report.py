@@ -8,13 +8,9 @@ the normal path) and a trend carrying its own breakdown control -- grouped
 by the metric's first tag, and a closing table of the metrics that are
 defined but bound to no dataset.
 
-The blocks in a tag sit **side by side**, in a ``Grid(min_width=...)``: the
-page is an overview, and an overview is many metrics read against each other,
-not one chart per screenful scrolled past a dozen times. The grid is
-``auto-fill``, so the number across follows the width instead of a
-breakpoint, and a tile shortens its chart and drops its title and breakdown
-toggle (grid.css) because a tile is a glance. All of that reverses under
-``?only=``, which is showing one block and gives it the whole frame.
+The blocks form a continuous workspace sorted by first tag and label. Each
+chart retains its own breakdown controls. The show/hide menu stores local
+report preferences; aligned hover guides connect matching time observations.
 
 Two controls, two scopes, on purpose. The **date range** is shared: one
 FilterBar on the first time dataset, propagated onto every other time
@@ -31,17 +27,19 @@ lets ``?only=metric-<name>`` embed one of them on its own.
 from __future__ import annotations
 
 import os
+from html import escape
 
 import pandas as pd
 
+from trellum.assets import load_css, load_js
 from trellum.components import (
     BarChart,
     DataSource,
     DataTable,
     FilterBar,
-    Grid,
     KpiRow,
     LineChart,
+    RawHTML,
     Section,
 )
 from trellum.metrics import Dataset, Metric, load_metrics_result
@@ -51,11 +49,27 @@ from trellum.report import BaseReport
 #: the chart's default.
 _CHART_FORMATS = {"currency", "percent", "number"}
 
-#: Narrowest a metric tile may get before the grid drops a column. A trend
-#: under roughly this is a squiggle with no readable date axis left; at 1400px
-#: (the container's cap) it lands on three across, two around 900px, one on a
-#: phone -- without a breakpoint per width.
-_TILE_MIN_PX = 340
+
+class _MetricsWorkspace(RawHTML):
+    @classmethod
+    def css(cls):
+        return load_css("components/metrics_workspace.css")
+
+    @classmethod
+    def client_js(cls):
+        return load_js("components/metrics_workspace.js")
+
+
+class _MetricBlock(Section):
+    time_column: str | None = None
+    snapshot = False
+
+    def render_html(self, ctx):
+        html = super().render_html(ctx)
+        time = escape(self.time_column or "", quote=True)
+        snapshot = ' data-metric-snapshot="1"' if self.snapshot else ""
+        return html.replace('<div class="fw-section"',
+                            f'<div class="fw-section fw-metric-block" data-metric-time="{time}"{snapshot}', 1)
 
 
 class MetricsReport(BaseReport):
@@ -84,14 +98,23 @@ class MetricsReport(BaseReport):
         if by_ds:
             self._date_range(ctx, reg.datasets, by_ds, frames)
 
-        sections: dict[str, list[Metric]] = {}
-        for m in bound:
-            sections.setdefault(m.tags[0] if m.tags else "Other", []).append(m)
-        for tag, ms in sections.items():
-            ctx.add_section(tag.replace("_", " ").title(), [Grid(
-                [_block(m, frames[m.dataset], reg.datasets[m.dataset]) for m in ms],
-                min_width=_TILE_MIN_PX,
+        bound.sort(key=lambda m: ((m.tags[0] if m.tags else "Other").casefold(),
+                                  (m.label or m.name).casefold(), m.name))
+        if bound:
+            choices = "".join(
+                f'<label><input type="checkbox" value="metric-{m.name}" '
+                f'data-category="{escape(m.tags[0] if m.tags else "Other", quote=True)}" checked> '
+                f'{escape(m.tags[0] if m.tags else "Other")} · {escape(m.label or m.name)}</label>'
+                for m in bound)
+            ctx.add_section("", [_MetricsWorkspace(
+                '<div id="fwMetricsWorkspace"><details><summary>Show / hide metrics</summary>'
+                f'<div class="fw-metric-choices">{choices}</div></details>'
+                '<button type="button" id="fwMetricsShowAll">Show all</button>'
+                '<span id="fwMetricsCount" role="status" aria-live="polite"></span></div>'
+                '<p id="fwMetricsEmpty" hidden>No metrics selected. Use Show all to restore them.</p>'
             )])
+        for m in bound:
+            ctx.add_section("", [_block(m, frames[m.dataset], reg.datasets[m.dataset])])
 
         rest = [m for m in reg.metrics.values() if m not in bound]
         if rest:
@@ -122,14 +145,14 @@ class MetricsReport(BaseReport):
 
 
 def _block(m: Metric, df: pd.DataFrame, ds: Dataset) -> Section:
-    """One metric, whole: the claimed KPI and its chart, under an anchor
-    derived from the metric id. One tile of the overview grid, and the unit
-    ``?only=metric-<name>`` renders alone at full size, which is what a host
-    embeds to show one metric."""
+    """The anchored KPI and chart also addressable through ``?only=``."""
     comps: list = [KpiRow([_claim(m, df, ds)], dataset_id=m.dataset)]
     if (chart := _chart(m, df, ds)) is not None:
         comps.append(chart)
-    return Section(m.label or m.name, comps, anchor=f"metric-{m.name}")
+    block = _MetricBlock(m.label or m.name, comps, anchor=f"metric-{m.name}")
+    block.time_column = ds.time_column
+    block.snapshot = m.time_agg == "last" and bool(ds.time_column)
+    return block
 
 
 def _claim(m: Metric, df: pd.DataFrame, ds: Dataset) -> dict:

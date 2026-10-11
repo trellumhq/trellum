@@ -47,7 +47,7 @@ def catalog_html():
                 "chart_url": REPORT + "?only=metric-" + name, "overview_url": REPORT + "#metric-" + name}
                for name, label in [("gross_revenue", "Gross Revenue"), ("net_revenue", "Net Revenue"), ("balance", "Balance")]]
     rendered = Template('{% load docs static %}' + content).render(Context({
-        "metrics": metrics, "defined_count": 3, "metrics_report_built": True,
+        "metrics": metrics, "defined_count": 3, "metrics_report_built": True, "metrics_report_url": REPORT,
         "org": SimpleNamespace(slug="demo"), "studio": SimpleNamespace(slug="default", name="Demo")}))
     return '<!doctype html><html><head><meta charset="utf-8"></head><body class="mgmt"><main>' + rendered + '</main></body></html>'
 
@@ -130,6 +130,7 @@ def frame(page, slot):
 
 def test_catalog_selection_limit_clear_replace_and_open(open_comparison):
     page, errors = open_comparison(catalog=True)
+    page.get_by_text('Metric definitions and report usage', exact=True).click()
     choices = page.locator('.met-compare-choice')
     assert page.locator('#metCompareOpen').is_disabled()
     choices.nth(0).check()

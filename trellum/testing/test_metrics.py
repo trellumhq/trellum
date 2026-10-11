@@ -717,6 +717,14 @@ class TestMetricsReportShape:
             "Total": "", "Platform": "platform", "Region": "region"}
         assert list(chart.stack_by_options)[0] == "Total"
 
+    def test_workspace_validator_requires_the_claims_stable_anchor(self):
+        block = _block(self.REVENUE, self._frame(self.DAILY), self.DAILY)
+        assert not [c for c in _run_metrics_check([(block, "")], {}).checks
+                    if c.id == "metric-workspace-anchor"]
+        block.anchor = "different"
+        checks = _run_metrics_check([(block, "")], {}).checks
+        assert any(c.id == "metric-workspace-anchor" and c.level == "fail" for c in checks)
+
     def test_a_timeless_dataset_gets_a_bar_over_its_own_dimension(self):
         m = Metric(name="headcount", agg="sum", column="total_revenue", dataset="snap")
         chart = _chart(m, self._frame(self.SNAPSHOT), self.SNAPSHOT)

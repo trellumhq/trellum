@@ -1,0 +1,19 @@
+#fwMetricsWorkspace { display:flex; flex-wrap:wrap; align-items:start; gap:12px; margin-bottom:20px; }
+#fwMetricsWorkspace details { flex:1; }
+#fwMetricsWorkspace summary { cursor:pointer; }
+#fwMetricsShowAll { background:var(--bg-card); color:var(--text-main); border:1px solid var(--border-color); border-radius:var(--radius-control); padding:4px 10px; cursor:pointer; }
+.fw-metric-focus { color:var(--accent-blue); font-size:var(--font-size-label); }
+.fw-metric-choices { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr)); gap:10px; padding:14px 0; }
+.fw-metric-choices label { display:flex; align-items:baseline; gap:6px; }
+#fwMetricsCount, .fw-metric-category, .fw-metric-snapshot-note { color:var(--text-secondary); font-size:var(--font-size-meta); }
+.fw-metric-block { margin-bottom:28px; }
+.fw-metric-block .fw-chart-title { display:none; }
+.fw-metric-block .fw-chart-container { height:280px; }
+.fw-metric-block .fw-kpi-grid { grid-template-columns:minmax(0,260px); }
+.fw-metric-block[hidden], .fw-section:has(> .fw-metric-block[hidden]) { display:none; }
+body:not(.fw-only) .fw-metric-block[data-metric-snapshot] .fw-kpi-grid { display:none; }
+body.fw-only #fwMetricsWorkspace, body.fw-only #fwMetricsEmpty, body.fw-only .fw-metric-category, body.fw-only .fw-metric-focus, body.fw-only .fw-metric-snapshot-note { display:none; }
+body.fw-metrics-embedded { min-height:0; }
+body.fw-metrics-embedded .fw-header, body.fw-metrics-embedded .fw-report-metadata { display:none; }
+body.fw-metrics-embedded .fw-container { margin:0; max-width:none; padding:0 0 12px; }
+@media (max-width:600px) { .fw-metric-block .fw-chart-container { height:230px; } }

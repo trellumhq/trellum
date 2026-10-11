@@ -29,6 +29,9 @@
 /* .met-card sets display:flex, which outranks the UA's own [hidden] rule --
    this is what makes the filter's `card.hidden = true` actually hide it. */
 .met-card[hidden] { display:none; }
+#metWorkspace { display:block; width:100%; height:700px; border:0; }
+.met-definitions { margin-top:24px; }
+.met-definitions > summary { cursor:pointer; font-weight:600; margin-bottom:16px; }
 .met-card {
   display:flex; flex-direction:column; gap:14px; padding:18px 20px;
   background:var(--bg-card); border:1px solid var(--border); border-radius:var(--r-lg);
@@ -180,7 +183,7 @@ the same thing per metric).{% endcomment %}
   </div>
   <span class="spacer"></span>
   {% if metrics_report_built %}
-  <a class="ui-btn ghost" href="{{ metrics_report_url }}">Metrics overview →</a>
+  <a class="ui-btn ghost" href="{{ metrics_report_url }}">Open full report →</a>
   {% else %}
   <span class="muted" style="font-size:var(--fs-sm)">Chart overview appears once the Metrics report is built.</span>
   {% endif %}
@@ -191,6 +194,13 @@ the same thing per metric).{% endcomment %}
   Report storage is unreachable right now — usage below may be missing recent builds until it recovers.
 </div>
 {% endif %}
+
+{% if metrics_report_built %}
+<iframe id="metWorkspace" src="{{ metrics_report_url }}?workspace=1" title="Metrics chart workspace"></iframe>
+<script src="{% static 'metrics_workspace.js' %}"></script>
+{% endif %}
+<details class="met-definitions" {% if not metrics_report_built %}open{% endif %}>
+  <summary>Metric definitions and report usage</summary>
 
 {% comment %}Filtering the cards that are already here (metrics_overlay.js).
 data-search is built from exactly the fields worth matching -- name,
@@ -286,6 +296,7 @@ query that hits everything.{% endcomment %}
 <div class="ui-empty" id="metEmpty" hidden>No metric matches that filter.</div>
 <div class="met-foot">Read-only — the source of truth is <code>metrics.yaml</code> in this studio's repository; changes arrive on the next sync.
   {% if repo_url %}<a href="{{ repo_url }}" rel="noopener">Edit via pull request ↗</a>{% else %}Edit via pull request.{% endif %}</div>
+</details>
 
 {% comment %}One metric, opened over the catalog: its own block from the
 generated metrics report (framed with ?only=metric-<id>, see

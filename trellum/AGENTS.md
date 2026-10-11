@@ -496,16 +496,15 @@ dataset, then one block per metric (a KPI and a trend), grouped by tag, plus a
 table of the metrics defined but not bound — from a one-line generator. Bind a
 metric and rebuild; nothing else to edit.
 
-The blocks in a tag sit **side by side**, in `Grid(min_width=340)` — an
-overview is metrics read against each other, not one chart per screenful. The
-grid is `auto-fill`, so the number across follows the available width (three
-at the container's 1400px cap, two around 900px, one on a phone) with no
-breakpoints to keep in sync, and each cell is a **tile**: `grid.css` shortens
-its chart to 200px, drops the chart's own title (the block above it already
-carries the name) and hides the breakdown toggle, and measures a `KpiRow`
-against the tile instead of the window. `Grid(min_width=...)` is the general
-primitive, not a metrics-report special case — reach for it whenever a row of
-charts should reflow rather than sit at a fixed column count.
+The blocks form a continuous chart workspace, sorted by the metric's first tag
+(category) and then label. Each chart retains its per-metric breakdown
+controls. **Show / hide metrics** stores browser-local choices for the current
+report; **Show all** restores them. Hover over a time observation to draw a
+matching time guide on other visible charts that contain that exact date or
+time. Missing dates and non-time charts receive no guide or invented values.
+Metrics with `time_agg: last` show their trend and a build-time snapshot note;
+the static KPI is omitted in the workspace because it does not follow dates.
+The focused metric view retains the existing snapshot KPI.
 
 Two controls, two scopes. The **date range** is shared: one FilterBar on the
 first time dataset, propagated onto every other time dataset's own time
@@ -513,8 +512,7 @@ column, because "the last 30 days" means the same thing at every grain. A
 dataset with no time axis is left out of it rather than filtered on a column
 it does not have. The **breakdown is per metric**: each trend carries its own
 `stack_by_options` toggle over its dataset's dimensions ("Total" first, so no
-split is the default) — hidden at tile width, where a row of dimension buttons
-is taller than the chart it labels, and back in the single-block view below.
+split is the default).
 There is deliberately no report-wide dimension filter — datasets share a time
 axis but not their dimensions.
 
@@ -522,8 +520,8 @@ Each block is a `Section` with `anchor="metric-<name>"`, which makes it
 addressable: **`?only=<section id>`** on any report page renders that section
 alone (its ancestors and the shared FilterBar with it, page chrome dropped),
 which is what an `<iframe>` onto a single block loads and what `#<id>` scrolls
-to. The tile grid collapses there — one block is not a grid — so the surviving
-block gets the whole frame at full size, breakdown toggle included. An id the
+to. The focused block gets the whole frame at full size, breakdown toggle
+included. An id the
 build does not have leaves the page whole. Give any generated section an
 `anchor` when its title is not a name you want in a URL.
 
