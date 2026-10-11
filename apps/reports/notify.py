@@ -700,7 +700,11 @@ def _send_scheduled(schedule_id) -> None:
         return  # deleted/disabled between the job firing and now
     from apps.core.report_access import can_view_report
 
-    if not schedule.created_by.is_active or not can_view_report(schedule.created_by, schedule.report):
+    if (
+        schedule.created_by is None
+        or not schedule.created_by.is_active
+        or not can_view_report(schedule.created_by, schedule.report)
+    ):
         return
     recipients = resolve_recipients(schedule)
     if not recipients:

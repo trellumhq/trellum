@@ -639,6 +639,40 @@ class TestResolveRecipients:
 # ── scheduled delivery ───────────────────────────────────────────────────────
 
 class TestSendScheduled:
+    def test_deleted_creator_preserves_schedule_and_skips_delivery(
+        self, report_row, viewer, developer, write_meta
+    ):
+        from apps.reports.views import _schedule_dict
+
+        write_meta(report_row.slug, last_status="success")
+        schedule = EmailSchedule.objects.create(
+            report=report_row,
+            created_by=viewer,
+            recipient_roles=["developers"],
+            send_hour=11,
+            attach_pdf=True,
+        )
+        schedule.recipients.add(developer)
+
+        viewer.delete()
+
+        schedule.refresh_from_db()
+        assert schedule.created_by_id is None
+        assert schedule.report_id == report_row.pk
+        assert schedule.recipient_roles == ["developers"]
+        assert schedule.send_hour == 11
+        assert schedule.attach_pdf is True
+        assert list(schedule.recipients.values_list("pk", flat=True)) == [developer.pk]
+        payload = _schedule_dict(schedule)
+        assert payload["owner_name"] == "Former user"
+        assert payload["editable"] is False
+
+        send_scheduled(schedule.pk)
+
+        assert mail.outbox == []
+        schedule.refresh_from_db()
+        assert schedule.last_sent_at is None
+
     def test_owner_access_revocation_skips_delivery(self, report_row, viewer, write_meta):
         from apps.studios.models import StudioMembership
 

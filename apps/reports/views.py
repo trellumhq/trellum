@@ -922,7 +922,9 @@ def _schedule_dict(schedule, *, viewer=None) -> dict:
     the viewer doesn't own too (see api_email_schedules), so it passes the
     actual requester through and the client renders a non-owned row
     read-only (see report_delivery.js)."""
-    editable = viewer is None or schedule.created_by_id == viewer.pk
+    editable = schedule.created_by_id is not None and (
+        viewer is None or schedule.created_by_id == viewer.pk
+    )
     recipients = list(schedule.recipients.all())
     allowed = bulk_can_view_report(recipients, schedule.report)
     return {
@@ -947,7 +949,10 @@ def _schedule_dict(schedule, *, viewer=None) -> dict:
         ],
         "recipient_summary": _recipient_summary(schedule),
         "editable": editable,
-        "owner_name": schedule.created_by.display_name or schedule.created_by.email,
+        "owner_name": (
+            schedule.created_by.display_name or schedule.created_by.email
+            if schedule.created_by else "Former user"
+        ),
     }
 
 

@@ -258,7 +258,7 @@ class EmailSchedule(models.Model):
 
     report = models.ForeignKey(Report, on_delete=models.CASCADE, related_name="email_schedules")
     created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+"
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, related_name="+", null=True, blank=True
     )
     #: Individually-picked recipients — fixed users, not re-resolved.
     recipients = models.ManyToManyField(
