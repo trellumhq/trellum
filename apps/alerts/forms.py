@@ -4,6 +4,7 @@ choices to the studio: its reports, its members, its org's groups."""
 from __future__ import annotations
 
 import calendar
+from zoneinfo import available_timezones
 
 from django import forms
 from django.contrib.auth import get_user_model
@@ -11,16 +12,6 @@ from django.contrib.auth import get_user_model
 from apps.alerts.models import AlertRule
 from apps.orgs.models import OrgMembership, PermissionGroup
 from apps.reports.models import Report
-
-#: Mirrors COMMON_TIMEZONES in static/report_delivery.js -- suggestions for
-#: the timezone box, not the whole list; the model rejects unknown zones.
-COMMON_TIMEZONES = [
-    "UTC", "Europe/London", "Europe/Amsterdam", "Europe/Berlin", "Europe/Paris",
-    "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
-    "America/Sao_Paulo", "Asia/Kolkata", "Asia/Dubai", "Asia/Shanghai", "Asia/Tokyo",
-    "Australia/Sydney",
-]
-
 
 class AlertRuleForm(forms.ModelForm):
     trigger = forms.ChoiceField(choices=AlertRule.TRIGGER_CHOICES, widget=forms.RadioSelect)
@@ -56,7 +47,7 @@ class AlertRuleForm(forms.ModelForm):
 
     def __init__(self, *args, studio, **kwargs):
         super().__init__(*args, **kwargs)
-        self.timezones = COMMON_TIMEZONES
+        self.timezones = sorted(available_timezones())
         self.fields["notification_policy"].initial = (self.instance.notification_policy or AlertRule.POLICY_REPEAT)
         self.fields["report"].queryset = Report.objects.filter(
             studio=studio, present_in_scan=True, kind=Report.KIND_REPORT

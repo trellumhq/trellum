@@ -2,13 +2,22 @@
 {% block title %}{% if rule.pk %}Edit alert{% else %}New alert{% endif %} — {{ studio.name }}{% endblock %}
 {% block content %}
 <style>
-/* Checkbox lists (people, roles, groups): one column of label rows, not the
-   widget's default <div> stack with no spacing. */
+/* Native fallback checkbox lists. JavaScript condenses these into pickers. */
 .al-checks > div { display:flex; flex-wrap:wrap; gap:4px 16px; }
 .al-checks label { display:inline-flex; align-items:center; gap:6px; font-size:var(--fs-md); color:var(--text2); }
 .al-checks input { width:auto; }
 .al-radio > div { display:flex; gap:18px; }
 .al-radio label { display:inline-flex; align-items:center; gap:6px; }
+.al-picker { border:1px solid var(--border); border-radius:var(--r-md); padding:10px; }
+.al-picker [data-picker-selected] { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
+.al-picker [data-picker-results] { max-height:220px; overflow:auto; margin-top:6px; }
+.al-checks [hidden],.al-picker [hidden] { display:none!important; }
+.al-picker [data-picker-results] label { display:flex; align-items:center; gap:8px; padding:5px 2px; }
+.al-picker [data-picker-results] input { width:auto; }
+.al-picker [data-picker-empty] { margin:6px 0; }
+.al-timezone-results { max-height:220px; overflow:auto; border:1px solid var(--border); border-radius:var(--r-md); }
+.al-timezone-results button { display:block; width:100%; text-align:left; padding:6px 10px; border:0; background:transparent; color:var(--text); }
+.al-timezone-results button:hover,.al-timezone-results button:focus { background:var(--bg-card); }
 </style>
 <header class="page-head">
   <div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }} · <a href="{{ prefix }}">Alerts</a></div>
@@ -16,7 +25,7 @@
 </header>
 
 <div class="panel">
-<form method="post" id="alertForm" data-alert-editor{% if rule.pk %} data-settings-form data-settings-save{% endif %}>
+<form method="post" id="alertForm" data-alert-editor{% if not rule.pk and not form.is_bound %} data-browser-timezone-default{% endif %}{% if rule.pk %} data-settings-form data-settings-save{% endif %}>
   {% csrf_token %}
   {{ form.non_field_errors }}
   <div class="ui-form-grid">
@@ -61,20 +70,20 @@
     <div class="ui-field">
       <label for="id_timezone">Timezone</label>
       {{ form.timezone }}{{ form.timezone.errors }}
-      <datalist id="alert-timezones">{% for tz in form.timezones %}<option value="{{ tz }}">{% endfor %}</datalist>
+      <div data-timezone-picker data-timezones="{% for tz in form.timezones %}{{ tz }}{% if not forloop.last %},{% endif %}{% endfor %}" hidden></div>
     </div>
 
-    <div class="ui-field ui-field-wide al-checks">
+    <div class="ui-field ui-field-wide al-checks" data-recipient-picker>
       <label>{{ form.recipient_roles.label }}</label>
       {{ form.recipient_roles }}{{ form.recipient_roles.errors }}
     </div>
     {% if form.recipient_groups %}
-    <div class="ui-field ui-field-wide al-checks">
+    <div class="ui-field ui-field-wide al-checks" data-recipient-picker>
       <label>{{ form.recipient_groups.label }}</label>
       {{ form.recipient_groups }}{{ form.recipient_groups.errors }}
     </div>
     {% endif %}
-    <div class="ui-field ui-field-wide al-checks">
+    <div class="ui-field ui-field-wide al-checks" data-recipient-picker>
       <label>{{ form.recipients.label }}</label>
       {{ form.recipients }}{{ form.recipients.errors }}
       <span class="ui-help">Recipients are always limited to people who can see this studio.</span>

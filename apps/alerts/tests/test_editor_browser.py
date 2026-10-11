@@ -138,6 +138,72 @@ def test_browser_preview_keeps_draft_and_discards_result_after_edit(rule, login)
         browser.close()
 
 
+@pytest.mark.parametrize("engine", ["chromium", "webkit"])
+def test_browser_recipient_and_timezone_pickers(engine, rule, login):
+    from playwright.sync_api import Error
+
+    url = f"/s/{rule.org.slug}/{rule.studio.slug}/alerts/new"
+    html = login(rule.created_by).get(url).content.decode()
+    needle = '</form>\n<section id="alertPreview"'
+    injected = '''<script>
+      const fields=document.querySelectorAll('[data-recipient-picker]');
+      const field=fields[fields.length-1], checkbox=field.querySelector('input[type=checkbox]');
+      const list=Array.from(field.children).find(child => child.contains(checkbox));
+      for(let i=0;i<100;i++){const label=document.createElement('label');
+        const input=document.createElement('input'); input.type='checkbox'; input.name='recipients';
+        input.value=i; label.append(input, ' Person '+i); list.append(label);}
+    </script></form>\n<section id="alertPreview"'''
+    html = html.replace(needle, injected, 1)
+    with sync_playwright() as playwright:
+        try:
+            browser = getattr(playwright, engine).launch(headless=True)
+        except Error as exc:
+            pytest.skip(f"{engine} browser is unavailable: {exc}")
+        context = browser.new_context(timezone_id="Europe/Amsterdam", viewport={"width": 390, "height": 844})
+        page = context.new_page()
+        page.route("**/*", lambda route: route.abort())
+        page.route("http://example.test" + url, lambda route: route.fulfill(body=html, content_type="text/html"))
+        page.goto("http://example.test" + url)
+        page.add_script_tag(content=(ROOT / "static/alert-editor.js").read_text(encoding="utf-8"))
+        assert page.locator("#id_timezone").input_value() == "Europe/Amsterdam"
+        assert page.locator("#alertForm").get_attribute("data-browser-timezone-default") is not None
+        timezone = page.locator("#id_timezone")
+        timezone.fill("Europe/Lond")
+        timezone.press("ArrowDown")
+        page.keyboard.press("Enter")
+        expect(timezone).to_have_value("Europe/London")
+
+        field = page.locator("[data-recipient-picker]").last
+        search = field.locator("input[type=search]")
+        assert field.locator("[data-picker-results] label").evaluate_all(
+            "labels => labels.filter(label => !label.hidden).length"
+        ) == 50
+        search.fill("person 99")
+        assert field.locator("[data-picker-results] label").evaluate_all(
+            "labels => labels.filter(label => !label.hidden).length"
+        ) == 1
+        field.locator("[data-picker-results] label:visible input").check()
+        search.fill("nobody")
+        assert field.locator("[data-picker-results] label").evaluate_all(
+            "labels => labels.filter(label => !label.hidden).length"
+        ) == 0
+        expect(field.locator("[data-picker-selected]")).to_contain_text("Person 99")
+        assert page.locator("#alertForm").evaluate("form => new FormData(form).getAll('recipients')").count("99") == 1
+        field.locator("[data-picker-selected] button").click()
+        assert page.locator("#alertForm").evaluate("form => new FormData(form).getAll('recipients')").count("99") == 0
+
+        unknown = context.new_page()
+        unknown.add_init_script("Intl.DateTimeFormat.prototype.resolvedOptions = "
+                                "() => ({timeZone: 'Mars/Olympus'});")
+        unknown.route("**/*", lambda route: route.abort())
+        unknown.route("http://example.test" + url,
+                      lambda route: route.fulfill(body=html, content_type="text/html"))
+        unknown.goto("http://example.test" + url)
+        unknown.add_script_tag(content=(ROOT / "static/alert-editor.js").read_text(encoding="utf-8"))
+        expect(unknown.locator("#id_timezone")).to_have_value("UTC")
+        browser.close()
+
+
 def test_change_during_preview_discards_stale_result_without_input_event(rule, login):
     url = f"/s/{rule.org.slug}/{rule.studio.slug}/alerts/{rule.pk}/edit"
     html = login(rule.created_by).get(url).content.decode()

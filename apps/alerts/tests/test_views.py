@@ -151,6 +151,13 @@ class TestForm:
         html = login(owner).get(f"{prefix}/new").content.decode()
         assert "Permission groups" not in html and "Everyone in Casino Studio" in html
 
+    def test_edit_form_keeps_saved_timezone_without_browser_default(self, login, owner, prefix, rule):
+        rule.timezone = "Europe/London"
+        rule.save(update_fields=["timezone"])
+        html = login(owner).get(f"{prefix}/{rule.pk}/edit").content.decode()
+        assert 'name="timezone"' in html and 'value="Europe/London"' in html
+        assert "data-browser-timezone-default" not in html
+
 
 class TestRunLog:
     def test_run_link_selects_older_page_and_ignores_foreign_run(self, login, viewer, rule, prefix):
