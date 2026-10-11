@@ -225,6 +225,7 @@ ACTIONS: dict[str, ActionSpec] = {
     "notify.schedule_create": _m(CATEGORY_SYSTEM, "Delivery schedule created"),
     "notify.schedule_update": _m(CATEGORY_SYSTEM, "Delivery schedule updated"),
     "notify.schedule_delete": _m(CATEGORY_SYSTEM, "Delivery schedule deleted"),
+    "notify.delivery_policy_update": _m(CATEGORY_ADMIN, "Delivery pause and defaults updated"),
     "notify.sample_send": _m(CATEGORY_SYSTEM, "Sample delivery sent"),
     # Agentic alerts (internal planning ticket #146). create/update/delete are emitted by the
     # studio Alerts page (internal planning ticket #147); fire by the evaluator on delivery.
