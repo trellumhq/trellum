@@ -10,7 +10,7 @@
     A studio-level source with the same name shadows the shared one. Upload a data
     file here and every studio's reports can read it by name — nothing has to be
     committed to a repository.</p>
-  <a class="ui-btn primary" href="/orgs/{{ org.slug }}/settings/datasources/new">Add data source</a>
+  <a class="ui-btn ghost" href="/orgs/{{ org.slug }}/settings/datasources/new">Add data source</a>
 </header>
 {% else %}
 <header class="page-head">
@@ -23,7 +23,7 @@
     Sources marked <span class="scope-chip org mini">organization</span> are managed in
     <a href="/orgs/{{ org.slug }}/settings/datasources">Organization settings</a>.
     Credentials are stored encrypted and injected only into report builds.</p>
-  <a class="ui-btn primary" href="/s/{{ org.slug }}/{{ studio.slug }}/settings/datasources/new">Add data source</a>
+  <a class="ui-btn ghost" href="/s/{{ org.slug }}/{{ studio.slug }}/settings/datasources/new">Add data source</a>
 </header>
 {% endif %}
 
