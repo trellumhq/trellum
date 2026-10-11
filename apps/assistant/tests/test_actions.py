@@ -179,6 +179,31 @@ class TestCatalogue:
         assert box.execute("configure_data_source", {"name": "warehouse"}).startswith("Error")
         assert not ProposedAction.objects.exists()
 
+    def test_dispatch_refreshes_role_after_developer_becomes_viewer(
+        self, studio_tree, developer, make_session, report_row, actions_on
+    ):
+        box = AssistantToolbox(
+            studio_tree, actor=developer, role=roles.DEVELOPER,
+            may_write=True, session=make_session(developer),
+        )
+        StudioMembership.objects.filter(user=developer, studio=studio_tree).update(role=roles.VIEWER)
+        assert box.authorize({}) is None  # The viewer still has full report visibility.
+        assert "not available" in box.execute("check_repo_changes", {})
+        assert "not available" in box.execute("run_report", {"slug": report_row.slug})
+        assert not ProposedAction.objects.exists()
+
+    def test_dispatch_refreshes_action_policy(
+        self, studio_tree, developer, make_session, report_row, actions_on
+    ):
+        box = AssistantToolbox(
+            studio_tree, actor=developer, role=roles.DEVELOPER,
+            may_write=True, session=make_session(developer),
+        )
+        actions_on.actions_enabled = False
+        actions_on.save(update_fields=["actions_enabled"])
+        assert "not available" in box.execute("run_report", {"slug": report_row.slug})
+        assert not ProposedAction.objects.exists()
+
     def test_org_level_credentials_need_an_org_admin(self, studio_tree, studio_admin, make_session, declared):
         box = AssistantToolbox(
             studio_tree, role=roles.ADMIN, may_write=True, session=make_session(studio_admin)
@@ -538,6 +563,70 @@ class TestApprove:
 
 
 # ── Reject ──────────────────────────────────────────────────────────────────
+
+class TestExecutionAuthorization:
+    @pytest.mark.parametrize("tool", [s["name"] for s in TOOL_SCHEMAS if s["mutates"]])
+    def test_every_action_refuses_viewer_despite_cached_admin_role(
+        self, viewer, studio_tree, actions_on, tool
+    ):
+        from types import SimpleNamespace
+
+        from apps.assistant import actions
+
+        request = SimpleNamespace(user=viewer, studio=studio_tree, studio_role=roles.ADMIN)
+        with pytest.raises(actions.ActionFailed, match="can no longer"):
+            actions.execute(request, tool, {}, {})
+        assert not AuditLog.objects.exists()
+
+    @pytest.mark.parametrize("revoke", ["org", "studio", "actor", "organization", "actions"])
+    def test_execution_rechecks_access_after_earlier_authorization(
+        self, developer, studio_tree, report_row, actions_on, revoke
+    ):
+        from types import SimpleNamespace
+
+        from apps.assistant import actions
+        from apps.orgs.models import Organization, OrgMembership
+        from apps.runner.models import Run
+
+        request = SimpleNamespace(user=developer, studio=studio_tree, studio_role=roles.DEVELOPER)
+        if revoke == "org":
+            OrgMembership.objects.filter(user=developer, org=studio_tree.org).delete()
+        elif revoke == "studio":
+            StudioMembership.objects.filter(user=developer, studio=studio_tree).delete()
+        elif revoke == "actor":
+            type(developer).objects.filter(pk=developer.pk).update(is_active=False)
+        elif revoke == "organization":
+            Organization.objects.filter(pk=studio_tree.org_id).update(is_active=False)
+        else:
+            type(actions_on).objects.filter(pk=actions_on.pk).update(actions_enabled=False)
+        with pytest.raises(actions.ActionFailed):
+            actions.execute(request, "run_report", {"slug": report_row.slug}, {})
+        assert not Run.objects.exists() and not AuditLog.objects.exists()
+
+    def test_execution_does_not_trust_stale_superuser_attribute(
+        self, superuser, studio_tree, report_row, actions_on
+    ):
+        from types import SimpleNamespace
+
+        from apps.assistant import actions
+        from apps.runner.models import Run
+
+        type(superuser).objects.filter(pk=superuser.pk).update(is_superuser=False)
+        with pytest.raises(actions.ActionFailed, match="can no longer"):
+            actions.execute(SimpleNamespace(user=superuser, studio=studio_tree),
+                            "run_report", {"slug": report_row.slug}, {})
+        assert not Run.objects.exists()
+
+    def test_org_target_requires_current_org_admin_even_with_weaker_stored_role(
+        self, login, studio_admin, prefix, actions_on, make_proposal, declared
+    ):
+        proposal = make_proposal(studio_admin, tool="configure_data_source", required_role=roles.ADMIN,
+                                 arguments={"name": "warehouse", "org_level": True})
+        response = approve(login(studio_admin), prefix, proposal, user="u", password="p")
+        assert response.json()["status"] == "failed"
+        assert "can no longer" in response.json()["result"]
+        assert not DataSource.objects.exists()
+
 
 @SEES_WORKER_THREAD
 class TestReject:

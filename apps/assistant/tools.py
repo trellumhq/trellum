@@ -486,13 +486,26 @@ class AssistantToolbox:
 
         from django.contrib.auth import get_user_model
 
-        if not get_user_model().objects.filter(pk=self.actor.pk, is_active=True).exists():
+        actor = get_user_model().objects.filter(pk=self.actor.pk, is_active=True).first()
+        if actor is None:
             return "This account can no longer access the assistant."
 
         from apps.core.permissions import effective_roles
-        from apps.core.report_access import can_view_report, selected_report_access_block_reason
+        from apps.core.report_access import (
+            can_view_report,
+            selected_report_access_block_reason,
+        )
+        from apps.orgs.models import Organization, OrgAssistantConfig
 
-        permissions = effective_roles(self.actor, self.studio.org)
+        org = Organization.objects.filter(pk=self.studio.org_id, is_active=True).first()
+        if org is None:
+            return "This conversation's organization is no longer available."
+        permissions = effective_roles(actor, org)
+        current_role = "org_admin" if permissions.is_org_admin else permissions.role_for(self.studio)
+        if rank(current_role) < rank(self.role):
+            self.role = current_role
+        if self.may_write and not OrgAssistantConfig.objects.filter(org=org, actions_enabled=True).exists():
+            self.may_write = False
         if self.scope == "full":
             if permissions.has_full_studio_visibility(self.studio):
                 return None
@@ -514,7 +527,7 @@ class AssistantToolbox:
             and selected_report_access_block_reason()
         ):
             return "Selected report access is temporarily unavailable."
-        if not can_view_report(self.actor, report):
+        if not can_view_report(actor, report):
             return "This conversation's report is no longer available."
         return None
 

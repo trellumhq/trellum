@@ -282,9 +282,41 @@ def _save_alert(request, rule, fields: dict, users: list, action: str, meta: dic
             f"edit_revision: {edit_revision(rule)}; condition_revision: {rule.revision}")
 
 
+def _authorize_action(request, tool: str, args: dict) -> None:
+    """Recheck the actor and policy at execution, without request role caches."""
+    from django.contrib.auth import get_user_model
+
+    from apps.assistant.tools import TOOL_SCHEMAS
+    from apps.core.permissions import effective_roles
+    from apps.orgs.models import Organization, OrgAssistantConfig
+
+    schema = next((s for s in TOOL_SCHEMAS if s["name"] == tool and s["mutates"]), None)
+    if schema is None:
+        raise ActionFailed(f"Unknown action '{tool}'.")
+    studio = request.studio
+    actor = get_user_model().objects.filter(pk=request.user.pk, is_active=True).first()
+    org = Organization.objects.filter(pk=studio.org_id, is_active=True).first()
+    if actor is None or org is None:
+        raise ActionFailed("You can no longer perform this action in this studio.")
+    permissions = effective_roles(actor, org)
+    role = ORG_ADMIN if permissions.is_org_admin else permissions.role_for(studio)
+    required_role = ORG_ADMIN if tool == "configure_data_source" and args.get("org_level") else schema["role"]
+    if rank(role) < rank(required_role):
+        raise ActionFailed("You can no longer perform this action in this studio.")
+    if not OrgAssistantConfig.objects.filter(org=org, actions_enabled=True).exists():
+        raise ActionFailed("Organization assistant actions are disabled.")
+    api_key = getattr(request, "api_key", None)
+    if api_key is not None:
+        from apps.accounts.models import ApiKey
+
+        key = ApiKey.objects.filter(pk=api_key.pk, org=org, user=actor).first()
+        if not org.api_keys_enabled or key is None or not key.is_active or not key.can_write:
+            raise ActionFailed("A current write API key is required.")
+
+
 def execute(request, tool: str, args: dict, secrets: dict, **meta) -> str:
     """Run ``tool`` with the cleaned ``args`` :func:`describe` produced, as
-    ``request.user`` (the caller has re-checked the role), and return the
+    ``request.user`` (rechecking current authorization here), and return the
     sentence to relay. Raises :class:`ActionFailed` when the action ran but
     did not succeed.
 
@@ -294,6 +326,7 @@ def execute(request, tool: str, args: dict, secrets: dict, **meta) -> str:
     """
     from apps.core.audit import audit
 
+    _authorize_action(request, tool, args)
     studio = request.studio
     if tool == "configure_data_source":
         from apps.datasources.models import RepoDataSource
@@ -343,12 +376,10 @@ def execute(request, tool: str, args: dict, secrets: dict, **meta) -> str:
         return "Publish scheduled -- the worker publishes within seconds."
     if tool in ("create_alert", "update_alert"):
         from django.db import transaction
-        from django.contrib.auth import get_user_model
+
         from apps.alerts.models import AlertRule
         from apps.assistant.alert_access import alert_id, edit_revision, visible_alerts
-        from apps.core.permissions import effective_roles
         from apps.core.report_access import visible_reports
-        from apps.orgs.models import OrgAssistantConfig
         from apps.reports.models import Report
 
         with transaction.atomic():
@@ -359,19 +390,7 @@ def execute(request, tool: str, args: dict, secrets: dict, **meta) -> str:
                     pk=alert_id(args.get("alert_id")) or 0).first()
                 if rule is None:
                     raise ActionFailed("Alert rule not found.")
-            permissions = effective_roles(request.user, studio.org)
-            if (not get_user_model().objects.filter(pk=request.user.pk, is_active=True).exists()
-                    or rank(permissions.role_for(studio)) < rank(roles.DEVELOPER)):
-                raise ActionFailed("You can no longer update alerts in this studio.")
-            if not OrgAssistantConfig.objects.filter(org=studio.org, actions_enabled=True).exists():
-                raise ActionFailed("Organization assistant actions are disabled.")
-            api_key = getattr(request, "api_key", None)
-            if api_key is not None:
-                from apps.accounts.models import ApiKey
-
-                key = ApiKey.objects.filter(pk=api_key.pk, org=studio.org, user=request.user).first()
-                if key is None or not key.is_active or not key.can_write:
-                    raise ActionFailed("A current write API key is required.")
+            _authorize_action(request, tool, args)  # A rule lock may have waited for another save.
             if tool == "update_alert":
                 if args.get("edit_revision") != edit_revision(rule):
                     raise ActionFailed("Alert settings changed. Use get_alert and propose again.")

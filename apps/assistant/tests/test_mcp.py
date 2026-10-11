@@ -267,6 +267,40 @@ class TestVisibility:
 # ── Writes: immediate, audited, no proposal ─────────────────────────────────
 
 class TestWrites:
+    @pytest.mark.parametrize("revoke", ["role", "org", "key", "key_scope", "key_policy", "actions"])
+    def test_write_rechecks_authorization_after_description(
+        self, client, developer, org, studio_tree, url, actions_on, report_row,
+        monkeypatch, revoke
+    ):
+        from django.utils import timezone
+
+        from apps.assistant import actions
+        from apps.studios.models import StudioMembership
+
+        key, secret = key_for(developer, org, write=True)
+        describe = actions.describe
+
+        def revoke_after_description(*args, **kwargs):
+            spec = describe(*args, **kwargs)
+            if revoke == "role":
+                StudioMembership.objects.filter(user=developer, studio=studio_tree).update(role=roles.VIEWER)
+            elif revoke == "org":
+                OrgMembership.objects.filter(user=developer, org=org).delete()
+            elif revoke == "key":
+                ApiKey.objects.filter(pk=key.pk).update(revoked_at=timezone.now())
+            elif revoke == "key_scope":
+                ApiKey.objects.filter(pk=key.pk).update(scopes=ApiKey.READ)
+            elif revoke == "key_policy":
+                type(org).objects.filter(pk=org.pk).update(api_keys_enabled=False)
+            else:
+                type(actions_on).objects.filter(pk=actions_on.pk).update(actions_enabled=False)
+            return spec
+
+        monkeypatch.setattr(actions, "describe", revoke_after_description)
+        result = call(client, url, secret, "run_report", {"slug": report_row.slug})
+        assert result["isError"] is True
+        assert not Run.objects.exists() and not AuditLog.objects.exists()
+
     def test_run_report_enqueues_at_once_and_audits_the_key(
         self, client, developer, org, url, actions_on, report_row
     ):
