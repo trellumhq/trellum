@@ -728,3 +728,36 @@ class TestEmailScheduleDiff:
             assert f"email-{schedule.pk}" in jobs
         finally:
             mgr.shutdown()
+
+
+class TestDeliveryPauseScheduler:
+    def test_pause_removes_email_jobs_keeps_build_and_alert_evaluations_and_resumes_future(self, report_row, org_admin, org):
+        from apps.alerts.models import AlertRule
+        from apps.core.models import InstanceConfig
+        from apps.reports.models import EmailSchedule
+        from django.utils import timezone
+        report_row.schedule_cron = '0 5 * * *'
+        report_row.save(update_fields=['schedule_cron'])
+        schedule = EmailSchedule.objects.create(report=report_row, created_by=org_admin)
+        alert = AlertRule.objects.create(org=org, studio=report_row.studio, report=report_row,
+            name='Watch', created_by=org_admin, trigger='schedule')
+        mgr = _SchedulerManager()
+        mgr.start()
+        try:
+            assert f'email-{schedule.pk}' in {job.id for job in mgr._scheduler.get_jobs()}
+            instance = InstanceConfig.load()
+            instance.deliveries_paused = True
+            instance.save(update_fields=['deliveries_paused'])
+            mgr.refresh()
+            jobs = {job.id for job in mgr._scheduler.get_jobs()}
+            assert f'email-{schedule.pk}' not in jobs
+            assert f'alert-{alert.pk}' in jobs and f'report-{report_row.pk}' in jobs
+            instance.deliveries_paused = False
+            instance.save(update_fields=['deliveries_paused'])
+            mgr.refresh()
+            email = next(job for job in mgr._scheduler.get_jobs() if job.id == f'email-{schedule.pk}')
+            assert email.next_run_time > timezone.now()
+            schedule.refresh_from_db()
+            assert schedule.enabled
+        finally:
+            mgr.shutdown()

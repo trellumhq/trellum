@@ -41,13 +41,16 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Upgrade notes
 
-Apply `alerts.0003_execution_and_delivery_outcomes` and update the portal and
-alert workers together. Existing alert runs are labelled legacy with unknown
-execution mode and delivery outcome. They remain visible but are excluded from
-new live notification history, so a previously notified condition may alert
-again after its existing cooldown. Transport acceptance does not confirm inbox
-receipt. Rebuild reports with the matched framework to include the capture
-preview and guidance; the portal supplies the updated capture menu icon.
+Apply the additive alert and delivery migrations: `alerts.0003`/`0004`,
+`core.0015`, `orgs.0024` and `reports.0024`/`0025`. Update the portal and all
+workers together; older workers do not enforce delivery pause or alert claims.
+Existing cooldown timestamps are preserved. Alert rules default to repeating
+while their condition remains met after cooldown, replacing the previous LLM
+novelty suppression; evaluations now run and consume budget during cooldown.
+Existing alert runs retain unknown legacy outcomes and are excluded from new
+live notification history. Transport acceptance does not confirm inbox receipt.
+Rebuild reports with the matched framework to include the capture preview and
+guidance; the portal supplies the updated capture menu icon.
 
 ## [0.5.0] — 2026-10-10
 

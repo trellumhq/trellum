@@ -96,6 +96,7 @@ def next_occurrence(schedule, now=None):
 def schedule_snapshot(schedule):
     return {
         "id": schedule.pk, "report_id": schedule.report_id, "owner_id": schedule.created_by_id,
+        "studio_id": schedule.report.studio_id, "org_id": schedule.report.studio.org_id,
         "revision": schedule.delivery_revision,
         "policy_generation": delivery_generation(schedule.report.studio.org_id),
         **{name: getattr(schedule, name) for name in (

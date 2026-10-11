@@ -160,6 +160,7 @@ class AlertRun(models.Model):
     DISPOSITION_WOULD_NOTIFY = "would_notify"
     DISPOSITION_CLAIMED = "claimed"
     DISPOSITION_UNCONFIRMED = "unconfirmed"
+    DISPOSITION_PAUSED = "paused"
     CONDITION_MET = "met"
     CONDITION_NOT_MET = "not_met"
     CONDITION_UNKNOWN = "unknown"
@@ -240,6 +241,8 @@ class AlertRun(models.Model):
 
     @property
     def outcome_label(self) -> str:
+        if self.delivery_disposition == self.DISPOSITION_PAUSED:
+            return "Paused for delivery"
         if self.delivery_disposition == "unconfirmed" or (self.pk and self.finished_at is None
                                                          and self.rule_revision):
             return "Unconfirmed"

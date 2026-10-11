@@ -597,6 +597,7 @@ class _SchedulerManager:
         from apps.alerts.models import AlertRule
         from apps.reports.models import EmailSchedule, Report
         from apps.reports.notify import flush_broken_buffers
+        from apps.reports.deliveries import delivery_pause
 
         self._last_refresh = time.time()
         if self._scheduler is None:
@@ -618,9 +619,9 @@ class _SchedulerManager:
 
         # Personal delivery cadences ride the same diffed-every-60s scheduler
         # as the build cron above — one less mechanism to keep symmetrical.
-        email_rows = EmailSchedule.objects.filter(enabled=True).select_related("report")
+        email_rows = EmailSchedule.objects.filter(enabled=True).select_related("report__studio__org")
         for s in email_rows:
-            if s.report.present_in_scan and not s.report.disabled:
+            if s.report.present_in_scan and not s.report.disabled and not delivery_pause(s.report.studio.org_id):
                 desired[f"email-{s.pk}"] = (s.pk, s, s.timezone)
 
         # Schedule-triggered alert rules (apps.alerts): same cadence fields,

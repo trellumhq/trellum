@@ -621,6 +621,9 @@ def _send_simple(subject: str, template_base: str, ctx: dict, user) -> int:
         to=[user.email], connection=connection,
     )
     msg.attach_alternative(html_body, "text/html")
+    guard = ctx.get("_delivery_guard")
+    if guard is not None and not guard():
+        return 0
     return msg.send(fail_silently=False)
 
 
@@ -665,21 +668,35 @@ def send_alert(rule, run, *, eligibility_check=None) -> AlertDelivery:
         "preview_text": run.title,
     }
     subject = f"⚠ {run.title or rule.name} · {report.name or report.slug}"
+    from apps.reports.deliveries import delivery_pause
+    def eligible(user):
+        why = delivery_pause(report.studio.org_id)
+        if not why and eligibility_check is not None:
+            why = eligibility_check()
+        if why:
+            outcome.error = why
+            return False
+        from apps.core.report_access import can_view_report
+        from django.contrib.auth import get_user_model
+        fresh = get_user_model().objects.filter(pk=user.pk, is_active=True, email=user.email).first()
+        from apps.alerts.models import AlertRule
+        if isinstance(rule, AlertRule):
+            current = AlertRule.objects.select_related("report__studio__org").filter(pk=rule.pk).first()
+            if current is None or not any(person.pk == user.pk and person.email == user.email for person in resolve_recipients(current)):
+                return False
+        return fresh is not None and can_view_report(fresh, report)
     for user in recipients:
         if user.email in outcome.accepted:
             continue
-        if eligibility_check is not None:
-            why = eligibility_check()
-            if why:
-                outcome.error = why
+        if not eligible(user):
+            if outcome.error:
                 break
-        from apps.core.report_access import can_view_report
-        if not type(user).objects.filter(pk=user.pk, is_active=True).exists() or not can_view_report(user, report):
             continue
         try:
-            if _send_simple(subject, "email/alert", ctx, user):
+            local_ctx = {**ctx, "_delivery_guard": lambda: eligible(user)}
+            if _send_simple(subject, "email/alert", local_ctx, user):
                 outcome.accepted.append(user.email)
-            else:
+            elif not outcome.error and eligible(user):
                 outcome.failed.append(user.email)
         except Exception:  # noqa: BLE001
             outcome.failed.append(user.email)
@@ -708,19 +725,34 @@ def _send_scheduled(schedule_id) -> None:
     )
     if schedule is None:
         return  # deleted/disabled between the job firing and now
-    from apps.core.report_access import can_view_report
-
-    if (
-        schedule.created_by is None
-        or not schedule.created_by.is_active
-        or not can_view_report(schedule.created_by, schedule.report)
-    ):
+    from apps.reports import deliveries
+    started = timezone.now()
+    snapshot = deliveries.schedule_snapshot(schedule)
+    initial = {"last_attempt_at": started, "delivery_accepted_to": [], "delivery_failed_to": []}
+    reason = deliveries.delivery_pause(schedule.report.studio.org_id)
+    if reason or deliveries.owner_repair_required(schedule) or schedule.report.disabled or not schedule.report.present_in_scan:
+        initial["delivery_outcome"] = "paused" if reason else "owner_repair_required" if deliveries.owner_repair_required(schedule) else "stale"
+        EmailSchedule.objects.filter(pk=schedule.pk).update(**initial)
         return
-    recipients = resolve_recipients(schedule)
+    initial["delivery_outcome"] = "not_attempted"
+    EmailSchedule.objects.filter(pk=schedule.pk).update(**initial)
+    try:
+        recipients = resolve_recipients(schedule)
+    except Exception:
+        EmailSchedule.objects.filter(pk=schedule.pk, last_attempt_at=started).update(delivery_outcome="error")
+        raise
     if not recipients:
+        EmailSchedule.objects.filter(pk=schedule.pk, last_attempt_at=started).update(delivery_outcome="no_recipients")
         return
-    _deliver(schedule.report, recipients, attach_pdf=schedule.attach_pdf, schedule=schedule)
-    EmailSchedule.objects.filter(pk=schedule.pk).update(last_sent_at=timezone.now())
+    outcome = _deliver(schedule.report, recipients, attach_pdf=schedule.attach_pdf, schedule=schedule, snapshot=snapshot)
+    updates = {"delivery_outcome": outcome.disposition, "delivery_accepted_to": outcome.accepted,
+               "delivery_failed_to": outcome.failed}
+    if outcome.accepted:
+        updates["last_accepted_at"] = timezone.now()
+    # Preserve the legacy completion timestamp; it was never proof of acceptance.
+    if outcome.accepted or outcome.failed or outcome.disposition == "not_sent_notice":
+        updates["last_sent_at"] = timezone.now()
+    EmailSchedule.objects.filter(pk=schedule.pk, last_attempt_at=started).update(**updates)
 
 
 def send_sample(schedule_or_report, user) -> None:
@@ -761,9 +793,35 @@ def _send_sample(schedule_or_report, user) -> None:
     _deliver(report, [user], attach_pdf=attach_pdf, schedule=None, sample=True)
 
 
-def _deliver(report, recipients, *, attach_pdf: bool, schedule=None, sample: bool = False) -> None:
+@dataclass
+class ScheduleDelivery:
+    accepted: list[str] = field(default_factory=list)
+    failed: list[str] = field(default_factory=list)
+    uncertain: list[str] = field(default_factory=list)
+    disposition: str = "not_attempted"
+
+
+def _deliver(report, recipients, *, attach_pdf: bool, schedule=None, sample: bool = False, snapshot=None) -> ScheduleDelivery:
     """Shared delivery path for both the cadence job and the sample button."""
     from trellum.meta import read_meta
+    from apps.reports import deliveries
+    from apps.core.report_access import can_view_report
+    from apps.reports.models import Report
+
+    outcome = ScheduleDelivery()
+    snapshot = snapshot or (deliveries.schedule_snapshot(schedule) if schedule is not None else None)
+    def eligible(user):
+        if schedule is not None:
+            current = deliveries.schedule_send_current(snapshot)
+            if current is None:
+                crossed_pause = deliveries.delivery_generation(report.studio.org_id) != snapshot["policy_generation"]
+                outcome.disposition = "paused" if crossed_pause or deliveries.delivery_pause(report.studio.org_id) else "stale"
+                return False
+            return any(person.pk == user.pk and person.email == user.email for person in resolve_recipients(current))
+        fresh_report = Report.objects.select_related("studio__org").filter(pk=report.pk, present_in_scan=True).first()
+        from django.contrib.auth import get_user_model
+        fresh_user = get_user_model().objects.filter(pk=user.pk, is_active=True, email=user.email).first()
+        return fresh_report is not None and fresh_user is not None and can_view_report(fresh_user, fresh_report)
 
     output_dir = report.studio.output_dir / report.slug
     try:
@@ -772,18 +830,37 @@ def _deliver(report, recipients, *, attach_pdf: bool, schedule=None, sample: boo
         meta = {}
 
     if meta.get("last_status") != "success" or not output_dir.is_dir():
-        _send_not_sent(report, recipients, meta, schedule=schedule)
-        return
+        _send_not_sent(report, recipients, meta, schedule=schedule, eligibility_check=eligible)
+        if outcome.disposition not in ("paused", "stale"):
+            outcome.disposition = "not_sent_notice"
+        return outcome
 
     render_result = _try_render(output_dir)
     for user in recipients:
+        if not eligible(user):
+            if outcome.disposition in ("paused", "stale"):
+                break
+            continue
         try:
-            _send_delivery_mail(
+            accepted = _send_delivery_mail(
                 report, user, render_result, attach_pdf=attach_pdf, schedule=schedule, sample=sample,
-                meta=meta,
+                meta=meta, before_send=lambda: eligible(user),
             )
+            if accepted:
+                outcome.accepted.append(user.email)
+            elif outcome.disposition not in ("paused", "stale") and eligible(user):
+                outcome.failed.append(user.email)
         except Exception:  # noqa: BLE001
+            outcome.failed.append(user.email)
+            outcome.uncertain.append(user.email)
             logger.exception("notify: failed to send delivery mail for report %s", report.pk)
+    if outcome.accepted:
+        outcome.disposition = "partial_unconfirmed" if outcome.uncertain else "partial_paused" if outcome.disposition == "paused" else "partial_stale" if outcome.disposition == "stale" else "partial" if outcome.failed else "accepted"
+    elif outcome.uncertain:
+        outcome.disposition = "unconfirmed"
+    elif outcome.failed:
+        outcome.disposition = "failed"
+    return outcome
 
 
 def _try_render(output_dir):
@@ -845,7 +922,7 @@ class _DeliveryEmail(EmailMultiAlternatives):
         return self._create_attachments(body)
 
 
-def _send_delivery_mail(report, user, render_result, *, attach_pdf, schedule, sample, meta=None) -> None:
+def _send_delivery_mail(report, user, render_result, *, attach_pdf, schedule, sample, meta=None, before_send=None) -> int:
     connection = resolve_delivery_connection()
     meta = meta or {}
     png = getattr(render_result, "png", None) if render_result else None
@@ -901,10 +978,12 @@ def _send_delivery_mail(report, user, render_result, *, attach_pdf, schedule, sa
     msg.attach_alternative(html_body, "text/html")
     if attach_pdf and pdf:
         msg.attach(f"{report.slug}.pdf", pdf, "application/pdf")
-    msg.send(fail_silently=False)
+    if before_send is not None and not before_send():
+        return 0
+    return msg.send(fail_silently=False)
 
 
-def _send_not_sent(report, recipients, meta, schedule=None) -> None:
+def _send_not_sent(report, recipients, meta, schedule=None, eligibility_check=None) -> None:
     """The report's last build failed or never ran: say so plainly instead
     of silently mailing stale numbers (or nothing at all)."""
     subject = f"Not sent · {report.name or report.slug}"
@@ -926,8 +1005,12 @@ def _send_not_sent(report, recipients, meta, schedule=None) -> None:
         "preview_text": preview_text,
     }
     for user in recipients:
+        if eligibility_check is not None and not eligibility_check(user):
+            continue
         try:
             local_ctx = dict(ctx)
+            if eligibility_check is not None:
+                local_ctx["_delivery_guard"] = lambda: eligibility_check(user)
             if schedule is not None:
                 local_ctx["unsubscribe_url"] = unsubscribe_url("schedule", schedule.pk, user.pk)
             _send_simple(subject, "email/not_sent", local_ctx, user)

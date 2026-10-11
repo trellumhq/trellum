@@ -69,9 +69,10 @@ notice is not an accepted report delivery.
 Admins can pause delivery for an organization; superusers can pause the entire
 instance. This pauses scheduled reports and all AI-alert mail, including owner
 budget warnings. Alert evaluations continue and consume their normal budget;
-paused alerts do not advance cooldown. Instance pause overrides organization
-resume. Build failure/recovery, account/security, on-demand personal samples and explicit operator tests
-remain outside this pause. Stored schedules stay intact. Resume uses future
+alerts with no accepted delivery do not advance cooldown. Instance pause
+overrides organization resume. Build failure/recovery, account/security,
+on-demand personal samples and explicit operator tests remain outside this
+pause. Stored schedules stay intact. Resume uses future
 occurrences only and sends no missed-email backlog.
 
 The same controls set enabled state and timezone defaults for **new email
@@ -89,6 +90,11 @@ separate and cannot be performed through this center.
 Delete confirmation identifies the schedule, report and recipients. Deletion
 stops future sends; it cannot recall a message already accepted by a transport.
 Configuration, owner changes and deletion identifiers are recorded in audit.
+Current permissions, recipients and pause state are checked again before each
+message. A pause and resume during rendering or evaluation stops that old
+attempt; the next future occurrence or a fresh alert evaluation can deliver.
+Messages already in transport cannot be recalled, and an interrupted transport
+may leave acceptance uncertain.
 
 ## Recipients
 

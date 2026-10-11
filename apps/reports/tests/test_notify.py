@@ -1694,3 +1694,145 @@ class TestSampleView:
 
         assert c.post(f"{prefix}/api/reports/player-overview/sample").status_code == 202
         assert c.post(f"{prefix}/api/reports/player-overview/sample").status_code == 202
+
+class TestScheduledDeliveryPolicySafety:
+    def schedule(self, report, owner, *recipients):
+        row = EmailSchedule.objects.create(report=report, created_by=owner)
+        row.recipients.add(*(recipients or (owner,)))
+        return row
+
+    @pytest.mark.parametrize('scope', ['org', 'instance'])
+    def test_pause_stops_schedules_but_not_explicit_samples(self, scope, monkeypatch, org, report_row, viewer, write_meta):
+        from apps.core.models import InstanceConfig
+        from apps.reports import notify
+        target = org if scope == 'org' else InstanceConfig.load()
+        target.deliveries_paused = True
+        target.save(update_fields=['deliveries_paused'])
+        write_meta(report_row.slug, last_status='success')
+        monkeypatch.setattr(notify, '_try_render', lambda output: None)
+        row = self.schedule(report_row, viewer)
+        send_scheduled(row.pk)
+        row.refresh_from_db()
+        assert mail.outbox == [] and row.delivery_outcome == 'paused'
+        assert row.last_attempt_at and row.last_accepted_at is None and row.last_sent_at is None
+        send_sample(report_row, viewer)
+        assert len(mail.outbox) == 1
+
+    @pytest.mark.parametrize('change', ['pause', 'pause_resume', 'disabled', 'report_disabled', 'deleted', 'cadence', 'owner_revoked', 'owner_deactivated', 'recipient_revoked', 'recipient_deactivated'])
+    @pytest.mark.django_db(transaction=True)
+    def test_slow_render_stops_obsolete_delivery(self, change, monkeypatch, org, report_row, viewer, other_viewer, write_meta):
+        from django.db import connection
+        from apps.reports import notify
+        from apps.orgs.models import Organization
+        from apps.studios.models import StudioMembership
+        write_meta(report_row.slug, last_status='success')
+        row = self.schedule(report_row, viewer, other_viewer)
+        def render(output):
+            assert not connection.in_atomic_block, 'Rendering must not hold a database transaction.'
+            if change in ('pause', 'pause_resume'):
+                Organization.objects.filter(pk=org.pk).update(deliveries_paused=True, delivery_generation=1)
+                if change == 'pause_resume':
+                    Organization.objects.filter(pk=org.pk).update(deliveries_paused=False, delivery_generation=2)
+            elif change == 'disabled':
+                EmailSchedule.objects.filter(pk=row.pk).update(enabled=False)
+            elif change == 'report_disabled':
+                type(report_row).objects.filter(pk=report_row.pk).update(disabled=True)
+            elif change == 'deleted':
+                row.delete()
+            elif change == 'cadence':
+                EmailSchedule.objects.filter(pk=row.pk).update(send_hour=15)
+            elif change == 'owner_revoked':
+                StudioMembership.objects.filter(user=viewer, studio=report_row.studio).delete()
+            elif change == 'owner_deactivated':
+                type(viewer).objects.filter(pk=viewer.pk).update(is_active=False)
+            elif change == 'recipient_revoked':
+                StudioMembership.objects.filter(user=other_viewer, studio=report_row.studio).delete()
+            else:
+                type(other_viewer).objects.filter(pk=other_viewer.pk).update(is_active=False)
+            return None
+        monkeypatch.setattr(notify, '_try_render', render)
+        send_scheduled(row.pk)
+        assert mail.outbox == []
+        if change != 'deleted':
+            row.refresh_from_db()
+            assert row.last_accepted_at is None and row.delivery_accepted_to == []
+            if change in ('pause', 'pause_resume'):
+                assert row.delivery_outcome == 'paused'
+
+    @pytest.mark.parametrize('boundary', ['template', 'connection'])
+    def test_pause_during_mail_preparation_prevents_transport(self, boundary, monkeypatch, org, report_row, viewer, write_meta):
+        from apps.reports import notify
+        from apps.orgs.models import Organization
+        write_meta(report_row.slug, last_status='success')
+        row = self.schedule(report_row, viewer)
+        monkeypatch.setattr(notify, '_try_render', lambda output: None)
+        if boundary == 'template':
+            original = notify.render_to_string
+            def render(template, ctx):
+                body = original(template, ctx)
+                if template == 'email/delivery.html':
+                    Organization.objects.filter(pk=org.pk).update(deliveries_paused=True)
+                return body
+            monkeypatch.setattr(notify, 'render_to_string', render)
+        else:
+            original = notify.resolve_delivery_connection
+            def connection():
+                result = original()
+                Organization.objects.filter(pk=org.pk).update(deliveries_paused=True)
+                return result
+            monkeypatch.setattr(notify, 'resolve_delivery_connection', connection)
+        send_scheduled(row.pk)
+        assert mail.outbox == []
+        row.refresh_from_db()
+        assert row.delivery_outcome == 'paused' and row.last_accepted_at is None
+
+    @pytest.mark.parametrize('transport', ['zero', 'error', 'partial'])
+    def test_actual_transport_outcomes(self, transport, monkeypatch, report_row, viewer, other_viewer, write_meta):
+        from apps.reports import notify
+        write_meta(report_row.slug, last_status='success')
+        monkeypatch.setattr(notify, '_try_render', lambda output: None)
+        row = self.schedule(report_row, viewer, viewer, other_viewer)
+        def send(message, **kwargs):
+            if transport == 'zero':
+                return 0
+            if transport == 'error':
+                raise RuntimeError('synthetic transport error')
+            return int(message.to == [viewer.email])
+        monkeypatch.setattr(notify._DeliveryEmail, 'send', send)
+        send_scheduled(row.pk)
+        row.refresh_from_db()
+        if transport == 'partial':
+            assert row.delivery_outcome == 'partial'
+            assert row.delivery_accepted_to == [viewer.email] and row.delivery_failed_to == [other_viewer.email]
+            assert row.last_accepted_at is not None
+        else:
+            assert row.delivery_outcome == ('failed' if transport == 'zero' else 'unconfirmed')
+            assert row.delivery_accepted_to == [] and row.last_accepted_at is None
+        assert row.last_sent_at is not None
+
+    def test_pause_between_recipients_records_partial_acceptance(self, monkeypatch, org, report_row, viewer, other_viewer, write_meta):
+        from apps.reports import notify
+        from apps.orgs.models import Organization
+        write_meta(report_row.slug, last_status='success')
+        monkeypatch.setattr(notify, '_try_render', lambda output: None)
+        row = self.schedule(report_row, viewer, viewer, other_viewer)
+        original = notify._DeliveryEmail.send
+        def send(message, **kwargs):
+            result = original(message, **kwargs)
+            Organization.objects.filter(pk=org.pk).update(deliveries_paused=True)
+            return result
+        monkeypatch.setattr(notify._DeliveryEmail, 'send', send)
+        send_scheduled(row.pk)
+        assert len(mail.outbox) == 1
+        row.refresh_from_db()
+        assert row.delivery_outcome == 'partial_paused'
+        assert len(row.delivery_accepted_to) == 1 and row.last_accepted_at
+
+    def test_missing_build_notice_is_not_report_acceptance(self, report_row, viewer, write_meta):
+        write_meta(report_row.slug, last_status='error')
+        row = self.schedule(report_row, viewer)
+        send_scheduled(row.pk)
+        row.refresh_from_db()
+        assert len(mail.outbox) == 1 and 'Not sent' in mail.outbox[0].subject
+        assert row.delivery_outcome == 'not_sent_notice' and row.delivery_accepted_to == []
+        assert row.last_accepted_at is None and row.last_attempt_at

@@ -147,15 +147,19 @@ class RuleSnapshot:
     notification_policy: str = AlertRule.POLICY_REPEAT
     live_state_json: str = "{}"
     enabled: bool = True
+    delivery_pause_reason: str = ""
+    delivery_policy_generation: tuple = (None, None)
 
     @classmethod
     def from_rule(cls, rule: AlertRule) -> RuleSnapshot:
         """Validate the same rule fields for saved rules and unsaved previews."""
         rule.full_clean()
+        from apps.reports.deliveries import delivery_generation, delivery_pause
         return cls(rule.pk, rule.org_id, rule.studio_id, rule.report_id, rule.name,
                    rule.instructions, rule.cooldown_hours, rule.last_alerted_at,
                    rule.revision, rule.timezone, rule.notification_policy or AlertRule.POLICY_REPEAT,
-                   json.dumps(rule.live_state or {}), rule.enabled)
+                   json.dumps(rule.live_state or {}), rule.enabled,
+                   delivery_pause(rule.org_id), delivery_generation(rule.org_id))
 
 
 def evaluate(rule: AlertRule, *, deliver: bool = True, now=None, history_namespace=None,
@@ -296,7 +300,10 @@ def _evaluate(rule: RuleSnapshot, run: AlertRun, actor, billing_user, now) -> No
         run.status, run.error = AlertRun.STATUS_SKIPPED_BUDGET, why
         if deliver:
             saved_rule = AlertRule.objects.get(pk=rule.rule_id)
-            run.budget_warning_sent = _mail_owner_once(saved_rule, why)
+            run.budget_warning_sent = _mail_owner_once(saved_rule, why, snapshot=rule)
+            pause = _delivery_pause_reason(rule)
+            if pause:
+                run.delivery_disposition, run.delivery_reason = AlertRun.DISPOSITION_PAUSED, pause
         return
 
     namespace = "live" if run.history_namespace == "test" else run.history_namespace
@@ -458,14 +465,18 @@ def _evaluate(rule: RuleSnapshot, run: AlertRun, actor, billing_user, now) -> No
         from apps.reports.notify import send_alert
 
         run.save()  # the mail links to this run by id; evaluate() updates it after
+        claim_token = ((saved_rule.live_state or {}).get("claim") or {}).get("token")
         def current_delivery():
+            pause = _delivery_pause_reason(rule)
+            if pause:
+                return pause
             current, why = _current_rule(rule, owner)
             if current is None:
                 return why
             state = current.live_state or {}
             claim = state.get("claim") or {}
             if (state.get("last_result") != "met" or claim.get("run_id") != run.pk
-                    or state.get("episode") != claim.get("episode")):
+                    or state.get("episode") != claim.get("episode") or claim.get("token") != claim_token):
                 return "The condition or delivery claim changed before sending."
             return ""
         outcome = send_alert(saved_rule, run, eligibility_check=current_delivery)
@@ -477,11 +488,16 @@ def _evaluate(rule: RuleSnapshot, run: AlertRun, actor, billing_user, now) -> No
             run.delivery_status = AlertRun.DELIVERY_PARTIAL if outcome.failed else AlertRun.DELIVERY_ACCEPTED
         else:
             run.delivery_status = AlertRun.DELIVERY_FAILED if outcome.failed else AlertRun.DELIVERY_EMPTY
-        run.delivery_disposition = "unconfirmed" if outcome.uncertain else run.delivery_status
-        run.delivery_reason = ("Transport acceptance is uncertain; automatic delivery remains blocked."
-                               if outcome.uncertain else run.get_delivery_status_display())
+        paused = outcome.error.startswith("Paused for delivery")
+        if paused and not outcome.uncertain:
+            run.delivery_status = AlertRun.DELIVERY_PARTIAL if outcome.accepted else AlertRun.DELIVERY_NONE
+            run.delivery_disposition, run.delivery_reason = AlertRun.DISPOSITION_PAUSED, outcome.error
+        else:
+            run.delivery_disposition = "unconfirmed" if outcome.uncertain else run.delivery_status
+            run.delivery_reason = ("Transport acceptance is uncertain; automatic delivery remains blocked."
+                                   if outcome.uncertain else outcome.error or run.get_delivery_status_display())
         finish_delivery(saved_rule.pk, run, accepted=bool(outcome.accepted),
-                        uncertain=bool(outcome.uncertain), now=now)
+                        uncertain=bool(outcome.uncertain), now=now, claim_token=claim_token)
         if outcome.accepted:
             audit_system(
                 "alert.fire", org=org, rule_id=rule.rule_id, rule=rule.name,
@@ -489,12 +505,22 @@ def _evaluate(rule: RuleSnapshot, run: AlertRun, actor, billing_user, now) -> No
             )
 
 
+def _delivery_pause_reason(snapshot):
+    from apps.reports.deliveries import delivery_generation, delivery_pause
+    reason = delivery_pause(snapshot.org_id)
+    if not reason and delivery_generation(snapshot.org_id) != snapshot.delivery_policy_generation:
+        reason = "Paused for delivery: this evaluation crossed a pause; a fresh evaluation is required."
+    return reason
+
+
 def _current_rule(snapshot, owner):
     saved = AlertRule.objects.select_related("created_by", "report__studio__org").filter(pk=snapshot.rule_id).first()
     if saved is None:
         return None, "The rule was deleted during evaluation."
     if (saved.revision != snapshot.revision or saved.name != snapshot.name
-            or saved.created_by_id != owner.pk):
+            or saved.created_by_id != owner.pk or saved.report_id != snapshot.report_id
+            or saved.studio_id != snapshot.studio_id or saved.org_id != snapshot.org_id
+            or saved.report.studio_id != snapshot.studio_id or saved.report.studio.org_id != snapshot.org_id):
         return None, "The rule changed during evaluation; nothing was sent. Evaluate the current rule again."
     if not saved.enabled or saved.report.disabled or not saved.report.present_in_scan:
         return None, "The rule or report is disabled or unavailable."
@@ -543,6 +569,9 @@ def claim_delivery(snapshot: RuleSnapshot, run: AlertRun, owner, report):
             state["condition"] = run.condition
             result = _policy_result(saved.notification_policy or AlertRule.POLICY_REPEAT, run.condition,
                                     state, saved.last_alerted_at, saved.cooldown_hours, run.started_at)
+            pause = _delivery_pause_reason(snapshot)
+            if pause:
+                result = {"disposition": AlertRun.DISPOSITION_PAUSED, "reason": pause}
             run.delivery_disposition, run.delivery_reason = result["disposition"], result["reason"]
             if run.delivery_disposition == "would_notify":
                 run.save()
@@ -556,12 +585,18 @@ def claim_delivery(snapshot: RuleSnapshot, run: AlertRun, owner, report):
     # Re-read after releasing the lock; no lock spans a mail transport call.
     current, error = _current_rule(snapshot, owner)
     current_state = (current.live_state or {}) if current else {}
-    if (error or current_state.get("last_result") != "met"
-            or current_state.get("episode") != state.get("episode")):
+    current_claim = current_state.get("claim") or {}
+    pause = _delivery_pause_reason(snapshot)
+    if (pause or error or current_state.get("last_result") != "met"
+            or current_state.get("episode") != state.get("episode")
+            or current_claim.get("run_id") != run.pk
+            or current_claim.get("token") != (state.get("claim") or {}).get("token")):
         if error:
             run.status, run.error = AlertRun.STATUS_ERROR, error
-        run.delivery_disposition, run.delivery_reason = "stale", error or "The condition recovered before delivery."
-        finish_delivery(saved.pk, run, accepted=False, uncertain=False)
+        run.delivery_disposition = AlertRun.DISPOSITION_PAUSED if pause else "stale"
+        run.delivery_reason = pause or error or "The condition or delivery claim changed before sending."
+        finish_delivery(saved.pk, run, accepted=False, uncertain=False,
+                        claim_token=(state.get("claim") or {}).get("token"))
         return None
     return current
 
@@ -590,11 +625,13 @@ def simulate_delivery(snapshot: RuleSnapshot, condition: str, *, now=None) -> di
         state["pending"] = True
     if not snapshot.enabled:
         return {"disposition": "disabled", "reason": "The draft rule is disabled."}
+    if condition == "met" and snapshot.delivery_pause_reason:
+        return {"disposition": AlertRun.DISPOSITION_PAUSED, "reason": snapshot.delivery_pause_reason}
     return _policy_result(snapshot.notification_policy, condition, state,
                           snapshot.last_alerted_at, snapshot.cooldown_hours, now or timezone.now())
 
 
-def finish_delivery(rule_id, run, *, accepted, uncertain, now=None):
+def finish_delivery(rule_id, run, *, accepted, uncertain, now=None, claim_token=None):
     with transaction.atomic():
         saved = AlertRule.objects.select_for_update().filter(pk=rule_id).first()
         if saved is None:
@@ -602,7 +639,7 @@ def finish_delivery(rule_id, run, *, accepted, uncertain, now=None):
         state = dict(saved.live_state or {})
         claim = state.get("claim") or {}
         updates = {}
-        if claim.get("run_id") == run.pk:
+        if claim.get("run_id") == run.pk and (claim_token is None or claim.get("token") == claim_token):
             if accepted and claim.get("episode") == state.get("episode"):
                 state["pending"] = False
             if not uncertain:
@@ -645,7 +682,7 @@ def _format_evidence(evidence: dict) -> str:
     return "\n".join(lines) or "(the previous evaluation cited nothing)"
 
 
-def _mail_owner_once(rule: AlertRule, why: str) -> bool:
+def _mail_owner_once(rule: AlertRule, why: str, *, snapshot=None) -> bool:
     """One mail per exhaustion, not one per cadence tick: skip when the
     previous run already said so."""
     last = AlertRun.objects.filter(rule=rule, execution_mode=AlertRun.MODE_LIVE,
@@ -655,14 +692,19 @@ def _mail_owner_once(rule: AlertRule, why: str) -> bool:
     from apps.core.mail import default_from_email
 
     try:
+        snapshot = snapshot or RuleSnapshot.from_rule(rule)
+        from_email = default_from_email()
+        current, error = _current_rule(snapshot, rule.created_by)
+        if error or _delivery_pause_reason(snapshot):
+            return False
         return bool(send_mail(
             subject=f"Alert rule paused: {rule.name}",
             message=(
                 f"The alert rule \"{rule.name}\" on report {rule.report.name or rule.report.slug} "
                 f"was not evaluated.\n\n{why}\n\nIt resumes on its own once the budget allows."
             ),
-            from_email=default_from_email(),
-            recipient_list=[rule.created_by.email],
+            from_email=from_email,
+            recipient_list=[current.created_by.email],
             fail_silently=False,
         ))
     except Exception:  # noqa: BLE001 - a rejected warning must remain retryable
