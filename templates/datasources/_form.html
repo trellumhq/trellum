@@ -1,0 +1,87 @@
+  <form method="post" id="ds-form" class="ui-form-grid" data-settings-form data-settings-save>
+    {% csrf_token %}
+    <input type="hidden" name="id" value="{{ editing.pk|default:'' }}">
+    {{ form.non_field_errors }}
+    <div class="ui-field"><label>Name</label>{{ form.name }}{{ form.name.errors }}</div>
+    <div class="ui-field"><label>Type</label>{{ form.type }}{{ form.type.errors }}</div>
+    <div class="ui-field ui-field-wide"><label>Description</label>{{ form.description }}</div>
+    {% if not org_page %}
+    <div class="ui-field ui-field-wide"><label>Scope</label>
+      <div><span class="scope-chip studio">This studio only</span></div>
+      {{ form.scope }}
+      {% if shell_is_org_admin %}
+      <span class="ui-help">Organization-wide sources (shared with every studio)
+      are created in <a href="/orgs/{{ org.slug }}/settings/datasources">Organization
+      settings → Data sources</a>.</span>
+      {% endif %}
+    </div>
+    {% else %}{{ form.scope }}{% endif %}
+
+    <div class="ui-field" data-f="host"><label>Host</label>{{ form.host }}</div>
+    <div class="ui-field narrow" data-f="port"><label>Port</label>{{ form.port }}</div>
+    <div class="ui-field" data-f="database"><label>Database</label>{{ form.database }}</div>
+    <div class="ui-field" data-f="user"><label>User</label>{{ form.user }}</div>
+    <div class="ui-field" data-f="password"><label>Password <span class="muted">(blank = keep current)</span></label>{{ form.password }}</div>
+    <div class="ui-field ui-field-wide" data-f="path">
+      <label>{% if org_page %}Path in the organization's files{% else %}Path in the studio project{% endif %}</label>
+      {{ form.path }}{{ form.path.errors }}
+      <span class="helptext">{% if org_page %}Relative to this organization's own
+      data-sources directory, which every studio's reports resolve to the same
+      file (e.g. files/market-extract.csv). Blank = files/&lt;name&gt;, set on first
+      upload.{% else %}{{ form.path.help_text }}{% endif %}</span>
+      <span class="ui-help" id="ds-git-warning" hidden>Heads up: git sync rewrites
+      <code>reports/</code> on every pull, so anything uploaded there is replaced
+      the next time that report changes. Put files you upload somewhere else —
+      <code>data-sources/files/…</code> is never touched by git.</span>
+    </div>
+    <div class="ui-field ui-field-wide" data-f="upload">
+      <label class="ui-check-row">{{ form.upload }} {{ form.upload.label }}</label>
+      <span class="ui-help">Adds an Upload button to this source's row. Independent
+      of where the file lives: a file committed in the repository can still be
+      refreshed here between pushes.</span>
+    </div>
+    <div class="ui-field" data-f="project"><label>Project (BigQuery)</label>{{ form.project }}</div>
+    <div class="ui-field ui-field-wide" data-f="credentials_json"><label>Credentials JSON <span class="muted">(blank = keep)</span></label>{{ form.credentials_json }}</div>
+    <div class="ui-field" data-f="credentials_path"><label>Credentials path</label>{{ form.credentials_path }}</div>
+    <div class="ui-field" data-f="account"><label>Account (Snowflake)</label>{{ form.account }}</div>
+    <div class="ui-field" data-f="warehouse"><label>Warehouse</label>{{ form.warehouse }}</div>
+    <div class="ui-field" data-f="catalog"><label>Catalog</label>{{ form.catalog }}</div>
+    <div class="ui-field" data-f="schema"><label>Schema</label>{{ form.schema }}</div>
+    <div class="ui-field ui-field-wide" data-f="http_path"><label>HTTP path <span class="muted">(the SQL warehouse's)</span></label>{{ form.http_path }}</div>
+    <div class="ui-field" data-f="access_token"><label>Access token <span class="muted">(blank = keep)</span></label>{{ form.access_token }}</div>
+    <div class="ui-field ui-field-wide" data-f="secure">
+      <label class="ui-check-row">{{ form.secure }} {{ form.secure.label }}</label>
+      <span class="ui-help">Unticked = the driver's default: HTTPS whenever a password is set.</span>
+    </div>
+    <div class="ui-field ui-field-wide" data-f="new_connection_per_query">
+      <label class="ui-check-row">{{ form.new_connection_per_query }} {{ form.new_connection_per_query.label }}</label>
+      <span class="ui-help">{{ form.new_connection_per_query.help_text }}</span>
+    </div>
+    <div class="ui-field" data-f="tenant_id"><label>Tenant ID (Entra)</label>{{ form.tenant_id }}</div>
+    <div class="ui-field" data-f="client_id"><label>Client ID</label>{{ form.client_id }}</div>
+    <div class="ui-field" data-f="client_secret"><label>Client secret <span class="muted">(blank = keep)</span></label>{{ form.client_secret }}</div>
+    <div class="ui-field ui-field-wide" data-f="site_url"><label>Site URL (SharePoint)</label>{{ form.site_url }}</div>
+
+    <div class="ui-field ui-field-wide" data-f="ssh_host">
+      <h3>SSH tunnel <span class="muted">(optional)</span></h3>
+      <span class="ui-help">Reach the database through a bastion: the build connects to
+      the SSH host and forwards to the host and port above from there. Leave the host
+      blank for a direct connection.</span>
+      <label>SSH host</label>{{ form.ssh_host }}
+    </div>
+    <div class="ui-field narrow" data-f="ssh_port"><label>SSH port <span class="muted">(blank = 22)</span></label>{{ form.ssh_port }}</div>
+    <div class="ui-field" data-f="ssh_user"><label>SSH user</label>{{ form.ssh_user }}</div>
+    <div class="ui-field ui-field-wide" data-f="ssh_private_key"><label>SSH private key <span class="muted">(blank = keep)</span></label>{{ form.ssh_private_key }}</div>
+    <div class="ui-field" data-f="ssh_password"><label>SSH password <span class="muted">(blank = keep; not needed with a key)</span></label>{{ form.ssh_password }}</div>
+    <div class="ui-field ui-field-wide" data-f="ssh_host_key">
+      <label>SSH host key <span class="muted">(recommended)</span></label>{{ form.ssh_host_key }}
+      <span class="ui-help">The bastion's public host key, as <code>ssh-keyscan &lt;host&gt;</code>
+      prints it. When set, a bastion presenting any other key is refused; when blank, any key is accepted.</span>
+    </div>
+
+    <div class="ui-form-actions">
+
+      <button class="ui-btn primary" type="submit">Save</button>
+      <a class="ui-btn ghost" data-ds-cancel href="{{ list_url }}">Cancel</a>
+    </div>
+  </form>

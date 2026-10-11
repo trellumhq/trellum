@@ -597,7 +597,7 @@ def _banner(states: list[SourceState], studio) -> dict | None:
     }
 
 
-def _saved_response(request, ds, studio=None, *, configured=False):
+def _saved_response(request, ds, studio=None, *, configured=False, redirect_to=None):
     base = (
         f"/orgs/{request.org.slug}/settings/datasources/" if ds.org_id
         else f"/s/{request.org.slug}/{ds.studio.slug}/api/datasources/"
@@ -616,7 +616,7 @@ def _saved_response(request, ds, studio=None, *, configured=False):
         source_type=ds.type, type_label=_TYPE_LABELS.get(ds.type, ds.type),
         source_scope=ds.scope, description=ds.description,
         upload_url=base + ds.name + "/upload" if (ds.config or {}).get("upload") else "",
-        values={"id": ds.pk},
+        values={"id": ds.pk}, redirect_url=redirect_to,
         download_url=_file_urls(ds, info, True, studio=test_studio)["download_url"],
         edit_url=manage_path + f"/{quote(ds.name, safe='')}/edit", delete_url=manage_path,
         declared=state.declared, configured=configured,
@@ -645,6 +645,12 @@ def settings_page(request, org_slug, studio_slug):  # noqa: ARG001
         name = request.GET["configure"]
         if RepoDataSource.objects.filter(studio=request.studio, name=name, present=True).exists():
             return redirect(_editor_url(request, name))
+        if DataSource.objects.filter(studio=request.studio, name=name).exists():
+            return redirect(_editor_url(request, name))
+        if (DataSource.objects.filter(org=request.org, name=name).exists()
+                and request.org_roles.is_org_admin):
+            return redirect(_editor_url(request, name, org_page=True))
+        return redirect(request.path + "/new?name=" + quote(name, safe=""))
     if request.method == "POST" and request.POST.get("name") and request.POST.get("action") in (
         "configure", "remove_credentials"
     ):
@@ -677,7 +683,10 @@ def settings_page(request, org_slug, studio_slug):  # noqa: ARG001
             _discard_orphan(owned, ds)
             audit(request, "datasource.update", target=ds, name=ds.name, scope=ds.scope)
             if is_settings_request(request):
-                return _saved_response(request, ds, request.studio)
+                return _saved_response(
+                    request, ds, request.studio,
+                    redirect_to=f"/s/{request.org.slug}/{request.studio.slug}/settings/datasources",
+                )
             check_binding(ds, request.studio)
             messages.success(request, _saved_message(ds))
             return redirect(request.path)
@@ -688,10 +697,6 @@ def settings_page(request, org_slug, studio_slug):  # noqa: ARG001
         form = DataSourceForm(instance=editing, **form_kwargs)
 
     states = source_states(request.studio)
-    add_open = editing is not None or (request.method == "POST" and not form.is_valid())
-    if request.GET.get("configure") and request.method == "GET":
-        form = DataSourceForm(initial={"name": request.GET["configure"]}, **form_kwargs)
-        add_open = True
     has_repo = StudioRepo.objects.filter(studio=request.studio, repo_url__gt="").exists()
 
     rows = [
@@ -717,7 +722,6 @@ def settings_page(request, org_slug, studio_slug):  # noqa: ARG001
             "unknown": [s for s in states if s.state == SourceState.UNKNOWN],
             "banner": _banner(states, request.studio),
             "has_repo": has_repo,
-            "add_open": add_open or not has_repo,
             "form": form,
             "editing": editing,
             "type_fields": TYPE_FIELDS,
@@ -760,7 +764,10 @@ def org_settings_page(request, org_slug):  # noqa: ARG001
             _discard_orphan(owned, ds)
             audit(request, "datasource.update", target=ds, name=ds.name, scope="org")
             if is_settings_request(request):
-                return _saved_response(request, ds)
+                return _saved_response(
+                    request, ds,
+                    redirect_to=f"/orgs/{request.org.slug}/settings/datasources",
+                )
             check_binding(ds)
             messages.success(request, _saved_message(ds))
             return redirect(request.path)
@@ -807,6 +814,48 @@ def org_settings_page(request, org_slug):  # noqa: ARG001
             "total": total,
         },
     )
+
+
+def _create_page(request, studio=None):
+    org_page = studio is None
+    form_kwargs = dict(
+        studio=studio, org=request.org,
+        fixed_scope="org" if org_page else "studio",
+    )
+    form = DataSourceForm(
+        request.POST if request.method == "POST" else None,
+        initial={"name": request.GET.get("name", "")} if request.method == "GET" else None,
+        **form_kwargs,
+    )
+    list_url = (
+        f"/orgs/{request.org.slug}/settings/datasources" if org_page
+        else f"/s/{request.org.slug}/{studio.slug}/settings/datasources"
+    )
+    if request.method == "POST":
+        if form.is_valid():
+            ds = form.save(user=request.user)
+            audit(request, "datasource.create", target=ds, name=ds.name, scope=ds.scope)
+            if is_settings_request(request):
+                return _saved_response(request, ds, studio, redirect_to=list_url)
+            messages.success(request, _saved_message(ds) + " Testing connection…")
+            return redirect(list_url)
+        if is_settings_request(request):
+            return settings_error(request, form=form)
+    return render(request, "datasources/create.html", {
+        "org": request.org, "studio": studio, "org_page": org_page,
+        "form": form, "type_fields": TYPE_FIELDS, "list_url": list_url,
+        "max_upload_bytes": instance_config.max_upload_bytes(),
+    })
+
+
+@require_studio_role(roles.ADMIN)
+def create_page(request, org_slug, studio_slug):  # noqa: ARG001
+    return _create_page(request, request.studio)
+
+
+@require_org_role(roles.ORG_ADMIN)
+def org_create_page(request, org_slug):  # noqa: ARG001
+    return _create_page(request)
 
 
 def _editor_state(request, name, studio, *, org_target=False):
@@ -887,10 +936,14 @@ def _editor(request, name, studio=None):
                 _discard_orphan(owned, ds)
                 audit(request, "datasource.update", target=ds, name=ds.name, scope=ds.scope)
             if is_settings_request(request):
-                return _saved_response(request, ds, studio, configured=credentials_only)
+                list_url = (f"/orgs/{request.org.slug}/settings/datasources" if ds.org_id
+                            else f"/s/{request.org.slug}/{studio.slug}/settings/datasources")
+                return _saved_response(request, ds, studio, configured=credentials_only,
+                                       redirect_to=list_url)
             ok, detail = check_binding(ds, None if ds.org_id else studio)
             (messages.success if ok else messages.error)(request, _saved_message(ds) + " " + detail)
-            return redirect(_editor_url(request, ds.name, org_page=ds.org_id is not None))
+            return redirect(f"/orgs/{request.org.slug}/settings/datasources" if ds.org_id
+                            else f"/s/{request.org.slug}/{studio.slug}/settings/datasources")
         if is_settings_request(request) or request.POST.get("action") == "test_draft":
             return settings_error(request, form=form)
     badge, label = _badge(state)

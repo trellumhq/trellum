@@ -1,0 +1,12 @@
+{% extends "datasources/settings.html" %}
+{% block title %}Add data source — {% if org_page %}{{ org.name }}{% else %}{{ studio.name }}{% endif %}{% endblock %}
+{% block datasource_content %}
+<header class="page-head">
+  <div class="ui-label page-kicker">{% if org_page %}Organization · {{ org.name }}{% else %}Studio · {{ studio.name }}{% endif %}</div>
+  <h1>Add data source</h1>
+  <p class="muted page-sub">{% if org_page %}Studios that declare a source with this name can use these shared credentials and files.{% else %}Configure a connection, file, or other source for this studio.{% endif %}</p>
+</header>
+<section class="ui-panel">
+  {% include "datasources/_form.html" %}
+</section>
+{% endblock %}

@@ -288,6 +288,22 @@ def test_save_submits_checked_and_unchecked_connection_option_without_navigation
         browser.close()
 
 
+def test_successful_crud_save_follows_same_origin_list_redirect():
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page()
+        load_page(page)
+        page.route("http://datasources.test/settings/list", lambda route: route.fulfill(
+            content_type="text/html", body="<main>Data source list</main>"
+        ))
+        page.evaluate("window.saveResponse = {redirect:'/settings/list'}")
+        page.locator('[name="host"]').fill("saved")
+        page.locator('#ds-form button[type="submit"]').click()
+        page.wait_for_url("http://datasources.test/settings/list")
+        assert page.locator("main").text_content() == "Data source list"
+        browser.close()
+
+
 def test_old_test_does_not_overwrite_new_draft_or_new_saved_revision():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)

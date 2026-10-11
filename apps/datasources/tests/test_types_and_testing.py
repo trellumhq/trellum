@@ -144,7 +144,7 @@ class TestTypeFieldFiltering:
         from apps.datasources.models import TYPE_FIELDS
 
         html = login(org_admin).get(
-            f"/s/{org.slug}/{studio_tree.slug}/settings/datasources"
+            f"/s/{org.slug}/{studio_tree.slug}/settings/datasources/new"
         ).content.decode()
         for type_, fields in TYPE_FIELDS.items():
             assert f'value="{type_}"' in html, type_

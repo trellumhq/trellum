@@ -358,10 +358,84 @@ class TestOrgUpload:
 
 
 class TestManagementUI:
+    def test_list_shows_sources_and_links_to_separate_create_page(
+        self, login, org_admin, org, studio_tree
+    ):
+        prefix = f"/s/{org.slug}/{studio_tree.slug}"
+        page = login(org_admin).get(f"{prefix}/settings/datasources").content.decode()
+        assert 'href="' + prefix + '/settings/datasources/new">Add data source</a>' in page
+        assert 'id="ds-form"' not in page
+
+    def test_create_validation_retains_draft_and_save_returns_to_list(
+        self, login, org_admin, org, studio_tree
+    ):
+        client = login(org_admin)
+        list_url = f"/s/{org.slug}/{studio_tree.slug}/settings/datasources"
+        create_url = list_url + "/new"
+        invalid = client.post(create_url, {"name": "", "type": "postgres", "host": "draft-host"})
+        assert invalid.status_code == 200
+        assert 'value="draft-host"' in invalid.content.decode()
+        assert not DataSource.objects.filter(studio=studio_tree).exists()
+
+        saved = client.post(create_url, {
+            "name": "warehouse", "type": "postgres", "host": "db.internal",
+            "user": "svc", "password": "private-secret",
+        })
+        assert saved.status_code == 302 and saved.url == list_url
+        source = DataSource.objects.get(studio=studio_tree, name="warehouse")
+        assert source.credentials == {"user": "svc", "password": "private-secret"}
+
+    def test_create_and_editor_ajax_saves_redirect_only_after_persistence(
+        self, login, org_admin, org, studio_tree
+    ):
+        client = login(org_admin)
+        list_url = f"/s/{org.slug}/{studio_tree.slug}/settings/datasources"
+        headers = {"HTTP_X_TRELLUM_FORM": "1", "HTTP_ACCEPT": "application/json"}
+        response = client.post(list_url + "/new", {
+            "name": "warehouse", "type": "postgres", "host": "db.internal",
+        }, **headers)
+        assert response.status_code == 200
+        assert response.json()["redirect"] == list_url
+        source = DataSource.objects.get(studio=studio_tree, name="warehouse")
+        response = client.post(list_url + "/warehouse/edit", {
+            "action": "save", "name": "warehouse", "type": "postgres", "host": "db2",
+        }, **headers)
+        assert response.status_code == 200
+        assert response.json()["redirect"] == list_url
+        source.refresh_from_db()
+        assert source.config["host"] == "db2"
+
+    def test_create_and_editor_keep_scope_permissions(self, login, viewer, org, studio_tree):
+        client = login(viewer)
+        studio_create = f"/s/{org.slug}/{studio_tree.slug}/settings/datasources/new"
+        org_create = f"/orgs/{org.slug}/settings/datasources/new"
+        assert client.get(studio_create).status_code == 403
+        assert client.get(org_create).status_code == 403
+
+    def test_create_endpoints_force_their_scope_and_org_creation_requires_org_admin(
+        self, login, org_admin, developer, org, studio_tree
+    ):
+        org_url = f"/orgs/{org.slug}/settings/datasources/new"
+        studio_url = f"/s/{org.slug}/{studio_tree.slug}/settings/datasources/new"
+        assert login(developer).get(org_url).status_code == 403
+        client = login(org_admin)
+        response = client.post(org_url, {
+            "name": "shared", "type": "postgres", "scope": "studio",
+        })
+        assert response.status_code == 302
+        assert DataSource.objects.filter(org=org, name="shared").exists()
+        assert not DataSource.objects.filter(studio=studio_tree, name="shared").exists()
+        response = client.post(studio_url, {
+            "name": "local", "type": "postgres", "scope": "org",
+        })
+        assert response.status_code == 302
+        assert DataSource.objects.filter(studio=studio_tree, name="local").exists()
+        assert not DataSource.objects.filter(org=org, name="local").exists()
+
     def test_connection_option_is_available_for_remote_query_types_only(
         self, login, org_admin, org, studio_tree
     ):
-        url = f"/s/{org.slug}/{studio_tree.slug}/settings/datasources"
+        url = f"/s/{org.slug}/{studio_tree.slug}/settings/datasources/new"
         html = login(org_admin).get(url).content.decode()
         assert 'name="new_connection_per_query"' in html
         for type_ in (

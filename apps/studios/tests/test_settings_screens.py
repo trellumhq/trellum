@@ -535,11 +535,12 @@ class TestDataSourceScreen:
         )
         assert not DataSource.objects.filter(name="warehouse").exists()
 
-    def test_configure_of_an_undeclared_name_opens_the_portal_only_form(self, html, prefix, studio_tree):
+    def test_configure_of_an_undeclared_name_opens_the_create_page(self, html, login, org_admin, prefix, studio_tree):
         report_using(studio_tree, "sales", "legacy")
-        page = html(f"{prefix}/settings/datasources?configure=legacy")
-        assert "Configure <code>" not in page
-        assert '<details class="ui-panel" open>' in page
+        response = login(org_admin).get(f"{prefix}/settings/datasources?configure=legacy")
+        assert response.status_code == 302
+        assert response.url == f"{prefix}/settings/datasources/new?name=legacy"
+        page = html(response.url)
         assert 'value="legacy"' in page
 
     def test_referenced_but_not_declared_lists_the_reports(self, html, prefix, studio_tree):
@@ -552,13 +553,15 @@ class TestDataSourceScreen:
         # Not a row in the main table.
         assert 'id="ds-row-legacy"' not in page
 
-    def test_portal_only_form_is_collapsed_unless_there_is_no_repo(self, html, prefix, studio_tree, repo):
+    def test_list_has_no_embedded_form_and_create_page_is_separate(self, html, prefix, studio_tree, repo):
         page = html(f"{prefix}/settings/datasources")
-        assert '<details class="ui-panel" >' in page
-        assert "Add a portal-only source (advanced)" in page
+        assert 'id="ds-form"' not in page
+        assert f'href="{prefix}/settings/datasources/new">Add data source</a>' in page
+        create = html(f"{prefix}/settings/datasources/new")
+        assert 'id="ds-form"' in create and ">Save</button>" in create
         repo.delete()
         page = html(f"{prefix}/settings/datasources")
-        assert '<details class="ui-panel" open>' in page
+        assert 'id="ds-form"' not in page
         assert "Connect a" in page and "repository</a> to declare" in page
 
     def test_inline_declaration_names_its_report_file(self, html, prefix, studio_tree):
@@ -577,9 +580,10 @@ class TestDataSourceScreen:
         page = html(f"/orgs/{org.slug}/settings/datasources")
         assert "Declared by 2 studios" in page
         assert "Not declared by any studio" in page
-        assert "Add shared credentials" in page
-        assert "Studios that declare a source with this name will use these credentials." in page
-        assert '<details class="ui-panel"' not in page
+        assert f'href="/orgs/{org.slug}/settings/datasources/new">Add data source</a>' in page
+        create = html(f"/orgs/{org.slug}/settings/datasources/new")
+        assert "Studios that declare a source with this name" in create
+        assert 'id="ds-form"' in create
 
     def test_js_contract_survives_the_restyle(self, html, prefix, studio_tree):
         ds = DataSource.objects.create(
@@ -588,7 +592,9 @@ class TestDataSourceScreen:
         page = html(f"{prefix}/settings/datasources")
         assert f'id="test-result-{ds.pk}"' in page
         assert f"testSource({ds.pk}, 'warehouse', this)" in page
-        assert 'data-f="host"' in page and 'id="ds-form"' in page
+        assert 'id="ds-form"' not in page
+        create = html(f"{prefix}/settings/datasources/new")
+        assert 'data-f="host"' in create and 'id="ds-form"' in create
         assert f"/s/{studio_tree.org.slug}/{studio_tree.slug}/api/datasources/" in page
 
     def test_empty_state(self, html, prefix):
