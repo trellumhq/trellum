@@ -94,6 +94,10 @@ class Organization(ImmutableSlugMixin):
     #: turning it off stops every key in the org at once without deleting
     #: any -- Org settings -> API keys.
     api_keys_enabled = models.BooleanField(default=True)
+    deliveries_paused = models.BooleanField(null=True, blank=True)
+    delivery_generation = models.PositiveIntegerField(null=True, blank=True)
+    delivery_default_enabled = models.BooleanField(null=True, blank=True)
+    delivery_default_timezone = models.CharField(max_length=64, null=True, blank=True)
 
     def __str__(self) -> str:
         return self.slug

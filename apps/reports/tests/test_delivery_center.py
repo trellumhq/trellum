@@ -236,3 +236,197 @@ class TestReportDeliveryJsErrorHandling:
             js_source, "function wireDeliveryRow(row) {", "\n    window.ReportDelivery"
         )
         assert body.count(".catch(") >= 2
+
+class TestSharedDeliveryManagement:
+    def create(self, report, owner, **kwargs):
+        from apps.reports.models import EmailSchedule
+        row = EmailSchedule.objects.create(report=report, created_by=owner, **kwargs)
+        if owner:
+            row.recipients.add(owner)
+        return row
+
+    def url(self, report, schedule):
+        studio = report.studio
+        return f'/s/{studio.org.slug}/{studio.slug}/api/reports/{report.slug}/schedules/{schedule.pk}'
+
+    def test_admin_manages_colleague_and_personal_bookmark_stays_personal(self, login, org_admin, viewer, report_row):
+        row = self.create(report_row, viewer)
+        client = login(org_admin)
+        assert [item['schedule'].pk for item in client.get('/deliveries').context['schedule_rows']] == [row.pk]
+        assert client.get('/me/deliveries').context['schedule_rows'] == []
+        response = client.post(self.url(report_row, row), json.dumps({'enabled': False}), content_type='application/json')
+        assert response.status_code == 200
+        assert response.json()['schedule']['editable']
+        row.refresh_from_db()
+        assert not row.enabled
+
+    def test_group_admin_has_same_policy(self, login, viewer, other_viewer, report_row, make_group, attach_group):
+        group = make_group('Admins', org_role=roles.ORG_ADMIN)
+        attach_group(viewer, group)
+        row = self.create(report_row, other_viewer)
+        response = login(viewer).post(self.url(report_row, row), json.dumps({'send_hour': 11}), content_type='application/json')
+        assert response.status_code == 200
+
+    def test_viewer_and_support_flag_cannot_manage_colleague(self, login, viewer, other_viewer, report_row):
+        row = self.create(report_row, other_viewer)
+        viewer.is_operator_flag = True
+        viewer.save(update_fields=['is_operator_flag'])
+        client = login(viewer)
+        assert client.get('/deliveries').status_code == 404
+        assert client.post(self.url(report_row, row), json.dumps({'enabled': False}), content_type='application/json').status_code == 404
+        assert client.delete(self.url(report_row, row)).status_code == 404
+
+    def test_other_tenant_not_listed_but_superuser_can_manage(self, login, org_admin, superuser, other_studio, make_user, report_row):
+        from apps.reports.models import Report
+        other = Report.objects.create(studio=other_studio, slug='hidden', name='Hidden')
+        owner = make_user('private@other.example', org=other_studio.org)
+        hidden = self.create(other, owner)
+        response = login(org_admin).get('/deliveries')
+        assert b'private@other.example' not in response.content
+        assert b'Hidden' not in response.content
+        assert login(org_admin).post(self.url(other, hidden), json.dumps({'enabled': False}), content_type='application/json').status_code == 404
+        assert len(login(superuser).get('/deliveries').context['schedule_rows']) == 1
+
+    def test_ownerless_reassign_is_audited_and_never_enables(self, login, org_admin, viewer, report_row):
+        from apps.core.models import AuditLog
+        row = self.create(report_row, None, enabled=False)
+        response = login(org_admin).post(self.url(report_row, row), json.dumps({'owner_id': viewer.pk}), content_type='application/json')
+        assert response.status_code == 200
+        row.refresh_from_db()
+        assert row.created_by == viewer and not row.enabled
+        log = AuditLog.objects.get(action='notify.schedule_update')
+        assert log.metadata['before']['owner_id'] is None
+        assert log.metadata['after']['owner_id'] == viewer.pk
+        assert row.last_attempt_at is None
+
+    @pytest.mark.parametrize('invalid', ['inactive', 'no_access', 'bad_id'])
+    def test_reassignment_rejects_invalid_owner(self, invalid, login, org_admin, viewer, make_user, org, report_row):
+        row = self.create(report_row, None)
+        candidate = make_user('candidate@example.test', org=org)
+        if invalid == 'inactive':
+            candidate.is_active = False
+            candidate.save(update_fields=['is_active'])
+        value = 'unknown' if invalid == 'bad_id' else candidate.pk
+        response = login(org_admin).post(self.url(report_row, row), json.dumps({'owner_id': value}), content_type='application/json')
+        assert response.status_code == 400
+        row.refresh_from_db()
+        assert row.created_by is None
+
+    def test_policy_defaults_only_new_rows_and_instance_pause_wins(self, login, org_admin, superuser, org, viewer, report_row):
+        from apps.core.models import InstanceConfig
+        from apps.reports.deliveries import delivery_pause, schedule_defaults
+        old = self.create(report_row, viewer)
+        client = login(superuser)
+        response = client.post('/deliveries', {'scope': 'instance', 'deliveries_paused': 'on', 'delivery_default_enabled': 'false', 'delivery_default_timezone': 'Europe/Amsterdam'}, HTTP_X_TRELLUM_FORM='1')
+        assert response.status_code == 200 and response.json()['ok']
+        assert schedule_defaults(org) == {'enabled': False, 'timezone': 'Europe/Amsterdam'}
+        assert login(org_admin).post('/deliveries', {'scope': org.pk, 'delivery_default_enabled': '', 'delivery_default_timezone': ''}, HTTP_X_TRELLUM_FORM='1').status_code == 200
+        assert 'instance' in delivery_pause(org.pk)
+        prefix = f'/s/{org.slug}/{report_row.studio.slug}/api/reports/{report_row.slug}/schedules'
+        created = login(viewer).post(prefix, '{}', content_type='application/json').json()['schedule']
+        assert created['enabled'] is False and created['timezone'] == 'Europe/Amsterdam'
+        old.refresh_from_db()
+        assert old.enabled and old.timezone == 'UTC'
+        assert InstanceConfig.load().deliveries_paused
+
+    def test_policy_rejects_invalid_timezone_and_cross_org_scope(self, login, org_admin, org, other_org):
+        client = login(org_admin)
+        response = client.post('/deliveries', {'scope': org.pk, 'delivery_default_timezone': 'Wrong/Zone'}, HTTP_X_TRELLUM_FORM='1')
+        assert response.status_code == 400
+        assert 'delivery_default_timezone' in response.json()['errors']
+        assert client.post('/deliveries', {'scope': other_org.pk}).status_code == 404
+        assert client.post('/deliveries', {'scope': 'instance'}).status_code == 404
+
+    def test_native_and_enhanced_validation_keep_drafts(self, login, viewer, report_row):
+        row = self.create(report_row, viewer)
+        body = {'return_to': '/me/deliveries', 'freq': 'daily', 'send_hour': '99', 'send_minute': '15', 'weekday': '0', 'month_day': '1', 'timezone': 'UTC', 'enabled': 'on', 'recipient_ids': [viewer.pk]}
+        response = login(viewer).post(self.url(report_row, row), body)
+        assert response.status_code == 400
+        form = response.context['schedule_rows'][0]['form']
+        assert form.is_bound and form['send_hour'].value() == '99'
+        assert 'send_hour' in form.errors
+        response = login(viewer).post(self.url(report_row, row), body, HTTP_X_TRELLUM_FORM='1')
+        assert response.status_code == 400 and 'send_hour' in response.json()['errors']
+        row.refresh_from_db()
+        assert row.send_hour == 8
+
+    def test_native_save_and_delete_snapshot(self, login, viewer, report_row):
+        from apps.core.models import AuditLog
+        row = self.create(report_row, viewer)
+        client = login(viewer)
+        assert client.post(self.url(report_row, row), {'action': 'toggle', 'enabled': 'false', 'return_to': '/me/deliveries'}).status_code == 302
+        response = client.post(self.url(report_row, row), {'action': 'delete'}, HTTP_X_TRELLUM_FORM='1')
+        assert response.status_code == 200
+        log = AuditLog.objects.get(action='notify.schedule_delete')
+        assert log.metadata['before']['id'] == row.pk
+        assert log.metadata['before']['recipient_ids'] == [viewer.pk]
+
+    def test_pause_resume_invalidates_old_snapshot_and_next_is_strictly_future(self, login, org_admin, org, viewer, report_row):
+        from datetime import datetime, timezone
+        from apps.reports.deliveries import next_occurrence, schedule_snapshot, schedule_send_current
+        row = self.create(report_row, viewer)
+        snapshot = schedule_snapshot(row)
+        assert schedule_send_current(snapshot) is not None
+        client = login(org_admin)
+        assert client.post('/deliveries', {'scope': org.pk, 'delivery_default_timezone': 'Europe/Amsterdam'}, HTTP_X_TRELLUM_FORM='1').status_code == 200
+        assert schedule_send_current(snapshot) is not None
+        for paused in ('on', ''):
+            assert client.post('/deliveries', {'scope': org.pk, 'deliveries_paused': paused}, HTTP_X_TRELLUM_FORM='1').status_code == 200
+        org.refresh_from_db()
+        assert org.delivery_generation == 2
+        assert schedule_send_current(snapshot) is None
+        exact = datetime(2026, 10, 11, 8, 0, tzinfo=timezone.utc)
+        assert next_occurrence(row, exact) > exact
+
+    def test_alert_tab_shows_owner_repair_and_existing_form_link(self, login, org_admin, org, report_row):
+        from apps.alerts.models import AlertRule
+        rule = AlertRule.objects.create(org=org, studio=report_row.studio, report=report_row, name='Watch', created_by=None)
+        response = login(org_admin).get('/deliveries?type=alerts')
+        assert response.status_code == 200
+        assert b'owner repair required' in response.content
+        assert f'/alerts/{rule.pk}/edit' in response.content.decode()
+        assert response.context['schedule_rows'] == []
+
+    def test_key_scope_and_creator_filters(self, org_admin, other_org, org, report_row, viewer, login, make_user):
+        from types import SimpleNamespace
+        from django.test import RequestFactory
+        from apps.orgs.models import OrgMembership
+        from apps.reports.deliveries import managed_orgs, schedule_for_request
+        from django.http import Http404
+        row = self.create(report_row, viewer)
+        OrgMembership.objects.create(user=org_admin, org=other_org, role=roles.ORG_ADMIN)
+        request = RequestFactory().get('/deliveries')
+        request.user = org_admin
+        request.api_key = SimpleNamespace(org_id=other_org.pk)
+        assert [item.pk for item in managed_orgs(request)] == [other_org.pk]
+        with pytest.raises(Http404):
+            schedule_for_request(request, row.pk)
+        assert len(login(org_admin).get('/deliveries?creator=view@demo').context['schedule_rows']) == 1
+        assert login(org_admin).get('/deliveries?creator=missing').context['schedule_rows'] == []
+
+    def test_delete_confirmation_identifies_recipients(self, login, org_admin, viewer, report_row):
+        self.create(report_row, viewer)
+        response = login(org_admin).get('/deliveries')
+        assert f'Recipients: 1 person + {viewer.email}.' in response.content.decode()
+
+    def test_policy_audit_taxonomy_is_registered(self):
+        from apps.core.audit_actions import category_for
+        assert category_for('notify.delivery_policy_update', debug=True) == 'admin'
+
+    @pytest.mark.parametrize('owner_id', ['abc', {}, [], True, 9223372036854775808])
+    def test_malformed_owner_returns_field_validation(self, owner_id, login, org_admin, report_row):
+        row = self.create(report_row, None)
+        response = login(org_admin).post(self.url(report_row, row), json.dumps({'owner_id': owner_id}), content_type='application/json')
+        assert response.status_code == 400
+        assert 'owner_id' in response.json()['errors']
+
+    def test_policy_form_ids_unique_across_instance_and_orgs(self, login, superuser, org, other_org):
+        import re
+        response = login(superuser).get('/deliveries')
+        forms = re.findall(r'<form[^>]*id="delivery-policy-[^"]*"[^>]*>(.*?)</form>', response.content.decode(), re.S)
+        assert len(forms) == 3
+        field_ids = [field for form in forms for field in re.findall(r'\bid="([^"]+)"', form)]
+        assert len(field_ids) == len(set(field_ids))
+        for form in forms:
+            for label in re.findall(r'<label[^>]*for="([^"]+)"', form):
+                assert f'id="{label}"' in form

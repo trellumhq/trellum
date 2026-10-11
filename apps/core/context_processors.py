@@ -49,6 +49,7 @@ CONSOLE_PAGE_TITLES = {
     "mfa-setup": "Set up MFA",
     "mfa-recovery-codes": "Recovery codes",
     "my-deliveries": "My deliveries",
+    "manage-deliveries": "Manage deliveries",
     "my-api-keys": "API keys",
     "system": "System health",
     "instance-settings": "Instance settings",

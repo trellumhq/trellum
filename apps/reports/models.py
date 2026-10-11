@@ -288,6 +288,12 @@ class EmailSchedule(models.Model):
     attach_pdf = models.BooleanField(default=False)
     enabled = models.BooleanField(default=True)
     last_sent_at = models.DateTimeField(null=True, blank=True)
+    last_attempt_at = models.DateTimeField(null=True, blank=True)
+    last_accepted_at = models.DateTimeField(null=True, blank=True)
+    delivery_outcome = models.CharField(max_length=32, null=True, blank=True)
+    delivery_accepted_to = models.JSONField(null=True, blank=True)
+    delivery_failed_to = models.JSONField(null=True, blank=True)
+    delivery_revision = models.PositiveIntegerField(null=True, blank=True)
     created_at = models.DateTimeField(default=dj_tz.now)
 
     def clean(self) -> None:

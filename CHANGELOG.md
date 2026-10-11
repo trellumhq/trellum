@@ -9,6 +9,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Add shared delivery management for organization admins and instance
+  superusers, with owner repair, scoped pause, future schedule defaults and
+  transport outcome reporting.
 - Add dedicated data source editors with draft credential testing, separate
   saved and draft results, and protection against obsolete test responses.
 - Add a Capture for analysis icon, image preview and persistent instructions

@@ -209,6 +209,7 @@ urlpatterns = [
     path("api/me/favorites/<int:report_id>", report_views.api_favorite_toggle),
     # Per-user deliveries & alerts, across every studio (cross-studio, like favorites)
     path("me/deliveries", report_views.my_deliveries, name="my-deliveries"),
+    path("deliveries", report_views.manage_deliveries, name="manage-deliveries"),
     # Personal API keys (internal planning ticket #002): cross-org like deliveries; the org-admin
     # list sits with the other org settings tabs further down.
     path("me/api-keys", account_views.api_keys_view, name="my-api-keys"),

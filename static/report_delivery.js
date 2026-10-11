@@ -495,9 +495,9 @@
         // filling the form actually experiences as "9am"), falling back to
         // the report's configured default, then UTC. Editing an existing
         // schedule always keeps what it was already set to.
-        var timezone = schedule ? schedule.timezone : (browserTimezone() || opts.defaultTimezone || 'UTC');
+        var timezone = schedule ? schedule.timezone : (opts.defaultTimezone || 'UTC');
         var attachPdf = schedule ? schedule.attach_pdf : false;
-        var enabled = schedule ? schedule.enabled : true;
+        var enabled = schedule ? schedule.enabled : opts.defaultEnabled !== false;
 
         var hourOpts = '';
         for (var h = 0; h < 24; h++) hourOpts += '<option value="' + h + '"' + (h === hour ? ' selected' : '') + '>' + pad2(h) + '</option>';
@@ -939,7 +939,7 @@
         wrap.innerHTML =
             '<div class="rdw-section" style="border-top:1px solid var(--border,var(--border-color,#ddd));padding-top:14px;margin-top:14px">'
             + '<h3 class="rdw-section-title">' + (schedule ? 'Edit schedule' : 'New schedule') + '</h3>'
-            + scheduleFormHtml({ schedule: schedule, chipData: chipData, defaultTimezone: data.default_timezone })
+            + scheduleFormHtml({ schedule: schedule, chipData: chipData, defaultTimezone: data.default_timezone, defaultEnabled: data.default_enabled })
             + '</div>';
         wireScheduleForm(wrap, {
             apiBase: apiBase(),
@@ -974,8 +974,54 @@
         ensureDom();
         root = root || document;
         var rows = root.querySelectorAll('[data-delivery-row]');
-        Array.prototype.forEach.call(rows, wireDeliveryRow);
+        Array.prototype.forEach.call(rows, function (row) {
+            if (row.hasAttribute('data-server-form')) wireServerDeliveryRow(row);
+            else wireDeliveryRow(row);
+        });
     }
+
+    function wireServerDeliveryRow(row) {
+        if (row._deliveryWired) return;
+        row._deliveryWired = true;
+        var detail = row.nextElementSibling;
+        var editor = detail.querySelector('[data-schedule-editor]');
+        var scheduleEl = detail.querySelector('[data-schedule-json]');
+        var saved = JSON.parse(scheduleEl.textContent);
+        row.querySelector('[data-toggle-edit]').addEventListener('click', function () { editor.open = !editor.open; });
+        var forms = Array.prototype.slice.call(row.querySelectorAll('form')).concat(Array.prototype.slice.call(detail.querySelectorAll('form')));
+        forms.forEach(function (form) {
+            form.addEventListener('submit', function (event) {
+                if (form.dataset.deleteConfirm && !window.confirm(form.dataset.deleteConfirm)) {
+                    event.preventDefault(); event.stopImmediatePropagation();
+                }
+            }, true);
+            form.addEventListener('settings:success', function (event) {
+                var result = event.detail;
+                if (result.deleted_id) { row.remove(); detail.remove(); return; }
+                if (!result.schedule || result.schedule.delivery_revision < saved.delivery_revision) return;
+                saved = result.schedule;
+                scheduleEl.textContent = JSON.stringify(saved);
+                row.querySelector('[data-field="cadence"]').textContent = scheduleSummary(saved);
+                row.querySelector('[data-field="format"]').textContent = saved.attach_pdf ? 'HTML + PDF' : 'HTML';
+                row.querySelector('[data-field="recipients"]').textContent = saved.recipient_summary;
+                row.querySelector('[data-field="status"]').textContent = saved.enabled ? 'Enabled' : 'Disabled';
+                row.querySelector('[data-field="owner"]').textContent = saved.owner_name + (saved.owner_repair_required ? ' — owner repair required' : '');
+                row.querySelector('[data-field="next"]').textContent = saved.next_at || 'None while disabled, paused or owner needs repair';
+                var toggle = row.querySelector('[data-toggle-enable]');
+                toggle.textContent = saved.enabled ? 'Disable' : 'Enable';
+                toggle.form.querySelector('[name="enabled"]').value = saved.enabled ? 'false' : 'true';
+            });
+        });
+        row.querySelector('[data-send-sample]').addEventListener('click', function () {
+            var btn = this;
+            btn.disabled = true;
+            postJson(row.dataset.prefix + '/api/reports/' + encodeURIComponent(row.dataset.slug) + '/schedules/' + saved.id + '/sample', 'POST', {})
+                .then(function (result) { detail.querySelector('[data-flash-slot]').textContent = result.data.message || result.data.error || 'Sample request completed.'; })
+                .catch(function () { detail.querySelector('[data-flash-slot]').textContent = 'Sample outcome unconfirmed.'; })
+                .then(function () { btn.disabled = false; });
+        });
+    }
+    document.addEventListener('settings:updated', function () { mountCenter(document); });
 
     function wireDeliveryRow(row) {
         var detail = row.nextElementSibling;

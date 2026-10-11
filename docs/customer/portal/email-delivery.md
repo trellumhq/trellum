@@ -35,8 +35,9 @@ Set:
 - **Frequency** — daily, weekdays, weekly (pick a day), or monthly (pick a
   day of month, 1–28, so nothing depends on how long the month is)
 - **Send time** — hour and minute
-- **Timezone** — an IANA zone. New schedules default to your browser's own
-  zone; editing an existing one keeps whatever it was already set to.
+- **Timezone** — an IANA zone. New schedules use organization defaults,
+  inheriting instance defaults when blank (UTC on a fresh instance).
+  Editing an existing one keeps whatever it was already set to.
   Switching the timezone in the form recalculates the shown hour so the
   actual send instant doesn't move — the form always shows what will
   actually be stored
@@ -49,6 +50,45 @@ delivery is not gated behind the developer role.
 Use **Send sample** to get a copy right away without waiting for the next
 scheduled run — useful for checking recipients and formatting before you
 trust the cadence.
+
+## Managing shared deliveries
+
+Organization admins, including admins granted through a permission group,
+can open **Manage deliveries** from the account menu to manage every creator's
+schedule in their organization. Instance superusers see all organizations.
+Support-operator access alone grants no schedule or report-data access.
+**My deliveries** remains the personal list and its existing bookmark works.
+Search or filter by organization, studio, report, creator and enabled state.
+AI alerts appear on a separate tab with links to their existing forms and logs.
+
+The center shows next future occurrence, last attempt and transport outcome.
+Accepted means the transport accepted the message; it does not prove inbox
+receipt. Legacy delivery timestamps have an uncertain outcome. A missing-build
+notice is not an accepted report delivery.
+
+Admins can pause delivery for an organization; superusers can pause the entire
+instance. This pauses scheduled reports and all AI-alert mail, including owner
+budget warnings. Alert evaluations continue and consume their normal budget;
+paused alerts do not advance cooldown. Instance pause overrides organization
+resume. Build failure/recovery, account/security and explicit operator tests
+remain outside this pause. Stored schedules stay intact. Resume uses future
+occurrences only and sends no missed-email backlog.
+
+The same controls set enabled state and timezone defaults for **new email
+schedules only**. Blank organization defaults inherit the instance. Existing
+schedules and AI alerts retain their configuration, and each new schedule can
+explicitly override the defaults.
+
+Schedules survive deletion of their creator. An ownerless, inactive or
+inaccessible owner needs repair before delivery. Organization admins can
+reassign a schedule to an active organization member who can view the report,
+after recipients are revalidated. Reassignment does not send or enable the
+schedule, and does not resume global pause. AI-alert billing-owner repair is
+separate and cannot be performed through this center.
+
+Delete confirmation identifies the schedule, report and recipients. Deletion
+stops future sends; it cannot recall a message already accepted by a transport.
+Configuration, owner changes and deletion identifiers are recorded in audit.
 
 ## Recipients
 

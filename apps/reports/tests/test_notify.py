@@ -1182,7 +1182,8 @@ class TestScheduleViews:
         c = login(viewer)
 
         body = c.get(f"{prefix}/api/reports/player-overview/schedules").json()
-        assert body["default_timezone"] == "America/New_York"
+        # Delivery defaults are independent of the report's build timezone.
+        assert body["default_timezone"] == "UTC"
         assert "alert_mode" not in body
 
     def test_default_timezone_falls_back_to_utc_when_blank(self, login, viewer, prefix, report_row):
