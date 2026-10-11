@@ -40,7 +40,7 @@ def _device(user):
 
 
 @pytest.mark.parametrize("with_session", [False, True])
-@pytest.mark.parametrize("url", ["/me/api-keys", "/account", "/system", "/api/system/health", "/operator/"])
+@pytest.mark.parametrize("url", ["/me/api-keys", "/account", "/system", "/instance/settings", "/api/system/health", "/operator/"])
 def test_bearer_cannot_access_session_management(client, superuser, org, url, with_session):
     OrgMembership.objects.create(user=superuser, org=org)
     _, secret = ApiKey.mint(user=superuser, org=org, name="limited", scopes=ApiKey.READ_WRITE)
@@ -94,12 +94,13 @@ def test_required_enrollment_denies_json_sessions(client, member, org, url):
     assert client.post("/logout").status_code == 302
 
 
-def test_operator_enrollment_denies_json(client, superuser):
+@pytest.mark.parametrize("path", ["/system", "/instance/settings"])
+def test_operator_enrollment_denies_json(client, superuser, path):
     cfg = InstanceConfig.load()
     cfg.require_mfa_operators = True
     cfg.save()
     client.force_login(superuser)
-    assert client.get("/system", HTTP_ACCEPT="application/json").json()["error"] == "mfa_enrollment_required"
+    assert client.get(path, HTTP_ACCEPT="application/json").json()["error"] == "mfa_enrollment_required"
 
 
 def test_correct_password_cannot_reset_mfa_guess_limit(client, member):

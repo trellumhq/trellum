@@ -129,28 +129,42 @@ def send_test_email_and_report(request, *, redirect_to: str):
 
 @sensitive_post_parameters()
 def system_page(request):
-    """Instance health and settings for the operator: doctor checks, the
-    instance configuration, security policy, workers, version."""
+    """Diagnostics at the established health URL; accept legacy settings POSTs."""
+    from django.shortcuts import render
+
+    gate = _require_email_operator(request)
+    if gate is not None:
+        return gate
+    if request.method == "POST":
+        return instance_settings(request)
+
+    from apps.core import releases
+    from apps.core.health import run_checks
+    from apps.core.version import version_info
+
+    return render(request, "core/system.html", {
+        "checks": run_checks(),
+        "releases": releases.current(),
+        "version": version_info(detailed=True),
+    })
+
+
+@sensitive_post_parameters()
+def instance_settings(request):
+    """Instance configuration and security, shared with legacy /system POSTs."""
     from django.contrib import messages
+    from django.http import Http404
     from django.shortcuts import redirect, render
+    from django.urls import reverse
 
     from apps.core.audit import audit
     from apps.core.forms import InstanceSettingsForm, SecuritySettingsForm
-    from apps.core.health import run_checks
+    from apps.core.form_responses import is_settings_request, settings_error, settings_success
     from apps.core.models import EmailApiConnection, InstanceConfig
-    from apps.core.version import version_info
-    from apps.runner.models import Run, WorkerHeartbeat
 
-    if not request.user.is_authenticated:
-        return redirect("login")
-    # `is_operator`, not `is_superuser`: this is the page support staff are
-    # given the operator flag in order to read, and the rest of the operator
-    # console already gates on it (apps/core/permissions.require_operator).
-    # 404 rather than 403 — the page is not advertised to people without it.
-    if not _is_current_operator(request):
-        from django.http import Http404
-
-        raise Http404
+    gate = _require_email_operator(request)
+    if gate is not None:
+        return gate
 
     instance = InstanceConfig.load()
     # The same form the first-run wizard uses. Without it here, SMTP set during
@@ -171,43 +185,47 @@ def system_page(request):
         session_policy.sign_everyone_out()
         audit(request, "auth.session_revoked", scope="instance")
         messages.success(request, "Every session on this instance has been signed out.")
-        return redirect("system")
+        return redirect("instance-settings")
+    if request.method == "POST" and action == "test_email":
+        return send_test_email_and_report(request, redirect_to=reverse("instance-settings") + "#email-delivery")
     if request.method == "POST" and action == "instance_settings":
-        if not form.is_valid():
-            for errors in form.errors.values():
-                messages.error(request, "; ".join(errors))
-            return redirect("system")
-        form.save()
-        audit(request, "instance.settings_update")
-        if "test_email" in request.POST:
-            return send_test_email_and_report(request, redirect_to="system")
-        messages.success(request, "Instance settings saved.")
-        return redirect("system")
+        if form.is_valid():
+            saved = form.save()
+            audit(request, "instance.settings_update")
+            if "test_email" in request.POST:
+                messages.success(request, "Instance settings saved.")
+                return send_test_email_and_report(request, redirect_to=reverse("instance-settings") + "#email-delivery")
+            if is_settings_request(request):
+                return settings_success(request, "Instance settings saved.", values={
+                    name: getattr(saved, name) for name in form.fields if name != "email_host_password"
+                }, refresh=["email-connections"])
+            messages.success(request, "Instance settings saved.")
+            return redirect("instance-settings")
+        if is_settings_request(request):
+            return settings_error(request, form=form)
     if request.method == "POST" and action == "security_settings":
-        if not security_form.is_valid():
-            for errors in security_form.errors.values():
-                messages.error(request, "; ".join(errors))
-            return redirect("system")
-        security_form.save()
-        from apps.accounts import session_policy
+        if security_form.is_valid():
+            security_form.save()
+            from apps.accounts import session_policy
 
-        session_policy.invalidate_policy_cache()
-        audit(request, "instance.settings_update", section="security")
-        messages.success(request, "Security settings saved.")
-        return redirect("system")
-
-    recent_runs = (
-        Run.objects.select_related("studio", "studio__org")
-        .order_by("-created_at")[:20]
-    )
-    from apps.core import releases
+            session_policy.invalidate_policy_cache()
+            audit(request, "instance.settings_update", section="security")
+            if is_settings_request(request):
+                return settings_success(request, "Security settings saved.")
+            messages.success(request, "Security settings saved.")
+            return redirect("instance-settings")
+        if is_settings_request(request):
+            return settings_error(request, form=security_form)
+    if request.method == "POST" and action not in {"instance_settings", "security_settings"}:
+        raise Http404
+    if request.method == "POST":
+        # Invalid ModelForms mutate their instance; summaries describe persisted settings.
+        instance = InstanceConfig.load()
 
     return render(
         request,
-        "core/system.html",
+        "core/instance_settings.html",
         {
-            "checks": run_checks(),
-            "releases": releases.current(),
             "form": form,
             "email_connections": EmailApiConnection.objects.defer("credentials").order_by("name"),
             "active_email_connection_id": instance.active_email_api_connection_id,
@@ -217,12 +235,6 @@ def system_page(request):
             ),
             "security_form": security_form,
             "sessions_invalidated_at": instance.sessions_invalidated_at,
-            "workers": WorkerHeartbeat.alive(),
-            "recent_runs": recent_runs,
-            # Operators get the detailed payload: which migrations are missing
-            # is exactly what you need when an upgrade half-landed, and it is
-            # the one audience entitled to it.
-            "version": version_info(detailed=True),
         },
     )
 
@@ -250,10 +262,12 @@ def email_connection_editor(request, connection_id=None):
     from django.db import transaction
     from django.http import Http404
     from django.shortcuts import get_object_or_404, redirect, render
+    from django.urls import reverse
 
     from apps.core.audit import audit
     from apps.core.email_mapping import render_payload, synthetic_message_context
     from apps.core.forms import EmailApiConnectionForm
+    from apps.core.form_responses import is_settings_request, settings_error, settings_success
     from apps.core.models import EmailApiConnection, InstanceConfig
 
     class ActiveCustomContractError(Exception):
@@ -331,10 +345,18 @@ def email_connection_editor(request, connection_id=None):
                 else:
                     audit(request, "instance.email_connection_update" if instance else "instance.email_connection_create",
                           target_id=str(current.pk), provider=current.provider)
-                    messages.success(request, "Email connection saved. Select Use to activate it.")
-                    return redirect("system")
+                    message = "Email connection saved. Select Use to activate it."
+                    if is_settings_request(request):
+                        return settings_success(request, message,
+                            redirect_url=reverse("instance-settings") + "#email-delivery" if not instance else None,
+                            values={"name": current.name, "from_email": current.from_email},
+                            updates={"email-connection-name": current.name})
+                    messages.success(request, message)
+                    return redirect(reverse("instance-settings") + "#email-delivery")
         else:
             raise Http404
+    if request.method == "POST" and form.errors and is_settings_request(request):
+        return settings_error(request, form=form)
     return render(request, "core/email_connection_form.html", {
         "form": form, "connection": instance, "copy_from": copy_from,
         "preview": preview, "preview_config": preview_config,
@@ -349,11 +371,13 @@ def email_connection_action(request, connection_id=None, action=None):
     from django.db import transaction
     from django.http import Http404
     from django.shortcuts import get_object_or_404, redirect
+    from django.urls import reverse
     from django.utils import timezone
 
     from apps.core.audit import audit
     from apps.core.email_errors import EmailDeliveryError
     from apps.core.email_providers import validate_api_profile
+    from apps.core.form_responses import is_settings_request, settings_error, settings_success
     from apps.core.mail import resolve_delivery_connection, send_report_test_email, send_test_email
     from apps.core.models import EmailApiConnection, InstanceConfig
 
@@ -368,8 +392,10 @@ def email_connection_action(request, connection_id=None, action=None):
             config.active_email_api_connection = None
             config.save(update_fields=["active_email_api_connection"])
         audit(request, "instance.email_connection_select", route="legacy")
+        if is_settings_request(request):
+            return settings_success(request, "SMTP / environment route selected.", refresh=["email-connections"])
         messages.success(request, "SMTP / environment route selected.")
-        return redirect("system")
+        return redirect(reverse("instance-settings") + "#email-delivery")
     profile = get_object_or_404(EmailApiConnection, pk=connection_id)
     if action == "use":
         with transaction.atomic():
@@ -379,11 +405,15 @@ def email_connection_action(request, connection_id=None, action=None):
                 validate_api_profile(profile.provider, profile.provider_config, profile.custom_config,
                                      profile.credentials)
             except Exception:  # noqa: BLE001 - validation details may contain operator input
+                if is_settings_request(request):
+                    return settings_error(request, "Connection is invalid. Review its settings before selecting it.")
                 messages.error(request, "Connection is invalid. Review its settings before selecting it.")
-                return redirect("system")
+                return redirect(reverse("instance-settings") + "#email-delivery")
             config.active_email_api_connection = profile
             config.save(update_fields=["active_email_api_connection"])
         audit(request, "instance.email_connection_select", target_id=str(profile.pk), provider=profile.provider)
+        if is_settings_request(request):
+            return settings_success(request, "Email connection selected for future mail.", refresh=["email-connections"])
         messages.success(request, "Email connection selected for future mail.")
     elif action == "delete":
         with transaction.atomic():
@@ -391,7 +421,7 @@ def email_connection_action(request, connection_id=None, action=None):
             profile = get_object_or_404(EmailApiConnection.objects.select_for_update(), pk=profile.pk)
             if config.active_email_api_connection_id == profile.pk:
                 messages.error(request, "Select another delivery route before deleting this connection.")
-                return redirect("system")
+                return redirect(reverse("instance-settings") + "#email-delivery")
             audit(request, "instance.email_connection_delete", target_id=str(profile.pk), provider=profile.provider)
             profile.delete()
         messages.success(request, "Inactive email connection deleted.")
@@ -431,4 +461,4 @@ def email_connection_action(request, connection_id=None, action=None):
             messages.error(request, f"{kind.title()} test: {outcome.replace('_', ' ')} ({category}).")
     else:
         raise Http404
-    return redirect("system")
+    return redirect(reverse("instance-settings") + "#email-delivery")

@@ -198,6 +198,8 @@ def test_impersonation_hides_and_blocks_instance_health(
 
     assert client.get("/api/system/health").status_code == 404
     assert client.get("/system").status_code == 404
+    assert client.get("/instance/settings").status_code == 404
+    assert client.post("/instance/settings", {"instance_name": "Forbidden", "email_port": "587"}).status_code == 404
     html = client.get("/").content.decode()
     assert "data-console-health-url" not in html
     assert 'data-console-nav-group="operator"' not in html

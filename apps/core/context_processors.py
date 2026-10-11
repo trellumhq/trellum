@@ -51,6 +51,7 @@ CONSOLE_PAGE_TITLES = {
     "my-deliveries": "My deliveries",
     "my-api-keys": "API keys",
     "system": "System health",
+    "instance-settings": "Instance settings",
     "operator-fleet": "Fleet",
     "operator-orgs": "Organizations",
     "operator-org-detail": "Organization",

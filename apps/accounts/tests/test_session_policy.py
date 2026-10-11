@@ -225,8 +225,9 @@ class TestInstanceWideInvalidation:
         clock.advance(5)
         assert client.get("/api/me").json()["authenticated"] is True
 
+    @pytest.mark.parametrize("path", ["/system", "/instance/settings"])
     def test_the_system_page_action_invalidates_every_session(
-        self, client, member, superuser, clock
+        self, client, member, superuser, clock, path
     ):
         from django.test import Client
 
@@ -238,7 +239,7 @@ class TestInstanceWideInvalidation:
         # admin's in-place rather than exercising two independent sessions.
         admin_client = Client()
         assert admin_client.login(username=superuser.email, password=PASSWORD)
-        resp = admin_client.post("/system", {"action": "sign_everyone_out"})
+        resp = admin_client.post(path, {"action": "sign_everyone_out"})
         assert resp.status_code == 302
 
         assert client.get("/api/me").status_code == 401

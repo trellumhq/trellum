@@ -344,6 +344,7 @@ urlpatterns = [
         name="org-datasource-download",
     ),
     path("system", core_views.system_page, name="system"),
+    path("instance/settings", core_views.instance_settings, name="instance-settings"),
     path("system/email-connections/new", core_views.email_connection_editor, name="email-connection-new"),
     path("system/email-connections/<int:connection_id>", core_views.email_connection_editor,
          name="email-connection-edit"),

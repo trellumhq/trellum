@@ -39,9 +39,8 @@ class TestSystemPage:
         assert 'href="/system"' in html and 'aria-current="page"' in html
 
     def test_upload_limit_is_editable(self, login, superuser):
-        """The form field alone is not enough — /system renders its fields one
-        by one, so a new one is invisible until the template lists it."""
-        html = login(superuser).get("/system").content.decode()
+        """Moved settings retain the upload limit's explicit control."""
+        html = login(superuser).get("/instance/settings").content.decode()
         assert 'name="max_upload_mb"' in html
 
     def test_free_space_is_reported(self, login, superuser):
@@ -72,7 +71,8 @@ class TestSystemPage:
         support = make_user("support3@portal.local")
         support.is_operator_flag = True
         support.save(update_fields=["is_operator_flag"])
-        assert '/orgs/new' not in login(support).get("/").content.decode()
+        for path in ("/", "/system", "/instance/settings"):
+            assert '/orgs/new' not in login(support).get(path).content.decode()
         assert '/orgs/new' in login(superuser).get("/").content.decode()
 
     # ── the Releases section (internal planning ticket #066) ────────────────────────────────
@@ -160,5 +160,14 @@ class TestAuditLogIsAppendOnly:
 
 class TestSystemPolicyPanel:
     def test_instance_settings_still_render(self, login, superuser):
-        html = login(superuser).get("/system").content.decode()
+        client = login(superuser)
+        html = client.get("/instance/settings").content.decode()
         assert "Instance settings" in html
+        assert 'name="instance_name"' in html
+        assert 'name="session_idle_minutes"' in html
+        health = client.get("/system").content.decode()
+        assert 'name="instance_name"' not in health
+        assert 'name="session_idle_minutes"' not in health
+        assert '<h2>Workers</h2>' not in health
+        assert 'Recent runs (all studios)' not in health
+        assert 'Open Fleet' in health

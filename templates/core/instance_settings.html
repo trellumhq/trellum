@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}Instance settings — trellum{% endblock %}
+{% block content %}
+<header class="page-head-row">
+  <div><div class="ui-label page-kicker">Operator</div><h1>Instance settings</h1></div>
+  <span class="spacer"></span>
+  <a class="ui-btn ghost" href="{% url 'system' %}">System health</a>
+</header>
+<h2>General and SMTP</h2>
+<p class="muted">Changeable without a restart. Secrets, <code>DATABASE_URL</code>
+and <code>ALLOWED_HOSTS</code> stay in <code>.env</code> — Django reads those
+before the database exists.</p>
+<div class="panel">
+<form method="post" action="{% url 'instance-settings' %}" id="instance-settings-form" data-settings-form data-settings-save>
+  {% csrf_token %}
+  <input type="hidden" name="action" value="instance_settings">
+  {{ form.non_field_errors }}
+  <div class="ui-form-grid">
+    <div class="ui-field">
+      <label for="id_instance_name">Instance name</label>
+      {{ form.instance_name }}{{ form.instance_name.errors }}
+    </div>
+    <div class="ui-field">
+      <label for="id_public_base_url">Public URL</label>
+      {{ form.public_base_url }}{{ form.public_base_url.errors }}
+      <span class="ui-help">Blank = <code>PORTAL_BASE_URL</code> from the
+        environment. That variable still governs CSRF and secure cookies, so a
+        hostname change belongs in both places.</span>
+    </div>
+    <div class="ui-field">
+      <label for="id_max_upload_mb">Max upload size (MB)</label>
+      {{ form.max_upload_mb }}{{ form.max_upload_mb.errors }}
+      <span class="ui-help">{{ form.max_upload_mb.help_text }}</span>
+    </div>
+    <div class="ui-field">
+      <label for="id_email_host">SMTP host</label>
+      {{ form.email_host }}{{ form.email_host.errors }}
+    </div>
+    <div class="ui-field">
+      <label for="id_email_port">Port</label>
+      {{ form.email_port }}{{ form.email_port.errors }}
+    </div>
+    <div class="ui-field">
+      <label for="id_email_host_user">SMTP username</label>
+      {{ form.email_host_user }}{{ form.email_host_user.errors }}
+    </div>
+    <div class="ui-field">
+      <label for="id_email_host_password">SMTP password</label>
+      {{ form.email_host_password }}{{ form.email_host_password.errors }}
+      <span class="ui-help">{{ form.email_host_password.help_text }}</span>
+    </div>
+    <div class="ui-field">
+      <label for="id_email_from">Send mail from</label>
+      {{ form.email_from }}{{ form.email_from.errors }}
+    </div>
+  </div>
+  <label class="ui-check-row">{{ form.email_use_tls }} Use STARTTLS</label>
+  <div class="ui-form-actions">
+    <button class="ui-btn primary" type="submit">Save settings</button>
+  </div>
+</form>
+</div>
+
+{% include "core/_email_connections.html" %}
+
+<h2>Security</h2>
+<p class="muted">Session policy, login lockout thresholds and the operator MFA
+requirement. Instance-scoped — per-organization overrides are a later step.
+Defaults reproduce today's behaviour except the absolute session cap (new).</p>
+<div class="panel">
+<form method="post" action="{% url 'instance-settings' %}" id="security-settings-form" data-settings-form data-settings-save>
+  {% csrf_token %}
+  <input type="hidden" name="action" value="security_settings">
+  {{ security_form.non_field_errors }}
+  <p class="ui-label" style="margin-top:0">Session policy</p>
+  <div class="ui-form-grid">
+    <div class="ui-field">
+      <label for="id_session_idle_minutes">{{ security_form.session_idle_minutes.label }}</label>
+      {{ security_form.session_idle_minutes }}{{ security_form.session_idle_minutes.errors }}
+      <span class="ui-help">{{ security_form.session_idle_minutes.help_text }}</span>
+    </div>
+    <div class="ui-field">
+      <label for="id_session_absolute_hours">{{ security_form.session_absolute_hours.label }}</label>
+      {{ security_form.session_absolute_hours }}{{ security_form.session_absolute_hours.errors }}
+      <span class="ui-help">{{ security_form.session_absolute_hours.help_text }}</span>
+    </div>
+  </div>
+  <label class="ui-check-row">{{ security_form.session_expire_at_browser_close }} {{ security_form.session_expire_at_browser_close.label }}</label>
+
+  <p class="ui-label" style="margin-top:18px">Login lockout</p>
+  <div class="ui-form-grid">
+    <div class="ui-field">
+      <label for="id_lockout_account_threshold">{{ security_form.lockout_account_threshold.label }}</label>
+      {{ security_form.lockout_account_threshold }}{{ security_form.lockout_account_threshold.errors }}
+    </div>
+    <div class="ui-field">
+      <label for="id_lockout_ip_threshold">{{ security_form.lockout_ip_threshold.label }}</label>
+      {{ security_form.lockout_ip_threshold }}{{ security_form.lockout_ip_threshold.errors }}
+    </div>
+    <div class="ui-field">
+      <label for="id_lockout_window_minutes">{{ security_form.lockout_window_minutes.label }}</label>
+      {{ security_form.lockout_window_minutes }}{{ security_form.lockout_window_minutes.errors }}
+    </div>
+    <div class="ui-field">
+      <label for="id_lockout_cooloff_minutes">{{ security_form.lockout_cooloff_minutes.label }}</label>
+      {{ security_form.lockout_cooloff_minutes }}{{ security_form.lockout_cooloff_minutes.errors }}
+      <span class="ui-help">{{ security_form.lockout_cooloff_minutes.help_text }}</span>
+    </div>
+  </div>
+
+  <p class="ui-label" style="margin-top:18px">Multi-factor authentication</p>
+  <label class="ui-check-row">{{ security_form.require_mfa_operators }} {{ security_form.require_mfa_operators.label }}</label>
+  <span class="ui-help">{{ security_form.require_mfa_operators.help_text }}</span>
+
+  <div class="ui-form-actions" style="margin-top:18px">
+    <button class="ui-btn primary" type="submit">Save security settings</button>
+  </div>
+</form>
+<hr style="margin:18px 0;border-color:var(--border)">
+<p><strong>Sign everyone out</strong></p>
+<p class="muted">Ends every session on this instance immediately, on its next
+request. {% if sessions_invalidated_at %}Last used {{ sessions_invalidated_at|date:"Y-m-d H:i" }}.{% endif %}</p>
+<form method="post" action="{% url 'instance-settings' %}" onsubmit="return confirm('Sign every user on this instance out? Everyone will need to log in again.')">
+  {% csrf_token %}
+  <input type="hidden" name="action" value="sign_everyone_out">
+  <button class="ui-btn danger" type="submit">Sign everyone out</button>
+</form>
+</div>
+
+{% endblock %}

@@ -21,6 +21,7 @@ def _sendgrid(name="Primary", key="a-secret"):
 def _create(client, name="Primary", key="a-secret"):
     response = client.post("/system/email-connections/new", _sendgrid(name, key))
     assert response.status_code == 302, response.content.decode()[:500]
+    assert response.url == "/instance/settings#email-delivery"
     return EmailApiConnection.objects.get(name=name)
 
 
@@ -101,7 +102,7 @@ def test_read_and_preview_never_decrypt_saved_credentials(login, superuser):
     data["token"] = ""
     with patch.object(EncryptedJSONField, "from_db_value", side_effect=AssertionError("credential read")):
         editor = client.get(f"/system/email-connections/{profile.pk}")
-        system = client.get("/system")
+        system = client.get("/instance/settings")
         preview = client.post(f"/system/email-connections/{profile.pk}", data)
     assert editor.status_code == system.status_code == preview.status_code == 200
     assert b"Preview" in preview.content
@@ -127,6 +128,30 @@ def test_create_edit_preserves_secret_and_revision(login, superuser):
     assert first.config_revision == 2
 
 
+def test_enhanced_edit_create_and_selection_contract(login, superuser):
+    client = login(superuser)
+    headers = {"HTTP_X_TRELLUM_FORM": "1", "HTTP_ACCEPT": "application/json"}
+    response = client.post("/system/email-connections/new", _sendgrid(), **headers)
+    assert response.json()["ok"] is True
+    assert response.json()["redirect"] == "/instance/settings#email-delivery"
+    profile = EmailApiConnection.objects.get(name="Primary")
+    response = client.post(f"/system/email-connections/{profile.pk}", _sendgrid("Renamed", ""), **headers)
+    assert response.json()["ok"] is True
+    assert "redirect" not in response.json()
+    assert response.json()["values"]["name"] == "Renamed"
+    assert "api_key" not in response.json()["values"]
+    response = client.post(f"/system/email-connections/{profile.pk}", _sendgrid("", ""), **headers)
+    assert response.status_code == 400
+    assert "name" in response.json()["errors"]
+    response = client.post(f"/system/email-connections/{profile.pk}/use", **headers)
+    assert response.json()["ok"] is True
+    assert response.json()["refresh"] == ["email-connections"]
+    assert InstanceConfig.load().active_email_api_connection_id == profile.pk
+    response = client.post("/system/email-connections/use-smtp", **headers)
+    assert response.json()["ok"] is True
+    assert InstanceConfig.load().active_email_api_connection_id is None
+
+
 def test_old_result_is_marked_stale_after_secret_rotation(login, superuser):
     client = login(superuser)
     profile = _create(client)
@@ -136,7 +161,7 @@ def test_old_result_is_marked_stale_after_secret_rotation(login, superuser):
     profile.save(update_fields=["last_test_results"])
     assert client.post(f"/system/email-connections/{profile.pk}",
                        _sendgrid(key="rotated-secret")).status_code == 302
-    assert b"Stale: configuration changed" in client.get("/system").content
+    assert b"Stale: configuration changed" in client.get("/instance/settings").content
 
 
 def test_select_test_inactive_and_delete_guard(login, superuser):

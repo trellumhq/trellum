@@ -3,7 +3,7 @@ from pathlib import Path
 import re
 
 import pytest
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import expect, sync_playwright
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -59,6 +59,67 @@ def test_provider_and_auth_sections_follow_keyboard_selection():
         page.locator('[data-preview-kind="report"]').click()
         assert page.locator('[name="kind"]').input_value() == "report"
         browser.close()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("engine", ("chromium", "webkit"))
+def test_saved_connection_edit_uses_in_place_save_and_field_errors(engine, login, superuser):
+    from apps.core.models import EmailApiConnection
+
+    client = login(superuser)
+    profile = EmailApiConnection.objects.create(
+        name="Saved route", provider="sendgrid", from_email="sender@example.com",
+        provider_config={"region": "global"}, credentials={"api_key": "stored-secret"},
+    )
+    path = f"/system/email-connections/{profile.pk}"
+    html = _rendered_page(client.get(path).content.decode())
+    headers = {"HTTP_X_TRELLUM_FORM": "1", "HTTP_ACCEPT": "application/json"}
+    data = {"action": "save", "name": "Renamed route", "provider": "sendgrid",
+            "from_email": profile.from_email, "region": "global", "api_key": ""}
+    responses = [client.post(path, data, **headers),
+                 client.post(path, {**data, "name": ""}, **headers)]
+    requests = []
+
+    def serve(route):
+        if route.request.method == "POST":
+            requests.append((route.request.post_data_buffer, route.request.headers["content-type"]))
+            response = responses[len(requests) - 1]
+            route.fulfill(status=response.status_code, body=response.content, content_type="application/json")
+        elif route.request.resource_type == "document":
+            route.fulfill(body=html, content_type="text/html")
+        else:
+            route.fulfill(status=204)
+
+    with sync_playwright() as playwright:
+        browser = getattr(playwright, engine).launch(headless=True)
+        page = browser.new_page(viewport={"width": 390, "height": 800})
+        page.route("http://email.test/**", serve)
+        page.goto("http://email.test" + path, wait_until="domcontentloaded")
+        page.evaluate("window.documentIdentity = document")
+        name = page.locator('[name="name"]')
+        name.fill("Renamed route")
+        name.focus()
+        position = page.evaluate("scrollY")
+        page.locator("#email-connection-form").evaluate("f => f.requestSubmit(f.querySelector('[value=save]'))")
+        expect(page.locator("#email-connection-form")).to_have_attribute("data-settings-state", "saved")
+        expect(page.get_by_role("heading", name="Edit Renamed route")).to_be_visible()
+        assert page.evaluate("document === window.documentIdentity")
+        assert abs(page.evaluate("scrollY") - position) <= 2
+        assert name.evaluate("e => e === document.activeElement")
+        expect(page.locator('[name="api_key"]')).to_have_value("")
+        name.fill("")
+        page.locator("#email-connection-form").evaluate("f => f.requestSubmit(f.querySelector('[value=save]'))")
+        expect(page.locator("#email-connection-form")).to_have_attribute("data-settings-state", "error")
+        expect(name).to_have_attribute("aria-invalid", "true")
+        expect(name).to_have_value("")
+        assert page.evaluate("document === window.documentIdentity")
+        browser.close()
+    for (body, content_type), expected in zip(requests, responses, strict=True):
+        response = client.generic("POST", path, body, content_type=content_type, **headers)
+        assert response.json() == expected.json()
+    profile.refresh_from_db()
+    assert profile.name == "Renamed route"
+    assert profile.credentials["api_key"] == "stored-secret"
 
 
 @pytest.mark.django_db

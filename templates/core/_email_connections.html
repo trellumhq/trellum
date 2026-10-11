@@ -1,10 +1,14 @@
-<section aria-labelledby="email-connections-title">
+<section id="email-delivery" data-settings-refresh="email-connections" aria-labelledby="email-connections-title">
   <div class="page-head-row">
     <h2 id="email-connections-title">Email delivery</h2>
     <span class="spacer"></span>
     <a class="ui-btn ghost" href="{% url 'email-connection-new' %}">Add API connection</a>
   </div>
   <p class="muted">One route sends all instance mail: invitations, password resets, reports and alerts. A test sends synthetic mail only to your account. Provider acceptance does not guarantee delivery.</p>
+  <form method="post" action="{% url 'instance-settings' %}" style="margin-bottom:18px">
+    {% csrf_token %}<input type="hidden" name="action" value="test_email">
+    <button class="ui-btn ghost" type="submit">Send a test email using saved settings</button>
+  </form>
   <div class="panel">
     <div class="page-head-row">
       <div><strong>SMTP / environment</strong>
@@ -12,7 +16,7 @@
         <p class="ui-help">Configured route: {{ legacy_email_route }}.{% if legacy_email_route == 'Console only' %} Selecting it writes mail to the server log.{% endif %}</p>
       </div>
       {% if active_email_connection_id %}
-      <form method="post" action="{% url 'email-connection-use-smtp' %}">
+      <form method="post" action="{% url 'email-connection-use-smtp' %}" data-settings-form data-settings-save>
         {% csrf_token %}<button class="ui-btn ghost" type="submit">Use SMTP / environment</button>
       </form>
       {% endif %}
@@ -33,7 +37,7 @@
       <a class="ui-btn ghost" href="{% url 'email-connection-new' %}?copy={{ connection.pk }}">Create inactive copy</a>
       {% endif %}
       {% if connection.pk != active_email_connection_id %}
-      <form method="post" action="{% url 'email-connection-action' connection.pk 'use' %}">
+      <form method="post" action="{% url 'email-connection-action' connection.pk 'use' %}" data-settings-form data-settings-save>
         {% csrf_token %}<button class="ui-btn primary" type="submit">Use</button>
       </form>
       <form method="post" action="{% url 'email-connection-action' connection.pk 'delete' %}">
