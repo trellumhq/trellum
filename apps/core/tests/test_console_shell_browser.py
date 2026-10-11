@@ -280,3 +280,135 @@ def test_operator_health_warning_polls_and_clears(login, superuser, monkeypatch)
         assert alert.get_attribute("aria-label") == "System health"
         context.close()
         instance.close()
+
+
+@pytest.mark.parametrize("engine", ("chromium", "webkit"))
+def test_org_assistant_picker_coexists_with_docs_on_narrow_screens(
+    engine, login, org_admin, org, studio_tree
+):
+    html = _inline_shell_assets(
+        login(org_admin).get(f"/?org={org.slug}").content.decode()
+    )
+
+    with sync_playwright() as playwright:
+        instance = getattr(playwright, engine).launch(headless=True)
+        for width in (320, 390, 430):
+            context, page = _page(instance, html, width=width)
+            picker = page.locator(".tl-console-assistant-picker")
+            docs = page.locator(".tl-console-docs-link")
+            assert picker.is_visible() and docs.is_visible()
+            picker_box, docs_box = _box(page, ".tl-console-assistant-picker > summary"), _box(
+                page, ".tl-console-docs-link"
+            )
+            assert picker_box["x"] + picker_box["width"] <= docs_box["x"]
+            assert docs_box["x"] + docs_box["width"] <= width
+            picker.locator("summary").click()
+            studio_link = picker.locator(
+                f'a[href="/s/{org.slug}/{studio_tree.slug}/?assistant=open"]'
+            )
+            assert studio_link.is_visible()
+            assert "Open or resume chat" in studio_link.inner_text()
+            assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+            context.close()
+        instance.close()
+
+
+@pytest.mark.parametrize("engine", ("chromium", "webkit"))
+def test_unavailable_assistant_reason_popover_keeps_docs_and_account_reachable(
+    engine, login, org_admin, org, studio_tree
+):
+    html = login(org_admin).get(f"/s/{org.slug}/{studio_tree.slug}/").content.decode()
+    assistant_css = (settings.BASE_DIR / "static" / "assistant.css").read_text(
+        encoding="utf-8"
+    )
+    html = _inline_shell_assets(html).replace(
+        "</head>", f"<style>{assistant_css}</style></head>"
+    )
+    entry = (
+        '<details class="assistant-unavailable" open>'
+        '<summary aria-label="Assistant unavailable: The AI assistant is disabled for this organization">Assistant</summary>'
+        '<div class="assistant-unavailable-popover">'
+        '<p class="assistant-unavailable-reason">The AI assistant is disabled for this organization. '
+        'An administrator can review the organization settings and check whether a provider is configured. '
+        'This is a deliberately long reason to verify it flows above the link and stays readable on narrow screens.</p>'
+        '<button class="assistant-unavailable-retry">Retry</button>'
+        '<a class="assistant-setup" href="/orgs/example/settings/assistant">AI settings</a>'
+        '<a class="assistant-unavailable-help" href="/docs/" target="_blank" rel="noopener">Documentation</a>'
+        '</div></details>'
+    )
+    html = html.replace('<a class="tl-console-docs-link"', entry + '<a class="tl-console-docs-link"')
+
+    with sync_playwright() as playwright:
+        instance = getattr(playwright, engine).launch(headless=True)
+        artifacts = settings.BASE_DIR.parent.parent / ".artifacts" / "portal-third-batch" / "assistant-scope"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        for width in (320, 390):
+            context, page = _page(instance, html, width=width)
+            summary = page.locator(".assistant-unavailable > summary")
+            popover_box = _box(page, ".assistant-unavailable-popover")
+            assert summary.inner_text() == "Assistant"
+            assert summary.get_attribute("aria-label").startswith("Assistant unavailable:")
+            assert popover_box["height"] > 100
+            reason_box = _box(page, ".assistant-unavailable-reason")
+            retry_box = _box(page, ".assistant-unavailable-retry")
+            settings_box = _box(page, ".assistant-setup")
+            help_link = page.locator(".assistant-unavailable-help")
+            help_color = help_link.evaluate("e => getComputedStyle(e).color")
+            docs_box = _box(page, ".tl-console-docs-link")
+            account_box = _box(page, ".tl-console-account > summary")
+            assert reason_box["y"] + reason_box["height"] <= retry_box["y"]
+            assert retry_box["y"] + retry_box["height"] <= settings_box["y"]
+            assert help_color != "rgb(0, 0, 238)"
+            assert help_link.evaluate("e => getComputedStyle(e).textDecorationLine") == "underline"
+            assert popover_box["x"] >= 0
+            assert popover_box["x"] + popover_box["width"] <= width
+            assert popover_box["y"] >= docs_box["y"] + docs_box["height"]
+            assert popover_box["y"] >= account_box["y"] + account_box["height"]
+            assert docs_box["x"] + docs_box["width"] <= account_box["x"]
+            assert account_box["x"] + account_box["width"] <= width
+            page.screenshot(path=str(artifacts / f"assistant-unavailable-{engine}-{width}.png"))
+            context.close()
+        instance.close()
+
+
+@pytest.mark.parametrize("engine", ("chromium", "webkit"))
+def test_mobile_org_header_keeps_search_health_assistant_docs_and_account_reachable(
+    engine, login, org_admin, org, studio_tree, report_row, monkeypatch
+):
+    from apps.core import health
+
+    org_admin.is_operator_flag = True
+    org_admin.save(update_fields=["is_operator_flag"])
+    monkeypatch.setattr(health, "quick_health_summary", lambda: {
+        "status": "error", "message": "Worker offline", "detail": "Background jobs are paused",
+    })
+    client = login(org_admin)
+    client.get(f"/s/{org.slug}/{studio_tree.slug}/")
+    html = _inline_shell_assets(
+        client.get(f"/orgs/{org.slug}/settings/members").content.decode()
+    )
+
+    with sync_playwright() as playwright:
+        instance = getattr(playwright, engine).launch(headless=True)
+        for width in (320, 390):
+            context, page = _page(instance, html, width=width)
+            header = page.locator(".tl-console-header")
+            assert page.locator("[data-console-search-toggle]").is_visible()
+            assert page.locator("[data-console-health-alert]").is_visible()
+            assert page.locator(".tl-console-assistant-picker > summary").is_visible()
+            assert page.locator(".tl-console-docs-link").is_visible()
+            assert page.locator(".tl-console-account > summary").is_visible()
+            assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+            boxes = [
+                _box(page, selector)
+                for selector in (
+                    "[data-console-toggle]", ".tl-console-assistant-picker > summary",
+                    "[data-console-health-alert]", "[data-console-search-toggle]",
+                    ".tl-console-docs-link", ".tl-console-account > summary",
+                )
+            ]
+            assert all(box["x"] >= 0 and box["x"] + box["width"] <= width for box in boxes), boxes
+            assert all(left["x"] + left["width"] <= right["x"] + 0.5 for left, right in zip(boxes, boxes[1:]))
+            assert header.evaluate("e => e.scrollWidth <= e.clientWidth")
+            context.close()
+        instance.close()

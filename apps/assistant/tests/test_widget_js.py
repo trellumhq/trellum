@@ -59,6 +59,20 @@ class TestContextDiscovery:
     def test_localstorage_keys_unchanged(self, source):
         assert "var LS_SESSION = 'assistant_session_id';" in source
 
+    def test_org_picker_open_flag_is_consumed_without_matching_alert_ids(self, source):
+        assert "assistant=open" in source
+        assert "_openSp.delete('assistant')" in source
+        assert "assistant=(\\d+)" in source
+
+    def test_unavailable_state_explains_reason_and_configuration(self, source):
+        assert "syncUnavailableEntry(j)" in source
+        assert "j.reason" in source
+        assert "j.can_configure && j.settings_url" in source
+        assert "Could not check Assistant availability" in source
+        assert "refreshAvailability();" in source
+        assert "assistant-unavailable-help" in source
+        assert "AI Assistant · ' + j.studio_name" in source
+
 
 class TestProposals:
     def test_proposal_frames_render_a_card(self, source):

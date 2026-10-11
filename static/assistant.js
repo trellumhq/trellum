@@ -106,6 +106,7 @@
     // the panel. Read at load, before url_sync rewrites the query string, and
     // stripped so a refresh does not repeat it -- the ?rdw=1 shape.
     var _deep = _ctx && /(?:^|[?&])assistant=(\d+)(?:&|$)/.exec(window.location.search);
+    var _openRequested = _ctx && /(?:^|[?&])assistant=open(?:&|$)/.test(window.location.search);
     if (_deep) {
         storeSession(parseInt(_deep[1], 10));
         lsSet(LS_OPEN, '1');
@@ -114,6 +115,15 @@
             _sp.delete('assistant');
             var _qs = _sp.toString();
             history.replaceState(history.state, '', window.location.pathname + (_qs ? '?' + _qs : '') + window.location.hash);
+        } catch (e) {}
+    }
+    if (_openRequested) {
+        lsSet(LS_OPEN, '1');
+        try {
+            var _openSp = new URLSearchParams(window.location.search);
+            _openSp.delete('assistant');
+            var _openQs = _openSp.toString();
+            history.replaceState(history.state, '', window.location.pathname + (_openQs ? '?' + _openQs : '') + window.location.hash);
         } catch (e) {}
     }
 
@@ -427,14 +437,18 @@
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (j) {
                 if (serial !== _suggestionSerial) return;
-                syncSetupEntry(j);
+                if (j) setStudioLabel(j);
                 if (!j || !j.available) {
                     available = false;
                     ask.classList.add('assistant-hidden');
+                    syncUnavailableEntry(j ? Object.assign({}, j, {
+                        reason: j.reason || 'Assistant is unavailable for this context.'
+                    }) : { reason: 'Could not check Assistant availability. Check your connection and retry.', retry: true });
                     closePanel();
                     return;
                 }
                 available = true;
+                syncUnavailableEntry(null);
                 _suggestions = Array.isArray(j.suggestions) ? j.suggestions : [];
                 if (typeof j.deadline_s === 'number') _deadline = j.deadline_s;
                 ask.classList.remove('assistant-hidden');
@@ -444,7 +458,13 @@
                 if (!sessionId) restoreSession();
                 applyLayout(true);
             })
-            .catch(function () {});
+            .catch(function () {
+                if (serial !== _suggestionSerial) return;
+                available = false;
+                ask.classList.add('assistant-hidden');
+                closePanel();
+                syncUnavailableEntry({ reason: 'Could not check Assistant availability. Check your connection and retry.', retry: true });
+            });
     }
     function appendEmptyHint(intro) {
         var hint = el('div', 'assistant-empty');
@@ -1397,17 +1417,23 @@
         var serial = ++_suggestionSerial;
         _fetch(API_BASE + '/available' + pageQuery())
             .then(function (r) {
-                if (r.status === 401) return { available: false };
+                if (r.status === 401) return { available: false, reason: 'Please sign in to use Assistant.' };
                 return r.json();
             })
             .then(function (j) {
                 if (serial !== _suggestionSerial) return;
-                if (!j) return;
-                syncSetupEntry(j);
+                if (j) setStudioLabel(j);
+                if (!j) {
+                    syncUnavailableEntry({ reason: 'Could not check Assistant availability. Check your connection and retry.', retry: true });
+                    return;
+                }
                 if (!j.available) {
+                    if (!j.reason) j.reason = 'Assistant is unavailable for this context.';
+                    syncUnavailableEntry(j);
                     return;
                 }
                 available = true;
+                syncUnavailableEntry(null);
                 _suggestions = Array.isArray(j.suggestions) ? j.suggestions : [];
                 if (typeof j.deadline_s === 'number') _deadline = j.deadline_s;
                 appendEmptyHint();
@@ -1426,29 +1452,61 @@
                 }
                 applyLayout(true);
             })
-            .catch(function () { /* leave hidden */ });
+            .catch(function () {
+                if (serial !== _suggestionSerial) return;
+                syncUnavailableEntry({ reason: 'Could not check Assistant availability. Check your connection and retry.', retry: true });
+            });
     }
 
-    function syncSetupEntry(j) {
-        var link = ask.parentNode && ask.parentNode.querySelector('.assistant-setup');
-        if (j && !j.available && j.can_configure && j.settings_url) {
-            if (!link) {
-                link = el('a', 'assistant-setup');
-                link.innerHTML = SPARK;
-                ask.parentNode.insertBefore(link, ask);
-            }
-            var label = link.querySelector('span');
-            if (!label) { label = el('span'); link.appendChild(label); }
-            label.textContent = j.configured ? 'AI settings →' : 'Set up AI →';
-            link.href = j.settings_url;
-            link.setAttribute('aria-label', j.configured && j.reason
-                ? 'AI settings: ' + j.reason
-                : j.configured ? 'AI settings' : 'Set up AI');
-            if (j.configured && j.reason) link.title = j.reason;
-            else link.removeAttribute('title');
-        } else if (link) {
-            link.remove();
+    function setStudioLabel(j) {
+        var title = panel.querySelector('.assistant-title');
+        if (title && j && j.studio_name) {
+            title.textContent = 'AI Assistant · ' + j.studio_name;
+            panel.setAttribute('aria-label', 'AI assistant for ' + j.studio_name);
         }
+    }
+
+    function syncUnavailableEntry(j) {
+        if (!ask.parentNode) return;
+        var entry = ask.parentNode.querySelector('.assistant-unavailable');
+        if (!j || j.available || !j.reason) {
+            if (entry) entry.remove();
+            return;
+        }
+        if (!entry) {
+            entry = el('details', 'assistant-unavailable');
+            entry.appendChild(el('summary', '', 'Assistant'));
+            var popover = el('div', 'assistant-unavailable-popover');
+            popover.appendChild(el('p', 'assistant-unavailable-reason'));
+            popover.appendChild(el('button', 'assistant-unavailable-retry', 'Retry'));
+            entry.appendChild(popover);
+            ask.parentNode.insertBefore(entry, ask);
+            entry.querySelector('.assistant-unavailable-retry').addEventListener('click', function () {
+                entry.open = false;
+                refreshAvailability();
+            });
+        }
+        entry.querySelector('summary').setAttribute('aria-label', 'Assistant unavailable: ' + j.reason);
+        entry.querySelector('.assistant-unavailable-reason').textContent = j.reason;
+        var config = entry.querySelector('.assistant-setup');
+        if (j.can_configure && j.settings_url) {
+            if (!config) { config = el('a', 'assistant-setup'); entry.querySelector('.assistant-unavailable-popover').appendChild(config); }
+            var configLabel = config.querySelector('span');
+            if (!configLabel) { configLabel = el('span'); config.appendChild(configLabel); }
+            configLabel.textContent = j.configured ? 'AI settings →' : 'Set up AI →';
+            config.href = j.settings_url;
+            config.setAttribute('aria-label', j.configured && j.reason ? 'AI settings: ' + j.reason : j.configured ? 'AI settings' : 'Set up AI');
+            if (j.configured && j.reason) config.title = j.reason;
+            else config.removeAttribute('title');
+        } else if (config) config.remove();
+        var docs = document.querySelector('.tl-console-docs-link');
+        var help = entry.querySelector('.assistant-unavailable-help');
+        if (docs && docs.href) {
+            if (!help) { help = el('a', 'assistant-unavailable-help', 'Documentation'); entry.querySelector('.assistant-unavailable-popover').appendChild(help); }
+            help.href = docs.href;
+            help.target = '_blank';
+            help.rel = 'noopener';
+        } else if (help) help.remove();
     }
 
     if (document.readyState === 'loading') {

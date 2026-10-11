@@ -20,6 +20,7 @@ class TestStudioScoped:
         assert login(viewer).get(f"{prefix}/available").json() == {
             "available": True,
             "reason": "",
+            "studio_name": "Casino Studio",
             "configured": True,
             "can_configure": False,
             "settings_url": None,

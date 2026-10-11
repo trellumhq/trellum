@@ -191,6 +191,27 @@ class TestShellRendering:
         assert "data-studio-theme" not in html
         assert "/api/assistant/widget.js" not in html
 
+    def test_org_shell_offers_only_accessible_studios_for_assistant(
+        self, login, make_user, org, studio_tree, studio2, grant_studio
+    ):
+        viewer = make_user("assistant-picker@demo.example", org=org)
+        grant_studio(viewer, studio_tree, roles.VIEWER)
+        html = login(viewer).get(f"/?org={org.slug}").content.decode()
+
+        assert 'aria-label="Open Assistant and choose a studio"' in html
+        assert f'href="/s/{org.slug}/{studio_tree.slug}/?assistant=open"' in html
+        assert studio_tree.name in html
+        assert f'href="/s/{org.slug}/{studio2.slug}/?assistant=open"' not in html
+        assert 'class="tl-console-docs-link"' in html
+        assert "/api/assistant/widget.js" not in html
+
+    def test_org_shell_explains_when_no_studios_are_available(
+        self, login, member, org
+    ):
+        html = login(member).get(f"/?org={org.slug}").content.decode()
+        assert "No studios are available to your account." in html
+        assert 'class="tl-console-assistant-picker"' in html
+
     def test_explicit_org_switch_does_not_carry_another_orgs_studio(
         self,
         login,

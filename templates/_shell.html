@@ -27,6 +27,7 @@
       {% if shell_studio %}<span aria-hidden="true">/</span><a href="/s/{{ shell_org.slug }}/{{ shell_studio.slug }}/">{{ shell_studio.name }}</a>{% endif %}
     </nav>
     <span class="tl-console-header-spacer"></span>
+    {% if shell_org and not shell_studio %}<details class="tl-console-assistant-picker"><summary aria-label="Open Assistant and choose a studio">Assistant</summary><div class="tl-console-assistant-popover" role="group" aria-label="Choose a studio for Assistant">{% for s in shell_studios %}<a href="/s/{{ shell_org.slug }}/{{ s.slug }}/?assistant=open">{{ s.name }}<span>Open or resume chat</span></a>{% empty %}<p>No studios are available to your account.</p>{% endfor %}</div></details>{% endif %}
     {% if is_operator %}<a class="tl-console-health-alert" data-console-health-alert data-health-status="{{ shell_health.status }}" href="/system" title="{{ shell_health.detail }}" aria-label="{{ shell_health.message }}. {{ shell_health.detail }}"{% if shell_health.status == 'ok' %} hidden{% endif %}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5l8 14H2zM10 7v4M10 14h.01"/></svg><span class="tl-console-health-text" data-console-health-message aria-live="polite" aria-atomic="true">{{ shell_health.message }}</span></a>{% endif %}
     {% if dashboard_shell %}
     <button class="tl-console-search-button" type="button" data-console-search-toggle aria-controls="consoleSearch" aria-expanded="false" aria-label="Search {{ console_page_title|lower }}">⌕</button>

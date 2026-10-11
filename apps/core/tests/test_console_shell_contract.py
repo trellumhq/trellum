@@ -92,6 +92,7 @@ def test_report_modes_keep_console_assistant_but_hide_it_in_monitor_mode():
         "#assistantPill",
         "#assistantPanel",
         ".assistant-setup",
+        ".assistant-unavailable",
     ):
         assert f"body.tl-console-report-hosting {selector}" not in host_css
         assert selector in menu_js

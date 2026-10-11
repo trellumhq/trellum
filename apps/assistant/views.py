@@ -193,6 +193,7 @@ def studio_available(request, org_slug, studio_slug):  # noqa: ARG001
     return JsonResponse({
         "available": ok,
         "reason": reason,
+        "studio_name": request.studio.name,
         "configured": OrgAssistantConfig.objects.filter(org=request.org).exists(),
         "can_configure": can_configure,
         "settings_url": f"/orgs/{request.org.slug}/settings/assistant" if can_configure else None,

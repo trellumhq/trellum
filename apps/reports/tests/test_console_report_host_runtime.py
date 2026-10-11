@@ -121,6 +121,9 @@ def _open(
         if "/api/report-shell" in request.url:
             shell_requests.append(request.url)
         if "/api/assistant/available" in request.url:
+            if availability_state.get("fail"):
+                route.abort()
+                return
             suggestions = (
                 ["Summarise hosted report"]
                 if "player-overview" in request.url
@@ -202,6 +205,68 @@ def _open(
     page.goto("http://console.test/s/demo/casino/?view=list", wait_until="load")
     top_navigations.clear()
     return context, page, errors, top_navigations, shell_requests, assistant_messages
+
+
+def test_assistant_unavailable_probe_can_retry_without_duplicate_entries(report_browser):
+    availability_state = {"available": None, "fail": True}
+    context, page, errors, *_ = _open(
+        report_browser, assistant_available=True, availability_state=availability_state
+    )
+    try:
+        entry = page.locator(".assistant-unavailable")
+        entry.wait_for(state="visible")
+        assert page.locator(".assistant-unavailable").count() == 1
+        assert "Could not check Assistant availability" in entry.locator("summary").get_attribute("aria-label")
+
+        availability_state["fail"] = False
+        entry.locator("summary").click()
+        page.locator(".assistant-unavailable-retry").click()
+        page.locator("#assistantPill").wait_for(state="visible")
+        assert page.locator(".assistant-unavailable").count() == 0
+
+        availability_state["available"] = False
+        page.evaluate(
+            "window.dispatchEvent(new CustomEvent('trellum:assistant-context',"
+            "{detail:{report:'blocked'}}))"
+        )
+        page.locator(".assistant-unavailable").wait_for(state="visible")
+        assert page.locator(".assistant-unavailable").count() == 1
+        assert errors == []
+    finally:
+        context.close()
+
+
+def test_assistant_unavailable_entry_stays_hidden_in_report_monitor(report_browser):
+    context = report_browser.new_context(viewport={"width": 390, "height": 720})
+    page = context.new_page()
+    report_html = _report_html().replace(
+        "history.replaceState(null,'',location.pathname);", ""
+    )
+
+    def route_request(route):
+        if "/api/assistant/available" in route.request.url:
+            route.fulfill(
+                content_type="application/json",
+                body=json.dumps({
+                    "available": False,
+                    "reason": "The AI assistant is disabled for this organization.",
+                    "can_configure": False,
+                }),
+            )
+        else:
+            route.fulfill(content_type="text/html", body=report_html)
+
+    page.route("**/*", route_request)
+    try:
+        page.goto(
+            "http://console.test/s/demo/casino/r/player-overview/index.html?display=monitor",
+            wait_until="load",
+        )
+        page.locator(".assistant-unavailable").wait_for(state="attached")
+        assert page.locator(".assistant-unavailable").is_hidden()
+        assert page.locator("#assistantAsk").is_hidden()
+    finally:
+        context.close()
 
 
 def test_back_restores_catalog_scroll_after_delayed_catalog_render(report_browser):
@@ -440,6 +505,9 @@ def test_assistant_header_and_setup_entry_fit_console(report_browser):
     unavailable = _open(report_browser, assistant_available=False)
     context, page, errors, *_ = unavailable
     try:
+        unavailable_entry = page.locator(".assistant-unavailable")
+        unavailable_entry.wait_for(state="visible")
+        unavailable_entry.locator("summary").click()
         setup = page.locator(".assistant-setup")
         setup.wait_for(state="visible")
         assert setup.text_content().strip() == "Set up AI →"
@@ -448,6 +516,7 @@ def test_assistant_header_and_setup_entry_fit_console(report_browser):
         assert setup_box["x"] + setup_box["width"] <= 390
         page.locator("#report").click()
         page.frame_locator("iframe").locator("#reportBody").wait_for()
+        page.locator(".assistant-unavailable").evaluate("e => { e.open = true; }")
         setup.wait_for(state="visible")
         assert page.locator("#assistantPanel").count() == 1
         assert page.locator("#assistantPill").is_hidden()
@@ -473,6 +542,9 @@ def test_assistant_header_entry_tracks_availability_changes(report_browser):
             "window.dispatchEvent(new CustomEvent('trellum:assistant-context',"
             "{detail:{report:'blocked'}}))"
         )
+        unavailable_entry = page.locator(".assistant-unavailable")
+        unavailable_entry.wait_for(state="visible")
+        unavailable_entry.locator("summary").click()
         settings = page.locator(".assistant-setup")
         settings.wait_for(state="visible")
         assert settings.text_content().strip() == "AI settings →"
@@ -488,6 +560,7 @@ def test_assistant_header_entry_tracks_availability_changes(report_browser):
 
         availability_state["available"] = False
         page.evaluate("window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}))")
+        page.locator(".assistant-unavailable > summary").click()
         page.locator(".assistant-setup").wait_for(state="visible")
         assert errors == []
     finally:
@@ -499,6 +572,8 @@ def test_assistant_header_entry_tracks_availability_changes(report_browser):
     )
     context, page, errors, *_ = configured_unavailable
     try:
+        page.locator(".assistant-unavailable").wait_for(state="visible")
+        page.locator(".assistant-unavailable > summary").click()
         settings = page.locator(".assistant-setup")
         settings.wait_for(state="visible")
         assert settings.text_content().strip() == "AI settings →"

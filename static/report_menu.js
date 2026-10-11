@@ -486,6 +486,7 @@
         + 'body.tl-report-monitor .fw-filter-bar,body.tl-report-monitor #assistantLauncher,'
         + 'body.tl-report-monitor #assistantAsk,body.tl-report-monitor #assistantPill,'
         + 'body.tl-report-monitor #assistantPanel,body.tl-report-monitor .assistant-setup,'
+        + 'body.tl-report-monitor .assistant-unavailable,'
         + 'body.tl-report-monitor .assistant-section-ask{display:none!important}'
         + '.tl-report-monitor-exit{position:fixed;top:calc(var(--fw-header-h,0px) + var(--fw-metadata-h,0px) + 8px);left:50%;z-index:10000;'
         + 'transform:translateX(-50%);padding:7px 12px;border:1px solid rgba(127,127,127,.45);'
