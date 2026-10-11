@@ -7,6 +7,35 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- Add dedicated data source editors with draft credential testing, separate
+  saved and draft results, and protection against obsolete test responses.
+- Add a Capture for analysis icon, image preview and persistent instructions
+  for importing frozen evidence into an analysis.
+
+### Changed
+
+- Separate System Health diagnostics from Instance Settings. Keep detailed
+  workers and build execution in Fleet, preserve legacy settings submissions,
+  and save instance, security and email connection edits in place.
+
+### Fixed
+
+- Isolate alert tests from live notification history and all email paths.
+  Record transport acceptance, partial delivery and failures explicitly; start
+  cooldown only when at least one recipient is accepted for delivery.
+
+### Upgrade notes
+
+Apply `alerts.0003_execution_and_delivery_outcomes` and update the portal and
+alert workers together. Existing alert runs are labelled legacy with unknown
+execution mode and delivery outcome. They remain visible but are excluded from
+new live notification history, so a previously notified condition may alert
+again after its existing cooldown. Transport acceptance does not confirm inbox
+receipt. Rebuild reports with the matched framework to include the capture
+preview and guidance; the portal supplies the updated capture menu icon.
+
 ## [0.5.0] — 2026-10-10
 
 ### Added
