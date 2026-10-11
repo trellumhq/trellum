@@ -30,12 +30,15 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import threading
 import time as _time
 from datetime import datetime
 
 from django.db.models import Max
+from django.http import HttpResponseBadRequest
 from django.shortcuts import render
+from django.urls import reverse
 
 from apps.core import roles
 from apps.core.permissions import require_studio_role
@@ -76,7 +79,7 @@ def _parse_iso(value) -> datetime | None:
     if not value:
         return None
     try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return datetime.fromisoformat(str(value))
     except ValueError:
         return None
 
@@ -96,8 +99,9 @@ def _claims_by_metric_id(studio, reports: list[Report]) -> tuple[dict[str, list[
     "this report has never been built" can be told apart from "it was built
     and claims nothing", which are different things to say to a reader.
     """
-    from apps.core import storage
     from trellum.meta import normalize_metrics_used
+
+    from apps.core import storage
 
     claims: dict[str, list[dict]] = {}
     built: set[str] = set()
@@ -411,7 +415,7 @@ def studio_metrics_overview(studio) -> dict:
 
 @require_studio_role(roles.VIEWER)
 @require_full_studio_visibility
-def metrics_page(request, org_slug, studio_slug):  # noqa: ARG001
+def metrics_page(request, org_slug, studio_slug):
     from apps.studios.models import StudioRepo
 
     data = studio_metrics_overview(request.studio)
@@ -442,3 +446,56 @@ def metrics_page(request, org_slug, studio_slug):  # noqa: ARG001
             "repo_url": repo_url,
         },
     )
+
+
+@require_studio_role(roles.VIEWER)
+@require_full_studio_visibility
+def metric_comparison(request, org_slug, studio_slug):
+    """Two current studio identities; report access is checked again by each frame."""
+    from datetime import date
+
+    from trellum.metrics import load_metrics_result
+
+    ids = [request.GET.get(key, "") for key in ("a", "b")]
+    if any(len(value) > 200 or (value and not re.fullmatch(r"[a-z0-9][a-z0-9_]*", value))
+           for value in ids) or (ids[0] and ids[0] == ids[1]):
+        return HttpResponseBadRequest("Choose two different available metrics.")
+    dates = [request.GET.get(key, "") for key in ("from", "to")]
+    try:
+        if any(dates) and (not all(dates) or any(date.fromisoformat(v).isoformat() != v for v in dates)
+                           or dates[0] > dates[1]):
+            raise ValueError
+    except ValueError:
+        return HttpResponseBadRequest("Choose a valid start and end date.")
+    splits = [request.GET.get(key, "") for key in ("split_a", "split_b")]
+    if any(len(value) > 200 for value in splits):
+        return HttpResponseBadRequest("Choose an available split.")
+    # Do not use the overview's short cache for an identity/access decision.
+    available = set(MetricDefinition.objects.filter(
+        studio=request.studio, present_in_scan=True).values_list("name", flat=True))
+    if any(value and value not in available for value in ids):
+        return HttpResponseBadRequest("Choose two different available metrics.")
+    data = studio_metrics_overview(request.studio)
+    registry = load_metrics_result(str(request.studio.project_root))
+    cards = []
+    for key, metric_id in zip(("a", "b"), ids, strict=True):
+        metric = next((m for m in data["metrics"] if m["row"].name == metric_id), None)
+        if not metric:
+            cards.append({"slot": key})
+            continue
+        definition = registry.metrics.get(metric_id)
+        dataset = registry.datasets.get(definition.dataset) if definition else None
+        generated = next((u for u in metric["usage"] if is_generated_metrics_report(u["report"])), None)
+        cards.append({**metric, "slot": key,
+                      "grain": dataset.grain if dataset else "unknown",
+                      "time_agg": definition.time_agg if definition else "unknown",
+                      "built_at": generated["built_at"] if generated else None,
+                      "current": bool(generated and generated["current"])})
+    return render(request, "reports/metric_comparison.html", {
+        "org": request.org, "studio": request.studio, "cards": cards,
+        "metrics": data["metrics"], "metrics_report_built": data["metrics_report_built"],
+        "comparison_url": reverse("metric-comparison", args=[org_slug, studio_slug]),
+        "catalog_url": reverse("studio-metrics", args=[org_slug, studio_slug]),
+        "state": {"a": ids[0], "b": ids[1], "from": dates[0], "to": dates[1],
+                  "split_a": splits[0], "split_b": splits[1]},
+    })

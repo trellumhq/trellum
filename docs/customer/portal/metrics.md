@@ -27,3 +27,21 @@ members who can see the full studio; it does not reveal definitions or report
 claims from another studio. The report page also has a **Metrics in this
 report** panel for viewers. It lists the metrics claimed by that build beside
 their current definitions and marks whether the build matches each one.
+
+Select **Compare** on two catalog cards, then **Compare selected metrics** to
+open their full-size charts together. Uncheck a selected card to replace it,
+or clear the selection. On the comparison page, either metric selector can
+replace or remove a metric. Both choices belong to the current studio.
+
+Apply an explicit shared start and end date to both time charts. Each chart's
+split control affects only that card; dates and splits are retained in the URL
+for reload, sharing, and Back/Forward. Smaller screens stack the same charts.
+Each card shows its units, aggregation, current definition grain and build
+freshness, and reports when its data does not cover the chosen dates. A chart
+with no time axis is a snapshot and is unaffected by the shared date range.
+
+Comparison charts retain separate axes and scales. This view shows trends and
+omits KPI totals: a metric declared with `time_agg: last` plots observations
+at each date, while its generated KPI remains a build-time snapshot. Rebuild
+stale definitions before relying on a comparison. Missing builds and unavailable
+splits are reported beside the affected card.

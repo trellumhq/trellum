@@ -32,8 +32,11 @@ def generated_metrics(tmp_path_factory):
     (project / "metrics.yaml").write_text(yaml.safe_dump({
         "version": 1,
         "datasets": {"daily": {"provider": "fixture:daily", "dimensions": ["platform", "region"],
-                               "time": {"column": "event_date", "grain": "day"}}},
-        "metrics": [metric, {**metric, "name": "net_revenue", "label": "Net Revenue"}],
+                               "time": {"column": "event_date", "grain": "day"}},
+                     "snapshot": {"provider": "fixture:snapshot", "dimensions": ["platform"], "time": "none"}},
+        "metrics": [metric, {**metric, "name": "net_revenue", "label": "Net Revenue"},
+                    {**metric, "name": "balance", "label": "Balance", "time_agg": "last"},
+                    {**metric, "name": "inventory", "label": "Inventory", "dataset": "snapshot"}],
     }), encoding="utf-8")
     rows = pd.DataFrame([
         {"event_date": day.strftime("%Y-%m-%d"), "platform": f"Platform {i}: a long series label",
@@ -48,6 +51,8 @@ def generated_metrics(tmp_path_factory):
                              "description": "Synthetic daily revenue by platform and region. This browser fixture exercises shared date filtering and per-metric breakdowns with forty days of generated rows.",
                              "schedule": {"cron": "0 8 * * *"}, "tags": ["metrics"],
                              "studio": "default", "category": "Metrics"}
+        # Snapshot observations have no time axis or shared date filter.
+        config["validation"] = {"suppress_per_dataset": {"snapshot": ["ds-no-filterbar"]}}
         ids = []
         for output in ("output", "rebuilt"):
             ctx = ReportContext(config, "metrics", str(project / output))
@@ -233,6 +238,7 @@ def test_metric_page_retains_dates_and_split_and_overview_link(open_metric):
     assert page.locator('[data-stack-toggle] .fw-toggle-btn.active').first.inner_text() == "Platform"
     assert page.locator('.fw-date-input[data-edge="min"]').input_value() == "2026-09-12"
     assert page.locator('.fw-date-input[data-edge="max"]').input_value() == "2026-09-24"
+    page.wait_for_function("Object.values(window._chartInstances)[0]?.data.datasets.length === 12")
     assert page.evaluate("Object.values(window._chartInstances)[0].data.datasets.length") == 12
     page.reload()
     page.locator("canvas").first.wait_for(state="visible")

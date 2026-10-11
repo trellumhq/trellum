@@ -9,13 +9,15 @@ _meta.json says it was built against -- never a report's data.json.
 import json
 import shutil
 import subprocess
-from datetime import timedelta
 
 import pytest
 from django.utils import timezone as dj_tz
 
 from apps.core import roles
-from apps.reports.metrics_catalog import invalidate_metrics_overview_cache, studio_metrics_overview
+from apps.reports.metrics_catalog import (
+    invalidate_metrics_overview_cache,
+    studio_metrics_overview,
+)
 from apps.reports.scan import (
     build_registry_payload,
     sync_studio_metrics,
@@ -422,7 +424,7 @@ if (JSON.stringify(result) !== JSON.stringify({{
   reports: ['report', 'legacy-report'], analyses: ['analysis']
 }})) process.exit(1);
 """
-        result = subprocess.run(["node", "-e", script], capture_output=True, text=True)
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=False)
         assert result.returncode == 0, result.stderr
 
 
@@ -711,3 +713,84 @@ class TestCatalogSearch:
         assert "card.dataset.search" in js
         assert "ev.stopPropagation();" in js
         assert "card.hidden = !hit;" in js
+
+
+class TestMetricComparison:
+    def _url(self, studio):
+        return f"/s/{studio.org.slug}/{studio.slug}/metrics/compare"
+
+    def test_stale_and_unbuilt_cards_remain_explicit(
+        self, studio_tree, write_metrics_yaml, write_report, write_meta, member, grant_studio, login
+    ):
+        write_metrics_yaml([GROSS_REVENUE, {**GROSS_REVENUE, "name": "net_revenue", "label": "Net Revenue"}])
+        sync_studio_metrics(studio_tree)
+        grant_studio(member, studio_tree, roles.VIEWER)
+        client = login(member)
+        response = client.get(self._url(studio_tree), {"a": "gross_revenue", "b": "net_revenue"})
+        assert response.status_code == 200
+        assert response.content.decode().count("has not been built yet") == 2
+        write_report(**GENERATED_METRICS_REPORT)
+        sync_studio_registry(studio_tree)
+        write_meta("metrics", last_run=_now_iso(), metrics_used=["gross_revenue", "net_revenue"])
+        invalidate_metrics_overview_cache()
+        response = client.get(self._url(studio_tree), {"a": "gross_revenue", "b": "net_revenue"})
+        assert response.status_code == 200
+        assert response.content.decode().count("unverified or stale definition") == 2
+        assert "?only=metric-gross_revenue" in response.content.decode()
+
+    @pytest.mark.parametrize("query", [
+        {"a": "gross_revenue", "b": "gross_revenue"},
+        {"a": "gross_revenue", "b": "../secret"},
+        {"a": "gross_revenue", "b": "a" * 201},
+        {"a": "gross_revenue", "b": "foreign_secret"},
+        {"a": "gross_revenue", "from": "2026-02-30", "to": "2026-03-01"},
+        {"a": "gross_revenue", "from": "2026-10-02", "to": "2026-10-01"},
+        {"a": "gross_revenue", "split_a": "s" * 201},
+    ])
+    def test_invalid_or_foreign_identity_reveals_no_partial_card(
+        self, query, studio_tree, other_studio, write_metrics_yaml, member, grant_studio, login
+    ):
+        from apps.reports.models import MetricDefinition
+        MetricDefinition.objects.create(studio=other_studio, name="foreign_secret", label="Confidential metric")
+        write_metrics_yaml([GROSS_REVENUE])
+        sync_studio_metrics(studio_tree)
+        grant_studio(member, studio_tree, roles.VIEWER)
+        response = login(member).get(self._url(studio_tree), query)
+        assert response.status_code == 400
+        assert "Gross Revenue" not in response.content.decode()
+        assert "Confidential" not in response.content.decode()
+
+    def test_removed_identity_is_rechecked_despite_catalog_cache(
+        self, studio_tree, write_metrics_yaml, member, grant_studio, login
+    ):
+        write_metrics_yaml([GROSS_REVENUE])
+        sync_studio_metrics(studio_tree)
+        studio_metrics_overview(studio_tree)
+        studio_tree.metric_definitions.update(present_in_scan=False)
+        grant_studio(member, studio_tree, roles.VIEWER)
+        response = login(member).get(self._url(studio_tree), {"a": "gross_revenue"})
+        assert response.status_code == 400
+        assert "Gross Revenue" not in response.content.decode()
+
+    def test_selected_report_viewer_cannot_read_comparison(
+        self, studio_tree, write_metrics_yaml, member, make_group, attach_group, login, settings, monkeypatch
+    ):
+        settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = True
+        write_metrics_yaml([GROSS_REVENUE])
+        sync_studio_metrics(studio_tree)
+        group = make_group("Selected", grants=[(studio_tree, roles.VIEWER)])
+        grant = group.grants.get(studio=studio_tree)
+        grant.viewer_scope = "selected"
+        grant.save(update_fields=["viewer_scope"])
+        attach_group(member, group)
+        def forbidden_read(*_args):
+            raise AssertionError("Denied requests must not read report metadata")
+        monkeypatch.setattr("apps.core.storage.read_meta", forbidden_read)
+        response = login(member).get(self._url(studio_tree), {"a": "gross_revenue"})
+        assert response.status_code == 403
+        assert "Gross Revenue" not in response.content.decode()
+
+    def test_anonymous_and_foreign_org_access(self, studio_tree, client, other_org, make_user, login):
+        assert client.get(self._url(studio_tree)).status_code == 302
+        outsider = make_user("comparison-outsider@demo.example", org=other_org)
+        assert login(outsider).get(self._url(studio_tree)).status_code == 404

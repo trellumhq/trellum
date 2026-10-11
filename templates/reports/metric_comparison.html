@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Compare metrics · {{ studio.name }}{% endblock %}
+{% block content %}
+<style>
+.mc-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.mc-card { min-width:0; padding:16px; border:1px solid var(--border); border-radius:8px; }
+.mc-card iframe { width:100%; height:700px; border:0; display:block; }
+.mc-card iframe[hidden] { display:none; }
+.mc-selection, .mc-dates { display:flex; flex-wrap:wrap; align-items:end; gap:12px; margin-bottom:16px; }
+.mc-selection label { display:grid; gap:4px; max-width:100%; }
+.mc-selection select { max-width:100%; }
+.mc-facts { font-size:var(--fs-sm); color:var(--muted); }
+@media(max-width:800px) { .mc-grid { grid-template-columns:1fr; } }
+</style>
+<header class="page-head"><div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }}</div><h1>Compare metrics</h1></header>
+<p><a href="{{ catalog_url }}">← Metrics catalog</a></p>
+<p class="muted">Charts use separate axes and their original units. This view shows trends, without KPI totals. Snapshot metrics show observations at each date, not a filtered balance.</p>
+<form class="mc-selection" id="mcSelection" action="{{ comparison_url }}" method="get">
+  {% for card in cards %}
+  <label for="mc-{{ card.slot }}">Metric {{ forloop.counter }}
+    <select id="mc-{{ card.slot }}" name="{{ card.slot }}" class="ui-input">
+      <option value="">Remove metric / choose a metric</option>
+      {% for m in metrics %}<option value="{{ m.row.name }}" {% if card.row.name == m.row.name %}selected{% endif %}>{{ m.row.label|default:m.row.name }}</option>{% endfor %}
+    </select>
+  </label>
+  {% endfor %}
+  <button class="ui-btn">Update comparison</button>
+</form>
+<form class="mc-dates" id="mcDates" action="{{ comparison_url }}" method="get">
+  <input type="hidden" name="a" value="{{ state.a }}"><input type="hidden" name="b" value="{{ state.b }}">
+  <input type="hidden" name="split_a" value="{{ state.split_a }}"><input type="hidden" name="split_b" value="{{ state.split_b }}">
+  <label for="mcFrom">Shared start date <input class="ui-input" id="mcFrom" name="from" type="date" value="{{ state.from }}" required></label>
+  <label for="mcTo">Shared end date <input class="ui-input" id="mcTo" name="to" type="date" value="{{ state.to }}" required></label>
+  <button class="ui-btn">Apply dates to both</button>
+</form>
+<p id="mcStatus" role="status" aria-live="polite">Choose two metrics to compare. Loading selected charts…</p>
+<div class="mc-grid" id="mcComparison">
+  {% for card in cards %}
+  <section class="mc-card" data-slot="{{ card.slot }}" data-id="{{ card.row.name }}" data-embed="{{ card.embed_url }}">
+    {% if card.row %}
+    <h2>{{ card.row.label|default:card.row.name }}</h2>
+    <p class="mc-facts">Current definition — units/format: {{ card.row.format }} · Aggregation: {{ card.spec }} · Time rollup: {{ card.time_agg|default:"sum" }} · Grain: {{ card.grain|default:"none (snapshot)" }}</p>
+    <p class="mc-facts">Build: {% if card.built_at %}{{ card.built_at|date:"Y-m-d H:i" }}{% else %}unavailable{% endif %} · {% if card.current %}current definition{% else %}unverified or stale definition; rebuild before relying on this comparison{% endif %}</p>
+    <p class="mc-range" role="status">{% if not metrics_report_built %}The Metrics report has not been built yet.{% elif not card.embed_url %}This metric is not monitored in the current build.{% else %}Loading chart…{% endif %}</p>
+    <div class="mc-chart"></div>
+    {% else %}<h2>Metric {{ forloop.counter }}</h2><p>Choose a metric above.</p><div class="mc-chart"></div>{% endif %}
+  </section>
+  {% endfor %}
+</div>
+{{ state|json_script:"mcState" }}
+<script src="{% static 'metric_comparison.js' %}"></script>
+{% endblock %}

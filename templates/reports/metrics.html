@@ -203,6 +203,11 @@ query that hits everything.{% endcomment %}
          placeholder="Filter metrics…">
   <p class="met-count" id="metCount" role="status" aria-live="polite"></p>
 </div>
+<form id="metCompare" action="{% url 'metric-comparison' org.slug studio.slug %}" method="get" style="margin-bottom:16px">
+  <button class="ui-btn" id="metCompareOpen" disabled>Compare selected metrics</button>
+  <button class="ui-btn ghost" type="reset">Clear selection</button>
+  <span id="metCompareStatus" role="status" aria-live="polite">Select two metrics below.</span>
+</form>
 
 <div class="met-grid">
   {% for m in metrics %}
@@ -219,6 +224,7 @@ query that hits everything.{% endcomment %}
       type, so it belongs with the name rather than competing with the
       tags.{% endcomment %}
       <div class="met-id">{{ m.row.name }} · v{{ m.row.version }} · {{ m.row.format }}</div>
+      <label><input type="checkbox" class="met-compare-choice" value="{{ m.row.name }}" aria-label="Compare {{ m.row.label|default:m.row.name }}"> Compare</label>
       {% if m.spark %}
       <svg class="met-spark" width="{{ spark_w }}" height="{{ spark_h }}"
            viewBox="0 0 {{ spark_w }} {{ spark_h }}" aria-hidden="true" focusable="false">
