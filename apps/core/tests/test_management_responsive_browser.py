@@ -149,9 +149,17 @@ def test_delivery_rendered_template_fits_and_keeps_editor_hidden(mobile_browser,
         assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
         assert page.locator("#deliveryTable[data-mobile-cards]").count() == 1
         assert page.locator("[data-delivery-row]").count() == 1
-        assert page.locator(".delivery-row-detail").evaluate(
-            "el => getComputedStyle(el).display"
-        ) == "none"
+        editor = page.locator("[data-schedule-editor]")
+        # Native details now exposes its summary; its form remains closed.
+        assert not editor.evaluate("el => el.open")
+        assert not editor.locator("form").is_visible()
+        assert editor.locator("summary").is_visible()
+        assert editor.locator("summary").evaluate("el => getComputedStyle(el).minHeight") == "44px"
+        editor.locator("summary").click()
+        assert editor.locator("form").is_visible()
+        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+        editor.locator("summary").click()
+        assert not editor.locator("form").is_visible()
         assert page.locator("[data-toggle-edit]").first.evaluate(
             "el => getComputedStyle(el).minHeight"
         ) == "44px"
@@ -170,6 +178,51 @@ def test_delivery_empty_rendered_template_has_no_table(mobile_browser):
     try:
         assert page.locator("#deliveryTable").count() == 0
         assert "No scheduled deliveries yet" in page.locator("body").inner_text()
+    finally:
+        context.close()
+
+
+def test_mobile_delivery_enhanced_edit_uses_real_shared_scripts(mobile_browser):
+    import json
+    from django import forms
+
+    class EditorForm(forms.Form):
+        send_hour = forms.IntegerField(min_value=0, max_value=23, label="Send hour")
+
+    row = _delivery_row()
+    row.schedule.pk = 7
+    row.form = EditorForm(initial={"send_hour": 8})
+    saved = {"id": 7, "delivery_revision": 0, "enabled": True, "attach_pdf": False,
+             "freq": "daily", "send_hour": 8, "send_minute": 0, "timezone": "UTC",
+             "owner_name": "Creator", "recipient_summary": "person@example.com"}
+    row.schedule_json = json.dumps(saved)
+    html = _delivery_html([row]).replace("</head>", f"<style>{UI_CSS}</style></head>")
+    context = mobile_browser.new_context(viewport={"width": 320, "height": 820})
+    page = context.new_page()
+    page.route("**/*", lambda route: route.fulfill(body=html, content_type="text/html")
+               if route.request.url == "https://example.test/deliveries" else route.abort())
+    page.goto("https://example.test/deliveries")
+    try:
+        page.add_script_tag(content=SETTINGS_FORMS_JS)
+        page.add_script_tag(content=(settings.BASE_DIR / "static/report_delivery.js").read_text(encoding="utf-8"))
+        page.evaluate("ReportDelivery.mountCenter(document)")
+        editor = page.locator("[data-schedule-editor]")
+        assert not editor.locator("form").is_visible()
+        page.locator("[data-toggle-edit]").click()
+        assert editor.locator("form").is_visible()
+        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+        page.locator("[data-toggle-edit]").click()
+        assert not editor.locator("form").is_visible()
+        page.locator("summary").last.click()
+        field = editor.locator("[name=send_hour]")
+        field.fill("10")
+        page.route("**/schedules/7", lambda route: route.fulfill(json={
+            "ok": True, "message": "Schedule saved.", "schedule": {**saved, "send_hour": 10, "delivery_revision": 1},
+        }))
+        editor.locator("button[type=submit]").click()
+        page.wait_for_function("document.querySelector('[data-field=cadence]').textContent.includes('10:00')")
+        assert field.input_value() == "10" and editor.evaluate("el => el.open")
+        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
     finally:
         context.close()
 

@@ -36,25 +36,26 @@
 <a class="ui-btn ghost" href="/s/{{ row.rule.org.slug }}/{{ row.rule.studio.slug }}/alerts/{{ row.rule.pk }}">Rule and run log</a>
 </div>{% empty %}<p class="ui-empty">No AI alerts match these filters.</p>{% endfor %}</div>
 {% else %}
-<div class="panel" data-settings-refresh="delivery-list">{% if schedule_rows %}<div class="ui-table-scroll"><table class="ui-table" id="deliveryTable" data-mobile-cards><thead><tr><th>Report / studio</th><th>Creator</th><th>Cadence</th><th>Format</th><th>Recipients</th><th>Status / attempts</th><th>Actions</th></tr></thead><tbody>
+<div class="panel" data-settings-refresh="delivery-list">{% if schedule_rows %}<div class="ui-table-scroll"><table class="ui-table" id="deliveryTable" data-mobile-cards><thead><tr><th>Report</th><th>Studio</th><th>Creator</th><th>Cadence</th><th>Format</th><th>Recipients</th><th>Status / attempts</th><th>Actions</th></tr></thead><tbody>
 {% for row in schedule_rows %}
-<tr data-delivery-row data-server-form data-prefix="/s/{{ row.org.slug }}/{{ row.studio.slug }}" data-slug="{{ row.report.slug }}">
-<td>{{ row.report.name|default:row.report.slug }} <span class="muted">· {{ row.report.get_kind_display }}<br>{{ row.org.name }} / {{ row.studio.name }}</span></td>
-<td data-field="owner">{{ row.owner_name }}{% if row.owner_repair %}<br><span class="ui-badge warn">Owner repair required</span>{% endif %}</td>
-<td data-field="cadence">{{ row.cadence }}</td><td data-field="format">{% if row.schedule.attach_pdf %}HTML + PDF{% else %}HTML{% endif %}</td><td data-field="recipients">{{ row.recipient_summary }}</td>
-<td><span data-field="status">{% if row.schedule.enabled %}<span class="ui-badge pass">Enabled</span>{% else %}<span class="ui-badge warn">Disabled</span>{% endif %}</span>
+<tr class="delivery-row" data-delivery-row data-server-form data-prefix="/s/{{ row.org.slug }}/{{ row.studio.slug }}" data-slug="{{ row.report.slug }}">
+<td data-label="Report">{{ row.report.name|default:row.report.slug }} <span class="muted">· {{ row.report.get_kind_display }}</span></td>
+<td data-label="Studio">{{ row.org.name }} / {{ row.studio.name }}</td>
+<td data-label="Creator" data-field="owner">{{ row.owner_name }}{% if row.owner_repair %}<br><span class="ui-badge warn">Owner repair required</span>{% endif %}</td>
+<td data-label="Cadence" data-field="cadence">{{ row.cadence }}</td><td data-label="Format" data-field="format">{% if row.schedule.attach_pdf %}HTML + PDF{% else %}HTML{% endif %}</td><td data-label="Recipients" data-field="recipients">{{ row.recipient_summary }}</td>
+<td data-label="Status"><span data-field="status">{% if row.schedule.enabled %}<span class="ui-badge pass">Enabled</span>{% else %}<span class="ui-badge warn">Disabled</span>{% endif %}</span>
 {% if row.paused %}<br>{{ row.paused }}{% endif %}<br>Next future: <span data-field="next">{{ row.next_at|default:'None while disabled, paused or owner needs repair' }}</span>
 <br>Last attempt: {{ row.schedule.last_attempt_at|default:'Unknown / not attempted' }}<br>Outcome: <span data-field="outcome">{{ row.outcome }}</span><br>Last accepted: {{ row.schedule.last_accepted_at|default:'Unknown / none' }}
 {% if row.schedule.delivery_accepted_to %}<br>Accepted: {{ row.schedule.delivery_accepted_to|join:', ' }}{% endif %}{% if row.schedule.delivery_failed_to %}<br>Failed: {{ row.schedule.delivery_failed_to|join:', ' }}{% endif %}</td>
-<td class="ui-row-actions"><a class="ui-btn ghost" href="/s/{{ row.org.slug }}/{{ row.studio.slug }}/r/{{ row.report.slug }}/">View report</a>
+<td class="ui-row-actions" data-label="Actions"><a class="ui-btn ghost" href="/s/{{ row.org.slug }}/{{ row.studio.slug }}/r/{{ row.report.slug }}/">View report</a>
 <button type="button" class="ui-btn ghost" data-toggle-edit>Edit</button>
 <form method="post" action="/s/{{ row.org.slug }}/{{ row.studio.slug }}/api/reports/{{ row.report.slug }}/schedules/{{ row.schedule.pk }}" data-settings-form data-settings-save>
 {% csrf_token %}<input type="hidden" name="return_to" value="{{ delivery_return_to }}"><input type="hidden" name="action" value="toggle"><input type="hidden" name="enabled" value="{% if row.schedule.enabled %}false{% else %}true{% endif %}"><button type="submit" class="ui-btn ghost" data-toggle-enable>{% if row.schedule.enabled %}Disable{% else %}Enable{% endif %}</button></form>
 <button type="button" class="ui-btn ghost" data-send-sample>Sample</button>
 <form method="post" action="/s/{{ row.org.slug }}/{{ row.studio.slug }}/api/reports/{{ row.report.slug }}/schedules/{{ row.schedule.pk }}" data-settings-form data-settings-save data-delete-confirm="Delete schedule #{{ row.schedule.pk }} for {{ row.report.name|default:row.report.slug }}? Recipients: {{ row.confirmation_recipients }}. Future sends stop; previously accepted email cannot be recalled.">
 {% csrf_token %}<input type="hidden" name="return_to" value="{{ delivery_return_to }}"><input type="hidden" name="action" value="delete"><button type="submit" class="ui-btn danger" data-delete-row>Delete</button></form></td></tr>
-<tr class="delivery-row-detail"><td colspan="7"><div data-flash-slot aria-live="polite"></div>
-<details data-schedule-editor {% if row.form_error %}open{% endif %}><summary>Edit schedule #{{ row.schedule.pk }} for {{ row.report.name|default:row.report.slug }}</summary><div data-form-slot>
+<tr class="delivery-row-detail"><td colspan="8"><div data-flash-slot aria-live="polite"></div>
+<details data-schedule-editor {% if row.form_error %}open{% endif %}><summary class="ui-btn ghost">Edit schedule #{{ row.schedule.pk }} for {{ row.report.name|default:row.report.slug }}</summary><div data-form-slot>
 <form method="post" id="delivery-schedule-{{ row.schedule.pk }}" action="/s/{{ row.org.slug }}/{{ row.studio.slug }}/api/reports/{{ row.report.slug }}/schedules/{{ row.schedule.pk }}" data-settings-form data-settings-save>
 {% csrf_token %}<input type="hidden" name="return_to" value="{{ delivery_return_to }}">{{ row.form.as_p }}<button type="submit" class="ui-btn primary">Save schedule</button></form></div></details>
 <script type="application/json" data-schedule-json>{{ row.schedule_json|safe }}</script></td></tr>

@@ -20,7 +20,7 @@ TABLE_TEMPLATES = {
     "templates/accounts/account.html": ("Device", "IP", "Last seen", "Actions"),
     "templates/reports/analytics.html": ("Report", "Views", "Unique viewers", "Share views", "Last viewed", "Actions"),
     "templates/reports/experiments.html": ("Experiment", "Status", "Days", "Primary metric", "Lift", "Significance", "Actions"),
-    "templates/reports/my_deliveries.html": ("Report", "Studio", "Cadence", "Format", "Recipients", "Status", "Actions"),
+    "templates/reports/my_deliveries.html": ("Report", "Studio", "Creator", "Cadence", "Format", "Recipients", "Status", "Actions"),
 }
 
 

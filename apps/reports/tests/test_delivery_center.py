@@ -361,6 +361,37 @@ class TestSharedDeliveryManagement:
         assert log.metadata['before']['id'] == row.pk
         assert log.metadata['before']['recipient_ids'] == [viewer.pk]
 
+    def test_native_delete_requires_confirmation_and_preserves_csrf_and_owner_scope(
+        self, login, viewer, other_viewer, report_row
+    ):
+        from django.test import Client
+        from apps.core.models import AuditLog
+        from apps.reports.models import EmailSchedule
+        row = self.create(report_row, viewer)
+        url = self.url(report_row, row)
+        body = {'action': 'delete', 'return_to': '/me/deliveries'}
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(viewer)
+        client.get('/me/deliveries')
+        token = client.cookies['csrftoken'].value
+        assert client.post(url, body).status_code == 403
+        response = client.post(url, body, HTTP_X_CSRFTOKEN=token)
+        assert response.status_code == 200 and EmailSchedule.objects.filter(pk=row.pk).exists()
+        assert not AuditLog.objects.filter(action='notify.schedule_delete').exists()
+        assert f'#{row.pk}' in response.content.decode()
+        assert viewer.email in response.content.decode() and report_row.name in response.content.decode()
+        assert b'href="/me/deliveries">Cancel' in response.content
+        assert client.get('/me/deliveries').status_code == 200  # cancellation only navigates
+        confirmed = {**body, 'confirm_delete': 'yes'}
+        assert login(other_viewer).post(url, confirmed).status_code == 404
+        assert client.post(url, confirmed).status_code == 403
+        assert EmailSchedule.objects.filter(pk=row.pk).exists()
+        assert client.post(url, confirmed, HTTP_X_CSRFTOKEN=token).status_code == 302
+        assert not EmailSchedule.objects.filter(pk=row.pk).exists()
+        assert AuditLog.objects.filter(action='notify.schedule_delete').count() == 1
+        assert client.post(url, confirmed, HTTP_X_CSRFTOKEN=token).status_code == 404
+        assert AuditLog.objects.filter(action='notify.schedule_delete').count() == 1
+
     def test_pause_resume_invalidates_old_snapshot_and_next_is_strictly_future(self, login, org_admin, org, viewer, report_row):
         from datetime import datetime, timezone
         from apps.reports.deliveries import next_occurrence, schedule_snapshot, schedule_send_current

@@ -74,9 +74,19 @@ class TestRegistryCompleteness:
         an accidental duplicate key silently dropping an entry. The size
         assertion makes additions and removals deliberate.
         """
-        assert len(ACTIONS) == 110
+        assert len(ACTIONS) == 112
         reserved = [name for name, spec in ACTIONS.items() if spec.reserved]
         assert len(reserved) == 0
+
+    @pytest.mark.parametrize("action, category, label", [
+        ("notify.delivery_policy_update", "admin", "Delivery pause and defaults updated"),
+        ("alert.delivery_reconciled", "system", "Alert delivery reconciled"),
+    ])
+    def test_delivery_management_actions_are_registered_mutations(self, action, category, label):
+        spec = ACTIONS[action]
+        assert spec.category == category and category_for(action, debug=True) == category
+        assert spec.label == label and not spec.is_access and not spec.reserved
+        assert action in _used_actions()
 
 
 # ── Category resolution ──────────────────────────────────────────────────

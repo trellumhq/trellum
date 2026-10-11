@@ -1261,6 +1261,13 @@ def api_email_schedule_detail(request, org_slug, studio_slug, slug, schedule_id)
         return JsonResponse({"ok": False, "error": message, "errors": errors or {}}, status=400)
 
     if request.method == "DELETE" or (is_form and request.POST.get("action") == "delete"):
+        if is_form and not is_settings_request(request) and request.POST.get("confirm_delete") != "yes":
+            return_to = request.POST.get("return_to")
+            return render(request, "reports/delivery_delete_confirm.html", {
+                "schedule": schedule, "report": report,
+                "confirmation": _schedule_dict(schedule, viewer=request.user, request=request)["delete_confirmation"],
+                "return_to": return_to if return_to in ("/deliveries", "/me/deliveries") else "/me/deliveries",
+            })
         schedule.delete()
         audit(request, "notify.schedule_delete", target=report, schedule_id=schedule_id, before=before,
               report_id=report.pk, report_name=report.name, recipient_ids=before["recipient_ids"])

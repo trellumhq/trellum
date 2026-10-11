@@ -18,7 +18,16 @@ def center_browser(login, org_admin, report_row):
         row = EmailSchedule.objects.create(report=report_row, created_by=org_admin, send_hour=hour)
         row.recipients.add(org_admin)
         rows.append(row)
-    html = login(org_admin).get('/deliveries').content.decode()
+    client = login(org_admin)
+    html = client.get('/deliveries').content.decode()
+    invalid = client.post(f'/s/{report_row.studio.org.slug}/{report_row.studio.slug}/api/reports/{report_row.slug}/schedules/{rows[0].pk}', {
+        'return_to': '/deliveries', 'freq': 'daily', 'send_hour': '8', 'send_minute': '0',
+        'weekday': '0', 'month_day': '1', 'timezone': 'Wrong/Zone', 'enabled': 'on',
+        'recipient_ids': [org_admin.pk],
+    })
+    assert invalid.status_code == 400
+    rows[0].native_error_html = invalid.content.decode()
+    rows[0].browser_html = html
     for row in rows:
         row.browser_payload = _schedule_dict(row, viewer=org_admin)
     with sync_playwright() as playwright:
@@ -31,6 +40,40 @@ def center_browser(login, org_admin, report_row):
         page.evaluate('ReportDelivery.mountCenter(document)')
         yield page, rows, org_admin
         browser.close()
+
+
+def test_native_mobile_editor_and_server_validation_without_javascript(center_browser):
+    page, rows, user = center_browser
+    context = page.context.browser.new_context(java_script_enabled=False, viewport={'width': 320, 'height': 820})
+    native = context.new_page()
+    def respond(route):
+        if route.request.url == 'https://example.test/deliveries':
+            html = rows[0].browser_html
+            status = 200
+        elif route.request.method == 'POST' and '/schedules/' in route.request.url:
+            html = rows[0].native_error_html
+            status = 400
+        else:
+            route.abort()
+            return
+        css = (ROOT / 'static/ui.css').read_text(encoding='utf-8')
+        route.fulfill(status=status, body=html.replace('</head>', f'<style>{css}</style></head>'), content_type='text/html')
+    native.route('**/*', respond)
+    try:
+        native.goto('https://example.test/deliveries')
+        editor = native.locator('[data-schedule-editor]').first
+        expect(editor.locator('form')).not_to_be_visible()
+        editor.locator('summary').click()
+        expect(editor.locator('form')).to_be_visible()
+        editor.locator('[name=timezone]').fill('Wrong/Zone')
+        editor.locator('button[type=submit]').click()
+        reopened = native.locator('[data-schedule-editor]').first
+        expect(reopened).to_have_attribute('open', '')
+        expect(reopened.locator('form')).to_be_visible()
+        expect(reopened.locator('[name=timezone]')).to_have_value('Wrong/Zone')
+        expect(reopened).to_contain_text('timezone')
+    finally:
+        context.close()
 
 
 def test_schedule_save_retains_focus_scroll_neighbor_and_new_draft(center_browser):

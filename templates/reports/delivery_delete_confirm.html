@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Delete delivery schedule — trellum{% endblock %}
+{% block content %}
+<header class="page-head"><h1>Delete delivery schedule</h1></header>
+<div class="panel">
+  <p>{{ confirmation }}</p>
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="delete">
+    <input type="hidden" name="confirm_delete" value="yes">
+    <input type="hidden" name="return_to" value="{{ return_to }}">
+    <button type="submit" class="ui-btn danger">Confirm deletion</button>
+    <a class="ui-btn ghost" href="{{ return_to }}">Cancel</a>
+  </form>
+</div>
+{% endblock %}
