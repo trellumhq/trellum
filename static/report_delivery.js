@@ -960,14 +960,8 @@
     }
 
     // ── delivery center (templates/reports/my_deliveries.html) ─────────────
-    // Each server-rendered <tr data-delivery-row> is followed by a
-    // <tr data-delivery-detail> holding a flash slot, a form slot, and a
-    // <script type="application/json" data-schedule-json> with that row's
-    // schedule (same shape as apps.reports.views._schedule_dict). Full
-    // create is out of scope here -- creation happens from a report --
-    // so this only wires edit / enable-disable / delete / sample on rows
-    // that already exist. No shared module state: each row closes over its
-    // own schedule object, so several can be expanded at once.
+    // Server rows retain enable/disable, delete and sample actions;
+    // Add and Edit navigate to dedicated pages.
     function mountCenter(root) {
         ensureDom();
         root = root || document;
@@ -982,10 +976,8 @@
         if (row._deliveryWired) return;
         row._deliveryWired = true;
         var detail = row.nextElementSibling;
-        var editor = detail.querySelector('[data-schedule-editor]');
         var scheduleEl = detail.querySelector('[data-schedule-json]');
         var saved = JSON.parse(scheduleEl.textContent);
-        row.querySelector('[data-toggle-edit]').addEventListener('click', function () { editor.open = !editor.open; });
         var forms = Array.prototype.slice.call(row.querySelectorAll('form')).concat(Array.prototype.slice.call(detail.querySelectorAll('form')));
         forms.forEach(function (form) {
             form.addEventListener('submit', function (event) {
@@ -1011,7 +1003,8 @@
                 if (saved.delete_confirmation) row.querySelector('[data-delete-confirm]').dataset.deleteConfirm = saved.delete_confirmation;
             });
         });
-        row.querySelector('[data-send-sample]').addEventListener('click', function () {
+        var sampleButton = row.querySelector('[data-send-sample]');
+        if (sampleButton) sampleButton.addEventListener('click', function () {
             var btn = this;
             btn.disabled = true;
             postJson(row.dataset.prefix + '/api/reports/' + encodeURIComponent(row.dataset.slug) + '/schedules/' + saved.id + '/sample', 'POST', {})

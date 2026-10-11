@@ -1,10 +1,4 @@
-"""v1.2 delivery center: templates/reports/my_deliveries.html now expands
-each schedule row inline (edit/delete/enable/disable/sample, wired by
-static/report_delivery.js) instead of linking out to the report's drawer,
-and drops the alert-subscription section entirely in favor of one
-informational line. This file only exercises the server-rendered template
--- the inline JS behavior (expand/collapse, live PATCH-style updates) is
-covered by hand/browser testing, not here."""
+"""Delivery center, dedicated CRUD pages and shared schedule authorization."""
 import json
 from pathlib import Path
 
@@ -44,7 +38,7 @@ class TestDeliveryCenterPage:
         resp = login(viewer).get("/me/deliveries")
         assert resp.status_code == 200
         assert resp.context["schedule_rows"] == []
-        assert b"No scheduled deliveries yet" in resp.content
+        assert b"No scheduled deliveries match these filters" in resp.content
 
     def test_schedule_row_has_edit_affordances(self, login, viewer, prefix, report_row):
         c = login(viewer)
@@ -68,7 +62,8 @@ class TestDeliveryCenterPage:
         assert "data-delivery-row" in content
         assert f'data-prefix="{prefix}"' in content
         assert 'data-slug="player-overview"' in content
-        assert "data-toggle-edit" in content
+        assert f'/deliveries/{rows[0]["schedule"].pk}/edit' in content
+        assert "data-schedule-editor" not in content
         assert "data-toggle-enable" in content
         assert "data-send-sample" in content
         assert "data-delete-row" in content
@@ -342,7 +337,7 @@ class TestSharedDeliveryManagement:
         body = {'return_to': '/me/deliveries', 'freq': 'daily', 'send_hour': '99', 'send_minute': '15', 'weekday': '0', 'month_day': '1', 'timezone': 'UTC', 'enabled': 'on', 'recipient_ids': [viewer.pk]}
         response = login(viewer).post(self.url(report_row, row), body)
         assert response.status_code == 400
-        form = response.context['schedule_rows'][0]['form']
+        form = response.context['form']
         assert form.is_bound and form['send_hour'].value() == '99'
         assert 'send_hour' in form.errors
         response = login(viewer).post(self.url(report_row, row), body, HTTP_X_TRELLUM_FORM='1')
@@ -480,3 +475,186 @@ class TestSharedDeliveryManagement:
         schedule = response.json()['schedules'][0]
         assert schedule['accepted_to'] == [] and schedule['failed_to'] == []
         assert not any(person['email'] == other_viewer.email for person in schedule['recipients'])
+
+
+class TestStudioDeliveryPages:
+    def body(self, user, report, **changes):
+        return {'report_id': report.pk, 'delivery_page': '1',
+                'return_to': f'/s/{report.studio.org.slug}/{report.studio.slug}/deliveries',
+                'freq': 'weekly', 'send_hour': '12', 'send_minute': '15', 'weekday': '2',
+                'month_day': '1', 'timezone': 'Europe/Amsterdam', 'enabled': 'on',
+                'recipient_ids': [user.pk], **changes}
+
+    @pytest.mark.parametrize('enhanced', [False, True])
+    def test_create_and_edit_return_to_list_with_shared_validation(self, enhanced, login, viewer, prefix, report_row):
+        from apps.reports.models import EmailSchedule
+        client = login(viewer)
+        headers = {'HTTP_X_TRELLUM_FORM': '1'} if enhanced else {}
+        picker = client.get(f'{prefix}/deliveries/new')
+        assert picker.status_code == 200 and list(picker.context['reports']) == [report_row]
+        form = client.get(f'{prefix}/deliveries/new?report={report_row.pk}')
+        assert form.context['form']['recipient_ids'].value() == [viewer.pk]
+        body = self.body(viewer, report_row)
+        response = client.post(f'{prefix}/deliveries/new', body, **headers)
+        assert response.status_code == (200 if enhanced else 302)
+        assert (response.json()['redirect'] if enhanced else response.url) == f'{prefix}/deliveries'
+        row = EmailSchedule.objects.get(report=report_row)
+        assert row.created_by == viewer and row.recipients.get() == viewer
+        assert client.get(f'{prefix}/deliveries/{row.pk}/edit').status_code == 200
+        response = client.post(f'{prefix}/api/reports/{report_row.slug}/schedules/{row.pk}', {**body, 'send_hour': '13'}, **headers)
+        assert (response.json()['redirect'] if enhanced else response.url) == f'{prefix}/deliveries'
+        row.refresh_from_db()
+        assert row.send_hour == 13 and row.delivery_revision == 1
+        listing = client.get(f'{prefix}/deliveries').content.decode()
+        assert f'{prefix}/deliveries/{row.pk}/edit' in listing and 'data-schedule-editor' not in listing
+        assert 'Add delivery' in listing and '>My Deliveries<' in listing
+
+    @pytest.mark.parametrize('action', ['create', 'edit'])
+    def test_invalid_native_and_ajax_keep_draft_without_mutation(self, action, login, viewer, prefix, report_row):
+        from apps.reports.models import EmailSchedule
+        row = EmailSchedule.objects.create(report=report_row, created_by=viewer)
+        row.recipients.add(viewer)
+        client = login(viewer)
+        url = f'{prefix}/deliveries/new' if action == 'create' else f'{prefix}/api/reports/{report_row.slug}/schedules/{row.pk}'
+        body = self.body(viewer, report_row, send_hour='99', timezone='Wrong/Zone')
+        native = client.post(url, body)
+        enhanced = client.post(url, body, HTTP_X_TRELLUM_FORM='1')
+        assert native.status_code == enhanced.status_code == 400
+        assert native.context['form']['send_hour'].value() == '99'
+        assert native.context['form']['timezone'].value() == 'Wrong/Zone'
+        assert {'send_hour', 'timezone'} <= set(native.context['form'].errors)
+        assert {'send_hour', 'timezone'} <= set(enhanced.json()['errors'])
+        row.refresh_from_db()
+        assert row.send_hour == 8 and row.timezone == 'UTC' and EmailSchedule.objects.count() == 1
+
+    def test_studio_admin_manages_all_owners_without_policy_or_reassignment(self, login, make_user, org, grant_studio, studio_tree, viewer, report_row, prefix):
+        from apps.reports.models import EmailSchedule
+        admin = make_user('studio-admin@example.test', org=org)
+        grant_studio(admin, studio_tree, roles.ADMIN)
+        row = EmailSchedule.objects.create(report=report_row, created_by=viewer, enabled=False)
+        row.recipients.add(viewer)
+        client = login(admin)
+        response = client.get(f'{prefix}/deliveries')
+        assert [item['schedule'].pk for item in response.context['schedule_rows']] == [row.pk]
+        assert response.context['schedule_rows'][0]['editable']
+        assert b'Manage deliveries across organizations' not in response.content
+        assert client.get('/deliveries').status_code == 404
+        edit = client.get(f'{prefix}/deliveries/{row.pk}/edit')
+        assert edit.status_code == 200 and 'owner_id' not in edit.context['form'].fields
+        url = f'{prefix}/api/reports/{report_row.slug}/schedules/{row.pk}'
+        assert client.post(url, self.body(viewer, report_row)).status_code == 302
+        assert client.post(url, self.body(viewer, report_row, owner_id=admin.pk)).status_code == 404
+
+    def test_viewer_own_management_recipient_read_only_and_scope(self, login, viewer, other_viewer, prefix, report_row, org, make_user, grant_studio):
+        from apps.reports.models import EmailSchedule, Report
+        from apps.studios.models import Studio
+        own = EmailSchedule.objects.create(report=report_row, created_by=viewer)
+        visible = EmailSchedule.objects.create(report=report_row, created_by=other_viewer)
+        visible.recipients.add(viewer)
+        hidden = EmailSchedule.objects.create(report=report_row, created_by=other_viewer, enabled=False)
+        other = Studio.objects.create(org=org, slug='second', name='Second')
+        grant_studio(viewer, other, roles.VIEWER)
+        other_report = Report.objects.create(studio=other, slug='elsewhere', name='Elsewhere')
+        cross = EmailSchedule.objects.create(report=other_report, created_by=viewer)
+        client = login(viewer)
+        response = client.get(f'{prefix}/deliveries')
+        rows = {item['schedule'].pk: item for item in response.context['schedule_rows']}
+        assert set(rows) == {own.pk, visible.pk}
+        assert rows[own.pk]['editable'] and not rows[visible.pk]['editable']
+        assert client.get(f'{prefix}/deliveries/{visible.pk}/edit').status_code == 404
+        assert client.post(f'{prefix}/api/reports/{report_row.slug}/schedules/{visible.pk}', self.body(viewer, report_row)).status_code == 404
+        assert client.delete(f'{prefix}/api/reports/{report_row.slug}/schedules/{visible.pk}').status_code == 404
+        assert client.get(f'{prefix}/deliveries/{cross.pk}/edit').status_code == 404
+        assert client.post(f'{prefix}/api/reports/{report_row.slug}/schedules/{cross.pk}', self.body(viewer, report_row)).status_code == 404
+        assert client.get(f'{prefix}/deliveries/new?report={other_report.pk}').status_code == 404
+        assert client.post(f'{prefix}/deliveries/new', self.body(viewer, other_report)).status_code == 404
+        assert 'Read only' in response.content.decode() and hidden.pk not in rows
+
+    def test_global_admin_dedicated_edit_and_studio_secondary_link(self, login, org_admin, viewer, prefix, report_row):
+        from apps.reports.models import EmailSchedule
+        row = EmailSchedule.objects.create(report=report_row, created_by=viewer)
+        row.recipients.add(viewer)
+        client = login(org_admin)
+        assert b'Manage deliveries across organizations' in client.get(f'{prefix}/deliveries').content
+        response = client.get(f'/deliveries/{row.pk}/edit')
+        assert response.status_code == 200 and response.context['return_to'] == '/deliveries'
+        assert 'owner_id' in response.context['form'].fields
+        assert f'/deliveries/{row.pk}/edit' in client.get('/deliveries').content.decode()
+        assert client.post(f'{prefix}/api/reports/{report_row.slug}/schedules/{row.pk}', self.body(viewer, report_row, return_to='/deliveries'), HTTP_X_TRELLUM_FORM='1').json()['redirect'] == '/deliveries'
+
+    def test_create_requires_csrf_and_rejects_ineligible_recipients(self, viewer, other_viewer, prefix, report_row, login, make_user, org):
+        from django.test import Client
+        from apps.reports.models import EmailSchedule
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(viewer)
+        assert client.post(f'{prefix}/deliveries/new', self.body(viewer, report_row)).status_code == 403
+        outsider = make_user('no-access@example.test', org=org)
+        client = login(viewer)
+        response = client.post(f'{prefix}/deliveries/new', self.body(viewer, report_row, recipient_ids=[outsider.pk]), HTTP_X_TRELLUM_FORM='1')
+        assert response.status_code == 400 and not EmailSchedule.objects.exists()
+
+    def test_picker_contains_visible_present_reports_and_analyses(self, login, viewer, prefix, report_row, settings):
+        from apps.reports.models import Report
+        settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = True
+        analysis = Report.objects.create(studio=report_row.studio, slug='analysis', kind=Report.KIND_ANALYSIS)
+        private = Report.objects.create(studio=report_row.studio, slug='private', audience=Report.AUDIENCE_PRIVATE)
+        missing = Report.objects.create(studio=report_row.studio, slug='missing', present_in_scan=False)
+        client = login(viewer)
+        assert set(client.get(f'{prefix}/deliveries/new').context['reports']) == {report_row, analysis}
+        assert client.get(f'{prefix}/deliveries/new?report={analysis.pk}').status_code == 200
+        for denied in (private, missing):
+            assert client.get(f'{prefix}/deliveries/new?report={denied.pk}').status_code == 404
+            assert client.post(f'{prefix}/deliveries/new', self.body(viewer, denied)).status_code == 404
+
+    def test_native_delete_cancel_and_confirm_return_to_studio_list(self, login, viewer, prefix, report_row):
+        from apps.reports.models import EmailSchedule
+        row = EmailSchedule.objects.create(report=report_row, created_by=viewer)
+        row.recipients.add(viewer)
+        client = login(viewer)
+        url = f'{prefix}/api/reports/{report_row.slug}/schedules/{row.pk}'
+        body = {'action': 'delete', 'return_to': f'{prefix}/deliveries'}
+        response = client.post(url, body)
+        assert response.status_code == 200 and response.context['return_to'] == f'{prefix}/deliveries'
+        assert EmailSchedule.objects.filter(pk=row.pk).exists()
+        assert client.get(response.context['return_to']).status_code == 200
+        response = client.post(url, {**body, 'confirm_delete': 'yes'})
+        assert response.status_code == 302 and response.url == f'{prefix}/deliveries'
+        assert not EmailSchedule.objects.filter(pk=row.pk).exists()
+
+    def test_redirect_cannot_leave_scope_and_recipient_history_stays_private(self, login, viewer, other_viewer, prefix, report_row):
+        from apps.reports.models import EmailSchedule
+        row = EmailSchedule.objects.create(report=report_row, created_by=other_viewer,
+            delivery_accepted_to=['accepted@private.example'], delivery_failed_to=['failed@private.example'])
+        row.recipients.add(viewer)
+        client = login(viewer)
+        content = client.get(f'{prefix}/deliveries').content.decode()
+        assert 'accepted@private.example' not in content and 'failed@private.example' not in content
+        response = client.post(f'{prefix}/deliveries/new', self.body(viewer, report_row, return_to='https://outside.example'), HTTP_X_TRELLUM_FORM='1')
+        assert response.json()['redirect'] == f'{prefix}/deliveries'
+
+    def test_group_granted_studio_admin_can_edit_colleague(self, login, viewer, other_viewer, prefix, report_row, make_group, attach_group):
+        from apps.reports.models import EmailSchedule
+        group = make_group('Studio admins', grants=[(report_row.studio, roles.ADMIN)])
+        attach_group(viewer, group)
+        row = EmailSchedule.objects.create(report=report_row, created_by=other_viewer)
+        assert login(viewer).get(f'{prefix}/deliveries/{row.pk}/edit').status_code == 200
+
+    def test_account_menu_has_no_delivery_links(self, login, viewer, prefix):
+        import re
+        html = login(viewer).get(f'{prefix}/deliveries').content.decode()
+        account = re.search(r'<div class="tl-console-account-menu">(.*?)</details>', html, re.S).group(1)
+        assert '/deliveries' not in account and 'My Deliveries' in html
+
+    def test_api_key_cannot_open_another_org_delivery_pages(self, org_admin, other_org, org, studio_tree, report_row):
+        from types import SimpleNamespace
+        from django.http import Http404
+        from django.test import RequestFactory
+        from apps.orgs.models import OrgMembership
+        from apps.reports.views import studio_deliveries, studio_delivery_new
+        OrgMembership.objects.create(user=org_admin, org=other_org, role=roles.ORG_ADMIN)
+        request = RequestFactory().get(f'/s/{org.slug}/{studio_tree.slug}/deliveries')
+        request.user = org_admin
+        request.api_key = SimpleNamespace(org_id=other_org.pk)
+        for view in (studio_deliveries, studio_delivery_new):
+            with pytest.raises(Http404):
+                view(request, org_slug=org.slug, studio_slug=studio_tree.slug)

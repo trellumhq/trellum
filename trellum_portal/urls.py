@@ -27,6 +27,9 @@ from apps.studios import views as studio_views
 studio_patterns = [
     path("", report_views.dashboard, name="studio-dashboard"),
     path("analyses", report_views.analyses, name="studio-analyses"),
+    path("deliveries", report_views.studio_deliveries, name="studio-deliveries"),
+    path("deliveries/new", report_views.studio_delivery_new, name="studio-delivery-new"),
+    path("deliveries/<int:schedule_id>/edit", report_views.studio_delivery_edit, name="studio-delivery-edit"),
     # The Operations tab (studio tab bar): the dashboard template booted with
     # the ops surface active. Old ?view=ops/?view=health deep links redirect
     # here from the dashboard view.
@@ -211,6 +214,7 @@ urlpatterns = [
     # Per-user deliveries & alerts, across every studio (cross-studio, like favorites)
     path("me/deliveries", report_views.my_deliveries, name="my-deliveries"),
     path("deliveries", report_views.manage_deliveries, name="manage-deliveries"),
+    path("deliveries/<int:schedule_id>/edit", report_views.manage_delivery_edit, name="manage-delivery-edit"),
     # Personal API keys (internal planning ticket #002): cross-org like deliveries; the org-admin
     # list sits with the other org settings tabs further down.
     path("me/api-keys", account_views.api_keys_view, name="my-api-keys"),

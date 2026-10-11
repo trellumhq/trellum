@@ -916,13 +916,7 @@ def _recipient_summary(schedule) -> str:
 
 
 def _schedule_dict(schedule, *, viewer=None, request=None) -> dict:
-    """``viewer=None`` (every call site except the drawer's own GET below)
-    means "render as the owner" -- every existing caller (schedule create/
-    update responses, the always-own-schedules /me/deliveries rows) only
-    ever shows a user their own schedule. The drawer's GET lists schedules
-    the viewer doesn't own too (see api_email_schedules), so it passes the
-    actual requester through and the client renders a non-owned row
-    read-only (see report_delivery.js)."""
+    """Shared schedule shape; request authorization controls editing and history."""
     editable = schedule.created_by_id is not None and (viewer is None or schedule.created_by_id == viewer.pk)
     if viewer is not None:
         editable = editable or effective_roles(viewer, schedule.report.studio.org).is_org_admin
@@ -1136,8 +1130,48 @@ def _valid_groups(request, report, ids) -> list:
 _RECIPIENT_BODY_KEYS = ("recipient_ids", "recipient_roles", "recipient_group_ids")
 
 
+def _delivery_return_url(request):
+    studio_url = f"/s/{request.org.slug}/{request.studio.slug}/deliveries"
+    value = request.POST.get("return_to") or request.GET.get("return_to")
+    if request.method == "GET" and request.path.startswith("/deliveries/"):
+        value = "/deliveries"
+    if value == "/deliveries" and deliveries.can_manage_org(request, request.org):
+        return value
+    return value if value in (studio_url, "/me/deliveries") else studio_url
+
+
+def _delivery_form_page(request, schedule, *, errors=None, status=200):
+    chips = _recipient_payload(request, schedule.report)
+    form = deliveries.ScheduleSettingsForm(request.POST if request.method == "POST" else None,
+        instance=schedule, members=chips["members"], groups=chips["groups"],
+        can_reassign=bool(schedule.pk and deliveries.can_manage_org(request, request.org)))
+    if request.method == "POST":
+        form.is_valid()
+        for field, items in (errors or {}).items():
+            for item in items:
+                form.add_error(field if field in form.fields else None, item)
+    elif not schedule.pk:
+        form.fields["recipient_ids"].initial = [request.user.pk]
+    return render(request, "reports/delivery_form.html", {
+        "form": form, "schedule": schedule, "report": schedule.report,
+        "return_to": _delivery_return_url(request),
+    }, status=status)
+
+
+def _schedule_form_body(request):
+    body = request.POST.dict()
+    for key in _RECIPIENT_BODY_KEYS:
+        if request.POST.get("action") != "toggle":
+            body[key] = request.POST.getlist(key)
+    for key in ("enabled", "attach_pdf"):
+        if request.POST.get("action") != "toggle" or key == "enabled":
+            body[key] = request.POST.get(key) in ("true", "on", "1")
+    return body
+
+
 @require_studio_role(roles.VIEWER)
 @require_http_methods(["GET", "POST"])
+@transaction.atomic
 def api_email_schedules(request, org_slug, studio_slug, slug):  # noqa: ARG001
     report = _get_report(request, slug)
     if request.method == "GET":
@@ -1192,35 +1226,44 @@ def api_email_schedules(request, org_slug, studio_slug, slug):  # noqa: ARG001
             }
         )
 
-    body = json_body(request)
+    is_form = request.content_type != "application/json"
+    body = _schedule_form_body(request) if is_form else json_body(request)
     schedule = EmailSchedule(report=report, created_by=request.user, **deliveries.schedule_defaults(request.org))
+    def respond_error(message, errors=None):
+        if is_settings_request(request):
+            return settings_error(request, message, errors=errors)
+        if is_form:
+            return _delivery_form_page(request, schedule, errors=errors or {"__all__": [message]}, status=400)
+        return JsonResponse({"ok": False, "error": message, "errors": errors or {}}, status=400)
     try:
         _apply_schedule_fields(schedule, body)
     except (TypeError, ValueError):
-        return JsonResponse({"ok": False, "error": "invalid field value"}, status=400)
+        return respond_error("Invalid field value.")
     try:
         schedule.full_clean(exclude=["report", "created_by"])
     except ValidationError as exc:
-        return JsonResponse({"ok": False, "errors": exc.message_dict}, status=400)
+        return respond_error("Please correct the highlighted fields.", exc.message_dict)
 
     payload_given = any(k in body for k in _RECIPIENT_BODY_KEYS)
     try:
         individuals = _valid_recipients(request, report, body.get("recipient_ids"))
         groups = _valid_groups(request, report, body.get("recipient_group_ids"))
     except ValidationError as exc:
-        return JsonResponse({"ok": False, "error": exc.messages[0]}, status=400)
+        return respond_error(exc.messages[0])
     if not payload_given:
         individuals = [request.user]  # legacy default: nothing picked at all -> just you
     elif not (individuals or schedule.recipient_roles or groups):
-        return JsonResponse(
-            {"ok": False, "error": "select at least one recipient (person, role, or group)"},
-            status=400,
-        )
+        return respond_error("Select at least one recipient (person, role, or group).")
 
     schedule.save()
     schedule.recipients.set(individuals)
     schedule.recipient_groups.set(groups)
     audit(request, "notify.schedule_create", target=report, schedule_id=schedule.pk)
+    if is_form:
+        if is_settings_request(request):
+            return settings_success(request, "Schedule created.", redirect_url=_delivery_return_url(request))
+        messages.success(request, "Schedule created.")
+        return redirect(_delivery_return_url(request))
     return JsonResponse({"ok": True, "schedule": _schedule_dict(schedule, viewer=request.user, request=request)})
 
 
@@ -1239,33 +1282,15 @@ def api_email_schedule_detail(request, org_slug, studio_slug, slug, schedule_id)
         if is_settings_request(request):
             return settings_error(request, message, errors=errors)
         if is_form:
-            managed = request.POST.get("return_to") == "/deliveries"
-            rows = _my_schedule_rows(request.user, request=request, managed=managed,
-                org_id=getattr(getattr(request, "api_key", None), "org_id", None))
-            for row in rows:
-                if row["schedule"].pk == schedule.pk:
-                    chips = _recipient_payload(request, report)
-                    form = deliveries.ScheduleSettingsForm(request.POST, instance=schedule,
-                        members=chips["members"], groups=chips["groups"],
-                        can_reassign=deliveries.can_manage_org(request, request.org),
-                        auto_id=f"id_schedule_{schedule.pk}_%s")
-                    form.is_valid()
-                    for field, items in (errors or {"__all__": [message]}).items():
-                        for item in items:
-                            form.add_error(field if field in form.fields else None, item)
-                    row["form"] = form
-                    row["form_error"] = True
-            return render(request, "reports/my_deliveries.html", {"schedule_rows": rows,
-                "manage_deliveries": managed, "delivery_return_to": "/deliveries" if managed else "/me/deliveries"}, status=400)
+            return _delivery_form_page(request, schedule, errors=errors or {"__all__": [message]}, status=400)
         return JsonResponse({"ok": False, "error": message, "errors": errors or {}}, status=400)
 
     if request.method == "DELETE" or (is_form and request.POST.get("action") == "delete"):
         if is_form and not is_settings_request(request) and request.POST.get("confirm_delete") != "yes":
-            return_to = request.POST.get("return_to")
             return render(request, "reports/delivery_delete_confirm.html", {
                 "schedule": schedule, "report": report,
                 "confirmation": _schedule_dict(schedule, viewer=request.user, request=request)["delete_confirmation"],
-                "return_to": return_to if return_to in ("/deliveries", "/me/deliveries") else "/me/deliveries",
+                "return_to": _delivery_return_url(request),
             })
         schedule.delete()
         audit(request, "notify.schedule_delete", target=report, schedule_id=schedule_id, before=before,
@@ -1273,18 +1298,12 @@ def api_email_schedule_detail(request, org_slug, studio_slug, slug, schedule_id)
         if is_settings_request(request):
             return settings_success(request, "Schedule deleted. Previously accepted email cannot be recalled.", deleted_id=schedule_id)
         if is_form:
-            return redirect(request.POST.get("return_to") if request.POST.get("return_to") in ("/deliveries", "/me/deliveries") else "/me/deliveries")
+            return redirect(_delivery_return_url(request))
         return JsonResponse({"ok": True})
 
     body = {} if is_form else json_body(request)
     if is_form:
-        body = request.POST.dict()
-        for key in ("recipient_ids", "recipient_roles", "recipient_group_ids"):
-            if request.POST.get("action") != "toggle":
-                body[key] = request.POST.getlist(key)
-        for key in ("enabled", "attach_pdf"):
-            if request.POST.get("action") != "toggle" or key == "enabled":
-                body[key] = request.POST.get(key) in ("true", "on", "1")
+        body = _schedule_form_body(request)
     owner_id = body.get("owner_id")
     if "owner_id" in body and owner_id is not None and owner_id != "" and (
         isinstance(owner_id, bool) or not isinstance(owner_id, (int, str)) or not str(owner_id).isdigit()
@@ -1345,10 +1364,11 @@ def api_email_schedule_detail(request, org_slug, studio_slug, slug, schedule_id)
     audit(request, "notify.schedule_update", target=report, schedule_id=schedule.pk,
           before=before, after=deliveries.schedule_snapshot(schedule))
     if is_settings_request(request):
-        return settings_success(request, "Schedule saved.", schedule=_schedule_dict(schedule, viewer=request.user, request=request))
+        return settings_success(request, "Schedule saved.", schedule=_schedule_dict(schedule, viewer=request.user, request=request),
+                                redirect_url=_delivery_return_url(request) if request.POST.get("delivery_page") == "1" else None)
     if is_form:
         messages.success(request, "Schedule saved.")
-        return redirect(request.POST.get("return_to") if request.POST.get("return_to") in ("/deliveries", "/me/deliveries") else "/me/deliveries")
+        return redirect(_delivery_return_url(request))
     return JsonResponse({"ok": True, "schedule": _schedule_dict(schedule, viewer=request.user, request=request)})
 
 
@@ -1557,13 +1577,16 @@ def _schedule_json_for_script(schedule, viewer=None, request=None) -> str:
     return json.dumps(_schedule_dict(schedule, viewer=viewer, request=request)).translate(_JSON_SCRIPT_ESCAPES)
 
 
-def _my_schedule_rows(user, *, org_id=None, request=None, managed=False) -> list[dict]:
-    """One dict per ``EmailSchedule`` the user created, across every studio
-    they can still see -- the only per-user subscription left to list here.
-    Failure/recovery alerts have no rows of their own: they go to every
-    studio developer/admin automatically (see
-    ``apps.reports.notify.alert_recipients``)."""
-    rows = EmailSchedule.objects.all() if managed else EmailSchedule.objects.filter(created_by=user)
+def _my_schedule_rows(user, *, org_id=None, request=None, managed=False, studio=None) -> list[dict]:
+    """Visible schedules for the Studio, global administration or legacy personal list."""
+    scoped_studio = studio
+    rows = EmailSchedule.objects.all() if managed or studio is not None else EmailSchedule.objects.filter(created_by=user)
+    if studio is not None:
+        rows = rows.filter(report__studio=studio)
+        from apps.orgs.models import PermissionGroupMembership
+        from apps.studios.models import StudioMembership
+        user_role = StudioMembership.objects.filter(user=user, studio=studio).values_list("role", flat=True).first()
+        user_group_ids = set(PermissionGroupMembership.objects.filter(user=user, group__org=studio.org).values_list("group_id", flat=True))
     if managed:
         rows = rows.filter(report__studio__org_id__in=[org.pk for org in deliveries.managed_orgs(request)])
     if org_id is not None:
@@ -1600,11 +1623,15 @@ def _my_schedule_rows(user, *, org_id=None, request=None, managed=False) -> list
         if not report.present_in_scan or not _visible_row(user, report, er_cache):
             continue
         if request is not None and not deliveries.can_manage_schedule(request, schedule):
-            continue
+            if scoped_studio is None or not schedule.enabled or not notify.user_in_schedule_audience(
+                user, schedule, user_role=user_role, user_group_ids=user_group_ids
+            ):
+                continue
         serialized = _schedule_dict(schedule, viewer=user, request=request)
         out.append(
             {
                 "schedule": schedule,
+                "editable": serialized["editable"],
                 "report": report,
                 "studio": studio,
                 "org": studio.org,
@@ -1615,35 +1642,68 @@ def _my_schedule_rows(user, *, org_id=None, request=None, managed=False) -> list
                 "paused": deliveries.delivery_pause(studio.org_id),
                 "next_at": serialized["next_at"],
                 "outcome": serialized["delivery_outcome"],
+                "last_attempt_at": serialized["last_attempt_at"],
+                "last_accepted_at": serialized["last_accepted_at"],
+                "accepted_to": serialized["accepted_to"],
+                "failed_to": serialized["failed_to"],
                 "confirmation_recipients": " + ".join([_recipient_summary(schedule)] + [person["email"] for person in serialized["recipients"]]),
-                # Reused verbatim by templates/reports/my_deliveries.html's
-                # data-schedule-json script tag, so the inline picker
-                # (report_delivery.js) seeds from exactly the same shape the
-                # AJAX endpoints return -- one contract, not a hand-built
-                # second copy of it in the template.
                 "schedule_json": json.dumps(serialized).translate(_JSON_SCRIPT_ESCAPES),
-                "edit_url": f"/s/{studio.org.slug}/{studio.slug}/r/{report.slug}/?rdw=1",
+                "edit_url": f"/deliveries/{schedule.pk}/edit" if managed else f"/s/{studio.org.slug}/{studio.slug}/deliveries/{schedule.pk}/edit" + ("?return_to=/me/deliveries" if request and request.path == "/me/deliveries" else ""),
             }
         )
-        if request is not None:
-            from types import SimpleNamespace
-            chips = _recipient_payload(SimpleNamespace(org=studio.org, studio=studio), report)
-            out[-1]["form"] = deliveries.ScheduleSettingsForm(instance=schedule, members=chips["members"],
-                groups=chips["groups"], can_reassign=deliveries.can_manage_org(request, studio.org),
-                auto_id=f"id_schedule_{schedule.pk}_%s")
     return out
 
 
-def my_deliveries(request):
-    """Cross-studio "Deliveries": every email schedule belonging to the
-    current user. Read-only list -- editing happens in the drawer the "Edit"
-    links open on the report's own page (static/report_delivery.js), the
-    same UI a studio member already uses to create these, so there is
-    exactly one place that knows how to mutate a schedule.
+@require_studio_role(roles.VIEWER)
+@require_http_methods(["GET"])
+def studio_deliveries(request, org_slug, studio_slug):
+    return render(request, "reports/my_deliveries.html", {
+        "studio_deliveries": True, "schedule_rows": _my_schedule_rows(request.user, request=request, studio=request.studio),
+        "delivery_return_to": f"/s/{org_slug}/{studio_slug}/deliveries",
+        "can_manage_deliveries": deliveries.can_manage_org(request, request.org),
+    })
 
-    Failure/recovery alerts have nothing to list here: they go to every
-    studio developer/admin automatically, with no per-user subscription to
-    manage (see ``apps.reports.notify.alert_recipients``)."""
+
+@require_studio_role(roles.VIEWER)
+@require_http_methods(["GET", "POST"])
+def studio_delivery_new(request, org_slug, studio_slug):
+    reports = visible_reports(request.user, Report.objects.filter(studio=request.studio, present_in_scan=True)).order_by("name", "slug")
+    report_id = request.POST.get("report_id") if request.method == "POST" else request.GET.get("report")
+    if not report_id:
+        if request.method == "POST":
+            raise Http404
+        return render(request, "reports/delivery_report_picker.html", {"reports": reports,
+            "return_to": f"/s/{org_slug}/{studio_slug}/deliveries"})
+    report = reports.filter(pk=report_id).first() if report_id.isdigit() and len(report_id) < 19 else None
+    if report is None:
+        raise Http404
+    if request.method == "POST":
+        return api_email_schedules(request, org_slug=org_slug, studio_slug=studio_slug, slug=report.slug)
+    return _delivery_form_page(request, EmailSchedule(report=report, created_by=request.user, **deliveries.schedule_defaults(request.org)))
+
+
+@require_studio_role(roles.VIEWER)
+@require_http_methods(["GET"])
+def studio_delivery_edit(request, org_slug, studio_slug, schedule_id):
+    schedule = deliveries.schedule_for_request(request, schedule_id)
+    if schedule.report.studio_id != request.studio.pk or not schedule.report.present_in_scan:
+        raise Http404
+    return _delivery_form_page(request, schedule)
+
+
+@require_http_methods(["GET"])
+def manage_delivery_edit(request, schedule_id):
+    if not request.user.is_authenticated:
+        return redirect("login")
+    schedule = deliveries.schedule_for_request(request, schedule_id)
+    if not deliveries.can_manage_org(request, schedule.report.studio.org) or not schedule.report.present_in_scan:
+        raise Http404
+    request.org, request.studio = schedule.report.studio.org, schedule.report.studio
+    return _delivery_form_page(request, schedule)
+
+
+def my_deliveries(request):
+    """Compatibility personal list, with links to the Studio delivery pages."""
     if not request.user.is_authenticated:
         return redirect("login")
     return render(
@@ -1656,6 +1716,7 @@ def my_deliveries(request):
                 request=request,
             ),
             "delivery_return_to": "/me/deliveries",
+            "legacy_deliveries": True,
         },
     )
 

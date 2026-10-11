@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from apps.core.models import InstanceConfig
 from apps.core.permissions import get_effective
+from apps.core import roles
 from apps.core.report_access import can_view_report
 from apps.orgs.models import Organization
 from apps.reports.models import EmailSchedule
@@ -24,7 +25,7 @@ def can_manage_schedule(request, schedule):
     if key is not None and key.org_id != org.pk:
         return False
     return bool(request.user.is_active and can_view_report(request.user, schedule.report) and (
-        schedule.created_by_id == request.user.pk or can_manage_org(request, org)
+        schedule.created_by_id == request.user.pk or get_effective(request, org).role_for(schedule.report.studio) == roles.ADMIN
     ))
 
 
@@ -159,9 +160,9 @@ class ScheduleSettingsForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["recipient_ids"].choices = [(row["id"], row["email"]) for row in members]
         self.fields["recipient_group_ids"].choices = [(row["id"], row["name"]) for row in groups]
-        self.fields["recipient_ids"].initial = list(self.instance.recipients.values_list("pk", flat=True))
+        self.fields["recipient_ids"].initial = list(self.instance.recipients.values_list("pk", flat=True)) if self.instance.pk else []
         self.fields["recipient_roles"].initial = self.instance.recipient_roles
-        self.fields["recipient_group_ids"].initial = list(self.instance.recipient_groups.values_list("pk", flat=True))
+        self.fields["recipient_group_ids"].initial = list(self.instance.recipient_groups.values_list("pk", flat=True)) if self.instance.pk else []
         if can_reassign:
             self.fields["owner_id"].choices = [("", "Keep current owner")] + [(row["id"], row["email"]) for row in members]
         else:

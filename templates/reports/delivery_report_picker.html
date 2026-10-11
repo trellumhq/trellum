@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}Add delivery — trellum{% endblock %}
+{% block content %}
+<header class="page-head"><div class="ui-label page-kicker">Studio · My Deliveries</div><h1>Add delivery</h1><p>Choose a report or analysis to schedule.</p></header>
+<form method="get" class="panel"><label for="delivery-report">Report or analysis</label><select name="report" id="delivery-report" required><option value="">Choose a report or analysis</option>{% for report in reports %}<option value="{{ report.pk }}">{{ report.name|default:report.slug }} · {{ report.get_kind_display }}</option>{% endfor %}</select><p><button class="ui-btn primary" type="submit">Continue</button> <a class="ui-btn ghost" href="{{ return_to }}">Cancel</a></p></form>
+{% endblock %}

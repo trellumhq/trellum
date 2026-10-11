@@ -169,7 +169,7 @@ class TestMyDeliveriesPage:
         assert len(rows) == 1
         assert rows[0]["report"].slug == "player-overview"
         assert rows[0]["cadence"] == "Weekly at 09:30 on Wednesday UTC"
-        assert rows[0]["edit_url"] == f"{prefix}/r/player-overview/?rdw=1"
+        assert rows[0]["edit_url"] == f'{prefix}/deliveries/{rows[0]["schedule"].pk}/edit?return_to=/me/deliveries'
         assert "Player-Overview".encode() in resp.content  # the report name is shown
 
     def test_does_not_list_another_users_schedule(

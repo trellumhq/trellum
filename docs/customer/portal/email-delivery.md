@@ -27,9 +27,11 @@ a stale or empty image.
 
 ## Creating a schedule
 
-From a report page, open the **Options** menu and choose **Deliveries**.
-**My deliveries** (in your user menu) is the cross-studio list of every
-schedule you have set up, with edit/enable/disable/delete inline.
+Open **My Deliveries** in the Studio navigation and choose **Add delivery**.
+Choose a report or analysis, enter its schedule and recipients, then **Save
+delivery** to return to the list. **Edit** opens a dedicated page; **Cancel**
+returns without saving. Failed validation keeps your draft. The report's
+**Options > Deliveries** drawer also remains available.
 
 Set:
 
@@ -40,9 +42,8 @@ Set:
 - **Timezone** — an IANA zone. New schedules use organization defaults,
   inheriting instance defaults when blank (UTC on a fresh instance).
   Editing an existing one keeps whatever it was already set to.
-  Switching the timezone in the form recalculates the shown hour so the
-  actual send instant doesn't move — the form always shows what will
-  actually be stored
+  On the dedicated form, the hour and minute are stored in the selected
+  timezone. The report drawer recalculates the hour when changing timezone.
 - **Attach as PDF** — adds a PDF copy alongside the inline image
 - **Enabled** — a disabled schedule stays configured but sends nothing
 
@@ -55,11 +56,14 @@ trust the cadence.
 
 ## Managing shared deliveries
 
-Organization admins, including admins granted through a permission group,
-can open **Manage deliveries** from the account menu to manage every creator's
-schedule in their organization. Instance superusers see all organizations.
-Support-operator access alone grants no schedule or report-data access.
-**My deliveries** remains the personal list and its existing bookmark works.
+Studio admins can manage all creators' schedules in their Studio, subject
+to report access. Other members manage their own schedules and can see enabled
+schedules that currently address them as read-only rows. Organization admins,
+including admins granted through a permission group, can open **Manage
+deliveries across organizations** from the Studio list to manage schedules and
+delivery policies. Instance superusers see all organizations. Support-operator
+access alone grants no schedule or report-data access. Existing `/me/deliveries`
+bookmarks retain a personal compatibility list with links to Studio deliveries.
 Search or filter by organization, studio, report, creator and enabled state.
 AI alerts appear on a separate tab with links to their existing forms and logs.
 
