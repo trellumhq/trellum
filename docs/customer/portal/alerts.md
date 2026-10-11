@@ -103,8 +103,8 @@ Other things a run can say:
 - **OK** — execution completed; it does not mean healthy or delivered.
 - **Suppressed** — cooldown, an already-notified episode or an obsolete evaluation.
 - **Skipped: budget** — the owner's assistant budget is spent (see below).
-- **Error** — with the reason; a rule with no owner shows this until someone
-  edits it.
+- **Error** — with the reason; a rule with no owner requires billing-owner
+  repair. The ordinary editor preserves this owner and cannot reassign it.
 
 Transport acceptance does not confirm inbox receipt. SMTP cannot guarantee
 exactly-once delivery. Uncertain acceptance or an interrupted delivery claim
@@ -140,6 +140,7 @@ records its actual cost. Live evaluations are billed to the **assistant budget
 of the person who created the rule**, the same per-user budget the assistant
 panel uses. Draft tests are billed to the developer who requested them. If a
 live evaluation finds the creator's budget exhausted, the run is recorded as
-*Skipped: budget*, the owner gets one email, and the rule resumes on its own
-when the budget allows. Draft tests send no budget warning. A rule without an
-owner cannot be evaluated live.
+*Skipped: budget*, and the owner receives a budget warning when delivery is
+not paused. The rule resumes on its own when the budget allows. Draft tests
+send no budget warning. A rule without an owner cannot be evaluated live;
+it needs billing-owner repair, which ordinary edits cannot perform.

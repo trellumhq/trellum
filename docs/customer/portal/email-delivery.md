@@ -1,10 +1,12 @@
 # Email delivery
 
-Two independent things live under this heading: personal delivery schedules
+Two independent things live under this heading: scheduled report deliveries
 ("send me this report every Monday at 8am") and build failure notices
-(automatic, zero-configuration mail when a report's build breaks). They
-share a mailer and a "no login needed" design, but nothing else — a delivery
-is something you set up; a notice is something that just happens.
+(automatic, zero-configuration mail when a report's build breaks). You can set
+up your own schedules, and organization admins can manage schedules across
+creators through **Manage deliveries**. They share a mailer and a "no login
+needed" design, but nothing else — a delivery is something you set up; a notice
+is something that just happens.
 
 Neither is an alert. An [alert](/docs/latest/portal/alerts/) watches a
 report's *data* — "tell me if revenue drops" — and the AI assistant decides
@@ -152,9 +154,10 @@ fine, see [Alerts](/docs/latest/portal/alerts/).
 ## Operator notes
 
 Outgoing mail uses the instance's selected delivery route. An operator can
-save several named API connections under **System → Email delivery**, test each
-one, and explicitly select one for all instance mail. The original SMTP or
-`EMAIL_URL` route remains available. Only one route is active at a time.
+save several named API connections under **Instance settings → Email delivery**
+(`/instance/settings#email-delivery`), test each one, and explicitly select one
+for all instance mail. The original SMTP or `EMAIL_URL` route remains available.
+Only one route is active at a time.
 An active API error stops that send; it does not switch routes automatically.
 
 The built-in API choices are SendGrid, Amazon SES, Mailgun, Postmark, Brevo,
