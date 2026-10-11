@@ -22,11 +22,14 @@ Private, and explicit group grants.
 
 Open a report and set its filters to the view you want to explain. Choose
 **Capture for analysis** from **Options** in the portal, or **Export** in a
-standalone report. Select a chart or section; press Escape to cancel.
+standalone report. Select the chart or section; press Escape to cancel. The
+capture saves the selected view as frozen evidence so an article can cite the
+exact view you reviewed.
 
 The downloaded capture contains a PNG of the selected view and its source
 context: report name, selected filters, capture time, and source build time
-when available. It does not include the report's underlying dataset. Capture
+when available. It does not include raw report rows or generate an analysis
+story. Capture
 time and build time identify when the artifacts were made; they do not establish
 the period the data describes. State that reporting period in the article, as
 the Northwind example does for its synthetic September 2026 evidence.
@@ -40,7 +43,9 @@ trellum analysis new september-conversion
 trellum analysis import reports/september-conversion path/to/report.trellum-capture.json --name conversion
 ```
 
-The import prints a Markdown image reference to paste into `content.md`.
+The import prints a Markdown image reference to paste into `content.md`, where
+you write the finding, assumptions, and recommendation. Then build the article
+and publish it through your repository's configured publishing workflow.
 It writes the image and a provenance file under `evidence/`; keep both in Git.
 Importing another capture with the same name fails rather than replacing the
 old evidence. Use a new name when you intend to revise a finding.

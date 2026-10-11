@@ -371,6 +371,7 @@
                 && window.fw && typeof window.fw.captureForAnalysis === 'function') {
             window.__reportMenu.register({
                 id: 'capture-analysis', order: 25, label: 'Capture for analysis',
+                icon: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="14" height="12" rx="2"/><circle cx="7" cy="8" r="1.2"/><path d="M4 14l3.5-3.5 3 3 2.5-2.5L16 13"/><path d="M10 2v4m-2-2h4"/></svg>',
                 onSelect: function () { window.fw.captureForAnalysis(); }
             });
         }

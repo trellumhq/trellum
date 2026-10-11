@@ -1283,10 +1283,20 @@ class TestAnalysisCapture:
             HTMLAnchorElement.prototype.click = function() { window.__filename = this.download; };
             window.html2canvas = target => Promise.resolve({toDataURL: () =>
                 'data:image/png;base64,iVBORw0KGgo='});
+            window.__copied = '';
+            Object.defineProperty(navigator, 'clipboard', {configurable: true,
+                value: {writeText: text => { window.__copied = text; return Promise.resolve(); }}});
             var ok = await fw.captureElementForAnalysis(document.querySelector('.fw-section'));
+            document.querySelector('.fw-analysis-capture-ui button:not(:first-child)').click();
+            await Promise.resolve();
             var payload = window.__download ? JSON.parse(await window.__download.text()) : null;
             return {ok, payload, message: document.querySelector('.fw-analysis-error span')?.textContent || '',
                 filename: window.__filename,
+                successText: document.querySelector('.fw-analysis-capture-ui')?.innerText || '',
+                preview: document.querySelector('.fw-analysis-capture-ui img')?.getAttribute('alt') || '',
+                copyButtons: document.querySelectorAll('.fw-analysis-capture-ui button').length,
+                copied: window.__copied,
+                docsHref: document.querySelector('.fw-analysis-capture-ui a')?.href || '',
                 targetTitle: document.querySelector('.fw-chart-title').textContent,
                 dlDisplay: document.querySelector('.fw-chart-dl').style.display};
         }""")
@@ -1309,6 +1319,14 @@ class TestAnalysisCapture:
         assert payload["source"]["filters"]["summary_ds"]["channel-filter"]["value"] == "web"
         assert result["filename"] == "sales-report-sec-revenue.trellum-capture.json"
         assert result["dlDisplay"] == ""
+        assert "Frozen evidence downloaded" in result["successText"]
+        assert "does not contain raw data rows or a written analysis" in result["successText"]
+        assert "trellum analysis import" in result["successText"]
+        assert "content.md" in result["successText"]
+        assert result["docsHref"] == "https://trellum.dev/docs/latest/workflow/published-analyses/"
+        assert result["preview"] == "Preview of the captured report view"
+        assert result["copyButtons"] == 4
+        assert result["copied"] == "trellum analysis new september-findings"
 
     def test_multiscope_capture_uses_active_components_and_scoped_parent_filters(self, capture_page):
         result = capture_page.evaluate("""async () => {
@@ -1434,9 +1452,11 @@ class TestAnalysisCapture:
             var error = document.querySelector('.fw-analysis-error span')?.textContent || '';
             document.querySelector('.fw-live-status').remove();
             var done = fw.captureForAnalysis();
+            var selectionMessage = document.querySelector('[role="status"]')?.textContent || '';
             document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
             var cancelled = await done;
             return {loadResult, loadMessage, pending, error, cancelled, stateSeen, selectionStarted,
+                selectionMessage,
                 tabIndex: document.getElementById('select-me').getAttribute('tabindex'),
                 selectable: document.querySelector('.fw-analysis-selectable'),
                 notice: document.querySelector('[role="status"]')?.textContent || '',
@@ -1447,6 +1467,9 @@ class TestAnalysisCapture:
         assert result["pending"] is False
         assert result["stateSeen"] is True
         assert result["selectionStarted"] is False
+        assert "frozen PNG" in result["selectionMessage"]
+        assert "filters and source times" in result["selectionMessage"]
+        assert "not raw rows" in result["selectionMessage"]
         assert "live data query is still running" in (result["error"] or result["notice"])
         assert result["cancelled"] is False
         assert result["tabIndex"] == "3"
@@ -1533,13 +1556,15 @@ class TestAnalysisCapture:
             var ok = await capture;
             return {ok, target: window.__capturedTarget,
                 tabIndex: document.getElementById('keyboard-section').getAttribute('tabindex'),
-                controls: document.querySelector('.fw-analysis-selectable,.fw-analysis-capture-ui button'),
+                selectable: document.querySelector('.fw-analysis-selectable'),
+                success: document.querySelector('.fw-analysis-capture-ui') !== null,
                 payload: JSON.parse(await window.__download.text())};
         }""")
         assert result["ok"] is True
         assert result["target"] == "keyboard-section"
         assert result["tabIndex"] == "4"
-        assert result["controls"] is None
+        assert result["selectable"] is None
+        assert result["success"] is True
         assert result["payload"]["image"]["data_base64"] == "cGl4ZWw="
 
     def test_capture_failure_is_visible_and_report_remains_interactive(self, capture_page):

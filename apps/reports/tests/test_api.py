@@ -3,6 +3,7 @@ report content serving (traversal guard + widget injection)."""
 import json
 
 import pytest
+from django.test import override_settings
 
 from apps.core import roles
 from apps.orgs.models import PermissionGroupGrant
@@ -1001,6 +1002,16 @@ class TestMenuWidgetStub:
         assert resp["Content-Type"].startswith("application/javascript")
         assert b"window.__reportMenu" in resp.content
         assert "max-age=300" in resp["Cache-Control"]
+
+    @override_settings(
+        TRELLUM_DOCS_BASE_URL="https://docs.example/help",
+        TRELLUM_DOCS_VERSION="0.5",
+    )
+    def test_analysis_guide_url_uses_instance_docs_configuration(self, client, db):
+        resp = client.get("/api/reports/menu-widget.js")
+        assert (
+            b"data-analysis-guide-url', \"https://docs.example/help/0.5/"
+            b"workflow/published-analyses/\"") in resp.content
 
 
 class TestReportShell:

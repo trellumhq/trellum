@@ -73,7 +73,7 @@
             _analysisNotice.className = 'fw-analysis-capture-ui';
             _analysisNotice.setAttribute('role', 'status');
             _analysisNotice.setAttribute('aria-live', 'polite');
-            _analysisNotice.style.cssText = 'position:fixed;z-index:99999;top:12px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--bg-card);color:var(--text-main);border:1px solid var(--border-color);border-radius:8px;font:14px sans-serif;box-shadow:0 2px 12px rgba(0,0,0,.16)';
+            _analysisNotice.style.cssText = 'position:fixed;z-index:99999;top:12px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:12px;max-width:calc(100vw - 32px);box-sizing:border-box;padding:10px 16px;background:var(--bg-card,#fff);color:var(--text-main,#222);border:1px solid var(--border-color,#ccc);border-radius:8px;font:14px/1.4 sans-serif;box-shadow:0 2px 12px rgba(0,0,0,.16)';
             document.body.appendChild(_analysisNotice);
         }
         _analysisNotice.textContent = '';
@@ -148,6 +148,63 @@
     function _analysisCaptureError(message) {
         _analysisMessage(message, true);
         return Promise.resolve(false);
+    }
+
+    function _analysisCaptureSuccess(fileName, imageUrl) {
+        clearTimeout(_analysisNoticeTimer);
+        if (_analysisNotice) _analysisNotice.remove();
+        _analysisNotice = document.createElement('div');
+        _analysisNotice.className = 'fw-analysis-capture-ui';
+        _analysisNotice.setAttribute('role', 'status');
+        _analysisNotice.setAttribute('aria-live', 'polite');
+        _analysisNotice.style.cssText = 'position:fixed;z-index:99999;top:12px;left:50%;transform:translateX(-50%);width:min(620px,calc(100vw - 32px));max-height:calc(100vh - 24px);overflow:auto;box-sizing:border-box;padding:16px;background:var(--bg-card,#fff);color:var(--text-main,#222);border:1px solid var(--border-color,#ccc);border-left:4px solid var(--accent-yellow,#e3b341);border-radius:8px;font:14px sans-serif;box-shadow:0 2px 12px rgba(0,0,0,.16)';
+        var close = document.createElement('button');
+        close.type = 'button'; close.textContent = 'Close';
+        close.style.cssText = 'float:right;padding:4px 8px;cursor:pointer';
+        close.addEventListener('click', function() {
+            clearTimeout(_analysisNoticeTimer);
+            _analysisNotice.remove(); _analysisNotice = null;
+        });
+        _analysisNotice.appendChild(close);
+        var title = document.createElement('strong');
+        title.textContent = 'Frozen evidence downloaded';
+        _analysisNotice.appendChild(title);
+        var detail = document.createElement('p');
+        detail.textContent = fileName + ' contains a PNG preview and source details, including filters and capture/build times when available. It does not contain raw data rows or a written analysis.';
+        _analysisNotice.appendChild(detail);
+        var preview = document.createElement('img');
+        preview.src = imageUrl; preview.alt = 'Preview of the captured report view';
+        preview.style.cssText = 'display:block;max-width:100%;max-height:180px;object-fit:contain;margin:8px 0;border:1px solid var(--border-color)';
+        _analysisNotice.appendChild(preview);
+        var next = document.createElement('p');
+        next.textContent = 'Example commands: replace the sample slug, evidence name, and capture file path with yours. Import prints a Markdown reference to paste into reports/september-findings/content.md. Then review the article and publish it through your repository workflow.';
+        _analysisNotice.appendChild(next);
+        var commands = [
+            'trellum analysis new september-findings',
+            'trellum analysis import reports/september-findings path/to/capture.trellum-capture.json --name conversion',
+            'python -m trellum.run reports/september-findings --no-serve'
+        ];
+        commands.forEach(function(command) {
+            var row = document.createElement('div');
+            row.style.cssText = 'display:flex;align-items:center;gap:8px;margin:6px 0';
+            var code = document.createElement('code');
+            code.textContent = command;
+            code.style.cssText = 'flex:1;overflow-wrap:anywhere';
+            var copy = document.createElement('button');
+            copy.type = 'button'; copy.textContent = 'Copy';
+            copy.addEventListener('click', function() {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(command).then(function() { copy.textContent = 'Copied'; }, function() { copy.textContent = 'Copy unavailable'; });
+                } else copy.textContent = 'Copy unavailable';
+            });
+            row.appendChild(code); row.appendChild(copy); _analysisNotice.appendChild(row);
+        });
+        var doc = document.createElement('a');
+        doc.href = document.documentElement.getAttribute('data-analysis-guide-url')
+            || 'https://trellum.dev/docs/latest/workflow/published-analyses/';
+        doc.textContent = 'Read the publish an analysis guide';
+        _analysisNotice.appendChild(doc);
+        document.body.appendChild(_analysisNotice);
     }
 
     function _analysisComponents() {
@@ -289,6 +346,7 @@
         var componentId = target.classList.contains('fw-section')
             ? (target.id || 'section') : (canvas ? canvas.id : (target.id || 'section'));
         var componentTitle = _analysisTitle(target);
+        var previewUrl = '';
         if (document.fonts && document.fonts.ready) {
             return document.fonts.ready.then(function() { return new Promise(function(resolve) {
                 requestAnimationFrame(function() { requestAnimationFrame(resolve); });
@@ -314,6 +372,7 @@
                     if (!target.isConnected || _analysisSnapshotChanged(target, snapshot))
                         throw new Error('The report changed while capture was rendering. Capture the updated view again.');
                     var dataUrl = image.toDataURL('image/png');
+                    previewUrl = dataUrl;
                     var base64 = dataUrl.split(',')[1] || '';
                     var bytes = Math.floor(base64.length * 3 / 4) - (base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0);
                     if (bytes > 20 * 1024 * 1024) throw new Error('The image is larger than the 20 MiB capture limit. Select a smaller chart or section.');
@@ -332,7 +391,7 @@
                     return true;
                 }).then(function(value) { restore(); return value; }, function(err) { restore(); throw err; });
             }).then(function(ok) {
-                if (ok) _analysisMessage('Capture downloaded.');
+                if (ok) _analysisCaptureSuccess((slug || 'report') + '-' + (componentId || 'component') + '.trellum-capture.json', previewUrl);
                 return ok;
             }).catch(function(err) {
                 return _analysisCaptureError((err && err.message) || 'Capture failed.');
@@ -366,12 +425,13 @@
             });
             _analysisSelection = {targets: targets, oldTabIndex: oldTabIndex, style: style,
                 resolve: resolve, previousFocus: document.activeElement};
-            _analysisMessage('Choose a highlighted chart or section. Press Escape to cancel.');
+            _analysisMessage('Choose a highlighted chart or section. The download is a frozen PNG with filters and source times, not raw rows or a written analysis. Press Escape to cancel.');
+            _analysisNotice.style.width = 'min(620px,calc(100vw - 32px))';
             var cancel = document.createElement('button');
             cancel.className = 'fw-analysis-capture-ui'; cancel.type = 'button'; cancel.textContent = 'Cancel';
-            cancel.style.cssText = 'position:fixed;z-index:100000;top:12px;right:16px;padding:9px 14px;cursor:pointer;background:var(--bg-card);color:var(--text-main);border:1px solid var(--border-color);border-radius:6px';
+            cancel.style.cssText = 'flex:none;align-self:flex-start;padding:6px 10px;cursor:pointer;background:var(--bg-card,#fff);color:var(--text-main,#222);border:1px solid var(--border-color,#ccc);border-radius:6px';
             cancel.addEventListener('click', function() { _analysisFinish(false); });
-            document.body.appendChild(cancel);
+            _analysisNotice.appendChild(cancel);
             document.addEventListener('click', _analysisClick, true);
             document.addEventListener('keydown', _analysisKey, true);
             targets[0].focus();

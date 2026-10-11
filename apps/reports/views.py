@@ -29,6 +29,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.core import roles, storage
+from apps.core.docs import docs_url
 from apps.core.audit import audit
 from apps.core.form_responses import is_settings_request, settings_error, settings_success
 from apps.core.http import int_param, json_body
@@ -815,7 +816,12 @@ def menu_widget_js(request):  # noqa: ARG001
             _MENU_WIDGET_CACHE = (
                 Path(settings.BASE_DIR) / "static" / "report_menu.js"
             ).read_text(encoding="utf-8")
-    response = HttpResponse(_MENU_WIDGET_CACHE, content_type="application/javascript")
+    guide_url = json.dumps(docs_url("workflow/published-analyses/"))
+    response = HttpResponse(
+        "document.documentElement.setAttribute('data-analysis-guide-url', "
+        f"{guide_url});\n{_MENU_WIDGET_CACHE}",
+        content_type="application/javascript",
+    )
     # This URL is intentionally stable across report builds.  Keep it cheap,
     # but make browsers check back soon enough to pick up host upgrades.
     response["Cache-Control"] = "public, max-age=300, must-revalidate"

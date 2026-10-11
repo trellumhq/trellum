@@ -458,6 +458,8 @@ def test_capture_menu_calls_framework_only_for_exportable_data_reports(mobile_br
         item = page.locator('[data-item-id="capture-analysis"]')
         assert item.count() == (1 if capture else 0)
         if capture:
+            assert item.locator(".rmw-item-label").text_content() == "Capture for analysis"
+            assert item.locator(".rmw-item-icon svg").count() == 1
             if width < 768:
                 page.get_by_role("combobox", name="Report options").select_option(label="Capture for analysis")
             else:
