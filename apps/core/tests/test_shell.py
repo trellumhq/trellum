@@ -61,7 +61,7 @@ class TestContextProcessor:
 
 
 class TestShellRendering:
-    def test_manage_deliveries_remains_visible_in_another_orgs_viewer_context(
+    def test_delivery_management_is_not_in_account_menu(
         self, login, org_admin, org, other_org, other_studio, grant_studio
     ):
         from apps.orgs.models import OrgMembership
@@ -72,7 +72,8 @@ class TestShellRendering:
         assert response.context["shell_org"] == other_org
         assert response.context["shell_is_org_admin"] is False
         assert response.context["shell_can_manage_deliveries"] is True
-        assert b'href="/deliveries">Manage deliveries</a>' in response.content
+        assert b'href="/deliveries">Manage deliveries</a>' not in response.content
+        assert b'href="/me/deliveries">My deliveries</a>' not in response.content
 
     @pytest.mark.parametrize("key_scope, expected", [("admin_org", True), ("viewer_org", False)])
     def test_manage_deliveries_navigation_respects_api_key_org_scope(
@@ -90,7 +91,7 @@ class TestShellRendering:
         ctx = shell(request)
         assert ctx["shell_can_manage_deliveries"] is expected
         html = render_to_string("_shell.html", {**ctx, "user": org_admin, "request": request})
-        assert ('href="/deliveries">Manage deliveries</a>' in html) is expected
+        assert 'href="/deliveries">Manage deliveries</a>' not in html
 
     def test_operator_without_org_admin_access_has_no_delivery_management_link(self, login, member, monkeypatch):
         member.is_operator_flag = True
