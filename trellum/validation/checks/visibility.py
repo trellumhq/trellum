@@ -13,6 +13,8 @@ from trellum.validation.walk import (
 
 def _check_toggle_visible(comps: list[tuple[Any, str]], result: ValidationResult) -> None:
     """Category 7: Toggle / Visible wiring."""
+    from trellum.components.charts.bar import StackedBar
+    from trellum.components.charts.line_area import LineChart
     from trellum.components.controls import Toggle
     from trellum.components.layout import RawHTML as RawHTMLComp
     from trellum.components.layout import Visible
@@ -23,6 +25,28 @@ def _check_toggle_visible(comps: list[tuple[Any, str]], result: ValidationResult
     rawhtml_list: list[tuple[Any, str]] = []
 
     for comp, sec in comps:
+        if (
+            isinstance(comp, (LineChart, StackedBar))
+            and comp.dataset_id
+            and comp.stack_by_options
+            and not comp.stack_toggle_id
+        ):
+            # Chart lookup and URL state use trimmed button text as the key.
+            # The first option also supplies the default selection.
+            invalid_labels = [
+                label for label in comp.stack_by_options
+                if not isinstance(label, str) or not label or label != label.strip()
+            ]
+            if invalid_labels:
+                result.fail(
+                    "chart-stack-label-invalid",
+                    f"Chart '{comp.title}' has automatic breakdown labels "
+                    f"{invalid_labels!r} that cannot restore the intended selection "
+                    "from a saved URL. Use nonempty string labels without leading "
+                    "or trailing whitespace in stack_by_options, including the "
+                    "first (default) option.",
+                    component=type(comp).__name__, section=sec,
+                )
         if isinstance(comp, Toggle):
             toggle_map[comp.id] = list(comp.options)
             toggle_default[comp.id] = comp.default or (comp.options[0] if comp.options else "")

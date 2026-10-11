@@ -1,6 +1,7 @@
 """Unit tests for trellum.validation -- check IDs and severity levels."""
 
 import pandas as pd
+import pytest
 
 from trellum.report import ReportContext
 from trellum.validation import validate_report
@@ -40,6 +41,56 @@ def _find_checks(result, check_id=None, level=None):
     if level:
         out = [c for c in out if c.level == level]
     return out
+
+
+def _stack_label_validation(chart_type, options, **kwargs):
+    from trellum.components import DataSource, LineChart, StackedBar
+
+    df = _sample_df()
+    chart_cls = {"LineChart": LineChart, "StackedBar": StackedBar}[chart_type]
+    values = {"y": "revenue"} if chart_type == "LineChart" else {"y_cols": ["revenue"]}
+    chart = chart_cls(
+        df, x="event_date", title="Revenue breakdown",
+        stack_by_options=options, **values, **kwargs,
+    )
+    ctx = _make_ctx()
+    ctx.add_section("", [DataSource("ds1", df)])
+    ctx.add_section("Charts", [chart])
+    return _find_checks(validate_report(ctx), check_id="chart-stack-label-invalid")
+
+
+@pytest.mark.parametrize("chart_type", ["LineChart", "StackedBar"])
+@pytest.mark.parametrize("label", ["", "   ", " Platform ", 1])
+@pytest.mark.parametrize("invalid_default", [True, False])
+def test_automatic_stack_invalid_labels_fail(chart_type, label, invalid_default):
+    options = (
+        {label: "platform", "Total": ""} if invalid_default
+        else {"Total": "", label: "platform"}
+    )
+    hits = _stack_label_validation(chart_type, options, dataset_id="ds1")
+    assert len(hits) == 1
+    assert hits[0].level == "fail"
+    assert hits[0].component == chart_type
+    assert hits[0].section == "Charts"
+    assert "Revenue breakdown" in hits[0].message
+    assert "first (default) option" in hits[0].message
+
+
+@pytest.mark.parametrize("chart_type", ["LineChart", "StackedBar"])
+def test_automatic_stack_valid_labels_and_default_pass(chart_type):
+    assert not _stack_label_validation(
+        chart_type, {"Total": "", "By Platform": "platform"}, dataset_id="ds1",
+    )
+
+
+@pytest.mark.parametrize("chart_type", ["LineChart", "StackedBar"])
+def test_stack_label_check_requires_rendered_automatic_control(chart_type):
+    assert not _stack_label_validation(chart_type, {" Platform ": "platform"})
+    assert not _stack_label_validation(chart_type, {}, dataset_id="ds1")
+    assert not _stack_label_validation(
+        chart_type, {" Platform ": "platform"},
+        dataset_id="ds1", stack_toggle_id="explicit-split",
+    )
 
 
 def test_invalid_report_metadata_labels_and_values_are_warned():
