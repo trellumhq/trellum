@@ -38,7 +38,7 @@ class AlertRuleForm(forms.ModelForm):
             "name", "report", "instructions", "trigger",
             "freq", "send_hour", "send_minute", "weekday", "month_day", "timezone",
             "recipients", "recipient_roles", "recipient_groups",
-            "cooldown_hours", "enabled",
+            "cooldown_hours", "notification_policy", "enabled",
         ]
         widgets = {
             "instructions": forms.Textarea(
@@ -57,6 +57,7 @@ class AlertRuleForm(forms.ModelForm):
     def __init__(self, *args, studio, **kwargs):
         super().__init__(*args, **kwargs)
         self.timezones = COMMON_TIMEZONES
+        self.fields["notification_policy"].initial = (self.instance.notification_policy or AlertRule.POLICY_REPEAT)
         self.fields["report"].queryset = Report.objects.filter(
             studio=studio, present_in_scan=True, kind=Report.KIND_REPORT
         ).order_by("name", "slug")
@@ -84,6 +85,18 @@ class AlertRuleForm(forms.ModelForm):
 
     def clean(self):
         data = super().clean()
+        data["notification_policy"] = data.get("notification_policy") or self.instance.notification_policy or AlertRule.POLICY_REPEAT
         if not (data.get("recipients") or data.get("recipient_roles") or data.get("recipient_groups")):
             raise forms.ValidationError("Select at least one recipient (a person, a role, or a group).")
         return data
+
+    def save(self, commit=True):
+        rule = super().save(commit=False)
+        if commit:
+            if rule.pk:
+                concrete = {f.name for f in rule._meta.concrete_fields}
+                rule.save(update_fields=[name for name in self.Meta.fields if name in concrete])
+            else:
+                rule.save()
+            self.save_m2m()
+        return rule

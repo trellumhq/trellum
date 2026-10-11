@@ -29,7 +29,7 @@
     <td data-label="Report">{{ rule.report.name|default:rule.report.slug }}</td>
     <td data-label="Trigger">{{ row.trigger }}</td>
     <td data-label="Recipients">{{ row.recipients }}</td>
-    <td data-label="Cooldown">{{ rule.cooldown_hours }} h</td>
+    <td data-label="Cooldown">{{ rule.cooldown_hours }} h · {{ rule.policy_label }}</td>
     <td data-label="Status">{% if rule.enabled %}<span class="ui-badge pass">Enabled</span>{% else %}<span class="ui-badge warn">Disabled</span>{% endif %}</td>
     <td data-label="Last run">{% if rule.last_run_at %}
       {% if row.last == "alert" %}<span class="ui-badge fail">Alert</span>{% elif row.last == "quiet" %}<span class="ui-badge">Quiet</span>{% elif row.last %}<span class="ui-badge warn">{{ row.last }}</span>{% endif %}

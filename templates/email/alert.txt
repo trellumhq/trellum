@@ -3,6 +3,10 @@
 {{ report.studio.name }} · alert rule "{{ rule.name }}"
 
 {{ run.message }}
+Condition: {{ run.condition_label }}.
+{% if run.interpretation %}Window: {{ run.interpretation.window }} · {{ run.interpretation.timezone }}
+Scope: {{ run.interpretation.scope }} · Freshness: {{ run.interpretation.freshness }}
+{% endif %}
 {% if evidence %}
 What it looked at:
 {% for line in evidence %}- {{ line }}

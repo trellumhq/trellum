@@ -104,7 +104,11 @@ _ALERT_PROPERTIES = {
     },
     "cooldown_hours": {
         "type": "integer",
-        "description": "After the alert fires the rule stays quiet for this long (default 24)",
+        "description": "Minimum hours since accepted delivery (default 24); evaluation continues during cooldown",
+    },
+    "notification_policy": {
+        "type": "string", "enum": ["repeat", "transition"],
+        "description": "repeat (default): while met, send after cooldown; transition: once per condition episode",
     },
 }
 

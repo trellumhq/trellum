@@ -11,6 +11,9 @@ import calendar
 from django.contrib import messages
 from django.core.paginator import Paginator
 from django.db.models import OuterRef, Subquery
+from django.db import transaction
+from django.http import HttpResponse
+from django.utils import timezone
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
@@ -19,6 +22,7 @@ from apps.alerts.forms import AlertRuleForm
 from apps.alerts.models import AlertRule, AlertRun
 from apps.core import roles
 from apps.core.audit import audit
+from apps.core.form_responses import is_settings_request, settings_success, settings_error
 from apps.core.permissions import require_studio_role
 from apps.core.report_access import visible_reports
 from apps.reports.models import Report
@@ -85,6 +89,8 @@ def alerts_page(request, org_slug, studio_slug):  # noqa: ARG001
         .annotate(
             last_decision=Subquery(last.values("decision")[:1]),
             last_status=Subquery(last.values("status")[:1]),
+            last_condition=Subquery(last.values("condition")[:1]),
+            last_disposition=Subquery(last.values("delivery_disposition")[:1]),
         )
         .order_by("name")
     )
@@ -93,7 +99,9 @@ def alerts_page(request, org_slug, studio_slug):  # noqa: ARG001
             "rule": rule,
             "trigger": _trigger_words(rule),
             "recipients": _recipient_summary(rule),
-            "last": rule.last_decision or _STATUS_LABELS.get(rule.last_status, ""),
+            "last": dict(AlertRun.CONDITION_CHOICES).get(rule.last_condition)
+                    or ("Not evaluated" if rule.last_disposition == "not_evaluated" else
+                        rule.last_decision or _STATUS_LABELS.get(rule.last_status, "")),
         }
         for rule in rules
     ]
@@ -109,8 +117,12 @@ def rule_form(request, org_slug, studio_slug, rule_id=None):  # noqa: ARG001
     if request.method == "POST" and form.is_valid():
         form.save()
         audit(request, "alert.update" if rule_id else "alert.create", target=rule, rule_id=rule.pk)
+        if rule_id and is_settings_request(request):
+            return settings_success(request, f"Saved “{rule.name}”.")
         messages.success(request, f"Saved “{rule.name}”.")
         return redirect(_prefix(request))
+    if request.method == "POST" and rule_id and is_settings_request(request):
+        return settings_error(request, "Check the highlighted fields.", form=form)
     return render(request, "alerts/alert_form.html", _context(request, form=form, rule=rule))
 
 
@@ -161,3 +173,46 @@ def rule_delete(request, org_slug, studio_slug, rule_id):  # noqa: ARG001
     audit(request, "alert.delete", org=request.org, rule_id=rule_pk, rule=name)
     messages.success(request, f"Deleted “{name}”.")
     return redirect(_prefix(request))
+
+
+@require_studio_role(roles.DEVELOPER)
+@require_POST
+def rule_reconcile(request, org_slug, studio_slug, rule_id):  # noqa: ARG001
+    rule = _rule(request, rule_id)
+    resolution = request.POST.get("resolution")
+    if resolution not in ("notified", "not_accepted"):
+        return HttpResponse("Choose a delivery resolution.", status=400)
+    with transaction.atomic():
+        rule = AlertRule.objects.select_for_update().get(pk=rule.pk)
+        state = dict(rule.live_state or {})
+        claim = state.get("claim") or {}
+        if (not claim or request.POST.get("token") != claim.get("token")
+                or request.POST.get("run_id") != str(claim.get("run_id"))):
+            return HttpResponse("This delivery claim changed; refresh before reconciling.", status=409)
+        run = rule.runs.get(pk=claim["run_id"])
+        # A claim currently sending cannot be reconciled before its bounded turn ends.
+        from django.conf import settings
+        from datetime import timedelta
+        if run.finished_at is None and timezone.now() - run.started_at < timedelta(seconds=settings.ASSISTANT_TURN_DEADLINE_S + 60):
+            return HttpResponse("This evaluation may still be running; try again after its deadline.", status=409)
+        resolved_at = timezone.now()
+        before = {"claim": claim, "pending": state.get("pending"), "last_alerted_at":
+                  rule.last_alerted_at.isoformat() if rule.last_alerted_at else None}
+        updates = {}
+        if resolution == "notified":
+            updates["last_alerted_at"] = resolved_at
+            if claim.get("episode") == state.get("episode") and state.get("revision") == rule.revision:
+                state["pending"] = False
+        state["claim"] = None
+        updates["live_state"] = state
+        AlertRule.objects.filter(pk=rule.pk).update(**updates)
+        run.manual_resolution = {"resolution": resolution, "actor_id": request.user.pk,
+                                 "at": resolved_at.isoformat(), "claim_token": claim["token"]}
+        run.save(update_fields=["manual_resolution"])
+        audit(request, "alert.delivery_reconciled", target=rule, rule_id=rule.pk, run_id=run.pk,
+              resolution=resolution, before=before,
+              after={"claim": None, "pending": state.get("pending"),
+                     "last_alerted_at": updates.get("last_alerted_at", rule.last_alerted_at).isoformat()
+                     if updates.get("last_alerted_at", rule.last_alerted_at) else None})
+    messages.success(request, "Delivery reviewed. No mail was sent by this action.")
+    return redirect(f"{_prefix(request)}/{rule.pk}")

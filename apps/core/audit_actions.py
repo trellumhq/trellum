@@ -233,6 +233,7 @@ ACTIONS: dict[str, ActionSpec] = {
     "alert.update": _m(CATEGORY_SYSTEM, "Alert rule updated"),
     "alert.delete": _m(CATEGORY_SYSTEM, "Alert rule deleted"),
     "alert.fire": _m(CATEGORY_SYSTEM, "Alert fired"),
+    "alert.delivery_reconciled": _m(CATEGORY_SYSTEM, "Alert delivery reconciled"),
     "retention.purge": _m(CATEGORY_SYSTEM, "Retention purge ran"),
     # Per-organization companions to the instance-wide row above, which
     # carries org=None and so appears in nobody's own audit trail. An org

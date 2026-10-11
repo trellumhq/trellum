@@ -7,10 +7,12 @@ from __future__ import annotations
 
 from datetime import timedelta
 from decimal import Decimal
+import hashlib
+import json
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone as dj_tz
 
 from apps.reports.models import EmailSchedule, Report
@@ -18,6 +20,10 @@ from apps.studios.models import Studio
 
 
 class AlertRule(models.Model):
+    POLICY_REPEAT = "repeat"
+    POLICY_TRANSITION = "transition"
+    POLICY_CHOICES = [(POLICY_REPEAT, "While met, repeat after cooldown"),
+                      (POLICY_TRANSITION, "Once per condition episode")]
     TRIGGER_AFTER_BUILD = "after_build"
     TRIGGER_SCHEDULE = "schedule"
     TRIGGER_CHOICES = [
@@ -74,6 +80,23 @@ class AlertRule(models.Model):
     last_run_at = models.DateTimeField(null=True, blank=True)
     last_test_at = models.DateTimeField(null=True, blank=True)
     last_alerted_at = models.DateTimeField(null=True, blank=True)
+    notification_policy = models.CharField(max_length=16, choices=POLICY_CHOICES, null=True, blank=True)
+    live_state = models.JSONField(null=True, blank=True)
+
+    @property
+    def revision(self) -> str:
+        values = [self.org_id, self.studio_id, self.report_id, self.instructions, self.timezone]
+        return hashlib.sha256(json.dumps(values, ensure_ascii=False).encode()).hexdigest()
+
+    @property
+    def next_eligible_at(self):
+        if self.last_alerted_at is not None:
+            return self.last_alerted_at + timedelta(hours=self.cooldown_hours)
+        return None
+
+    @property
+    def policy_label(self):
+        return dict(self.POLICY_CHOICES)[self.notification_policy or self.POLICY_REPEAT]
 
     def clean(self) -> None:
         # The cadence fields intentionally share EmailSchedule's contract.
@@ -94,6 +117,26 @@ class AlertRule(models.Model):
 
     def save(self, *args, **kwargs):
         self.full_clean()
+        # Settings drafts cannot overwrite observations made while the form was open.
+        if self.pk and not self._state.adding and kwargs.get("update_fields") is None:
+            kwargs["update_fields"] = [f.name for f in self._meta.concrete_fields
+                                      if not f.primary_key and f.name not in
+                                      ("live_state", "last_alerted_at", "last_run_at", "last_test_at")]
+        if self.pk and not self._state.adding:
+            with transaction.atomic():
+                current = AlertRule.objects.select_for_update().get(pk=self.pk)
+                fields = kwargs.get("update_fields")
+                previous_revision = current.revision
+                for field in self._meta.concrete_fields:
+                    if field.name in {"org", "studio", "report", "instructions", "timezone"}:
+                        if fields is None or field.name in fields or field.attname in fields:
+                            setattr(current, field.attname, getattr(self, field.attname))
+                if current.revision != previous_revision:
+                    self.live_state = {"revision": current.revision, "condition": "unknown", "pending": False,
+                                       "claim": (current.live_state or {}).get("claim")}
+                    if fields is not None:
+                        kwargs["update_fields"] = list(set(fields) | {"live_state"})
+                return super().save(*args, **kwargs)
         return super().save(*args, **kwargs)
 
     def in_cooldown(self, now=None) -> bool:
@@ -106,6 +149,22 @@ class AlertRule(models.Model):
 
 
 class AlertRun(models.Model):
+    DISPOSITION_NOT_EVALUATED = "not_evaluated"
+    DISPOSITION_TEST = "test"
+    DISPOSITION_DUPLICATE = "duplicate"
+    DISPOSITION_STALE = "stale"
+    DISPOSITION_NOT_MET = "not_met"
+    DISPOSITION_UNKNOWN = "unknown"
+    DISPOSITION_COOLDOWN = "cooldown"
+    DISPOSITION_EPISODE_DELIVERED = "episode_delivered"
+    DISPOSITION_WOULD_NOTIFY = "would_notify"
+    DISPOSITION_CLAIMED = "claimed"
+    DISPOSITION_UNCONFIRMED = "unconfirmed"
+    CONDITION_MET = "met"
+    CONDITION_NOT_MET = "not_met"
+    CONDITION_UNKNOWN = "unknown"
+    CONDITION_CHOICES = [(CONDITION_MET, "Met"), (CONDITION_NOT_MET, "Not met"),
+                         (CONDITION_UNKNOWN, "Unknown: insufficient evidence")]
     MODE_LEGACY = "legacy"
     MODE_LIVE = "live"
     MODE_TEST = "test"
@@ -123,11 +182,12 @@ class AlertRun(models.Model):
         (DELIVERY_PARTIAL, "Partial"), (DELIVERY_FAILED, "Failed"), (DELIVERY_ERROR, "Delivery error"),
     ]
     STATUS_OK = "ok"
+    STATUS_RUNNING = "running"
     STATUS_ERROR = "error"
     STATUS_SKIPPED_BUDGET = "skipped_budget"
     STATUS_SKIPPED_COOLDOWN = "skipped_cooldown"
     STATUS_CHOICES = [
-        (STATUS_OK, "OK"), (STATUS_ERROR, "Error"),
+        (STATUS_OK, "OK"), (STATUS_RUNNING, "In progress / interrupted"), (STATUS_ERROR, "Error"),
         (STATUS_SKIPPED_BUDGET, "Skipped: budget"), (STATUS_SKIPPED_COOLDOWN, "Skipped: cooldown"),
     ]
     DECISION_ALERT = "alert"
@@ -157,6 +217,19 @@ class AlertRun(models.Model):
     #: suppressed live ticks, never written by tests.
     budget_warning_sent = models.BooleanField(default=False, null=True)
     error = models.TextField(blank=True, default="")
+    condition = models.CharField(max_length=8, choices=CONDITION_CHOICES, null=True, blank=True)
+    rule_revision = models.CharField(max_length=64, null=True, blank=True)
+    interpretation = models.JSONField(null=True, blank=True)
+    delivery_disposition = models.CharField(max_length=32, null=True, blank=True)
+    delivery_reason = models.TextField(null=True, blank=True)
+    uncertain_to = models.JSONField(null=True, blank=True)
+    manual_resolution = models.JSONField(null=True, blank=True)
+    simulated_disposition = models.CharField(max_length=32, null=True, blank=True)
+    simulated_reason = models.TextField(null=True, blank=True)
+
+    @property
+    def condition_label(self):
+        return dict(self.CONDITION_CHOICES).get(self.condition, "Not evaluated")
 
     @property
     def is_legacy(self) -> bool:
@@ -167,6 +240,11 @@ class AlertRun(models.Model):
 
     @property
     def outcome_label(self) -> str:
+        if self.delivery_disposition == "unconfirmed" or (self.pk and self.finished_at is None
+                                                         and self.rule_revision):
+            return "Unconfirmed"
+        if self.delivery_disposition in ("cooldown", "episode_delivered", "duplicate", "stale"):
+            return "Suppressed"
         if self.status == self.STATUS_ERROR:
             return "Failed"
         if self.status in (self.STATUS_SKIPPED_BUDGET, self.STATUS_SKIPPED_COOLDOWN):
@@ -182,3 +260,15 @@ class AlertRun(models.Model):
 
     def __str__(self) -> str:
         return f"alert-run({self.rule_id}, {self.status}, {self.decision or '-'})"
+
+
+class AlertEvaluationClaim(models.Model):
+    """One durable work claim per trigger; an interrupted claim is not replayed."""
+    rule = models.ForeignKey(AlertRule, on_delete=models.CASCADE)
+    revision = models.CharField(max_length=64)
+    key = models.CharField(max_length=200)
+    run = models.OneToOneField(AlertRun, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(default=dj_tz.now)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["rule", "revision", "key"], name="alert_evaluation_key")]

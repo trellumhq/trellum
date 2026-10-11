@@ -36,12 +36,15 @@ from apps.runner.models import Run
 pytestmark = pytest.mark.django_db
 
 
-def test_alert_partial_retry_skips_already_accepted_recipients(report_row, make_user, monkeypatch):
+def test_alert_partial_retry_skips_already_accepted_recipients(report_row, make_user, grant_studio, monkeypatch):
     from apps.alerts.models import AlertRun
     from apps.reports import notify
 
     rule = types.SimpleNamespace(pk=42, name="Watch", report=report_row)
-    first, second = make_user("first@test.example"), make_user("second@test.example")
+    first = make_user("first@test.example", org=report_row.studio.org)
+    second = make_user("second@test.example", org=report_row.studio.org)
+    for recipient in (first, second):
+        grant_studio(recipient, report_row.studio, roles.VIEWER)
     monkeypatch.setattr(notify, "resolve_recipients", lambda rule: [first, second])
     calls = []
     def send(subject, template, ctx, user):
@@ -53,6 +56,7 @@ def test_alert_partial_retry_skips_already_accepted_recipients(report_row, make_
     run = AlertRun(title="Test alert")
     outcome = notify.send_alert(rule, run)
     assert outcome.accepted == [first.email] and outcome.failed == [second.email]
+    assert outcome.uncertain == [second.email]
     run.delivered_to = outcome.accepted
     retry = notify.send_alert(rule, run)
     assert retry.accepted == [first.email, second.email] and retry.failed == []
@@ -67,6 +71,23 @@ def test_simple_mail_returns_transport_acceptance(report_row, make_user, monkeyp
     assert notify._send_simple("Subject", "email/recovered", {
         "report": report_row, "report_url": "https://test.example/report", "instance_name": "Test",
     }, user) == 0
+
+
+def test_alert_recipient_deactivated_after_resolution_is_not_sent(report_row, make_user, grant_studio, monkeypatch):
+    from apps.alerts.models import AlertRun
+    from apps.reports import notify
+    first = make_user("before-revoke@test.example", org=report_row.studio.org)
+    second = make_user("after-revoke@test.example", org=report_row.studio.org)
+    for user in (first, second):
+        grant_studio(user, report_row.studio, roles.VIEWER)
+    monkeypatch.setattr(notify, "resolve_recipients", lambda rule: [first, second])
+    def send(subject, template, ctx, user):
+        type(second).objects.filter(pk=second.pk).update(is_active=False)
+        return 1
+    monkeypatch.setattr(notify, "_send_simple", send)
+    rule = types.SimpleNamespace(pk=42, name="Watch", report=report_row)
+    outcome = notify.send_alert(rule, AlertRun(title="Test alert"))
+    assert outcome.accepted == [first.email] and outcome.failed == []
 
 
 def test_api_send_failure_log_excludes_recipient_and_report_content(monkeypatch, caplog, report_row, make_user):

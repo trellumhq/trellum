@@ -388,13 +388,14 @@ class TestPreWork:
         rule.refresh_from_db()
         assert rule.last_alerted_at is None
 
-    def test_cooldown_skips_without_calling_the_model(self, rule, fake_llm):
+    def test_cooldown_evaluates_condition_and_suppresses_only_delivery(self, rule, fake_llm):
         rule.last_alerted_at = timezone.now() - timedelta(hours=1)
-        rule.save()
+        rule.save(update_fields=["last_alerted_at"])
         calls = fake_llm(decide(True))
         run = evaluator.evaluate(rule)
-        assert run.status == AlertRun.STATUS_SKIPPED_COOLDOWN and run.decision == ""
-        assert calls == [] and mail.outbox == []
+        assert run.status == AlertRun.STATUS_OK and run.condition == "met"
+        assert run.delivery_disposition == "cooldown"
+        assert len(calls) == 1 and mail.outbox == []
 
     def test_exhausted_budget_skips_and_mails_the_owner_once(
         self, rule, fake_llm, assistant_config, org
@@ -447,7 +448,7 @@ class TestPreWork:
         text = _system_text(calls[0])
         assert "Instructions: Tell me if anything looks off." in text
         # The bar (#153): a weekend record on a rising trend is not news.
-        assert "the reader would act on" in text and "on an existing trend, gradual growth" in text
+        assert "the reader would act on" in text and "records on an existing trend" in text
 
 
 class TestTriggers:

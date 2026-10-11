@@ -631,9 +631,10 @@ class AlertDelivery:
     accepted: list[str] = field(default_factory=list)
     failed: list[str] = field(default_factory=list)
     error: str = ""
+    uncertain: list[str] = field(default_factory=list)
 
 
-def send_alert(rule, run) -> AlertDelivery:
+def send_alert(rule, run, *, eligibility_check=None) -> AlertDelivery:
     """Mail one alert decision to the rule's audience -- ``resolve_recipients``
     reads an ``AlertRule`` exactly as it reads an ``EmailSchedule``, studio
     intersection included. Records transport acceptance, not inbox receipt.
@@ -667,6 +668,14 @@ def send_alert(rule, run) -> AlertDelivery:
     for user in recipients:
         if user.email in outcome.accepted:
             continue
+        if eligibility_check is not None:
+            why = eligibility_check()
+            if why:
+                outcome.error = why
+                break
+        from apps.core.report_access import can_view_report
+        if not type(user).objects.filter(pk=user.pk, is_active=True).exists() or not can_view_report(user, report):
+            continue
         try:
             if _send_simple(subject, "email/alert", ctx, user):
                 outcome.accepted.append(user.email)
@@ -674,6 +683,7 @@ def send_alert(rule, run) -> AlertDelivery:
                 outcome.failed.append(user.email)
         except Exception:  # noqa: BLE001
             outcome.failed.append(user.email)
+            outcome.uncertain.append(user.email)
             logger.exception("notify: failed to send alert for rule %s", rule.pk)
     return outcome
 

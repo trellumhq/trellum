@@ -29,4 +29,8 @@ def test_previous_release_insert_omitting_new_columns_preserves_uncertainty(rule
     assert not run.budget_warning_sent
     assert run.delivered_to == recipients
     assert run.is_legacy
+    assert run.condition is None and run.rule_revision is None
+    assert run.delivery_disposition is None and run.interpretation is None
+    assert run.uncertain_to is None and run.manual_resolution is None
+    assert run.simulated_disposition is None and run.simulated_reason is None
     assert run.get_delivery_status_display() == "Legacy: delivery uncertain"

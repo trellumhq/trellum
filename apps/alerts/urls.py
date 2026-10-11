@@ -17,5 +17,6 @@ urlpatterns = [
         path("<int:rule_id>/test", views.rule_test, name="studio-alert-test"),
         path("<int:rule_id>/toggle", views.rule_toggle, name="studio-alert-toggle"),
         path("<int:rule_id>/delete", views.rule_delete, name="studio-alert-delete"),
+        path("<int:rule_id>/reconcile", views.rule_reconcile, name="studio-alert-reconcile"),
     ])),
 ]

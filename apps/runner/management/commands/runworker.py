@@ -773,7 +773,7 @@ def _send_scheduled_email(schedule_id: int) -> None:
 def _evaluate_alert(rule_id: int) -> None:
     """APScheduler job target (runs on a scheduler thread)."""
     close_old_connections()
-    from apps.alerts.evaluator import evaluate
+    from apps.alerts.evaluator import evaluate, scheduled_evaluation_key
     from apps.alerts.models import AlertRule
 
     try:
@@ -786,6 +786,6 @@ def _evaluate_alert(rule_id: int) -> None:
             .first()
         )
         if rule is not None:  # deleted/disabled between the job firing and now
-            evaluate(rule)
+            evaluate(rule, evaluation_key=scheduled_evaluation_key(rule))
     except Exception as exc:  # noqa: BLE001 - must never wedge the scheduler thread
         logger.exception(f"alert {rule_id} evaluation failed: {exc!r}")

@@ -12,6 +12,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Add shared delivery management for organization admins and instance
   superusers, with owner repair, scoped pause, future schedule defaults and
   transport outcome reporting.
+- Add alert condition results, interpreted evidence windows, repeat/episode
+  notification policies and audited reconciliation of uncertain deliveries.
 - Add dedicated data source editors with draft credential testing, separate
   saved and draft results, and protection against obsolete test responses.
 - Add a Capture for analysis icon, image preview and persistent instructions
@@ -19,6 +21,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- Evaluate alert conditions during cooldown, keeping condition truth separate
+  from notification suppression; deduplicate build and schedule triggers.
 - Separate System Health diagnostics from Instance Settings. Keep detailed
   workers and build execution in Fleet, preserve legacy settings submissions,
   and save instance, security and email connection edits in place.

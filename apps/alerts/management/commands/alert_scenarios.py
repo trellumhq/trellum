@@ -118,7 +118,7 @@ def dry_client(scenario: dict):
     response = decide(
         scenario["decision"] == "alert", title=f"Canned {scenario['decision']}",
         message="Dry run: " + (", ".join(scenario.get("must_mention") or []) or "nothing to mention"),
-        evidence=[],
+        evidence=["Synthetic canned scenario label; no data inference was performed."],
     )
     return FakeClient([response] * 3, [])
 

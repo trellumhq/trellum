@@ -175,7 +175,7 @@ portal itself does — and only those:
 | Test a data source | Re-runs the connection test and reports the outcome. | Developer |
 | Build a report | Queues a build now instead of waiting for its schedule. | Developer |
 | Publish repository changes | Publishes what the studio has fetched but not yet applied (manual publish mode). | Developer |
-| Create or change an alert | Saves an alert rule — a report, plain-language instructions, a trigger, recipients and a cooldown — exactly as the studio's Alerts page would. | Developer |
+| Create or change an alert | Saves an alert rule — a report, plain-language instructions, a trigger, recipients, cooldown and notification policy — exactly as the studio's Alerts page would. | Developer |
 
 **The repository is never edited.** A report's `report.yaml`, its queries,
 validation suppressions and `metrics.yaml` stay a change you make in git.

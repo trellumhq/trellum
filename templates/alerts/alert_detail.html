@@ -36,19 +36,36 @@
     <span><b>Trigger</b>{{ trigger }}</span>
     <span><b>Recipients</b>{{ recipients }}</span>
     <span><b>Cooldown</b>{{ rule.cooldown_hours }} h</span>
+    <span><b>Policy</b>{{ rule.policy_label }}</span>
+    <span><b>Next eligible</b>{{ rule.next_eligible_at|date:"Y-m-d H:i T"|default:"now" }} (if still met)</span>
     <span><b>Billed to</b>{{ rule.created_by.email|default:"nobody (set an owner)" }}</span>
     <span><b>Last alerted</b>{% if rule.last_alerted_at %}{{ rule.last_alerted_at|date:"Y-m-d H:i" }}{% else %}never{% endif %}</span>
     <span><b>Last evaluation</b>{{ rule.last_run_at|date:"Y-m-d H:i"|default:"never" }}</span>
     <span><b>Last test</b>{{ rule.last_test_at|date:"Y-m-d H:i"|default:"never" }}</span>
   </div>
   <p class="al-instructions">{{ rule.instructions|default:"Tell me if anything looks off" }}</p>
+  {% if rule.live_state.claim %}
+  <div class="ui-notice warn" role="status">
+    Delivery outcome uncertain / review required: <a href="#run-{{ rule.live_state.claim.run_id }}">run {{ rule.live_state.claim.run_id }}</a>.
+    This delivery may still be running. Automatic delivery is held until its outcome is confirmed; recovery does not release an unresolved claim.
+    {% if can_edit %}
+    <p>Check the mail provider and evaluation outcome before resolving. These actions send no mail.</p>
+    <form method="post" action="{{ prefix }}/{{ rule.pk }}/reconcile" onsubmit="return confirm('Check the provider first. Marking notified starts cooldown now. Confirming nothing was accepted allows a future evaluation to send, which risks duplicates if the provider actually accepted it. Continue?')">
+      {% csrf_token %}<input type="hidden" name="run_id" value="{{ rule.live_state.claim.run_id }}"><input type="hidden" name="token" value="{{ rule.live_state.claim.token }}">
+      <button class="ui-btn" name="resolution" value="notified">Mark as notified</button>
+      <button class="ui-btn danger" name="resolution" value="not_accepted">Confirm nothing was accepted</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
   {% if can_edit %}<p class="muted" style="margin:0 0 14px">Test now evaluates the rule with delivery off: the decision lands in the log below, nobody is emailed, and the cooldown is not touched.</p>{% endif %}
 
   <h2 style="margin:0 0 8px">Run log</h2>
   {% for run in page %}
   <div class="al-run{% if run.pk == highlight %} is-new{% endif %}" id="run-{{ run.pk }}">
     <div class="al-run-head">
-      {% if run.decision == "alert" %}<span class="ui-badge fail">Alert</span>
+      {% if run.rule_revision %}<span class="ui-badge">{{ run.condition_label }}</span><span class="ui-badge">{{ run.get_status_display }}</span>
+      {% elif run.decision == "alert" %}<span class="ui-badge fail">Alert</span>
       {% elif run.decision == "quiet" %}<span class="ui-badge">Quiet</span>
       {% elif run.status == "error" %}<span class="ui-badge fail">Error</span>
       {% else %}<span class="ui-badge warn">{{ run.get_status_display }}</span>{% endif %}
@@ -62,11 +79,16 @@
     {% elif run.message %}<p class="al-run-msg">{{ run.message }}</p>{% endif %}
     {% if run.evidence.cited %}<ul class="al-run-evidence">{% for line in run.evidence.cited %}<li>{{ line }}</li>{% endfor %}</ul>{% endif %}
     {% if run.error %}<p class="al-run-error">{{ run.error }}</p>{% endif %}
+    {% if run.delivery_reason %}<p class="al-run-msg">{{ run.delivery_reason }}</p>{% endif %}
+    {% if run.simulated_disposition %}<p class="al-run-meta">Read-only policy simulation: {{ run.simulated_disposition }} · {{ run.simulated_reason }}</p>{% endif %}
+    {% if run.interpretation %}<p class="al-run-meta">Window: {{ run.interpretation.window }} · Timezone: {{ run.interpretation.timezone }} · Scope: {{ run.interpretation.scope }} · Freshness: {{ run.interpretation.freshness }}</p>{% endif %}
     <div class="al-run-meta">
       {% if run.cost_usd is None %}Cost unavailable{% else %}Cost ${{ run.cost_usd|floatformat:4 }}{% endif %}
       · {{ run.get_delivery_status_display }}
       {% if run.delivered_to %} · {% if run.is_legacy %}Historical recipients{% else %}Accepted for delivery to{% endif %} {{ run.delivered_to|join:", " }}{% endif %}
       {% if run.failed_to %} · Failed for {{ run.failed_to|join:", " }}{% endif %}
+      {% if run.uncertain_to %} · Acceptance uncertain for {{ run.uncertain_to|join:", " }}{% endif %}
+      {% if run.manual_resolution %} · Manual review: {{ run.manual_resolution.resolution }} at {{ run.manual_resolution.at }} (actor {{ run.manual_resolution.actor_id }}); transport evidence unchanged.{% endif %}
       {% if run.is_legacy %} · Historical runs are excluded from current notification history because their mode is unknown.{% endif %}
     </div>
   </div>
@@ -75,6 +97,7 @@
   {% endfor %}
   {% include "_pagination.html" with page=page %}
   <p class="muted">Accepted for delivery means the mail transport accepted the message; it does not confirm inbox receipt.</p>
+  <p class="muted">OK describes execution only. Unknown means insufficient evidence. Evaluations continue during cooldown and consume assistant budget. A delivery with uncertain acceptance is held for operator review; SMTP cannot guarantee exactly once.</p>
 </div>
 {% if can_edit %}<script>
 document.addEventListener('submit', function (ev) {

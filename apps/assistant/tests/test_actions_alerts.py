@@ -36,6 +36,15 @@ ARGS = {
 }
 
 
+def test_assistant_alert_notification_policy_matches_form(studio_tree, report_row):
+    from apps.assistant import actions
+    spec = actions.describe(studio_tree, "create_alert", {**ARGS, "notification_policy": "transition"})
+    assert spec["arguments"]["notification_policy"] == "transition"
+    assert "policy transition" in spec["summary"]
+    assert "notification_policy" in actions.describe(studio_tree, "create_alert", {
+        **ARGS, "notification_policy": "unsupported"})
+
+
 @pytest.fixture
 def run(report_row, developer, org, studio_tree):
     rule = AlertRule.objects.create(

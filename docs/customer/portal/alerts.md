@@ -37,11 +37,10 @@ out the numbers. Some that work well:
 | A threshold in words | *Alert me if D1 retention is below its four-week average for three days running.* |
 | Anything off | *(leave blank)* — the assistant reads it as "tell me if anything looks off" |
 
-Two things it already knows, so you do not have to say them: the ordinary —
-weekly seasonality, a new high on an existing trend, gradual growth — is not
-an alert unless you ask for it, and something it reported in its last few
-decisions is not news twice. If it gets a decision
-wrong, the fix is usually one more sentence — "compare with the same weekday
+The assistant judges the requested condition. Repeated conditions remain
+**Met**, even when delivery is suppressed. Ordinary seasonality, records on
+an existing trend and gradual growth alone do not satisfy blank instructions.
+If it gets a decision wrong, the fix is usually one more sentence — "compare with the same weekday
 last week", "only the EU region", "good news counts too".
 
 ## Triggers
@@ -64,10 +63,28 @@ picked, only people who can currently see the studio are mailed.
 
 ## Cooldown
 
-After an alert fires, the rule stays quiet for the cooldown (24 hours by
-default). Runs during the cooldown are recorded as *skipped* rather than
-evaluated — the assistant is not asked, so they cost nothing. Set it to 0 to
-alert on every run that warrants it.
+Cooldown is the minimum time since the last transport-accepted delivery
+(24 hours by default). Evaluations continue during cooldown and consume
+assistant budget, so recovery can be observed. Recovery never erases the
+delivery timestamp. The form and run log show the next eligible time.
+
+The default policy repeats while the condition is met, at the next eligible
+evaluation after cooldown. **Once per condition episode** sends once, then
+waits for recovery. Initial Unknown → Met starts an episode. A condition first
+met during cooldown stays pending: the next eligible evaluation sends only
+if it is still met. Recovery cancels pending delivery; Unknown neither clears
+nor confirms it.
+
+Zero cooldown removes the time gate. Duplicate triggers for the same rule
+revision and build or schedule slot still share one evaluation/delivery
+claim. Predicate, report or interpretation-timezone edits reset the baseline
+to Unknown, preserving cooldown; recipient and cadence edits retain episodes.
+
+Specify the window, scope and currency in instructions. Rolling last 60 minutes
+differs from the last completed clock hour; a 48-hour net drain differs from
+any draining hour in those 48 hours. Strict `>1000` excludes exactly 1000.
+The run stores its interpreted window, timezone, dataset scope, freshness and
+revision with evidence. Missing or incomplete evidence means Unknown.
 
 ## The run log
 
@@ -82,10 +99,22 @@ stayed quiet, the message tells you which sentence to add.
 Other things a run can say:
 
 - **Not evaluated** — the report's last build did not succeed.
-- **Skipped: cooldown** — an alert fired recently.
+- **Met / Not met / Unknown** — condition truth; Unknown means insufficient evidence.
+- **OK** — execution completed; it does not mean healthy or delivered.
+- **Suppressed** — cooldown, an already-notified episode or an obsolete evaluation.
 - **Skipped: budget** — the owner's assistant budget is spent (see below).
 - **Error** — with the reason; a rule with no owner shows this until someone
   edits it.
+
+Transport acceptance does not confirm inbox receipt. SMTP cannot guarantee
+exactly-once delivery. Uncertain acceptance or an interrupted delivery claim
+shows **Delivery outcome uncertain / review required**, with its run link.
+Automatic delivery stays held across recovery and recurrence. Check the provider
+and evaluation outcome before using **Mark as notified** (starts cooldown at
+review time) or **Confirm nothing was accepted** (allows a future eligible
+evaluation to send, risking a duplicate if transport acceptance actually
+occurred). Both actions require developer access, are audited, send no mail
+and preserve the original transport evidence.
 
 ## Test now
 
@@ -94,6 +123,8 @@ the decision, message and evidence land in the run log marked as a test,
 nobody is emailed, and the cooldown is not touched — it runs even while the
 rule is in cooldown, because tuning instructions is what it is for. Use it
 after writing or changing a rule, before waiting for the next build.
+The test also shows a read-only policy simulation; it never claims a production
+delivery or changes a live episode. A simulation is not a delivery result.
 
 ## What it costs, and who pays
 

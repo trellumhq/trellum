@@ -16,7 +16,7 @@
 </header>
 
 <div class="panel">
-<form method="post" id="alertForm">
+<form method="post" id="alertForm"{% if rule.pk %} data-settings-form data-settings-save{% endif %}>
   {% csrf_token %}
   {{ form.non_field_errors }}
   <div class="ui-form-grid">
@@ -31,7 +31,7 @@
     <div class="ui-field ui-field-wide">
       <label for="id_instructions">Instructions</label>
       {{ form.instructions }}{{ form.instructions.errors }}
-      <span class="ui-help">Plain language: what to watch and when to speak up. Blank means “tell me if anything looks off”.</span>
+      <span class="ui-help">Describe the condition, time window, scope and currency. For example, a net drain over 48 hours differs from any draining hour; last 60 minutes differs from the last completed clock hour. Blank means “tell me if anything looks off”.</span>
     </div>
 
     <div class="ui-field ui-field-wide al-radio">
@@ -58,7 +58,7 @@
       <label for="id_month_day">{{ form.month_day.label }}</label>
       {{ form.month_day }}{{ form.month_day.errors }}
     </div>
-    <div class="ui-field" data-schedule>
+    <div class="ui-field">
       <label for="id_timezone">Timezone</label>
       {{ form.timezone }}{{ form.timezone.errors }}
       <datalist id="alert-timezones">{% for tz in form.timezones %}<option value="{{ tz }}">{% endfor %}</datalist>
@@ -83,7 +83,13 @@
     <div class="ui-field narrow">
       <label for="id_cooldown_hours">{{ form.cooldown_hours.label }}</label>
       {{ form.cooldown_hours }}{{ form.cooldown_hours.errors }}
-      <span class="ui-help">After an alert fires, the rule stays quiet this long. 0 disables it.</span>
+      <span class="ui-help">Minimum time since an accepted delivery. 0 removes the time gate; duplicate triggers remain suppressed. Evaluations continue during cooldown and consume assistant budget so recovery can be observed.</span>
+      {% if rule.next_eligible_at %}<span class="ui-help">Next eligible time: {{ rule.next_eligible_at|date:"Y-m-d H:i T" }}. Delivery requires a met condition at an eligible evaluation.</span>{% endif %}
+    </div>
+    <div class="ui-field">
+      <label for="id_notification_policy">Notification policy</label>
+      {{ form.notification_policy }}{{ form.notification_policy.errors }}
+      <span class="ui-help">Once per episode waits for recovery before another accepted alert. Unknown evidence does not count as recovery.</span>
     </div>
     <div class="ui-field">
       <label class="ui-check-row" style="margin-top:22px">{{ form.enabled }} Enabled</label>

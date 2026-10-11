@@ -51,7 +51,7 @@ def _repo(studio):
 #: card shows the rule exactly as it will be saved.
 _ALERT_DEFAULTS = {
     "instructions": "", "trigger": "after_build", "recipient_roles": [],
-    "recipient_emails": [], "cooldown_hours": 24,
+    "recipient_emails": [], "cooldown_hours": 24, "notification_policy": "repeat",
 }
 _ALERT_INTS = ("send_hour", "send_minute", "weekday", "month_day", "cooldown_hours")
 #: The fields ``AlertRule.clean`` validates (the delivery schedule's own).
@@ -100,6 +100,10 @@ def _alert_fields(studio, args: dict, rule=None):
             return f"Error: unknown freq '{fields['freq']}'."
     if "timezone" in args:
         fields["timezone"] = str(args.get("timezone") or "UTC")
+    if "notification_policy" in args:
+        fields["notification_policy"] = str(args.get("notification_policy") or "repeat")
+        if fields["notification_policy"] not in dict(AlertRule.POLICY_CHOICES):
+            return "Error: notification_policy must be 'repeat' or 'transition'."
     for key in _ALERT_INTS:
         if key in args:
             try:
@@ -141,7 +145,7 @@ def _alert_summary(fields: dict, report_name: str) -> str:
     to = ", ".join(fields["recipient_roles"] + fields["recipient_emails"]) or "nobody yet"
     return (
         f"Create alert “{fields['name']}” on “{report_name}”, evaluated {when}; "
-        f"recipients: {to}; cooldown {fields['cooldown_hours']} h"
+        f"recipients: {to}; cooldown {fields['cooldown_hours']} h; policy {fields['notification_policy']}"
     )[:300]
 
 
@@ -267,7 +271,10 @@ def _save_alert(request, rule, fields: dict, users: list, action: str, meta: dic
         if key not in ("report", "recipient_emails"):
             setattr(rule, key, value)
     rule.clean()
-    rule.save()
+    if rule.pk:
+        rule.save(update_fields=[key for key in fields if key != "recipient_emails"])
+    else:
+        rule.save()
     if "recipient_emails" in fields:
         rule.recipients.set(users)
     audit(request, action, target=rule, rule_id=rule.pk, name=rule.name, changed=sorted(fields), **meta)
