@@ -1,7 +1,6 @@
 {% extends "settings_base.html" %}
 {% block title %}Members — {{ studio.name }}{% endblock %}
 {% block settings %}
-<div class="ui-form-rail">
 <header class="page-head">
   <div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }}</div>
   <h1>Members</h1>
@@ -9,7 +8,6 @@
     <a href="/orgs/{{ org.slug }}/settings/groups">permission groups</a> apply on top
     (effective role is the highest of all sources).</p>
 </header>
-</div>
 
 <div class="panel">
 <div class="ui-table-scroll">
@@ -51,7 +49,6 @@
 </div>
 </div>
 {% if org_users %}
-<div class="ui-form-rail">
 <form class="ui-form-section" method="post" action="/s/{{ org.slug }}/{{ studio.slug }}/settings/members/set">
   {% csrf_token %}
   <h2>Add a member</h2>
@@ -69,15 +66,12 @@
   </select>
   </div>
   </div>
-  <button class="ui-btn primary" type="submit">Add</button>
+  <div class="ui-form-actions"><button class="ui-btn primary" type="submit">Add</button></div>
 </form>
-</div>
 {% else %}
-<div class="ui-form-rail">
 <p class="muted" style="margin-top:12px">Everyone in {{ org.name }} already has a direct
 role here — <a href="/orgs/{{ org.slug }}/settings/invites">invite someone to the
 organization</a> first.</p>
-</div>
 {% endif %}
 <p class="muted">Legend: <span class="ui-badge accent">admin</span>
 <span class="ui-badge info">developer</span> <span class="ui-badge">viewer</span> —

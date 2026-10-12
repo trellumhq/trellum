@@ -95,6 +95,13 @@ tables and catalogs may use the available width. Below 768px, page panels use
 the mobile card treatment, text-entry controls use at least 16px type, and
 interactive targets are at least 44px high.
 
+Studio Members uses a fluid page layout: the header, member list and Add a
+member section share the content area's left edge and fill its available
+width. Do not wrap these sections in `.ui-form-rail`. The Person and Role
+fields share a responsive two-column row, stacking below 768px. Keep the
+standard page gutters and section padding. This page-specific pattern does
+not change the bounded layout of other settings forms.
+
 Inter is the console font. Body and controls are 14px, table content 13px,
 metadata 12px, section headings 16px, and page titles 24px. Controls use an
 8px radius and panels use 10px.
