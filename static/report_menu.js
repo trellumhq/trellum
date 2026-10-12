@@ -822,6 +822,7 @@
             if (targetName && targetName.toLowerCase() !== '_self') return;
             var target = new URL(link.href, window.location.href);
             if (target.origin !== window.location.origin) return;
+            if (target.pathname === window.location.pathname && target.hash) return;
             var studioRoot = '/s/' + context.org + '/' + context.studio + '/';
             if (link.classList.contains('fw-back-link') || target.pathname === studioRoot) {
                 event.preventDefault();

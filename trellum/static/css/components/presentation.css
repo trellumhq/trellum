@@ -18,3 +18,21 @@
 .fw-slide-text pre { max-width: 100%; overflow-x: auto; }
 @media (max-width: 700px) { .fw-slide--image-text .fw-slide-body { grid-template-columns: minmax(0, 1fr); } }
 @media print { .fw-presentation-toc { display: none; } .fw-presentation .fw-slide { break-inside: avoid; break-before: page; border: none; } }
+.fw-presentation-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; padding: .75rem 0; }
+.fw-presentation-controls button { min-height: 44px; padding: .5rem .8rem; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-card); color: var(--text-main); font: inherit; cursor: pointer; }
+.fw-presentation-controls button:disabled { opacity: .5; cursor: default; }
+.fw-presentation-controls button:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
+.fw-presentation-controls [hidden], .fw-presentation .fw-slide[hidden] { display: none !important; }
+.fw-presentation-position { white-space: nowrap; }
+.fw-presentation-notice { font-size: .85rem; }
+body.fw-presenting { overflow: hidden; }
+body.fw-presenting .fw-header, body.fw-presenting .fw-report-metadata, body.fw-presenting .tl-console-shell,
+body.fw-presenting #assistantLauncher, body.fw-presenting #assistantPanel { display: none !important; }
+body.fw-presenting .fw-presentation { position: fixed; inset: 0; z-index: 10001; box-sizing: border-box; max-width: none; margin: 0; padding: clamp(.75rem, 2vw, 1.5rem); overflow: auto; background: var(--bg-body, var(--bg-card)); display: flex; flex-direction: column; align-items: center; }
+body.fw-presenting .fw-presentation > :not(.fw-presentation-controls):not(.fw-slide) { display: none; }
+body.fw-presenting .fw-presentation-controls { flex: none; width: min(100%, 1440px); }
+body.fw-presenting .fw-presentation .fw-slide { box-sizing: border-box; width: min(100%, 1440px); min-height: min(72vh, 810px); aspect-ratio: 16 / 9; flex: none; margin: auto 0; scroll-margin: 0; }
+body.fw-presenting .fw-slide-evidence img { max-height: 55vh; object-fit: contain; }
+@media (orientation: portrait), (max-width: 700px) { body.fw-presenting .fw-presentation .fw-slide { aspect-ratio: auto; min-height: 0; margin: 0; } body.fw-presenting .fw-slide-evidence img { max-height: none; } }
+@media (prefers-reduced-motion: reduce) { .fw-presentation, .fw-presentation * { scroll-behavior: auto !important; transition: none !important; } }
+@media print { .fw-presentation-controls { display: none !important; } body.fw-presenting .fw-presentation { position: static; display: block; overflow: visible; } body.fw-presenting .fw-presentation .fw-slide[hidden] { display: block !important; } }
