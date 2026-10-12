@@ -1475,7 +1475,9 @@
         }
         if (!entry) {
             entry = el('details', 'assistant-unavailable');
-            entry.appendChild(el('summary', '', 'AI assistant'));
+            var summary = el('summary');
+            summary.innerHTML = SPARK + '<span>AI assistant</span>';
+            entry.appendChild(summary);
             var popover = el('div', 'assistant-unavailable-popover');
             popover.appendChild(el('p', 'assistant-unavailable-reason'));
             popover.appendChild(el('button', 'assistant-unavailable-retry', 'Retry'));

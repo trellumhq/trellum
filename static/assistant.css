@@ -498,7 +498,10 @@
     color: var(--text3, var(--text-muted, #8a8f9d));
 }
 .assistant-unavailable { display: inline-block; position: relative; flex: none; color: var(--tl-console-text2, #687080); font-size: 12px; }
-.assistant-unavailable > summary { display: inline-flex; align-items: center; min-height: 36px; padding: 0 9px; border: 1px solid var(--tl-console-border, rgba(127,127,127,.25)); border-radius: 8px; cursor: pointer; list-style: none; }
+.assistant-unavailable > summary { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 11px; border: 1px solid var(--tl-console-border, rgba(127,127,127,.25)); border-radius: 8px; background: var(--tl-console-card, #fff); color: var(--tl-console-text, #20242c); cursor: pointer; list-style: none; white-space: nowrap; }
+.assistant-unavailable > summary .assistant-spark { flex: none; }
+.assistant-unavailable > summary:hover, .assistant-unavailable[open] > summary { background: var(--tl-console-hover, #f3f4f6); }
+.assistant-unavailable > summary:focus-visible { outline: 2px solid var(--tl-console-link, #175cd3); outline-offset: 2px; }
 .assistant-unavailable > summary::-webkit-details-marker { display: none; }
 .assistant-unavailable[open] { z-index: 101; }
 .assistant-unavailable-popover { position: fixed; top: 64px; right: max(12px, env(safe-area-inset-right)); z-index: 101; display: grid; justify-items: start; gap: 8px; box-sizing: border-box; width: min(320px, calc(100vw - 40px)); max-height: calc(100dvh - 80px); overflow-y: auto; padding: 12px; border: 1px solid var(--tl-console-border, rgba(127,127,127,.25)); border-radius: 8px; background: var(--tl-console-card, #fff); color: var(--tl-console-text, #20242c); box-shadow: 0 8px 24px rgba(0,0,0,.16); white-space: normal; }
@@ -516,6 +519,7 @@
         width: 44px; height: 44px; padding: 0; justify-content: center;
     }
     .assistant-unavailable > summary { min-height: 44px; min-width: 44px; justify-content: center; padding-inline: 7px; }
+    .assistant-unavailable > summary > span { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
     .assistant-unavailable-retry { min-height: 44px; }
     .assistant-setup span { display: none; }
     .assistant-unavailable-popover > .assistant-setup { width: auto; height: auto; min-height: 44px; padding: 0 12px; }
