@@ -3,7 +3,7 @@ non-secret config JSON vs the encrypted credentials JSON. Secret fields are
 write-only: blank on edit = keep the stored value."""
 from __future__ import annotations
 
-from copy import copy
+from copy import copy, deepcopy
 
 from django import forms
 
@@ -122,7 +122,7 @@ class DataSourceForm(forms.Form):
             # No choice to make: the widget disappears from the page.
             self.fields["scope"].widget = forms.HiddenInput()
         for key, field in _CONFIG_FIELDS + _SECRET_FIELDS:
-            self.fields[key] = field
+            self.fields[key] = deepcopy(field)
 
     def clean(self):
         cleaned = super().clean()

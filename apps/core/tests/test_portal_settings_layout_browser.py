@@ -21,6 +21,15 @@ def _theme(html, theme):
 def _assert_layout(page, page_name, html, width, theme):
     page.set_viewport_size({"width": width, "height": 900})
     page.set_content(_theme(_rendered_page(html), theme), wait_until="domcontentloaded")
+    # The normal theme boot may apply an OS/default preference after parsing.
+    # Pin both console and document themes for each explicit visual scenario.
+    page.evaluate("""theme => {
+        document.documentElement.dataset.theme = theme;
+        document.querySelectorAll('[data-console-shell]').forEach(root => {
+            root.dataset.consoleTheme = theme;
+        });
+    }""", theme)
+    assert page.locator("html").get_attribute("data-theme") == theme
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1"), page_name
 
     for rail in page.locator(".ui-form-rail").all():

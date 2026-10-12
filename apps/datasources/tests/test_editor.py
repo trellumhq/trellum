@@ -113,7 +113,7 @@ def test_editor_save_acknowledges_without_probe_and_native_errors_keep_draft(log
     client = login(org_admin)
     response = client.post(editor_url, {"action": "save", "name": "renamed", "type": "postgres", "host": "new"}, HTTP_X_TRELLUM_FORM="1")
     assert response.json()["edit_url"].endswith("/renamed/edit")
-    assert not response.json().get("redirect_url")
+    assert not response.json().get("redirect")
     source.refresh_from_db()
     assert source.name == "renamed" and source.last_check_ok is None
     assert response.json()["revision"] == check_revision(source)
@@ -136,6 +136,16 @@ def test_enhanced_create_returns_to_the_datasource_list(login, org_admin, org, s
     )
     assert response.json()["redirect"] == f"/s/{org.slug}/{studio_tree.slug}/settings/datasources"
     assert DataSource.objects.filter(studio=studio_tree, name="new-source").exists()
+
+
+def test_invalid_connection_field_does_not_mark_a_fresh_form_invalid(login, org_admin, org, studio_tree):
+    client = login(org_admin)
+    url = f"/s/{org.slug}/{studio_tree.slug}/settings/datasources/new"
+    failed = client.post(url, {"name": "draft", "type": "postgres", "port": "invalid"})
+    assert failed.context["form"].fields["port"].widget.attrs["aria-invalid"] == "true"
+    fresh = client.get(url)
+    assert "aria-invalid" not in fresh.context["form"].fields["port"].widget.attrs
+    assert failed.context["form"].fields["port"].widget.attrs["aria-invalid"] == "true"
 
 
 def test_create_form_uses_bounded_grouped_fields_and_labeled_controls(login, org_admin, org, studio_tree):
