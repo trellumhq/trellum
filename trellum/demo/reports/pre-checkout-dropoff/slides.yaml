@@ -1,0 +1,47 @@
+version: 1
+slides:
+  - id: question
+    layout: title
+    title: Where do shoppers drop off before checkout?
+    text: |
+      **Northwind Threads · 31 August–30 September 2026 · Synthetic demo data**
+
+      This presentation follows the filtered cart funnel across all channels
+      and devices. It focuses on the steps before checkout begins.
+
+  - id: product-to-cart
+    layout: image-text
+    title: The largest loss is between product view and cart
+    text: |
+      **73,333** product views led to **13,560** cart additions: **59,773**
+      fewer at the next stage, an **81.5%** drop. This is the largest absolute
+      pre-checkout gap in the selected period.
+
+      The frozen chart shows the active date filter and the full funnel.
+    image: evidence/cart-leak.png
+    alt: Filtered cart funnel showing 132.1 thousand sessions, 73.3 thousand product views, 13.6 thousand cart additions, 6.5 thousand checkout starts, and 3.9 thousand purchases
+
+  - id: cart-to-checkout
+    layout: text
+    title: About half of carts do not reach checkout
+    text: |
+      **13,560** cart additions led to **6,525** checkout starts: **7,035**
+      fewer, a **51.9%** drop at this step.
+
+      The report's **71.5% cart abandonment** measure runs from cart addition
+      all the way to purchase. It includes losses *after* checkout starts, so
+      it should not be used as the cart-to-checkout drop rate.
+
+  - id: next-step
+    layout: text
+    title: Investigate the two pre-checkout gaps
+    text: |
+      - Compare device and acquisition-channel views to see whether either
+        gap is concentrated in a particular segment.
+      - Inspect product-page add-to-cart and cart-to-checkout interactions
+        before choosing a change to test.
+      - Capture a new filtered view for any segment that needs a closer look.
+
+      **Method:** stage totals come from `shop_traffic` for 31 August–30
+      September 2026, matching the captured report filter. These aggregate
+      counts show where shoppers leave the funnel; they do not establish why.

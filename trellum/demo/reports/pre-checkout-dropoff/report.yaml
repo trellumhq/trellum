@@ -1,0 +1,9 @@
+kind: analysis
+slug: pre-checkout-dropoff
+name: Where shoppers drop off before checkout
+description: A presentation investigating shopper drop-off in the Northwind cart funnel using captured, filtered demo evidence.
+studio: northwind
+category: Product
+author: Northwind Analytics (demo)
+tags: [commerce, conversion, funnel]
+format: presentation

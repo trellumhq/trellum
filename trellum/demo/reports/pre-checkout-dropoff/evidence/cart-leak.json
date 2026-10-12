@@ -1,0 +1,22 @@
+{
+  "report_slug": "cart-funnel",
+  "report_name": "Cart Funnel",
+  "url": "http://localhost:8057/cart-funnel/index.html",
+  "component_id": "sec-the-leak",
+  "component_title": "The Leak",
+  "captured_at": "2026-10-12T20:29:31.759Z",
+  "source_built_at": "2026-10-12T20:10:26.755011+00:00",
+  "filters": {
+    "traffic": {
+      "fw_c2_f0": {
+        "column": "event_date",
+        "mode": "range",
+        "value": {
+          "min": "2026-08-31",
+          "max": "2026-09-30"
+        },
+        "flagValue": null
+      }
+    }
+  }
+}
