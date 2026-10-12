@@ -3,116 +3,120 @@
 {% block title %}{% if rule.pk %}Edit alert{% else %}New alert{% endif %} — {{ studio.name }}{% endblock %}
 {% block content %}
 <style>
-/* Native fallback checkbox lists. JavaScript condenses these into pickers. */
-.al-checks > div { display:flex; flex-wrap:wrap; gap:4px 16px; }
-.al-checks label { display:inline-flex; align-items:center; gap:6px; font-size:var(--fs-md); color:var(--text2); }
-.al-checks input { width:auto; }
-.al-radio > div { display:flex; gap:18px; }
-.al-radio label { display:inline-flex; align-items:center; gap:6px; }
-.al-checks [hidden] { display:none!important; }
-.al-timezone-results { max-height:220px; overflow:auto; border:1px solid var(--border); border-radius:var(--r-md); }
-.al-timezone-results button { display:block; width:100%; text-align:left; padding:6px 10px; border:0; background:transparent; color:var(--text); }
-.al-timezone-results button:hover,.al-timezone-results button:focus { background:var(--bg-card); }
+@media (max-width:767px) {
+  #alertForm .ui-form-section input:not([type="checkbox"]):not([type="radio"]),
+  #alertForm .ui-form-section select, #alertForm .ui-form-section textarea {
+    min-height:44px; font-size:16px;
+  }
+}
 </style>
-<link rel="stylesheet" href="{% static 'recipient-picker.css' %}">
-<header class="page-head">
+<header class="page-head ui-form-rail">
   <div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }} · <a href="{{ prefix }}">Alerts</a></div>
   <h1>{% if rule.pk %}Edit “{{ rule.name }}”{% else %}New alert{% endif %}</h1>
+  <p>Choose what to monitor, when to evaluate it and who should receive a notification.</p>
 </header>
 
-<div class="panel">
 <form method="post" id="alertForm" data-alert-editor{% if not rule.pk and not form.is_bound %} data-browser-timezone-default{% endif %}{% if rule.pk %} data-settings-form data-settings-save{% endif %}>
   {% csrf_token %}
   {{ form.non_field_errors }}
-  <div class="ui-form-grid">
-    <div class="ui-field">
-      <label for="id_name">Name</label>
-      {{ form.name }}{{ form.name.errors }}
-    </div>
-    <div class="ui-field">
-      <label for="id_report">Report</label>
-      {{ form.report }}{{ form.report.errors }}
-    </div>
-    <div class="ui-field ui-field-wide">
-      <label for="id_instructions">Instructions</label>
-      {{ form.instructions }}{{ form.instructions.errors }}
-      <span class="ui-help">Describe the condition, time window, scope and currency. For example, a net drain over 48 hours differs from any draining hour; last 60 minutes differs from the last completed clock hour. Blank means “tell me if anything looks off”.</span>
-    </div>
+  <div class="ui-form-rail">
+    <section class="ui-form-section">
+      <h2>Alert details</h2>
+      <div class="ui-form-row">
+        <div class="ui-field">
+          <label for="id_name">Name</label>
+          {{ form.name }}{{ form.name.errors }}
+        </div>
+        <div class="ui-field" data-choice-picker>
+          <label for="id_report">Report</label>
+          {{ form.report }}{{ form.report.errors }}
+        </div>
+      </div>
+      <div class="ui-field ui-field-wide">
+        <label for="id_instructions">Instructions</label>
+        {{ form.instructions }}{{ form.instructions.errors }}
+        <span class="ui-help">Describe the condition, time window, scope and currency. For example, a net drain over 48 hours differs from any draining hour; last 60 minutes differs from the last completed clock hour. Blank means “tell me if anything looks off”.</span>
+      </div>
+    </section>
 
-    <div class="ui-field ui-field-wide al-radio">
-      <label>Trigger</label>
-      {{ form.trigger }}{{ form.trigger.errors }}
-    </div>
-    <div class="ui-field" data-schedule>
-      <label for="id_freq">Frequency</label>
-      {{ form.freq }}{{ form.freq.errors }}
-    </div>
-    <div class="ui-field" data-schedule data-not-hourly>
-      <label for="id_send_hour">{{ form.send_hour.label }}</label>
-      {{ form.send_hour }}{{ form.send_hour.errors }}
-    </div>
-    <div class="ui-field" data-schedule>
-      <label for="id_send_minute">{{ form.send_minute.label }}</label>
-      {{ form.send_minute }}{{ form.send_minute.errors }}
-    </div>
-    <div class="ui-field" data-schedule data-freq="weekly">
-      <label for="id_weekday">Day</label>
-      {{ form.weekday }}{{ form.weekday.errors }}
-    </div>
-    <div class="ui-field" data-schedule data-freq="monthly">
-      <label for="id_month_day">{{ form.month_day.label }}</label>
-      {{ form.month_day }}{{ form.month_day.errors }}
-    </div>
-    <div class="ui-field">
-      <label for="id_timezone">Timezone</label>
-      {{ form.timezone }}{{ form.timezone.errors }}
-      <div data-timezone-picker data-timezones="{% for tz in form.timezones %}{{ tz }}{% if not forloop.last %},{% endif %}{% endfor %}" hidden></div>
-    </div>
+    <section class="ui-form-section">
+      <h2>Evaluation schedule</h2>
+      <div class="ui-field al-radio">
+        <label>Trigger</label>
+        {{ form.trigger }}{{ form.trigger.errors }}
+      </div>
+      <div class="ui-form-row">
+        <div class="ui-field" data-schedule>
+          <label for="id_freq">Frequency</label>
+          {{ form.freq }}{{ form.freq.errors }}
+        </div>
+        <div class="ui-field" data-schedule data-not-hourly>
+          <label for="id_send_time">Local time</label>
+          {{ form.send_time }}{{ form.send_time.errors }}
+        </div>
+        <div class="ui-field" data-schedule data-hourly>
+          <label for="id_hourly_minute">Minute past the hour</label>
+          {{ form.hourly_minute }}{{ form.hourly_minute.errors }}
+        </div>
+        <div class="ui-field" data-schedule data-freq="weekly">
+          <label for="id_weekday">Day of week</label>
+          {{ form.weekday }}{{ form.weekday.errors }}
+        </div>
+        <div class="ui-field narrow" data-schedule data-freq="monthly">
+          <label for="id_month_day">Day of month</label>
+          {{ form.month_day }}{{ form.month_day.errors }}
+        </div>
+        <div class="ui-field" data-schedule data-choice-picker>
+          <label for="id_timezone">Timezone</label>
+          {{ form.timezone }}{{ form.timezone.errors }}
+          <span class="ui-help"{% if not rule.pk and not form.is_bound %} data-timezone-default-help{% endif %}>{% if not rule.pk and not form.is_bound %}Defaults to UTC if the browser timezone is unavailable; you can change it.{% else %}Schedule time uses this timezone.{% endif %}</span>
+        </div>
+      </div>
+      {{ form.send_hour.as_hidden }}{{ form.send_minute.as_hidden }}
+      {% if form.send_hour.errors or form.send_minute.errors %}<div class="ui-field-errors" role="alert">{{ form.send_hour.errors }}{{ form.send_minute.errors }}</div>{% endif %}
+    </section>
 
-    <div class="ui-field ui-field-wide al-checks" data-recipient-picker>
-      <label>{{ form.recipient_roles.label }}</label>
-      {{ form.recipient_roles }}{{ form.recipient_roles.errors }}
-    </div>
-    {% if form.recipient_groups %}
-    <div class="ui-field ui-field-wide al-checks" data-recipient-picker>
-      <label>Permission groups</label>
-      {{ form.recipient_groups }}{{ form.recipient_groups.errors }}
-    </div>
-    {% else %}
-    <div class="ui-field ui-field-wide al-checks">
-      <label>Permission groups</label>
-      <p class="ui-help">No permission groups are available.</p>
-    </div>
-    {% endif %}
-    <div class="ui-field ui-field-wide al-checks" data-recipient-picker>
-      <label>{{ form.recipients.label }}</label>
-      {{ form.recipients }}{{ form.recipients.errors }}
-      <span class="ui-help">Recipients are always limited to people who can see this studio.</span>
-    </div>
+    <section class="ui-form-section">
+      <h2>Recipients</h2>
+      <div class="ui-field ui-field-wide" data-recipient-picker>
+        <label>People, roles and groups</label>
+        <div data-recipient-type="people" class="al-checks">{{ form.recipients }}{{ form.recipients.errors }}</div>
+        <div data-recipient-type="roles" class="al-checks">{{ form.recipient_roles }}{{ form.recipient_roles.errors }}</div>
+        {% if form.recipient_groups %}<div data-recipient-type="groups" class="al-checks">{{ form.recipient_groups }}{{ form.recipient_groups.errors }}</div>
+        {% else %}<p class="ui-help">No permission groups are available.</p>{% endif %}
+        <span class="ui-help">People are limited to members who can see this studio.</span>
+      </div>
+    </section>
 
-    <div class="ui-field narrow">
-      <label for="id_cooldown_hours">{{ form.cooldown_hours.label }}</label>
-      {{ form.cooldown_hours }}{{ form.cooldown_hours.errors }}
-      <span class="ui-help">Minimum time since an accepted delivery. 0 removes the time gate; duplicate triggers remain suppressed. Evaluations continue during cooldown and consume assistant budget so recovery can be observed.</span>
-      {% if rule.next_eligible_at %}<span class="ui-help">Next eligible time: {{ rule.next_eligible_at|date:"Y-m-d H:i T" }}. Delivery requires a met condition at an eligible evaluation.</span>{% endif %}
-    </div>
-    <div class="ui-field">
-      <label for="id_notification_policy">Notification policy</label>
-      {{ form.notification_policy }}{{ form.notification_policy.errors }}
-      <span class="ui-help">Once per episode waits for recovery before another accepted alert. Unknown evidence does not count as recovery.</span>
-    </div>
-    <div class="ui-field">
-      <label class="ui-check-row" style="margin-top:22px">{{ form.enabled }} Enabled</label>
-    </div>
+    <section class="ui-form-section">
+      <h2>Notification rules</h2>
+      <div class="ui-form-row">
+        <div class="ui-field narrow">
+          <label for="id_cooldown_hours">{{ form.cooldown_hours.label }}</label>
+          {{ form.cooldown_hours }}{{ form.cooldown_hours.errors }}
+          <span class="ui-help">Minimum time since an accepted delivery. 0 removes the time gate; duplicate triggers remain suppressed. Evaluations continue during cooldown and consume assistant budget so recovery can be observed.</span>
+          {% if rule.next_eligible_at %}<span class="ui-help">Next eligible time: {{ rule.next_eligible_at|date:"Y-m-d H:i T" }}. Delivery requires a met condition at an eligible evaluation.</span>{% endif %}
+        </div>
+        <div class="ui-field">
+          <label for="id_notification_policy">Notification policy</label>
+          {{ form.notification_policy }}{{ form.notification_policy.errors }}
+          <span class="ui-help">Once per episode waits for recovery before another accepted alert. Unknown evidence does not count as recovery.</span>
+        </div>
+        <div class="ui-field">
+          <label class="ui-check-row">{{ form.enabled }} Enabled</label>
+        </div>
+      </div>
+    </section>
+
     <div class="ui-form-actions">
-      <button class="ui-btn primary" type="submit">{% if rule.pk %}Save{% else %}Create alert{% endif %}</button>
-      <button class="ui-btn" type="submit" name="action" value="preview" data-alert-preview>Test draft</button>
+      <button class="ui-btn primary" type="submit">{% if rule.pk %}Save alert{% else %}Create alert{% endif %}</button>
+      <button class="ui-btn ghost" type="submit" name="action" value="preview" data-alert-preview>Test draft</button>
       <a class="ui-btn ghost" href="{{ prefix }}">Cancel</a>
-      <span class="muted">Draft tests are billed to you. Saving keeps the rule's current owner. Preview history is isolated from live history; no mail or budget warning is sent.</span>
+      <span class="ui-help">Draft tests are billed to you. Saving keeps the rule’s current owner. Preview history is isolated from live history; no mail or budget warning is sent.</span>
     </div>
   </div>
 </form>
-<section id="alertPreview" class="panel" aria-live="polite" aria-busy="false"{% if not result %} hidden{% endif %}>
+<section id="alertPreview" class="panel ui-form-rail" aria-live="polite" aria-busy="false"{% if not result %} hidden{% endif %}>
   {% if result %}
   <p class="muted">Preview only. No delivery or budget warning was sent.</p>
   <h2>Draft test · {{ result.condition }}</h2>
@@ -125,12 +129,8 @@
   {% if result.error %}<p role="alert">{{ result.error }}</p>{% endif %}
   {% endif %}
 </section>
-</div>
-<script src="{% static 'recipient-picker.js' %}"></script>
 <script src="{% static 'alert-editor.js' %}"></script>
 <script>
-/* Show the schedule fields only when the trigger is a schedule, and only the
-   ones the frequency uses. Progressive: without scripting every field shows. */
 (function () {
   var form = document.getElementById('alertForm');
   function sync() {
@@ -140,7 +140,9 @@
       var on = trigger === 'schedule';
       if (el.hasAttribute('data-freq')) on = on && el.getAttribute('data-freq') === freq;
       if (el.hasAttribute('data-not-hourly')) on = on && freq !== 'hourly';
+      if (el.hasAttribute('data-hourly')) on = on && freq === 'hourly';
       el.hidden = !on;
+      el.querySelectorAll('input,select').forEach(function (field) { field.disabled = !on; });
     });
   }
   form.addEventListener('change', sync);

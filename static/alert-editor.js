@@ -8,61 +8,19 @@
   var interaction = 0, interactionAtStart = 0, previewRunning = false;
 
   var timezone = form.querySelector('#id_timezone');
-  var timezoneData = form.querySelector('[data-timezone-picker]');
-  if (timezone && timezoneData) {
-    var zones = timezoneData.dataset.timezones.split(',');
-    var choices = document.createElement('div');
-    choices.className = 'al-timezone-results'; choices.hidden = true;
-    choices.setAttribute('role', 'group'); choices.setAttribute('aria-label', 'Supported timezones');
-    timezoneData.hidden = false;
-    timezoneData.appendChild(choices);
-    timezone.removeAttribute('list');
-    var suppressTimezoneFocus = false;
-    function timezoneResults() {
-      var query = timezone.value.trim().toLocaleLowerCase();
-      choices.replaceChildren();
-      if (!query) { choices.hidden = true; return; }
-      var matches = zones.filter(function (zone) { return zone.toLocaleLowerCase().indexOf(query) >= 0; }).slice(0, 50);
-      matches.forEach(function (zone) {
-        var option = document.createElement('button'); option.type = 'button';
-        option.textContent = zone;
-        option.addEventListener('click', function () {
-          timezone.value = zone;
-          timezone.dispatchEvent(new Event('input', { bubbles: true }));
-          timezone.dispatchEvent(new Event('change', { bubbles: true }));
-          choices.hidden = true;
-        });
-        choices.appendChild(option);
-      });
-      choices.hidden = !matches.length;
-    }
-    timezone.addEventListener('focus', function () {
-      if (suppressTimezoneFocus) { suppressTimezoneFocus = false; return; }
-      timezoneResults();
-    });
-    timezone.addEventListener('input', timezoneResults);
-    timezone.addEventListener('keydown', function (event) {
-      if (event.key === 'Escape') choices.hidden = true;
-      if (event.key === 'ArrowDown' && !choices.hidden) { event.preventDefault(); var first = choices.querySelector('button'); if (first) first.focus(); }
-    });
-    choices.addEventListener('keydown', function (event) {
-      if (event.key === 'Escape') {
-        choices.hidden = true;
-        suppressTimezoneFocus = true;
-        timezone.focus();
+  if (timezone && form.hasAttribute('data-browser-timezone-default')) {
+    var timezoneHelp = form.querySelector('[data-timezone-default-help]');
+    try {
+      var browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (browserZone && Array.prototype.some.call(timezone.options, function (option) { return option.value === browserZone; })) {
+        timezone.value = browserZone;
+        if (timezone._trellumChoice) timezone._trellumChoice.refresh();
+        if (timezoneHelp) timezoneHelp.textContent = 'Defaults to this browser’s timezone (' + browserZone.replace(/_/g, ' ') + '); you can change it.';
+      } else if (timezoneHelp) {
+        timezoneHelp.textContent = 'Browser timezone unavailable; using UTC. You can change it.';
       }
-    });
-    document.addEventListener('click', function (event) {
-      if (!timezoneData.contains(event.target) && event.target !== timezone) choices.hidden = true;
-    });
-    if (form.hasAttribute('data-browser-timezone-default') && !form.dataset.timezoneDefaultApplied) {
-      form.dataset.timezoneDefaultApplied = '1';
-      try {
-        var browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        if (zones.indexOf(browserZone) >= 0) {
-          timezone.value = browserZone;
-        }
-      } catch (error) { /* Keep the server's UTC fallback for unknown browser zones. */ }
+    } catch (error) {
+      if (timezoneHelp) timezoneHelp.textContent = 'Browser timezone unavailable; using UTC. You can change it.';
     }
   }
 

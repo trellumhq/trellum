@@ -86,6 +86,54 @@ class TestGating:
 
 
 class TestForm:
+    @pytest.mark.parametrize(("freq", "weekday", "month_day"), [
+        ("daily", 0, 1), ("weekdays", 0, 1), ("weekly", 4, 1), ("monthly", 0, 28),
+    ])
+    def test_native_schedule_time_keeps_minute_precision(self, login, owner, rule, prefix, freq, weekday, month_day):
+        response = login(owner).post(f"{prefix}/new", _form(
+            rule, name=f"Minute schedule {freq}", trigger="schedule", freq=freq,
+            send_time="17:43", weekday=weekday, month_day=month_day,
+        ))
+        assert response.status_code == 302
+        saved = AlertRule.objects.get(name=f"Minute schedule {freq}")
+        assert (saved.freq, saved.send_hour, saved.send_minute) == (freq, 17, 43)
+        assert saved.weekday == weekday and saved.month_day == month_day
+
+    def test_hourly_schedule_uses_explicit_minute_past_hour(self, login, owner, rule, prefix):
+        response = login(owner).post(f"{prefix}/new", _form(
+            rule, name="Hourly minute schedule", trigger="schedule", freq="hourly",
+            send_minute=0, send_time="08:00", hourly_minute=37,
+        ))
+        assert response.status_code == 302
+        saved = AlertRule.objects.get(name="Hourly minute schedule")
+        assert saved.freq == "hourly" and saved.send_minute == 37
+
+    def test_midnight_time_is_preserved(self, login, owner, rule, prefix):
+        response = login(owner).post(f"{prefix}/new", _form(
+            rule, name="Midnight schedule", trigger="schedule", freq="daily", send_time="00:05",
+        ))
+        assert response.status_code == 302
+        saved = AlertRule.objects.get(name="Midnight schedule")
+        assert (saved.send_hour, saved.send_minute) == (0, 5)
+
+    def test_blank_new_clock_value_does_not_fall_back_to_legacy_integer_fields(self, login, owner, rule, prefix):
+        response = login(owner).post(f"{prefix}/new", _form(
+            rule, trigger="schedule", freq="daily", send_time="", send_hour=8, send_minute=0,
+        ))
+        assert response.status_code == 200
+        assert "Enter a local time." in response.content.decode()
+
+    def test_saved_timezone_alias_remains_an_available_choice(self, login, owner, rule, prefix, monkeypatch):
+        from apps.alerts import forms
+
+        rule.timezone = "US/Pacific"
+        rule.save(update_fields=["timezone"])
+        zones = forms.available_timezones()
+        monkeypatch.setattr(forms, "available_timezones", lambda: zones - {"US/Pacific"})
+        response = login(owner).get(f"{prefix}/{rule.pk}/edit")
+        assert response.status_code == 200
+        assert '<option value="US/Pacific" selected' in response.content.decode()
+
     def test_developer_creates_a_rule(self, login, owner, rule, prefix, viewer):
         c = login(owner)
         resp = c.post(f"{prefix}/new", _form(

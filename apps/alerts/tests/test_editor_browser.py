@@ -1,8 +1,8 @@
 from pathlib import Path
 
 import pytest
-from django.test import Client
 from django.core import mail
+from django.test import Client
 from playwright.sync_api import expect, sync_playwright
 
 from apps.alerts.models import AlertRule, AlertRun
@@ -165,41 +165,45 @@ def test_browser_recipient_and_timezone_pickers(engine, rule, login):
         page.route("**/*", lambda route: route.abort())
         page.route("http://example.test" + url, lambda route: route.fulfill(body=html, content_type="text/html"))
         page.goto("http://example.test" + url)
+        page.add_script_tag(content=(ROOT / "static/choice-picker.js").read_text(encoding="utf-8"))
         page.add_script_tag(content=(ROOT / "static/recipient-picker.js").read_text(encoding="utf-8"))
         page.add_script_tag(content=(ROOT / "static/alert-editor.js").read_text(encoding="utf-8"))
         assert page.locator("#id_timezone").input_value() == "Europe/Amsterdam"
+        expect(page.locator("[data-timezone-default-help]")).to_contain_text("Europe/Amsterdam")
+        expect(page.locator("[data-alert-preview-status]")).to_have_count(0)
         assert page.locator("#alertForm").get_attribute("data-browser-timezone-default") is not None
-        timezone = page.locator("#id_timezone")
-        timezone.fill("Europe/Lond")
-        timezone.press("ArrowDown")
-        page.keyboard.press("Escape")
-        expect(page.locator("[data-timezone-picker] .al-timezone-results")).to_be_hidden()
-        timezone.fill("Europe/Lond")
-        timezone.press("ArrowDown")
-        page.keyboard.press("Enter")
-        expect(timezone).to_have_value("Europe/London")
+        page.locator('input[name="trigger"][value="schedule"]').check()
+        timezone_picker = page.locator("[data-choice-picker]").nth(1)
+        timezone_picker.locator(".ui-picker-trigger").click()
+        search = timezone_picker.locator(".ui-picker-search")
+        expect(search).to_be_visible()
+        search.fill("Europe/Lond")
+        timezone_picker.locator(".ui-picker-option").filter(has_text="Europe/London").click()
+        expect(page.locator("#id_timezone")).to_have_value("Europe/London")
 
-        field = page.locator("[data-recipient-picker]").last
-        search = field.locator("input[type=search]")
-        assert field.locator(".recipient-picker-results label").evaluate_all(
+        field = page.locator("[data-recipient-picker]")
+        field.locator(".ui-picker-trigger").click()
+        field.locator("[data-recipient-filter=people]").click()
+        search = field.locator(".ui-picker-search")
+        assert field.locator(".recipient-picker-option").evaluate_all(
             "labels => labels.filter(label => !label.hidden).length"
-        ) == 50
+        ) == 101
         search.fill("person 99")
-        assert field.locator(".recipient-picker-results label").evaluate_all(
+        assert field.locator(".recipient-picker-option").evaluate_all(
             "labels => labels.filter(label => !label.hidden).length"
         ) == 1
-        choice = field.locator(".recipient-picker-results label:visible input")
+        choice = field.locator(".recipient-picker-option:visible input")
         choice.click()
         expect(choice).to_be_checked()
         search.fill("nobody")
-        assert field.locator(".recipient-picker-results label").evaluate_all(
+        assert field.locator(".recipient-picker-option").evaluate_all(
             "labels => labels.filter(label => !label.hidden).length"
         ) == 0
-        expect(field.locator(".recipient-picker-empty")).to_have_text("No matches.")
+        expect(field.locator(".ui-picker-message")).to_have_text("No matches.")
         expect(field.locator(".recipient-picker-selected")).to_contain_text("Person 99")
         assert page.locator("#alertForm").evaluate("form => new FormData(form).getAll('recipients')").count("picker-test-99") == 1
         field.locator(".recipient-picker-selected button").click()
-        expect(search).to_be_focused()
+        expect(field.locator(".ui-picker-trigger")).to_be_focused()
         assert page.locator("#alertForm").evaluate("form => new FormData(form).getAll('recipients')").count("picker-test-99") == 0
 
         unknown = context.new_page()
@@ -211,6 +215,67 @@ def test_browser_recipient_and_timezone_pickers(engine, rule, login):
         unknown.goto("http://example.test" + url)
         unknown.add_script_tag(content=(ROOT / "static/alert-editor.js").read_text(encoding="utf-8"))
         expect(unknown.locator("#id_timezone")).to_have_value("UTC")
+        expect(unknown.locator("[data-timezone-default-help]")).to_contain_text("using UTC")
+        browser.close()
+
+
+def test_alert_editor_layout_desktop_mobile_and_dark(rule, login, tmp_path):
+    url = f"/s/{rule.org.slug}/{rule.studio.slug}/alerts/new"
+    html = login(rule.created_by).get(url).content.decode()
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1440, "height": 1000})
+        page.route("**/*", lambda route: route.abort())
+        page.route("http://example.test" + url, lambda route: route.fulfill(body=html, content_type="text/html"))
+        page.goto("http://example.test" + url)
+        for name in ("themes.generated.css", "ui.css", "console-shell.css", "choice-picker.css", "recipient-picker.css"):
+            page.add_style_tag(content=(ROOT / "static" / name).read_text(encoding="utf-8"))
+        page.locator('[data-recipient-type="people"]').evaluate("""group => {
+          for (let i=0; i<120; i++) {
+            const label=document.createElement('label'), input=document.createElement('input');
+            input.type='checkbox'; input.name='recipients'; input.value='visual-'+i;
+            input.dataset.recipientName='Person '+i; input.dataset.recipientIdentity='person'+i+'@example.test';
+            label.append(input, document.createTextNode('Person '+i)); group.append(label);
+          }
+        }""")
+        page.add_script_tag(content=(ROOT / "static/choice-picker.js").read_text(encoding="utf-8"))
+        page.add_script_tag(content=(ROOT / "static/recipient-picker.js").read_text(encoding="utf-8"))
+        page.add_script_tag(content=(ROOT / "static/alert-editor.js").read_text(encoding="utf-8"))
+        page.locator("html").evaluate("node => node.setAttribute('data-theme', 'light')")
+        rail = page.locator("form .ui-form-rail")
+        assert rail.evaluate("node => node.getBoundingClientRect().width") <= 760
+        page.locator('input[name="trigger"][value="schedule"]').check()
+        page.locator('[name="freq"]').select_option("weekly")
+        expect(page.locator('[name="send_time"]')).to_be_visible()
+        expect(page.locator('[name="weekday"]')).to_be_visible()
+        expect(page.locator('[data-hourly]')).to_be_hidden()
+        expect(page.locator('[data-freq="monthly"]')).to_be_hidden()
+        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        page.screenshot(path=str(tmp_path / "alerts-desktop-light.png"), full_page=True)
+        field = page.locator("[data-recipient-picker]")
+        field.locator(".ui-picker-trigger").click()
+        assert field.locator(".recipient-picker-option").count() >= 120
+        assert field.locator(".ui-picker-options").evaluate("node => node.scrollHeight > node.clientHeight")
+        page.screenshot(path=str(tmp_path / "alerts-desktop-picker.png"))
+
+        page.set_viewport_size({"width": 390, "height": 844})
+        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        assert page.locator('[name="send_time"]').evaluate("node => node.getBoundingClientRect().height") >= 44
+        popup_rect = field.locator(".ui-picker-popup").evaluate("""node => {
+          const r=node.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom];
+        }""")
+        assert popup_rect[0] >= 0 and popup_rect[1] >= 0
+        assert popup_rect[2] <= 390 and popup_rect[3] <= 844
+        page.screenshot(path=str(tmp_path / "alerts-mobile-picker.png"))
+        field.locator(".ui-picker-done").click()
+        page.screenshot(path=str(tmp_path / "alerts-mobile-light.png"), full_page=True)
+
+        page.locator("html").evaluate("node => node.setAttribute('data-theme', 'dark')")
+        assert not page.locator('[data-choice-picker] .ui-picker-trigger').first.is_disabled()
+        assert not field.locator(".ui-picker-trigger").is_disabled()
+        expect(page.locator("[data-alert-preview]")).to_be_enabled()
+        page.screenshot(path=str(tmp_path / "alerts-mobile-dark.png"), full_page=True)
+        print(f"Alert layout screenshots: {tmp_path}")
         browser.close()
 
 
