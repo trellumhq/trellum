@@ -628,6 +628,19 @@ body.mgmt select:not([multiple]):not([size]) {
 body.mgmt input[type="checkbox"], body.mgmt input[type="radio"] { width: auto; }
 
 /* ── Form layout ─────────────────────────────────────────────────────────── */
+.ui-form-rail { width:100%; max-width:760px; min-width:0; margin-inline:auto; }
+.ui-form-section {
+    min-width:0; padding:24px; margin-bottom:24px;
+    border:1px solid var(--border); border-radius:10px; background:var(--bg-card);
+}
+.ui-form-section > :first-child { margin-top:0; }
+.ui-form-row { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px; align-items:start; }
+.ui-form-row > .ui-field-wide { grid-column:1 / -1; }
+.ui-form-section .ui-field { margin-bottom:16px; }
+@media (max-width:767px) {
+    .ui-form-section { padding:16px; margin-bottom:16px; }
+    .ui-form-row { grid-template-columns:minmax(0, 1fr); }
+}
 /* Two columns once there is room, one below. Replaces the old .formrow, which
    pinned every form to a 460px strip regardless of page width. */
 .ui-form-grid {
