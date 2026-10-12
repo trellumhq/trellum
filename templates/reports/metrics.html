@@ -25,13 +25,12 @@
    reach, and a filter box the width of the whole grid reads as a form. */
 #metSearch { max-width:320px; }
 .met-count { margin:0; font-size:var(--fs-md); color:var(--text3); }
-.met-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:14px; }
+.met-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(320px,100%),1fr)); gap:14px; }
 /* .met-card sets display:flex, which outranks the UA's own [hidden] rule --
    this is what makes the filter's `card.hidden = true` actually hide it. */
 .met-card[hidden] { display:none; }
 #metWorkspace { display:block; width:100%; height:700px; border:0; }
 .met-definitions { margin-top:24px; }
-.met-definitions > summary { cursor:pointer; font-weight:600; margin-bottom:16px; }
 .met-card {
   display:flex; flex-direction:column; gap:14px; padding:18px 20px;
   background:var(--bg-card); border:1px solid var(--border); border-radius:var(--r-lg);
@@ -150,13 +149,45 @@ body.mgmt main .met-modal.met-compact .met-modal-head h2 { font-size:13px; }
 /* [hidden] is the open/closed switch, and these set an explicit display
    that would otherwise win over the UA's [hidden] rule. */
 .met-modal[hidden], .met-modal-foot a[hidden], .met-modal-body iframe[hidden] { display:none; }
+.met-tabs { display:flex; gap:6px; margin:0 0 18px; border-bottom:1px solid var(--border); }
+.met-tabs a { padding:8px 12px; color:var(--text2); text-decoration:none; border-bottom:2px solid transparent; }
+.met-tabs a[aria-current="page"] { color:var(--text); border-color:var(--accent); font-weight:600; }
+.met-definitions h2 { margin:18px 0 14px; font-size:var(--fs-lg); }
 </style>
 
-{% if defined_count == 0 %}
-<header class="page-head">
-  <div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }}</div>
-  <h1>Metrics</h1>
+<header class="page-head-row">
+  <div>
+    <div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }}</div>
+    <h1>Metrics</h1>
+    {% if defined_count %}
+    <p class="muted page-sub">
+      Defined in <code>metrics.yaml</code>{% if synced_at %} · synced {{ synced_at|timesince }} ago{% endif %} ·
+      <b>{{ defined_count }} defined, {{ claimed_count }} claimed by report{{ claimed_count|pluralize }}</b>
+    </p>
+    {% endif %}
+  </div>
+  {% if metrics_section == "comparison" and metrics_report_built %}
+  <span class="spacer"></span>
+  <a class="ui-btn ghost" href="{{ metrics_report_url }}">Open full report →</a>
+  {% endif %}
 </header>
+<nav class="met-tabs" aria-label="Metrics sections">
+  <a href="{% url 'studio-metrics' org.slug studio.slug %}"{% if metrics_section != "comparison" %} aria-current="page"{% endif %}>Overview</a>
+  <a href="{% url 'studio-metrics-comparison' org.slug studio.slug %}"{% if metrics_section == "comparison" %} aria-current="page"{% endif %}>Comparison</a>
+</nav>
+{% if storage_unavailable %}
+<div class="ui-flash warning" role="alert" style="margin:0 0 14px">
+  Report storage is unreachable right now — usage below may be missing recent builds until it recovers.
+</div>
+{% endif %}
+{% if metrics_section == "comparison" %}
+  {% if metrics_report_built %}
+  <iframe id="metWorkspace" src="{{ metrics_report_url }}?workspace=1" title="Metrics chart workspace"></iframe>
+  <script src="{% static 'metrics_workspace.js' %}"></script>
+  {% else %}
+  <div class="panel"><div class="ui-empty">The comparison workspace appears once the generated Metrics report is built.</div></div>
+  {% endif %}
+{% elif defined_count == 0 %}
 <div class="panel">
   <div class="ui-empty">
     No metrics defined in this studio yet.<br>
@@ -167,41 +198,8 @@ body.mgmt main .met-modal.met-compact .met-modal-head h2 { font-size:13px; }
   </div>
 </div>
 {% else %}
-
-{% comment %}The catalog is the definitions; the generated Metrics report is
-the same metrics drawn side by side. Linked, not duplicated — and only once
-it has been built, since an unbuilt report is a dead link (the overlay says
-the same thing per metric).{% endcomment %}
-<header class="page-head-row">
-  <div>
-    <div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }}</div>
-    <h1>Metrics</h1>
-    <p class="muted page-sub">
-      Defined in <code>metrics.yaml</code>{% if synced_at %} · synced {{ synced_at|timesince }} ago{% endif %} ·
-      <b>{{ defined_count }} defined, {{ claimed_count }} claimed by report{{ claimed_count|pluralize }}</b>
-    </p>
-  </div>
-  <span class="spacer"></span>
-  {% if metrics_report_built %}
-  <a class="ui-btn ghost" href="{{ metrics_report_url }}">Open full report →</a>
-  {% else %}
-  <span class="muted" style="font-size:var(--fs-sm)">Chart overview appears once the Metrics report is built.</span>
-  {% endif %}
-</header>
-
-{% if storage_unavailable %}
-<div class="ui-flash warning" role="alert" style="margin:0 0 14px">
-  Report storage is unreachable right now — usage below may be missing recent builds until it recovers.
-</div>
-{% endif %}
-
-{% if metrics_report_built %}
-<iframe id="metWorkspace" src="{{ metrics_report_url }}?workspace=1" title="Metrics chart workspace"></iframe>
-<script src="{% static 'metrics_workspace.js' %}"></script>
-{% endif %}
-<details class="met-definitions" {% if not metrics_report_built %}open{% endif %}>
-  <summary>Metric definitions and report usage</summary>
-
+<section class="met-definitions" aria-labelledby="metDefinitionsTitle">
+  <h2 id="metDefinitionsTitle">Metric definitions and report usage</h2>
 {% comment %}Filtering the cards that are already here (metrics_overlay.js).
 data-search is built from exactly the fields worth matching -- name,
 identifier, description, tags, owner -- rather than the card's own
@@ -213,12 +211,6 @@ query that hits everything.{% endcomment %}
          placeholder="Filter metrics…">
   <p class="met-count" id="metCount" role="status" aria-live="polite"></p>
 </div>
-<form id="metCompare" action="{% url 'metric-comparison' org.slug studio.slug %}" method="get" style="margin-bottom:16px">
-  <button class="ui-btn" id="metCompareOpen" disabled>Compare selected metrics</button>
-  <button class="ui-btn ghost" type="reset">Clear selection</button>
-  <span id="metCompareStatus" role="status" aria-live="polite">Select two metrics below.</span>
-</form>
-
 <div class="met-grid">
   {% for m in metrics %}
   <div class="met-card" data-metric="{{ m.row.name }}"
@@ -234,7 +226,6 @@ query that hits everything.{% endcomment %}
       type, so it belongs with the name rather than competing with the
       tags.{% endcomment %}
       <div class="met-id">{{ m.row.name }} · v{{ m.row.version }} · {{ m.row.format }}</div>
-      <label><input type="checkbox" class="met-compare-choice" value="{{ m.row.name }}" aria-label="Compare {{ m.row.label|default:m.row.name }}"> Compare</label>
       {% if m.spark %}
       <svg class="met-spark" width="{{ spark_w }}" height="{{ spark_h }}"
            viewBox="0 0 {{ spark_w }} {{ spark_h }}" aria-hidden="true" focusable="false">
@@ -296,8 +287,7 @@ query that hits everything.{% endcomment %}
 <div class="ui-empty" id="metEmpty" hidden>No metric matches that filter.</div>
 <div class="met-foot">Read-only — the source of truth is <code>metrics.yaml</code> in this studio's repository; changes arrive on the next sync.
   {% if repo_url %}<a href="{{ repo_url }}" rel="noopener">Edit via pull request ↗</a>{% else %}Edit via pull request.{% endif %}</div>
-</details>
-
+</section>
 {% comment %}One metric, opened over the catalog: its own block from the
 generated metrics report (framed with ?only=metric-<id>, see
 trellum.metrics_report) next to the facts the row already carries. Not built,

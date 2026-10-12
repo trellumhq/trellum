@@ -37,6 +37,8 @@ CONSOLE_PAGE_TITLES = {
     "studio-operations": "Operations",
     "studio-analytics": "Report Analytics",
     "studio-metrics": "Metrics",
+    "studio-metrics-comparison": "Metrics",
+    "metric-comparison": "Metrics",
     "studio-experiments": "Experiments",
     "studio-annotations": "Annotations",
     "studio-alerts": "Alerts",

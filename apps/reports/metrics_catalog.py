@@ -415,7 +415,7 @@ def studio_metrics_overview(studio) -> dict:
 
 @require_studio_role(roles.VIEWER)
 @require_full_studio_visibility
-def metrics_page(request, org_slug, studio_slug):
+def metrics_page(request, org_slug, studio_slug, section="overview"):
     from apps.studios.models import StudioRepo
 
     data = studio_metrics_overview(request.studio)
@@ -431,6 +431,7 @@ def metrics_page(request, org_slug, studio_slug):
         {
             "org": request.org,
             "studio": request.studio,
+            "metrics_section": section,
             "metrics": data["metrics"],
             "synced_at": data["synced_at"],
             "defined_count": data["defined_count"],
@@ -496,6 +497,7 @@ def metric_comparison(request, org_slug, studio_slug):
         "metrics": data["metrics"], "metrics_report_built": data["metrics_report_built"],
         "comparison_url": reverse("metric-comparison", args=[org_slug, studio_slug]),
         "catalog_url": reverse("studio-metrics", args=[org_slug, studio_slug]),
+        "workspace_url": reverse("studio-metrics-comparison", args=[org_slug, studio_slug]),
         "state": {"a": ids[0], "b": ids[1], "from": dates[0], "to": dates[1],
                   "split_a": splits[0], "split_b": splits[1]},
     })

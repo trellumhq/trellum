@@ -1,7 +1,7 @@
 #fwMetricsWorkspace { display:flex; flex-wrap:wrap; align-items:start; gap:12px; margin-bottom:20px; }
 #fwMetricsWorkspace details { flex:1; }
 #fwMetricsWorkspace summary { cursor:pointer; }
-#fwMetricsShowAll { background:var(--bg-card); color:var(--text-main); border:1px solid var(--border-color); border-radius:var(--radius-control); padding:4px 10px; cursor:pointer; }
+#fwMetricsShowAll, #fwMetricsHideAll { background:var(--bg-card); color:var(--text-main); border:1px solid var(--border-color); border-radius:var(--radius-control); padding:4px 10px; cursor:pointer; }
 .fw-metric-focus { color:var(--accent-blue); font-size:var(--font-size-label); }
 .fw-metric-choices { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr)); gap:10px; padding:14px 0; }
 .fw-metric-choices label { display:flex; align-items:baseline; gap:6px; }

@@ -362,6 +362,17 @@ def test_workspace_visibility_splits_and_single_scroll(open_metric, size):
     assert frame.locator('#metric-net_revenue').is_hidden()
     frame.get_by_role('button', name='Show all', exact=True).click()
     assert frame.locator('#metric-net_revenue').is_visible()
+    assert frame.locator('#fwMetricsCount').inner_text() == '5 of 5 shown'
+    frame.get_by_role('button', name='Hide all', exact=True).click()
+    assert frame.locator('#metric-net_revenue').is_hidden()
+    assert frame.locator('#fwMetricsEmpty').is_visible()
+    assert frame.locator('#fwMetricsCount').inner_text() == '0 of 5 shown'
+    page.reload()
+    frame = page.locator('#metWorkspace').element_handle().content_frame()
+    frame.locator('#fwMetricsEmpty').wait_for(state='visible')
+    assert frame.locator('#metric-net_revenue').is_hidden()
+    frame.get_by_role('button', name='Show all', exact=True).click()
+    assert frame.locator('#metric-net_revenue').is_visible()
     page.wait_for_timeout(200)
     assert page.evaluate('''() => { const f = document.getElementById('metWorkspace'), d=f.contentDocument;
         return d.documentElement.scrollWidth <= f.clientWidth + 1 && d.documentElement.scrollHeight <= f.clientHeight + 2;

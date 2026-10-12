@@ -35,11 +35,12 @@ def comparison_html(query, *, unavailable=False):
     content = source.split('{% block content %}')[1].split('{% endblock %}')[0]
     rendered = Template('{% load static %}' + content).render(Context({
         "cards": cards, "metrics": metrics, "state": state, "metrics_report_built": not unavailable,
-        "comparison_url": PAGE, "catalog_url": "/catalog", "studio": SimpleNamespace(name="Demo")}))
+        "comparison_url": PAGE, "catalog_url": "/catalog", "workspace_url": "/s/demo/default/metrics/comparison",
+        "studio": SimpleNamespace(name="Demo")}))
     return '<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="/static/ui.css"></head><body class="mgmt"><main>' + rendered + '</main></body></html>'
 
 
-def catalog_html():
+def catalog_html(section="overview"):
     source = (ROOT / "templates/reports/metrics.html").read_text(encoding="utf-8")
     content = source.split('{% block content %}')[1].split('{% endblock %}')[0]
     metrics = [{"row": SimpleNamespace(name=name, label=label, version=1, format="currency"),
@@ -47,7 +48,9 @@ def catalog_html():
                 "chart_url": REPORT + "?only=metric-" + name, "overview_url": REPORT + "#metric-" + name}
                for name, label in [("gross_revenue", "Gross Revenue"), ("net_revenue", "Net Revenue"), ("balance", "Balance")]]
     rendered = Template('{% load docs static %}' + content).render(Context({
-        "metrics": metrics, "defined_count": 3, "metrics_report_built": True, "metrics_report_url": REPORT,
+        "metrics": metrics, "defined_count": 3, "claimed_count": 0, "metrics_section": section,
+        "metrics_report_built": True, "metrics_report_url": REPORT, "storage_unavailable": False,
+        "synced_at": None, "repo_url": "", "spark_w": 140, "spark_h": 36,
         "org": SimpleNamespace(slug="demo"), "studio": SimpleNamespace(slug="default", name="Demo")}))
     return '<!doctype html><html><head><meta charset="utf-8"></head><body class="mgmt"><main>' + rendered + '</main></body></html>'
 
@@ -85,6 +88,9 @@ def open_comparison(comparison_browser, comparison_report):
                     content_type = "text/html"
                 elif parts.path == "/catalog":
                     content = catalog_html().encode()
+                    content_type = "text/html"
+                elif parts.path == "/s/demo/default/metrics/comparison":
+                    content = catalog_html("comparison").encode()
                     content_type = "text/html"
                 elif parts.path.startswith(REPORT) and (failed is True or second_failed):
                     self.send_error(503)
@@ -128,25 +134,22 @@ def frame(page, slot):
     return page.frame_locator(f'[data-slot="{slot}"] iframe')
 
 
-def test_catalog_selection_limit_clear_replace_and_open(open_comparison):
+def test_metrics_navigation_opens_workspace_and_preserves_bookmarked_comparison(open_comparison):
     page, errors = open_comparison(catalog=True)
-    page.get_by_text('Metric definitions and report usage', exact=True).click()
-    choices = page.locator('.met-compare-choice')
-    assert page.locator('#metCompareOpen').is_disabled()
-    choices.nth(0).check()
-    assert page.locator('#metModal').is_hidden()
-    assert page.locator('#metCompareOpen').is_disabled()
-    choices.nth(1).check()
-    assert choices.nth(2).is_disabled()
-    choices.nth(0).uncheck()
-    choices.nth(2).check()
-    page.get_by_role('button', name='Clear selection').click()
-    assert choices.nth(1).is_enabled() and not choices.nth(1).is_checked()
-    choices.nth(0).check()
-    choices.nth(1).check()
-    with page.expect_navigation():
-        page.locator('#metCompareOpen').click()
-    ready(page)
+    assert page.locator('.met-tabs a').count() == 2
+    assert page.locator('.met-tabs a[aria-current="page"]').inner_text() == 'Overview'
+    assert page.locator('.met-compare-choice').count() == 0
+    page.locator('.met-tabs a', has_text='Comparison').click()
+    assert page.url.endswith('/s/demo/default/metrics/comparison')
+    assert page.locator('.met-tabs a[aria-current="page"]').inner_text() == 'Comparison'
+    frame = page.locator('#metWorkspace').element_handle().content_frame()
+    frame.locator('#metric-gross_revenue [data-stack-toggle]').wait_for()
+    assert frame.locator('.fw-metric-block').evaluate_all('(els) => els.map(el => el.id)') == [
+        'metric-balance', 'metric-gross_revenue', 'metric-inventory', 'metric-net_revenue', 'metric-orders']
+    page.goto(f'{urlsplit(page.url).scheme}://{urlsplit(page.url).netloc}{PAGE}?a=gross_revenue&b=net_revenue')
+    assert page.locator('.mc-tabs a').count() == 2
+    assert page.locator('.mc-tabs a[aria-current="page"]').inner_text() == 'Comparison'
+    assert page.locator('.mc-tabs a', has_text='Comparison').get_attribute('href') == '/s/demo/default/metrics/comparison'
     assert parse_qs(urlsplit(page.url).query)["a"] == ["gross_revenue"]
     assert parse_qs(urlsplit(page.url).query)["b"] == ["net_revenue"]
     assert errors == []
@@ -247,7 +250,7 @@ def test_unavailable_build_keeps_selection_controls(open_comparison, unavailable
     else:
         assert page.get_by_text("has not been built yet", exact=False).count() == 2
     assert page.locator('#mc-a').is_visible()
-    assert page.get_by_role("link", name="Metrics catalog", exact=False).is_visible()
+    assert page.get_by_role("link", name="Overview", exact=True).is_visible()
     assert errors == []
 
 

@@ -110,6 +110,7 @@ class MetricsReport(BaseReport):
                 '<div id="fwMetricsWorkspace"><details><summary>Show / hide metrics</summary>'
                 f'<div class="fw-metric-choices">{choices}</div></details>'
                 '<button type="button" id="fwMetricsShowAll">Show all</button>'
+                '<button type="button" id="fwMetricsHideAll">Hide all</button>'
                 '<span id="fwMetricsCount" role="status" aria-live="polite"></span></div>'
                 '<p id="fwMetricsEmpty" hidden>No metrics selected. Use Show all to restore them.</p>'
             )])

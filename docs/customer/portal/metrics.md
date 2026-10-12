@@ -1,15 +1,18 @@
 # Metrics workspace
 
-The **Metrics** page in a studio shows the generated metrics report inline:
-one chart after another, sorted by first tag (category) and then label. Each
+The **Metrics** page opens on **Overview**, where metric definitions and report
+usage are immediately visible. Choose **Comparison** to open the generated
+metrics report inline: one chart after another, sorted by first tag (category)
+and then label. Each
 chart keeps its own split controls, and the date range applies to all time
 datasets. Use **Show / hide metrics** to focus on a few charts; this browser
-remembers your choices for this report. **Show all** restores every chart.
+remembers your choices for this report. **Show all** and **Hide all** update
+the local visibility preference.
 Hover over a time observation to draw a guide at that same time on other
 visible charts that contain it. A missing time observation has no guide, and
 charts without a time axis do not participate.
 
-Expand **Metric definitions and report usage** to read each metric's identifier,
+Read **Metric definitions and report usage** to see each metric's identifier,
 description, aggregation or ratio specification, and the reports that claim it.
 The same file is used by the standalone framework; see the
 [framework metric guide](https://github.com/trellumhq/trellum/tree/main/trellum#data-layer)
@@ -28,7 +31,8 @@ a separate report for each metric. Trellum generates it from `metrics.yaml`;
 it is omitted from the regular report-card list. **Open metric page** retains
 the current date and split URL state for a focused view. Definitions explain when a metric is
 descriptive only, is not bound to a dataset, or needs its generated report
-built. When the generated report is not yet built, definitions stay open.
+built. When the generated report is not yet built, the Comparison tab explains
+that the workspace is unavailable.
 For metrics with `time_agg: last`, the workspace shows the trend and explains
 that the latest KPI total is a build-time snapshot. That static total is
 omitted from the workspace because it does not follow selected dates; the
@@ -40,10 +44,9 @@ claims from another studio. The report page also has a **Metrics in this
 report** panel for viewers. It lists the metrics claimed by that build beside
 their current definitions and marks whether the build matches each one.
 
-Select **Compare** on two catalog cards, then **Compare selected metrics** to
-open their full-size charts together. Uncheck a selected card to replace it,
-or clear the selection. On the comparison page, either metric selector can
-replace or remove a metric. Both choices belong to the current studio.
+The comparison workspace is available from the **Comparison** section. Existing
+bookmarks such as `/metrics/compare?a=gross_revenue&b=net_revenue` continue to
+open their selected charts.
 
 Apply an explicit shared start and end date to both time charts. Each chart's
 split control affects only that card; dates and splits are retained in the URL

@@ -72,6 +72,10 @@
         choices.forEach(function (choice) { choice.checked = true; });
         applyVisibility(true);
     });
+    document.getElementById('fwMetricsHideAll').addEventListener('click', function () {
+        choices.forEach(function (choice) { choice.checked = false; });
+        applyVisibility(true);
+    });
     applyVisibility(false);
     if (focused) return;
 

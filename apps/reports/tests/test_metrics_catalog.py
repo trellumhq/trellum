@@ -193,7 +193,7 @@ class TestMetricsPageView:
         assert "Gross Revenue" in body
         assert "sum(total_revenue)" in body
 
-    def test_built_report_is_the_default_single_workspace(
+    def test_built_report_keeps_overview_on_definitions(
         self, studio_tree, write_metrics_yaml, write_report, write_meta, member, grant_studio, login
     ):
         write_metrics_yaml([GROSS_REVENUE])
@@ -203,12 +203,29 @@ class TestMetricsPageView:
         write_meta("metrics", last_run=_now_iso(), metrics_used=["gross_revenue"])
         grant_studio(member, studio_tree, roles.VIEWER)
         body = login(member).get(self._url(studio_tree)).content.decode()
-        assert body.count('<iframe') == 1
-        assert '?workspace=1" title="Metrics chart workspace"' in body
-        assert '<details class="met-definitions" >' in body
+        assert 'id="metWorkspace"' not in body
+        assert '<section class="met-definitions" aria-labelledby="metDefinitionsTitle">' in body
         assert 'Metric definitions and report usage' in body
+        assert 'met-compare-choice' not in body
+        assert 'metCompareOpen' not in body
+        assert 'aria-current="page">Overview</a>' in body
+        assert '/metrics/comparison' in body
 
-    def test_no_build_keeps_definitions_open(
+    def test_comparison_section_shows_generated_workspace(
+        self, studio_tree, write_metrics_yaml, write_report, write_meta, member, grant_studio, login
+    ):
+        write_metrics_yaml([GROSS_REVENUE])
+        sync_studio_metrics(studio_tree)
+        write_report(**GENERATED_METRICS_REPORT)
+        sync_studio_registry(studio_tree)
+        write_meta("metrics", last_run=_now_iso(), metrics_used=["gross_revenue"])
+        grant_studio(member, studio_tree, roles.VIEWER)
+        url = f"/s/{studio_tree.org.slug}/{studio_tree.slug}/metrics/comparison"
+        body = login(member).get(url).content.decode()
+        assert '/r/metrics/?workspace=1' in body
+        assert 'aria-current="page">Comparison</a>' in body
+
+    def test_no_build_keeps_definitions_visible(
         self, studio_tree, write_metrics_yaml, member, grant_studio, login
     ):
         write_metrics_yaml([GROSS_REVENUE])
@@ -216,7 +233,8 @@ class TestMetricsPageView:
         grant_studio(member, studio_tree, roles.VIEWER)
         body = login(member).get(self._url(studio_tree)).content.decode()
         assert 'id="metWorkspace"' not in body
-        assert '<details class="met-definitions" open>' in body
+        assert 'Metric definitions and report usage' in body
+        assert '<details class="met-definitions"' not in body
 
     def test_metrics_catalog_is_available_to_viewers(
         self, studio_tree, write_metrics_yaml, member, grant_studio, login

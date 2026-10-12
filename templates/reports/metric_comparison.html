@@ -11,10 +11,16 @@
 .mc-selection label { display:grid; gap:4px; max-width:100%; }
 .mc-selection select { max-width:100%; }
 .mc-facts { font-size:var(--fs-sm); color:var(--muted); }
+.mc-tabs { display:flex; gap:6px; margin:0 0 18px; border-bottom:1px solid var(--border); }
+.mc-tabs a { padding:8px 12px; color:var(--text2); text-decoration:none; border-bottom:2px solid transparent; }
+.mc-tabs a[aria-current="page"] { color:var(--text); border-color:var(--accent); font-weight:600; }
 @media(max-width:800px) { .mc-grid { grid-template-columns:1fr; } }
 </style>
 <header class="page-head"><div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }}</div><h1>Compare metrics</h1></header>
-<p><a href="{{ catalog_url }}">← Metrics catalog</a></p>
+<nav class="mc-tabs" aria-label="Metrics sections">
+  <a href="{{ catalog_url }}">Overview</a>
+  <a href="{{ workspace_url }}" aria-current="page">Comparison</a>
+</nav>
 <p class="muted">Charts use separate axes and their original units. This view shows trends, without KPI totals. Snapshot metrics show observations at each date, not a filtered balance.</p>
 <form class="mc-selection" id="mcSelection" action="{{ comparison_url }}" method="get">
   {% for card in cards %}

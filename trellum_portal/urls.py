@@ -36,6 +36,12 @@ studio_patterns = [
     path("operations", report_views.operations, name="studio-operations"),
     path("analytics", report_views.analytics, name="studio-analytics"),
     path("metrics", metrics_catalog.metrics_page, name="studio-metrics"),
+    path(
+        "metrics/comparison",
+        metrics_catalog.metrics_page,
+        {"section": "comparison"},
+        name="studio-metrics-comparison",
+    ),
     path("metrics/compare", metrics_catalog.metric_comparison, name="metric-comparison"),
     path("experiments", experiments.experiments_page, name="studio-experiments"),
     path("api/registry", report_views.api_registry, name="api-registry"),

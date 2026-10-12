@@ -271,30 +271,6 @@
     });
 })();
 
-(function () {
-    'use strict';
-    var form = document.getElementById('metCompare');
-    if (!form) return;
-    var choices = Array.from(document.querySelectorAll('.met-compare-choice'));
-    function update() {
-        var picked = choices.filter(function (choice) { return choice.checked; });
-        choices.forEach(function (choice) { choice.disabled = picked.length === 2 && !choice.checked; });
-        form.querySelectorAll('input').forEach(function (input) { input.remove(); });
-        picked.forEach(function (choice, i) {
-            var input = document.createElement('input');
-            input.type = 'hidden'; input.name = i === 0 ? 'a' : 'b'; input.value = choice.value;
-            form.appendChild(input);
-        });
-        document.getElementById('metCompareOpen').disabled = picked.length !== 2;
-        document.getElementById('metCompareStatus').textContent = picked.length === 2
-            ? 'Two selected. Uncheck one to replace it.' : picked.length + ' of 2 selected.';
-    }
-    choices.forEach(function (choice) { choice.addEventListener('change', update); });
-    form.addEventListener('reset', function () { choices.forEach(function (choice) { choice.checked = false; }); update(); });
-    update();
-})();
-
-
 /* Filter the catalog as you type.
  *
  * Its own IIFE, not part of the overlay's: a page that somehow had no modal
