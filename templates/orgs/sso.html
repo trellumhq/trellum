@@ -65,7 +65,7 @@
     stay exempt so a broken SSO config can always be repaired.</span>
     <label class="ui-check-row">{{ form.auto_provision }} Create portal accounts on first SSO login</label>
     <div class="ui-form-row"><div class="ui-field"><label for="{{ form.default_org_role.id_for_label }}">Org role for auto-created users</label>{{ form.default_org_role }}{{ form.default_org_role.errors }}</div>
-    <div class="ui-field"><label for="{{ form.default_groups.id_for_label }}">Permission groups for auto-created users</label>{{ form.default_groups }}{{ form.default_groups.errors }}</div></div>
+    <div class="ui-field" data-recipient-picker data-picker-label="Permission groups" data-picker-search-placeholder="Search permission groups…" data-picker-empty-state="No permission groups are available."><label for="{{ form.default_groups.id_for_label }}">Permission groups for auto-created users</label>{{ form.default_groups }}{{ form.default_groups.errors }}</div></div>
 
     </section>
     <section class="ui-form-section" aria-labelledby="sso-group-title"><h2 id="sso-group-title">Group mapping</h2>

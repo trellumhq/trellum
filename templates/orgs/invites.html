@@ -26,7 +26,7 @@ have admin access to every studio.</p>
     {% csrf_token %}
     <label>Email</label>{{ form.email }}{{ form.email.errors }}
     <label>Org role</label>{{ form.org_role }}{{ form.org_role.errors }}
-    <label>Permission groups</label>{{ form.groups }}{{ form.groups.errors }}
+    <fieldset data-recipient-picker data-picker-label="Permission groups" data-picker-search-placeholder="Search permission groups…" data-picker-empty-state="No permission groups are available." style="border:0;padding:0;margin:0;min-width:0"><legend class="ui-label">Permission groups</legend>{{ form.groups }}{{ form.groups.errors }}</fieldset>
     <label>Studio access</label>
     <table class="ui-table dense">
       <tbody>

@@ -1,6 +1,7 @@
 """Org settings screens rebuilt against the design system: the badge
 vocabulary, the group-grant summary strip, copy-to-clipboard, guarded
 destructive actions and the settings-hub redirect."""
+import re
 from datetime import timedelta
 
 import pytest
@@ -102,6 +103,24 @@ class TestInvitesScreen:
         assert "data-ui-copy" in page
         assert "ui-copy-done" in page  # the inline "copied ✓" feedback
         assert 'class="ui-table"' in page
+        assert 'data-recipient-picker data-picker-label="Permission groups"' in page
+
+    def test_invalid_invite_keeps_selected_permission_groups(
+        self, login, org_admin, org, make_group
+    ):
+        group = make_group("Reviewers")
+        response = login(org_admin).post(
+            f"/orgs/{org.slug}/settings/invites",
+            {"email": "not-an-email", "org_role": roles.ORG_MEMBER, "groups": [group.pk]},
+        )
+        assert response.status_code == 200
+        page = response.content.decode()
+        assert response.context["form"]["groups"].value() == [str(group.pk)]
+        assert re.search(
+            rf'<input\b(?=[^>]*name="groups")(?=[^>]*value="{group.pk}")(?=[^>]*checked)[^>]*>',
+            page,
+        )
+        assert "Enter a valid email address" in page
 
     def test_new_invite_link_panel_has_a_copy_button(self, login, org_admin, org):
         resp = login(org_admin).post(
@@ -136,6 +155,7 @@ class TestSectionedForms:
         assert 'class="ui-check-row"' in page
         assert "display:flex;gap:8px;align-items:center" not in page
         assert "data-ui-copy" in page  # redirect URI is copyable
+        assert 'data-recipient-picker data-picker-label="Permission groups"' in page
 
     def test_assistant_sections_and_check_rows(self, html, org):
         page = html(f"/orgs/{org.slug}/settings/assistant")

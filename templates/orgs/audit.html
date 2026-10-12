@@ -50,7 +50,7 @@
 
 <form class="audit-filters" method="get">
   {% for key, value in hidden_carry %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
-  <select name="actor" aria-label="Actor">
+  <select name="actor" aria-label="Actor" data-choice-picker data-picker-label="Actor" data-picker-placeholder="All actors" data-picker-search-placeholder="Search actors…" data-picker-empty-state="No actors are available.">
     <option value="">All actors</option>
     {% for id, email in actor_choices %}
     <option value="{{ id }}" {% if applied.actor == id|stringformat:"s" %}selected{% endif %}>{{ email }}</option>

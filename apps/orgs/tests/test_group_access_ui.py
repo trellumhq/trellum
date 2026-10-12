@@ -82,6 +82,7 @@ class TestGroupScreens:
             assert html.count(f'id="{control_id}"') == 1
         assert f'for="id_studio_{studio.pk}_reports_0"' in html
         assert f'for="id_studio_{studio2.pk}_reports_0"' in html
+        assert 'data-recipient-picker data-picker-label="Reports"' in html
 
     def test_members_are_searchable_and_add_choices_exclude_existing(
         self, login, org_admin, org, member, make_user, make_group, attach_group
@@ -97,6 +98,7 @@ class TestGroupScreens:
         assert member.email in html
         assert f'<option value="{member.pk}">' not in html
         assert f'<option value="{addable.pk}">' in html
+        assert 'data-choice-picker data-picker-label="Member"' in html
 
     def test_selected_reports_save_and_switching_to_all_clears_rows(
         self, login, org_admin, org, studio, report_row, make_group, scoped_access_ready

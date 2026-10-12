@@ -1,23 +1,31 @@
 """Keyboard and narrow-screen behavior of the standalone connection editor JS."""
-from pathlib import Path
 import re
+from pathlib import Path
 
 import pytest
 from playwright.sync_api import expect, sync_playwright
-
 
 ROOT = Path(__file__).resolve().parents[3]
 
 
 def _rendered_page(html):
-    for name in ("themes.generated.css", "ui.css", "console-shell.css"):
+    for name in (
+        "themes.generated.css", "ui.css", "choice-picker.css",
+        "recipient-picker.css", "console-shell.css",
+    ):
         css = (ROOT / "static" / name).read_text(encoding="utf-8")
         html = re.sub(rf'<link href="[^"]*{re.escape(name)}" rel="stylesheet">',
                       f"<style>{css}</style>", html)
-    for name in ("console-shell.js", "settings-forms.js", "email-connection-editor.js"):
+    for name in (
+        "choice-picker.js", "recipient-picker.js", "console-shell.js",
+        "settings-forms.js", "email-connection-editor.js",
+    ):
         script = (ROOT / "static" / name).read_text(encoding="utf-8")
-        html = re.sub(rf'<script src="[^"]*{re.escape(name)}"(?: defer)?></script>',
-                      lambda match: f"<script>{script}</script>", html)
+        html = re.sub(
+            rf'<script src="[^"]*{re.escape(name)}"(?: defer)?></script>',
+            lambda match, script=script: f"<script>{script}</script>",
+            html,
+        )
     return html
 
 

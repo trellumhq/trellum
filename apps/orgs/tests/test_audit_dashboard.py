@@ -91,6 +91,7 @@ class TestFilters:
         resp = login(org_admin).get(f"/orgs/{org.slug}/settings/audit?actor={member.pk}")
         assert resp.context["page"].paginator.count == 1
         assert resp.context["page"][0].actor_id == member.pk
+        assert 'data-choice-picker data-picker-label="Actor"' in resp.content.decode()
 
     def test_outcome_filter(self, login, org_admin, org):
         _row(org, action="auth.login_failed", category="auth", outcome="failure")
