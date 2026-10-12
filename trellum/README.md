@@ -1670,6 +1670,37 @@ python -m trellum.run reports/september-conversion --no-serve
 trellum review start reports/september-conversion
 ```
 
+Choose `article` (the default) or `presentation` when scaffolding:
+
+```bash
+python -m trellum analysis new september-conversion --format article
+python -m trellum analysis new quarterly-review --format presentation
+```
+
+Articles store their authored text in `content.md`; presentations store an
+ordered set of slides in `slides.yaml`. Both keep their source in Git and use
+the same existing analysis sharing permissions when published. Presentations
+provide four built-in layouts, stable slide IDs, JavaScript-free reading,
+keyboard navigation, mobile support, and a fullscreen meeting view.
+
+The presentation file has a versioned ordered list. Each slide needs a unique,
+slug-like `id`, a `layout`, and a `title`. The supported layouts are `title`,
+`text`, `image`, and `image-text`; `text` is required for `text` and
+`image-text` layouts and optional for `title`. `image` and `image-text` layouts
+need a local evidence PNG path and descriptive `alt` text. Other slide keys
+are invalid:
+
+```yaml
+version: 1
+slides:
+  - id: conversion-trend
+    layout: image-text
+    title: Conversion trend
+    text: Checkout conversion fell after the form change.
+    image: evidence/conversion.png
+    alt: Conversion rate by week, showing a decline after the form change
+```
+
 The scaffold writes `reports/september-conversion/report.yaml` with
 `kind: analysis`, plus `content.md`. Set `name`, `description`, `author`,
 `category`, and `tags` in the manifest. Write the question, findings, evidence,
@@ -1695,6 +1726,27 @@ reports update or disappear. Revise the Markdown or import a new capture under
 a new name and publish a Git change to update the analysis. Rebuilding a broken
 article retains its last successful output. Existing output retention still
 applies; committed evidence can recreate the article.
+
+For a local, agent-assisted analysis workflow, create an article or
+presentation with `python -m trellum analysis new <slug> --format article|presentation`
+(`article` is the default), then start `python -m trellum analysis session
+reports/<slug>`. The session builds and serves the analysis, activates its
+local review inbox, and prints preview and gallery URLs. From a report, choose
+**Export > Capture for analysis > Send to agent** to send a filtered PNG capture
+and optional note. The agent polls with `python -m trellum review poll --report
+<analysis-slug>`; the poll returns a capture ID and annotation feedback. Import
+it with `python -m trellum analysis import reports/<slug> --inbox <capture-id>
+[--name <safe-name>]`, edit `content.md` or ordered `slides.yaml`, rebuild with
+`python -m trellum.run reports/<slug> --no-serve`, then reply by polling again
+with `python -m trellum review poll --report <slug> --reply "what changed"`.
+Pending captures stay outside the repository and output tree under
+`~/.trellum/analysis-inbox/<project-id>`; list them after restart with
+`python -m trellum analysis inbox reports/<slug>` and explicitly discard one
+with `python -m trellum analysis discard reports/<slug> <capture-id>`. A failed
+import leaves its capture pending. With no active local session, capture JSON
+downloads and the existing file-based import still works. See the
+[local analysis workflow](../docs/customer/workflow/local-analysis.md) for the
+complete filter, capture, annotation, and rebuild loop.
 
 In the portal, the analysis's own permissions govern its article and evidence.
 New analyses inherit the studio's analysis audience default. To request a
