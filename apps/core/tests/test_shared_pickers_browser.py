@@ -253,8 +253,13 @@ def test_geometry_near_bottom_long_labels_and_shared_rail(browser, width, theme)
     assert rect["y"] >= 0 and rect["y"] + rect["height"] <= 901
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     rail = page.locator(".ui-form-rail").bounding_box()
-    assert rail["width"] <= 760
-    assert abs(rail["x"] - (width - rail["width"]) / 2) < 1
+    content = page.locator("main").evaluate("""el => {
+        const r = el.getBoundingClientRect(), s = getComputedStyle(el);
+        return {left: r.left + el.clientLeft + parseFloat(s.paddingLeft),
+                width: el.clientWidth - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight)};
+    }""")
+    assert abs(rail["x"] - content["left"]) < 1
+    assert abs(rail["width"] - content["width"]) < 1
     columns = page.locator(".ui-form-row").evaluate("node=>getComputedStyle(node).gridTemplateColumns.split(' ').length")
     assert columns == (1 if width < 768 else 2)
     if width < 768:

@@ -244,7 +244,10 @@ def test_alert_editor_layout_desktop_mobile_and_dark(rule, login, tmp_path):
         page.locator("html").evaluate("node => node.setAttribute('data-theme', 'light')")
         page.locator('[data-console-shell]').evaluate_all("nodes => nodes.forEach(node => node.dataset.consoleTheme = 'light')")
         rail = page.locator("form .ui-form-rail")
-        assert rail.evaluate("node => node.getBoundingClientRect().width") <= 760
+        header = page.locator("header.ui-form-rail").bounding_box()
+        assert header["width"] > 1000
+        assert abs(rail.bounding_box()["x"] - header["x"]) < 2
+        assert abs(rail.bounding_box()["width"] - header["width"]) < 2
         page.locator('input[name="trigger"][value="schedule"]').check()
         page.locator('[name="freq"]').select_option("weekly")
         expect(page.locator('[name="send_time"]')).to_be_visible()

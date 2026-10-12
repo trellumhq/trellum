@@ -51,7 +51,13 @@ def test_create_page_picker_and_responsive_themes(login, api_key_user, org, db):
             )
             expect(page.get_by_role("heading", name="Add API key")).to_be_visible()
             assert page.locator("body").evaluate("e => e.scrollWidth <= innerWidth + 1")
-            assert page.locator(".ui-form-rail").evaluate("e => e.getBoundingClientRect().width <= 760")
+            assert page.locator(".ui-form-rail").evaluate("""el => {
+                const parent = el.parentElement, p = parent.getBoundingClientRect();
+                const style = getComputedStyle(parent), r = el.getBoundingClientRect();
+                const start = parseFloat(style.paddingLeft), end = parseFloat(style.paddingRight);
+                return Math.abs(r.left - p.left - parent.clientLeft - start) < 2 &&
+                       Math.abs(r.width - parent.clientWidth + start + end) < 2;
+            }""")
 
             picker = page.locator(".ui-choice-picker")
             trigger = picker.locator(".ui-picker-trigger")

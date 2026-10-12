@@ -50,14 +50,15 @@ def _assert_layout(page, page_name, html, width, theme):
     for rail in page.locator(".ui-form-rail").all():
         box = rail.bounding_box()
         if box and box["width"]:
-            assert box["width"] <= 761, (page_name, box)
-            if width > 900:
-                center_delta = rail.evaluate(
-                    "el => { const p = el.parentElement.getBoundingClientRect(); "
-                    "const r = el.getBoundingClientRect(); "
-                    "return Math.abs((r.left + r.width / 2) - (p.left + p.width / 2)); }"
-                )
-                assert center_delta < 3, (page_name, box, center_delta)
+            content = rail.evaluate("""el => {
+                const parent = el.parentElement, rect = parent.getBoundingClientRect();
+                const style = getComputedStyle(parent);
+                const start = parseFloat(style.paddingLeft), end = parseFloat(style.paddingRight);
+                return {left: rect.left + parent.clientLeft + start,
+                        width: parent.clientWidth - start - end};
+            }""")
+            assert abs(box["x"] - content["left"]) < 2, (page_name, box, content)
+            assert abs(box["width"] - content["width"]) < 2, (page_name, box, content)
 
     for row in page.locator(".ui-form-row").all():
         box = row.bounding_box()
@@ -132,7 +133,7 @@ def test_rendered_settings_forms_fit_and_keep_operational_tables_wide(
                 )
             _assert_layout(page, page_name, html, width, theme)
             if page_name == "sso" and width > 900:
-                # Domain ownership is an operational table and must stay outside the form rail.
+                # Operational tables retain the available content width too.
                 assert page.locator("table.ui-table").first.bounding_box()["width"] > 761
             if page_name == "instance-settings" and width > 900:
                 assert page.locator("#email-connections table").count() == 0 or page.locator(
