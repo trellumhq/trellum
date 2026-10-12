@@ -389,12 +389,21 @@ def test_workspace_visibility_splits_and_single_scroll(open_metric, size):
     assert errors == []
 
 
+def _render_workspace_charts(frame):
+    """Scroll each chart into the lazy renderer's observer margin and await it."""
+    canvases = frame.locator('.fw-metric-block canvas')
+    for index in range(canvases.count()):
+        canvas = canvases.nth(index)
+        canvas.scroll_into_view_if_needed()
+        frame.wait_for_function("id => !!window._chartInstances[id]", arg=canvas.get_attribute('id'))
+
+
 def test_workspace_hover_matches_dates_and_clears(open_metric):
     page, errors = open_metric(workspace=True)
     frame = page.locator('#metWorkspace').element_handle().content_frame()
-    # Force lazy charts to render before comparing their different time arrays.
-    frame.locator('#metric-orders canvas').scroll_into_view_if_needed()
-    frame.wait_for_function("Object.keys(window._chartInstances).length === 5")
+    # Each chart must enter the observer margin; jumping to the last chart
+    # does not guarantee that intermediate charts were initialized.
+    _render_workspace_charts(frame)
     frame.locator('#metric-gross_revenue canvas').scroll_into_view_if_needed()
     page.wait_for_timeout(150)
     def hover(index):
@@ -431,8 +440,7 @@ def test_workspace_hover_matches_dates_and_clears(open_metric):
 def test_workspace_guide_matches_native_tooltip_far_above_line(open_metric):
     page, errors = open_metric(workspace=True)
     frame = page.locator('#metWorkspace').element_handle().content_frame()
-    frame.locator('#metric-orders canvas').scroll_into_view_if_needed()
-    frame.wait_for_function("Object.keys(window._chartInstances).length === 5")
+    _render_workspace_charts(frame)
     frame.locator('#metric-gross_revenue canvas').scroll_into_view_if_needed()
     page.wait_for_timeout(150)
     xy = frame.evaluate('''() => { const c=window._chartInstances[document.querySelector('#metric-gross_revenue canvas').id];
