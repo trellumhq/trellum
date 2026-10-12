@@ -139,8 +139,8 @@ header.shell {
 }
 .shell-theme-row button:hover { color: var(--accent-ink); border-color: var(--accent-ink); }
 
-/* Auth cards (login/setup/invite/reset): branded, centered. */
-.auth-card { border-top: 3px solid var(--accent); }
+/* Auth cards outside the shell keep a readable width; shell variants set theirs below. */
+.auth-card { max-width: 760px; border-top: 3px solid var(--accent); }
 /* Vertically centres the card in what is left of the viewport under the shell,
    instead of anchoring it near the top over a screen of dead space. */
 .auth-shell {
