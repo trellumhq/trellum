@@ -1,6 +1,7 @@
 {% extends "settings_base.html" %}
 {% block title %}Single sign-on — {{ org.name }}{% endblock %}
 {% block settings %}
+<div class="ui-form-rail">
 <header class="page-head">
   <div class="ui-label page-kicker scope-org">Organization · {{ org.name }}</div>
   <h1>Single sign-on</h1>
@@ -19,69 +20,63 @@
 </div>
 
 <fieldset style="border:0;padding:0;margin:0;min-width:0">
-<div class="panel formrow">
   <form id="orgSsoForm" method="post" data-settings-form data-settings-save>
     {% csrf_token %}
     {{ form.non_field_errors }}
     <label class="ui-check-row">{{ form.enabled }} Enable SSO</label>
-    <label>Identity source</label>{{ form.auth_method }}{{ form.auth_method.errors }}
+    <div class="ui-field"><label for="{{ form.auth_method.id_for_label }}">Identity source</label>{{ form.auth_method }}{{ form.auth_method.errors }}</div>
 
     <div data-reveal="oidc">
-    <p class="ui-label" style="margin:18px 0 0">App registration</p>
-    <label>Issuer URL</label>{{ form.issuer_url }}{{ form.issuer_url.errors }}
+    <section class="ui-form-section" aria-labelledby="sso-oidc-title"><h2 id="sso-oidc-title">App registration</h2>
+    <div class="ui-field"><label for="{{ form.issuer_url.id_for_label }}">Issuer URL</label>{{ form.issuer_url }}{{ form.issuer_url.errors }}
     <span class="helptext">Your identity provider's OpenID Connect issuer; the portal fetches
     <code>/.well-known/openid-configuration</code> from it when you save.
-    Microsoft Entra: <code>https://login.microsoftonline.com/&lt;tenant-id&gt;/v2.0</code> ·
+    Microsoft Entra: <code>https://login.microsoftonline.com/<wbr>&lt;tenant-id&gt;/v2.0</code> ·
     Google: <code>https://accounts.google.com</code> ·
     Okta: <code>https://&lt;your-domain&gt;.okta.com</code> ·
-    Keycloak: <code>https://&lt;host&gt;/realms/&lt;realm&gt;</code></span>
-    <label>Client ID</label>{{ form.client_id }}{{ form.client_id.errors }}
-    <label>Client secret <span class="muted">(blank = keep current)</span></label>{{ form.client_secret }}
+    Keycloak: <code>https://&lt;host&gt;/realms/<wbr>&lt;realm&gt;</code></span></div>
+    <div class="ui-form-row"><div class="ui-field"><label for="{{ form.client_id.id_for_label }}">Client ID</label>{{ form.client_id }}{{ form.client_id.errors }}</div>
+    <div class="ui-field"><label for="{{ form.client_secret.id_for_label }}">Client secret <span class="muted">(blank = keep current)</span></label>{{ form.client_secret }}{{ form.client_secret.errors }}</div></div>
+    </section>
     </div>
 
     <div data-reveal="ldap">
-    <p class="ui-label" style="margin:18px 0 0">Directory</p>
-    <label>Server URI</label>{{ form.ldap_server_uri }}{{ form.ldap_server_uri.errors }}
-    <span class="helptext">{{ form.ldap_server_uri.help_text }} Every connection is TLS and the certificate is always verified.</span>
-    <label>CA certificate <span class="muted">(PEM, for a private CA)</span></label>{{ form.ldap_ca_cert }}{{ form.ldap_ca_cert.errors }}
-    <span class="helptext">{{ form.ldap_ca_cert.help_text }} Leave blank when the server's certificate is publicly trusted.</span>
-    <label>Bind DN</label>{{ form.ldap_bind_dn }}{{ form.ldap_bind_dn.errors }}
-    <span class="helptext">{{ form.ldap_bind_dn.help_text }}</span>
-    <label>Bind password <span class="muted">(blank = keep current)</span></label>{{ form.ldap_bind_password }}
-    <label>User search base</label>{{ form.ldap_user_search_base }}{{ form.ldap_user_search_base.errors }}
-    <span class="helptext">{{ form.ldap_user_search_base.help_text }}</span>
-    <label>User filter</label>{{ form.ldap_user_filter }}{{ form.ldap_user_filter.errors }}
-    <span class="helptext">{{ form.ldap_user_filter.help_text }} Exactly one entry must match.</span>
-    <label>Email attribute</label>{{ form.ldap_email_attr }}{{ form.ldap_email_attr.errors }}
-    <label>Display name attribute</label>{{ form.ldap_name_attr }}{{ form.ldap_name_attr.errors }}
-    <label>Groups attribute</label>{{ form.ldap_group_attr }}{{ form.ldap_group_attr.errors }}
-    <span class="helptext">{{ form.ldap_group_attr.help_text }}</span>
+    <section class="ui-form-section" aria-labelledby="sso-ldap-title"><h2 id="sso-ldap-title">Directory</h2>
+    <div class="ui-form-row">
+    <div class="ui-field ui-field-wide"><label for="{{ form.ldap_server_uri.id_for_label }}">Server URI</label>{{ form.ldap_server_uri }}{{ form.ldap_server_uri.errors }}<span class="ui-help">{{ form.ldap_server_uri.help_text }} Every connection is TLS and the certificate is always verified.</span></div>
+    <div class="ui-field ui-field-wide"><label for="{{ form.ldap_ca_cert.id_for_label }}">CA certificate <span class="muted">(PEM, for a private CA)</span></label>{{ form.ldap_ca_cert }}{{ form.ldap_ca_cert.errors }}<span class="ui-help">{{ form.ldap_ca_cert.help_text }} Leave blank when the server's certificate is publicly trusted.</span></div>
+    <div class="ui-field"><label for="{{ form.ldap_bind_dn.id_for_label }}">Bind DN</label>{{ form.ldap_bind_dn }}{{ form.ldap_bind_dn.errors }}<span class="ui-help">{{ form.ldap_bind_dn.help_text }}</span></div>
+    <div class="ui-field"><label for="{{ form.ldap_bind_password.id_for_label }}">Bind password <span class="muted">(blank = keep current)</span></label>{{ form.ldap_bind_password }}{{ form.ldap_bind_password.errors }}</div>
+    <div class="ui-field ui-field-wide"><label for="{{ form.ldap_user_search_base.id_for_label }}">User search base</label>{{ form.ldap_user_search_base }}{{ form.ldap_user_search_base.errors }}<span class="ui-help">{{ form.ldap_user_search_base.help_text }}</span></div>
+    <div class="ui-field ui-field-wide"><label for="{{ form.ldap_user_filter.id_for_label }}">User filter</label>{{ form.ldap_user_filter }}{{ form.ldap_user_filter.errors }}<span class="ui-help">{{ form.ldap_user_filter.help_text }} Exactly one entry must match.</span></div>
+    <div class="ui-field"><label for="{{ form.ldap_email_attr.id_for_label }}">Email attribute</label>{{ form.ldap_email_attr }}{{ form.ldap_email_attr.errors }}</div>
+    <div class="ui-field"><label for="{{ form.ldap_name_attr.id_for_label }}">Display name attribute</label>{{ form.ldap_name_attr }}{{ form.ldap_name_attr.errors }}</div>
+    <div class="ui-field"><label for="{{ form.ldap_group_attr.id_for_label }}">Groups attribute</label>{{ form.ldap_group_attr }}{{ form.ldap_group_attr.errors }}<span class="ui-help">{{ form.ldap_group_attr.help_text }}</span></div>
+    </div>
+    </section>
     </div>
 
-    <p class="ui-label" style="margin:18px 0 0">Access rules</p>
-    <label>{{ form.email_domains_text.label }}</label>{{ form.email_domains_text }}{{ form.email_domains_text.errors }}
-    <span class="helptext">{{ form.email_domains_text.help_text }}</span>
+    <section class="ui-form-section" aria-labelledby="sso-access-title"><h2 id="sso-access-title">Access rules</h2>
+    <div class="ui-field"><label for="{{ form.email_domains_text.id_for_label }}">{{ form.email_domains_text.label }}</label>{{ form.email_domains_text }}{{ form.email_domains_text.errors }}<span class="ui-help">{{ form.email_domains_text.help_text }}</span></div>
     <label class="ui-check-row">{{ form.allow_password_login }} Still allow password login for these domains</label>
     <label class="ui-check-row">{{ form.enforce_sso }} <strong>Enforce SSO for all members</strong></label>
     <span class="helptext">Every member of this organization must sign in through your identity source,
     whatever their email domain. Local password login is refused for them. Instance operators
     stay exempt so a broken SSO config can always be repaired.</span>
     <label class="ui-check-row">{{ form.auto_provision }} Create portal accounts on first SSO login</label>
-    <label>Org role for auto-created users</label>{{ form.default_org_role }}
-    <label>Permission groups for auto-created users</label>{{ form.default_groups }}
+    <div class="ui-form-row"><div class="ui-field"><label for="{{ form.default_org_role.id_for_label }}">Org role for auto-created users</label>{{ form.default_org_role }}{{ form.default_org_role.errors }}</div>
+    <div class="ui-field"><label for="{{ form.default_groups.id_for_label }}">Permission groups for auto-created users</label>{{ form.default_groups }}{{ form.default_groups.errors }}</div></div>
 
-    <p class="ui-label" style="margin:18px 0 0">Group mapping</p>
+    </section>
+    <section class="ui-form-section" aria-labelledby="sso-group-title"><h2 id="sso-group-title">Group mapping</h2>
     <div data-reveal="oidc">
-    <label>Groups claim</label>{{ form.groups_claim }}{{ form.groups_claim.errors }}
-    <span class="helptext">{{ form.groups_claim.help_text }}</span>
+    <div class="ui-field"><label for="{{ form.groups_claim.id_for_label }}">Groups claim</label>{{ form.groups_claim }}{{ form.groups_claim.errors }}<span class="ui-help">{{ form.groups_claim.help_text }}</span></div>
     </div>
-    <label>{{ form.group_map_text.label }}</label>{{ form.group_map_text }}{{ form.group_map_text.errors }}
-    <span class="helptext">{{ form.group_map_text.help_text }}</span>
-    <label>Extra scopes</label>{{ form.extra_scopes }}{{ form.extra_scopes.errors }}
-    <span class="helptext">{{ form.extra_scopes.help_text }}</span>
+    <div class="ui-field"><label for="{{ form.group_map_text.id_for_label }}">{{ form.group_map_text.label }}</label>{{ form.group_map_text }}{{ form.group_map_text.errors }}<span class="ui-help">{{ form.group_map_text.help_text }}</span></div>
+    <div class="ui-field"><label for="{{ form.extra_scopes.id_for_label }}">Extra scopes</label>{{ form.extra_scopes }}{{ form.extra_scopes.errors }}<span class="ui-help">{{ form.extra_scopes.help_text }}</span></div>
 
-    <p></p>
-    <button class="ui-btn primary" type="submit">Save changes</button>
+    <div class="ui-form-actions"><button class="ui-btn primary" type="submit">Save changes</button></div>
+    </section>
   </form>
   <div data-settings-refresh="sso-directory-test">
   {% if cfg and cfg.is_ldap %}
@@ -93,6 +88,9 @@
   </form>
   {% endif %}
   </div>
+</div>
+
+</fieldset>
 </div>
 
 <h2>Domain ownership</h2>
@@ -170,6 +168,4 @@ have proved you own it. <strong>Claimed but unverified domains are ignored.</str
 {% if not domain_verification_required %}
 </details>
 {% endif %}
-</div>
-</fieldset>
 {% endblock %}

@@ -2,6 +2,7 @@
 {% load static %}
 {% block title %}AI settings — {{ org.name }}{% endblock %}
 {% block settings %}
+<div class="ui-form-rail">
 <header class="page-head">
   <div class="ui-label page-kicker scope-org">Organization · {{ org.name }}</div>
   <h1>AI settings</h1>
@@ -24,7 +25,6 @@
   {% for key, text in check_updates.items %}<li data-settings-text="{{ key }}">{{ text }}</li>{% endfor %}
 </ul>
 
-<div class="panel">
   <form id="orgAssistantForm" method="post" data-settings-form data-settings-save
         data-test-url="{% url 'org-assistant-test' org.slug %}"
         data-models-url="{% url 'org-assistant-models' org.slug %}"
@@ -33,38 +33,43 @@
     {{ form.non_field_errors }}
     <label class="ui-check-row">{{ form.enabled }} Enable AI for chats and alerts in this organization</label>
 
-    <p class="ui-label" style="margin:18px 0 0">Provider</p>
-    <label>Provider</label>{{ form.provider }}{{ form.provider.errors }}
-    <label for="{{ form.auth_mode.id_for_label }}">Authentication</label>{{ form.auth_mode }}{{ form.auth_mode.errors }}
-    <span class="helptext">Workload identity requires authorization from your instance operator.</span>
-    <div data-auth-fields="api_key">
-    <label>API key
+    <section class="ui-form-section" aria-labelledby="assistant-provider-title">
+    <h2 id="assistant-provider-title">Provider and connection</h2>
+    <div class="ui-form-row">
+    <div class="ui-field"><label for="{{ form.provider.id_for_label }}">Provider</label>{{ form.provider }}{{ form.provider.errors }}</div>
+    <div class="ui-field"><label for="{{ form.auth_mode.id_for_label }}">Authentication</label>{{ form.auth_mode }}{{ form.auth_mode.errors }}<span class="ui-help">Workload identity requires authorization from your instance operator.</span></div>
+    </div>
+    <div data-auth-fields="api_key" class="ui-field">
+    <label for="{{ form.api_key.id_for_label }}">API key
       <span class="muted" data-settings-text="assistant-key-stored">{% if has_key %}(a key is stored — blank keeps it){% else %}(none stored yet){% endif %}</span>
     </label>{{ form.api_key }}{{ form.api_key.errors }}
     <span class="helptext">{{ form.api_key.help_text }}</span>
     </div>
-    <div data-provider-fields="bedrock">
+    <div data-provider-fields="bedrock" class="ui-field">
       <label for="{{ form.region.id_for_label }}">AWS region</label>{{ form.region }}{{ form.region.errors }}
     </div>
-    <div data-provider-fields="azure" data-auth-fields="client_secret">
-      <label for="{{ form.tenant_id.id_for_label }}">Entra tenant ID</label>{{ form.tenant_id }}{{ form.tenant_id.errors }}
-      <label for="{{ form.client_id.id_for_label }}">Entra client ID</label>{{ form.client_id }}{{ form.client_id.errors }}
-      <label for="{{ form.client_secret.id_for_label }}">Entra client secret</label>{{ form.client_secret }}{{ form.client_secret.errors }}
-    </div>
-    <div data-provider-fields="bedrock" data-auth-fields="access_key">
-      <label for="{{ form.access_key_id.id_for_label }}">AWS access key ID</label>{{ form.access_key_id }}{{ form.access_key_id.errors }}
-      <label for="{{ form.secret_access_key.id_for_label }}">AWS secret access key</label>{{ form.secret_access_key }}{{ form.secret_access_key.errors }}
-      <label for="{{ form.session_token.id_for_label }}">AWS session token (optional)</label>{{ form.session_token }}{{ form.session_token.errors }}
-    </div>
-    <div data-provider-fields="vertex">
-      <label for="{{ form.project.id_for_label }}">Google Cloud project</label>{{ form.project }}{{ form.project.errors }}
-      <label for="{{ form.location.id_for_label }}">Google Cloud location</label>{{ form.location }}{{ form.location.errors }}
-    </div>
-    <div data-provider-fields="vertex" data-auth-fields="service_account">
+    <div data-provider-fields="azure" data-auth-fields="client_secret"><div class="ui-form-row">
+      <div class="ui-field"><label for="{{ form.tenant_id.id_for_label }}">Entra tenant ID</label>{{ form.tenant_id }}{{ form.tenant_id.errors }}</div>
+      <div class="ui-field"><label for="{{ form.client_id.id_for_label }}">Entra client ID</label>{{ form.client_id }}{{ form.client_id.errors }}</div>
+      <div class="ui-field"><label for="{{ form.client_secret.id_for_label }}">Entra client secret</label>{{ form.client_secret }}{{ form.client_secret.errors }}</div>
+    </div></div>
+    <div data-provider-fields="bedrock" data-auth-fields="access_key"><div class="ui-form-row">
+      <div class="ui-field"><label for="{{ form.access_key_id.id_for_label }}">AWS access key ID</label>{{ form.access_key_id }}{{ form.access_key_id.errors }}</div>
+      <div class="ui-field"><label for="{{ form.secret_access_key.id_for_label }}">AWS secret access key</label>{{ form.secret_access_key }}{{ form.secret_access_key.errors }}</div>
+      <div class="ui-field"><label for="{{ form.session_token.id_for_label }}">AWS session token (optional)</label>{{ form.session_token }}{{ form.session_token.errors }}</div>
+    </div></div>
+    <div data-provider-fields="vertex"><div class="ui-form-row">
+      <div class="ui-field"><label for="{{ form.project.id_for_label }}">Google Cloud project</label>{{ form.project }}{{ form.project.errors }}</div>
+      <div class="ui-field"><label for="{{ form.location.id_for_label }}">Google Cloud location</label>{{ form.location }}{{ form.location.errors }}</div>
+    </div></div>
+    <div data-provider-fields="vertex" data-auth-fields="service_account" class="ui-field ui-field-wide">
       <label for="{{ form.service_account.id_for_label }}">Google service account JSON</label>{{ form.service_account }}{{ form.service_account.errors }}
     </div>
-    <span class="helptext" id="assistant-cloud-stored">{% if has_cloud_credentials %}Cloud credentials are stored; blank fields keep them only for the same connection identity.{% endif %}</span>
-    <label>Model</label>{{ form.model }}{{ form.model.errors }}
+    <span class="helptext ui-field-wide" id="assistant-cloud-stored">{% if has_cloud_credentials %}Cloud credentials are stored; blank fields keep them only for the same connection identity.{% endif %}</span>
+    </section>
+    <section class="ui-form-section" aria-labelledby="assistant-model-title">
+    <h2 id="assistant-model-title">Model</h2>
+    <div class="ui-field"><label for="{{ form.model.id_for_label }}">Model</label>{{ form.model }}{{ form.model.errors }}</div>
     <datalist id="assistant-model-list"></datalist>
     <button type="button" class="ui-btn" id="assistant-models"{% if not cfg %} disabled{% endif %}>Discover models</button>
     <span class="helptext">For a new provider, save its connection with AI disabled, discover or enter a model, then enable AI and test the connection.</span>
@@ -75,38 +80,44 @@
           data-openai="This model looks like an Anthropic model, but the provider is OpenAI."
           data-anthropic="This model looks like an OpenAI model, but the provider is Anthropic."></span>
 
-    <p class="ui-label" style="margin:18px 0 0">Data</p>
+    </section>
+    <section class="ui-form-section" aria-labelledby="assistant-data-title">
+    <h2 id="assistant-data-title">Data and budgets</h2>
     <label class="ui-check-row">{{ form.share_report_source }} Let the assistant read report source</label>
     <span class="helptext">{{ form.share_report_source.help_text }}</span>
     <label class="ui-check-row">{{ form.actions_enabled }} Let the assistant propose actions</label>
     <span class="helptext">{{ form.actions_enabled.help_text }}</span>
 
-    <p class="ui-label" style="margin:18px 0 0">Budgets</p>
-    <label>Monthly budget (USD, whole org)</label>{{ form.monthly_budget_usd }}{{ form.monthly_budget_usd.errors }}
-    <span class="helptext">{{ form.monthly_budget_usd.help_text }}</span>
-    <label>Monthly budget (USD, per user)</label>{{ form.per_user_budget_usd }}{{ form.per_user_budget_usd.errors }}
-    <span class="helptext">{{ form.per_user_budget_usd.help_text }}</span>
+    <h3>Budgets</h3>
+    <div class="ui-form-row">
+      <div class="ui-field"><label for="{{ form.monthly_budget_usd.id_for_label }}">Monthly budget (USD, whole org)</label>{{ form.monthly_budget_usd }}{{ form.monthly_budget_usd.errors }}<span class="ui-help">{{ form.monthly_budget_usd.help_text }}</span></div>
+      <div class="ui-field"><label for="{{ form.per_user_budget_usd.id_for_label }}">Monthly budget (USD, per user)</label>{{ form.per_user_budget_usd }}{{ form.per_user_budget_usd.errors }}<span class="ui-help">{{ form.per_user_budget_usd.help_text }}</span></div>
+    </div>
     <span class="helptext" data-settings-text="assistant-pricing-state">{{ pricing_state }}</span>
 
+    </section>
+    <section class="ui-form-section" aria-labelledby="assistant-advanced-title">
     <details{% if advanced_open %} open{% endif %}>
-      <summary class="ui-label" style="margin:18px 0 0;cursor:pointer">Advanced: custom endpoint and pricing</summary>
+      <summary id="assistant-advanced-title" class="ui-label" style="cursor:pointer">Advanced: custom endpoint and pricing</summary>
       <div data-endpoint-fields>
-      <label>Custom endpoint URL</label>{{ form.base_url }}{{ form.base_url.errors }}
+      <div class="ui-field"><label for="{{ form.base_url.id_for_label }}">Custom endpoint URL</label>{{ form.base_url }}{{ form.base_url.errors }}</div>
       <span class="helptext">{{ form.base_url.help_text }}</span>
       {# Which dialect the endpoint must speak follows the provider select. #}
       <span class="helptext" id="gateway-hint"
             data-anthropic="Must implement the Anthropic Messages API, for example a LiteLLM proxy in Anthropic mode. Many gateways only speak the OpenAI format; pick OpenAI as the provider for those. Use Test connection after saving."
             data-openai="Any OpenAI-compatible server works: LiteLLM, Azure OpenAI, vLLM, Ollama, or a corporate gateway. Use Test connection after saving."></span>
       </div>
-      <label>Input price (USD per million tokens)</label>{{ form.price_in_per_mtok }}{{ form.price_in_per_mtok.errors }}
-      <span class="helptext">{{ form.price_in_per_mtok.help_text }}</span>
-      <label>Output price (USD per million tokens)</label>{{ form.price_out_per_mtok }}{{ form.price_out_per_mtok.errors }}
-      <span class="helptext">{{ form.price_out_per_mtok.help_text }}</span>
+      <div class="ui-form-row">
+      <div class="ui-field"><label for="{{ form.price_in_per_mtok.id_for_label }}">Input price (USD per million tokens)</label>{{ form.price_in_per_mtok }}{{ form.price_in_per_mtok.errors }}<span class="ui-help">{{ form.price_in_per_mtok.help_text }}</span></div>
+      <div class="ui-field"><label for="{{ form.price_out_per_mtok.id_for_label }}">Output price (USD per million tokens)</label>{{ form.price_out_per_mtok }}{{ form.price_out_per_mtok.errors }}<span class="ui-help">{{ form.price_out_per_mtok.help_text }}</span></div>
+      </div>
     </details>
+    </section>
 
-    <p></p>
+    <div class="ui-form-actions">
     <button class="ui-btn primary" type="submit">Save changes</button>
     <button class="ui-btn" type="button" id="assistant-test" title="Tests streaming, tools, forced alert tools and metering through the settings as last saved"{% if not cfg %} disabled{% endif %}>Test connection</button>
+    </div>
     <div class="ui-flash" role="status" id="assistant-test-result" style="margin-top:12px" hidden>
       <span class="ui-flash-mark" aria-hidden="true"></span>
       <div style="min-width:0">
@@ -116,10 +127,10 @@
       </div>
     </div>
   </form>
-</div>
 {{ provider_presets|json_script:"assistant-provider-presets" }}
 {{ saved_connection|json_script:"assistant-saved-connection" }}
 <script src="{% static 'assistant-settings.js' %}" defer></script>
+</div>
 
 {% if usage %}
 <div class="panel">

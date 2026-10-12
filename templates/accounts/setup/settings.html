@@ -11,8 +11,9 @@
     <form method="post">
       {% csrf_token %}
 
-      <h2>Identity</h2>
-      <div class="ui-form-grid">
+      <section class="ui-form-section" aria-labelledby="setup-identity-title">
+      <h2 id="setup-identity-title">Identity</h2>
+      <div class="ui-form-row">
         <div class="ui-field">
           <label for="id_instance_name">Instance name</label>
           {{ form.instance_name }}{{ form.instance_name.errors }}
@@ -27,13 +28,15 @@
             places.</span>
         </div>
       </div>
+      </section>
 
-      <h2>Outbound email</h2>
+      <section class="ui-form-section" aria-labelledby="setup-email-title">
+      <h2 id="setup-email-title">Outbound email</h2>
       <p class="ui-help">Needed for password resets and for mailing invitations.
         Without it, invitations still work — they show a copyable link — and
         reset mails go to the container log. Save this step first, then add an
         API connection from System if you prefer an email service.</p>
-      <div class="ui-form-grid">
+      <div class="ui-form-row">
         <div class="ui-field">
           <label for="id_email_host">SMTP host</label>
           {{ form.email_host }}{{ form.email_host.errors }}
@@ -57,6 +60,7 @@
         </div>
       </div>
       <label class="ui-check-row">{{ form.email_use_tls }} Use STARTTLS</label>
+      </section>
 
       <div class="ui-form-actions">
         <button class="ui-btn primary" type="submit">Save and continue</button>

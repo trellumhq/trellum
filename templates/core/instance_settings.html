@@ -6,15 +6,15 @@
   <span class="spacer"></span>
   <a class="ui-btn ghost" href="{% url 'system' %}">System health</a>
 </header>
-<section id="identity" aria-labelledby="identity-title">
+<section id="identity" class="ui-form-rail" aria-labelledby="identity-title">
 <h2 id="identity-title">Identity</h2>
 <p class="muted">Changeable without a restart.</p>
-<div class="panel">
+<div class="ui-form-section">
 <form method="post" action="{% url 'instance-settings' %}" id="instance-settings-form" data-settings-form data-settings-save>
   {% csrf_token %}
   <input type="hidden" name="action" value="identity_settings">
   {{ identity_form.non_field_errors }}
-  <div class="ui-form-grid">
+  <div class="ui-form-row">
     <div class="ui-field">
       <label for="id_instance_name">Instance name</label>
       {{ identity_form.instance_name }}{{ identity_form.instance_name.errors }}
@@ -27,11 +27,11 @@
 </div>
 </section>
 
-<section id="networking" aria-labelledby="networking-title">
+<section id="networking" class="ui-form-rail" aria-labelledby="networking-title">
 <h2 id="networking-title">Networking</h2>
 <p class="muted">The database value is changeable without a restart. <code>PORTAL_BASE_URL</code>,
 <code>ALLOWED_HOSTS</code> and other settings read before startup stay in <code>.env</code>.</p>
-<div class="panel">
+<div class="ui-form-section">
 <form method="post" action="{% url 'instance-settings' %}" id="networking-settings-form" data-settings-form data-settings-save>
   {% csrf_token %}<input type="hidden" name="action" value="networking_settings">
   {{ networking_form.non_field_errors }}
@@ -45,14 +45,14 @@
 </div>
 </section>
 
-<section id="limits" aria-labelledby="limits-title">
+<section id="limits" class="ui-form-rail" aria-labelledby="limits-title">
 <h2 id="limits-title">Limits</h2>
 <p class="muted">Changeable without a restart. The reverse proxy must allow at least the same upload size.</p>
-<div class="panel">
+<div class="ui-form-section">
 <form method="post" action="{% url 'instance-settings' %}" id="limits-settings-form" data-settings-form data-settings-save>
   {% csrf_token %}<input type="hidden" name="action" value="limits_settings">
   {{ limits_form.non_field_errors }}
-  <div class="ui-field">
+    <div class="ui-field narrow">
     <label for="id_max_upload_mb">Max upload size (MB)</label>
     {{ limits_form.max_upload_mb }}{{ limits_form.max_upload_mb.errors }}
     <span class="ui-help">{{ limits_form.max_upload_mb.help_text }}</span>
@@ -62,16 +62,16 @@
 </div>
 </section>
 
-<section id="email-settings" aria-labelledby="email-settings-title">
+<section id="email-settings" class="ui-form-rail" aria-labelledby="email-settings-title">
 <h2 id="email-settings-title">Email</h2>
 <p class="muted">Database SMTP settings are changeable without a restart. Blank SMTP password keeps the stored password.</p>
-<div class="panel">
+<div class="ui-form-section">
 <form method="post" action="{% url 'instance-settings' %}" id="email-settings-form" data-settings-form data-settings-save>
   {% csrf_token %}<input type="hidden" name="action" value="email_settings">
   {{ email_form.non_field_errors }}
-  <div class="ui-form-grid">
+  <div class="ui-form-row">
     <div class="ui-field"><label for="id_email_host">SMTP host</label>{{ email_form.email_host }}{{ email_form.email_host.errors }}</div>
-    <div class="ui-field"><label for="id_email_port">Port</label>{{ email_form.email_port }}{{ email_form.email_port.errors }}</div>
+    <div class="ui-field narrow"><label for="id_email_port">Port</label>{{ email_form.email_port }}{{ email_form.email_port.errors }}</div>
     <div class="ui-field"><label for="id_email_host_user">SMTP username</label>{{ email_form.email_host_user }}{{ email_form.email_host_user.errors }}</div>
     <div class="ui-field"><label for="id_email_host_password">SMTP password</label>{{ email_form.email_host_password }}{{ email_form.email_host_password.errors }}<span class="ui-help">{{ email_form.email_host_password.help_text }}</span></div>
     <div class="ui-field"><label for="id_email_from">Send mail from</label>{{ email_form.email_from }}{{ email_form.email_from.errors }}</div>
@@ -85,30 +85,31 @@
 {% include "core/_email_connections.html" %}
 
 {% if delivery_policy_form %}
-<section id="scheduled-deliveries" aria-labelledby="scheduled-deliveries-title">
+<section id="scheduled-deliveries" class="ui-form-rail" aria-labelledby="scheduled-deliveries-title">
 <h2 id="scheduled-deliveries-title">Scheduled deliveries</h2>
 <p class="muted">Pause delivery across the instance and set defaults for future email schedules.</p>
 {% include "reports/_delivery_policy_form.html" %}
 </section>
 {% endif %}
 
-<h2>Security</h2>
+<section class="ui-form-rail" aria-labelledby="security-settings-title">
+<h2 id="security-settings-title">Security</h2>
 <p class="muted">Session policy, login lockout thresholds and the operator MFA
 requirement. Instance-scoped — per-organization overrides are a later step.
 Defaults reproduce today's behaviour except the absolute session cap (new).</p>
-<div class="panel">
+<div class="ui-form-section">
 <form method="post" action="{% url 'instance-settings' %}" id="security-settings-form" data-settings-form data-settings-save>
   {% csrf_token %}
   <input type="hidden" name="action" value="security_settings">
   {{ security_form.non_field_errors }}
   <p class="ui-label" style="margin-top:0">Session policy</p>
-  <div class="ui-form-grid">
-    <div class="ui-field">
+  <div class="ui-form-row">
+    <div class="ui-field narrow">
       <label for="id_session_idle_minutes">{{ security_form.session_idle_minutes.label }}</label>
       {{ security_form.session_idle_minutes }}{{ security_form.session_idle_minutes.errors }}
       <span class="ui-help">{{ security_form.session_idle_minutes.help_text }}</span>
     </div>
-    <div class="ui-field">
+    <div class="ui-field narrow">
       <label for="id_session_absolute_hours">{{ security_form.session_absolute_hours.label }}</label>
       {{ security_form.session_absolute_hours }}{{ security_form.session_absolute_hours.errors }}
       <span class="ui-help">{{ security_form.session_absolute_hours.help_text }}</span>
@@ -117,20 +118,20 @@ Defaults reproduce today's behaviour except the absolute session cap (new).</p>
   <label class="ui-check-row">{{ security_form.session_expire_at_browser_close }} {{ security_form.session_expire_at_browser_close.label }}</label>
 
   <p class="ui-label" style="margin-top:18px">Login lockout</p>
-  <div class="ui-form-grid">
-    <div class="ui-field">
+  <div class="ui-form-row">
+    <div class="ui-field narrow">
       <label for="id_lockout_account_threshold">{{ security_form.lockout_account_threshold.label }}</label>
       {{ security_form.lockout_account_threshold }}{{ security_form.lockout_account_threshold.errors }}
     </div>
-    <div class="ui-field">
+    <div class="ui-field narrow">
       <label for="id_lockout_ip_threshold">{{ security_form.lockout_ip_threshold.label }}</label>
       {{ security_form.lockout_ip_threshold }}{{ security_form.lockout_ip_threshold.errors }}
     </div>
-    <div class="ui-field">
+    <div class="ui-field narrow">
       <label for="id_lockout_window_minutes">{{ security_form.lockout_window_minutes.label }}</label>
       {{ security_form.lockout_window_minutes }}{{ security_form.lockout_window_minutes.errors }}
     </div>
-    <div class="ui-field">
+    <div class="ui-field narrow">
       <label for="id_lockout_cooloff_minutes">{{ security_form.lockout_cooloff_minutes.label }}</label>
       {{ security_form.lockout_cooloff_minutes }}{{ security_form.lockout_cooloff_minutes.errors }}
       <span class="ui-help">{{ security_form.lockout_cooloff_minutes.help_text }}</span>
@@ -155,5 +156,6 @@ request. {% if sessions_invalidated_at %}Last used {{ sessions_invalidated_at|da
   <button class="ui-btn danger" type="submit">Sign everyone out</button>
 </form>
 </div>
+</section>
 
 {% endblock %}
