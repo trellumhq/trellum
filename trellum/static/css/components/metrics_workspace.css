@@ -20,6 +20,8 @@ body.fw-only #fwMetricsWorkspace, body.fw-only #fwMetricsEmpty, body.fw-only .fw
 body.fw-metrics-embedded { min-height:0; }
 body.fw-metrics-embedded .fw-header, body.fw-metrics-embedded .fw-report-metadata { display:none; }
 body.fw-metrics-embedded .fw-container { margin:0; max-width:none; padding:0 0 12px; }
+body.fw-metrics-embedded .fw-metric-block .fw-kpi-grid,
+body.fw-metrics-embedded .fw-metric-snapshot-note { display:none; }
 @media (max-width:600px) {
   #fwMetricsWorkspace details { padding-top:76px; }
   #fwMetricsWorkspace summary { top:0; }

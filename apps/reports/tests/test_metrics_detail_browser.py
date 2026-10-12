@@ -247,6 +247,7 @@ def test_metric_page_retains_dates_and_split_and_overview_link(open_metric):
         page.locator("#metModalFull").click()
     page.locator("#metric-gross_revenue canvas").wait_for(state="visible")
     assert page.locator("body.fw-only").count() == 1
+    assert page.locator('#metric-gross_revenue .fw-kpi-grid').is_visible()
     assert page.locator("#metric-net_revenue").is_hidden()
     assert page.locator('#metric-gross_revenue [data-stack-toggle] .fw-toggle-btn.active').inner_text() == "Platform"
     assert page.locator('.fw-date-input[data-edge="min"]').input_value() == "2026-09-12"
@@ -345,9 +346,11 @@ def test_workspace_visibility_splits_and_single_scroll(open_metric, size):
     frame = page.locator('#metWorkspace').element_handle().content_frame()
     assert frame.locator('.fw-metric-block').evaluate_all('(els) => els.map(el => el.id)') == [
         'metric-balance', 'metric-gross_revenue', 'metric-inventory', 'metric-net_revenue', 'metric-orders']
+    assert frame.locator('body.fw-metrics-embedded').count() == 1
+    assert frame.locator('.fw-metric-block .fw-kpi-grid').evaluate_all(
+        '(els) => els.length === 5 && els.every(el => getComputedStyle(el).display === "none")')
+    assert frame.locator('.fw-metric-snapshot-note').is_hidden()
     assert frame.locator('#metric-gross_revenue [data-stack-toggle]').is_visible()
-    assert frame.locator('#metric-balance .fw-kpi-grid').is_hidden()
-    assert 'build-time snapshot' in frame.locator('#metric-balance').inner_text()
     toolbar = frame.locator('#fwMetricsWorkspace')
     layout = toolbar.evaluate('''el => {
         const buttons = [...el.querySelectorAll('button')];
