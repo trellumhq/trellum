@@ -16,7 +16,7 @@
   <p>Choose what to monitor, when to evaluate it and who should receive a notification.</p>
 </header>
 
-<form method="post" id="alertForm" data-alert-editor{% if not rule.pk and not form.is_bound %} data-browser-timezone-default{% endif %}{% if rule.pk %} data-settings-form data-settings-save{% endif %}>
+<form method="post" id="alertForm" class="ui-form-rail" data-alert-editor{% if not rule.pk and not form.is_bound %} data-browser-timezone-default{% endif %}{% if rule.pk %} data-settings-form data-settings-save{% endif %}>
   {% csrf_token %}
   {{ form.non_field_errors }}
   <div class="ui-form-rail">

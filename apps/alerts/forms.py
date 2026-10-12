@@ -102,7 +102,7 @@ class AlertRuleForm(forms.ModelForm):
         people.queryset = get_user_model().objects.filter(
             pk__in=[u.pk for u in org_users if role_by_id.get(u.pk)]
         ).order_by("email")
-        people.label_from_instance = lambda u: u.name or u.email
+        people.label_from_instance = lambda u: f"{u.name} ({u.email})" if u.name else u.email
         self.fields["recipient_roles"].choices = [
             ("admins", "All admins"), ("developers", "All developers"),
             ("everyone", f"Everyone in {studio.name}"),

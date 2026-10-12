@@ -32,7 +32,8 @@
     picker.popup.style.width = Math.min(Math.max(rect.width, 300), width - 16) + 'px';
     picker.popup.style.maxHeight = Math.max(0, Math.min(400, full ? height - 16 : available)) + 'px';
     picker.popup.style.left = Math.max(left + 8, Math.min(rect.left, left + width - picker.popup.offsetWidth - 8)) + 'px';
-    picker.popup.style.top = (full ? top + 8 : upwards ? rect.top - picker.popup.offsetHeight - 4 : rect.bottom + 4) + 'px';
+    var desiredTop = full ? top + 8 : upwards ? rect.top - picker.popup.offsetHeight - 4 : rect.bottom + 4;
+    picker.popup.style.top = Math.max(top + 8, Math.min(desiredTop, top + height - picker.popup.offsetHeight - 8)) + 'px';
   }
   // Manual popovers keep the nonmodal dialog inside its form while escaping drawer clipping.
   function popup(root, label) {

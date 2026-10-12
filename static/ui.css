@@ -545,6 +545,10 @@ body.mgmt main th,
     }
 }
 
+/* Native calendar and clock affordances follow the explicit page theme. */
+html[data-theme="dark"] input:is([type="date"], [type="time"], [type="datetime-local"]) { color-scheme: dark; }
+html[data-theme="light"] input:is([type="date"], [type="time"], [type="datetime-local"]) { color-scheme: light; }
+
 /* ── Buttons ─────────────────────────────────────────────────────────────── */
 .ui-btn {
     font: 500 var(--fs-base)/1.4 var(--font);

@@ -224,7 +224,7 @@ def test_alert_editor_layout_desktop_mobile_and_dark(rule, login, tmp_path):
     html = login(rule.created_by).get(url).content.decode()
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
-        page = browser.new_page(viewport={"width": 1440, "height": 1000})
+        page = browser.new_page(viewport={"width": 1440, "height": 1000}, reduced_motion="reduce")
         page.route("**/*", lambda route: route.abort())
         page.route("http://example.test" + url, lambda route: route.fulfill(body=html, content_type="text/html"))
         page.goto("http://example.test" + url)
@@ -242,6 +242,7 @@ def test_alert_editor_layout_desktop_mobile_and_dark(rule, login, tmp_path):
         page.add_script_tag(content=(ROOT / "static/recipient-picker.js").read_text(encoding="utf-8"))
         page.add_script_tag(content=(ROOT / "static/alert-editor.js").read_text(encoding="utf-8"))
         page.locator("html").evaluate("node => node.setAttribute('data-theme', 'light')")
+        page.locator('[data-console-shell]').evaluate_all("nodes => nodes.forEach(node => node.dataset.consoleTheme = 'light')")
         rail = page.locator("form .ui-form-rail")
         assert rail.evaluate("node => node.getBoundingClientRect().width") <= 760
         page.locator('input[name="trigger"][value="schedule"]').check()
@@ -259,6 +260,7 @@ def test_alert_editor_layout_desktop_mobile_and_dark(rule, login, tmp_path):
         page.screenshot(path=str(tmp_path / "alerts-desktop-picker.png"))
 
         page.set_viewport_size({"width": 390, "height": 844})
+        page.wait_for_function("document.documentElement.scrollWidth <= innerWidth")
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
         assert page.locator('[name="send_time"]').evaluate("node => node.getBoundingClientRect().height") >= 44
         popup_rect = field.locator(".ui-picker-popup").evaluate("""node => {
@@ -271,10 +273,13 @@ def test_alert_editor_layout_desktop_mobile_and_dark(rule, login, tmp_path):
         page.screenshot(path=str(tmp_path / "alerts-mobile-light.png"), full_page=True)
 
         page.locator("html").evaluate("node => node.setAttribute('data-theme', 'dark')")
+        page.locator('[data-console-shell]').evaluate_all("nodes => nodes.forEach(node => node.dataset.consoleTheme = 'dark')")
+        assert page.locator('[name="send_time"]').evaluate("node => getComputedStyle(node).colorScheme") == "dark"
         assert not page.locator('[data-choice-picker] .ui-picker-trigger').first.is_disabled()
         assert not field.locator(".ui-picker-trigger").is_disabled()
         expect(page.locator("[data-alert-preview]")).to_be_enabled()
-        page.screenshot(path=str(tmp_path / "alerts-mobile-dark.png"), full_page=True)
+        page.evaluate("scrollTo(0, 0)")
+        page.screenshot(path=str(tmp_path / "alerts-mobile-dark.png"), full_page=True, animations="disabled")
         print(f"Alert layout screenshots: {tmp_path}")
         browser.close()
 

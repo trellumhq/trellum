@@ -251,6 +251,26 @@ def test_geometry_near_bottom_long_labels_and_shared_rail(browser, width, theme)
     context.close()
 
 
+def test_open_picker_stays_onscreen_when_responsive_layout_moves_its_anchor(browser):
+    context, page = page_for(browser)
+    root = page.locator('#recipients')
+    root.locator('.ui-picker-trigger').click()
+    page.set_viewport_size({'width': 390, 'height': 844})
+    page.evaluate("""() => {
+        document.querySelector('main').style.paddingTop = '2400px';
+        scrollTo(0, 0);
+        dispatchEvent(new Event('resize'));
+    }""")
+    popup = root.locator('.ui-picker-popup')
+    box = popup.bounding_box()
+    assert box['y'] >= 0 and box['y'] + box['height'] <= 844
+    assert box['x'] >= 0 and box['x'] + box['width'] <= 390
+    root.locator('.ui-picker-search').fill('person99@')
+    root.locator('input[value="99"]').check()
+    assert page.evaluate("new FormData(document.querySelector('form')).get('people')") == '99'
+    context.close()
+
+
 def test_widget_scoped_styles_escape_transformed_drawer_and_native_nojs(browser):
     context, page = page_for(browser, 390, enhance=False, portal_css=False)
     expect(page.locator("#zone")).to_be_visible()
