@@ -9,10 +9,10 @@
       <p class="muted page-sub">Create a workspace for reports and the people who can access them.</p>
     </div>
     <span class="spacer"></span>
-    <a class="ui-btn ghost" href="/orgs/{{ org.slug }}/settings/studios">← All studios</a>
+    <a class="ui-btn ghost" data-settings-leave="studio-create-form" href="/orgs/{{ org.slug }}/settings/studios">← All studios</a>
   </header>
 
-  <form method="post" action="/orgs/{{ org.slug }}/studios/new">
+  <form id="studio-create-form" data-settings-form method="post" action="/orgs/{{ org.slug }}/studios/new">
     {% csrf_token %}
     {% if form.non_field_errors %}<div class="errorlist" role="alert">{{ form.non_field_errors }}</div>{% endif %}
     <section class="ui-form-section" aria-labelledby="studio-details-heading">
@@ -41,7 +41,7 @@
       </div>
       <div class="ui-form-actions">
         <button class="ui-btn primary" type="submit">Create Studio</button>
-        <a class="ui-btn ghost" href="/orgs/{{ org.slug }}/settings/studios">Cancel</a>
+        <a class="ui-btn ghost" data-settings-leave href="/orgs/{{ org.slug }}/settings/studios">Cancel</a>
       </div>
     </section>
   </form>

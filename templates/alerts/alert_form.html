@@ -16,7 +16,7 @@
   <p>Choose what to monitor, when to evaluate it and who should receive a notification.</p>
 </header>
 
-<form method="post" id="alertForm" class="ui-form-rail" data-alert-editor{% if not rule.pk and not form.is_bound %} data-browser-timezone-default{% endif %}{% if rule.pk %} data-settings-form data-settings-save{% endif %}>
+<form method="post" id="alertForm" class="ui-form-rail" data-settings-form data-alert-editor{% if not rule.pk and not form.is_bound %} data-browser-timezone-default{% endif %}{% if rule.pk %} data-settings-save{% endif %}>
   {% csrf_token %}
   {{ form.non_field_errors }}
   <div class="ui-form-rail">
@@ -111,7 +111,7 @@
     <div class="ui-form-actions">
       <button class="ui-btn primary" type="submit">{% if rule.pk %}Save alert{% else %}Create alert{% endif %}</button>
       <button class="ui-btn ghost" type="submit" name="action" value="preview" data-alert-preview>Test draft</button>
-      <a class="ui-btn ghost" href="{{ prefix }}">Cancel</a>
+      <a class="ui-btn ghost" data-settings-leave href="{{ prefix }}">Cancel</a>
       <span class="ui-help">Draft tests are billed to you. Saving keeps the rule’s current owner. Preview history is isolated from live history; no mail or budget warning is sent.</span>
     </div>
   </div>

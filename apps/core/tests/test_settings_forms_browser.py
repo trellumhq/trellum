@@ -39,6 +39,48 @@ def test_settings_form_dirty_state_reverts_and_rebases():
         browser.close()
 
 
+@pytest.mark.parametrize('engine', ['chromium', 'webkit'])
+@pytest.mark.parametrize('outside', [False, True])
+def test_cancel_and_back_keep_dirty_draft_until_discard_confirmed(engine, outside):
+    helper = (ROOT / 'static/settings-forms.js').read_text(encoding='utf-8')
+    leave = '<a href="/list" data-settings-leave="draft">Back</a>'
+    html = '<form id="draft" data-settings-form><input name="name" value="Original">' + (
+        '' if outside else leave) + '</form>' + (leave if outside else '')
+    with sync_playwright() as playwright:
+        browser = getattr(playwright, engine).launch(headless=True)
+        page = browser.new_page()
+        page.route('https://example.test/editor', lambda route: route.fulfill(body=html, content_type='text/html'))
+        page.route('https://example.test/list', lambda route: route.fulfill(body='List'))
+        page.goto('https://example.test/editor')
+        page.add_script_tag(content=helper)
+        page.locator('[name=name]').fill('Draft kept')
+        dismissed = []
+        def keep(dialog):
+            dismissed.append(dialog.message)
+            dialog.dismiss()
+        page.on('dialog', keep)
+        page.get_by_role('link', name='Back').click()
+        expect(page).to_have_url('https://example.test/editor')
+        expect(page.locator('[name=name]')).to_have_value('Draft kept')
+        assert len(dismissed) == 1
+        page.remove_listener('dialog', keep)
+        page.on('dialog', lambda dialog: dialog.accept())
+        page.get_by_role('link', name='Back').click()
+        expect(page).to_have_url('https://example.test/list')
+        browser.close()
+
+
+def test_clean_form_back_does_not_prompt(settings_page):
+    page = settings_page
+    page.locator('#prefs').evaluate("form => form.insertAdjacentHTML('beforeend','<a data-settings-leave href=\"/list\">Back</a>')")
+    page.route('https://example.test/list', lambda route: route.fulfill(body='List'))
+    prompts = []
+    page.on('dialog', lambda dialog: (prompts.append(dialog.message), dialog.dismiss()))
+    page.get_by_role('link', name='Back').click()
+    expect(page).to_have_url('https://example.test/list')
+    assert prompts == []
+
+
 def test_disabled_controls_do_not_create_false_dirty_state():
     helper = (ROOT / "static" / "settings-forms.js").read_text(encoding="utf-8")
     html = f"""

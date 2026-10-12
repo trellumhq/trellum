@@ -254,5 +254,17 @@
     var handler = submitHandlers.get(event.target);
     if (handler) handler(event);
   });
+  document.addEventListener('click', function (event) {
+    var link = event.target.closest('a[data-settings-leave]');
+    if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    if (link.hasAttribute('download') || (link.target && link.target !== '_self')) return;
+    var form = link.dataset.settingsLeave ? document.getElementById(link.dataset.settingsLeave) : link.closest('form');
+    if (!form || !form.matches('[data-settings-form],[data-settings-save]')) return;
+    var saving = form.getAttribute('aria-busy') === 'true';
+    if (!saving && !form.classList.contains('is-dirty')) return;
+    var message = saving ? 'Saving is still in progress. Leave and check the saved result later?'
+      : 'Discard unsaved changes? Choose Cancel to keep editing.';
+    if (!window.confirm(message)) event.preventDefault();
+  });
   initialize(document);
 })();

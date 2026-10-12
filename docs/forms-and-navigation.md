@@ -125,6 +125,13 @@ preserve the current page and offer a clear Back link; preserve intentional
 CRUD navigation where explicitly required by the page's contract. Canceling a
 dirty form offers a keep/discard choice before any request or draft loss.
 
+Use `data-settings-form` to track a creation form without intercepting its
+native submit. Add `data-settings-leave` to Cancel/Back links inside that form,
+or set its value to the form's ID for a header link outside the form. These
+links ask before discarding a dirty draft or leaving a save in progress;
+clean forms leave immediately. Links opening another tab do not discard the
+current draft. Keep the dedicated creation response and navigation semantics.
+
 Testing and saving are different operations. Label alert tests as previews,
 retain the cost disclosure, and keep them free of email delivery side effects.
 A data-source save does not establish that the connection works. Test results
