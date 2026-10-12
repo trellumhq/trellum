@@ -6,6 +6,7 @@ import base64
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -86,6 +87,27 @@ def test_cli_scaffold_import_build_roundtrip(article, tmp_path, capsys, monkeypa
     assert json.loads((output / "_validation.json").read_bytes())["summary"]["fail"] == 0
     assert discover_report(str(article)).__name__ == "AnalysisReport"
     assert [entry["slug"] for entry in scan_report_configs(str(tmp_path / "reports"))] == ["decision"]
+
+
+def test_article_review_targets_have_stable_unique_ids_and_safe_attributes(article):
+    evidence = article / "evidence" / "chart.png"
+    evidence.parent.mkdir(parents=True, exist_ok=True)
+    evidence.write_bytes(_png())
+    (article / "content.md").write_text(
+        "## Passage 1\n\nA <script>careful</script> paragraph.\n\n"
+        "![Chart & details](evidence/chart.png \"Evidence title\")\n\nSecond paragraph.",
+        encoding="utf-8")
+
+    page = Path(run_report(str(article))).joinpath("index.html").read_text(encoding="utf-8")
+    body = page.split('<article ', 1)[1].split('</article>', 1)[0]
+    ids = re.findall(r'\bid="([^"]+)"', body)
+    assert len(ids) == len(set(ids))
+    assert '<h2 id="article-passage-1">Passage 1</h2>' in body
+    assert '<p id="article-passage-1-2" data-fw-kind="Passage">' in body
+    assert '<p id="article-passage-3" data-fw-kind="Passage">' in body
+    assert re.search(r'<img\b[^>]*\bid="article-evidence-1"[^>]*data-fw-kind="Evidence"', body)
+    assert 'alt="Chart &amp; details" title="Evidence title"' in body
+    assert '<script>careful</script>' not in body
 
 
 @pytest.mark.parametrize("markdown", [
@@ -462,6 +484,28 @@ def test_presentation_four_layouts_frozen_provenance_and_safe_text(presentation,
     checks = json.loads((output / "_validation.json").read_bytes())
     assert checks["summary"]["fail"] == 0
     assert any(check["id"] == "analysis-slides-valid" for check in checks["checks"])
+
+
+def test_presentation_review_targets_are_stable_and_unique_across_slides(presentation):
+    evidence = presentation / "evidence" / "chart.png"
+    evidence.parent.mkdir(parents=True, exist_ok=True)
+    evidence.write_bytes(_png())
+    _write_slides(presentation, [
+        {"id": "first", "layout": "image-text", "title": "First",
+         "text": "A passage.\n\n![Inline evidence](evidence/chart.png)",
+         "image": "evidence/chart.png", "alt": "Explicit evidence"},
+        {"id": "second", "layout": "text", "title": "Second", "text": "Another passage."},
+    ])
+
+    page = Path(run_report(str(presentation))).joinpath("index.html").read_text(encoding="utf-8")
+    body = page.split('<article class="fw-presentation"', 1)[1].split('</article>', 1)[0]
+    ids = re.findall(r'\bid="([^"]+)"', body)
+    assert len(ids) == len(set(ids))
+    assert '<p id="slide-first-passage-1" data-fw-kind="Passage">' in body
+    assert re.search(r'<img\b[^>]*\bid="slide-first-evidence-1"[^>]*data-fw-kind="Evidence"', body)
+    assert re.search(r'<img\b[^>]*\bid="slide-first-evidence-2"[^>]*data-fw-kind="Evidence"', body)
+    assert '<p id="slide-second-passage-1" data-fw-kind="Passage">' in body
+    assert 'id="slide-first"' in body and 'class="fw-section fw-slide fw-slide--image-text"' in body
 
 
 @pytest.mark.parametrize("slides, message", [

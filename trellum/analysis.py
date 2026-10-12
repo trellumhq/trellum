@@ -154,6 +154,9 @@ def _article_markdown(root: Path, output: Path) -> str:
             token.attrSet("id", anchor)
             toc.append(f'<li class="fw-toc-{token.tag}"><a href="#{anchor}">'
                        f'{html.escape(title)}</a></li>')
+    counters = {"passage": 0, "evidence": 0}
+    _assign_review_targets(tokens, "article", used, counters)
+    for token in tokens:
         _prepare_images(token.children or [], root, assets)
     parser.renderer.rules["image"] = _image_renderer(parser, assets)
     markup = parser.renderer.render(tokens, parser.options, {})
@@ -198,6 +201,32 @@ def _prepare_images(tokens, root: Path, assets: dict) -> None:
             # Use URL encoding from the parser, but portable relative paths on disk.
             token.meta["asset"] = _prepare_asset(url, root, assets)
         _prepare_images(token.children or [], root, assets)
+
+
+def _assign_review_targets(tokens, prefix: str, used: set, counters: dict) -> None:
+    """Give Markdown passages and evidence stable, collision-free review IDs."""
+    for token in tokens:
+        if token.type == "paragraph_open":
+            counters["passage"] += 1
+            _set_review_target(token, "Passage", f"{prefix}-passage-{counters['passage']}", used)
+        elif token.type == "image":
+            counters["evidence"] += 1
+            _set_review_target(token, "Evidence", f"{prefix}-evidence-{counters['evidence']}", used)
+        _assign_review_targets(token.children or [], prefix, used, counters)
+
+
+def _set_review_target(token, kind: str, base_id: str, used: set) -> None:
+    identifier = _reserve_review_id(base_id, used)
+    token.attrSet("id", identifier)
+    token.attrSet("data-fw-kind", kind)
+
+
+def _reserve_review_id(base_id: str, used: set) -> str:
+    identifier, suffix = base_id, 2
+    while identifier in used:
+        identifier, suffix = f"{base_id}-{suffix}", suffix + 1
+    used.add(identifier)
+    return identifier
 
 
 def _image_renderer(parser, assets):
@@ -266,12 +295,17 @@ def _presentation_markup(root: Path, output: Path) -> str:
     parser.validateLink = _link_allowed
     assets, sections, links = {}, [], []
     parser.renderer.rules["image"] = _image_renderer(parser, assets)
-    for slide in _presentation_slides(root):
+    slides = _presentation_slides(root)
+    used = {f"slide-{slide['id']}" for slide in slides}
+    used.update(f"slide-{slide['id']}-title" for slide in slides)
+    for slide in slides:
         anchor = f"slide-{slide['id']}"
         title = html.escape(slide["title"])
         text = ""
+        counters = {"passage": 0, "evidence": 0}
         if "text" in slide:
             tokens = parser.parse(slide["text"])
+            _assign_review_targets(tokens, anchor, used, counters)
             for token in tokens:
                 _prepare_images(token.children or [], root, assets)
             text = '<div class="fw-slide-text">' + parser.renderer.render(tokens, parser.options, {}) + '</div>'
@@ -285,8 +319,12 @@ def _presentation_markup(root: Path, output: Path) -> str:
             alt = html.escape(slide["alt"], quote=True)
             source = assets[relative][1]
             caption = _caption(source) if source is not None else ""
+            counters["evidence"] = counters.get("evidence", 0) + 1
+            evidence_id = f"{anchor}-evidence-{counters['evidence']}"
+            evidence_id = _reserve_review_id(evidence_id, used)
             evidence = (f'<figure class="fw-slide-evidence"><a href="{image_url}" target="_blank" '
-                        f'rel="noopener" title="Enlarge image"><img src="{image_url}" alt="{alt}"></a>'
+                        f'rel="noopener" title="Enlarge image"><img id="{html.escape(evidence_id, quote=True)}" '
+                        f'data-fw-kind="Evidence" src="{image_url}" alt="{alt}"></a>'
                         + (f'<figcaption>{caption}</figcaption>' if caption else "") + '</figure>')
         sections.append(f'<section class="fw-section fw-slide fw-slide--{slide["layout"]}" id="{anchor}" '
                         f'data-fw-section-title="{html.escape(slide["title"], quote=True)}" '
