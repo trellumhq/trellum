@@ -340,6 +340,9 @@ def test_standalone_dark_widget_styles_do_not_change_report_content(browser):
     edit(page)
     root = page.locator('#rdwFormWrap')
     assert root.locator('[data-f="time"]').evaluate('node=>getComputedStyle(node).colorScheme') == 'dark'
+    assert root.locator('.rdw-label').first.evaluate('node=>getComputedStyle(node).color') == 'rgb(167, 173, 184)'
+    assert page.locator('#rdwScheduleList .rdw-btn').first.evaluate('node=>getComputedStyle(node).backgroundColor') == 'rgb(24, 27, 31)'
+    assert page.locator('#rdwScheduleList .rdw-schedule-row').first.evaluate('node=>getComputedStyle(node).borderTopColor') == 'rgb(48, 54, 61)'
     expect(root.locator('.recipient-picker-selected')).to_contain_text('Person 99')
     assert page.locator('#report-content').evaluate('node=>getComputedStyle(node).fontSize') == '23px'
     assert page.locator('#report-content').evaluate('node=>getComputedStyle(node).color') == 'rgb(12, 34, 56)'
