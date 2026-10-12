@@ -134,15 +134,43 @@ def live_query_page(browser_page):
 
 def test_annotation_bar_follows_metadata_strip(capture_page):
     capture_page.evaluate("""() => {
+        var chrome = document.createElement('div');
+        chrome.className = 'fw-report-chrome';
+        var header = document.querySelector('.fw-header');
+        var metadata = document.getElementById('fwReportMetadata');
+        header.parentNode.insertBefore(chrome, header);
+        chrome.appendChild(header);
+        chrome.appendChild(metadata);
         window._reportData = {_events: [
             {date: '2026-04-05', label: 'Release', type: 'release'}
         ]};
         window._buildAnnoToggleBar();
     }""")
     assert capture_page.evaluate("""() => {
-        var metadata = document.getElementById('fwReportMetadata');
-        return metadata.nextElementSibling.id === 'fwAnnoBar';
+        var chrome = document.querySelector('.fw-report-chrome');
+        return chrome.nextElementSibling.id === 'fwAnnoBar';
     }""")
+
+
+def test_integrated_chrome_is_counted_once_in_sticky_offset(capture_page):
+    capture_page.evaluate("""() => {
+        var chrome = document.createElement('div');
+        chrome.className = 'fw-report-chrome';
+        chrome.style.height = '52px';
+        var header = document.querySelector('.fw-header');
+        var metadata = document.getElementById('fwReportMetadata');
+        metadata.style.height = '18px';
+        header.parentNode.insertBefore(chrome, header);
+        chrome.appendChild(header);
+        chrome.appendChild(metadata);
+    }""")
+    capture_page.add_script_tag(content=load_js("components/report_metadata.js"))
+    assert capture_page.evaluate("""() => {
+        var root = getComputedStyle(document.documentElement);
+        return [root.getPropertyValue('--fw-header-h').trim(),
+                root.getPropertyValue('--fw-metadata-h').trim(),
+                root.getPropertyValue('--fw-sticky-offset').trim()];
+    }""") == ["52px", "0px", "52px"]
 
 
 class TestFormatters:

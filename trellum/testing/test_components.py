@@ -1100,8 +1100,7 @@ def test_report_header_css_enlarges_brand_mark():
 
 def test_report_header_css_keeps_compact_title_without_wrapping():
     css = ReportHeader.css()
-    # Keep the report title compact even when a theme uses a larger heading
-    # scale; the header row remains a single line on desktop.
+    # The title stays compact even when a theme uses a larger heading scale.
     assert "flex-wrap: nowrap" in css
     assert "font-size: 12px" in css
 
@@ -1118,5 +1117,7 @@ def test_report_metadata_client_js_shows_age_label_and_preserves_thresholds():
     assert "el.title = fullTxt" in js
     assert "'Updated ' + h + 'h ago'" in js
     assert "hh + mh + ah" in js
+    assert "var chrome = document.querySelector('.fw-report-chrome')" in js
+    assert "chrome ? 0" in js
     assert "el.innerHTML = '<span class=\"fw-fresh-dot\"></span>' + fullTxt" in js
     assert "rs * 4" in js and "rs * 2" in js

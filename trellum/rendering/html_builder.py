@@ -152,6 +152,15 @@ def _render_report_metadata(ctx, theme, seen_css, seen_js):
     return metadata_html, css_parts, js_parts
 
 
+def _integrate_default_chrome(ctx, header_html, metadata_html):
+    if getattr(ctx, "_header_component", None) is not None:
+        return header_html, metadata_html
+    return (
+        '<div class="fw-report-chrome">' + header_html + metadata_html + '</div>',
+        "",
+    )
+
+
 def render_report(
     ctx,
     output_dir: str | None = None,
@@ -377,6 +386,7 @@ def render_report(
     metadata_html, metadata_css_parts, metadata_js_parts = _render_report_metadata(
         ctx, theme, seen_css, seen_js,
     )
+    header_html, metadata_html = _integrate_default_chrome(ctx, header_html, metadata_html)
     component_css_parts.extend(metadata_css_parts)
     component_js_parts.extend(metadata_js_parts)
 

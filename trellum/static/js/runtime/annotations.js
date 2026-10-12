@@ -240,7 +240,8 @@
 
         var bar = document.getElementById('fwAnnoBar');
         if (!bar) {
-            var anchor = document.getElementById('fwReportMetadata')
+            var anchor = document.querySelector('.fw-report-chrome')
+                || document.getElementById('fwReportMetadata')
                 || document.querySelector('.fw-header');
             if (!anchor) return;
             bar = document.createElement('div');

@@ -1,11 +1,12 @@
 (function(){
   function _measureSticky() {
     var root = document.documentElement;
-    var hdr = document.querySelector('.fw-header');
+    var chrome = document.querySelector('.fw-report-chrome');
+    var hdr = chrome || document.querySelector('.fw-header');
     var meta = document.getElementById('fwReportMetadata');
     var ab = document.getElementById('fwAnnoBar');
     var hh = hdr ? hdr.getBoundingClientRect().height : 0;
-    var mh = meta ? meta.getBoundingClientRect().height : 0;
+    var mh = chrome ? 0 : (meta ? meta.getBoundingClientRect().height : 0);
     var ah = ab ? ab.getBoundingClientRect().height : 0;
     root.style.setProperty('--fw-header-h', hh + 'px');
     root.style.setProperty('--fw-metadata-h', mh + 'px');
