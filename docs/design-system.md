@@ -277,3 +277,54 @@ tabular data can use an explicitly bounded inner scroller when necessary.
    menu. Role restrictions remain unchanged.
 7. Data-source save and connection status stay separate. Lists distinguish
    loading, zero records, no filter matches and failed requests.
+
+## Shared picker markup and initialization
+
+`templates/base.html` loads `choice-picker.css/js` and `recipient-picker.css/js`.
+Other hosts, including report widgets and the catalog, load those assets in that
+order using their resolved static URLs. These styles scope themselves to picker
+roots and do not require `ui.css` or reset report content.
+
+Add `data-choice-picker` to a native single select, or to its wrapper containing
+one select. Keep its `name`, options, `required`, labels and server errors. The
+enhancer retains that select as the submitted value, including blank/inherit
+options, disabled options and disabled/hidden optgroups. Optional
+`data-picker-label`, `data-picker-placeholder`, `data-picker-search-placeholder`
+and `data-picker-empty-state` customize its text. Timezones use this same
+enhancer; the page supplies validated IANA choices and guards browser defaults
+for new, unbound schedules. Native date/time controls remain native inputs.
+
+Use one `data-recipient-picker` wrapper with a visible label. Put the existing
+checkbox lists inside children marked `data-recipient-type="people"`, `"roles"`
+or `"groups"`; leave checkbox names and values unchanged. Optional checkbox
+`data-recipient-name` and `data-recipient-identity` supply the person's display
+name and secondary email. `data-picker-label="Recipients"` explicitly names the
+control, and `data-picker-empty-state` supplies its empty message. Existing
+single-list wrappers also work. Preserve each group's errors; they remain
+visible when the options close. No JavaScript means ordinary selects and
+checkbox lists, without changing the server contract.
+
+`TrellumChoices.init(root)` and `TrellumRecipients.init(root)` return initialized
+instances, safely initialize repeated roots, and run on initial DOM and
+`settings:updated`. Their `.refresh()` synchronizes programmatic values; instances
+are also available as `select._trellumChoice` and `wrapper._trellumRecipients`.
+After setting a native value, dispatch bubbling `input`/`change` when it is a user
+change; use `.refresh()` for silent normalization. Form reset and shared saved
+events also refresh captions. Replace a recipient wrapper when its available
+checkbox catalog changes, then initialize the new root; selections remain native
+checkbox state. Fetch/loading errors belong to the host and must not replace an
+existing selection with an empty catalog.
+
+Picker popups are nonmodal dialogs with buttons or native checkboxes, internal
+search and ordinary Tab traversal. The native popover layer avoids clipping
+inside drawers while retaining form ownership. A picker handles Escape before
+an enclosing drawer, returns focus after selection/removal, and bounds its list
+to the viewport, opening above when necessary. Internal search is not a form
+draft change. Single-choice native validity focuses the visible trigger and
+shows a persistent field error; server `aria-invalid`/`aria-describedby` values
+are mirrored to the trigger.
+
+Use `.ui-form-rail` as the centered 760px page wrapper for its header and editing
+sections. `.ui-form-section` supplies neutral borders and 24px padding (16px on
+mobile); `.ui-form-row` is a two-column row collapsing below 768px, with
+`.ui-field-wide` spanning it. Keep operational lists and tables outside the rail.

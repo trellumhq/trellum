@@ -637,6 +637,8 @@ body.mgmt input[type="checkbox"], body.mgmt input[type="radio"] { width: auto; }
 .ui-form-row { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px; align-items:start; }
 .ui-form-row > .ui-field-wide { grid-column:1 / -1; }
 .ui-form-section .ui-field { margin-bottom:16px; }
+.ui-form-section .ui-form-row > .ui-field { margin-bottom:0; }
+.ui-form-row > .ui-field > label { margin-top:0; }
 @media (max-width:767px) {
     .ui-form-section { padding:16px; margin-bottom:16px; }
     .ui-form-row { grid-template-columns:minmax(0, 1fr); }

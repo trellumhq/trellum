@@ -1,0 +1,54 @@
+/* Scoped controls can be loaded into a report without changing report content. */
+.ui-picker {
+  min-width:0; position:relative; font:14px/1.4 var(--font, Inter, sans-serif);
+  color:var(--text, #172126);
+}
+.ui-picker .ui-picker-trigger, .ui-picker .ui-picker-option, .ui-picker .ui-picker-done,
+.ui-picker .ui-picker-filter, .ui-picker .recipient-picker-chip button {
+  box-sizing:border-box; font:inherit; color:inherit; cursor:pointer;
+  border:1px solid var(--border, #e2e6ea); border-radius:8px;
+  background:var(--bg-card, #fff); padding:8px 12px; min-height:36px; margin:0;
+}
+.ui-picker .ui-picker-trigger {
+  display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; text-align:left;
+  background:var(--bg, #f6f7f8); min-height:38px; padding:7px 10px;
+}
+.ui-picker .ui-picker-trigger[aria-expanded="true"] { border-color:var(--accent, #0f766e); box-shadow:0 0 0 1px var(--accent, #0f766e); }
+.ui-picker .ui-picker-caption { min-width:0; overflow-wrap:anywhere; }
+.ui-picker .ui-picker-chevron { width:6px; height:6px; flex:none; margin-right:3px; border-right:2px solid currentColor; border-bottom:2px solid currentColor; transform:rotate(45deg); }
+.ui-picker button:disabled { opacity:.6; cursor:default; }
+.ui-picker .ui-picker-trigger[aria-invalid="true"] { border-color:var(--red, #b91c1c); }
+.ui-picker button:focus-visible, .ui-picker input:focus-visible {
+  outline:2px solid var(--focus, var(--accent, #0f766e)); outline-offset:2px;
+}
+.ui-picker .ui-picker-native {
+  position:absolute; width:1px; height:1px; padding:0; margin:0; overflow:hidden;
+  clip-path:inset(50%); white-space:nowrap;
+}
+.ui-picker .ui-picker-popup {
+  box-sizing:border-box; position:fixed; inset:auto; z-index:9300; margin:0;
+  display:flex; flex-direction:column; gap:8px; padding:12px;
+  min-width:0; border:1px solid var(--border, #e2e6ea); border-radius:10px;
+  background:var(--bg-card, #fff); color:var(--text, #172126);
+  font:14px/1.4 var(--font, Inter, sans-serif); box-shadow:0 8px 24px rgba(0,0,0,.16);
+}
+.ui-picker [hidden] { display:none!important; }
+.ui-picker .ui-picker-search {
+  box-sizing:border-box; width:100%; min-width:0; flex:none; min-height:36px;
+  padding:8px 10px; border:1px solid var(--border, #e2e6ea); border-radius:8px;
+  font:inherit; color:inherit; background:var(--bg, #f6f7f8); margin:0;
+}
+.ui-picker .ui-picker-options { min-height:0; overflow:auto; overscroll-behavior:contain; }
+.ui-picker .ui-picker-option {
+  display:block; width:100%; text-align:left; border-color:transparent; overflow-wrap:anywhere;
+}
+.ui-picker .ui-picker-option:hover, .ui-picker .ui-picker-option[aria-pressed="true"] {
+  background:var(--bg-hover, #eef1f3);
+}
+.ui-picker .ui-picker-message { margin:0; color:var(--text2, #475569); font:inherit; flex:none; }
+.ui-picker .ui-picker-error { margin:4px 0 0; color:var(--red, #b91c1c); font:inherit; }
+@media (max-width:767px) {
+  .ui-picker .ui-picker-trigger, .ui-picker .ui-picker-search, .ui-picker .ui-picker-option,
+  .ui-picker .ui-picker-done, .ui-picker .ui-picker-filter, .ui-picker .recipient-picker-chip button { min-height:44px; }
+  .ui-picker .ui-picker-search, .ui-picker .ui-picker-trigger { font-size:16px; }
+}
