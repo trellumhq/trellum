@@ -1,0 +1,35 @@
+version: 1
+slides:
+  - id: question
+    layout: title
+    title: Where should Northwind improve conversion?
+    text: |
+      **Decision brief · September 2026 · Synthetic demo data**
+
+      Focus the next investigation on mobile checkout. Northwind is fictional;
+      these frozen report views demonstrate an analysis workflow.
+  - id: mobile
+    layout: image-text
+    title: Mobile is the largest opportunity to investigate
+    text: |
+      Mobile brings **63.22%** of September sessions, yet its purchase rate is
+      **1.80%**, compared with **5.24%** on desktop.
+
+      The gap identifies where to look. It does not establish its cause.
+    image: evidence/mobile-funnel.png
+    alt: September mobile checkout funnel showing sessions, product views, cart additions and purchases
+  - id: comparison
+    layout: image
+    title: Desktop provides a comparison
+    image: evidence/desktop-funnel.png
+    alt: September desktop checkout funnel showing sessions, product views, cart additions and purchases
+  - id: next-step
+    layout: text
+    title: Investigate before choosing an experiment
+    text: |
+      - Review mobile checkout usability and payment failures.
+      - Compare acquisition channels and customer intent before setting a target.
+      - Use a new capture and Git revision when evidence changes.
+
+      **Assumptions:** evidence covers 1–30 September 2026 across all channels.
+      Conversion is purchases divided by sessions, using summed period counts.

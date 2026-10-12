@@ -1,0 +1,10 @@
+kind: analysis
+format: presentation
+name: Northwind checkout decision
+slug: checkout-presentation
+description: A four-slide decision brief comparing September 2026 synthetic mobile and desktop checkout evidence, assumptions and the recommended investigation.
+author: Northwind Analytics (demo)
+studio: northwind
+category: Product
+tags: [commerce, conversion, findings]
+theme: trellum light

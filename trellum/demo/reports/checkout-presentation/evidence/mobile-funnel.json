@@ -1,0 +1,28 @@
+{
+  "report_slug": "cart-funnel",
+  "report_name": "Cart Funnel",
+  "url": "https://trellum.dev/demo/cart-funnel/",
+  "component_id": "fw_c7",
+  "component_title": "The Funnel",
+  "captured_at": "2026-10-07T21:26:37.698Z",
+  "source_built_at": "2026-10-07T21:26:35.940454+00:00",
+  "filters": {
+    "stages": {
+      "fw_c6_f0": {
+        "column": "event_date",
+        "mode": "range",
+        "value": {
+          "min": "2026-09-01",
+          "max": "2026-09-30"
+        },
+        "flagValue": null
+      },
+      "fw_c6_f2": {
+        "column": "device",
+        "mode": "equals",
+        "value": "Mobile",
+        "flagValue": null
+      }
+    }
+  }
+}

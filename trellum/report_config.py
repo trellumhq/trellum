@@ -10,6 +10,8 @@ def validate_content_config(config: object) -> dict:
     if "initial_audience" in config and config["initial_audience"] not in ("studio", "private"):
         raise ValueError("report.yaml initial_audience must be 'studio' or 'private'")
     if config.get("kind") == "analysis":
+        if config.get("format", "article") not in ("article", "presentation"):
+            raise ValueError("Analysis format must be 'article' or 'presentation'")
         for key in ("data_sources", "schedule", "extra_cdn"):
             if key in config:
                 raise ValueError(f"Analysis report.yaml cannot declare {key}")

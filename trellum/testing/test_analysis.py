@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 from PIL import Image
 
 from trellum.analysis_capture import import_capture
@@ -401,3 +402,129 @@ def test_actual_report_cli_keeps_project_bootstrap(tmp_path, batch):
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert (tmp_path / "bootstrap-ran").read_text() == "executed"
     assert 'Registered project plugin' in (tmp_path / "output" / "plain" / "index.html").read_text(encoding="utf-8")
+
+
+@pytest.fixture
+def presentation(tmp_path, monkeypatch):
+    monkeypatch.setenv("FW_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.setattr("trellum.project._project_root_override", None)
+    return new_analysis("meeting", format="presentation")
+
+
+def _write_slides(presentation, slides):
+    (presentation / "slides.yaml").write_text(
+        yaml.safe_dump({"version": 1, "slides": slides}, sort_keys=False), encoding="utf-8")
+
+
+def test_presentation_cli_scaffold_and_discovery(tmp_path, monkeypatch):
+    monkeypatch.setenv("FW_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.setattr("trellum.project._project_root_override", None)
+    assert main(["analysis", "new", "meeting", "--format", "presentation"]) == 0
+    presentation = tmp_path / "reports" / "meeting"
+    assert not (presentation / "content.md").exists()
+    assert BaseReport.load_config(str(presentation))["format"] == "presentation"
+    assert yaml.safe_load((presentation / "slides.yaml").read_text())["version"] == 1
+    assert discover_report(str(presentation)).__name__ == "AnalysisReport"
+    assert [entry["slug"] for entry in scan_report_configs(str(tmp_path / "reports"))] == ["meeting"]
+    (presentation / "slides.yaml").unlink()
+    (presentation / "content.md").write_text("Wrong content format", encoding="utf-8")
+    assert not scan_report_configs(str(tmp_path / "reports"))
+    with pytest.raises(ValueError, match="slides.yaml"):
+        run_report(str(presentation))
+
+
+def test_presentation_four_layouts_frozen_provenance_and_safe_text(presentation, tmp_path, monkeypatch):
+    import_capture(str(presentation), str(_capture(tmp_path)), "revenue")
+    slides = [
+        {"id": "opening", "layout": "title", "title": "<Decision>", "text": "September findings"},
+        {"id": "finding", "layout": "text", "title": "Finding", "text": "**Frozen** evidence. <script>alert(1)</script>\n\n[bad](javascript:alert%281%29)"},
+        {"id": "chart", "layout": "image", "title": "Revenue", "image": "evidence/revenue.png", "alt": "Revenue by region"},
+        {"id": "recommendation", "layout": "image-text", "title": "Next step", "text": "Review mobile checkout.", "image": "evidence/revenue.png", "alt": "Revenue by region"},
+    ]
+    _write_slides(presentation, slides)
+    monkeypatch.setattr("trellum.report.ReportContext.get_connection", lambda *a: pytest.fail("queried warehouse"))
+    monkeypatch.setattr("trellum.runner.execute._load_events", lambda *a: pytest.fail("queried events"))
+    for name in ("generator.py", "__init__.py"):
+        (presentation / name).write_text('raise AssertionError("executed project code")', encoding="utf-8")
+    output = Path(run_report(str(presentation), fail_on_validation=True))
+    markup = (output / "index.html").read_text(encoding="utf-8").split('<article class="fw-presentation"', 1)[1].split('</article>', 1)[0]
+    for slide in slides:
+        assert f'id="slide-{slide["id"]}"' in markup
+        assert f'fw-slide--{slide["layout"]}' in markup
+    assert markup.index('id="slide-opening"') < markup.index('id="slide-finding"') < markup.index('id="slide-chart"')
+    assert '<strong>Frozen</strong>' in markup and '<script>' not in markup
+    assert 'href="javascript:' not in markup and '&lt;Decision&gt;' in markup
+    assert 'alt="Revenue by region"' in markup
+    assert 'Captured: 7 Oct 2026, 10:00 UTC' in markup
+    assert '&lt;EMEA&gt;' in markup
+    assert (output / "evidence" / "revenue.png").read_bytes() == _png()
+    assert (output / "evidence" / "revenue.json").read_bytes() == (presentation / "evidence" / "revenue.json").read_bytes()
+    checks = json.loads((output / "_validation.json").read_bytes())
+    assert checks["summary"]["fail"] == 0
+    assert any(check["id"] == "analysis-slides-valid" for check in checks["checks"])
+
+
+@pytest.mark.parametrize("slides, message", [
+    ([], "non-empty"),
+    (["slide"], "mapping"),
+    ([{"id": "a", "layout": "unknown", "title": "A"}], "layout"),
+    ([{"id": "../bad", "layout": "title", "title": "A"}], "id"),
+    ([{"id": "A", "layout": "title", "title": "A"}], "id"),
+    ([{"id": "a", "layout": "title", "title": "A"}] * 2, "Duplicate"),
+    ([{"id": "a", "layout": "text", "title": "A"}], "text"),
+    ([{"id": "a", "layout": "image", "title": "A", "image": "image.png"}], "alt"),
+    ([{"id": "a", "layout": "title", "title": ""}], "non-empty"),
+    ([{"id": "a", "layout": "title", "title": "A", "html": "<b>A</b>"}], "unsupported"),
+    ([{"id": "a", "layout": "text", "title": "A", "text": ["A"]}], "string"),
+])
+def test_invalid_slides_preserve_previous_output(presentation, slides, message):
+    output = Path(run_report(str(presentation)))
+    previous = (output / "index.html").read_bytes()
+    _write_slides(presentation, slides)
+    with pytest.raises(ValueError, match=message):
+        run_report(str(presentation))
+    assert (output / "index.html").read_bytes() == previous
+
+
+@pytest.mark.parametrize("document", [[], {"version": True, "slides": []},
+                                      {"version": 2, "slides": []},
+                                      {"version": 1, "slides": [], "extra": True}])
+def test_invalid_slide_document(presentation, document):
+    (presentation / "slides.yaml").write_text(yaml.safe_dump(document), encoding="utf-8")
+    with pytest.raises(ValueError, match="version"):
+        run_report(str(presentation))
+
+
+def test_malformed_slides_yaml_has_actionable_error(presentation):
+    (presentation / "slides.yaml").write_text("version: 1\nslides: [", encoding="utf-8")
+    with pytest.raises(ValueError, match="slides.yaml must be valid YAML"):
+        run_report(str(presentation))
+
+
+def test_presentation_markdown_images_use_same_local_evidence_boundary(presentation):
+    _write_slides(presentation, [{"id": "finding", "layout": "text", "title": "Finding",
+                                "text": "![Remote](https://example.test/image.png)"}])
+    with pytest.raises(ValueError, match="local PNG evidence"):
+        run_report(str(presentation))
+
+
+@pytest.mark.parametrize("image", ["../outside.png", "https://example.test/image.png",
+                                  "//example.test/image.png", "evidence/missing.png", "evidence/CON.png"])
+def test_invalid_slide_assets(presentation, image):
+    _write_slides(presentation, [{"id": "chart", "layout": "image", "title": "Chart", "image": image, "alt": "Evidence chart"}])
+    with pytest.raises(ValueError, match="Slide 'chart' image"):
+        run_report(str(presentation))
+
+
+def test_slide_assets_validate_image_size_and_provenance(presentation, monkeypatch):
+    evidence = presentation / "evidence" / "chart.png"
+    evidence.write_bytes(_png())
+    _write_slides(presentation, [{"id": "chart", "layout": "image", "title": "Chart", "image": "evidence/chart.png", "alt": "Evidence chart"}])
+    assert Path(run_report(str(presentation))).joinpath("evidence/chart.png").read_bytes() == _png()
+    evidence.with_suffix(".json").write_text('{"invalid": true}', encoding="utf-8")
+    with pytest.raises(ValueError, match="provenance"):
+        run_report(str(presentation))
+    evidence.with_suffix(".json").unlink()
+    monkeypatch.setattr("trellum.analysis.MAX_IMAGE_BYTES", len(_png()) - 1)
+    with pytest.raises(ValueError, match="size limit"):
+        run_report(str(presentation))

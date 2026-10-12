@@ -174,3 +174,52 @@ def test_capture_import_publish_and_read_frozen_evidence(tmp_path, monkeypatch, 
         server.shutdown()
         server.server_close()
         server_thread.join(timeout=5)
+
+
+def test_presentation_reading_without_javascript_on_desktop_and_mobile(tmp_path, monkeypatch):
+    from functools import partial
+    from playwright.sync_api import sync_playwright
+    from trellum.cli.commands.analysis import new_analysis
+
+    monkeypatch.setenv("FW_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.setattr("trellum.project._project_root_override", None)
+    presentation = new_analysis("meeting", format="presentation")
+    image_path = presentation / "evidence" / "chart.png"
+    Image.new("RGB", (900, 450), "white").save(image_path)
+    (presentation / "slides.yaml").write_text(json.dumps({"version": 1, "slides": [
+        {"id": "opening", "layout": "title", "title": "September findings", "text": "Reporting period: September 2026."},
+        {"id": "evidence", "layout": "image-text", "title": "A finding with evidence", "text": "**Investigate** mobile checkout.", "image": "evidence/chart.png", "alt": "Synthetic conversion chart"},
+        {"id": "next-step", "layout": "text", "title": "Next step", "text": "Review payment failures."},
+    ]}), encoding="utf-8")
+    output = run_report(str(presentation))
+    server = ThreadingHTTPServer(("127.0.0.1", 0), partial(SimpleHTTPRequestHandler, directory=output))
+    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+    server_thread.start()
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch()
+            try:
+                context = browser.new_context(java_script_enabled=False)
+                page = context.new_page()
+                page.goto(f"http://127.0.0.1:{server.server_port}/", wait_until="load")
+                assert page.locator(".fw-slide").count() == 3
+                assert page.locator("#slide-evidence strong").inner_text() == "Investigate"
+                assert page.locator("#slide-evidence").get_attribute("data-fw-section-title") == "A finding with evidence"
+                assert page.locator(".fw-slide img").get_attribute("alt") == "Synthetic conversion chart"
+                for width, height in ((1360, 960), (390, 844)):
+                    page.set_viewport_size({"width": width, "height": height})
+                    assert page.locator("#slide-opening").is_visible()
+                    assert page.locator("#slide-evidence").is_visible()
+                    assert page.locator("#slide-next-step").is_visible()
+                    page.screenshot(path=str(tmp_path / f"presentation-{width}.png"), full_page=True)
+                    assert page.locator("body").bounding_box()["width"] <= width
+                    assert page.locator(".fw-presentation").bounding_box()["width"] <= width
+                    assert page.locator(".fw-slide img").bounding_box()["width"] <= width
+                page.get_by_role("link", name="Next step", exact=True).click()
+                assert page.url.endswith("#slide-next-step")
+            finally:
+                browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+        server_thread.join(timeout=5)
