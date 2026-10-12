@@ -108,3 +108,30 @@ dirty neighbors, repeated initialization, and Back/Forward with delayed
 content. Start from browser tests under `apps/core/tests/`,
 `apps/studios/tests/` and `apps/reports/tests/`. Run database suites sequentially
 unless each process has its own test database.
+
+
+## Consistent form interactions
+
+Use the shared page and input patterns in [the design system](design-system.md).
+Date, time and local-date-time values use the appropriate native controls;
+durations such as alert cooldowns remain numbers with explicit units. Long
+choice lists open on click before any typing. Search filters a dropdown, while
+selected values remain visible and valid outside the current result page.
+
+Use precise action labels such as Create alert, Save delivery, Save source,
+Test draft and Test connection. A confirmed creation returns to the relevant
+list or opens the new record as its explicit flow requires. Ordinary edits
+preserve the current page and offer a clear Back link; preserve intentional
+CRUD navigation where explicitly required by the page's contract. Canceling a
+dirty form offers a keep/discard choice before any request or draft loss.
+
+Testing and saving are different operations. Label alert tests as previews,
+retain the cost disclosure, and keep them free of email delivery side effects.
+A data-source save does not establish that the connection works. Test results
+belong to the tested configuration and become outdated after a relevant edit.
+Test and Save are available in the same editor.
+
+A failed form submission must preserve recipient selections, timezone and local
+time values. Inline errors remain visible even if dropdown options are closed
+or filtered. Newly suggested browser timezones must not replace stored values
+on edits or submitted values on validation rerenders.
