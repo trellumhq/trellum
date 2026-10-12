@@ -16,6 +16,29 @@ pytestmark = pytest.mark.django_db
 
 
 class TestStudioLifecycle:
+    def test_create_page_is_admin_only(self, login, org_admin, org, make_user):
+        url = f"/orgs/{org.slug}/studios/new"
+        assert login(org_admin).get(url).status_code == 200
+
+        # Studio roles do not grant organization administration.
+        for role in (roles.DEVELOPER, roles.VIEWER):
+            user = make_user(f"{role}@demo.example", org=org)
+            existing = Studio.objects.create(org=org, slug=f"{role}-scope", name=role)
+            StudioMembership.objects.create(user=user, studio=existing, role=role)
+            assert login(user).get(url).status_code == 403
+            assert login(user).post(url, {"slug": "blocked", "name": "Blocked"}).status_code == 403
+
+    def test_create_page_has_list_link_and_list_has_add_action(self, login, org_admin, org):
+        client = login(org_admin)
+        url = f"/orgs/{org.slug}/studios/new"
+        page = client.get(url)
+        assert page.status_code == 200
+        assert f'href="/orgs/{org.slug}/settings/studios"' in page.content.decode()
+
+        listing = client.get(f"/orgs/{org.slug}/settings/studios").content.decode()
+        assert f'href="{url}"' in listing
+        assert "id=\"new-studio\"" not in listing
+
     def test_create_studio(self, login, org_admin, org, settings, tmp_path):
         settings.DATA_DIR = tmp_path
         resp = login(org_admin).post(
@@ -23,6 +46,7 @@ class TestStudioLifecycle:
             {"slug": "casino", "name": "Casino", "description": "slots"},
         )
         assert resp.status_code == 302
+        assert resp["Location"] == f"/orgs/{org.slug}/settings/studios"
         studio = Studio.objects.get(org=org, slug="casino")
         # Directory skeleton was created on the data volume.
         assert (studio.reports_dir).is_dir()
@@ -30,10 +54,24 @@ class TestStudioLifecycle:
         assert AuditLog.objects.filter(action="studio.create", org=org).exists()
 
     def test_duplicate_slug_rejected(self, login, org_admin, org, studio):
-        login(org_admin).post(
-            f"/orgs/{org.slug}/studios/new", {"slug": studio.slug, "name": "Again"}
+        resp = login(org_admin).post(
+            f"/orgs/{org.slug}/studios/new",
+            {"slug": studio.slug, "name": "Draft name", "description": "Draft details"},
         )
+        assert resp.status_code == 200
+        assert "A studio with this slug already exists." in resp.content.decode()
+        assert b'value="Draft name"' in resp.content
+        assert b'value="Draft details"' in resp.content
         assert Studio.objects.filter(org=org, slug=studio.slug).count() == 1
+
+    def test_invalid_form_retains_values(self, login, org_admin, org):
+        resp = login(org_admin).post(
+            f"/orgs/{org.slug}/studios/new",
+            {"slug": "Not Valid", "name": "Draft name", "description": "Draft details"},
+        )
+        assert resp.status_code == 200
+        assert "Draft name" in resp.content.decode()
+        assert "Enter a valid" in resp.content.decode()
 
     def test_delete_requires_slug_confirmation(self, login, org_admin, org, studio):
         c = login(org_admin)

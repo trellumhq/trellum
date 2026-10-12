@@ -1,12 +1,16 @@
 {% extends "settings_base.html" %}
 {% block title %}Studios — {{ org.name }}{% endblock %}
 {% block settings %}
-<header class="page-head">
+<header class="page-head-row">
+  <div>
   <div class="ui-label page-kicker scope-org">Organization · {{ org.name }}</div>
   <h1>Studios</h1>
   <p class="muted page-sub">A studio is the sharing boundary: its reports come from its git
     repository and are visible only to people with a role in it. Slugs are permanent
     (they key data on disk); display names are free to change.</p>
+  </div>
+  <span class="spacer"></span>
+  <a class="ui-btn primary" href="/orgs/{{ org.slug }}/studios/new">Add Studio</a>
 </header>
 
 {% if usage.enforced %}
@@ -78,7 +82,7 @@ concurrency limit is reached. Contact your provider to change these.</p>
     {% if q %}No studio matches “{{ q }}”.
       <div class="ui-empty-action"><a class="ui-btn ghost" href="{% querystring q=None page=None %}">Clear search</a></div>
     {% else %}No studios yet.
-      <div class="ui-empty-action"><a class="ui-btn ghost" href="#new-studio">+ New studio</a></div>
+      <div class="ui-empty-action"><a class="ui-btn ghost" href="/orgs/{{ org.slug }}/studios/new">Add Studio</a></div>
     {% endif %}
   </div></td></tr>
   {% endfor %}
@@ -87,29 +91,6 @@ concurrency limit is reached. Contact your provider to change these.</p>
 </div>
 </div>
 {% include "_pagination.html" with page=page %}
-
-<h2 id="new-studio">New studio</h2>
-<div class="ui-panel">
-  <form method="post" action="/orgs/{{ org.slug }}/studios/new" class="ui-form-grid">
-    {% csrf_token %}
-    <div class="ui-field">
-      <label for="studio-name">Name</label>
-      <input id="studio-name" name="name" required maxlength="200">
-    </div>
-    <div class="ui-field">
-      <label for="studio-slug">Slug</label>
-      <input id="studio-slug" name="slug" required maxlength="64" pattern="[a-z0-9-]+">
-      <span class="ui-help">Lowercase letters, digits, hyphens. Cannot be changed later.</span>
-    </div>
-    <div class="ui-field ui-field-wide">
-      <label for="studio-description">Description</label>
-      <input id="studio-description" name="description" maxlength="400">
-    </div>
-    <div class="ui-form-actions">
-      <button class="ui-btn primary" type="submit">Create studio</button>
-    </div>
-  </form>
-</div>
 
 <div class="panel formrow" style="margin-top:16px">
   <h2>Delete this organization</h2>

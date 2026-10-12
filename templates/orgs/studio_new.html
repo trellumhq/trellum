@@ -1,0 +1,49 @@
+{% extends "settings_base.html" %}
+{% block title %}Add Studio — {{ org.name }}{% endblock %}
+{% block settings %}
+<div class="ui-form-rail">
+  <header class="page-head-row">
+    <div>
+      <div class="ui-label page-kicker scope-org">Organization · {{ org.name }}</div>
+      <h1>Add Studio</h1>
+      <p class="muted page-sub">Create a workspace for reports and the people who can access them.</p>
+    </div>
+    <span class="spacer"></span>
+    <a class="ui-btn ghost" href="/orgs/{{ org.slug }}/settings/studios">← All studios</a>
+  </header>
+
+  <form method="post" action="/orgs/{{ org.slug }}/studios/new">
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="errorlist" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+    <section class="ui-form-section" aria-labelledby="studio-details-heading">
+      <h2 id="studio-details-heading">Studio details</h2>
+      <div class="ui-form-row">
+        <div class="ui-field">
+          <label for="{{ form.name.id_for_label }}">Name</label>
+          <input id="{{ form.name.id_for_label }}" name="name" value="{{ form.name.value|default_if_none:'' }}"
+                 required maxlength="200" autocomplete="off" {% if form.name.errors %}aria-invalid="true" aria-describedby="name-error"{% endif %}>
+          {% for error in form.name.errors %}<span class="ui-field-error" id="name-error">{{ error }}</span>{% endfor %}
+        </div>
+        <div class="ui-field">
+          <label for="{{ form.slug.id_for_label }}">Slug</label>
+          <input id="{{ form.slug.id_for_label }}" name="slug" value="{{ form.slug.value|default_if_none:'' }}"
+                 required maxlength="64" pattern="[a-z0-9-]+" autocomplete="off"
+                 {% if form.slug.errors %}aria-invalid="true" aria-describedby="slug-help slug-error"{% else %}aria-describedby="slug-help"{% endif %}>
+          <span class="ui-help" id="slug-help">Lowercase letters, digits and hyphens. A slug cannot be changed later.</span>
+          {% for error in form.slug.errors %}<span class="ui-field-error" id="slug-error">{{ error }}</span>{% endfor %}
+        </div>
+        <div class="ui-field ui-field-wide">
+          <label for="{{ form.description.id_for_label }}">Description <span class="muted">(optional)</span></label>
+          <input id="{{ form.description.id_for_label }}" name="description" value="{{ form.description.value|default_if_none:'' }}"
+                 maxlength="400" {% if form.description.errors %}aria-invalid="true" aria-describedby="description-error"{% endif %}>
+          {% for error in form.description.errors %}<span class="ui-field-error" id="description-error">{{ error }}</span>{% endfor %}
+        </div>
+      </div>
+      <div class="ui-form-actions">
+        <button class="ui-btn primary" type="submit">Create Studio</button>
+        <a class="ui-btn ghost" href="/orgs/{{ org.slug }}/settings/studios">Cancel</a>
+      </div>
+    </section>
+  </form>
+</div>
+{% endblock %}

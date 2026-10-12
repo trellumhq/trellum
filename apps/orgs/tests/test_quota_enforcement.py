@@ -61,11 +61,13 @@ class TestStudioCap:
         OrgQuota.objects.create(org=org, max_studios=1)  # `studio` already exists
         resp = login(org_admin).post(
             f"/orgs/{org.slug}/studios/new",
-            {"slug": "second", "name": "Second"},
+            {"slug": "second", "name": "Draft studio", "description": "Keep this draft"},
             follow=True,
         )
         assert not Studio.objects.filter(org=org, slug="second").exists()
         assert "limited to 1 studio" in resp.content.decode()
+        assert 'value="Draft studio"' in resp.content.decode()
+        assert 'value="Keep this draft"' in resp.content.decode()
 
     def test_creation_succeeds_below_the_cap(self, login, org_admin, org, studio):
         OrgQuota.objects.create(org=org, max_studios=5)

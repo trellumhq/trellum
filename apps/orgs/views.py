@@ -333,7 +333,6 @@ def studios_settings(request, org_slug):  # noqa: ARG001
         {
             "org": request.org,
             "rows": page.object_list,
-            "studio_form": StudioCreateForm(org=request.org),
             "page": page,
             "q": q,
             "total": total,
@@ -346,30 +345,30 @@ def studios_settings(request, org_slug):  # noqa: ARG001
 
 
 @require_org_role(roles.ORG_ADMIN)
-@require_POST
+@require_http_methods(["GET", "POST"])
 def studio_create(request, org_slug):  # noqa: ARG001
     from apps.orgs import quotas
 
-    decision = quotas.check_studio_allowed(request.org)
-    if not decision.allowed:
-        messages.error(request, decision.reason)
-        return redirect(f"/orgs/{request.org.slug}/settings/studios")
-
-    form = StudioCreateForm(request.POST, org=request.org)
-    if form.is_valid():
-        studio = Studio.objects.create(
-            org=request.org,
-            slug=form.cleaned_data["slug"],
-            name=form.cleaned_data["name"],
-            description=form.cleaned_data.get("description", ""),
-        )
-        studio.ensure_dirs()
-        audit(request, "studio.create", target=studio)
-        messages.success(request, f"Studio “{studio.name}” created.")
+    if request.method == "GET":
+        form = StudioCreateForm(org=request.org)
     else:
-        for err in form.errors.values():
-            messages.error(request, "; ".join(err))
-    return redirect(f"/orgs/{request.org.slug}/settings/studios")
+        form = StudioCreateForm(request.POST, org=request.org)
+        decision = quotas.check_studio_allowed(request.org)
+        if not decision.allowed:
+            form.add_error(None, decision.reason)
+        elif form.is_valid():
+            studio = Studio.objects.create(
+                org=request.org,
+                slug=form.cleaned_data["slug"],
+                name=form.cleaned_data["name"],
+                description=form.cleaned_data.get("description", ""),
+            )
+            studio.ensure_dirs()
+            audit(request, "studio.create", target=studio)
+            messages.success(request, f"Studio “{studio.name}” created.")
+            return redirect(f"/orgs/{request.org.slug}/settings/studios")
+
+    return render(request, "orgs/studio_new.html", {"org": request.org, "form": form})
 
 
 @require_org_role(roles.ORG_ADMIN)
