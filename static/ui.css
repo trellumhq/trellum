@@ -1124,7 +1124,10 @@ a.ui-card { display: block; color: inherit; text-decoration: none; }
 /* The file input is the label's own hit area, so the label can be a .ui-btn
    and still open the picker without any script. */
 .ds-file-input {
-    position: absolute; width: 1px; height: 1px;
+    /* Keep the hidden native input out of layout even under ordinary field
+       width and phone hit-target rules. Its label supplies the hit target. */
+    position: absolute; width: 1px !important; height: 1px; min-height: 0 !important;
+    padding: 0 !important; border: 0 !important;
     opacity: 0; overflow: hidden; clip: rect(0 0 0 0);
 }
 .ds-progress { margin-top: 6px; min-width: 140px; }

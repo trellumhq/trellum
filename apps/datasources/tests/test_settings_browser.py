@@ -327,6 +327,22 @@ def test_old_test_does_not_overwrite_new_draft_or_new_saved_revision():
         browser.close()
 
 
+@pytest.mark.parametrize("width", [390, 1440])
+def test_upload_label_keeps_native_chooser_without_page_overflow(width):
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": width, "height": 900})
+        page.set_content('<body class="mgmt"><main><label class="ui-btn ghost">'
+                         '<input type="file" class="ds-file-input">Replace file</label></main></body>')
+        page.add_style_tag(content=(ROOT / "static/ui.css").read_text(encoding="utf-8"))
+        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        assert page.locator('.ds-file-input').bounding_box()["width"] <= 1
+        with page.expect_file_chooser() as chooser:
+            page.get_by_text("Replace file", exact=True).click()
+        chooser.value.set_files([])
+        browser.close()
+
+
 def test_upload_updates_file_controls_without_navigation_and_preserves_draft():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
