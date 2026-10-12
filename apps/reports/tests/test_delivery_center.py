@@ -78,6 +78,35 @@ class TestDeliveryCenterPage:
         # Read-only "view report" escape hatch stays, separate from Edit.
         assert f'{prefix}/r/player-overview/"' in content
 
+    def test_report_filter_is_scoped_and_filters_by_report_id(
+        self, login, viewer, report_row, other_studio
+    ):
+        from apps.reports.models import EmailSchedule, Report
+
+        selected_report = Report.objects.create(
+            studio=report_row.studio, slug="second-report", name="Second report"
+        )
+        hidden_report = Report.objects.create(
+            studio=other_studio, slug="private-report", name="Hidden report"
+        )
+        EmailSchedule.objects.create(report=report_row, created_by=viewer)
+        EmailSchedule.objects.create(report=selected_report, created_by=viewer)
+
+        client = login(viewer)
+        response = client.get("/me/deliveries?q=no-match")
+        option_ids = {report.pk for report in response.context["report_filter_options"]}
+        assert option_ids == {report_row.pk, selected_report.pk}
+        assert hidden_report.name not in response.content.decode()
+        assert response.context["schedule_rows"] == []
+
+        response = client.get(f"/me/deliveries?report=id%3A{selected_report.pk}")
+        assert [row["report"].pk for row in response.context["schedule_rows"]] == [selected_report.pk]
+        assert f'value="id:{selected_report.pk}" selected' in response.content.decode()
+
+        response = client.get(f"/me/deliveries?report={selected_report.slug}")
+        assert [row["report"].pk for row in response.context["schedule_rows"]] == [selected_report.pk]
+        assert 'value="slug:second-report" selected' in response.content.decode()
+
     def test_schedule_row_embeds_schedule_json_for_the_inline_form(
         self, login, developer, prefix, report_row
     ):

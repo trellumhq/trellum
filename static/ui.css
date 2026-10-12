@@ -688,26 +688,36 @@ body.mgmt input[type="checkbox"], body.mgmt input[type="radio"] { width: auto; }
 
 /* Keep the delivery center's filters and schedule history compact without
    changing the shared table behavior used elsewhere. */
-.delivery-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-.delivery-filters label { min-width: 0; }
+.delivery-filters { display: grid; align-items: end; gap: 10px; }
+.delivery-filters.studio-filters { grid-template-columns: repeat(4, minmax(0, 1fr)) auto; }
+.delivery-filters.global-filters { grid-template-columns: repeat(6, minmax(0, 1fr)) auto; }
+body.mgmt main .delivery-filters label { min-width: 0; margin: 0; }
 .delivery-filters input, .delivery-filters select { display: block; width: 100%; min-width: 0; }
-.delivery-filters button { justify-self: start; align-self: end; }
+.delivery-filters button { justify-self: start; align-self: end; margin-bottom: 0; }
 .delivery-type-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 16px; border-bottom: 1px solid var(--border); }
 .delivery-type-tabs a { display: inline-flex; padding: 9px 12px; color: var(--text2); text-decoration: none; border-bottom: 2px solid transparent; }
 .delivery-type-tabs a[aria-current="page"] { color: var(--text); border-color: var(--accent); font-weight: 600; }
-.delivery-list th, .delivery-list td { vertical-align: top; }
+body.mgmt main .ui-table.delivery-list th,
+body.mgmt main .ui-table.delivery-list td { vertical-align: top; }
 .delivery-list .delivery-status { min-width: 190px; }
 .delivery-history { display: grid; gap: 3px; margin-top: 6px; color: var(--text2); line-height: 1.4; }
 .delivery-pause { display: block; margin-top: 4px; color: var(--text2); }
-.delivery-list .ui-row-actions { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 6px; min-width: 190px; white-space: normal; text-align: left; }
+.delivery-list .ui-row-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; min-width: 176px; white-space: normal; text-align: left; }
 .delivery-list .ui-row-actions form { margin: 0; }
 .delivery-row-detail td { padding: 0 !important; border: 0 !important; }
 .delivery-row-detail [data-flash-slot]:empty { display: none; }
+body.mgmt main .ui-table.delivery-list tbody tr.delivery-row-detail:has([data-flash-slot]:empty) { display: none; }
+@media (max-width: 1100px) {
+    .delivery-filters.studio-filters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .delivery-filters.global-filters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
 @media (max-width: 767px) {
-    .delivery-filters { grid-template-columns: minmax(0, 1fr); }
+    .delivery-filters.studio-filters,
+    .delivery-filters.global-filters { grid-template-columns: minmax(0, 1fr); }
     .delivery-filters button { align-self: start; }
     body.mgmt .delivery-list .delivery-status,
     body.mgmt .delivery-list .ui-row-actions { min-width: 0; }
+    body.mgmt main .ui-table.delivery-list tbody td.ui-row-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 /* Management lists become readable record cards on phones. Desktop keeps the

@@ -20,12 +20,12 @@
 {% endfor %}
 <nav class="ui-tabs delivery-type-tabs" aria-label="Delivery type"><a href="/deliveries"{% if request.path == '/deliveries' and not alerts_tab %} aria-current="page"{% endif %}>Scheduled reports</a> <a href="/deliveries?type=alerts"{% if alerts_tab %} aria-current="page"{% endif %}>AI alerts</a></nav>
 {% endif %}
-<form method="get" class="panel delivery-filters" aria-label="Filter deliveries">
+<form method="get" class="panel delivery-filters {% if manage_deliveries or legacy_deliveries %}global-filters{% else %}studio-filters{% endif %}" aria-label="Filter deliveries">
 <label>Search <input type="search" name="q" value="{{ request.GET.q }}"></label>
 {% if manage_deliveries or legacy_deliveries %}<label>Organization <input name="org" value="{{ request.GET.org }}"></label>
 <label>Studio <input name="studio" value="{{ request.GET.studio }}"></label>{% endif %}
-<label>Report <input name="report" value="{{ request.GET.report }}"></label>
-<label>Creator name, email or former user <input name="creator" value="{{ request.GET.creator }}"></label>
+<label>Report <select name="report"><option value="">All reports</option>{% if selected_report_filter|slice:":5" == "slug:" %}<option value="{{ selected_report_filter }}" selected>Current report filter</option>{% endif %}{% for report in report_filter_options %}<option value="id:{{ report.pk }}"{% if selected_report_id == report.pk %} selected{% endif %}>{{ report.name|default:report.slug }}{% if manage_deliveries or legacy_deliveries %} · {{ report.studio.org.name }} / {{ report.studio.name }}{% endif %}</option>{% endfor %}</select></label>
+<label title="Creator name, email or former user">Creator <input name="creator" placeholder="Name, email or former user" title="Creator name, email or former user" value="{{ request.GET.creator }}"></label>
 <label>Enabled <select name="enabled"><option value="">All</option><option value="true" {% if request.GET.enabled == 'true' %}selected{% endif %}>Enabled</option><option value="false" {% if request.GET.enabled == 'false' %}selected{% endif %}>Disabled</option></select></label>
 {% if alerts_tab %}<input type="hidden" name="type" value="alerts">{% endif %}<button class="ui-btn ghost" type="submit">Filter</button></form>
 {% if alerts_tab %}
@@ -41,7 +41,7 @@
 <div class="panel" data-settings-refresh="delivery-list">{% if schedule_rows %}<div class="ui-table-scroll"><table class="ui-table dense delivery-list" id="deliveryTable" data-mobile-cards><thead><tr><th>Report</th><th>Studio</th><th>Creator</th><th>Cadence</th><th>Format</th><th>Recipients</th><th>Status / attempts</th><th>Actions</th></tr></thead><tbody>
 {% for row in schedule_rows %}
 <tr class="delivery-row" data-delivery-row data-server-form data-prefix="/s/{{ row.org.slug }}/{{ row.studio.slug }}" data-slug="{{ row.report.slug }}">
-<td data-label="Report">{{ row.report.name|default:row.report.slug }} <span class="muted">· {{ row.report.get_kind_display }}</span></td>
+<td data-label="Report"><a href="/s/{{ row.org.slug }}/{{ row.studio.slug }}/r/{{ row.report.slug }}/">{{ row.report.name|default:row.report.slug }}</a> <span class="muted">· {{ row.report.get_kind_display }}</span></td>
 <td data-label="Studio">{{ row.org.name }} / {{ row.studio.name }}</td>
 <td data-label="Creator" data-field="creator">{{ row.creator_name }}</td>
 <td data-label="Cadence" data-field="cadence">{{ row.cadence }}</td><td data-label="Format" data-field="format">{% if row.schedule.attach_pdf %}HTML + PDF{% else %}HTML{% endif %}</td><td data-label="Recipients" data-field="recipients">{{ row.recipient_summary }}</td>
@@ -49,8 +49,7 @@
 {% if row.paused %}<span class="delivery-pause">{{ row.paused }}</span>{% endif %}<div class="delivery-history"><div>Next <span data-field="next">{{ row.next_at|default:'—' }}</span></div>
 <div>Outcome <span data-field="outcome">{{ row.outcome }}</span></div>{% if row.last_attempt_at %}<div>Last attempt {{ row.last_attempt_at }}</div>{% endif %}{% if row.last_accepted_at %}<div>Last accepted {{ row.last_accepted_at }}</div>{% endif %}
 {% if row.accepted_to %}<div>Accepted for delivery to {{ row.accepted_to|join:', ' }}</div>{% endif %}{% if row.failed_to %}<div>Failed for {{ row.failed_to|join:', ' }}</div>{% endif %}</div></td>
-<td class="ui-row-actions" data-label="Actions"><a class="ui-btn ghost" href="/s/{{ row.org.slug }}/{{ row.studio.slug }}/r/{{ row.report.slug }}/">View report</a>
-{% if row.editable %}<a class="ui-btn ghost" href="{{ row.edit_url }}">Edit</a>
+<td class="ui-row-actions" data-label="Actions">{% if row.editable %}<a class="ui-btn ghost" href="{{ row.edit_url }}">Edit</a>
 <form method="post" action="/s/{{ row.org.slug }}/{{ row.studio.slug }}/api/reports/{{ row.report.slug }}/schedules/{{ row.schedule.pk }}" data-settings-form data-settings-save>
 {% csrf_token %}<input type="hidden" name="return_to" value="{{ delivery_return_to }}"><input type="hidden" name="action" value="toggle"><input type="hidden" name="enabled" value="{% if row.schedule.enabled %}false{% else %}true{% endif %}"><button type="submit" class="ui-btn ghost" data-toggle-enable>{% if row.schedule.enabled %}Disable{% else %}Enable{% endif %}</button></form>
 <button type="button" class="ui-btn ghost" data-send-sample>Sample</button>

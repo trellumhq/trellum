@@ -28,6 +28,7 @@ def delivery_browser(request, login, org_admin, report_row, make_user, grant_stu
     invalid = client.post(api, body)
     assert invalid.status_code == 400
     pages = {path: client.get(path).content.decode() for path in [listing, edit, create, f'{listing}/new']}
+    pages['/deliveries'] = client.get('/deliveries').content.decode()
     pages[api] = invalid.content.decode()
     viewer = make_user('drawer-viewer@example.test', org=org)
     grant_studio(viewer, report_row.studio, roles.VIEWER)
@@ -77,7 +78,7 @@ def test_list_add_edit_and_cancel_use_dedicated_pages(delivery_browser):
     expect(page).to_have_url('https://example.test' + listing)
 
 
-@pytest.mark.parametrize('width,columns', [(390, 1), (800, 3), (1440, 3)])
+@pytest.mark.parametrize('width,columns', [(390, 1), (800, 3), (1440, 5)])
 def test_delivery_list_is_compact_and_usable_at_common_widths(delivery_browser, width, columns):
     page, pages, listing, edit, create, api, browser = delivery_browser
     if browser.browser_type.name != 'chromium':
@@ -91,11 +92,25 @@ def test_delivery_list_is_compact_and_usable_at_common_widths(delivery_browser, 
     assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
     expect(page.locator('[data-delivery-row]')).to_have_count(1)
     actions = page.locator('[data-delivery-row] .ui-row-actions')
-    expect(actions.locator('.ui-btn')).to_have_count(5)
+    expect(actions.locator('.ui-btn')).to_have_count(4)
     assert all(button.is_visible() for button in actions.locator('.ui-btn').all())
+    expect(page.locator('[data-label="Report"] a')).to_be_visible()
     if width < 768:
-        assert actions.evaluate('(el) => getComputedStyle(el).flexWrap') == 'wrap'
+        assert actions.evaluate('(el) => getComputedStyle(el).display') == 'grid'
         assert page.locator('.delivery-row-detail td').evaluate('(el) => getComputedStyle(el).paddingTop') == '0px'
+        assert page.locator('.delivery-row-detail').evaluate('(el) => getComputedStyle(el).display') == 'none'
+
+
+def test_global_delivery_filters_fit_one_desktop_row(delivery_browser):
+    page, pages, listing, edit, create, api, browser = delivery_browser
+    if browser.browser_type.name != 'chromium':
+        pytest.skip('Responsive layout is checked in Chromium.')
+    page.set_viewport_size({'width': 1440, 'height': 900})
+    page.goto('https://example.test/deliveries')
+    page.add_style_tag(content=(ROOT / 'static/ui.css').read_text(encoding='utf-8'))
+    filters = page.locator('.delivery-filters.global-filters')
+    assert page.evaluate('(el) => getComputedStyle(el).gridTemplateColumns.split(" ").length', filters.element_handle()) == 7
+    assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
 
 
 def test_ajax_failure_retains_draft_focus_scroll_and_success_returns_list(delivery_browser):

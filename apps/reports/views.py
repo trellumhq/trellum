@@ -1516,6 +1516,43 @@ def _visible_row(user, report, er_cache: dict) -> bool:
     return scope is None or report.pk in scope
 
 
+def _delivery_filter_reports(user, *, studio=None, org_ids=None, org_id=None):
+    reports = Report.objects.filter(present_in_scan=True)
+    if studio is not None:
+        reports = reports.filter(studio=studio)
+    if org_ids is not None:
+        reports = reports.filter(studio__org_id__in=org_ids)
+    if org_id is not None:
+        reports = reports.filter(studio__org_id=org_id)
+    return visible_reports(user, reports).select_related("studio", "studio__org").order_by(
+        "name", "slug", "studio__org__name", "studio__name"
+    )
+
+
+def _delivery_report_filter_value(value):
+    """Return a safe report ID or legacy slug filter from the dropdown value."""
+    if value.startswith("id:"):
+        raw_id = value[3:]
+        if raw_id.isascii() and raw_id.isdigit() and len(raw_id) <= 19:
+            report_id = int(raw_id)
+            if 0 < report_id <= 9223372036854775807:
+                return "id", report_id
+        return "invalid", None
+    if value.startswith("slug:"):
+        return "slug", value[5:]
+    return ("slug", value) if value else (None, None)
+
+
+def _delivery_report_filter_selection(request):
+    kind, value = _delivery_report_filter_value(request.GET.get("report", ""))
+    return f"{kind}:{value}" if kind in ("id", "slug") else ""
+
+
+def _delivery_report_filter_id(request):
+    kind, value = _delivery_report_filter_value(request.GET.get("report", ""))
+    return value if kind == "id" else None
+
+
 def _schedule_cadence_words(schedule: EmailSchedule) -> str:
     """Human cadence string for the deliveries list -- mirrors
     ``scheduleSummary()`` in static/report_delivery.js, server-side."""
@@ -1549,8 +1586,15 @@ def _my_schedule_rows(user, *, org_id=None, request=None, managed=False, studio=
     if org_id is not None:
         rows = rows.filter(report__studio__org_id=org_id)
     if request is not None:
+        report_filter = _delivery_report_filter_value(request.GET.get("report", ""))
+        if report_filter[0] == "id":
+            rows = rows.filter(report_id=report_filter[1])
+        elif report_filter[0] == "slug":
+            rows = rows.filter(report__slug=report_filter[1])
+        elif report_filter[0] == "invalid":
+            rows = rows.none()
         for field, path in (("org", "report__studio__org__slug"), ("studio", "report__studio__slug"),
-                            ("report", "report__slug"), ("creator", "created_by_id")):
+                            ("creator", "created_by_id")):
             value = request.GET.get(field)
             if value:
                 if field == "creator" and value in ("ownerless", "former user"):
@@ -1610,6 +1654,9 @@ def _my_schedule_rows(user, *, org_id=None, request=None, managed=False, studio=
 def studio_deliveries(request, org_slug, studio_slug):
     return render(request, "reports/my_deliveries.html", {
         "studio_deliveries": True, "schedule_rows": _my_schedule_rows(request.user, request=request, studio=request.studio),
+        "report_filter_options": _delivery_filter_reports(request.user, studio=request.studio),
+        "selected_report_filter": _delivery_report_filter_selection(request),
+        "selected_report_id": _delivery_report_filter_id(request),
         "delivery_return_to": f"/s/{org_slug}/{studio_slug}/deliveries",
         "can_manage_deliveries": deliveries.can_manage_org(request, request.org),
         "can_add_delivery": roles.at_least(get_effective(request, request.org).role_for(request.studio), roles.DEVELOPER),
@@ -1667,6 +1714,11 @@ def my_deliveries(request):
                 org_id=getattr(getattr(request, "api_key", None), "org_id", None),
                 request=request,
             ),
+            "report_filter_options": _delivery_filter_reports(
+                request.user, org_id=getattr(getattr(request, "api_key", None), "org_id", None)
+            ),
+            "selected_report_filter": _delivery_report_filter_selection(request),
+            "selected_report_id": _delivery_report_filter_id(request),
             "delivery_return_to": "/me/deliveries",
             "legacy_deliveries": True,
         },
@@ -1735,7 +1787,14 @@ def manage_deliveries(request):
             if not rule.report.present_in_scan or not _visible_row(request.user, rule.report, {}):
                 continue
             if any(request.GET.get(field) and getattr(obj, "slug") != request.GET[field]
-                   for field, obj in (("org", rule.org), ("studio", rule.studio), ("report", rule.report))):
+                   for field, obj in (("org", rule.org), ("studio", rule.studio))):
+                continue
+            report_filter = _delivery_report_filter_value(request.GET.get("report", ""))
+            if report_filter[0] == "id" and rule.report_id != report_filter[1]:
+                continue
+            if report_filter[0] == "slug" and rule.report.slug != report_filter[1]:
+                continue
+            if report_filter[0] == "invalid":
                 continue
             creator = request.GET.get("creator")
             if creator:
@@ -1754,6 +1813,11 @@ def manage_deliveries(request):
                                "repair": deliveries.owner_repair_required(rule), "paused": deliveries.delivery_pause(rule.org_id), "last": last})
     return render(request, "reports/my_deliveries.html", {
         "manage_deliveries": True, "delivery_return_to": "/deliveries", "policies": policies,
+        "report_filter_options": _delivery_filter_reports(
+            request.user, org_ids=[org.pk for org in orgs]
+        ),
+        "selected_report_filter": _delivery_report_filter_selection(request),
+        "selected_report_id": _delivery_report_filter_id(request),
         "schedule_rows": [] if request.GET.get("type") == "alerts" else _my_schedule_rows(request.user, request=request, managed=True),
         "ai_alert_rows": alert_rows, "alerts_tab": request.GET.get("type") == "alerts",
     })
