@@ -1702,7 +1702,8 @@ slides:
 ```
 
 The scaffold writes `reports/september-conversion/report.yaml` with
-`kind: analysis`, plus `content.md`. Set `name`, `description`, `author`,
+`kind: analysis`, plus `content.md` for an article or `slides.yaml` for a
+presentation. Set `name`, `description`, `author`,
 `category`, and `tags` in the manifest. Write the question, findings, evidence,
 assumptions, and recommendation in Markdown. Headings generate a contents
 menu and section anchors; tables, lists, links, and local PNG images are supported.

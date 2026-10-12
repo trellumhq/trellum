@@ -21,9 +21,10 @@ python -m trellum analysis session reports/september-conversion
 ```
 
 This builds the analysis, starts the local review server, activates one
-analysis inbox for the project, and prints the preview and gallery URLs. Keep
-the command running while you review. The browser can display the analysis and
-collect feedback; it does not edit source files or publish the analysis.
+analysis inbox for the project, and prints the preview and gallery URLs. The
+server stays running in the background while the agent polls for feedback.
+The browser can display the analysis and collect feedback; it does not edit
+source files or publish the analysis.
 
 ## Capture a report view
 
