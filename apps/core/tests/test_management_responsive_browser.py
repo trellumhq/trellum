@@ -49,6 +49,7 @@ def _page(browser, html, width):
 def _delivery_html(rows):
     return render_to_string("reports/my_deliveries.html", {
         "schedule_rows": rows, "studio_deliveries": True,
+        "can_add_delivery": True,
         "delivery_return_to": "/s/acme/studio/deliveries",
     })
 
