@@ -94,6 +94,16 @@ class TestRepoScreen:
         assert 'class="ui-check-row"' in page
         assert "display:flex;gap:8px;align-items:center" not in page
 
+    def test_connection_settings_use_the_shared_bounded_form_layout(self, html, prefix, repo):
+        page = html(f"{prefix}/settings/repo")
+        connection = re.search(r'<form[^>]*id="repoConnectionForm".*?</form>', page, re.DOTALL)
+        assert connection is not None
+        assert 'class="ui-form-rail"' in page
+        assert 'class="ui-form-section"' in connection.group()
+        assert 'class="ui-form-row"' in connection.group()
+        assert 'for="id_repo_url"' in connection.group()
+        assert 'data-repo-results' in page and 'id="repoPollStatus"' in page
+
     def test_sync_now_flags_repo_and_redirects(self, login, org_admin, prefix, repo):
         # "Sync now" posts back to the settings page and redirects — it must not
         # hit a JSON API path (which 404'd / dumped JSON in the browser).
@@ -602,6 +612,14 @@ class TestDataSourceScreen:
 
 
 class TestStudioMembersScreen:
+    def test_add_member_uses_the_shared_searchable_person_picker(self, html, prefix):
+        page = html(f"{prefix}/settings/members")
+        assert 'data-choice-picker' in page
+        assert re.search(r'<label for="studioMemberAddUser">Person</label>', page)
+        assert re.search(r'<select id="studioMemberAddUser" name="user_id"', page)
+        assert re.search(r'<label for="studioMemberAddRole">Role</label>', page)
+        assert re.search(r'<select id="studioMemberAddRole" name="role"', page)
+
     def test_remove_is_guarded_and_role_is_set_explicitly(
         self, html, prefix, member, studio_tree, grant_studio
     ):

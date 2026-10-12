@@ -10,6 +10,7 @@ static/ui.css for how each card is colored straight from
 static/themes.generated.css with no duplicated values.{% endcomment %}
 {% block title %}Report theme — {{ studio.name }}{% endblock %}
 {% block settings %}
+<div class="ui-form-rail">
 <header class="page-head">
   <div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }}</div>
   <h1>Report theme</h1>
@@ -23,7 +24,7 @@ static/themes.generated.css with no duplicated values.{% endcomment %}
 </header>
 
 {% if studio.repo_theme %}
-<div class="panel formrow">
+<section class="ui-form-section" aria-label="Repository theme">
   <div class="theme-swatches">
     <span class="theme-sw sel theme-sw-pinned">
       <span class="theme-sw-strip" data-theme="{{ studio.repo_theme }}">
@@ -40,13 +41,12 @@ static/themes.generated.css with no duplicated values.{% endcomment %}
     a custom theme the repository registers itself. Reports render with its real look; this management chrome
     stays Trellum's neutral look, since the portal has no stylesheet for a repository-custom theme.</p>
   {% endif %}
-</div>
+</section>
 <p class="theme-lockline"><b>Repository-controlled.</b> Personal member overrides and the organization's
   theme lock do not apply while a theme is declared in the repository. To change it, edit <code>theme:</code>
   in the repository's <code>config.yaml</code> and push.</p>
 {% else %}
-<div class="panel formrow">
-  <form id="studioThemeForm" method="post" action="{% url 'studio-theme-set-default' org.slug studio.slug %}" data-settings-form data-settings-save>
+<form id="studioThemeForm" class="ui-form-section" method="post" action="{% url 'studio-theme-set-default' org.slug studio.slug %}" data-settings-form data-settings-save>
     {% csrf_token %}
     <input type="hidden" name="next" value="{{ request.path }}">
     <div class="theme-swatches">
@@ -68,8 +68,7 @@ static/themes.generated.css with no duplicated values.{% endcomment %}
       {% endfor %}
     </div>
     <button class="ui-btn primary" type="submit">Save changes</button>
-  </form>
-</div>
+</form>
 
 {% if org.lock_studio_theme %}
 <p class="theme-lockline"><b>Member overrides: locked.</b> Members cannot pick a different palette for
@@ -90,4 +89,5 @@ document.querySelectorAll('input[name="theme"]').forEach(function (field) {
 });
 </script>
 {% endif %}
+</div>
 {% endblock %}

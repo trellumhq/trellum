@@ -44,6 +44,8 @@ class TestAppearanceSettingsPage:
 
     def test_renders_a_swatch_per_registered_theme(self, login, org_admin, studio, prefix):
         html = login(org_admin).get(f"{prefix}/settings/appearance").content.decode()
+        assert 'class="ui-form-rail"' in html
+        assert 'class="ui-form-section"' in html
         for name in THEME_REGISTRY:
             assert f'data-theme="{name}"' in html
             assert f'value="{name}"' in html

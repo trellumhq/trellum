@@ -1,6 +1,7 @@
 {% extends "settings_base.html" %}
 {% block title %}Members — {{ studio.name }}{% endblock %}
 {% block settings %}
+<div class="ui-form-rail">
 <header class="page-head">
   <div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }}</div>
   <h1>Members</h1>
@@ -8,6 +9,7 @@
     <a href="/orgs/{{ org.slug }}/settings/groups">permission groups</a> apply on top
     (effective role is the highest of all sources).</p>
 </header>
+</div>
 
 <div class="panel">
 <div class="ui-table-scroll">
@@ -47,23 +49,36 @@
   </tbody>
 </table>
 </div>
+</div>
 {% if org_users %}
-<form class="inline settings-inline-form" method="post" action="/s/{{ org.slug }}/{{ studio.slug }}/settings/members/set">
+<div class="ui-form-rail">
+<form class="ui-form-section" method="post" action="/s/{{ org.slug }}/{{ studio.slug }}/settings/members/set">
   {% csrf_token %}
-  <select name="user_id" class="ui-input" style="min-width:240px; max-width:360px">
+  <h2>Add a member</h2>
+  <div class="ui-form-row">
+  <div class="ui-field" data-choice-picker>
+  <label for="studioMemberAddUser">Person</label>
+  <select id="studioMemberAddUser" name="user_id" class="ui-input" required>
     {% for m in org_users %}<option value="{{ m.user_id }}">{{ m.user.email }}</option>{% endfor %}
   </select>
-  <select name="role" class="ui-input" style="min-width:110px">
+  </div>
+  <div class="ui-field">
+  <label for="studioMemberAddRole">Role</label>
+  <select id="studioMemberAddRole" name="role" class="ui-input" style="min-width:110px">
     {% for value, label in studio_role_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
   </select>
+  </div>
+  </div>
   <button class="ui-btn primary" type="submit">Add</button>
 </form>
+</div>
 {% else %}
+<div class="ui-form-rail">
 <p class="muted" style="margin-top:12px">Everyone in {{ org.name }} already has a direct
 role here — <a href="/orgs/{{ org.slug }}/settings/invites">invite someone to the
 organization</a> first.</p>
-{% endif %}
 </div>
+{% endif %}
 <p class="muted">Legend: <span class="ui-badge accent">admin</span>
 <span class="ui-badge info">developer</span> <span class="ui-badge">viewer</span> —
 admins manage this studio's repository, data sources and members.</p>

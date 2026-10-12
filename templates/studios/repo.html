@@ -2,6 +2,7 @@
 {% load static %}
 {% block title %}Repository — {{ studio.name }}{% endblock %}
 {% block settings %}
+<div class="ui-form-rail">
 <header class="page-head">
   <div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }}</div>
   <h1>Repository</h1>
@@ -9,19 +10,22 @@
     the portal pulls and rebuilds — that pipeline is the core of the product.</p>
 </header>
 
+<section class="ui-form-section" aria-labelledby="default-audiences">
 <h2 id="default-audiences">Default audiences</h2>
-<div class="panel formrow">
   <p>Choose signed-in access for newly discovered reports and analyses. Existing items keep their audience when these defaults change or they are rebuilt. A repository manifest can set an initial audience for a new item.</p>
   <p class="muted">Studio audience includes Viewers with access to the whole studio. Private includes organization admins, studio Admins and Developers, plus explicitly assigned Viewer groups. Internet sharing uses separate public links.</p>
   {% if audience_block_reason %}<p class="muted" role="note">Private defaults cannot be enabled: {{ audience_block_reason }}.</p>{% endif %}
   <form method="post" id="defaultAudienceForm" data-settings-form data-settings-save>
     {% csrf_token %}<input type="hidden" name="set_default_audiences" value="1">
     {{ audience_form.non_field_errors }}
-    <label for="{{ audience_form.default_report_audience.id_for_label }}">New reports</label>{{ audience_form.default_report_audience }}{{ audience_form.default_report_audience.errors }}
-    <label for="{{ audience_form.default_analysis_audience.id_for_label }}">New analyses</label>{{ audience_form.default_analysis_audience }}{{ audience_form.default_analysis_audience.errors }}
+    <div class="ui-form-row">
+      <div class="ui-field"><label for="{{ audience_form.default_report_audience.id_for_label }}">New reports</label>{{ audience_form.default_report_audience }}{{ audience_form.default_report_audience.errors }}</div>
+      <div class="ui-field"><label for="{{ audience_form.default_analysis_audience.id_for_label }}">New analyses</label>{{ audience_form.default_analysis_audience }}{{ audience_form.default_analysis_audience.errors }}</div>
+    </div>
     <p><button class="ui-btn primary" type="submit">Save default audiences</button></p>
   </form>
   <p class="muted">For an existing item, open its <a href="/s/{{ org.slug }}/{{ studio.slug }}/">studio page</a> and choose Access in the Options menu to change its audience or assign groups.</p>
+</section>
 </div>
 
 <section id="repoResults" data-repo-results data-status-url="/s/{{ org.slug }}/{{ studio.slug }}/api/system/git/status">
@@ -200,32 +204,34 @@
 <p id="repoPollStatus" class="muted" role="status" aria-live="polite" tabindex="-1" hidden></p>
 <script src="{% static 'repo-status.js' %}" defer></script>
 
+<div class="ui-form-rail">
 <h2>Connection</h2>
-<div class="panel formrow">
-  <form method="post" id="repoConnectionForm" data-settings-form data-settings-save>
+  <form method="post" id="repoConnectionForm" class="ui-form-section" data-settings-form data-settings-save>
     {% csrf_token %}
-    <p class="ui-label" style="margin:0">Repository</p>
-    <label>Repository URL (https)</label>{{ form.repo_url }}{{ form.repo_url.errors }}
-    <label>Branch</label>{{ form.branch }}{{ form.branch.errors }}
-    <label>Reports directory in the repo</label>{{ form.path }}{{ form.path.errors }}
-    <label>Authentication</label>{{ form.auth_method }}{{ form.auth_method.errors }}
-    <label>Access token</label>{{ form.token }}
-    <span class="helptext">{{ form.token.help_text }}</span>
+    <h3>Repository</h3>
+    <div class="ui-form-row">
+      <div class="ui-field ui-field-wide"><label for="{{ form.repo_url.id_for_label }}">Repository URL (https)</label>{{ form.repo_url }}{{ form.repo_url.errors }}</div>
+      <div class="ui-field"><label for="{{ form.branch.id_for_label }}">Branch</label>{{ form.branch }}{{ form.branch.errors }}</div>
+      <div class="ui-field"><label for="{{ form.path.id_for_label }}">Reports directory in the repo</label>{{ form.path }}{{ form.path.errors }}</div>
+    </div>
+    <div class="ui-form-row">
+      <div class="ui-field"><label for="{{ form.auth_method.id_for_label }}">Authentication</label>{{ form.auth_method }}{{ form.auth_method.errors }}</div>
+      <div class="ui-field"><label for="{{ form.token.id_for_label }}">Access token</label>{{ form.token }}<span class="helptext">{{ form.token.help_text }}</span></div>
+    </div>
 
-    <p class="ui-label" style="margin:18px 0 0">Sync behavior</p>
-    <label>Poll interval (minutes, 0 = manual/webhook only)</label>{{ form.sync_interval_minutes }}{{ form.sync_interval_minutes.errors }}
-    <label class="ui-check-row">{{ form.auto_run_changed }} Rebuild reports changed by a push</label>
+    <h3>Sync behavior</h3>
+    <div class="ui-form-row">
+      <div class="ui-field"><label for="{{ form.sync_interval_minutes.id_for_label }}">Poll interval (minutes, 0 = manual/webhook only)</label>{{ form.sync_interval_minutes }}{{ form.sync_interval_minutes.errors }}</div>
+      <div class="ui-field"><label class="ui-check-row">{{ form.auto_run_changed }} Rebuild reports changed by a push</label>{{ form.auto_run_changed.errors }}</div>
+    </div>
     {# The mode is set by the Publishing control above; the form still carries it. #}
     {{ form.publish_mode.as_hidden }}
 
-    <p class="ui-label" style="margin:18px 0 0">Webhook</p>
-    <label>Webhook secret</label>{{ form.webhook_secret }}
-    <span class="helptext">{{ form.webhook_secret.help_text }}</span>
+    <h3>Webhook</h3>
+    <div class="ui-field"><label for="{{ form.webhook_secret.id_for_label }}">Webhook secret</label>{{ form.webhook_secret }}<span class="helptext">{{ form.webhook_secret.help_text }}</span></div>
 
-    <p></p>
     <button class="ui-btn primary" type="submit">Save changes</button>
   </form>
-</div>
 
 <div class="ui-panel">
   <span class="ui-label">Push webhook URL</span>
@@ -233,6 +239,7 @@
     (content type JSON, secret = the webhook secret above, signature header
     <code>X-Hub-Signature-256</code>):</p>
   {% include "_copy_field.html" with value=webhook_url %}
+</div>
 </div>
 
 {% endblock %}
