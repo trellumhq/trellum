@@ -57,6 +57,26 @@ def _cmd_analysis_session(args: argparse.Namespace) -> int:
     except OSError as exc:
         print(f"Could not activate analysis inbox: {exc}", file=sys.stderr)
         return 1
+    if code in (404, 501):
+        if not args.restart_server:
+            print("The running server predates analysis sessions. Retry with "
+                  f"analysis session {args.report} --restart-server", file=sys.stderr)
+            return 1
+        from trellum import runner
+        from trellum.cli.commands.serve import _ensure_background_server
+
+        runner._claim_port(port, str(output_base))
+        port, _ = _ensure_background_server(output_base, args.port)
+        if port is None:
+            print("Could not restart the local server for analysis", file=sys.stderr)
+            return 1
+        try:
+            code, response = _review_http(
+                port, "POST", "/_fw/review/analysis/start", {"slug": slug}
+            )
+        except OSError as exc:
+            print(f"Could not activate analysis inbox: {exc}", file=sys.stderr)
+            return 1
     if code != 200:
         print(f"Could not activate analysis inbox: HTTP {code} {response}", file=sys.stderr)
         return 1
