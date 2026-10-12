@@ -32,14 +32,6 @@
     if (list) labels.forEach(function (label) { results.appendChild(label); });
     var fallback = field.querySelector('[data-picker-fallback]');
     if (!labels.length && fallback) fallback.hidden = true;
-    var pointerInside = false;
-    picker.addEventListener('pointerdown', function () {
-      pointerInside = true;
-      window.setTimeout(function () { pointerInside = false; }, 250);
-    });
-    document.addEventListener('pointerup', function () {
-      window.setTimeout(function () { pointerInside = false; }, 100);
-    }, true);
 
     function open() {
       if (labels.length) results.hidden = false;
@@ -101,15 +93,13 @@
     field.addEventListener('change', function (event) {
       if (event.target.matches('input[type="checkbox"]')) render();
     });
-    field.addEventListener('focusout', function () {
-      window.setTimeout(function () {
-        if (!pointerInside && !field.contains(document.activeElement)) close();
-      }, 0);
-    });
     results.addEventListener('keydown', function (event) {
       if (event.key === 'Escape') { search.focus({ preventScroll: true }); close(); }
     });
     document.addEventListener('pointerdown', function (event) {
+      if (!picker.contains(event.target)) close();
+    });
+    document.addEventListener('focusin', function (event) {
       if (!picker.contains(event.target)) close();
     });
     if (list) list.hidden = true;
