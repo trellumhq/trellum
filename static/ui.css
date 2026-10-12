@@ -1187,6 +1187,7 @@ body.mgmt label { display: block; font-size: var(--fs-sm); color: var(--text2); 
    picker opens with no script). The block rule above would stretch it across
    its cell and push the buttons beside it onto their own line. */
 body.mgmt label.ui-btn { display: inline-flex; margin: 0; }
+body.mgmt label.ui-check-row { display: flex; gap: 8px; align-items: center; }
 body.mgmt form.inline {
     display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 0;
 }

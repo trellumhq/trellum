@@ -15,7 +15,9 @@
       return { input: input, row: row, type: TYPES[type] ? type : null,
         name: input.dataset.recipientName || row.textContent.trim(), identity: input.dataset.recipientIdentity || '' };
     }).filter(Boolean);
-    var fallback = Array.prototype.filter.call(field.children, function (node) { return node.querySelector('input[type="checkbox"]'); });
+    var fallback = Array.prototype.filter.call(field.children, function (node) {
+      return node.matches('[data-recipient-type]') || node.querySelector('input[type="checkbox"]');
+    });
     var root = helper.element('div', 'recipient-picker');
     ['pickerLabel', 'pickerSearchPlaceholder', 'pickerEmptyState'].forEach(function (key) {
       if (field.dataset[key]) root.dataset[key] = field.dataset[key];
@@ -63,6 +65,7 @@
     });
     fallback.forEach(function (node) {
       node.querySelectorAll('.errorlist,[data-settings-error]').forEach(function (error) { field.appendChild(error); });
+      node.classList.add('recipient-picker-fallback');
       node.hidden = true;
     });
     field.querySelectorAll('[data-picker-fallback]').forEach(function (node) { node.hidden = true; });

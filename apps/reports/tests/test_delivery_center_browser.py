@@ -167,6 +167,7 @@ def test_delivery_recipient_picker_supports_multiple_search_chips_and_keyboard(d
     page.add_script_tag(content=(ROOT / 'static/choice-picker.js').read_text(encoding='utf-8'))
     page.add_script_tag(content=(ROOT / 'static/recipient-picker.js').read_text(encoding='utf-8'))
     field = page.locator('[data-recipient-picker]')
+    expect(field.locator('[data-recipient-type=groups]')).to_be_hidden()
     search = field.locator('.ui-picker-search')
     results = field.locator('.ui-picker-options')
     popup = field.locator('.ui-picker-popup')
@@ -250,6 +251,7 @@ def test_new_delivery_browser_timezone_default_stays_pristine(delivery_browser):
         for name, width, height in [('desktop', 1440, 1100), ('mobile', 390, 844)]:
             page.set_viewport_size({'width': width, 'height': height})
             assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+            assert form.locator('label.ui-check-row').first.evaluate("node => getComputedStyle(node).display") == 'flex'
             page.screenshot(path=str(evidence / f'delivery-form-{name}-{theme}.png'), full_page=True, animations='disabled')
 
 

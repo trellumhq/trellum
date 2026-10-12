@@ -2,7 +2,7 @@
 {% load static %}
 {% block title %}{% if schedule.pk %}Edit{% else %}Add{% endif %} delivery — trellum{% endblock %}
 {% block content %}
-<header class="page-head ui-form-rail"><div class="ui-label page-kicker">Studio · Deliveries</div><h1>{% if schedule.pk %}Edit{% else %}Add{% endif %} delivery</h1><p>{{ report.name|default:report.slug }} · {{ report.get_kind_display }}</p>{% if schedule.pk %}<a class="ui-btn ghost" href="{{ return_to }}">Back to deliveries</a>{% endif %}</header>
+<header class="page-head ui-form-rail"><div class="ui-label page-kicker">Studio · Deliveries</div><h1>{% if schedule.pk %}Edit{% else %}Add{% endif %} delivery</h1><p>{{ report.name|default:report.slug }} · {{ report.get_kind_display }}</p>{% if schedule.pk %}<a class="ui-btn ghost" href="{{ return_to }}" data-settings-leave="delivery-schedule-form">Back to deliveries</a>{% endif %}</header>
 <form method="post" id="delivery-schedule-form" class="ui-form-rail" action="{% if schedule.pk %}/s/{{ report.studio.org.slug }}/{{ report.studio.slug }}/api/reports/{{ report.slug }}/schedules/{{ schedule.pk }}{% else %}/s/{{ report.studio.org.slug }}/{{ report.studio.slug }}/deliveries/new{% endif %}" data-settings-form data-settings-save>
 {% csrf_token %}<input type="hidden" name="delivery_page" value="1"><input type="hidden" name="return_to" value="{{ return_to }}"><input type="hidden" name="report_id" value="{{ report.pk }}">
 {{ form.non_field_errors }}
@@ -22,7 +22,7 @@
 <div data-recipient-type="roles" class="ui-field"><h3>Studio roles</h3>{{ form.recipient_roles }}{{ form.recipient_roles.errors }}</div>
 <div data-recipient-type="groups" class="ui-field"><h3>Permission groups</h3>{{ form.recipient_group_ids }}{% if form.recipient_group_ids.help_text %}<span class="ui-help">{{ form.recipient_group_ids.help_text }}</span>{% endif %}{{ form.recipient_group_ids.errors }}</div>
 </div></section>
-<div class="ui-form-actions"><button type="submit" class="ui-btn primary">{% if schedule.pk %}Save delivery{% else %}Create delivery{% endif %}</button><a class="ui-btn ghost" href="{{ return_to }}">Cancel</a></div>
+<div class="ui-form-actions"><button type="submit" class="ui-btn primary">{% if schedule.pk %}Save delivery{% else %}Create delivery{% endif %}</button><a class="ui-btn ghost" href="{{ return_to }}" data-settings-leave>Cancel</a></div>
 </form>
 <script>document.addEventListener('DOMContentLoaded',function(){var form=document.getElementById('delivery-schedule-form');if(!form)return;var frequency=form.elements.freq;function sync(){form.querySelectorAll('[data-frequency-field]').forEach(function(field){field.hidden=field.dataset.frequencyField!==frequency.value;});}frequency.addEventListener('change',sync);sync();});</script>
 {% if browser_timezone_default %}<script>(function(){var select=document.querySelector('#delivery-schedule-form [name="timezone"]');if(!select)return;try{var zone=Intl.DateTimeFormat().resolvedOptions().timeZone;if(zone&&Array.prototype.some.call(select.options,function(o){return o.value===zone})){select.value=zone;if(select._trellumChoice)select._trellumChoice.refresh();}}catch(_){}})();</script>{% endif %}

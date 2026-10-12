@@ -1,3 +1,4 @@
+.recipient-picker-fallback[hidden] { display:none !important; }
 .recipient-picker .recipient-picker-selected { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
 .recipient-picker .recipient-picker-chip {
   display:inline-flex; align-items:center; gap:4px; max-width:100%; padding-left:10px;

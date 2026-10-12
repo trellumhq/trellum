@@ -31,6 +31,7 @@ def _assert_layout(page, page_name, html, width, theme):
         assert page.locator(".recipient-picker").count() == 1
         assert page.locator("[data-recipient-picker] input[type=checkbox]").count() == 1
         assert page.locator(".recipient-picker .ui-picker-trigger").is_enabled()
+        assert not page.locator(".recipient-picker-fallback").is_visible()
     if page_name in {"sso", "invites", "group-access"}:
         assert page.locator(".recipient-picker").count() == 1, page_name
     if page_name in {"audit", "group-effective"}:

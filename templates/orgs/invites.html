@@ -16,16 +16,19 @@
 </div>
 {% endif %}
 
+<section class="ui-form-rail">
 <h2>Invite someone</h2>
 <p class="muted">A plain <em>member</em> sees <strong>no studios</strong> until something grants
 them a role — pick studio access below, attach permission groups, or do it later from
 <a href="/orgs/{{ org.slug }}/settings/members">Members</a>. Org <em>admins</em> automatically
 have admin access to every studio.</p>
-<div class="panel formrow">
+<div class="ui-form-section">
   <form method="post">
     {% csrf_token %}
-    <label>Email</label>{{ form.email }}{{ form.email.errors }}
-    <label>Org role</label>{{ form.org_role }}{{ form.org_role.errors }}
+    <div class="ui-form-row">
+      <div class="ui-field"><label for="{{ form.email.id_for_label }}">Email</label>{{ form.email }}{{ form.email.errors }}</div>
+      <div class="ui-field"><label for="{{ form.org_role.id_for_label }}">Org role</label>{{ form.org_role }}{{ form.org_role.errors }}</div>
+    </div>
     <fieldset data-recipient-picker data-picker-label="Permission groups" data-picker-search-placeholder="Search permission groups…" data-picker-empty-state="No permission groups are available." style="border:0;padding:0;margin:0;min-width:0"><legend class="ui-label">Permission groups</legend>{{ form.groups }}{{ form.groups.errors }}</fieldset>
     <label>Studio access</label>
     <table class="ui-table dense">
@@ -45,6 +48,7 @@ have admin access to every studio.</p>
     <button class="ui-btn primary" type="submit">Create invitation</button>
   </form>
 </div>
+</section>
 
 <h2>Pending</h2>
 {% include "_list_toolbar.html" with q=q placeholder="Search pending invitations…" total=total %}

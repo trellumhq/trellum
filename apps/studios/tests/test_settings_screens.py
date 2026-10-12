@@ -438,7 +438,7 @@ class TestDataSourceScreen:
         form = page.split('id="ds-editor"', 1)[1].split("</form>", 1)[0]
         assert 'name="user"' in form and 'name="password"' in form
         assert 'name="host"' not in form and 'name="database"' not in form
-        assert "Test draft" in form and "Save and test" in form
+        assert "Test draft" in form and "Save source" in form
         assert 'name="org_level"' in form  # org admin
         assert "Replaces shared credentials." in form
         assert "Blank secrets keep the organization's saved values." in form
@@ -568,7 +568,7 @@ class TestDataSourceScreen:
         assert 'id="ds-form"' not in page
         assert f'href="{prefix}/settings/datasources/new">Add data source</a>' in page
         create = html(f"{prefix}/settings/datasources/new")
-        assert 'id="ds-form"' in create and ">Save</button>" in create
+        assert 'id="ds-form"' in create and ">Create source</button>" in create
         repo.delete()
         page = html(f"{prefix}/settings/datasources")
         assert 'id="ds-form"' not in page
