@@ -891,6 +891,9 @@ def api_keys_view(request):
             )
             request.session["new_api_key"] = {"id": key.pk, "secret": secret}
             return redirect("my-api-keys")
+        return render(request, "accounts/api_key_create.html", {
+            "form": form, "can_create": form.fields["org"].queryset.exists(),
+        })
 
     fresh = request.session.pop("new_api_key", None)
     new_key = ApiKey.objects.filter(pk=fresh["id"], user=request.user).first() if fresh else None
@@ -919,7 +922,7 @@ def api_key_create_view(request):
     if not request.user.is_authenticated:
         return redirect("login")
 
-    form = ApiKeyCreateForm(request.POST or None, user=request.user)
+    form = ApiKeyCreateForm(request.POST if request.method == "POST" else None, user=request.user)
     if request.method == "POST" and form.is_valid():
         key, secret = ApiKey.mint(user=request.user, **form.cleaned_data)
         audit(

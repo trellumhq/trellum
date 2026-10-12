@@ -259,6 +259,16 @@ class TestMyKeysPage:
         assert 'value="today key"' in page and f'value="{today}"' in page
         assert not ApiKey.objects.exists()
 
+    def test_empty_and_legacy_invalid_posts_use_the_creation_editor(self, login, developer):
+        client = login(developer)
+        for url, body in ((self.CREATE_URL, {}), (self.URL, {"name": "draft", "org": "missing"})):
+            response = client.post(url, body)
+            assert response.status_code == 200
+            assert response.context["form"].is_bound
+            assert response.context["form"].errors
+            assert 'id="apiKeyCreateForm"' in response.content.decode()
+        assert not ApiKey.objects.exists()
+
     def test_create_page_requires_login_and_respects_org_policy(self, client, login, developer, org):
         assert client.get(self.CREATE_URL).status_code == 302
         org.api_keys_enabled = False

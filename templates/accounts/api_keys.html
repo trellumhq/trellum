@@ -25,20 +25,6 @@
 </div>
 {% endif %}
 
-{% if form.is_bound %}
-<div class="ui-panel" role="alert">
-  <strong>The API key was not created.</strong>
-  <form method="post" class="formrow">
-    {% csrf_token %}<input type="hidden" name="action" value="create">
-    {% for field in form %}
-    <label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}
-    {% if field.errors %}<div class="ui-field-error" role="alert">{{ field.errors }}</div>{% endif %}
-    {% endfor %}
-    <button class="ui-btn primary" type="submit">Create key</button>
-  </form>
-</div>
-{% endif %}
-
 {% if can_create %}
 <p><a class="ui-btn primary" href="{% url 'my-api-keys-create' %}">Add API key</a></p>
 {% else %}

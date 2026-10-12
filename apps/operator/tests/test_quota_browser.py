@@ -75,6 +75,11 @@ def test_quota_form_saves_and_retains_failed_draft(login, org, width, theme):
         assert page.evaluate("document.activeElement.name") == "max_concurrent_runs"
         assert field.evaluate("element => element.getBoundingClientRect().top") == field_top
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        if width < 768:
+            assert field.evaluate("node => parseFloat(getComputedStyle(node).fontSize)") >= 16
+            assert field.bounding_box()["height"] >= 44
         page.evaluate("window.scrollTo(0, 0)")
-        page.screenshot(path=str(settings.BASE_DIR / f"quota-{width}-{theme}.png"), full_page=True)
+        output = settings.BASE_DIR / ".artifacts" / "operator-quota"
+        output.mkdir(parents=True, exist_ok=True)
+        page.screenshot(path=str(output / f"quota-{width}-{theme}.png"), full_page=True)
         browser.close()

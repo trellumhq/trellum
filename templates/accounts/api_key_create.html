@@ -9,7 +9,7 @@
     <a class="ui-btn ghost" href="{% url 'my-api-keys' %}" data-settings-leave="apiKeyCreateForm">← Back to API keys</a>
   </header>
   {% if can_create %}
-  <form id="apiKeyCreateForm" method="post" data-settings-form>
+  <form id="apiKeyCreateForm" method="post" action="{% url 'my-api-keys-create' %}" data-settings-form>
     {% csrf_token %}
     <input type="hidden" name="action" value="create">
     {% if form.non_field_errors %}<div class="ui-field-error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
