@@ -106,6 +106,7 @@ def test_article_review_targets_have_stable_unique_ids_and_safe_attributes(artic
     assert '<p id="article-passage-1-2" data-fw-kind="Passage">' in body
     assert '<p id="article-passage-3" data-fw-kind="Passage">' in body
     assert re.search(r'<img\b[^>]*\bid="article-evidence-1"[^>]*data-fw-kind="Evidence"', body)
+    assert 'data-fw-title="Chart &amp; details"' in body
     assert 'alt="Chart &amp; details" title="Evidence title"' in body
     assert '<script>careful</script>' not in body
 

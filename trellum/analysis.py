@@ -212,6 +212,7 @@ def _assign_review_targets(tokens, prefix: str, used: set, counters: dict) -> No
         elif token.type == "image":
             counters["evidence"] += 1
             _set_review_target(token, "Evidence", f"{prefix}-evidence-{counters['evidence']}", used)
+            token.attrSet("data-fw-title", _plain_text(token.children) or token.content)
         _assign_review_targets(token.children or [], prefix, used, counters)
 
 
@@ -324,7 +325,7 @@ def _presentation_markup(root: Path, output: Path) -> str:
             evidence_id = _reserve_review_id(evidence_id, used)
             evidence = (f'<figure class="fw-slide-evidence"><a href="{image_url}" target="_blank" '
                         f'rel="noopener" title="Enlarge image"><img id="{html.escape(evidence_id, quote=True)}" '
-                        f'data-fw-kind="Evidence" src="{image_url}" alt="{alt}"></a>'
+                        f'data-fw-kind="Evidence" data-fw-title="{alt}" src="{image_url}" alt="{alt}"></a>'
                         + (f'<figcaption>{caption}</figcaption>' if caption else "") + '</figure>')
         sections.append(f'<section class="fw-section fw-slide fw-slide--{slide["layout"]}" id="{anchor}" '
                         f'data-fw-section-title="{html.escape(slide["title"], quote=True)}" '
