@@ -138,7 +138,15 @@ def _print_review_batches(batches: list[dict]) -> None:
             if item.get("text"):
                 print(f"      text: {item['text'][:120]}")
             data = item.get("data") or {}
-            if data.get("type") == "chart-point":
+            if data.get("type") == "analysis-capture":
+                capture_id = data.get("capture_id", "")
+                print(f"      capture from: {data.get('source_slug', '?')}"
+                      f" / {data.get('component_title', '?')}")
+                if capture_id:
+                    print(f"      inbox ID: {capture_id}")
+                    print(f"      import: python -m trellum analysis import "
+                          f"reports/{batch.get('slug') or '<slug>'} --inbox {capture_id}")
+            elif data.get("type") == "chart-point":
                 print(f"      data point: {data.get('series')} @ {data.get('x')} "
                       f"= {data.get('value')}")
                 for s in (data.get("stack") or [])[:8]:
