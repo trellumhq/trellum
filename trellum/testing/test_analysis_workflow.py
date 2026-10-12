@@ -147,6 +147,22 @@ def test_local_analysis_capture_import_and_slide_review(tmp_path, monkeypatch):
                 assert item["section"]["id"] == "slide-finding"
                 assert item["section"]["title"] == "Conversion by channel"
 
+                for selector, kind, prompt in (
+                    ("#slide-finding-passage-1", "Passage", "Clarify this sentence"),
+                    ("#slide-finding-evidence-1", "Evidence", "Check this chart label"),
+                ):
+                    target = page.locator(selector)
+                    target.hover()
+                    target.click()
+                    page.wait_for_selector("#fwrvPop", state="visible")
+                    page.fill("#fwrvPopText", prompt)
+                    page.click("#fwrvPopQueueSend")
+                    reviewed = _json_request(origin + "/_fw/review/poll?timeout=0&slug=presentation")
+                    item = reviewed["batches"][0]["items"][0]
+                    assert item["prompt"] == prompt
+                    assert item["component"]["kind"] == kind
+                    assert item["selector"] == selector
+
                 slides_path.write_text(slides_path.read_text(encoding="utf-8").replace(
                     "Investigate the filtered result.", "The filtered result is stable."), encoding="utf-8")
                 run_report(str(presentation))
