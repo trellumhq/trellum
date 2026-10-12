@@ -109,9 +109,11 @@ class MetricsReport(BaseReport):
             ctx.add_section("", [_MetricsWorkspace(
                 '<div id="fwMetricsWorkspace"><details><summary>Show / hide metrics</summary>'
                 f'<div class="fw-metric-choices">{choices}</div></details>'
+                '<div class="fw-metric-actions">'
                 '<button type="button" id="fwMetricsShowAll">Show all</button>'
                 '<button type="button" id="fwMetricsHideAll">Hide all</button>'
-                '<span id="fwMetricsCount" role="status" aria-live="polite"></span></div>'
+                '<span id="fwMetricsCount" role="status" aria-live="polite"></span>'
+                '</div></div>'
                 '<p id="fwMetricsEmpty" hidden>No metrics selected. Use Show all to restore them.</p>'
             )])
         for m in bound:

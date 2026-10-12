@@ -348,12 +348,31 @@ def test_workspace_visibility_splits_and_single_scroll(open_metric, size):
     assert frame.locator('#metric-gross_revenue [data-stack-toggle]').is_visible()
     assert frame.locator('#metric-balance .fw-kpi-grid').is_hidden()
     assert 'build-time snapshot' in frame.locator('#metric-balance').inner_text()
+    toolbar = frame.locator('#fwMetricsWorkspace')
+    layout = toolbar.evaluate('''el => {
+        const buttons = [...el.querySelectorAll('button')];
+        const rects = [...el.querySelectorAll('summary, button, #fwMetricsCount')]
+            .map(item => item.getBoundingClientRect());
+        return {width: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth,
+            buttonHeights: buttons.map(button => button.getBoundingClientRect().height),
+            inside: rects.every(rect => rect.left >= 0 && rect.right <= document.documentElement.clientWidth + 1)};
+    }''')
+    assert layout['width'] <= layout['clientWidth'] + 1, layout
+    assert layout['inside'], layout
+    if size[0] <= 600:
+        assert min(layout['buttonHeights']) >= 44, layout
     frame.locator('#metric-gross_revenue').scroll_into_view_if_needed()
     frame.locator('#metric-gross_revenue [data-stack-toggle]').get_by_role('button', name='Platform', exact=True).click()
     assert page.evaluate('''() => new Promise(resolve => requestAnimationFrame(() => {
         const f=document.getElementById('metWorkspace'); resolve(f.contentDocument.documentElement.scrollHeight <= f.clientHeight + 2);
     }))''')
     frame.locator('#fwMetricsWorkspace summary').click()
+    assert frame.evaluate('''() => {
+        const width = document.documentElement.clientWidth;
+        return document.documentElement.scrollWidth <= width + 1 &&
+            [...document.querySelectorAll('.fw-metric-choices label')].every(label =>
+                label.getBoundingClientRect().left >= 0 && label.getBoundingClientRect().right <= width + 1);
+    }''')
     frame.locator('input[value="metric-net_revenue"]').uncheck()
     assert frame.locator('#metric-net_revenue').is_hidden()
     page.reload()
