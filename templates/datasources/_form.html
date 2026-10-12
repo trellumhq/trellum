@@ -1,87 +1,81 @@
-  <form method="post" id="ds-form" class="ui-form-grid" data-settings-form data-settings-save>
+  <form method="post" id="ds-form" class="ui-form-rail" data-settings-form data-settings-save>
     {% csrf_token %}
     <input type="hidden" name="id" value="{{ editing.pk|default:'' }}">
-    {{ form.non_field_errors }}
-    <div class="ui-field"><label>Name</label>{{ form.name }}{{ form.name.errors }}</div>
-    <div class="ui-field"><label>Type</label>{{ form.type }}{{ form.type.errors }}</div>
-    <div class="ui-field ui-field-wide"><label>Description</label>{{ form.description }}</div>
-    {% if not org_page %}
-    <div class="ui-field ui-field-wide"><label>Scope</label>
-      <div><span class="scope-chip studio">This studio only</span></div>
-      {{ form.scope }}
-      {% if shell_is_org_admin %}
-      <span class="ui-help">Organization-wide sources (shared with every studio)
-      are created in <a href="/orgs/{{ org.slug }}/settings/datasources">Organization
-      settings → Data sources</a>.</span>
+    {{ form.scope.as_hidden }}
+    {% if form.non_field_errors %}<div class="ui-field-error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+    <section class="ui-form-section" data-ds-fields>
+      <h2>Source</h2>
+      <div class="ui-form-row">
+        <div class="ui-field"><label for="{{ form.name.id_for_label }}">{{ form.name.label }}</label>{{ form.name }}{% if form.name.errors %}<div class="ui-field-error" id="id_name_errors" role="alert">{{ form.name.errors }}</div>{% endif %}</div>
+        <div class="ui-field"><label for="{{ form.type.id_for_label }}">{{ form.type.label }}</label>{{ form.type }}{% if form.type.errors %}<div class="ui-field-error" id="id_type_errors" role="alert">{{ form.type.errors }}</div>{% endif %}</div>
+        <div class="ui-field ui-field-wide"><label for="{{ form.description.id_for_label }}">{{ form.description.label }}</label>{{ form.description }}{% if form.description.errors %}<div class="ui-field-error" id="id_description_errors" role="alert">{{ form.description.errors }}</div>{% endif %}</div>
+      </div>
+      {% if not org_page %}
+      <div class="ui-field ui-field-wide">
+        <span class="ui-field-label">Scope</span>
+        <div><span class="scope-chip studio">This studio only</span></div>
+        {% if shell_is_org_admin %}<span class="ui-help">Organization-wide sources are created in <a href="/orgs/{{ org.slug }}/settings/datasources">Organization settings → Data sources</a>.</span>{% endif %}
+      </div>
       {% endif %}
-    </div>
-    {% else %}{{ form.scope }}{% endif %}
+    </section>
 
-    <div class="ui-field" data-f="host"><label>Host</label>{{ form.host }}</div>
-    <div class="ui-field narrow" data-f="port"><label>Port</label>{{ form.port }}</div>
-    <div class="ui-field" data-f="database"><label>Database</label>{{ form.database }}</div>
-    <div class="ui-field" data-f="user"><label>User</label>{{ form.user }}</div>
-    <div class="ui-field" data-f="password"><label>Password <span class="muted">(blank = keep current)</span></label>{{ form.password }}</div>
-    <div class="ui-field ui-field-wide" data-f="path">
-      <label>{% if org_page %}Path in the organization's files{% else %}Path in the studio project{% endif %}</label>
-      {{ form.path }}{{ form.path.errors }}
-      <span class="helptext">{% if org_page %}Relative to this organization's own
-      data-sources directory, which every studio's reports resolve to the same
-      file (e.g. files/market-extract.csv). Blank = files/&lt;name&gt;, set on first
-      upload.{% else %}{{ form.path.help_text }}{% endif %}</span>
-      <span class="ui-help" id="ds-git-warning" hidden>Heads up: git sync rewrites
-      <code>reports/</code> on every pull, so anything uploaded there is replaced
-      the next time that report changes. Put files you upload somewhere else —
-      <code>data-sources/files/…</code> is never touched by git.</span>
-    </div>
-    <div class="ui-field ui-field-wide" data-f="upload">
-      <label class="ui-check-row">{{ form.upload }} {{ form.upload.label }}</label>
-      <span class="ui-help">Adds an Upload button to this source's row. Independent
-      of where the file lives: a file committed in the repository can still be
-      refreshed here between pushes.</span>
-    </div>
-    <div class="ui-field" data-f="project"><label>Project (BigQuery)</label>{{ form.project }}</div>
-    <div class="ui-field ui-field-wide" data-f="credentials_json"><label>Credentials JSON <span class="muted">(blank = keep)</span></label>{{ form.credentials_json }}</div>
-    <div class="ui-field" data-f="credentials_path"><label>Credentials path</label>{{ form.credentials_path }}</div>
-    <div class="ui-field" data-f="account"><label>Account (Snowflake)</label>{{ form.account }}</div>
-    <div class="ui-field" data-f="warehouse"><label>Warehouse</label>{{ form.warehouse }}</div>
-    <div class="ui-field" data-f="catalog"><label>Catalog</label>{{ form.catalog }}</div>
-    <div class="ui-field" data-f="schema"><label>Schema</label>{{ form.schema }}</div>
-    <div class="ui-field ui-field-wide" data-f="http_path"><label>HTTP path <span class="muted">(the SQL warehouse's)</span></label>{{ form.http_path }}</div>
-    <div class="ui-field" data-f="access_token"><label>Access token <span class="muted">(blank = keep)</span></label>{{ form.access_token }}</div>
-    <div class="ui-field ui-field-wide" data-f="secure">
-      <label class="ui-check-row">{{ form.secure }} {{ form.secure.label }}</label>
-      <span class="ui-help">Unticked = the driver's default: HTTPS whenever a password is set.</span>
-    </div>
-    <div class="ui-field ui-field-wide" data-f="new_connection_per_query">
-      <label class="ui-check-row">{{ form.new_connection_per_query }} {{ form.new_connection_per_query.label }}</label>
-      <span class="ui-help">{{ form.new_connection_per_query.help_text }}</span>
-    </div>
-    <div class="ui-field" data-f="tenant_id"><label>Tenant ID (Entra)</label>{{ form.tenant_id }}</div>
-    <div class="ui-field" data-f="client_id"><label>Client ID</label>{{ form.client_id }}</div>
-    <div class="ui-field" data-f="client_secret"><label>Client secret <span class="muted">(blank = keep)</span></label>{{ form.client_secret }}</div>
-    <div class="ui-field ui-field-wide" data-f="site_url"><label>Site URL (SharePoint)</label>{{ form.site_url }}</div>
+    <section class="ui-form-section" data-ds-fields>
+      <h2>Connection</h2>
+      <div class="ui-form-row">
+        <div class="ui-field" data-f="host"><label for="{{ form.host.id_for_label }}">{{ form.host.label }}</label>{{ form.host }}{% if form.host.errors %}<div class="ui-field-error" id="id_host_errors" role="alert">{{ form.host.errors }}</div>{% endif %}</div>
+        <div class="ui-field" data-f="port"><label for="{{ form.port.id_for_label }}">{{ form.port.label }}</label>{{ form.port }}{% if form.port.errors %}<div class="ui-field-error" id="id_port_errors" role="alert">{{ form.port.errors }}</div>{% endif %}</div>
+        <div class="ui-field" data-f="database"><label for="{{ form.database.id_for_label }}">{{ form.database.label }}</label>{{ form.database }}{% if form.database.errors %}<div class="ui-field-error" id="id_database_errors" role="alert">{{ form.database.errors }}</div>{% endif %}</div>
+        <div class="ui-field ui-field-wide" data-f="path">
+          <label for="{{ form.path.id_for_label }}">{% if org_page %}Path in the organization's files{% else %}Path in the studio project{% endif %}</label>
+          {{ form.path }}{% if form.path.errors %}<div class="ui-field-error" id="id_path_errors" role="alert">{{ form.path.errors }}</div>{% endif %}
+          <span class="helptext" id="{{ form.path.auto_id }}_help">{% if org_page %}Relative to this organization's data-sources directory (for example, files/market-extract.csv). Blank = files/&lt;name&gt;, set on first upload.{% else %}{{ form.path.help_text }}{% endif %}</span>
+          <span class="ui-help" id="ds-git-warning" hidden>Git sync rewrites <code>reports/</code> on every pull. Put uploads elsewhere, such as <code>data-sources/files/…</code>.</span>
+        </div>
+        <div class="ui-field ui-field-wide" data-f="upload">
+          <label class="ui-check-row" for="{{ form.upload.id_for_label }}">{{ form.upload }} {{ form.upload.label }}</label>
+          <span class="ui-help">Adds an Upload button to this source's row, including for files committed in the repository.</span>
+        </div>
+        <div class="ui-field" data-f="project"><label for="{{ form.project.id_for_label }}">{{ form.project.label }}</label>{{ form.project }}{% if form.project.errors %}<div class="ui-field-error" id="id_project_errors" role="alert">{{ form.project.errors }}</div>{% endif %}</div>
+        <div class="ui-field" data-f="account"><label for="{{ form.account.id_for_label }}">{{ form.account.label }}</label>{{ form.account }}{% if form.account.errors %}<div class="ui-field-error" id="id_account_errors" role="alert">{{ form.account.errors }}</div>{% endif %}</div>
+        <div class="ui-field" data-f="warehouse"><label for="{{ form.warehouse.id_for_label }}">{{ form.warehouse.label }}</label>{{ form.warehouse }}{% if form.warehouse.errors %}<div class="ui-field-error" id="id_warehouse_errors" role="alert">{{ form.warehouse.errors }}</div>{% endif %}</div>
+        <div class="ui-field" data-f="schema"><label for="{{ form.schema.id_for_label }}">{{ form.schema.label }}</label>{{ form.schema }}{% if form.schema.errors %}<div class="ui-field-error" id="id_schema_errors" role="alert">{{ form.schema.errors }}</div>{% endif %}</div>
+        <div class="ui-field" data-f="catalog"><label for="{{ form.catalog.id_for_label }}">{{ form.catalog.label }}</label>{{ form.catalog }}{% if form.catalog.errors %}<div class="ui-field-error" id="id_catalog_errors" role="alert">{{ form.catalog.errors }}</div>{% endif %}</div>
+        <div class="ui-field ui-field-wide" data-f="http_path"><label for="{{ form.http_path.id_for_label }}">{{ form.http_path.label }}</label>{{ form.http_path }}{% if form.http_path.errors %}<div class="ui-field-error" id="id_http_path_errors" role="alert">{{ form.http_path.errors }}</div>{% endif %}</div>
+        <div class="ui-field ui-field-wide" data-f="secure"><label class="ui-check-row" for="{{ form.secure.id_for_label }}">{{ form.secure }} {{ form.secure.label }}</label><span class="ui-help">Unticked uses the driver's default: HTTPS whenever a password is set.</span></div>
+        <div class="ui-field ui-field-wide" data-f="new_connection_per_query"><label class="ui-check-row" for="{{ form.new_connection_per_query.id_for_label }}">{{ form.new_connection_per_query }} {{ form.new_connection_per_query.label }}</label><span class="ui-help" id="{{ form.new_connection_per_query.auto_id }}_help">{{ form.new_connection_per_query.help_text }}</span></div>
+        <div class="ui-field" data-f="tenant_id"><label for="{{ form.tenant_id.id_for_label }}">{{ form.tenant_id.label }}</label>{{ form.tenant_id }}{% if form.tenant_id.errors %}<div class="ui-field-error" id="id_tenant_id_errors" role="alert">{{ form.tenant_id.errors }}</div>{% endif %}</div>
+        <div class="ui-field" data-f="client_id"><label for="{{ form.client_id.id_for_label }}">{{ form.client_id.label }}</label>{{ form.client_id }}{% if form.client_id.errors %}<div class="ui-field-error" id="id_client_id_errors" role="alert">{{ form.client_id.errors }}</div>{% endif %}</div>
+        <div class="ui-field ui-field-wide" data-f="site_url"><label for="{{ form.site_url.id_for_label }}">{{ form.site_url.label }}</label>{{ form.site_url }}{% if form.site_url.errors %}<div class="ui-field-error" id="id_site_url_errors" role="alert">{{ form.site_url.errors }}</div>{% endif %}</div>
+      </div>
+    </section>
 
-    <div class="ui-field ui-field-wide" data-f="ssh_host">
-      <h3>SSH tunnel <span class="muted">(optional)</span></h3>
-      <span class="ui-help">Reach the database through a bastion: the build connects to
-      the SSH host and forwards to the host and port above from there. Leave the host
-      blank for a direct connection.</span>
-      <label>SSH host</label>{{ form.ssh_host }}
-    </div>
-    <div class="ui-field narrow" data-f="ssh_port"><label>SSH port <span class="muted">(blank = 22)</span></label>{{ form.ssh_port }}</div>
-    <div class="ui-field" data-f="ssh_user"><label>SSH user</label>{{ form.ssh_user }}</div>
-    <div class="ui-field ui-field-wide" data-f="ssh_private_key"><label>SSH private key <span class="muted">(blank = keep)</span></label>{{ form.ssh_private_key }}</div>
-    <div class="ui-field" data-f="ssh_password"><label>SSH password <span class="muted">(blank = keep; not needed with a key)</span></label>{{ form.ssh_password }}</div>
-    <div class="ui-field ui-field-wide" data-f="ssh_host_key">
-      <label>SSH host key <span class="muted">(recommended)</span></label>{{ form.ssh_host_key }}
-      <span class="ui-help">The bastion's public host key, as <code>ssh-keyscan &lt;host&gt;</code>
-      prints it. When set, a bastion presenting any other key is refused; when blank, any key is accepted.</span>
-    </div>
+    <section class="ui-form-section" data-ds-fields>
+      <h2>Credentials</h2>
+      <div class="ui-form-row">
+        <div class="ui-field" data-f="user"><label for="{{ form.user.id_for_label }}">{{ form.user.label }}</label>{{ form.user }}{% if form.user.errors %}<div class="ui-field-error" id="id_user_errors" role="alert">{{ form.user.errors }}</div>{% endif %}</div>
+        <div class="ui-field" data-f="password"><label for="{{ form.password.id_for_label }}">Password <span class="muted">(blank = keep current)</span></label>{{ form.password }}{% if form.password.errors %}<div class="ui-field-error" id="id_password_errors" role="alert">{{ form.password.errors }}</div>{% endif %}</div>
+        <div class="ui-field ui-field-wide" data-f="credentials_json"><label for="{{ form.credentials_json.id_for_label }}">Credentials JSON <span class="muted">(blank = keep)</span></label>{{ form.credentials_json }}{% if form.credentials_json.errors %}<div class="ui-field-error" id="id_credentials_json_errors" role="alert">{{ form.credentials_json.errors }}</div>{% endif %}</div>
+        <div class="ui-field" data-f="credentials_path"><label for="{{ form.credentials_path.id_for_label }}">{{ form.credentials_path.label }}</label>{{ form.credentials_path }}{% if form.credentials_path.errors %}<div class="ui-field-error" id="id_credentials_path_errors" role="alert">{{ form.credentials_path.errors }}</div>{% endif %}</div>
+        <div class="ui-field" data-f="access_token"><label for="{{ form.access_token.id_for_label }}">Access token <span class="muted">(blank = keep)</span></label>{{ form.access_token }}{% if form.access_token.errors %}<div class="ui-field-error" id="id_access_token_errors" role="alert">{{ form.access_token.errors }}</div>{% endif %}</div>
+        <div class="ui-field" data-f="client_secret"><label for="{{ form.client_secret.id_for_label }}">Client secret <span class="muted">(blank = keep)</span></label>{{ form.client_secret }}{% if form.client_secret.errors %}<div class="ui-field-error" id="id_client_secret_errors" role="alert">{{ form.client_secret.errors }}</div>{% endif %}</div>
+      </div>
+    </section>
+
+    <section class="ui-form-section" data-ds-fields>
+      <h2>SSH tunnel <span class="muted">(optional)</span></h2>
+      <p class="ui-help">Reach a database through a bastion host. Leave the SSH host blank for a direct connection.</p>
+      <div class="ui-form-row">
+        <div class="ui-field" data-f="ssh_host"><label for="{{ form.ssh_host.id_for_label }}">{{ form.ssh_host.label }}</label>{{ form.ssh_host }}{% if form.ssh_host.errors %}<div class="ui-field-error" id="id_ssh_host_errors" role="alert">{{ form.ssh_host.errors }}</div>{% endif %}</div>
+        <div class="ui-field" data-f="ssh_port"><label for="{{ form.ssh_port.id_for_label }}">SSH port <span class="muted">(blank = 22)</span></label>{{ form.ssh_port }}{% if form.ssh_port.errors %}<div class="ui-field-error" id="id_ssh_port_errors" role="alert">{{ form.ssh_port.errors }}</div>{% endif %}</div>
+        <div class="ui-field" data-f="ssh_user"><label for="{{ form.ssh_user.id_for_label }}">{{ form.ssh_user.label }}</label>{{ form.ssh_user }}{% if form.ssh_user.errors %}<div class="ui-field-error" id="id_ssh_user_errors" role="alert">{{ form.ssh_user.errors }}</div>{% endif %}</div>
+        <div class="ui-field ui-field-wide" data-f="ssh_private_key"><label for="{{ form.ssh_private_key.id_for_label }}">SSH private key <span class="muted">(blank = keep)</span></label>{{ form.ssh_private_key }}{% if form.ssh_private_key.errors %}<div class="ui-field-error" id="id_ssh_private_key_errors" role="alert">{{ form.ssh_private_key.errors }}</div>{% endif %}</div>
+        <div class="ui-field" data-f="ssh_password"><label for="{{ form.ssh_password.id_for_label }}">SSH password <span class="muted">(blank = keep; not needed with a key)</span></label>{{ form.ssh_password }}{% if form.ssh_password.errors %}<div class="ui-field-error" id="id_ssh_password_errors" role="alert">{{ form.ssh_password.errors }}</div>{% endif %}</div>
+        <div class="ui-field ui-field-wide" data-f="ssh_host_key"><label for="{{ form.ssh_host_key.id_for_label }}">SSH host key <span class="muted">(recommended)</span></label>{{ form.ssh_host_key }}{% if form.ssh_host_key.errors %}<div class="ui-field-error" id="id_ssh_host_key_errors" role="alert">{{ form.ssh_host_key.errors }}</div>{% endif %}<span class="ui-help">When set, a bastion presenting any other key is refused. When blank, any key is accepted.</span></div>
+      </div>
+    </section>
 
     <div class="ui-form-actions">
-
-      <button class="ui-btn primary" type="submit">Save</button>
-      <a class="ui-btn ghost" data-ds-cancel href="{{ list_url }}">Cancel</a>
+      <button class="ui-btn primary" type="submit">{% if editing %}Save changes{% else %}Create source{% endif %}</button>
+      <a class="ui-btn ghost" data-ds-cancel href="{{ list_url }}">Back to data sources</a>
     </div>
   </form>

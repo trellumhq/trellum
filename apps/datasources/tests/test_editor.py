@@ -104,7 +104,7 @@ def test_new_declared_source_can_test_before_first_save(login, org_admin, editor
     response = client.post(editor_url, {"action": "test_draft", "revision": page.context["revision"], "user": "u", "password": "p"})
     assert response.json()["ok"] and not DataSource.objects.exists()
     html = page.content.decode()
-    assert "Test draft" in html and "Return to data sources" in html and 'id="ds-form"' not in html
+    assert "Test draft" in html and "Back to data sources" in html and 'id="ds-form"' not in html
 
 
 def test_editor_save_acknowledges_without_probe_and_native_errors_keep_draft(login, org_admin, source, editor_url, monkeypatch):
@@ -113,6 +113,7 @@ def test_editor_save_acknowledges_without_probe_and_native_errors_keep_draft(log
     client = login(org_admin)
     response = client.post(editor_url, {"action": "save", "name": "renamed", "type": "postgres", "host": "new"}, HTTP_X_TRELLUM_FORM="1")
     assert response.json()["edit_url"].endswith("/renamed/edit")
+    assert not response.json().get("redirect_url")
     source.refresh_from_db()
     assert source.name == "renamed" and source.last_check_ok is None
     assert response.json()["revision"] == check_revision(source)
@@ -120,7 +121,52 @@ def test_editor_save_acknowledges_without_probe_and_native_errors_keep_draft(log
     response = client.post(new_url, {"action": "save", "name": "bad name", "type": "postgres", "host": "retained-host"})
     assert response.status_code == 200 and 'value="retained-host"' in response.content.decode()
     assert response.context["form"].errors["name"]
+    assert 'aria-invalid="true"' in response.content.decode()
+    assert 'id="id_name_errors"' in response.content.decode()
     probe.assert_not_called()
+
+
+def test_enhanced_create_returns_to_the_datasource_list(login, org_admin, org, studio_tree):
+    client = login(org_admin)
+    create_url = f"/s/{org.slug}/{studio_tree.slug}/settings/datasources/new"
+    response = client.post(
+        create_url,
+        {"name": "new-source", "type": "postgres", "host": "db.example"},
+        HTTP_X_TRELLUM_FORM="1",
+    )
+    assert response.json()["redirect"] == f"/s/{org.slug}/{studio_tree.slug}/settings/datasources"
+    assert DataSource.objects.filter(studio=studio_tree, name="new-source").exists()
+
+
+def test_create_form_uses_bounded_grouped_fields_and_labeled_controls(login, org_admin, org, studio_tree):
+    client = login(org_admin)
+    response = client.get(f"/s/{org.slug}/{studio_tree.slug}/settings/datasources/new")
+    html = response.content.decode()
+    assert 'class="ui-form-rail"' in html
+    assert 'class="ui-form-section"' in html
+    assert "Connection" in html and "Credentials" in html and "SSH tunnel" in html
+    assert 'for="id_name"' in html and 'for="id_type"' in html
+    assert "Back to data sources" in html and "Create source" in html
+    for field_name in ("path", "new_connection_per_query"):
+        assert f'id="id_{field_name}_help"' in html
+        assert f'aria-describedby="id_{field_name}_help"' in html
+
+
+def test_editor_groups_status_and_labels_boolean_controls(login, org_admin, source, editor_url):
+    html = login(org_admin).get(editor_url).content.decode()
+    saved_section = html.split('aria-label="Saved source status"', 1)[1].split("</section>", 1)[0]
+    assert "data-ds-status" in saved_section
+    assert "Configuration draft" not in html
+    for field_name in ("upload", "secure", "new_connection_per_query"):
+        assert f'<label class="ui-check-row" for="id_{field_name}">' in html
+        assert f'id="id_{field_name}_help"' not in html or f'aria-describedby="id_{field_name}_help"' in html
+
+
+def test_source_name_links_to_its_edit_record(login, org_admin, source, org, studio_tree):
+    client = login(org_admin)
+    listing = client.get(f"/s/{org.slug}/{studio_tree.slug}/settings/datasources")
+    html = listing.content.decode()
+    assert f'data-ds-record href="/s/{org.slug}/{studio_tree.slug}/settings/datasources/warehouse/edit">warehouse</a>' in html
 
 
 def test_editor_authorization_csrf_and_unknown_action(login, make_user, grant_studio, source, org, studio_tree, editor_url, org_admin):

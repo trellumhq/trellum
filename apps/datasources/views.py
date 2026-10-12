@@ -507,6 +507,16 @@ def _row(request, st: SourceState, *, studio) -> dict:
     declared_in = ""
     if st.declaration is not None and not st.declaration.source_file.startswith("data-sources/"):
         declared_in = st.declaration.source_file.removeprefix("reports/")
+    manage_url = (
+        _editor_url(request, ds.name, org_page=True)
+        if ds is not None and ds.scope == "org" and is_org_admin and studio is not None
+        else ""
+    )
+    record_url = (
+        manage_url or _editor_url(request, st.name, org_page=studio is None)
+        if can_manage or st.declared and bool(_credential_keys(st.type))
+        else ""
+    )
     return {
         "state": st,
         "ds": ds,
@@ -521,11 +531,8 @@ def _row(request, st: SourceState, *, studio) -> dict:
         "description": ds.description if ds is not None else "",
         "declared_in": declared_in,
         "can_manage": can_manage,
-        "manage_url": (
-            _editor_url(request, ds.name, org_page=True)
-            if ds is not None and ds.scope == "org" and is_org_admin and studio is not None
-            else ""
-        ),
+        "manage_url": manage_url,
+        "record_url": record_url,
         # The configure form applies to declared sources that take credentials.
         "configurable": st.declared and bool(_credential_keys(st.type)),
         "edit_url": _editor_url(request, st.name, org_page=studio is None),
@@ -842,6 +849,7 @@ def _create_page(request, studio=None):
             return redirect(list_url)
         if is_settings_request(request):
             return settings_error(request, form=form)
+    _prepare_form_errors(form)
     return render(request, "datasources/create.html", {
         "org": request.org, "studio": studio, "org_page": org_page,
         "form": form, "type_fields": TYPE_FIELDS, "list_url": list_url,
@@ -870,6 +878,56 @@ def _editor_state(request, name, studio, *, org_target=False):
         shared = DataSource.objects.filter(org=request.org, name=name).first()
         state = replace(state, binding=shared)
     return state
+
+
+_EDITOR_FIELD_GROUPS = (
+    ("Source", ("name", "type", "description", "scope")),
+    ("Connection", (
+        "host", "port", "database", "path", "upload", "project", "account",
+        "warehouse", "schema", "catalog", "http_path", "secure",
+        "new_connection_per_query", "tenant_id", "client_id", "site_url",
+        "credentials_path",
+    )),
+    ("Credentials", (
+        "user", "password", "credentials_json", "access_token", "client_secret",
+    )),
+    ("SSH tunnel", (
+        "ssh_host", "ssh_port", "ssh_user", "ssh_private_key", "ssh_password",
+        "ssh_host_key",
+    )),
+)
+_WIDE_EDITOR_FIELDS = {
+    "description", "path", "credentials_json", "http_path", "site_url",
+    "ssh_private_key", "ssh_host_key",
+}
+_SECRET_EDITOR_FIELDS = {
+    "password", "client_secret", "credentials_json", "access_token",
+    "ssh_password", "ssh_private_key",
+}
+
+
+def _prepare_form_errors(form):
+    """Connect rendered field errors and help text to their controls."""
+    for field in form:
+        if field.is_hidden:
+            continue
+        described_by = []
+        if field.help_text:
+            described_by.append(f"{field.auto_id}_help")
+        if field.errors:
+            described_by.append(f"{field.auto_id}_errors")
+            field.field.widget.attrs["aria-invalid"] = "true"
+        if described_by:
+            field.field.widget.attrs["aria-describedby"] = " ".join(described_by)
+
+
+def _editor_field_groups(form):
+    groups = []
+    for title, names in _EDITOR_FIELD_GROUPS:
+        fields = [form[name] for name in names if name in form.fields and not form[name].is_hidden]
+        if fields:
+            groups.append({"title": title, "fields": fields})
+    return groups
 
 
 def _editor(request, name, studio=None):
@@ -937,16 +995,14 @@ def _editor(request, name, studio=None):
                 _discard_orphan(owned, ds)
                 audit(request, "datasource.update", target=ds, name=ds.name, scope=ds.scope)
             if is_settings_request(request):
-                list_url = (f"/orgs/{request.org.slug}/settings/datasources" if ds.org_id
-                            else f"/s/{request.org.slug}/{studio.slug}/settings/datasources")
-                return _saved_response(request, ds, studio, configured=credentials_only,
-                                       redirect_to=list_url)
+                return _saved_response(request, ds, studio, configured=credentials_only)
             ok, detail = check_binding(ds, None if ds.org_id else studio)
             (messages.success if ok else messages.error)(request, _saved_message(ds) + " " + detail)
             return redirect(f"/orgs/{request.org.slug}/settings/datasources" if ds.org_id
                             else f"/s/{request.org.slug}/{studio.slug}/settings/datasources")
         if is_settings_request(request) or request.POST.get("action") == "test_draft":
             return settings_error(request, form=form)
+    _prepare_form_errors(form)
     badge, label = _badge(state)
     test_studio = None if state.binding and state.binding.org_id else studio
     test_base = (f"/orgs/{request.org.slug}/settings/datasources" if state.binding and state.binding.org_id
@@ -954,6 +1010,9 @@ def _editor(request, name, studio=None):
     return render(request, "datasources/edit.html", {
         "org": request.org, "studio": studio, "org_page": org_page, "state": state,
         "form": form, "credentials_only": credentials_only,
+        "field_groups": _editor_field_groups(form),
+        "wide_fields": _WIDE_EDITOR_FIELDS,
+        "secret_fields": _SECRET_EDITOR_FIELDS,
         "can_org": credentials_only and request.org_roles.is_org_admin,
         "facts": [(k.replace("_", " ").title(), v) for k, v in effective_fields(state.declaration, state.binding).items()
                   if k not in CREDENTIAL_KEYS],

@@ -1,43 +1,53 @@
 {% extends "datasources/settings.html" %}
 {% block title %}Edit {{ state.name }} — Data sources{% endblock %}
 {% block datasource_content %}
+<div class="ui-form-rail">
 <header class="page-head">
   <div class="ui-label page-kicker">{% if org_page %}Organization · {{ org.name }}{% else %}Studio · {{ studio.name }}{% endif %}</div>
   <h1>Data source <span data-ds-editor-name>{{ state.name }}</span></h1>
   <p class="muted page-sub">Source <code data-ds-editor-name>{{ state.name }}</code> · <span data-ds-editor-type>{{ state.type }}</span></p>
-  <a class="ui-btn ghost" href="{{ list_url }}">← Return to data sources</a>
 </header>
-<section class="ui-panel" aria-label="Saved source status">
+<section class="ui-form-section" aria-label="Saved source status">
   <h2>Saved configuration</h2>
   <p data-ds-saved-evidence>{{ label }}{% if detail %} · {{ detail }}{% endif %}</p>
   <p class="muted" data-ds-saved-scope>{% if state.binding_scope == "org" %}Organization credentials shared with every studio.{% else %}Credentials for this studio.{% endif %}</p>
   <p class="muted">A confirmation records the last test; it does not guarantee current connectivity.</p>
-  {% if state.declaration %}<h3>Effective declaration</h3>
-  <p class="muted">Declared in <code>{{ state.declaration.source_file }}</code>. Repository fields are read-only.</p>
-  {% if not org_page %}<p class="muted">Used by: {% if state.used_by %}{{ state.used_by|join:", " }}{% else %}no reports yet{% endif %}</p>{% endif %}
-  <dl>{% for key, value in facts %}<dt>{{ key }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>{% endif %}
-</section>
-<section class="ui-panel">
-  <h2>{% if credentials_only %}Credential draft{% else %}Configuration draft{% endif %}</h2>
   <div id="ds-editor-status" data-ds-status>
     <span class="ui-badge {{ badge }}" data-ds-badge>{{ label }}</span>
     <span class="muted" data-ds-detail>{{ detail }}</span>
     <div data-ds-result role="status" aria-live="polite"></div>
     <button type="button" class="ui-btn ghost" data-ds-test {% if not state.binding %}disabled{% endif %}>Test saved configuration</button>
   </div>
-  <form method="post" id="ds-editor" class="ui-form-grid" data-settings-form data-settings-save
+  {% if state.declaration %}<h3>Effective declaration</h3>
+  <p class="muted">Declared in <code>{{ state.declaration.source_file }}</code>. Repository fields are read-only.</p>
+  {% if not org_page %}<p class="muted">Used by: {% if state.used_by %}{{ state.used_by|join:", " }}{% else %}no reports yet{% endif %}</p>{% endif %}
+  <dl>{% for key, value in facts %}<dt>{{ key }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>{% endif %}
+</section>
+  <form method="post" id="ds-editor" class="ui-form-rail" data-settings-form data-settings-save
         data-revision="{{ revision }}" data-org-revision="{{ org_revision }}"
         data-test-url="{{ saved_test_url }}" data-saved-revision="{{ saved_revision }}">
     {% csrf_token %}
     <input type="hidden" name="action" value="save">
     {{ form.non_field_errors }}
-    {% for field in form %}
-      {% if field.is_hidden %}{{ field }}{% else %}
-      <div class="ui-field" {% if not credentials_only and field.name != "name" and field.name != "type" and field.name != "description" %}data-f="{{ field.name }}"{% endif %}>
-        <label for="{{ field.id_for_label }}">{{ field.label }}{% if field.name == "password" or field.name == "client_secret" or field.name == "credentials_json" or field.name == "access_token" or field.name == "ssh_password" or field.name == "ssh_private_key" %} <span class="muted">(blank = keep saved)</span>{% endif %}</label>
-        {{ field }}{{ field.errors }}
-        {% if field.help_text %}<span class="helptext">{{ field.help_text }}</span>{% endif %}
-      </div>{% endif %}
+    {% for field in form.hidden_fields %}{{ field }}{% endfor %}
+    {% for group in field_groups %}
+    <section class="ui-form-section" data-ds-fields>
+      <h3>{{ group.title }}</h3>
+      <div class="ui-form-row">
+      {% for field in group.fields %}
+        <div class="ui-field{% if field.name in wide_fields %} ui-field-wide{% endif %}"{% if field.name != "name" and field.name != "type" and field.name != "description" and field.name != "scope" %} data-f="{{ field.name }}"{% endif %}>
+          {% if field.field.widget.input_type == "checkbox" %}
+          <label class="ui-check-row" for="{{ field.id_for_label }}">{{ field }} {{ field.label }}</label>
+          {% else %}
+          <label for="{{ field.id_for_label }}">{{ field.label }}{% if field.name in secret_fields %} <span class="muted">(blank = keep saved)</span>{% endif %}</label>
+          {{ field }}
+          {% endif %}
+          {% if field.errors %}<div class="ui-field-error" id="{{ field.auto_id }}_errors" role="alert">{{ field.errors }}</div>{% endif %}
+          {% if field.help_text %}<span class="ui-help" id="{{ field.auto_id }}_help">{{ field.help_text }}</span>{% endif %}
+        </div>
+      {% endfor %}
+      </div>
+    </section>
     {% endfor %}
     {% if can_org %}<div class="ui-field">
       <label class="ui-check-row"><input type="checkbox" name="org_level" value="1">Store at organization level</label>
@@ -45,7 +55,8 @@
     </div>{% endif %}
     <div class="ui-form-actions">
       <button class="ui-btn ghost" type="button" data-ds-draft-test>Test draft</button>
-      <button class="ui-btn primary" type="submit">Save and test</button>
+      <button class="ui-btn primary" type="submit">Save source</button>
+      <a class="ui-btn ghost" data-ds-cancel href="{{ list_url }}">Back to data sources</a>
     </div>
   </form>
   {% if credentials_only and state.binding.studio_id %}
@@ -54,5 +65,5 @@
     <button class="ui-btn danger" type="submit">Remove credentials</button>
   </form>{% endif %}
   <p class="ui-help">Tests use the effective declaration and this draft. Testing a draft does not save credentials or start builds.</p>
-</section>
+</div>
 {% endblock %}

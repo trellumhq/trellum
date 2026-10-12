@@ -405,7 +405,7 @@ def test_saved_row_preserves_repository_chip_and_formatted_description():
         page.locator('[name="host"]').press("Enter")
         page.wait_for_function("window.requests.length === 2")
         assert page.locator('[data-label="Source"] .ui-chip').text_content() == "from repository"
-        assert page.locator('strong[data-ds-name]').text_content() == "wh"
+        assert page.locator('[data-label="Source"] [data-ds-record]').text_content() == "wh"
         assert page.locator('[data-ds-description]').text_content() == "Updated description"
         assert page.locator('[data-ds-description]').get_attribute("class") == "muted"
         assert page.locator('[data-ds-description-break]').evaluate("element => !element.hidden")
@@ -429,6 +429,7 @@ def test_new_source_has_native_edit_delete_and_next_save_edits_same_source():
         page.locator('#ds-form button[type="submit"]').click()
         page.wait_for_function("window.requests.length === 2")
         row = page.locator('tr[data-source-id="9"]')
+        assert row.locator('[data-ds-record]').get_attribute("href") == "/settings?edit=9"
         assert row.locator('[data-ds-edit]').get_attribute("href") == "/settings?edit=9"
         delete = row.locator('form')
         assert delete.get_attribute("method") == "post" and delete.get_attribute("action") == "/settings"

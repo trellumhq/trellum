@@ -10,7 +10,7 @@
     A studio-level source with the same name shadows the shared one. Upload a data
     file here and every studio's reports can read it by name — nothing has to be
     committed to a repository.</p>
-  <a class="ui-btn ghost" href="/orgs/{{ org.slug }}/settings/datasources/new">Add data source</a>
+  <a class="ui-btn primary" href="/orgs/{{ org.slug }}/settings/datasources/new">Add data source</a>
 </header>
 {% else %}
 <header class="page-head">
@@ -23,7 +23,7 @@
     Sources marked <span class="scope-chip org mini">organization</span> are managed in
     <a href="/orgs/{{ org.slug }}/settings/datasources">Organization settings</a>.
     Credentials are stored encrypted and injected only into report builds.</p>
-  <a class="ui-btn ghost" href="/s/{{ org.slug }}/{{ studio.slug }}/settings/datasources/new">Add data source</a>
+  <a class="ui-btn primary" href="/s/{{ org.slug }}/{{ studio.slug }}/settings/datasources/new">Add data source</a>
 </header>
 {% endif %}
 
@@ -57,7 +57,7 @@
   <tbody>
   {% for row in rows %}
   <tr id="ds-row-{{ row.name }}" data-source-id="{{ row.ds.pk|default:'' }}" data-source-name="{{ row.name }}">
-    <td data-label="Source"><strong data-ds-name>{{ row.name }}</strong>
+    <td data-label="Source">{% if row.record_url %}<a data-ds-record href="{{ row.record_url }}">{{ row.name }}</a>{% else %}<strong data-ds-name>{{ row.name }}</strong>{% endif %}
       {% if row.state.declared %}
         {% if row.declared_in %}<span class="ui-chip">declared in {{ row.declared_in }}</span>
         {% else %}<span class="ui-chip acc">from repository</span>{% endif %}
@@ -185,6 +185,12 @@
     form.querySelectorAll('[data-f]').forEach(function (row) {
       row.style.display = relevant.indexOf(row.getAttribute('data-f')) === -1 ? 'none' : '';
     });
+    form.querySelectorAll('[data-ds-fields]').forEach(function (section) {
+      var fields = Array.from(section.querySelectorAll('[data-f]'));
+      section.hidden = fields.length > 0 && fields.every(function (row) {
+        return relevant.indexOf(row.getAttribute('data-f')) === -1;
+      });
+    });
     /* Same "path" field, but for a spreadsheet it is a URL or ID, not a file. */
     var sheet = typeSelect.value === 'google_sheets';
     if (pathLabel) pathLabel.textContent = sheet ? 'Spreadsheet URL or ID' : filePathLabel;
@@ -207,6 +213,16 @@
   applyType();
   applyGitWarning();
 })();
+
+document.addEventListener('click', function (event) {
+  var link = event.target.closest('[data-ds-cancel]');
+  if (!link) return;
+  var form = link.closest('form') || document.querySelector('#ds-editor');
+  if (form && form.classList.contains('is-dirty')
+      && !confirm('Discard unsaved changes and return to data sources?')) {
+    event.preventDefault();
+  }
+});
 
 /* ── Uploads ──────────────────────────────────────────────────────────────
    XHR rather than fetch: only XHR reports upload progress, and these files
@@ -421,11 +437,23 @@ function dsSavedRow(data) {
   row.dataset.revision = data.revision;
   row.id = 'ds-row-' + data.source_name;
   var sourceCell = row.querySelector('[data-label="Source"]');
-  var name = sourceCell.querySelector('[data-ds-name]');
-  if (!name) {
-    name = document.createElement('strong');
-    name.dataset.dsName = '';
-    sourceCell.prepend(name);
+  var name = sourceCell.querySelector('[data-ds-record], [data-ds-name]');
+  var recordUrl = data.record_url || data.edit_url;
+  if (recordUrl) {
+    if (!name || name.tagName !== 'A') {
+      var link = document.createElement('a');
+      link.dataset.dsRecord = '';
+      if (name) name.replaceWith(link);
+      else sourceCell.prepend(link);
+      name = link;
+    }
+    name.href = recordUrl;
+  } else if (!name || name.tagName === 'A') {
+    var plainName = document.createElement('strong');
+    plainName.dataset.dsName = '';
+    if (name) name.replaceWith(plainName);
+    else sourceCell.prepend(plainName);
+    name = plainName;
   }
   name.textContent = data.source_name;
   var description = sourceCell.querySelector('[data-ds-description]');
