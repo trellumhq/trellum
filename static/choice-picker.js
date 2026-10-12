@@ -144,7 +144,11 @@
     select.setAttribute('aria-hidden', 'true');
     select.tabIndex = -1;
     Array.prototype.forEach.call(select.labels || [], function (labelNode) {
-      labelNode.addEventListener('click', function (event) { event.preventDefault(); api.trigger.focus({ preventScroll: true }); });
+      labelNode.addEventListener('click', function (event) {
+        if (root.contains(event.target)) return;
+        event.preventDefault();
+        api.trigger.focus({ preventScroll: true });
+      });
     });
     api.refresh = function () {
       var selected = select.options[select.selectedIndex];

@@ -1,7 +1,7 @@
 import pytest
-from playwright.sync_api import expect, sync_playwright
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from playwright.sync_api import expect, sync_playwright
 
 
 @pytest.mark.django_db

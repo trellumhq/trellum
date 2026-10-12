@@ -1,5 +1,4 @@
 """Delivery widget integration with native fields, shared pickers and isolated requests."""
-import json
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -100,7 +99,7 @@ def edit(page):
 
 @pytest.mark.parametrize("width", [1440, 390])
 def test_saved_edit_uses_shared_widgets_real_time_and_preserves_failed_draft(browser, width):
-    context, page, requests, pending, behavior, _ = page_for(browser, width=width, portal_css=True)
+    context, page, _requests, _pending, behavior, _ = page_for(browser, width=width, portal_css=True)
     edit(page)
     root = page.locator("#rdwFormWrap")
     expect(root.locator('[data-f="time"]')).to_have_attribute("type", "time")
@@ -143,7 +142,7 @@ def test_saved_edit_uses_shared_widgets_real_time_and_preserves_failed_draft(bro
 
 
 def test_new_browser_zone_preserves_clock_and_manual_zone_converts_arbitrary_minute(browser):
-    context, page, requests, pending, behavior, _ = page_for(browser, saved=False, resolved=True)
+    context, page, requests, _pending, _behavior, _ = page_for(browser, saved=False, resolved=True)
     page.locator("#first").click()
     page.locator("#rdwNewSchedule").click()
     root = page.locator("#rdwFormWrap")
@@ -172,7 +171,7 @@ def test_new_browser_zone_preserves_clock_and_manual_zone_converts_arbitrary_min
 
 
 def test_recipient_failure_keeps_saved_chips_and_blocks_save_until_retry(browser):
-    context, page, requests, pending, behavior, _ = page_for(browser)
+    context, page, requests, _pending, behavior, _ = page_for(browser)
     behavior["members_fail"] = True
     page.locator("#first").click()
     page.locator("#rdwScheduleList [data-edit]").click()
@@ -193,7 +192,7 @@ def test_recipient_failure_keeps_saved_chips_and_blocks_save_until_retry(browser
 
 @pytest.mark.parametrize("kind", ["schedules", "members", "saves"])
 def test_late_responses_cannot_replace_another_report_or_reopened_drawer(browser, kind):
-    context, page, requests, pending, behavior, payload = page_for(browser)
+    context, page, _requests, pending, behavior, payload = page_for(browser)
     behavior["hold_" + kind].add("first")
     page.locator("#first").click()
     if kind in ("members", "saves"):
@@ -224,7 +223,7 @@ def test_late_responses_cannot_replace_another_report_or_reopened_drawer(browser
 
 
 def test_save_snapshot_keeps_edits_made_during_request_and_nested_escape_returns_focus(browser):
-    context, page, requests, pending, behavior, _ = page_for(browser)
+    context, page, _requests, pending, behavior, _ = page_for(browser)
     edit(page)
     root = page.locator("#rdwFormWrap")
     root.locator("[data-recipient-picker] .ui-picker-trigger").click()
@@ -249,7 +248,7 @@ def test_save_snapshot_keeps_edits_made_during_request_and_nested_escape_returns
 
 
 def test_viewer_reads_list_without_loading_recipient_choices_or_edit_actions(browser):
-    context, page, requests, pending, behavior, _ = page_for(browser, can_manage=False)
+    context, page, requests, _pending, _behavior, _ = page_for(browser, can_manage=False)
     # The server decides which schedules are editable.
     page.route("**/first/schedules", lambda route: route.fulfill(json={"schedules": [{**schedule(), "editable": False}], "can_manage": False}))
     page.locator("#first").click()
@@ -261,7 +260,7 @@ def test_viewer_reads_list_without_loading_recipient_choices_or_edit_actions(bro
 
 @pytest.mark.parametrize("width", [1440, 390])
 def test_legacy_center_reuses_controls_with_management_css_and_idempotent_mount(browser, width):
-    context, page, requests, pending, behavior, _ = page_for(browser, width=width, portal_css=True)
+    context, page, requests, _pending, _behavior, _ = page_for(browser, width=width, portal_css=True)
     page.evaluate("""saved => {
         document.body.insertAdjacentHTML('beforeend','<main><div class="ui-table-scroll"><table class="ui-table delivery-list" data-mobile-cards><tbody><tr class="delivery-row" data-delivery-row data-prefix="/s/example/studio" data-slug="first"><td data-field="cadence"></td><td data-field="format"></td><td data-field="recipients"></td><td data-field="status"></td><td><button data-toggle-edit class="ui-btn">Edit</button></td></tr><tr class="delivery-row-detail"><td colspan="5"><div data-flash-slot></div><div data-form-slot></div><script type="application/json" data-schedule-json></script></td></tr></tbody></table></div></main>');
         document.querySelector('[data-schedule-json]').textContent=JSON.stringify(saved);
@@ -291,7 +290,7 @@ def test_legacy_center_reuses_controls_with_management_css_and_idempotent_mount(
 
 
 def test_close_reopen_invalidates_old_recipient_read_and_closes_popovers(browser):
-    context, page, requests, pending, behavior, _ = page_for(browser)
+    context, page, _requests, pending, behavior, _ = page_for(browser)
     behavior['hold_members'].add('first')
     page.locator('#first').click()
     page.locator('#rdwScheduleList [data-edit]').click()
@@ -313,7 +312,7 @@ def test_close_reopen_invalidates_old_recipient_read_and_closes_popovers(browser
 
 
 def test_asset_failure_retry_and_empty_audience_are_separate_states(browser):
-    context, page, requests, pending, behavior, _ = page_for(browser, saved=False)
+    context, page, _requests, _pending, _behavior, _ = page_for(browser, saved=False)
     page.route('**/choice-picker.css', lambda route: route.abort())
     page.route('**/first/recipients', lambda route: route.fulfill(json={'members': [], 'roles': {}, 'groups': [], 'studio_name': 'Empty studio'}))
     page.locator('#first').click()
@@ -333,7 +332,7 @@ def test_asset_failure_retry_and_empty_audience_are_separate_states(browser):
 
 
 def test_standalone_dark_widget_styles_do_not_change_report_content(browser):
-    context, page, requests, pending, behavior, _ = page_for(browser, width=390)
+    context, page, requests, _pending, _behavior, _ = page_for(browser, width=390)
     page.emulate_media(color_scheme='light')
     page.evaluate("""document.body.style.cssText='--bg-main:#181b1f;--text-main:#f3f4f6;--text-secondary:#a7adb8;--border-color:#30363d';
         document.body.insertAdjacentHTML('beforeend','<div id="report-content" style="color:rgb(12,34,56);font-size:23px">Report content</div>');""")

@@ -1,10 +1,9 @@
 """Rendered layout and organization picker checks for personal API-key creation."""
-from pathlib import Path
 import re
+from pathlib import Path
 
 import pytest
 from playwright.sync_api import expect, sync_playwright
-
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -25,7 +24,7 @@ def _rendered_page(html):
         script = (ROOT / "static" / name).read_text(encoding="utf-8")
         html = re.sub(
             rf'<script src="[^"]*{re.escape(name)}"(?: defer)?></script>',
-            lambda match: f"<script>{script}</script>", html,
+            lambda match, script=script: f"<script>{script}</script>", html,
         )
     return html
 

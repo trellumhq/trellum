@@ -56,6 +56,24 @@ def page_for(browser, width=1440, theme="light", *, enhance=True, portal_css=Tru
     return context, page
 
 
+def test_wrapping_label_allows_clicking_and_typing_in_search(browser):
+    context, page = page_for(browser, enhance=False)
+    page.evaluate("""() => {
+        const select = document.querySelector('#zone');
+        document.querySelector('label[for=zone]').append(select);
+    }""")
+    page.add_script_tag(content=(ROOT / "static/choice-picker.js").read_text(encoding="utf-8"))
+    page.locator('.ui-picker-trigger').click()
+    search = page.locator('.ui-picker-search')
+    search.click()
+    expect(search).to_be_focused()
+    page.keyboard.type('London')
+    expect(page.locator('.ui-picker-option')).to_have_count(1)
+    page.get_by_role('button', name='Europe / London', exact=True).click()
+    expect(page.locator('#zone')).to_have_value('Europe/London')
+    context.close()
+
+
 def test_single_choice_browse_search_keyboard_and_native_payload(browser):
     context, page = page_for(browser)
     root = page.locator(".ui-choice-picker")
