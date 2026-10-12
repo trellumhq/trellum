@@ -90,17 +90,18 @@ such as Blossom, keep their own palette inside the report-content boundary.
 ## Layout and type
 
 Console content is fluid with no 1200px cap. Page gutters are 24px on desktop
-and 16px on mobile. Single-column forms remain readable at a maximum of 760px;
-tables and catalogs may use the available width. Below 768px, page panels use
+and 16px on mobile. Normal authenticated portal headers, forms and sections
+align to the content area's left edge and fill its available width. A form rail
+is a shared alignment wrapper, not a width limit. Below 768px, page panels use
 the mobile card treatment, text-entry controls use at least 16px type, and
 interactive targets are at least 44px high.
 
-Studio Members uses a fluid page layout: the header, member list and Add a
-member section share the content area's left edge and fill its available
-width. Do not wrap these sections in `.ui-form-rail`. The Person and Role
-fields share a responsive two-column row, stacking below 768px. Keep the
-standard page gutters and section padding. This page-specific pattern does
-not change the bounded layout of other settings forms.
+Related fields such as Person and Role may share a responsive two-column row,
+stacking below 768px. Keep the standard page gutters and section padding. Use
+intrinsic sizing only for controls whose values are naturally short, such as
+ports, counts and intervals. Authentication and notice cards, modal/drawer
+surfaces, picker popups and report content keep their own documented sizing
+boundaries.
 
 Inter is the console font. Body and controls are 14px, table content 13px,
 metadata 12px, section headings 16px, and page titles 24px. Controls use an
@@ -150,7 +151,7 @@ useful than turning each row into a mobile card.
 
 | Pattern | Layout | Actions |
 | --- | --- | --- |
-| Create/edit/settings form | Maximum 760px form rail; align its title and sections to the same edge. Related fields may share a two-column row. | One primary create/save action at the bottom of its form; secondary test and cancel actions beside it. |
+| Create/edit/settings form | Available content width; align its title and sections to the same left edge. Related fields may share a two-column row. | One primary create/save action at the bottom of its form; secondary test and cancel actions beside it. |
 | List/index | Available content width, shared header, short description, local search/filter toolbar, table or mobile records. | One primary add action in the page header; explicit row actions and linked entity names. |
 | Report/data workspace | Available width where the data needs it; contain local scrolling. | Keep workspace controls with their content; preserve the report host boundary. |
 | Read-only record | Same information order, readable values and summaries. | No active editing controls or implied save permission. Explain the relevant role restriction. |
@@ -268,7 +269,8 @@ tabular data can use an explicitly bounded inner scroller when necessary.
 ## UI review checks
 
 1. The changed page uses the correct page pattern, existing shell and tokens;
-   forms are bounded and related fields share rows where space permits.
+   normal portal headers, forms and sections align left and fill available
+   content width, while related fields share rows where space permits.
 2. Every selector opens choices on click, without typing first. Short lists use
    native selects; long lists use the shared searchable dropdown.
 3. Recipient selection works with 100+ people, multiple types, overlapping
@@ -331,7 +333,10 @@ draft change. Single-choice native validity focuses the visible trigger and
 shows a persistent field error; server `aria-invalid`/`aria-describedby` values
 are mirrored to the trigger.
 
-Use `.ui-form-rail` as the centered 760px page wrapper for its header and editing
-sections. `.ui-form-section` supplies neutral borders and 24px padding (16px on
-mobile); `.ui-form-row` is a two-column row collapsing below 768px, with
-`.ui-field-wide` spanning it. Keep operational lists and tables outside the rail.
+Use `.ui-form-rail` to align a page header and editing sections to the available
+content width. Keep authentication and notice cards, modals, drawers, picker
+popups and report content at their own intended widths. `.ui-form-section` supplies
+neutral borders and 24px padding (16px on mobile); `.ui-form-row` is a
+two-column row collapsing below 768px, with `.ui-field-wide` spanning it. Keep
+operational lists and tables outside the rail when they do not belong to the
+form.

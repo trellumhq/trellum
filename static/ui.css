@@ -632,7 +632,7 @@ body.mgmt select:not([multiple]):not([size]) {
 body.mgmt input[type="checkbox"], body.mgmt input[type="radio"] { width: auto; }
 
 /* ── Form layout ─────────────────────────────────────────────────────────── */
-.ui-form-rail { width:100%; max-width:760px; min-width:0; margin-inline:auto; }
+.ui-form-rail { width:100%; min-width:0; margin-inline:0; }
 .ui-form-section {
     min-width:0; padding:24px; margin-bottom:24px;
     border:1px solid var(--border); border-radius:10px; background:var(--bg-card);
@@ -667,7 +667,7 @@ body.mgmt input[type="checkbox"], body.mgmt input[type="radio"] { width: auto; }
     margin-top: var(--sp-2);
 }
 .settings-content form.inline.settings-inline-form {
-    max-width: 760px; margin-top: 12px;
+    width: 100%; max-width: none; margin-top: 12px;
     display: grid; grid-template-columns: minmax(240px, 1fr) minmax(110px, 180px) auto;
     gap: 8px; align-items: center;
 }
@@ -1287,9 +1287,9 @@ code.copy {
 .messages li.warning { border-left-color: var(--warn); }
 .messages li.info    { border-left-color: var(--blue); }
 
-/* .formrow pinned every form to a 460px strip. It now simply bounds a
-   single-column form; multi-field forms use .ui-form-grid instead. */
-.formrow { max-width: 760px; }
+/* Authentication cards set their own explicit width; ordinary page sections
+   use the available content width. */
+.formrow { max-width: none; }
 
 /* ── Studio settings → Appearance: default-palette swatch grid ──────────
    templates/studios/appearance.html (.lavish/theming-controls-design.html).
