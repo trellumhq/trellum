@@ -84,6 +84,14 @@
 
 {% include "core/_email_connections.html" %}
 
+{% if delivery_policy_form %}
+<section id="scheduled-deliveries" aria-labelledby="scheduled-deliveries-title">
+<h2 id="scheduled-deliveries-title">Scheduled deliveries</h2>
+<p class="muted">Pause delivery across the instance and set defaults for future email schedules.</p>
+{% include "reports/_delivery_policy_form.html" %}
+</section>
+{% endif %}
+
 <h2>Security</h2>
 <p class="muted">Session policy, login lockout thresholds and the operator MFA
 requirement. Instance-scoped — per-organization overrides are a later step.

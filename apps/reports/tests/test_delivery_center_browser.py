@@ -28,7 +28,7 @@ def delivery_browser(request, login, org_admin, report_row, make_user, grant_stu
     invalid = client.post(api, body)
     assert invalid.status_code == 400
     pages = {path: client.get(path).content.decode() for path in [listing, edit, create, f'{listing}/new']}
-    pages['/deliveries'] = client.get('/deliveries').content.decode()
+    pages['/me/deliveries'] = client.get('/me/deliveries').content.decode()
     pages[api] = invalid.content.decode()
     viewer = make_user('drawer-viewer@example.test', org=org)
     grant_studio(viewer, report_row.studio, roles.VIEWER)
@@ -101,12 +101,12 @@ def test_delivery_list_is_compact_and_usable_at_common_widths(delivery_browser, 
         assert page.locator('.delivery-row-detail').evaluate('(el) => getComputedStyle(el).display') == 'none'
 
 
-def test_global_delivery_filters_fit_one_desktop_row(delivery_browser):
+def test_legacy_delivery_filters_fit_one_desktop_row(delivery_browser):
     page, pages, listing, edit, create, api, browser = delivery_browser
     if browser.browser_type.name != 'chromium':
         pytest.skip('Responsive layout is checked in Chromium.')
     page.set_viewport_size({'width': 1440, 'height': 900})
-    page.goto('https://example.test/deliveries')
+    page.goto('https://example.test/me/deliveries')
     page.add_style_tag(content=(ROOT / 'static/ui.css').read_text(encoding='utf-8'))
     filters = page.locator('.delivery-filters.global-filters')
     assert page.evaluate('(el) => getComputedStyle(el).gridTemplateColumns.split(" ").length', filters.element_handle()) == 7

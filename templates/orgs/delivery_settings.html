@@ -1,0 +1,10 @@
+{% extends "settings_base.html" %}
+{% block title %}Delivery settings — {{ org.name }}{% endblock %}
+{% block settings %}
+<header class="page-head">
+<div class="ui-label page-kicker scope-org">Organization · {{ org.name }}</div>
+<h1>Delivery settings</h1>
+<p class="muted">Pause delivery across this organization and set defaults for future email schedules.</p>
+</header>
+{% include "reports/_delivery_policy_form.html" %}
+{% endblock %}

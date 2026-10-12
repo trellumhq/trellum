@@ -283,7 +283,7 @@ class TestSharedDeliveryManagement:
     def test_admin_manages_colleague_and_legacy_bookmark_lists_shared_schedules(self, login, org_admin, viewer, report_row):
         row = self.create(report_row, viewer)
         client = login(org_admin)
-        assert [item['schedule'].pk for item in client.get('/deliveries').context['schedule_rows']] == [row.pk]
+        assert client.get('/deliveries').url == f'/orgs/{report_row.studio.org.slug}/settings/deliveries'
         assert [item['schedule'].pk for item in client.get('/me/deliveries').context['schedule_rows']] == [row.pk]
         response = client.post(self.url(report_row, row), json.dumps({'enabled': False}), content_type='application/json')
         assert response.status_code == 200
@@ -316,7 +316,7 @@ class TestSharedDeliveryManagement:
         assert b'private@other.example' not in response.content
         assert b'Hidden' not in response.content
         assert login(org_admin).post(self.url(other, hidden), json.dumps({'enabled': False}), content_type='application/json').status_code == 404
-        assert len(login(superuser).get('/deliveries').context['schedule_rows']) == 1
+        assert login(superuser).get('/deliveries').url == '/instance/settings#scheduled-deliveries'
 
     def test_creator_cannot_be_reassigned_and_schedule_is_unchanged(self, login, org_admin, viewer, report_row):
         from apps.core.models import AuditLog
@@ -438,14 +438,10 @@ class TestSharedDeliveryManagement:
         exact = datetime(2026, 10, 11, 8, 0, tzinfo=timezone.utc)
         assert next_occurrence(row, exact) > exact
 
-    def test_alert_tab_shows_owner_repair_and_existing_form_link(self, login, org_admin, org, report_row):
-        from apps.alerts.models import AlertRule
-        rule = AlertRule.objects.create(org=org, studio=report_row.studio, report=report_row, name='Watch', created_by=None)
+    def test_legacy_alert_tab_redirects_to_policy_settings(self, login, org_admin, org):
         response = login(org_admin).get('/deliveries?type=alerts')
-        assert response.status_code == 200
-        assert b'owner repair required' in response.content
-        assert f'/alerts/{rule.pk}/edit' in response.content.decode()
-        assert response.context['schedule_rows'] == []
+        assert response.status_code == 302
+        assert response.url == f'/orgs/{org.slug}/settings/deliveries'
 
     def test_key_scope_and_creator_filters(self, org_admin, other_org, org, report_row, viewer, login, make_user):
         from types import SimpleNamespace
@@ -461,12 +457,12 @@ class TestSharedDeliveryManagement:
         assert [item.pk for item in managed_orgs(request)] == [other_org.pk]
         with pytest.raises(Http404):
             schedule_for_request(request, row.pk)
-        assert len(login(org_admin).get('/deliveries?creator=view@demo').context['schedule_rows']) == 1
-        assert login(org_admin).get('/deliveries?creator=missing').context['schedule_rows'] == []
+        assert len(login(org_admin).get(f'/s/{org.slug}/{report_row.studio.slug}/deliveries?creator=view@demo').context['schedule_rows']) == 1
+        assert login(org_admin).get(f'/s/{org.slug}/{report_row.studio.slug}/deliveries?creator=missing').context['schedule_rows'] == []
 
     def test_delete_confirmation_identifies_recipients(self, login, org_admin, viewer, report_row):
         self.create(report_row, viewer)
-        response = login(org_admin).get('/deliveries')
+        response = login(org_admin).get(f'/s/{report_row.studio.org.slug}/{report_row.studio.slug}/deliveries')
         assert f'Recipients: 1 person + {viewer.email}.' in response.content.decode()
 
     def test_policy_audit_taxonomy_is_registered(self):
@@ -482,8 +478,8 @@ class TestSharedDeliveryManagement:
 
     def test_policy_form_ids_unique_across_instance_and_orgs(self, login, superuser, org, other_org):
         import re
-        response = login(superuser).get('/deliveries')
-        forms = re.findall(r'<form[^>]*id="delivery-policy-[^"]*"[^>]*>(.*?)</form>', response.content.decode(), re.S)
+        responses = [login(superuser).get(path) for path in ('/instance/settings', f'/orgs/{org.slug}/settings/deliveries', f'/orgs/{other_org.slug}/settings/deliveries')]
+        forms = [form for response in responses for form in re.findall(r'<form[^>]*id="delivery-policy-form"[^>]*>(.*?)</form>', response.content.decode(), re.S)]
         assert len(forms) == 3
         field_ids = [field for form in forms for field in re.findall(r'\bid="([^"]+)"', form)]
         assert len(field_ids) == len(set(field_ids))
@@ -607,17 +603,17 @@ class TestStudioDeliveryPages:
         assert client.post(f'{prefix}/deliveries/new', self.body(viewer, other_report)).status_code == 403
         assert 'Read only' in response.content.decode()
 
-    def test_global_admin_dedicated_edit_and_studio_secondary_link(self, login, org_admin, viewer, prefix, report_row):
+    def test_legacy_admin_edit_redirects_to_studio_without_global_link(self, login, org_admin, viewer, prefix, report_row):
         from apps.reports.models import EmailSchedule
         row = EmailSchedule.objects.create(report=report_row, created_by=viewer)
         row.recipients.add(viewer)
         client = login(org_admin)
-        assert b'Manage deliveries across organizations' in client.get(f'{prefix}/deliveries').content
+        assert b'Manage deliveries' not in client.get(f'{prefix}/deliveries').content
         response = client.get(f'/deliveries/{row.pk}/edit')
-        assert response.status_code == 200 and response.context['return_to'] == '/deliveries'
-        assert 'owner_id' not in response.context['form'].fields
-        assert f'/deliveries/{row.pk}/edit' in client.get('/deliveries').content.decode()
-        assert client.post(f'{prefix}/api/reports/{report_row.slug}/schedules/{row.pk}', self.body(viewer, report_row, return_to='/deliveries'), HTTP_X_TRELLUM_FORM='1').json()['redirect'] == '/deliveries'
+        assert response.status_code == 302 and response.url == f'{prefix}/deliveries/{row.pk}/edit'
+        assert 'owner_id' not in client.get(response.url).context['form'].fields
+        assert f'{prefix}/deliveries/{row.pk}/edit' in client.get(f'{prefix}/deliveries').content.decode()
+        assert client.post(f'{prefix}/api/reports/{report_row.slug}/schedules/{row.pk}', self.body(viewer, report_row, return_to='/deliveries'), HTTP_X_TRELLUM_FORM='1').json()['redirect'] == f'{prefix}/deliveries'
 
     def test_create_requires_csrf_and_rejects_ineligible_recipients(self, developer, other_viewer, prefix, report_row, login, make_user, org):
         from django.test import Client

@@ -1,43 +1,22 @@
 {% extends "base.html" %}
 {% load static %}
-{% block title %}{% if manage_deliveries %}Manage deliveries{% else %}Deliveries{% endif %} — trellum{% endblock %}
+{% block title %}Deliveries — trellum{% endblock %}
 {% block content %}
 <header class="page-head">
-<div class="ui-label page-kicker">{% if manage_deliveries %}Administration{% else %}Studio{% endif %}</div>
-<h1>{% if manage_deliveries %}Manage deliveries{% else %}Deliveries{% endif %}</h1>
-<p class="muted">{% if manage_deliveries %}Shared scheduled emails across the organizations you administer.{% elif legacy_deliveries %}Shared schedules for the reports you can access, with links to each Studio’s Deliveries page.{% else %}Shared scheduled emails for reports and analyses in this studio. Developers and admins can manage schedules; viewers have read-only access.{% endif %}</p>
+<div class="ui-label page-kicker">Studio</div>
+<h1>Deliveries</h1>
+<p class="muted">{% if legacy_deliveries %}Shared schedules for the reports you can access, with links to each Studio’s Deliveries page.{% else %}Shared scheduled emails for reports and analyses in this studio. Developers and admins can manage schedules; viewers have read-only access.{% endif %}</p>
 </header>
-{% if studio_deliveries %}<p>{% if can_add_delivery %}<a class="ui-btn primary" href="{{ delivery_return_to }}/new">Add delivery</a>{% endif %}{% if can_manage_deliveries %} <a class="ui-btn ghost" href="/deliveries">Manage deliveries across organizations</a>{% endif %}</p>{% endif %}
+{% if studio_deliveries %}<p>{% if can_add_delivery %}<a class="ui-btn primary" href="{{ delivery_return_to }}/new">Add delivery</a>{% endif %}</p>{% endif %}
 {% if legacy_deliveries %}<p>Open <strong>Deliveries</strong> in your Studio navigation to add or manage schedules for that studio.</p>{% for studio in shell_studios %}<a class="ui-btn ghost" href="/s/{{ studio.org.slug }}/{{ studio.slug }}/deliveries">{{ studio.name }} · Deliveries</a>{% endfor %}{% endif %}
-{% if manage_deliveries %}
-<p class="muted">Pause covers scheduled reports and all AI-alert mail, including owner budget warnings. Alert evaluations continue and use their normal budget. Build failure/recovery, account/security, on-demand personal samples and explicit operator test mail are excluded. Instance pause always wins; resume sends future occurrences only.</p>
-{% for policy in policies %}
-<details class="panel"><summary>{{ policy.name }} — pause and future schedule defaults</summary>
-<form method="post" action="{% url 'manage-deliveries' %}" id="delivery-policy-{{ policy.scope }}" data-settings-form data-settings-save>
-{% csrf_token %}<input type="hidden" name="scope" value="{{ policy.scope }}">{{ policy.form.as_p }}
-<p class="muted">Defaults apply to new email schedules only. Existing schedules and AI alerts keep their saved configuration. Blank organization defaults inherit the instance; fresh instance defaults are enabled and UTC.</p>
-<button class="ui-btn primary" type="submit">Save delivery policy</button></form></details>
-{% endfor %}
-<nav class="ui-tabs delivery-type-tabs" aria-label="Delivery type"><a href="/deliveries"{% if request.path == '/deliveries' and not alerts_tab %} aria-current="page"{% endif %}>Scheduled reports</a> <a href="/deliveries?type=alerts"{% if alerts_tab %} aria-current="page"{% endif %}>AI alerts</a></nav>
-{% endif %}
-<form method="get" class="panel delivery-filters {% if manage_deliveries or legacy_deliveries %}global-filters{% else %}studio-filters{% endif %}" aria-label="Filter deliveries">
+<form method="get" class="panel delivery-filters {% if legacy_deliveries %}global-filters{% else %}studio-filters{% endif %}" aria-label="Filter deliveries">
 <label>Search <input type="search" name="q" value="{{ request.GET.q }}"></label>
-{% if manage_deliveries or legacy_deliveries %}<label>Organization <input name="org" value="{{ request.GET.org }}"></label>
+{% if legacy_deliveries %}<label>Organization <input name="org" value="{{ request.GET.org }}"></label>
 <label>Studio <input name="studio" value="{{ request.GET.studio }}"></label>{% endif %}
-<label>Report <select name="report"><option value="">All reports</option>{% if selected_report_filter|slice:":5" == "slug:" %}<option value="{{ selected_report_filter }}" selected>Current report filter</option>{% endif %}{% for report in report_filter_options %}<option value="id:{{ report.pk }}"{% if selected_report_id == report.pk %} selected{% endif %}>{{ report.name|default:report.slug }}{% if manage_deliveries or legacy_deliveries %} · {{ report.studio.org.name }} / {{ report.studio.name }}{% endif %}</option>{% endfor %}</select></label>
+<label>Report <select name="report"><option value="">All reports</option>{% if selected_report_filter|slice:":5" == "slug:" %}<option value="{{ selected_report_filter }}" selected>Current report filter</option>{% endif %}{% for report in report_filter_options %}<option value="id:{{ report.pk }}"{% if selected_report_id == report.pk %} selected{% endif %}>{{ report.name|default:report.slug }}{% if legacy_deliveries %} · {{ report.studio.org.name }} / {{ report.studio.name }}{% endif %}</option>{% endfor %}</select></label>
 <label title="Creator name, email or former user">Creator <input name="creator" placeholder="Name, email or former user" title="Creator name, email or former user" value="{{ request.GET.creator }}"></label>
 <label>Enabled <select name="enabled"><option value="">All</option><option value="true" {% if request.GET.enabled == 'true' %}selected{% endif %}>Enabled</option><option value="false" {% if request.GET.enabled == 'false' %}selected{% endif %}>Disabled</option></select></label>
-{% if alerts_tab %}<input type="hidden" name="type" value="alerts">{% endif %}<button class="ui-btn ghost" type="submit">Filter</button></form>
-{% if alerts_tab %}
-<div class="panel" data-settings-refresh="delivery-list"><h2>AI alerts</h2>{% for row in ai_alert_rows %}
-<div class="panel"><h3>{{ row.rule.name }}</h3><p>{{ row.rule.report.name }} · {{ row.rule.org.name }} / {{ row.rule.studio.name }} · {{ row.cadence }}</p>
-<p>Owner: {% if row.rule.created_by %}{{ row.rule.created_by.display_name|default:row.rule.created_by.email }}{% else %}Ownerless{% endif %}{% if row.repair %} — owner repair required (billing-owner reassignment is unavailable here){% endif %}</p>
-<p>Recipients: {{ row.recipients }} · {% if row.rule.enabled %}Enabled{% else %}Disabled{% endif %} {% if row.paused %}· {{ row.paused }}{% endif %}</p>
-<p>Last attempt: {{ row.last.started_at|default:'Not attempted' }} · {{ row.last.outcome_label|default:'Not attempted' }} · {{ row.last.get_delivery_status_display|default:'Nothing sent' }}</p>
-<a class="ui-btn" href="/s/{{ row.rule.org.slug }}/{{ row.rule.studio.slug }}/alerts/{{ row.rule.pk }}/edit">Edit alert rule</a>
-<a class="ui-btn ghost" href="/s/{{ row.rule.org.slug }}/{{ row.rule.studio.slug }}/alerts/{{ row.rule.pk }}">Rule and run log</a>
-</div>{% empty %}<p class="ui-empty">No AI alerts match these filters.</p>{% endfor %}</div>
-{% else %}
+<button class="ui-btn ghost" type="submit">Filter</button></form>
 <div class="panel" data-settings-refresh="delivery-list">{% if schedule_rows %}<div class="ui-table-scroll"><table class="ui-table dense delivery-list" id="deliveryTable" data-mobile-cards><thead><tr><th>Report</th><th>Studio</th><th>Creator</th><th>Cadence</th><th>Format</th><th>Recipients</th><th>Status / attempts</th><th>Actions</th></tr></thead><tbody>
 {% for row in schedule_rows %}
 <tr class="delivery-row" data-delivery-row data-server-form data-prefix="/s/{{ row.org.slug }}/{{ row.studio.slug }}" data-slug="{{ row.report.slug }}">
@@ -58,7 +37,6 @@
 <tr class="delivery-row-detail"><td colspan="8"><div data-flash-slot aria-live="polite"></div>
 <script type="application/json" data-schedule-json>{{ row.schedule_json|safe }}</script></td></tr>
 {% endfor %}</tbody></table></div>{% else %}<div class="ui-empty">No scheduled deliveries match these filters.</div>{% endif %}</div>
-{% endif %}
 <p class="muted">Accepted means the mail transport accepted the message; it does not confirm inbox receipt. Legacy timestamps do not prove acceptance.</p>
 <p class="muted delivery-alert-note">When a report breaks or recovers, studio developers and admins are emailed automatically — no setup.</p>
 <script src="{% static 'report_delivery.js' %}"></script><script>document.addEventListener('DOMContentLoaded', function () { if (window.ReportDelivery) window.ReportDelivery.mountCenter(document); });</script>

@@ -3,8 +3,7 @@
 Two independent things live under this heading: scheduled report deliveries
 ("send this report every Monday at 8am") and build failure notices
 (automatic, zero-configuration mail when a report's build breaks). Studio developers and admins can configure shared
-schedules, and organization admins can manage schedules across Studios
-through **Manage deliveries**. They share a mailer and a "no login
+schedules in each Studio’s **Deliveries** page. They share a mailer and a "no login
 needed" design, but nothing else — a delivery is something you set up; a notice
 is something that just happens.
 
@@ -67,22 +66,22 @@ trust the cadence.
 
 Schedules belong to the Studio. Developers and admins can manage every
 schedule for reports they can access, regardless of who created it. Viewers
-have read-only access. Organization admins, including admins granted through
-a permission group, can open **Manage deliveries across organizations** from
-the Studio list to manage schedules and delivery policies. Instance superusers
-see all organizations. Support-operator access alone grants no schedule or
+have read-only access. Support-operator access alone grants no schedule or
 report-data access. Existing `/me/deliveries` bookmarks show accessible shared
-schedules with links to Studio deliveries.
-Search or filter by organization, studio, report, creator and enabled state.
-AI alerts appear on a separate tab with links to their existing forms and logs.
+schedules with links to Studio deliveries. Search or filter by report, creator
+and enabled state. AI alerts have their own Studio **Alerts** page with rules
+and run logs.
 
-The center shows next future occurrence, last attempt and transport outcome.
+The Studio list shows next future occurrence, last attempt and transport outcome.
 Accepted means the transport accepted the message; it does not prove inbox
 receipt. Legacy delivery timestamps have an uncertain outcome. A missing-build
 notice is not an accepted report delivery.
 
-Admins can pause delivery for an organization; superusers can pause the entire
-instance. This pauses scheduled reports and all AI-alert mail, including owner
+Organization admins, including admins granted through a permission group,
+set pause and future schedule defaults in **Organization > Delivery settings**.
+Instance superusers use **Instance settings > Scheduled deliveries** to set
+instance-wide policy. Existing `/deliveries` bookmarks redirect to these settings.
+This pauses scheduled reports and all AI-alert mail, including owner
 budget warnings. Alert evaluations continue and consume their normal budget;
 alerts with no accepted delivery do not advance cooldown. Instance pause
 overrides organization resume. Build failure/recovery, account/security,

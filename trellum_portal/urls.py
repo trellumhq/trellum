@@ -318,6 +318,7 @@ urlpatterns = [
     # override lock -- see apps.orgs.views.appearance_settings and
     # apps.core.themes.resolve_studio_theme rungs 1/3.
     path("orgs/<slug:org_slug>/settings/appearance", org_views.appearance_settings, name="org-appearance-settings"),
+    path("orgs/<slug:org_slug>/settings/deliveries", org_views.delivery_settings, name="org-delivery-settings"),
     # Org settings -> Data retention: the two per-org data windows (vault
     # #110) -- see apps.orgs.views.retention_settings.
     path("orgs/<slug:org_slug>/settings/retention", org_views.retention_settings, name="org-retention-settings"),

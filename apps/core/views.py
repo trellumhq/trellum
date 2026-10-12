@@ -172,6 +172,7 @@ def instance_settings(request):
         SecuritySettingsForm,
     )
     from apps.core.models import EmailApiConnection, InstanceConfig
+    from apps.reports import deliveries
 
     gate = _require_email_operator(request)
     if gate is not None:
@@ -179,6 +180,21 @@ def instance_settings(request):
 
     instance = InstanceConfig.load()
     action = request.POST.get("action", "instance_settings")
+    policy_access = deliveries.can_manage_instance_policy(request)
+    if request.method == "POST" and action == "delivery_policy" and not policy_access:
+        raise Http404
+    policy_form = deliveries.DeliveryPolicyForm.for_target(
+        instance, request.POST if request.method == "POST" and action == "delivery_policy" else None,
+    ) if policy_access else None
+    if request.method == "POST" and action == "delivery_policy":
+        if policy_form.is_valid():
+            values = deliveries.save_policy(request, instance, policy_form)
+            if is_settings_request(request):
+                return settings_success(request, "Delivery policy saved. Resume uses future occurrences only.", values=values)
+            messages.success(request, "Delivery policy saved.")
+            return redirect(reverse("instance-settings") + "#scheduled-deliveries")
+        if is_settings_request(request):
+            return settings_error(request, form=policy_form)
     section_forms = {
         "identity_settings": ("Identity settings saved.", IdentitySettingsForm),
         "networking_settings": ("Networking settings saved.", NetworkingSettingsForm),
@@ -232,7 +248,7 @@ def instance_settings(request):
             return redirect("instance-settings")
         if is_settings_request(request):
             return settings_error(request, form=security_form)
-    if request.method == "POST" and action not in {*section_forms, "instance_settings", "security_settings"}:
+    if request.method == "POST" and action not in {*section_forms, "instance_settings", "security_settings", "delivery_policy"}:
         raise Http404
     if request.method == "POST":
         # Invalid ModelForms mutate their instance; summaries describe persisted settings.
@@ -243,6 +259,8 @@ def instance_settings(request):
         "core/instance_settings.html",
         {
             "form": form,
+            "delivery_policy_form": policy_form,
+            "delivery_policy_action": reverse("instance-settings"),
             "identity_form": form if action == "identity_settings" else IdentitySettingsForm(
                 request.POST if request.method == "POST" and action == "instance_settings" else None,
                 instance=instance,

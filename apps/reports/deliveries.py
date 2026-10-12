@@ -4,10 +4,12 @@ from datetime import timedelta
 
 from apscheduler.triggers.cron import CronTrigger
 from django import forms
+from django.db import transaction
 from django.http import Http404
 from django.utils import timezone
 
 from apps.core.models import InstanceConfig
+from apps.core.audit import audit
 from apps.core.permissions import get_effective
 from apps.core import roles
 from apps.core.report_access import can_view_report
@@ -45,6 +47,32 @@ def managed_orgs(request):
     if key is not None:
         rows = rows.filter(pk=key.org_id)
     return [org for org in rows.order_by("name") if can_manage_org(request, org)]
+
+
+def can_manage_instance_policy(request):
+    return bool(request.user.is_authenticated and request.user.is_active
+        and request.user.is_superuser and getattr(request, "api_key", None) is None)
+
+
+def save_policy(request, target, form):
+    """Persist a validated policy under a lock, invalidating sends on pause changes."""
+    fields = tuple(form.cleaned_data)
+    with transaction.atomic():
+        target = type(target).objects.select_for_update().get(pk=target.pk)
+        before = {name: getattr(target, name) for name in fields}
+        for name, value in form.cleaned_data.items():
+            setattr(target, name, value)
+        if bool(before["deliveries_paused"]) != bool(target.deliveries_paused):
+            target.delivery_generation = (target.delivery_generation or 0) + 1
+        target.save(update_fields=(*fields, "delivery_generation"))
+        audit(request, "notify.delivery_policy_update", target=target,
+              org=target if isinstance(target, Organization) else None,
+              before=before, after=form.cleaned_data)
+    enabled = form.cleaned_data["delivery_default_enabled"]
+    return {
+        "delivery_default_enabled": "" if enabled is None else str(enabled).lower(),
+        "delivery_default_timezone": form.cleaned_data["delivery_default_timezone"] or "",
+    }
 
 
 def delivery_pause(org_id):

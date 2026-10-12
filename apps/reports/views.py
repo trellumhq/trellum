@@ -1131,10 +1131,6 @@ _RECIPIENT_BODY_KEYS = ("recipient_ids", "recipient_roles", "recipient_group_ids
 def _delivery_return_url(request):
     studio_url = f"/s/{request.org.slug}/{request.studio.slug}/deliveries"
     value = request.POST.get("return_to") or request.GET.get("return_to")
-    if request.method == "GET" and request.path.startswith("/deliveries/"):
-        value = "/deliveries"
-    if value == "/deliveries" and deliveries.can_manage_org(request, request.org):
-        return value
     return value if value in (studio_url, "/me/deliveries") else studio_url
 
 
@@ -1516,12 +1512,10 @@ def _visible_row(user, report, er_cache: dict) -> bool:
     return scope is None or report.pk in scope
 
 
-def _delivery_filter_reports(user, *, studio=None, org_ids=None, org_id=None):
+def _delivery_filter_reports(user, *, studio=None, org_id=None):
     reports = Report.objects.filter(present_in_scan=True)
     if studio is not None:
         reports = reports.filter(studio=studio)
-    if org_ids is not None:
-        reports = reports.filter(studio__org_id__in=org_ids)
     if org_id is not None:
         reports = reports.filter(studio__org_id=org_id)
     return visible_reports(user, reports).select_related("studio", "studio__org").order_by(
@@ -1576,13 +1570,11 @@ def _schedule_json_for_script(schedule, viewer=None, request=None) -> str:
     return json.dumps(_schedule_dict(schedule, viewer=viewer, request=request)).translate(_JSON_SCRIPT_ESCAPES)
 
 
-def _my_schedule_rows(user, *, org_id=None, request=None, managed=False, studio=None) -> list[dict]:
-    """Visible schedules for the Studio, global administration or legacy accessible list."""
+def _my_schedule_rows(user, *, org_id=None, request=None, studio=None) -> list[dict]:
+    """Visible schedules for the Studio or legacy accessible list."""
     rows = EmailSchedule.objects.all()
     if studio is not None:
         rows = rows.filter(report__studio=studio)
-    if managed:
-        rows = rows.filter(report__studio__org_id__in=[org.pk for org in deliveries.managed_orgs(request)])
     if org_id is not None:
         rows = rows.filter(report__studio__org_id=org_id)
     if request is not None:
@@ -1643,7 +1635,7 @@ def _my_schedule_rows(user, *, org_id=None, request=None, managed=False, studio=
                 "failed_to": serialized["failed_to"],
                 "confirmation_recipients": " + ".join([_recipient_summary(schedule)] + [person["email"] for person in serialized["recipients"]]),
                 "schedule_json": json.dumps(serialized).translate(_JSON_SCRIPT_ESCAPES),
-                "edit_url": f"/deliveries/{schedule.pk}/edit" if managed else f"/s/{studio.org.slug}/{studio.slug}/deliveries/{schedule.pk}/edit" + ("?return_to=/me/deliveries" if request and request.path == "/me/deliveries" else ""),
+                "edit_url": f"/s/{studio.org.slug}/{studio.slug}/deliveries/{schedule.pk}/edit" + ("?return_to=/me/deliveries" if request and request.path == "/me/deliveries" else ""),
             }
         )
     return out
@@ -1658,7 +1650,6 @@ def studio_deliveries(request, org_slug, studio_slug):
         "selected_report_filter": _delivery_report_filter_selection(request),
         "selected_report_id": _delivery_report_filter_id(request),
         "delivery_return_to": f"/s/{org_slug}/{studio_slug}/deliveries",
-        "can_manage_deliveries": deliveries.can_manage_org(request, request.org),
         "can_add_delivery": roles.at_least(get_effective(request, request.org).role_for(request.studio), roles.DEVELOPER),
     })
 
@@ -1697,8 +1688,8 @@ def manage_delivery_edit(request, schedule_id):
     schedule = deliveries.schedule_for_request(request, schedule_id)
     if not deliveries.can_manage_org(request, schedule.report.studio.org) or not schedule.report.present_in_scan:
         raise Http404
-    request.org, request.studio = schedule.report.studio.org, schedule.report.studio
-    return _delivery_form_page(request, schedule)
+    studio = schedule.report.studio
+    return redirect("studio-delivery-edit", org_slug=studio.org.slug, studio_slug=studio.slug, schedule_id=schedule.pk)
 
 
 def my_deliveries(request):
@@ -1727,100 +1718,38 @@ def my_deliveries(request):
 
 @require_http_methods(["GET", "POST"])
 def manage_deliveries(request):
+    """Compatibility entry point for administrator delivery settings."""
     if not request.user.is_authenticated:
         return redirect("login")
     orgs = deliveries.managed_orgs(request)
-    instance_access = request.user.is_active and request.user.is_superuser and getattr(request, "api_key", None) is None
+    instance_access = deliveries.can_manage_instance_policy(request)
     if not orgs and not instance_access:
         raise Http404
-    from apps.core.models import InstanceConfig
-    from apps.orgs.models import Organization
-    target = None
-    form = None
     if request.method == "POST":
         scope = request.POST.get("scope")
         if scope == "instance":
             if not instance_access:
                 raise Http404
-            target = InstanceConfig.load()
-        else:
-            target = next((org for org in orgs if str(org.pk) == scope), None)
-            if target is None:
-                raise Http404
-        form = deliveries.DeliveryPolicyForm.for_target(target, request.POST)
-        if form.is_valid():
-            fields = tuple(form.cleaned_data)
-            with transaction.atomic():
-                target = type(target).objects.select_for_update().get(pk=target.pk)
-                before = {name: getattr(target, name) for name in fields}
-                for name, value in form.cleaned_data.items():
-                    setattr(target, name, value)
-                if bool(before["deliveries_paused"]) != bool(target.deliveries_paused):
-                    target.delivery_generation = (target.delivery_generation or 0) + 1
-                target.save(update_fields=(*fields, "delivery_generation"))
-                audit(request, "notify.delivery_policy_update", target=target,
-                      org=target if isinstance(target, Organization) else None,
-                      before=before, after=form.cleaned_data)
-            if is_settings_request(request):
-                enabled = form.cleaned_data["delivery_default_enabled"]
-                return settings_success(request, "Delivery policy saved. Resume uses future occurrences only.",
-                    refresh=["delivery-list"], values={
-                        "delivery_default_enabled": "" if enabled is None else str(enabled).lower(),
-                        "delivery_default_timezone": form.cleaned_data["delivery_default_timezone"] or "",
-                    })
-            messages.success(request, "Delivery policy saved.")
-            return redirect("manage-deliveries")
-        if is_settings_request(request):
-            return settings_error(request, form=form)
-    policies = [{"scope": org.pk, "name": org.name,
-                 "form": form if target == org else deliveries.DeliveryPolicyForm.for_target(org)} for org in orgs]
-    if instance_access:
-        instance = InstanceConfig.load()
-        policies.insert(0, {"scope": "instance", "name": "Entire instance",
-                         "form": form if isinstance(target, InstanceConfig) else deliveries.DeliveryPolicyForm.for_target(instance)})
-    alert_rows = []
-    if request.GET.get("type") == "alerts":
-        from apps.alerts.models import AlertRule
-        from apps.alerts.views import _trigger_words
-        rules = AlertRule.objects.filter(org_id__in=[org.pk for org in orgs]).select_related("report__studio__org", "created_by", "studio", "org").prefetch_related("recipients", "recipient_groups")
-        for rule in rules.order_by("name"):
-            if not rule.report.present_in_scan or not _visible_row(request.user, rule.report, {}):
-                continue
-            if any(request.GET.get(field) and getattr(obj, "slug") != request.GET[field]
-                   for field, obj in (("org", rule.org), ("studio", rule.studio))):
-                continue
-            report_filter = _delivery_report_filter_value(request.GET.get("report", ""))
-            if report_filter[0] == "id" and rule.report_id != report_filter[1]:
-                continue
-            if report_filter[0] == "slug" and rule.report.slug != report_filter[1]:
-                continue
-            if report_filter[0] == "invalid":
-                continue
-            creator = request.GET.get("creator")
-            if creator:
-                if creator == "ownerless" and rule.created_by_id is not None:
-                    continue
-                if creator.isdigit() and str(rule.created_by_id) != creator:
-                    continue
-                if creator != "ownerless" and not creator.isdigit() and (not rule.created_by or creator.lower() not in f"{rule.created_by.email} {rule.created_by.name}".lower()):
-                    continue
-            if request.GET.get("enabled") in ("true", "false") and rule.enabled != (request.GET["enabled"] == "true"):
-                continue
-            if request.GET.get("q") and request.GET["q"].lower() not in " ".join((rule.name, rule.report.name, rule.studio.name, rule.created_by.email if rule.created_by else "", _recipient_summary(rule))).lower():
-                continue
-            last = rule.runs.exclude(execution_mode="test").order_by("-started_at", "-pk").first()
-            alert_rows.append({"rule": rule, "cadence": _trigger_words(rule), "recipients": _recipient_summary(rule),
-                               "repair": deliveries.owner_repair_required(rule), "paused": deliveries.delivery_pause(rule.org_id), "last": last})
-    return render(request, "reports/my_deliveries.html", {
-        "manage_deliveries": True, "delivery_return_to": "/deliveries", "policies": policies,
-        "report_filter_options": _delivery_filter_reports(
-            request.user, org_ids=[org.pk for org in orgs]
-        ),
-        "selected_report_filter": _delivery_report_filter_selection(request),
-        "selected_report_id": _delivery_report_filter_id(request),
-        "schedule_rows": [] if request.GET.get("type") == "alerts" else _my_schedule_rows(request.user, request=request, managed=True),
-        "ai_alert_rows": alert_rows, "alerts_tab": request.GET.get("type") == "alerts",
-    })
+            from apps.core.views import instance_settings
+            request.POST = request.POST.copy()
+            request.POST["action"] = "delivery_policy"
+            return instance_settings(request)
+        org = next((org for org in orgs if str(org.pk) == scope), None)
+        if org is None:
+            raise Http404
+        from apps.orgs.views import delivery_settings
+        return delivery_settings(request, org_slug=org.slug)
+    slug = request.GET.get("org")
+    if slug:
+        org = next((org for org in orgs if org.slug == slug), None)
+        if org is None:
+            raise Http404
+    elif instance_access:
+        return redirect("/instance/settings#scheduled-deliveries")
+    else:
+        remembered = request.session.get("active_org")
+        org = next((org for org in orgs if org.slug == remembered), orgs[0])
+    return redirect("org-delivery-settings", org_slug=org.slug)
 
 
 @require_http_methods(["GET", "POST"])

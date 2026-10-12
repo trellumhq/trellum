@@ -8,7 +8,7 @@ from django.db import models, transaction
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_http_methods
 
 from apps.accounts.models import Invitation
 from apps.core import roles
@@ -422,6 +422,31 @@ def settings_home(request, org_slug):  # noqa: ARG001
     A pure URL alias: the target enforces the org-admin requirement.
     """
     return redirect(f"/orgs/{org_slug}/settings/members")
+
+
+@require_org_role(roles.ORG_ADMIN)
+@require_http_methods(["GET", "POST"])
+def delivery_settings(request, org_slug):
+    from apps.reports import deliveries
+
+    if not deliveries.can_manage_org(request, request.org):
+        raise Http404
+    form = deliveries.DeliveryPolicyForm.for_target(
+        request.org, request.POST if request.method == "POST" else None,
+    )
+    if request.method == "POST":
+        if form.is_valid():
+            values = deliveries.save_policy(request, request.org, form)
+            if is_settings_request(request):
+                return settings_success(request, "Delivery policy saved. Resume uses future occurrences only.", values=values)
+            messages.success(request, "Delivery policy saved.")
+            return redirect("org-delivery-settings", org_slug=org_slug)
+        if is_settings_request(request):
+            return settings_error(request, form=form)
+    return render(request, "orgs/delivery_settings.html", {
+        "org": request.org, "delivery_policy_form": form,
+        "delivery_policy_action": f"/orgs/{org_slug}/settings/deliveries",
+    })
 
 
 @require_org_role(roles.ORG_ADMIN)
