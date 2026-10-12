@@ -990,7 +990,7 @@
                 row.querySelector('[data-field="recipients"]').textContent = saved.recipient_summary;
                 row.querySelector('[data-field="status"]').textContent = saved.enabled ? 'Enabled' : 'Disabled';
                 row.querySelector('[data-field="creator"]').textContent = saved.creator_name;
-                row.querySelector('[data-field="next"]').textContent = saved.next_at || 'None while disabled, paused or report unavailable';
+                row.querySelector('[data-field="next"]').textContent = saved.next_at || '—';
                 var toggle = row.querySelector('[data-toggle-enable]');
                 toggle.textContent = saved.enabled ? 'Disable' : 'Enable';
                 toggle.form.querySelector('[name="enabled"]').value = saved.enabled ? 'false' : 'true';

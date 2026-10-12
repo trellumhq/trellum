@@ -18,16 +18,16 @@
 <p class="muted">Defaults apply to new email schedules only. Existing schedules and AI alerts keep their saved configuration. Blank organization defaults inherit the instance; fresh instance defaults are enabled and UTC.</p>
 <button class="ui-btn primary" type="submit">Save delivery policy</button></form></details>
 {% endfor %}
-<nav class="ui-tabs" aria-label="Delivery type"><a href="/deliveries">Scheduled reports</a> <a href="/deliveries?type=alerts">AI alerts</a> <a href="/me/deliveries">Deliveries</a></nav>
+<nav class="ui-tabs delivery-type-tabs" aria-label="Delivery type"><a href="/deliveries"{% if request.path == '/deliveries' and not alerts_tab %} aria-current="page"{% endif %}>Scheduled reports</a> <a href="/deliveries?type=alerts"{% if alerts_tab %} aria-current="page"{% endif %}>AI alerts</a></nav>
 {% endif %}
-<form method="get" class="panel" aria-label="Filter deliveries">
+<form method="get" class="panel delivery-filters" aria-label="Filter deliveries">
 <label>Search <input type="search" name="q" value="{{ request.GET.q }}"></label>
 {% if manage_deliveries or legacy_deliveries %}<label>Organization <input name="org" value="{{ request.GET.org }}"></label>
 <label>Studio <input name="studio" value="{{ request.GET.studio }}"></label>{% endif %}
 <label>Report <input name="report" value="{{ request.GET.report }}"></label>
 <label>Creator name, email or former user <input name="creator" value="{{ request.GET.creator }}"></label>
 <label>Enabled <select name="enabled"><option value="">All</option><option value="true" {% if request.GET.enabled == 'true' %}selected{% endif %}>Enabled</option><option value="false" {% if request.GET.enabled == 'false' %}selected{% endif %}>Disabled</option></select></label>
-{% if alerts_tab %}<input type="hidden" name="type" value="alerts">{% endif %}<button class="ui-btn" type="submit">Filter</button></form>
+{% if alerts_tab %}<input type="hidden" name="type" value="alerts">{% endif %}<button class="ui-btn ghost" type="submit">Filter</button></form>
 {% if alerts_tab %}
 <div class="panel" data-settings-refresh="delivery-list"><h2>AI alerts</h2>{% for row in ai_alert_rows %}
 <div class="panel"><h3>{{ row.rule.name }}</h3><p>{{ row.rule.report.name }} · {{ row.rule.org.name }} / {{ row.rule.studio.name }} · {{ row.cadence }}</p>
@@ -38,17 +38,17 @@
 <a class="ui-btn ghost" href="/s/{{ row.rule.org.slug }}/{{ row.rule.studio.slug }}/alerts/{{ row.rule.pk }}">Rule and run log</a>
 </div>{% empty %}<p class="ui-empty">No AI alerts match these filters.</p>{% endfor %}</div>
 {% else %}
-<div class="panel" data-settings-refresh="delivery-list">{% if schedule_rows %}<div class="ui-table-scroll"><table class="ui-table" id="deliveryTable" data-mobile-cards><thead><tr><th>Report</th><th>Studio</th><th>Creator</th><th>Cadence</th><th>Format</th><th>Recipients</th><th>Status / attempts</th><th>Actions</th></tr></thead><tbody>
+<div class="panel" data-settings-refresh="delivery-list">{% if schedule_rows %}<div class="ui-table-scroll"><table class="ui-table dense delivery-list" id="deliveryTable" data-mobile-cards><thead><tr><th>Report</th><th>Studio</th><th>Creator</th><th>Cadence</th><th>Format</th><th>Recipients</th><th>Status / attempts</th><th>Actions</th></tr></thead><tbody>
 {% for row in schedule_rows %}
 <tr class="delivery-row" data-delivery-row data-server-form data-prefix="/s/{{ row.org.slug }}/{{ row.studio.slug }}" data-slug="{{ row.report.slug }}">
 <td data-label="Report">{{ row.report.name|default:row.report.slug }} <span class="muted">· {{ row.report.get_kind_display }}</span></td>
 <td data-label="Studio">{{ row.org.name }} / {{ row.studio.name }}</td>
 <td data-label="Creator" data-field="creator">{{ row.creator_name }}</td>
 <td data-label="Cadence" data-field="cadence">{{ row.cadence }}</td><td data-label="Format" data-field="format">{% if row.schedule.attach_pdf %}HTML + PDF{% else %}HTML{% endif %}</td><td data-label="Recipients" data-field="recipients">{{ row.recipient_summary }}</td>
-<td data-label="Status"><span data-field="status">{% if row.schedule.enabled %}<span class="ui-badge pass">Enabled</span>{% else %}<span class="ui-badge warn">Disabled</span>{% endif %}</span>
-{% if row.paused %}<br>{{ row.paused }}{% endif %}<br>Next future: <span data-field="next">{{ row.next_at|default:'None while disabled, paused or report unavailable' }}</span>
-<br>Last attempt: {{ row.last_attempt_at|default:'Unknown / not attempted' }}<br>Outcome: <span data-field="outcome">{{ row.outcome }}</span><br>Last accepted: {{ row.last_accepted_at|default:'Unknown / none' }}
-{% if row.accepted_to %}<br>Accepted: {{ row.accepted_to|join:', ' }}{% endif %}{% if row.failed_to %}<br>Failed: {{ row.failed_to|join:', ' }}{% endif %}</td>
+<td class="delivery-status" data-label="Status"><span data-field="status">{% if row.schedule.enabled %}<span class="ui-badge pass">Enabled</span>{% else %}<span class="ui-badge warn">Disabled</span>{% endif %}</span>
+{% if row.paused %}<span class="delivery-pause">{{ row.paused }}</span>{% endif %}<div class="delivery-history"><div>Next <span data-field="next">{{ row.next_at|default:'—' }}</span></div>
+<div>Outcome <span data-field="outcome">{{ row.outcome }}</span></div>{% if row.last_attempt_at %}<div>Last attempt {{ row.last_attempt_at }}</div>{% endif %}{% if row.last_accepted_at %}<div>Last accepted {{ row.last_accepted_at }}</div>{% endif %}
+{% if row.accepted_to %}<div>Accepted for delivery to {{ row.accepted_to|join:', ' }}</div>{% endif %}{% if row.failed_to %}<div>Failed for {{ row.failed_to|join:', ' }}</div>{% endif %}</div></td>
 <td class="ui-row-actions" data-label="Actions"><a class="ui-btn ghost" href="/s/{{ row.org.slug }}/{{ row.studio.slug }}/r/{{ row.report.slug }}/">View report</a>
 {% if row.editable %}<a class="ui-btn ghost" href="{{ row.edit_url }}">Edit</a>
 <form method="post" action="/s/{{ row.org.slug }}/{{ row.studio.slug }}/api/reports/{{ row.report.slug }}/schedules/{{ row.schedule.pk }}" data-settings-form data-settings-save>

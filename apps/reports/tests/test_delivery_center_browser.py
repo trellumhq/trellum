@@ -77,6 +77,27 @@ def test_list_add_edit_and_cancel_use_dedicated_pages(delivery_browser):
     expect(page).to_have_url('https://example.test' + listing)
 
 
+@pytest.mark.parametrize('width,columns', [(390, 1), (800, 3), (1440, 3)])
+def test_delivery_list_is_compact_and_usable_at_common_widths(delivery_browser, width, columns):
+    page, pages, listing, edit, create, api, browser = delivery_browser
+    if browser.browser_type.name != 'chromium':
+        pytest.skip('Responsive layout is checked in Chromium.')
+    page.set_viewport_size({'width': width, 'height': 900})
+    page.goto('https://example.test' + listing)
+    page.add_style_tag(content=(ROOT / 'static/ui.css').read_text(encoding='utf-8'))
+    filters = page.locator('.delivery-filters')
+    assert len(page.locator('form.delivery-filters > label').all()) + 1 >= columns
+    assert page.evaluate('(el) => getComputedStyle(el).gridTemplateColumns.split(" ").length', filters.element_handle()) == columns
+    assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+    expect(page.locator('[data-delivery-row]')).to_have_count(1)
+    actions = page.locator('[data-delivery-row] .ui-row-actions')
+    expect(actions.locator('.ui-btn')).to_have_count(5)
+    assert all(button.is_visible() for button in actions.locator('.ui-btn').all())
+    if width < 768:
+        assert actions.evaluate('(el) => getComputedStyle(el).flexWrap') == 'wrap'
+        assert page.locator('.delivery-row-detail td').evaluate('(el) => getComputedStyle(el).paddingTop') == '0px'
+
+
 def test_ajax_failure_retains_draft_focus_scroll_and_success_returns_list(delivery_browser):
     page, pages, listing, edit, create, api, browser = delivery_browser
     pending = []
