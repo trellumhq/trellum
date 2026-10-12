@@ -1289,7 +1289,7 @@ code.copy {
 
 /* Authentication cards set their own explicit width; ordinary page sections
    use the available content width. */
-.formrow { max-width: none; }
+.formrow:not(.auth-card) { max-width: none; }
 
 /* ── Studio settings → Appearance: default-palette swatch grid ──────────
    templates/studios/appearance.html (.lavish/theming-controls-design.html).
