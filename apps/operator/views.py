@@ -16,6 +16,7 @@ from django.views.decorators.http import require_POST
 
 from apps.core import impersonation
 from apps.core.audit import audit
+from apps.core.form_responses import is_settings_request, settings_error, settings_success
 from apps.core.permissions import require_operator
 from apps.orgs import quotas as quota_service
 from apps.orgs.models import Organization, OrgMembership, OrgQuota
@@ -109,6 +110,22 @@ def org_detail(request, org_slug):
         .select_related("studio")
         .order_by("-created_at")[:20]
     )
+    quota = OrgQuota.objects.filter(org=org).first()
+    quota_fields = (
+        "max_concurrent_runs",
+        "monthly_build_minutes",
+        "max_studios",
+        "max_reports",
+        "max_memory_mb",
+        "max_storage_mb",
+    )
+    quota_values = getattr(request, "quota_values", None) or {
+        field: getattr(quota, field, 0) for field in quota_fields
+    }
+    quota_values["notes"] = (
+        getattr(quota, "notes", "") if getattr(request, "quota_values", None) is None
+        else request.quota_values["notes"]
+    )
     return render(
         request,
         "operator/org_detail.html",
@@ -119,7 +136,9 @@ def org_detail(request, org_slug):
                 "members": members,
                 "recent_runs": recent,
                 "usage": quota_service.usage_state(org),
-                "quota": OrgQuota.objects.filter(org=org).first(),
+                "quota": quota,
+                "quota_values": quota_values,
+                "quota_errors": getattr(request, "quota_errors", {}),
                 "quotas_enforced": settings.TRELLUM_QUOTAS_ENABLED,
                 "can_impersonate": settings.TRELLUM_IMPERSONATION_ENABLED,
                 "pool_choices": POOL_CHOICES,
@@ -162,20 +181,42 @@ def org_set_quota(request, org_slug):
         "max_storage_mb",
     )
     changed = {}
+    errors = {}
+    values = {}
     for field in fields:
         raw = (request.POST.get(field) or "").strip()
         try:
             value = max(0, int(raw or 0))
         except ValueError:
-            messages.error(request, f"{field} must be a whole number.")
-            return redirect("operator-org-detail", org_slug=org.slug)
+            errors[field] = ["Enter a whole number."]
+            values[field] = request.POST.get(field, "")
+            continue
+        values[field] = value
         if getattr(quota, field) != value:
             changed[field] = value
         setattr(quota, field, value)
-    quota.notes = (request.POST.get("notes") or "")[:400]
+    notes = (request.POST.get("notes") or "")[:400]
+    values["notes"] = notes
+    if errors:
+        if is_settings_request(request):
+            return settings_error(request, "Please correct the highlighted fields.", errors=errors)
+        request.quota_values = {field: request.POST.get(field, "") for field in fields}
+        request.quota_values["notes"] = request.POST.get("notes", "")
+        request.quota_errors = errors
+        response = org_detail(request, org_slug)
+        response.status_code = 400
+        return response
+    quota.notes = notes
     quota.save()
 
     audit(request, "operator.org.quota", target=org, org=org, **changed)
+    if is_settings_request(request):
+        return settings_success(
+            request,
+            "Quota saved. Zero means no limit.",
+            values=values,
+            refresh=["quota-usage"],
+        )
     messages.success(request, "Quota saved. Zero means no limit.")
     return redirect("operator-org-detail", org_slug=org.slug)
 

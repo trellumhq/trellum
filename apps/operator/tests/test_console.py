@@ -107,7 +107,7 @@ class TestSuspend:
 
 class TestQuotaEditing:
     def test_saving_creates_the_row(self, login, operator, org):
-        login(operator).post(
+        response = login(operator).post(
             f"/operator/orgs/{org.slug}/quota",
             {
                 "max_concurrent_runs": "4",
@@ -118,6 +118,8 @@ class TestQuotaEditing:
                 "notes": "pilot",
             },
         )
+        assert response.status_code == 302
+        assert response["Location"] == f"/operator/orgs/{org.slug}/"
         quota = OrgQuota.objects.get(org=org)
         assert quota.max_concurrent_runs == 4
         assert quota.monthly_build_minutes == 600
@@ -147,10 +149,50 @@ class TestQuotaEditing:
         assert "2.0 MB" in html
 
     def test_non_numeric_is_rejected_without_saving(self, login, operator, org):
-        login(operator).post(
+        response = login(operator).post(
             f"/operator/orgs/{org.slug}/quota", {"max_concurrent_runs": "lots"}
         )
+        assert response.status_code == 400
+        assert b'value="lots"' in response.content
+        assert b"Enter a whole number." in response.content
+        assert b'aria-invalid="true"' in response.content
         assert OrgQuota.objects.filter(org=org).first().max_concurrent_runs == 0
+
+    def test_enhanced_invalid_request_returns_field_errors_and_keeps_draft(
+        self, login, operator, org
+    ):
+        response = login(operator).post(
+            f"/operator/orgs/{org.slug}/quota",
+            {"max_concurrent_runs": "lots", "max_reports": "7", "notes": "draft"},
+            HTTP_X_TRELLUM_FORM="1",
+            HTTP_ACCEPT="application/json",
+        )
+        assert response.status_code == 400
+        assert response.json()["errors"] == {"max_concurrent_runs": ["Enter a whole number."]}
+        assert not OrgQuota.objects.get(org=org).max_reports
+
+    def test_enhanced_save_returns_normalized_values_and_usage_refresh(
+        self, login, operator, org
+    ):
+        response = login(operator).post(
+            f"/operator/orgs/{org.slug}/quota",
+            {"max_concurrent_runs": "-5", "max_reports": "7", "notes": "n" * 402},
+            HTTP_X_TRELLUM_FORM="1",
+            HTTP_ACCEPT="application/json",
+        )
+        assert response.status_code == 200
+        assert response.json()["values"]["max_concurrent_runs"] == 0
+        assert response.json()["values"]["max_reports"] == 7
+        assert len(response.json()["values"]["notes"]) == 400
+        assert response.json()["refresh"] == ["quota-usage"]
+        quota = OrgQuota.objects.get(org=org)
+        assert quota.max_concurrent_runs == 0
+        assert len(quota.notes) == 400
+
+    def test_quota_remains_operator_only(self, login, member, org):
+        assert login(member).post(
+            f"/operator/orgs/{org.slug}/quota", {"max_studios": "3"}
+        ).status_code == 404
 
     def test_negative_is_clamped_to_unlimited(self, login, operator, org):
         login(operator).post(

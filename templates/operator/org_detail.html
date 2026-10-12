@@ -24,13 +24,14 @@
   </form>
 </div>
 
-<h2>Usage &amp; quota</h2>
-<div class="panel">
+<section class="ui-form-rail" aria-labelledby="quota-title">
+<h2 id="quota-title">Usage &amp; quota</h2>
 {% if not quotas_enforced %}
 <p class="muted" style="margin-top:0">Quotas are <strong>not enforced</strong> on this
 instance. Values below are recorded but not applied — set
 <code>TRELLUM_QUOTAS_ENABLED=true</code> to enforce them.</p>
 {% endif %}
+<div class="panel" data-settings-refresh="quota-usage">
 <table class="ui-table dense">
   <thead><tr><th>Resource</th><th>Used</th><th>Limit</th></tr></thead>
   <tbody>
@@ -46,45 +47,52 @@ instance. Values below are recorded but not applied — set
         <td>{% if usage.max_storage_mb %}{{ usage.max_storage_mb }} MB{% else %}unlimited{% endif %}</td></tr>
   </tbody>
 </table>
+</div>
 
-<form method="post" action="{% url 'operator-org-quota' org.slug %}">
+<form method="post" action="{% url 'operator-org-quota' org.slug %}" class="ui-form-section" data-settings-form data-settings-save>
   {% csrf_token %}
   <p class="muted" style="margin-top:0">Zero means no limit.</p>
-  <div class="ui-form-grid">
-    <div class="ui-field narrow">
+  <div class="ui-form-row">
+    <div class="ui-field">
       <label for="quota-max-runs">Max concurrent builds</label>
-      <input class="ui-input" id="quota-max-runs" type="number" name="max_concurrent_runs" min="0" value="{{ quota.max_concurrent_runs|default:0 }}">
+      <input class="ui-input" id="quota-max-runs" type="number" name="max_concurrent_runs" min="0" step="1" value="{{ quota_values.max_concurrent_runs }}"{% if quota_errors.max_concurrent_runs %} aria-invalid="true" aria-describedby="quota-max-runs-error" autofocus{% endif %}>
+      {% if quota_errors.max_concurrent_runs %}<span class="ui-field-error" id="quota-max-runs-error">{{ quota_errors.max_concurrent_runs.0 }}</span>{% endif %}
     </div>
-    <div class="ui-field narrow">
+    <div class="ui-field">
       <label for="quota-minutes">Monthly build minutes</label>
-      <input class="ui-input" id="quota-minutes" type="number" name="monthly_build_minutes" min="0" value="{{ quota.monthly_build_minutes|default:0 }}">
+      <input class="ui-input" id="quota-minutes" type="number" name="monthly_build_minutes" min="0" step="1" value="{{ quota_values.monthly_build_minutes }}"{% if quota_errors.monthly_build_minutes %} aria-invalid="true" aria-describedby="quota-minutes-error"{% endif %}>
+      {% if quota_errors.monthly_build_minutes %}<span class="ui-field-error" id="quota-minutes-error">{{ quota_errors.monthly_build_minutes.0 }}</span>{% endif %}
     </div>
-    <div class="ui-field narrow">
+    <div class="ui-field">
       <label for="quota-studios">Max studios</label>
-      <input class="ui-input" id="quota-studios" type="number" name="max_studios" min="0" value="{{ quota.max_studios|default:0 }}">
+      <input class="ui-input" id="quota-studios" type="number" name="max_studios" min="0" step="1" value="{{ quota_values.max_studios }}"{% if quota_errors.max_studios %} aria-invalid="true" aria-describedby="quota-studios-error"{% endif %}>
+      {% if quota_errors.max_studios %}<span class="ui-field-error" id="quota-studios-error">{{ quota_errors.max_studios.0 }}</span>{% endif %}
     </div>
-    <div class="ui-field narrow">
+    <div class="ui-field">
       <label for="quota-reports">Max reports</label>
-      <input class="ui-input" id="quota-reports" type="number" name="max_reports" min="0" value="{{ quota.max_reports|default:0 }}">
+      <input class="ui-input" id="quota-reports" type="number" name="max_reports" min="0" step="1" value="{{ quota_values.max_reports }}"{% if quota_errors.max_reports %} aria-invalid="true" aria-describedby="quota-reports-error"{% endif %}>
+      {% if quota_errors.max_reports %}<span class="ui-field-error" id="quota-reports-error">{{ quota_errors.max_reports.0 }}</span>{% endif %}
     </div>
-    <div class="ui-field narrow">
+    <div class="ui-field">
       <label for="quota-memory">Max memory per build (MB)</label>
-      <input class="ui-input" id="quota-memory" type="number" name="max_memory_mb" min="0" value="{{ quota.max_memory_mb|default:0 }}">
+      <input class="ui-input" id="quota-memory" type="number" name="max_memory_mb" min="0" step="1" value="{{ quota_values.max_memory_mb }}"{% if quota_errors.max_memory_mb %} aria-invalid="true" aria-describedby="quota-memory-error"{% endif %}>
+      {% if quota_errors.max_memory_mb %}<span class="ui-field-error" id="quota-memory-error">{{ quota_errors.max_memory_mb.0 }}</span>{% endif %}
     </div>
-    <div class="ui-field narrow">
+    <div class="ui-field">
       <label for="quota-storage">Max uploaded files (MB)</label>
-      <input class="ui-input" id="quota-storage" type="number" name="max_storage_mb" min="0" value="{{ quota.max_storage_mb|default:0 }}">
+      <input class="ui-input" id="quota-storage" type="number" name="max_storage_mb" min="0" step="1" value="{{ quota_values.max_storage_mb }}"{% if quota_errors.max_storage_mb %} aria-invalid="true" aria-describedby="quota-storage-error"{% endif %}>
+      {% if quota_errors.max_storage_mb %}<span class="ui-field-error" id="quota-storage-error">{{ quota_errors.max_storage_mb.0 }}</span>{% endif %}
     </div>
     <div class="ui-field ui-field-wide">
       <label for="quota-notes">Notes</label>
-      <input class="ui-input" id="quota-notes" type="text" name="notes" maxlength="400" value="{{ quota.notes|default:'' }}">
+      <input class="ui-input" id="quota-notes" type="text" name="notes" maxlength="400" value="{{ quota_values.notes }}">
     </div>
   </div>
   <div class="ui-form-actions">
     <button type="submit" class="ui-btn primary">Save quota</button>
   </div>
 </form>
-</div>
+</section>
 
 <h2>Studios</h2>
 <div class="panel">
