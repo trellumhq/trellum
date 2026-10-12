@@ -112,7 +112,9 @@
         if (fields.length) {
           var recipientPicker = fields[fields.length - 1].closest('[data-recipient-picker]');
           var picker = recipientPicker && recipientPicker.querySelector('.recipient-picker');
+          var choicePicker = fields[fields.length - 1].closest('.ui-choice-picker');
           if (picker) picker.insertAdjacentElement('afterend', node);
+          else if (choicePicker) choicePicker.insertAdjacentElement('afterend', node);
           else if (recipientPicker) recipientPicker.insertAdjacentElement('beforeend', node);
           else fields[fields.length - 1].insertAdjacentElement('afterend', node);
         }

@@ -84,6 +84,30 @@ def test_single_choice_browse_search_keyboard_and_native_payload(browser):
     context.close()
 
 
+def test_server_validation_is_visible_below_closed_choice_and_keeps_selection(browser):
+    context, page = page_for(browser)
+    page.evaluate("""() => {
+        const form = document.querySelector('form');
+        form.setAttribute('data-settings-form', '');
+        form.setAttribute('data-settings-save', '');
+        const zone = document.querySelector('#zone');
+        zone.value = 'Europe/Amsterdam';
+        zone.dispatchEvent(new Event('change', {bubbles:true}));
+        window.fetch = () => Promise.resolve(new Response(JSON.stringify({
+            ok:false, errors:{timezone:['This timezone is unavailable for this schedule.']}
+        }), {status:400, headers:{'Content-Type':'application/json'}}));
+    }""")
+    page.add_script_tag(content=(ROOT / 'static/settings-forms.js').read_text(encoding='utf-8'))
+    page.get_by_role('button', name='Save', exact=True).click()
+    error = page.locator('[data-settings-error]')
+    expect(error).to_be_visible()
+    trigger = page.locator('.ui-choice-picker .ui-picker-trigger')
+    expect(trigger).to_have_attribute('aria-invalid', 'true')
+    expect(page.locator('#zone')).to_have_value('Europe/Amsterdam')
+    assert error.bounding_box()['y'] >= trigger.bounding_box()['y'] + trigger.bounding_box()['height']
+    context.close()
+
+
 def test_required_single_choice_focuses_visible_trigger_and_mirrors_errors(browser):
     context, page = page_for(browser)
     trigger = page.locator(".ui-choice-picker .ui-picker-trigger")
