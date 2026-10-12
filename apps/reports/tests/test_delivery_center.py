@@ -516,7 +516,7 @@ class TestStudioDeliveryPages:
                 'recipient_ids': [user.pk], **changes}
 
     @pytest.mark.parametrize('enhanced', [False, True])
-    def test_create_and_edit_return_to_list_with_shared_validation(self, enhanced, login, developer, prefix, report_row):
+    def test_create_and_edit_navigation_and_shared_validation(self, enhanced, login, developer, prefix, report_row):
         from apps.reports.models import EmailSchedule
         client = login(developer)
         headers = {'HTTP_X_TRELLUM_FORM': '1'} if enhanced else {}
@@ -532,12 +532,37 @@ class TestStudioDeliveryPages:
         assert row.created_by == developer and row.recipients.get() == developer
         assert client.get(f'{prefix}/deliveries/{row.pk}/edit').status_code == 200
         response = client.post(f'{prefix}/api/reports/{report_row.slug}/schedules/{row.pk}', {**body, 'send_hour': '13'}, **headers)
-        assert (response.json()['redirect'] if enhanced else response.url) == f'{prefix}/deliveries'
+        if enhanced:
+            assert response.json()['ok'] and 'redirect' not in response.json()
+            assert response.json()['values']['send_time'] == '13:15'
+        else:
+            assert response.url == f'{prefix}/deliveries'
         row.refresh_from_db()
         assert row.send_hour == 13 and row.delivery_revision == 1
         listing = client.get(f'{prefix}/deliveries').content.decode()
         assert f'{prefix}/deliveries/{row.pk}/edit' in listing and 'data-schedule-editor' not in listing
         assert 'Add delivery' in listing and '>Deliveries<' in listing
+
+    def test_native_time_accepts_arbitrary_minutes_and_bad_time_is_inline(self, login, developer, prefix, report_row):
+        from apps.reports.models import EmailSchedule
+        client = login(developer)
+        create = client.post(f'{prefix}/deliveries/new', {**self.body(developer, report_row), 'send_time': '18:37'})
+        assert create.status_code == 302
+        row = EmailSchedule.objects.get(report=report_row)
+        assert (row.send_hour, row.send_minute) == (18, 37)
+        invalid = client.post(f'{prefix}/api/reports/{report_row.slug}/schedules/{row.pk}',
+                              {**self.body(developer, report_row), 'send_time': ''}, HTTP_X_TRELLUM_FORM='1')
+        assert invalid.status_code == 400 and 'send_time' in invalid.json()['errors']
+        row.refresh_from_db()
+        assert (row.send_hour, row.send_minute) == (18, 37)
+
+    def test_schedules_json_includes_manifest_resolved_picker_assets(self, login, developer, prefix, report_row):
+        response = login(developer).get(f'{prefix}/api/reports/{report_row.slug}/schedules')
+        assert response.status_code == 200
+        assets = response.json()['picker_assets']
+        assert set(assets) == {'choice_css', 'choice_js', 'recipient_css', 'recipient_js'}
+        assert all(value.endswith(name) for value, name in zip(assets.values(),
+            ('choice-picker.css', 'choice-picker.js', 'recipient-picker.css', 'recipient-picker.js')))
 
     @pytest.mark.parametrize('action', ['create', 'edit'])
     def test_invalid_native_and_ajax_keep_draft_without_mutation(self, action, login, developer, prefix, report_row):
@@ -613,7 +638,8 @@ class TestStudioDeliveryPages:
         assert response.status_code == 302 and response.url == f'{prefix}/deliveries/{row.pk}/edit'
         assert 'owner_id' not in client.get(response.url).context['form'].fields
         assert f'{prefix}/deliveries/{row.pk}/edit' in client.get(f'{prefix}/deliveries').content.decode()
-        assert client.post(f'{prefix}/api/reports/{report_row.slug}/schedules/{row.pk}', self.body(viewer, report_row, return_to='/deliveries'), HTTP_X_TRELLUM_FORM='1').json()['redirect'] == f'{prefix}/deliveries'
+        result = client.post(f'{prefix}/api/reports/{report_row.slug}/schedules/{row.pk}', self.body(viewer, report_row, return_to='/deliveries'), HTTP_X_TRELLUM_FORM='1').json()
+        assert result['ok'] and 'redirect' not in result
 
     def test_create_requires_csrf_and_rejects_ineligible_recipients(self, developer, other_viewer, prefix, report_row, login, make_user, org):
         from django.test import Client

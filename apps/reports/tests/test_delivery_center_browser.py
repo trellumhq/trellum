@@ -73,7 +73,7 @@ def test_list_add_edit_and_cancel_use_dedicated_pages(delivery_browser):
     expect(page).to_have_url('https://example.test' + listing)
     page.get_by_role('link', name='Edit', exact=True).click()
     expect(page).to_have_url('https://example.test' + edit)
-    page.locator('[name=timezone]').fill('Europe/Amsterdam')
+    page.locator('[name=timezone]').select_option('Europe/Amsterdam')
     page.get_by_role('link', name='Cancel', exact=True).click()
     expect(page).to_have_url('https://example.test' + listing)
 
@@ -118,11 +118,12 @@ def test_ajax_failure_retains_draft_focus_scroll_and_success_returns_list(delive
     pending = []
     page.route('**/schedules/*', lambda route: pending.append(route))
     page.goto('https://example.test' + edit)
+    page.add_script_tag(content=(ROOT / 'static/choice-picker.js').read_text(encoding='utf-8'))
     page.add_script_tag(content=(ROOT / 'static/recipient-picker.js').read_text(encoding='utf-8'))
     init_forms(page)
     form = page.locator('#delivery-schedule-form')
-    hour = form.locator('[name=send_hour]')
-    hour.fill('10')
+    hour = form.locator('[name=send_time]')
+    hour.fill('10:37')
     hour.focus()
     page.evaluate('window.scrollTo(0, 450); window.originalDocument = document')
     position = page.evaluate('scrollY')
@@ -130,19 +131,20 @@ def test_ajax_failure_retains_draft_focus_scroll_and_success_returns_list(delive
     page.wait_for_function('document.querySelector("#delivery-schedule-form").dataset.settingsState === "saving"')
     assert len(pending) == 1
     pending.pop().fulfill(status=400, json={'ok': False, 'message': 'Invalid hour.', 'errors': {
-        'send_hour': ['Must be 0-23.'], 'recipient_ids': ['Choose an eligible person.']}})
-    expect(hour).to_have_attribute('aria-invalid', 'true')
-    expect(hour).to_have_value('10')
-    error = form.locator('.recipient-picker + [data-settings-error]')
+        'send_time': ['Enter a valid time.'], 'recipient_ids': ['Choose an eligible person.']}})
+    expect(hour).to_have_value('10:37')
+    error = form.locator('[data-settings-error]').last
     expect(error).to_be_visible()
     expect(error).to_have_text('Choose an eligible person.')
-    assert page.evaluate('document === originalDocument && document.activeElement.name === "send_hour"')
+    assert page.evaluate('document === originalDocument && document.activeElement.name === "send_time"')
     assert page.evaluate('scrollY') == position
-    hour.fill('11')
+    hour.fill('11:42')
     form.evaluate('form => form.requestSubmit()')
     page.wait_for_function('document.querySelector("#delivery-schedule-form").dataset.settingsState === "saving"')
-    pending.pop().fulfill(json={'ok': True, 'message': 'Saved.', 'redirect': listing})
-    expect(page).to_have_url('https://example.test' + listing)
+    pending.pop().fulfill(json={'ok': True, 'message': 'Saved.', 'values': {'send_time': '11:42'}})
+    page.wait_for_function('document.querySelector("#delivery-schedule-form").dataset.settingsState === "saved"')
+    expect(page).to_have_url('https://example.test' + edit)
+    expect(hour).to_have_value('11:42')
 
 
 def test_delivery_recipient_picker_supports_multiple_search_chips_and_keyboard(delivery_browser):
@@ -150,10 +152,11 @@ def test_delivery_recipient_picker_supports_multiple_search_chips_and_keyboard(d
     page.set_viewport_size({'width': 390, 'height': 844})
     page.goto('https://example.test' + create)
     page.add_style_tag(content=(ROOT / 'static/ui.css').read_text(encoding='utf-8'))
+    page.add_style_tag(content=(ROOT / 'static/choice-picker.css').read_text(encoding='utf-8'))
     page.add_style_tag(content=(ROOT / 'static/recipient-picker.css').read_text(encoding='utf-8'))
     page.evaluate('''() => {
       const field = document.querySelector('[data-recipient-picker]');
-      const list = Array.from(field.children).find(child => child.querySelector('input[type="checkbox"]'));
+      const list = field.querySelector('[data-recipient-type="people"]');
       for (let i = 0; i < 100; i++) {
         const label = document.createElement('label');
         const input = document.createElement('input');
@@ -161,14 +164,18 @@ def test_delivery_recipient_picker_supports_multiple_search_chips_and_keyboard(d
         label.append(input, 'Person ' + i); list.append(label);
       }
     }''')
+    page.add_script_tag(content=(ROOT / 'static/choice-picker.js').read_text(encoding='utf-8'))
     page.add_script_tag(content=(ROOT / 'static/recipient-picker.js').read_text(encoding='utf-8'))
-    field = page.locator('[data-recipient-picker]').first
-    search = field.locator('input[type=search]')
-    results = field.locator('.recipient-picker-results')
-    expect(results).to_be_hidden()
+    field = page.locator('[data-recipient-picker]')
+    search = field.locator('.ui-picker-search')
+    results = field.locator('.ui-picker-options')
+    popup = field.locator('.ui-picker-popup')
+    expect(popup).to_be_hidden()
+    field.locator('.ui-picker-trigger').click()
     search.focus()
-    expect(results).to_be_visible()
-    assert len(results.locator('label:visible').all()) == 50
+    expect(popup).to_be_visible()
+    assert len(results.locator('label:visible').all()) == 103
+    assert results.evaluate('(el) => el.scrollHeight > el.clientHeight')
     search.fill('Person 99')
     assert len(results.locator('label:visible').all()) == 1
     search.press('ArrowDown')
@@ -182,34 +189,68 @@ def test_delivery_recipient_picker_supports_multiple_search_chips_and_keyboard(d
     expect(second_choice).to_be_checked()
     expect(field.locator('.recipient-picker-selected .recipient-picker-chip')).to_have_count(2)
     search.fill('no such group')
-    expect(field.locator('.recipient-picker-empty')).to_have_text('No matches.')
+    expect(field.locator('.ui-picker-message')).to_have_text('No matches.')
     field.locator('.recipient-picker-selected button[aria-label="Remove Person 99"]').click()
-    expect(search).to_be_focused()
+    expect(field.locator('.recipient-picker-selected button').first).to_be_focused()
     assert page.locator('#delivery-schedule-form').evaluate(
         "form => new FormData(form).getAll('recipient_ids')").count('picker-test-99') == 0
-    expect(page.locator('[data-picker-empty-state] .recipient-picker-empty')).to_have_text(
-        'No permission groups are available.')
+    field.locator('[data-recipient-filter=groups]').click()
+    search.fill('')
+    expect(field.locator('.ui-picker-message')).to_have_text('No groups are available.')
     search.press('Escape')
-    expect(results).to_be_hidden()
-    search.press('ArrowDown')
-    expect(results).to_be_visible()
+    expect(popup).to_be_hidden()
+    field.locator('.ui-picker-trigger').click()
+    expect(popup).to_be_visible()
     search.press('Escape')
-    expect(results).to_be_hidden()
-    search.press('ArrowDown')
-    expect(results).to_be_visible()
-    page.locator('[name=send_hour]').focus()
-    expect(results).to_be_hidden()
+    expect(popup).to_be_hidden()
+    field.locator('.ui-picker-trigger').click()
+    expect(popup).to_be_visible()
+    page.locator('[name=send_time]').focus()
+    expect(popup).to_be_hidden()
     assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
-    roles = page.locator('[data-recipient-picker]').nth(1)
-    roles.locator('input[type=search]').focus()
-    roles.locator('.recipient-picker-results label').nth(0).click()
-    roles.locator('.recipient-picker-results label').nth(1).click()
-    expect(roles.locator('.recipient-picker-selected .recipient-picker-chip')).to_have_count(2)
+    field.locator('.ui-picker-trigger').click()
+    roles = field
+    roles.locator('[data-recipient-filter=roles]').click()
+    roles.locator('.ui-picker-options label:visible').nth(0).click()
+    roles.locator('.ui-picker-options label:visible').nth(1).click()
+    expect(roles.locator('.recipient-picker-selected .recipient-picker-chip')).to_have_count(3)
     assert len(page.locator('#delivery-schedule-form').evaluate(
         "form => new FormData(form).getAll('recipient_roles')")) == 2
-    roles.locator('.recipient-picker-selected button').first.click()
+    roles.locator('.recipient-picker-selected button').last.click()
     assert len(page.locator('#delivery-schedule-form').evaluate(
         "form => new FormData(form).getAll('recipient_roles')")) == 1
+
+
+def test_new_delivery_browser_timezone_default_stays_pristine(delivery_browser):
+    page, pages, listing, edit, create, api, browser = delivery_browser
+    if browser.browser_type.name != 'chromium':
+        pytest.skip('Rendered visual evidence is captured in Chromium.')
+    page.goto('https://example.test' + create)
+    page.add_style_tag(content=(ROOT / 'static/ui.css').read_text(encoding='utf-8'))
+    page.add_style_tag(content=(ROOT / 'static/themes.generated.css').read_text(encoding='utf-8'))
+    page.add_style_tag(content=(ROOT / 'static/console-shell.css').read_text(encoding='utf-8'))
+    page.add_style_tag(content=(ROOT / 'static/choice-picker.css').read_text(encoding='utf-8'))
+    page.add_style_tag(content=(ROOT / 'static/recipient-picker.css').read_text(encoding='utf-8'))
+    page.add_script_tag(content=(ROOT / 'static/choice-picker.js').read_text(encoding='utf-8'))
+    page.add_script_tag(content=(ROOT / 'static/recipient-picker.js').read_text(encoding='utf-8'))
+    init_forms(page)
+    form = page.locator('#delivery-schedule-form')
+    form.locator('[name=timezone]').dispatch_event('change')
+    form.locator('[name=send_time]').focus()
+    expect(form).to_have_attribute('data-settings-state', 'clean')
+    page.evaluate("Array.from(document.querySelectorAll('style')).filter(style => style.textContent.includes('min-height: 2500px')).forEach(style => style.remove())")
+    evidence = ROOT.parent / '.artifacts' / 'ux-delivery-forms'
+    evidence.mkdir(parents=True, exist_ok=True)
+    page.emulate_media(reduced_motion='reduce')
+    form.locator('[name=send_time]').evaluate('node => node.blur()')
+    for theme in ('light', 'dark'):
+        page.locator('html').evaluate('(node, theme) => node.dataset.theme = theme', theme)
+        page.locator('.tl-console-shell').evaluate('(node, theme) => node.dataset.consoleTheme = theme', theme)
+        page.locator('body').evaluate("node => node.classList.add('mgmt')")
+        for name, width, height in [('desktop', 1440, 1100), ('mobile', 390, 844)]:
+            page.set_viewport_size({'width': width, 'height': height})
+            assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+            page.screenshot(path=str(evidence / f'delivery-form-{name}-{theme}.png'), full_page=True, animations='disabled')
 
 
 def test_native_failed_edit_keeps_draft_and_cancel_returns_list(delivery_browser):
@@ -222,8 +263,7 @@ def test_native_failed_edit_keeps_draft_and_cancel_returns_list(delivery_browser
         native.goto('https://example.test' + edit)
         expect(native.locator('[data-recipient-picker] input[type=search]')).to_have_count(0)
         expect(native.locator('[data-recipient-picker] input[type=checkbox]').first).to_be_visible()
-        expect(native.locator('[data-picker-fallback]')).to_be_visible()
-        native.locator('[name=timezone]').fill('Wrong/Zone')
+        native.locator('[name=timezone]').select_option('UTC')
         native.get_by_role('button', name='Save delivery', exact=True).click()
         expect(native.locator('[name=timezone]')).to_have_value('Wrong/Zone')
         expect(native.locator('#delivery-schedule-form')).to_contain_text('timezone')

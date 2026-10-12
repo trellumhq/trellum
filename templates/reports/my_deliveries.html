@@ -6,14 +6,14 @@
 <div class="ui-label page-kicker">Studio</div>
 <h1>Deliveries</h1>
 <p class="muted">{% if legacy_deliveries %}Shared schedules for the reports you can access, with links to each Studio’s Deliveries page.{% else %}Shared scheduled emails for reports and analyses in this studio. Developers and admins can manage schedules; viewers have read-only access.{% endif %}</p>
+{% if studio_deliveries and can_add_delivery %}<a class="ui-btn primary" href="{{ delivery_return_to }}/new">Add delivery</a>{% endif %}
 </header>
-{% if studio_deliveries %}<p>{% if can_add_delivery %}<a class="ui-btn primary" href="{{ delivery_return_to }}/new">Add delivery</a>{% endif %}</p>{% endif %}
 {% if legacy_deliveries %}<p>Open <strong>Deliveries</strong> in your Studio navigation to add or manage schedules for that studio.</p>{% for studio in shell_studios %}<a class="ui-btn ghost" href="/s/{{ studio.org.slug }}/{{ studio.slug }}/deliveries">{{ studio.name }} · Deliveries</a>{% endfor %}{% endif %}
 <form method="get" class="panel delivery-filters {% if legacy_deliveries %}global-filters{% else %}studio-filters{% endif %}" aria-label="Filter deliveries">
 <label>Search <input type="search" name="q" value="{{ request.GET.q }}"></label>
 {% if legacy_deliveries %}<label>Organization <input name="org" value="{{ request.GET.org }}"></label>
 <label>Studio <input name="studio" value="{{ request.GET.studio }}"></label>{% endif %}
-<label>Report <select name="report"><option value="">All reports</option>{% if selected_report_filter|slice:":5" == "slug:" %}<option value="{{ selected_report_filter }}" selected>Current report filter</option>{% endif %}{% for report in report_filter_options %}<option value="id:{{ report.pk }}"{% if selected_report_id == report.pk %} selected{% endif %}>{{ report.name|default:report.slug }}{% if legacy_deliveries %} · {{ report.studio.org.name }} / {{ report.studio.name }}{% endif %}</option>{% endfor %}</select></label>
+<label>Report <select name="report" data-choice-picker><option value="">All reports</option>{% if selected_report_filter|slice:":5" == "slug:" %}<option value="{{ selected_report_filter }}" selected>Current report filter</option>{% endif %}{% for report in report_filter_options %}<option value="id:{{ report.pk }}"{% if selected_report_id == report.pk %} selected{% endif %}>{{ report.name|default:report.slug }}{% if legacy_deliveries %} · {{ report.studio.org.name }} / {{ report.studio.name }}{% endif %}</option>{% endfor %}</select></label>
 <label title="Creator name, email or former user">Creator <input name="creator" placeholder="Name, email or former user" title="Creator name, email or former user" value="{{ request.GET.creator }}"></label>
 <label>Enabled <select name="enabled"><option value="">All</option><option value="true" {% if request.GET.enabled == 'true' %}selected{% endif %}>Enabled</option><option value="false" {% if request.GET.enabled == 'false' %}selected{% endif %}>Disabled</option></select></label>
 <button class="ui-btn ghost" type="submit">Filter</button></form>

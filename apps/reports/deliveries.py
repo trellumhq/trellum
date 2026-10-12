@@ -1,5 +1,5 @@
 """Shared authorization and live delivery policy for schedules and alert mail."""
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 from datetime import timedelta
 
 from apscheduler.triggers.cron import CronTrigger
@@ -152,7 +152,19 @@ class DeliveryPolicyForm(forms.Form):
         choices=[("", "Inherit / enabled on a fresh instance"), ("true", "Enabled"), ("false", "Disabled")],
         required=False, empty_value=None, coerce=lambda value: value == "true", label="New schedules: enabled",
     )
-    delivery_default_timezone = forms.CharField(required=False, max_length=64, label="New schedules: timezone (blank inherits)")
+    delivery_default_timezone = forms.ChoiceField(
+        choices=[("", "Inherit")]+[(zone, zone.replace("_", " ")) for zone in sorted(available_timezones())],
+        required=False, label="New schedules: timezone (blank inherits)",
+        widget=forms.Select(attrs={"data-choice-picker": ""}),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        value = self.data.get(self.add_prefix("delivery_default_timezone")) if self.is_bound else None
+        if not value:
+            value = self.initial.get("delivery_default_timezone")
+        if value and value not in dict(self.fields["delivery_default_timezone"].choices):
+            self.fields["delivery_default_timezone"].choices = [*self.fields["delivery_default_timezone"].choices, (value, value)]
 
     def clean_delivery_default_timezone(self):
         value = self.cleaned_data["delivery_default_timezone"]
@@ -174,11 +186,20 @@ class DeliveryPolicyForm(forms.Form):
 
 
 class ScheduleSettingsForm(forms.ModelForm):
+    send_time = forms.TimeField(required=False, label="Local send time", input_formats=["%H:%M"],
+                                widget=forms.TimeInput(format="%H:%M", attrs={"type": "time", "step": "60"}))
+    weekday = forms.ChoiceField(choices=[(i, day) for i, day in enumerate(
+        ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"))])
+    month_day = forms.ChoiceField(choices=[(i, str(i)) for i in range(1, 29)])
     recipient_ids = forms.MultipleChoiceField(required=False, label="People", widget=forms.CheckboxSelectMultiple)
     recipient_roles = forms.MultipleChoiceField(required=False, widget=forms.CheckboxSelectMultiple, choices=[
         ("admins", "All admins"), ("developers", "All developers"), ("everyone", "Everyone in studio"),
     ], label="Studio roles")
     recipient_group_ids = forms.MultipleChoiceField(required=False, label="Permission groups", widget=forms.CheckboxSelectMultiple)
+    timezone = forms.ChoiceField(
+        choices=[(zone, zone.replace("_", " ")) for zone in sorted(available_timezones())],
+        label="Timezone", widget=forms.Select(attrs={"data-choice-picker": ""}),
+    )
 
     class Meta:
         model = EmailSchedule
@@ -186,8 +207,26 @@ class ScheduleSettingsForm(forms.ModelForm):
 
     def __init__(self, *args, members, groups, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["recipient_ids"].choices = [(row["id"], row["email"]) for row in members]
+        self.fields["recipient_ids"].choices = []
+        for row in members:
+            name, email = row.get("name") or row["email"], row["email"]
+            self.fields["recipient_ids"].choices.append((row["id"], f"{name} · {email}" if name != email else email))
         self.fields["recipient_group_ids"].choices = [(row["id"], row["name"]) for row in groups]
+        saved_timezone = getattr(self.instance, "timezone", None)
+        if saved_timezone and saved_timezone not in dict(self.fields["timezone"].choices):
+            self.fields["timezone"].choices = [*self.fields["timezone"].choices, (saved_timezone, saved_timezone)]
+        self.fields["recipient_ids"].widget.attrs.update({"data-recipient-type": "people"})
+        self.fields["recipient_roles"].widget.attrs.update({"data-recipient-type": "roles"})
+        self.fields["recipient_group_ids"].widget.attrs.update({"data-recipient-type": "groups"})
+        self.fields["freq"].widget.attrs["class"] = "ui-input"
+        self.fields["timezone"].widget.attrs.update({"class": "ui-input", "data-choice-picker": ""})
+        self.fields["weekday"].widget.attrs["class"] = "ui-input"
+        self.fields["month_day"].widget.attrs["class"] = "ui-input"
+        for name in ("send_hour", "send_minute"):
+            self.fields[name].required = False
+            self.fields[name].widget = forms.HiddenInput()
+        self.fields["enabled"].widget.attrs["class"] = "ui-check-row"
+        self.fields["attach_pdf"].widget.attrs["class"] = "ui-check-row"
         if not groups:
             self.fields["recipient_group_ids"].help_text = "No permission groups are available."
         self.fields["recipient_ids"].initial = list(self.instance.recipients.values_list("pk", flat=True)) if self.instance.pk else []

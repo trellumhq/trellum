@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Delete delivery schedule — trellum{% endblock %}
 {% block content %}
-<header class="page-head"><h1>Delete delivery schedule</h1></header>
-<div class="panel">
+<header class="page-head ui-form-rail"><div class="ui-label page-kicker">Studio · Deliveries</div><h1>Delete delivery schedule</h1><p>{{ report.name|default:report.slug }}</p></header>
+<section class="ui-form-section ui-form-rail" aria-labelledby="delete-delivery-title"><h2 id="delete-delivery-title">Confirm deletion</h2>
   <p>{{ confirmation }}</p>
   <form method="post">
     {% csrf_token %}
@@ -12,5 +12,5 @@
     <button type="submit" class="ui-btn danger">Confirm deletion</button>
     <a class="ui-btn ghost" href="{{ return_to }}">Cancel</a>
   </form>
-</div>
+</section>
 {% endblock %}

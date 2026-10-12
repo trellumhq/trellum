@@ -1,14 +1,13 @@
 <p class="muted">Pause covers scheduled reports and all AI-alert mail, including owner budget warnings. Alert evaluations continue and use their normal budget. Build failure/recovery, account/security, on-demand personal samples and explicit operator test mail are excluded. Instance pause always wins; resume sends future occurrences only.</p>
-<div class="panel">
-<form method="post" action="{{ delivery_policy_action }}" id="delivery-policy-form" data-settings-form data-settings-save>
+<form method="post" action="{{ delivery_policy_action }}" id="delivery-policy-form" class="ui-form-rail" data-settings-form data-settings-save>
 {% csrf_token %}<input type="hidden" name="action" value="delivery_policy">
 {{ delivery_policy_form.non_field_errors }}
+<section class="ui-form-section"><h2>Delivery defaults</h2>
 <div class="ui-field"><label class="ui-check-row" for="{{ delivery_policy_form.deliveries_paused.id_for_label }}">{{ delivery_policy_form.deliveries_paused }} {{ delivery_policy_form.deliveries_paused.label }}</label>{{ delivery_policy_form.deliveries_paused.errors }}</div>
-<div class="ui-form-grid">
+<div class="ui-form-row">
 <div class="ui-field"><label for="{{ delivery_policy_form.delivery_default_enabled.id_for_label }}">{{ delivery_policy_form.delivery_default_enabled.label }}</label>{{ delivery_policy_form.delivery_default_enabled }}{{ delivery_policy_form.delivery_default_enabled.errors }}</div>
 <div class="ui-field"><label for="{{ delivery_policy_form.delivery_default_timezone.id_for_label }}">{{ delivery_policy_form.delivery_default_timezone.label }}</label>{{ delivery_policy_form.delivery_default_timezone }}{{ delivery_policy_form.delivery_default_timezone.errors }}</div>
 </div>
 <p class="muted">Defaults apply to new email schedules only. Existing schedules and AI alerts keep their saved configuration. Blank organization defaults inherit the instance; fresh instance defaults are enabled and UTC.</p>
 <button class="ui-btn primary" type="submit">Save delivery policy</button>
-</form>
-</div>
+</section></form>

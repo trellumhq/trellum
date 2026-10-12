@@ -1138,6 +1138,19 @@ def _delivery_form_page(request, schedule, *, errors=None, status=200):
     chips = _recipient_payload(request, schedule.report)
     form = deliveries.ScheduleSettingsForm(request.POST if request.method == "POST" else None,
         instance=schedule, members=chips["members"], groups=chips["groups"])
+    submitted_zone = request.POST.get("timezone") if request.method == "POST" else None
+    if submitted_zone and submitted_zone not in dict(form.fields["timezone"].choices):
+        form.fields["timezone"].choices = [*form.fields["timezone"].choices, (submitted_zone, submitted_zone)]
+    if not form.is_bound:
+        form.initial["send_time"] = f"{schedule.send_hour:02d}:{schedule.send_minute:02d}"
+    send_time = request.POST.get("send_time")
+    if send_time is None and request.method == "POST":
+        try:
+            hour, minute = int(request.POST["send_hour"]), int(request.POST["send_minute"])
+            if 0 <= hour <= 23 and 0 <= minute <= 59:
+                send_time = f"{hour:02d}:{minute:02d}"
+        except (KeyError, TypeError, ValueError):
+            pass
     if request.method == "POST":
         form.is_valid()
         for field, items in (errors or {}).items():
@@ -1146,11 +1159,20 @@ def _delivery_form_page(request, schedule, *, errors=None, status=200):
     return render(request, "reports/delivery_form.html", {
         "form": form, "schedule": schedule, "report": schedule.report,
         "return_to": _delivery_return_url(request),
+        "send_time": send_time if send_time is not None else f"{schedule.send_hour:02d}:{schedule.send_minute:02d}",
+        "send_time_invalid": bool(form.errors.get("send_time")),
+        "browser_timezone_default": request.method == "GET" and not schedule.pk,
     }, status=status)
 
 
 def _schedule_form_body(request):
     body = request.POST.dict()
+    native_time = request.POST.get("send_time")
+    if "send_time" in request.POST:
+        match = re.fullmatch(r"([01]\d|2[0-3]):([0-5]\d)", native_time)
+        if not match:
+            raise ValueError("Invalid local time")
+        body["send_hour"], body["send_minute"] = map(int, match.groups())
     for key in _RECIPIENT_BODY_KEYS:
         if request.POST.get("action") != "toggle":
             body[key] = request.POST.getlist(key)
@@ -1194,6 +1216,8 @@ def api_email_schedules(request, org_slug, studio_slug, slug):  # noqa: ARG001
             if is_recipient:
                 subscribed_count += 1
             visible.append(_schedule_dict(schedule, viewer=request.user, request=request))
+        from django.contrib.staticfiles.storage import staticfiles_storage
+
         return JsonResponse(
             {
                 "schedules": visible,
@@ -1201,13 +1225,18 @@ def api_email_schedules(request, org_slug, studio_slug, slug):  # noqa: ARG001
                 "default_timezone": deliveries.schedule_defaults(request.org)["timezone"],
                 "default_enabled": deliveries.schedule_defaults(request.org)["enabled"],
                 "subscribed_count": subscribed_count,
+                "picker_assets": {
+                    "choice_css": staticfiles_storage.url("choice-picker.css"),
+                    "choice_js": staticfiles_storage.url("choice-picker.js"),
+                    "recipient_css": staticfiles_storage.url("recipient-picker.css"),
+                    "recipient_js": staticfiles_storage.url("recipient-picker.js"),
+                },
             }
         )
 
     if not deliveries.can_manage_schedule(request, EmailSchedule(report=report)):
         raise Http404
     is_form = request.content_type != "application/json"
-    body = _schedule_form_body(request) if is_form else json_body(request)
     schedule = EmailSchedule(report=report, created_by=request.user, **deliveries.schedule_defaults(request.org))
     def respond_error(message, errors=None):
         if is_settings_request(request):
@@ -1215,6 +1244,10 @@ def api_email_schedules(request, org_slug, studio_slug, slug):  # noqa: ARG001
         if is_form:
             return _delivery_form_page(request, schedule, errors=errors or {"__all__": [message]}, status=400)
         return JsonResponse({"ok": False, "error": message, "errors": errors or {}}, status=400)
+    try:
+        body = _schedule_form_body(request) if is_form else json_body(request)
+    except ValueError:
+        return respond_error("Enter a valid local send time.", {"send_time": ["Enter a valid time (HH:MM)."]})
     try:
         _apply_schedule_fields(schedule, body)
     except (TypeError, ValueError):
@@ -1280,7 +1313,10 @@ def api_email_schedule_detail(request, org_slug, studio_slug, slug, schedule_id)
 
     body = {} if is_form else json_body(request)
     if is_form:
-        body = _schedule_form_body(request)
+        try:
+            body = _schedule_form_body(request)
+        except ValueError:
+            return respond_error("Enter a valid local send time.", {"send_time": ["Enter a valid time (HH:MM)."]})
     if "owner_id" in body:
         return respond_error("The creator is audit history and cannot be reassigned.")
     try:
@@ -1325,7 +1361,8 @@ def api_email_schedule_detail(request, org_slug, studio_slug, slug, schedule_id)
           before=before, after=deliveries.schedule_snapshot(schedule))
     if is_settings_request(request):
         return settings_success(request, "Schedule saved.", schedule=_schedule_dict(schedule, viewer=request.user, request=request),
-                                redirect_url=_delivery_return_url(request) if request.POST.get("delivery_page") == "1" else None)
+                                values={"send_time": f"{schedule.send_hour:02d}:{schedule.send_minute:02d}",
+                                        "timezone": schedule.timezone})
     if is_form:
         messages.success(request, "Schedule saved.")
         return redirect(_delivery_return_url(request))
