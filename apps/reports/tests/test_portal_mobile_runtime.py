@@ -229,6 +229,7 @@ def test_mobile_category_picker_opens_searches_and_survives_rerender(mobile_brow
     try:
         page.goto("http://portal.test/s/acme/analytics/")
         page.locator('#content [data-slug="report-1"]').wait_for()
+        page.wait_for_load_state("networkidle")
         page.wait_for_function("window._favoritesReady || window._favoritesFailed")
         assert page.locator("#folderTabs .ui-choice-picker").count() == 1
         trigger = page.locator("#folderTabs .ui-picker-trigger")
@@ -237,20 +238,28 @@ def test_mobile_category_picker_opens_searches_and_survives_rerender(mobile_brow
         page.add_style_tag(content="*,*::before,*::after{animation:none!important;transition:none!important}")
         page.screenshot(path=artifacts / "category-picker-390-light.png", full_page=True)
         page.evaluate("TrellumConsoleShell.setTheme('dark')")
-        page.locator("#folderTabs select").evaluate("el => el._trellumChoice.open()")
         page.screenshot(path=artifacts / "category-picker-390-dark.png", full_page=True)
         page.evaluate("TrellumConsoleShell.setTheme('light')")
-        page.locator("#folderTabs select").evaluate("el => el._trellumChoice.open()")
+        if trigger.get_attribute("aria-expanded") != "true":
+            trigger.click()
         choices = page.locator("#folderTabs .ui-picker-option")
         assert choices.count() >= 21
         page.locator("#folderTabs .ui-picker-search").fill("Category 20")
         assert page.locator("#folderTabs .ui-picker-option").count() == 1
+        page.evaluate("setTimeout(() => { reports.push({...reports[0], id:21, slug:'report-21', name:'Report 21', category:'Category 21'}); render(); }, 20)")
+        page.wait_for_function("document.querySelector('#folderTabs select option[value=\\\"Category 21\\\"]')")
+        assert page.locator("#folderTabs .ui-picker-search").input_value() == "Category 20"
+        assert page.locator("#folderTabs .ui-picker-trigger").get_attribute("aria-expanded") == "true"
+        assert page.locator("#folderTabs .ui-picker-search").evaluate("el => document.activeElement === el")
+        assert page.locator("#folderTabs .ui-picker-option").count() == 1
+        page.locator("#folderTabs .ui-picker-search").fill("Category 21")
+        assert page.locator("#folderTabs .ui-picker-option").count() == 1
         page.locator("#folderTabs .ui-picker-option").click()
-        assert page.locator('#content [data-slug="report-20"]').count() == 1
+        assert page.locator('#content [data-slug="report-21"]').count() == 1
         assert page.locator('#content [data-slug="report-1"]').count() == 0
         page.evaluate("render(); render()")
         assert page.locator("#folderTabs .ui-choice-picker").count() == 1
-        assert page.locator("#folderTabs select").input_value() == "Category 20"
+        assert page.locator("#folderTabs select").input_value() == "Category 21"
     finally:
         context.close()
 

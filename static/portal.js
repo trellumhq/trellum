@@ -769,7 +769,7 @@ function categorySelectHtml(cats, favCount, recentCount) {
         }).join('') + '</select></label>';
 }
 
-function renderTabs() {
+function renderTabs(preservePickerState) {
     const cats = Array.from(getCategories());
     const tabsEl = document.getElementById('folderTabs');
     const favCount = dashboardReports().filter(function(r) { return isFav(r.slug); }).length;
@@ -777,8 +777,27 @@ function renderTabs() {
     const recentCount = recentSlugs.filter(function(s) { return dashboardReports().some(function(r) { return r.slug === s; }); }).length;
 
     if (window.matchMedia('(max-width: 767px)').matches) {
+        const currentSelect = tabsEl.querySelector('.category-select select');
+        const currentPicker = currentSelect && currentSelect._trellumChoice;
+        const pickerState = preservePickerState !== false && currentPicker ? {
+            query: currentPicker.search.value,
+            open: !currentPicker.popup.hidden,
+            focusSearch: document.activeElement === currentPicker.search,
+            focusTrigger: document.activeElement === currentPicker.trigger
+        } : null;
         tabsEl.innerHTML = categorySelectHtml(cats, favCount, recentCount);
-        if (window.TrellumChoices) window.TrellumChoices.init(tabsEl);
+        if (window.TrellumChoices) {
+            window.TrellumChoices.init(tabsEl);
+            const nextSelect = tabsEl.querySelector('.category-select select');
+            const nextPicker = nextSelect && nextSelect._trellumChoice;
+            if (pickerState && nextPicker) {
+                if (pickerState.open) nextPicker.open();
+                nextPicker.search.value = pickerState.query;
+                nextPicker.refresh();
+                if (pickerState.focusSearch) nextPicker.search.focus({ preventScroll: true });
+                else if (pickerState.focusTrigger) nextPicker.trigger.focus({ preventScroll: true });
+            }
+        }
         return;
     }
 
@@ -934,7 +953,7 @@ function signalCatalogReady(container) {
 }
 
 /* ── Main render ── */
-function render() {
+function render(preservePickerState) {
     const container = document.getElementById('content');
     const q = searchQuery.toLowerCase();
     const isSearching = q.length > 0;
@@ -964,7 +983,7 @@ function render() {
     /* Operations view: show folders for category filtering, hide studios */
     if (viewMode === 'ops') {
         document.getElementById('catalogToolbar').innerHTML = '';
-        renderTabs();
+        renderTabs(preservePickerState);
         document.getElementById('studioBar').style.display = 'none';
         document.getElementById('folderTabs').parentElement.style.display = '';
         renderOperations();
@@ -984,7 +1003,7 @@ function render() {
     /* Controls share the category rail. Populate them first so renderTabs()
        measures the space that is actually left for category buttons. */
     document.getElementById('catalogToolbar').innerHTML = renderSummary();
-    renderTabs();
+    renderTabs(preservePickerState);
 
     let html = isSearching ? renderSearchFeedback(pool.length, q) : '';
 
@@ -1059,7 +1078,7 @@ document.getElementById('folderTabs').addEventListener('change', function(e) {
     if (!e.target.closest('.category-select')) return;
     activeFolder = e.target.value;
     localStorage.setItem('trellum_portal_tab', activeFolder);
-    render();
+    render(false);
 });
 
 /* Filtering the More menu must not re-render the row — that would blow away
