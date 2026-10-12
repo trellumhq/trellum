@@ -7,6 +7,21 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- Add local analysis sessions that build and preview Git-authored articles or
+  presentations, with a private capture inbox and review-poll delivery for
+  selected report evidence.
+- Add versioned presentation slides with four layouts, stable annotation
+  targets, a readable no-JavaScript view, and a slide player with keyboard,
+  mobile, deep-link and fullscreen controls.
+
+### Security
+
+- Bound local capture submissions by loopback, Host, Origin, session token,
+  image validation and request size; keep pending evidence outside the Git
+  repository and generated output.
+
 ## [0.5.0] — 2026-10-10
 
 ### Added
