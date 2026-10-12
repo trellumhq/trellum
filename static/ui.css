@@ -704,6 +704,7 @@ body.mgmt main .ui-table.delivery-list td { vertical-align: top; }
 .delivery-pause { display: block; margin-top: 4px; color: var(--text2); }
 .delivery-list .ui-row-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; min-width: 176px; white-space: normal; text-align: left; }
 .delivery-list .ui-row-actions form { margin: 0; }
+.delivery-list .ui-row-actions form .ui-btn { width: 100%; }
 .delivery-row-detail td { padding: 0 !important; border: 0 !important; }
 .delivery-row-detail [data-flash-slot]:empty { display: none; }
 body.mgmt main .ui-table.delivery-list tbody tr.delivery-row-detail:has([data-flash-slot]:empty) { display: none; }
