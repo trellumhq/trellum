@@ -109,7 +109,13 @@
         node.setAttribute('data-settings-error', '');
         node.id = form.getAttribute('id') + '-error-' + index;
         node.textContent = [].concat(errors[name]).join(' ');
-        if (fields.length) fields[fields.length - 1].insertAdjacentElement('afterend', node);
+        if (fields.length) {
+          var recipientPicker = fields[fields.length - 1].closest('[data-recipient-picker]');
+          var picker = recipientPicker && recipientPicker.querySelector('.recipient-picker');
+          if (picker) picker.insertAdjacentElement('afterend', node);
+          else if (recipientPicker) recipientPicker.insertAdjacentElement('beforeend', node);
+          else fields[fields.length - 1].insertAdjacentElement('afterend', node);
+        }
         else status.insertAdjacentElement('afterend', node);
         fields.forEach(function (field) {
           field.setAttribute('aria-invalid', 'true');

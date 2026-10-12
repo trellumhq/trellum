@@ -1,11 +1,23 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}{% if schedule.pk %}Edit{% else %}Add{% endif %} delivery — trellum{% endblock %}
 {% block content %}
 <header class="page-head"><div class="ui-label page-kicker">Studio · Deliveries</div><h1>{% if schedule.pk %}Edit{% else %}Add{% endif %} delivery</h1><p>{{ report.name|default:report.slug }} · {{ report.get_kind_display }}</p></header>
 <div class="panel">
+<link rel="stylesheet" href="{% static 'recipient-picker.css' %}">
 <form method="post" id="delivery-schedule-form" action="{% if schedule.pk %}/s/{{ report.studio.org.slug }}/{{ report.studio.slug }}/api/reports/{{ report.slug }}/schedules/{{ schedule.pk }}{% else %}/s/{{ report.studio.org.slug }}/{{ report.studio.slug }}/deliveries/new{% endif %}" data-settings-form data-settings-save>
 {% csrf_token %}<input type="hidden" name="delivery_page" value="1"><input type="hidden" name="return_to" value="{{ return_to }}"><input type="hidden" name="report_id" value="{{ report.pk }}">
-{{ form.as_p }}
+{{ form.non_field_errors }}
+{% for field in form.visible_fields %}
+  {% if field.name == "recipient_ids" or field.name == "recipient_roles" or field.name == "recipient_group_ids" %}
+  <div class="ui-field ui-field-wide" data-recipient-picker{% if field.name == "recipient_group_ids" %} data-picker-empty-state="No permission groups are available."{% endif %}>
+    {{ field.label_tag }}{{ field }}{% if field.help_text %}<span class="ui-help" data-picker-fallback>{{ field.help_text }}</span>{% endif %}{{ field.errors }}
+  </div>
+  {% else %}
+  <p>{{ field.label_tag }}{{ field }}{{ field.errors }}{% if field.help_text %}<span class="ui-help">{{ field.help_text }}</span>{% endif %}</p>
+  {% endif %}
+{% endfor %}
 <button type="submit" class="ui-btn primary">Save delivery</button> <a class="ui-btn ghost" href="{{ return_to }}">Cancel</a>
 </form></div>
+<script src="{% static 'recipient-picker.js' %}"></script>
 {% endblock %}

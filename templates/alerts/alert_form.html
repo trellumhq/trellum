@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}{% if rule.pk %}Edit alert{% else %}New alert{% endif %} — {{ studio.name }}{% endblock %}
 {% block content %}
 <style>
@@ -8,17 +9,12 @@
 .al-checks input { width:auto; }
 .al-radio > div { display:flex; gap:18px; }
 .al-radio label { display:inline-flex; align-items:center; gap:6px; }
-.al-picker { border:1px solid var(--border); border-radius:var(--r-md); padding:10px; }
-.al-picker [data-picker-selected] { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
-.al-picker [data-picker-results] { max-height:220px; overflow:auto; margin-top:6px; }
-.al-checks [hidden],.al-picker [hidden] { display:none!important; }
-.al-picker [data-picker-results] label { display:flex; align-items:center; gap:8px; padding:5px 2px; }
-.al-picker [data-picker-results] input { width:auto; }
-.al-picker [data-picker-empty] { margin:6px 0; }
+.al-checks [hidden] { display:none!important; }
 .al-timezone-results { max-height:220px; overflow:auto; border:1px solid var(--border); border-radius:var(--r-md); }
 .al-timezone-results button { display:block; width:100%; text-align:left; padding:6px 10px; border:0; background:transparent; color:var(--text); }
 .al-timezone-results button:hover,.al-timezone-results button:focus { background:var(--bg-card); }
 </style>
+<link rel="stylesheet" href="{% static 'recipient-picker.css' %}">
 <header class="page-head">
   <div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }} · <a href="{{ prefix }}">Alerts</a></div>
   <h1>{% if rule.pk %}Edit “{{ rule.name }}”{% else %}New alert{% endif %}</h1>
@@ -79,8 +75,13 @@
     </div>
     {% if form.recipient_groups %}
     <div class="ui-field ui-field-wide al-checks" data-recipient-picker>
-      <label>{{ form.recipient_groups.label }}</label>
+      <label>Permission groups</label>
       {{ form.recipient_groups }}{{ form.recipient_groups.errors }}
+    </div>
+    {% else %}
+    <div class="ui-field ui-field-wide al-checks">
+      <label>Permission groups</label>
+      <p class="ui-help">No permission groups are available.</p>
     </div>
     {% endif %}
     <div class="ui-field ui-field-wide al-checks" data-recipient-picker>
@@ -125,7 +126,7 @@
   {% endif %}
 </section>
 </div>
-{% load static %}
+<script src="{% static 'recipient-picker.js' %}"></script>
 <script src="{% static 'alert-editor.js' %}"></script>
 <script>
 /* Show the schedule fields only when the trigger is a schedule, and only the

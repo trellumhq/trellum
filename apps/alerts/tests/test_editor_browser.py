@@ -118,6 +118,7 @@ def test_browser_preview_keeps_draft_and_discards_result_after_edit(rule, login)
         page.route("http://example.test" + url, lambda route: route.fulfill(body=html, content_type="text/html"))
         page.goto("http://example.test" + url)
         page.add_script_tag(content=(ROOT / "static/settings-forms.js").read_text(encoding="utf-8"))
+        page.add_script_tag(content=(ROOT / "static/recipient-picker.js").read_text(encoding="utf-8"))
         page.add_script_tag(content=(ROOT / "static/alert-editor.js").read_text(encoding="utf-8"))
         pending = []
         page.route("http://example.test" + url, lambda route: pending.append(route))
@@ -151,7 +152,7 @@ def test_browser_recipient_and_timezone_pickers(engine, rule, login):
       const list=Array.from(field.children).find(child => child.contains(checkbox));
       for(let i=0;i<100;i++){const label=document.createElement('label');
         const input=document.createElement('input'); input.type='checkbox'; input.name='recipients';
-        input.value=i; label.append(input, ' Person '+i); list.append(label);}
+        input.value='picker-test-'+i; label.append(input, ' Person '+i); list.append(label);}
     </script></form>\n<section id="alertPreview"'''
     html = html.replace(needle, injected, 1)
     with sync_playwright() as playwright:
@@ -164,6 +165,7 @@ def test_browser_recipient_and_timezone_pickers(engine, rule, login):
         page.route("**/*", lambda route: route.abort())
         page.route("http://example.test" + url, lambda route: route.fulfill(body=html, content_type="text/html"))
         page.goto("http://example.test" + url)
+        page.add_script_tag(content=(ROOT / "static/recipient-picker.js").read_text(encoding="utf-8"))
         page.add_script_tag(content=(ROOT / "static/alert-editor.js").read_text(encoding="utf-8"))
         assert page.locator("#id_timezone").input_value() == "Europe/Amsterdam"
         assert page.locator("#alertForm").get_attribute("data-browser-timezone-default") is not None
@@ -179,24 +181,26 @@ def test_browser_recipient_and_timezone_pickers(engine, rule, login):
 
         field = page.locator("[data-recipient-picker]").last
         search = field.locator("input[type=search]")
-        assert field.locator("[data-picker-results] label").evaluate_all(
+        assert field.locator(".recipient-picker-results label").evaluate_all(
             "labels => labels.filter(label => !label.hidden).length"
         ) == 50
         search.fill("person 99")
-        assert field.locator("[data-picker-results] label").evaluate_all(
+        assert field.locator(".recipient-picker-results label").evaluate_all(
             "labels => labels.filter(label => !label.hidden).length"
         ) == 1
-        field.locator("[data-picker-results] label:visible input").check()
+        choice = field.locator(".recipient-picker-results label:visible input")
+        choice.click()
+        expect(choice).to_be_checked()
         search.fill("nobody")
-        assert field.locator("[data-picker-results] label").evaluate_all(
+        assert field.locator(".recipient-picker-results label").evaluate_all(
             "labels => labels.filter(label => !label.hidden).length"
         ) == 0
-        expect(field.locator("[data-picker-empty]")).to_have_text("No matches.")
-        expect(field.locator("[data-picker-selected]")).to_contain_text("Person 99")
-        assert page.locator("#alertForm").evaluate("form => new FormData(form).getAll('recipients')").count("99") == 1
-        field.locator("[data-picker-selected] button").click()
+        expect(field.locator(".recipient-picker-empty")).to_have_text("No matches.")
+        expect(field.locator(".recipient-picker-selected")).to_contain_text("Person 99")
+        assert page.locator("#alertForm").evaluate("form => new FormData(form).getAll('recipients')").count("picker-test-99") == 1
+        field.locator(".recipient-picker-selected button").click()
         expect(search).to_be_focused()
-        assert page.locator("#alertForm").evaluate("form => new FormData(form).getAll('recipients')").count("99") == 0
+        assert page.locator("#alertForm").evaluate("form => new FormData(form).getAll('recipients')").count("picker-test-99") == 0
 
         unknown = context.new_page()
         unknown.add_init_script("Intl.DateTimeFormat.prototype.resolvedOptions = "

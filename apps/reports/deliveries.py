@@ -174,11 +174,11 @@ class DeliveryPolicyForm(forms.Form):
 
 
 class ScheduleSettingsForm(forms.ModelForm):
-    recipient_ids = forms.MultipleChoiceField(required=False, label="People")
-    recipient_roles = forms.MultipleChoiceField(required=False, choices=[
+    recipient_ids = forms.MultipleChoiceField(required=False, label="People", widget=forms.CheckboxSelectMultiple)
+    recipient_roles = forms.MultipleChoiceField(required=False, widget=forms.CheckboxSelectMultiple, choices=[
         ("admins", "All admins"), ("developers", "All developers"), ("everyone", "Everyone in studio"),
     ], label="Studio roles")
-    recipient_group_ids = forms.MultipleChoiceField(required=False, label="Permission groups")
+    recipient_group_ids = forms.MultipleChoiceField(required=False, label="Permission groups", widget=forms.CheckboxSelectMultiple)
 
     class Meta:
         model = EmailSchedule
@@ -188,6 +188,8 @@ class ScheduleSettingsForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["recipient_ids"].choices = [(row["id"], row["email"]) for row in members]
         self.fields["recipient_group_ids"].choices = [(row["id"], row["name"]) for row in groups]
+        if not groups:
+            self.fields["recipient_group_ids"].help_text = "No permission groups are available."
         self.fields["recipient_ids"].initial = list(self.instance.recipients.values_list("pk", flat=True)) if self.instance.pk else []
         self.fields["recipient_roles"].initial = self.instance.recipient_roles
         self.fields["recipient_group_ids"].initial = list(self.instance.recipient_groups.values_list("pk", flat=True)) if self.instance.pk else []
