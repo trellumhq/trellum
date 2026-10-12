@@ -51,9 +51,10 @@ def _resolve_report_dir(report: str) -> Path | None:
     p = Path(report)
     if p.is_dir() and (p / "report.yaml").exists():
         return p.resolve()
-    candidate = Path(get_project_root()) / "reports" / report
-    if candidate.is_dir() and (candidate / "report.yaml").exists():
-        return candidate.resolve()
+    project = Path(get_project_root())
+    for candidate in (project / report, project / "reports" / report):
+        if candidate.is_dir() and (candidate / "report.yaml").exists():
+            return candidate.resolve()
     print(f"no report at '{report}' -- expected a report directory "
           f"(reports/<slug> with a report.yaml) or a bare slug", file=sys.stderr)
     return None

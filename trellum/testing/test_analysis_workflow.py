@@ -176,7 +176,8 @@ def test_analysis_session_cli_validates_kind_and_prints_urls(tmp_path, monkeypat
     monkeypatch.setattr(analysis_session, "_review_port_or_explain", lambda _output: 8765)
     monkeypatch.setattr(analysis_session, "_review_http",
                         lambda port, method, path, body: (calls.append((port, method, path, body)) or (200, {"active": True})))
-    assert main(["analysis", "session", "decision", "--no-browser"]) == 0
+    monkeypatch.chdir(tmp_path.parent)
+    assert main(["analysis", "session", "reports/decision", "--no-browser"]) == 0
     output = capsys.readouterr().out
     assert calls[0].rebuild is True
     assert (8765, "POST", "/_fw/review/analysis/start", {"slug": "decision"}) in calls
@@ -184,5 +185,5 @@ def test_analysis_session_cli_validates_kind_and_prints_urls(tmp_path, monkeypat
     assert "http://localhost:8765/" in output
 
     (report / "report.yaml").write_text("kind: report\nslug: decision\n", encoding="utf-8")
-    assert main(["analysis", "session", "decision", "--no-browser"]) == 1
+    assert main(["analysis", "session", "reports/decision", "--no-browser"]) == 1
     assert "kind: analysis" in capsys.readouterr().err
