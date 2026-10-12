@@ -98,3 +98,32 @@ def _cmd_analysis_import_inbox(args: argparse.Namespace) -> int:
         print(f"Analysis: {exc}", file=sys.stderr)
         return 1
     return 0
+
+
+def _cmd_analysis_discard(args: argparse.Namespace) -> int:
+    from trellum.analysis_inbox import discard_pending_capture
+
+    try:
+        discard_pending_capture(args.report_dir, args.capture_id)
+    except (OSError, ValueError) as exc:
+        print(f"Analysis: {exc}", file=sys.stderr)
+        return 1
+    print(f"Discarded pending capture {args.capture_id}")
+    return 0
+
+
+def _cmd_analysis_inbox(args: argparse.Namespace) -> int:
+    from trellum.analysis_inbox import list_pending_captures
+
+    try:
+        captures = list_pending_captures(args.report_dir)
+    except (OSError, ValueError) as exc:
+        print(f"Analysis: {exc}", file=sys.stderr)
+        return 1
+    if not captures:
+        print("No pending captures")
+    for capture in captures:
+        source = "".join(c if c.isprintable() else " " for c in capture["source_slug"])
+        title = "".join(c if c.isprintable() else " " for c in capture["component_title"])
+        print(f"{capture['capture_id']}  {source}  {title}")
+    return 0
