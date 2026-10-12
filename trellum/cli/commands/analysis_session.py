@@ -34,6 +34,10 @@ def _cmd_analysis_session(args: argparse.Namespace) -> int:
     if config.get("kind") != "analysis":
         print("Analysis session requires a kind: analysis directory", file=sys.stderr)
         return 1
+    if config.get("slug", report_dir.name) != report_dir.name:
+        print("Analysis manifest slug must match its reports/ directory for a local session",
+              file=sys.stderr)
+        return 1
 
     # Reuse the report review lifecycle; activate capture intake only after it starts.
     review_args = argparse.Namespace(

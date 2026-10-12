@@ -8,6 +8,12 @@ from pathlib import Path
 import yaml
 
 from trellum.analysis_capture import import_capture, safe_name
+from trellum.cli.commands.analysis_session import (
+    _cmd_analysis_discard,
+    _cmd_analysis_import_inbox,
+    _cmd_analysis_inbox,
+    _cmd_analysis_session,
+)
 from trellum.project import get_project_root
 
 
@@ -50,6 +56,10 @@ def _cmd_analysis(args) -> int:
         if args.verb == "new":
             print(f"Created {new_analysis(args.slug, args.format)}")
         else:
+            if bool(args.capture_file) == bool(args.inbox):
+                raise ValueError("Provide one capture file or --inbox ID")
+            if args.inbox:
+                return _cmd_analysis_import_inbox(args)
             print(import_capture(args.report_dir, args.capture_file, args.name))
         return 0
     except (OSError, ValueError) as exc:
@@ -66,6 +76,21 @@ def add_analysis_commands(sub) -> None:
     new.set_defaults(fn=_cmd_analysis)
     capture = verbs.add_parser("import", help="import a capture into evidence/ and print Markdown")
     capture.add_argument("report_dir")
-    capture.add_argument("capture_file")
+    capture.add_argument("capture_file", nargs="?", help="downloaded capture JSON file")
+    capture.add_argument("--inbox", help="pending local capture ID from the review poll")
     capture.add_argument("--name", help="safe evidence name; existing files are never overwritten")
     capture.set_defaults(fn=_cmd_analysis)
+    session = verbs.add_parser("session", help="build, preview and review one local analysis")
+    session.add_argument("report", help="reports/<slug> or an analysis slug")
+    session.add_argument("--port", type=int)
+    session.add_argument("--no-browser", action="store_true")
+    session.add_argument("--rebuild", action="store_true")
+    session.add_argument("--restart-server", action="store_true")
+    session.set_defaults(fn=_cmd_analysis_session)
+    inbox = verbs.add_parser("inbox", help="list pending local capture IDs")
+    inbox.add_argument("report_dir")
+    inbox.set_defaults(fn=_cmd_analysis_inbox)
+    discard = verbs.add_parser("discard", help="discard one pending local capture")
+    discard.add_argument("report_dir")
+    discard.add_argument("capture_id")
+    discard.set_defaults(fn=_cmd_analysis_discard)
