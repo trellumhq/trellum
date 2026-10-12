@@ -366,7 +366,26 @@ def test_workspace_visibility_splits_and_single_scroll(open_metric, size):
     assert page.evaluate('''() => new Promise(resolve => requestAnimationFrame(() => {
         const f=document.getElementById('metWorkspace'); resolve(f.contentDocument.documentElement.scrollHeight <= f.clientHeight + 2);
     }))''')
-    frame.locator('#fwMetricsWorkspace summary').click()
+    summary = frame.locator('#fwMetricsWorkspace summary')
+    toolbar = frame.locator('#fwMetricsWorkspace')
+    geometry = lambda: toolbar.evaluate('''el => {
+        const box = selector => {
+            const rect = el.querySelector(selector).getBoundingClientRect();
+            return {top: rect.top - el.getBoundingClientRect().top, height: rect.height};
+        };
+        return {summary: box('summary'), actions: box('.fw-metric-actions'), choices: box('.fw-metric-choices')};
+    }''')
+    collapsed_geometry = geometry()
+    summary.focus()
+    summary.press('Enter')
+    assert frame.locator('#fwMetricsWorkspace details').evaluate('(el) => el.open')
+    expanded_geometry = geometry()
+    assert abs(expanded_geometry['actions']['top'] - collapsed_geometry['actions']['top']) <= 1
+    if size[0] > 600:
+        assert abs((expanded_geometry['actions']['top'] + expanded_geometry['actions']['height'] / 2)
+                   - (expanded_geometry['summary']['top'] + expanded_geometry['summary']['height'] / 2)) <= 2
+    else:
+        assert expanded_geometry['actions']['top'] < expanded_geometry['choices']['top']
     assert frame.evaluate('''() => {
         const width = document.documentElement.clientWidth;
         return document.documentElement.scrollWidth <= width + 1 &&

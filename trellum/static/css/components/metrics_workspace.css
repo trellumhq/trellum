@@ -1,7 +1,8 @@
-#fwMetricsWorkspace { display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px; }
-#fwMetricsWorkspace details { flex:1 1 180px; min-width:0; }
-#fwMetricsWorkspace summary { cursor:pointer; }
+#fwMetricsWorkspace { position:relative; margin-bottom:0; }
+#fwMetricsWorkspace details { padding-top:36px; }
+#fwMetricsWorkspace summary { position:absolute; top:8px; left:0; cursor:pointer; }
 .fw-metric-actions { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
+#fwMetricsWorkspace .fw-metric-actions { position:absolute; top:0; right:0; }
 #fwMetricsShowAll, #fwMetricsHideAll { min-height:36px; background:var(--bg-card); color:var(--text-main); border:1px solid var(--border-color); border-radius:var(--radius-control); padding:4px 10px; cursor:pointer; }
 .fw-metric-focus { color:var(--accent-blue); font-size:var(--font-size-label); }
 .fw-metric-choices { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr)); gap:10px; padding:14px 0; }
@@ -20,6 +21,9 @@ body.fw-metrics-embedded { min-height:0; }
 body.fw-metrics-embedded .fw-header, body.fw-metrics-embedded .fw-report-metadata { display:none; }
 body.fw-metrics-embedded .fw-container { margin:0; max-width:none; padding:0 0 12px; }
 @media (max-width:600px) {
+  #fwMetricsWorkspace details { padding-top:76px; }
+  #fwMetricsWorkspace summary { top:0; }
+  #fwMetricsWorkspace .fw-metric-actions { top:28px; right:auto; left:0; }
   .fw-metric-block .fw-chart-container { height:230px; }
   #fwMetricsShowAll, #fwMetricsHideAll { min-height:44px; }
   .fw-metric-choices label { min-height:36px; }
