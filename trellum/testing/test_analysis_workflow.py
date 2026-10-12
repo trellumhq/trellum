@@ -122,7 +122,7 @@ def test_local_analysis_capture_import_and_slide_review(tmp_path, monkeypatch):
                 preview = output_root / "presentation" / "index.html"
                 good_preview = hashlib.sha256(preview.read_bytes()).hexdigest()
                 slides_path.write_text("version: 1\nslides: [\n", encoding="utf-8")
-                with pytest.raises(Exception):
+                with pytest.raises(ValueError, match="slides.yaml"):
                     run_report(str(presentation))
                 assert hashlib.sha256(preview.read_bytes()).hexdigest() == good_preview
                 slides_path.write_text(json.dumps({"version": 1, "slides": [
@@ -178,6 +178,7 @@ def test_analysis_session_cli_validates_kind_and_prints_urls(tmp_path, monkeypat
                         lambda port, method, path, body: (calls.append((port, method, path, body)) or (200, {"active": True})))
     assert main(["analysis", "session", "decision", "--no-browser"]) == 0
     output = capsys.readouterr().out
+    assert calls[0].rebuild is True
     assert (8765, "POST", "/_fw/review/analysis/start", {"slug": "decision"}) in calls
     assert "http://localhost:8765/decision/index.html" in output
     assert "http://localhost:8765/" in output
