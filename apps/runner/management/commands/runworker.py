@@ -617,7 +617,7 @@ class _SchedulerManager:
             if len(r.schedule_cron.split()) >= 5:
                 desired[f"report-{r.pk}"] = (r.pk, r.schedule_cron, r.schedule_timezone)
 
-        # Personal delivery cadences ride the same diffed-every-60s scheduler
+        # Shared report delivery cadences ride the same diffed-every-60s scheduler
         # as the build cron above — one less mechanism to keep symmetrical.
         email_rows = EmailSchedule.objects.filter(enabled=True).select_related("report__studio__org")
         for s in email_rows:

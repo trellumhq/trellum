@@ -42,6 +42,7 @@ from apps.core.permissions import (
 )
 from apps.core.report_access import (
     bulk_can_view_report,
+    can_view_report,
     require_full_studio_visibility,
     selected_report_access_block_reason,
     visible_reports,
@@ -884,10 +885,7 @@ def theme_widget_js(request):  # noqa: ARG001
 
 # ── Alerts & scheduled delivery ─────────────────────────────────────────────
 #
-# VIEWER, not DEVELOPER: unlike the run/stop/registry-refresh endpoints above,
-# these are personal — "alert me" and "email me this report" are things any
-# studio member should be able to set up for themselves without needing
-# report-run permission.
+# Shared Studio schedules are visible to report readers and managed by developers/admins.
 
 def _recipient_summary(schedule) -> str:
     """Human summary of who a schedule reaches, e.g. "All developers +
@@ -917,11 +915,12 @@ def _recipient_summary(schedule) -> str:
 
 def _schedule_dict(schedule, *, viewer=None, request=None) -> dict:
     """Shared schedule shape; request authorization controls editing and history."""
-    editable = schedule.created_by_id is not None and (viewer is None or schedule.created_by_id == viewer.pk)
-    if viewer is not None:
-        editable = editable or effective_roles(viewer, schedule.report.studio.org).is_org_admin
     if request is not None:
         editable = deliveries.can_manage_schedule(request, schedule)
+    else:
+        editable = bool(viewer is not None and viewer.is_active
+            and can_view_report(viewer, schedule.report)
+            and roles.at_least(effective_roles(viewer, schedule.report.studio.org).role_for(schedule.report.studio), roles.DEVELOPER))
     next_at = deliveries.next_occurrence(schedule)
     recipients = list(schedule.recipients.all())
     allowed = bulk_can_view_report(recipients, schedule.report)
@@ -948,7 +947,6 @@ def _schedule_dict(schedule, *, viewer=None, request=None) -> dict:
         "last_attempt_at": schedule.last_attempt_at.isoformat() if schedule.last_attempt_at else None,
         "last_accepted_at": schedule.last_accepted_at.isoformat() if schedule.last_accepted_at else None,
         "delivery_outcome": schedule.delivery_outcome or "Legacy: delivery uncertain" if schedule.last_sent_at else schedule.delivery_outcome or "Not attempted",
-        "owner_repair_required": deliveries.owner_repair_required(schedule),
         "recipients": eligible_recipients,
         "recipient_roles": schedule.recipient_roles,
         "recipient_groups": [
@@ -956,7 +954,7 @@ def _schedule_dict(schedule, *, viewer=None, request=None) -> dict:
         ],
         "recipient_summary": summary,
         "editable": editable,
-        "owner_name": (
+        "creator_name": (
             schedule.created_by.display_name or schedule.created_by.email
             if schedule.created_by else "Former user"
         ),
@@ -1088,7 +1086,7 @@ def api_report_recipients(request, org_slug, studio_slug, slug):  # noqa: ARG001
 
 def _valid_recipients(request, report, ids) -> list:
     """Recipient ids narrowed to users who can actually see this studio —
-    the schedule owner picks from their org, not an arbitrary user id. No
+    the schedule editor picks from their org, not an arbitrary user id. No
     fallback here any more (an omitted/empty list is a legitimate "no
     individuals picked" when roles or groups cover the schedule instead) —
     callers decide what an empty result means."""
@@ -1143,15 +1141,12 @@ def _delivery_return_url(request):
 def _delivery_form_page(request, schedule, *, errors=None, status=200):
     chips = _recipient_payload(request, schedule.report)
     form = deliveries.ScheduleSettingsForm(request.POST if request.method == "POST" else None,
-        instance=schedule, members=chips["members"], groups=chips["groups"],
-        can_reassign=bool(schedule.pk and deliveries.can_manage_org(request, request.org)))
+        instance=schedule, members=chips["members"], groups=chips["groups"])
     if request.method == "POST":
         form.is_valid()
         for field, items in (errors or {}).items():
             for item in items:
                 form.add_error(field if field in form.fields else None, item)
-    elif not schedule.pk:
-        form.fields["recipient_ids"].initial = [request.user.pk]
     return render(request, "reports/delivery_form.html", {
         "form": form, "schedule": schedule, "report": schedule.report,
         "return_to": _delivery_return_url(request),
@@ -1175,19 +1170,7 @@ def _schedule_form_body(request):
 def api_email_schedules(request, org_slug, studio_slug, slug):  # noqa: ARG001
     report = _get_report(request, slug)
     if request.method == "GET":
-        # Every schedule the requester can see for this report: their own
-        # (any state -- they can still edit/enable a disabled one they
-        # created) plus any *enabled* schedule that currently addresses them
-        # as a resolved recipient (creator/role-chip/group-chip), mirroring
-        # api_my_subscriptions' own "enabled + resolved recipient" contract
-        # -- see _schedule_dict's `editable` flag, which the drawer
-        # (report_delivery.js) uses to render a non-owned row read-only with
-        # its owner's name instead of edit/sample/delete actions. Without
-        # this, a schedule addressed to "All developers" was invisible here
-        # to every developer but its creator, even though it counted toward
-        # their own envelope badge (api_my_subscriptions) -- the drawer's
-        # own bulk-broadcast count must equal that same badge's count, so
-        # `subscribed_count` below uses the identical audience check.
+        # Visibility follows report access; subscription badges follow the audience.
         from apps.orgs.models import PermissionGroupMembership
         from apps.studios.models import StudioMembership
 
@@ -1209,23 +1192,24 @@ def api_email_schedules(request, org_slug, studio_slug, slug):  # noqa: ARG001
         visible = []
         subscribed_count = 0
         for schedule in rows:
-            is_owner = schedule.created_by_id == request.user.pk
             is_recipient = schedule.enabled and notify.user_in_schedule_audience(
                 request.user, schedule, user_role=user_role, user_group_ids=user_group_ids
             )
             if is_recipient:
                 subscribed_count += 1
-            if is_owner or is_recipient or deliveries.can_manage_schedule(request, schedule):
-                visible.append(_schedule_dict(schedule, viewer=request.user, request=request))
+            visible.append(_schedule_dict(schedule, viewer=request.user, request=request))
         return JsonResponse(
             {
                 "schedules": visible,
+                "can_manage": deliveries.can_manage_schedule(request, EmailSchedule(report=report)),
                 "default_timezone": deliveries.schedule_defaults(request.org)["timezone"],
                 "default_enabled": deliveries.schedule_defaults(request.org)["enabled"],
                 "subscribed_count": subscribed_count,
             }
         )
 
+    if not deliveries.can_manage_schedule(request, EmailSchedule(report=report)):
+        raise Http404
     is_form = request.content_type != "application/json"
     body = _schedule_form_body(request) if is_form else json_body(request)
     schedule = EmailSchedule(report=report, created_by=request.user, **deliveries.schedule_defaults(request.org))
@@ -1244,15 +1228,12 @@ def api_email_schedules(request, org_slug, studio_slug, slug):  # noqa: ARG001
     except ValidationError as exc:
         return respond_error("Please correct the highlighted fields.", exc.message_dict)
 
-    payload_given = any(k in body for k in _RECIPIENT_BODY_KEYS)
     try:
         individuals = _valid_recipients(request, report, body.get("recipient_ids"))
         groups = _valid_groups(request, report, body.get("recipient_group_ids"))
     except ValidationError as exc:
         return respond_error(exc.messages[0])
-    if not payload_given:
-        individuals = [request.user]  # legacy default: nothing picked at all -> just you
-    elif not (individuals or schedule.recipient_roles or groups):
+    if not (individuals or schedule.recipient_roles or groups):
         return respond_error("Select at least one recipient (person, role, or group).")
 
     schedule.save()
@@ -1304,25 +1285,8 @@ def api_email_schedule_detail(request, org_slug, studio_slug, slug, schedule_id)
     body = {} if is_form else json_body(request)
     if is_form:
         body = _schedule_form_body(request)
-    owner_id = body.get("owner_id")
-    if "owner_id" in body and owner_id is not None and owner_id != "" and (
-        isinstance(owner_id, bool) or not isinstance(owner_id, (int, str)) or not str(owner_id).isdigit()
-        or len(str(owner_id)) > 19 or int(owner_id) > 9223372036854775807
-    ):
-        return respond_error("Choose a valid owner.", {"owner_id": ["Invalid owner identifier."]})
-    if owner_id and str(owner_id) != str(schedule.created_by_id):
-        if not deliveries.can_manage_org(request, request.org):
-            raise Http404
-        from apps.orgs.models import OrgMembership
-        owner = OrgMembership.objects.filter(org=request.org, user_id=owner_id, user__is_active=True).select_related("user").first() if str(owner_id).isdigit() else None
-        if owner is None or not bulk_can_view_report([owner.user], report).get(owner.user_id):
-            return respond_error("Choose an active organization member with report access.", {"owner_id": ["Owner has no report access."]})
-        schedule.created_by = owner.user
-        try:
-            _valid_recipients(request, report, list(schedule.recipients.values_list("pk", flat=True)))
-            _valid_groups(request, report, list(schedule.recipient_groups.values_list("pk", flat=True)))
-        except ValidationError as exc:
-            return respond_error("Repair recipients before changing owner.", {"recipient_ids": exc.messages})
+    if "owner_id" in body:
+        return respond_error("The creator is audit history and cannot be reassigned.")
     try:
         _apply_schedule_fields(schedule, body)
     except (TypeError, ValueError):
@@ -1378,7 +1342,7 @@ _SAMPLE_SENDING_MESSAGE = "Sending — check your inbox shortly"
 
 #: Process-wide cap on simultaneous sample sends: each one is a browser
 #: render plus an SMTP round trip, and the endpoints are open to every studio
-#: viewer. Acquired non-blocking in the request thread, released by the
+#: developer or admin. Acquired non-blocking in the request thread, released by the
 #: worker (same shape as apps.reports.livequery's slot pool).
 # ponytail: fixed pool of 2 per process; make it a setting if a deployment needs more.
 _SAMPLE_SLOTS = threading.BoundedSemaphore(2)
@@ -1442,7 +1406,7 @@ def api_email_schedule_sample(request, org_slug, studio_slug, slug, schedule_id)
     return JsonResponse({"ok": True, "message": _SAMPLE_SENDING_MESSAGE}, status=202)
 
 
-@require_studio_role(roles.VIEWER)
+@require_studio_role(roles.DEVELOPER)
 @require_POST
 def api_report_sample(request, org_slug, studio_slug, slug):  # noqa: ARG001
     """"Send me a sample now" — no EmailSchedule required."""
@@ -1534,11 +1498,9 @@ def api_my_subscriptions(request, org_slug, studio_slug):  # noqa: ARG001
     return JsonResponse({"reports": out})
 
 
-# ── "My deliveries & alerts" (personal, cross-studio) ───────────────────────
+# ── Shared deliveries and alerts (cross-studio) ───────────────────────
 #
-# Linked from the shell user menu (templates/_shell.html). Global, not
-# studio-scoped -- a user's schedules and alert subscriptions span every
-# studio they have access to, the same way favorites do.
+# The compatibility list spans every Studio whose reports the user can see.
 
 
 def _visible_row(user, report, er_cache: dict) -> bool:
@@ -1578,15 +1540,10 @@ def _schedule_json_for_script(schedule, viewer=None, request=None) -> str:
 
 
 def _my_schedule_rows(user, *, org_id=None, request=None, managed=False, studio=None) -> list[dict]:
-    """Visible schedules for the Studio, global administration or legacy personal list."""
-    scoped_studio = studio
-    rows = EmailSchedule.objects.all() if managed or studio is not None else EmailSchedule.objects.filter(created_by=user)
+    """Visible schedules for the Studio, global administration or legacy accessible list."""
+    rows = EmailSchedule.objects.all()
     if studio is not None:
         rows = rows.filter(report__studio=studio)
-        from apps.orgs.models import PermissionGroupMembership
-        from apps.studios.models import StudioMembership
-        user_role = StudioMembership.objects.filter(user=user, studio=studio).values_list("role", flat=True).first()
-        user_group_ids = set(PermissionGroupMembership.objects.filter(user=user, group__org=studio.org).values_list("group_id", flat=True))
     if managed:
         rows = rows.filter(report__studio__org_id__in=[org.pk for org in deliveries.managed_orgs(request)])
     if org_id is not None:
@@ -1596,7 +1553,7 @@ def _my_schedule_rows(user, *, org_id=None, request=None, managed=False, studio=
                             ("report", "report__slug"), ("creator", "created_by_id")):
             value = request.GET.get(field)
             if value:
-                if field == "creator" and value == "ownerless":
+                if field == "creator" and value in ("ownerless", "former user"):
                     rows = rows.filter(created_by__isnull=True)
                 elif field == "creator" and not value.isdigit():
                     rows = rows.filter(Q(created_by__email__icontains=value) | Q(created_by__name__icontains=value))
@@ -1622,11 +1579,6 @@ def _my_schedule_rows(user, *, org_id=None, request=None, managed=False, studio=
         studio = report.studio
         if not report.present_in_scan or not _visible_row(user, report, er_cache):
             continue
-        if request is not None and not deliveries.can_manage_schedule(request, schedule):
-            if scoped_studio is None or not schedule.enabled or not notify.user_in_schedule_audience(
-                user, schedule, user_role=user_role, user_group_ids=user_group_ids
-            ):
-                continue
         serialized = _schedule_dict(schedule, viewer=user, request=request)
         out.append(
             {
@@ -1637,8 +1589,7 @@ def _my_schedule_rows(user, *, org_id=None, request=None, managed=False, studio=
                 "org": studio.org,
                 "cadence": _schedule_cadence_words(schedule),
                 "recipient_summary": _recipient_summary(schedule),
-                "owner_name": schedule.created_by.display_name or schedule.created_by.email if schedule.created_by else "Ownerless — repair required",
-                "owner_repair": deliveries.owner_repair_required(schedule),
+                "creator_name": serialized["creator_name"],
                 "paused": deliveries.delivery_pause(studio.org_id),
                 "next_at": serialized["next_at"],
                 "outcome": serialized["delivery_outcome"],
@@ -1661,10 +1612,11 @@ def studio_deliveries(request, org_slug, studio_slug):
         "studio_deliveries": True, "schedule_rows": _my_schedule_rows(request.user, request=request, studio=request.studio),
         "delivery_return_to": f"/s/{org_slug}/{studio_slug}/deliveries",
         "can_manage_deliveries": deliveries.can_manage_org(request, request.org),
+        "can_add_delivery": roles.at_least(get_effective(request, request.org).role_for(request.studio), roles.DEVELOPER),
     })
 
 
-@require_studio_role(roles.VIEWER)
+@require_studio_role(roles.DEVELOPER)
 @require_http_methods(["GET", "POST"])
 def studio_delivery_new(request, org_slug, studio_slug):
     reports = visible_reports(request.user, Report.objects.filter(studio=request.studio, present_in_scan=True)).order_by("name", "slug")
@@ -1703,7 +1655,7 @@ def manage_delivery_edit(request, schedule_id):
 
 
 def my_deliveries(request):
-    """Compatibility personal list, with links to the Studio delivery pages."""
+    """Compatibility list of accessible shared Studio schedules."""
     if not request.user.is_authenticated:
         return redirect("login")
     return render(

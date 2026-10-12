@@ -24,6 +24,13 @@ def viewer(make_user, org, studio_tree, grant_studio):
 
 
 @pytest.fixture
+def developer(make_user, org, studio_tree, grant_studio):
+    user = make_user("dev@demo.example", org=org)
+    grant_studio(user, studio_tree, roles.DEVELOPER)
+    return user
+
+
+@pytest.fixture
 def other_viewer(make_user, org, studio_tree, grant_studio):
     user = make_user("view2@demo.example", org=org)
     grant_studio(user, studio_tree, roles.VIEWER)
@@ -44,22 +51,22 @@ class TestMySubscriptionsEndpoint:
         body = login(viewer).get(f"{prefix}/api/my-subscriptions").json()
         assert body == {"reports": {}}
 
-    def test_reflects_own_schedule(self, login, viewer, prefix, report_row):
-        c = login(viewer)
+    def test_reflects_own_schedule(self, login, developer, prefix, report_row):
+        c = login(developer)
         c.post(
             f"{prefix}/api/reports/player-overview/schedules",
-            data=json.dumps({"freq": "daily", "send_hour": 9, "send_minute": 0}),
+            data=json.dumps({"recipient_ids": [developer.pk], "freq": "daily", "send_hour": 9, "send_minute": 0}),
             content_type="application/json",
         )
         body = c.get(f"{prefix}/api/my-subscriptions").json()
         assert body["reports"] == {"player-overview": {"schedules": 1}}
 
-    def test_counts_multiple_enabled_schedules_on_one_report(self, login, viewer, prefix, report_row):
-        c = login(viewer)
+    def test_counts_multiple_enabled_schedules_on_one_report(self, login, developer, prefix, report_row):
+        c = login(developer)
         for hour in (9, 14):
             c.post(
                 f"{prefix}/api/reports/player-overview/schedules",
-                data=json.dumps({"freq": "daily", "send_hour": hour, "send_minute": 0}),
+                data=json.dumps({"recipient_ids": [developer.pk], "freq": "daily", "send_hour": hour, "send_minute": 0}),
                 content_type="application/json",
             )
         body = c.get(f"{prefix}/api/my-subscriptions").json()
@@ -82,11 +89,8 @@ class TestMySubscriptionsEndpoint:
     def test_another_users_schedule_is_not_mine(
         self, login, viewer, other_viewer, prefix, report_row
     ):
-        login(other_viewer).post(
-            f"{prefix}/api/reports/player-overview/schedules",
-            data=json.dumps({"freq": "daily", "send_hour": 9, "send_minute": 0}),
-            content_type="application/json",
-        )
+        schedule = EmailSchedule.objects.create(report=report_row, created_by=other_viewer)
+        schedule.recipients.add(other_viewer)
         body = login(viewer).get(f"{prefix}/api/my-subscriptions").json()
         assert body == {"reports": {}}
 
@@ -154,12 +158,12 @@ class TestMyDeliveriesPage:
         resp = client.get("/me/deliveries")
         assert resp.status_code in (302, 401)
 
-    def test_lists_own_schedule(self, login, viewer, prefix, report_row):
-        c = login(viewer)
+    def test_lists_own_schedule(self, login, developer, prefix, report_row):
+        c = login(developer)
         c.post(
             f"{prefix}/api/reports/player-overview/schedules",
             data=json.dumps(
-                {"freq": "weekly", "weekday": 2, "send_hour": 9, "send_minute": 30}
+                {"recipient_ids": [developer.pk], "freq": "weekly", "weekday": 2, "send_hour": 9, "send_minute": 30}
             ),
             content_type="application/json",
         )
@@ -172,33 +176,32 @@ class TestMyDeliveriesPage:
         assert rows[0]["edit_url"] == f'{prefix}/deliveries/{rows[0]["schedule"].pk}/edit?return_to=/me/deliveries'
         assert "Player-Overview".encode() in resp.content  # the report name is shown
 
-    def test_does_not_list_another_users_schedule(
+    def test_lists_another_users_schedule_read_only(
         self, login, viewer, other_viewer, prefix, report_row
     ):
-        login(other_viewer).post(
-            f"{prefix}/api/reports/player-overview/schedules",
-            data=json.dumps({"freq": "daily", "send_hour": 9, "send_minute": 0}),
-            content_type="application/json",
-        )
+        schedule = EmailSchedule.objects.create(report=report_row, created_by=other_viewer, enabled=False)
+        schedule.recipients.add(other_viewer)
         resp = login(viewer).get("/me/deliveries")
-        assert resp.context["schedule_rows"] == []
+        rows = resp.context["schedule_rows"]
+        assert [row['schedule'].pk for row in rows] == [schedule.pk]
+        assert not rows[0]['editable']
 
     def test_hides_rows_once_studio_access_is_revoked(
-        self, login, viewer, prefix, report_row, studio_tree
+        self, login, developer, prefix, report_row, studio_tree
     ):
         from apps.studios.models import StudioMembership
 
-        c = login(viewer)
+        c = login(developer)
         c.post(
             f"{prefix}/api/reports/player-overview/schedules",
-            data=json.dumps({"freq": "daily", "send_hour": 9, "send_minute": 0}),
+            data=json.dumps({"recipient_ids": [developer.pk], "freq": "daily", "send_hour": 9, "send_minute": 0}),
             content_type="application/json",
         )
-        StudioMembership.objects.filter(user=viewer, studio=studio_tree).delete()
+        StudioMembership.objects.filter(user=developer, studio=studio_tree).delete()
         resp = c.get("/me/deliveries")
         assert resp.context["schedule_rows"] == []
         # The row survives server-side: regaining access restores it.
-        assert EmailSchedule.objects.filter(created_by=viewer).exists()
+        assert EmailSchedule.objects.filter(created_by=developer).exists()
 
     def test_empty_state_renders(self, login, viewer):
         resp = login(viewer).get("/me/deliveries")

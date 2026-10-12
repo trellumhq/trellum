@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{% if schedule.pk %}Edit{% else %}Add{% endif %} delivery — trellum{% endblock %}
 {% block content %}
-<header class="page-head"><div class="ui-label page-kicker">Studio · My Deliveries</div><h1>{% if schedule.pk %}Edit{% else %}Add{% endif %} delivery</h1><p>{{ report.name|default:report.slug }} · {{ report.get_kind_display }}</p></header>
+<header class="page-head"><div class="ui-label page-kicker">Studio · Deliveries</div><h1>{% if schedule.pk %}Edit{% else %}Add{% endif %} delivery</h1><p>{{ report.name|default:report.slug }} · {{ report.get_kind_display }}</p></header>
 <div class="panel">
 <form method="post" id="delivery-schedule-form" action="{% if schedule.pk %}/s/{{ report.studio.org.slug }}/{{ report.studio.slug }}/api/reports/{{ report.slug }}/schedules/{{ schedule.pk }}{% else %}/s/{{ report.studio.org.slug }}/{{ report.studio.slug }}/deliveries/new{% endif %}" data-settings-form data-settings-save>
 {% csrf_token %}<input type="hidden" name="delivery_page" value="1"><input type="hidden" name="return_to" value="{{ return_to }}"><input type="hidden" name="report_id" value="{{ report.pk }}">

@@ -227,7 +227,7 @@ class ReportFavorite(models.Model):
 
 
 class EmailSchedule(models.Model):
-    """A user's personal "send me this report" cadence.
+    """A shared Studio report delivery cadence.
 
     Independent of ``Report.schedule_cron`` (which drives when the report is
     *built*) — this drives when a snapshot of the latest successful build is
@@ -257,6 +257,7 @@ class EmailSchedule(models.Model):
     RECIPIENT_ROLE_CHOICES = ["admins", "developers", "everyone"]
 
     report = models.ForeignKey(Report, on_delete=models.CASCADE, related_name="email_schedules")
+    #: Creation audit only; permissions and execution do not depend on this user.
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, related_name="+", null=True, blank=True
     )

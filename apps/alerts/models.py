@@ -71,8 +71,7 @@ class AlertRule(models.Model):
     #: After a transport accepts an alert, the rule stays quiet for this long.
     cooldown_hours = models.PositiveIntegerField(default=24)
     enabled = models.BooleanField(default=True)
-    #: Who pays: LLM spend is billed to this user (EmailSchedule.created_by
-    #: is the precedent for "a studio object owned by a person").
+    #: Billing owner: LLM spend and evaluation access depend on this user.
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
     )

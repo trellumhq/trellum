@@ -11,7 +11,7 @@ Two independent things feed this module (see ``apps.reports.models``):
   ``apps.runner.executor`` after every build. Broken-transition mail is
   buffered and coalesced across a studio — see :func:`flush_broken_buffers`
   — recovered mail is not.
-- ``EmailSchedule`` — a personal cadence ("send me this report every
+- ``EmailSchedule`` — a shared report cadence ("send this report every
   weekday at 8am"). Driven by :func:`send_scheduled`, called from an
   APScheduler job the coordinator keeps in sync with the schedule rows (see
   ``apps.runner.management.commands.runworker._SchedulerManager``). This is
@@ -720,7 +720,7 @@ def _send_scheduled(schedule_id) -> None:
 
     schedule = (
         EmailSchedule.objects.filter(pk=schedule_id, enabled=True)
-        .select_related("created_by", "report", "report__studio", "report__studio__org")
+        .select_related("report", "report__studio", "report__studio__org")
         .first()
     )
     if schedule is None:
@@ -730,8 +730,8 @@ def _send_scheduled(schedule_id) -> None:
     snapshot = deliveries.schedule_snapshot(schedule)
     initial = {"last_attempt_at": started, "delivery_accepted_to": [], "delivery_failed_to": []}
     reason = deliveries.delivery_pause(schedule.report.studio.org_id)
-    if reason or deliveries.owner_repair_required(schedule) or schedule.report.disabled or not schedule.report.present_in_scan:
-        initial["delivery_outcome"] = "paused" if reason else "owner_repair_required" if deliveries.owner_repair_required(schedule) else "stale"
+    if reason or schedule.report.disabled or not schedule.report.present_in_scan:
+        initial["delivery_outcome"] = "paused" if reason else "stale"
         EmailSchedule.objects.filter(pk=schedule.pk).update(**initial)
         return
     initial["delivery_outcome"] = "not_attempted"

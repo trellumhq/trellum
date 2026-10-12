@@ -1,4 +1,4 @@
-/* Email delivery: "send me this report" schedules. Lives in one file,
+/* Shared Studio report delivery schedules. Lives in one file,
  * served three ways:
  *
  *   - dashboard  -> loaded as a normal <script src="{% static %}"> tag
@@ -11,7 +11,7 @@
  *     _autoMount below) because report pages carry no server template to
  *     hand-place one in.
  *   - delivery center -> templates/reports/my_deliveries.html (the
- *     cross-studio "My deliveries" page) calls window.ReportDelivery
+ *     cross-studio delivery list) calls window.ReportDelivery
  *     .mountCenter(...) once on load. Each server-rendered schedule row
  *     expands inline into the SAME form the drawer uses (buildScheduleForm
  *     / wireScheduleForm below) -- one implementation behind three call
@@ -849,18 +849,11 @@
             html += '<div class="rdw-empty">No scheduled deliveries yet.</div>';
         } else {
             data.schedules.forEach(function (s) {
-                // Non-owned rows (someone else's schedule that reaches this
-                // user via a role/group chip) render read-only: the server
-                // already refuses edit/sample/delete for a schedule this
-                // user didn't create (created_by-scoped lookups in
-                // apps.reports.views), so offering those buttons here would
-                // just be a dead click.
-                var ownerNote = s.editable ? '' : ' &middot; set up by ' + esc(s.owner_name);
                 html += '<div class="rdw-schedule-row" data-id="' + s.id + '">'
                     + '<div class="rdw-schedule-summary">' + esc(scheduleSummary(s))
                     + '<span class="rdw-badge ' + (s.enabled ? 'on">On' : 'off">Off') + '</span></div>'
                     + '<div class="rdw-schedule-meta">' + esc(s.recipient_summary)
-                    + (s.attach_pdf ? ' &middot; PDF attached' : '') + ownerNote + '</div>';
+                    + (s.attach_pdf ? ' &middot; PDF attached' : '') + '</div>';
                 if (s.editable) {
                     html += '<div class="rdw-schedule-actions">'
                         + '<button type="button" class="rdw-btn small" data-edit="' + s.id + '">Edit</button>'
@@ -872,7 +865,7 @@
             });
         }
         html += '</div>'
-            + '<button type="button" class="rdw-btn" id="rdwNewSchedule">+ New schedule</button>'
+            + (data.can_manage ? '<button type="button" class="rdw-btn" id="rdwNewSchedule">+ New schedule</button>' : '<p class="rdw-note">Read only. Developers and admins manage shared schedules.</p>')
             + '<div id="rdwFormWrap"></div>'
             + '</div>';
 
@@ -884,7 +877,8 @@
     }
 
     function wireStaticControls() {
-        document.getElementById('rdwNewSchedule').addEventListener('click', function () {
+        var newButton = document.getElementById('rdwNewSchedule');
+        if (newButton) newButton.addEventListener('click', function () {
             editingId = null;
             renderForm(null);
         });
@@ -995,8 +989,8 @@
                 row.querySelector('[data-field="format"]').textContent = saved.attach_pdf ? 'HTML + PDF' : 'HTML';
                 row.querySelector('[data-field="recipients"]').textContent = saved.recipient_summary;
                 row.querySelector('[data-field="status"]').textContent = saved.enabled ? 'Enabled' : 'Disabled';
-                row.querySelector('[data-field="owner"]').textContent = saved.owner_name + (saved.owner_repair_required ? ' — owner repair required' : '');
-                row.querySelector('[data-field="next"]').textContent = saved.next_at || 'None while disabled, paused or owner needs repair';
+                row.querySelector('[data-field="creator"]').textContent = saved.creator_name;
+                row.querySelector('[data-field="next"]').textContent = saved.next_at || 'None while disabled, paused or report unavailable';
                 var toggle = row.querySelector('[data-toggle-enable]');
                 toggle.textContent = saved.enabled ? 'Disable' : 'Enable';
                 toggle.form.querySelector('[name="enabled"]').value = saved.enabled ? 'false' : 'true';
@@ -1164,9 +1158,7 @@
                 open(prefix, slug, name, window.__reportMenu.getTrigger());
             };
 
-            // No permission gate here (unlike Share/Activity): any studio
-            // member can set up their own delivery schedule, so this item
-            // registers unconditionally.
+            // All report readers can inspect shared delivery schedules.
             window.__reportMenu.register({
                 id: 'email-delivery', order: 30, label: 'Deliveries', onSelect: openNow,
                 icon: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4.5" width="15" height="11" rx="2"/><path d="M3.2 5.5l6.8 5.2 6.8-5.2"/></svg>'

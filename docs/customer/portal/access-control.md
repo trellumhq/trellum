@@ -7,8 +7,8 @@ studio the roles are, in increasing order:
 
 | Role | Can |
 |---|---|
-| `viewer` | Read accessible reports and analyses, use their filters and exports, ask the AI assistant questions, and manage their own deliveries |
-| `developer` | Viewer capabilities plus Operations, build history and logs, trigger builds, upload data-source files, test connections, fetch and publish from git |
+| `viewer` | Read accessible reports and analyses, use their filters and exports, ask the AI assistant questions, and read shared report deliveries |
+| `developer` | Viewer capabilities plus shared delivery schedule management, Operations, build history and logs, trigger builds, upload data-source files, test connections, fetch and publish from git |
 | `admin` | Everything, including the studio settings pages — repository, data-source credentials — and studio membership |
 
 An organization admin is implicitly an admin of every studio in that
@@ -99,7 +99,8 @@ To give someone a selected set of reports:
 5. Check **Effective access** for that person to identify any broader grants.
 
 The person can enter that studio, view their reports, ask the report-specific
-AI assistant and configure deliveries. Studio-wide operations, metrics,
+AI assistant and read shared deliveries. Developers and admins configure
+shared schedules for accessible reports. Studio-wide operations, metrics,
 annotations, experiments, analytics and settings are unavailable to selected
 viewers.
 

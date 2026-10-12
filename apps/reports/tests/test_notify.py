@@ -6,7 +6,7 @@ studio member with role developer or admin hears about a report of theirs
 breaking automatically (see apps.reports.notify.alert_recipients), and
 viewers never do. There is nothing to toggle, subscribe to, or unsubscribe
 from on that mail -- see TestRoleBasedRecipients and
-TestNoUnsubscribeOnAlertMail below. Only EmailSchedule (a personal delivery
+TestNoUnsubscribeOnAlertMail below. Only EmailSchedule (a shared report delivery
 cadence) still carries an unsubscribe link."""
 import json
 import sys
@@ -660,12 +660,13 @@ class TestResolveRecipients:
 # ── scheduled delivery ───────────────────────────────────────────────────────
 
 class TestSendScheduled:
-    def test_deleted_creator_preserves_schedule_and_skips_delivery(
-        self, report_row, viewer, developer, write_meta
+    def test_deleted_creator_preserves_schedule_and_continues_delivery(
+        self, monkeypatch, report_row, viewer, developer, write_meta
     ):
         from apps.reports.views import _schedule_dict
 
         write_meta(report_row.slug, last_status="success")
+        monkeypatch.setattr("apps.reports.notify._try_render", lambda output: None)
         schedule = EmailSchedule.objects.create(
             report=report_row,
             created_by=viewer,
@@ -685,14 +686,14 @@ class TestSendScheduled:
         assert schedule.attach_pdf is True
         assert list(schedule.recipients.values_list("pk", flat=True)) == [developer.pk]
         payload = _schedule_dict(schedule)
-        assert payload["owner_name"] == "Former user"
+        assert payload["creator_name"] == "Former user"
         assert payload["editable"] is False
 
         send_scheduled(schedule.pk)
 
-        assert mail.outbox == []
+        assert [message.to for message in mail.outbox] == [[developer.email]]
         schedule.refresh_from_db()
-        assert schedule.last_sent_at is None
+        assert schedule.last_accepted_at is not None
 
     def test_owner_access_revocation_skips_delivery(self, report_row, viewer, write_meta):
         from apps.studios.models import StudioMembership
@@ -1178,36 +1179,36 @@ class TestEmailScheduleTimezoneValidation:
 # ── views: schedules, sample-now ─────────────────────────────────────────────
 
 class TestScheduleViews:
-    def test_create_then_list(self, login, viewer, prefix, report_row):
-        c = login(viewer)
+    def test_create_then_list(self, login, developer, prefix, report_row):
+        c = login(developer)
         resp = c.post(
             f"{prefix}/api/reports/player-overview/schedules",
-            data=json.dumps({"freq": "daily", "send_hour": 9, "send_minute": 30}),
+            data=json.dumps({"recipient_ids": [developer.pk], "freq": "daily", "send_hour": 9, "send_minute": 30}),
             content_type="application/json",
         )
         assert resp.status_code == 200
         body = resp.json()
         assert body["ok"] is True
         assert body["schedule"]["freq"] == "daily"
-        assert body["schedule"]["recipients"] == [{"id": viewer.pk, "email": viewer.email}]
+        assert body["schedule"]["recipients"] == [{"id": developer.pk, "email": developer.email}]
 
         listed = c.get(f"{prefix}/api/reports/player-overview/schedules").json()["schedules"]
         assert len(listed) == 1
 
-    def test_list_carries_default_timezone_and_no_alert_mode(self, login, viewer, prefix, report_row):
+    def test_list_carries_default_timezone_and_no_alert_mode(self, login, developer, prefix, report_row):
         """The Email drawer's first paint needs the schedule list and a sane
         timezone default from this one GET. There is no "alert_mode" any
         more -- failure/recovery alerts have no per-user setting."""
         report_row.schedule_timezone = "America/New_York"
         report_row.save(update_fields=["schedule_timezone"])
-        c = login(viewer)
+        c = login(developer)
 
         body = c.get(f"{prefix}/api/reports/player-overview/schedules").json()
         # Delivery defaults are independent of the report's build timezone.
         assert body["default_timezone"] == "UTC"
         assert "alert_mode" not in body
 
-    def test_default_timezone_falls_back_to_utc_when_blank(self, login, viewer, prefix, report_row):
+    def test_default_timezone_falls_back_to_utc_when_blank(self, login, developer, prefix, report_row):
         # sync_studio_registry always fills schedule_timezone (defaulting to
         # "UTC" itself), so an actually-blank value only happens if something
         # clears it out from under the registry -- the `or "UTC"` fallback in
@@ -1215,32 +1216,32 @@ class TestScheduleViews:
         # default to exercise it.
         report_row.schedule_timezone = ""
         report_row.save(update_fields=["schedule_timezone"])
-        body = login(viewer).get(f"{prefix}/api/reports/player-overview/schedules").json()
+        body = login(developer).get(f"{prefix}/api/reports/player-overview/schedules").json()
         assert body["default_timezone"] == "UTC"
 
-    def test_invalid_weekday_rejected(self, login, viewer, prefix, report_row):
-        resp = login(viewer).post(
+    def test_invalid_weekday_rejected(self, login, developer, prefix, report_row):
+        resp = login(developer).post(
             f"{prefix}/api/reports/player-overview/schedules",
-            data=json.dumps({"freq": "weekly", "weekday": 9}),
+            data=json.dumps({"recipient_ids": [developer.pk], "freq": "weekly", "weekday": 9}),
             content_type="application/json",
         )
         assert resp.status_code == 400
 
-    def test_invalid_timezone_rejected_on_create(self, login, viewer, prefix, report_row):
-        resp = login(viewer).post(
+    def test_invalid_timezone_rejected_on_create(self, login, developer, prefix, report_row):
+        resp = login(developer).post(
             f"{prefix}/api/reports/player-overview/schedules",
-            data=json.dumps({"freq": "daily", "timezone": "22"}),
+            data=json.dumps({"recipient_ids": [developer.pk], "freq": "daily", "timezone": "22"}),
             content_type="application/json",
         )
         assert resp.status_code == 400
         assert "timezone" in resp.json()["errors"]
         assert not EmailSchedule.objects.filter(report=report_row).exists()
 
-    def test_invalid_timezone_rejected_on_update(self, login, viewer, prefix, report_row):
-        schedule = EmailSchedule.objects.create(report=report_row, created_by=viewer)
-        resp = login(viewer).post(
+    def test_invalid_timezone_rejected_on_update(self, login, developer, prefix, report_row):
+        schedule = EmailSchedule.objects.create(report=report_row, created_by=developer)
+        resp = login(developer).post(
             f"{prefix}/api/reports/player-overview/schedules/{schedule.pk}",
-            data=json.dumps({"timezone": "Not/AZone"}),
+            data=json.dumps({"recipient_ids": [developer.pk], "timezone": "Not/AZone"}),
             content_type="application/json",
         )
         assert resp.status_code == 400
@@ -1248,20 +1249,20 @@ class TestScheduleViews:
         schedule.refresh_from_db()
         assert schedule.timezone == "UTC"  # the model default: the bad value was never saved
 
-    def test_valid_iana_timezone_accepted(self, login, viewer, prefix, report_row):
-        resp = login(viewer).post(
+    def test_valid_iana_timezone_accepted(self, login, developer, prefix, report_row):
+        resp = login(developer).post(
             f"{prefix}/api/reports/player-overview/schedules",
-            data=json.dumps({"freq": "daily", "timezone": "Europe/Amsterdam"}),
+            data=json.dumps({"recipient_ids": [developer.pk], "freq": "daily", "timezone": "Europe/Amsterdam"}),
             content_type="application/json",
         )
         assert resp.status_code == 200
         assert resp.json()["schedule"]["timezone"] == "Europe/Amsterdam"
 
-    def test_update_own_schedule(self, login, viewer, prefix, report_row):
-        schedule = EmailSchedule.objects.create(report=report_row, created_by=viewer)
-        resp = login(viewer).post(
+    def test_update_own_schedule(self, login, developer, prefix, report_row):
+        schedule = EmailSchedule.objects.create(report=report_row, created_by=developer)
+        resp = login(developer).post(
             f"{prefix}/api/reports/player-overview/schedules/{schedule.pk}",
-            data=json.dumps({"send_hour": 14}),
+            data=json.dumps({"recipient_ids": [developer.pk], "send_hour": 14}),
             content_type="application/json",
         )
         assert resp.status_code == 200
@@ -1279,24 +1280,21 @@ class TestScheduleViews:
         )
         assert resp.status_code == 404
 
-    def test_delete_own_schedule(self, login, viewer, prefix, report_row):
-        schedule = EmailSchedule.objects.create(report=report_row, created_by=viewer)
-        resp = login(viewer).delete(f"{prefix}/api/reports/player-overview/schedules/{schedule.pk}")
+    def test_delete_own_schedule(self, login, developer, prefix, report_row):
+        schedule = EmailSchedule.objects.create(report=report_row, created_by=developer)
+        resp = login(developer).delete(f"{prefix}/api/reports/player-overview/schedules/{schedule.pk}")
         assert resp.status_code == 200
         assert not EmailSchedule.objects.filter(pk=schedule.pk).exists()
 
     def test_requires_auth(self, client, prefix, report_row):
         assert client.get(f"{prefix}/api/reports/player-overview/schedules").status_code == 401
 
-    # ── GET visibility: creator OR resolved recipient ───────────────────────
+    # ── GET visibility follows report access ───────────────────────────────
 
-    def test_recipient_not_creator_sees_the_schedule_read_only(
+    def test_developer_recipient_can_manage_colleague_schedule(
         self, login, developer, studio_admin, prefix, report_row
     ):
-        """A schedule addressed to "All developers" must show up in the
-        drawer for a developer who didn't create it -- the same audience
-        api_my_subscriptions already counts them into -- but read-only:
-        they can't edit/sample/delete a schedule they don't own."""
+        """A developer can manage a shared schedule regardless of its creator."""
         schedule = EmailSchedule.objects.create(
             report=report_row, created_by=studio_admin, recipient_roles=["developers"]
         )
@@ -1305,16 +1303,15 @@ class TestScheduleViews:
 
         assert len(body["schedules"]) == 1
         assert body["schedules"][0]["id"] == schedule.pk
-        assert body["schedules"][0]["editable"] is False
-        assert body["schedules"][0]["owner_name"] == studio_admin.display_name
+        assert body["schedules"][0]["editable"] is True
+        assert body["schedules"][0]["creator_name"] == studio_admin.display_name
         assert body["subscribed_count"] == 1
 
     def test_own_disabled_schedule_is_visible_but_does_not_light_the_badge(
         self, login, viewer, prefix, report_row
     ):
-        """The owner can still see (and re-enable) their own disabled
-        schedule, but a disabled schedule reaches nobody -- it must not
-        count toward the badge the client broadcasts."""
+        """A viewer can read a disabled schedule; it reaches nobody and
+        does not count toward the recipient badge."""
         schedule = EmailSchedule.objects.create(report=report_row, created_by=viewer, enabled=False)
         schedule.recipients.add(viewer)
 
@@ -1322,7 +1319,7 @@ class TestScheduleViews:
 
         assert len(body["schedules"]) == 1
         assert body["schedules"][0]["id"] == schedule.pk
-        assert body["schedules"][0]["editable"] is True
+        assert body["schedules"][0]["editable"] is False
         assert body["subscribed_count"] == 0
 
     def test_subscribed_count_matches_my_subscriptions_contract(
@@ -1345,11 +1342,11 @@ class TestScheduleViews:
     # ── recipient roles/groups: CRUD round-trip ─────────────────────────────
 
     def test_create_with_roles_and_groups(
-        self, login, viewer, prefix, report_row, make_group, attach_group
+        self, login, developer, prefix, report_row, make_group, attach_group
     ):
         group = make_group("Leadership")
-        attach_group(viewer, group)
-        resp = login(viewer).post(
+        attach_group(developer, group)
+        resp = login(developer).post(
             f"{prefix}/api/reports/player-overview/schedules",
             data=json.dumps(
                 {
@@ -1372,25 +1369,19 @@ class TestScheduleViews:
         schedule = EmailSchedule.objects.get(pk=body["id"])
         assert list(schedule.recipient_groups.all()) == [group]
 
-    def test_create_with_no_recipient_fields_defaults_to_creator(self, login, viewer, prefix, report_row):
-        """No recipient_ids/roles/groups key at all -- the legacy "just email
-        me" default, unchanged from before roles/groups existed (see
-        test_create_then_list above)."""
-        resp = login(viewer).post(
+    def test_create_with_no_recipient_fields_is_rejected(self, login, developer, prefix, report_row):
+        """Shared schedules require an explicitly selected audience."""
+        resp = login(developer).post(
             f"{prefix}/api/reports/player-overview/schedules",
             data=json.dumps({"freq": "daily", "send_hour": 9, "send_minute": 0}),
             content_type="application/json",
         )
-        assert resp.status_code == 200
-        body = resp.json()["schedule"]
-        assert body["recipients"] == [{"id": viewer.pk, "email": viewer.email}]
-        assert body["recipient_roles"] == []
+        assert resp.status_code == 400
+        assert not EmailSchedule.objects.exists()
 
-    def test_create_with_everything_explicitly_empty_is_rejected(self, login, viewer, prefix, report_row):
-        """Once the caller touches any recipient field, an empty union is a
-        real validation error, not a silent "just email the creator" --
-        distinct from the fully-omitted-body legacy default above."""
-        resp = login(viewer).post(
+    def test_create_with_everything_explicitly_empty_is_rejected(self, login, developer, prefix, report_row):
+        """An explicitly empty audience is rejected like an omitted one."""
+        resp = login(developer).post(
             f"{prefix}/api/reports/player-overview/schedules",
             data=json.dumps(
                 {
@@ -1405,8 +1396,8 @@ class TestScheduleViews:
         assert resp.status_code == 400
         assert EmailSchedule.objects.count() == 0
 
-    def test_unknown_role_is_rejected(self, login, viewer, prefix, report_row):
-        resp = login(viewer).post(
+    def test_unknown_role_is_rejected(self, login, developer, prefix, report_row):
+        resp = login(developer).post(
             f"{prefix}/api/reports/player-overview/schedules",
             data=json.dumps({"freq": "daily", "recipient_roles": ["superadmin"]}),
             content_type="application/json",
@@ -1415,10 +1406,10 @@ class TestScheduleViews:
         assert "recipient_roles" in resp.json()["errors"]
 
     def test_group_from_another_org_is_not_pickable(
-        self, login, viewer, prefix, report_row, other_org, make_group
+        self, login, developer, prefix, report_row, other_org, make_group
     ):
         foreign_group = make_group("Rival Group", org_=other_org)
-        resp = login(viewer).post(
+        resp = login(developer).post(
             f"{prefix}/api/reports/player-overview/schedules",
             data=json.dumps(
                 {
@@ -1434,14 +1425,14 @@ class TestScheduleViews:
         assert "groups" in resp.json()["error"]
 
     def test_update_roles_and_groups_round_trip(
-        self, login, viewer, prefix, report_row, make_group, attach_group
+        self, login, developer, prefix, report_row, make_group, attach_group
     ):
         group = make_group("Leadership")
-        attach_group(viewer, group)
-        schedule = EmailSchedule.objects.create(report=report_row, created_by=viewer)
-        schedule.recipients.add(viewer)
+        attach_group(developer, group)
+        schedule = EmailSchedule.objects.create(report=report_row, created_by=developer)
+        schedule.recipients.add(developer)
 
-        resp = login(viewer).post(
+        resp = login(developer).post(
             f"{prefix}/api/reports/player-overview/schedules/{schedule.pk}",
             data=json.dumps({"recipient_ids": [], "recipient_roles": ["admins"], "recipient_group_ids": [group.pk]}),
             content_type="application/json",
@@ -1453,10 +1444,10 @@ class TestScheduleViews:
         assert list(schedule.recipients.all()) == []  # individuals were cleared too
 
     def test_create_rejects_an_individual_without_report_access(
-        self, login, viewer, prefix, report_row, org, make_user
+        self, login, developer, prefix, report_row, org, make_user
     ):
         outsider = make_user("no-report@demo.example", org=org)
-        resp = login(viewer).post(
+        resp = login(developer).post(
             f"{prefix}/api/reports/player-overview/schedules",
             data=json.dumps({"recipient_ids": [outsider.pk]}),
             content_type="application/json",
@@ -1465,12 +1456,12 @@ class TestScheduleViews:
         assert "cannot view this report" in resp.json()["error"]
 
     def test_update_that_empties_everything_is_rejected_and_leaves_it_untouched(
-        self, login, viewer, prefix, report_row
+        self, login, developer, prefix, report_row
     ):
-        schedule = EmailSchedule.objects.create(report=report_row, created_by=viewer)
-        schedule.recipients.add(viewer)
+        schedule = EmailSchedule.objects.create(report=report_row, created_by=developer)
+        schedule.recipients.add(developer)
 
-        resp = login(viewer).post(
+        resp = login(developer).post(
             f"{prefix}/api/reports/player-overview/schedules/{schedule.pk}",
             data=json.dumps({"recipient_ids": []}),
             content_type="application/json",
@@ -1478,18 +1469,18 @@ class TestScheduleViews:
 
         assert resp.status_code == 400
         schedule.refresh_from_db()
-        assert viewer in schedule.recipients.all()  # rejected update never applied
+        assert developer in schedule.recipients.all()  # rejected update never applied
 
     def test_update_unrelated_field_does_not_require_touching_recipients(
-        self, login, viewer, prefix, report_row
+        self, login, developer, prefix, report_row
     ):
         # A schedule with no recipients at all (as if created before this
         # feature, or directly via the ORM) -- a send_hour-only PATCH must
         # not retroactively demand recipients it was never asked to set.
-        schedule = EmailSchedule.objects.create(report=report_row, created_by=viewer)
-        resp = login(viewer).post(
+        schedule = EmailSchedule.objects.create(report=report_row, created_by=developer)
+        resp = login(developer).post(
             f"{prefix}/api/reports/player-overview/schedules/{schedule.pk}",
-            data=json.dumps({"send_hour": 14}),
+            data=json.dumps({"recipient_ids": [developer.pk], "send_hour": 14}),
             content_type="application/json",
         )
         assert resp.status_code == 200
@@ -1497,16 +1488,16 @@ class TestScheduleViews:
     # ── recipient_summary ────────────────────────────────────────────────
 
     def test_recipient_summary_combines_roles_groups_and_people(
-        self, login, viewer, other_viewer, prefix, report_row, make_group, attach_group
+        self, login, developer, other_viewer, prefix, report_row, make_group, attach_group
     ):
         group = make_group("Leadership")
         attach_group(other_viewer, group)
-        resp = login(viewer).post(
+        resp = login(developer).post(
             f"{prefix}/api/reports/player-overview/schedules",
             data=json.dumps(
                 {
                     "freq": "daily",
-                    "recipient_ids": [viewer.pk],
+                    "recipient_ids": [developer.pk],
                     "recipient_roles": ["developers"],
                     "recipient_group_ids": [group.pk],
                 }
@@ -1582,25 +1573,25 @@ class TestSampleView:
     sleep/join."""
 
     def test_sample_now_returns_202_with_async_wording(
-        self, monkeypatch, login, viewer, prefix, report_row, write_meta, run_threads_inline
+        self, monkeypatch, login, developer, prefix, report_row, write_meta, run_threads_inline
     ):
         write_meta(report_row.slug, last_status="success")
         _remove_fake_snapshot(monkeypatch)
 
-        resp = login(viewer).post(f"{prefix}/api/reports/player-overview/sample")
+        resp = login(developer).post(f"{prefix}/api/reports/player-overview/sample")
 
         assert resp.status_code == 202
         assert "sending" in resp.json()["message"].lower()
         assert len(mail.outbox) == 1  # the inline-thread fixture already ran the send
 
     def test_schedule_sample_returns_202_with_async_wording(
-        self, monkeypatch, login, viewer, prefix, report_row, write_meta, run_threads_inline
+        self, monkeypatch, login, developer, prefix, report_row, write_meta, run_threads_inline
     ):
         write_meta(report_row.slug, last_status="success")
         _remove_fake_snapshot(monkeypatch)
-        schedule = EmailSchedule.objects.create(report=report_row, created_by=viewer)
+        schedule = EmailSchedule.objects.create(report=report_row, created_by=developer)
 
-        resp = login(viewer).post(
+        resp = login(developer).post(
             f"{prefix}/api/reports/player-overview/schedules/{schedule.pk}/sample"
         )
 
@@ -1609,7 +1600,7 @@ class TestSampleView:
         assert len(mail.outbox) == 1
 
     def test_send_failure_is_logged_with_user_and_report_context_not_silent(
-        self, monkeypatch, caplog, login, viewer, prefix, report_row, write_meta, run_threads_inline
+        self, monkeypatch, caplog, login, developer, prefix, report_row, write_meta, run_threads_inline
     ):
         """Before this fix, a sample-send failure was swallowed inside
         notify.send_sample with only a generic %r-of-its-arguments log line.
@@ -1626,19 +1617,19 @@ class TestSampleView:
         )
 
         with caplog.at_level(logging.ERROR, logger="apps.reports.views"):
-            resp = login(viewer).post(f"{prefix}/api/reports/player-overview/sample")
+            resp = login(developer).post(f"{prefix}/api/reports/player-overview/sample")
 
         assert resp.status_code == 202  # the request itself still succeeds
         assert mail.outbox == []
         records = [r for r in caplog.records if "sample send failed" in r.message.lower()]
         assert records, "expected a logged error naming the failed sample send"
-        assert viewer.email in records[0].message
+        assert developer.email in records[0].message
         assert "player-overview" in records[0].message
 
     def test_sample_now_429_when_the_pool_is_full(
-        self, monkeypatch, login, viewer, prefix, report_row, write_meta
+        self, monkeypatch, login, developer, prefix, report_row, write_meta
     ):
-        """Every studio viewer can POST this, and each accepted POST costs a
+        """Every studio developer can POST this, and each accepted POST costs a
         browser render plus an SMTP round trip -- so a full slot pool is
         answered with 429 + Retry-After rather than another thread."""
         import threading
@@ -1650,26 +1641,26 @@ class TestSampleView:
         assert full.acquire(blocking=False)
         monkeypatch.setattr(views_mod, "_SAMPLE_SLOTS", full)
 
-        resp = login(viewer).post(f"{prefix}/api/reports/player-overview/sample")
+        resp = login(developer).post(f"{prefix}/api/reports/player-overview/sample")
 
         assert resp.status_code == 429
         assert resp["Retry-After"]
         assert mail.outbox == []
 
     def test_schedule_sample_429_when_the_pool_is_full(
-        self, monkeypatch, login, viewer, prefix, report_row, write_meta
+        self, monkeypatch, login, developer, prefix, report_row, write_meta
     ):
         import threading
 
         from apps.reports import views as views_mod
 
         write_meta(report_row.slug, last_status="success")
-        schedule = EmailSchedule.objects.create(report=report_row, created_by=viewer)
+        schedule = EmailSchedule.objects.create(report=report_row, created_by=developer)
         full = threading.BoundedSemaphore(1)
         assert full.acquire(blocking=False)
         monkeypatch.setattr(views_mod, "_SAMPLE_SLOTS", full)
 
-        resp = login(viewer).post(
+        resp = login(developer).post(
             f"{prefix}/api/reports/player-overview/schedules/{schedule.pk}/sample"
         )
 
@@ -1678,7 +1669,7 @@ class TestSampleView:
         assert mail.outbox == []
 
     def test_slot_is_released_after_the_send(
-        self, monkeypatch, login, viewer, prefix, report_row, write_meta, run_threads_inline
+        self, monkeypatch, login, developer, prefix, report_row, write_meta, run_threads_inline
     ):
         """A finished send gives its slot back -- a one-slot pool must still
         accept a second POST once the first has run (the inline-thread
@@ -1690,7 +1681,7 @@ class TestSampleView:
         write_meta(report_row.slug, last_status="success")
         _remove_fake_snapshot(monkeypatch)
         monkeypatch.setattr(views_mod, "_SAMPLE_SLOTS", threading.BoundedSemaphore(1))
-        c = login(viewer)
+        c = login(developer)
 
         assert c.post(f"{prefix}/api/reports/player-overview/sample").status_code == 202
         assert c.post(f"{prefix}/api/reports/player-overview/sample").status_code == 202
@@ -1752,10 +1743,13 @@ class TestScheduledDeliveryPolicySafety:
             return None
         monkeypatch.setattr(notify, '_try_render', render)
         send_scheduled(row.pk)
-        assert mail.outbox == []
+        assert [message.to for message in mail.outbox] == ([[other_viewer.email]] if change in ('owner_revoked', 'owner_deactivated') else [])
         if change != 'deleted':
             row.refresh_from_db()
-            assert row.last_accepted_at is None and row.delivery_accepted_to == []
+            if change in ('owner_revoked', 'owner_deactivated'):
+                assert row.last_accepted_at and row.delivery_accepted_to == [other_viewer.email]
+            else:
+                assert row.last_accepted_at is None and row.delivery_accepted_to == []
             if change in ('pause', 'pause_resume'):
                 assert row.delivery_outcome == 'paused'
 

@@ -6,13 +6,14 @@ import pytest
 from playwright.sync_api import expect, sync_playwright
 
 from apps.reports.models import EmailSchedule
+from apps.core import roles
 
 pytestmark = pytest.mark.django_db
 ROOT = Path(__file__).resolve().parents[3]
 
 
 @pytest.fixture(params=['chromium', 'webkit'])
-def delivery_browser(request, login, org_admin, report_row):
+def delivery_browser(request, login, org_admin, report_row, make_user, grant_studio, org):
     row = EmailSchedule.objects.create(report=report_row, created_by=org_admin)
     row.recipients.add(org_admin)
     client = login(org_admin)
@@ -28,6 +29,13 @@ def delivery_browser(request, login, org_admin, report_row):
     assert invalid.status_code == 400
     pages = {path: client.get(path).content.decode() for path in [listing, edit, create, f'{listing}/new']}
     pages[api] = invalid.content.decode()
+    viewer = make_user('drawer-viewer@example.test', org=org)
+    grant_studio(viewer, report_row.studio, roles.VIEWER)
+    schedules_url = api.rsplit('/', 1)[0]
+    pages['drawer_payloads'] = {
+        False: login(viewer).get(schedules_url).json(),
+        True: login(org_admin).get(schedules_url).json(),
+    }
     with sync_playwright() as playwright:
         browser = getattr(playwright, request.param).launch(headless=True)
         page = browser.new_page()
@@ -126,3 +134,24 @@ def test_cancelled_delete_sends_no_request(delivery_browser):
     page.locator('form[data-delete-confirm]').first.evaluate('form => form.requestSubmit()')
     page.wait_for_timeout(50)
     assert writes == [] and page.locator('[data-delivery-row]').count() == 1
+
+
+@pytest.mark.parametrize('can_manage', [False, True])
+def test_drawer_uses_shared_permissions(delivery_browser, can_manage, report_row):
+    page, pages, listing, edit, create, api, browser = delivery_browser
+    payload = pages['drawer_payloads'][can_manage]
+    assert payload['can_manage'] is can_manage
+    assert len(payload['schedules']) == 1
+    assert payload['schedules'][0]['editable'] is can_manage
+    page.goto('https://example.test' + listing)
+    page.route('**/schedules', lambda route: route.fulfill(json=payload))
+    page.route('**/recipients', lambda route: route.fulfill(json={'members': [], 'roles': {}, 'groups': []}))
+    page.add_script_tag(content=(ROOT / 'static/report_delivery.js').read_text(encoding='utf-8'))
+    prefix = listing.removesuffix('/deliveries')
+    page.evaluate('args => ReportDelivery.open(args[0], args[1], "Report")', [prefix, report_row.slug])
+    expect(page.locator('.rdw-schedule-row')).to_have_count(1)
+    assert page.locator('#rdwNewSchedule').count() == int(can_manage)
+    for action in ('edit', 'sample', 'delete'):
+        assert page.locator(f'[data-{action}]').count() == int(can_manage)
+    if not can_manage:
+        expect(page.locator('#rdwBody')).to_contain_text('Read only')

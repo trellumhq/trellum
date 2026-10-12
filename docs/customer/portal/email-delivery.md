@@ -1,10 +1,10 @@
 # Email delivery
 
 Two independent things live under this heading: scheduled report deliveries
-("send me this report every Monday at 8am") and build failure notices
-(automatic, zero-configuration mail when a report's build breaks). You can set
-up your own schedules, and organization admins can manage schedules across
-creators through **Manage deliveries**. They share a mailer and a "no login
+("send this report every Monday at 8am") and build failure notices
+(automatic, zero-configuration mail when a report's build breaks). Studio developers and admins can configure shared
+schedules, and organization admins can manage schedules across Studios
+through **Manage deliveries**. They share a mailer and a "no login
 needed" design, but nothing else — a delivery is something you set up; a notice
 is something that just happens.
 
@@ -27,7 +27,7 @@ a stale or empty image.
 
 ## Creating a schedule
 
-Open **My Deliveries** in the Studio navigation and choose **Add delivery**.
+Open **Deliveries** in the Studio navigation and choose **Add delivery**.
 Choose a report or analysis, enter its schedule and recipients, then **Save
 delivery** to return to the list. **Edit** opens a dedicated page; **Cancel**
 returns without saving. Failed validation keeps your draft. The report's
@@ -47,8 +47,17 @@ Set:
 - **Attach as PDF** — adds a PDF copy alongside the inline image
 - **Enabled** — a disabled schedule stays configured but sends nothing
 
-Any studio member can set up a schedule for themselves — creating a
-delivery is not gated behind the developer role.
+Developers and admins can create, edit, enable, disable and delete shared
+schedules for reports they can access. Viewers can read every schedule for
+their accessible reports, including disabled schedules and schedules that do
+not address them. Each new schedule requires an explicit audience.
+
+API clients must supply `recipient_ids`, `recipient_roles` or
+`recipient_group_ids` when creating a schedule; an omitted or empty audience
+is rejected. Schedule responses use `creator_name` for creation history and
+`editable` for the caller's management permission. The schedule-list response
+also includes `can_manage`, including when no schedules exist. `owner_id`
+reassignment is unsupported.
 
 Use **Send sample** to get a copy right away without waiting for the next
 scheduled run — useful for checking recipients and formatting before you
@@ -56,14 +65,14 @@ trust the cadence.
 
 ## Managing shared deliveries
 
-Studio admins can manage all creators' schedules in their Studio, subject
-to report access. Other members manage their own schedules and can see enabled
-schedules that currently address them as read-only rows. Organization admins,
-including admins granted through a permission group, can open **Manage
-deliveries across organizations** from the Studio list to manage schedules and
-delivery policies. Instance superusers see all organizations. Support-operator
-access alone grants no schedule or report-data access. Existing `/me/deliveries`
-bookmarks retain a personal compatibility list with links to Studio deliveries.
+Schedules belong to the Studio. Developers and admins can manage every
+schedule for reports they can access, regardless of who created it. Viewers
+have read-only access. Organization admins, including admins granted through
+a permission group, can open **Manage deliveries across organizations** from
+the Studio list to manage schedules and delivery policies. Instance superusers
+see all organizations. Support-operator access alone grants no schedule or
+report-data access. Existing `/me/deliveries` bookmarks show accessible shared
+schedules with links to Studio deliveries.
 Search or filter by organization, studio, report, creator and enabled state.
 AI alerts appear on a separate tab with links to their existing forms and logs.
 
@@ -86,16 +95,14 @@ schedules only**. Blank organization defaults inherit the instance. Existing
 schedules and AI alerts retain their configuration, and each new schedule can
 explicitly override the defaults.
 
-Schedules survive deletion of their creator. An ownerless, inactive or
-inaccessible owner needs repair before delivery. Organization admins can
-reassign a schedule to an active organization member who can view the report,
-after recipients are revalidated. Reassignment does not send or enable the
-schedule, and does not resume global pause. AI-alert billing-owner repair is
-separate and cannot be performed through this center.
+Schedules survive deletion, deactivation or role changes of their creator.
+The creator is retained only as audit history and cannot be reassigned. The
+schedule continues for its eligible recipients. AI alerts retain their
+separate billing-owner and access requirements.
 
 Delete confirmation identifies the schedule, report and recipients. Deletion
 stops future sends; it cannot recall a message already accepted by a transport.
-Configuration, owner changes and deletion identifiers are recorded in audit.
+Configuration changes and deletion identifiers are recorded in audit.
 Current permissions, recipients and pause state are checked again before each
 message. A pause and resume during rendering or evaluation stops that old
 attempt; the next future occurrence or a fresh alert evaluation can deliver.
@@ -120,9 +127,9 @@ someone's access changes. The flip side: someone who joins later starts
 receiving it automatically too, with no edit required.
 
 The recipient picker lists only people who can currently view the report.
-Choosing a recipient or group never grants report access. If the schedule's
-owner loses access, sending stops while the schedule remains configured; it
-can resume if the owner's access is restored.
+Choosing a recipient or group never grants report access. Only active people
+with current report access can receive a delivery, including a final check
+immediately before sending.
 
 ## Unsubscribing
 

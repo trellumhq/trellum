@@ -1082,8 +1082,8 @@ class TestStudioMembersApi:
     """The Email & Alerts drawer's recipient picker — no JSON endpoint for
     "who can see this studio" existed before (the server-rendered members
     settings page is ADMIN-gated); this one is VIEWER-gated like the
-    schedule endpoints it feeds, since any member can pick recipients for
-    their own personal delivery schedule."""
+    schedule read endpoints it feeds; developers and admins configure the
+    shared schedule audience."""
 
     def test_studio_member_listed(self, login, viewer, prefix, report_row):
         body = login(viewer).get(f"{prefix}/api/members").json()
