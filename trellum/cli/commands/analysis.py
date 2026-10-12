@@ -84,7 +84,6 @@ def add_analysis_commands(sub) -> None:
     session.add_argument("report", help="reports/<slug> or an analysis slug")
     session.add_argument("--port", type=int)
     session.add_argument("--no-browser", action="store_true")
-    session.add_argument("--rebuild", action="store_true")
     session.add_argument("--restart-server", action="store_true")
     session.set_defaults(fn=_cmd_analysis_session)
     inbox = verbs.add_parser("inbox", help="list pending local capture IDs")

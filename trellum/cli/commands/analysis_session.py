@@ -44,7 +44,7 @@ def _cmd_analysis_session(args: argparse.Namespace) -> int:
         report=args.report,
         port=args.port,
         no_browser=True,
-        rebuild=args.rebuild,
+        rebuild=True,
         restart_server=args.restart_server,
     )
     if _cmd_review_start(review_args):
