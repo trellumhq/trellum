@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from pathlib import Path
 
@@ -25,13 +26,17 @@ def _send_json(handler, code: int, obj: dict) -> None:
     handler.end_headers()
     handler.wfile.write(body)
 
-def _read_body(handler) -> dict | None:
+def _read_body(handler, limit: int = _MAX_BODY_BYTES) -> dict | None:
     """Parse the JSON request body; None means an error was already sent."""
     try:
         length = int(handler.headers.get("Content-Length") or 0)
     except ValueError:
-        length = 0
-    if length > _MAX_BODY_BYTES:
+        _send_json(handler, 400, {"error": "invalid Content-Length"})
+        return None
+    if length < 0 or handler.headers.get("Transfer-Encoding"):
+        _send_json(handler, 400, {"error": "invalid body framing"})
+        return None
+    if length > limit:
         _send_json(handler, 413, {"error": "body too large"})
         return None
     raw = handler.rfile.read(length) if length else b""
@@ -48,6 +53,71 @@ def _read_body(handler) -> dict | None:
 def _is_loopback(handler) -> bool:
     host = handler.client_address[0]
     return host in ("127.0.0.1", "::1", "::ffff:127.0.0.1")
+
+
+def _analysis_origin_allowed(handler, require_origin: bool = False) -> bool:
+    port = handler.server.server_address[1]
+    hosts = {f"localhost:{port}", f"127.0.0.1:{port}"}
+    host = handler.headers.get("Host", "")
+    if host not in hosts or handler.headers.get("Sec-Fetch-Site", "") not in ("", "same-origin", "none"):
+        return False
+    origin = handler.headers.get("Origin")
+    return (origin == f"http://{host}" if origin is not None else not require_origin)
+
+
+def _handle_analysis_request(handler) -> bool:
+    from trellum.analysis_capture import MAX_CAPTURE_BYTES
+    from trellum.analysis_inbox import analysis_target
+    from trellum.project import get_project_root
+
+    path = handler.path.split("?")[0]
+    prefix = f"{_REVIEW_PREFIX}/analysis"
+    if not path.startswith(prefix):
+        return False
+    if not _analysis_origin_allowed(handler, require_origin=path == prefix + "/capture"):
+        _send_json(handler, 403, {"error": "analysis endpoints require an allowed local origin"})
+        return True
+    method = handler.command
+    if path == prefix and method == "GET":
+        _send_json(handler, 200, STATE.analysis_status())
+        return True
+    if method != "POST" or path not in (prefix + "/start", prefix + "/capture", prefix + "/end"):
+        _send_json(handler, 404, {"error": "unknown analysis endpoint"})
+        return True
+    body = _read_body(handler, MAX_CAPTURE_BYTES + 16384 if path.endswith("/capture") else _MAX_BODY_BYTES)
+    if body is None:
+        return True
+    try:
+        if path.endswith("/start"):
+            slug = body.get("slug")
+            if not isinstance(slug, str):
+                raise ValueError("Analysis slug required")
+            analysis_target(get_project_root(), slug)
+            _send_json(handler, 200, STATE.start_analysis(slug))
+        elif path.endswith("/end"):
+            STATE.end_analysis()
+            _send_json(handler, 200, {"ok": True})
+        else:
+            request_id, note, capture = body.get("request_id"), body.get("note", ""), body.get("capture")
+            if not isinstance(request_id, str) or not re.fullmatch(r"[a-zA-Z0-9_-]{16,100}", request_id):
+                raise ValueError("A unique request ID of 16–100 characters is required")
+            if not isinstance(note, str) or len(note) > 2000:
+                raise ValueError("Capture note must be text of at most 2000 characters")
+            capture_id, duplicate = STATE.submit_capture(
+                get_project_root(), handler.headers.get("X-Trellum-Analysis-Token", ""),
+                request_id, capture, note)
+            _send_json(handler, 200, {"ok": True, "capture_id": capture_id, "duplicate": duplicate})
+    except ReviewInactive:
+        _send_json(handler, 409, {"error": "analysis session not active"})
+    except PermissionError:
+        _send_json(handler, 403, {"error": "invalid analysis session token"})
+    except FileExistsError as exc:
+        _send_json(handler, 409, {"error": str(exc)})
+    except (ValueError, TypeError, FileNotFoundError) as exc:
+        _send_json(handler, 400, {"error": str(exc)})
+    except OSError:
+        _send_json(handler, 500, {"error": "capture could not be stored; try again"})
+    return True
 
 def _query_params(path: str) -> dict[str, str]:
     from urllib.parse import parse_qsl, urlsplit
@@ -80,6 +150,8 @@ def handle_review_request(handler, served_dir: str) -> bool:
         _send_json(handler, 403, {"error": "review endpoints are loopback-only"})
         return True
     STATE.bind_dir(served_dir)
+    if _handle_analysis_request(handler):
+        return True
 
     method = handler.command
     if path == "/_fw/review.js" and method == "GET":

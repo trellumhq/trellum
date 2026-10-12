@@ -278,6 +278,81 @@
         } catch (e) { return ''; }
     }
 
+    function _analysisDownloadPayload(payload, filename) {
+        var blob = new Blob([JSON.stringify(payload)], {type: 'application/json'});
+        var link = document.createElement('a');
+        link.download = filename;
+        link.href = URL.createObjectURL(blob); link.click();
+        setTimeout(function() { URL.revokeObjectURL(link.href); }, 1000);
+        _analysisMessage('Capture downloaded.');
+        return true;
+    }
+
+    function _analysisDeliver(payload, filename) {
+        if (!/^https?:$/.test(location.protocol) || !/^(localhost|127\.0\.0\.1)$/.test(location.hostname))
+            return Promise.resolve(_analysisDownloadPayload(payload, filename));
+        return fetch('/_fw/review/analysis', {cache: 'no-store', credentials: 'same-origin'})
+            .then(function(response) { return response.ok ? response.json() : null; })
+            .catch(function() { return null; }).then(function(session) {
+                if (!session || !session.active || !session.token || !window.crypto || !window.crypto.getRandomValues)
+                    return _analysisDownloadPayload(payload, filename);
+                return new Promise(function(resolve) {
+                    var previousFocus = document.activeElement;
+                    var dialog = document.createElement('dialog');
+                    dialog.className = 'fw-analysis-capture-ui';
+                    dialog.setAttribute('aria-labelledby', 'fw-analysis-delivery-title');
+                    dialog.style.cssText = 'width:min(420px,calc(100vw - 48px));max-height:85vh;overflow:auto;margin:auto;padding:24px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-card);color:var(--text-main)';
+                    var title = document.createElement('h2');
+                    title.id = 'fw-analysis-delivery-title'; title.textContent = 'Capture for analysis';
+                    var destination = document.createElement('p');
+                    destination.textContent = 'Send this frozen evidence to ' + session.slug + '.';
+                    var label = document.createElement('label');
+                    label.textContent = 'Note for your agent (optional)';
+                    var note = document.createElement('textarea');
+                    note.maxLength = 2000; note.rows = 3;
+                    note.style.cssText = 'display:block;width:100%;box-sizing:border-box;margin:8px 0 16px;padding:8px;background:var(--bg-main);color:var(--text-main);border:1px solid var(--border-color);border-radius:4px';
+                    label.appendChild(note);
+                    var status = document.createElement('p'); status.setAttribute('role', 'status');
+                    var sending = false;
+                    var requestBytes = new Uint8Array(16); window.crypto.getRandomValues(requestBytes);
+                    var requestId = Array.from(requestBytes).map(function(n) { return n.toString(16).padStart(2, '0'); }).join('');
+                    var finish = function(result) {
+                        dialog.close(); dialog.remove();
+                        if (previousFocus && previousFocus.isConnected) previousFocus.focus();
+                        resolve(result);
+                    };
+                    var button = function(text, callback) {
+                        var el = document.createElement('button'); el.type = 'button'; el.textContent = text;
+                        el.style.cssText = 'padding:8px 12px;margin:4px 8px 4px 0;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-card);color:var(--text-main);cursor:pointer';
+                        el.addEventListener('click', callback); return el;
+                    };
+                    var send = button('Send to agent', function() {
+                        if (sending) return;
+                        sending = true; send.disabled = true; download.disabled = true; cancel.disabled = true; note.disabled = true;
+                        // A retry must carry the same note when delivery was unconfirmed.
+                        note.readOnly = true;
+                        status.textContent = 'Sending capture…';
+                        fetch('/_fw/review/analysis/capture', {method: 'POST', credentials: 'same-origin',
+                            headers: {'Content-Type': 'application/json', 'X-Trellum-Analysis-Token': session.token},
+                            body: JSON.stringify({request_id: requestId, note: note.value, capture: payload})})
+                            .then(function(response) { return response.json().then(function(result) {
+                                if (!response.ok) throw new Error(result.error || 'Capture was not accepted.');
+                                finish(true); _analysisMessage('Capture sent. Your agent will import it into the analysis.');
+                            }); }).catch(function(err) {
+                                status.textContent = (err && err.message || 'Capture delivery could not be confirmed.') + ' Retry or download the capture.';
+                            }).then(function() {
+                                sending = false; send.disabled = false; download.disabled = false; cancel.disabled = false; note.disabled = false;
+                            });
+                    });
+                    var download = button('Download capture', function() { finish(_analysisDownloadPayload(payload, filename)); });
+                    var cancel = button('Cancel', function() { finish(false); });
+                    dialog.addEventListener('cancel', function(event) { event.preventDefault(); if (!sending) finish(false); });
+                    [title, destination, label, status, send, download, cancel].forEach(function(el) { dialog.appendChild(el); });
+                    document.body.appendChild(dialog); dialog.showModal(); note.focus();
+                });
+            });
+    }
+
     function _analysisDownload(target) {
         var pending = _analysisPending();
         if (pending) return _analysisCaptureError(pending);
@@ -324,15 +399,10 @@
                         filters: snapshot.filters};
                     var payload = {format: 'trellum-analysis-capture', version: 1,
                         image: {mime_type: 'image/png', data_base64: base64}, source: source};
-                    var blob = new Blob([JSON.stringify(payload)], {type: 'application/json'});
-                    var link = document.createElement('a');
-                    link.download = (slug || 'report') + '-' + (componentId || 'component') + '.trellum-capture.json';
-                    link.href = URL.createObjectURL(blob); link.click();
-                    setTimeout(function() { URL.revokeObjectURL(link.href); }, 1000);
-                    return true;
+                    restore();
+                    return _analysisDeliver(payload, (slug || 'report') + '-' + (componentId || 'component') + '.trellum-capture.json');
                 }).then(function(value) { restore(); return value; }, function(err) { restore(); throw err; });
             }).then(function(ok) {
-                if (ok) _analysisMessage('Capture downloaded.');
                 return ok;
             }).catch(function(err) {
                 return _analysisCaptureError((err && err.message) || 'Capture failed.');
