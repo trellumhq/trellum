@@ -12,142 +12,63 @@
  *     hand-place one in.
  *   - delivery center -> templates/reports/my_deliveries.html (the
  *     cross-studio delivery list) calls window.ReportDelivery
- *     .mountCenter(...) once on load. Each server-rendered schedule row
- *     expands inline into the SAME form the drawer uses (buildScheduleForm
- *     / wireScheduleForm below) -- one implementation behind three call
- *     sites, not three parallel widgets.
+ *     .mountCenter(...) once on load. Current rows retain native actions and
+ *     dedicated edit pages; compatibility rows use the drawer's shared form.
  *
- * Styling is self-injected (like static/assistant.js) so this works on report
- * pages, which never load ui.css/portal.css: colors resolve through the
- * dashboard/report shared 17-token contract (docs/design-system.md) with a
- * framework-var fallback chain, same convention as assistant.css.
+ * Scoped styling and shared picker assets work on reports without importing
+ * the portal stylesheet. Native schedule fields retain the existing JSON API.
  */
 (function () {
     'use strict';
+    if (window.ReportDelivery) return;
 
     var CSS = ''
-        // Drawer animation: slide in from the right + a slight fade,
-        // ~180ms ease-out; reverse on close. opacity+visibility (not just
-        // transform) are what let the drawer go non-interactive/invisible
-        // only once the CLOSE transition actually finishes -- visibility
-        // in a transition's property list flips at the START when going
-        // toward visible, but at the END when going toward hidden, so this
-        // needs no JS timer of its own. See playOpen() below for the other
-        // half: forcing a reflow before the FIRST open, or this animation
-        // (and the overlay's identical trick, already in place) has
-        // nothing to transition from and just snaps open instead.
-        + '#rdwOverlay{position:fixed;inset:0;background:rgba(0,0,0,0.3);z-index:9200;opacity:0;visibility:hidden;transition:opacity .18s ease-out,visibility .18s}'
+        + '#rdwOverlay{position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:9200;opacity:0;visibility:hidden}'
         + '#rdwOverlay.open{opacity:1;visibility:visible}'
-        + '#rdwDrawer{position:fixed;top:0;right:0;bottom:0;width:480px;max-width:92vw;'
-        + 'background:var(--bg-card,var(--bg-main,#fff));border-left:1px solid var(--border,var(--border-color,#ddd));'
-        + 'box-shadow:-4px 0 24px rgba(0,0,0,0.16);z-index:9201;opacity:0;visibility:hidden;transform:translateX(100%);'
-        + 'transition:transform .18s ease-out,opacity .18s ease-out,visibility .18s;display:flex;flex-direction:column;font-size:13px;'
-        + 'color:var(--text,var(--text-main,#1a1a2e));font-family:inherit}'
-        + '#rdwDrawer.open{opacity:1;visibility:visible;transform:translateX(0)}'
-        + '#rdwDrawer *{box-sizing:border-box}'
-        + '@media(prefers-reduced-motion:reduce){#rdwOverlay,#rdwDrawer{transition:none}}'
-        + '.rdw-header{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;'
-        + 'padding:16px 20px;border-bottom:1px solid var(--border,var(--border-color,#ddd));flex-shrink:0}'
-        + '.rdw-title{font-size:15px;font-weight:600;margin:0}'
-        + '.rdw-subtitle{font-size:12px;color:var(--text2,var(--text-secondary,#777));margin-top:2px;'
-        + 'max-width:380px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
-        + '.rdw-close{background:none;border:none;font-size:20px;line-height:1;cursor:pointer;'
-        + 'color:var(--text3,var(--text-secondary,#999));padding:0 2px}'
-        + '.rdw-close:hover{color:var(--text,var(--text-main,#1a1a2e))}'
-        + '.rdw-body{flex:1;overflow-y:auto;padding:16px 20px 28px}'
-        + '.rdw-section{margin-bottom:22px}'
-        + '.rdw-section-title{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;'
-        + 'color:var(--text2,var(--text-secondary,#777));margin:0 0 10px}'
-        + '.rdw-note{color:var(--text2,var(--text-secondary,#777));font-size:12px;margin:0;line-height:1.5}'
-        // !important below (chip/pill buttons, the recipient search input,
-        // and this row) is deliberate, not decorative: on the delivery
-        // center (/me/deliveries, body.mgmt) these elements sit inside
-        // <main>, where ui.css's `body.mgmt main button:not(.ui-btn)` and
-        // `body.mgmt label` rules OUTRANK this file's single-class selectors
-        // on real CSS specificity (2 classes + 3 elements beats 1 class,
-        // regardless of injection order) and silently repaint every chip
-        // button and check-row at mgmt's generic 7px/14px/12px scale --
-        // wrecking the 999px pill radius in the process. The drawer never
-        // shows this because it renders outside <main>. Self-injected widget
-        // CSS has to be able to assume it always wins; !important is that
-        // guarantee, scoped to exactly the properties ui.css would otherwise
-        // clobber.
-        + '.rdw-check-row{display:flex!important;align-items:flex-start;gap:8px;padding:6px 0;cursor:pointer}'
-        + '.rdw-check-row input{margin-top:2px;flex-shrink:0}'
-        + '.rdw-check-row .rdw-check-label{font-weight:500}'
-        + '.rdw-check-row .rdw-help{display:block;color:var(--text3,var(--text-secondary,#999));font-size:11px;margin-top:1px}'
-        + '.rdw-btn{display:inline-flex!important;align-items:center;gap:6px;border-radius:6px!important;padding:6px 12px!important;'
-        + 'font-size:12px!important;font-weight:500;cursor:pointer;border:1px solid var(--border,var(--border-color,#ddd))!important;'
-        + 'background:var(--bg-card,var(--bg-main,#fff))!important;color:var(--text,var(--text-main,#1a1a2e));transition:all .15s}'
-        + '.rdw-btn:hover{border-color:var(--accent,var(--bg-header,#4e79a7));color:inherit}'
-        + '.rdw-btn:disabled{opacity:.5;cursor:default}'
-        + '.rdw-btn.primary{background:var(--accent,var(--bg-header,#4e79a7))!important;border-color:var(--accent,var(--bg-header,#4e79a7))!important;color:var(--on-accent,#fff)}'
-        + '.rdw-btn.danger{color:var(--red,var(--accent-red,#dc2626))}'
-        + '.rdw-btn.danger:hover{border-color:var(--red,var(--accent-red,#dc2626))}'
-        // The "small" variant is exactly what body.mgmt's blanket button rule
-        // has no concept of -- it applies the same padding/font to every
-        // <button>, so this is the one most visibly flattened without the
-        // !important overrides above and below.
-        + '.rdw-btn.small{padding:3px 8px!important;font-size:11px!important}'
-        + '.rdw-field{margin-bottom:12px}'
-        + '.rdw-label{display:block;font-size:11px;font-weight:600;color:var(--text2,var(--text-secondary,#777));margin-bottom:4px}'
-        + '.rdw-input,.rdw-select{width:100%;padding:6px 8px;border-radius:6px;font-size:13px;'
-        + 'border:1px solid var(--border,var(--border-color,#ddd));background:var(--bg,var(--bg-main,#fff));'
-        + 'color:var(--text,var(--text-main,#1a1a2e))}'
-        + '.rdw-input:focus,.rdw-select:focus,.rdw-btn:focus-visible,.rdw-close:focus-visible{'
-        + 'outline:2px solid var(--focus,var(--accent,#4e79a7));outline-offset:1px}'
-        + '.rdw-row2{display:flex;gap:8px}'
-        + '.rdw-row2 .rdw-field{flex:1}'
-        + '.rdw-field-error{color:var(--red,var(--accent-red,#dc2626));font-size:11px;margin-top:3px}'
-        + '.rdw-help{display:block;color:var(--text3,var(--text-secondary,#999));font-size:11px;margin-top:4px}'
-        // Recipient chip picker: quick-add chips (unselected roles/groups),
-        // the selected area (removable chips, member chips overflowing past
-        // ~6 into "+N more…"), and the type-to-search dropdown that appends
-        // member chips. One recipe per docs/design-system.md -- color: token,
-        // background: color-mix(token 14%, transparent) -- so role (accent),
-        // group (studio purple) and individual (info blue) chips read apart
-        // at a glance without inventing a fourth badge system.
-        + '.rdw-quickadd{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}'
-        + '.rdw-chip-add{font-size:11px!important;padding:3px 9px!important;border-radius:999px!important;cursor:pointer;'
-        + 'border:1px dashed var(--border,var(--border-color,#ddd))!important;background:none!important;'
-        + 'color:var(--text2,var(--text-secondary,#777));transition:all .15s}'
-        + '.rdw-chip-add:hover{border-color:var(--accent,var(--bg-header,#4e79a7));color:var(--accent,var(--bg-header,#4e79a7))}'
-        + '.rdw-selected{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-height:24px;margin-bottom:8px}'
-        + '.rdw-chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;'
-        + 'padding:3px 6px 3px 10px;border-radius:999px;white-space:nowrap}'
-        + '.rdw-chip-role{color:var(--accent,var(--bg-header,#4e79a7));'
-        + 'background:color-mix(in srgb,var(--accent,#4e79a7) 14%,transparent)}'
-        + '.rdw-chip-group{color:var(--scope-studio,#7C6FE0);'
-        + 'background:color-mix(in srgb,var(--scope-studio,#7C6FE0) 14%,transparent)}'
-        + '.rdw-chip-member{font-weight:500;color:var(--blue,#2563eb);'
-        + 'background:color-mix(in srgb,var(--blue,#2563eb) 14%,transparent)}'
-        + '.rdw-chip-x{background:none!important;border:none!important;cursor:pointer;color:inherit!important;opacity:.65;'
-        + 'font-size:13px!important;line-height:1!important;padding:0 1px!important;border-radius:999px!important}'
-        + '.rdw-chip-x:hover{opacity:1}'
-        + '.rdw-chip-more{font-size:11px!important;padding:3px 9px!important;border-radius:999px!important;cursor:pointer;'
-        + 'border:1px solid var(--border,var(--border-color,#ddd))!important;background:none!important;color:var(--text2,var(--text-secondary,#777))}'
-        + '.rdw-chip-more:hover{border-color:var(--accent,var(--bg-header,#4e79a7))}'
-        + '.rdw-search-results{position:relative;margin-top:4px;max-height:160px;overflow-y:auto;'
-        + 'border:1px solid var(--border,var(--border-color,#ddd));border-radius:6px;'
-        + 'background:var(--bg-card,var(--bg-main,#fff))}'
-        + '.rdw-search-result{display:block;width:100%;text-align:left;padding:6px 8px!important;border:none!important;'
-        + 'background:none!important;cursor:pointer;font-size:12px!important;color:var(--text,var(--text-main,#1a1a2e))}'
-        + '.rdw-search-result:hover{background:var(--bg-hover,var(--bg,#eef1f3))}'
-        + '.rdw-schedule-row{border:1px solid var(--border,var(--border-color,#ddd));border-radius:8px;'
-        + 'padding:10px 12px;margin-bottom:8px}'
-        + '.rdw-schedule-summary{font-weight:500;margin-bottom:2px}'
-        + '.rdw-schedule-meta{color:var(--text2,var(--text-secondary,#777));font-size:11px;margin-bottom:8px}'
-        + '.rdw-schedule-actions{display:flex;gap:6px;flex-wrap:wrap}'
-        + '.rdw-badge{display:inline-block;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:600;'
-        + 'letter-spacing:.02em;margin-left:6px}'
-        + '.rdw-badge.on{color:var(--green,#00b894);background:color-mix(in srgb,var(--green,#00b894) 14%,transparent)}'
-        + '.rdw-badge.off{color:var(--text3,var(--text-secondary,#999));background:color-mix(in srgb,var(--text3,#999) 14%,transparent)}'
-        + '.rdw-empty{color:var(--text3,var(--text-secondary,#999));font-size:12px;padding:10px 0}'
-        + '.rdw-flash{border-radius:6px;padding:8px 12px;font-size:12px;margin-bottom:12px;display:flex;'
-        + 'align-items:flex-start;justify-content:space-between;gap:8px}'
-        + '.rdw-flash.success{color:var(--green,#00b894);background:color-mix(in srgb,var(--green,#00b894) 14%,transparent)}'
-        + '.rdw-flash.error{color:var(--red,#dc2626);background:color-mix(in srgb,var(--red,#dc2626) 14%,transparent)}'
-        + '.rdw-flash-close{background:none;border:none;cursor:pointer;color:inherit;font-size:14px;line-height:1;opacity:.7}';
+        + '#rdwDrawer{position:fixed;inset:0 0 0 auto;width:560px;max-width:100vw;z-index:9201;'
+        + 'background:var(--bg-card,var(--bg-main,#fff));color:var(--text,var(--text-main,#172126));'
+        + 'border-left:1px solid var(--border,var(--border-color,#e2e6ea));box-shadow:-4px 0 24px rgba(0,0,0,.16);'
+        + 'visibility:hidden;transform:translateX(100%);transition:transform .18s ease-out,visibility .18s;'
+        + 'display:flex;flex-direction:column;font:14px/1.4 var(--font,Inter,sans-serif)}'
+        + '#rdwDrawer.open{visibility:visible;transform:translateX(0)}'
+        + '#rdwDrawer *,.rdw-form *{box-sizing:border-box}'
+        + '.rdw-header{display:flex;align-items:start;justify-content:space-between;gap:16px;padding:24px;border-bottom:1px solid var(--border,#e2e6ea)}'
+        + '#rdwDrawer .rdw-title{font-size:24px;font-weight:600;margin:0}.rdw-subtitle{font-size:12px;color:var(--text2,#475569);margin-top:4px;overflow-wrap:anywhere}'
+        + '.rdw-close{background:none;border:0;color:inherit;min-width:36px;min-height:36px;font-size:24px;cursor:pointer}'
+        + '.rdw-body{flex:1;min-height:0;overflow:auto;padding:24px}'
+        + '.rdw-section{margin-bottom:24px}.rdw-section-title{font-size:16px;font-weight:600;margin:0 0 16px}'
+        + '.rdw-note,.rdw-help{display:block;color:var(--text2,var(--text-secondary,#475569));font-size:12px;line-height:1.5;margin:6px 0 0}'
+        + '.rdw-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:8px;padding:7px 10px;min-height:38px;'
+        + 'font:14px/1.4 var(--font,Inter,sans-serif);cursor:pointer;border:1px solid var(--border,#e2e6ea);'
+        + 'background:var(--bg-card,#fff);color:var(--text,#172126)}'
+        + '.rdw-btn:hover{background:var(--bg-hover,#eef1f3)}.rdw-btn:disabled{opacity:.6;cursor:default}'
+        + '.rdw-btn.primary{background:var(--primary,var(--accent,#0f766e));border-color:var(--primary,var(--accent,#0f766e));color:var(--on-accent,#fff)}'
+        + '.rdw-btn.danger{color:var(--red,#b91c1c)}'
+        + '.rdw-form{max-width:760px;min-width:0}.rdw-form-section{margin-top:24px;padding-top:24px;border-top:1px solid var(--border,#e2e6ea)}'
+        + '.rdw-form [hidden]{display:none!important}'
+        + 'body.mgmt main .ui-table.delivery-list tbody tr.delivery-row-detail[data-rdw-editor-open]:has([data-form-slot]:not(:empty)){display:table-row}'
+        + '.rdw-field{min-width:0}.rdw-form .rdw-label{display:block;font-size:13px;color:var(--text2,#475569);margin:0 0 4px}'
+        + '.rdw-form .rdw-input,.rdw-form .rdw-select{box-sizing:border-box;width:100%;min-width:0;min-height:38px;padding:7px 10px;'
+        + 'font:14px/1.4 var(--font,Inter,sans-serif);border-radius:8px;border:1px solid var(--border,#e2e6ea);background:var(--bg,var(--bg-main,#f6f7f8));color:var(--text,var(--text-main,#172126))}'
+        + '.rdw-form select:not([data-choice-picker]){appearance:none;padding-right:28px;background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);background-position:calc(100% - 13px) calc(50% - 1px),calc(100% - 9px) calc(50% - 1px);background-repeat:no-repeat;background-size:4px 4px}'
+        + '.rdw-row2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.rdw-row2>.rdw-wide{grid-column:1/-1}'
+        + '.rdw-form .rdw-check-row{display:flex;align-items:center;gap:8px;margin:16px 0 0;min-height:36px;font-size:14px}'
+        + '.rdw-check-row input{width:auto;flex:none}.rdw-form-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:24px}'
+        + '.rdw-field-error{color:var(--red,#b91c1c);font-size:13px;margin:4px 0}.rdw-form [aria-invalid=true]{border-color:var(--red,#b91c1c)}'
+        + '.rdw-schedule-row{border:1px solid var(--border,#e2e6ea);border-radius:10px;padding:16px;margin-bottom:16px}'
+        + '.rdw-schedule-summary{font-weight:600;overflow-wrap:anywhere}.rdw-schedule-meta{color:var(--text2,#475569);font-size:12px;margin:6px 0 12px;overflow-wrap:anywhere}'
+        + '.rdw-schedule-actions{display:flex;gap:8px;flex-wrap:wrap}.rdw-badge{display:inline-block;padding:2px 8px;border-radius:8px;font-size:12px;margin-left:8px}'
+        + '.rdw-badge.on{color:var(--green,#15803d);background:color-mix(in srgb,var(--green,#15803d) 12%,transparent)}'
+        + '.rdw-badge.off{color:var(--text2,#475569);background:var(--bg-hover,#eef1f3)}'
+        + '.rdw-empty{color:var(--text2,#475569);padding:12px 0}.rdw-flash{padding:12px;border-radius:8px;display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:16px}'
+        + '.rdw-flash.success{color:var(--green,#15803d);background:color-mix(in srgb,var(--green,#15803d) 12%,transparent)}'
+        + '.rdw-flash.error{color:var(--red,#b91c1c);background:color-mix(in srgb,var(--red,#b91c1c) 12%,transparent)}'
+        + '.rdw-flash-close{background:none;border:0;color:inherit;cursor:pointer;min-width:36px;min-height:36px}'
+        + '#rdwDrawer :focus-visible,.rdw-form :focus-visible{outline:2px solid var(--focus,var(--accent,#0f766e));outline-offset:2px}'
+        + '@media(max-width:767px){.rdw-header,.rdw-body{padding:16px}.rdw-row2{grid-template-columns:minmax(0,1fr)}'
+        + 'body.mgmt main .ui-table.delivery-list tbody tr.delivery-row-detail[data-rdw-editor-open]:has([data-form-slot]:not(:empty)){display:block}'
+        + '.rdw-form .rdw-input,.rdw-form .rdw-select{font-size:16px;min-height:44px}.rdw-btn,.rdw-close,.rdw-flash-close,.rdw-form .rdw-check-row{min-height:44px}}'
+        + '@media(prefers-reduced-motion:reduce){#rdwDrawer{transition:none}}';
 
     // The header button (Email delivery/Share/Activity/Export, all in one
     // "Options" dropdown) lives in static/report_menu.js now -- this file
@@ -235,20 +156,6 @@
 
     function hm(hour, minute) { return pad2(hour) + ':' + pad2(minute); }
 
-    // Adds the option if `select` doesn't already have it (a converted
-    // minute can land off the [0,15,30,45] quick-pick list the same way an
-    // existing schedule's own minute already does at render time).
-    function ensureOptionSelected(select, value) {
-        var has = Array.prototype.some.call(select.options, function (o) { return parseInt(o.value, 10) === value; });
-        if (!has) {
-            var opt = document.createElement('option');
-            opt.value = String(value);
-            opt.textContent = pad2(value);
-            select.appendChild(opt);
-        }
-        select.value = String(value);
-    }
-
     function esc(s) {
         return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
             return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
@@ -306,343 +213,263 @@
         return role;
     }
 
-    // Static scaffold for the recipient chip picker -- wireRecipientPicker()
-    // fills it in and owns all its interaction after mount. Kept as plain
-    // containers (not string-templated per-chip) so add/remove never has to
-    // re-run esc()/HTML-build for the whole picker on every click.
-    function recipientPickerHtml() {
-        // name/id/autocomplete deliberately avoid anything that reads as a
-        // login field ("email", "user", "search" alone) plus the vendor
-        // ignore attributes -- this is a chip-picker filter box, not a
-        // credential field, but "add people by name or email" placeholder
-        // text plus a bare text input is exactly the shape password
-        // managers heuristically match, so this input got offered a saved
-        // login/vault suggestion in the wild.
-        return '<div class="rdw-field" data-f="recipients">'
-            + '<span class="rdw-label">Recipients</span>'
-            + '<div class="rdw-quickadd" data-picker="quickadd"></div>'
-            + '<div class="rdw-selected" data-picker="selected"></div>'
-            + '<input class="rdw-input" type="text" data-picker="search" '
-            + 'name="recipient-search" id="recipient-search" autocomplete="off" '
-            + 'data-1p-ignore data-lpignore="true" data-bwignore role="combobox" '
-            + 'placeholder="Add people by name or email…">'
-            + '<div class="rdw-search-results" data-picker="results" hidden></div>'
-            + '</div>';
+    var formSerial = 0, assetsPromise = null;
+    function updateTimeSchemes(root) {
+        (root || document).querySelectorAll('.rdw-form input[type="time"]').forEach(function (input) {
+            var rgb = getComputedStyle(input).backgroundColor.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+            if (rgb) input.style.colorScheme = Number(rgb[1]) * 299 + Number(rgb[2]) * 587 + Number(rgb[3]) * 114 < 128000 ? 'dark' : 'light';
+        });
     }
-
-    // Owns the picker's live state (selected roles/groups/members) inside
-    // `root` and returns {getPayload()} for submitScheduleForm to read at
-    // submit time. opts: { schedule (existing schedule dict, or null for
-    // "new"), chipData: {members, roles, groups, studio_name} }.
-    var MEMBER_OVERFLOW_AT = 6;
-
-    function wireRecipientPicker(root, opts) {
-        var chipData = opts.chipData || { members: [], roles: {}, groups: [], studio_name: '' };
-        var schedule = opts.schedule || null;
-        var wrap = root.querySelector('[data-f="recipients"]');
-        var quickaddEl = wrap.querySelector('[data-picker="quickadd"]');
-        var selectedEl = wrap.querySelector('[data-picker="selected"]');
-        var searchEl = wrap.querySelector('[data-picker="search"]');
-        var resultsEl = wrap.querySelector('[data-picker="results"]');
-
-        function memberName(id, fallbackEmail) {
-            var m = (chipData.members || []).filter(function (x) { return x.id === id; })[0];
-            return (m && m.name) || fallbackEmail;
-        }
-
-        var selRoles = schedule ? (schedule.recipient_roles || []).slice() : [];
-        var selGroups = schedule
-            ? (schedule.recipient_groups || []).map(function (g) { return { id: g.id, name: g.name }; })
-            : [];
-        var selMembers = schedule
-            ? schedule.recipients.map(function (r) { return { id: r.id, email: r.email, name: memberName(r.id, r.email) }; })
-            : [];
-        var membersExpanded = false;
-
-        function roleCount(role) { return (chipData.roles || {})[role] || 0; }
-
-        function renderQuickAdd() {
-            var html = '';
-            ['admins', 'developers', 'everyone'].forEach(function (role) {
-                if (selRoles.indexOf(role) !== -1) return;
-                html += '<button type="button" class="rdw-chip-add" data-add-role="' + role + '">'
-                    + esc(roleLabel(role, chipData.studio_name)) + ' (' + roleCount(role) + ')</button>';
+    function loadAsset(url, kind) {
+        return new Promise(function (resolve, reject) {
+            var tag = kind === 'css' ? 'link' : 'script';
+            var found = Array.prototype.find.call(document.querySelectorAll(tag), function (node) {
+                return (kind === 'css' ? node.href : node.src) === new URL(url, location.href).href;
             });
-            (chipData.groups || []).forEach(function (g) {
-                if (selGroups.some(function (sg) { return sg.id === g.id; })) return;
-                html += '<button type="button" class="rdw-chip-add" data-add-group="' + g.id + '">'
-                    + 'Group: ' + esc(g.name) + ' (' + g.count + ')</button>';
-            });
-            quickaddEl.innerHTML = html;
-        }
-
-        function chipHtml(cls, label, removeAttr) {
-            return '<span class="rdw-chip ' + cls + '">' + esc(label)
-                + '<button type="button" class="rdw-chip-x" ' + removeAttr + ' aria-label="Remove ' + esc(label) + '">&times;</button></span>';
-        }
-
-        function renderSelected() {
-            var html = '';
-            selRoles.forEach(function (role) {
-                html += chipHtml('rdw-chip-role', roleLabel(role, chipData.studio_name), 'data-remove-role="' + role + '"');
-            });
-            selGroups.forEach(function (g) {
-                html += chipHtml('rdw-chip-group', 'Group: ' + g.name, 'data-remove-group="' + g.id + '"');
-            });
-            var visible = membersExpanded ? selMembers : selMembers.slice(0, MEMBER_OVERFLOW_AT);
-            visible.forEach(function (m) {
-                html += chipHtml('rdw-chip-member', m.name, 'data-remove-member="' + m.id + '"');
-            });
-            if (!membersExpanded && selMembers.length > MEMBER_OVERFLOW_AT) {
-                html += '<button type="button" class="rdw-chip-more" data-expand-members>+'
-                    + (selMembers.length - MEMBER_OVERFLOW_AT) + ' more…</button>';
-            }
-            if (!selRoles.length && !selGroups.length && !selMembers.length) {
-                html += '<span class="rdw-help">No recipients selected yet.</span>';
-            }
-            selectedEl.innerHTML = html;
-        }
-
-        function renderAll() { renderQuickAdd(); renderSelected(); }
-
-        quickaddEl.addEventListener('click', function (e) {
-            var roleBtn = e.target.closest('[data-add-role]');
-            if (roleBtn) { selRoles.push(roleBtn.getAttribute('data-add-role')); renderAll(); return; }
-            var groupBtn = e.target.closest('[data-add-group]');
-            if (groupBtn) {
-                var gid = parseInt(groupBtn.getAttribute('data-add-group'), 10);
-                var g = (chipData.groups || []).filter(function (x) { return x.id === gid; })[0];
-                if (g) { selGroups.push({ id: g.id, name: g.name }); renderAll(); }
+            if (found && (kind === 'css' ? found.sheet : found.dataset.rdwLoaded)) { resolve(); return; }
+            var node = found || document.createElement(tag);
+            node.addEventListener('load', function () { node.dataset.rdwLoaded = '1'; resolve(); }, { once: true });
+            node.addEventListener('error', function () { node.remove(); reject(new Error('Shared controls could not load.')); }, { once: true });
+            if (!found) {
+                if (kind === 'css') { node.rel = 'stylesheet'; node.href = url; }
+                else { node.src = url; node.async = false; }
+                document.head.appendChild(node);
             }
         });
-
-        selectedEl.addEventListener('click', function (e) {
-            if (e.target.closest('[data-expand-members]')) { membersExpanded = true; renderSelected(); return; }
-            var rmRole = e.target.closest('[data-remove-role]');
-            if (rmRole) {
-                var role = rmRole.getAttribute('data-remove-role');
-                selRoles = selRoles.filter(function (r) { return r !== role; });
-                renderAll();
-                return;
-            }
-            var rmGroup = e.target.closest('[data-remove-group]');
-            if (rmGroup) {
-                var gid = parseInt(rmGroup.getAttribute('data-remove-group'), 10);
-                selGroups = selGroups.filter(function (g) { return g.id !== gid; });
-                renderAll();
-                return;
-            }
-            var rmMember = e.target.closest('[data-remove-member]');
-            if (rmMember) {
-                var mid = parseInt(rmMember.getAttribute('data-remove-member'), 10);
-                selMembers = selMembers.filter(function (m) { return m.id !== mid; });
-                renderSelected();
-            }
-        });
-
-        searchEl.addEventListener('input', function () {
-            var q = searchEl.value.trim().toLowerCase();
-            if (!q) { resultsEl.hidden = true; resultsEl.innerHTML = ''; return; }
-            var picked = {};
-            selMembers.forEach(function (m) { picked[m.id] = true; });
-            var matches = (chipData.members || []).filter(function (m) {
-                if (picked[m.id]) return false;
-                return (m.name && m.name.toLowerCase().indexOf(q) !== -1)
-                    || (m.email && m.email.toLowerCase().indexOf(q) !== -1);
-            }).slice(0, 8);
-            if (!matches.length) { resultsEl.hidden = true; resultsEl.innerHTML = ''; return; }
-            resultsEl.innerHTML = matches.map(function (m) {
-                return '<button type="button" class="rdw-search-result" data-pick-member="' + m.id + '">'
-                    + esc(m.name || m.email) + ' <span class="rdw-help">' + esc(m.email) + '</span></button>';
-            }).join('');
-            resultsEl.hidden = false;
-        });
-
-        resultsEl.addEventListener('click', function (e) {
-            var btn = e.target.closest('[data-pick-member]');
-            if (!btn) return;
-            var mid = parseInt(btn.getAttribute('data-pick-member'), 10);
-            var m = (chipData.members || []).filter(function (x) { return x.id === mid; })[0];
-            if (m) selMembers.push({ id: m.id, email: m.email, name: m.name || m.email });
-            searchEl.value = '';
-            resultsEl.hidden = true;
-            resultsEl.innerHTML = '';
-            renderSelected();
-            searchEl.focus();
-        });
-
-        renderAll();
-
-        return {
-            getPayload: function () {
-                return {
-                    recipient_ids: selMembers.map(function (m) { return m.id; }),
-                    recipient_roles: selRoles.slice(),
-                    recipient_group_ids: selGroups.map(function (g) { return g.id; })
-                };
-            }
-        };
     }
-
+    function ensurePickerAssets(assets) {
+        if (assetsPromise) return assetsPromise;
+        // Manifest deployments retain original files; older API payloads use those same-origin URLs.
+        assets = assets || { choice_css: '/static/choice-picker.css', choice_js: '/static/choice-picker.js',
+            recipient_css: '/static/recipient-picker.css', recipient_js: '/static/recipient-picker.js' };
+        var scripts = (window.TrellumChoices ? Promise.resolve() : loadAsset(assets.choice_js, 'js')).then(function () {
+                if (!window.TrellumChoices) throw new Error('Shared choices unavailable.');
+            }).then(function () { return window.TrellumRecipients ? null : loadAsset(assets.recipient_js, 'js'); })
+            .then(function () { if (!window.TrellumRecipients) throw new Error('Shared recipients unavailable.'); });
+        assetsPromise = Promise.all([loadAsset(assets.choice_css, 'css'), loadAsset(assets.recipient_css, 'css'), scripts]).then(function () {
+            if (!window.TrellumRecipients) throw new Error('Shared recipients unavailable.');
+        }).catch(function (error) { assetsPromise = null; throw error; });
+        return assetsPromise;
+    }
+    function validTimezone(zone) {
+        try { return !!zone && !!new Intl.DateTimeFormat('en', { timeZone: zone }); } catch (error) { return false; }
+    }
+    function recipientPickerHtml(schedule, chips, id, ready) {
+        schedule = schedule || {};
+        chips = chips || EMPTY_CHIP_DATA;
+        var members = (chips.members || []).slice(), groups = (chips.groups || []).slice();
+        (schedule.recipients || []).forEach(function (person) {
+            if (!members.some(function (row) { return String(row.id) === String(person.id); })) members.push(person);
+        });
+        (schedule.recipient_groups || []).forEach(function (group) {
+            if (!groups.some(function (row) { return String(row.id) === String(group.id); })) groups.push(group);
+        });
+        var people = (schedule.recipients || []).map(function (row) { return String(row.id); });
+        var roles = schedule.recipient_roles || [];
+        var selectedGroups = (schedule.recipient_groups || []).map(function (row) { return String(row.id); });
+        function checkbox(name, value, text, identity, selected) {
+            return '<label><input type="checkbox" name="' + name + '" value="' + esc(value)
+                + '" data-recipient-name="' + esc(text) + '" data-recipient-identity="' + esc(identity || '') + '"'
+                + (selected ? ' checked' : '') + (ready ? '' : ' disabled') + '>' + esc(text) + '</label>';
+        }
+        return '<div class="rdw-field rdw-wide" data-f="recipients" data-recipient-picker data-picker-label="Recipients">'
+            + '<label class="rdw-label">Recipients</label><div data-recipient-type="people">'
+            + members.map(function (row) { return checkbox('recipient_ids', row.id, row.name || row.email, row.email, people.indexOf(String(row.id)) >= 0); }).join('')
+            + '</div><div data-recipient-type="roles">'
+            + ['admins', 'developers', 'everyone'].map(function (role) { return checkbox('recipient_roles', role, roleLabel(role, chips.studio_name || 'this studio'), '', roles.indexOf(role) >= 0); }).join('')
+            + '</div><div data-recipient-type="groups">'
+            + groups.map(function (row) { return checkbox('recipient_group_ids', row.id, row.name, '', selectedGroups.indexOf(String(row.id)) >= 0); }).join('')
+            + '</div></div>';
+    }
     function scheduleFormHtml(opts) {
-        var schedule = opts.schedule || null;
+        var schedule = opts.schedule || null, id = 'rdw-form-' + (++formSerial);
         var freq = schedule ? schedule.freq : 'daily';
-        var hour = schedule ? schedule.send_hour : 8;
-        var minute = schedule ? schedule.send_minute : 0;
-        var weekday = schedule ? schedule.weekday : 0;
-        var monthDay = schedule ? schedule.month_day : 1;
-        // New schedules use organization/instance defaults. Editing keeps
-        // the saved zone; an explicit choice overrides the default.
-        var timezone = schedule ? schedule.timezone : (opts.defaultTimezone || 'UTC');
-        var attachPdf = schedule ? schedule.attach_pdf : false;
-        var enabled = schedule ? schedule.enabled : opts.defaultEnabled !== false;
-
-        var hourOpts = '';
-        for (var h = 0; h < 24; h++) hourOpts += '<option value="' + h + '"' + (h === hour ? ' selected' : '') + '>' + pad2(h) + '</option>';
-        var minuteChoices = [0, 15, 30, 45];
-        if (minuteChoices.indexOf(minute) === -1) minuteChoices.push(minute);
-        minuteChoices.sort(function (a, b) { return a - b; });
-        var minuteOpts = minuteChoices.map(function (m) { return '<option value="' + m + '"' + (m === minute ? ' selected' : '') + '>' + pad2(m) + '</option>'; }).join('');
-        var freqOpts = FREQ_OPTIONS.map(function (f) { return '<option value="' + f.value + '"' + (f.value === freq ? ' selected' : '') + '>' + f.label + '</option>'; }).join('');
-        var weekdayOpts = WEEKDAY_OPTIONS.map(function (w, i) { return '<option value="' + i + '"' + (i === weekday ? ' selected' : '') + '>' + w + '</option>'; }).join('');
-        var monthDayOpts = '';
-        for (var d = 1; d <= 28; d++) monthDayOpts += '<option value="' + d + '"' + (d === monthDay ? ' selected' : '') + '>' + d + '</option>';
-        var tzOpts = timezoneOptionList(timezone, opts.defaultTimezone).map(function (tz) {
-            return '<option value="' + esc(tz) + '"' + (tz === timezone ? ' selected' : '') + '>' + esc(tz) + '</option>';
-        }).join('');
-
-        return ''
-            + '<form data-schedule-form>'
-            + recipientPickerHtml()
-            + '<div class="rdw-row2">'
-            + '<div class="rdw-field"><label class="rdw-label">Frequency</label><select class="rdw-select" data-f="freq">' + freqOpts + '</select></div>'
-            + '<div class="rdw-field" data-f="weekdayField" style="display:' + (freq === 'weekly' ? '' : 'none') + '">'
-            + '<label class="rdw-label">Day</label><select class="rdw-select" data-f="weekday">' + weekdayOpts + '</select></div>'
-            + '<div class="rdw-field" data-f="monthDayField" style="display:' + (freq === 'monthly' ? '' : 'none') + '">'
-            + '<label class="rdw-label">Day of month</label><select class="rdw-select" data-f="monthDay">' + monthDayOpts + '</select></div>'
-            + '</div>'
-            + '<div class="rdw-row2">'
-            + '<div class="rdw-field"><label class="rdw-label">Hour</label><select class="rdw-select" data-f="hour">' + hourOpts + '</select></div>'
-            + '<div class="rdw-field"><label class="rdw-label">Minute</label><select class="rdw-select" data-f="minute">' + minuteOpts + '</select></div>'
-            + '<div class="rdw-field"><label class="rdw-label">Timezone</label>'
-            + '<select class="rdw-select" data-f="timezone">' + tzOpts + '</select>'
-            + '<div class="rdw-help" data-f="tzCaption"></div></div>'
-            + '</div>'
-            + '<label class="rdw-check-row"><input type="checkbox" data-f="attachPdf"' + (attachPdf ? ' checked' : '') + '>'
-            + '<span class="rdw-check-label">Also attach as PDF</span></label>'
-            + '<label class="rdw-check-row"><input type="checkbox" data-f="enabled"' + (enabled ? ' checked' : '') + '>'
-            + '<span class="rdw-check-label">Enabled</span></label>'
-            + '<div data-f="errors"></div>'
-            + '<div style="display:flex;gap:8px;margin-top:10px">'
-            + '<button type="submit" class="rdw-btn primary">' + (schedule ? 'Save changes' : 'Create schedule') + '</button>'
-            + '<button type="button" class="rdw-btn" data-f="cancel">Cancel</button>'
-            + '</div>'
-            + '</form>';
-    }
-
-    // Wires the form markup scheduleFormHtml() just inserted into `root`.
-    // ctx: { apiBase, editingId (schedule pk, or null for "new"), schedule
-    //        (existing schedule dict, or null), chipData (see
-    //        wireRecipientPicker), onSaved(schedule, wasEditing), onCancel(),
-    //        onFlash(msg, type) }
-    function wireScheduleForm(root, ctx) {
-        root.querySelector('[data-f="freq"]').addEventListener('change', function () {
-            var v = this.value;
-            root.querySelector('[data-f="weekdayField"]').style.display = v === 'weekly' ? '' : 'none';
-            root.querySelector('[data-f="monthDayField"]').style.display = v === 'monthly' ? '' : 'none';
-        });
-        root.querySelector('[data-f="cancel"]').addEventListener('click', function () { ctx.onCancel(); });
-
-        // Timezone select: switching zones recalculates the shown hour:minute
-        // so the actual send INSTANT stays put -- 09:00 Europe/Amsterdam
-        // becomes 08:00 UTC, not "09:00 UTC" (a silent hour shift). Whatever
-        // hour/minute/zone the form shows at submit time is exactly what
-        // gets stored (apps.reports.views._apply_schedule_fields takes the
-        // three fields as given, with no server-side re-derivation).
-        var tzSelect = root.querySelector('[data-f="timezone"]');
-        var hourSelect = root.querySelector('[data-f="hour"]');
-        var minuteSelect = root.querySelector('[data-f="minute"]');
-        var tzCaption = root.querySelector('[data-f="tzCaption"]');
-        var lastTz = tzSelect.value;
-
-        function refreshCaption() {
-            var tz = tzSelect.value;
-            var hour = parseInt(hourSelect.value, 10);
-            var minute = parseInt(minuteSelect.value, 10);
-            var toUtc = convertHourMinute(hour, minute, tz, 'UTC');
-            var toMine = convertHourMinute(hour, minute, tz, browserTimezone() || 'UTC');
-            tzCaption.textContent = '= ' + hm(toUtc.hour, toUtc.minute) + ' UTC · '
-                + hm(toMine.hour, toMine.minute) + ' your time';
+        var browserZone = browserTimezone();
+        var zone = schedule ? schedule.timezone : validTimezone(browserZone) ? browserZone : (opts.defaultTimezone || 'UTC');
+        var time = hm(schedule ? schedule.send_hour : 8, schedule ? schedule.send_minute : 0);
+        var zones = timezoneOptionList(zone, opts.defaultTimezone);
+        if (Intl.supportedValuesOf) {
+            try { zones = Intl.supportedValuesOf('timeZone').concat(zones).filter(function (value, index, all) { return all.indexOf(value) === index; }).sort(); } catch (error) {}
         }
-
-        tzSelect.addEventListener('change', function () {
-            var newTz = tzSelect.value;
-            var converted = convertHourMinute(
-                parseInt(hourSelect.value, 10), parseInt(minuteSelect.value, 10), lastTz, newTz
-            );
-            ensureOptionSelected(hourSelect, converted.hour);
-            ensureOptionSelected(minuteSelect, converted.minute);
-            lastTz = newTz;
+        function field(name, label, html, wide) {
+            return '<div class="rdw-field' + (wide ? ' rdw-wide' : '') + '"><label class="rdw-label" for="' + id + '-' + name + '">' + label + '</label>' + html + '</div>';
+        }
+        function select(name, choices, current, picker) {
+            return '<select id="' + id + '-' + name + '" class="rdw-select" name="' + name + '" data-f="' + name + '"' + (picker ? ' data-choice-picker' : '') + '>'
+                + choices.map(function (row) { return '<option value="' + esc(row.value) + '"' + (String(row.value) === String(current) ? ' selected' : '') + '>' + esc(row.label) + '</option>'; }).join('') + '</select>';
+        }
+        return '<form id="' + id + '" class="rdw-form" data-schedule-form>'
+            + '<section class="rdw-form-section"><h4 class="rdw-section-title">Schedule</h4><div class="rdw-row2">'
+            + field('freq', 'Frequency', select('freq', FREQ_OPTIONS, freq))
+            + field('time', 'Local time', '<input id="' + id + '-time" type="time" step="60" required class="rdw-input" name="local_time" data-f="time" value="' + time + '">')
+            + '<div class="rdw-field" data-f="weekdayField"' + (freq === 'weekly' ? '' : ' hidden') + '><label class="rdw-label" for="' + id + '-weekday">Day</label>'
+            + select('weekday', WEEKDAY_OPTIONS.map(function (label, value) { return { value: value, label: label }; }), schedule ? schedule.weekday : 0) + '</div>'
+            + '<div class="rdw-field" data-f="monthDayField"' + (freq === 'monthly' ? '' : ' hidden') + '><label class="rdw-label" for="' + id + '-monthDay">Day of month</label>'
+            + select('monthDay', Array.from({ length: 28 }, function (_, index) { return { value: index + 1, label: index + 1 }; }), schedule ? schedule.month_day : 1) + '</div>'
+            + field('timezone', 'Timezone', select('timezone', zones.map(function (value) { return { value: value, label: value.replace(/_/g, ' ') }; }), zone, true), true)
+            + '</div><p class="rdw-help">' + (schedule ? 'Schedule uses ' + esc(zone) + '.' : validTimezone(browserZone) ? 'Defaulted to your browser timezone: ' + esc(zone) + '.' : 'Browser timezone unavailable. Application fallback: ' + esc(zone) + '.')
+            + ' Changing timezone converts local time to keep the same instant using today’s offsets; recurring sends follow the chosen timezone’s daylight saving rules.</p>'
+            + '<p class="rdw-help" data-f="tzCaption"></p></section>'
+            + '<section class="rdw-form-section"><h4 class="rdw-section-title">Recipients</h4>'
+            + recipientPickerHtml(schedule, opts.chipData, id, !!opts.chipData)
+            + '<p class="rdw-help" role="status" data-recipient-status>Loading recipient choices…</p><button class="ui-btn rdw-btn" type="button" data-recipient-retry hidden>Retry recipient choices</button></section>'
+            + '<section class="rdw-form-section"><h4 class="rdw-section-title">Delivery</h4>'
+            + '<label class="rdw-check-row"><input name="attach_pdf" type="checkbox" data-f="attachPdf"' + (schedule && schedule.attach_pdf ? ' checked' : '') + '>Also attach as PDF</label>'
+            + '<label class="rdw-check-row"><input name="enabled" type="checkbox" data-f="enabled"' + ((!schedule && opts.defaultEnabled !== false) || (schedule && schedule.enabled) ? ' checked' : '') + '>Enabled</label></section>'
+            + '<div data-f="errors" role="alert"></div><div class="rdw-form-actions"><button type="submit" class="ui-btn rdw-btn primary" disabled>'
+            + (schedule ? 'Save delivery' : 'Create delivery') + '</button><button type="button" class="ui-btn rdw-btn" data-f="cancel">Cancel</button></div>'
+            + '<p class="rdw-help" role="status" data-save-status></p></form>';
+    }
+    function currentForm(root, ctx) { return ctx.navigation === pageGeneration && root.isConnected && root.querySelector('[data-schedule-form]') === ctx.form && (!ctx.current || ctx.current()); }
+    function canDiscard(ctx) {
+        if (!ctx) return true;
+        if (ctx.saving) return window.confirm('Saving is in progress. Leaving keeps its outcome unconfirmed until you check the saved delivery. Leave this editor?');
+        return ctx.version === ctx.savedVersion || window.confirm('Discard unsaved delivery changes? Cancel keeps this draft.');
+    }
+    function selection(root) {
+        function checked(name) { return Array.prototype.map.call(root.querySelectorAll('input[name="' + name + '"]:checked'), function (node) { return node.value; }); }
+        return { recipients: checked('recipient_ids').map(function (id) { return { id: id, email: '' }; }),
+            recipient_roles: checked('recipient_roles'), recipient_groups: checked('recipient_group_ids').map(function (id) { return { id: id, name: '' }; }) };
+    }
+    function wireScheduleForm(root, ctx) {
+        var form = root.querySelector('[data-schedule-form]');
+        ctx.form = form;
+        root._rdwContext = ctx;
+        ctx.navigation = pageGeneration;
+        ctx.ready = false;
+        ctx.version = 0;
+        ctx.savedVersion = 0;
+        var submit = form.querySelector('button[type="submit"]');
+        var status = form.querySelector('[data-save-status]');
+        var loadStatus = form.querySelector('[data-recipient-status]');
+        var retry = form.querySelector('[data-recipient-retry]');
+        function clearErrors() {
+            root.querySelectorAll('[data-rdw-error]').forEach(function (node) { node.remove(); });
+            root.querySelectorAll('[data-rdw-invalid]').forEach(function (node) {
+                node.removeAttribute('aria-invalid'); node.removeAttribute('aria-describedby'); node.removeAttribute('data-rdw-invalid');
+            });
+            root.querySelector('[data-f="errors"]').replaceChildren();
+        }
+        function showErrors(errors) {
+            Object.keys(errors).forEach(function (name, index) {
+                var target = name === 'send_hour' || name === 'send_minute' ? time :
+                    name === 'month_day' ? root.querySelector('[data-f="monthDay"]') : root.querySelector('[name="' + name + '"]');
+                var message = document.createElement('p');
+                message.className = 'rdw-field-error'; message.dataset.rdwError = '';
+                message.id = form.id + '-error-' + index;
+                message.textContent = [].concat(errors[name]).join(' ');
+                if (target) {
+                    (target.closest('.rdw-field') || target.parentElement).appendChild(message);
+                    var fields = /^(recipient_ids|recipient_roles|recipient_group_ids)$/.test(name) ? root.querySelectorAll('[name="' + name + '"]') : [target];
+                    Array.prototype.forEach.call(fields, function (field) { field.dataset.rdwInvalid = ''; field.setAttribute('aria-invalid', 'true'); field.setAttribute('aria-describedby', message.id); });
+                } else root.querySelector('[data-f="errors"]').appendChild(message);
+            });
+        }
+        form.addEventListener('input', function () { ctx.version++; });
+        form.addEventListener('change', function () { ctx.version++; });
+        root.querySelector('[data-f="freq"]').addEventListener('change', function () {
+            root.querySelector('[data-f="weekdayField"]').hidden = this.value !== 'weekly';
+            root.querySelector('[data-f="monthDayField"]').hidden = this.value !== 'monthly';
+        });
+        root.querySelector('[data-f="cancel"]').addEventListener('click', function () { if (canDiscard(ctx)) ctx.onCancel(); });
+        var zone = root.querySelector('[data-f="timezone"]'), time = root.querySelector('[data-f="time"]'), lastZone = zone.value;
+        function refreshCaption() {
+            if (!time.value) return;
+            var parts = time.value.split(':'), hour = Number(parts[0]), minute = Number(parts[1]);
+            var utc = convertHourMinute(hour, minute, zone.value, 'UTC');
+            var mine = convertHourMinute(hour, minute, zone.value, browserTimezone() || 'UTC');
+            root.querySelector('[data-f="tzCaption"]').textContent = '= ' + hm(utc.hour, utc.minute) + ' UTC · ' + hm(mine.hour, mine.minute) + ' your time';
+        }
+        zone.addEventListener('change', function () {
+            if (time.value) {
+                var parts = time.value.split(':');
+                var converted = convertHourMinute(Number(parts[0]), Number(parts[1]), lastZone, zone.value);
+                time.value = hm(converted.hour, converted.minute);
+            }
+            lastZone = zone.value;
             refreshCaption();
         });
-        hourSelect.addEventListener('change', refreshCaption);
-        minuteSelect.addEventListener('change', refreshCaption);
+        time.addEventListener('input', refreshCaption);
         refreshCaption();
-
-        // Stashed on `root` (not module state -- several delivery-center rows
-        // can be open at once) so submitScheduleForm can read the picker's
-        // live selection without re-parsing the DOM.
-        root._rdwRecipientPicker = wireRecipientPicker(root, { schedule: ctx.schedule, chipData: ctx.chipData });
-        root.querySelector('[data-schedule-form]').addEventListener('submit', function (e) {
-            e.preventDefault();
-            submitScheduleForm(root, ctx);
-        });
-    }
-
-    function submitScheduleForm(root, ctx) {
-        var recipients = root._rdwRecipientPicker
-            ? root._rdwRecipientPicker.getPayload()
-            : { recipient_ids: [], recipient_roles: [], recipient_group_ids: [] };
-        var body = {
-            recipient_ids: recipients.recipient_ids,
-            recipient_roles: recipients.recipient_roles,
-            recipient_group_ids: recipients.recipient_group_ids,
-            freq: root.querySelector('[data-f="freq"]').value,
-            send_hour: parseInt(root.querySelector('[data-f="hour"]').value, 10),
-            send_minute: parseInt(root.querySelector('[data-f="minute"]').value, 10),
-            weekday: parseInt(root.querySelector('[data-f="weekday"]').value, 10),
-            month_day: parseInt(root.querySelector('[data-f="monthDay"]').value, 10),
-            timezone: root.querySelector('[data-f="timezone"]').value.trim() || 'UTC',
-            attach_pdf: root.querySelector('[data-f="attachPdf"]').checked,
-            enabled: root.querySelector('[data-f="enabled"]').checked
-        };
-        var url = ctx.editingId ? ctx.apiBase + '/schedules/' + ctx.editingId : ctx.apiBase + '/schedules';
-        var submitBtn = root.querySelector('button[type="submit"]');
-        submitBtn.disabled = true;
-        postJson(url, 'POST', body).then(function (res) {
-            submitBtn.disabled = false;
-            if (!res.ok) {
-                var errs = res.data.errors || {};
-                var msgs = Object.keys(errs).map(function (k) { return k + ': ' + errs[k].join(' '); });
-                var errBox = root.querySelector('[data-f="errors"]');
-                errBox.innerHTML = msgs.length ? '<div class="rdw-field-error">' + esc(msgs.join(' — ')) + '</div>' : '';
-                if (!msgs.length && ctx.onFlash) ctx.onFlash(res.data.error || 'Could not save the schedule.', 'error');
-                return;
-            }
-            ctx.onSaved(res.data.schedule, !!ctx.editingId);
-        }).catch(function () {
-            submitBtn.disabled = false;
-            if (ctx.onFlash) ctx.onFlash('Could not save the schedule — check your connection and try again.', 'error');
+        updateTimeSchemes(root);
+        function loadChoices() {
+            ctx.ready = false; submit.disabled = true; retry.hidden = true;
+            loadStatus.textContent = 'Loading recipient choices…';
+            var attempt = ctx.loadAttempt = (ctx.loadAttempt || 0) + 1;
+            var choices = loadMembersFor(ctx.apiBase);
+            ensurePickerAssets(ctx.assets).then(function () {
+                if (!currentForm(root, ctx) || attempt !== ctx.loadAttempt) return null;
+                TrellumChoices.init(root); TrellumRecipients.init(root);
+                return choices;
+            }).then(function (result) {
+                if (!result || !currentForm(root, ctx) || attempt !== ctx.loadAttempt) return;
+                if (!result.ok) throw new Error('Recipient choices could not load. Saved selections are kept.');
+                var selected = selection(root);
+                // Retain saved display identities while replacing only the checkbox catalog.
+                selected.recipients.forEach(function (person) {
+                    var prior = (ctx.schedule && ctx.schedule.recipients || []).find(function (row) { return String(row.id) === person.id; });
+                    if (prior) Object.assign(person, prior);
+                });
+                selected.recipient_groups.forEach(function (group) {
+                    var prior = (ctx.schedule && ctx.schedule.recipient_groups || []).find(function (row) { return String(row.id) === group.id; });
+                    if (prior) Object.assign(group, prior);
+                });
+                root.querySelector('[data-f="recipients"]').outerHTML = recipientPickerHtml(selected, result.data, '', true);
+                TrellumRecipients.init(root);
+                ctx.ready = true; submit.disabled = !!ctx.saving;
+                loadStatus.textContent = !result.data.members.length && !result.data.groups.length ? 'No eligible people or groups. Studio role choices remain available.' : 'Only recipients with access to this report can receive it.';
+            }).catch(function (error) {
+                if (!currentForm(root, ctx) || attempt !== ctx.loadAttempt) return;
+                loadStatus.textContent = error.message || 'Recipient choices unavailable. Saved selections are kept.';
+                retry.hidden = false; submit.disabled = true;
+            });
+        }
+        retry.addEventListener('click', loadChoices);
+        loadChoices();
+        form.addEventListener('submit', function (event) {
+            event.preventDefault();
+            if (!ctx.ready || ctx.saving || !form.reportValidity()) return;
+            var selected = selection(root), parts = time.value.split(':');
+            var body = { recipient_ids: selected.recipients.map(function (row) { return Number(row.id); }), recipient_roles: selected.recipient_roles,
+                recipient_group_ids: selected.recipient_groups.map(function (row) { return Number(row.id); }), freq: root.querySelector('[data-f="freq"]').value,
+                send_hour: Number(parts[0]), send_minute: Number(parts[1]), weekday: Number(root.querySelector('[data-f="weekday"]').value),
+                month_day: Number(root.querySelector('[data-f="monthDay"]').value), timezone: zone.value,
+                attach_pdf: root.querySelector('[data-f="attachPdf"]').checked, enabled: root.querySelector('[data-f="enabled"]').checked };
+            var wasEditing = !!ctx.editingId, snapshot = ctx.version;
+            ctx.saving = true; submit.disabled = true; status.textContent = 'Saving…'; form.setAttribute('aria-busy', 'true');
+            clearErrors();
+            var url = ctx.editingId ? ctx.apiBase + '/schedules/' + ctx.editingId : ctx.apiBase + '/schedules';
+            postJson(url, 'POST', body).then(function (result) {
+                if (!currentForm(root, ctx)) return;
+                if (!result.ok || !result.data.schedule) {
+                    var errors = result.data.errors || {};
+                    showErrors(errors);
+                    root.querySelector('[data-f="errors"]').appendChild(document.createTextNode('Check the highlighted fields.'));
+                    status.textContent = result.data.error || 'Could not save. Your draft is kept.';
+                    return;
+                }
+                ctx.editingId = result.data.schedule.id;
+                ctx.schedule = result.data.schedule;
+                ctx.savedVersion = snapshot;
+                submit.textContent = 'Save delivery';
+                status.textContent = ctx.version === snapshot ? 'Delivery saved.' : 'Submitted changes saved; newer edits are still unsaved.';
+                ctx.onSaved(result.data.schedule, wasEditing, ctx.version !== snapshot);
+            }).catch(function () {
+                if (currentForm(root, ctx)) status.textContent = 'Save outcome unconfirmed. Your draft is kept. Check the saved schedule before retrying.';
+            }).finally(function () {
+                if (!currentForm(root, ctx)) return;
+                ctx.saving = false; submit.disabled = !ctx.ready; form.removeAttribute('aria-busy');
+            });
         });
     }
 
     // ── state (drawer only -- the delivery center keeps no module state,
     // see wireDeliveryRow) ──────────────────────────────────────────────
     var state = null;         // { prefix, slug, name, triggerEl }
+    var pageGeneration = 0;
     var data = null;          // last GET /schedules payload
     // Report API URL -> eligible recipients. Refresh on each open/edit because
     // group access can change while the page remains open.
-    var membersCache = {};
     var editingId = null;     // schedule pk being edited, or null for "new"
     var built = false;
 
@@ -650,19 +477,15 @@
 
     var EMPTY_CHIP_DATA = { members: [], roles: {}, groups: [], studio_name: '' };
 
-    function loadMembersFor(reportApiBase, cb) {
-        apiFetch(reportApiBase + '/recipients').then(function (r) { return r.ok ? r.json() : EMPTY_CHIP_DATA; })
-            .then(function (d) {
-                membersCache[reportApiBase] = {
-                    members: d.members || [], roles: d.roles || {}, groups: d.groups || [],
-                    studio_name: d.studio_name || ''
-                };
-                cb(membersCache[reportApiBase]);
-            }).catch(function () {
-                membersCache[reportApiBase] = EMPTY_CHIP_DATA;
-                cb(EMPTY_CHIP_DATA);
-            });
+    function loadMembersFor(reportApiBase) {
+        return apiFetch(reportApiBase + '/recipients').then(function (response) {
+            if (!response.ok) throw new Error('Could not load recipients.');
+            return response.json();
+        }).then(function (result) {
+            return { ok: true, data: { members: result.members || [], roles: result.roles || {}, groups: result.groups || [], studio_name: result.studio_name || '' } };
+        }).catch(function () { return { ok: false }; });
     }
+    function currentSession(session) { return state === session && session.active; }
 
     // ── style injection ──────────────────────────────────────────────────
     // The header button that used to make this eager (report-page autoMount
@@ -689,6 +512,9 @@
         if (built) return;
         built = true;
         injectStyle();
+        var themeObserver = new MutationObserver(function () { updateTimeSchemes(); });
+        themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class', 'style'] });
+        themeObserver.observe(document.body, { attributes: true, attributeFilter: ['data-theme', 'class', 'style'] });
 
         var overlay = document.createElement('div');
         overlay.id = 'rdwOverlay';
@@ -722,7 +548,7 @@
         if (e.key !== 'Tab') return;
         var drawer = document.getElementById('rdwDrawer');
         var nodes = drawer.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
-        var list = Array.prototype.filter.call(nodes, function (el) { return !el.disabled && el.offsetParent !== null; });
+        var list = Array.prototype.filter.call(nodes, function (el) { return !el.matches(':disabled') && el.tabIndex !== -1 && el.getClientRects().length && !el.closest('[hidden]'); });
         if (!list.length) return;
         var first = list[0], last = list[list.length - 1];
         if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
@@ -739,10 +565,12 @@
     // insurance across browsers that don't commit a reflow's result before
     // the next same-frame class change.
     function playOpen(overlay, drawer) {
+        var session = state;
         if (!overlay || !drawer) return;
         void drawer.offsetHeight;
         requestAnimationFrame(function () {
             requestAnimationFrame(function () {
+                if (!currentSession(session)) return;
                 overlay.classList.add('open');
                 drawer.classList.add('open');
             });
@@ -750,8 +578,12 @@
     }
 
     function open(prefix, slug, name, triggerEl) {
+        var oldForm = document.getElementById('rdwFormWrap');
+        if (state && state.active && oldForm && oldForm.querySelector('form') && !canDiscard(oldForm._rdwContext)) return;
         ensureDom();
-        state = { prefix: prefix, slug: slug, name: name, triggerEl: triggerEl || document.activeElement };
+        if (state) state.active = false;
+        state = { prefix: prefix, slug: slug, name: name, triggerEl: triggerEl || document.activeElement, active: true };
+        data = null;
         editingId = null;
         document.getElementById('rdwSubtitle').textContent = name || slug;
         document.getElementById('rdwBody').innerHTML = '<div class="rdw-empty">Loading…</div>';
@@ -761,28 +593,39 @@
         loadAndRender();
     }
 
-    function close() {
+    function close(skipConfirmation) {
         var overlay = document.getElementById('rdwOverlay');
         var drawer = document.getElementById('rdwDrawer');
-        if (!drawer || !drawer.classList.contains('open')) return;
+        if (!drawer || !state || !state.active) return;
+        var wrap = document.getElementById('rdwFormWrap');
+        if (skipConfirmation !== true && wrap && wrap.querySelector('form') && !canDiscard(wrap._rdwContext)) return;
+        state.active = false;
+        drawer.querySelectorAll('[data-recipient-picker],select[data-choice-picker]').forEach(function (node) {
+            var picker = node._trellumRecipients || node._trellumChoice;
+            if (picker) picker.close(false);
+        });
         overlay.classList.remove('open');
         drawer.classList.remove('open');
         if (state && state.triggerEl && typeof state.triggerEl.focus === 'function') {
-            state.triggerEl.focus();
+            state.triggerEl.focus({ preventScroll: true });
         }
     }
 
     // ── data loading ─────────────────────────────────────────────────────
     function loadAndRender() {
-        apiFetch(apiBase() + '/schedules').then(function (r) {
-            if (!r.ok) throw new Error('failed to load');
-            return r.json();
-        }).then(function (d) {
-            data = d;
-            loadMembersFor(apiBase(), function () { render(); });
+        var session = state, endpoint = apiBase();
+        apiFetch(endpoint + '/schedules').then(function (response) {
+            if (!response.ok) throw new Error('Could not load schedules.');
+            return response.json();
+        }).then(function (result) {
+            if (!currentSession(session)) return;
+            data = result;
+            render();
         }).catch(function () {
-            document.getElementById('rdwBody').innerHTML =
-                '<div class="rdw-flash error">Could not load email settings.</div>';
+            if (!currentSession(session)) return;
+            var body = document.getElementById('rdwBody');
+            body.innerHTML = '<p class="rdw-flash error" role="alert">Could not load deliveries.</p><button type="button" class="ui-btn rdw-btn" data-retry-schedules>Retry</button>';
+            body.querySelector('[data-retry-schedules]').addEventListener('click', loadAndRender);
         });
     }
 
@@ -840,11 +683,8 @@
         return freqLabel + ' at ' + when + ' ' + s.timezone;
     }
 
-    function render() {
-        var body = document.getElementById('rdwBody');
-
+    function scheduleRowsHtml() {
         var html = '';
-        html += '<div class="rdw-section"><h3 class="rdw-section-title">Scheduled delivery</h3><div id="rdwScheduleList">';
         if (!data.schedules.length) {
             html += '<div class="rdw-empty">No scheduled deliveries yet.</div>';
         } else {
@@ -856,16 +696,25 @@
                     + (s.attach_pdf ? ' &middot; PDF attached' : '') + '</div>';
                 if (s.editable) {
                     html += '<div class="rdw-schedule-actions">'
-                        + '<button type="button" class="rdw-btn small" data-edit="' + s.id + '">Edit</button>'
-                        + '<button type="button" class="rdw-btn small" data-sample="' + s.id + '">Send sample</button>'
-                        + '<button type="button" class="rdw-btn small danger" data-delete="' + s.id + '">Delete</button>'
+                        + '<button type="button" class="ui-btn rdw-btn small" data-edit="' + s.id + '">Edit</button>'
+                        + '<button type="button" class="ui-btn rdw-btn small" data-sample="' + s.id + '">Send sample</button>'
+                        + '<button type="button" class="ui-btn rdw-btn small danger" data-delete="' + s.id + '">Delete</button>'
                         + '</div>';
                 }
                 html += '</div>';
             });
         }
+        return html;
+    }
+
+    function render() {
+        var body = document.getElementById('rdwBody');
+
+        var html = '';
+        html += '<div class="rdw-section"><h3 class="rdw-section-title">Scheduled delivery</h3><div id="rdwScheduleList">';
+        html += scheduleRowsHtml();
         html += '</div>'
-            + (data.can_manage ? '<button type="button" class="rdw-btn" id="rdwNewSchedule">+ New schedule</button>' : '<p class="rdw-note">Read only. Developers and admins manage shared schedules.</p>')
+            + (data.can_manage ? '<button type="button" class="ui-btn rdw-btn" id="rdwNewSchedule">+ New schedule</button>' : '<p class="rdw-note">Read only. Developers and admins manage shared schedules.</p>')
             + '<div id="rdwFormWrap"></div>'
             + '</div>';
 
@@ -883,6 +732,7 @@
             renderForm(null);
         });
 
+        var session = state;
         document.getElementById('rdwScheduleList').addEventListener('click', function (e) {
             var editBtn = e.target.closest('[data-edit]');
             if (editBtn) {
@@ -895,6 +745,7 @@
             if (sampleBtn) {
                 sampleBtn.disabled = true;
                 postJson(apiBase() + '/schedules/' + sampleBtn.dataset.sample + '/sample', 'POST', {}).then(function (res) {
+                    if (!currentSession(session)) return;
                     sampleBtn.disabled = false;
                     // The endpoint kicks the actual send off in the
                     // background and answers right away (202) -- the
@@ -902,6 +753,7 @@
                     // here only fires if a proxy/500 ate the body.
                     flash(res.ok ? (res.data.message || 'Sending — check your inbox shortly.') : (res.data.error || 'Could not send sample.'), res.ok ? 'success' : 'error');
                 }).catch(function () {
+                    if (!currentSession(session)) return;
                     sampleBtn.disabled = false;
                     flash('Could not send the sample — check your connection and try again.', 'error');
                 });
@@ -912,11 +764,16 @@
                 if (!window.confirm('Delete this schedule? This cannot be undone.')) return;
                 delBtn.disabled = true;
                 apiFetch(apiBase() + '/schedules/' + delBtn.dataset.delete, { method: 'DELETE' }).then(function (r) {
+                    if (!currentSession(session)) return;
                     if (!r.ok) { delBtn.disabled = false; flash('Could not delete the schedule.', 'error'); return; }
                     data.schedules = data.schedules.filter(function (x) { return String(x.id) !== delBtn.dataset.delete; });
-                    render();
+                    var wrap = document.getElementById('rdwFormWrap');
+                    if (wrap._rdwContext && String(wrap._rdwContext.editingId) === delBtn.dataset.delete) wrap.innerHTML = '';
+                    document.getElementById('rdwScheduleList').innerHTML = scheduleRowsHtml();
+                    _notifySubscriptionChange();
                     flash('Schedule deleted.', 'success');
                 }).catch(function () {
+                    if (!currentSession(session)) return;
                     delBtn.disabled = false;
                     flash('Could not delete the schedule — check your connection and try again.', 'error');
                 });
@@ -926,29 +783,23 @@
 
     // ── create/edit form (drawer) ────────────────────────────────────────
     function renderForm(schedule) {
-        var wrap = document.getElementById('rdwFormWrap');
-        var chipData = membersCache[apiBase()] || EMPTY_CHIP_DATA;
-        wrap.innerHTML =
-            '<div class="rdw-section" style="border-top:1px solid var(--border,var(--border-color,#ddd));padding-top:14px;margin-top:14px">'
-            + '<h3 class="rdw-section-title">' + (schedule ? 'Edit schedule' : 'New schedule') + '</h3>'
-            + scheduleFormHtml({ schedule: schedule, chipData: chipData, defaultTimezone: data.default_timezone, defaultEnabled: data.default_enabled })
-            + '</div>';
+        var wrap = document.getElementById('rdwFormWrap'), session = state;
+        if (wrap.querySelector('form') && !canDiscard(wrap._rdwContext)) return;
+        wrap.innerHTML = '<h3 class="rdw-section-title">' + (schedule ? 'Edit delivery' : 'New delivery') + '</h3>'
+            + scheduleFormHtml({ schedule: schedule, defaultTimezone: data.default_timezone, defaultEnabled: data.default_enabled });
         wireScheduleForm(wrap, {
-            apiBase: apiBase(),
-            editingId: editingId,
-            schedule: schedule,
-            chipData: chipData,
-            onFlash: flash,
-            onCancel: function () { editingId = null; wrap.innerHTML = ''; },
-            onSaved: function (saved, wasEditing) {
-                if (wasEditing) {
-                    data.schedules = data.schedules.map(function (s) { return s.id === saved.id ? saved : s; });
-                } else {
-                    data.schedules.push(saved);
+            apiBase: apiBase(), editingId: schedule ? schedule.id : null, schedule: schedule, assets: data.picker_assets,
+            current: function () { return currentSession(session); }, onFlash: flash,
+            onCancel: function () { editingId = null; wrap.innerHTML = ''; document.getElementById('rdwNewSchedule').focus({ preventScroll: true }); },
+            onSaved: function (saved, wasEditing, newerDraft) {
+                if (wasEditing) data.schedules = data.schedules.map(function (row) { return row.id === saved.id ? saved : row; });
+                else data.schedules.push(saved);
+                editingId = saved.id;
+                if (!wasEditing && !newerDraft) { render(); document.getElementById('rdwNewSchedule').focus({ preventScroll: true }); }
+                else {
+                    document.getElementById('rdwScheduleList').innerHTML = scheduleRowsHtml();
+                    _notifySubscriptionChange();
                 }
-                editingId = null;
-                render();
-                flash(wasEditing ? 'Schedule updated.' : 'Schedule created.', 'success');
             }
         });
     }
@@ -1010,6 +861,8 @@
     document.addEventListener('settings:updated', function () { mountCenter(document); });
 
     function wireDeliveryRow(row) {
+        if (row._deliveryWired) return;
+        row._deliveryWired = true;
         var detail = row.nextElementSibling;
         if (!detail) return;
         var flashSlot = detail.querySelector('[data-flash-slot]');
@@ -1024,6 +877,8 @@
 
         function syncVisibility() {
             detail.hidden = !(formSlot.innerHTML || flashSlot.innerHTML);
+            // Native center rows hide empty flash slots; compatibility editors also occupy that row.
+            detail.toggleAttribute('data-rdw-editor-open', !!formSlot.innerHTML);
         }
 
         function rowFlash(msg, type) {
@@ -1055,34 +910,23 @@
         if (editBtn) {
             editBtn.addEventListener('click', function () {
                 if (formSlot.innerHTML) {
+                    if (!canDiscard(formSlot._rdwContext)) return;
                     formSlot.innerHTML = '';
                     editBtn.textContent = 'Edit';
                     syncVisibility();
                     return;
                 }
-                loadMembersFor(rowApiBase, function (chipData) {
-                    formSlot.innerHTML = scheduleFormHtml({ schedule: scheduleData, chipData: chipData });
-                    wireScheduleForm(formSlot, {
-                        apiBase: rowApiBase,
-                        editingId: scheduleData.id,
-                        schedule: scheduleData,
-                        chipData: chipData,
-                        onFlash: rowFlash,
-                        onCancel: function () {
-                            formSlot.innerHTML = '';
-                            editBtn.textContent = 'Edit';
-                            syncVisibility();
-                        },
-                        onSaved: function (saved) {
-                            applySchedule(saved);
-                            formSlot.innerHTML = '';
-                            editBtn.textContent = 'Edit';
-                            rowFlash('Schedule updated.', 'success');
-                        }
-                    });
-                    editBtn.textContent = 'Cancel';
-                    syncVisibility();
+                formSlot.innerHTML = scheduleFormHtml({ schedule: scheduleData });
+                var editor = formSlot.querySelector('[data-schedule-form]');
+                wireScheduleForm(formSlot, {
+                    apiBase: rowApiBase, editingId: scheduleData.id, schedule: scheduleData,
+                    current: function () { return row.isConnected && formSlot.querySelector('[data-schedule-form]') === editor; },
+                    onFlash: rowFlash,
+                    onCancel: function () { formSlot.innerHTML = ''; editBtn.textContent = 'Edit'; syncVisibility(); editBtn.focus({ preventScroll: true }); },
+                    onSaved: function (saved) { applySchedule(saved); rowFlash('Schedule updated.', 'success'); }
                 });
+                editBtn.textContent = 'Cancel';
+                syncVisibility();
             });
         }
 
@@ -1134,6 +978,7 @@
         }
     }
 
+    window.addEventListener('pagehide', function () { close(true); pageGeneration++; });
     window.ReportDelivery = { open: open, close: close, mountCenter: mountCenter };
 
     // ── report-page auto-mount ──────────────────────────────────────────
