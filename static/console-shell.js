@@ -256,6 +256,18 @@
             if (!button) return;
             setTheme(button.dataset.consoleThemeChoice, root);
         });
+        root.addEventListener('input', function (event) {
+            var input = event.target.closest('[data-scope-menu] .tl-console-scope-filter');
+            if (!input) return;
+            var query = input.value.trim().toLocaleLowerCase();
+            var shown = 0;
+            input.parentElement.querySelectorAll('a').forEach(function (link) {
+                link.hidden = query && link.textContent.trim().toLocaleLowerCase().indexOf(query) === -1;
+                if (!link.hidden) shown++;
+            });
+            var empty = input.parentElement.querySelector('.tl-console-scope-empty');
+            if (empty) empty.hidden = shown > 0;
+        });
         root.addEventListener('toggle', function (event) {
             if (event.target.open) {
                 closeMenus(event.target);

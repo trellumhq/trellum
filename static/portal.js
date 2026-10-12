@@ -761,7 +761,7 @@ function categorySelectHtml(cats, favCount, recentCount) {
     if (favCount > 0) options.push(['_favorites', 'Favorites', favCount]);
     if (recentCount > 0) options.push(['_recent', 'Recent', recentCount]);
     cats.forEach(function(cat) { options.push([cat[0], cat[0], cat[1]]); });
-    return '<label class="category-select"><span>Category</span><select aria-label="' + (IS_ANALYSES_PAGE ? 'Analysis' : 'Report') + ' category">'
+    return '<label class="category-select"><span>Category</span><select data-choice-picker data-picker-label="' + (IS_ANALYSES_PAGE ? 'Analysis' : 'Report') + ' category" data-picker-search-placeholder="Search categories" data-picker-empty-state="No categories match." aria-label="' + (IS_ANALYSES_PAGE ? 'Analysis' : 'Report') + ' category">'
         + options.map(function(option) {
             return '<option value="' + escAttr(option[0]) + '"'
                 + (activeFolder === option[0] ? ' selected' : '') + '>'
@@ -778,6 +778,7 @@ function renderTabs() {
 
     if (window.matchMedia('(max-width: 767px)').matches) {
         tabsEl.innerHTML = categorySelectHtml(cats, favCount, recentCount);
+        if (window.TrellumChoices) window.TrellumChoices.init(tabsEl);
         return;
     }
 

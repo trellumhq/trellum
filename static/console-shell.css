@@ -43,6 +43,11 @@ html[data-theme="dark"] .tl-console-shell:not([data-console-theme]),
 .tl-console-scope-dot.studio { background: var(--tl-console-studio); }
 .tl-console-popover, .tl-console-account-menu { position: absolute; z-index: 95; min-width: 200px; padding: 5px; background: var(--tl-console-card); border: 1px solid var(--tl-console-border); border-radius: 10px; box-shadow: 0 14px 32px rgba(0,0,0,.18); }
 .tl-console-popover { top: calc(100% + 4px); left: 0; max-width: min(280px, calc(100vw - 24px)); }
+.tl-console-popover[data-scope-menu] { max-height: min(360px, calc(100vh - 32px)); overflow-y: auto; }
+.tl-console-popover[data-scope-menu] a[hidden] { display: none; }
+.tl-console-scope-filter { position: sticky; top: -5px; z-index: 1; width: 100%; min-height: 40px; margin: -5px -5px 5px; padding: 8px 10px; border: 0; border-bottom: 1px solid var(--tl-console-border); border-radius: 10px 10px 0 0; background: var(--tl-console-card); color: var(--tl-console-text); font: inherit; }
+.tl-console-scope-filter:focus-visible { outline: 2px solid var(--tl-console-primary); outline-offset: -2px; }
+.tl-console-scope-empty { margin: 8px 10px; color: var(--tl-console-text2); font-size: 12px; }
 .tl-console-popover a, .tl-console-account-menu a, .tl-console-account-menu form button { display: block; width: 100%; min-height: 36px; padding: 8px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--tl-console-text); font: inherit; text-align: left; text-decoration: none; cursor: pointer; }
 .tl-console-popover a:hover, .tl-console-account-menu a:hover, .tl-console-account-menu form button:hover { background: var(--tl-console-hover); }
 .tl-console-popover a.active { color: var(--tl-console-accent); font-weight: 600; }

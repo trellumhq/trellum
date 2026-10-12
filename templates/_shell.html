@@ -8,11 +8,11 @@
     {% if shell_org %}
     <div class="tl-console-context tl-console-label">
       {% if shell_orgs|length > 1 %}
-      <details class="tl-console-switcher"><summary><span class="tl-console-scope-dot org" aria-hidden="true"></span><span>{{ shell_org.name }}</span></summary><div class="tl-console-popover">{% for o in shell_orgs %}<a href="/?org={{ o.slug }}"{% if o.pk == shell_org.pk %} class="active"{% endif %}>{{ o.name }}</a>{% endfor %}</div></details>
+      <details class="tl-console-switcher"><summary><span class="tl-console-scope-dot org" aria-hidden="true"></span><span>{{ shell_org.name }}</span></summary><div class="tl-console-popover"{% if shell_orgs|length > 8 %} data-scope-menu{% endif %}>{% if shell_orgs|length > 8 %}<input class="tl-console-scope-filter" type="search" placeholder="Search organizations" aria-label="Search organizations"><p class="tl-console-scope-empty" role="status" hidden>No organizations match.</p>{% endif %}{% for o in shell_orgs %}<a href="/?org={{ o.slug }}"{% if o.pk == shell_org.pk %} class="active"{% endif %}>{{ o.name }}</a>{% endfor %}</div></details>
       {% else %}
       <a class="tl-console-context-link" href="/?org={{ shell_org.slug }}"><span class="tl-console-scope-dot org" aria-hidden="true"></span>{{ shell_org.name }}</a>
       {% endif %}
-      {% if shell_studios %}<details class="tl-console-switcher"><summary><span class="tl-console-scope-dot studio" aria-hidden="true"></span><span>{% if shell_nav_studio %}{{ shell_nav_studio.name }}{% else %}Choose a studio{% endif %}</span></summary><div class="tl-console-popover">{% for s in shell_studios %}<a href="/s/{{ shell_org.slug }}/{{ s.slug }}/"{% if shell_nav_studio and s.pk == shell_nav_studio.pk %} class="active"{% endif %}>{{ s.name }}</a>{% endfor %}</div></details>{% endif %}
+      {% if shell_studios %}<details class="tl-console-switcher"><summary><span class="tl-console-scope-dot studio" aria-hidden="true"></span><span>{% if shell_nav_studio %}{{ shell_nav_studio.name }}{% else %}Choose a studio{% endif %}</span></summary><div class="tl-console-popover"{% if shell_studios|length > 8 %} data-scope-menu{% endif %}>{% if shell_studios|length > 8 %}<input class="tl-console-scope-filter" type="search" placeholder="Search studios" aria-label="Search studios"><p class="tl-console-scope-empty" role="status" hidden>No studios match.</p>{% endif %}{% for s in shell_studios %}<a href="/s/{{ shell_org.slug }}/{{ s.slug }}/"{% if shell_nav_studio and s.pk == shell_nav_studio.pk %} class="active"{% endif %}>{{ s.name }}</a>{% endfor %}</div></details>{% endif %}
     </div>
     {% endif %}
     {% include "_console_nav.html" %}

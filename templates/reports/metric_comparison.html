@@ -25,7 +25,7 @@
 <form class="mc-selection" id="mcSelection" action="{{ comparison_url }}" method="get">
   {% for card in cards %}
   <label for="mc-{{ card.slot }}">Metric {{ forloop.counter }}
-    <select id="mc-{{ card.slot }}" name="{{ card.slot }}" class="ui-input">
+    <select id="mc-{{ card.slot }}" name="{{ card.slot }}" class="ui-input" data-choice-picker data-picker-label="Metric {{ forloop.counter }}" data-picker-search-placeholder="Search metrics" data-picker-empty-state="No metrics match.">
       <option value="">Remove metric / choose a metric</option>
       {% for m in metrics %}<option value="{{ m.row.name }}" {% if card.row.name == m.row.name %}selected{% endif %}>{{ m.row.label|default:m.row.name }}</option>{% endfor %}
     </select>

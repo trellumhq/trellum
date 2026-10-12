@@ -22,10 +22,14 @@ REPORT = "/s/demo/default/r/metrics/"
 def comparison_html(query, *, unavailable=False):
     params = parse_qs(query)
     state = {key: params.get(key, [""])[0] for key in ("a", "b", "from", "to", "split_a", "split_b")}
+    metric_choices = [("gross_revenue", "Gross Revenue"), ("net_revenue", "Net Revenue"),
+                      ("balance", "Balance"), ("inventory", "Inventory")]
+    metric_choices.extend((f"metric_{number}", f"Detailed metric {number}: " + "Long business metric label " * 4)
+                          for number in range(1, 18))
     metrics = [{"row": SimpleNamespace(name=name, label=label, format="currency"),
                 "spec": "sum(revenue)", "grain": "day", "time_agg": "last" if name == "balance" else "sum",
                 "current": True, "embed_url": REPORT + "?only=metric-" + name}
-               for name, label in [("gross_revenue", "Gross Revenue"), ("net_revenue", "Net Revenue"), ("balance", "Balance"), ("inventory", "Inventory")]]
+               for name, label in metric_choices]
     cards = [{**next(m for m in metrics if m["row"].name == state[slot]), "slot": slot}
              if state[slot] else {"slot": slot} for slot in ("a", "b")]
     if unavailable:
@@ -37,7 +41,7 @@ def comparison_html(query, *, unavailable=False):
         "cards": cards, "metrics": metrics, "state": state, "metrics_report_built": not unavailable,
         "comparison_url": PAGE, "catalog_url": "/catalog", "workspace_url": "/s/demo/default/metrics/comparison",
         "studio": SimpleNamespace(name="Demo")}))
-    return '<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="/static/ui.css"></head><body class="mgmt"><main>' + rendered + '</main></body></html>'
+    return '<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="/static/ui.css"><link rel="stylesheet" href="/static/choice-picker.css"></head><body class="mgmt"><main>' + rendered + '</main><script src="/static/choice-picker.js"></script></body></html>'
 
 
 def catalog_html(section="overview"):
@@ -249,8 +253,26 @@ def test_unavailable_build_keeps_selection_controls(open_comparison, unavailable
         page.get_by_text("This metric’s chart is unavailable", exact=False).first.wait_for()
     else:
         assert page.get_by_text("has not been built yet", exact=False).count() == 2
-    assert page.locator('#mc-a').is_visible()
+    assert page.locator('#mc-a').evaluate("el => !!el._trellumChoice")
+    assert page.locator('#mc-a').evaluate("el => el._trellumChoice.trigger.offsetWidth > 0")
     assert page.get_by_role("link", name="Overview", exact=True).is_visible()
+    assert errors == []
+
+
+def test_metric_picker_opens_before_search_and_keeps_blank_choice(open_comparison):
+    page, errors = open_comparison()
+    trigger = page.locator('#mc-a').locator("xpath=..").locator('.ui-picker-trigger')
+    assert trigger.is_visible()
+    trigger.click()
+    options = page.locator('.ui-picker-popup:not([hidden]) .ui-picker-option')
+    assert options.count() == 22
+    assert options.nth(5).inner_text().startswith('Detailed metric 1:')
+    page.locator('.ui-picker-popup:not([hidden]) .ui-picker-search').fill('not a metric')
+    assert page.locator('.ui-picker-popup:not([hidden]) .ui-picker-message').inner_text() == 'No matches.'
+    page.locator('.ui-picker-popup:not([hidden]) .ui-picker-search').fill('')
+    page.locator('.ui-picker-popup:not([hidden]) .ui-picker-option').first.click()
+    assert page.locator('#mc-a').input_value() == ''
+    assert page.locator('#mc-a').evaluate("el => el._trellumChoice.trigger.getAttribute('aria-expanded')") == 'false'
     assert errors == []
 
 

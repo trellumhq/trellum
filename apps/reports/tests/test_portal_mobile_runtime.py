@@ -18,6 +18,12 @@ CONSOLE_CSS = (settings.BASE_DIR / "static" / "console-shell.css").read_text(
 CONSOLE_JS = (settings.BASE_DIR / "static" / "console-shell.js").read_text(
     encoding="utf-8"
 )
+CHOICE_CSS = (settings.BASE_DIR / "static" / "choice-picker.css").read_text(
+    encoding="utf-8"
+)
+CHOICE_JS = (settings.BASE_DIR / "static" / "choice-picker.js").read_text(
+    encoding="utf-8"
+)
 PORTAL_TEMPLATE = (settings.BASE_DIR / "templates" / "portal" / "index.html").read_text(
     encoding="utf-8"
 )
@@ -82,6 +88,7 @@ PORTAL_HTML = """<!doctype html>
   <link rel="stylesheet" href="/static/ui.css">
   <link rel="stylesheet" href="/static/portal.css">
   <link rel="stylesheet" href="/static/console-shell.css">
+  <style>{CHOICE_CSS}</style>
 </head><body class="mgmt tl-console-page console-dashboard">
   <div class="tl-console-shell" data-console-shell data-console-default-mode="light">
     <aside class="tl-console-sidebar" id="consoleSidebar">
@@ -111,9 +118,12 @@ PORTAL_HTML = """<!doctype html>
     window.deliveryClicks = [];
     window.ReportDelivery = {open:function(prefix, slug){deliveryClicks.push([prefix, slug]);}};
   </script>
+  <script>{CHOICE_JS}</script>
   <script src="/static/portal.js"></script>
   <script src="/static/console-shell.js"></script>
-</body></html>""".replace("__DRAWERS__", DRAWERS_HTML)
+</body></html>""".replace("__DRAWERS__", DRAWERS_HTML).replace(
+    "{CHOICE_CSS}", CHOICE_CSS
+).replace("{CHOICE_JS}", CHOICE_JS)
 
 
 @pytest.fixture(scope="module", params=("chromium", "webkit"))
@@ -174,6 +184,73 @@ def test_catalog_kind_filter_search_categories_and_favorites(mobile_browser, vie
         assert page.locator(f'#content tr[data-slug="{expected}"]').count() == 1
         page.locator("#searchInput").fill("evidence")
         assert bool(page.locator('#content tr[data-slug="analysis"]').count()) == (expected == "analysis")
+    finally:
+        context.close()
+
+
+def test_mobile_category_picker_opens_searches_and_survives_rerender(mobile_browser):
+    rows = [
+        {
+            **REPORT,
+            "id": number,
+            "slug": f"report-{number}",
+            "name": f"Report {number}",
+            "category": f"Category {number}",
+        }
+        for number in range(1, 21)
+    ]
+    context = mobile_browser.new_context(viewport={"width": 390, "height": 844})
+    page = context.new_page()
+    artifacts = settings.BASE_DIR / ".artifacts" / "ux-workspace-selectors"
+    artifacts.mkdir(parents=True, exist_ok=True)
+
+    def respond(route):
+        path = urlsplit(route.request.url).path
+        if path.endswith("/static/portal.js"):
+            route.fulfill(content_type="application/javascript", body=PORTAL_JS)
+        elif path.endswith("/static/console-shell.js"):
+            route.fulfill(content_type="application/javascript", body=CONSOLE_JS)
+        elif path.endswith("/static/ui.css"):
+            route.fulfill(content_type="text/css", body=UI_CSS)
+        elif path.endswith("/static/portal.css"):
+            route.fulfill(content_type="text/css", body=PORTAL_CSS)
+        elif path.endswith("/static/console-shell.css"):
+            route.fulfill(content_type="text/css", body=CONSOLE_CSS)
+        elif path.endswith("/api/registry"):
+            route.fulfill(content_type="application/json", body=json.dumps({"reports": rows}))
+        elif path.endswith("/api/me/favorites"):
+            route.fulfill(content_type="application/json", body='{"favorites":[]}')
+        elif "/api/" in path:
+            route.fulfill(content_type="application/json", body='{"studios":[]}')
+        else:
+            route.fulfill(content_type="text/html", body=PORTAL_HTML)
+
+    page.route("**/*", respond)
+    try:
+        page.goto("http://portal.test/s/acme/analytics/")
+        page.locator('#content [data-slug="report-1"]').wait_for()
+        page.wait_for_function("window._favoritesReady || window._favoritesFailed")
+        assert page.locator("#folderTabs .ui-choice-picker").count() == 1
+        trigger = page.locator("#folderTabs .ui-picker-trigger")
+        assert trigger.is_visible()
+        trigger.click()
+        page.add_style_tag(content="*,*::before,*::after{animation:none!important;transition:none!important}")
+        page.screenshot(path=artifacts / "category-picker-390-light.png", full_page=True)
+        page.evaluate("TrellumConsoleShell.setTheme('dark')")
+        page.locator("#folderTabs select").evaluate("el => el._trellumChoice.open()")
+        page.screenshot(path=artifacts / "category-picker-390-dark.png", full_page=True)
+        page.evaluate("TrellumConsoleShell.setTheme('light')")
+        page.locator("#folderTabs select").evaluate("el => el._trellumChoice.open()")
+        choices = page.locator("#folderTabs .ui-picker-option")
+        assert choices.count() >= 21
+        page.locator("#folderTabs .ui-picker-search").fill("Category 20")
+        assert page.locator("#folderTabs .ui-picker-option").count() == 1
+        page.locator("#folderTabs .ui-picker-option").click()
+        assert page.locator('#content [data-slug="report-20"]').count() == 1
+        assert page.locator('#content [data-slug="report-1"]').count() == 0
+        page.evaluate("render(); render()")
+        assert page.locator("#folderTabs .ui-choice-picker").count() == 1
+        assert page.locator("#folderTabs select").input_value() == "Category 20"
     finally:
         context.close()
 

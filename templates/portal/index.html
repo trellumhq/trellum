@@ -21,6 +21,7 @@ Light/Dark/Auto preference. Named report themes apply inside reports only.{% end
 <link href="{% static 'ui.css' %}" rel="stylesheet">
 <link href="{% static 'portal.css' %}" rel="stylesheet">
 <link href="{% static 'console-shell.css' %}" rel="stylesheet">
+<link href="{% static 'choice-picker.css' %}" rel="stylesheet">
 <link href="{% static 'console-report-host.css' %}" rel="stylesheet">
 </head>
 <body class="mgmt tl-console-page console-dashboard{% if console_page_title %} tl-console-title-known{% endif %}">
@@ -96,6 +97,7 @@ shell; the visible page title and category controls belong to this page.{% endco
 <script>window.PORTAL_CTX = JSON.parse(document.getElementById('portal-ctx').textContent);</script>
 {# Same file the report pages load (see apps.reports.views.delivery_widget_js) — one implementation behind window.PORTAL_CTX, not a parallel widget. #}
 <script src="{% static 'report_delivery.js' %}"></script>
+<script src="{% static 'choice-picker.js' %}"></script>
 <script src="{% static 'portal.js' %}"></script>
 <script src="{% static 'console-shell.js' %}"></script>
 <script src="{% static 'console-report-host.js' %}"></script>
