@@ -911,6 +911,31 @@ def api_keys_view(request):
     )
 
 
+def api_key_create_view(request):
+    """Create one personal API key and return to the list for one-time display."""
+    from .forms import ApiKeyCreateForm
+    from .models import ApiKey
+
+    if not request.user.is_authenticated:
+        return redirect("login")
+
+    form = ApiKeyCreateForm(request.POST or None, user=request.user)
+    if request.method == "POST" and form.is_valid():
+        key, secret = ApiKey.mint(user=request.user, **form.cleaned_data)
+        audit(
+            request, "apikey.create", target=key, org=key.org,
+            name=key.name, prefix=key.prefix, scopes=key.scopes,
+        )
+        request.session["new_api_key"] = {"id": key.pk, "secret": secret}
+        return redirect("my-api-keys")
+
+    return render(
+        request,
+        "accounts/api_key_create.html",
+        {"form": form, "can_create": form.fields["org"].queryset.exists()},
+    )
+
+
 @require_org_role(roles.ORG_ADMIN)
 def org_api_keys_view(request, org_slug):  # noqa: ARG001
     """Org settings -> API keys: every key in the org, revocable, plus the

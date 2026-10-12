@@ -224,6 +224,7 @@ urlpatterns = [
     # Personal API keys (internal planning ticket #002): cross-org like deliveries; the org-admin
     # list sits with the other org settings tabs further down.
     path("me/api-keys", account_views.api_keys_view, name="my-api-keys"),
+    path("me/api-keys/new", account_views.api_key_create_view, name="my-api-keys-create"),
     # No-login unsubscribe link mailed at the bottom of every alert/delivery
     # mail — the signed token carries everything the view needs.
     path("notify/unsubscribe/<str:token>", report_views.notify_unsubscribe, name="notify-unsubscribe"),

@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Add API key — trellum{% endblock %}
+{% block content %}
+<div class="ui-form-rail">
+  <header class="page-head">
+    <div class="ui-label page-kicker">Account · API keys</div>
+    <h1>Add API key</h1>
+    <p class="muted page-sub">Create a personal bearer token for one organization. It acts as you and follows your roles.</p>
+    <a class="ui-btn ghost" href="{% url 'my-api-keys' %}" data-settings-leave="apiKeyCreateForm">← Back to API keys</a>
+  </header>
+  {% if can_create %}
+  <form id="apiKeyCreateForm" method="post" data-settings-form>
+    {% csrf_token %}
+    <input type="hidden" name="action" value="create">
+    {% if form.non_field_errors %}<div class="ui-field-error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+    <section class="ui-form-section" aria-labelledby="api-key-details-heading">
+      <h2 id="api-key-details-heading">Key details</h2>
+      <div class="ui-form-row">
+        <div class="ui-field ui-field-wide">
+          <label for="{{ form.name.id_for_label }}">Name</label>
+          {{ form.name }}
+          {% if form.name.errors %}<div class="ui-field-error" role="alert">{{ form.name.errors }}</div>{% endif %}
+          <span class="ui-help">What it is for, such as “laptop agent” or “nightly CI”.</span>
+        </div>
+        <div class="ui-field ui-field-wide">
+          <label for="{{ form.org.id_for_label }}">Organization</label>
+          {{ form.org }}
+          {% if form.org.errors %}<div class="ui-field-error" role="alert">{{ form.org.errors }}</div>{% endif %}
+          <span class="ui-help">A key works in one organization only. Create one per organization as needed.</span>
+        </div>
+        <div class="ui-field">
+          <label for="{{ form.scopes.id_for_label }}">Scope</label>
+          {{ form.scopes }}
+          {% if form.scopes.errors %}<div class="ui-field-error" role="alert">{{ form.scopes.errors }}</div>{% endif %}
+          <span class="ui-help"><em>Read</em> covers every GET endpoint. <em>Read and write</em> also allows POST, still limited by your studio role.</span>
+        </div>
+        <div class="ui-field">
+          <label for="{{ form.expires_at.id_for_label }}">Expires</label>
+          {{ form.expires_at }}
+          {% if form.expires_at.errors %}<div class="ui-field-error" role="alert">{{ form.expires_at.errors }}</div>{% endif %}
+          <span class="ui-help">Optional. Leave blank for a key that lasts until you revoke it.</span>
+        </div>
+      </div>
+    </section>
+    <div class="ui-form-actions">
+      <button class="ui-btn primary" type="submit">Create API key</button>
+      <a class="ui-btn ghost" href="{% url 'my-api-keys' %}" data-settings-leave>Cancel</a>
+    </div>
+  </form>
+  {% else %}
+  <div class="ui-panel"><div class="ui-empty">API keys are switched off in every organization you belong to. An organization admin can turn them on under Organization settings → API keys.</div></div>
+  {% endif %}
+</div>
+{% endblock %}

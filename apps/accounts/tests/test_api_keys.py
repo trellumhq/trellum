@@ -207,12 +207,64 @@ class TestBearerAuth:
 
 class TestMyKeysPage:
     URL = "/me/api-keys"
+    CREATE_URL = "/me/api-keys/new"
 
     def test_requires_login(self, client, db):
         assert client.get(self.URL).status_code == 302
 
     def test_nav_link(self, login, developer):
         assert self.URL in login(developer).get("/").content.decode()
+
+    def test_create_page_uses_bounded_native_form_and_shared_org_picker(self, login, developer, org):
+        response = login(developer).get(self.CREATE_URL)
+        page = response.content.decode()
+        assert response.status_code == 200
+        assert 'id="apiKeyCreateForm"' in page and "data-settings-form" in page
+        assert 'data-settings-leave="apiKeyCreateForm"' in page
+        assert '<a class="ui-btn ghost" href="/me/api-keys" data-settings-leave>' in page
+        assert 'name="org"' in page and "data-choice-picker" in page
+        assert 'name="expires_at"' in page and 'type="date"' in page
+        assert f'<option value="{org.pk}"' in page
+        assert "Create API key" in page
+
+    def test_new_create_page_preserves_invalid_draft_and_returns_secret_once(self, login, developer, org):
+        c = login(developer)
+        invalid = c.post(
+            self.CREATE_URL,
+            {"name": "draft key", "org": "999999", "scopes": "read", "expires_at": ""},
+        )
+        assert invalid.status_code == 200
+        assert b"draft key" in invalid.content and b"Select a valid choice" in invalid.content
+        assert not ApiKey.objects.exists()
+
+        created = c.post(
+            self.CREATE_URL,
+            {"name": "new page", "org": org.pk, "scopes": "read", "expires_at": ""},
+        )
+        assert created.status_code == 302 and created["Location"] == self.URL
+        key = ApiKey.objects.get(user=developer, name="new page")
+        page = c.get(self.URL).content.decode()
+        assert f"trellum_pk_{key.prefix}_" in page
+        assert f"trellum_pk_{key.prefix}_" not in c.get(self.URL).content.decode()
+
+    def test_new_create_page_rejects_today_as_expiry_and_keeps_fields(self, login, developer, org):
+        today = timezone.localdate().isoformat()
+        response = login(developer).post(
+            self.CREATE_URL,
+            {"name": "today key", "org": org.pk, "scopes": "read", "expires_at": today},
+        )
+        page = response.content.decode()
+        assert response.status_code == 200
+        assert "Pick a date after today" in page
+        assert 'value="today key"' in page and f'value="{today}"' in page
+        assert not ApiKey.objects.exists()
+
+    def test_create_page_requires_login_and_respects_org_policy(self, client, login, developer, org):
+        assert client.get(self.CREATE_URL).status_code == 302
+        org.api_keys_enabled = False
+        org.save()
+        page = login(developer).get(self.CREATE_URL).content.decode()
+        assert "switched off" in page and '<form id="apiKeyCreateForm"' not in page
 
     def test_create_shows_the_secret_once_and_audits(self, login, developer, org):
         c = login(developer)

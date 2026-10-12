@@ -25,25 +25,22 @@
 </div>
 {% endif %}
 
-<h2>Create a key</h2>
-{% if can_create %}
-<div class="panel formrow">
-  <form method="post">
-    {% csrf_token %}
-    <input type="hidden" name="action" value="create">
-    <label for="id_name">Name</label>{{ form.name }}{{ form.name.errors }}
-    <span class="helptext">What it is for — “laptop agent”, “nightly CI”.</span>
-    <label for="id_org">Organization</label>{{ form.org }}{{ form.org.errors }}
-    <span class="helptext">A key works in one organization only. Make one per organization if you need more.</span>
-    <label for="id_scopes">Scope</label>{{ form.scopes }}{{ form.scopes.errors }}
-    <span class="helptext"><em>Read</em> covers every GET endpoint. <em>Read and write</em> also allows POST — run a
-      report, publish from git, test a data source — still limited by your studio role.</span>
-    <label for="id_expires_at">Expires</label>{{ form.expires_at }}{{ form.expires_at.errors }}
-    <span class="helptext">Optional. Leave blank for a key that lasts until you revoke it.</span>
-    <p></p>
+{% if form.is_bound %}
+<div class="ui-panel" role="alert">
+  <strong>The API key was not created.</strong>
+  <form method="post" class="formrow">
+    {% csrf_token %}<input type="hidden" name="action" value="create">
+    {% for field in form %}
+    <label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}
+    {% if field.errors %}<div class="ui-field-error" role="alert">{{ field.errors }}</div>{% endif %}
+    {% endfor %}
     <button class="ui-btn primary" type="submit">Create key</button>
   </form>
 </div>
+{% endif %}
+
+{% if can_create %}
+<p><a class="ui-btn primary" href="{% url 'my-api-keys-create' %}">Add API key</a></p>
 {% else %}
 <div class="panel"><div class="ui-empty">API keys are switched off in every organization you belong to.
   An organization admin can turn them on under Organization settings → API keys.</div></div>

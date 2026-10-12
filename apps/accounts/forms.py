@@ -144,6 +144,8 @@ class ApiKeyCreateForm(forms.Form):
         self.fields["org"].queryset = Organization.objects.filter(
             is_active=True, api_keys_enabled=True, memberships__user=user
         ).order_by("slug")
+        self.fields["org"].label_from_instance = lambda org: org.name
+        self.fields["org"].widget.attrs["data-choice-picker"] = ""
 
     def clean_expires_at(self):
         day = self.cleaned_data["expires_at"]
