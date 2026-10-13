@@ -19,6 +19,7 @@
 /* Filter. One row above the grid: the box, and what it left standing. The
    count is a live region rather than a heading, so a screen reader hears the
    result of typing without the input losing focus. */
+[data-metric-summary] [hidden] { display:none; }
 .met-filter { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:0 0 14px; }
 /* By id, for the same reason .met-open is: ui.css gives every input in
    body.mgmt `width:100%` at a specificity no page-local class selector can

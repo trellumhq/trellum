@@ -419,7 +419,7 @@ def metric_definition_page(studio, query="", page=1):
     selected = pager.get_page(page)
     metrics = [{"row": row, "spec": row.spec_text(),
                 "not_monitored_reason": ("descriptive — no aggregation spec to compute" if not row.agg else
-                                         "not bound to a dataset in metrics.yaml"), "details_url":
+                                         "not present in the latest indexed Metrics build"), "details_url":
                 reverse("studio-metric-claims", args=[studio.org.slug, studio.slug, row.pk]) +
                 f"?definition_revision={revision}"} for row in selected]
     current_revision = MetricCatalogState.objects.filter(studio=studio).values_list(
