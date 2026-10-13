@@ -445,6 +445,7 @@ class TestRoles:
         )
         monkeypatch.setattr("apps.runner.sandbox.sandbox_mode", lambda: "off")
         monkeypatch.setattr("apps.runner.gitsync.GitSyncThread", StubGitSyncThread)
+        monkeypatch.setattr("apps.reports.source_reconciliation.start_for_worker", lambda **kwargs: None)
         run = make_run()
         Command().handle(once=False, role="runner")
         assert events[:2] == ["beat", "claim"]

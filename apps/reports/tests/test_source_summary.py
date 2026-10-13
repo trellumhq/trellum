@@ -1,0 +1,303 @@
+"""Source projection semantics, fencing, and bounded historical reconciliation."""
+import json
+from datetime import timedelta
+
+import pytest
+from django.db import connection
+from django.utils import timezone
+
+from apps.reports.models import MetricCatalogState, Report, ReportSourceSummary
+from apps.reports.source_reconciliation import run_batch
+from apps.reports.source_summary import (
+    META_BYTES, acquire, begin_attempt, begin_expiry, definitions_changed,
+    finish_attempt, finish_expiry, invalidate_reports, reconcile,
+)
+
+pytestmark = pytest.mark.django_db(transaction=True)
+
+
+def report(studio_tree, slug="one", meta=None):
+    row = Report.objects.create(studio=studio_tree, slug=slug)
+    path = studio_tree.output_dir / slug
+    path.mkdir(parents=True, exist_ok=True)
+    if meta is not None:
+        (path / "_meta.json").write_text(json.dumps(meta))
+    return row
+
+
+def metadata(*names, status="success"):
+    return {"last_status": status, "last_run": timezone.now().isoformat(), "metrics_used": list(names)}
+
+
+def due(row):
+    ReportSourceSummary.objects.filter(report=row).update(next_check_at=timezone.now() - timedelta(seconds=1))
+
+
+def test_historical_complete_dense_claims_and_generation(studio_tree):
+    row = report(studio_tree, meta=metadata(*(f"m{i}" for i in range(2000))))
+    result = run_batch()
+    assert result["results"][0]["status"] == "ready"
+    summary = ReportSourceSummary.objects.get(report=row)
+    assert summary.quality == "observed"
+    assert summary.claims.count() == 2000
+    assert summary.claims.filter(metric_name="m1999", definition_hash=None, version=None).exists()
+    assert MetricCatalogState.objects.get(studio=studio_tree).summary_revision == 1
+
+
+def test_failure_retains_history_without_current_claim(studio_tree):
+    row = report(studio_tree, meta=metadata("old"))
+    reconcile(row.pk)
+    begin_attempt(row.pk, "not-a-run")
+    (studio_tree.output_dir / row.slug / "_meta.json").write_text(json.dumps(metadata("partial", status="error")))
+    finish_attempt(row.pk, "not-a-run", "error")
+    assert reconcile(row.pk)["status"] == "uncertain"
+    assert list(row.source_summary.claims.values_list("metric_name", flat=True)) == ["old"]
+
+
+def test_no_transaction_spans_storage_io(studio_tree, monkeypatch):
+    from apps.core import storage
+    original = storage.read_summary_artifact
+    row = report(studio_tree, meta=metadata("m"))
+    def observed(*args, **kwargs):
+        assert not connection.in_atomic_block
+        return original(*args, **kwargs)
+    monkeypatch.setattr(storage, "read_summary_artifact", observed)
+    assert reconcile(row.pk)["status"] == "ready"
+
+
+def test_new_attempt_supersedes_inflight_observation(studio_tree, monkeypatch):
+    from apps.reports import source_summary
+    row = report(studio_tree, meta=metadata("old"))
+    original = source_summary.inspect_source
+    def race(*args):
+        result = original(*args)
+        begin_attempt(row.pk, "next")
+        return result
+    monkeypatch.setattr(source_summary, "inspect_source", race)
+    assert reconcile(row.pk)["status"] == "superseded"
+    assert row.source_summary.claims.count() == 0
+    assert row.source_summary.state == "pending"
+
+
+def test_oversized_and_malformed_never_empty_verified(studio_tree):
+    row = report(studio_tree, meta=metadata("old"))
+    reconcile(row.pk)
+    due(row)
+    path = studio_tree.output_dir / row.slug / "_meta.json"
+    path.write_bytes(b"x" * (META_BYTES + 1))
+    assert reconcile(row.pk)["status"] == "unavailable"
+    assert row.source_summary.claims.count() == 1
+    assert row.source_summary.failures == 1
+    due(row)
+    path.write_bytes(b"{")
+    assert reconcile(row.pk)["status"] == "unavailable"
+    row.refresh_from_db()
+    assert row.source_summary.failures == 2
+
+
+def test_batch_count_pool_and_provider_backoff(studio_tree):
+    for i in range(30):
+        report(studio_tree, str(i))
+    assert run_batch(pools=["large"])["inspections"] == 0
+    result = run_batch()
+    assert result["inspections"] == 25
+    assert run_batch()["inspections"] == 5
+    with pytest.raises(ValueError):
+        run_batch(limit=26)
+
+
+def test_expiry_blocks_new_attempt_and_restart_repairs(studio_tree):
+    row = report(studio_tree, meta=metadata("old"))
+    reconcile(row.pk)
+    operation = begin_expiry(row.pk)
+    with pytest.raises(RuntimeError):
+        begin_attempt(row.pk, "racing")
+    assert acquire(row.pk) is None
+    (studio_tree.output_dir / row.slug / "_meta.json").unlink()
+    ReportSourceSummary.objects.filter(report=row).update(lease_until=timezone.now() - timedelta(seconds=1), next_check_at=timezone.now())
+    assert reconcile(row.pk)["status"] == "expired"
+    row.refresh_from_db()
+    assert row.data_expired_at is not None
+    assert row.source_summary.claims.count() == 1  # historical, not live
+
+
+def test_expiry_marker_and_removed_generation(studio_tree):
+    row = report(studio_tree, meta=metadata("m"))
+    reconcile(row.pk)
+    token = begin_expiry(row.pk)
+    stamp = timezone.now()
+    assert finish_expiry(row.pk, token, expired_at=stamp)
+    row.refresh_from_db()
+    assert row.data_expired_at == stamp
+    assert row.source_summary.state == "expired"
+    invalidate_reports([row.pk], "removed")
+    row.refresh_from_db()
+    assert row.source_summary.state == "removed"
+    definitions_changed(studio_tree.pk)
+    assert MetricCatalogState.objects.get(studio=studio_tree).definition_revision == 1
+
+
+def test_local_gzip_decoded_limit(studio_tree):
+    import gzip
+    from apps.core.storage import read_summary_artifact
+    row = report(studio_tree)
+    path = studio_tree.output_dir / row.slug / "_meta.json"
+    raw = json.dumps(metadata("m")).encode()
+    path.write_bytes(gzip.compress(raw))
+    assert read_summary_artifact(studio_tree, row.slug, "_meta.json", max_bytes=1024) == raw
+    path.write_bytes(gzip.compress(b"x" * 1025))
+    with pytest.raises(ValueError, match="decoded"):
+        read_summary_artifact(studio_tree, row.slug, "_meta.json", max_bytes=1024)
+    path.write_bytes(b"x" * 1025)
+    with pytest.raises(ValueError, match="encoded"):
+        read_summary_artifact(studio_tree, row.slug, "_meta.json", max_bytes=1024)
+
+
+def test_missing_historical_rows_prioritized_over_due_existing(studio_tree):
+    old = report(studio_tree, "existing", metadata("m"))
+    reconcile(old.pk)
+    due(old)
+    new = report(studio_tree, "new", metadata("m"))
+    assert run_batch(limit=1)["results"][0]["report_id"] == new.pk
+    assert run_batch(limit=1)["results"][0]["report_id"] == old.pk
+
+
+def test_generated_preview_is_bounded_and_canonical(studio_tree):
+    row = report(studio_tree, "metrics", metadata("m"))
+    row.tags = ["metrics"]
+    row.save()
+    data = {"components": {"c": {"type": "chart", "dataset_id": "d", "x": "date"}},
+            "_metrics": {"m": {"agg": "sum", "column": "value", "component_ids": ["c"]}},
+            "_ds_d": {"_cols": ["date", "value"], "_data": [[f"{i:03}", i] for i in range(100)]}}
+    (studio_tree.output_dir / "metrics" / "data.json").write_text(json.dumps(data))
+    assert reconcile(row.pk)["status"] == "ready"
+    summary = row.source_summary
+    points = summary.previews.get(metric_name="m").points.split()
+    assert len(points) == 60
+    assert points[0] == "0.0,34.0"
+    assert points[-1] == "140.0,2.0"
+    assert summary.preview_state == "ready"
+
+
+def test_remote_missing_immutable_meta_is_unavailable(studio_tree, monkeypatch):
+    from apps.core import storage
+    row = report(studio_tree)
+    monkeypatch.setattr(storage, "is_remote", lambda: True)
+    monkeypatch.setattr(storage, "summary_build_identity", lambda *args: "published")
+    monkeypatch.setattr(storage, "read_summary_artifact", lambda *args, **kwargs: None)
+    assert reconcile(row.pk)["status"] == "unavailable"
+    assert row.source_summary.state == "unavailable"
+    assert row.source_summary.claims.count() == 0
+
+
+def test_remote_served_identity_not_mutable_attempt(studio_tree, monkeypatch):
+    from apps.core import storage
+    row = report(studio_tree)
+    served = metadata("served")
+    attempt = metadata("partial", status="error")
+    monkeypatch.setattr(storage, "is_remote", lambda: True)
+    monkeypatch.setattr(storage, "summary_build_identity", lambda *args: "published")
+    def read(*args, **kwargs):
+        return json.dumps(attempt if kwargs.get("mutable_status") else served).encode()
+    monkeypatch.setattr(storage, "read_summary_artifact", read)
+    assert reconcile(row.pk)["status"] == "ready"
+    summary = row.source_summary
+    assert summary.source_identity == "published"
+    assert summary.served_at < summary.attempt_at
+    assert summary.attempt_status == "error"
+    assert list(summary.claims.values_list("metric_name", flat=True)) == ["served"]
+
+
+def test_remote_pointer_race_never_commits_mixed_claims(studio_tree, monkeypatch):
+    from apps.core import storage
+    row = report(studio_tree)
+    monkeypatch.setattr(storage, "is_remote", lambda: True)
+    pointers = iter(["old", "new"])
+    monkeypatch.setattr(storage, "summary_build_identity", lambda *args: next(pointers))
+    monkeypatch.setattr(storage, "read_summary_artifact", lambda *args, **kwargs: json.dumps(metadata("old")).encode())
+    assert reconcile(row.pk)["status"] == "unavailable"
+    assert row.source_summary.claims.count() == 0
+
+
+def test_partial_expiry_failure_stays_uncertain_until_success(studio_tree):
+    row = report(studio_tree, meta=metadata("old"))
+    reconcile(row.pk)
+    token = begin_expiry(row.pk)
+    finish_expiry(row.pk, token)  # deletion failed after touching some assets
+    assert reconcile(row.pk)["status"] == "uncertain"
+    assert row.source_summary.operation.startswith("expiry:")
+    due(row)
+    assert reconcile(row.pk)["status"] == "uncertain"
+    begin_attempt(row.pk, "new-run")
+    (studio_tree.output_dir / row.slug / "_meta.json").write_text(json.dumps(metadata("new")))
+    finish_attempt(row.pk, "new-run", "success")
+    assert reconcile(row.pk)["status"] == "ready"
+    assert list(row.source_summary.claims.values_list("metric_name", flat=True)) == ["new"]
+
+
+def test_active_runs_do_not_starve_missing_catalog(studio_tree):
+    from apps.runner.models import Run
+    for i in range(25):
+        row = report(studio_tree, f"busy{i}")
+        Run.objects.create(report=row, studio=studio_tree, slug=row.slug, status=Run.RUNNING)
+    idle = report(studio_tree, "idle", metadata("m"))
+    assert run_batch(limit=1)["results"][0]["report_id"] == idle.pk
+
+
+def test_failed_local_attempt_with_unchanged_success_meta_is_uncertain(studio_tree):
+    row = report(studio_tree, meta=metadata("old"))
+    reconcile(row.pk)
+    begin_attempt(row.pk, "failed-run")
+    # Subprocess can mutate some assets before it updates successful metadata.
+    finish_attempt(row.pk, "failed-run", "error")
+    assert reconcile(row.pk)["status"] == "uncertain"
+    assert row.source_summary.claims.get().metric_name == "old"
+    assert row.source_summary.quality == "observed"
+
+
+def test_concurrent_inspectors_take_one_lease(studio_tree):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from django.db import close_old_connections
+    row = report(studio_tree, meta=metadata("m"))
+    # Make row creation deterministic; race the actual PostgreSQL lease locks.
+    ReportSourceSummary.objects.create(report=row, next_check_at=timezone.now())
+    barrier = threading.Barrier(2)
+    def claim():
+        close_old_connections()
+        try:
+            barrier.wait(timeout=5)
+            return acquire(row.pk)
+        finally:
+            close_old_connections()
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda _: claim(), range(2)))
+    assert sum(result is not None for result in results) == 1
+
+
+def test_batch_byte_and_time_admission(studio_tree, monkeypatch):
+    from apps.reports import source_reconciliation as service
+    for i in range(3):
+        report(studio_tree, str(i))
+    monkeypatch.setattr(service, "reconcile", lambda pk: {"status": "ready", "bytes": service.MAX_INSPECTION_BYTES})
+    bounded = service.run_batch()
+    assert bounded["inspections"] == 1
+    assert bounded["bytes"] <= service.BATCH_BYTES
+    clock = iter([0, 0, 6, 6])
+    monkeypatch.setattr(service.time, "monotonic", lambda: next(clock))
+    timed = service.run_batch()
+    assert timed["inspections"] == 1
+    assert timed["seconds"] == 6  # admission window, never falsely a hard5s cap
+
+
+def test_schema_upgrade_preserves_reports_and_is_reversible(studio_tree):
+    from django.db.migrations.executor import MigrationExecutor
+    row = report(studio_tree)
+    try:
+        MigrationExecutor(connection).migrate([("reports", "0025_emailschedule_delivery_accepted_to_and_more")])
+        assert "reports_reportsourcesummary" not in connection.introspection.table_names()
+        assert Report.objects.filter(pk=row.pk).exists()
+    finally:
+        MigrationExecutor(connection).migrate([("reports", "0026_source_summaries")])
+    assert Report.objects.filter(pk=row.pk).exists()
+    assert ReportSourceSummary.objects.count() == 0  # automatic worker bootstrap

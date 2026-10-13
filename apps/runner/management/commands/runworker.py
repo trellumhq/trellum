@@ -211,6 +211,15 @@ class Command(BaseCommand):
             )
             beat_thread.start()
 
+        summary_thread = None
+        if not opts["once"]:
+            from apps.reports.source_reconciliation import start_for_worker
+
+            summary_thread = start_for_worker(
+                is_coordinator=is_coordinator, is_runner=is_runner,
+                pools=settings.TRELLUM_RUNNER_POOLS,
+            )
+
         last_reap = time.time()  # _recover_stale_runs already ran above
         try:
             while not shutdown.is_set():
@@ -237,6 +246,8 @@ class Command(BaseCommand):
                     break
                 time.sleep(1)
         finally:
+            if summary_thread is not None:
+                summary_thread.stop()
             if beat_thread is not None:
                 beat_thread.join(timeout=5)
             if git_thread is not None:
@@ -393,6 +404,11 @@ class Command(BaseCommand):
             )
             if run is None:
                 return False  # a racing runner got there first
+
+            from apps.reports.models import ReportSourceSummary
+
+            if ReportSourceSummary.objects.filter(report_id=run.report_id, state="expiring").exists():
+                return False  # expiry/restart repair owns output; leave queued
 
             memory_mb = executor.memory_for(run)
 

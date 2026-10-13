@@ -804,3 +804,66 @@ def _sweep_output(studio, slug: str | None, *, delete: bool) -> int:
         shutil.rmtree(local, ignore_errors=True)
         clear_cache(studio, slug)
     return total
+
+
+def summary_build_identity(studio, slug: str) -> str:
+    """Uncached serving pointer for worker reconciliation, never top-level status."""
+    if not is_remote():
+        return ""
+    raw = read_summary_artifact(studio, slug, "_current", max_bytes=4096)
+    if raw is None:
+        return ""
+    build = json.loads(raw).get("build")
+    if not isinstance(build, str) or not build or _safe_component(build) != build:
+        raise ValueError("invalid serving pointer")
+    return build
+
+
+def read_summary_artifact(studio, slug: str, name: str, *, build: str = "", max_bytes: int, mutable_status: bool = False) -> bytes | None:
+    """Bounded worker-only artifact read; remote metadata is tied to immutable build.
+
+    Limits decoded bytes too, including gzip objects. Does not materialise a
+    directory or use memoised pointers. Missing is distinct from invalid/outage.
+    """
+    import gzip
+    import io
+
+    if name not in ("_current", "_meta.json", "data.json"):
+        raise ValueError("unsupported summary artifact")
+    if mutable_status and name != "_meta.json":
+        raise ValueError("mutable summary reads are status-only")
+    if not is_remote():
+        if name == "_current":
+            return None
+        path = studio.output_dir / slug / name
+        try:
+            with path.open("rb") as source:
+                raw = source.read(max_bytes + 1)
+        except FileNotFoundError:
+            return None
+    else:
+        base = _remote_prefix(studio, slug)
+        if name != "_current" and not build and not (mutable_status and name == "_meta.json"):
+            raise ValueError("immutable build required")
+        key = _pointer_key(base) if name == "_current" else f"{base}/{name}" if mutable_status else f"{_build_prefix(base, _safe_component(build))}/{name}"
+        try:
+            from apps.core.s3 import s3_client
+
+            response = s3_client(read_timeout=2).get_object(Bucket=_bucket(), Key=key)
+        except Exception as exc:
+            if _is_missing(exc):
+                return None
+            raise
+        body = response["Body"]
+        try:
+            raw = body.read(max_bytes + 1)
+        finally:
+            body.close()
+    if len(raw) > max_bytes:
+        raise ValueError("summary artifact encoded byte limit exceeded")
+    if raw[:2] == b"\x1f\x8b" or (is_remote() and response.get("ContentEncoding") == "gzip"):
+        with gzip.GzipFile(fileobj=io.BytesIO(raw)) as source:
+            raw = source.read(max_bytes + 1)
+    if len(raw) > max_bytes:
+        raise ValueError("summary artifact decoded byte limit exceeded")
+    return raw

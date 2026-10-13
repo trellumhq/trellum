@@ -1037,12 +1037,23 @@ def _sweep_built_data(*, delete: bool) -> tuple[int, int]:
                 batch = list(expired[:BATCH])
                 if not batch:
                     break
+                from apps.reports.source_summary import begin_expiry, finish_expiry
+
+                completed = 0
                 for report in batch:
-                    org_freed += storage.delete_output(report.studio, report.slug)
-                Report.objects.filter(pk__in=[r.pk for r in batch]).update(
-                    data_expired_at=now
-                )
-                org_count += len(batch)
+                    operation = begin_expiry(report.pk)
+                    if operation is None:
+                        continue
+                    try:
+                        org_freed += storage.delete_output(report.studio, report.slug)
+                    except Exception:
+                        finish_expiry(report.pk, operation)
+                        raise
+                    finish_expiry(report.pk, operation, expired_at=now)
+                    completed += 1
+                org_count += completed
+                if not completed:
+                    break
             if org_count:
                 _audit_org_purge(
                     org, "retention.built_data_purged",

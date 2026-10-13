@@ -558,6 +558,10 @@ class Executor:
                 "sandbox_mode": sandbox_kind,
             }
 
+            from apps.reports.source_summary import begin_attempt
+
+            begin_attempt(run.report_id, run.pk)
+
             if sandbox_kind == "docker":
                 # The container appends to the same log files (via its shell
                 # redirect), so the web tail is unchanged — close our handles.
@@ -647,6 +651,9 @@ class Executor:
                         fh.close()
                     except OSError:
                         pass
+            from apps.reports.source_summary import finish_attempt
+
+            finish_attempt(run.report_id, run.pk, Run.ERROR)
             shutil.rmtree(log_dir, ignore_errors=True)
             if run_dir_base:
                 shutil.rmtree(run_dir_base, ignore_errors=True)
@@ -881,6 +888,15 @@ class Executor:
                             f"{type(exc).__name__}: {exc}",
                             extra=self._log_context(proc),
                         )
+
+        if run is not None:
+            try:
+                from apps.reports.source_summary import finish_attempt
+
+                finish_attempt(run.report_id, run.pk, status)
+            except Exception:
+                # The durable operation fence remains for restart repair.
+                logger.exception("source summary completion enqueue failed")
 
         # A build that died may have died on a source. Re-checking the
         # report's sources can take 30 s, so it happens off the tick; the

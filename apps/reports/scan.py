@@ -153,9 +153,14 @@ def sync_studio_registry(studio) -> int:
             defaults=defaults,
             create_defaults={**defaults, "audience": audience},
         )
-    Report.objects.filter(studio=studio, present_in_scan=True).exclude(slug__in=seen).update(
-        present_in_scan=False, last_scanned_at=now
-    )
+    from django.db import transaction
+    from .source_summary import invalidate_reports
+
+    with transaction.atomic():
+        missing = Report.objects.filter(studio=studio, present_in_scan=True).exclude(slug__in=seen)
+        missing_ids = list(missing.values_list("pk", flat=True))
+        missing.update(present_in_scan=False, last_scanned_at=now)
+        invalidate_reports(missing_ids, "removed")
     invalidate_registry_cache(studio)
     try:
         sync_studio_metrics(studio)
@@ -206,34 +211,39 @@ def sync_studio_metrics(studio) -> int:
     invalidate_metrics_cache()
     result = load_metrics_result(str(studio.project_root))
 
-    now = dj_tz.now()
-    seen: set[str] = set()
-    for metric in result.metrics.values():
-        seen.add(metric.name)
-        MetricDefinition.objects.update_or_create(
-            studio=studio,
-            name=metric.name,
-            defaults={
-                "label": metric.label,
-                "description": metric.description,
-                "owner": metric.owner,
-                "format": metric.format,
-                "version": metric.version,
-                "agg": metric.agg or "",
-                "column": metric.column or "",
-                "numerator": metric.numerator or "",
-                "denominator": metric.denominator or "",
-                "sql": metric.sql,
-                "dimensions": list(metric.dimensions),
-                "tags": list(metric.tags),
-                "definition_hash": metric.definition_hash,
-                "present_in_scan": True,
-                "last_scanned_at": now,
-            },
-        )
-    MetricDefinition.objects.filter(studio=studio, present_in_scan=True).exclude(
-        name__in=seen
-    ).update(present_in_scan=False, last_scanned_at=now)
+    from django.db import transaction
+    from .source_summary import definitions_changed
+
+    with transaction.atomic():
+        now = dj_tz.now()
+        seen: set[str] = set()
+        for metric in result.metrics.values():
+            seen.add(metric.name)
+            MetricDefinition.objects.update_or_create(
+                studio=studio,
+                name=metric.name,
+                defaults={
+                    "label": metric.label,
+                    "description": metric.description,
+                    "owner": metric.owner,
+                    "format": metric.format,
+                    "version": metric.version,
+                    "agg": metric.agg or "",
+                    "column": metric.column or "",
+                    "numerator": metric.numerator or "",
+                    "denominator": metric.denominator or "",
+                    "sql": metric.sql,
+                    "dimensions": list(metric.dimensions),
+                    "tags": list(metric.tags),
+                    "definition_hash": metric.definition_hash,
+                    "present_in_scan": True,
+                    "last_scanned_at": now,
+                },
+            )
+        MetricDefinition.objects.filter(studio=studio, present_in_scan=True).exclude(
+            name__in=seen
+        ).update(present_in_scan=False, last_scanned_at=now)
+        definitions_changed(studio.pk)
     return len(seen)
 
 
