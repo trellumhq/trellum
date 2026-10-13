@@ -177,7 +177,7 @@
         clearTimeout(timeout);
         var chosen = select.options[select.selectedIndex];
         if (chosen && chosen.value && select.value === selectedValue && select.value.indexOf('slug:') !== 0) {
-          chosen.textContent = result.selected && prefix + String(result.selected.value) === select.value ? result.selected.label + (result.selected.hint ? ' · ' + result.selected.hint : '') : 'Selected report is unavailable';
+          chosen.textContent = result.selected && prefix + String(result.selected.value) === select.value ? result.selected.label + (result.selected.hint ? ' · ' + result.selected.hint : '') : (select.dataset.unavailableLabel || root.dataset.unavailableLabel || 'Selected report is unavailable');
         }
         remoteRows = result.results; remotePage = result.pagination; remoteState = 'ready'; api.refresh();
         if (restoreSearchFocus) api.search.focus({ preventScroll: true });
