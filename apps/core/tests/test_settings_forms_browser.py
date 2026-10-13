@@ -314,3 +314,45 @@ def test_native_tracked_submit_guards_neighbors_without_discarding_own_write(eng
         page.wait_for_url('http://native.test/create')
         assert len(requests) == 2 and dialogs == ['confirm', 'confirm']
         browser.close()
+
+
+@pytest.mark.parametrize('engine', ['chromium', 'webkit'])
+@pytest.mark.parametrize('hide_before_init', [False, True])
+@pytest.mark.parametrize('kind', ['alert', 'delivery', 'group'])
+def test_save_status_stays_visible_when_native_picker_browse_is_hidden(engine, hide_before_init, kind):
+    native_report = '<div data-report-native-choices><button type="submit" name="report_page" value="2">Next reports</button></div>' if kind == 'alert' else ''
+    html = f'''<form id="draft" action="/save" data-settings-form data-settings-save>
+      <input name="draft" value="Original">{native_report}
+      <div data-picker-fallback><button type="submit" name="action" value="browse_choices">Browse choices</button></div>
+      <div data-browse-choices><button type="submit">Next people</button></div>
+      <div class="ui-form-actions"><button type="submit" name="action" value="save">Save changes</button></div></form>'''
+    with sync_playwright() as playwright:
+        browser = getattr(playwright, engine).launch(headless=True)
+        page = browser.new_page()
+        page.route('http://example.test/editor', lambda route: route.fulfill(body=html, content_type='text/html'))
+        page.route('http://example.test/save', lambda route: route.fulfill(json={'ok': True, 'message': 'Saved.'}))
+        page.goto('http://example.test/editor')
+        hide = "document.querySelectorAll('[data-picker-fallback],[data-report-native-choices],[data-browse-choices]').forEach(el=>el.hidden=true)"
+        if hide_before_init: page.evaluate(hide)
+        page.add_script_tag(content=(ROOT / 'static/settings-forms.js').read_text())
+        if not hide_before_init: page.evaluate(hide)
+        status = page.locator('[data-settings-dirty-status]')
+        assert status.evaluate("node=>!!node.closest('.ui-form-actions')")
+        page.locator('[name=draft]').fill('Changed')
+        expect(status).to_be_visible()
+        page.locator('button[value=save]').click()
+        expect(status).to_have_text('Saved.')
+        expect(status).to_be_visible()
+        assert status.bounding_box()['height'] > 0
+        browser.close()
+
+
+def test_explicit_settings_status_keeps_its_declared_placement():
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.set_content('<form data-settings-form><input name="draft"><span id="declared" data-settings-dirty-status></span><div class="ui-form-actions"><button type="submit">Save</button></div></form>')
+        page.add_script_tag(content=(ROOT / 'static/settings-forms.js').read_text())
+        assert page.locator('#declared').evaluate('node=>node.parentElement.tagName') == 'FORM'
+        assert page.locator('[data-settings-dirty-status]').count() == 1
+        browser.close()
