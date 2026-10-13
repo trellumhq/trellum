@@ -369,3 +369,46 @@ def test_invalid_remote_pointer_schema_bounds_backoff(studio_tree, monkeypatch, 
     assert reconcile(row.pk)["status"] == "unavailable"
     assert row.source_summary.failures == 1
     assert row.source_summary.next_check_at > timezone.now()
+
+
+@pytest.mark.parametrize("invalid", [0, False, "", {}, None], ids=["zero", "false", "empty-string", "empty-object", "null"])
+@pytest.mark.parametrize("prior_claims", [False, True], ids=["fresh", "previous-ready"])
+def test_explicit_falsey_claim_values_fail_closed(studio_tree, invalid, prior_claims):
+    original = metadata("old")
+    malformed = metadata()
+    malformed["metrics_used"] = invalid
+    row = report(studio_tree, meta=original if prior_claims else malformed)
+    previous_identity = previous_digest = ""
+    if prior_claims:
+        assert reconcile(row.pk)["status"] == "ready"
+        previous_identity = row.source_summary.source_identity
+        previous_digest = row.source_summary.claim_digest
+        (studio_tree.output_dir / row.slug / "_meta.json").write_text(json.dumps(malformed))
+        due(row)
+    assert reconcile(row.pk)["status"] == "unavailable"
+    summary = ReportSourceSummary.objects.get(report=row)
+    assert summary.state == "unavailable"
+    assert summary.failures == 1
+    assert summary.next_check_at > timezone.now()
+    assert summary.source_identity == previous_identity
+    assert summary.claim_digest == previous_digest
+    assert list(summary.claims.values_list("metric_name", flat=True)) == (["old"] if prior_claims else [])
+    assert summary.quality == ("observed" if prior_claims else "unknown")
+
+
+@pytest.mark.parametrize("legacy_missing", [True, False], ids=["missing-legacy-key", "valid-empty-list"])
+@pytest.mark.parametrize("prior_claims", [False, True], ids=["fresh", "previous-ready"])
+def test_legacy_missing_claims_and_valid_empty_list_remain_valid(studio_tree, legacy_missing, prior_claims):
+    empty = metadata()
+    if legacy_missing:
+        del empty["metrics_used"]
+    row = report(studio_tree, meta=metadata("old") if prior_claims else empty)
+    if prior_claims:
+        assert reconcile(row.pk)["status"] == "ready"
+        (studio_tree.output_dir / row.slug / "_meta.json").write_text(json.dumps(empty))
+        due(row)
+    assert reconcile(row.pk)["status"] == "ready"
+    summary = ReportSourceSummary.objects.get(report=row)
+    assert summary.quality == "observed"
+    assert summary.failures == 0
+    assert summary.claims.count() == 0

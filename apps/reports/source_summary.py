@@ -148,7 +148,9 @@ def inspect_source(report, summary):
     meta = json.loads(raw) if raw else {}
     if not isinstance(meta, dict):
         raise ValueError("invalid metadata object")
-    entries = meta.get("metrics_used") or []
+    # Legacy artifacts may omit claims; explicitly present malformed values
+    # must not become a verified empty catalog through truthiness coercion.
+    entries = meta["metrics_used"] if "metrics_used" in meta else []
     if not isinstance(entries, list):
         raise ValueError("invalid metric claim list")
     for entry in entries:
