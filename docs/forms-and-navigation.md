@@ -228,3 +228,11 @@ exception text out of observations. Verify delayed bodies, dependent reads,
 obsolete responses, timeout recovery, cleanup and native fallback before
 adopting the helper in a route. Helper protocol tests alone do not verify an
 operation's persistence, worker restart or portal performance.
+
+Propagate the supplied signal to every dependent fetch. Timeout and pause may
+detach a reader that ignores cancellation: the helper guarantees one current
+observation and guarded commit, not physical cancellation or bounded underlying
+server concurrency for such readers. A newer action or configuration requires
+explicit invalidation through pause/resume or replacing the poller, together
+with the current identity predicate; `refresh` alone coalesces reads. Lifecycle
+callback exceptions stop polling safely; read failures retain bounded backoff.

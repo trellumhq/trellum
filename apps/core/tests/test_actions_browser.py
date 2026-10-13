@@ -172,3 +172,22 @@ def test_refresh_coalesces_during_pending_read_and_terminal_stops(page):
       poll.stop(); return {pendingCalls, calls, commits};
     }''')
     assert result == {'pendingCalls': 1, 'calls': 2, 'commits': ['running', 'finished']}
+
+
+@pytest.mark.parametrize('callback', ['onError', 'isCurrent', 'isTerminal', 'onStatus'])
+def test_callback_exception_stops_without_unhandled_rejection(page, callback):
+    result = page.evaluate('''async callback => {
+      let calls = 0, unhandled = [], errors = 0;
+      addEventListener('unhandledrejection', event => {unhandled.push(String(event.reason)); event.preventDefault();});
+      const options = {intervalMs: 10, timeoutMs: 100,
+        read: () => {calls++; if (callback === 'onError') throw new Error('Read failed'); return {};},
+        onStatus: () => {}, onError: () => errors++};
+      options[callback] = () => {throw new Error('Callback failed');};
+      const poll = TrellumActions.createPoller(options);
+      poll.start(); await new Promise(resolve => setTimeout(resolve, 90));
+      poll.refresh(); await new Promise(resolve => setTimeout(resolve, 30)); poll.stop();
+      return {calls, unhandled, errors};
+    }''', callback)
+    assert result['calls'] == 1
+    assert result['unhandled'] == []
+    assert result['errors'] == (0 if callback == 'onError' else 1)

@@ -16,7 +16,15 @@
     maximum = Math.max(interval, maximum);
     var epoch = 0, timer = null, active = null, started = false, paused = false, stopped = false, queued = false, failures = 0;
     function clearTimer() { if (timer !== null) clearTimeout(timer); timer = null; }
-    function current(token) { return !stopped && !paused && epoch === token && (!options.isCurrent || options.isCurrent()); }
+    function report(error) {
+      if (!options.onError) return;
+      try { options.onError(error); } catch (_) { stop(); }
+    }
+    function current(token) {
+      if (stopped || paused || epoch !== token) return false;
+      try { return !options.isCurrent || options.isCurrent(); }
+      catch (error) { report(error); stop(); return false; }
+    }
     function invalidate() {
       epoch++; clearTimer(); queued = false;
       if (active) { clearTimeout(active.timeout); active.controller.abort(); active = null; }
@@ -42,13 +50,16 @@
       Promise.race([read, timeout]).then(function (result) {
         if (!current(token) || controller.signal.aborted) return;
         failures = 0;
-        var terminal = options.isTerminal ? options.isTerminal(result) : false;
-        options.onStatus(result);
+        var terminal;
+        try {
+          terminal = options.isTerminal ? options.isTerminal(result) : false;
+          options.onStatus(result);
+        } catch (error) { report(error); stop(); return; }
         if (terminal && current(token)) { started = false; queued = false; }
       }).catch(function (error) {
         if (!current(token)) return;
         failures++;
-        if (options.onError) options.onError(error);
+        report(error);
       }).finally(function () {
         clearTimeout(flight.timeout);
         controller.abort();
