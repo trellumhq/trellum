@@ -33,7 +33,7 @@
     var below = top + height - rect.bottom - 12, above = rect.top - top - 12;
     var upwards = below < 280 && above > below;
     var available = upwards ? above : below;
-    var full = available < 220;
+    var full = available < 220 * scale;
     picker.popup.style.width = (Math.min(Math.max(rect.width, 300 * scale), width - 16) / scale) + 'px';
     picker.popup.style.maxHeight = (Math.max(0, Math.min(400 * scale, full ? height - 16 : available)) / scale) + 'px';
     picker.popup.style.left = (Math.max(left + 8, Math.min(rect.left, left + width - picker.popup.offsetWidth * scale - 8)) / scale) + 'px';
