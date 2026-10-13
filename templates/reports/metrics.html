@@ -36,6 +36,8 @@
   background:var(--bg-card); border:1px solid var(--border); border-radius:var(--r-lg);
   cursor:pointer; transition:border-color var(--speed), background-color var(--speed);
 }
+.met-card .ui-mono-pill { white-space:normal; overflow-wrap:anywhere; }
+@media (max-width:767px) { body.mgmt main .met-card .met-open { display:inline-block; min-height:44px; } }
 .met-card:hover { border-color:var(--accent); background:var(--bg-hover); }
 .met-card:has(.met-open:focus-visible) { border-color:var(--accent); }
 
@@ -45,12 +47,12 @@
    The `body.mgmt main` prefix is only there to outweigh ui.css's neutral
    <button> treatment, which would otherwise draw the name as a small boxed
    control -- the opposite of the one thing on the card that is not a box. */
-.met-name { margin:0; font-size:var(--fs-lg); font-weight:650; line-height:1.3; color:var(--text); }
+.met-name { overflow-wrap:anywhere; margin:0; font-size:var(--fs-lg); font-weight:650; line-height:1.3; color:var(--text); }
 body.mgmt main .met-card .met-open {
   all:unset; cursor:pointer; font:inherit; color:inherit; display:inline;
 }
 body.mgmt main .met-card .met-open:focus-visible { outline:2px solid var(--accent); outline-offset:3px; border-radius:var(--r-sm); }
-.met-id { margin-top:3px; font-family:var(--mono); font-size:var(--fs-sm); color:var(--text3); }
+.met-id { overflow-wrap:anywhere; margin-top:3px; font-family:var(--mono); font-size:var(--fs-sm); color:var(--text3); }
 /* The trend, at a glance. Under the identifier rather than beside the name:
    a 320px card has no width to spare next to a label plus a mono id line, and
    the sparkline reads as part of who this metric is, not as a third fact.
@@ -162,7 +164,7 @@ body.mgmt main .met-modal.met-compact .met-modal-head h2 { font-size:13px; }
     {% if defined_count %}
     <p class="muted page-sub">
       Defined in <code>metrics.yaml</code>{% if synced_at %} · synced {{ synced_at|timesince }} ago{% endif %} ·
-      <b>{{ defined_count }} defined, {{ claimed_count }} claimed by report{{ claimed_count|pluralize }}</b>
+      <b>{{ defined_count }} defined{% if metrics_section == "comparison" %}, {{ claimed_count }} claimed by report{{ claimed_count|pluralize }}{% endif %}</b>
     </p>
     {% endif %}
   </div>
@@ -204,15 +206,22 @@ data-search is built from exactly the fields worth matching -- name,
 identifier, description, tags, owner -- rather than the card's own
 textContent, which would also match the claims zone and make "current" a
 query that hits everything.{% endcomment %}
-<div class="met-filter">
-  <label class="sr-only" for="metSearch">Filter metrics</label>
-  <input type="search" id="metSearch" class="ui-input" autocomplete="off" spellcheck="false"
-         placeholder="Filter metrics…">
-  <p class="met-count" id="metCount" role="status" aria-live="polite"></p>
+<form class="met-filter" method="get" data-metric-search>
+  <label class="sr-only" for="metSearch">Search all metrics</label>
+  <input type="search" id="metSearch" name="q" value="{{ metric_query }}" class="ui-input" autocomplete="off" spellcheck="false"
+         placeholder="Search all metrics…">
+  <button type="submit" class="ui-btn ghost">Search metrics</button>
+  <p class="met-count" id="metCount" role="status" aria-live="polite">{{ matching_count }} matching definitions</p>
+</form>
+<div data-metric-summary data-url="{{ summary_url }}" data-revision="{{ definition_revision }}">
+  <p role="status" aria-live="polite" data-summary-status>{% if definition_changed %}Definitions changed during loading. Reload this page.{% else %}Report usage is loading. Definitions are ready.{% endif %}</p>
+  <button type="button" class="ui-btn ghost" data-summary-retry hidden>Retry report usage</button>
+  <a class="ui-btn ghost" data-summary-reload href="{% url 'studio-metrics' org.slug studio.slug %}?q={{ metric_query|urlencode }}&amp;page={{ metric_page.number }}"{% if not definition_changed %} hidden{% endif %}>Reload definitions</a>
 </div>
+<noscript><p>Definitions are ready. Open Indexed claims to read report usage without JavaScript.</p></noscript>
 <div class="met-grid">
   {% for m in metrics %}
-  <div class="met-card" data-metric="{{ m.row.name }}"
+  <div class="met-card" data-metric="{{ m.row.name }}" data-definition-id="{{ m.row.pk }}" data-chart-state="unknown"
        data-search="{{ m.row.label|default:m.row.name }} {{ m.row.name }} {{ m.row.description }} {{ m.row.tags|join:" " }} {{ m.row.owner }}"
        data-label="{{ m.row.label|default:m.row.name }}"
        data-embed="{{ m.embed_url }}" data-chart="{{ m.chart_url }}" data-overview="{{ m.overview_url }}"
@@ -236,54 +245,23 @@ query that hits everything.{% endcomment %}
     <div class="met-fact">
       <span class="ui-mono-pill">{{ m.spec }}</span>
       {% if m.row.description %}<div class="ui-desc-clamp met-desc">{{ m.row.description }}</div>{% endif %}
-      {% if m.row.tags or not m.usage %}
+      {% if m.row.tags %}
       <div class="met-tags">
         {% for t in m.row.tags %}<span class="ui-chip">{{ t }}</span>{% endfor %}
-        {% if not m.usage %}<span class="ui-chip mute">unused</span>{% endif %}
       </div>
       {% endif %}
       {% if m.row.owner %}<div class="met-owner"><b>Owner</b><span>{{ m.row.owner }}</span></div>{% endif %}
     </div>
-    <div class="met-usage met-fact">
-      {% if not m.usage %}
-        <span class="ui-chip mute">no reports claim this</span>
-      {% else %}
-        <b>{{ m.usage|length }} report{{ m.usage|length|pluralize }}</b>
-        {% if m.all_current %}
-        <div class="st"><span class="met-dot g"></span> all current</div>
-        {% else %}
-          {% for u in m.usage %}
-          <div class="st">
-            <span class="met-dot {% if u.current %}g{% else %}w{% endif %}"></span>
-            {{ u.report.name|default:u.report.slug }}{% if not u.current %} · <b>built against {% if u.claimed_version %}v{{ u.claimed_version }}{% else %}an unknown version{% endif %}</b>{% endif %}
-          </div>
-          {% endfor %}
-        {% endif %}
-      {% if m.usage %}
-      <details class="met-expand">
-        <summary>{{ m.usage|length }} claiming report{{ m.usage|length|pluralize }} — details</summary>
-        <table class="met-expand-table">
-          <tr><th>Report</th><th>Last build</th><th>Definition</th><th></th></tr>
-          {% for u in m.usage %}
-          <tr>
-            <td>{{ u.report.name|default:u.report.slug }}</td>
-            <td>{% if u.built_at %}{{ u.built_at|date:"Y-m-d H:i" }}{% else %}never built{% endif %}</td>
-            <td>
-              {% if u.current %}<span class="ui-chip acc">current · v{{ m.row.version }}</span>
-              {% else %}<span class="ui-chip warn">stale — built against {% if u.claimed_version %}v{{ u.claimed_version }}{% else %}an unknown version{% endif %}</span>{% endif %}
-            </td>
-            <td class="ui-row-actions"><a class="ui-btn ghost" href="{{ u.report_url }}">open report</a></td>
-          </tr>
-          {% endfor %}
-        </table>
-      </details>
-      {% endif %}
-      {% endif %}
-    </div>
+    <div class="met-usage met-fact" data-metric-usage>Report usage pending. <a href="{{ m.details_url }}">Indexed claims →</a></div>
   </div>
   {% endfor %}
 </div>
-<div class="ui-empty" id="metEmpty" hidden>No metric matches that filter.</div>
+<div class="ui-empty" id="metEmpty"{% if matching_count %} hidden{% endif %}>No metric matches that search.</div>
+<nav aria-label="Metric definition pages" class="met-filter">
+  {% if metric_page.has_previous %}<a class="ui-btn ghost" href="?q={{ metric_query|urlencode }}&amp;page={{ metric_page.previous_page_number }}">Previous</a>{% endif %}
+  <span>Page {{ metric_page.number }} of {{ metric_page.paginator.num_pages }}</span>
+  {% if metric_page.has_next %}<a class="ui-btn ghost" href="?q={{ metric_query|urlencode }}&amp;page={{ metric_page.next_page_number }}">Next</a>{% endif %}
+</nav>
 <div class="met-foot">Read-only — the source of truth is <code>metrics.yaml</code> in this studio's repository; changes arrive on the next sync.
   {% if repo_url %}<a href="{{ repo_url }}" rel="noopener">Edit via pull request ↗</a>{% else %}Edit via pull request.{% endif %}</div>
 </section>

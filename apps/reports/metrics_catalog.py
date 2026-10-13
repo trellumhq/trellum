@@ -1,30 +1,10 @@
-"""The per-studio Metrics catalog (semantic-layer Phase 2).
+"""Paged Metrics definitions and the existing comparison projection.
 
-This is a studio-wide roll-up over built output (see
-``apps.reports.overviews``). Business-metric definitions belong beside the
-reports that use them.
-
-``MetricDefinition`` rows (synced by ``apps.reports.scan.sync_studio_metrics``)
-are the source for a metric's identity, spec and description -- always the
-*current* definition, per the design: the catalog reads what metrics.yaml
-says today, then layers on, per claiming report, whether that report's last
-build actually reflects it.
-
-The "current vs. stale" comparison never opens a report's data.json. Each
-report's own ``_meta.json`` already carries, per claim, the
-``definition_hash``/``version`` it was built against (schema v2, see
-``trellum.meta.normalize_metrics_used`` and ``docs/COMPATIBILITY.md`` in the
-framework) -- comparing that against ``MetricDefinition.definition_hash`` is
-one small read per report (``apps.core.storage.read_meta``), not a directory
-pull, which matters because a report's data.json can be read from S3 in the
-remote backend (internal planning#93/#67).
-
-The card sparklines are the one thing here that does read a data.json, and it
-is exactly ONE: the generated metrics report's, read and parsed once per
-overview (so once per cache window, not once per metric). Nothing is
-recomputed and no query is issued -- the build already holds every series this
-page draws, and ``_spark_series`` only re-buckets what the report's own charts
-plot. See it there for what it costs and where it stops.
+Overview renders at most 50 definitions from SQL. Report usage and generated
+sparkline projections load through ``metric_summaries`` from worker-produced
+indexes; neither Overview request reads artifacts. The legacy comparison
+projection below retains its own build-read behavior. Pure sparkline routines
+also support worker publication of bounded previews.
 """
 from __future__ import annotations
 
@@ -39,6 +19,7 @@ from django.db.models import Max
 from django.http import HttpResponseBadRequest
 from django.shortcuts import render
 from django.urls import reverse
+from django.views.decorators.http import require_GET
 
 from apps.core import roles
 from apps.core.permissions import require_studio_role
@@ -413,12 +394,44 @@ def studio_metrics_overview(studio) -> dict:
     return payload
 
 
+def metric_definition_page(studio, query="", page=1):
+    """Bounded primary catalog. Definitions never require artifact reads."""
+    from django.core.paginator import Paginator
+    from django.db.models import Q, TextField, Count
+    from django.db.models.functions import Cast
+    from apps.reports.models import MetricCatalogState
+
+    revision = MetricCatalogState.objects.filter(studio=studio).values_list(
+        "definition_revision", flat=True).first() or 0
+    definitions = MetricDefinition.objects.filter(studio=studio, present_in_scan=True)
+    statistics = definitions.aggregate(defined_count=Count("pk"), synced_at=Max("last_scanned_at"))
+    defined_count = statistics["defined_count"]
+    if query:
+        definitions = definitions.annotate(search_tags=Cast("tags", TextField())).filter(
+            Q(name__icontains=query) | Q(label__icontains=query) |
+            Q(description__icontains=query) | Q(owner__icontains=query) |
+            Q(search_tags__icontains=query))
+    pager = Paginator(definitions.order_by("name", "pk"), 50)
+    selected = pager.get_page(page)
+    metrics = [{"row": row, "spec": row.spec_text(), "details_url":
+                reverse("studio-metric-claims", args=[studio.org.slug, studio.slug, row.pk]) +
+                f"?definition_revision={revision}"} for row in selected]
+    current_revision = MetricCatalogState.objects.filter(studio=studio).values_list(
+        "definition_revision", flat=True).first() or 0
+    return {"metrics": metrics, "defined_count": defined_count,
+            "matching_count": pager.count, "metric_page": selected, "synced_at": statistics["synced_at"],
+            "definition_revision": revision, "definition_changed": revision != current_revision,
+            "metric_query": query}
+
+
 @require_studio_role(roles.VIEWER)
 @require_full_studio_visibility
+@require_GET
 def metrics_page(request, org_slug, studio_slug, section="overview"):
     from apps.studios.models import StudioRepo
 
-    data = studio_metrics_overview(request.studio)
+    data = (studio_metrics_overview(request.studio) if section == "comparison" else
+            metric_definition_page(request.studio, request.GET.get("q", "").strip(), request.GET.get("page", 1)))
     # A reverse OneToOneField raises DoesNotExist (not AttributeError) when
     # unset, so plain getattr(..., "repo", None) would not catch it.
     try:
@@ -434,15 +447,8 @@ def metrics_page(request, org_slug, studio_slug, section="overview"):
             "org": request.org,
             "studio": request.studio,
             "metrics_section": section,
-            "metrics": data["metrics"],
-            "synced_at": data["synced_at"],
-            "defined_count": data["defined_count"],
-            "claimed_count": data["claimed_count"],
-            "storage_unavailable": data["storage_unavailable"],
-            "metrics_report_url": data["metrics_report_url"],
-            "metrics_report_built": data["metrics_report_built"],
-            "spark_w": data["spark_w"],
-            "spark_h": data["spark_h"],
+            **data,
+            "summary_url": reverse("studio-metrics-summary", args=[org_slug, studio_slug]) if section != "comparison" else "",
             # Footer "edit via pull request" link -- the studio's own repo,
             # when one is configured. Plain text otherwise (a fresh studio, or
             # one whose repo hasn't been set up yet); never a dead link.

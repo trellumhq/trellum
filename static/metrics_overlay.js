@@ -44,6 +44,10 @@ function mountOverlay(root, signal) {
     }
 
     function chartHtml(row) {
+        if (row.dataset.chartState && !['ready', 'not-monitored'].includes(row.dataset.chartState)) {
+            return '<p class="met-modal-note">Chart availability is ' + esc(row.dataset.chartState)
+                + '. Definitions remain available; retry report usage from the catalog.</p>';
+        }
         var embed = row.dataset.embed;
         if (embed) {
             /* Not loading="lazy": the frame is created only when the overlay
@@ -51,7 +55,7 @@ function mountOverlay(root, signal) {
             return '<iframe src="' + esc(embed) + '" title="'
                 + esc(row.dataset.label) + ' — chart"></iframe>';
         }
-        if (!built) {
+        if (!built && !row.dataset.chartState) {
             /* Bound or not, there is no build to draw from yet. Say that
                rather than "not monitored", which would be a guess. */
             return '<p class="met-modal-note">The Metrics report has not been built yet, '
@@ -294,6 +298,12 @@ function mountFilter(root, signal) {
     var count = root.querySelector("#" + 'metCount');
     var empty = root.querySelector("#" + 'metEmpty');
     if (!input || !count || !empty) return;
+    if (input.form && input.form.hasAttribute('data-metric-search')) {
+        listen(input, 'keydown', function (ev) {
+            if (ev.key === 'Escape') { ev.stopPropagation(); input.value = ''; }
+        });
+        return; // Global search and pagination use the native GET contract.
+    }
 
     var cards = Array.prototype.slice.call(
         root.querySelectorAll('.met-card[data-search]')

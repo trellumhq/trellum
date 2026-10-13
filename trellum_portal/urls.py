@@ -16,7 +16,7 @@ from apps.orgs.groups import views as org_groups
 from apps.orgs.security import views as org_security
 from apps.orgs.sso import views as org_sso
 from apps.reports import livequery as report_livequery
-from apps.reports import metrics_catalog
+from apps.reports import metrics_catalog, metric_summaries
 from apps.reports import views as report_views
 from apps.reports.overviews import annotations, experiments
 from apps.reports.vendor import vendor_asset
@@ -37,6 +37,8 @@ studio_patterns = [
     path("operations", report_views.operations, name="studio-operations"),
     path("analytics", report_views.analytics, name="studio-analytics"),
     path("metrics", metrics_catalog.metrics_page, name="studio-metrics"),
+    path("api/metrics/summary", metric_summaries.metrics_summary, name="studio-metrics-summary"),
+    path("metrics/<int:definition_id>/claims", metric_summaries.metric_claim_details, name="studio-metric-claims"),
     path(
         "metrics/comparison",
         metrics_catalog.metrics_page,

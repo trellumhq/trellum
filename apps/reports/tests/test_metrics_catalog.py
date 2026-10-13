@@ -51,6 +51,17 @@ def _now_iso():
     return dj_tz.now().isoformat()
 
 
+def _indexed_summary(client, studio):
+    from apps.reports.models import MetricCatalogState
+    from apps.reports.source_summary import reconcile
+    for report in studio.reports.all():
+        reconcile(report.pk)
+    revision = MetricCatalogState.objects.get(studio=studio).definition_revision
+    ids = ",".join(str(pk) for pk in studio.metric_definitions.values_list("pk", flat=True))
+    return client.get(f"/s/{studio.org.slug}/{studio.slug}/api/metrics/summary",
+                      {"ids": ids, "definition_revision": revision}).json()
+
+
 class TestStaleComparison:
     def test_unclaimed_metric_has_no_usage(self, studio_tree, write_metrics_yaml):
         write_metrics_yaml([GROSS_REVENUE])
@@ -263,7 +274,10 @@ class TestMetricsPageView:
         grant_studio(member, studio_tree, roles.VIEWER)
         client = login(member)
         resp = client.get(self._url(studio_tree))
-        assert "no reports claim this" in resp.content.decode()
+        assert "Report usage pending" in resp.content.decode()
+        data = _indexed_summary(client, studio_tree)
+        assert data["state"] == "ready"
+        assert data["metrics"][0]["claim_count"] == 0 and data["metrics"][0]["count_complete"]
 
     def test_non_member_gets_404(self, studio_tree, org, make_user, login):
         outsider = make_user("outsider@demo.example", org=org)
@@ -290,8 +304,11 @@ class TestMetricsPageView:
         client = login(member)
         resp = client.get(self._url(studio_tree))
         body = resp.content.decode()
-        assert "stale" in body
-        assert "built against v1" in body
+        assert "Report usage pending" in body
+        data = _indexed_summary(client, studio_tree)
+        claim = data["metrics"][0]["claims"][0]
+        assert claim["current"] is False and claim["claimed_version"] == 1
+        assert data["state"] == "partial"  # legacy local source is observed, not verified
 
 
 #: What the framework's scaffold writes into reports/metrics/report.yaml --
@@ -414,9 +431,12 @@ class TestCatalogOverlay:
 
         body = login(member).get(f"/s/{studio_tree.org.slug}/{studio_tree.slug}/metrics").content.decode()
         assert 'class="met-open"' in body
-        assert 'data-embed="/s/' in body and "?only=metric-gross_revenue" in body
+        assert 'data-chart-state="unknown"' in body
+        data = _indexed_summary(login(member), studio_tree)
+        assert data["metrics"][0]["claim_count"] == 1
+        assert data["metrics"][0]["chart_state"] == "unknown"
         assert 'role="dialog" aria-modal="true"' in body
-        assert 'data-built="1"' in body
+        assert 'data-built=""' in body
         assert "metrics_overlay.js" in body
 
 
@@ -668,10 +688,18 @@ class TestSparklines:
         body = login(member).get(
             f"/s/{studio_tree.org.slug}/{studio_tree.slug}/metrics"
         ).content.decode()
-        assert 'class="met-spark"' in body
-        assert 'viewBox="0 0 140 36"' in body
-        assert 'vector-effect="non-scaling-stroke"' in body
-        assert 'aria-hidden="true"' in body
+        assert 'class="met-spark"' not in body  # secondary owns chart projections
+        data = _indexed_summary(login(member), studio_tree)
+        assert data["metrics"][0]["chart_state"] == "unknown"
+        from apps.reports.models import ReportSourceSummary
+        ReportSourceSummary.objects.filter(report__studio=studio_tree).update(quality="verified")
+        row = studio_tree.metric_definitions.get(name="gross_revenue")
+        from apps.reports.models import MetricCatalogState
+        revision = MetricCatalogState.objects.get(studio=studio_tree).definition_revision
+        secondary = login(member).get(f"/s/{studio_tree.org.slug}/{studio_tree.slug}/api/metrics/summary",
+                                     {"ids": row.pk, "definition_revision": revision}).json()
+        assert len(secondary["metrics"][0]["spark"].split()) == 3
+        assert secondary["metrics"][0]["chart_state"] == "ready"
 
 
 SEARCHABLE = {
