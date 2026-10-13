@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "first_party_expected": 194,
+  "first_party_expected": 196,
   "routes": [
     {
       "id": "route-000",
@@ -8435,7 +8435,7 @@
       "verified_node_ids": [],
       "source_sha256": "43172434e35034b5e5a1c7aae89205fc55e9e1aa6a78c6cb099ed71803bc5cb8",
       "request_conditions": [],
-      "adapter_sha256": "65fa53dee126d3f3e3f1a0f27c7b234579817f3c646de9a00e0bdc83afa33ec7",
+      "adapter_sha256": "0ab3933027a0c875a2ed85b0eb741f7696aa59cf135484fbf2ea03dcaca5ef36",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -8511,7 +8511,7 @@
       "verified_node_ids": [],
       "source_sha256": "bebc0ee887f5f55780402bca909fa9fea24add19aca60a657a35c490429d4fb8",
       "request_conditions": [],
-      "adapter_sha256": "62a0c663a83a14b6bd015e42f930bac2998d11fe3afc78c9e40e1d8081346719",
+      "adapter_sha256": "d7b5697c4d84d29a21e5534db15baca1c853595592a7d0cee22610552bc6c4ef",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -9998,12 +9998,12 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "f3a4cbc04b567cb3b211199c5975ad8585213c6912b722e8456c390b682d4d2c",
+      "source_sha256": "25a3f90cea38117d4a30e5a5c0299efaeac0addde45effd0eefe516e10abf8c6",
       "request_conditions": [
         "require_full_studio_visibility: plain alpha viewer/group-member/selected denied by seeded private audience; viewer-full samples explicitly granted public-only beta studio0",
         "alpha private-viewer explicitly granted private report remains finite-scope and is denied full-studio overviews under current semantics"
       ],
-      "adapter_sha256": "0e048804429cad8650a92b7029dfb367eca8d7a2fd10d02bd548d10f9c630b7e",
+      "adapter_sha256": "6fb3792fb91143cc50e5c2cc03c983c9a7c83f3c4f15880b3e177b3e7f0b4e61",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -10962,15 +10962,40 @@
               "verification": "pending"
             }
           }
+        },
+        {
+          "method": "POST",
+          "action": "action=browse_choices",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-177-action-browse_choices]",
+          "verification": "pending"
+        },
+        {
+          "method": "POST",
+          "action": "people_page=2",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-177-people_page-2]",
+          "verification": "pending"
+        },
+        {
+          "method": "POST",
+          "action": "group_page=2",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-177-group_page-2]",
+          "verification": "pending"
+        },
+        {
+          "method": "POST",
+          "action": "action=save",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-177-action-save]",
+          "verification": "pending"
         }
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "1adcdef684a23f9bff8cdc3beefc5d20f41790228c96cd76c83d2935d9329c6b",
+      "source_sha256": "28ce1c047c2903c578f541980bd7baeecdaa11e6cd40fc770413d9c38515fafd",
       "request_conditions": [
-        "POST collection always creates; native action=toggle only changes field parsing, not an existing schedule toggle"
+        "POST collection always creates; native action=toggle only changes field parsing, not an existing schedule toggle",
+        "Native browse_choices and named page-submit controls preserve full submitted draft without save/send/evaluate; explicit Save/Preview wins over retained pagination keys; CSRF and current permission remain required."
       ],
-      "adapter_sha256": "97958fd84154e892ad4302a477e3c5eb911b202ebee74e01e48cab6977bc5fcc",
+      "adapter_sha256": "18b9eb6c69d2d187330850bb36d239db699463e5232df235b510d042679bf272",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -11051,15 +11076,40 @@
           "action": "action=toggle",
           "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-178-action-toggle]",
           "verification": "pending"
+        },
+        {
+          "method": "POST",
+          "action": "action=browse_choices",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-178-action-browse_choices]",
+          "verification": "pending"
+        },
+        {
+          "method": "POST",
+          "action": "people_page=2",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-178-people_page-2]",
+          "verification": "pending"
+        },
+        {
+          "method": "POST",
+          "action": "group_page=2",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-178-group_page-2]",
+          "verification": "pending"
+        },
+        {
+          "method": "POST",
+          "action": "action=save",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-178-action-save]",
+          "verification": "pending"
         }
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "4391e4eb7e29972436bde75f3df5be58a29cbc6c36bdd9b41857e9b99432d548",
+      "source_sha256": "6dac085f136a6bcfdd261e35756b6e786c0e2afcb7297f69335b9ba26af3ee73",
       "request_conditions": [
-        "native action=delete needs confirm_delete=yes or enhanced form; owner_id invalid; JSON {enabled:false} updates without changing recipients"
+        "native action=delete needs confirm_delete=yes or enhanced form; owner_id invalid; JSON {enabled:false} updates without changing recipients",
+        "Native browse_choices and named page-submit controls preserve full submitted draft without save/send/evaluate; explicit Save/Preview wins over retained pagination keys; CSRF and current permission remain required."
       ],
-      "adapter_sha256": "153babfe12bc649ea01039ac6cd6e217fcd281e02307080e5d08bd2db95af04a",
+      "adapter_sha256": "36b01a3478ee50f1445a2473ba7525e36e712586bcee2a089bab3f47d968ed4c",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -11481,9 +11531,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "db6fecdb72daec587f79ba4f6ac4d91626d281505c0ec2f7bf3dcf3e73ff6994",
+      "source_sha256": "e77b60012b472b1306a109bab1b7d78ada84a89e2237f11a78c5cf24b4bfe69b",
       "request_conditions": [],
-      "adapter_sha256": "0dd3252a4e35253bff583dfbe3bb657c436683e865fd396c697974a8b23ef3ad",
+      "adapter_sha256": "8b3a5fb06a856ba146518a24adafc578da9a42e348037cf97a8905ac22596f93",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -12263,9 +12313,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "e0fcec62c07d45fca04cde6223a88f07ee3b59976adc83b8bbe928a858073b94",
+      "source_sha256": "0247a9de9a4070568e583b84ef5d989c06246ea91b595a25bf0787f84a9fcab0",
       "request_conditions": [],
-      "adapter_sha256": "369bfea163488defec1ea02f486c77cff4c95fd5bf57c68595d4fe9e4706a317",
+      "adapter_sha256": "19d8cec2ac5dc66f8cc1c784152aedf2cb573c988a47a4c3fdc05b7ebc16b89c",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -12331,13 +12381,45 @@
           "action": "action=preview",
           "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-197-action-preview]",
           "verification": "pending"
+        },
+        {
+          "method": "POST",
+          "action": "action=browse_choices",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-197-action-browse_choices]",
+          "verification": "pending"
+        },
+        {
+          "method": "POST",
+          "action": "people_page=2",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-197-people_page-2]",
+          "verification": "pending"
+        },
+        {
+          "method": "POST",
+          "action": "group_page=2",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-197-group_page-2]",
+          "verification": "pending"
+        },
+        {
+          "method": "POST",
+          "action": "action=save",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-197-action-save]",
+          "verification": "pending"
+        },
+        {
+          "method": "POST",
+          "action": "report_page=2",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-197-report_page-2]",
+          "verification": "pending"
         }
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "3d1ff3fbdcc90d3b9a98ae381972e2d43476392e1ff8edb867c72e0dfe19cd6b",
-      "request_conditions": [],
-      "adapter_sha256": "0371be3202de57e8aa80eb2427ab88f2c7f6df2b4be303e3d5589c2aab366875",
+      "source_sha256": "f1155a1b983b7cdda6e5fa580a8ad2a9f7ede21bb17cdee3522f2fe3b3536a1d",
+      "request_conditions": [
+        "Native browse_choices and named page-submit controls preserve full submitted draft without save/send/evaluate; explicit Save/Preview wins over retained pagination keys; CSRF and current permission remain required."
+      ],
+      "adapter_sha256": "b0abaeefad1fb36c6f9865d0501898151206a6fff07f605f389bcd3761f678a3",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -12411,9 +12493,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "e5ada51828a17ede8a998b96a229107e7cfeaf1aafe08ca521ffc9a1e6cdda9c",
+      "source_sha256": "baf1a35c92d1a1e536c775742b36649e607c1caf3fcd480a43f96e78d839261d",
       "request_conditions": [],
-      "adapter_sha256": "3b6396519e5f33ed407385bfc9312c4bfefa830681faec673fc6e6b2222d834d",
+      "adapter_sha256": "8cb32ea4950829972319d3c0e60e87594eb9d7f92114e26485c724d11435cca7",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -12483,13 +12565,45 @@
           "action": "action=preview",
           "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-199-action-preview]",
           "verification": "pending"
+        },
+        {
+          "method": "POST",
+          "action": "action=browse_choices",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-199-action-browse_choices]",
+          "verification": "pending"
+        },
+        {
+          "method": "POST",
+          "action": "people_page=2",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-199-people_page-2]",
+          "verification": "pending"
+        },
+        {
+          "method": "POST",
+          "action": "group_page=2",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-199-group_page-2]",
+          "verification": "pending"
+        },
+        {
+          "method": "POST",
+          "action": "action=save",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-199-action-save]",
+          "verification": "pending"
+        },
+        {
+          "method": "POST",
+          "action": "report_page=2",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-199-report_page-2]",
+          "verification": "pending"
         }
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "3d1ff3fbdcc90d3b9a98ae381972e2d43476392e1ff8edb867c72e0dfe19cd6b",
-      "request_conditions": [],
-      "adapter_sha256": "0371be3202de57e8aa80eb2427ab88f2c7f6df2b4be303e3d5589c2aab366875",
+      "source_sha256": "f1155a1b983b7cdda6e5fa580a8ad2a9f7ede21bb17cdee3522f2fe3b3536a1d",
+      "request_conditions": [
+        "Native browse_choices and named page-submit controls preserve full submitted draft without save/send/evaluate; explicit Save/Preview wins over retained pagination keys; CSRF and current permission remain required."
+      ],
+      "adapter_sha256": "b0abaeefad1fb36c6f9865d0501898151206a6fff07f605f389bcd3761f678a3",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -12563,7 +12677,7 @@
       "verified_node_ids": [],
       "source_sha256": "1950afb5f83289a0be81f1d87bf800ecde264b864490e64fd569084a7f41ebcc",
       "request_conditions": [],
-      "adapter_sha256": "eb046e7972a58a02ff482719f3f800e06e98e83eefcd3242b9629e4171acf906",
+      "adapter_sha256": "5ef40607934bb6655e3b70e8421daf3817d46e0d432cfa77c10838e97cd7cfe4",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -12637,7 +12751,7 @@
       "verified_node_ids": [],
       "source_sha256": "f75a3bbc6107083fece6335183d2f339631994909b9ab083b55adf6290833768",
       "request_conditions": [],
-      "adapter_sha256": "718c32abc1644855f4e0a560c7c61f80b4c16dd1af9b8904eb6bf1142c0a2653",
+      "adapter_sha256": "ec8f8eb449d800fc42e1516b05f4272e977e8b8ef5a1d1b3e196a0dd29c8f086",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -12711,7 +12825,7 @@
       "verified_node_ids": [],
       "source_sha256": "6ecb1b47bfb5e6e31e8c0c2049ff296fc56b9ba0b96f3ccf15cd26fa01090170",
       "request_conditions": [],
-      "adapter_sha256": "1189fd24cbc8a18b3400c78c05d881ff282299ce4b7974a31701ac2cfd307b72",
+      "adapter_sha256": "6105d8034b3db923949acd50291245bdaafc2225c36bc53931460c72764343dc",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -12785,7 +12899,7 @@
       "verified_node_ids": [],
       "source_sha256": "d26c78e2deb8ba85c34834e63277cfbd62fde7e18788d9fecc15f9d2950f8034",
       "request_conditions": [],
-      "adapter_sha256": "1748dd7e98c0989f579e9fc6f3f603525c636f38e8719d48070302b02415c0e7",
+      "adapter_sha256": "9e7e1549e9b689739101102a204dacb3624108975cec72dc419e61e7417ca3da",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -21732,6 +21846,150 @@
       "required_query_parameters": [
         "definition_revision"
       ]
+    },
+    {
+      "id": "route-325",
+      "pattern": "s/<slug:org_slug>/<slug:studio_slug>/alerts/report-choices",
+      "name": "studio-alert-report-choices",
+      "view": "apps.alerts.views.report_choices",
+      "first_party": true,
+      "case": "C05",
+      "shard": "L3",
+      "allowed_roles": [
+        "developer",
+        "group-admin",
+        "operator",
+        "org-admin",
+        "studio-admin"
+      ],
+      "denied_roles": [
+        "anonymous",
+        "group-selected",
+        "inactive",
+        "private-viewer",
+        "revoked",
+        "viewer",
+        "viewer-full"
+      ],
+      "role_policy": "studio-developer",
+      "seeded_parameters": {
+        "org_slug": {
+          "value": "alpha"
+        },
+        "studio_slug": {
+          "value": "studio-0"
+        }
+      },
+      "disposition": "non-UI API/asset",
+      "scenarios": [
+        {
+          "method": "GET",
+          "action": null,
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_route[325-GET]",
+          "verification": "pending"
+        }
+      ],
+      "verification": "pending",
+      "verified_node_ids": [],
+      "source_sha256": "1f8544ee9ad7476a740f1e00d6b5a81c9fe82c4b6c87192ad77883f7c7f365ec",
+      "request_conditions": [
+        "Developer GET,25 full-search report choices plus independently authorized selected report; scoped present report catalog, no foreign labels; private no-store."
+      ],
+      "adapter_sha256": "1f8544ee9ad7476a740f1e00d6b5a81c9fe82c4b6c87192ad77883f7c7f365ec",
+      "principal_parameter_overrides": {
+        "viewer-full": {
+          "org_slug": "beta"
+        }
+      },
+      "conditional_roles": {
+        "group-member": {
+          "condition": "Active alpha member with group-derived all-public-reports viewer access; private report is unassigned. Policy context: studio-developer",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_route[325-GET]",
+          "verification": "pending"
+        },
+        "cross-org": {
+          "condition": "Active beta viewer requests primary alpha objects without alpha membership; global own-account/public entry and unconditional redirects differ from tenant data. Policy context: studio-developer",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_route[325-GET]",
+          "verification": "pending"
+        },
+        "impersonated": {
+          "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: studio-developer",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_route[325-GET]",
+          "verification": "pending"
+        }
+      }
+    },
+    {
+      "id": "route-326",
+      "pattern": "s/<slug:org_slug>/<slug:studio_slug>/alerts/recipient-choices",
+      "name": "studio-alert-recipient-choices",
+      "view": "apps.alerts.views.recipient_choices",
+      "first_party": true,
+      "case": "C05",
+      "shard": "L3",
+      "allowed_roles": [
+        "developer",
+        "group-admin",
+        "operator",
+        "org-admin",
+        "studio-admin"
+      ],
+      "denied_roles": [
+        "anonymous",
+        "group-selected",
+        "inactive",
+        "private-viewer",
+        "revoked",
+        "viewer",
+        "viewer-full"
+      ],
+      "role_policy": "studio-developer",
+      "seeded_parameters": {
+        "org_slug": {
+          "value": "alpha"
+        },
+        "studio_slug": {
+          "value": "studio-0"
+        }
+      },
+      "disposition": "non-UI API/asset",
+      "scenarios": [
+        {
+          "method": "GET",
+          "action": null,
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_route[326-GET]",
+          "verification": "pending"
+        }
+      ],
+      "verification": "pending",
+      "verified_node_ids": [],
+      "source_sha256": "16384b8dd7202886a55b121ea60bfa4bc85944619473d461e5902f3bc9ff6825",
+      "request_conditions": [
+        "Developer GET,25people and25groups plus selected identities; Alert form preserves inactive eligible choices while delivery recipient endpoints remain active-only; full counts/search and no foreign labels; private no-store."
+      ],
+      "adapter_sha256": "16384b8dd7202886a55b121ea60bfa4bc85944619473d461e5902f3bc9ff6825",
+      "principal_parameter_overrides": {
+        "viewer-full": {
+          "org_slug": "beta"
+        }
+      },
+      "conditional_roles": {
+        "group-member": {
+          "condition": "Active alpha member with group-derived all-public-reports viewer access; private report is unassigned. Policy context: studio-developer",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_route[326-GET]",
+          "verification": "pending"
+        },
+        "cross-org": {
+          "condition": "Active beta viewer requests primary alpha objects without alpha membership; global own-account/public entry and unconditional redirects differ from tenant data. Policy context: studio-developer",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_route[326-GET]",
+          "verification": "pending"
+        },
+        "impersonated": {
+          "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: studio-developer",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_route[326-GET]",
+          "verification": "pending"
+        }
+      }
     }
   ],
   "scenario_role_policy": "inherits explicit route principal sets unless scenario overrides",
