@@ -16,7 +16,6 @@ from trellum.metrics_report import _block
 from trellum.project import get_project_root, set_project_root
 from trellum.themes import DefaultTheme
 
-
 ROWS = [
     {"day": "2026-10-03", "platform": "ios", "region": "eu", "balance": 30},
     {"day": "2026-10-01", "platform": "ios", "region": "eu", "balance": 10},
@@ -159,11 +158,12 @@ assert.deepEqual(values(), ['10', '10', '5', '42']);
 def test_generated_metrics_page_date_changes_and_url_restore(tmp_path):
     """The shipped generator and browser initialization share the live contract."""
     from playwright.sync_api import expect, sync_playwright
+
     from trellum.components import FilterBar
-    from trellum.rendering.html_builder import render_report
-    from trellum.rendering.cdn import copy_vendor_tree
-    from trellum.report import ReportContext
     from trellum.metrics_report import MetricsReport
+    from trellum.rendering.cdn import copy_vendor_tree
+    from trellum.rendering.html_builder import render_report
+    from trellum.report import ReportContext
     from trellum.validation import validate_report
 
     generated_config(tmp_path)
