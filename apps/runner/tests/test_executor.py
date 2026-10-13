@@ -760,6 +760,30 @@ class TestSandboxMode:
         settings.TRELLUM_SANDBOX = "docker"
         settings.TRELLUM_SANDBOX_CPUS = 1.0
 
+    @pytest.fixture(autouse=True, params=["report", "article", "presentation"])
+    def _content_kind(self, request, report_row, studio_tree):
+        """The same run lifecycle must cover reports and both analysis formats."""
+        import yaml
+
+        if request.param == "report":
+            return
+        directory = studio_tree.reports_dir / report_row.slug
+        config = {**report_row.config, "kind": "analysis", "format": request.param}
+        report_row.kind = Report.KIND_ANALYSIS
+        report_row.config = config
+        report_row.save(update_fields=["kind", "config"])
+        (directory / "report.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
+        (directory / "generator.py").unlink()
+        if request.param == "article":
+            (directory / "content.md").write_text("## Findings\n\nEvidence.", encoding="utf-8")
+        else:
+            (directory / "slides.yaml").write_text(
+                "version: 1\nslides:\n- id: findings\n  layout: text\n  title: Findings\n  text: Evidence.\n",
+                encoding="utf-8",
+            )
+        (directory / "evidence").mkdir()
+        (directory / "evidence" / "snapshot.png").write_bytes(b"copied evidence")
+
     def test_start_uses_sandbox_not_popen(self, fake_popen, queued_run):
         sandbox = FakeSandbox()
         ex = self._executor_with(sandbox)
@@ -770,6 +794,15 @@ class TestSandboxMode:
         assert sandbox.started, "sandbox.start was not called"
         # The flags the container runs are the shared build flags.
         assert "--no-serve" in sandbox.started[0]["cmd_flags"]
+        assert "--production" in sandbox.started[0]["cmd_flags"]
+        options = sandbox.started[0]
+        assert options["env"]["BI_STORAGE_BACKEND"] == "local"
+        assert options["output_dir"] == str(queued_run.studio.output_dir / queued_run.slug)
+        source = queued_run.studio.reports_dir / queued_run.slug
+        copied = Path(options["run_report_dir"])
+        for path in source.rglob("*"):
+            if path.is_file():
+                assert (copied / path.relative_to(source)).read_bytes() == path.read_bytes()
 
         run = Run.objects.get(pk=queued_run.pk)
         assert run.status == Run.RUNNING

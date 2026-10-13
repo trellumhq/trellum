@@ -442,6 +442,35 @@ def _run_cli(project: Path, *arguments: str, production: bool = False):
                           env=environment, capture_output=True, text=True, encoding="utf-8", timeout=30)
 
 
+@pytest.mark.parametrize("content_type", ["report", "article", "presentation"])
+def test_production_cli_uses_shared_artifact_contract(tmp_path, monkeypatch, content_type):
+    monkeypatch.setenv("FW_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.setattr("trellum.project._project_root_override", None)
+    if content_type == "report":
+        directory = tmp_path / "reports" / "shared-build"
+        directory.mkdir(parents=True)
+        (directory / "report.yaml").write_text(
+            "slug: shared-build\nname: Shared build\ndescription: Build verification\n"
+            "studio: default\ncategory: Tests\n", encoding="utf-8")
+        (directory / "generator.py").write_text(
+            "from trellum import BaseReport\nfrom trellum.components import RawHTML\n"
+            "class Example(BaseReport):\n"
+            "    def generate(self, ctx):\n"
+            "        ctx.add_section('Findings', [RawHTML('<p>Verified finding</p>')])\n",
+            encoding="utf-8")
+    else:
+        directory = new_analysis("shared-build", content_type)
+    completed = _run_cli(tmp_path, str(directory), "--no-serve", "--production", production=True)
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    output = tmp_path / "output" / "shared-build"
+    assert (output / "index.html").is_file()
+    for filename in ("data.json", "_meta.json", "_validation.json", "_details.json"):
+        assert isinstance(json.loads((output / filename).read_bytes()), dict)
+    assert json.loads((output / "_validation.json").read_bytes())["summary"]["fail"] == 0
+    assert "Published to LocalBackend" in completed.stdout
+    assert not list(output.glob(".analysis-build-*"))
+
+
 @pytest.mark.parametrize("production", [False, True])
 def test_actual_analysis_cli_skips_executable_bootstrap(article, tmp_path, production):
     markdown = import_capture(str(article), str(_capture(tmp_path)), "snapshot")
