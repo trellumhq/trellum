@@ -372,6 +372,7 @@ Every `agg` recomputes over the **filtered rows**, so pass raw columns and let t
 | `abssum` | `sum(abs(column))` | for signed ledgers |
 | `ratio` | `sum(numerator) / abs(sum(denominator))`, ×100 **only** when `format: "percent"` | the scaling follows the FORMAT, so a currency ratio (ARPDAU, AOV, revenue per order) and a plain one (sessions per user, `format: "ratio"` → "2.98x") are ordinary ratio KPIs. Charts do the same: `ratios=[{numerator, denominator, label}]` divides raw and the axis format scales |
 | `avg_by_date` | `sum(column) / count(distinct date_col)` | per-day average; `date_col` defaults to `event_date` |
+| `last_by_date` | aggregate `column` across rows on the latest retained `date_col` | `last_agg` is `sum` or `abssum`; ties on that date are aggregated together |
 | `purchase_pct` | share of `source_col` volume where `type_col` is in `match_values`, ×100 | percent-format only — unlike `ratio`, its ×100 is still unconditional |
 
 Where the ×100 lives in `ratio` is the most re-derived fact in measured

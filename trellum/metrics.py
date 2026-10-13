@@ -128,12 +128,9 @@ class Metric:
         elif self.column:
             spec["column"] = self.column
             if self.time_agg == "avg" and self.date_col:
-                spec["agg"] = "avg_by_date"
-                spec["date_col"] = self.date_col
+                spec.update(agg="avg_by_date", date_col=self.date_col)
             elif self.time_agg == "last" and self.date_col:
-                spec["agg"] = "last_by_date"
-                spec["date_col"] = self.date_col
-                spec["last_agg"] = self.agg
+                spec.update(agg="last_by_date", date_col=self.date_col, last_agg=self.agg)
         return spec
 
     def spec_text(self) -> str:
