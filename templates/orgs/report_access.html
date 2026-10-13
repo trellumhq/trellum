@@ -1,6 +1,8 @@
 {% extends "settings_base.html" %}
 {% block title %}Access to {{ report.name|default:report.slug }} — {{ studio.name }}{% endblock %}
 {% block settings %}
+<div class="group-report-access group-layout">
+{% include "orgs/group_layout.html" %}
 <header class="page-head-row"><div><div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }}</div><h1>{{ report.get_kind_display }} access</h1><p class="muted page-sub">{{ report.name|default:report.slug }}</p></div><span class="spacer"></span><a class="ui-btn ghost" href="/s/{{ org.slug }}/{{ studio.slug }}/r/{{ report.slug }}/?display=console">← {{ report.get_kind_display }}</a></header>
 {% if selected_block_reason %}<div class="ui-panel" role="note"><strong>Selected-report access is read-only</strong><p class="muted" style="margin:4px 0 0">{{ selected_block_reason }}</p></div>{% endif %}
 <div class="ui-panel"><strong>Signed-in audience</strong>
@@ -22,4 +24,5 @@ document.getElementById('reportAudienceForm').addEventListener('settings:success
   this.dataset.savedAudience = event.detail.audience;
 });
 </script>
+</div>
 {% endblock %}

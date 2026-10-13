@@ -13,6 +13,16 @@ from apps.studios.models import Studio, StudioMembership
 CHOICE_SIZE = 25
 
 
+def report_ids(values):
+    result = []
+    for value in values:
+        try:
+            result.append(Report._meta.pk.get_prep_value(value))
+        except (TypeError, ValueError, OverflowError):
+            continue
+    return result
+
+
 def group_summary_counts(queryset):
     def count(model):
         rows = model.objects.filter(group_id=OuterRef("pk")).values("group_id").annotate(total=Count("pk")).values("total")
@@ -20,8 +30,9 @@ def group_summary_counts(queryset):
     return queryset.annotate(grant_count=count(PermissionGroupGrant), member_count=count(PermissionGroupMembership))
 
 
-def window(request, rows, key, size=CHOICE_SIZE):
-    return Paginator(rows, size).get_page(request.POST.get(key, request.GET.get(key, 1)))
+def window(request, rows, key, size=CHOICE_SIZE, *, parameters=None):
+    number = parameters.get(key, 1) if parameters is not None else request.POST.get(key, request.GET.get(key, 1))
+    return Paginator(rows, size).get_page(number)
 
 
 def text(request, key):

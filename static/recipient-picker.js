@@ -7,12 +7,13 @@
     if (field._trellumRecipients) { field._trellumRecipients.refresh(); return field._trellumRecipients; }
     var helper = window.TrellumPicker;
     var label = helper.labelFor(field, 'Recipients');
+    var generic = field.dataset.recipientMode === 'choices';
     var records = Array.prototype.map.call(field.querySelectorAll('input[type="checkbox"]'), function (input) {
       var row = input.closest('label') || (input.labels && input.labels[0]);
       if (!row) return null;
       var group = input.closest('[data-recipient-type]');
       var type = group && group.dataset.recipientType;
-      return { input: input, row: row, type: TYPES[type] ? type : null,
+      return { input: input, row: row, type: !generic && TYPES[type] ? type : null,
         name: input.dataset.recipientName || row.textContent.trim(), identity: input.dataset.recipientIdentity || '' };
     }).filter(Boolean);
     var fallback = Array.prototype.filter.call(field.children, function (node) {
@@ -36,33 +37,56 @@
       var url = new URL(source, location.href);
       if (url.origin !== location.origin) { remoteState = 'error'; api.refresh(); return; }
       url.searchParams.set('q', api.search.value.trim()); url.searchParams.set('page', page || 1);
+      if (generic) {
+        url.searchParams.delete('selected');
+        records.filter(function (r) { return r.input.checked; }).forEach(function (r) { url.searchParams.append('selected', r.input.value); });
+      } else {
       url.searchParams.set('selected_people', records.filter(function (r) { return r.type === 'people' && r.input.checked; }).map(function (r) { return r.input.value; }).join(','));
       url.searchParams.set('selected_groups', records.filter(function (r) { return r.type === 'groups' && r.input.checked; }).map(function (r) { return r.input.value; }).join(','));
+      }
       timeout = setTimeout(function () { if (token !== generation) return; controller.abort(); generation++; remoteState = 'error'; api.refresh(); }, 15000);
-      fetch(url, {signal: controller.signal, credentials: 'same-origin', headers: {Accept: 'application/json'}}).then(function (response) {
+      var options = {signal: controller.signal, credentials: 'same-origin', headers: {Accept: 'application/json'}};
+      // Keep large selections in a read-only body below the server request-line limit.
+      if (new TextEncoder().encode(url.pathname + url.search).length > 3000) {
+        var parameters = {};
+        url.searchParams.forEach(function (value, key) { parameters[key] = value; });
+        if (generic) parameters.selected = url.searchParams.getAll('selected');
+        var owner = field.closest('form'), csrf = owner && owner.querySelector('input[name="csrfmiddlewaretoken"]');
+        if (!csrf) csrf = document.querySelector('input[name="csrfmiddlewaretoken"]');
+        options.method = 'POST'; options.headers['Content-Type'] = 'application/json';
+        if (csrf) options.headers['X-CSRFToken'] = csrf.value;
+        options.body = JSON.stringify(parameters); url.search = '';
+      }
+      fetch(url, options).then(function (response) {
         if (!response.ok) throw new Error('Recipients unavailable'); return response.json();
       }).then(function (data) {
         if (token !== generation || !field.isConnected || api.popup.hidden) return;
-        if (!Array.isArray(data.members) || data.members.length > 25 || !Array.isArray(data.groups) || data.groups.length > 25 || !data.pagination || !data.pagination.members || !data.pagination.groups || !data.selected || !Array.isArray(data.selected.members) || !Array.isArray(data.selected.groups)) throw new Error('Invalid recipients');
+        if (generic) {
+          if (!Array.isArray(data.results) || data.results.length > 25 || !Array.isArray(data.selected) || !data.pagination) throw new Error('Invalid choices');
+          var pageInfo = data.pagination;
+          if (!Number.isSafeInteger(pageInfo.page) || pageInfo.page < 1 || !Number.isSafeInteger(pageInfo.per_page) || pageInfo.per_page < 1 || pageInfo.per_page > 25 || !Number.isSafeInteger(pageInfo.total) || pageInfo.total < 0 || typeof pageInfo.has_previous !== 'boolean' || typeof pageInfo.has_next !== 'boolean' || !data.results.concat(data.selected).every(function (row) { return row && typeof row.value === 'string' && row.value && typeof row.label === 'string'; })) throw new Error('Invalid choices');
+        } else if (!Array.isArray(data.members) || data.members.length > 25 || !Array.isArray(data.groups) || data.groups.length > 25 || !data.pagination || !data.pagination.members || !data.pagination.groups || !data.selected || !Array.isArray(data.selected.members) || !Array.isArray(data.selected.groups)) throw new Error('Invalid recipients');
         clearTimeout(timeout);
         var wanted = new Set(), byKey = new Map();
         records.forEach(function (record) { byKey.set(record.type + ':' + record.input.value, record); });
-        [['people', 'members'], ['groups', 'groups']].forEach(function (pair) {
-          data[pair[1]].forEach(function (row) { visible.add(pair[0] + ':' + row.id); });
-          var rows = data[pair[1]].concat(data.selected[pair[1]]);
+        var pairs = generic ? [[null, 'results']] : [['people', 'members'], ['groups', 'groups']];
+        pairs.forEach(function (pair) {
+          data[pair[1]].forEach(function (row) { visible.add(pair[0] + ':' + (generic ? row.value : row.id)); });
+          var rows = data[pair[1]].concat(generic ? data.selected : data.selected[pair[1]]);
           rows.forEach(function (value) {
-            if (!Number.isSafeInteger(value.id) || typeof value.name !== 'string') throw new Error('Invalid recipient');
-            var key = pair[0] + ':' + value.id; wanted.add(key);
+            var id = generic ? value.value : value.id, name = generic ? value.label : value.name;
+            if ((generic ? typeof id !== 'string' || !id : !Number.isSafeInteger(id)) || typeof name !== 'string') throw new Error('Invalid choice');
+            var key = pair[0] + ':' + id; wanted.add(key);
             var record = byKey.get(key);
             if (!record) {
               var row = helper.element('label'), input = document.createElement('input'); input.type = 'checkbox';
-              input.name = pair[0] === 'people' ? (field.dataset.recipientPeopleName || 'recipients') : (field.dataset.recipientGroupName || 'recipient_groups');
-              input.value = value.id; row.appendChild(input);
-              record = {input: input, row: row, type: pair[0], name: value.name, identity: value.email || ''}; records.push(record); byKey.set(key, record); decorate(record);
+              input.name = generic ? (field.dataset.recipientName || 'choices') : pair[0] === 'people' ? (field.dataset.recipientPeopleName || 'recipients') : (field.dataset.recipientGroupName || 'recipient_groups');
+              input.value = id; row.appendChild(input);
+              record = {input: input, row: row, type: pair[0], name: name, identity: generic ? '' : value.email || ''}; records.push(record); byKey.set(key, record); decorate(record);
             } else {
-              record.name = value.name; record.identity = value.email || '';
+              record.name = name; record.identity = generic ? '' : value.email || '';
               var caption = record.row.querySelector('.recipient-picker-option-caption');
-              if (caption) { caption.textContent = record.name; caption.appendChild(helper.element('small', 'recipient-picker-identity', record.identity || TYPES[record.type])); }
+              if (caption) { caption.textContent = record.name; if (record.identity || record.type) caption.appendChild(helper.element('small', 'recipient-picker-identity', record.identity || TYPES[record.type])); }
             }
           });
         });
@@ -70,7 +94,7 @@
           if (r.type === 'roles' || wanted.has(r.type + ':' + r.input.value)) return true;
           if (r.input.checked || r.input.defaultChecked) {
             if (r.input.checked) {
-              r.name = 'Selected ' + (r.type === 'people' ? 'person' : 'group') + ' is unavailable'; r.identity = '';
+              r.name = generic ? (field.dataset.unavailableLabel || 'Selected choice is unavailable') : 'Selected ' + (r.type === 'people' ? 'person' : 'group') + ' is unavailable'; r.identity = '';
               r.input.dataset.recipientName = r.name; r.input.dataset.recipientIdentity = '';
               var caption = r.row.querySelector('.recipient-picker-option-caption'); if (caption) caption.textContent = r.name;
             }
@@ -97,7 +121,7 @@
     var filters = helper.element('div', 'recipient-picker-filters');
     filters.setAttribute('role', 'group');
     filters.setAttribute('aria-label', 'Recipient type');
-    var combined = records.some(function (record) { return record.type; }) || field.querySelector('[data-recipient-type]');
+    var combined = !generic && (records.some(function (record) { return record.type; }) || field.querySelector('[data-recipient-type]'));
     if (combined) {
       [['all', 'All'], ['people', 'People'], ['roles', 'Roles'], ['groups', 'Groups']].forEach(function (entry) {
         var button = helper.button('ui-picker-filter', entry[1]);
@@ -117,7 +141,7 @@
     api.popup.appendChild(done);
     function decorate(record) {
       record.row.classList.add('recipient-picker-option');
-      if (record.identity || record.type || record.input.dataset.recipientName) {
+      if (generic || record.identity || record.type || record.input.dataset.recipientName) {
         // Keep the checkbox node, its form name and label association.
         var caption = helper.element('span', 'recipient-picker-option-caption', record.name);
         var identity = record.identity || (record.type ? TYPES[record.type] : '');
@@ -192,13 +216,13 @@
       });
       api.message.textContent = count ? '' : query ? 'No matches.' : filter !== 'all' ? 'No ' + TYPES[filter].toLowerCase() + ' are available.' : (field.dataset.pickerEmptyState || 'No recipients are available.');
       if (source) {
-        if (remoteState === 'loading') api.message.textContent = 'Loading recipients…';
-        if (remoteState === 'error') api.message.textContent = 'Could not load recipients. Your selections are retained.';
+        if (remoteState === 'loading') api.message.textContent = generic ? 'Loading choices…' : 'Loading recipients…';
+        if (remoteState === 'error') api.message.textContent = generic ? 'Could not load choices. Your selections are retained.' : 'Could not load recipients. Your selections are retained.';
         pager.replaceChildren();
         if (remoteState === 'error') {
           var retry = helper.button('ui-picker-filter', 'Retry'); retry.addEventListener('click', function () { loadRemote(1); }); pager.appendChild(retry);
         } else if (remoteData) {
-          var parts = filter === 'people' ? [remoteData.pagination.members] : filter === 'groups' ? [remoteData.pagination.groups] : [remoteData.pagination.members, remoteData.pagination.groups];
+          var parts = generic ? [remoteData.pagination] : filter === 'people' ? [remoteData.pagination.members] : filter === 'groups' ? [remoteData.pagination.groups] : [remoteData.pagination.members, remoteData.pagination.groups];
           if (filter !== 'roles') {
             var number = Math.max.apply(null, parts.map(function (p) { return p.page; }));
             var previous = helper.button('ui-picker-filter', 'Previous'), next = helper.button('ui-picker-filter', 'Next');

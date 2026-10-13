@@ -16,7 +16,7 @@ from django.db import transaction
 from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
 from django.shortcuts import get_object_or_404, redirect, render
-from django.views.decorators.http import require_POST, require_GET
+from django.views.decorators.http import require_POST, require_GET, require_http_methods
 
 from apps.alerts.forms import AlertRuleForm
 from apps.alerts.models import AlertRule, AlertRun
@@ -114,12 +114,17 @@ def alerts_page(request, org_slug, studio_slug):  # noqa: ARG001
 
 
 @require_studio_role(roles.DEVELOPER)
-@require_GET
+@require_http_methods(["GET", "POST"])
 def recipient_choices(request, org_slug, studio_slug):
     from apps.reports.recipient_choices import recipient_snapshot, page_snapshot
+    from apps.core.choice_requests import choice_request_params
+    try:
+        parameters = choice_request_params(request)
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
     response = JsonResponse(page_snapshot(recipient_snapshot(request.studio, include_inactive=True),
-        query=request.GET.get('q', ''), page=request.GET.get('page', 1),
-        selected_people=request.GET.get('selected_people', ''), selected_groups=request.GET.get('selected_groups', '')))
+        query=parameters.get('q', ''), page=parameters.get('page', 1),
+        selected_people=parameters.get('selected_people', ''), selected_groups=parameters.get('selected_groups', '')))
     response['Cache-Control'] = 'private, no-store'
     return response
 

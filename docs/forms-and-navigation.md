@@ -236,3 +236,31 @@ server concurrency for such readers. A newer action or configuration requires
 explicit invalidation through pause/resume or replacing the poller, together
 with the current identity predicate; `refresh` alone coalesces reads. Lifecycle
 callback exceptions stop polling safely; read failures retain bounded backoff.
+
+## Remote report choices
+
+The shared checkbox picker also accepts a single collection of report choices.
+Use `data-recipient-picker data-recipient-mode="choices"`, set
+`data-recipient-name` to the existing checkbox field name, and provide a
+same-origin `data-recipient-source`. Native checkboxes remain the submitted
+values. The GET sends `q`, `page`, and repeated `selected` string values.
+The response contains `results` (at most 25 `{value, label}` objects),
+`selected` (every authorized selected object), and `pagination` with `page`,
+`per_page`, `total`, `has_previous` and `has_next`. Values are nonempty strings.
+This mode has no recipient type filters; the existing People/Roles/Groups
+contract is unchanged.
+
+Preserve unavailable selections with an explicit `data-unavailable-label`;
+searching, paging and failed reads never clear a draft. Keep native browse-only
+submit controls inside a `recipient-picker-fallback` element marked
+`data-picker-fallback`. The enhancer hides them; without JavaScript they submit
+the complete draft to an authorized browse handler that performs no mutation.
+
+When the encoded choice URL exceeds 3,000 bytes, the shared picker uses a
+read-only JSON POST to the same endpoint, with `X-CSRFToken` from its native
+form. Generic `selected` values become a JSON array; recipient people/group
+fields retain their existing string format. Endpoints accept only known
+parameters and enforce their usual permissions, CSRF and body limits. This
+keeps large selections below the web server's request-line limit. Choice
+reads do not save, send or audit changes; failures retain the draft and Retry
+remains an explicit action.

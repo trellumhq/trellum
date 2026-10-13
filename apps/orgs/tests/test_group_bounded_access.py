@@ -192,3 +192,35 @@ def test_choice_api_key_org_scope_and_methods(client, org_admin, org, other_org,
     for path in endpoints:
         response = client.get(path, HTTP_AUTHORIZATION=f"Bearer {foreign_token}")
         assert response.status_code == 403 and response.json()["error"] == "session_required"
+
+
+def test_large_json_report_read_is_csrf_protected_complete_and_never_saves(org_admin, org, studio, make_group, settings):
+    from django.test import Client
+    settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = True
+    reports = Report.objects.bulk_create([Report(studio=studio, slug=f"large{i:04}", name=f"Report {i:04}", present_in_scan=True) for i in range(1000)])
+    group = make_group("Large selection")
+    page = url(org, group, "access")
+    endpoint = f"/orgs/{org.slug}/settings/groups/{group.pk}/studios/{studio.pk}/report-choices"
+    client = Client(enforce_csrf_checks=True); client.force_login(org_admin)
+    client.get(page)
+    body = {"selected": [str(r.pk) for r in reports], "page": "2", "q": ""}
+    assert client.post(endpoint, body, content_type="application/json").status_code == 403
+    csrf = client.cookies["csrftoken"].value
+    response = client.post(endpoint, body, content_type="application/json", HTTP_X_CSRFTOKEN=csrf)
+    assert response.status_code == 200
+    assert len(response.json()["results"]) == 25 and len(response.json()["selected"]) == 1000
+    assert response.json()["pagination"]["page"] == 2
+    assert response.headers["Cache-Control"] == "private, no-store"
+    assert not group.grants.exists()
+    assert client.post(endpoint, {"selected": "1"}, content_type="application/json", HTTP_X_CSRFTOKEN=csrf).status_code == 400
+
+
+def test_json_report_invalid_selected_ids_do_not_leak_or_crash(login, org_admin, org, studio, other_studio, make_group):
+    group = make_group("Scope")
+    own = Report.objects.create(studio=studio, slug="own", name="Own report")
+    foreign = Report.objects.create(studio=other_studio, slug="foreign", name="Hidden foreign report")
+    endpoint = f"/orgs/{org.slug}/settings/groups/{group.pk}/studios/{studio.pk}/report-choices"
+    response = login(org_admin).post(endpoint, {"selected": [str(own.pk), str(foreign.pk), '9' * 5000, '-1', 'bad'], "q": ""}, content_type="application/json")
+    assert response.status_code == 200
+    assert response.json()["selected"] == [{"value": str(own.pk), "label": "Own report · Report"}]
+    assert foreign.name.encode() not in response.content

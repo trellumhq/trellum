@@ -1,6 +1,8 @@
 {% extends "settings_base.html" %}
 {% block title %}Permission groups — {{ org.name }}{% endblock %}
 {% block settings %}
+<div class="group-layout">
+{% include "orgs/group_layout.html" %}
 <header class="page-head-row">
   <div><div class="ui-label page-kicker scope-org">Organization · {{ org.name }}</div><h1>Permission groups</h1></div>
   <span class="spacer"></span>
@@ -18,4 +20,5 @@
   </tr>{% empty %}<tr><td colspan="5"><div class="ui-empty">{% if q %}No group matches “{{ q }}”.<div class="ui-empty-action"><a class="ui-btn ghost" href="{% querystring q=None page=None %}">Clear search</a></div>{% else %}No groups yet.<div class="ui-empty-action"><a class="ui-btn ghost" href="/orgs/{{ org.slug }}/settings/groups/new">+ New group</a></div>{% endif %}</div></td></tr>{% endfor %}</tbody>
 </table></div></div>
 {% include "_pagination.html" with page=page %}
+</div>
 {% endblock %}

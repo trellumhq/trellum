@@ -77,7 +77,9 @@ def page_snapshot(snapshot, *, query='', page=1, people_page=None, group_page=No
 
 
 def recipient_payload(request, report=None):
+    from apps.core.choice_requests import choice_request_params
+    parameters = choice_request_params(request)
     return page_snapshot(recipient_snapshot(request.studio, report),
-        query=request.GET.get('q', ''), page=request.GET.get('page', 1),
-        selected_people=request.GET.get('selected_people', ''),
-        selected_groups=request.GET.get('selected_groups', ''))
+        query=parameters.get('q', ''), page=parameters.get('page', 1),
+        selected_people=parameters.get('selected_people', ''),
+        selected_groups=parameters.get('selected_groups', ''))

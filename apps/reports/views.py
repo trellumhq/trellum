@@ -1003,15 +1003,23 @@ def _recipient_payload(request, report=None) -> dict:
 
 @require_studio_role(roles.VIEWER)
 @require_full_studio_visibility
+@require_http_methods(["GET", "POST"])
 def api_studio_members(request, org_slug, studio_slug):  # noqa: ARG001
-    response = JsonResponse(_recipient_payload(request))
+    try:
+        response = JsonResponse(_recipient_payload(request))
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
     response["Cache-Control"] = "private, no-store"
     return response
 
 
 @require_studio_role(roles.VIEWER)
+@require_http_methods(["GET", "POST"])
 def api_report_recipients(request, org_slug, studio_slug, slug):  # noqa: ARG001
-    response = JsonResponse(_recipient_payload(request, _get_report(request, slug)))
+    try:
+        response = JsonResponse(_recipient_payload(request, _get_report(request, slug)))
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
     response["Cache-Control"] = "private, no-store"
     return response
 

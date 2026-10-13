@@ -13,6 +13,7 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 
 from apps.core import roles
 from apps.core.audit import audit
+from apps.core.choice_requests import choice_request_params
 from apps.core.form_responses import is_settings_request, settings_error, settings_success
 from apps.core.permissions import require_org_role, require_studio_role
 from apps.core.report_access import selected_report_access_block_reason
@@ -368,12 +369,13 @@ def group_detail(request, org_slug, group_id):  # noqa: ARG001
                 "viewer_scope": grant.viewer_scope if grant else "all", "reports": selected_ids})
             if access_form:
                 selected_ids = access_form.data.getlist("reports")
-            valid_selected = Report.objects.filter(studio=selected_studio, pk__in=[v for v in selected_ids if str(v).isdecimal()]).order_by("name", "slug")
+            valid_selected = Report.objects.filter(studio=selected_studio, pk__in=present.report_ids(selected_ids)).order_by("name", "slug")
             report_q = present.text(request, "report_q")
             report_page = present.window(request, present.report_choices(selected_studio, report_q), "report_page")
             catalog = {r.pk: r for r in report_page.object_list}
             catalog.update({r.pk: r for r in valid_selected})
-            row_form.present_reports(catalog.values(), [value for value in selected_ids if str(value) not in {str(pk) for pk in catalog}])
+            catalog_ids = {str(pk) for pk in catalog}
+            row_form.present_reports(catalog.values(), [value for value in selected_ids if str(value) not in catalog_ids])
             private = Report.objects.filter(studio=selected_studio, audience=Report.AUDIENCE_PRIVATE,
                 permission_group_grants__grant=grant).distinct().order_by("name", "slug") if grant else Report.objects.none()
             private_page = present.window(request, private, "private_page")
@@ -623,16 +625,20 @@ def group_member_choices(request, org_slug, group_id):
 
 
 @require_org_role(roles.ORG_ADMIN)
-@require_GET
+@require_http_methods(["GET", "POST"])
 def group_report_choices(request, org_slug, group_id, studio_id):
     _group_or_404(request.org, group_id)
     studio = get_object_or_404(Studio, org=request.org, pk=studio_id)
-    page = present.window(request, present.report_choices(studio, present.text(request, "q")), "page")
-    ids = [v for v in request.GET.get("selected", "").split(",") if v.isdecimal()]
+    try:
+        parameters = choice_request_params(request)
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+    page = present.window(request, present.report_choices(studio, parameters.get("q", "").strip()), "page", parameters=parameters)
+    ids = present.report_ids([v for raw in parameters.getlist("selected") for v in raw.split(",")])
     selected = Report.objects.filter(studio=studio, pk__in=ids).order_by("name", "slug")
     field = ReportChoiceField(queryset=Report.objects.none())
     def record(report):
-        return {"value": report.pk, "label": field.label_from_instance(report)}
+        return {"value": str(report.pk), "label": field.label_from_instance(report)}
     response = JsonResponse({"results": [record(r) for r in page.object_list], "selected": [record(r) for r in selected], "pagination": present.pagination(page)})
     response["Cache-Control"] = "private, no-store"
     return response

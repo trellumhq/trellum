@@ -1,9 +1,10 @@
 {% extends "settings_base.html" %}
 {% block title %}{{ group.name }} — {{ org.name }}{% endblock %}
 {% block settings %}
-<div class="group-content">
+<div class="group-content group-layout">
+{% include "orgs/group_layout.html" %}
 <style>
-.group-content{min-width:0;overflow-wrap:anywhere}.group-content .inline>*{min-width:0;max-width:100%}.group-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:18px 0}.group-tabs a{padding:8px 12px;border-radius:8px;color:inherit;text-decoration:none}.group-tabs a.active{background:var(--bg-card);box-shadow:inset 0 0 0 1px var(--border)}.mgmt .group-tab-select{display:none;width:100%;margin:14px 0}.group-access-card{margin-bottom:14px}.group-access-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.group-access-head h3{margin:0}.group-access-form{margin-top:14px}.mgmt .report-picker[hidden]{display:none!important}.report-picker>div:not(.recipient-picker){display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:6px}.report-picker label{overflow-wrap:anywhere}.effective-source{margin:6px 0 0;padding-left:18px}
+.group-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:18px 0}.group-tabs a{padding:8px 12px;border-radius:8px;color:inherit;text-decoration:none}.group-tabs a.active{background:var(--bg-card);box-shadow:inset 0 0 0 1px var(--border)}.mgmt .group-tab-select{display:none;width:100%;margin:14px 0}.group-access-card{margin-bottom:14px}.group-access-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.group-access-head h3{margin:0}.group-access-form{margin-top:14px}.mgmt .report-picker[hidden]{display:none!important}.report-picker>div:not(.recipient-picker){display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:6px}.report-picker label{overflow-wrap:anywhere}.effective-source{margin:6px 0 0;padding-left:18px}
 @media(max-width:640px){.group-tabs{display:none}.mgmt .group-tab-select{display:block}.report-picker>div:not(.recipient-picker){grid-template-columns:1fr}}
 </style>
 <header class="page-head-row ui-form-rail" data-settings-refresh="group-heading"><div><div class="ui-label page-kicker scope-org">Organization · {{ org.name }}</div><h1>{{ group.name }}</h1>{% if group.description %}<p class="muted page-sub">{{ group.description }}</p>{% endif %}</div><span class="spacer"></span><a class="ui-btn ghost" href="/orgs/{{ org.slug }}/settings/groups">← All groups</a></header>
@@ -48,7 +49,6 @@
 {% include "orgs/group_effective_detail.html" %}
 {% else %}<div class="ui-empty">Add a member to this group to preview effective access.</div>{% endif %}
 {% endif %}
-{% load static %}<script src="{% static 'group-access.js' %}" defer></script>
 <script>
 (function(){
   var forms=document.querySelectorAll('[data-studio-access]');
