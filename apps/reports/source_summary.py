@@ -131,6 +131,8 @@ def inspect_source(report, summary):
 
     remote = storage.is_remote()
     build = storage.summary_build_identity(report.studio, report.slug) if remote else ""
+    if len(build) > 300:
+        raise ValueError("serving identity exceeds index limit")
     raw = storage.read_summary_artifact(report.studio, report.slug, "_meta.json", build=build, max_bytes=META_BYTES) if not remote or build else None
     if remote and build and raw is None:
         raise FileNotFoundError("referenced immutable metadata missing")
@@ -157,7 +159,7 @@ def inspect_source(report, summary):
     # repeated v2 IDs use the documented last-entry semantics. Never truncate.
     unique = {}
     for claim in claims:
-        if claim["version"] is not None and (not isinstance(claim["version"], int) or isinstance(claim["version"], bool) or claim["version"] < 1):
+        if claim["version"] is not None and (not isinstance(claim["version"], int) or isinstance(claim["version"], bool) or not 1 <= claim["version"] <= 2147483647):
             raise ValueError("invalid metric version")
         if claim["definition_hash"] is not None and (not isinstance(claim["definition_hash"], str) or len(claim["definition_hash"]) > 64):
             raise ValueError("invalid metric hash")
@@ -167,6 +169,8 @@ def inspect_source(report, summary):
     digest = hashlib.sha256(json.dumps(sorted(unique.values(), key=lambda c: c["id"]), sort_keys=True).encode()).hexdigest()
     stamp = _parse_time(meta.get("last_run"))
     status = str(meta.get("last_status") or "")
+    if len(status) > 32 or len(str(attempt_meta.get("last_status") or "")) > 32:
+        raise ValueError("attempt status exceeds index limit")
     previews = {}
     preview_state = "not-applicable"
     generated = report.slug == "metrics" and "metrics" in (report.tags or [])

@@ -814,7 +814,7 @@ def summary_build_identity(studio, slug: str) -> str:
     if raw is None:
         return ""
     build = json.loads(raw).get("build")
-    if not isinstance(build, str) or not build or _safe_component(build) != build:
+    if not isinstance(build, str) or not build or len(build) > 300 or _safe_component(build) != build:
         raise ValueError("invalid serving pointer")
     return build
 

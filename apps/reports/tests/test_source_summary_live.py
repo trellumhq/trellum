@@ -138,6 +138,8 @@ def test_actual_worker_publish_failure_restart_and_freshness(studio_tree, settin
         assert finished.status == expected, finished.stderr_tail
         return finished
     evidence = {"backend": backend, "provider": "local" if backend == "local" else "disposable HTTP S3 protocol provider", "events": []}
+    evidence["source_sha"] = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+    evidence["source_dirty"] = bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=root, text=True).strip())
     try:
         worker = start()
         historical = wait_until(lambda: summary_ready(old.pk))

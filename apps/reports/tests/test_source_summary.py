@@ -345,3 +345,27 @@ def test_unchanged_remote_generated_build_skips_preview_io(studio_tree, monkeypa
     assert reconcile(row.pk)["status"] == "ready"
     assert calls.count("data.json") == 1
     assert row.source_summary.previews.get(metric_name="m").pk == first
+
+
+@pytest.mark.parametrize("version", [-1, 2147483648])
+def test_invalid_schema_bound_claim_version_backoff(studio_tree, version):
+    row = report(studio_tree, meta=metadata("old"))
+    reconcile(row.pk)
+    bad = metadata({"id": "bad", "version": version})
+    (studio_tree.output_dir / row.slug / "_meta.json").write_text(json.dumps(bad))
+    due(row)
+    assert reconcile(row.pk)["status"] == "unavailable"
+    assert row.source_summary.failures == 1
+    assert row.source_summary.next_check_at > timezone.now()
+    assert row.source_summary.claims.get().metric_name == "old"
+
+
+@pytest.mark.parametrize("build", ["../escape", "x" * 301])
+def test_invalid_remote_pointer_schema_bounds_backoff(studio_tree, monkeypatch, build):
+    from apps.core import storage
+    row = report(studio_tree)
+    monkeypatch.setattr(storage, "is_remote", lambda: True)
+    monkeypatch.setattr(storage, "read_summary_artifact", lambda *args, **kwargs: json.dumps({"build": build}).encode())
+    assert reconcile(row.pk)["status"] == "unavailable"
+    assert row.source_summary.failures == 1
+    assert row.source_summary.next_check_at > timezone.now()
