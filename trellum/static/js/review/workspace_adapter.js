@@ -13,6 +13,107 @@
     var workspaceFailedSend = null;
     var workspaceAddWait = Object.create(null);
     var workspaceEnded = false;
+    var workspaceActive = false;
+    var workspaceClean = false;
+    var workspaceRequestedSelect = false;
+    var workspaceViewRevision = 0;
+    var workspaceRendered = false;
+    var workspaceLoadError = '';
+    var workspaceReady = workspaceWaitForReady();
+
+    function workspaceWaitForReady() {
+        return new Promise(function (resolve, reject) {
+            var loading = document.getElementById('fwLoading');
+            if (!loading) { workspaceRendered = true; resolve(); return; }
+            var observer, deadline;
+            function finish(error) {
+                if (observer) observer.disconnect();
+                clearTimeout(deadline);
+                if (error) reject(new Error(error));
+                else { workspaceRendered = true; resolve(); }
+            }
+            function check() {
+                if (/failed to load data/i.test(loading.textContent || '')) { finish('The report data could not be loaded. Reload this report to retry.'); return; }
+                if (!loading.isConnected || getComputedStyle(loading).display === 'none') finish();
+            }
+            observer = new MutationObserver(check);
+            observer.observe(loading, {attributes:true, childList:true, subtree:true, characterData:true});
+            deadline = setTimeout(function () { finish('The report is still loading after 30 seconds. Reload it to retry.'); }, 30000);
+            check();
+        });
+    }
+
+    // The workspace owns its toolbar, conversation and session lifecycle.
+    // Keep the shared selection composer and pins inside the report document.
+    [bar, panel, endbar].forEach(function (node) { node.style.setProperty('display', 'none', 'important'); node.inert = true; });
+    root.setAttribute('data-html2canvas-ignore', '');
+    root.style.display = 'none';
+    root.inert = true;
+
+    function setPanel(open) {
+        if (open && workspaceActive && !workspaceClean) workspaceSend('fw-workspace-open-queue', {
+            filters:workspaceFilters(), source_built_at:workspaceBuiltAt()});
+    }
+    function workspaceApplySelecting() {
+        var on = !!(workspaceRequestedSelect && workspaceRendered && workspaceActive && !workspaceClean && !state.ended);
+        var changed = state.selecting !== on;
+        state.selecting = on;
+        $('fwrvSelect').classList.toggle('on', on);
+        document.body.classList.toggle('fwrv-selecting', on);
+        if (!on) { hl.style.display = 'none'; state.target = null; state.drag = null; lasso.style.display = 'none'; }
+        if (changed) workspaceSend('fw-workspace-select-mode', {selecting:on});
+    }
+    function setSelecting(on) {
+        workspaceRequestedSelect = !!on;
+        workspaceApplySelecting();
+    }
+    function workspaceVisible() {
+        if (!workspaceRendered || !workspaceActive || document.hidden) return false;
+        var frame = window.frameElement;
+        return !frame || (frame.getClientRects().length > 0 && frame.getBoundingClientRect().width > 0 && frame.getBoundingClientRect().height > 0);
+    }
+    function workspaceResizeCharts() {
+        document.querySelectorAll('canvas').forEach(function (canvas) {
+            if (!canvas.getClientRects().length) return;
+            var bounds = canvas.getBoundingClientRect();
+            if (!bounds.width || !bounds.height) return;
+            var chart = window.fw && fw.chartInstances && fw.chartInstances[canvas.id];
+            if (!chart && window.Chart && typeof Chart.getChart === 'function') chart = Chart.getChart(canvas);
+            if (chart && typeof chart.resize === 'function') chart.resize();
+        });
+    }
+    function workspaceSetView(message) {
+        if (typeof message.active !== 'boolean' || typeof message.clean !== 'boolean') return;
+        var changed = workspaceActive !== message.active || workspaceClean !== message.clean;
+        workspaceActive = message.active;
+        workspaceClean = message.clean;
+        root.style.display = workspaceActive && !workspaceClean ? '' : 'none';
+        root.inert = !workspaceActive || workspaceClean;
+        workspaceApplySelecting();
+        var restoreScroll = typeof message.scroll === 'number' && isFinite(message.scroll) && message.scroll >= 0;
+        if (!changed && !restoreScroll) return;
+        var revision = ++workspaceViewRevision;
+        if (!workspaceActive) return;
+        var x = window.scrollX, y = restoreScroll ? message.scroll : window.scrollY;
+        // Fonts and two layout frames let charts rendered in an inactive iframe
+        // acquire their real dimensions before resize and position restoration.
+        workspaceReady.then(function () { return document.fonts && document.fonts.ready; }).then(function () {
+            requestAnimationFrame(function () { requestAnimationFrame(function () {
+                if (revision !== workspaceViewRevision || !workspaceVisible()) return;
+                workspaceResizeCharts();
+                requestAnimationFrame(function () {
+                    if (revision !== workspaceViewRevision || !workspaceVisible()) return;
+                    window.scrollTo(x, y);
+                    render();
+                });
+            }); });
+        }).catch(function () { /* The readiness error is reported once below. */ });
+    }
+    document.addEventListener('keydown', function (event) {
+        if (event.key !== 'Escape' || !workspaceClean || !workspaceActive) return;
+        event.preventDefault(); event.stopImmediatePropagation();
+        workspaceSend('fw-workspace-exit-clean');
+    }, true);
 
     function workspaceIdValue(prefix) {
         var bytes = new Uint8Array(16);
@@ -174,7 +275,6 @@
     }, true);
     setSelecting(false);
     $('fwrvSelect').setAttribute('aria-label', 'Select an element');
-    $('fwrvSelect').addEventListener('click', function () { workspaceSend('fw-workspace-select-mode', {selecting:state.selecting}); });
     $('fwrvPopCancel').addEventListener('click', function () { ssSet(workspacePopoverKey, ''); workspaceRecoverableText=''; });
     popText.addEventListener('input', function () {
         if (!pop._target) return;
@@ -198,6 +298,7 @@
     window.addEventListener('message', function (event) {
         if (event.origin !== location.origin || event.source !== window.parent || !workspaceValid(event.data)) return;
         var message = event.data;
+        if (message.type === 'fw-workspace-view') { workspaceSetView(message); return; }
         if (message.type === 'fw-workspace-select') { setSelecting(!!message.selecting); return; }
         if (message.type === 'fw-workspace-init' || message.type === 'fw-workspace-queue') {
             if (Array.isArray(message.items)) {
@@ -212,7 +313,7 @@
                 addLog('agent', reply.text || reply.message || '', reply.n);
                 state.lastReplyN = Math.max(state.lastReplyN, Number(reply.n || 0));
             });
-            if (message.ended) { setSelecting(false); workspaceEnded = true; state.ended = true; endbar.style.display='block'; bar.style.display='none'; }
+            if (message.ended) { setSelecting(false); workspaceEnded = true; state.ended = true; }
         } else if (message.type === 'fw-workspace-status') {
             if (message.agent) setAgent(typeof message.agent === 'string' ? message.agent : message.agent.state || 'absent');
             if (Array.isArray(message.replies)) message.replies.forEach(function (reply) {
@@ -220,8 +321,10 @@
                 addLog('agent', reply.text || reply.message || '', reply.n);
                 state.lastReplyN = Math.max(state.lastReplyN, Number(reply.n || 0));
             });
-            if (message.ended) { setSelecting(false); workspaceEnded = true; state.ended = true; endbar.style.display='block'; bar.style.display='none'; }
+            if (message.ended) { setSelecting(false); workspaceEnded = true; state.ended = true; }
         } else if (message.type === 'fw-workspace-capture') {
+            if (!workspaceRendered) { workspaceSend('fw-workspace-capture-result', {selection_id:message.selection_id, error:workspaceLoadError || 'The report data is still loading. Wait for it to finish, then retry.'}); return; }
+            if (!workspaceVisible()) { workspaceSend('fw-workspace-capture-result', {selection_id:message.selection_id, error:'This report is hidden. Open its Reports page and retry the capture.'}); return; }
             var reference = workspaceTargets[message.selection_id];
             if (!reference) { workspaceSend('fw-workspace-capture-result', {selection_id:message.selection_id, error:'The selected element is no longer available.'}); return; }
             if (workspaceFingerprint(reference.target) !== reference.fingerprint) {
@@ -230,7 +333,14 @@
             if (!(window.fw && typeof fw.captureElementSnapshotForAnalysis === 'function')) {
                 workspaceSend('fw-workspace-capture-result', {selection_id:message.selection_id, error:'Snapshot capture is unavailable for this report.'}); return;
             }
-            fw.captureElementSnapshotForAnalysis(reference.target).then(function (capture) {
+            Promise.resolve().then(function () {
+                if (!workspaceVisible()) throw new Error('This report is hidden. Open its Reports page and retry the capture.');
+                workspaceResizeCharts();
+                // The shared API waits for fonts, settled chart layout and the
+                // final non-animated render, and excludes review chrome.
+                return fw.captureElementSnapshotForAnalysis(reference.target);
+            }).then(function (capture) {
+                if (!workspaceVisible()) throw new Error('The report was hidden during capture. Return to it and retry.');
                 if (workspaceFingerprint(reference.target) !== reference.fingerprint) throw new Error('The report changed while capture was rendering. Select it again.');
                 // Custom canvases may read filtered data without declaring a
                 // dataset. Preserve the same page context as the queued item.
@@ -254,7 +364,7 @@
             workspaceFailedSend=null;
             if (message.note_origin === workspaceChild.slug && message.note_text === waiting.text && note.value.trim() === waiting.text && workspaceNoteRevision === waiting.revision) { note.value = ''; workspaceNoteOrigin = null; ssSet('fw-workspace-note:' + workspaceId, ''); }
             if (Array.isArray(message.items)) { state.items = workspaceClone(message.items); workspaceMirror = state.items.map(workspaceClone); }
-            if (message.ended) { setSelecting(false); workspaceEnded = true; state.ended = true; endbar.style.display='block'; bar.style.display='none'; }
+            if (message.ended) { setSelecting(false); workspaceEnded = true; state.ended = true; }
             else showToast('Sent', message.message || 'Feedback was sent to the agent.');
             render();
         }
@@ -273,7 +383,15 @@
         note.placeholder = 'Describe what this source should contribute to the analysis…';
         root.querySelector('.fwrv-note-l').textContent = 'Context for the analysis';
     }
-    workspaceSend('fw-workspace-focus');
+    workspaceReady.then(function () {
+        workspaceApplySelecting();
+        workspaceSend('fw-workspace-ready');
+    }, function (error) {
+        workspaceLoadError = error.message;
+        workspaceRequestedSelect = false;
+        workspaceApplySelecting();
+        workspaceSend('fw-workspace-load-error', {message:error.message});
+    });
 
     try {
         var savedPop=JSON.parse(ssGet(workspacePopoverKey)||'null');

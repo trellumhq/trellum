@@ -8,19 +8,21 @@
   var statusEl = document.getElementById('session-status');
   var sourceStatus = document.getElementById('source-status');
   var note = document.getElementById('chat-note');
-  var selectionNote = document.getElementById('selection-note');
-  var selectBox = document.getElementById('selection-box');
-  var queue = [], reports = [], activeSource = null, pendingSource = null, selectedItem = null;
+  var queue = [], reports = [], activeSource = null, pendingSource = null;
   var captureWaiters = Object.create(null), openRequests = Object.create(null), buildRequested = Object.create(null);
   var viewState = {analysis:Object.create(null), source:Object.create(null)};
   var requestSeq = 0, stateGeneration = 0, pendingSourceGeneration = 0;
   var pollBusy = false, sendBusy = false, ended = false, invalidSession = false;
   var stateVersion = {analysis:null, source:null}, initialSource = cfg.initial_source || '';
-  var initialHandled = false, lastReplySignature = '', contentOrigin = {origin_slug:cfg.analysis_slug,origin_name:'Analysis',origin_kind:'analysis',frame_id:''}, cancelledSelections=Object.create(null);
-  var noteOrigin = null, pendingSend = null, selectionDrafts = Object.create(null), captureFailures = [];
+  var initialHandled = false, lastReplySignature = '', contentOrigin = {origin_slug:cfg.analysis_slug,origin_name:'Analysis',origin_kind:'analysis',frame_id:''};
+  var noteOrigin = null, pendingSend = null, captureFailures = [];
   var storageKey = 'fw-workspace:' + cfg.session + ':' + cfg.analysis_slug;
   var tabButtons = Array.prototype.slice.call(document.querySelectorAll('.fw-tabs button'));
-  var userTabGeneration=0, workspaceSelecting=false, nextQueueN=1;
+  var workspaceSelecting=false, nextQueueN=1, currentTab='analysis', cleanView=false;
+  var queueDialog=document.getElementById('queue-dialog'), queueToggle=document.getElementById('queue-toggle');
+  var notice=document.getElementById('workspace-status'), noticeTimer, cleanHintTimer, cleanRevealTimer;
+  var queueOpener=null, restoringHistory=false, cleanEntry=null, reportOptionsSignature='';
+
 
   function id(prefix) {
     var bytes = new Uint8Array(16);
@@ -51,36 +53,156 @@
     if(!frame||!frame.contentWindow||!frame.dataset.frameId)return;
     frame.contentWindow.postMessage(Object.assign({type:type,session:cfg.session,analysis_slug:cfg.analysis_slug,frame_id:frame.dataset.frameId,slug:frame.dataset.slug},payload||{}),location.origin);
   }
+  function activeFrame() { return currentTab==='reports'?sourceFrame:analysisFrame; }
+  function captureInFlight() { return captureFailures.some(function(f){return f.inflight;}); }
+  function announce(message) {
+    clearTimeout(noticeTimer);notice.hidden=false;notice.textContent=message;
+    noticeTimer=setTimeout(function(){notice.hidden=true;},6000);
+  }
+  function canChangeView() {
+    if(!captureInFlight())return true;
+    announce('Keep this report open until its snapshot finishes.');return false;
+  }
+  function updateControls() {
+    var frame=activeFrame(), ready=frame.dataset.ready==='true'&&!frame.hidden;
+    var source=selectedReport();
+    if(currentTab==='reports')ready=ready&&!!source&&source.build_state==='ready'&&source.slug===frame.dataset.slug&&source.version===stateVersion.source;
+    document.getElementById('global-select').disabled=ended||invalidSession||!ready||cleanView||captureInFlight();
+    document.getElementById('content-only').disabled=!frame.dataset.ready||frame.hidden||captureInFlight();
+    document.getElementById('content-only').textContent=currentTab==='reports'?'Report only':'Analysis only';
+    sourceSelect.disabled=ended||invalidSession||captureInFlight();
+  }
   function setSelect(on) {
     workspaceSelecting=!!on;
-    var button=document.getElementById('global-select'); button.setAttribute('aria-pressed',on?'true':'false');
-    [analysisFrame,sourceFrame].forEach(function(f){if(f.dataset.frameId)postFrame(f,'fw-workspace-select',{selecting:!!on});});
+    var button=document.getElementById('global-select');button.setAttribute('aria-pressed',on?'true':'false');
+    button.textContent=on?'Cancel selection':'Select element';
+    [analysisFrame,sourceFrame].forEach(function(f){postFrame(f,'fw-workspace-select',{selecting:!!on&&f===activeFrame()});});
   }
-  document.getElementById('global-select').addEventListener('click',function(e){if(ended)return;setSelect(e.currentTarget.getAttribute('aria-pressed')!=='true');});
-  function activeTab() { var b=tabButtons.find(function(x){return x.getAttribute('aria-selected')==='true';});return b&&b.dataset.tab||'analysis'; }
-  function activateTab(tab) {
-    tabButtons.forEach(function(b){b.setAttribute('aria-selected',b.dataset.tab===tab?'true':'false');});
-    document.querySelectorAll('.fw-pane').forEach(function(p){p.classList.toggle('is-active',p.dataset.pane===tab);});
-    if(tab==='analysis')contentOrigin=originForFrame(analysisFrame,'analysis');
-    if(tab==='reports'&&activeSource)contentOrigin=originForFrame(sourceFrame,'report');
+  document.getElementById('global-select').addEventListener('click',function(){if(ended||invalidSession)return;setSelect(!workspaceSelecting);});
+  function activeTab() { return currentTab; }
+  function syncFrameViews(restoreFrame) {
+    [analysisFrame,sourceFrame].forEach(function(frame){
+      var saved=viewState[frameRole(frame)][frame.dataset.slug];
+      var view={active:frame===activeFrame(),clean:cleanView};
+      if(frame===restoreFrame)view.scroll=saved?saved.scroll:Number(frame.dataset.restoreScroll||0);
+      postFrame(frame,'fw-workspace-view',view);
+    });
+    updateControls();
   }
-  function originForFrame(frame,kind) { return {origin_slug:frame.dataset.slug||(kind==='analysis'?cfg.analysis_slug:''),origin_name:frame.dataset.name||(kind==='analysis'?'Analysis':'Source report'),origin_kind:kind,frame_id:frame.dataset.frameId||''}; }
-  function rememberFocusedFrame() {
-    var frame=document.activeElement;
-    if(frame===analysisFrame||frame===sourceFrame)contentOrigin=originForFrame(frame,frame===analysisFrame?'analysis':'report');
+  function updateHistory(replace) {
+    if(restoringHistory)return;
+    var url=new URL(location.href);url.searchParams.set('page',currentTab);
+    if(pendingSource)url.searchParams.set('source',pendingSource);else url.searchParams.delete('source');
+    var method=replace?'replaceState':'pushState';
+    if(replace||url.href!==location.href)history[method](history.state,'',url.href);
   }
-  window.addEventListener('blur',rememberFocusedFrame);
-  window.addEventListener('focus',rememberFocusedFrame);
-  tabButtons.forEach(function(b){b.addEventListener('click',function(){if(captureFailures.some(function(f){return f.inflight;})&&b.dataset.tab!=='reports'){sourceStatus.textContent='Keep this report open until its snapshot finishes.';return;}userTabGeneration++;activateTab(b.dataset.tab);});});
-
-  [analysisFrame,sourceFrame].forEach(function(frame){frame.addEventListener('load',function(){if(frame.dataset.frameId){postFrame(frame,'fw-workspace-init',{selecting:workspaceSelecting,items:queue.map(persistableItem),agent:statusEl.textContent,replies:[],ended:ended});var scroll=Number(frame.dataset.restoreScroll||0);if(scroll)frame.contentWindow.scrollTo(0,scroll);}});});
+  function activateTab(tab,recordHistory) {
+    if(tab==='queue'){openQueue();return;}
+    if(tab!=='analysis'&&tab!=='reports')return;
+    var changed=currentTab!==tab;
+    if(changed){rememberView(activeFrame());setSelect(false);}
+    currentTab=tab;
+    tabButtons.forEach(function(b){if(b.dataset.tab===tab)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
+    document.querySelectorAll('.fw-pane').forEach(function(p){p.hidden=p.dataset.pane!==tab;p.classList.toggle('is-active',p.dataset.pane===tab);});
+    document.getElementById('source-controls').hidden=tab!=='reports';
+    contentOrigin=originForFrame(activeFrame(),tab==='reports'?'report':'analysis');
+    updateNoteContext();syncFrameViews(changed?activeFrame():null);
+    if(recordHistory)updateHistory(false);
+  }
+  function originForFrame(frame,kind) {
+    var origin={origin_slug:frame.dataset.slug||(kind==='analysis'?cfg.analysis_slug:''),origin_name:frame.dataset.name||(kind==='analysis'?'Analysis':'Source report'),origin_kind:kind,frame_id:frame.dataset.frameId||''};
+    try {
+      var win=frame.contentWindow, engine=win.fw&&win.fw.filterEngine, filters={};
+      if(engine&&engine.getDatasetIds)engine.getDatasetIds().forEach(function(ds){filters[ds]=engine.getFilterState(ds);});
+      origin.filters=filters;origin.source_built_at=win._reportData&&win._reportData._freshness&&win._reportData._freshness.generated_at||null;
+    }catch(_){}
+    return origin;
+  }
+  function updateNoteContext() {
+    var origin=noteOrigin||contentOrigin;
+    document.getElementById('note-context').textContent='Context: '+(origin.origin_name||origin.origin_slug||'Analysis');
+  }
+  function openQueue(focusNote) {
+    if(queueDialog.open)return;
+    queueOpener=document.activeElement;
+    contentOrigin=originForFrame(activeFrame(),currentTab==='reports'?'report':'analysis');
+    updateNoteContext();queueDialog.showModal();queueToggle.setAttribute('aria-expanded','true');
+    if(focusNote)note.focus();
+  }
+  function closeQueue() { queueDialog.close(); }
+  queueToggle.addEventListener('click',function(){openQueue();});
+  document.getElementById('queue-close').addEventListener('click',closeQueue);
+  queueDialog.addEventListener('close',function(){
+    queueToggle.setAttribute('aria-expanded','false');
+    var opener=queueOpener&&queueOpener.isConnected?queueOpener:queueToggle;
+    if(opener===analysisFrame||opener===sourceFrame)opener=queueToggle;
+    opener.focus({preventScroll:true});
+  });
+  queueDialog.addEventListener('keydown',function(e){
+    if(e.key!=='Tab')return;
+    var controls=Array.prototype.filter.call(queueDialog.querySelectorAll('button,textarea,select,input,[tabindex]'),function(el){return !el.disabled&&el.tabIndex>=0&&el.getClientRects().length;});
+    var first=controls[0],last=controls[controls.length-1];
+    if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+    else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+  });
+  queueDialog.addEventListener('click',function(e){
+    var box=queueDialog.getBoundingClientRect();
+    if(e.target===queueDialog&&(e.clientX<box.left||e.clientX>box.right||e.clientY<box.top||e.clientY>box.bottom))closeQueue();
+  });
+  function revealCleanExit() {
+    clearTimeout(cleanRevealTimer);document.body.classList.add('fw-clean-reveal');
+    cleanRevealTimer=setTimeout(function(){document.body.classList.remove('fw-clean-reveal');},2400);
+  }
+  function setClean(on) {
+    if(on&&!canChangeView())return;
+    if(on){rememberView(activeFrame());cleanEntry={frame:activeFrame(),slug:activeFrame().dataset.slug,view:clone(viewState[frameRole(activeFrame())][activeFrame().dataset.slug]||{scroll:0,params:{}})};}
+    else if(cleanEntry&&cleanEntry.frame.dataset.slug===cleanEntry.slug)viewState[frameRole(cleanEntry.frame)][cleanEntry.slug]=cleanEntry.view;
+    cleanView=!!on;
+    if(queueDialog.open)closeQueue();
+    document.body.classList.toggle('fw-clean',cleanView);
+    document.getElementById('exit-content-only').hidden=!cleanView;
+    clearTimeout(cleanHintTimer);document.getElementById('content-only-hint').hidden=!cleanView;
+    if(cleanView){
+      setSelect(false);revealCleanExit();
+      cleanHintTimer=setTimeout(function(){document.getElementById('content-only-hint').hidden=true;},3000);
+      activeFrame().focus();
+    }else document.getElementById('content-only').focus({preventScroll:true});
+    syncFrameViews(activeFrame());
+    if(!on)cleanEntry=null;
+  }
+  document.getElementById('content-only').addEventListener('click',function(){setClean(true);});
+  document.getElementById('exit-content-only').addEventListener('click',function(){setClean(false);});
+  document.addEventListener('pointermove',function(e){if(cleanView&&e.clientY<60)revealCleanExit();});
+  document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!queueDialog.open){if(cleanView)setClean(false);else setSelect(false);}});
+  tabButtons.forEach(function(b){b.addEventListener('click',function(){if(canChangeView())activateTab(b.dataset.tab,true);});});
+  window.addEventListener('popstate',function(){
+    if(!canChangeView()){updateHistory(true);return;}
+    var url=new URL(location.href), slug=url.searchParams.get('source')||'';
+    restoringHistory=true;
+    if(cleanView)setClean(false);
+    if(!slug||reports.some(function(r){return r.slug===slug;})){sourceSelect.value=slug;selectSource(slug,false);updateSourceStatus();}
+    activateTab(url.searchParams.get('page')==='reports'?'reports':'analysis');restoringHistory=false;
+  });
+  function initFrame(frame) {
+    postFrame(frame,'fw-workspace-init',{selecting:workspaceSelecting&&frame===activeFrame(),items:queue.map(persistableItem),agent:statusEl.textContent,replies:[],ended:ended});
+    syncFrameViews(frame);
+  }
+  [analysisFrame,sourceFrame].forEach(function(frame){frame.addEventListener('load',function(){if(frame.dataset.frameId)initFrame(frame);});});
   window.addEventListener('message',function(event){
     if(event.origin!==location.origin||!event.data||typeof event.data!=='object')return;
     var d=event.data;
     var frame=[analysisFrame,sourceFrame].find(function(f){return f.contentWindow===event.source&&f.dataset.frameId===d.frame_id&&f.dataset.slug===d.slug;});
     if(!frame||d.session!==cfg.session||d.analysis_slug!==cfg.analysis_slug)return;
-    if(d.type==='fw-workspace-focus') { contentOrigin=originForFrame(frame,frame===analysisFrame?'analysis':'report'); return; }
-    if(d.type==='fw-workspace-select-mode') { setSelect(!!d.selecting); return; }
+    if(d.type==='fw-workspace-ready') { delete frame.dataset.loadError;frame.dataset.ready='true';initFrame(frame);return; }
+    if(d.type==='fw-workspace-load-error') {
+      delete frame.dataset.ready;frame.dataset.loadError=String(d.message||'The report could not finish loading.');
+      if(frame===sourceFrame)updateSourceStatus();else announce('Analysis could not load. Reload the workspace to try again.');
+      updateControls();return;
+    }
+    if(d.type==='fw-workspace-open-queue') { if(frame===activeFrame())openQueue(!!d.focus_note);return; }
+    if(d.type==='fw-workspace-exit-clean') { if(frame===activeFrame()&&cleanView)setClean(false);return; }
+    if(d.type==='fw-workspace-focus') { if(frame===activeFrame())contentOrigin=originForFrame(frame,frame===analysisFrame?'analysis':'report');return; }
+    if(d.type==='fw-workspace-select-mode') { if(frame===activeFrame()&&!cleanView)setSelect(!!d.selecting);return; }
     if(d.type==='fw-workspace-capture-result') {
       var waiter=captureWaiters[d.selection_id]; if(!waiter)return; delete captureWaiters[d.selection_id];
       if(d.error)waiter.reject(new Error(d.error));else waiter.resolve(d.capture);
@@ -97,7 +219,7 @@
     }
   });
   function rememberView(frame) {
-    var role=frameRole(frame), slug=frame.dataset.slug; if(!slug||!frame.contentWindow)return;
+    var role=frameRole(frame), slug=frame.dataset.slug; if(!slug||!frame.contentWindow||frame.dataset.ready!=='true'||frame.parentElement.hidden)return;
     try {var current=new URL(frame.contentWindow.location.href);var params={};current.searchParams.forEach(function(v,k){if(!['fw_workspace','fw_session','fw_frame'].includes(k))params[k]=v;});viewState[role][slug]={params:params,scroll:frame.contentWindow.scrollY||0};}catch(_){}
   }
   function frameUrl(item,role) {
@@ -112,13 +234,20 @@
     var role=frameRole(frame), f=frameUrl(item,role);
     frame.dataset.frameId=f.frameId;frame.dataset.slug=item.slug;frame.dataset.name=item.name||item.slug;
     if(role==='source')frame.hidden=false;
-    frame.dataset.restoreScroll=String(f.scroll);frame.src=f.url;
+    frame.dataset.restoreScroll=String(f.scroll);delete frame.dataset.ready;delete frame.dataset.loadError;
+    // Replacing a source must not add a second, iframe-only history entry.
+    if(frame.getAttribute('src'))frame.contentWindow.location.replace(f.url);else frame.src=f.url;
+    updateControls();
   }
   function renderReports(preferred) {
     var keep=preferred!==undefined?preferred:(pendingSource||sourceSelect.value||initialSource);
-    sourceSelect.replaceChildren();
-    var placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='Choose a source report';sourceSelect.appendChild(placeholder);
-    reports.forEach(function(r){var opt=document.createElement('option');opt.value=r.slug;opt.textContent=r.name||r.slug;sourceSelect.appendChild(opt);});
+    var signature=JSON.stringify(reports.map(function(r){return [r.slug,r.name];}));
+    if(signature!==reportOptionsSignature){
+      sourceSelect.replaceChildren();
+      var placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='Choose a source report';sourceSelect.appendChild(placeholder);
+      reports.forEach(function(r){var opt=document.createElement('option');opt.value=r.slug;opt.textContent=r.name||r.slug;sourceSelect.appendChild(opt);});
+      reportOptionsSignature=signature;
+    }
     sourceSelect.value=reports.some(function(r){return r.slug===keep;})?keep:'';
     document.getElementById('open-report').disabled=!sourceSelect.value||ended||invalidSession;
     updateSourceStatus();
@@ -126,17 +255,19 @@
   function selectedReport() {return reports.find(function(r){return r.slug===sourceSelect.value;})||null;}
   function updateSourceStatus() {
     var r=selectedReport(), retry=document.getElementById('retry-build'), open=document.getElementById('open-report');
-    retry.hidden=!r||r.build_state!=='failed';retry.disabled=ended||invalidSession;
-    open.textContent=r&&r.build_state==='ready'?'Open report':'Build report';
-    if(!r){escText(sourceStatus,'Choose a source report.');return;}
+    retry.hidden=!r||r.build_state!=='failed';retry.disabled=ended||invalidSession||captureInFlight();open.hidden=false;
+    open.textContent=r&&r.build_state==='ready'?(sourceFrame.dataset.loadError?'Reload report':'Open report'):'Build report';
+    if(!r){escText(sourceStatus,reports.length?'Choose a source report.':'No source reports are available in this project.');open.disabled=true;updateControls();return;}
     var labels={missing:'Report has not been built.',stale:'Report needs a rebuild.',building:'Building report…',failed:'Build failed: '+(r.error||'Try again.'),ready:'Report is ready.'};
-    escText(sourceStatus,labels[r.build_state]||'Report status unavailable.');
-    open.disabled=ended||invalidSession||r.build_state==='building';
+    escText(sourceStatus,r.build_state==='ready'&&sourceFrame.dataset.slug===r.slug?(sourceFrame.dataset.loadError||''):labels[r.build_state]||'Report status unavailable.');
+    open.disabled=ended||invalidSession||r.build_state==='building'||captureInFlight();
+    open.hidden=r.build_state==='ready'&&sourceFrame.dataset.slug===r.slug&&!sourceFrame.dataset.loadError;updateControls();
   }
   function openReadyReport(r,generationAtSelection) {
     if(!r||r.build_state!=='ready'||pendingSource!==r.slug||generationAtSelection!==pendingSourceGeneration)return;
     var unchanged=activeSource&&activeSource.slug===r.slug&&stateVersion.source===r.version&&sourceFrame.dataset.slug===r.slug;
-    activeSource=r;stateVersion.source=r.version;if(!unchanged)loadFrame(sourceFrame,r);sourceFrame.hidden=false;sourceStatus.textContent='';if(activeTab()==='reports')contentOrigin=originForFrame(sourceFrame,'report');
+    if(!unchanged&&captureInFlight())return;
+    activeSource=r;stateVersion.source=r.version;if(!unchanged)loadFrame(sourceFrame,r);sourceFrame.hidden=false;sourceStatus.textContent=sourceFrame.dataset.loadError||'';if(activeTab()==='reports')contentOrigin=originForFrame(sourceFrame,'report');updateControls();
   }
   function requestBuild(r,force,generationAtSelection) {
     if(!r||ended||invalidSession)return;
@@ -147,8 +278,10 @@
     api('open','POST',{session:cfg.session,analysis_slug:cfg.analysis_slug,slug:r.slug,request_id:req},req).then(function(){if(openRequests[r.slug]===req)delete openRequests[r.slug];pollState();}).catch(function(e){if(openRequests[r.slug]===req)delete openRequests[r.slug];delete buildRequested[r.slug];if(pendingSource===r.slug&&generationAtSelection===pendingSourceGeneration){sourceStatus.textContent='Could not start report build: '+e.message;document.getElementById('open-report').disabled=false;}});
   }
   function selectSource(slug,forceBuild) {
+    if(!canChangeView()){sourceSelect.value=pendingSource||'';return;}
     pendingSource=slug||null;pendingSourceGeneration++;var thisGeneration=pendingSourceGeneration;
-    if(!slug)return;
+    setSelect(false);updateHistory(false);
+    if(!slug){rememberView(sourceFrame);sourceFrame.hidden=true;activeSource=null;updateControls();return;}
     var r=reports.find(function(x){return x.slug===slug;});if(!r)return;
     if(r.build_state==='ready'){openReadyReport(r,thisGeneration);return;}
     if(r.build_state==='building'){sourceStatus.textContent='Building report…';return;}
@@ -156,17 +289,9 @@
     requestBuild(r,!!forceBuild,thisGeneration);
   }
   sourceSelect.addEventListener('change',function(){selectSource(sourceSelect.value,false);updateSourceStatus();});
-  document.getElementById('open-report').addEventListener('click',function(){var r=selectedReport();if(!r)return;if(r.build_state==='ready'){selectSource(r.slug,false);}else selectSource(r.slug,true);});
+  document.getElementById('open-report').addEventListener('click',function(){var r=selectedReport();if(!r)return;if(!canChangeView())return;if(r.build_state==='ready'){if(sourceFrame.dataset.loadError)loadFrame(sourceFrame,r);else selectSource(r.slug,false);}else selectSource(r.slug,true);});
   document.getElementById('retry-build').addEventListener('click',function(){var r=selectedReport();if(r)selectSource(r.slug,true);});
 
-  function renderSelection() {
-    if(!selectedItem)return;
-    var title=selectedItem.component&&(selectedItem.component.title||selectedItem.component.kind)||selectedItem.tag||'Selection';
-    escText(document.getElementById('selection-context'),(selectedItem.origin_name||selectedItem.origin_slug)+' · '+title+(selectedItem.section&&selectedItem.section.title?' · '+selectedItem.section.title:'')+(selectedItem.text?' — '+selectedItem.text.slice(0,150):''));
-    document.getElementById('capture-status').replaceChildren();
-  }
-  document.getElementById('dismiss-selection').addEventListener('click',function(){if(selectedItem)cancelledSelections[selectedItem.selection_id]=true;selectBox.hidden=true;selectedItem=null;});
-  selectionNote.addEventListener('input',function(){if(selectedItem){selectedItem.prompt=selectionNote.value;selectionDrafts[selectedItem.selection_id]=selectionNote.value;}});
   function currentFrameFor(item){return item.origin_kind==='analysis'?analysisFrame:sourceFrame;}
   function requestCapture(item) {
     return new Promise(function(resolve,reject){var f=currentFrameFor(item);if(!f.dataset.frameId||f.dataset.frameId!==item.frame_id){reject(new Error('That report view has changed. Select it again.'));return;}
@@ -174,47 +299,11 @@
       setTimeout(function(){if(captureWaiters[item.selection_id]){delete captureWaiters[item.selection_id];reject(new Error('The report did not return its snapshot.'));}},20000);
     });
   }
-  function isCaptureTarget(item){return item.origin_kind==='report'&&item.component&&/chart|section|table|image|rawhtml|kpi/i.test(item.component.kind||'');}
-  function setCaptureMessage(message,actions) {
-    var status=document.getElementById('capture-status');status.replaceChildren(document.createTextNode(message+' '));
-    (actions||[]).forEach(function(action){var b=document.createElement('button');b.type='button';b.className='fw-button';b.textContent=action.label;b.addEventListener('click',action.run);status.appendChild(b);});
-  }
-  function finishCapture(item,captureId) {
-    captureFailures=captureFailures.filter(function(f){return f.item.request_id!==item.request_id;});
-    if(cancelledSelections[item.selection_id]){delete cancelledSelections[item.selection_id];document.getElementById('queue-selection').disabled=false;return;}
-    item.capture_id=captureId||null;delete item._capturePayload;delete item._captureRequestId;
-    queue.push(item);saveDraft();renderQueue();
-    if(selectedItem&&selectedItem.selection_id===item.selection_id&&selectionNote.value.trim()===item.prompt){selectedItem=null;selectionNote.value='';selectBox.hidden=true;}
-    var button=document.getElementById('queue-selection');button.disabled=false;
-  }
   function uploadCapture(item,capturePayload) {
     item._capturePayload=capturePayload;item._captureRequestId=item._captureRequestId||id('capture');
     var body={session:cfg.session,analysis_slug:cfg.analysis_slug,slug:item.origin_slug,capture:capturePayload,selection_id:item.selection_id,request_id:item._captureRequestId};
     return api('capture','POST',body,item._captureRequestId).then(function(res){return res.capture_id;});
   }
-  function queueSelected() {
-    if(!selectedItem)return;
-    var item=clone(selectedItem);item.prompt=selectionNote.value.trim();item.request_id=id('item');
-    if(!item.prompt){selectionNote.focus();setCaptureMessage('Add a short change request before queuing.');return;}
-    var button=document.getElementById('queue-selection');button.disabled=true;
-    var tabGenerationAtCapture=userTabGeneration;
-    if(!isCaptureTarget(item)){finishCapture(item,null);return;}
-    var sourceState=reports.find(function(r){return r.slug===item.origin_slug;});
-    if(item.origin_kind==='report'&&(!sourceState||sourceState.build_state!=='ready'||sourceState.version!==stateVersion.source)){button.disabled=false;captureFailure(new Error('The selected report is rebuilding or no longer current. Wait until it is ready, then select it again.'),function(){document.getElementById('send-status').textContent='Select the refreshed report element again before retrying its snapshot.';},function(){finishCapture(item,null);});return;}
-    // A child document must remain rendered while its chart snapshot is taken.
-    activateTab('reports');
-    setCaptureMessage('Capturing the selected report…');
-    requestAnimationFrame(function(){requestAnimationFrame(function(){
-      requestCapture(item).then(function(payload){return uploadCapture(item,payload);}).then(function(captureId){finishCapture(item,captureId);if(userTabGeneration===tabGenerationAtCapture&&activeTab()==='reports')activateTab('queue');}).catch(function(e){
-        button.disabled=false;
-        var retry=function(){var payload=item._capturePayload;var retryGeneration=userTabGeneration;var attempt=function(){var captureAttempt=payload?Promise.resolve(payload):requestCapture(item);captureAttempt.then(function(capture){return uploadCapture(item,capture);}).then(function(captureId){finishCapture(item,captureId);if(retryGeneration===userTabGeneration&&activeTab()==='reports')activateTab('queue');}).catch(function(err){captureFailure(err,retry,textOnly);});};if(!payload&&activeTab()!=='reports'){activateTab('reports');requestAnimationFrame(function(){requestAnimationFrame(attempt);});}else attempt();};
-        var textOnly=function(){finishCapture(item,null);if(userTabGeneration===tabGenerationAtCapture&&activeTab()==='reports')activateTab('queue');};
-        captureFailure(e,retry,textOnly);
-      });
-    });});
-    function captureFailure(error,retry,textOnly){var existing=captureFailures.find(function(f){return f.item.request_id===item.request_id;});if(existing){existing.error=error.message;existing.retry=retry;existing.textOnly=textOnly;}else captureFailures.push({item:item,error:error.message,retry:retry,textOnly:textOnly});renderQueue();if(selectedItem&&selectedItem.selection_id===item.selection_id){if(userTabGeneration===tabGenerationAtCapture&&activeTab()==='reports')activateTab('queue');setCaptureMessage('Snapshot failed: '+error.message+' ',[{label:'Retry snapshot',run:retry},{label:'Queue text without snapshot',run:textOnly}]);}else{document.getElementById('send-status').textContent='Snapshot failed for '+item.origin_name+': '+error.message+'. The note and selection are available in the queue.';}}
-  }
-  document.getElementById('queue-selection').addEventListener('click',queueSelected);
   function broadcastStatus(s) {
     [analysisFrame,sourceFrame].forEach(function(f){if(f.dataset.frameId)postFrame(f,'fw-workspace-status',{agent:s.agent||'absent',replies:s.replies||[],ended:!!(s.ended||s.active===false)});});
   }
@@ -222,6 +311,7 @@
     [analysisFrame,sourceFrame].forEach(function(f){if(f.dataset.frameId)postFrame(f,'fw-workspace-queue',{items:queue.map(persistableItem)});});
   }
   function queueWidgetItem(frame, message) {
+    if(ended||invalidSession)return;
     var incoming=message.item||{}, requestId=String(incoming.request_id||'');
     if(!requestId||!/^.{16,}$/.test(requestId)||!frame.dataset.frameId||incoming.frame_id!==frame.dataset.frameId||incoming.origin_slug!==frame.dataset.slug){
       postFrame(frame,'fw-workspace-queue-result',{request_id:requestId,ok:false,message:'This report view changed. Select the element again.'});return;
@@ -234,26 +324,27 @@
     item.origin_slug=frame.dataset.slug;item.origin_name=frame.dataset.name||frame.dataset.slug;item.origin_kind=frame===analysisFrame?'analysis':'report';item.frame_id=frame.dataset.frameId;
     item.n=retryEntry?retryEntry.item.n:nextQueueN++;
     if(message.capture_required){
-      activateTab('reports');
-      if(item.origin_kind!=='report'||!source||source.build_state!=='ready'||!source.version){postFrame(frame,'fw-workspace-queue-result',{request_id:requestId,ok:false,message:'This report is not ready for a snapshot. Wait for it to finish, then select it again.'});return;}
+      if(cleanView||frame!==activeFrame()){postFrame(frame,'fw-workspace-queue-result',{request_id:requestId,ok:false,message:'Open the source report before capturing this selection.'});return;}
+      if(item.origin_kind!=='report'||!source||source.build_state!=='ready'||!source.version||source.version!==stateVersion.source){postFrame(frame,'fw-workspace-queue-result',{request_id:requestId,ok:false,message:'This report is not ready for a snapshot. Wait for it to finish, then select it again.'});return;}
       var captureId=message.selection_id||item.selection_id||('selection-'+requestId);item.selection_id=captureId;
       var prior=captureFailures.find(function(x){return x.item.request_id===requestId;});
       var captured=prior&&prior.item._capturePayload?Promise.resolve(prior.item._capturePayload):requestCapture(item);
       if(prior)prior.inflight=true;else captureFailures.push({item:item,error:'Capture in progress',frame:frame,message:message,inflight:true});
+      renderQueue();
       captured.then(function(payload){return uploadCapture(item,payload);}).then(function(idValue){
         item.capture_id=idValue||null;delete item.selection_id;delete item._capturePayload;delete item._captureRequestId;
         captureFailures=captureFailures.filter(function(x){return x.item.request_id!==requestId;});
-        queue.push(item);saveDraft();renderQueue();broadcastQueue();
+        queue.push(item);saveDraft();renderQueue();broadcastQueue();announce('Added to queue.');
         postFrame(frame,'fw-workspace-queue-result',{request_id:requestId,ok:true,items:queue.map(persistableItem)});
       }).catch(function(error){
         var failure=captureFailures.find(function(x){return x.item.request_id===requestId;});
         if(failure){failure.error=error.message;failure.frame=frame;failure.message=message;failure.inflight=false;}
         else captureFailures.push({item:item,error:error.message,frame:frame,message:message,inflight:false});
-        postFrame(frame,'fw-workspace-queue-result',{request_id:requestId,ok:false,message:'Snapshot failed: '+error.message+'. Your note is still available; choose Queue again to retry.'});renderQueue();
+        postFrame(frame,'fw-workspace-queue-result',{request_id:requestId,ok:false,message:'Snapshot failed: '+error.message+'. Your note is still available; choose Queue again to retry.'});renderQueue();announce('Snapshot failed. Your note is retained; open Queue to retry.');
       });
       return;
     }
-    queue.push(item);saveDraft();renderQueue();broadcastQueue();
+    queue.push(item);saveDraft();renderQueue();broadcastQueue();announce('Added to queue.');
     postFrame(frame,'fw-workspace-queue-result',{request_id:requestId,ok:true,items:queue.map(persistableItem)});
   }
   function queueWidgetNote(frame, message) {
@@ -269,15 +360,38 @@
     send(!!message.end_session,frame,message.request_id,text,Number(message.note_revision||0));
   }
   function renderQueue() {
-    var list=document.getElementById('queue-list');list.replaceChildren();
-    queue.forEach(function(item,index){var li=document.createElement('li');li.className='fw-queue-item';
-      var remove=document.createElement('button');remove.type='button';remove.className='fw-button';remove.textContent='Remove';remove.setAttribute('aria-label','Remove queued request');remove.disabled=sendBusy||!!pendingSend||ended||invalidSession;remove.addEventListener('click',function(){queue.splice(index,1);saveDraft();renderQueue();});
-      var strong=document.createElement('strong');strong.textContent=item.origin_name+' · '+((item.component&&item.component.kind)||item.tag||'Selection')+((item.component&&item.component.title)?' “'+item.component.title+'”':'');
-      var desc=document.createElement('span');desc.textContent=item.prompt;li.append(remove,strong,desc);if(item.capture_id){var ev=document.createElement('div');ev.textContent='Snapshot ready';li.appendChild(ev);}list.appendChild(li);
+    var list=document.getElementById('queue-list'), focused=document.activeElement;
+    var focusId=focused&&focused.dataset&&focused.dataset.fwRequestId, selectionStart=focusId?focused.selectionStart:null, selectionEnd=focusId?focused.selectionEnd:null;
+    list.replaceChildren();
+    queue.forEach(function(item,index){
+      var li=document.createElement('li');li.className='fw-queue-item';
+      var strong=document.createElement('strong');strong.id='queued-label-'+index;
+      strong.textContent=(item.origin_name||item.origin_slug)+' · '+((item.component&&item.component.kind)||item.tag||'Selection')+((item.component&&item.component.title)?' “'+item.component.title+'”':'');
+      var edit=document.createElement('textarea');edit.value=item.prompt;edit.rows=2;edit.dataset.fwRequestId=item.request_id;
+      edit.setAttribute('aria-labelledby',strong.id);edit.disabled=sendBusy||!!pendingSend||ended||invalidSession;
+      edit.addEventListener('input',function(){item.prompt=edit.value;saveDraft();broadcastQueue();});
+      var row=document.createElement('div');row.className='fw-row';
+      var context=document.createElement('span');context.className='fw-help';context.textContent=item.capture_id?'Snapshot ready':'Text feedback';
+      var remove=document.createElement('button');remove.type='button';remove.className='fw-button';remove.textContent='Remove';remove.setAttribute('aria-label','Remove queued request '+(index+1));remove.disabled=edit.disabled;
+      remove.addEventListener('click',function(){queue.splice(index,1);saveDraft();renderQueue();broadcastQueue();var fallback=list.querySelector('textarea')||note;fallback.focus({preventScroll:true});});
+      row.append(context,remove);li.append(strong,edit,row);
+      var destination=document.createElement('p');destination.className='fw-help';destination.textContent='Destination: '+document.getElementById('analysis-name').textContent;li.append(destination);
+      if(item.filters&&Object.keys(item.filters).length){var filters=document.createElement('p');filters.className='fw-help';filters.textContent='Filters: '+JSON.stringify(item.filters);li.append(filters);}
+      list.appendChild(li);
     });
-    captureFailures.forEach(function(f){var li=document.createElement('li');li.className='fw-queue-item';var strong=document.createElement('strong');strong.textContent=f.item.origin_name+' · Snapshot needs attention';var desc=document.createElement('span');desc.textContent=f.item.prompt+' — '+f.error;li.append(strong,desc);var retry=document.createElement('button');retry.type='button';retry.className='fw-button';retry.textContent=f.inflight?'Capturing…':'Retry snapshot';retry.disabled=!!f.inflight;retry.addEventListener('click',function(){if(f.frame&&f.message)queueWidgetItem(f.frame,f.message);});li.append(retry);
+    captureFailures.forEach(function(f){
+      var li=document.createElement('li');li.className='fw-queue-item';
+      var strong=document.createElement('strong');strong.textContent=f.item.origin_name+' · Snapshot needs attention';
+      var desc=document.createElement('p');desc.textContent=f.item.prompt+' — '+f.error;li.append(strong,desc);
+      var retry=document.createElement('button');retry.type='button';retry.className='fw-button';retry.textContent=f.inflight?'Capturing…':'Retry snapshot';retry.disabled=!!f.inflight||ended||invalidSession;
+      retry.addEventListener('click',function(){
+        if(f.frame&&f.message&&f.item.frame_id===f.frame.dataset.frameId){
+          closeQueue();activateTab('reports',true);
+          requestAnimationFrame(function(){requestAnimationFrame(function(){queueWidgetItem(f.frame,f.message);});});
+        }else{desc.textContent='This report view changed. Reopen '+f.item.origin_name+' and select the element again, or queue the saved text without a snapshot.';}
+      });li.append(retry);
       if(!f.inflight){
-        var textOnly=document.createElement('button');textOnly.type='button';textOnly.className='fw-button';textOnly.textContent='Queue text without snapshot';
+        var textOnly=document.createElement('button');textOnly.type='button';textOnly.className='fw-button';textOnly.textContent='Queue text without snapshot';textOnly.disabled=ended||invalidSession;
         textOnly.addEventListener('click',function(){
           captureFailures=captureFailures.filter(function(x){return x.item.request_id!==f.item.request_id;});
           var item=persistableItem(f.item);delete item.selection_id;item.capture_id=null;
@@ -285,24 +399,23 @@
           saveDraft();renderQueue();broadcastQueue();
           if(f.frame&&f.frame.dataset.frameId===item.frame_id)postFrame(f.frame,'fw-workspace-queue-result',{request_id:item.request_id,ok:true,items:queue.map(persistableItem)});
         });
-        var discard=document.createElement('button');discard.type='button';discard.className='fw-button';discard.textContent='Discard failed selection';
-        discard.addEventListener('click',function(){captureFailures=captureFailures.filter(function(x){return x.item.request_id!==f.item.request_id;});renderQueue();});
+        var discard=document.createElement('button');discard.type='button';discard.className='fw-button';discard.textContent='Discard failed selection';discard.disabled=ended||invalidSession;
+        discard.addEventListener('click',function(){captureFailures=captureFailures.filter(function(x){return x.item.request_id!==f.item.request_id;});renderQueue();note.focus();});
         li.append(textOnly,discard);
       }
-      list.appendChild(li);});
-    document.getElementById('queue-count').textContent=String(queue.length);
-    document.getElementById('send').disabled=ended||invalidSession||sendBusy||(!queue.length&&!note.value.trim()&&!pendingSend);
-    document.getElementById('queue-send').disabled=ended||invalidSession||(!note.value.trim());
-    document.getElementById('end-session').disabled=ended||invalidSession||sendBusy;
+      list.appendChild(li);
+    });
+    if(!queue.length&&!captureFailures.length){var empty=document.createElement('li');empty.className='fw-queue-empty';empty.textContent='Nothing queued yet. Select an element on a report or analysis, or write a message below.';list.appendChild(empty);}
+    if(focusId){var restore=Array.prototype.find.call(list.querySelectorAll('textarea'),function(el){return el.dataset.fwRequestId===focusId;});if(restore){restore.focus({preventScroll:true});restore.setSelectionRange(selectionStart,selectionEnd);}}
+    document.getElementById('queue-count').textContent=String(queue.length+captureFailures.length);
+    document.getElementById('queue-summary').textContent=captureFailures.length?'Snapshots need attention':queue.length?queue.length+' queued request'+(queue.length===1?'':'s'):'No items queued';
+    document.getElementById('send').disabled=ended||invalidSession||sendBusy||(!queue.length&&!note.value.trim()&&!pendingSend)||!!captureFailures.length;
+    document.getElementById('end-session').disabled=ended||invalidSession||sendBusy||captureInFlight();
+    updateControls();
   }
-  function takeNoteOrigin() {if(noteOrigin)return noteOrigin;return clone(contentOrigin);}
-  note.addEventListener('input',function(){if(note.value.trim()&&!noteOrigin)noteOrigin=clone(contentOrigin);if(!note.value.trim())noteOrigin=null;saveDraft();renderQueue();});
-  function queuePlainNote() {
-    var text=note.value.trim();if(!text)return;
-    var origin=takeNoteOrigin();queue.push(Object.assign({request_id:id('item'),prompt:text,selector:'',tag:'message',text:'',section:null,component:null,data:null,filters:null,source_built_at:null},origin));
-    if(note.value.trim()===text)note.value='';noteOrigin=null;saveDraft();renderQueue();
-  }
-  document.getElementById('queue-send').addEventListener('click',queuePlainNote);
+  function takeNoteOrigin() {return noteOrigin||originForFrame(activeFrame(),currentTab==='reports'?'report':'analysis');}
+  note.addEventListener('input',function(){if(note.value.trim()&&!noteOrigin)noteOrigin=takeNoteOrigin();if(!note.value.trim())noteOrigin=null;saveDraft();renderQueue();updateNoteContext();});
+  note.addEventListener('keydown',function(event){if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){event.preventDefault();send(false);}});
 
   function snapshotSubmission(endSession) {
     var noteText=note.value.trim(), noteItem=null, origin;
@@ -328,12 +441,16 @@
       .finally(function(){sendBusy=false;saveDraft();renderQueue();});
   }
   document.getElementById('send').addEventListener('click',function(){send(false);});
-  document.getElementById('end-session').addEventListener('click',function(){send(true);});
+  document.getElementById('end-session').addEventListener('click',function(){
+    if(pendingSend&&!pendingSend.endSession){openQueue();document.getElementById('send-status').textContent='Retry the unconfirmed submission before ending the session.';return;}
+    if(captureFailures.length||note.value.trim()){openQueue(true);document.getElementById('send-status').textContent='Send or clear your draft and resolve snapshots before ending the session.';return;}
+    if(window.confirm('Send queued feedback and end this analysis session?')){openQueue();send(true);}
+  });
   function disableForInvalidSession() {
     invalidSession=true;statusEl.textContent='Session changed';setSelect(false);
-    [sourceSelect,document.getElementById('open-report'),document.getElementById('retry-build'),document.getElementById('global-select'),document.getElementById('send'),document.getElementById('queue-send'),document.getElementById('end-session'),document.getElementById('queue-selection'),document.getElementById('dismiss-selection'),note,selectionNote].forEach(function(x){if(x)x.disabled=true;});renderQueue();
+    [sourceSelect,document.getElementById('open-report'),document.getElementById('retry-build'),document.getElementById('global-select'),document.getElementById('send'),document.getElementById('end-session'),note].forEach(function(x){if(x)x.disabled=true;});renderQueue();
   }
-  function setEnded(){statusEl.textContent='Session ended';ended=true;[analysisFrame,sourceFrame].forEach(function(f){if(f.dataset.frameId)postFrame(f,'fw-workspace-status',{agent:'absent',replies:[],ended:true});});setSelect(false);sourceSelect.disabled=true;document.getElementById('open-report').disabled=true;document.getElementById('retry-build').disabled=true;document.getElementById('global-select').disabled=true;document.getElementById('queue-selection').disabled=true;document.getElementById('dismiss-selection').disabled=true;note.disabled=true;selectionNote.disabled=true;renderQueue();}
+  function setEnded(){statusEl.textContent='Session ended';ended=true;[analysisFrame,sourceFrame].forEach(function(f){if(f.dataset.frameId)postFrame(f,'fw-workspace-status',{agent:'absent',replies:[],ended:true});});setSelect(false);sourceSelect.disabled=true;document.getElementById('open-report').disabled=true;document.getElementById('retry-build').disabled=true;document.getElementById('global-select').disabled=true;note.disabled=true;renderQueue();}
   function renderReplies(s) {
     var replies=Array.isArray(s.replies)?s.replies:[];var signature=JSON.stringify(replies);if(signature===lastReplySignature)return;lastReplySignature=signature;
     var list=document.getElementById('reply-list');list.replaceChildren();replies.forEach(function(r){var d=document.createElement('div');d.className='fw-reply';var t=document.createElement('time');t.textContent=r.created_at||r.time||'Agent reply';var body=document.createElement('div');body.textContent=r.text||r.message||'';d.append(t,body);list.appendChild(d);});
@@ -360,12 +477,12 @@
     escText(document.getElementById('analysis-name'),a.name||a.slug||'Analysis workspace');renderReports(pendingSource||sourceSelect.value||initialSource);
     if(s.ended||s.active===false){setEnded();}else if(!ended)statusEl.textContent=agentStatus(s);
     renderReplies(s);broadcastStatus(s);
-    if(a.url&&(stateVersion.analysis!==a.version||!analysisFrame.src)){stateVersion.analysis=a.version;loadFrame(analysisFrame,{slug:a.slug,name:a.name||'Analysis',url:a.url});}
-    if(!initialHandled&&initialSource){initialHandled=true;if(reports.some(function(r){return r.slug===initialSource;})){sourceSelect.value=initialSource;selectSource(initialSource,false);}}
+    if(!captureInFlight()&&a.url&&(stateVersion.analysis!==a.version||!analysisFrame.src)){stateVersion.analysis=a.version;loadFrame(analysisFrame,{slug:a.slug,name:a.name||'Analysis',url:a.url});}
+    if(!initialHandled&&initialSource){initialHandled=true;if(reports.some(function(r){return r.slug===initialSource;})){sourceSelect.value=initialSource;restoringHistory=true;selectSource(initialSource,false);restoringHistory=false;updateHistory(true);}}
     var active=activeSource&&reports.find(function(r){return r.slug===activeSource.slug;});
-    if(active){activeSource=active;if(active.build_state==='ready'&&active.version!==stateVersion.source){stateVersion.source=active.version;loadFrame(sourceFrame,active);}}
-    if(pendingSource){var chosen=reports.find(function(r){return r.slug===pendingSource;});if(chosen){if(chosen.build_state==='ready'||chosen.build_state==='failed')delete buildRequested[chosen.slug];updateSourceStatus();if(chosen.build_state==='ready')openReadyReport(chosen,pendingSourceGeneration);else if(chosen.build_state==='failed'){sourceStatus.textContent='Build failed: '+(chosen.error||'Use Retry build to try again.');}else if(chosen.build_state==='missing'||chosen.build_state==='stale'){requestBuild(chosen,false,pendingSourceGeneration);}else sourceStatus.textContent='Building report…';}}
-    return true;
+    if(active){activeSource=active;if(!captureInFlight()&&active.build_state==='ready'&&active.version!==stateVersion.source){stateVersion.source=active.version;loadFrame(sourceFrame,active);}}
+    if(pendingSource){var chosen=reports.find(function(r){return r.slug===pendingSource;});if(chosen){if(chosen.build_state==='ready'||chosen.build_state==='failed')delete buildRequested[chosen.slug];updateSourceStatus();if(chosen.build_state==='ready')openReadyReport(chosen,pendingSourceGeneration);else if(chosen.build_state==='failed'){sourceStatus.textContent='Build failed: '+(chosen.error||'Use Retry build to try again.');}else if(chosen.build_state==='missing'||chosen.build_state==='stale'){if(!captureInFlight())requestBuild(chosen,false,pendingSourceGeneration);}else sourceStatus.textContent='Building report…';}}
+    updateControls();return true;
   }
   function pollState() {
     if(pollBusy||invalidSession)return;pollBusy=true;var g=++stateGeneration;
@@ -373,6 +490,7 @@
   }
   readDraft();
   if(pendingSend)document.getElementById('send-status').textContent='A previous submission is unconfirmed. Queue & send retries the same request.';
-  // The first pane must be present on mobile before the first tab interaction.
-  activateTab('analysis');renderQueue();pollState();window.setInterval(pollState,2500);
+  // Page visibility is shared by desktop and phone; iframe state stays alive.
+  activateTab(new URL(location.href).searchParams.get('page')==='reports'?'reports':'analysis');
+  renderQueue();pollState();window.setInterval(pollState,2500);
 })();

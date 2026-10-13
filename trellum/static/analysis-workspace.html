@@ -8,42 +8,39 @@
   <link rel="stylesheet" href="/_fw/review/workspace.css">
 </head>
 <body>
-  <main class="fw-workspace" id="workspace" aria-live="off">
-    <header class="fw-header">
-      <div><p class="fw-eyebrow">Local review</p><h1 id="analysis-name">Analysis workspace</h1></div>
-      <div class="fw-session"><button id="global-select" type="button" class="fw-button" aria-pressed="false" hidden tabindex="-1" aria-hidden="true">Select</button><span id="session-status" role="status">Connecting…</span><button id="end-session" type="button" class="fw-button">End session</button></div>
+  <main class="fw-workspace" id="workspace">
+    <header class="fw-header fw-chrome">
+      <div class="fw-heading"><p class="fw-eyebrow">Analysis workspace</p><h1 id="analysis-name">Local analysis</h1></div>
+      <div class="fw-session"><span id="session-status" role="status">Connecting…</span><button id="queue-toggle" data-tab="queue" type="button" class="fw-button" aria-haspopup="dialog" aria-controls="queue-dialog" aria-expanded="false">Queue <span id="queue-count" class="fw-count">0</span></button><button id="end-session" type="button" class="fw-button">End session</button></div>
     </header>
-    <nav class="fw-tabs" aria-label="Workspace panes">
-      <button type="button" data-tab="analysis" aria-selected="true">Analysis</button>
-      <button type="button" data-tab="reports" aria-selected="false">Reports</button>
-      <button type="button" data-tab="queue" aria-selected="false">Queue <span id="queue-count">0</span></button>
-    </nav>
+    <div class="fw-toolbar fw-chrome">
+      <nav class="fw-tabs" aria-label="Workspace pages">
+        <button id="analysis-tab" type="button" data-tab="analysis" aria-current="page" aria-controls="analysis-pane">Analysis</button>
+        <button id="reports-tab" type="button" data-tab="reports" aria-controls="reports-pane">Reports</button>
+      </nav>
+      <div class="fw-report-head" id="source-controls" hidden><label for="source-select">Source report</label><select id="source-select"><option value="">Loading reports…</option></select><button type="button" id="open-report" class="fw-button">Open report</button><button type="button" id="retry-build" class="fw-button" hidden>Retry build</button></div>
+      <div class="fw-view-actions"><button id="global-select" type="button" class="fw-button" aria-pressed="false" disabled>Select element</button><button type="button" id="content-only" class="fw-button" disabled>Analysis only</button></div>
+    </div>
+    <p id="workspace-status" class="fw-notice fw-chrome" role="status" hidden></p>
     <section class="fw-layout">
-      <section class="fw-pane fw-analysis-pane is-active" data-pane="analysis" aria-label="Analysis">
-        <div class="fw-pane-head"><h2>Analysis</h2></div>
+      <section id="analysis-pane" class="fw-pane fw-analysis-pane is-active" data-pane="analysis" aria-label="Analysis">
         <iframe id="fw-workspace-analysis" title="Analysis report" allowfullscreen></iframe>
       </section>
-      <section class="fw-pane fw-reports-pane" data-pane="reports" aria-label="Source reports">
-        <div class="fw-pane-head fw-report-head"><h2>Reports</h2><label for="source-select">Source report</label><select id="source-select"><option value="">Loading reports…</option></select><button type="button" id="open-report" class="fw-button">Open report</button><button type="button" id="retry-build" class="fw-button" hidden>Retry build</button></div>
-        <p id="source-status" class="fw-source-status" aria-live="polite">Choose a source report.</p>
+      <section id="reports-pane" class="fw-pane fw-reports-pane" data-pane="reports" aria-label="Source reports" hidden>
+        <p id="source-status" class="fw-source-status fw-chrome" aria-live="polite">Choose a source report.</p>
         <iframe id="fw-workspace-report" title="Source report" allowfullscreen hidden></iframe>
       </section>
-      <section class="fw-pane fw-queue-pane" data-pane="queue" aria-label="Feedback queue and chat">
-        <div class="fw-pane-head"><h2>Queue &amp; chat</h2></div>
-        <div id="reply-list" class="fw-replies" aria-live="polite"></div>
-        <div id="selection-box" class="fw-selection" hidden aria-hidden="true">
-          <div class="fw-selection-context" id="selection-context"></div>
-          <label for="selection-note">What should change?</label><textarea id="selection-note" rows="3" placeholder="Describe the change"></textarea>
-          <div class="fw-row"><button type="button" id="queue-selection" class="fw-button fw-primary">Add to queue</button><button type="button" id="dismiss-selection" class="fw-button">Cancel</button></div>
-          <p id="capture-status" class="fw-help" role="status"></p>
-        </div>
-        <ul id="queue-list" class="fw-queue-list"></ul>
-        <label for="chat-note" hidden>Feedback</label><textarea id="chat-note" rows="3" placeholder="Describe what should change…" hidden aria-hidden="true"></textarea>
-        <div class="fw-row"><button type="button" id="queue-send" class="fw-button" hidden>Queue</button><button type="button" id="send" class="fw-button fw-primary">Send to agent</button></div>
-        <p id="send-status" role="status" class="fw-help"></p>
-      </section>
     </section>
+    <button type="button" id="exit-content-only" class="fw-button fw-clean-exit" hidden>Back to workspace <span aria-hidden="true">· Esc</span></button>
+    <p id="content-only-hint" class="fw-clean-hint" role="status" hidden>Press Escape or use Back to workspace to return.</p>
   </main>
+  <dialog id="queue-dialog" class="fw-queue-dialog" aria-labelledby="queue-title">
+    <div class="fw-queue-shell">
+      <header class="fw-queue-head"><div><h2 id="queue-title">Queue &amp; chat</h2><p id="queue-summary" class="fw-help">No items queued</p></div><button type="button" id="queue-close" class="fw-button" aria-label="Close queue" autofocus>Close</button></header>
+      <div class="fw-queue-scroll"><ul id="queue-list" class="fw-queue-list"></ul><section aria-label="Agent replies"><div id="reply-list" class="fw-replies" aria-live="polite"></div></section></div>
+      <div class="fw-queue-footer"><label for="chat-note">Message the agent</label><p id="note-context" class="fw-help"></p><textarea id="chat-note" rows="3" placeholder="Describe what should change…"></textarea><div class="fw-row"><button type="button" id="send" class="fw-button fw-primary">Send to agent</button></div><p id="send-status" role="status" class="fw-help"></p></div>
+    </div>
+  </dialog>
   <script>window._fwWorkspaceConfig = window._fwWorkspaceConfig || __FW_WORKSPACE_CONFIG__;</script>
   <script src="/_fw/review/workspace.js" defer></script>
 </body>

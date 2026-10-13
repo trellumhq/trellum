@@ -5,7 +5,7 @@ import json
 import pytest
 
 from trellum.analysis_inbox import import_pending_capture
-from trellum.testing.test_workspace_journey import _pane
+from trellum.testing.test_workspace_journey import _pane, _send, _workspace_select
 from trellum.testing.test_workspace_journey import (
     workspace_browser_project as workspace_browser_project,
 )
@@ -18,8 +18,11 @@ def _select(frame):
         button.click()
 
 
-def _queue(frame, target, prompt):
-    _select(frame)
+def _queue(frame, target, prompt, page=None):
+    if page is None:
+        _select(frame)
+    else:
+        _workspace_select(page)
     target.click()
     frame.locator("#fwrvPop").wait_for(state="visible")
     frame.locator("#fwrvPopText").fill(prompt)
@@ -41,18 +44,18 @@ def test_mixed_widget_requests_keep_their_original_page(workspace_browser_projec
             _pane(page, "Reports")
             source = page.frame_locator("#fw-workspace-report")
             source.locator("#fwLoading").wait_for(state="hidden")
-            _queue(source, source.get_by_role("heading", name="September conversion", exact=True), "Add this section to the analysis")
+            _queue(source, source.get_by_role("heading", name="September conversion", exact=True), "Add this section to the analysis", page)
             page.wait_for_function("document.getElementById('queue-count').textContent === '1'")
             page.get_by_label("Source report", exact=True).select_option("source-two")
             source.get_by_role("heading", name="Source Two", exact=True).wait_for()
-            source.locator("#fwrvQueueBtn").click()
-            assert "Source One" in source.locator("#fwrvList").inner_text()
+            _pane(page, "Queue")
+            assert "Source One" in page.locator("#queue-list").inner_text()
             _pane(page, "Analysis")
             analysis = page.frame_locator("#fw-workspace-analysis")
             analysis.locator("#fwLoading").wait_for(state="hidden")
-            _queue(analysis, analysis.get_by_role("heading", name="Findings", exact=True), "Rename this analysis slide")
+            _queue(analysis, analysis.get_by_role("heading", name="Findings", exact=True), "Rename this analysis slide", page)
             page.wait_for_function("document.getElementById('queue-count').textContent === '2'")
-            analysis.locator("#fwrvBarSend").click()
+            _send(page)
             page.wait_for_function("document.getElementById('queue-count').textContent === '0'")
             status, batches = review.poll(0, "decision")
             assert status == "feedback" and len(batches) == 1
@@ -107,10 +110,8 @@ def test_embedded_presentation_enters_navigates_and_exits(workspace_browser_proj
 
             # Selection mode owns document clicks and keyboard review shortcuts;
             # presentation keyboard checks use the normal viewing workflow.
-            select = analysis.locator("#fwrvSelect")
-            if select.evaluate("el => el.classList.contains('on')"):
-                select.click()
-            assert not select.evaluate("el => el.classList.contains('on')")
+            _workspace_select(page, False)
+            assert page.locator("#global-select").get_attribute("aria-pressed") == "false"
             opener = analysis.get_by_role("button", name="Present", exact=True)
             opener.focus()
             analysis.get_by_role("button", name="Present", exact=True).click()
@@ -186,14 +187,14 @@ def test_failed_capture_can_queue_its_context_without_snapshot(workspace_browser
             source.locator("canvas").wait_for()
             source.locator("#fwLoading").wait_for(state="hidden")
             source.locator("canvas").evaluate("el => fw.captureElementSnapshotForAnalysis = () => Promise.reject(new Error('Snapshot unavailable'))")
-            _queue(source, source.locator("canvas"), "Include this source context")
+            _queue(source, source.locator("canvas"), "Include this source context", page)
             page.wait_for_function("document.getElementById('queue-list').textContent.includes('Snapshot unavailable')")
             assert source.locator("#fwrvPopText").input_value() == "Include this source context"
             _pane(page, "Queue")
             page.get_by_role("button", name="Queue text without snapshot", exact=True).click()
             assert "Snapshot needs attention" not in page.locator("#queue-list").inner_text()
             _pane(page, "Reports")
-            source.locator("#fwrvBarSend").click()
+            _send(page)
             page.wait_for_function("document.getElementById('queue-count').textContent === '0'")
             status, batches = review.poll(0, "decision")
             assert status == "feedback" and len(batches) == 1
@@ -221,14 +222,14 @@ def test_filtered_widget_capture_survives_source_switch(workspace_browser_projec
             source.locator("#fwLoading").wait_for(state="hidden")
             source.locator("canvas").evaluate("el => fw.filterEngine.setFilter('conversions','test-region','region','equals','NL')")
             page.wait_for_function("Object.values(document.getElementById('fw-workspace-report').contentWindow._chartInstances)[0].data.datasets[0].data.reduce((a,b)=>a+b,0) === 20")
-            _queue(source, source.locator("canvas"), "Add this filtered chart to the analysis")
-            page.wait_for_function("document.getElementById('queue-list').textContent.includes('Snapshot')")
+            _queue(source, source.locator("canvas"), "Add this filtered chart to the analysis", page)
+            page.wait_for_function("document.getElementById('queue-list').textContent.includes('Snapshot ready')")
             assert "Snapshot ready" in page.locator("#queue-list").inner_text()
             page.get_by_label("Source report", exact=True).select_option("source-two")
             source.get_by_role("heading", name="Source Two", exact=True).wait_for()
             assert not source.locator("canvas").evaluate("el => (fw.filterEngine.getFilterState('conversions')||{})['test-region']")
             source.locator("canvas").evaluate("el => fw.filterEngine.setFilter('conversions','test-region','region','equals','DE')")
-            source.locator("#fwrvBarSend").click()
+            _send(page)
             page.wait_for_function("document.getElementById('queue-count').textContent === '0'")
             status, batches = review.poll(0, "decision")
             assert status == "feedback"

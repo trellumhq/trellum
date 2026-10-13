@@ -7,6 +7,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Fixed
+
+- Use the report theme font for chart labels, matching report headers and
+  metadata, including after theme changes and font loading.
+
 ## [0.6.0] — 2026-10-13
 
 ### Added
