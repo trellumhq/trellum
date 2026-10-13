@@ -65,6 +65,9 @@ to the repository root even when invoking the script from another directory.
 `--collect-only` shows selected tests; `--dry-run` prints the command.
 The wrapper clears inherited `PYTEST_ADDOPTS` so shell defaults cannot silently
 filter coverage or change worker counts. Use plain pytest for other options.
+GitHub retains sanitized JUnit outcomes, test timing JSON, and summaries for
+seven days. Uploaded results omit failure bodies, captured output, and test
+properties. Browser HTML, traces, and screenshots are not uploaded.
 
 For repeated focused runs, optionally retain Django's test databases:
 
