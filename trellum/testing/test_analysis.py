@@ -151,6 +151,62 @@ def test_failed_rebuild_preserves_every_previous_artifact(article, tmp_path, mon
     assert original == {p.relative_to(output): p.read_bytes() for p in output.rglob("*") if p.is_file()}
 
 
+def test_rebuild_writes_only_inside_output_mount(article, monkeypatch):
+    import tempfile
+
+    output = Path(run_report(str(article)))
+    inode = output.stat().st_ino
+    (output / "obsolete.txt").write_text("old")
+    (article / "content.md").write_text("Updated analysis")
+    original_mkdtemp = tempfile.mkdtemp
+    original_replace = os.replace
+
+    def mounted_mkdtemp(suffix=None, prefix=None, dir=None):
+        assert Path(dir) == output
+        return original_mkdtemp(suffix, prefix, dir)
+
+    def mounted_replace(source, target):
+        assert Path(source) != output and Path(target) != output
+        assert Path(source).is_relative_to(output)
+        assert Path(target).is_relative_to(output)
+        return original_replace(source, target)
+
+    monkeypatch.setattr(tempfile, "mkdtemp", mounted_mkdtemp)
+    monkeypatch.setattr(os, "replace", mounted_replace)
+    assert Path(run_report(str(article))) == output
+    assert output.stat().st_ino == inode
+    assert "Updated analysis" in (output / "index.html").read_text()
+    assert not (output / "obsolete.txt").exists()
+    assert not list(output.glob(".analysis-build-*"))
+
+
+@pytest.mark.parametrize("phase", ["backup", "install"])
+def test_failed_publication_restores_previous_artifacts(article, monkeypatch, phase):
+    output = Path(run_report(str(article)))
+    (output / "old-assets").mkdir()
+    (output / "old-assets" / "image.png").write_bytes(_png())
+    original = {p.relative_to(output): p.read_bytes() for p in output.rglob("*") if p.is_file()}
+    (article / "content.md").write_text("Replacement analysis")
+    original_replace = os.replace
+    count = 0
+
+    def fail_publication(source, target):
+        nonlocal count
+        source = Path(source)
+        in_phase = source.parent == output if phase == "backup" else source.parent.name == "output"
+        if in_phase:
+            count += 1
+            if count == 2:
+                raise OSError("publication failed")
+        return original_replace(source, target)
+
+    monkeypatch.setattr(os, "replace", fail_publication)
+    with pytest.raises(OSError, match="publication failed"):
+        run_report(str(article))
+    assert original == {p.relative_to(output): p.read_bytes() for p in output.rglob("*") if p.is_file()}
+    assert not list(output.glob(".analysis-build-*"))
+
+
 @pytest.mark.parametrize("changes", [{"kind": "unknown"}, {"kind": None},
                                     {"schedule": {}}, {"data_sources": []},
                                     {"author": {"name": "x"}}, {"extra_cdn": {}}])
