@@ -3,7 +3,7 @@
 import unittest
 from types import SimpleNamespace
 
-from benchmark_metrics import measurements, validate_scaling
+from benchmark_metrics import measurements, pytest_configure, pytest_runtest_logreport, validate_scaling
 
 
 class MetricsTests(unittest.TestCase):
@@ -25,6 +25,16 @@ class MetricsTests(unittest.TestCase):
                         [SimpleNamespace(slug="wrong", rows=1000, metrics=[metric])]):
             with self.assertRaises(AssertionError):
                 validate_scaling(results, "sample", (1000, 10000))
+
+    def test_final_skipped_outcomes_including_xfail_are_rejected(self):
+        config = SimpleNamespace()
+        pytest_configure(config)
+        pytest_runtest_logreport(SimpleNamespace(skipped=False, nodeid="passed"))
+        pytest_runtest_logreport(SimpleNamespace(skipped=True, nodeid="skipped"))
+        pytest_runtest_logreport(SimpleNamespace(skipped=True, nodeid="xfail", wasxfail="expected failure"))
+        self.assertEqual(config._trellum_benchmark_skips, ["skipped", "xfail"])
+        pytest_configure(config)
+        self.assertEqual(config._trellum_benchmark_skips, [])
 
 
 if __name__ == "__main__":

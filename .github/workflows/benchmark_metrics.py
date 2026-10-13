@@ -5,6 +5,9 @@ import os
 from pathlib import Path
 
 
+_skipped_tests = []
+
+
 def measurements(results):
     # Explicit allowlist: omit report errors, browser state and captured output.
     return [
@@ -28,7 +31,8 @@ def validate_scaling(results, slug, row_counts):
 
 def pytest_configure(config):
     config._trellum_benchmark_metrics = []
-    config._trellum_benchmark_skips = []
+    _skipped_tests.clear()
+    config._trellum_benchmark_skips = _skipped_tests
 
 
 def pytest_runtest_setup(item):
@@ -51,11 +55,11 @@ def pytest_runtest_teardown(item):
         item.module._print_perf_table = item._trellum_original_perf_table
 
 
-def pytest_runtest_makereport(item, call):
-    # pytest's outcome exceptions are not ordinary failures. Reject any skip,
-    # including missing Chromium, missing demo sources or generation failure.
-    if call.excinfo is not None and call.excinfo.typename in {"Skipped", "XFailed"}:
-        item.config._trellum_benchmark_skips.append(item.nodeid)
+def pytest_runtest_logreport(report):
+    # Inspect the final outcome so decorator-based xfails are rejected too.
+    # Benchmarks run serially; this buffer belongs to the current pytest session.
+    if report.skipped:
+        _skipped_tests.append(report.nodeid)
 
 
 def pytest_sessionfinish(session):
