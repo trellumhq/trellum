@@ -340,6 +340,9 @@ jobs:
       - name: Find the previous release
         id: prev
         run: |
+          # Checkout runs with a temporary HOME; persist trust only for this
+          # runner-owned checkout before Git runs as the container user.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           # No releases yet: there is nothing to be backward-compatible WITH,
           # and the first tag has to be able to land. Skip rather than fail.
           TAG="$(git tag --list 'v*' --sort=-v:refname | head -1)"
