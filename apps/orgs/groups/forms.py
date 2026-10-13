@@ -77,3 +77,8 @@ class StudioAccessForm(forms.Form):
         elif role != roles.VIEWER:
             cleaned["viewer_scope"] = "all"
         return cleaned
+
+    def present_reports(self, reports, unavailable=()):
+        """Limit rendered choices without narrowing authoritative validation."""
+        field = self.fields["reports"]
+        field.choices = [(report.pk, field.label_from_instance(report)) for report in reports] + [(value, "Selected report is unavailable") for value in unavailable]

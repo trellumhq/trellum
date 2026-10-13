@@ -426,6 +426,16 @@ urlpatterns = [
         name="org-group-detail",
     ),
     path(
+        "orgs/<slug:org_slug>/settings/groups/<int:group_id>/member-choices",
+        org_groups.group_member_choices,
+        name="org-group-member-choices",
+    ),
+    path(
+        "orgs/<slug:org_slug>/settings/groups/<int:group_id>/studios/<int:studio_id>/report-choices",
+        org_groups.group_report_choices,
+        name="org-group-report-choices",
+    ),
+    path(
         "orgs/<slug:org_slug>/settings/groups/<int:group_id>/delete",
         org_groups.group_delete,
         name="org-group-delete",

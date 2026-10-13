@@ -14,7 +14,7 @@
     <td data-label="Group"><a href="/orgs/{{ org.slug }}/settings/groups/{{ g.pk }}"><strong>{{ g.name }}</strong></a>{% if g.description %}<br><span class="muted">{{ g.description }}</span>{% endif %}</td>
     <td data-label="Organization">{% if g.org_role %}<span class="ui-badge accent">org admin</span>{% else %}<span class="muted">—</span>{% endif %}</td>
     <td data-label="Default studio access">{% if g.default_studio_role %}<span class="ui-badge info">all studios: {{ g.default_studio_role }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
-    <td data-label="Overrides">{{ g.grants.all|length }} studio{{ g.grants.all|length|pluralize }}</td><td data-label="Members">{{ g.memberships.count }}</td>
+    <td data-label="Overrides">{{ g.grant_count }} studio{{ g.grant_count|pluralize }}</td><td data-label="Members">{{ g.member_count }}</td>
   </tr>{% empty %}<tr><td colspan="5"><div class="ui-empty">{% if q %}No group matches “{{ q }}”.<div class="ui-empty-action"><a class="ui-btn ghost" href="{% querystring q=None page=None %}">Clear search</a></div>{% else %}No groups yet.<div class="ui-empty-action"><a class="ui-btn ghost" href="/orgs/{{ org.slug }}/settings/groups/new">+ New group</a></div>{% endif %}</div></td></tr>{% endfor %}</tbody>
 </table></div></div>
 {% include "_pagination.html" with page=page %}
