@@ -17,6 +17,8 @@
       slug: workflow/ad-hoc-analysis
     - title: Publish an analysis
       slug: workflow/published-analyses
+    - title: Build an analysis locally
+      slug: workflow/local-analysis
     - title: Working with AI agents
       slug: workflow/working-with-ai-agents
     - title: Refine reports in your browser

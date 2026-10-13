@@ -414,4 +414,3 @@ def test_end_feedback_retry_is_acknowledged_without_accepting_new_writes(workspa
     assert request("/_fw/review/workspace/open", wsbody(session, slug="source-one",
         request_id="open-after-end-0001"), headers=headers, method="POST")[0] == 409
     assert state.status()["queued"] == 1
-
