@@ -23,7 +23,7 @@ them a role — pick studio access below, attach permission groups, or do it lat
 <a href="/orgs/{{ org.slug }}/settings/members">Members</a>. Org <em>admins</em> automatically
 have admin access to every studio.</p>
 <div class="ui-form-section">
-  <form method="post">
+  <form method="post" data-settings-form>
     {% csrf_token %}
     <div class="ui-form-row">
       <div class="ui-field"><label for="{{ form.email.id_for_label }}">Email</label>{{ form.email }}{{ form.email.errors }}</div>
@@ -44,7 +44,12 @@ have admin access to every studio.</p>
       </tbody>
     </table>
     <span class="helptext">Applied as direct studio roles the moment the invitation is accepted.</span>
-    <p></p>
+    <div class="ui-field">
+      <label for="{{ form.send_email.id_for_label }}" style="display:flex;align-items:center;gap:8px;min-height:44px">{{ form.send_email }} Send invitation by email</label>
+      {{ form.send_email.errors }}
+      {% if email_available %}<span class="helptext">Submit the invitation to your email provider. Inbox delivery is not guaranteed.</span>
+      {% else %}<span class="helptext">Email delivery is not configured. Create an invitation and copy its link to share it.</span>{% endif %}
+    </div>
     <button class="ui-btn primary" type="submit">Create invitation</button>
   </form>
 </div>
@@ -66,7 +71,12 @@ have admin access to every studio.</p>
     <td data-label="Expires">{% if inv.is_expired %}<span class="ui-badge warn" title="Expired {{ inv.expires_at|date:"Y-m-d" }} — revoke it and invite again.">expired</span>
         {% else %}<span class="muted">{{ inv.expires_at|date:"Y-m-d" }}</span>{% endif %}</td>
     <td data-label="Link">{% include "_copy_field.html" with value=inv.accept_url compact=1 label="Copy link" %}</td>
-    <td class="ui-row-actions" data-label="Actions">
+    <td class="ui-row-actions invitation-actions" data-label="Actions">
+      {% if email_available and not inv.is_expired %}
+      <form class="invitation-resend" method="post" data-settings-form data-settings-save action="{% url 'org-invite-resend' org.slug inv.pk %}">
+        {% csrf_token %}<button class="ui-btn ghost" type="submit">Resend email</button>
+      </form>
+      {% endif %}
       <form class="inline" method="post" action="/orgs/{{ org.slug }}/settings/invites/{{ inv.pk }}/revoke"
             onsubmit="return confirm('Revoke the invitation for {{ inv.email|escapejs }}? The link stops working immediately.')">
         {% csrf_token %}<button class="ui-btn danger" type="submit">Revoke</button>

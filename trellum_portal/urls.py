@@ -459,6 +459,11 @@ urlpatterns = [
         org_views.invite_revoke,
         name="org-invite-revoke",
     ),
+    path(
+        "orgs/<slug:org_slug>/settings/invites/<int:invite_id>/resend",
+        org_views.invite_resend,
+        name="org-invite-resend",
+    ),
     # Studio-scoped settings
     path(
         "s/<slug:org_slug>/<slug:studio_slug>/settings/",

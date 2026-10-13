@@ -133,3 +133,108 @@ class TestRevoke:
         )
         assert resp.status_code == 302
         assert not Invitation.objects.filter(pk=invite.pk).exists()
+
+
+class TestInvitationEmail:
+    @pytest.fixture(autouse=True)
+    def mail_route(self, monkeypatch):
+        from unittest.mock import Mock
+        self.configured = Mock(return_value=True)
+        self.send = Mock(return_value=1)
+        monkeypatch.setattr("apps.core.instance.mail_is_configured", self.configured)
+        monkeypatch.setattr("django.core.mail.send_mail", self.send)
+
+    def test_creation_default_and_opt_out(self, login, org_admin, org):
+        c = login(org_admin)
+        url = f"/orgs/{org.slug}/settings/invites"
+        form = c.get(url).context["form"]
+        assert form["send_email"].value() is True
+        response = c.post(url, {"email": "email@demo.example", "org_role": "member", "send_email": "on"})
+        assert "submitted to the email provider" in response.content.decode()
+        self.send.assert_called_once()
+        assert self.send.call_args.kwargs["fail_silently"] is False
+        invitation = Invitation.objects.get(email="email@demo.example")
+        assert invitation.accept_url() in self.send.call_args.kwargs["message"]
+        assert invitation.token in response.content.decode()
+        self.send.reset_mock()
+        response = c.post(url, {"email": "manual@demo.example", "org_role": "member"})
+        self.send.assert_not_called()
+        assert "Email was not requested" in response.content.decode()
+
+    @pytest.mark.parametrize("failure", [0, RuntimeError("private-provider-secret")])
+    def test_failure_keeps_created_link(self, failure, login, org_admin, org):
+        if isinstance(failure, Exception):
+            self.send.side_effect = failure
+        else:
+            self.send.return_value = failure
+        response = login(org_admin).post(f"/orgs/{org.slug}/settings/invites", {
+            "email": "failed@demo.example", "org_role": "member", "send_email": "on",
+        })
+        text = response.content.decode()
+        assert "could not be confirmed" in text
+        assert "private-provider-secret" not in text
+        assert Invitation.objects.get(email="failed@demo.example").token in text
+
+    def test_unconfigured_disables_send_and_ignores_forged_option(self, login, org_admin, org):
+        self.configured.return_value = False
+        c = login(org_admin)
+        url = f"/orgs/{org.slug}/settings/invites"
+        response = c.get(url)
+        assert response.context["form"].fields["send_email"].disabled
+        assert response.context["form"]["send_email"].value() is False
+        assert "Email delivery is not configured" in response.content.decode()
+        c.post(url, {"email": "manual@demo.example", "org_role": "member", "send_email": "on"})
+        self.send.assert_not_called()
+
+    def test_validation_retains_email_choice(self, login, org_admin, org):
+        response = login(org_admin).post(f"/orgs/{org.slug}/settings/invites", {
+            "email": "invalid", "org_role": "member", "send_email": "on",
+        })
+        assert response.context["form"]["send_email"].value() is True
+        self.send.assert_not_called()
+
+    def test_resend_same_link_native_and_enhanced(self, login, org_admin, org, invite):
+        c = login(org_admin)
+        url = f"/orgs/{org.slug}/settings/invites/{invite.pk}/resend"
+        token, expiry, grants = invite.token, invite.expires_at, invite.studio_grants
+        assert c.get(url).status_code == 405
+        assert c.post(url).status_code == 302
+        response = c.post(url, HTTP_X_TRELLUM_FORM="1", HTTP_ACCEPT="application/json")
+        assert response.json()["ok"] is True
+        assert "Inbox delivery is not confirmed" in response.json()["message"]
+        invite.refresh_from_db()
+        assert (invite.token, invite.expires_at, invite.studio_grants) == (token, expiry, grants)
+
+    @pytest.mark.parametrize("state", ["expired", "accepted", "unconfigured", "failed", "revoked", "other-org"])
+    def test_resend_rejects_unavailable(self, state, login, org_admin, org, invite, other_org):
+        url = f"/orgs/{org.slug}/settings/invites/{invite.pk}/resend"
+        if state == "expired":
+            invite.expires_at = timezone.now() - timezone.timedelta(seconds=1)
+            invite.save()
+        elif state == "accepted":
+            invite.accepted_at = timezone.now()
+            invite.save()
+        elif state == "unconfigured":
+            self.configured.return_value = False
+        elif state == "failed":
+            self.send.return_value = 0
+        elif state == "revoked":
+            invite.delete()
+        elif state == "other-org":
+            invite.org = other_org
+            invite.save()
+        response = login(org_admin).post(url, HTTP_X_TRELLUM_FORM="1", HTTP_ACCEPT="application/json")
+        assert response.status_code >= 400
+        if state not in {"accepted", "revoked", "other-org"}:
+            assert response.json()["ok"] is False
+        if state != "failed":
+            self.send.assert_not_called()
+
+    def test_resend_preserves_admin_and_csrf_checks(self, login, member, org_admin, org, invite):
+        from django.test import Client
+        url = f"/orgs/{org.slug}/settings/invites/{invite.pk}/resend"
+        assert login(member).post(url).status_code == 403
+        c = Client(enforce_csrf_checks=True)
+        c.force_login(org_admin)
+        assert c.post(url).status_code == 403
+        self.send.assert_not_called()

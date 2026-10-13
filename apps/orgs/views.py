@@ -1119,7 +1119,10 @@ def assistant_models(request, org_slug):  # noqa: ARG001
 
 @require_org_role(roles.ORG_ADMIN)
 def invites(request, org_slug):  # noqa: ARG001
-    form = InviteForm(request.POST or None, org=request.org)
+    from apps.core.instance import mail_is_configured
+
+    email_available = mail_is_configured()
+    form = InviteForm(request.POST or None, org=request.org, email_available=email_available)
     new_invite = None
     if request.method == "POST" and form.is_valid():
         email = form.cleaned_data["email"]
@@ -1138,8 +1141,13 @@ def invites(request, org_slug):  # noqa: ARG001
             )
             new_invite.groups.set(form.cleaned_data["groups"])
             audit(request, "member.invite", target=new_invite, email=email)
-            _try_send_invite_mail(new_invite)
-            form = InviteForm(org=request.org)
+            if form.cleaned_data["send_email"]:
+                _invite_mail_feedback(request, _try_send_invite_mail(new_invite))
+            elif not email_available:
+                _invite_mail_feedback(request, "unconfigured")
+            else:
+                messages.info(request, "Invitation created. Email was not requested; copy and share the link below.")
+            form = InviteForm(org=request.org, email_available=email_available)
     pending_qs = request.org.invitations.filter(accepted_at__isnull=True).order_by("-created_at")
     q = (request.GET.get("q") or "").strip()
     if q:
@@ -1154,6 +1162,7 @@ def invites(request, org_slug):  # noqa: ARG001
             "form": form,
             "pending": page.object_list,
             "new_invite": new_invite,
+            "email_available": email_available,
             "page": page,
             "q": q,
             "total": total,
@@ -1170,15 +1179,46 @@ def invite_revoke(request, org_slug, invite_id):  # noqa: ARG001
     return redirect(f"/orgs/{request.org.slug}/settings/invites")
 
 
-def _try_send_invite_mail(invite: Invitation) -> None:
+@require_org_role(roles.ORG_ADMIN)
+@require_POST
+def invite_resend(request, org_slug, invite_id):  # noqa: ARG001
+    invite = get_object_or_404(Invitation, org=request.org, pk=invite_id, accepted_at__isnull=True)
+    if invite.is_expired:
+        outcome = "expired"
+    else:
+        outcome = _try_send_invite_mail(invite)
+        audit(request, "member.invite_resend", target=invite, email=invite.email, outcome=outcome)
+    text = _INVITE_MAIL_MESSAGES[outcome]
+    if is_settings_request(request):
+        if outcome == "accepted":
+            return settings_success(request, text)
+        return settings_error(request, text)
+    _invite_mail_feedback(request, outcome)
+    return redirect("org-invites", org_slug=request.org.slug)
+
+
+_INVITE_MAIL_MESSAGES = {
+    "accepted": "Invitation email submitted to the email provider. Inbox delivery is not confirmed.",
+    "failed": "Invitation email could not be confirmed by the email provider. Copy and share the link, or check email settings before trying again.",
+    "unconfigured": "Email delivery is not configured. Copy and share the invitation link instead.",
+    "expired": "This invitation has expired. Revoke it and create a new invitation.",
+}
+
+
+def _invite_mail_feedback(request, outcome):
+    level = messages.SUCCESS if outcome == "accepted" else messages.WARNING
+    messages.add_message(request, level, _INVITE_MAIL_MESSAGES[outcome])
+
+
+def _try_send_invite_mail(invite: Invitation) -> str:
     from apps.core.instance import mail_is_configured
 
     if not mail_is_configured():
-        return
+        return "unconfigured"
     from django.core.mail import send_mail
 
     try:
-        send_mail(
+        count = send_mail(
             subject=f"You're invited to {invite.org.name} on trellum",
             message=(
                 f"You have been invited to join {invite.org.name}.\n\n"
@@ -1187,7 +1227,9 @@ def _try_send_invite_mail(invite: Invitation) -> None:
             ),
             from_email=None,
             recipient_list=[invite.email],
-            fail_silently=True,
+            fail_silently=False,
         )
-    except Exception:  # pragma: no cover - best effort only
-        pass
+    except Exception:
+        # Provider errors may contain credentials or signed URLs. Do not expose them.
+        return "failed"
+    return "accepted" if count == 1 else "failed"
