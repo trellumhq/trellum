@@ -126,6 +126,10 @@ def test_mapping_and_seed():
     deliveries_route = next(row for row in missing_method['routes'] if row['pattern']=='deliveries')
     deliveries_route['scenarios'] = [scenario for scenario in deliveries_route['scenarios'] if scenario['method']!='POST']
     assert any('unmapped source methods' in error and 'POST' in error for error in validate(missing_method)['errors'])
+    missing_adapter_method = json.loads(Path(__file__).with_name('routes.json').read_text())
+    source_form = next(row for row in missing_adapter_method['routes'] if row['pattern']=='s/<slug:org_slug>/<slug:studio_slug>/settings/datasources/new')
+    source_form['scenarios'] = [scenario for scenario in source_form['scenarios'] if scenario['method']!='POST']
+    assert any('unmapped source methods' in error and 'POST' in error for error in validate(missing_adapter_method)['errors'])
     overlapping_role = json.loads(Path(__file__).with_name('routes.json').read_text())
     overlapping_role['routes'][0]['denied_roles'].append('org-admin')
     assert any('overlapping principal classifications' in error for error in validate(overlapping_role)['errors'])

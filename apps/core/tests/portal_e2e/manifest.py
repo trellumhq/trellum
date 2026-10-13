@@ -28,7 +28,7 @@ def resolved(patterns, prefix=''):
         else:
             yield pattern, item
 
-def handler_contract(callback):
+def handler_sources(callback):
     callback = inspect.unwrap(callback)
     source = inspect.getsource(callback)
     module = inspect.getmodule(callback)
@@ -41,8 +41,12 @@ def handler_contract(callback):
             if helper not in visited and inspect.isfunction(function) and inspect.getmodule(function) == module:
                 visited.add(helper)
                 queue.append(inspect.getsource(inspect.unwrap(function)))
+    return source, '\n'.join(fragments)
+
+
+def handler_contract(callback):
+    source, full = handler_sources(callback)
     actions = set()
-    full = '\n'.join(fragments)
     for node in ast.walk(ast.parse(full)):
         if not isinstance(node, ast.Compare):
             continue
@@ -58,7 +62,7 @@ def handler_contract(callback):
     return hashlib.sha256(source.encode()).hexdigest(), hashlib.sha256(full.encode()).hexdigest(), actions
 
 def declared_methods(callback):
-    source = inspect.getsource(inspect.unwrap(callback))
+    source, full = handler_sources(callback)
     declared = re.search(r'@require_http_methods\((\[[^\]]+\])\)', source)
     if declared:
         return set(ast.literal_eval(declared.group(1)))
@@ -71,7 +75,7 @@ def declared_methods(callback):
     # Undecorated native form adapters still need their explicit write branch.
     methods = {'GET'}
     for verb in ('POST','PUT','PATCH','DELETE'):
-        if re.search(r'request.method\s*(?:==|!=|in).*?[\"\']'+verb+r'[\"\']', source) or (verb=='POST' and 'request.POST' in source):
+        if re.search(r'request.method\s*(?:==|!=|in).*?[\"\']'+verb+r'[\"\']', full) or (verb=='POST' and 'request.POST' in full):
             methods.add(verb)
     return methods
 
