@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   var lifecycleGeneration = 0, leaving = false;
-  var nextId = 0, submitHandlers = new WeakMap(), saveRestorers = new Set();
+  var nextId = 0, submitHandlers = new WeakMap(), controlTrackers = new WeakMap(), saveRestorers = new Set();
   var refreshGeneration = 0, refreshController = null, pendingRefresh = new Set();
   function refreshRegions(keys) {
     var regions = Array.prototype.slice.call(document.querySelectorAll('[data-settings-refresh]'));
@@ -55,12 +55,22 @@
   function value(field) {
     if (/^(checkbox|radio)$/i.test(field.type)) return field.checked;
     if (field.tagName === 'SELECT') {
-      return Array.prototype.map.call(field.options, function (option) { return option.selected; }).join(',');
+      return JSON.stringify(Array.prototype.filter.call(field.options, function (option) { return option.selected; }).map(function (option) { return option.value; }).sort());
     }
     return field.value;
   }
+  function controlKey(field) {
+    return /^(checkbox|radio)$/i.test(field.type) && field.name ? JSON.stringify([field.type, field.name, field.value]) : null;
+  }
   function snapshot(form) {
-    return controls(form, true).map(function (field) { return { field: field, value: value(field) }; });
+    var entries = [], named = new Map();
+    controls(form, true).forEach(function (field) {
+      var key = controlKey(field), existing = key && named.get(key);
+      if (existing) { existing.value = existing.value || value(field); return; }
+      var entry = {field: field, key: key, value: value(field)};
+      entries.push(entry); if (key) named.set(key, entry);
+    });
+    return entries;
   }
   function init(form) {
     if (form.dataset.settingsInitialized) return;
@@ -77,9 +87,41 @@
       else form.appendChild(status);
     }
     var baseline = snapshot(form), saving = false, submitted = null;
+    function currentValues() {
+      var values = new Map();
+      controls(form, true).forEach(function (field) {
+        var key = controlKey(field);
+        if (key) values.set(key, !!values.get(key) || field.checked);
+      });
+      return values;
+    }
+    function currentValue(entry, values) {
+      return entry.key ? !!values.get(entry.key) : value(entry.field);
+    }
+    function track(fields) {
+      var values = currentValues();
+      function extend(entries) {
+        entries = entries.filter(function (entry) {
+          return entry.field.isConnected || currentValue(entry, values) !== entry.value;
+        });
+        fields.forEach(function (field) {
+          if (field.form !== form || field.hasAttribute('data-settings-ignore') || /^(button|submit|reset|hidden)$/i.test(field.type)) return;
+          var key = controlKey(field);
+          var entry = entries.find(function (item) { return key ? item.key === key : item.field === field; });
+          if (entry) entry.field = field;
+          else entries.push({field: field, key: key, value: value(field)});
+        });
+        return entries;
+      }
+      baseline = extend(baseline);
+      if (submitted) submitted = extend(submitted);
+      update(false);
+    }
+    controlTrackers.set(form, track);
     function update(clearState) {
+      var values = currentValues();
       var dirty = baseline.some(function (entry) {
-        return !entry.field.matches(':disabled') && value(entry.field) !== entry.value;
+        return !entry.field.matches(':disabled') && currentValue(entry, values) !== entry.value;
       });
       form.classList.toggle('is-dirty', dirty);
       if (saving) return;
@@ -190,14 +232,15 @@
             submitted.forEach(function (entry) {
               if (entry.field.name !== name) return;
               var field = entry.field, normalized = data.values[name];
-              var unchanged = value(field) === entry.value;
+              var unchanged = currentValue(entry, currentValues()) === entry.value;
               var normalizedValue = normalized === null ? '' : String(normalized);
               if (/^(checkbox|radio)$/i.test(field.type)) {
                 normalizedValue = field.type === 'radio' ? field.value === String(normalized) : !!normalized;
                 if (unchanged) field.checked = normalizedValue;
               } else if (field.tagName === 'SELECT') {
-                if (unchanged) field.value = normalizedValue;
-                normalizedValue = Array.prototype.map.call(field.options, function (option) { return option.value === String(normalized); }).join(',');
+                var values = Array.isArray(normalized) ? normalized.map(String) : [normalizedValue];
+                if (unchanged) Array.prototype.forEach.call(field.options, function (option) { option.selected = values.indexOf(option.value) >= 0; });
+                normalizedValue = JSON.stringify(Array.prototype.filter.call(field.options, function (option) { return values.indexOf(option.value) >= 0; }).map(function (option) { return option.value; }).sort());
               } else if (unchanged) field.value = normalizedValue;
               entry.value = normalizedValue;
             });
@@ -259,7 +302,10 @@
     return window.confirm(saving ? 'Saving is still in progress. Leave and check the saved result later?'
       : 'Discard unsaved changes? Choose Cancel to keep editing.');
   }
-  window.TrellumSettingsForms = { init: initialize, refreshRegions: refreshRegions, confirmLeave: confirmLeave,
+  window.TrellumSettingsForms = { init: initialize, trackControls: function (form, fields) {
+    var tracker = controlTrackers.get(form);
+    if (tracker) tracker(Array.prototype.slice.call(fields));
+  }, refreshRegions: refreshRegions, confirmLeave: confirmLeave,
     unmount: function () { saveRestorers.forEach(function (restore) { restore(); }); saveRestorers.clear(); ++lifecycleGeneration; ++refreshGeneration; pendingRefresh.clear(); if (refreshController) refreshController.abort(); },
     nativeLeave: function () { leaving = true; }, resume: function () { leaving = false; }
   };
