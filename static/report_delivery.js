@@ -259,7 +259,9 @@
     function recipientPickerHtml(schedule, chips, id, ready) {
         schedule = schedule || {};
         chips = chips || EMPTY_CHIP_DATA;
-        var members = (chips.members || []).slice(), groups = (chips.groups || []).slice();
+        var members = (chips.members || []).concat(chips.selected && chips.selected.members || []), groups = (chips.groups || []).concat(chips.selected && chips.selected.groups || []);
+        members = members.filter(function (row, index, rows) { return rows.findIndex(function (other) { return other.id === row.id; }) === index; });
+        groups = groups.filter(function (row, index, rows) { return rows.findIndex(function (other) { return other.id === row.id; }) === index; });
         (schedule.recipients || []).forEach(function (person) {
             if (!members.some(function (row) { return String(row.id) === String(person.id); })) members.push(person);
         });
@@ -274,7 +276,7 @@
                 + '" data-recipient-name="' + esc(text) + '" data-recipient-identity="' + esc(identity || '') + '"'
                 + (selected ? ' checked' : '') + (ready ? '' : ' disabled') + '>' + esc(text) + '</label>';
         }
-        return '<div class="rdw-field rdw-wide" data-f="recipients" data-recipient-picker data-picker-label="Recipients">'
+        return '<div class="rdw-field rdw-wide" data-f="recipients" data-recipient-picker data-picker-label="Recipients" data-recipient-people-name="recipient_ids" data-recipient-group-name="recipient_group_ids"' + (chips.source ? ' data-recipient-source="' + esc(chips.source) + '"' : '') + '>'
             + '<label class="rdw-label">Recipients</label><div data-recipient-type="people">'
             + members.map(function (row) { return checkbox('recipient_ids', row.id, row.name || row.email, row.email, people.indexOf(String(row.id)) >= 0); }).join('')
             + '</div><div data-recipient-type="roles">'
@@ -398,7 +400,7 @@
             ctx.ready = false; submit.disabled = true; retry.hidden = true;
             loadStatus.textContent = 'Loading recipient choices…';
             var attempt = ctx.loadAttempt = (ctx.loadAttempt || 0) + 1;
-            var choices = loadMembersFor(ctx.apiBase);
+            var choices = loadMembersFor(ctx.apiBase, selection(root));
             ensurePickerAssets(ctx.assets).then(function () {
                 if (!currentForm(root, ctx) || attempt !== ctx.loadAttempt) return null;
                 TrellumChoices.init(root); TrellumRecipients.init(root);
@@ -480,12 +482,15 @@
 
     var EMPTY_CHIP_DATA = { members: [], roles: {}, groups: [], studio_name: '' };
 
-    function loadMembersFor(reportApiBase) {
-        return apiFetch(reportApiBase + '/recipients').then(function (response) {
+    function loadMembersFor(reportApiBase, selected) {
+        var url = new URL(reportApiBase + '/recipients', location.href);
+        if (selected) { url.searchParams.set('selected_people', selected.recipients.map(function (row) { return row.id; }).join(',')); url.searchParams.set('selected_groups', selected.recipient_groups.map(function (row) { return row.id; }).join(',')); }
+        return apiFetch(url.href).then(function (response) {
             if (!response.ok) throw new Error('Could not load recipients.');
             return response.json();
         }).then(function (result) {
-            return { ok: true, data: { members: result.members || [], roles: result.roles || {}, groups: result.groups || [], studio_name: result.studio_name || '' } };
+            if (!Array.isArray(result.members) || result.members.length > 25 || !Array.isArray(result.groups) || result.groups.length > 25 || !result.pagination || !result.selected) throw new Error('Invalid recipient choices.');
+            return { ok: true, data: { members: result.members || [], roles: result.roles || {}, groups: result.groups || [], studio_name: result.studio_name || '', source: reportApiBase + '/recipients', pagination: result.pagination, selected: result.selected } };
         }).catch(function () { return { ok: false }; });
     }
     function currentSession(session) { return state === session && session.active; }

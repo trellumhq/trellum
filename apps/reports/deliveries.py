@@ -207,10 +207,11 @@ class ScheduleSettingsForm(forms.ModelForm):
 
     def __init__(self, *args, members, groups, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["recipient_ids"].choices = []
+        person_choices = []
         for row in members:
             name, email = row.get("name") or row["email"], row["email"]
-            self.fields["recipient_ids"].choices.append((row["id"], f"{name} · {email}" if name != email else email))
+            person_choices.append((row["id"], f"{name} · {email}" if name != email else email))
+        self.fields["recipient_ids"].choices = person_choices
         self.fields["recipient_group_ids"].choices = [(row["id"], row["name"]) for row in groups]
         saved_timezone = getattr(self.instance, "timezone", None)
         if saved_timezone and saved_timezone not in dict(self.fields["timezone"].choices):

@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% load docs %}
-{% block title %}Alerts — {{ studio.name }}{% endblock %}
+{% block title %}Alerts — {{ studio.name }}
+{% endblock %}
 {% block content %}
 <header class="page-head-row">
   <div>
@@ -14,6 +15,10 @@
   {% if can_edit %}<a class="ui-btn primary" href="{{ prefix }}/new">New alert</a>{% endif %}
 </header>
 
+<form method="get" class="ui-list-toolbar">
+  <label for="alertSearch">Search alerts</label><input class="ui-input" id="alertSearch" name="q" value="{{ query }}" type="search">
+  <button class="ui-btn ghost">Search</button><span>{{ page.paginator.count }} rules</span>
+</form>
 <div class="panel">
 {% if rows %}
 <div class="ui-table-scroll">
@@ -53,9 +58,14 @@
 </table>
 </div>
 {% else %}
-<div class="ui-empty">No alert rules yet.
+<div class="ui-empty">{% if query %}No matching alert rules.{% else %}No alert rules yet.{% endif %}
   {% if can_edit %}<div class="ui-empty-action"><a class="ui-btn primary" href="{{ prefix }}/new">Write the first one</a></div>{% endif %}
 </div>
 {% endif %}
 </div>
+<nav aria-label="Alert pages" class="ui-pager">
+  {% if page.has_previous %}<a href="?q={{ query|urlencode }}&page={{ page.previous_page_number }}">Previous</a>{% endif %}
+  <span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+  {% if page.has_next %}<a href="?q={{ query|urlencode }}&page={{ page.next_page_number }}">Next</a>{% endif %}
+</nav>
 {% endblock %}

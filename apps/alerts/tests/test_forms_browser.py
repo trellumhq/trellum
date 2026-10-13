@@ -29,7 +29,7 @@ def test_rendered_alert_edit_preserves_scroll_focus_draft_and_duplicate_submit(r
         page.locator('[name="instructions"]').focus()
         page.evaluate("window.marker = document; window.scrollTo(0, 850)")
         before = page.evaluate("scrollY")
-        page.locator("#alertForm").evaluate("f => { f.requestSubmit(); f.requestSubmit(); }")
+        page.locator("#alertForm").evaluate("f => { f.requestSubmit(f.querySelector('[value=save]')); f.requestSubmit(f.querySelector('[value=save]')); }")
         page.wait_for_timeout(50)
         assert len(pending) == 1
         if success:

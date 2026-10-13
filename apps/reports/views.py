@@ -997,93 +997,23 @@ def _apply_schedule_fields(schedule: EmailSchedule, body: dict) -> None:
 
 
 def _recipient_payload(request, report=None) -> dict:
-    """Studio members eligible as ``EmailSchedule`` recipients, plus the
-    recipient picker's quick-add chip data — role counts and this org's
-    permission groups with member counts. No dedicated endpoint existed for
-    the members list (the server-rendered members settings page is
-    ADMIN-gated and returns HTML, not JSON), so this is new, minimal, and
-    reuses the same eligibility rule ``_valid_recipients`` below already
-    enforces: anyone with an effective role on this studio, not just an
-    explicit ``StudioMembership`` row — org admins and permission-group
-    defaults grant access too, and both must be pickable as recipients.
-
-    Role counts ("admins"/"developers"/"everyone") come straight from this
-    studio's ``StudioMembership`` rows — the same audience
-    ``notify.alert_recipients``/``notify.resolve_recipients`` draw the role
-    chips from — so they're already studio-scoped. Group counts are this
-    org's permission groups (never another org's — a schedule's chips can
-    only reference groups the studio's own org owns) intersected with the
-    studio via ``notify.intersect_with_studio``, so a chip's number is "how
-    many would actually receive", not the group's raw org-wide size.
-    """
-    from apps.core.permissions import bulk_role_for_studio
-    from apps.orgs.models import OrgMembership, PermissionGroup, PermissionGroupMembership
-    from apps.studios.models import StudioMembership
-
-    org = request.org
-    studio = request.studio
-
-    # bulk_role_for_studio computes every org member's effective role in a
-    # handful of queries total -- calling effective_roles() once per member
-    # here used to cost several queries per member (see notify.
-    # intersect_with_studio, which had the identical shape for the group
-    # counts below and shares the fix).
-    org_members = list(OrgMembership.objects.filter(org=org).select_related("user"))
-    users = [om.user for om in org_members if om.user.is_active]
-    role_by_id = bulk_role_for_studio(users, studio)
-    report_access = bulk_can_view_report(users, report) if report is not None else None
-    out = [
-        {"id": om.user_id, "email": om.user.email, "name": om.user.display_name or om.user.email}
-        for om in org_members
-        if om.user.is_active
-        and role_by_id.get(om.user_id) is not None
-        and (report_access is None or report_access.get(om.user_id, False))
-    ]
-    out.sort(key=lambda m: m["email"])
-
-    role_counts = {"admins": 0, "developers": 0, "everyone": 0}
-    for user_id, role in StudioMembership.objects.filter(
-        studio=studio, user__is_active=True
-    ).values_list("user_id", "role"):
-        if report_access is not None and not report_access.get(user_id, False):
-            continue
-        role_counts["everyone"] += 1
-        if role == roles.ADMIN:
-            role_counts["admins"] += 1
-        elif role == roles.DEVELOPER:
-            role_counts["developers"] += 1
-
-    from django.contrib.auth import get_user_model
-
-    User = get_user_model()
-    groups = []
-    for group in PermissionGroup.objects.filter(org=org).order_by("name"):
-        member_ids = list(
-            PermissionGroupMembership.objects.filter(group=group).values_list("user_id", flat=True)
-        )
-        group_users = (
-            list(User.objects.filter(pk__in=member_ids, is_active=True)) if member_ids else []
-        )
-        if report is None:
-            count = len(notify.intersect_with_studio(group_users, studio))
-        else:
-            allowed = bulk_can_view_report(group_users, report)
-            count = sum(allowed.values())
-        if report is None or count:
-            groups.append({"id": group.pk, "name": group.name, "count": count})
-
-    return {"members": out, "studio_name": studio.name, "roles": role_counts, "groups": groups}
+    from apps.reports.recipient_choices import recipient_payload
+    return recipient_payload(request, report)
 
 
 @require_studio_role(roles.VIEWER)
 @require_full_studio_visibility
 def api_studio_members(request, org_slug, studio_slug):  # noqa: ARG001
-    return JsonResponse(_recipient_payload(request))
+    response = JsonResponse(_recipient_payload(request))
+    response["Cache-Control"] = "private, no-store"
+    return response
 
 
 @require_studio_role(roles.VIEWER)
 def api_report_recipients(request, org_slug, studio_slug, slug):  # noqa: ARG001
-    return JsonResponse(_recipient_payload(request, _get_report(request, slug)))
+    response = JsonResponse(_recipient_payload(request, _get_report(request, slug)))
+    response["Cache-Control"] = "private, no-store"
+    return response
 
 
 def _valid_recipients(request, report, ids) -> list:
@@ -1137,7 +1067,18 @@ def _delivery_return_url(request):
 
 
 def _delivery_form_page(request, schedule, *, errors=None, status=200):
-    chips = _recipient_payload(request, schedule.report)
+    from apps.reports.recipient_choices import recipient_snapshot, page_snapshot, selected_ids
+    choices = request.POST if request.method == 'POST' else request.GET
+    people = choices.getlist('recipient_ids') if request.method == 'POST' else [str(pk) for pk in schedule.recipients.values_list('pk', flat=True)] if schedule.pk else []
+    groups = choices.getlist('recipient_group_ids') if request.method == 'POST' else [str(pk) for pk in schedule.recipient_groups.values_list('pk', flat=True)] if schedule.pk else []
+    chips = page_snapshot(recipient_snapshot(request.studio, schedule.report),
+        query=choices.get('recipient_q', ''), people_page=choices.get('people_page', 1),
+        group_page=choices.get('group_page', 1), selected_people=people, selected_groups=groups)
+    for key in ('members', 'groups'):
+        rows = {row['id']: row for row in chips[key] + chips['selected'][key]}
+        for value in selected_ids(people if key == 'members' else groups) - rows.keys():
+            rows[value] = {'id': value, 'name': 'Selected person is unavailable' if key == 'members' else 'Selected group is unavailable', 'email': ''}
+        chips[key] = list(rows.values())
     form = deliveries.ScheduleSettingsForm(request.POST if request.method == "POST" else None,
         instance=schedule, members=chips["members"], groups=chips["groups"])
     submitted_zone = request.POST.get("timezone") if request.method == "POST" else None
@@ -1160,6 +1101,8 @@ def _delivery_form_page(request, schedule, *, errors=None, status=200):
                 form.add_error(field if field in form.fields else None, item)
     return render(request, "reports/delivery_form.html", {
         "form": form, "schedule": schedule, "report": schedule.report,
+        "recipient_page": chips, "recipient_query": choices.get('recipient_q', ''),
+        "recipient_source": f'/s/{request.org.slug}/{request.studio.slug}/api/reports/{schedule.report.slug}/recipients',
         "return_to": _delivery_return_url(request),
         "send_time": send_time if send_time is not None else f"{schedule.send_hour:02d}:{schedule.send_minute:02d}",
         "send_time_invalid": bool(form.errors.get("send_time")),
@@ -1243,6 +1186,8 @@ def api_email_schedules(request, org_slug, studio_slug, slug):  # noqa: ARG001
         raise Http404
     is_form = request.content_type != "application/json"
     schedule = EmailSchedule(report=report, created_by=request.user, **deliveries.schedule_defaults(request.org))
+    if is_form and (request.POST.get('action') == 'browse_choices' or (not request.POST.get('action') and any(key in request.POST for key in ('people_page', 'group_page')))):
+        return _delivery_form_page(request, schedule)
     def respond_error(message, errors=None):
         if is_settings_request(request):
             return settings_error(request, message, errors=errors)
@@ -1293,6 +1238,8 @@ def api_email_schedule_detail(request, org_slug, studio_slug, slug, schedule_id)
         raise Http404
     before = deliveries.schedule_snapshot(schedule)
     is_form = request.content_type != "application/json" and request.method == "POST"
+    if is_form and (request.POST.get('action') == 'browse_choices' or (not request.POST.get('action') and any(key in request.POST for key in ('people_page', 'group_page')))):
+        return _delivery_form_page(request, schedule)
     def respond_error(message, errors=None):
         if is_settings_request(request):
             return settings_error(request, message, errors=errors)

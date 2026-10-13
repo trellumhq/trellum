@@ -24,6 +24,69 @@
     });
     field.appendChild(root);
     var api = helper.popup(root, label), filter = 'all';
+    var source = field.dataset.recipientSource, generation = 0, controller = null, timeout = null, debounce = null;
+    var remoteState = '', remoteData = null, visible = new Set();
+    var pager = helper.element('div', 'ui-picker-pager');
+    Object.assign(pager.style, {display: 'flex', flexWrap: 'wrap', gap: '8px', flex: 'none'});
+    if (source) api.popup.appendChild(pager);
+    function cancelRemote() { generation++; clearTimeout(timeout); clearTimeout(debounce); if (controller) controller.abort(); controller = null; }
+    function loadRemote(page) {
+      cancelRemote(); var token = generation; controller = new AbortController();
+      remoteState = 'loading'; remoteData = null; visible.clear(); api.refresh();
+      var url = new URL(source, location.href);
+      if (url.origin !== location.origin) { remoteState = 'error'; api.refresh(); return; }
+      url.searchParams.set('q', api.search.value.trim()); url.searchParams.set('page', page || 1);
+      url.searchParams.set('selected_people', records.filter(function (r) { return r.type === 'people' && r.input.checked; }).map(function (r) { return r.input.value; }).join(','));
+      url.searchParams.set('selected_groups', records.filter(function (r) { return r.type === 'groups' && r.input.checked; }).map(function (r) { return r.input.value; }).join(','));
+      timeout = setTimeout(function () { if (token !== generation) return; controller.abort(); generation++; remoteState = 'error'; api.refresh(); }, 15000);
+      fetch(url, {signal: controller.signal, credentials: 'same-origin', headers: {Accept: 'application/json'}}).then(function (response) {
+        if (!response.ok) throw new Error('Recipients unavailable'); return response.json();
+      }).then(function (data) {
+        if (token !== generation || !field.isConnected || api.popup.hidden) return;
+        if (!Array.isArray(data.members) || data.members.length > 25 || !Array.isArray(data.groups) || data.groups.length > 25 || !data.pagination || !data.pagination.members || !data.pagination.groups || !data.selected || !Array.isArray(data.selected.members) || !Array.isArray(data.selected.groups)) throw new Error('Invalid recipients');
+        clearTimeout(timeout);
+        var wanted = new Set(), byKey = new Map();
+        records.forEach(function (record) { byKey.set(record.type + ':' + record.input.value, record); });
+        [['people', 'members'], ['groups', 'groups']].forEach(function (pair) {
+          data[pair[1]].forEach(function (row) { visible.add(pair[0] + ':' + row.id); });
+          var rows = data[pair[1]].concat(data.selected[pair[1]]);
+          rows.forEach(function (value) {
+            if (!Number.isSafeInteger(value.id) || typeof value.name !== 'string') throw new Error('Invalid recipient');
+            var key = pair[0] + ':' + value.id; wanted.add(key);
+            var record = byKey.get(key);
+            if (!record) {
+              var row = helper.element('label'), input = document.createElement('input'); input.type = 'checkbox';
+              input.name = pair[0] === 'people' ? (field.dataset.recipientPeopleName || 'recipients') : (field.dataset.recipientGroupName || 'recipient_groups');
+              input.value = value.id; row.appendChild(input);
+              record = {input: input, row: row, type: pair[0], name: value.name, identity: value.email || ''}; records.push(record); byKey.set(key, record); decorate(record);
+            } else {
+              record.name = value.name; record.identity = value.email || '';
+              var caption = record.row.querySelector('.recipient-picker-option-caption');
+              if (caption) { caption.textContent = record.name; caption.appendChild(helper.element('small', 'recipient-picker-identity', record.identity || TYPES[record.type])); }
+            }
+          });
+        });
+        records = records.filter(function (r) {
+          if (r.type === 'roles' || wanted.has(r.type + ':' + r.input.value)) return true;
+          if (r.input.checked || r.input.defaultChecked) {
+            if (r.input.checked) {
+              r.name = 'Selected ' + (r.type === 'people' ? 'person' : 'group') + ' is unavailable'; r.identity = '';
+              r.input.dataset.recipientName = r.name; r.input.dataset.recipientIdentity = '';
+              var caption = r.row.querySelector('.recipient-picker-option-caption'); if (caption) caption.textContent = r.name;
+            }
+            return true;
+          }
+          r.row.remove(); return false;
+        });
+        if (window.TrellumSettingsForms && field.closest('form')) TrellumSettingsForms.trackControls(field.closest('form'), records.map(function (record) { return record.input; }));
+        remoteState = 'ready'; remoteData = data; api.refresh();
+      }).catch(function (error) { if (token !== generation || error.name === 'AbortError') return; clearTimeout(timeout); remoteState = 'error'; api.refresh(); });
+    }
+    if (source) {
+      var open = api.open, close = api.close;
+      api.open = function () { open(); if (!api.popup.hidden) loadRemote(1); };
+      api.close = function (focus) { cancelRemote(); close(focus); };
+    }
     field._trellumRecipients = api;
     var selected = helper.element('div', 'recipient-picker-selected');
     var status = helper.element('span', 'recipient-picker-status');
@@ -43,7 +106,7 @@
         button.addEventListener('click', function () {
           filter = entry[0];
           filters.querySelectorAll('button').forEach(function (node) { node.setAttribute('aria-pressed', String(node === button)); });
-          api.refresh();
+          if (source && !api.popup.hidden) loadRemote(1); else api.refresh();
         });
         filters.appendChild(button);
       });
@@ -52,7 +115,7 @@
     var done = helper.button('ui-picker-done', 'Done');
     done.addEventListener('click', function () { api.close(true); });
     api.popup.appendChild(done);
-    records.forEach(function (record) {
+    function decorate(record) {
       record.row.classList.add('recipient-picker-option');
       if (record.identity || record.type || record.input.dataset.recipientName) {
         // Keep the checkbox node, its form name and label association.
@@ -62,13 +125,20 @@
         record.row.replaceChildren(record.input, caption);
       }
       api.options.appendChild(record.row);
-    });
+    }
+    records.forEach(decorate);
     fallback.forEach(function (node) {
       node.querySelectorAll('.errorlist,[data-settings-error]').forEach(function (error) { field.appendChild(error); });
       node.classList.add('recipient-picker-fallback');
       node.hidden = true;
     });
-    field.querySelectorAll('[data-picker-fallback]').forEach(function (node) { node.hidden = true; });
+    field.querySelectorAll('[data-picker-fallback]').forEach(function (node) {
+      node.hidden = true; node.querySelectorAll('button[type="submit"]').forEach(function (button) { button.type = 'button'; });
+    });
+    var form = field.closest('form');
+    if (source && form) form.querySelectorAll('[data-report-native-choices]').forEach(function (node) {
+      node.hidden = true; node.querySelectorAll('button[type="submit"]').forEach(function (button) { button.type = 'button'; });
+    });
 
     function changed(record) {
       record.input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -105,26 +175,48 @@
             changed(record);
             var next = selected.querySelectorAll('button');
             (next[Math.min(index, next.length - 1)] || api.trigger).focus({ preventScroll: true });
-            status.textContent = text + ' removed. ' + records.filter(function (entry) { return entry.input.checked; }).length + ' selected.';
+            status.textContent = chip._label + ' removed. ' + records.filter(function (entry) { return entry.input.checked; }).length + ' selected.';
           });
           chip.append(caption, remove);
           selected.appendChild(chip);
         }
+        chip._label = (record.type && record.type !== 'people' ? TYPES[record.type].slice(0, -1) + ': ' : '') + record.name;
+        chip.querySelector('span').textContent = chip._label; chip.querySelector('button').setAttribute('aria-label', 'Remove ' + chip._label);
         chip.querySelector('button').disabled = record.input.matches(':disabled');
       });
       var query = api.search.value.trim().toLocaleLowerCase(), count = 0;
       records.forEach(function (record) {
-        var matches = (filter === 'all' || record.type === filter) && (record.name + ' ' + record.identity).toLocaleLowerCase().indexOf(query) >= 0;
+        var matches = (filter === 'all' || record.type === filter) && (record.name + ' ' + record.identity).toLocaleLowerCase().indexOf(query) >= 0 && (!source || record.type === 'roles' || visible.has(record.type + ':' + record.input.value));
         record.row.hidden = !matches;
         if (matches) count++;
       });
       api.message.textContent = count ? '' : query ? 'No matches.' : filter !== 'all' ? 'No ' + TYPES[filter].toLowerCase() + ' are available.' : (field.dataset.pickerEmptyState || 'No recipients are available.');
-      api.message.hidden = !!count;
+      if (source) {
+        if (remoteState === 'loading') api.message.textContent = 'Loading recipients…';
+        if (remoteState === 'error') api.message.textContent = 'Could not load recipients. Your selections are retained.';
+        pager.replaceChildren();
+        if (remoteState === 'error') {
+          var retry = helper.button('ui-picker-filter', 'Retry'); retry.addEventListener('click', function () { loadRemote(1); }); pager.appendChild(retry);
+        } else if (remoteData) {
+          var parts = filter === 'people' ? [remoteData.pagination.members] : filter === 'groups' ? [remoteData.pagination.groups] : [remoteData.pagination.members, remoteData.pagination.groups];
+          if (filter !== 'roles') {
+            var number = Math.max.apply(null, parts.map(function (p) { return p.page; }));
+            var previous = helper.button('ui-picker-filter', 'Previous'), next = helper.button('ui-picker-filter', 'Next');
+            previous.disabled = !parts.some(function (p) { return p.has_previous; }); next.disabled = !parts.some(function (p) { return p.has_next; });
+            previous.addEventListener('click', function () { api.search.focus({preventScroll: true}); loadRemote(number - 1); });
+            next.addEventListener('click', function () { api.search.focus({preventScroll: true}); loadRemote(number + 1); });
+            var countLabel = helper.element('span', '', 'Page ' + number + ' · ' + parts.reduce(function (n, p) { return n + p.total; }, 0) + ' choices');
+            countLabel.style.flexBasis = '100%'; previous.style.flex = next.style.flex = '1';
+            pager.append(countLabel, previous, next);
+          }
+        }
+      }
+      api.message.hidden = !!count && (!source || remoteState === 'ready');
       selected.hidden = !chosen.length;
       if (api.trigger.disabled && !api.popup.hidden) api.close(false);
       api.reposition();
     };
-    api.search.addEventListener('input', api.refresh);
+    api.search.addEventListener('input', function () { if (!source) { api.refresh(); return; } cancelRemote(); remoteState = 'loading'; api.refresh(); debounce = setTimeout(function () { loadRemote(1); }, 200); });
     field.addEventListener('input', function (event) { if (event.target.matches('input[type="checkbox"]')) api.refresh(); });
     field.addEventListener('change', function (event) {
       if (event.target.matches('input[type="checkbox"]')) {

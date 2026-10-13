@@ -1,6 +1,6 @@
 """Delivery widget integration with native fields, shared pickers and isolated requests."""
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, parse_qs
 
 import pytest
 from playwright.sync_api import expect, sync_playwright
@@ -25,11 +25,19 @@ def schedule(id=1):
             "recipient_groups": [{"id": 3, "name": "Finance & audit"}], "recipient_summary": "Saved recipients"}
 
 
-def members():
+def members(url=''):
+    query = parse_qs(urlsplit(url).query)
+    all_rows = [{"id": i, "name": f"Person {i}", "email": f"person{i}@example.test"} for i in range(120)] + [{"id": 200, "name": '<img src=x onerror="unsafe()">', "email": "quoted@example.test"}]
+    term = query.get('q', [''])[0].lower()
+    matches = [row for row in all_rows if term in (row['name'] + row['email']).lower()]
+    number = int(query.get('page', [1])[0]); start = (number - 1) * 25
+    selected = set(query.get('selected_people', ['99'])[0].split(','))
+    group = {"id": 3, "name": "Finance & audit"}
     return {"studio_name": "Studio <script>unsafe()</script>", "roles": {"admins": 2},
-            "members": [{"id": i, "name": f"Person {i}", "email": f"person{i}@example.test"} for i in range(120)]
-            + [{"id": 200, "name": '<img src=x onerror="unsafe()">', "email": "quoted@example.test"}],
-            "groups": [{"id": 3, "name": "Finance & audit"}]}
+        "members": matches[start:start+25], "groups": [group],
+        "selected": {"members": [row for row in all_rows if str(row['id']) in selected], "groups": [group]},
+        "pagination": {"members": {"page": number, "total": len(matches), "has_previous": number > 1, "has_next": start + 25 < len(matches)},
+                       "groups": {"page": 1, "total": 1, "has_previous": False, "has_next": False}}}
 
 
 def page_for(browser, *, width=1440, saved=True, can_manage=True, resolved=False, portal_css=False):
@@ -63,7 +71,7 @@ def page_for(browser, *, width=1440, saved=True, can_manage=True, resolved=False
                 return
             if kind == "members":
                 route.fulfill(status=503 if behavior["members_fail"] else 200,
-                              json={"error": "Unavailable"} if behavior["members_fail"] else members())
+                              json={"error": "Unavailable"} if behavior["members_fail"] else members(route.request.url))
             elif kind == "saves":
                 if behavior["save_fail"]:
                     route.fulfill(status=400, json={"error": "Check the draft", "errors": {"send_minute": ["Rejected minute"]}})
@@ -108,9 +116,10 @@ def test_saved_edit_uses_shared_widgets_real_time_and_preserves_failed_draft(bro
     expect(root.locator(".recipient-picker-selected")).to_contain_text("Person 99")
     expect(root.locator(".recipient-picker-selected")).to_contain_text("Group: Finance & audit")
     root.locator("[data-recipient-picker] .ui-picker-trigger").click()
-    expect(root.locator(".recipient-picker-option")).to_have_count(125)
+    expect(root.locator(".recipient-picker-option")).to_have_count(30)
     root.locator('[data-recipient-filter="people"]').click()
     root.locator("[data-recipient-picker] .ui-picker-search").fill("quoted@")
+    page.clock.run_for(250)
     root.locator('input[value="200"]').check()
     expect(root.locator(".recipient-picker-selected")).to_contain_text('<img src=x onerror="unsafe()">')
     assert not page.evaluate("Boolean(window.unsafeCalled)")
@@ -314,7 +323,7 @@ def test_close_reopen_invalidates_old_recipient_read_and_closes_popovers(browser
 def test_asset_failure_retry_and_empty_audience_are_separate_states(browser):
     context, page, _requests, _pending, _behavior, _ = page_for(browser, saved=False)
     page.route('**/choice-picker.css', lambda route: route.abort())
-    page.route('**/first/recipients', lambda route: route.fulfill(json={'members': [], 'roles': {}, 'groups': [], 'studio_name': 'Empty studio'}))
+    page.route('**/first/recipients*', lambda route: route.fulfill(json={'members': [], 'roles': {}, 'groups': [], 'studio_name': 'Empty studio', 'selected': {'members': [], 'groups': []}, 'pagination': {'members': {'page': 1, 'total': 0, 'has_previous': False, 'has_next': False}, 'groups': {'page': 1, 'total': 0, 'has_previous': False, 'has_next': False}}}))
     page.locator('#first').click()
     page.locator('#rdwNewSchedule').click()
     root = page.locator('#rdwFormWrap')

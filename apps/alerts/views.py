@@ -13,10 +13,10 @@ from django.contrib import messages
 from django.core.paginator import Paginator
 from django.db.models import OuterRef, Q, Subquery
 from django.db import transaction
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
 from django.shortcuts import get_object_or_404, redirect, render
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_GET
 
 from apps.alerts.forms import AlertRuleForm
 from apps.alerts.models import AlertRule, AlertRun
@@ -29,7 +29,7 @@ from apps.reports.models import Report
 # Duck-typed on the schedule shape (recipients / recipient_roles /
 # recipient_groups), like notify.resolve_recipients -- same words as the
 # deliveries list, on purpose.
-from apps.reports.views import _recipient_summary
+from apps.reports.recipient_access import DeliveryPresentationBatch
 
 RUNS_PER_PAGE = 25
 _STATUS_LABELS = dict(AlertRun.STATUS_CHOICES)
@@ -44,7 +44,7 @@ def _rule(request, rule_id) -> AlertRule:
         request.user, Report.objects.filter(studio=request.studio, present_in_scan=True, kind=Report.KIND_REPORT)
     )
     return get_object_or_404(
-        AlertRule.objects.select_related("report__studio", "created_by"),
+        AlertRule.objects.select_related("report__studio__org", "created_by").prefetch_related("recipients", "recipient_groups"),
         pk=rule_id,
         studio=request.studio,
         report__in=reports,
@@ -84,7 +84,7 @@ def alerts_page(request, org_slug, studio_slug):  # noqa: ARG001
     )
     rules = (
         AlertRule.objects.filter(studio=request.studio, report__in=reports)
-        .select_related("report__studio")
+        .select_related("report__studio__org")
         .prefetch_related("recipients", "recipient_groups")
         .annotate(
             last_decision=Subquery(last.values("decision")[:1]),
@@ -94,18 +94,54 @@ def alerts_page(request, org_slug, studio_slug):  # noqa: ARG001
         )
         .order_by("name")
     )
+    query = request.GET.get('q', '')[:200]
+    if query:
+        rules = rules.filter(Q(name__icontains=query) | Q(report__name__icontains=query) | Q(report__slug__icontains=query))
+    page = Paginator(rules.order_by('name', 'pk'), 25).get_page(request.GET.get('page'))
+    batch = DeliveryPresentationBatch(page.object_list)
     rows = [
         {
             "rule": rule,
             "trigger": _trigger_words(rule),
-            "recipients": _recipient_summary(rule),
+            "recipients": batch.summary(rule),
             "last": dict(AlertRun.CONDITION_CHOICES).get(rule.last_condition)
                     or ("Not evaluated" if rule.last_disposition == "not_evaluated" else
                         rule.last_decision or _STATUS_LABELS.get(rule.last_status, "")),
         }
-        for rule in rules
+        for rule in page.object_list
     ]
-    return render(request, "alerts/alerts.html", _context(request, rows=rows))
+    return render(request, "alerts/alerts.html", _context(request, rows=rows, page=page, query=query))
+
+
+@require_studio_role(roles.DEVELOPER)
+@require_GET
+def recipient_choices(request, org_slug, studio_slug):
+    from apps.reports.recipient_choices import recipient_snapshot, page_snapshot
+    response = JsonResponse(page_snapshot(recipient_snapshot(request.studio, include_inactive=True),
+        query=request.GET.get('q', ''), page=request.GET.get('page', 1),
+        selected_people=request.GET.get('selected_people', ''), selected_groups=request.GET.get('selected_groups', '')))
+    response['Cache-Control'] = 'private, no-store'
+    return response
+
+
+@require_studio_role(roles.DEVELOPER)
+@require_GET
+def report_choices(request, org_slug, studio_slug):
+    reports = visible_reports(request.user, Report.objects.filter(studio=request.studio,
+        present_in_scan=True, kind=Report.KIND_REPORT)).order_by('name', 'slug', 'pk')
+    query = request.GET.get('q', '')[:200]
+    matches = reports.filter(Q(name__icontains=query) | Q(slug__icontains=query)) if query else reports
+    page = Paginator(matches, 25).get_page(request.GET.get('page'))
+    def item(report):
+        return {'value': str(report.pk), 'label': report.name or report.slug, 'hint': request.studio.name}
+    selected_id = request.GET.get('selected', '')
+    selected = reports.filter(pk=selected_id).first() if selected_id.isascii() and selected_id.isdigit() and len(selected_id) < 19 else None
+    response = JsonResponse({'results': [item(report) for report in page],
+        'selected': item(selected) if selected else None,
+        'pagination': {'page': page.number, 'per_page': 25, 'total': page.paginator.count,
+                       'has_previous': page.has_previous(), 'has_next': page.has_next()}})
+    response['Cache-Control'] = 'private, no-store'
+    return response
 
 
 @require_studio_role(roles.DEVELOPER)
@@ -113,7 +149,12 @@ def rule_form(request, org_slug, studio_slug, rule_id=None):  # noqa: ARG001
     rule = _rule(request, rule_id) if rule_id else AlertRule(
         org=request.org, studio=request.studio, created_by=request.user
     )
-    form = AlertRuleForm(request.POST or None, instance=rule, studio=request.studio)
+    choices = request.POST if request.method == 'POST' else request.GET
+    presentation = {key: choices.get(key, '') for key in ('report_q', 'recipient_q', 'report_page', 'people_page', 'group_page')}
+    presentation['actor'] = request.user
+    form = AlertRuleForm(request.POST or None, instance=rule, studio=request.studio, presentation=presentation)
+    if request.method == 'POST' and (request.POST.get('action') == 'browse_choices' or (not request.POST.get('action') and any(key in request.POST for key in ('report_page', 'people_page', 'group_page')))):
+        return render(request, 'alerts/alert_form.html', _context(request, form=form, rule=rule, result=None))
     preview = request.method == "POST" and request.POST.get("action") == "preview"
     result = None
     if preview and form.is_valid():
@@ -177,7 +218,7 @@ def rule_detail(request, org_slug, studio_slug, rule_id):  # noqa: ARG001
     page = Paginator(runs, RUNS_PER_PAGE).get_page(page_number)
     return render(request, "alerts/alert_detail.html", _context(
         request, rule=rule, page=page, trigger=_trigger_words(rule),
-        recipients=_recipient_summary(rule), highlight=target.pk if target else None,
+        recipients=DeliveryPresentationBatch([rule]).summary(rule), highlight=target.pk if target else None,
     ))
 
 
