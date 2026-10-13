@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from urllib.parse import parse_qs, urlsplit
 from django.core import mail
 from django.test import Client
 from playwright.sync_api import expect, sync_playwright
@@ -139,22 +140,30 @@ def test_browser_preview_keeps_draft_and_discards_result_after_edit(rule, login)
         browser.close()
 
 
+def _route_bounded_recipients(page, url, total=101):
+    rows = [{'id': 900000 + i, 'name': f'Person {i}', 'email': f'person{i}@example.test'} for i in range(total)]
+    def respond(route):
+        query = parse_qs(urlsplit(route.request.url).query)
+        search = query.get('q', [''])[0].casefold()
+        matches = [row for row in rows if search in (row['name'] + ' ' + row['email']).casefold()]
+        number = max(1, int(query.get('page', ['1'])[0]))
+        selected = set(query.get('selected_people', [''])[0].split(','))
+        route.fulfill(json={'members': matches[(number - 1) * 25:number * 25], 'groups': [],
+            'selected': {'members': [row for row in rows if str(row['id']) in selected], 'groups': []},
+            'pagination': {'members': {'page': number, 'per_page': 25, 'total': len(matches),
+                'audience_total': total, 'choice_total': total, 'has_previous': number > 1,
+                'has_next': number * 25 < len(matches)},
+                'groups': {'page': 1, 'per_page': 25, 'total': 0, 'audience_total': 0,
+                    'choice_total': 0, 'has_previous': False, 'has_next': False}}})
+    page.route('http://example.test' + url.rsplit('/', 1)[0] + '/recipient-choices*', respond)
+
+
 @pytest.mark.parametrize("engine", ["chromium", "webkit"])
 def test_browser_recipient_and_timezone_pickers(engine, rule, login):
     from playwright.sync_api import Error
 
     url = f"/s/{rule.org.slug}/{rule.studio.slug}/alerts/new"
     html = login(rule.created_by).get(url).content.decode()
-    needle = '</form>\n<section id="alertPreview"'
-    injected = '''<script>
-      const fields=document.querySelectorAll('[data-recipient-picker]');
-      const field=fields[fields.length-1], checkbox=field.querySelector('input[type=checkbox]');
-      const list=Array.from(field.children).find(child => child.contains(checkbox));
-      for(let i=0;i<100;i++){const label=document.createElement('label');
-        const input=document.createElement('input'); input.type='checkbox'; input.name='recipients';
-        input.value='picker-test-'+i; label.append(input, ' Person '+i); list.append(label);}
-    </script></form>\n<section id="alertPreview"'''
-    html = html.replace(needle, injected, 1)
     with sync_playwright() as playwright:
         try:
             browser = getattr(playwright, engine).launch(headless=True)
@@ -164,6 +173,7 @@ def test_browser_recipient_and_timezone_pickers(engine, rule, login):
         page = context.new_page()
         page.route("**/*", lambda route: route.abort())
         page.route("http://example.test" + url, lambda route: route.fulfill(body=html, content_type="text/html"))
+        _route_bounded_recipients(page, url)
         page.goto("http://example.test" + url)
         page.add_script_tag(content=(ROOT / "static/choice-picker.js").read_text(encoding="utf-8"))
         page.add_script_tag(content=(ROOT / "static/recipient-picker.js").read_text(encoding="utf-8"))
@@ -185,26 +195,20 @@ def test_browser_recipient_and_timezone_pickers(engine, rule, login):
         field.locator(".ui-picker-trigger").click()
         field.locator("[data-recipient-filter=people]").click()
         search = field.locator(".ui-picker-search")
-        assert field.locator(".recipient-picker-option").evaluate_all(
-            "labels => labels.filter(label => !label.hidden).length"
-        ) == 101
+        expect(field.locator(".recipient-picker-option:visible")).to_have_count(25)
         search.fill("person 99")
-        assert field.locator(".recipient-picker-option").evaluate_all(
-            "labels => labels.filter(label => !label.hidden).length"
-        ) == 1
+        expect(field.locator(".recipient-picker-option:visible")).to_have_count(1)
         choice = field.locator(".recipient-picker-option:visible input")
         choice.click()
         expect(choice).to_be_checked()
         search.fill("nobody")
-        assert field.locator(".recipient-picker-option").evaluate_all(
-            "labels => labels.filter(label => !label.hidden).length"
-        ) == 0
+        expect(field.locator(".recipient-picker-option:visible")).to_have_count(0)
         expect(field.locator(".ui-picker-message")).to_have_text("No matches.")
         expect(field.locator(".recipient-picker-selected")).to_contain_text("Person 99")
-        assert page.locator("#alertForm").evaluate("form => new FormData(form).getAll('recipients')").count("picker-test-99") == 1
+        assert page.locator("#alertForm").evaluate("form => new FormData(form).getAll('recipients')").count("900099") == 1
         field.locator(".recipient-picker-selected button").click()
         expect(field.locator(".ui-picker-trigger")).to_be_focused()
-        assert page.locator("#alertForm").evaluate("form => new FormData(form).getAll('recipients')").count("picker-test-99") == 0
+        assert page.locator("#alertForm").evaluate("form => new FormData(form).getAll('recipients')").count("900099") == 0
 
         unknown = context.new_page()
         unknown.add_init_script("Intl.DateTimeFormat.prototype.resolvedOptions = "
@@ -227,17 +231,10 @@ def test_alert_editor_layout_desktop_mobile_and_dark(rule, login, tmp_path):
         page = browser.new_page(viewport={"width": 1440, "height": 1000}, reduced_motion="reduce")
         page.route("**/*", lambda route: route.abort())
         page.route("http://example.test" + url, lambda route: route.fulfill(body=html, content_type="text/html"))
+        _route_bounded_recipients(page, url, total=120)
         page.goto("http://example.test" + url)
         for name in ("themes.generated.css", "ui.css", "console-shell.css", "choice-picker.css", "recipient-picker.css"):
             page.add_style_tag(content=(ROOT / "static" / name).read_text(encoding="utf-8"))
-        page.locator('[data-recipient-type="people"]').evaluate("""group => {
-          for (let i=0; i<120; i++) {
-            const label=document.createElement('label'), input=document.createElement('input');
-            input.type='checkbox'; input.name='recipients'; input.value='visual-'+i;
-            input.dataset.recipientName='Person '+i; input.dataset.recipientIdentity='person'+i+'@example.test';
-            label.append(input, document.createTextNode('Person '+i)); group.append(label);
-          }
-        }""")
         page.add_script_tag(content=(ROOT / "static/choice-picker.js").read_text(encoding="utf-8"))
         page.add_script_tag(content=(ROOT / "static/recipient-picker.js").read_text(encoding="utf-8"))
         page.add_script_tag(content=(ROOT / "static/alert-editor.js").read_text(encoding="utf-8"))
@@ -258,7 +255,7 @@ def test_alert_editor_layout_desktop_mobile_and_dark(rule, login, tmp_path):
         page.screenshot(path=str(tmp_path / "alerts-desktop-light.png"), full_page=True)
         field = page.locator("[data-recipient-picker]")
         field.locator(".ui-picker-trigger").click()
-        assert field.locator(".recipient-picker-option").count() >= 120
+        expect(field.locator('.recipient-picker-option')).to_have_count(28)
         assert field.locator(".ui-picker-options").evaluate("node => node.scrollHeight > node.clientHeight")
         page.screenshot(path=str(tmp_path / "alerts-desktop-picker.png"))
 
