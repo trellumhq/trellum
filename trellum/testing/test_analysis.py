@@ -151,6 +151,62 @@ def test_failed_rebuild_preserves_every_previous_artifact(article, tmp_path, mon
     assert original == {p.relative_to(output): p.read_bytes() for p in output.rglob("*") if p.is_file()}
 
 
+def test_rebuild_writes_only_inside_output_mount(article, monkeypatch):
+    import tempfile
+
+    output = Path(run_report(str(article)))
+    inode = output.stat().st_ino
+    (output / "obsolete.txt").write_text("old")
+    (article / "content.md").write_text("Updated analysis")
+    original_mkdtemp = tempfile.mkdtemp
+    original_replace = os.replace
+
+    def mounted_mkdtemp(suffix=None, prefix=None, dir=None):
+        assert Path(dir) == output
+        return original_mkdtemp(suffix, prefix, dir)
+
+    def mounted_replace(source, target):
+        assert Path(source) != output and Path(target) != output
+        assert Path(source).is_relative_to(output)
+        assert Path(target).is_relative_to(output)
+        return original_replace(source, target)
+
+    monkeypatch.setattr(tempfile, "mkdtemp", mounted_mkdtemp)
+    monkeypatch.setattr(os, "replace", mounted_replace)
+    assert Path(run_report(str(article))) == output
+    assert output.stat().st_ino == inode
+    assert "Updated analysis" in (output / "index.html").read_text()
+    assert not (output / "obsolete.txt").exists()
+    assert not list(output.glob(".analysis-build-*"))
+
+
+@pytest.mark.parametrize("phase", ["backup", "install"])
+def test_failed_publication_restores_previous_artifacts(article, monkeypatch, phase):
+    output = Path(run_report(str(article)))
+    (output / "old-assets").mkdir()
+    (output / "old-assets" / "image.png").write_bytes(_png())
+    original = {p.relative_to(output): p.read_bytes() for p in output.rglob("*") if p.is_file()}
+    (article / "content.md").write_text("Replacement analysis")
+    original_replace = os.replace
+    count = 0
+
+    def fail_publication(source, target):
+        nonlocal count
+        source = Path(source)
+        in_phase = source.parent == output if phase == "backup" else source.parent.name == "output"
+        if in_phase:
+            count += 1
+            if count == 2:
+                raise OSError("publication failed")
+        return original_replace(source, target)
+
+    monkeypatch.setattr(os, "replace", fail_publication)
+    with pytest.raises(OSError, match="publication failed"):
+        run_report(str(article))
+    assert original == {p.relative_to(output): p.read_bytes() for p in output.rglob("*") if p.is_file()}
+    assert not list(output.glob(".analysis-build-*"))
+
+
 @pytest.mark.parametrize("changes", [{"kind": "unknown"}, {"kind": None},
                                     {"schedule": {}}, {"data_sources": []},
                                     {"author": {"name": "x"}}, {"extra_cdn": {}}])
@@ -384,6 +440,35 @@ def _run_cli(project: Path, *arguments: str, production: bool = False):
         environment["BI_STORAGE_BACKEND"] = "local"
     return subprocess.run([sys.executable, "-m", "trellum.run", *arguments], cwd=project,
                           env=environment, capture_output=True, text=True, encoding="utf-8", timeout=30)
+
+
+@pytest.mark.parametrize("content_type", ["report", "article", "presentation"])
+def test_production_cli_uses_shared_artifact_contract(tmp_path, monkeypatch, content_type):
+    monkeypatch.setenv("FW_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.setattr("trellum.project._project_root_override", None)
+    if content_type == "report":
+        directory = tmp_path / "reports" / "shared-build"
+        directory.mkdir(parents=True)
+        (directory / "report.yaml").write_text(
+            "slug: shared-build\nname: Shared build\ndescription: Build verification\n"
+            "studio: default\ncategory: Tests\n", encoding="utf-8")
+        (directory / "generator.py").write_text(
+            "from trellum import BaseReport\nfrom trellum.components import RawHTML\n"
+            "class Example(BaseReport):\n"
+            "    def generate(self, ctx):\n"
+            "        ctx.add_section('Findings', [RawHTML('<p>Verified finding</p>')])\n",
+            encoding="utf-8")
+    else:
+        directory = new_analysis("shared-build", content_type)
+    completed = _run_cli(tmp_path, str(directory), "--no-serve", "--production", production=True)
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    output = tmp_path / "output" / "shared-build"
+    assert (output / "index.html").is_file()
+    for filename in ("data.json", "_meta.json", "_validation.json", "_details.json"):
+        assert isinstance(json.loads((output / filename).read_bytes()), dict)
+    assert json.loads((output / "_validation.json").read_bytes())["summary"]["fail"] == 0
+    assert "Published to LocalBackend" in completed.stdout
+    assert not list(output.glob(".analysis-build-*"))
 
 
 @pytest.mark.parametrize("production", [False, True])
