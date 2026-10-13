@@ -173,6 +173,37 @@ def test_filterbar_with_matching_ds_passes():
     assert len(hits) == 0, f"Unexpected filterbar-orphan checks: {hits}"
 
 
+def test_accepted_inactive_filter_remains_suppressed_in_runtime_details():
+    from trellum.components import DataSource, FilterBar, LineChart
+    from trellum.reporting.diagnostics import compute_details
+
+    source = pd.DataFrame({
+        "day": ["2026-01-01", "2026-01-02"],
+        "actor": ["a", "b"],
+        "severity": ["info", "error"],
+    })
+    chart_data = pd.DataFrame({"day": source["day"], "value": [3, 4]})
+    ctx = _make_ctx(validation={"accept_inactive_filters": {"chart_ds": ["actor"]}})
+    ctx.add_section("", [
+        DataSource("filter_ds", source),
+        FilterBar("filter_ds", source, filters=[
+            {"column": "actor", "label": "Actor"},
+            {"column": "severity", "label": "Severity"},
+        ], propagate_to={"chart_ds": {}}),
+        DataSource("chart_ds", chart_data),
+        LineChart(chart_data, x="day", y="value", title="Values", dataset_id="chart_ds"),
+    ])
+
+    details = compute_details(ctx)
+    validate_report(ctx, details=details)
+    cells = details["coverage_by_dataset"]["chart_ds"]
+
+    assert [(cell["column"], cell["status"], cell.get("suppressed", False)) for cell in cells] == [
+        ("actor", "inactive", True),
+        ("severity", "inactive", False),
+    ]
+
+
 def test_slider_on_non_numeric_column_fails():
     from trellum.components import DataSource, FilterBar
 

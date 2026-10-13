@@ -62,8 +62,11 @@ image. Check the release workflow's artifacts if you specifically need SPDX.
 
 ## Air-gapped installs
 
-The repository includes `scripts/airgap_bundle.sh` to assemble a transfer
-archive with image files, Compose files, documentation, a manifest, and
-checksums. It does not include the report-runner image, backup and restore
-scripts, or cosign verification material, so it is not a complete offline
-installer.
+Trellum does not currently provide an offline installation bundle or bundle
+generator. The previous incomplete helper has been removed. The documented
+installation procedure requires access to the published images.
+
+A manually prepared air-gapped deployment needs both portal and report-runner
+images, Postgres when bundled, all required Compose-mounted scripts, and
+offline verification material. A complete disconnected installation and
+backup/restore procedure has not yet been verified.

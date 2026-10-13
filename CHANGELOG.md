@@ -9,6 +9,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Add a release-only Compose overlay that pins matched portal and runner images
+  to one required version and removes source image build definitions.
 - Offer organization Assistant access through an accessible-studio picker, with named conversation scope and visible availability reasons and retry.
 - Add permission-scoped assistant alert discovery with stable identities and
   settings revision tokens that reject stale approved or MCP updates.
@@ -29,6 +31,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- Remove the incomplete offline bundle generator and clarify that offline
+  installation and upgrade bundles are not currently provided.
+
+- Preserve cents in shared currency formatting below the compact-total boundary.
 - Reserve search shortcut space beside the input, show the platform shortcut, and remove duplicate placeholder hints.
 - Evaluate alert conditions during cooldown, keeping condition truth separate
   from notification suppression; deduplicate build and schedule triggers.
@@ -40,6 +46,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Exclude report-accepted inactive filters from the live health badge while
+  keeping their status and rationale in its filter detail panel.
+- Keep Operations polling confined to summary statistics, preserving expanded
+  history memory values. Calculate average and percentile durations from
+  successful runs while retaining failed-run counts, memory and latest details.
+- Recompute bound last-value metric KPIs from the final retained date under
+  date and dimension filters, including restored filter state.
 - Fetch the report registry without the browser cache so catalog changes appear
   after Back navigation.
 - Preserve scheduled delivery settings when their creator is deleted, and skip

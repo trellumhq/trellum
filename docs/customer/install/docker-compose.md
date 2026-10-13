@@ -20,30 +20,34 @@ isolation enabled. Configure that setup before any build-and-start command.
 
 ## Option A: Pull the published images
 
-Start from the source tag matching the published images. The checkout includes
-the Compose file, backup and upgrade scripts, and other files needed to operate
-the installation.
+Use a source tag that includes `docker-compose.release.yml`; the overlay is
+first available in the source release after v0.5.0. The v0.5.0 source tag does
+not contain it. The matching source checkout also supplies backup and upgrade
+scripts and the other files needed to operate the installation. This path
+requires Docker Compose v2.24 or newer.
 
-Set `TRELLUM_VERSION` in `.env` to the exact release tag used by these commands;
-the Compose image settings use that same value.
+Set `TRELLUM_VERSION` in `.env` to the exact published tag. The release overlay
+uses that value for both images and removes the source build definitions. It
+ignores `TRELLUM_IMAGE` and `TRELLUM_RUNNER_IMAGE`, so stale local image
+settings cannot change the selected release.
 
 ### 1. Get the matching Compose files
 
 ```bash
-TRELLUM_VERSION=v0.5.0
+TRELLUM_VERSION=vX.Y.Z # replace with a published tag containing the overlay
 git clone --depth 1 --branch "$TRELLUM_VERSION" https://github.com/trellumhq/trellum.git
 cd trellum
 cp .env.example .env
 cat >> .env <<EOF
 TRELLUM_VERSION=$TRELLUM_VERSION
-TRELLUM_IMAGE=ghcr.io/trellumhq/trellum:$TRELLUM_VERSION
-TRELLUM_RUNNER_IMAGE=ghcr.io/trellumhq/trellum-runner:$TRELLUM_VERSION
+COMPOSE_FILE=docker-compose.yml:docker-compose.release.yml
 EOF
 ```
 
 Fill in the other required settings in [step 2](#2-fill-in-the-settings), then
-verify the images as described in
+verify both signatures as described in
 [Verify what you received](/docs/latest/install/verify-images/).
+The commands below pull the matched portal and runner images before startup.
 
 ## Option B: Build from source
 
@@ -105,8 +109,8 @@ and is covered in the
 
 | Setting | What it is |
 |---|---|
-| `TRELLUM_IMAGE` | Which released version to run. Pin an exact version, so a restart can never silently move you to a different one. |
-| `TRELLUM_RUNNER_IMAGE` | The matching report-build sandbox image. Use the runner image with the same release tag as `TRELLUM_IMAGE`. |
+| `TRELLUM_VERSION` | For Option A, the exact published release tag selected for both images. |
+| `TRELLUM_IMAGE` / `TRELLUM_RUNNER_IMAGE` | Option B image tags when building from source. Option A's release overlay sets both image names from `TRELLUM_VERSION`. |
 | `PORTAL_BASE_URL` | The public address people will visit, e.g. `https://bi.example.com`. Used to build links in invitation and password-reset emails, and to decide whether cookies are marked secure. |
 | `ALLOWED_HOSTS` | The hostnames the portal will answer on. A request arriving under any other name is refused, which is what stops someone pointing their own domain at your instance. |
 | `POSTGRES_PASSWORD` | The password for the bundled database. Any strong value; you will not type it again. |
@@ -178,6 +182,18 @@ docker compose pull
 docker compose up -d --no-build
 ```
 
+Because `COMPOSE_FILE` is saved in `.env`, later pull, backup and restart
+commands keep using the release overlay. With host-folder storage,
+set `COMPOSE_FILE=docker-compose.yml:docker-compose.release.yml:docker-compose.bind-data.yml`.
+With an external database, append `docker-compose.external-db.yml` as well.
+
+!!! warning "Upgrade helper compatibility"
+    This path selects images with `TRELLUM_VERSION`. The current upgrade and
+    rollback helpers change only `TRELLUM_IMAGE`, which this overlay ignores;
+    those helpers cannot switch the selected release without adaptation.
+    Follow the limitations in the [upgrade guide](/docs/latest/install/upgrades/)
+    and verify any upgrade/rollback procedure on a separate instance first.
+
 For Option B, the `docker compose up -d --build` command in that section has
 already started the stack.
 
@@ -204,12 +220,16 @@ bash scripts/check-docker.sh --bind-data
 sudo install -d -o 10001 -g 10001 -m 0750 /srv/trellum/data
 ```
 
-Add these settings to `.env`:
+For Option A, add these settings to `.env` (the order keeps the release
+selection and host-folder storage active for every Compose command):
 
 ```dotenv
-COMPOSE_FILE=docker-compose.yml:docker-compose.bind-data.yml
+COMPOSE_FILE=docker-compose.yml:docker-compose.release.yml:docker-compose.bind-data.yml
 TRELLUM_DATA_HOST_PATH=/srv/trellum/data
 ```
+
+For Option B, use `COMPOSE_FILE=docker-compose.yml:docker-compose.bind-data.yml`
+instead; the source-build path does not include the release overlay.
 
 Leave `TRELLUM_DATA_VOLUME` unset. The override clears it on workers and
 runners so they discover the host folder. `TRELLUM_DATA_HOST_PATH` must be
@@ -223,11 +243,12 @@ the backup service's mount remains read-only. The override preserves the
 backup volume and the worker/runner Docker sockets. It refuses to create a
 missing host directory automatically.
 
-Then continue with the normal pull/build and startup commands. Keeping
+Then continue with the normal pull and startup commands. Keeping
 `COMPOSE_FILE` in `.env` ensures later backups, upgrades and restarts keep using
 this storage. Explicit `-f` arguments override that setting: if you use them,
-include `-f docker-compose.bind-data.yml` as well. With an external database,
-append `:docker-compose.external-db.yml` to `COMPOSE_FILE`.
+include `-f docker-compose.release.yml` and `-f docker-compose.bind-data.yml`
+for Option A, or the bind-data override alone for Option B. With an external
+database, append `:docker-compose.external-db.yml` to `COMPOSE_FILE`.
 
 #### Moving an existing named volume
 

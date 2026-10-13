@@ -9,7 +9,7 @@ from trellum.validation.result import ValidationResult
 from trellum.validation.walk import _resolve_ds_columns
 
 #: Claim keys that, when present on the claim itself, override the definition.
-_OVERRIDE_KEYS = ("agg", "column", "numerator", "denominator", "format")
+_OVERRIDE_KEYS = ("agg", "column", "numerator", "denominator", "format", "date_col", "last_agg")
 
 
 def _iter_claims(comps: list[tuple[Any, str]]):
@@ -45,7 +45,7 @@ def _check_metrics(
     result: ValidationResult,
 ) -> None:
     """Category: metrics.yaml schema and metric claims."""
-    from trellum.metrics import load_metrics_result
+    from trellum.metrics import expand_claim, load_metrics_result
 
     load = load_metrics_result()
     registry = load.metrics
@@ -87,10 +87,11 @@ def _check_metrics(
             continue
 
         # ── metric-overridden: the claim contradicts the definition ─────
+        expected = {**metric.agg_spec(), "format": metric.format}
         overridden = [
             k for k in _OVERRIDE_KEYS
-            if k in claim and getattr(metric, k, None) not in (None, "")
-            and str(claim[k]) != str(getattr(metric, k))
+            if k in claim and expected.get(k) not in (None, "")
+            and str(claim[k]) != str(expected[k])
         ]
         if overridden:
             result.warn(
@@ -107,6 +108,19 @@ def _check_metrics(
         has_own_spec = any(
             k in claim for k in ("agg", "column", "columns", "numerator")
         )
+
+        expanded = expand_claim(claim, registry)
+        if kind == "live" and expanded.get("agg") in ("avg_by_date", "last_by_date"):
+            cols = _resolve_ds_columns(ds_id, ds_map) if ds_id else set()
+            date_col = expanded.get("date_col")
+            if not date_col or (ds_id in ds_map and date_col not in cols):
+                result.fail(
+                    "metric-column-missing",
+                    f"metric '{metric_id}' needs its declared time column "
+                    f"'{date_col}' in DataSource '{ds_id}' for {expanded['agg']}. "
+                    "Return that column or correct the claim's date_col.",
+                    component="KpiRow", section=sec, dataset_id=ds_id or "",
+                )
 
         if kind == "live" and not has_value and not has_own_spec:
             # ── the claim must be computable on its DataSource ──────────

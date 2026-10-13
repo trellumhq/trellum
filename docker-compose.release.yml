@@ -1,0 +1,27 @@
+# Published release images only. This overlay deliberately removes every
+# build definition from the source-oriented base Compose file.
+# Requires Docker Compose v2.24+ for the !reset tag.
+
+services:
+  migrate:
+    build: !reset null
+    image: ghcr.io/trellumhq/trellum:${TRELLUM_VERSION:?set TRELLUM_VERSION to an exact published release tag}
+  web:
+    build: !reset null
+    image: ghcr.io/trellumhq/trellum:${TRELLUM_VERSION:?set TRELLUM_VERSION to an exact published release tag}
+  worker:
+    build: !reset null
+    image: ghcr.io/trellumhq/trellum:${TRELLUM_VERSION:?set TRELLUM_VERSION to an exact published release tag}
+    environment:
+      TRELLUM_SANDBOX_IMAGE: ghcr.io/trellumhq/trellum-runner:${TRELLUM_VERSION:?set TRELLUM_VERSION to an exact published release tag}
+  sandbox-image:
+    build: !reset null
+    image: ghcr.io/trellumhq/trellum-runner:${TRELLUM_VERSION:?set TRELLUM_VERSION to an exact published release tag}
+  coordinator:
+    build: !reset null
+    image: ghcr.io/trellumhq/trellum:${TRELLUM_VERSION:?set TRELLUM_VERSION to an exact published release tag}
+  runner:
+    build: !reset null
+    image: ghcr.io/trellumhq/trellum:${TRELLUM_VERSION:?set TRELLUM_VERSION to an exact published release tag}
+    environment:
+      TRELLUM_SANDBOX_IMAGE: ghcr.io/trellumhq/trellum-runner:${TRELLUM_VERSION:?set TRELLUM_VERSION to an exact published release tag}

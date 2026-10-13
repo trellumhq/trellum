@@ -230,6 +230,41 @@ class TestFormatters:
         result = browser_page.evaluate("fmtCompact$(null)")
         assert result == "-"
 
+    def test_currency_formatter_preserves_cents_and_compacts_at_boundary(self, browser_page):
+        result = browser_page.evaluate("""() => {
+            var currency = getFormatter('currency');
+            return {
+                card: currency(2.18),
+                axis: fmtCompact$(2.18),
+                tooltipValue: fmtCompact$(2.18),
+                fraction: currency(0.13),
+                zero: currency(0),
+                negative: currency(-2.18),
+                belowBoundary: currency(999.994),
+                roundedBoundary: currency(999.995),
+                large: currency(1400000),
+                missing: currency(null),
+                invalid: currency('invalid'),
+                number: getFormatter('number')(2.18),
+                chips: fmtChips(2.18)
+            };
+        }""")
+        assert result == {
+            "card": "$2.18",
+            "axis": "$2.18",
+            "tooltipValue": "$2.18",
+            "fraction": "$0.13",
+            "zero": "$0.00",
+            "negative": "$-2.18",
+            "belowBoundary": "$999.99",
+            "roundedBoundary": "$1.0k",
+            "large": "$1.4M",
+            "missing": "-",
+            "invalid": "-",
+            "number": "2",
+            "chips": "2 chips",
+        }
+
     def test_fmtChips(self, browser_page):
         result = browser_page.evaluate("fmtChips(1234567)")
         assert result == "1.2M chips"

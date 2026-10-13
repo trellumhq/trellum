@@ -62,14 +62,12 @@ class _MetricsWorkspace(RawHTML):
 
 class _MetricBlock(Section):
     time_column: str | None = None
-    snapshot = False
 
     def render_html(self, ctx):
         html = super().render_html(ctx)
         time = escape(self.time_column or "", quote=True)
-        snapshot = ' data-metric-snapshot="1"' if self.snapshot else ""
         return html.replace('<div class="fw-section"',
-                            f'<div class="fw-section fw-metric-block" data-metric-time="{time}"{snapshot}', 1)
+                            f'<div class="fw-section fw-metric-block" data-metric-time="{time}"', 1)
 
 
 class MetricsReport(BaseReport):
@@ -149,22 +147,17 @@ class MetricsReport(BaseReport):
 
 def _block(m: Metric, df: pd.DataFrame, ds: Dataset) -> Section:
     """The anchored KPI and chart also addressable through ``?only=``."""
-    comps: list = [KpiRow([_claim(m, df, ds)], dataset_id=m.dataset)]
+    comps: list = [KpiRow([_claim(m)], dataset_id=m.dataset)]
     if (chart := _chart(m, df, ds)) is not None:
         comps.append(chart)
     block = _MetricBlock(m.label or m.name, comps, anchor=f"metric-{m.name}")
     block.time_column = ds.time_column
-    block.snapshot = m.time_agg == "last" and bool(ds.time_column)
     return block
 
 
-def _claim(m: Metric, df: pd.DataFrame, ds: Dataset) -> dict:
-    """A bare claim, except ``time_agg: last``: the last period's value,
-    computed here (slice 1) rather than re-aggregated under filters."""
-    if m.time_agg != "last" or not ds.time_column or df.empty:
-        return {"metric": m.name}
-    last = df[df[ds.time_column] == df[ds.time_column].max()]
-    return {"metric": m.name, "value": round(float(last[m.column].sum()), 4)}
+def _claim(m: Metric) -> dict:
+    """A bare claim: its bound aggregation is expanded by KpiRow."""
+    return {"metric": m.name}
 
 
 def _chart(m: Metric, df: pd.DataFrame, ds: Dataset):

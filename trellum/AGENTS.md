@@ -486,8 +486,9 @@ A metric **without** an `agg` spec is *descriptive*: claimable only where a
 *executable* and can be claimed bare inside a live `KpiRow(dataset_id=...)`.
 `time_agg: avg` makes a bare claim expand to the client's `avg_by_date` over
 the dataset's time column (a DAU card reads "average DAU over the window");
-`time_agg: last` (balances) is rendered from a Python-computed `value=` for
-now. `dataset` and `time_agg` are provenance, not meaning, so they do not
+`time_agg: last` (balances) expands to `last_by_date` on the declared time
+column, aggregating only retained rows on the final date after filters.
+`dataset` and `time_agg` are provenance, not meaning, so they do not
 move `definition_hash`.
 
 **`python -m trellum metrics --report`** scaffolds `reports/metrics/`: an
@@ -502,9 +503,11 @@ controls. **Show / hide metrics** stores browser-local choices for the current
 report; **Show all** restores them. Hover over a time observation to draw a
 matching time guide on other visible charts that contain that exact date or
 time. Missing dates and non-time charts receive no guide or invented values.
-Metrics with `time_agg: last` show their trend and a build-time snapshot note;
-the static KPI is omitted in the workspace because it does not follow dates.
-The focused metric view retains the existing snapshot KPI.
+Metrics with `time_agg: last` show their trend and a live KPI that follows
+the selected dates. The focused metric view uses the same live aggregation.
+Empty windows and windows with no usable time values aggregate to zero;
+null measures contribute zero. Without a declared time axis, the ordinary
+aggregation remains in use.
 
 Two controls, two scopes. The **date range** is shared: one FilterBar on the
 first time dataset, propagated onto every other time dataset's own time

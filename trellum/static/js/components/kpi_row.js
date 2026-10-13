@@ -45,6 +45,22 @@ window._fwRenderers['kpi_row_live'] = function(id, cfg) {
                 for (var _ri = 0; _ri < rows.length; _ri++) { var _d = rows[_ri][_dcol]; if (_d != null) _dates[_d] = 1; }
                 var _nd = Object.keys(_dates).length;
                 val = _nd > 0 ? A.sum(rows, kpi.column) / _nd : 0;
+            } else if (agg === 'last_by_date') {
+                // The declared time axis uses sortable ISO values, like the
+                // date filter and chart labels. Never guess a missing axis.
+                var lastDate = null, lastRows = [];
+                for (var li = 0; li < rows.length; li++) {
+                    var date = rows[li][kpi.date_col];
+                    if (date == null || date === '') continue;
+                    if (lastDate === null || date > lastDate) {
+                        lastDate = date;
+                        lastRows = [rows[li]];
+                    } else if (date === lastDate) {
+                        lastRows.push(rows[li]);
+                    }
+                }
+                val = kpi.last_agg === 'abssum'
+                    ? A.absSum(lastRows, kpi.column) : A.sum(lastRows, kpi.column);
             } else if (agg === 'count') {
                 val = rows.length;
             } else if (agg === 'purchase_pct') {
