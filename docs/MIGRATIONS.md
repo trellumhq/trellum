@@ -99,5 +99,7 @@ The current-code and previous-release suites use the same pinned Playwright
 container for consistent system libraries and font fallback. The previous
 release still installs its own Python requirements and browser revisions, and
 its source and assertions remain unchanged. Keep both job image pins aligned
-when updating the browser environment. Diagnose environment or existing test
+when updating the browser environment. Real-daemon `docker_sandbox` tests run in
+the dedicated host jobs; container jobs cannot supply the host daemon with their
+temporary filesystem paths for bind mounts. Diagnose environment or existing test
 failures separately before classifying a failed job as a schema incompatibility.

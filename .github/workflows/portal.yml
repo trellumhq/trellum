@@ -426,7 +426,9 @@ jobs:
           cd ../previous-release
           SUITES=(apps)
           echo "running previous release: ${SUITES[*]}"
-          /tmp/previous-venv/bin/python -m pytest -p previous_schema "${SUITES[@]}" -q -ra || {
+          # As in django-tests, real-daemon bind mounts require host paths.
+          # Those cases run in the sandbox and Docker compatibility host jobs.
+          /tmp/previous-venv/bin/python -m pytest -p previous_schema "${SUITES[@]}" -q -ra -m "not docker_sandbox" || {
             echo
             echo "The previous release's tests fail against this branch's schema."
             echo "Check the failure for environment or pre-existing test issues."
