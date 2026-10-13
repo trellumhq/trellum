@@ -20,9 +20,8 @@ isolation enabled. Configure that setup before any build-and-start command.
 
 ## Option A: Pull the published images
 
-Use a source tag that includes `docker-compose.release.yml`; the overlay is
-first available in the source release after v0.5.0. The v0.5.0 source tag does
-not contain it. The matching source checkout also supplies backup and upgrade
+Use the matching v0.6.0 source tag, which includes
+`docker-compose.release.yml`. The matching source checkout also supplies backup and upgrade
 scripts and the other files needed to operate the installation. This path
 requires Docker Compose v2.24 or newer.
 
@@ -34,7 +33,7 @@ settings cannot change the selected release.
 ### 1. Get the matching Compose files
 
 ```bash
-TRELLUM_VERSION=vX.Y.Z # replace with a published tag containing the overlay
+TRELLUM_VERSION=v0.6.0
 git clone --depth 1 --branch "$TRELLUM_VERSION" https://github.com/trellumhq/trellum.git
 cd trellum
 cp .env.example .env
@@ -57,7 +56,7 @@ knows how to build the image itself; there is no separate Dockerfile step.
 ### Clone and prepare `.env`
 
 ```bash
-TRELLUM_VERSION=v0.5.0
+TRELLUM_VERSION=v0.6.0
 git clone --depth 1 --branch "$TRELLUM_VERSION" https://github.com/trellumhq/trellum.git
 cd trellum
 cp .env.example .env

@@ -12,6 +12,7 @@
     }
 
     function showPop(t, cx, cy, data) {
+        if (WORKSPACE) pop._workspacePending = null;
         popChip.innerHTML = chipHtml(t);
         pop._data = data || null;
         if (data) {
@@ -21,7 +22,9 @@
                 ? 'What about this data point?' : 'What about this range?';
         } else {
             popData.style.display = 'none';
-            popText.placeholder = 'What should change here?';
+            popText.placeholder = WORKSPACE && WORKSPACE.kind === 'report'
+                ? 'What context should this add to the analysis?'
+                : 'What should change here?';
         }
         popText.value = '';
         pop.style.display = 'block';
@@ -41,6 +44,10 @@
         pop.style.top = Math.max(window.scrollY + 8, top) + 'px';
         pop.style.left = Math.max(8, Math.min(left, window.scrollX + vw - 316)) + 'px';
         pop._target = t;
+        if (WORKSPACE && workspaceRecoverableText) {
+            popText.value = workspaceRecoverableText;
+            workspaceRecoverableText = '';
+        }
         setTimeout(function () { popText.focus(); }, 30);
     }
     function hidePop() { pop.style.display = 'none'; pop._target = null; }

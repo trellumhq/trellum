@@ -438,6 +438,7 @@ def render_report(
 {cdn_tags}
     <style>{base_css}
 {component_css}</style>
+{('<noscript><style>#fwLoading{display:none}</style></noscript>' if config.get('kind') == 'analysis' else '')}
 </head>
 <body data-report-slug="{slug}" data-content-kind="{config.get('kind', 'report')}">
 <div class="fw-loading" id="fwLoading">

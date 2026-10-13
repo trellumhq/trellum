@@ -1,5 +1,6 @@
 """Analyses reuse report identity, grants, protected assets and sharing."""
 import pytest
+import json
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
@@ -40,6 +41,67 @@ def article_reader(member, analysis, make_group, attach_group, settings):
     ReportPermissionGrant.objects.create(grant=grant, report=analysis)
     attach_group(member, group)
     return member
+
+
+@pytest.fixture
+def presentation(analysis, monkeypatch):
+    from trellum.runner.execute import run_report
+
+    root = analysis.studio.project_root
+    directory = analysis.studio.reports_dir / analysis.slug
+    (directory / "report.yaml").write_text(json.dumps({
+        "kind": "analysis", "format": "presentation", "name": analysis.name,
+        "slug": analysis.slug, "theme": "trellum light",
+    }), encoding="utf-8")
+    (directory / "slides.yaml").write_text(json.dumps({"version": 1, "slides": [
+        {"id": "finding", "layout": "image-text", "title": "Frozen finding",
+         "text": "Evidence stays fixed.", "image": "evidence/revenue.png", "alt": "Revenue evidence"},
+    ]}), encoding="utf-8")
+    from PIL import Image
+    (directory / "evidence").mkdir(exist_ok=True)
+    Image.new("RGB", (600, 300), "white").save(directory / "evidence/revenue.png")
+    monkeypatch.setenv("FW_PROJECT_ROOT", str(root))
+    monkeypatch.setattr("trellum.project._project_root_override", None)
+    run_report(str(directory))
+    (analysis.studio.output_dir / analysis.slug / "evidence/revenue.json").write_text(
+        '{"captured_at":"2026-10-12T12:00:00Z"}', encoding="utf-8",
+    )
+    return analysis
+
+
+def test_presentation_uses_own_audience_for_html_png_and_metadata(
+    login, article_reader, presentation, report_row,
+):
+    prefix = f"/s/{presentation.studio.org.slug}/{presentation.studio.slug}"
+    client = login(article_reader)
+    html = client.get(f"{prefix}/r/{presentation.slug}/index.html")
+    assert html.status_code == 200
+    assert b'fw-presentation' in html.content and b'id="slide-finding"' in html.content
+    assert b'Fullscreen unavailable' in html.content
+    for asset in ("evidence/revenue.png", "evidence/revenue.json", "_meta.json"):
+        assert client.get(f"{prefix}/r/{presentation.slug}/{asset}").status_code == 200
+    assert client.get(f"{prefix}/r/{report_row.slug}/index.html").status_code == 404
+    presentation.permission_group_grants.all().delete()
+    for asset in ("index.html", "evidence/revenue.png", "evidence/revenue.json", "_meta.json"):
+        assert client.get(f"{prefix}/r/{presentation.slug}/{asset}").status_code == 404
+
+
+@pytest.mark.parametrize("blocked", ("expires_at", "revoked_at", "policy"))
+def test_shared_presentation_protects_document_and_every_evidence_asset(client, presentation, blocked):
+    policy = OrgSharePolicy.objects.create(org=presentation.studio.org, share_links_enabled=True)
+    link = ShareLink.objects.create(report=presentation)
+    entry = client.get(f"/share/{link.token}/")
+    assert entry.status_code == 200 and b'id="slide-finding"' in entry.content
+    for asset in ("index.html", "evidence/revenue.png", "evidence/revenue.json", "_meta.json"):
+        assert client.get(f"/share/{link.token}/{asset}").status_code == 200
+    if blocked == "policy":
+        policy.share_links_enabled = False
+        policy.save()
+    else:
+        setattr(link, blocked, timezone.now() - timezone.timedelta(seconds=1))
+        link.save()
+    for asset in ("", "index.html", "evidence/revenue.png", "evidence/revenue.json", "_meta.json"):
+        assert client.get(f"/share/{link.token}/{asset}").status_code == 410
 
 
 def test_kind_defaults_to_report(studio_tree):

@@ -20,7 +20,6 @@ REPORT_PATH = "/reports/metrics/"
 def generated_metrics(tmp_path_factory):
     from trellum.metrics import invalidate_metrics_cache
     from trellum.metrics_report import MetricsReport
-    from trellum.project import get_project_root, set_project_root
     from trellum.rendering.html_builder import render_report
     from trellum.report import ReportContext
     from trellum.validation import validate_report
@@ -46,8 +45,8 @@ def generated_metrics(tmp_path_factory):
          "region": f"Region {i % 3}", "revenue": 10 + i + (600 if day_index == 6 else day_index * 2)}
         for day_index, day in enumerate(pd.date_range("2026-09-01", periods=40)) for i in range(12)
     ])
-    original = get_project_root()
-    set_project_root(str(project))
+    patch = pytest.MonkeyPatch()
+    patch.setattr("trellum.project._project_root_override", str(project))
     invalidate_metrics_cache()
     try:
         config = {"name": "Metrics", "slug": "metrics", "version": "0.1.0",
@@ -70,7 +69,7 @@ def generated_metrics(tmp_path_factory):
             ids.append(re.findall(r'<div[^>]+data-stack-toggle="([^"]+)"', Path(html).read_text(encoding="utf-8")))
         assert ids[0] and ids[0] == ids[1], "Saved breakdown URLs must survive equivalent rebuilds"
     finally:
-        set_project_root(original)
+        patch.undo()
         invalidate_metrics_cache()
     return project / "output"
 

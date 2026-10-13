@@ -114,15 +114,8 @@ def confined_file(root: Path, relative: str) -> Path:
     return resolved
 
 
-def import_capture(report_dir: str, capture_file: str, name: str | None = None) -> str:
-    from trellum.report import BaseReport
-
-    root = Path(report_dir).resolve()
-    if BaseReport.load_config(str(root)).get("kind", "report") != "analysis":
-        raise ValueError("Import evidence into a kind: analysis directory")
-    capture_path = Path(capture_file)
-    raw_capture = read_bounded(capture_path, MAX_CAPTURE_BYTES)
-    capture = json.loads(raw_capture)
+def validate_capture(capture: object) -> tuple[bytes, dict]:
+    """Validate the shared version-1 browser capture trust boundary."""
     if (not isinstance(capture, dict)
             or capture.get("format") != "trellum-analysis-capture"
             or type(capture.get("version")) is not int or capture["version"] != 1):
@@ -137,6 +130,19 @@ def import_capture(report_dir: str, capture_file: str, name: str | None = None) 
     except (ValueError, binascii.Error) as exc:
         raise ValueError("Capture image is not valid base64") from exc
     validate_png(raw)
+    return raw, source
+
+
+def import_capture(report_dir: str, capture_file: str, name: str | None = None) -> str:
+    from trellum.report import BaseReport
+
+    root = Path(report_dir).resolve()
+    if BaseReport.load_config(str(root)).get("kind", "report") != "analysis":
+        raise ValueError("Import evidence into a kind: analysis directory")
+    capture_path = Path(capture_file)
+    raw_capture = read_bounded(capture_path, MAX_CAPTURE_BYTES)
+    capture = json.loads(raw_capture)
+    raw, source = validate_capture(capture)
     default_name = (capture_path.name.removesuffix(".trellum-capture.json")
                     if capture_path.name.endswith(".trellum-capture.json") else capture_path.stem)
     stem = safe_name(name if name is not None else default_name)

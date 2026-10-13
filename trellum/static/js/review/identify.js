@@ -1,5 +1,9 @@
     /* ── identity capture ───────────────────────────────────── */
-    var SNAP = '.fw-kpi-card, [data-fw-kind], .fw-section';
+    var SNAP = WORKSPACE && WORKSPACE.kind === 'analysis'
+        ? 'h1,h2,h3,h4,h5,h6,[data-fw-kind],.fw-kpi-card,.fw-section'
+        : WORKSPACE
+            ? '.fw-chart-container,.fw-kpi-card,[data-fw-kind]:not([data-fw-kind="Passage"]):not([data-fw-kind="passage"]),.fw-section'
+            : '.fw-kpi-card, [data-fw-kind], .fw-section';
 
     function cssPath(node) {
         if (node.id) return '#' + node.id;
@@ -19,6 +23,28 @@
     }
 
     function identify(node) {
+        if (WORKSPACE && WORKSPACE.kind === 'analysis') {
+            // Text headings inside a chart/section are the specific target;
+            // only a direct component surface falls through to its component.
+            var heading = node.closest('h1,h2,h3,h4,h5,h6');
+            var passage = node.closest('[data-fw-kind="Passage"],[data-fw-kind="passage"]');
+            if (heading || passage) {
+                var textTarget = heading || passage;
+                var enclosingSection = textTarget.closest('.fw-section');
+                return {
+                    el: textTarget, kind: heading ? 'Heading' : 'Passage',
+                    title: (textTarget.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 120),
+                    id: textTarget.id || '', selector: cssPath(textTarget),
+                    tag: textTarget.tagName.toLowerCase(),
+                    text: (textTarget.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 240),
+                    section: enclosingSection ? {
+                        id: enclosingSection.id || '',
+                        title: enclosingSection.getAttribute('data-fw-section-title') ||
+                            (enclosingSection.querySelector('h2') ? enclosingSection.querySelector('h2').textContent.trim() : '')
+                    } : null
+                };
+            }
+        }
         var card = node.closest('.fw-kpi-card');
         var comp = node.closest('[data-fw-kind]');
         var sec = node.closest('.fw-section');
@@ -60,7 +86,8 @@
     function chipHtml(t) {
         var loc = t.section && t.section.title && t.kind !== 'Section'
             ? ' in “' + esc(t.section.title) + '”' : '';
-        return '<span class="fwrv-k">' + esc(t.kind) + '</span><span>' +
+        var purpose = WORKSPACE && WORKSPACE.kind === 'report' ? 'Add to analysis · ' : '';
+        return '<span class="fwrv-k">' + purpose + esc(t.kind) + '</span><span>' +
             (t.title ? '“' + esc(t.title) + '”' : '') + loc +
             '</span><span class="fwrv-sel">' + esc(t.selector) + '</span>';
     }

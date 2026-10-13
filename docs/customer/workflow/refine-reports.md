@@ -57,3 +57,6 @@ Local review is for changing report source in your repository with a coding
 agent. The optional portal assistant answers questions about portal reports and
 can propose supported portal actions with approval; it never edits your Git
 repository. Public or exported reports do not retain the local editing chat.
+
+For a complete local workflow that turns filtered report captures into an
+article or presentation with an agent, see [Local analysis](local-analysis.md).

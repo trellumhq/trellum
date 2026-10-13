@@ -246,13 +246,16 @@ class TestReportDeliveryJsErrorHandling:
         end = js_source.index(end_marker, start)
         return js_source[start:end]
 
-    def test_submit_has_a_catch_that_reenables_the_submit_button(self, js_source):
+    def test_schedule_submit_reports_rejection_and_releases_save_state(self, js_source):
         body = self._function_body(
-            js_source, "function submitScheduleForm(root, ctx) {", "\n    // ── state"
+            js_source, "function wireScheduleForm(root, ctx) {", "\n    // ── state"
         )
-        assert ".catch(" in body
-        after_catch = body.split(".catch(", 1)[1]
-        assert "submitBtn.disabled = false" in after_catch
+        submit_handler = body.split("form.addEventListener('submit'", 1)[1]
+        assert ".catch(function () {" in submit_handler
+        assert "Save outcome unconfirmed." in submit_handler
+        assert ".finally(function () {" in submit_handler
+        assert "ctx.saving = false" in submit_handler
+        assert "submit.disabled = !ctx.ready" in submit_handler
 
     def test_drawer_sample_and_delete_each_have_a_catch(self, js_source):
         body = self._function_body(

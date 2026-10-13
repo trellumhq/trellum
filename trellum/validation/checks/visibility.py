@@ -13,6 +13,23 @@ from trellum.validation.walk import (
 
 def _check_toggle_visible(comps: list[tuple[Any, str]], result: ValidationResult) -> None:
     """Category 7: Toggle / Visible wiring."""
+    toggle_map, toggle_default, visible_list, rawhtml_list = _collect_toggle_components(comps, result)
+    visible_targets_used = _check_visible_components(
+        visible_list, toggle_map, toggle_default, result,
+    )
+    _check_rawhtml_toggle_references(
+        comps, rawhtml_list, toggle_map, visible_targets_used, result,
+    )
+    for tid in toggle_map:
+        if tid not in visible_targets_used:
+            result.info(
+                "toggle-unused",
+                f"Toggle(id='{tid}') exists but no Visible or custom JS references it.",
+                component="Toggle",
+            )
+
+
+def _collect_toggle_components(comps, result):
     from trellum.components.charts.bar import StackedBar
     from trellum.components.charts.line_area import LineChart
     from trellum.components.controls import Toggle
@@ -54,7 +71,10 @@ def _check_toggle_visible(comps: list[tuple[Any, str]], result: ValidationResult
             visible_list.append((comp, sec))
         elif isinstance(comp, RawHTMLComp) and comp.js:
             rawhtml_list.append((comp, sec))
+    return toggle_map, toggle_default, visible_list, rawhtml_list
 
+
+def _check_visible_components(visible_list, toggle_map, toggle_default, result):
     visible_targets_used: set[str] = set()
 
     for comp, sec in visible_list:
@@ -99,8 +119,12 @@ def _check_toggle_visible(comps: list[tuple[Any, str]], result: ValidationResult
                         component="Visible", section=sec,
                     )
 
-    _TOGGLE_ID_HTML = re.compile(r'data-toggle-id\s*=\s*["\']([^"\']+)["\']')
+    return visible_targets_used
 
+
+def _check_rawhtml_toggle_references(comps, rawhtml_list, toggle_map,
+                                     visible_targets_used, result):
+    _TOGGLE_ID_HTML = re.compile(r'data-toggle-id\s*=\s*["\']([^"\']+)["\']')
     all_html_toggle_ids: set[str] = set()
     for comp, _ in comps:
         html = getattr(comp, "html", None)
@@ -135,11 +159,3 @@ def _check_toggle_visible(comps: list[tuple[Any, str]], result: ValidationResult
                     f"Toggle(id='{ref_id}') exists.",
                     component="RawHTML", section=sec,
                 )
-
-    for tid in toggle_map:
-        if tid not in visible_targets_used:
-            result.info(
-                "toggle-unused",
-                f"Toggle(id='{tid}') exists but no Visible or custom JS references it.",
-                component="Toggle",
-            )

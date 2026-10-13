@@ -28,6 +28,11 @@
     var restoringCatalogScroll = false;
     var pendingCatalogScroll = null;
     var restoreGeneration = 0;
+    var presentationStyle = document.createElement('style');
+    presentationStyle.textContent = 'body.tl-console-presenting [data-console-shell],'
+        + 'body.tl-console-presenting #assistantPanel,body.tl-console-presenting #assistantLauncher{display:none!important}'
+        + 'body.tl-console-presenting [data-console-report-host]{inset:0!important;z-index:10001}';
+    document.head.appendChild(presentationStyle);
     if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 
     function saveCatalogScroll() {
@@ -133,6 +138,7 @@
     }
 
     function showReport(target, title, token, depth) {
+        document.body.classList.remove('tl-console-presenting');
         window.clearTimeout(timeout);
         active = {
             canonical: canonicalUrl(target.url),
@@ -163,6 +169,7 @@
         root.hidden = true;
         catalog.removeAttribute('inert');
         document.body.classList.remove('tl-console-report-hosting');
+        document.body.classList.remove('tl-console-presenting');
         setPageTitle(catalogPageTitle);
         document.title = catalogTitle;
         notifyAssistant(null);
@@ -220,7 +227,9 @@
 
     window.addEventListener('message', function (event) {
         if (!validMessage(event)) return;
-        if (event.data.type === 'trellum:report-ready') {
+        if (event.data.type === 'trellum:presentation' && typeof event.data.presenting === 'boolean') {
+            document.body.classList.toggle('tl-console-presenting', event.data.presenting);
+        } else if (event.data.type === 'trellum:report-ready') {
             window.clearTimeout(timeout);
             status.hidden = true;
             frame.hidden = false;

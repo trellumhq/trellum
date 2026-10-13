@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import secrets
 import threading
 import time
 
@@ -37,6 +39,13 @@ class ReviewState:
         self.agent_seen: float | None = None
         self.listening_count = 0
         self.last_delivered: list[dict] | None = None
+        self.analysis_slug = ""
+        self.analysis_token = ""
+        self.analysis_requests: dict[str, dict] = {}
+        self.workspace_requests: dict[str, dict] = {}
+        self.workspace_captures: dict[str, dict] = {}
+        self.workspace_feedback: dict[str, dict] = {}
+        self.workspace_builds: dict[str, dict] = {}
 
     def reset_for_tests(self) -> None:
         with self._cond:
@@ -70,6 +79,13 @@ class ReviewState:
             self.queue = list(saved.get("queue") or [])
             self.replies = list(saved.get("replies") or [])
             self.last_delivered = saved.get("last_delivered")
+            self.analysis_slug = str(saved.get("analysis_slug") or "")
+            self.analysis_token = str(saved.get("analysis_token") or "")
+            self.analysis_requests = dict(saved.get("analysis_requests") or {})
+            self.workspace_requests = dict(saved.get("workspace_requests") or {})
+            self.workspace_captures = dict(saved.get("workspace_captures") or {})
+            self.workspace_feedback = dict(saved.get("workspace_feedback") or {})
+            self.workspace_builds = dict(saved.get("workspace_builds") or {})
             self._cond.notify_all()
 
     def _save_locked(self) -> None:
@@ -82,10 +98,20 @@ class ReviewState:
             "queue": self.queue,
             "replies": self.replies,
             "last_delivered": self.last_delivered,
+            "analysis_slug": self.analysis_slug,
+            "analysis_token": self.analysis_token,
+            "analysis_requests": self.analysis_requests,
+            "workspace_requests": self.workspace_requests,
+            "workspace_captures": self.workspace_captures,
+            "workspace_feedback": self.workspace_feedback,
+            "workspace_builds": self.workspace_builds,
         })
         try:
-            with open(self._sidecar(), "w", encoding="utf-8") as fh:
+            temporary = self._sidecar() + ".tmp"
+            with open(temporary, "w", encoding="utf-8") as fh:
+                os.chmod(temporary, 0o600)
                 fh.write(payload)
+            os.replace(temporary, self._sidecar())
         except OSError:
             pass                              # persistence is best-effort
 
@@ -109,6 +135,8 @@ class ReviewState:
             if not self.enabled:
                 return
             self.ended = True
+            self.analysis_slug = ""
+            self.analysis_token = ""
             self._save_locked()
             self._cond.notify_all()
 
@@ -122,9 +150,73 @@ class ReviewState:
             self.queue.append(batch)
             if end_session:
                 self.ended = True
+                self.analysis_slug = ""
+                self.analysis_token = ""
             self._save_locked()
             self._cond.notify_all()
             return len(self.queue)
+
+    def start_analysis(self, slug: str) -> dict:
+        self.start()
+        with self._cond:
+            if slug != self.analysis_slug or not self.analysis_token:
+                self.analysis_slug = slug
+                self.analysis_token = secrets.token_urlsafe(32)
+                self.analysis_requests = {}
+                self.workspace_requests = {}
+                self.workspace_captures = {}
+                self.workspace_feedback = {}
+                self._save_locked()
+            return self.analysis_status()
+
+    def analysis_status(self) -> dict:
+        with self._cond:
+            active = self.enabled and not self.ended and bool(self.analysis_slug)
+            return {"active": active, "slug": self.analysis_slug if active else "",
+                    "token": self.analysis_token if active else "",
+                    "session": self.session if active else 0}
+
+    def end_analysis(self) -> None:
+        with self._cond:
+            self.analysis_slug = ""
+            self.analysis_token = ""
+            self._save_locked()
+            self._cond.notify_all()
+
+    def submit_capture(self, project_root: str, token: str, request_id: str,
+                       capture: dict, note: str) -> tuple[str, bool]:
+        from trellum.analysis_inbox import analysis_target, store_capture
+
+        with self._cond:
+            if not self.enabled or self.ended or not self.analysis_slug:
+                raise ReviewInactive
+            if not secrets.compare_digest(token, self.analysis_token):
+                raise PermissionError("Invalid analysis session token")
+            fingerprint = hashlib.sha256(json.dumps(
+                {"capture": capture, "note": note}, sort_keys=True,
+                allow_nan=False).encode("utf-8")).hexdigest()
+            previous = self.analysis_requests.get(request_id)
+            if previous:
+                if previous["fingerprint"] != fingerprint:
+                    raise FileExistsError("Request ID already used for a different capture")
+                return previous["capture_id"], True
+            # Bound session bookkeeping without silently forgetting duplicate requests.
+            if len(self.analysis_requests) >= 10000:
+                raise ValueError("Analysis session capture limit reached; start a new session")
+            analysis_target(project_root, self.analysis_slug)
+            capture_id = store_capture(project_root, self.analysis_slug, capture)
+            source = capture["source"]
+            self.analysis_requests[request_id] = {"capture_id": capture_id,
+                                                  "fingerprint": fingerprint}
+            self.queue.append({"slug": self.analysis_slug, "session": self.session,
+                "page": "", "note": note, "ts": time.time(), "items": [{
+                    "tag": "analysis-capture", "data": {"type": "analysis-capture",
+                    "capture_id": capture_id,
+                    "source_slug": (source["report_slug"] or "")[:100],
+                    "component_title": (source["component_title"] or "")[:200]}}]})
+            self._save_locked()
+            self._cond.notify_all()
+            return capture_id, False
 
     def status(self) -> dict:
         with self._cond:

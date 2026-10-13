@@ -320,6 +320,16 @@
             if (!chartTypes[cfg.type] && !root.childElementCount && !(root.textContent || '').trim())
                 return 'Content in this section has not finished rendering. Wait and try again.';
         }
+        var canvases = target.matches('canvas') ? [target] : target.querySelectorAll('canvas');
+        for (var c = 0; c < canvases.length; c++) {
+            var canvas = canvases[c];
+            if (!_analysisVisible(canvas)) continue;
+            var canvasConfig = components[canvas.id];
+            if (!canvasConfig || !chartTypes[canvasConfig.type]) continue;
+            var chart = (window._chartInstances || {})[canvas.id];
+            if (!chart || !canvas.width || !canvas.height)
+                return 'A chart in this section has not finished rendering. Wait for it to appear, then capture again.';
+        }
         return '';
     }
 
@@ -364,24 +374,105 @@
         } catch (e) { return ''; }
     }
 
-    function _analysisDownload(target) {
+    function _analysisDownloadPayload(payload, filename) {
+        var blob = new Blob([JSON.stringify(payload)], {type: 'application/json'});
+        var link = document.createElement('a');
+        link.download = filename;
+        link.href = URL.createObjectURL(blob); link.click();
+        setTimeout(function() { URL.revokeObjectURL(link.href); }, 1000);
+        _analysisCaptureSuccess(filename, 'data:image/png;base64,' + payload.image.data_base64);
+        return true;
+    }
+
+    function _analysisDeliver(payload, filename) {
+        // The same-origin server decides whether an authenticated analysis
+        // session exists, including access through a protected review proxy.
+        if (!/^https?:$/.test(location.protocol))
+            return Promise.resolve(_analysisDownloadPayload(payload, filename));
+        return fetch('/_fw/review/analysis', {cache: 'no-store', credentials: 'same-origin'})
+            .then(function(response) { return response.ok ? response.json() : null; })
+            .catch(function() { return null; }).then(function(session) {
+                if (!session || !session.active || !session.token || !window.crypto || !window.crypto.getRandomValues)
+                    return _analysisDownloadPayload(payload, filename);
+                return new Promise(function(resolve) {
+                    var previousFocus = document.activeElement;
+                    var dialog = document.createElement('dialog');
+                    dialog.className = 'fw-analysis-capture-ui';
+                    dialog.setAttribute('aria-labelledby', 'fw-analysis-delivery-title');
+                    dialog.style.cssText = 'width:min(420px,calc(100vw - 48px));max-height:85vh;overflow:auto;margin:auto;padding:24px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-card);color:var(--text-main)';
+                    var title = document.createElement('h2');
+                    title.id = 'fw-analysis-delivery-title'; title.textContent = 'Capture for analysis';
+                    var destination = document.createElement('p');
+                    destination.textContent = 'Send this frozen evidence to ' + session.slug + '.';
+                    var label = document.createElement('label');
+                    label.textContent = 'Note for your agent (optional)';
+                    var note = document.createElement('textarea');
+                    note.maxLength = 2000; note.rows = 3;
+                    note.style.cssText = 'display:block;width:100%;box-sizing:border-box;margin:8px 0 16px;padding:8px;background:var(--bg-main);color:var(--text-main);border:1px solid var(--border-color);border-radius:4px';
+                    label.appendChild(note);
+                    var status = document.createElement('p'); status.setAttribute('role', 'status');
+                    var sending = false;
+                    var requestBytes = new Uint8Array(16); window.crypto.getRandomValues(requestBytes);
+                    var requestId = Array.from(requestBytes).map(function(n) { return n.toString(16).padStart(2, '0'); }).join('');
+                    var finish = function(result) {
+                        dialog.close(); dialog.remove();
+                        if (previousFocus && previousFocus.isConnected) previousFocus.focus();
+                        resolve(result);
+                    };
+                    var button = function(text, callback) {
+                        var el = document.createElement('button'); el.type = 'button'; el.textContent = text;
+                        el.style.cssText = 'padding:8px 12px;margin:4px 8px 4px 0;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-card);color:var(--text-main);cursor:pointer';
+                        el.addEventListener('click', callback); return el;
+                    };
+                    var send = button('Send to agent', function() {
+                        if (sending) return;
+                        sending = true; send.disabled = true; download.disabled = true; cancel.disabled = true; note.disabled = true;
+                        // A retry must carry the same note when delivery was unconfirmed.
+                        note.readOnly = true;
+                        status.textContent = 'Sending capture…';
+                        fetch('/_fw/review/analysis/capture', {method: 'POST', credentials: 'same-origin',
+                            headers: {'Content-Type': 'application/json', 'X-Trellum-Analysis-Token': session.token},
+                            body: JSON.stringify({request_id: requestId, note: note.value, capture: payload})})
+                            .then(function(response) { return response.json().then(function(result) {
+                                if (!response.ok) throw new Error(result.error || 'Capture was not accepted.');
+                                finish(true); _analysisMessage('Capture sent. Your agent will import it into the analysis.');
+                            }); }).catch(function(err) {
+                                status.textContent = (err && err.message || 'Capture delivery could not be confirmed.') + ' Retry or download the capture.';
+                            }).then(function() {
+                                sending = false; send.disabled = false; download.disabled = false; cancel.disabled = false; note.disabled = false;
+                            });
+                    });
+                    var download = button('Download capture', function() { finish(_analysisDownloadPayload(payload, filename)); });
+                    var cancel = button('Cancel', function() { finish(false); });
+                    dialog.addEventListener('cancel', function(event) { event.preventDefault(); if (!sending) finish(false); });
+                    [title, destination, label, status, send, download, cancel].forEach(function(el) { dialog.appendChild(el); });
+                    document.body.appendChild(dialog); dialog.showModal(); note.focus();
+                });
+            });
+    }
+
+    function _analysisRender(target) {
         var pending = _analysisPending();
-        if (pending) return _analysisCaptureError(pending);
+        if (pending) return Promise.reject(new Error(pending));
         if (typeof html2canvas !== 'function')
-            return _analysisCaptureError('Image capture is unavailable because the capture library did not load.');
+            return Promise.reject(new Error('Image capture is unavailable because the capture library did not load.'));
+        if (!document.fonts || !document.fonts.ready)
+            return Promise.reject(new Error('This browser cannot wait for fonts before capture.'));
+        if (!target.isConnected || !_analysisVisible(target))
+            return Promise.reject(new Error('Choose a visible chart or report section.'));
         var slug = document.body.getAttribute('data-report-slug') || '';
         var heading = document.querySelector('.fw-header h1');
         var canvas = target.matches('canvas') ? target : target.querySelector('canvas');
         var componentId = target.classList.contains('fw-section')
             ? (target.id || 'section') : (canvas ? canvas.id : (target.id || 'section'));
         var componentTitle = _analysisTitle(target);
-        var previewUrl = '';
-        if (document.fonts && document.fonts.ready) {
-            return document.fonts.ready.then(function() { return new Promise(function(resolve) {
+        return document.fonts.ready.then(function() { return new Promise(function(resolve) {
                 requestAnimationFrame(function() { requestAnimationFrame(resolve); });
             }); }).then(function() { return _analysisFinalRender(target); }).then(function() {
                 var recheck = _analysisPending();
                 if (recheck) throw new Error(recheck);
+                if (!target.isConnected || !_analysisVisible(target))
+                    throw new Error('The selected chart or section is no longer visible. Select it again.');
                 var notReady = _analysisReady(target, _analysisComponents().components);
                 if (notReady) throw new Error(notReady);
                 var snapshot = _analysisSnapshot(target);
@@ -401,7 +492,6 @@
                     if (!target.isConnected || _analysisSnapshotChanged(target, snapshot))
                         throw new Error('The report changed while capture was rendering. Capture the updated view again.');
                     var dataUrl = image.toDataURL('image/png');
-                    previewUrl = dataUrl;
                     var base64 = dataUrl.split(',')[1] || '';
                     var bytes = Math.floor(base64.length * 3 / 4) - (base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0);
                     if (bytes > 20 * 1024 * 1024) throw new Error('The image is larger than the 20 MiB capture limit. Select a smaller chart or section.');
@@ -412,27 +502,28 @@
                         filters: snapshot.filters};
                     var payload = {format: 'trellum-analysis-capture', version: 1,
                         image: {mime_type: 'image/png', data_base64: base64}, source: source};
-                    var blob = new Blob([JSON.stringify(payload)], {type: 'application/json'});
-                    var link = document.createElement('a');
-                    link.download = (slug || 'report') + '-' + (componentId || 'component') + '.trellum-capture.json';
-                    link.href = URL.createObjectURL(blob); link.click();
-                    setTimeout(function() { URL.revokeObjectURL(link.href); }, 1000);
-                    return true;
+                    restore();
+                    return payload;
                 }).then(function(value) { restore(); return value; }, function(err) { restore(); throw err; });
-            }).then(function(ok) {
-                if (ok) _analysisCaptureSuccess((slug || 'report') + '-' + (componentId || 'component') + '.trellum-capture.json', previewUrl);
-                return ok;
-            }).catch(function(err) {
-                return _analysisCaptureError((err && err.message) || 'Capture failed.');
             });
-        }
-        return Promise.resolve(_analysisCaptureError('This browser cannot wait for fonts before capture.'));
+    }
+
+    function _fwCaptureElementSnapshotForAnalysis(target) {
+        if (!target || !target.nodeType || target.nodeType !== 1)
+            return Promise.reject(new Error('Choose a visible chart or report section.'));
+        return _analysisRender(target);
     }
 
     function _fwCaptureElementForAnalysis(target) {
         if (!target || !target.nodeType || target.nodeType !== 1)
             return _analysisCaptureError('Choose a visible chart or report section.');
-        return _analysisDownload(target);
+        return _analysisRender(target).then(function(payload) {
+            var slug = payload.source.report_slug;
+            var componentId = payload.source.component_id;
+            return _analysisDeliver(payload, (slug || 'report') + '-' + (componentId || 'component') + '.trellum-capture.json');
+        }).catch(function(err) {
+            return _analysisCaptureError((err && err.message) || 'Capture failed.');
+        });
     }
 
     function _fwCaptureForAnalysis() {

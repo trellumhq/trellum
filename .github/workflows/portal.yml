@@ -495,10 +495,11 @@ jobs:
           python manage.py shell -c "
           from apps.reports.models import Report
           analyses = list(Report.objects.filter(studio__slug='demo', kind='analysis'))
-          assert len(analyses) == 1, f'expected one imported analysis, got {len(analyses)}'
-          assert analyses[0].category == 'Product', analyses[0].category
-          assert analyses[0].config.get('studio') == 'northwind', analyses[0].config
-          print('Imported analysis:', analyses[0].slug, analyses[0].category)
+          assert {a.slug for a in analyses} == {'checkout-findings', 'checkout-presentation'}, analyses
+          for analysis in analyses:
+              assert analysis.category == 'Product', analysis.category
+              assert analysis.config.get('studio') == 'northwind', analysis.config
+              print('Imported analysis:', analysis.slug, analysis.category)
           "
 
       - name: Start web + worker(s)

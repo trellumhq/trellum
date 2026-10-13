@@ -126,8 +126,10 @@ class TestForm:
     def test_saved_timezone_alias_remains_an_available_choice(self, login, owner, rule, prefix, monkeypatch):
         from apps.alerts import forms
 
-        rule.timezone = "US/Pacific"
-        rule.save(update_fields=["timezone"])
+        # Seed a persisted legacy alias even when this host's tzdata no longer
+        # ships the corresponding backward link for ZoneInfo validation.
+        AlertRule.objects.filter(pk=rule.pk).update(timezone="US/Pacific")
+        rule.refresh_from_db()
         zones = forms.available_timezones()
         monkeypatch.setattr(forms, "available_timezones", lambda: zones - {"US/Pacific"})
         response = login(owner).get(f"{prefix}/{rule.pk}/edit")

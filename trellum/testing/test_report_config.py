@@ -25,3 +25,15 @@ def test_omitted_audience_preserves_host_default(kind):
 def test_invalid_initial_audience_is_rejected(kind, value):
     with pytest.raises(ValueError, match="initial_audience"):
         validate_content_config({"kind": kind, "initial_audience": value})
+
+
+@pytest.mark.parametrize("format", ["article", "presentation"])
+def test_analysis_formats_are_valid(format):
+    config = {"kind": "analysis", "format": format}
+    assert validate_content_config(config) is config
+
+
+@pytest.mark.parametrize("format", [None, True, "slides", "", [], {}])
+def test_invalid_analysis_format_is_rejected(format):
+    with pytest.raises(ValueError, match="format"):
+        validate_content_config({"kind": "analysis", "format": format})

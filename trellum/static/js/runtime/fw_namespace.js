@@ -26,6 +26,7 @@
         exportPDF: _exportPDF,
         captureForAnalysis: _fwCaptureForAnalysis,
         captureElementForAnalysis: _fwCaptureElementForAnalysis,
+        captureElementSnapshotForAnalysis: _fwCaptureElementSnapshotForAnalysis,
 
         filterEngine: window._fwFilterEngine,
         aggregate: window._fwAggregate,
