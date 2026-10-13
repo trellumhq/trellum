@@ -308,6 +308,14 @@ jobs:
     name: previous release survives the new schema
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    container:
+      # Match django-tests: frozen browser fixtures must see the same fonts
+      # and system libraries, not the changing GitHub runner's font fallback.
+      image: mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:51d31fdfacb0cff99a1a724152e34ae408d2bd4e7da310ff157450f49261cc59
+      options: --ipc=host
+    defaults:
+      run:
+        shell: bash
     services:
       postgres:
         image: postgres:16-alpine
@@ -315,8 +323,6 @@ jobs:
           POSTGRES_USER: trellum
           POSTGRES_PASSWORD: trellum
           POSTGRES_DB: trellum_portal
-        ports:
-          - 5433:5432
         options: >-
           --health-cmd "pg_isready -U trellum"
           --health-interval 5s
@@ -327,15 +333,9 @@ jobs:
         with:
           fetch-depth: 0      # tags, so we can find the previous release
 
-      # Deliberately NOT `cache: pip`, unlike the other jobs here. Everything
-      # below is conditional on a previous release existing, and none does
-      # yet — so nothing is installed, ~/.cache/pip is never created, and the
-      # post-cache step fails the job outright ("Cache folder path is
-      # retrieved for pip but doesn't exist on disk"). There is nothing to
-      # cache until this job has real work to do.
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-node@v4
         with:
-          python-version: '3.12'
+          node-version: '22'
 
       - name: Find the previous release
         id: prev
@@ -355,6 +355,7 @@ jobs:
         if: steps.prev.outputs.tag != ''
         run: |
           set -e
+          python -c "import sys; assert sys.version_info[:2] == (3, 12), sys.version"
           git worktree add --detach ../previous-release "${{ steps.prev.outputs.tag }}"
           python -m venv /tmp/current-venv
           /tmp/current-venv/bin/pip install -r requirements-django.txt -r requirements-test.txt
@@ -363,25 +364,42 @@ jobs:
             -r ../previous-release/requirements-django.txt \
             -r ../previous-release/requirements-test.txt
 
-      - name: Install the previous release's browsers
+      - name: Verify the previous release's browsers in the pinned environment
         if: steps.prev.outputs.tag != ''
         timeout-minutes: 8
         run: |
-          # The runner's Azure HTTP mirror can stall browser dependency downloads.
-          if [ -f /etc/apt/apt-mirrors.txt ]; then
-            printf '%s\n' 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
-          fi
-          /tmp/previous-venv/bin/python -m playwright install --with-deps chromium webkit
+          # The previous release's Playwright pin selects its browser revisions.
+          # Reuse bundled revisions when they match; download others if needed.
+          # Keep the image's system dependencies/fonts unchanged.
+          /tmp/previous-venv/bin/python -m playwright install chromium webkit
+          /tmp/previous-venv/bin/python - <<'PY'
+          from importlib.metadata import version
+          from playwright.sync_api import sync_playwright
+
+          print(f"Previous-release Playwright: {version('playwright')}")
+          with sync_playwright() as playwright:
+              for engine in (playwright.chromium, playwright.webkit):
+                  browser = engine.launch(headless=True)
+                  try:
+                      print(f"{engine.name}: {browser.version} ({engine.executable_path})")
+                  finally:
+                      browser.close()
+          PY
 
       - name: Apply the previous release's migrations, then this branch's
         if: steps.prev.outputs.tag != ''
         env:
           DJANGO_SETTINGS_MODULE: trellum_portal.settings.test
-          DATABASE_URL: postgres://trellum:trellum@127.0.0.1:5433/test_trellum_portal
-          PGPASSWORD: trellum
+          DATABASE_URL: postgres://trellum:trellum@postgres:5432/test_trellum_portal
         run: |
           set -e
-          createdb -h 127.0.0.1 -p 5433 -U trellum test_trellum_portal
+          /tmp/current-venv/bin/python - <<'PY'
+          import os
+          import psycopg
+
+          with psycopg.connect(os.environ["DATABASE_URL"], dbname="postgres", autocommit=True) as connection:
+              connection.execute("CREATE DATABASE test_trellum_portal")
+          PY
           (cd ../previous-release && /tmp/previous-venv/bin/python manage.py migrate --no-input)
           /tmp/current-venv/bin/python manage.py migrate --no-input
 
@@ -389,7 +407,7 @@ jobs:
         if: steps.prev.outputs.tag != ''
         env:
           DJANGO_SETTINGS_MODULE: trellum_portal.settings.test
-          DATABASE_URL: postgres://trellum:trellum@127.0.0.1:5433/trellum_portal
+          DATABASE_URL: postgres://trellum:trellum@postgres:5432/trellum_portal
           # Reuse the migrated database rather than building a fresh one: the
           # point is the schema this upgrade produced, not a clean install.
           PYTEST_ADDOPTS: "--reuse-db"
@@ -406,7 +424,8 @@ jobs:
           /tmp/previous-venv/bin/python -m pytest -p previous_schema "${SUITES[@]}" -q || {
             echo
             echo "The previous release's tests fail against this branch's schema."
-            echo "That makes this a CONTRACT-phase change: it is not safe to"
+            echo "Check the failure for environment or pre-existing test issues."
+            echo "A schema incompatibility is a CONTRACT-phase change: it is not safe to"
             echo "abandon an upgrade halfway. Either split it expand/contract"
             echo "(docs/MIGRATIONS.md), or make this a MAJOR release and say so"
             echo "in CHANGELOG.md under Upgrade notes."
