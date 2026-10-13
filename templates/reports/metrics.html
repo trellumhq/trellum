@@ -64,7 +64,7 @@ body.mgmt main .met-card .met-open:focus-visible { outline:2px solid var(--accen
    real chart is one click away in the overlay. aria-hidden for the same
    reason: there is no value here a screen reader could usefully read out.
    Accent-coloured through currentColor, so it follows every theme. */
-.met-spark-slot { height:45px; }
+.met-spark-slot { display:flow-root; height:45px; }
 .met-card [data-metric-usage] { height:150px; overflow:auto; overflow-wrap:anywhere; }
 .met-card [data-metric-usage]:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
 .met-spark { display:block; margin-top:9px; max-width:100%; color:var(--accent); }
@@ -221,8 +221,8 @@ query that hits everything.{% endcomment %}
   <p class="met-count" id="metCount" role="status" aria-live="polite">{{ matching_count }} matching definitions</p>
 </form>
 <div data-metric-summary data-url="{{ summary_url }}" data-revision="{{ definition_revision }}">
-  <p role="status" aria-live="polite" data-summary-status>{% if definition_changed %}Definitions changed during loading. Reload this page.{% else %}Report usage is loading. Definitions are ready.{% endif %}</p>
-  <div class="met-summary-actions" tabindex="0" aria-label="Report usage actions">
+  <p role="status" aria-live="polite" tabindex="0" data-summary-status>{% if definition_changed %}Definitions changed during loading. Reload this page.{% else %}Report usage is loading. Definitions are ready.{% endif %}</p>
+  <div class="met-summary-actions" role="group" aria-label="Report usage actions">
   <button type="button" class="ui-btn ghost" data-summary-retry hidden>Retry report usage</button>
   <a class="ui-btn ghost" data-summary-reload href="{% url 'studio-metrics' org.slug studio.slug %}?q={{ metric_query|urlencode }}&amp;page={{ metric_page.number }}"{% if not definition_changed %} hidden{% endif %}>Reload definitions</a>
   </div>
@@ -263,7 +263,7 @@ query that hits everything.{% endcomment %}
       {% endif %}
       {% if m.row.owner %}<div class="met-owner"><b>Owner</b><span>{{ m.row.owner }}</span></div>{% endif %}
     </div>
-    <div class="met-usage met-fact" data-metric-usage tabindex="0" aria-label="Indexed report usage">Report usage pending. <a href="{{ m.details_url }}">Indexed claims →</a></div>
+    <div class="met-usage met-fact" data-metric-usage tabindex="0" role="group" aria-label="Report usage for {{ m.row.label|default:m.row.name }}">Report usage pending. <a href="{{ m.details_url }}">Indexed claims →</a></div>
   </div>
   {% endfor %}
 </div>
