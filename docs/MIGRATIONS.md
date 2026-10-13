@@ -90,7 +90,16 @@ Django turned your innocuous field change into a table rewrite.
 ## Why CI runs the previous release against your schema
 
 The `migration-safety` job applies the previous release's migrations, then
-yours, then runs the previous release's tests against the new schema. If that
-fails, your migration is a contract-phase change — which is allowed, but it has
+yours, then runs the previous release's tests against the new schema. A failure
+caused by schema incompatibility means a contract-phase change — which is allowed, but it has
 to be a MAJOR release with a changelog entry, not a surprise on someone's
 production instance at 2am.
+
+The current-code and previous-release suites use the same pinned Playwright
+container for consistent system libraries and font fallback. The previous
+release still installs its own Python requirements and browser revisions, and
+its source and assertions remain unchanged. Keep both job image pins aligned
+when updating the browser environment. Real-daemon `docker_sandbox` tests run in
+the dedicated host jobs; container jobs cannot supply the host daemon with their
+temporary filesystem paths for bind mounts. Diagnose environment or existing test
+failures separately before classifying a failed job as a schema incompatibility.
