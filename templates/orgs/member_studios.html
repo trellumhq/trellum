@@ -1,0 +1,38 @@
+{% extends "settings_base.html" %}
+{% block title %}Member access — {{ member.user.display_name }}{% endblock %}
+{% block settings %}
+<header class="page-head-row"><div>
+  <div class="ui-label page-kicker scope-org">Organization · {{ org.name }}</div>
+  <h1>Member access</h1><p class="muted">{{ member.user.display_name }} · {{ member.user.email }}</p>
+</div><span class="spacer"></span><a class="ui-btn ghost" href="/orgs/{{ org.slug }}/settings/members">Back to members</a></header>
+<nav class="ui-list-toolbar" aria-label="Member access sections"><a class="ui-btn ghost" href="/orgs/{{ org.slug }}/settings/members/{{ member.user_id }}/studios" {% if tab != 'groups' %}aria-current="page"{% endif %}>Studio roles</a><a class="ui-btn ghost" href="/orgs/{{ org.slug }}/settings/members/{{ member.user_id }}/studios?tab=groups" {% if tab == 'groups' %}aria-current="page"{% endif %}>Groups</a></nav>
+{% if tab == 'groups' %}
+<p class="muted">All permission groups this person belongs to in {{ org.name }}.</p>
+<form method="get" class="ui-list-toolbar" role="search"><input type="hidden" name="tab" value="groups"><input class="ui-input" type="search" name="group_q" value="{{ group_q }}" placeholder="Search memberships by group name…" aria-label="Search memberships by group name"><button class="ui-btn ghost" type="submit">Search</button><span class="ui-list-count">{{ group_total }} memberships</span></form>
+<div class="panel"><div class="ui-table-scroll"><table class="ui-table" data-mobile-cards><thead><tr><th>Group</th><th>Organization role</th><th>Default studio role</th></tr></thead><tbody>
+{% for membership in group_page %}<tr><td data-label="Group"><a href="/orgs/{{ org.slug }}/settings/groups/{{ membership.group.pk }}">{{ membership.group.name }}</a></td><td data-label="Organization role">{{ membership.group.org_role|default:'none' }}</td><td data-label="Default studio role">{{ membership.group.default_studio_role|default:'none' }}</td></tr>
+{% empty %}<tr><td colspan="3"><div class="ui-empty">{% if group_q %}No memberships match “{{ group_q }}”.{% else %}No group memberships.{% endif %}</div></td></tr>{% endfor %}
+</tbody></table></div></div>
+{% if group_page.has_previous %}{% querystring group_page=group_page.previous_page_number as group_previous %}{% endif %}
+{% if group_page.has_next %}{% querystring group_page=group_page.next_page_number as group_next %}{% endif %}
+{% include "_pagination.html" with page=group_page previous_url=group_previous next_url=group_next %}
+{% else %}
+<p class="muted">Each save changes one direct studio role. Group and organization roles still apply.</p>
+{% include "_list_toolbar.html" with q=q placeholder="Search studios by name or slug…" total=total %}
+<div class="panel"><div class="ui-table-scroll"><table class="ui-table" data-mobile-cards>
+<thead><tr><th>Studio</th><th>Effective access</th><th>Direct role</th></tr></thead><tbody>
+{% for row in rows %}
+<tr><td data-label="Studio"><strong>{{ row.studio.name }}</strong><br><span class="muted">{{ row.studio.slug }}</span></td>
+<td data-label="Effective access" data-settings-refresh="member-studio-effective-{{ row.studio.pk }}">
+{% if row.role %}<span class="ui-badge">{{ row.role }} · via {{ row.source }}</span>{% else %}<span class="ui-badge warn">no access</span>{% endif %}
+</td><td data-label="Direct role">
+<form id="studio-role-{{ member.user_id }}-{{ row.studio.pk }}" class="inline" method="post" data-settings-form data-settings-save action="/orgs/{{ org.slug }}/settings/members/{{ member.user_id }}/studio-role">
+{% csrf_token %}<input type="hidden" name="return_to" value="studios"><input type="hidden" name="q" value="{{ q }}"><input type="hidden" name="page" value="{{ page.number }}"><input type="hidden" name="studio_id" value="{{ row.studio.pk }}">
+<select name="role" aria-label="Direct role in {{ row.studio.name }}"><option value="" {% if not row.direct_role %}selected{% endif %}>none</option>
+{% for value,label in studio_role_choices %}<option value="{{ value }}" {% if row.direct_role == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+<button class="ui-btn ghost" type="submit">Save changes</button></form></td></tr>
+{% empty %}<tr><td colspan="3"><div class="ui-empty">{% if q %}No studios match “{{ q }}”.{% else %}No studios yet.{% endif %}</div></td></tr>{% endfor %}
+</tbody></table></div></div>
+{% include "_pagination.html" with page=page %}
+{% endif %}
+{% endblock %}

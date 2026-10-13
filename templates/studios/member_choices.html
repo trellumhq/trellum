@@ -1,0 +1,23 @@
+{% extends "settings_base.html" %}
+{% block title %}Choose a person — {{ studio.name }}{% endblock %}
+{% block settings %}
+<header class="page-head"><div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }}</div><h1>Choose a person</h1>
+<p class="muted">Browse organization members who do not yet have a direct role in this studio.</p></header>
+<form id="studio-member-choice" class="ui-form-section" method="post" action="/s/{{ org.slug }}/{{ studio.slug }}/settings/members/choices" data-settings-form>
+{% csrf_token %}
+<div class="ui-list-toolbar" role="search"><input class="ui-input" type="search" name="q" value="{{ q }}" aria-label="Search people by name or email" placeholder="Search people by name or email…"><button class="ui-btn ghost" name="page" value="1" type="submit" formnovalidate>Search</button><span class="ui-list-count">{{ total }} people</span></div>
+{% if selected %}<p>Selected: {{ selected.user.display_name }} · {{ selected.user.email }}</p>
+{% elif selected_id %}<p class="muted">Selected person is unavailable.</p><input type="radio" name="user_id" value="{{ selected_id }}" checked aria-label="Unavailable selected person">{% endif %}
+<fieldset><legend>Person</legend>
+{% if selected and selected not in page.object_list %}<label><input type="radio" name="user_id" value="{{ selected.user_id }}" checked required> {{ selected.user.display_name }} · {{ selected.user.email }}</label>{% endif %}
+{% for member in page.object_list %}<label style="display:block;padding:8px 0"><input type="radio" name="user_id" value="{{ member.user_id }}" {% if member.user_id == selected.user_id %}checked{% endif %} required> {{ member.user.display_name }} · {{ member.user.email }}</label>
+{% empty %}<p class="muted">{% if q %}No people match “{{ q }}”.{% else %}No people are available to add.{% endif %}</p>{% endfor %}
+</fieldset>
+<div class="ui-field"><label for="memberChoiceRole">Direct role</label><select id="memberChoiceRole" name="role" {% if role_error %}aria-invalid="true" aria-describedby="memberChoiceRoleError"{% endif %}>{% if role_error %}<option value="{{ role }}" selected>Invalid role — choose a role</option>{% endif %}{% for value,label in studio_role_choices %}<option value="{{ value }}" {% if role == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>{% if role_error %}<p id="memberChoiceRoleError" class="ui-field-error">Choose a valid role.</p>{% endif %}</div>
+<div class="ui-form-actions"><button class="ui-btn primary" type="submit" formaction="/s/{{ org.slug }}/{{ studio.slug }}/settings/members/set">Add member</button><a class="ui-btn ghost" data-settings-leave href="/s/{{ org.slug }}/{{ studio.slug }}/settings/members">Cancel</a></div>
+{% if page.paginator.num_pages > 1 %}<nav class="ui-pager" aria-label="Pagination">
+<button class="ui-btn ghost" type="submit" name="page" value="{{ page.number|add:"-1" }}" formnovalidate {% if not page.has_previous %}disabled{% endif %}>← Previous</button>
+<span class="ui-pager-status">{{ page.start_index }}–{{ page.end_index }} of {{ total }}</span>
+<button class="ui-btn ghost" type="submit" name="page" value="{{ page.number|add:"1" }}" formnovalidate {% if not page.has_next %}disabled{% endif %}>Next →</button></nav>{% endif %}
+</form>
+{% endblock %}

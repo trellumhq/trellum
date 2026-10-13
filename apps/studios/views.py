@@ -5,10 +5,10 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from django.contrib import messages
-from django.http import Http404
+from django.http import Http404, JsonResponse
 from django.shortcuts import redirect, render
 from django.utils import timezone
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_http_methods
 
 from apps.core import roles
 from apps.core.audit import audit
@@ -32,28 +32,76 @@ def settings_home(request, org_slug, studio_slug):  # noqa: ARG001
 
 @require_studio_role(roles.ADMIN)
 def members(request, org_slug, studio_slug):  # noqa: ARG001
-    rows = (
-        StudioMembership.objects.filter(studio=request.studio)
-        .select_related("user")
-        .order_by("user__email")
-    )
-    org_users = (
-        OrgMembership.objects.filter(org=request.org)
-        .exclude(user__studio_memberships__studio=request.studio)
-        .select_related("user")
-        .order_by("user__email")
-    )
-    return render(
-        request,
-        "studios/members.html",
-        {
-            "org": request.org,
-            "studio": request.studio,
-            "rows": rows,
-            "org_users": org_users,
-            "studio_role_choices": roles.STUDIO_ROLE_CHOICES,
-        },
-    )
+    from django.db.models import Q
+    from apps.orgs.views import paginate
+
+    q = (request.GET.get("q") or "").strip()
+    rows = StudioMembership.objects.filter(studio=request.studio).select_related("user").order_by("user__email")
+    if q:
+        rows = rows.filter(Q(user__email__icontains=q) | Q(user__name__icontains=q))
+    page = paginate(request, rows)
+    choices = _member_choice_page(request, browse=True)
+    return render(request, "studios/members.html", {"org": request.org, "studio": request.studio,
+        "rows": page.object_list, "page": page, "q": q, "total": page.paginator.count,
+        "org_users": choices.object_list, "choice_total": choices.paginator.count,
+        "studio_role_choices": roles.STUDIO_ROLE_CHOICES})
+
+
+def _eligible_member_choices(request):
+    return OrgMembership.objects.filter(org=request.org).exclude(
+        user__studio_memberships__studio=request.studio).select_related("user").order_by("user__email")
+
+
+def _member_choice_page(request, *, browse=False, data=None):
+    from django.core.paginator import Paginator
+    from django.db.models import Q
+
+    data = request.GET if data is None else data
+    qs = _eligible_member_choices(request)
+    q = "" if browse else (data.get("q") or "").strip()
+    if q:
+        qs = qs.filter(Q(user__email__icontains=q) | Q(user__name__icontains=q))
+    return Paginator(qs, 25).get_page(1 if browse else data.get("page"))
+
+
+def _selected_member_choice(request, key, data=None):
+    data = request.GET if data is None else data
+    value = data.get(key) or ""
+    if not value.isdecimal() or len(value) > 19 or int(value) > 9223372036854775807:
+        return None
+    return _eligible_member_choices(request).filter(user_id=value).first()
+
+
+@require_studio_role(roles.ADMIN)
+@require_http_methods(["GET"])
+def api_member_choices(request, org_slug, studio_slug):  # noqa: ARG001
+    page = _member_choice_page(request)
+    selected = _selected_member_choice(request, "selected")
+    def item(member):
+        return {"value": str(member.user_id), "label": member.user.display_name, "hint": member.user.email}
+    response = JsonResponse({"results": [item(member) for member in page.object_list],
+        "selected": item(selected) if selected else None,
+        "pagination": {"page": page.number, "pages": page.paginator.num_pages,
+                       "total": page.paginator.count, "has_next": page.has_next(), "has_previous": page.has_previous()}})
+    response["Cache-Control"] = "private, no-store"
+    return response
+
+
+@require_studio_role(roles.ADMIN)
+@require_http_methods(["GET", "POST"])
+def member_choices(request, org_slug, studio_slug):  # noqa: ARG001
+    # POST only browses choices; saving always uses member_set.
+    data = request.POST if request.method == "POST" else request.GET
+    role = data.get("role", roles.VIEWER)
+    role_error = role not in dict(roles.STUDIO_ROLE_CHOICES)
+    page = _member_choice_page(request, data=data)
+    selected = _selected_member_choice(request, "user_id", data)
+    response = render(request, "studios/member_choices.html", {"org": request.org, "studio": request.studio,
+        "page": page, "q": (data.get("q") or "").strip(), "total": page.paginator.count,
+        "selected": selected, "selected_id": data.get("user_id", ""), "role": role,
+        "studio_role_choices": roles.STUDIO_ROLE_CHOICES, "role_error": role_error}, status=400 if role_error else 200)
+    response["Cache-Control"] = "private, no-store"
+    return response
 
 
 @require_studio_role(roles.ADMIN)
@@ -321,8 +369,11 @@ def appearance_settings(request, org_slug, studio_slug):  # noqa: ARG001
 @require_studio_role(roles.ADMIN)
 @require_POST
 def member_set(request, org_slug, studio_slug):  # noqa: ARG001
+    value = request.POST.get("user_id", "")
+    if not value.isdecimal() or len(value) > 19 or int(value) > 9223372036854775807:
+        raise Http404
     m = OrgMembership.objects.filter(
-        org=request.org, user_id=request.POST.get("user_id")
+        org=request.org, user_id=value
     ).first()
     if m is None:
         raise Http404
@@ -347,4 +398,7 @@ def member_set(request, org_slug, studio_slug):  # noqa: ARG001
         messages.error(request, "Invalid role.")
     if is_settings_request(request):
         return settings_success(request, "Studio member role saved.")
-    return redirect(f"/s/{request.org.slug}/{request.studio.slug}/settings/members")
+    from urllib.parse import urlencode
+    keep = {key: request.POST[key] for key in ("q", "page") if request.POST.get(key)}
+    base = f"/s/{request.org.slug}/{request.studio.slug}/settings/members"
+    return redirect(base + ("?" + urlencode(keep) if keep else ""))

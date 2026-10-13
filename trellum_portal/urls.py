@@ -60,6 +60,7 @@ studio_patterns = [
     path("api/system/git/history", report_views.api_git_history),
     path("api/git/webhook", report_views.api_git_webhook),
     path("api/members", report_views.api_studio_members),
+    path("api/member-choices", studio_views.api_member_choices, name="studio-member-choices-api"),
     path("api/datasources", datasource_views.api_list),
     path("api/datasources/<str:name>/upload", datasource_views.api_upload),
     path("api/datasources/<str:name>/test", datasource_views.api_test),
@@ -377,6 +378,7 @@ urlpatterns = [
     # Cross-organization operator console (404s for non-operators).
     path("operator/", include("apps.operator.urls")),
     path("orgs/<slug:org_slug>/settings/members", org_views.members, name="org-members"),
+    path("orgs/<slug:org_slug>/settings/members/<int:user_id>/studios", org_views.member_studios, name="org-member-studios"),
     path(
         "orgs/<slug:org_slug>/settings/members/<int:user_id>/role",
         org_views.member_set_role,
@@ -471,6 +473,11 @@ urlpatterns = [
         "s/<slug:org_slug>/<slug:studio_slug>/settings/members",
         studio_views.members,
         name="studio-members",
+    ),
+    path(
+        "s/<slug:org_slug>/<slug:studio_slug>/settings/members/choices",
+        studio_views.member_choices,
+        name="studio-member-choices",
     ),
     path(
         "s/<slug:org_slug>/<slug:studio_slug>/settings/members/set",

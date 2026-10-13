@@ -68,32 +68,36 @@ def home(request):
         # Decorator-style attributes so the shell renders consistently.
         request.org = active
         request.org_roles = er
-        studios = list(visible_studios(request.user, active))
+        studios = visible_studios(request.user, active, request=request)
     else:
         er = None
         studios = []
 
-    # Cheap DB-only health hints per studio card (no disk reads).
+    # Page authorized studios before computing their DB-only health hints.
+    from django.db.models import Count, F, Window
+    from django.db.models.functions import RowNumber
+    from apps.reports.models import Report
     from apps.runner.models import Run
 
-    cards = []
-    for studio in studios:
-        reports = visible_reports(
-            request.user, studio.reports.filter(present_in_scan=True)
-        )
-        last_run = (
-            Run.objects.filter(report__in=reports)
-            .exclude(status__in=Run.ACTIVE_STATUSES)
-            .order_by("-created_at")
-            .first()
-        )
-        cards.append(
-            {
-                "studio": studio,
-                "report_count": reports.count(),
-                "last_run": last_run,
-            }
-        )
+    q = (request.GET.get("q") or "").strip()
+    if q:
+        studios = studios.filter(models.Q(name__icontains=q) | models.Q(slug__icontains=q)) if active else []
+    page = paginate(request, studios, 24)
+    shown = list(page.object_list)
+    reports = visible_reports(request.user, Report.objects.filter(
+        studio_id__in=[studio.pk for studio in shown], present_in_scan=True))
+    counts = dict(reports.order_by().values("studio_id").annotate(n=Count("pk")).values_list("studio_id", "n"))
+    latest = {
+        run._card_studio_id: run
+        for run in Run.objects.filter(report__in=reports)
+        .exclude(status__in=Run.ACTIVE_STATUSES)
+        .annotate(_card_studio_id=F("report__studio_id"), _card_rank=Window(
+            expression=RowNumber(), partition_by=[F("report__studio_id")],
+            order_by=[F("created_at").desc(), F("pk").desc()]))
+        .filter(_card_rank=1)
+    }
+    cards = [{"studio": studio, "report_count": counts.get(studio.pk, 0),
+              "last_run": latest.get(studio.pk)} for studio in shown]
 
     is_org_admin = bool(er and er.is_org_admin)
     return render(
@@ -103,6 +107,7 @@ def home(request):
             "orgs": orgs,
             "org": active,
             "cards": cards,
+            "page": page, "q": q, "total": page.paginator.count,
             "studios": studios,
             "is_org_admin": is_org_admin,
             "getting_started": _getting_started(active) if is_org_admin else None,
@@ -171,20 +176,10 @@ def _getting_started(org):
         "done": has_source,
     }
     if has_repo:
-        from apps.datasources.status import SourceState, source_states
+        from apps.datasources.status import declared_readiness_summary
 
-        # Only studios with a declaration have states worth computing.
-        declared = [
-            (studio, s)
-            for studio in org.studios.filter(repo_sources__present=True).distinct().order_by("pk")
-            for s in source_states(studio)
-            if s.declared
-        ]
-        waiting = [
-            (studio, s) for studio, s in declared
-            if s.state in (SourceState.NEEDS_CREDENTIALS, SourceState.NEEDS_UPLOAD)
-        ]
-        n = len(waiting)
+        summary = declared_readiness_summary(org)
+        n = summary.waiting_count
         sources_item = {
             "label": (
                 f"{n} data source{'s' if n != 1 else ''} need{'s' if n == 1 else ''} credentials"
@@ -192,10 +187,10 @@ def _getting_started(org):
             ),
             "help": "Sources are declared in the repository; the portal holds their credentials.",
             "href": (
-                reverse("studio-datasources", args=[org.slug, waiting[0][0].slug])
+                reverse("studio-datasources", args=[org.slug, summary.first_waiting_studio_slug])
                 if n else sources_url
             ),
-            "done": n == 0 and (has_source or bool(declared)),
+            "done": n == 0 and (has_source or bool(summary.declared_count)),
         }
 
     items = [
@@ -630,60 +625,50 @@ def members(request, org_slug):  # noqa: ARG001
     """The reference screen: each member's EFFECTIVE access per studio
     (direct + group grants + org-admin implication, max-wins), with the
     source of each role made visible."""
-    from apps.core.permissions import effective_roles
-
+    from apps.accounts.models import TotpDevice
+    from apps.core.permissions import bulk_effective_roles
     from django.db.models import Q
 
     studios = list(Studio.objects.filter(org=request.org).order_by("slug"))
-    qs = (
-        OrgMembership.objects.filter(org=request.org)
-        .select_related("user")
-        .prefetch_related("user__permission_group_memberships__group")
-        .order_by("user__email")
-    )
+    qs = OrgMembership.objects.filter(org=request.org).select_related("user").order_by("user__email")
     q = (request.GET.get("q") or "").strip()
     if q:
-        # display_name is a property, not a column — search the stored name.
         qs = qs.filter(Q(user__email__icontains=q) | Q(user__name__icontains=q))
-    total = qs.count()
-    # Paginated because the per-row work below is O(members x studios): an
-    # unbounded org rendered every member's effective access on one page.
     page = paginate(request, qs)
-
+    memberships = list(page.object_list)
+    users = [m.user for m in memberships]
+    effective_roles = bulk_effective_roles(users, request.org)
+    ids = [user.pk for user in users]
+    direct = {}
+    for user_id, studio_id, role in StudioMembership.objects.filter(
+            user_id__in=ids, studio__org=request.org).values_list("user_id", "studio_id", "role"):
+        direct.setdefault(user_id, {})[studio_id] = role
+    from django.db.models.functions import RowNumber
+    group_memberships = PermissionGroupMembership.objects.filter(user_id__in=ids, group__org=request.org)
+    group_counts = dict(group_memberships.order_by().values("user_id").annotate(n=models.Count("pk")).values_list("user_id", "n"))
+    groups = {}
+    summaries = group_memberships.select_related("group").annotate(_member_group_rank=models.Window(
+        expression=RowNumber(), partition_by=[models.F("user_id")],
+        order_by=[models.F("group__name").asc(), models.F("group_id").asc()])).filter(_member_group_rank__lte=3).order_by("group__name", "group_id")
+    for pgm in summaries:
+        groups.setdefault(pgm.user_id, []).append(pgm.group)
+    confirmed = set(TotpDevice.objects.filter(user_id__in=ids, confirmed_at__isnull=False).values_list("user_id", flat=True))
     member_rows = []
-    for m in page.object_list:
-        groups = [
-            pgm.group
-            for pgm in m.user.permission_group_memberships.all()
-            if pgm.group.org_id == request.org.pk
-        ]
-        direct = {
-            sm.studio_id: sm.role
-            for sm in StudioMembership.objects.filter(user=m.user, studio__org=request.org)
-        }
-        er = effective_roles(m.user, request.org)
-        effective = []
+    for m in memberships:
+        er = effective_roles[m.user_id]
+        summary = []
+        count = 0
         for studio in studios:
             role = er.role_for(studio)
             if role is None:
                 continue
-            if er.is_org_admin:
-                source = "org admin"
-            elif direct.get(studio.pk) == role:
-                source = "direct"
-            else:
-                source = "group"
-            effective.append({"studio": studio, "role": role, "source": source})
-        member_rows.append(
-            {
-                "m": m,
-                "groups": groups,
-                "effective": effective,
-                "studio_editor": [
-                    {"studio": s, "direct_role": direct.get(s.pk, "")} for s in studios
-                ],
-            }
-        )
+            count += 1
+            if len(summary) < 3:
+                summary.append(_member_studio_access(studio, er, direct.get(m.user_id, {})))
+        member_rows.append({"m": m, "groups": groups.get(m.user_id, [])[:3], "group_count": group_counts.get(m.user_id, 0), "effective": summary,
+                            "effective_count": count, "has_mfa": m.user_id in confirmed})
+    total = page.paginator.count
+
     return render(
         request,
         "orgs/members.html",
@@ -700,7 +685,49 @@ def members(request, org_slug):  # noqa: ARG001
     )
 
 
-def _members_redirect(request):
+def _member_studio_access(studio, er, direct):
+    role = er.role_for(studio)
+    source = "org admin" if er.is_org_admin else "direct" if direct.get(studio.pk) == role else "group"
+    return {"studio": studio, "role": role, "source": source, "direct_role": direct.get(studio.pk, "")}
+
+
+@require_org_role(roles.ORG_ADMIN)
+@require_http_methods(["GET"])
+def member_studios(request, org_slug, user_id):  # noqa: ARG001
+    from apps.core.permissions import bulk_effective_roles
+
+    member = _target_membership(request, request.org, user_id)
+    if request.GET.get("tab") == "groups":
+        from django.core.paginator import Paginator
+        group_q = (request.GET.get("group_q") or "").strip()
+        memberships = PermissionGroupMembership.objects.filter(user=member.user, group__org=request.org).select_related("group").order_by("group__name", "group_id")
+        if group_q:
+            memberships = memberships.filter(group__name__icontains=group_q)
+        group_page = Paginator(memberships, 25).get_page(request.GET.get("group_page"))
+        return render(request, "orgs/member_studios.html", {"org": request.org, "member": member,
+            "tab": "groups", "group_page": group_page, "group_q": group_q,
+            "group_total": group_page.paginator.count})
+    q = (request.GET.get("q") or "").strip()
+    qs = Studio.objects.filter(org=request.org).order_by("slug")
+    if q:
+        qs = qs.filter(models.Q(slug__icontains=q) | models.Q(name__icontains=q))
+    page = paginate(request, qs, 25)
+    studios = list(page.object_list)
+    er = bulk_effective_roles([member.user], request.org)[member.user_id]
+    direct = dict(StudioMembership.objects.filter(user=member.user, studio__in=studios).values_list("studio_id", "role"))
+    rows = [_member_studio_access(studio, er, direct) for studio in studios]
+    return render(request, "orgs/member_studios.html", {"org": request.org, "member": member,
+        "rows": rows, "page": page, "q": q, "total": page.paginator.count,
+        "studio_role_choices": roles.STUDIO_ROLE_CHOICES})
+
+
+def _studio_role_refresh(request, user_id, studio_id):
+    if request.POST.get("return_to") == "studios":
+        return [f"member-studio-effective-{studio_id}"]
+    return [f"member-effective-{user_id}"]
+
+
+def _members_redirect(request, user_id=None):
     """Back to the members list the admin was looking at.
 
     These handlers used to redirect to the bare list URL, so changing a role
@@ -708,6 +735,8 @@ def _members_redirect(request):
     reasons a change looked like it had not happened.
     """
     base = f"/orgs/{request.org.slug}/settings/members"
+    if user_id is not None and request.POST.get("return_to") == "studios":
+        base += f"/{user_id}/studios"
     # Only echo back parameters this screen owns; the value arrives via POST.
     keep = {k: v for k, v in ((k, request.POST.get(k)) for k in ("q", "page")) if v}
     if keep.get("page") == "1":
@@ -861,7 +890,7 @@ def member_set_studio_role(request, org_slug, user_id):  # noqa: ARG001
         StudioMembership.objects.filter(user=m.user, studio=studio).delete()
         audit(request, "member.revoke_studio", target=m.user, studio=studio.slug)
         if is_settings_request(request):
-            return settings_success(request, f"{m.user.email} no longer has a direct role in {studio.name}.", refresh=[f"member-effective-{m.user_id}"])
+            return settings_success(request, f"{m.user.email} no longer has a direct role in {studio.name}.", refresh=_studio_role_refresh(request, m.user_id, studio.pk))
         messages.success(request, f"{m.user.email} no longer has a direct role in {studio.name}.")
     elif role in dict(roles.STUDIO_ROLE_CHOICES):
         StudioMembership.objects.update_or_create(
@@ -869,13 +898,13 @@ def member_set_studio_role(request, org_slug, user_id):  # noqa: ARG001
         )
         audit(request, "member.set_studio_role", target=m.user, studio=studio.slug, role=role)
         if is_settings_request(request):
-            return settings_success(request, f"{m.user.email} is now {role} in {studio.name}.", refresh=[f"member-effective-{m.user_id}"])
+            return settings_success(request, f"{m.user.email} is now {role} in {studio.name}.", refresh=_studio_role_refresh(request, m.user_id, studio.pk))
         messages.success(request, f"{m.user.email} is now {role} in {studio.name}.")
     else:
         if is_settings_request(request):
             return settings_error(request, "Invalid role.", errors={"role": ["Invalid role."]})
         messages.error(request, "Invalid role.")
-    return _members_redirect(request)
+    return _members_redirect(request, m.user_id)
 
 
 @require_org_role(roles.ORG_ADMIN)

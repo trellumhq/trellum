@@ -302,3 +302,41 @@ def clear_awaiting_first_sync(studio) -> int:
     return DataSource.objects.filter(
         Q(studio=studio) | Q(org_id=studio.org_id), awaiting_first_sync=True
     ).update(awaiting_first_sync=False)
+
+
+@dataclass(frozen=True)
+class DeclaredReadinessSummary:
+    declared_count: int
+    waiting_count: int
+    first_waiting_studio_slug: str | None
+
+
+def declared_readiness_summary(org) -> DeclaredReadinessSummary:
+    """Declared onboarding readiness without fetching report configs or exposing credentials.
+
+    Work is linear in declarations/bindings; scoped bindings shadow shared ones
+    through the same resolution and state rules as ``source_states``.
+    """
+    declarations = list(RepoDataSource.objects.filter(studio__org=org, present=True)
+                        .select_related("studio").order_by("studio_id", "name"))
+    if not declarations:
+        return DeclaredReadinessSummary(0, 0, None)
+    studio_ids = {declaration.studio_id for declaration in declarations}
+    shared = {}
+    scoped = {}
+    for binding in DataSource.objects.filter(Q(org=org) | Q(studio_id__in=studio_ids),
+                                             name__in={declaration.name for declaration in declarations}):
+        if binding.studio_id is None:
+            shared[binding.name] = binding
+        else:
+            scoped[(binding.studio_id, binding.name)] = binding
+    waiting = 0
+    first_slug = None
+    for declaration in declarations:
+        binding = scoped.get((declaration.studio_id, declaration.name), shared.get(declaration.name))
+        state = _state(declaration.name, declaration, binding, [])
+        if state.state in (SourceState.NEEDS_CREDENTIALS, SourceState.NEEDS_UPLOAD):
+            waiting += 1
+            if first_slug is None:
+                first_slug = declaration.studio.slug
+    return DeclaredReadinessSummary(len(declarations), waiting, first_slug)
