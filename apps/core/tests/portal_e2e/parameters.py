@@ -4,7 +4,7 @@ Credential values must not be serialized into the portable route manifest.
 """
 from django.contrib.auth import get_user_model
 
-SEED_PARAMETERS = {'connection_id','group_id','invite_id','link_id','proposal_id','report_id','rule_id','run_id','schedule_id','session_id','user_id','token','metric_definition_id','metric_definition_revision'}
+SEED_PARAMETERS = {'studio_id','connection_id','group_id','invite_id','link_id','proposal_id','report_id','rule_id','run_id','schedule_id','session_id','user_id','token','metric_definition_id','metric_definition_revision'}
 NATIVE_PARAMETERS = {'app_label','content_type_id','id','object_id','provider_id','token','uidb64','url'}
 
 def resolve(provider, route, role=None):
@@ -13,6 +13,11 @@ def resolve(provider, route, role=None):
     if namespace == 'seed':
         if name not in SEED_PARAMETERS:
             raise ValueError('unknown seed parameter '+name)
+        if name == 'studio_id':
+            from apps.studios.models import Studio
+            override = route.get('principal_parameter_overrides', {}).get(role, {})
+            org_slug = override.get('org_slug', route['seeded_parameters']['org_slug']['value'])
+            return Studio.objects.get(org__slug=org_slug, slug='studio-0').pk
         if name in {'metric_definition_id', 'metric_definition_revision'}:
             from apps.reports.models import MetricDefinition, MetricCatalogState
             from apps.studios.models import Studio
