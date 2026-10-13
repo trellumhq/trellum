@@ -1,6 +1,13 @@
     // ── Chart.js Defaults ─────────────────────────────────
     if (typeof Chart !== 'undefined') {
         var _initTheme = getThemeColors();
+        // Canvas labels use the same theme family as report text and metadata.
+        Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+        if (document.fonts) {
+            document.fonts.ready.then(function() {
+                _applyThemeToCharts(getActiveTheme());
+            });
+        }
         // Match the actual display DPR, but floor at 2 so DevTools device
         // emulation (which can report DPR=1) still gets a crisp backing store.
         // The floor is deliberate and stays: a report is read on phones and
