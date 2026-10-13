@@ -2,6 +2,8 @@
   'use strict';
   if (window.TrellumChoices) { window.TrellumChoices.init(document); return; }
   var nextId = 0, active = null;
+  window.addEventListener('pagehide', function () { if (active) active.close(false); });
+  new MutationObserver(function () { if (active && !active.root.isConnected) active.close(false); }).observe(document.documentElement, {childList: true, subtree: true});
 
   function element(tag, className, text) {
     var node = document.createElement(tag);
@@ -23,17 +25,20 @@
   function position(picker) {
     if (!picker.root.isConnected) { picker.close(false); return; }
     var rect = picker.trigger.getBoundingClientRect(), view = window.visualViewport;
+    var popupRect = picker.popup.getBoundingClientRect();
+    var scale = picker.popup.offsetWidth ? popupRect.width / picker.popup.offsetWidth : 1;
+    if (!scale || !Number.isFinite(scale)) scale = 1;
     var left = view ? view.offsetLeft : 0, top = view ? view.offsetTop : 0;
     var width = view ? view.width : window.innerWidth, height = view ? view.height : window.innerHeight;
     var below = top + height - rect.bottom - 12, above = rect.top - top - 12;
     var upwards = below < 280 && above > below;
     var available = upwards ? above : below;
     var full = available < 220;
-    picker.popup.style.width = Math.min(Math.max(rect.width, 300), width - 16) + 'px';
-    picker.popup.style.maxHeight = Math.max(0, Math.min(400, full ? height - 16 : available)) + 'px';
-    picker.popup.style.left = Math.max(left + 8, Math.min(rect.left, left + width - picker.popup.offsetWidth - 8)) + 'px';
-    var desiredTop = full ? top + 8 : upwards ? rect.top - picker.popup.offsetHeight - 4 : rect.bottom + 4;
-    picker.popup.style.top = Math.max(top + 8, Math.min(desiredTop, top + height - picker.popup.offsetHeight - 8)) + 'px';
+    picker.popup.style.width = (Math.min(Math.max(rect.width, 300 * scale), width - 16) / scale) + 'px';
+    picker.popup.style.maxHeight = (Math.max(0, Math.min(400 * scale, full ? height - 16 : available)) / scale) + 'px';
+    picker.popup.style.left = (Math.max(left + 8, Math.min(rect.left, left + width - picker.popup.offsetWidth * scale - 8)) / scale) + 'px';
+    var desiredTop = full ? top + 8 : upwards ? rect.top - picker.popup.offsetHeight * scale - 4 : rect.bottom + 4;
+    picker.popup.style.top = (Math.max(top + 8, Math.min(desiredTop, top + height - picker.popup.offsetHeight * scale - 8)) / scale) + 'px';
   }
   // Manual popovers keep the nonmodal dialog inside its form while escaping drawer clipping.
   function popup(root, label) {
@@ -91,6 +96,7 @@
     };
     trigger.addEventListener('click', function () { if (panel.hidden) api.open(); else api.close(true); });
     trigger.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape' && !panel.hidden) { event.preventDefault(); event.stopPropagation(); api.close(true); return; }
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); api.open(); }
     });
     panel.addEventListener('keydown', function (event) {
@@ -135,6 +141,51 @@
     root.appendChild(select);
     var label = root.dataset.pickerLabel || labelFor(select, 'Option');
     var api = popup(root, label), invalid = false;
+    var source = select.dataset.choiceSource, prefix = select.dataset.choiceValuePrefix || '';
+    var remoteRows = [], remotePage = null, remoteState = '', generation = 0, controller = null, debounce = null, timeout = null;
+    var pager = element('div', 'ui-picker-pager');
+    Object.assign(pager.style, { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', flex: 'none' });
+    if (source) api.popup.appendChild(pager);
+    function cancelRemote() {
+      generation++; clearTimeout(debounce); clearTimeout(timeout);
+      if (controller) controller.abort();
+      controller = null;
+    }
+    function loadRemote(page) {
+      cancelRemote();
+      var current = generation;
+      var restoreSearchFocus = pager.contains(document.activeElement);
+      if (restoreSearchFocus) api.search.focus({ preventScroll: true });
+      controller = new AbortController();
+      remoteState = 'loading'; remoteRows = []; remotePage = null; api.refresh();
+      var url = new URL(source, window.location.href);
+      if (url.origin !== window.location.origin) { remoteState = 'error'; api.refresh(); return; }
+      url.searchParams.set('q', api.search.value.trim());
+      url.searchParams.set('page', page || 1);
+      var selectedValue = select.value;
+      url.searchParams.set('selected', selectedValue);
+      timeout = setTimeout(function () {
+        if (current !== generation) return;
+        controller.abort(); generation++; remoteState = 'error'; remoteRows = []; remotePage = null; api.refresh();
+      }, 15000);
+      fetch(url, { signal: controller.signal, credentials: 'same-origin', headers: { Accept: 'application/json' } }).then(function (response) {
+        if (!response.ok) throw new Error('Choices unavailable');
+        return response.json();
+      }).then(function (result) {
+        if (current !== generation || !root.isConnected || api.popup.hidden) return;
+        if (!Array.isArray(result.results) || !result.pagination) throw new Error('Invalid choices');
+        clearTimeout(timeout);
+        var chosen = select.options[select.selectedIndex];
+        if (chosen && chosen.value && select.value === selectedValue && select.value.indexOf('slug:') !== 0) {
+          chosen.textContent = result.selected && prefix + String(result.selected.value) === select.value ? result.selected.label + (result.selected.hint ? ' · ' + result.selected.hint : '') : 'Selected report is unavailable';
+        }
+        remoteRows = result.results; remotePage = result.pagination; remoteState = 'ready'; api.refresh();
+        if (restoreSearchFocus) api.search.focus({ preventScroll: true });
+      }).catch(function (error) {
+        if (current !== generation || error.name === 'AbortError') return;
+        clearTimeout(timeout); remoteRows = []; remotePage = null; remoteState = 'error'; api.refresh();
+      });
+    }
     var errorMessage = element('p', 'ui-picker-error');
     errorMessage.id = api.popup.id + '-error';
     errorMessage.hidden = true;
@@ -163,6 +214,42 @@
       description = description.trim();
       if (description) api.trigger.setAttribute('aria-describedby', description); else api.trigger.removeAttribute('aria-describedby');
       api.options.replaceChildren();
+      if (source) {
+        var rows = [];
+        Array.prototype.forEach.call(select.options, function (option) {
+          if (!option.value && !option.hidden) rows.push({value: '', label: option.textContent, disabled: option.disabled});
+        });
+        rows = rows.concat(remoteRows);
+        rows.forEach(function (item) {
+          var value = item.value ? prefix + item.value : '';
+          var row = button('ui-picker-option', item.label + (item.hint ? ' · ' + item.hint : ''));
+          row.disabled = !!item.disabled;
+          row.setAttribute('aria-pressed', String(select.value === value));
+          row.addEventListener('click', function () {
+            var option = Array.prototype.find.call(select.options, function (candidate) { return candidate.value === value; });
+            if (!option) { option = new Option(item.label + (item.hint ? ' · ' + item.hint : ''), value); select.add(option); }
+            select.value = value; invalid = false;
+            select.dispatchEvent(new Event('input', { bubbles: true }));
+            select.dispatchEvent(new Event('change', { bubbles: true })); api.close(true);
+          });
+          api.options.appendChild(row);
+        });
+        api.message.textContent = remoteState === 'loading' ? 'Loading choices…' : remoteState === 'error' ? 'Could not load choices. Your selection is retained.' : !remoteRows.length ? (api.search.value ? 'No matches.' : 'No choices are available.') : '';
+        api.message.hidden = !api.message.textContent;
+        pager.replaceChildren();
+        if (remoteState === 'error') {
+          var retry = button('ui-picker-filter', 'Retry'); retry.addEventListener('click', function (event) { event.preventDefault(); loadRemote(1); }); pager.appendChild(retry);
+        } else if (remotePage) {
+          var previous = button('ui-picker-filter', 'Previous'), next = button('ui-picker-filter', 'Next');
+          previous.disabled = !remotePage.has_previous; next.disabled = !remotePage.has_next;
+          previous.addEventListener('click', function (event) { event.preventDefault(); loadRemote(remotePage.page - 1); });
+          next.addEventListener('click', function (event) { event.preventDefault(); loadRemote(remotePage.page + 1); });
+          pager.append(previous, element('span', '', 'Page ' + remotePage.page + ' · ' + remotePage.total + ' choices'), next);
+        }
+        if (api.trigger.disabled && !api.popup.hidden) api.close(false);
+        if (!api.popup.hidden) position(api);
+        return;
+      }
       var query = api.search.value.trim().toLocaleLowerCase(), count = 0;
       Array.prototype.forEach.call(select.options, function (option) {
         if (option.hidden || (option.parentElement.tagName === 'OPTGROUP' && option.parentElement.hidden)) return;
@@ -185,7 +272,15 @@
       if (api.trigger.disabled && !api.popup.hidden) api.close(false);
       if (!api.popup.hidden) position(api);
     };
-    api.search.addEventListener('input', api.refresh);
+    if (source) {
+      var localOpen = api.open, localClose = api.close;
+      api.open = function () { localOpen(); if (!api.popup.hidden) loadRemote(1); };
+      api.close = function (focus) { cancelRemote(); localClose(focus); };
+      api.search.addEventListener('input', function () {
+        cancelRemote(); remoteState = 'loading'; remoteRows = []; remotePage = null; api.refresh();
+        debounce = setTimeout(function () { loadRemote(1); }, 180);
+      });
+    } else api.search.addEventListener('input', api.refresh);
     select.addEventListener('input', function () { invalid = false; api.refresh(); });
     select.addEventListener('change', function () { invalid = false; api.refresh(); });
     select.addEventListener('invalid', function (event) {

@@ -1,0 +1,7 @@
+<section class="panel" aria-label="Browse reports">
+<form method="get"><input type="hidden" name="choose_report" value="1">
+{% for key, value in request.GET.items %}{% if key != 'choice_q' and key != 'choice_page' and key != 'choose_report' %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endif %}{% endfor %}
+<label>Search reports <input type="search" name="choice_q" value="{{ request.GET.choice_q }}"></label><button class="ui-btn ghost">Search reports</button></form>
+{% for report in choice_page %}{% with report_id=report.pk|stringformat:"s" %}{% with filter_value="id:"|add:report_id %}<p><a href="{% querystring report=filter_value page=1 choose_report=None choice_page=None choice_q=None %}">{{ report.name|default:report.slug }} · {{ report.studio.org.name }} / {{ report.studio.name }}</a></p>{% endwith %}{% endwith %}{% empty %}<p>No matching reports.</p>{% endfor %}
+{% include "_pagination.html" with page=choice_page previous_url=choice_previous_url next_url=choice_next_url %}
+</section>

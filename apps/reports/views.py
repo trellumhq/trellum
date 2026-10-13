@@ -15,6 +15,7 @@ from pathlib import Path
 from django.conf import settings
 from django.contrib import messages
 from django.core.exceptions import ValidationError
+from django.core.paginator import Paginator
 from django.db.models import Count, F, Q, Sum
 from django.db import transaction
 from django.http import (
@@ -49,6 +50,7 @@ from apps.core.report_access import (
 )
 from apps.reports import notify
 from apps.reports import deliveries
+from apps.reports.recipient_access import DeliveryPresentationBatch
 from apps.reports.models import (
     DEFAULT_LIVE_QUERY_RATE_LIMIT,
     EmailSchedule,
@@ -913,7 +915,7 @@ def _recipient_summary(schedule) -> str:
     return " + ".join(parts) if parts else "No recipients"
 
 
-def _schedule_dict(schedule, *, viewer=None, request=None) -> dict:
+def _schedule_dict(schedule, *, viewer=None, request=None, batch=None) -> dict:
     """Shared schedule shape; request authorization controls editing and history."""
     if request is not None:
         editable = deliveries.can_manage_schedule(request, schedule)
@@ -921,12 +923,10 @@ def _schedule_dict(schedule, *, viewer=None, request=None) -> dict:
         editable = bool(viewer is not None and viewer.is_active
             and can_view_report(viewer, schedule.report)
             and roles.at_least(effective_roles(viewer, schedule.report.studio.org).role_for(schedule.report.studio), roles.DEVELOPER))
-    next_at = deliveries.next_occurrence(schedule)
-    recipients = list(schedule.recipients.all())
-    allowed = bulk_can_view_report(recipients, schedule.report)
-    eligible_recipients = [{"id": user.pk, "email": user.email} for user in recipients
-                           if user.is_active and allowed.get(user.pk, False)]
-    summary = _recipient_summary(schedule)
+    batch = batch or DeliveryPresentationBatch([schedule])
+    next_at = deliveries.next_occurrence(schedule, pause=batch.pauses[schedule.report.studio.org_id])
+    eligible_recipients = [{"id": user.pk, "email": user.email} for user in batch.eligible(schedule)]
+    summary = batch.summary(schedule)
     confirmation_recipients = " + ".join([summary] + [user["email"] for user in eligible_recipients])
     return {
         "id": schedule.pk,
@@ -1202,29 +1202,32 @@ def api_email_schedules(request, org_slug, studio_slug, slug):  # noqa: ARG001
                 user=request.user, group__org=request.org
             ).values_list("group_id", flat=True)
         )
-        rows = (
-            EmailSchedule.objects.filter(report=report)
-            .select_related("created_by")
-            .prefetch_related("recipients", "recipient_groups")
-        )
-        visible = []
-        subscribed_count = 0
-        for schedule in rows:
-            is_recipient = schedule.enabled and notify.user_in_schedule_audience(
-                request.user, schedule, user_role=user_role, user_group_ids=user_group_ids
-            )
-            if is_recipient:
-                subscribed_count += 1
-            visible.append(_schedule_dict(schedule, viewer=request.user, request=request))
+        rows = EmailSchedule.objects.filter(report=report)
+        audience = Q(recipients=request.user) | Q(recipient_groups__in=user_group_ids) | Q(recipient_roles__contains=["everyone"])
+        if user_role == roles.ADMIN:
+            audience |= Q(recipient_roles__contains=["admins"])
+        elif user_role == roles.DEVELOPER:
+            audience |= Q(recipient_roles__contains=["developers"])
+        subscribed_count = rows.filter(audience, enabled=True).distinct().count()
+        if request.GET.get("q"):
+            rows = rows.filter(Q(created_by__email__icontains=request.GET["q"]) |
+                               Q(recipients__email__icontains=request.GET["q"])).distinct()
+        page = Paginator(rows.select_related("created_by", "report__studio__org")
+                         .prefetch_related("recipients", "recipient_groups").order_by("pk"), 50).get_page(request.GET.get("page"))
+        batch = DeliveryPresentationBatch(page.object_list)
+        visible = [_schedule_dict(schedule, viewer=request.user, request=request, batch=batch)
+                   for schedule in batch.schedules]
+        defaults = deliveries.schedule_defaults(request.org)
         from django.contrib.staticfiles.storage import staticfiles_storage
 
         return JsonResponse(
             {
                 "schedules": visible,
                 "can_manage": deliveries.can_manage_schedule(request, EmailSchedule(report=report)),
-                "default_timezone": deliveries.schedule_defaults(request.org)["timezone"],
-                "default_enabled": deliveries.schedule_defaults(request.org)["enabled"],
+                "default_timezone": defaults["timezone"],
+                "default_enabled": defaults["enabled"],
                 "subscribed_count": subscribed_count,
+                "pagination": _page_metadata(page),
                 "picker_assets": {
                     "choice_css": staticfiles_storage.url("choice-picker.css"),
                     "choice_js": staticfiles_storage.url("choice-picker.js"),
@@ -1536,19 +1539,6 @@ def api_my_subscriptions(request, org_slug, studio_slug):  # noqa: ARG001
 # The compatibility list spans every Studio whose reports the user can see.
 
 
-def _visible_row(user, report, er_cache: dict) -> bool:
-    """Same visibility rule as ``_visible_favorite_rows`` above: a row
-    survives losing studio access (so regaining it restores the view) but
-    is not displayed while access is gone."""
-    studio = report.studio
-    org = studio.org
-    er = er_cache.get(org.pk)
-    if er is None:
-        er = er_cache[org.pk] = effective_roles(user, org)
-    scope = er.report_scope_for(studio)
-    return scope is None or report.pk in scope
-
-
 def _delivery_filter_reports(user, *, studio=None, org_id=None):
     reports = Report.objects.filter(present_in_scan=True)
     if studio is not None:
@@ -1558,6 +1548,81 @@ def _delivery_filter_reports(user, *, studio=None, org_id=None):
     return visible_reports(user, reports).select_related("studio", "studio__org").order_by(
         "name", "slug", "studio__org__name", "studio__name"
     )
+
+
+def _page_metadata(page):
+    return {"page": page.number, "per_page": page.paginator.per_page,
+            "total": page.paginator.count, "has_previous": page.has_previous(),
+            "has_next": page.has_next()}
+
+
+def _delivery_choices(request, *, studio=None, org_id=None):
+    rows = _delivery_filter_reports(request.user, studio=studio, org_id=org_id)
+    query = request.GET.get("q", "")
+    if query:
+        rows = rows.filter(Q(name__icontains=query) | Q(slug__icontains=query) |
+                           Q(studio__name__icontains=query) | Q(studio__org__name__icontains=query))
+    page = Paginator(rows.order_by("name", "slug", "pk"), 25).get_page(request.GET.get("page"))
+    def item(report):
+        return {"value": str(report.pk), "label": report.name or report.slug,
+                "hint": f"{report.studio.org.name} / {report.studio.name}"}
+    selected_id = request.GET.get("selected", "").removeprefix("id:")
+    selected = None
+    if selected_id.isascii() and selected_id.isdigit() and len(selected_id) < 19:
+        report = _delivery_filter_reports(request.user, studio=studio, org_id=org_id).filter(pk=selected_id).first()
+        if report:
+            selected = item(report)
+    return {"results": [item(report) for report in page], "selected": selected,
+            "pagination": _page_metadata(page)}
+
+
+@require_studio_role(roles.VIEWER)
+@require_http_methods(["GET"])
+def api_delivery_report_choices(request, org_slug, studio_slug):
+    response = JsonResponse(_delivery_choices(request, studio=request.studio))
+    response["Cache-Control"] = "private, no-store"
+    return response
+
+
+@require_http_methods(["GET"])
+def delivery_report_choices_global(request):
+    if not request.user.is_authenticated or not request.user.is_active or getattr(request, "api_key", None) is not None:
+        raise Http404
+    response = JsonResponse(_delivery_choices(request))
+    response["Cache-Control"] = "private, no-store"
+    return response
+
+
+def _delivery_choice_context(request, *, studio=None, org_id=None):
+    rows = _delivery_filter_reports(request.user, studio=studio, org_id=org_id)
+    selected_id = _delivery_report_filter_id(request)
+    selected = rows.filter(pk=selected_id).first() if selected_id else None
+    context = {"report_choice_source": f"/s/{studio.org.slug}/{studio.slug}/api/delivery-reports" if studio else "/api/delivery-reports"}
+    if request.GET.get("choose_report") == "1":
+        query = request.GET.get("choice_q", "")
+        if query:
+            rows = rows.filter(Q(name__icontains=query) | Q(slug__icontains=query) |
+                               Q(studio__name__icontains=query) | Q(studio__org__name__icontains=query))
+        page = Paginator(rows.order_by("name", "slug", "pk"), 25).get_page(request.GET.get("choice_page"))
+        initial = list(page.object_list)
+        context.update(_native_choice_context(request, page))
+    else:
+        initial = list(rows[:25])
+    if selected and selected.pk not in {report.pk for report in initial}:
+        initial.append(selected)
+    context["report_filter_options"] = initial
+    return context
+
+
+def _native_choice_context(request, page):
+    def url(**changes):
+        params = request.GET.copy()
+        for key, value in changes.items():
+            params[key] = value
+        return "?" + params.urlencode()
+    return {"choice_page": page,
+            "choice_previous_url": url(choice_page=page.previous_page_number()) if page.has_previous() else "",
+            "choice_next_url": url(choice_page=page.next_page_number()) if page.has_next() else ""}
 
 
 def _delivery_report_filter_value(value):
@@ -1609,7 +1674,8 @@ def _schedule_json_for_script(schedule, viewer=None, request=None) -> str:
 
 def _my_schedule_rows(user, *, org_id=None, request=None, studio=None) -> list[dict]:
     """Visible schedules for the Studio or legacy accessible list."""
-    rows = EmailSchedule.objects.all()
+    reports = visible_reports(user, Report.objects.filter(present_in_scan=True))
+    rows = EmailSchedule.objects.filter(report_id__in=reports.values("pk"))
     if studio is not None:
         rows = rows.filter(report__studio=studio)
     if org_id is not None:
@@ -1643,16 +1709,17 @@ def _my_schedule_rows(user, *, org_id=None, request=None, studio=None) -> list[d
         rows
         .select_related("created_by", "report", "report__studio", "report__studio__org")
         .prefetch_related("recipients", "recipient_groups")
-        .order_by("report__studio__org__name", "report__studio__name", "report__name")
+        .order_by("report__studio__org__name", "report__studio__name", "report__name", "pk")
     )
-    er_cache: dict = {}
+    page = Paginator(rows, 50).get_page(request.GET.get("page") if request else 1)
+    if request is not None:
+        request.delivery_page = page
+    batch = DeliveryPresentationBatch(page.object_list)
     out = []
-    for schedule in rows:
+    for schedule in batch.schedules:
         report = schedule.report
         studio = report.studio
-        if not report.present_in_scan or not _visible_row(user, report, er_cache):
-            continue
-        serialized = _schedule_dict(schedule, viewer=user, request=request)
+        serialized = _schedule_dict(schedule, viewer=user, request=request, batch=batch)
         out.append(
             {
                 "schedule": schedule,
@@ -1661,16 +1728,16 @@ def _my_schedule_rows(user, *, org_id=None, request=None, studio=None) -> list[d
                 "studio": studio,
                 "org": studio.org,
                 "cadence": _schedule_cadence_words(schedule),
-                "recipient_summary": _recipient_summary(schedule),
+                "recipient_summary": serialized["recipient_summary"],
                 "creator_name": serialized["creator_name"],
-                "paused": deliveries.delivery_pause(studio.org_id),
+                "paused": batch.pauses[studio.org_id],
                 "next_at": serialized["next_at"],
                 "outcome": serialized["delivery_outcome"],
                 "last_attempt_at": serialized["last_attempt_at"],
                 "last_accepted_at": serialized["last_accepted_at"],
                 "accepted_to": serialized["accepted_to"],
                 "failed_to": serialized["failed_to"],
-                "confirmation_recipients": " + ".join([_recipient_summary(schedule)] + [person["email"] for person in serialized["recipients"]]),
+                "confirmation_recipients": " + ".join([serialized["recipient_summary"]] + [person["email"] for person in serialized["recipients"]]),
                 "schedule_json": json.dumps(serialized).translate(_JSON_SCRIPT_ESCAPES),
                 "edit_url": f"/s/{studio.org.slug}/{studio.slug}/deliveries/{schedule.pk}/edit" + ("?return_to=/me/deliveries" if request and request.path == "/me/deliveries" else ""),
             }
@@ -1683,7 +1750,7 @@ def _my_schedule_rows(user, *, org_id=None, request=None, studio=None) -> list[d
 def studio_deliveries(request, org_slug, studio_slug):
     return render(request, "reports/my_deliveries.html", {
         "studio_deliveries": True, "schedule_rows": _my_schedule_rows(request.user, request=request, studio=request.studio),
-        "report_filter_options": _delivery_filter_reports(request.user, studio=request.studio),
+        **_delivery_choice_context(request, studio=request.studio),
         "selected_report_filter": _delivery_report_filter_selection(request),
         "selected_report_id": _delivery_report_filter_id(request),
         "delivery_return_to": f"/s/{org_slug}/{studio_slug}/deliveries",
@@ -1699,7 +1766,13 @@ def studio_delivery_new(request, org_slug, studio_slug):
     if not report_id:
         if request.method == "POST":
             raise Http404
-        return render(request, "reports/delivery_report_picker.html", {"reports": reports,
+        query = request.GET.get("choice_q", "")
+        if query:
+            reports = reports.filter(Q(name__icontains=query) | Q(slug__icontains=query))
+        page = Paginator(reports.order_by("name", "slug", "pk"), 25).get_page(request.GET.get("choice_page"))
+        return render(request, "reports/delivery_report_picker.html", {
+            **_native_choice_context(request, page), "reports": page.object_list,
+            "report_choice_source": f"/s/{org_slug}/{studio_slug}/api/delivery-reports",
             "return_to": f"/s/{org_slug}/{studio_slug}/deliveries"})
     report = reports.filter(pk=report_id).first() if report_id.isdigit() and len(report_id) < 19 else None
     if report is None:
@@ -1742,9 +1815,7 @@ def my_deliveries(request):
                 org_id=getattr(getattr(request, "api_key", None), "org_id", None),
                 request=request,
             ),
-            "report_filter_options": _delivery_filter_reports(
-                request.user, org_id=getattr(getattr(request, "api_key", None), "org_id", None)
-            ),
+            **_delivery_choice_context(request, org_id=getattr(getattr(request, "api_key", None), "org_id", None)),
             "selected_report_filter": _delivery_report_filter_selection(request),
             "selected_report_id": _delivery_report_filter_id(request),
             "delivery_return_to": "/me/deliveries",

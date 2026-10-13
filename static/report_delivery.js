@@ -25,7 +25,7 @@
     var CSS = ''
         + '#rdwOverlay{position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:9200;opacity:0;visibility:hidden}'
         + '#rdwOverlay.open{opacity:1;visibility:visible}'
-        + '#rdwDrawer{position:fixed;inset:0 0 0 auto;width:560px;max-width:100vw;z-index:9201;'
+        + '#rdwDrawer{position:fixed;inset:0 0 0 auto;width:560px;max-width:100%;z-index:9201;'
         + 'background:var(--bg-card,var(--bg-main,#fff));color:var(--text,var(--text-main,#172126));'
         + 'border-left:1px solid var(--border,var(--border-color,#e2e6ea));box-shadow:-4px 0 24px rgba(0,0,0,.16);'
         + 'visibility:hidden;transform:translateX(100%);transition:transform .18s ease-out,visibility .18s;'
@@ -33,9 +33,11 @@
         + '#rdwDrawer.open{visibility:visible;transform:translateX(0)}'
         + '#rdwDrawer *,.rdw-form *{box-sizing:border-box}'
         + '.rdw-header{display:flex;align-items:start;justify-content:space-between;gap:16px;padding:24px;border-bottom:1px solid var(--border,var(--border-color,#e2e6ea))}'
-        + '#rdwDrawer .rdw-title{font-size:24px;font-weight:600;margin:0}.rdw-subtitle{font-size:12px;color:var(--text2,var(--text-secondary,#475569));margin-top:4px;overflow-wrap:anywhere}'
+        + '.rdw-header>div{min-width:0;flex:1}'
+        + '#rdwDrawer .rdw-title{overflow-wrap:anywhere;font-size:24px;font-weight:600;margin:0}.rdw-subtitle{font-size:12px;color:var(--text2,var(--text-secondary,#475569));margin-top:4px;overflow-wrap:anywhere}'
         + '.rdw-close{background:none;border:0;color:inherit;min-width:36px;min-height:36px;font-size:24px;cursor:pointer}'
         + '.rdw-body{flex:1;min-height:0;overflow:auto;padding:24px}'
+        + '.rdw-pagination,.rdw-search{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 16px}.rdw-search{align-items:flex-end}.rdw-search label{flex:1;min-width:min(100%,180px)}'
         + '.rdw-section{margin-bottom:24px}.rdw-section-title{font-size:16px;font-weight:600;margin:0 0 16px}'
         + '.rdw-note,.rdw-help{display:block;color:var(--text2,var(--text-secondary,#475569));font-size:12px;line-height:1.5;margin:6px 0 0}'
         + '.rdw-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:8px;padding:7px 10px;min-height:38px;'
@@ -468,6 +470,7 @@
     var state = null;         // { prefix, slug, name, triggerEl }
     var pageGeneration = 0;
     var data = null;          // last GET /schedules payload
+    var scheduleRead = null, scheduleGeneration = 0;
     // Report API URL -> eligible recipients. Refresh on each open/edit because
     // group access can change while the page remains open.
     var editingId = null;     // schedule pk being edited, or null for "new"
@@ -582,7 +585,7 @@
         if (state && state.active && oldForm && oldForm.querySelector('form') && !canDiscard(oldForm._rdwContext)) return;
         ensureDom();
         if (state) state.active = false;
-        state = { prefix: prefix, slug: slug, name: name, triggerEl: triggerEl || document.activeElement, active: true };
+        state = { prefix: prefix, slug: slug, name: name, triggerEl: triggerEl || document.activeElement, active: true, schedulePage: 1, scheduleQuery: '' };
         data = null;
         editingId = null;
         document.getElementById('rdwSubtitle').textContent = name || slug;
@@ -600,6 +603,7 @@
         var wrap = document.getElementById('rdwFormWrap');
         if (skipConfirmation !== true && wrap && wrap.querySelector('form') && !canDiscard(wrap._rdwContext)) return;
         state.active = false;
+        scheduleGeneration++; if (scheduleRead) scheduleRead.abort();
         drawer.querySelectorAll('[data-recipient-picker],select[data-choice-picker]').forEach(function (node) {
             var picker = node._trellumRecipients || node._trellumChoice;
             if (picker) picker.close(false);
@@ -613,19 +617,29 @@
 
     // ── data loading ─────────────────────────────────────────────────────
     function loadAndRender() {
-        var session = state, endpoint = apiBase();
-        apiFetch(endpoint + '/schedules').then(function (response) {
+        var session = state, endpoint = apiBase(), generation = ++scheduleGeneration;
+        if (scheduleRead) scheduleRead.abort();
+        scheduleRead = new AbortController();
+        var params = new URLSearchParams({ page: session.schedulePage || 1, q: session.scheduleQuery || '' });
+        apiFetch(endpoint + '/schedules' + (session.schedulePage > 1 || session.scheduleQuery ? '?' + params.toString() : ''), { signal: scheduleRead.signal }).then(function (response) {
             if (!response.ok) throw new Error('Could not load schedules.');
             return response.json();
         }).then(function (result) {
             if (!currentSession(session)) return;
+            if (generation !== scheduleGeneration) return;
             data = result;
             render();
-        }).catch(function () {
-            if (!currentSession(session)) return;
+            if (session.focusAfterRead) {
+                session.focusAfterRead = false;
+                document.querySelector('#rdwScheduleSearch input').focus({ preventScroll: true });
+            }
+        }).catch(function (error) {
+            if (!currentSession(session) || generation !== scheduleGeneration || error.name === 'AbortError') return;
             var body = document.getElementById('rdwBody');
             body.innerHTML = '<p class="rdw-flash error" role="alert">Could not load deliveries.</p><button type="button" class="ui-btn rdw-btn" data-retry-schedules>Retry</button>';
-            body.querySelector('[data-retry-schedules]').addEventListener('click', loadAndRender);
+            var retry = body.querySelector('[data-retry-schedules]');
+            retry.addEventListener('click', loadAndRender);
+            if (session.focusAfterRead) retry.focus({ preventScroll: true });
         });
     }
 
@@ -711,9 +725,16 @@
         var body = document.getElementById('rdwBody');
 
         var html = '';
-        html += '<div class="rdw-section"><h3 class="rdw-section-title">Scheduled delivery</h3><div id="rdwScheduleList">';
+        html += '<div class="rdw-section"><h3 class="rdw-section-title">Scheduled delivery</h3>'
+            + '<form id="rdwScheduleSearch" class="rdw-form rdw-search"><label><span class="rdw-label">Search creator or recipient</span><input class="rdw-input" type="search" name="q" value="' + esc(state.scheduleQuery || '') + '"></label><button class="ui-btn rdw-btn" type="submit">Search</button></form><div id="rdwScheduleList">';
         html += scheduleRowsHtml();
-        html += '</div>'
+        html += '</div>';
+        if (data.pagination && data.pagination.total > data.pagination.per_page) {
+            html += '<div class="rdw-pagination"><button type="button" class="ui-btn rdw-btn" data-schedule-page="' + (data.pagination.page - 1) + '"' + (data.pagination.has_previous ? '' : ' disabled') + '>Previous</button>'
+                + '<span>Page ' + data.pagination.page + ' · ' + data.pagination.total + ' deliveries</span>'
+                + '<button type="button" class="ui-btn rdw-btn" data-schedule-page="' + (data.pagination.page + 1) + '"' + (data.pagination.has_next ? '' : ' disabled') + '>Next</button></div>';
+        }
+        html += ''
             + (data.can_manage ? '<button type="button" class="ui-btn rdw-btn" id="rdwNewSchedule">+ New schedule</button>' : '<p class="rdw-note">Read only. Developers and admins manage shared schedules.</p>')
             + '<div id="rdwFormWrap"></div>'
             + '</div>';
@@ -726,6 +747,19 @@
     }
 
     function wireStaticControls() {
+        function navigateSchedules(page, query) {
+            var wrap = document.getElementById('rdwFormWrap');
+            if (wrap && wrap.querySelector('form') && !canDiscard(wrap._rdwContext)) return;
+            state.schedulePage = page; state.scheduleQuery = query; state.focusAfterRead = true;
+            document.getElementById('rdwBody').innerHTML = '<p role="status">Loading deliveries…</p>';
+            loadAndRender();
+        }
+        document.getElementById('rdwScheduleSearch').addEventListener('submit', function (event) {
+            event.preventDefault(); navigateSchedules(1, event.currentTarget.elements.q.value);
+        });
+        document.querySelectorAll('[data-schedule-page]').forEach(function (button) {
+            button.addEventListener('click', function () { navigateSchedules(Number(button.dataset.schedulePage), state.scheduleQuery || ''); });
+        });
         var newButton = document.getElementById('rdwNewSchedule');
         if (newButton) newButton.addEventListener('click', function () {
             editingId = null;

@@ -27,7 +27,7 @@ def can_manage_schedule(request, schedule):
     if key is not None and (key.org_id != org.pk or not getattr(key, "can_write", False)):
         return False
     return bool(request.user.is_authenticated and request.user.is_active
-        and can_view_report(request.user, schedule.report)
+        and can_view_report(request.user, schedule.report, request=request)
         and roles.at_least(get_effective(request, org).role_for(schedule.report.studio), roles.DEVELOPER))
 
 
@@ -109,9 +109,9 @@ def owner_repair_required(schedule):
     return owner is None or not owner.is_active or not can_view_report(owner, schedule.report)
 
 
-def next_occurrence(schedule, now=None):
+def next_occurrence(schedule, now=None, *, pause=None):
     now = now or timezone.now()
-    if not schedule.enabled or not schedule.report.present_in_scan or schedule.report.disabled or delivery_pause(schedule.report.studio.org_id):
+    if not schedule.enabled or not schedule.report.present_in_scan or schedule.report.disabled or (delivery_pause(schedule.report.studio.org_id) if pause is None else pause):
         return None
     kwargs = {"hour": schedule.send_hour, "minute": schedule.send_minute, "timezone": schedule.timezone}
     if schedule.freq == EmailSchedule.FREQ_WEEKDAYS:

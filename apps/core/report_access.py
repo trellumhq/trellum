@@ -8,7 +8,7 @@ from django.conf import settings
 from django.db.models import Exists, F, OuterRef, Q
 
 from apps.core import roles
-from apps.core.permissions import bulk_effective_roles, _forbidden, effective_roles, get_effective
+from apps.core.permissions import EffectiveRoles, bulk_effective_roles, _forbidden, effective_roles, get_effective
 
 
 def selected_report_access_block_reason() -> str | None:
@@ -105,25 +105,37 @@ def visible_reports(user, queryset):
     return queryset.filter(studio__org__is_active=True, _ra_member=True).filter(access).distinct()
 
 
+class ReportAccessBatch:
+    """An organization-bound batch resolved from current users, never role input."""
+
+    def __init__(self, users, org) -> None:
+        self._org = org
+        self._users = {user.pk: user for user in users}
+        self._roles: dict[int, EffectiveRoles] = bulk_effective_roles(self._users.values(), org)
+        self._blocked = selected_report_access_block_reason()
+
+    def can_view(self, user, report) -> bool:
+        if report.studio.org_id != self._org.pk:
+            raise ValueError("report does not belong to the resolved organization")
+        if user.pk not in self._users or self._users[user.pk] is not user:
+            raise ValueError("user was not included in this access batch")
+        if not self._org.is_active or not user.is_authenticated:
+            return False
+        if report.audience == report.AUDIENCE_PRIVATE and self._blocked:
+            return False
+        if user.is_superuser:
+            return True
+        scope = self._roles[user.pk].report_scope_for(report.studio)
+        return scope is None or (not self._blocked and report.pk in scope)
+
+
 def bulk_can_view_report(users, report) -> dict[int, bool]:
     """Return current report visibility for every supplied user id."""
-    users = list(users)
+    users = list({user.pk: user for user in users}.values())
     if not users:
         return {}
-    org = report.studio.org
-    blocked = selected_report_access_block_reason()
-    if not org.is_active or (report.audience == report.AUDIENCE_PRIVATE and blocked):
-        return {user.pk: False for user in users}
-    resolved = bulk_effective_roles(users, org)
-    result = {}
-    for user in users:
-        if user.is_authenticated and user.is_superuser:
-            result[user.pk] = True
-            continue
-        er = resolved.get(user.pk)
-        scope = er.report_scope_for(report.studio) if er else frozenset()
-        result[user.pk] = scope is None or (not blocked and report.pk in scope)
-    return result
+    batch = ReportAccessBatch(users, report.studio.org)
+    return {user.pk: batch.can_view(user, report) for user in users}
 
 
 def require_full_studio_visibility(view):

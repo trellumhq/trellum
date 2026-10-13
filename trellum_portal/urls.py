@@ -28,6 +28,7 @@ studio_patterns = [
     path("", report_views.dashboard, name="studio-dashboard"),
     path("analyses", report_views.analyses, name="studio-analyses"),
     path("deliveries", report_views.studio_deliveries, name="studio-deliveries"),
+    path("api/delivery-reports", report_views.api_delivery_report_choices, name="api-delivery-report-choices"),
     path("deliveries/new", report_views.studio_delivery_new, name="studio-delivery-new"),
     path("deliveries/<int:schedule_id>/edit", report_views.studio_delivery_edit, name="studio-delivery-edit"),
     # The Operations tab (studio tab bar): the dashboard template booted with
@@ -220,6 +221,7 @@ urlpatterns = [
     # Per-user deliveries & alerts, across every studio (cross-studio, like favorites)
     path("me/deliveries", report_views.my_deliveries, name="my-deliveries"),
     path("deliveries", report_views.manage_deliveries, name="manage-deliveries"),
+    path("api/delivery-reports", report_views.delivery_report_choices_global, name="delivery-report-choices-global"),
     path("deliveries/<int:schedule_id>/edit", report_views.manage_delivery_edit, name="manage-delivery-edit"),
     # Personal API keys (internal planning ticket #002): cross-org like deliveries; the org-admin
     # list sits with the other org settings tabs further down.
