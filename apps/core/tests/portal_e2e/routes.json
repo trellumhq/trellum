@@ -8711,12 +8711,12 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "63b81efe0ea83050a6e7ed391eae9caea194d443e624a7eb8c4f9d697c528a93",
+      "source_sha256": "6266d7a09a79c292ed2975a0ae0d9081e37a972882e5a543e7c2f231bfd269d5",
       "request_conditions": [
         "require_full_studio_visibility: plain alpha viewer/group-member/selected denied by seeded private audience; viewer-full samples explicitly granted public-only beta studio0",
         "alpha private-viewer explicitly granted private report remains finite-scope and is denied full-studio overviews under current semantics"
       ],
-      "adapter_sha256": "63b81efe0ea83050a6e7ed391eae9caea194d443e624a7eb8c4f9d697c528a93",
+      "adapter_sha256": "6266d7a09a79c292ed2975a0ae0d9081e37a972882e5a543e7c2f231bfd269d5",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -8776,12 +8776,12 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "63b81efe0ea83050a6e7ed391eae9caea194d443e624a7eb8c4f9d697c528a93",
+      "source_sha256": "6266d7a09a79c292ed2975a0ae0d9081e37a972882e5a543e7c2f231bfd269d5",
       "request_conditions": [
         "require_full_studio_visibility: plain alpha viewer/group-member/selected denied by seeded private audience; viewer-full samples explicitly granted public-only beta studio0",
         "alpha private-viewer explicitly granted private report remains finite-scope and is denied full-studio overviews under current semantics"
       ],
-      "adapter_sha256": "63b81efe0ea83050a6e7ed391eae9caea194d443e624a7eb8c4f9d697c528a93",
+      "adapter_sha256": "6266d7a09a79c292ed2975a0ae0d9081e37a972882e5a543e7c2f231bfd269d5",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
