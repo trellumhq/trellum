@@ -141,6 +141,7 @@
         var tc = window._themes[themeName];
         if (!tc) return;
         if (typeof Chart !== 'undefined') {
+            Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
             Chart.defaults.color = tc.tick_color;
             Chart.defaults.borderColor = tc.grid_color;
         }
