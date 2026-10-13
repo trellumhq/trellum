@@ -224,3 +224,26 @@ def test_json_report_invalid_selected_ids_do_not_leak_or_crash(login, org_admin,
     assert response.status_code == 200
     assert response.json()["selected"] == [{"value": str(own.pk), "label": "Own report · Report"}]
     assert foreign.name.encode() not in response.content
+
+
+def test_large_report_columns_never_transfer_for_presentation(login, org_admin, org, studio, member, make_group, attach_group, settings):
+    settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = True
+    group = make_group("Large metadata", default_studio_role="viewer")
+    attach_group(member, group)
+    reports = Report.objects.bulk_create([Report(studio=studio, name=f"Large {i:03}", slug=f"blob{i:03}", config={"unused": "c" * 65536}, description="d" * 65536, tags=["t" * 65536]) for i in range(100)])
+    grant = PermissionGroupGrant.objects.create(group=group, studio=studio, role="viewer", viewer_scope="selected")
+    ReportPermissionGrant.objects.create(grant=grant, report=reports[-1])
+    client = login(org_admin)
+    paths = [url(org, group, "access"), url(org, group, "effective") + f"&member={member.pk}", f"/orgs/{org.slug}/settings/groups/{group.pk}/studios/{studio.pk}/report-choices?selected={reports[-1].pk}", f"/s/{org.slug}/{studio.slug}/r/{reports[0].slug}/access"]
+    for path in paths:
+        with CaptureQueriesContext(connection) as queries:
+            response = client.get(path)
+        assert response.status_code == 200
+        report_selects = [query["sql"] for query in queries if query["sql"].lstrip().startswith("SELECT") and '"reports_report"' in query["sql"]]
+        assert report_selects
+        assert not any(f'"reports_report"."{field}"' in sql for field in ("config", "description", "tags") for sql in report_selects)
+        if response.context and "access_rows" in response.context and response.context["access_rows"]:
+            # Field validation still sees the complete studio and its reports.
+            form = response.context["access_rows"][0]["form"]
+            assert form.fields["reports"].queryset.count() == 100
+            assert not form.fields["reports"].queryset.query.deferred_loading[0]

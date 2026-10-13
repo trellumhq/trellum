@@ -369,14 +369,14 @@ def group_detail(request, org_slug, group_id):  # noqa: ARG001
                 "viewer_scope": grant.viewer_scope if grant else "all", "reports": selected_ids})
             if access_form:
                 selected_ids = access_form.data.getlist("reports")
-            valid_selected = Report.objects.filter(studio=selected_studio, pk__in=present.report_ids(selected_ids)).order_by("name", "slug")
+            valid_selected = Report.objects.filter(studio=selected_studio, pk__in=present.report_ids(selected_ids)).only(*present.REPORT_FIELDS).order_by("name", "slug")
             report_q = present.text(request, "report_q")
             report_page = present.window(request, present.report_choices(selected_studio, report_q), "report_page")
             catalog = {r.pk: r for r in report_page.object_list}
             catalog.update({r.pk: r for r in valid_selected})
             catalog_ids = {str(pk) for pk in catalog}
             row_form.present_reports(catalog.values(), [value for value in selected_ids if str(value) not in catalog_ids])
-            private = Report.objects.filter(studio=selected_studio, audience=Report.AUDIENCE_PRIVATE,
+            private = Report.objects.only(*present.REPORT_FIELDS).filter(studio=selected_studio, audience=Report.AUDIENCE_PRIVATE,
                 permission_group_grants__grant=grant).distinct().order_by("name", "slug") if grant else Report.objects.none()
             private_page = present.window(request, private, "private_page")
             context.update(access_rows=[{"studio": selected_studio, "grant": grant, "form": row_form, "private_reports": private_page.object_list}],
@@ -401,7 +401,8 @@ def group_delete(request, org_slug, group_id):  # noqa: ARG001
 @require_studio_role(roles.ADMIN)
 @require_http_methods(["GET", "POST"])
 def report_access(request, org_slug, studio_slug, slug):  # noqa: ARG001
-    report = get_object_or_404(Report, studio=request.studio, slug=slug)
+    reports = Report.objects.only(*present.REPORT_FIELDS) if request.method == "GET" else Report.objects.all()
+    report = get_object_or_404(reports, studio=request.studio, slug=slug)
     if request.method == "GET" and request.headers.get("Accept", "").startswith(
         "application/json"
     ):
@@ -635,7 +636,7 @@ def group_report_choices(request, org_slug, group_id, studio_id):
         return JsonResponse({"error": str(exc)}, status=400)
     page = present.window(request, present.report_choices(studio, parameters.get("q", "").strip()), "page", parameters=parameters)
     ids = present.report_ids([v for raw in parameters.getlist("selected") for v in raw.split(",")])
-    selected = Report.objects.filter(studio=studio, pk__in=ids).order_by("name", "slug")
+    selected = Report.objects.filter(studio=studio, pk__in=ids).only(*present.REPORT_FIELDS).order_by("name", "slug")
     field = ReportChoiceField(queryset=Report.objects.none())
     def record(report):
         return {"value": str(report.pk), "label": field.label_from_instance(report)}

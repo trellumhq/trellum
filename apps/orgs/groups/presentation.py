@@ -11,6 +11,7 @@ from apps.reports.models import Report
 from apps.studios.models import Studio, StudioMembership
 
 CHOICE_SIZE = 25
+REPORT_FIELDS = ("pk", "studio_id", "name", "slug", "kind", "audience", "present_in_scan", "disabled")
 
 
 def report_ids(values):
@@ -63,7 +64,7 @@ def member_choices(org, group, kind, query=""):
 
 
 def report_choices(studio, query=""):
-    rows = Report.objects.filter(studio=studio)
+    rows = Report.objects.filter(studio=studio).only(*REPORT_FIELDS)
     if query:
         rows = rows.filter(Q(name__icontains=query) | Q(slug__icontains=query))
     return rows.order_by("name", "slug", "pk")
