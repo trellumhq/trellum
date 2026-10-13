@@ -301,3 +301,47 @@ def test_schema_upgrade_preserves_reports_and_is_reversible(studio_tree):
         MigrationExecutor(connection).migrate([("reports", "0026_source_summaries")])
     assert Report.objects.filter(pk=row.pk).exists()
     assert ReportSourceSummary.objects.count() == 0  # automatic worker bootstrap
+
+
+def test_unchanged_projection_has_no_claim_or_preview_writes(studio_tree):
+    from django.test.utils import CaptureQueriesContext
+    row = report(studio_tree, meta=metadata(*(f"m{i}" for i in range(2000))))
+    reconcile(row.pk)
+    first_pk = row.source_summary.claims.get(metric_name="m0").pk
+    revision = MetricCatalogState.objects.get(studio=studio_tree).summary_revision
+    due(row)
+    with CaptureQueriesContext(connection) as captured:
+        assert reconcile(row.pk)["status"] == "ready"
+    writes = [item["sql"] for item in captured if item["sql"].lstrip().startswith(("INSERT", "UPDATE", "DELETE"))]
+    assert not any("reports_reportmetricclaim" in query or "reports_reportmetricpreview" in query for query in writes)
+    assert row.source_summary.claims.get(metric_name="m0").pk == first_pk
+    assert MetricCatalogState.objects.get(studio=studio_tree).summary_revision == revision
+    (studio_tree.output_dir / row.slug / "_meta.json").write_text(json.dumps(metadata("changed")))
+    due(row)
+    assert reconcile(row.pk)["status"] == "ready"
+    assert list(row.source_summary.claims.values_list("metric_name", flat=True)) == ["changed"]
+
+
+def test_unchanged_remote_generated_build_skips_preview_io(studio_tree, monkeypatch):
+    from apps.core import storage
+    row = report(studio_tree, "metrics")
+    row.tags = ["metrics"]
+    row.save()
+    calls = []
+    meta = metadata("m")
+    data = {"components": {"c": {"type": "chart", "dataset_id": "d", "x": "date"}},
+            "_metrics": {"m": {"agg": "sum", "column": "value", "component_ids": ["c"]}},
+            "_ds_d": {"_cols": ["date", "value"], "_data": [["a", 1], ["b", 2]]}}
+    monkeypatch.setattr(storage, "is_remote", lambda: True)
+    monkeypatch.setattr(storage, "summary_build_identity", lambda *args: "published")
+    def read(studio, slug, name, **kwargs):
+        calls.append(name)
+        return json.dumps(data if name == "data.json" else meta).encode()
+    monkeypatch.setattr(storage, "read_summary_artifact", read)
+    assert reconcile(row.pk)["status"] == "ready"
+    first = row.source_summary.previews.get(metric_name="m").pk
+    assert calls.count("data.json") == 1
+    due(row)
+    assert reconcile(row.pk)["status"] == "ready"
+    assert calls.count("data.json") == 1
+    assert row.source_summary.previews.get(metric_name="m").pk == first

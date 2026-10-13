@@ -45,7 +45,11 @@ is made during provider outages or a continuously growing catalog.
 
 Generated previews use the existing pure sparkline calculation and preserve
 complete claims even when preview data is malformed/oversized. Preview status
-is explicit. Full metadata/data payloads are not persisted.
+is explicit. Full metadata/data payloads are not persisted. Unchanged canonical claims do
+not rewrite index rows; unchanged immutable remote builds reuse preview rows
+without reading data.json. Local previews are compared before replacing rows.
+Observation timestamps advance without changing catalog generation when the
+serving/attempt projection and preview remain unchanged.
 
 Focused PostgreSQL tests (point `DATABASE_URL` at a disposable test database):
 

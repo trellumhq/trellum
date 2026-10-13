@@ -170,7 +170,11 @@ def inspect_source(report, summary):
     previews = {}
     preview_state = "not-applicable"
     generated = report.slug == "metrics" and "metrics" in (report.tags or [])
-    if generated and raw:
+    reuse_previews = remote and build == summary.source_identity and digest == summary.claim_digest and summary.preview_state == "ready"
+    if generated and raw and reuse_previews:
+        previews = None
+        preview_state = summary.preview_state
+    if generated and raw and not reuse_previews:
         preview_state = "missing"
         payload = None
         try:
@@ -222,6 +226,11 @@ def inspect_source(report, summary):
                 preview_state=preview_state, bytes=used)
 
 
+def _public_identity(row):
+    return (row.state, row.quality, row.source_identity, row.claim_digest,
+            row.served_at, row.attempt_at, row.attempt_status, row.preview_state, row.backend)
+
+
 def reconcile(report_id):
     lease = acquire(report_id)
     if lease is None:
@@ -249,14 +258,21 @@ def reconcile(report_id):
         report.refresh_from_db(fields=["present_in_scan", "data_expired_at"])
         if row.generation != generation or row.lease_token != token or not report.present_in_scan or report.data_expired_at:
             return {"status": "superseded", "bytes": result["bytes"]}
+        previous_identity = _public_identity(row)
+        preview_changed = False
         if result["state"] not in ("uncertain", "expired"):
-            row.claims.all().delete()
-            ReportMetricClaim.objects.bulk_create([ReportMetricClaim(
-                summary=row, metric_name=c["id"], definition_hash=c["definition_hash"], version=c["version"]
-            ) for c in result["claims"]])
-            row.previews.all().delete()
-            ReportMetricPreview.objects.bulk_create([ReportMetricPreview(summary=row, metric_name=name, points=points)
-                for name, points in result["previews"].items()])
+            if row.claim_digest != result["digest"]:
+                row.claims.all().delete()
+                ReportMetricClaim.objects.bulk_create([ReportMetricClaim(
+                    summary=row, metric_name=c["id"], definition_hash=c["definition_hash"], version=c["version"]
+                ) for c in result["claims"]])
+            if result["previews"] is not None:
+                existing_previews = dict(row.previews.values_list("metric_name", "points"))
+                if existing_previews != result["previews"]:
+                    preview_changed = True
+                    row.previews.all().delete()
+                    ReportMetricPreview.objects.bulk_create([ReportMetricPreview(summary=row, metric_name=name, points=points)
+                        for name, points in result["previews"].items()])
             row.source_identity = result["identity"]
             row.claim_digest = result["digest"]
             row.served_at = result["stamp"]
@@ -277,7 +293,8 @@ def reconcile(report_id):
         row.lease_until = None
         row.next_check_at = timezone.now() + timedelta(seconds=RECHECK_SECONDS)
         row.save()
-        _revision(report.studio_id)
+        if _public_identity(row) != previous_identity or preview_changed:
+            _revision(report.studio_id)
     return {"status": result["state"], "bytes": result["bytes"]}
 
 
