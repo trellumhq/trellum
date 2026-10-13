@@ -46,6 +46,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- Refresh the website product tour and report-review screenshots at 2× resolution.
 - Remove the incomplete offline bundle generator and clarify that offline
   installation and upgrade bundles are not currently provided.
 

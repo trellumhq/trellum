@@ -385,7 +385,7 @@ class TestManagementUI:
         source = DataSource.objects.get(studio=studio_tree, name="warehouse")
         assert source.credentials == {"user": "svc", "password": "private-secret"}
 
-    def test_create_and_editor_ajax_saves_redirect_only_after_persistence(
+    def test_create_ajax_redirects_but_editor_saves_in_place_after_persistence(
         self, login, org_admin, org, studio_tree
     ):
         client = login(org_admin)
@@ -401,7 +401,9 @@ class TestManagementUI:
             "action": "save", "name": "warehouse", "type": "postgres", "host": "db2",
         }, **headers)
         assert response.status_code == 200
-        assert response.json()["redirect"] == list_url
+        assert "redirect" not in response.json()
+        assert response.json()["source_name"] == "warehouse"
+        assert response.json()["edit_url"] == list_url + "/warehouse/edit"
         source.refresh_from_db()
         assert source.config["host"] == "db2"
 

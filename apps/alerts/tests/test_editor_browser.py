@@ -266,6 +266,13 @@ def test_alert_editor_layout_desktop_mobile_and_dark(rule, login, tmp_path):
         page.wait_for_function("document.documentElement.scrollWidth <= innerWidth")
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
         assert page.locator('[name="send_time"]').evaluate("node => node.getBoundingClientRect().height") >= 44
+        page.wait_for_function("""() => {
+          const popup = document.querySelector('[data-recipient-picker] .ui-picker-popup');
+          if (!popup) return false;
+          const r = popup.getBoundingClientRect();
+          return !popup.hidden && r.width > 0 && r.height > 0 &&
+            r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight;
+        }""")
         popup_rect = field.locator(".ui-picker-popup").evaluate("""node => {
           const r=node.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom];
         }""")

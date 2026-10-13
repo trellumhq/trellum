@@ -6,6 +6,9 @@
   <h1>API keys</h1>
   <p class="muted page-sub">Personal bearer tokens for the studio JSON endpoints. A script, a CI job or your
     own coding agent acts as you, under your own roles, inside one organization.</p>
+  {% if can_create %}
+  <a class="ui-btn primary" href="{% url 'my-api-keys-create' %}">Add API key</a>
+  {% endif %}
 </header>
 
 {% if new_secret %}
@@ -25,9 +28,7 @@
 </div>
 {% endif %}
 
-{% if can_create %}
-<p><a class="ui-btn primary" href="{% url 'my-api-keys-create' %}">Add API key</a></p>
-{% else %}
+{% if not can_create %}
 <div class="panel"><div class="ui-empty">API keys are switched off in every organization you belong to.
   An organization admin can turn them on under Organization settings → API keys.</div></div>
 {% endif %}

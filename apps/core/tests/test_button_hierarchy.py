@@ -59,18 +59,34 @@ def test_at_most_one_primary_per_form():
 
 
 def test_links_are_not_dressed_as_the_primary_action():
-    # This is the inversion the review found: "Organization settings", a link
-    # to another page, was the loudest element on the hub while the studios it
-    # described were quiet. An anchor may be primary only when it IS the one
-    # thing to do — an empty-state CTA, or a page with no form at all.
+    # Navigation is normally neutral. A page header may also carry the one
+    # primary add action on a list page, even when record rows contain forms.
+    # Empty-state CTAs remain primary inside their explicit empty-state wrapper.
     for name, html in _templates():
+        headers = re.findall(
+            r'<header class="page-head(?:-row)?">.*?</header>', html, re.DOTALL,
+        )
+        for header in headers:
+            primary_links = re.findall(r'<a class="ui-btn primary"', header)
+            assert len(primary_links) <= 1, (
+                f"{name}: page header has {len(primary_links)} primary links; "
+                "a list header gets one add action."
+            )
         if "<form" not in html:
             continue  # terminal pages (reset complete, SSO error) — the link is the action
         for match in re.finditer(r'<a class="ui-btn primary".{0,120}', html, re.DOTALL):
             snippet = match.group(0)
             context_start = max(0, match.start() - 120)
             before = html[context_start:match.start()]
-            assert "ui-empty-action" in before, (
-                f"{name}: link styled as the primary action outside an empty state — "
+            in_page_header = (
+                max(
+                    html.rfind('<header class="page-head">', 0, match.start()),
+                    html.rfind('<header class="page-head-row">', 0, match.start()),
+                )
+                > html.rfind("</header>", 0, match.start())
+            )
+            in_form = html.rfind("<form", 0, match.start()) > html.rfind("</form>", 0, match.start())
+            assert not in_form and ("ui-empty-action" in before or in_page_header), (
+                f"{name}: primary link is outside a page header or empty state — "
                 f"{snippet[:80]!r}. Navigation is .ui-btn ghost."
             )

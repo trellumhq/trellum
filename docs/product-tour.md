@@ -43,8 +43,10 @@ author reports.
 - The portal screens use the Nova Play organization and Product Insights
   studio. Demo sources are synthetic local SQLite (`demo_db`) and CSV
   (`ua_budget`); there is no live warehouse connection.
-- The demo has no remote Git repository, Buddy provider or email configuration.
-  The repository screen is setup, not a completed remote sync. The alert is
+- The screenshots show the Ask AI header control in its configured appearance
+  for illustration; the demo has no Buddy provider. It also has no remote Git
+  repository or email configuration. The repository screen is setup, not a
+  completed remote sync. The alert is
   unsaved, and AI-backed alert evaluation and delivery are not demonstrated.
 - Portal operations show successful seeded builds. The portal reads built
   experiment results and declared event annotations; this tour does not claim

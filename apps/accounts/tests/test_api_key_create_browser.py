@@ -82,3 +82,33 @@ def test_create_page_picker_and_responsive_themes(login, api_key_user, org, db):
             page.screenshot(path=screenshots / f"create-{width}-{theme}.png", full_page=True)
             page.close()
         browser.close()
+
+
+def test_api_key_list_primary_action_and_empty_state_are_responsive(login, api_key_user, org, db):
+    from apps.accounts.models import ApiKey
+
+    empty_html = _rendered_page(login(api_key_user).get("/me/api-keys").content.decode())
+    ApiKey.mint(user=api_key_user, org=org, name="deployment key")
+    populated_html = _rendered_page(login(api_key_user).get("/me/api-keys").content.decode())
+    screenshots = ROOT / ".artifacts" / "api-key-list"
+    screenshots.mkdir(parents=True, exist_ok=True)
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        for state, html in (("empty", empty_html), ("populated", populated_html)):
+            for width in (1440, 390):
+                page = browser.new_page(viewport={"width": width, "height": 900})
+                page.set_content(html, wait_until="domcontentloaded")
+                expect(page.get_by_role("heading", name="API keys", exact=True)).to_be_visible()
+                primary_link = page.locator("main a.ui-btn.primary")
+                expect(primary_link).to_have_count(1)
+                expect(primary_link).to_have_text("Add API key")
+                assert page.locator("form a.ui-btn.primary").count() == 0
+                assert page.locator("body").evaluate("el => el.scrollWidth <= innerWidth + 1")
+                if state == "empty":
+                    expect(page.get_by_text("No API keys yet.")).to_be_visible()
+                else:
+                    expect(page.get_by_text("deployment key", exact=True)).to_be_visible()
+                page.screenshot(path=screenshots / f"{state}-{width}.png", full_page=True)
+                page.close()
+        browser.close()
