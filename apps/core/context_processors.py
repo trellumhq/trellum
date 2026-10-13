@@ -1,6 +1,6 @@
 """Template context for the global shell: which orgs/studios the user can
-switch to, and what's active. Cheap (two indexed queries) and cached on the
-request so the shell include never re-queries."""
+switch to, and what's active. Role and theme resolution share the request
+cache with view guards, so shell rendering does not repeat their work."""
 from __future__ import annotations
 
 # Shared mobile header titles.  Keeping these against named routes makes the
@@ -79,8 +79,19 @@ def shell(request):
     user = getattr(request, "user", None)
     if user is None or not user.is_authenticated:
         return {"trellum_source_url": source_url()}
+    from apps.core.request_context import actor_key
+
+    requested_org = getattr(request, "org", None)
+    requested_studio = getattr(request, "studio", None)
+    identity = (
+        actor_key(request),
+        getattr(requested_org, "pk", None),
+        getattr(requested_org, "is_active", None),
+        getattr(requested_studio, "pk", None),
+        getattr(requested_studio, "org_id", None),
+    )
     cached = getattr(request, "_shell_ctx", None)
-    if cached is not None:
+    if cached is not None and getattr(request, "_shell_identity", None) == identity:
         return cached
 
     from apps.core import impersonation
@@ -113,6 +124,10 @@ def shell(request):
             ).order_by("slug")
         )
 
+    key = getattr(request, "api_key", None)
+    if key is not None:
+        orgs = [org for org in orgs if org.pk == key.org_id]
+
     session = request.session if hasattr(request, "session") else None
     raw_remembered_studios = (
         session.get(_ACTIVE_STUDIOS_SESSION_KEY, {}) if session is not None else {}
@@ -130,9 +145,11 @@ def shell(request):
         session[_ACTIVE_STUDIOS_SESSION_KEY] = valid_remembered_studios
     remembered_studios = valid_remembered_studios
 
-    from apps.core.permissions import effective_roles
+    from apps.core.permissions import get_effective
 
     active_org = getattr(request, "org", None)
+    if active_org is not None and active_org.pk not in {org.pk for org in orgs}:
+        active_org = None
     if active_org is not None and hasattr(request, "session"):
         # Remember the last org the user actually worked in.
         if request.session.get("active_org") != active_org.slug:
@@ -146,11 +163,13 @@ def shell(request):
         if active_org is None and orgs:
             active_org = orgs[0]
 
-    studios = list(visible_studios(user, active_org)) if active_org else []
+    studios = list(visible_studios(user, active_org, request=request)) if active_org else []
+    for studio in studios:
+        studio.org = active_org
 
     # Admin flags computed HERE (not from request.org_roles, which only
     # exists behind the permission decorators).
-    er = effective_roles(user, active_org) if active_org else None
+    er = get_effective(request, active_org) if active_org else None
     from apps.reports.deliveries import can_manage_org
 
     can_manage_deliveries = user.is_active and (
@@ -160,6 +179,13 @@ def shell(request):
     # Keep request scope separate from the last studio used for navigation:
     # org pages must never acquire a request.studio through shell state.
     active_studio = getattr(request, "studio", None)
+    if active_studio is not None and (
+        active_org is None or active_studio.org_id != active_org.pk
+        or active_studio.pk not in {studio.pk for studio in studios}
+    ):
+        active_studio = None
+    if active_studio is not None:
+        active_studio.org = active_org
     nav_studio = None
     if active_org:
         visible_by_id = {studio.pk: studio for studio in studios}
@@ -197,12 +223,12 @@ def shell(request):
     # answers to "nothing was picked". Org/product pages never see
     # active_studio set, so they cost zero conditional logic here beyond
     # this one attribute and always render the Trellum brand look.
-    studio_theme = explicit_studio_theme(user, active_studio) if active_studio else ""
+    studio_theme = explicit_studio_theme(user, active_studio, request=request) if active_studio else ""
     # What THIS viewer personally chose, for the picker's `selected` state --
     # not the resolved `studio_theme` above, which may be a studio/org
     # default nobody at this row actually picked (see viewer_theme_override's
     # docstring).
-    viewer_studio_theme = viewer_theme_override(user, active_studio) if active_studio else ""
+    viewer_studio_theme = viewer_theme_override(user, active_studio, request=request) if active_studio else ""
     # Whether THIS viewer may change their per-studio override — the studio
     # header's Appearance picker hides/disables itself when the org has
     # locked overrides off (organization.lock_studio_theme). Meaningless
@@ -239,5 +265,6 @@ def shell(request):
         "trellum_source_url": source_url(),
         **impersonation_ctx,
     }
+    request._shell_identity = identity
     request._shell_ctx = ctx
     return ctx

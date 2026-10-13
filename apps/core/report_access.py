@@ -8,7 +8,7 @@ from django.conf import settings
 from django.db.models import Exists, F, OuterRef, Q
 
 from apps.core import roles
-from apps.core.permissions import _bulk_effective_roles, _forbidden, effective_roles
+from apps.core.permissions import bulk_effective_roles, _forbidden, effective_roles, get_effective
 
 
 def selected_report_access_block_reason() -> str | None:
@@ -39,8 +39,14 @@ def selected_report_access_configuration_error() -> str | None:
     return selected_report_access_block_reason()
 
 
-def can_view_report(user, report) -> bool:
-    scope = effective_roles(user, report.studio.org).report_scope_for(report.studio)
+def can_view_report(user, report, *, request=None) -> bool:
+    if request is not None:
+        if user is not request.user:
+            raise ValueError("request report access must use request.user")
+        er = get_effective(request, report.studio.org)
+    else:
+        er = effective_roles(user, report.studio.org)
+    scope = er.report_scope_for(report.studio)
     if (
         scope is not None or report.audience == report.AUDIENCE_PRIVATE
     ) and selected_report_access_block_reason():
@@ -137,12 +143,10 @@ def bulk_can_view_report(users, report) -> dict[int, bool]:
     blocked = selected_report_access_block_reason()
     if not org.is_active or (report.audience == report.AUDIENCE_PRIVATE and blocked):
         return {user.pk: False for user in users}
-    resolved = _bulk_effective_roles(
-        [user for user in users if not user.is_superuser], org
-    )
+    resolved = bulk_effective_roles(users, org)
     result = {}
     for user in users:
-        if user.is_superuser:
+        if user.is_authenticated and user.is_superuser:
             result[user.pk] = True
             continue
         er = resolved.get(user.pk)

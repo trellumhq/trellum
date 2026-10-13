@@ -207,7 +207,7 @@ def has_custom_repo_theme(studio) -> bool:
     return bool(studio.repo_theme) and studio.repo_theme not in THEME_REGISTRY
 
 
-def explicit_studio_theme(user, studio) -> str:
+def explicit_studio_theme(user, studio, *, request=None) -> str:
     """Rungs 0-2 of the studio-theme resolution chain, WITHOUT the bare
     "trellum dark" fallback — "" means nothing anywhere (repo, viewer
     override, studio) explicitly names a theme for this studio.
@@ -272,13 +272,7 @@ def explicit_studio_theme(user, studio) -> str:
     org = studio.org
 
     if user is not None and getattr(user, "is_authenticated", False) and not org.lock_studio_theme:
-        from apps.studios.models import StudioPreference
-
-        override = (
-            StudioPreference.objects.filter(user=user, studio=studio)
-            .values_list("theme", flat=True)
-            .first()
-        )
+        override = viewer_theme_override(user, studio, request=request)
         if override and override in THEME_REGISTRY:
             return override
 
@@ -288,7 +282,7 @@ def explicit_studio_theme(user, studio) -> str:
     return ""
 
 
-def resolve_studio_theme(user, studio) -> str:
+def resolve_studio_theme(user, studio, *, request=None) -> str:
     """The single source of truth for "what theme does the CHROME render in
     this studio" — a ``trellum.themes.THEME_REGISTRY`` key, never empty.
 
@@ -310,10 +304,10 @@ def resolve_studio_theme(user, studio) -> str:
     """
     from trellum.themes import DEFAULT_THEME_NAME
 
-    return explicit_studio_theme(user, studio) or DEFAULT_THEME_NAME
+    return explicit_studio_theme(user, studio, request=request) or DEFAULT_THEME_NAME
 
 
-def viewer_theme_override(user, studio) -> str:
+def viewer_theme_override(user, studio, *, request=None) -> str:
     """The raw ``StudioPreference.theme`` stored for (user, studio), or ""
     -- unlike :func:`resolve_studio_theme`, this does NOT walk the
     studio/org fallback chain and does NOT apply the org lock. It exists
@@ -326,12 +320,27 @@ def viewer_theme_override(user, studio) -> str:
         return ""
     from apps.studios.models import StudioPreference
 
-    return (
+    if request is not None:
+        if user is not request.user:
+            raise ValueError("request theme must use request.user")
+        from apps.core.request_context import actor_key
+
+        cache = getattr(request, "_studio_theme_overrides", None)
+        if cache is None:
+            cache = request._studio_theme_overrides = {}
+        cache_key = (actor_key(request), studio.pk)
+        if cache_key in cache:
+            return cache[cache_key]
+    override = (
         StudioPreference.objects.filter(user=user, studio=studio)
         .values_list("theme", flat=True)
         .first()
         or ""
     )
+    if request is not None:
+        cache[cache_key] = override
+    return override
+
 
 
 def ink(color: str, ground: str, pole: str, floor: float, *, tint: bool = False, steps: int = 300) -> str:
