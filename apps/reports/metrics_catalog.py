@@ -404,22 +404,28 @@ def metric_definition_page(studio, query="", page=1):
     revision = MetricCatalogState.objects.filter(studio=studio).values_list(
         "definition_revision", flat=True).first() or 0
     definitions = MetricDefinition.objects.filter(studio=studio, present_in_scan=True)
-    statistics = definitions.aggregate(defined_count=Count("pk"), synced_at=Max("last_scanned_at"))
-    defined_count = statistics["defined_count"]
+    match = Q()
     if query:
-        definitions = definitions.annotate(search_tags=Cast("tags", TextField())).filter(
-            Q(name__icontains=query) | Q(label__icontains=query) |
-            Q(description__icontains=query) | Q(owner__icontains=query) |
-            Q(search_tags__icontains=query))
-    pager = Paginator(definitions.order_by("name", "pk"), 50)
+        definitions = definitions.annotate(search_tags=Cast("tags", TextField()))
+        match = (Q(name__icontains=query) | Q(label__icontains=query) |
+                 Q(description__icontains=query) | Q(owner__icontains=query) |
+                 Q(search_tags__icontains=query))
+    statistics = definitions.aggregate(
+        defined_count=Count("pk"), matching_count=Count("pk", filter=match),
+        synced_at=Max("last_scanned_at"), repo_url=Max("studio__repo__repo_url"))
+    defined_count = statistics["defined_count"]
+    pager = Paginator(definitions.filter(match).order_by("name", "pk"), 50)
+    pager.count = statistics["matching_count"]  # Reuse the exact filtered count already read.
     selected = pager.get_page(page)
-    metrics = [{"row": row, "spec": row.spec_text(), "details_url":
+    metrics = [{"row": row, "spec": row.spec_text(),
+                "not_monitored_reason": ("descriptive — no aggregation spec to compute" if not row.agg else
+                                         "not bound to a dataset in metrics.yaml"), "details_url":
                 reverse("studio-metric-claims", args=[studio.org.slug, studio.slug, row.pk]) +
                 f"?definition_revision={revision}"} for row in selected]
     current_revision = MetricCatalogState.objects.filter(studio=studio).values_list(
         "definition_revision", flat=True).first() or 0
     return {"metrics": metrics, "defined_count": defined_count,
-            "matching_count": pager.count, "metric_page": selected, "synced_at": statistics["synced_at"],
+            "matching_count": pager.count, "metric_page": selected, "synced_at": statistics["synced_at"], "repo_url": statistics["repo_url"] or "",
             "definition_revision": revision, "definition_changed": revision != current_revision,
             "metric_query": query}
 
@@ -434,10 +440,13 @@ def metrics_page(request, org_slug, studio_slug, section="overview"):
             metric_definition_page(request.studio, request.GET.get("q", "").strip(), request.GET.get("page", 1)))
     # A reverse OneToOneField raises DoesNotExist (not AttributeError) when
     # unset, so plain getattr(..., "repo", None) would not catch it.
-    try:
-        repo_url = request.studio.repo.repo_url
-    except StudioRepo.DoesNotExist:
-        repo_url = ""
+    if section != "comparison":
+        repo_url = data["repo_url"]
+    else:
+        try:
+            repo_url = request.studio.repo.repo_url
+        except StudioRepo.DoesNotExist:
+            repo_url = ""
     from apps.core.navigation import render_navigation
 
     return render_navigation(
