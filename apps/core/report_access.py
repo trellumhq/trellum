@@ -64,74 +64,45 @@ def visible_reports(user, queryset):
     if user.is_superuser:
         return queryset.filter(studio__org__is_active=True)
 
-    org_member = Q(studio__org__memberships__user=user)
-    management = (
-        Q(
-            studio__org__memberships__user=user,
-            studio__org__memberships__role=roles.ORG_ADMIN,
-        )
-        | Q(
-            studio__memberships__user=user,
-            studio__memberships__role__in=(roles.DEVELOPER, roles.ADMIN),
-        )
-        | Q(
-            studio__org__permission_groups__memberships__user=user,
-            studio__org__permission_groups__org_role=roles.ORG_ADMIN,
-        )
-        | Q(
-            studio__org__permission_groups__memberships__user=user,
-            studio__org__permission_groups__default_studio_role__in=(
-                roles.DEVELOPER,
-                roles.ADMIN,
-            ),
-        )
-        | (
-            Q(studio__group_grants__group__memberships__user=user)
-            & Q(studio__group_grants__role__in=(roles.DEVELOPER, roles.ADMIN))
-            & Q(studio__group_grants__group__org_id=F("studio__org_id"))
-        )
+    from apps.orgs.models import OrgMembership, PermissionGroupMembership, PermissionGroupGrant
+    from apps.studios.models import StudioMembership
+    from apps.reports.models import ReportPermissionGrant
+
+    org_member = OrgMembership.objects.filter(user=user, org_id=OuterRef("studio__org_id"))
+    studio_member = StudioMembership.objects.filter(user=user, studio_id=OuterRef("studio_id"))
+    group_member = PermissionGroupMembership.objects.filter(user=user, group__org_id=OuterRef("studio__org_id"))
+    scoped_grant = PermissionGroupGrant.objects.filter(
+        group__memberships__user=user, studio_id=OuterRef("studio_id"),
+        group__org_id=OuterRef("studio__org_id"))
+    queryset = queryset.alias(
+        _ra_member=Exists(org_member),
+        _ra_org_admin=Exists(org_member.filter(role=roles.ORG_ADMIN)),
+        _ra_studio_manager=Exists(studio_member.filter(role__in=(roles.DEVELOPER, roles.ADMIN))),
+        _ra_group_org_admin=Exists(group_member.filter(group__org_role=roles.ORG_ADMIN)),
+        _ra_group_manager=Exists(group_member.filter(group__default_studio_role__in=(roles.DEVELOPER, roles.ADMIN))),
+        _ra_grant_manager=Exists(scoped_grant.filter(role__in=(roles.DEVELOPER, roles.ADMIN))),
+        _ra_studio_viewer=Exists(studio_member.filter(role=roles.VIEWER)),
+        _ra_group_viewer=Exists(group_member.filter(group__default_studio_role=roles.VIEWER)),
+        _ra_grant_viewer=Exists(scoped_grant.filter(role=roles.VIEWER, viewer_scope="all")),
     )
-    full_viewer = (
-        Q(studio__memberships__user=user, studio__memberships__role=roles.VIEWER)
-        | Q(
-            studio__org__permission_groups__memberships__user=user,
-            studio__org__permission_groups__default_studio_role=roles.VIEWER,
-        )
-        | Q(
-            studio__group_grants__group__memberships__user=user,
-            studio__group_grants__role=roles.VIEWER,
-            studio__group_grants__viewer_scope="all",
-            studio__group_grants__group__org_id=F("studio__org_id"),
-        )
-    ) & Q(audience=Report.AUDIENCE_STUDIO)
+    management = (Q(_ra_org_admin=True) | Q(_ra_studio_manager=True) |
+                  Q(_ra_group_org_admin=True) | Q(_ra_group_manager=True) | Q(_ra_grant_manager=True))
+    full_viewer = (Q(_ra_studio_viewer=True) | Q(_ra_group_viewer=True) | Q(_ra_grant_viewer=True)) & Q(audience=Report.AUDIENCE_STUDIO)
     if blocked:
         queryset = queryset.alias(
-            _has_private_reports=Exists(
-                Report.objects.filter(
-                    studio_id=OuterRef("studio_id"), audience=Report.AUDIENCE_PRIVATE
-                )
-            )
-        )
+            _has_private_reports=Exists(Report.objects.filter(studio_id=OuterRef("studio_id"), audience=Report.AUDIENCE_PRIVATE)))
         full_viewer &= Q(_has_private_reports=False)
     access = management | full_viewer
     if not blocked:
-        access |= Q(
-            permission_group_grants__grant__group__memberships__user=user,
-            permission_group_grants__grant__role=roles.VIEWER,
-            permission_group_grants__grant__studio_id=F("studio_id"),
-            permission_group_grants__grant__group__org_id=F("studio__org_id"),
-        ) & (
-            Q(permission_group_grants__grant__viewer_scope="selected")
-            | Q(
-                audience=Report.AUDIENCE_PRIVATE,
-                permission_group_grants__grant__viewer_scope="all",
-            )
-        )
-    return (
-        queryset.filter(studio__org__is_active=True)
-        .filter(org_member & access)
-        .distinct()
-    )
+        explicit = ReportPermissionGrant.objects.filter(
+            report_id=OuterRef("pk"), grant__group__memberships__user=user,
+            grant__role=roles.VIEWER, grant__studio_id=OuterRef("studio_id"),
+            grant__group__org_id=OuterRef("studio__org_id"))
+        queryset = queryset.alias(
+            _ra_selected=Exists(explicit.filter(grant__viewer_scope="selected")),
+            _ra_private=Exists(explicit.filter(grant__viewer_scope="all")))
+        access |= Q(_ra_selected=True) | (Q(audience=Report.AUDIENCE_PRIVATE) & Q(_ra_private=True))
+    return queryset.filter(studio__org__is_active=True, _ra_member=True).filter(access).distinct()
 
 
 def bulk_can_view_report(users, report) -> dict[int, bool]:
