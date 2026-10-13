@@ -57,12 +57,55 @@ def handler_contract(callback):
                         actions.add(kind+'='+leaf.value)
     return hashlib.sha256(source.encode()).hexdigest(), hashlib.sha256(full.encode()).hexdigest(), actions
 
+def declared_methods(callback):
+    source = inspect.getsource(inspect.unwrap(callback))
+    declared = re.search(r'@require_http_methods\((\[[^\]]+\])\)', source)
+    if declared:
+        return set(ast.literal_eval(declared.group(1)))
+    if '@require_POST' in source:
+        return {'POST'}
+    if '@require_GET' in source:
+        return {'GET'}
+    if '@require_safe' in source:
+        return {'GET','HEAD'}
+    # Undecorated native form adapters still need their explicit write branch.
+    methods = {'GET'}
+    for verb in ('POST','PUT','PATCH','DELETE'):
+        if re.search(r'request.method\s*(?:==|!=|in).*?[\"\']'+verb+r'[\"\']', source) or (verb=='POST' and 'request.POST' in source):
+            methods.add(verb)
+    return methods
+
+
+def validate_principals(policy, universe, scenario_ids, prefix):
+    groups = {'allowed':set(policy.get('allowed_roles', [])), 'denied':set(policy.get('denied_roles', [])),
+              'conditional':set(policy.get('conditional_roles', {})), 'not_applicable':set(policy.get('not_applicable_roles', {}))}
+    errors = []
+    union = set().union(*groups.values())
+    if union-universe:
+        errors.append(prefix+'unknown principal role '+str(sorted(union-universe)))
+    if universe-union:
+        errors.append(prefix+'unclassified principal roles '+str(sorted(universe-union)))
+    names = list(groups)
+    for i,name in enumerate(names):
+        for other in names[i+1:]:
+            overlap = groups[name]&groups[other]
+            if overlap:
+                errors.append(prefix+'overlapping principal classifications '+str(sorted(overlap)))
+    for field in ('conditional_roles','not_applicable_roles'):
+        for role,condition in policy.get(field, {}).items():
+            if not isinstance(condition,dict) or not condition.get('condition') or condition.get('planned_node_id') not in scenario_ids:
+                errors.append(prefix+'missing concrete principal condition/scenario for '+role)
+    return errors
+
 def validate(ledger=None):
     ledger = ledger or json.loads(LEDGER.read_text())
     actual = {(pattern, item.lookup_str): item for pattern, item in resolved(get_resolver().url_patterns)}
     rows = ledger['routes']
     keys = [(row['pattern'], row['view']) for row in rows]
     errors = []
+    universe = set(ledger.get('principal_universe', []))
+    if universe != set(ROLES):
+        errors.append('principal universe must match seeded identities')
     if len(set(keys)) != len(keys):
         errors.append('duplicate route mapping')
     if set(keys) != set(actual):
@@ -71,13 +114,11 @@ def validate(ledger=None):
         errors.append('first-party route count drift')
     for row in rows:
         prefix = row['id']+': '
-        for field in ('case', 'shard', 'allowed_roles', 'role_policy', 'scenarios'):
+        for field in ('case', 'shard', 'role_policy', 'scenarios'):
             if not row.get(field):
                 errors.append(prefix+'missing '+field)
-        if set(row['allowed_roles']+row['denied_roles']) - set(ROLES):
-            errors.append(prefix+'unknown principal role')
-        if not row['denied_roles'] and row['role_policy'] not in ('native-public-boundary','public-availability-probe','native-provider-boundary','public-native-redirect'):
-            errors.append(prefix+'missing deny boundary')
+        scenario_ids = {scenario.get('planned_node_id') for scenario in row['scenarios']}
+        errors.extend(validate_principals(row, universe, scenario_ids, prefix))
         if row.get('disposition') not in DISPOSITIONS:
             errors.append(prefix+'invalid disposition')
         parameters = set(re.findall(r'<(?:[^:>]+:)?([^>]+)>', row['pattern']))
@@ -92,12 +133,18 @@ def validate(ledger=None):
                 if name not in valid:
                     errors.append(prefix+'unknown parameter provider')
         for scenario in row['scenarios']:
+            if any(field in scenario for field in ('allowed_roles','denied_roles','conditional_roles','not_applicable_roles')):
+                errors.extend(validate_principals(scenario,universe,scenario_ids,prefix+'scenario '+str(scenario.get('action'))+': '))
             if scenario.get('method') not in ('GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS') or not scenario.get('planned_node_id'):
                 errors.append(prefix+'invalid action scenario')
             if scenario.get('verification') != 'pending':
                 errors.append(prefix+'execution status must come from real result evidence')
         item = actual.get((row['pattern'],row['view']))
         if row['first_party'] and item:
+            required_methods = declared_methods(item.callback)
+            omitted_methods = required_methods-{scenario['method'] for scenario in row['scenarios']}
+            if omitted_methods:
+                errors.append(prefix+'unmapped source methods '+str(sorted(omitted_methods)))
             digest, helper_digest, actions = handler_contract(item.callback)
             declared_actions = {scenario.get('action') for scenario in row['scenarios']}
             if actions - declared_actions:
@@ -124,9 +171,7 @@ def refresh_reviewed_views(views):
         declared = {scenario.get('action') for scenario in row['scenarios']}
         if actions-declared:
             raise ValueError('review/add new action policy before digest refresh: '+str(actions-declared))
-        source = inspect.getsource(inspect.unwrap(item.callback))
-        explicit = re.search(r'@require_http_methods\((\[[^\]]+\])\)',source)
-        methods = ast.literal_eval(explicit.group(1)) if explicit else ['POST'] if '@require_POST' in source else []
+        methods = declared_methods(item.callback)
         if set(methods)-{scenario['method'] for scenario in row['scenarios']}:
             raise ValueError('review/add new method policy before digest refresh')
         row['source_sha256'],row['adapter_sha256'] = digest,adapter

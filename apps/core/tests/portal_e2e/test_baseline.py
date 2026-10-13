@@ -118,6 +118,21 @@ def test_mapping_and_seed():
     bad = json.loads(Path(__file__).with_name('routes.json').read_text())
     bad['routes'][0]['case'] = None
     assert validate(bad)['mapping_status'] == 'fail'
+    missing_account_role = json.loads(Path(__file__).with_name('routes.json').read_text())
+    account_role = next(row for row in missing_account_role['routes'] if row['pattern']=='account')
+    account_role['allowed_roles'].remove('org-admin')
+    assert any('unclassified principal roles' in error and 'org-admin' in error for error in validate(missing_account_role)['errors'])
+    missing_method = json.loads(Path(__file__).with_name('routes.json').read_text())
+    deliveries_route = next(row for row in missing_method['routes'] if row['pattern']=='deliveries')
+    deliveries_route['scenarios'] = [scenario for scenario in deliveries_route['scenarios'] if scenario['method']!='POST']
+    assert any('unmapped source methods' in error and 'POST' in error for error in validate(missing_method)['errors'])
+    overlapping_role = json.loads(Path(__file__).with_name('routes.json').read_text())
+    overlapping_role['routes'][0]['denied_roles'].append('org-admin')
+    assert any('overlapping principal classifications' in error for error in validate(overlapping_role)['errors'])
+    missing_condition = json.loads(Path(__file__).with_name('routes.json').read_text())
+    conditional_route = next(row for row in missing_condition['routes'] if row.get('conditional_roles'))
+    next(iter(conditional_route['conditional_roles'].values()))['condition'] = ''
+    assert any('missing concrete principal condition/scenario' in error for error in validate(missing_condition)['errors'])
     bad_role = json.loads(Path(__file__).with_name('routes.json').read_text())
     bad_role['routes'][0]['allowed_roles'] = ['fabricated-role']
     assert any('unknown principal' in error for error in validate(bad_role)['errors'])

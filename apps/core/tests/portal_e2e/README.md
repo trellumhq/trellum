@@ -48,6 +48,12 @@ parameters are fixtures for future protocol tests, not a configured live OIDC
 provider. Planned IDs deliberately refer to future suites. `manifest.py` fails
 on resolver, principal, parameter, action or source/adapter drift. Handler/action
 changes require reviewing this plan; never refresh hashes to hide unmapped work.
+Every principal is explicitly allowed, denied, or conditional/not applicable
+with concrete fixture/session setup and a linked planned scenario. These sets
+are disjoint and cover the declared seeded principal universe. Normal validation
+also requires every source-declared HTTP method, including forms with no named
+action. These structural checks do not prove source authorization correctness;
+the live matrix and independent scenario verification remain required.
 Mapping completeness is separate from verification completeness. `--all` exits
 nonzero while L1–L5 journeys and verified route/action evidence are pending.
 
