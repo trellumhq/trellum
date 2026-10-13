@@ -13,7 +13,14 @@
 
     function fmtCompact$(n) {
         if (n == null || isNaN(n)) return '-';
-        return '$' + fmtCompact(n);
+        const abs = Math.abs(n);
+        const sign = n < 0 ? '-' : '';
+        // Compact once the displayed cent value reaches the existing 1,000
+        // boundary, so 999.995 does not render as an uncompact $1000.00.
+        if (Math.round(abs * 100) >= 100000) {
+            return '$' + sign + fmtCompact(Math.max(abs, 1000));
+        }
+        return '$' + sign + abs.toFixed(2);
     }
 
     function fmtChips(n) {

@@ -65,15 +65,16 @@ def _round(value, digits: int = 1):
 def summarize(qs) -> dict:
     """One aggregate query over an already-filtered run queryset.
 
-    NULL timestamps and NULL peaks drop out of the aggregates on their own
-    (both plain and ordered-set aggregates ignore NULL inputs).
+    Durations describe successful runs; the other metrics include every run
+    in the queryset. NULL timestamps and NULL peaks drop out of the aggregates
+    on their own (both plain and ordered-set aggregates ignore NULL inputs).
     """
     agg = qs.aggregate(
         runs=Count("id"),
         success=Count("id", filter=Q(status=Run.SUCCESS)),
-        avg_duration_s=Avg(duration_s()),
-        p50_duration_s=Percentile(duration_s(), 0.5),
-        p95_duration_s=Percentile(duration_s(), 0.95),
+        avg_duration_s=Avg(duration_s(), filter=Q(status=Run.SUCCESS)),
+        p50_duration_s=Percentile(duration_s(), 0.5, filter=Q(status=Run.SUCCESS)),
+        p95_duration_s=Percentile(duration_s(), 0.95, filter=Q(status=Run.SUCCESS)),
         avg_queue_wait_s=Avg(queue_wait_s()),
         p95_queue_wait_s=Percentile(queue_wait_s(), 0.95),
         avg_peak_memory_mb=Avg("peak_memory_mb"),
@@ -123,8 +124,8 @@ def studio_run_stats(studio, *, window_days: int = 30) -> dict[str, dict]:
     for row in qs.values("slug").annotate(
         runs=Count("id"),
         success=Count("id", filter=Q(status=Run.SUCCESS)),
-        avg_duration_s=Avg(duration_s()),
-        p95_duration_s=Percentile(duration_s(), 0.95),
+        avg_duration_s=Avg(duration_s(), filter=Q(status=Run.SUCCESS)),
+        p95_duration_s=Percentile(duration_s(), 0.95, filter=Q(status=Run.SUCCESS)),
         avg_peak_memory_mb=Avg("peak_memory_mb"),
         max_peak_memory_mb=Max("peak_memory_mb"),
     ):

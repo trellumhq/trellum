@@ -676,6 +676,57 @@ class TestDatasets:
             "agg": "avg_by_date", "column": "dau", "date_col": "event_date",
         }
 
+    @pytest.mark.parametrize("agg", ["sum", "abssum"])
+    def test_time_last_claim_expansion_and_static_compatibility(self, tmp_path, agg):
+        text = DATASETS_YAML.replace("time_agg: avg", "time_agg: last").replace(
+            "    agg: sum\n    column: dau", f"    agg: {agg}\n    column: dau")
+        registry = load_metrics(project_root=_write_metrics(tmp_path, text))
+        live = expand_claim({"metric": "dau"}, registry)
+        assert live == {"metric": "dau", "label": "DAU", "format": "number",
+                        "agg": "last_by_date", "last_agg": agg,
+                        "column": "dau", "date_col": "event_date"}
+        assert expand_claim({"metric": "dau", "value": 42}, registry) == {
+            "metric": "dau", "label": "DAU", "format": "number", "value": 42}
+
+    def test_last_without_declared_time_keeps_ordinary_aggregation(self, tmp_path):
+        text = DATASETS_YAML.replace("time_agg: avg", "time_agg: last").replace(
+            "time: {column: event_date, grain: day}", "time: none")
+        registry = load_metrics(project_root=_write_metrics(tmp_path, text))
+        assert registry["dau"].agg_spec() == {"agg": "sum", "column": "dau"}
+
+    @pytest.mark.parametrize("rollup", ["last", "avg"])
+    def test_time_rollup_validates_declared_axis_and_explicit_compatibility(self, project_root, rollup):
+        from trellum.components import DataSource, KpiRow
+
+        _write_metrics(project_root, DATASETS_YAML.replace("time_agg: avg", f"time_agg: {rollup}"))
+        row = KpiRow([{"metric": "dau"}], dataset_id="daily")
+        missing = {"daily": DataSource("daily", pd.DataFrame({"dau": [10]}))}
+        result = _run_metrics_check([(row, "s")], missing)
+        assert any(c.id == "metric-column-missing" and c.level == "fail"
+                   and "event_date" in c.message for c in result.checks)
+        valid = {"daily": DataSource("daily", pd.DataFrame({"event_date": ["2026-01-01"], "dau": [10]}))}
+        assert not [c for c in _run_metrics_check([(row, "s")], valid).checks
+                    if c.level in ("fail", "warn")]
+        row.kpis = [{"metric": "dau", "value": 42}]
+        assert not [c for c in _run_metrics_check([(row, "s")], missing).checks
+                    if c.level in ("fail", "warn")]
+        row.kpis = [{"metric": "dau", **load_metrics()["dau"].agg_spec()}]
+        assert not [c for c in _run_metrics_check([(row, "s")], valid).checks
+                    if c.id == "metric-overridden"]
+        row.kpis[0]["date_col"] = "other_day"
+        bad = _run_metrics_check([(row, "s")], valid).checks
+        assert any(c.id == "metric-overridden" for c in bad)
+        assert any(c.id == "metric-column-missing" and "other_day" in c.message for c in bad)
+
+    def test_last_period_aggregation_override_warns(self, project_root):
+        from trellum.components import DataSource, KpiRow
+
+        _write_metrics(project_root, DATASETS_YAML.replace("time_agg: avg", "time_agg: last"))
+        row = KpiRow([{"metric": "dau", "last_agg": "abssum"}], dataset_id="daily")
+        valid = {"daily": DataSource("daily", pd.DataFrame({"event_date": ["2026-01-01"], "dau": [10]}))}
+        checks = _run_metrics_check([(row, "s")], valid).checks
+        assert any(c.id == "metric-overridden" and "last_agg" in c.message for c in checks)
+
 
 class TestMetricsReportShape:
     """The generated report's shape (internal planning ticket #114 slice 2): one anchored block

@@ -391,8 +391,8 @@ TRELLUM_SOURCE_URL = env("TRELLUM_SOURCE_URL", default="")
 
 # ── Documentation links ────────────────────────────────────────────────────
 # Where the product sends someone who needs the docs. Empty means the public
-# site. An air-gapped install has no route to it and gets the pages as files
-# in its bundle instead, so point this at wherever those files are served:
+# site. An air-gapped install has no route to it; operators can mirror the
+# documentation internally and point this at the mirror:
 #
 #   TRELLUM_DOCS_BASE_URL=https://intranet.example.com/trellum-docs
 #

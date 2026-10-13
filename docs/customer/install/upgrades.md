@@ -10,6 +10,13 @@
     an installation with real data. See the matching-image settings in the
     [Compose guide](/docs/latest/install/docker-compose/).
 
+    For the release-only Compose overlay, images are selected by
+    `TRELLUM_VERSION`, and `TRELLUM_IMAGE` is ignored. The helpers do not update
+    that version setting, so they cannot switch or roll back an installation
+    using the overlay unmodified. Treat the overlay as an initial-install path
+    until a matched-image upgrade and database-restore procedure has been
+    adapted and verified on an isolated instance.
+
 The existing portal-image helper is invoked with:
 
 ```bash
@@ -65,7 +72,7 @@ to ten minutes if a report build is mid-flight when the worker drains.
 
 ## Air-gapped sites
 
-The current bundle helper is incomplete; see
+No offline installation or upgrade bundle is provided; see
 [Verify what you received](/docs/latest/install/verify-images/#air-gapped-installs).
 An offline upgrade must transfer and verify both images and the operational
 files, and test the full upgrade and rollback procedure without network

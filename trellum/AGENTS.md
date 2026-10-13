@@ -372,6 +372,7 @@ Every `agg` recomputes over the **filtered rows**, so pass raw columns and let t
 | `abssum` | `sum(abs(column))` | for signed ledgers |
 | `ratio` | `sum(numerator) / abs(sum(denominator))`, ×100 **only** when `format: "percent"` | the scaling follows the FORMAT, so a currency ratio (ARPDAU, AOV, revenue per order) and a plain one (sessions per user, `format: "ratio"` → "2.98x") are ordinary ratio KPIs. Charts do the same: `ratios=[{numerator, denominator, label}]` divides raw and the axis format scales |
 | `avg_by_date` | `sum(column) / count(distinct date_col)` | per-day average; `date_col` defaults to `event_date` |
+| `last_by_date` | aggregate `column` across rows on the latest retained `date_col` | `last_agg` is `sum` or `abssum`; ties on that date are aggregated together |
 | `purchase_pct` | share of `source_col` volume where `type_col` is in `match_values`, ×100 | percent-format only — unlike `ratio`, its ×100 is still unconditional |
 
 Where the ×100 lives in `ratio` is the most re-derived fact in measured
@@ -486,8 +487,9 @@ A metric **without** an `agg` spec is *descriptive*: claimable only where a
 *executable* and can be claimed bare inside a live `KpiRow(dataset_id=...)`.
 `time_agg: avg` makes a bare claim expand to the client's `avg_by_date` over
 the dataset's time column (a DAU card reads "average DAU over the window");
-`time_agg: last` (balances) is rendered from a Python-computed `value=` for
-now. `dataset` and `time_agg` are provenance, not meaning, so they do not
+`time_agg: last` (balances) expands to `last_by_date` on the declared time
+column, aggregating only retained rows on the final date after filters.
+`dataset` and `time_agg` are provenance, not meaning, so they do not
 move `definition_hash`.
 
 **`python -m trellum metrics --report`** scaffolds `reports/metrics/`: an
@@ -502,9 +504,11 @@ controls. **Show / hide metrics** stores browser-local choices for the current
 report; **Show all** restores them. Hover over a time observation to draw a
 matching time guide on other visible charts that contain that exact date or
 time. Missing dates and non-time charts receive no guide or invented values.
-Metrics with `time_agg: last` show their trend and a build-time snapshot note;
-the static KPI is omitted in the workspace because it does not follow dates.
-The focused metric view retains the existing snapshot KPI.
+Metrics with `time_agg: last` show their trend and a live KPI that follows
+the selected dates. The focused metric view uses the same live aggregation.
+Empty windows and windows with no usable time values aggregate to zero;
+null measures contribute zero. Without a declared time axis, the ordinary
+aggregation remains in use.
 
 Two controls, two scopes. The **date range** is shared: one FilterBar on the
 first time dataset, propagated onto every other time dataset's own time

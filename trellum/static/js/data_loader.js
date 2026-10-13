@@ -306,7 +306,11 @@
     function _filterHealthCounts(filters) {
         var counts = {active: 0, propagated: 0, inactive: 0, untracked: 0};
         for (var i = 0; i < filters.length; i++) {
-            counts[filters[i].status] = (counts[filters[i].status] || 0) + 1;
+            var filter = filters[i];
+            // Accepted inactive filters remain visible in the audit detail,
+            // but do not represent an outstanding health fault.
+            if (filter.status === 'inactive' && filter.suppressed) continue;
+            counts[filter.status] = (counts[filter.status] || 0) + 1;
         }
         return counts;
     }
@@ -326,17 +330,24 @@
             li.className = 'fw-fhb-popover-item fw-fhb-st-' + f.status;
             var g = document.createElement('span');
             g.className = 'fw-fhb-popover-glyph';
-            g.textContent = glyph[f.status] || '?';
+            g.textContent = f.status === 'inactive' && f.suppressed
+                ? '✗ⓢ' : (glyph[f.status] || '?');
             var col = document.createElement('span');
             col.className = 'fw-fhb-popover-col';
             col.textContent = f.column;
             var st = document.createElement('span');
             st.className = 'fw-fhb-popover-status';
-            st.textContent = f.status;
+            st.textContent = f.status === 'inactive' && f.suppressed
+                ? 'accepted inactive' : f.status;
             li.appendChild(g);
             li.appendChild(col);
             li.appendChild(st);
-            if (f.reason) {
+            if (f.status === 'inactive' && f.suppressed) {
+                var accepted = document.createElement('div');
+                accepted.className = 'fw-fhb-popover-reason';
+                accepted.textContent = f.reason || 'Accepted by report validation';
+                li.appendChild(accepted);
+            } else if (f.reason) {
                 var reason = document.createElement('div');
                 reason.className = 'fw-fhb-popover-reason';
                 reason.textContent = f.reason;
@@ -349,7 +360,12 @@
     }
     function _attachFilterHealthBadges(comps) {
         var data = window._reportData;
-        if (!data || !data._filter_health) return;
+        if (!data || !data._filter_health) {
+            document.querySelectorAll('.fw-filter-health-badge').forEach(function(b) {
+                b.remove();
+            });
+            return;
+        }
         _filterHealthAdminCheck(function(isAdmin) {
             if (!isAdmin) {
                 // Strip any badges that may have been injected before
@@ -389,8 +405,6 @@
             var cfg = comps[id];
             if (!cfg || !cfg.dataset_id) return;
             if (_FHB_SKIP_TYPES[cfg.type]) return;
-            var filters = health[cfg.dataset_id];
-            if (!filters || !filters.length) return;
             var el = document.getElementById(id);
             if (!el) return;
             var target;
@@ -411,6 +425,8 @@
                 prev.remove();
             }
 
+            var filters = health[cfg.dataset_id];
+            if (!filters || !filters.length) return;
             var counts = _filterHealthCounts(filters);
             // Healthy chart — emit nothing. No green clutter on good charts.
             if (counts.inactive === 0 && counts.untracked === 0) {

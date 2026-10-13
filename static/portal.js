@@ -2092,7 +2092,7 @@ function _opsDurationCell(slug) {
     if (!st || !st.agg || !st.agg.runs) return '<span class="ops-metric">\u2014</span>';
     var last = st.last || {};
     var main = last.duration_s != null ? _fmtDuration(last.duration_s) : '\u2014';
-    var sub = st.agg.p95_duration_s != null ? 'p95 ' + _fmtDuration(st.agg.p95_duration_s) : '';
+    var sub = st.agg.p95_duration_s != null ? 'p95 successful ' + _fmtDuration(st.agg.p95_duration_s) : '';
     return '<div class="ops-metric">' + main + '</div>'
         + (sub ? '<div class="ops-metric-sub">' + sub + '</div>' : '');
 }
@@ -2302,8 +2302,8 @@ function _opsHistoryHTML(agg, history) {
     var html = '<div class="ops-summary ops-history-stats">';
     html += _opsStat(agg.runs != null ? agg.runs : '—', 'Runs (' + (agg.window_days || 90) + 'd)', '');
     html += _opsStat(_fmtPct(agg.success_rate), 'Success rate', rateCls);
-    html += _opsStat(agg.avg_duration_s != null ? _fmtDuration(agg.avg_duration_s) : '—', 'Avg duration', '');
-    html += _opsStat(agg.p95_duration_s != null ? _fmtDuration(agg.p95_duration_s) : '—', 'P95 duration', '');
+    html += _opsStat(agg.avg_duration_s != null ? _fmtDuration(agg.avg_duration_s) : '—', 'Avg duration (successful)', '');
+    html += _opsStat(agg.p95_duration_s != null ? _fmtDuration(agg.p95_duration_s) : '—', 'P95 duration (successful)', '');
     html += _opsStat(_fmtMB(agg.avg_peak_memory_mb), 'Avg peak mem', '');
     html += _opsStat(_fmtMB(agg.max_peak_memory_mb), 'Max observed mem', '');
     html += '</div>';
@@ -2762,7 +2762,7 @@ function _opsApplyStatus(status, revision, cycle) {
     var queueSlugs = queue.map(function(q) { return q.slug || q; });
 
     /* Update summary stat values in-place */
-    var stats = document.querySelectorAll('.ops-stat-value');
+    var stats = document.querySelectorAll('#content > .ops-summary > .ops-stat > .ops-stat-value');
     if (stats.length >= 7) {
         stats[1].textContent = Object.keys(running).length;
         stats[2].textContent = queue.length;

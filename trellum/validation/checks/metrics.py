@@ -9,7 +9,7 @@ from trellum.validation.result import ValidationResult
 from trellum.validation.walk import _resolve_ds_columns
 
 #: Claim keys that, when present on the claim itself, override the definition.
-_OVERRIDE_KEYS = ("agg", "column", "numerator", "denominator", "format")
+_OVERRIDE_KEYS = ("agg", "column", "numerator", "denominator", "format", "date_col", "last_agg")
 
 
 def _iter_claims(comps: list[tuple[Any, str]]):
@@ -36,6 +36,66 @@ def _iter_claims(comps: list[tuple[Any, str]]):
                 if comp.format != "number":
                     claim["format"] = comp.format
                 yield str(comp.metric), claim, "static", None, sec
+
+
+def _check_time_aggregation_date(metric_id, expanded, ds_id, ds_map, result, section):
+    """Check that a live time-based KPI can supply its declared date column."""
+    date_col = expanded.get("date_col")
+    if not date_col or (ds_id in ds_map and date_col not in _resolve_ds_columns(ds_id, ds_map)):
+        result.fail(
+            "metric-column-missing",
+            f"metric '{metric_id}' needs its declared time column "
+            f"'{date_col}' in DataSource '{ds_id}' for {expanded['agg']}. "
+            "Return that column or correct the claim's date_col.",
+            component="KpiRow", section=section, dataset_id=ds_id or "",
+        )
+
+
+def _check_claim_computability(metric, metric_id, claim, kind, ds_id, ds_map, result, section, registry):
+    """Check the columns needed to compute one live or static metric claim."""
+    from trellum.metrics import expand_claim
+
+    has_value = claim.get("value") is not None
+    has_own_spec = any(k in claim for k in ("agg", "column", "columns", "numerator"))
+    expanded = expand_claim(claim, registry)
+    if kind == "live" and expanded.get("agg") in ("avg_by_date", "last_by_date"):
+        _check_time_aggregation_date(metric_id, expanded, ds_id, ds_map, result, section)
+
+    if kind == "live" and not has_value and not has_own_spec:
+        if not metric.executable:
+            result.fail(
+                "metric-column-missing",
+                f"metric '{metric_id}' has no executable spec "
+                f"(agg/column) but is claimed in a live KpiRow with no "
+                f"value. A descriptive metric can only badge a KPI that "
+                f"supplies its own number -- add agg/column to the "
+                f"definition, or pass a value.",
+                component="KpiRow", section=section,
+            )
+            return
+        cols = _resolve_ds_columns(ds_id, ds_map) if ds_id else set()
+        if not cols:
+            return
+        needed = [c for c in (metric.column, metric.numerator, metric.denominator) if c]
+        missing = [c for c in needed if c not in cols]
+        if missing:
+            result.fail(
+                "metric-column-missing",
+                f"metric '{metric_id}' needs column(s) {missing} which "
+                f"are not in DataSource '{ds_id}'. The definition names "
+                f"warehouse columns; this report's query does not "
+                f"return them.",
+                component="KpiRow", section=section, dataset_id=ds_id or "",
+            )
+    elif kind == "static" and not has_value:
+        result.fail(
+            "metric-column-missing",
+            f"static KPI claims metric '{metric_id}' but supplies no "
+            f"value. A static card cannot aggregate -- compute the "
+            f"number in the generator and pass value=, or claim inside "
+            f"a live KpiRow(dataset_id=...).",
+            component="KpiCard", section=section,
+        )
 
 
 def _check_metrics(
@@ -87,10 +147,11 @@ def _check_metrics(
             continue
 
         # ── metric-overridden: the claim contradicts the definition ─────
+        expected = {**metric.agg_spec(), "format": metric.format}
         overridden = [
             k for k in _OVERRIDE_KEYS
-            if k in claim and getattr(metric, k, None) not in (None, "")
-            and str(claim[k]) != str(getattr(metric, k))
+            if k in claim and expected.get(k) not in (None, "")
+            and str(claim[k]) != str(expected[k])
         ]
         if overridden:
             result.warn(
@@ -103,48 +164,7 @@ def _check_metrics(
                 component="KpiRow" if ds_id else "KpiCard", section=sec,
             )
 
-        has_value = claim.get("value") is not None
-        has_own_spec = any(
-            k in claim for k in ("agg", "column", "columns", "numerator")
-        )
-
-        if kind == "live" and not has_value and not has_own_spec:
-            # ── the claim must be computable on its DataSource ──────────
-            if not metric.executable:
-                result.fail(
-                    "metric-column-missing",
-                    f"metric '{metric_id}' has no executable spec "
-                    f"(agg/column) but is claimed in a live KpiRow with no "
-                    f"value. A descriptive metric can only badge a KPI that "
-                    f"supplies its own number -- add agg/column to the "
-                    f"definition, or pass a value.",
-                    component="KpiRow", section=sec,
-                )
-                continue
-            cols = _resolve_ds_columns(ds_id, ds_map) if ds_id else set()
-            if not cols:
-                continue
-            needed = [c for c in (metric.column, metric.numerator,
-                                  metric.denominator) if c]
-            missing = [c for c in needed if c not in cols]
-            if missing:
-                result.fail(
-                    "metric-column-missing",
-                    f"metric '{metric_id}' needs column(s) {missing} which "
-                    f"are not in DataSource '{ds_id}'. The definition names "
-                    f"warehouse columns; this report's query does not "
-                    f"return them.",
-                    component="KpiRow", section=sec, dataset_id=ds_id or "",
-                )
-        elif kind == "static" and not has_value:
-            result.fail(
-                "metric-column-missing",
-                f"static KPI claims metric '{metric_id}' but supplies no "
-                f"value. A static card cannot aggregate -- compute the "
-                f"number in the generator and pass value=, or claim inside "
-                f"a live KpiRow(dataset_id=...).",
-                component="KpiCard", section=sec,
-            )
+        _check_claim_computability(metric, metric_id, claim, kind, ds_id, ds_map, result, sec, registry)
 
     # ── metric-description-weak: the definition is the product ──────────
     # INFO, mirroring report-description-weak: scoped to metrics this report

@@ -77,3 +77,84 @@ def test_compose_data_mounts_preserve_service_boundaries(tmp_path, bind):
                 assert services[name]["environment"]["TRELLUM_DATA_VOLUME"] == ""
                 assert services[name]["environment"]["TRELLUM_SANDBOX"] == "docker"
     assert len(data_sources) == 1
+
+
+@pytest.mark.skipif(not shutil.which("docker"), reason="Docker CLI not installed")
+def test_release_compose_uses_pinned_images_without_build_and_keeps_overlays(tmp_path):
+    env_file = tmp_path / "compose.env"
+    env_file.write_text(
+        "POSTGRES_PASSWORD=test-only\nDOCKER_GID=0\nTRELLUM_VERSION=v0.5.0\n"
+        "TRELLUM_IMAGE=local/stale-portal:dev\nTRELLUM_RUNNER_IMAGE=local/stale-runner:dev\n",
+        encoding="utf-8",
+    )
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    command = ["docker", "compose", "--env-file", str(env_file), "--profile", "split",
+               "-f", "docker-compose.yml", "-f", "docker-compose.release.yml",
+               "-f", "docker-compose.bind-data.yml", "-f", "docker-compose.external-db.yml",
+               "config", "--format", "json"]
+    result = subprocess.run(
+        command, cwd=ROOT, capture_output=True, text=True, timeout=30,
+        env={**{k: v for k, v in os.environ.items() if not k.startswith("TRELLUM_")},
+             "TRELLUM_DATA_HOST_PATH": str(data_dir),
+             "DATABASE_URL": "postgres://test:test@db.example.test:5432/trellum"},
+    )
+    assert result.returncode == 0, result.stderr
+    services = json.loads(result.stdout)["services"]
+    portal = "ghcr.io/trellumhq/trellum:v0.5.0"
+    runner = "ghcr.io/trellumhq/trellum-runner:v0.5.0"
+    for name in ("migrate", "web", "worker", "coordinator", "runner"):
+        service = services[name]
+        assert service["image"] == portal
+        assert "build" not in service
+        if name in ("worker", "runner"):
+            assert service["environment"]["TRELLUM_SANDBOX_IMAGE"] == runner
+        mounts = {m["target"]: m for m in service["volumes"]}
+        assert mounts["/data"]["type"] == "bind"
+        assert mounts["/data"]["source"] == str(data_dir)
+        assert mounts["/backups"]["type"] == "volume"
+        assert bool(mounts["/backups"].get("read_only"))
+        assert ("/var/run/docker.sock" in mounts) is (name in ("worker", "runner"))
+    sandbox = services["sandbox-image"]
+    assert sandbox["image"] == runner
+    assert "build" not in sandbox
+    backup_mounts = {m["target"]: m for m in services["backup"]["volumes"]}
+    assert backup_mounts["/data"]["type"] == "bind"
+    assert backup_mounts["/data"]["source"] == str(data_dir)
+    assert backup_mounts["/data"]["read_only"]
+    assert backup_mounts["/backups"]["type"] == "volume"
+    assert not backup_mounts["/backups"].get("read_only")
+
+
+@pytest.mark.skipif(not shutil.which("docker"), reason="Docker CLI not installed")
+@pytest.mark.parametrize("version", [None, ""])
+def test_release_compose_requires_version(tmp_path, version):
+    env_file = tmp_path / "compose.env"
+    env_file.write_text("POSTGRES_PASSWORD=test-only\nDOCKER_GID=0\n", encoding="utf-8")
+    test_env = {k: v for k, v in os.environ.items() if k != "TRELLUM_VERSION"}
+    if version is not None:
+        test_env["TRELLUM_VERSION"] = version
+    result = subprocess.run(
+        ["docker", "compose", "--env-file", str(env_file), "--profile", "split",
+         "-f", "docker-compose.yml",
+         "-f", "docker-compose.release.yml", "config", "--format", "json"],
+        cwd=ROOT, capture_output=True, text=True, timeout=30, env=test_env,
+    )
+    assert result.returncode != 0
+    assert "TRELLUM_VERSION" in result.stderr
+
+
+@pytest.mark.skipif(not shutil.which("docker"), reason="Docker CLI not installed")
+def test_base_compose_retains_source_builds(tmp_path):
+    env_file = tmp_path / "compose.env"
+    env_file.write_text("POSTGRES_PASSWORD=test-only\nDOCKER_GID=0\n", encoding="utf-8")
+    result = subprocess.run(
+        ["docker", "compose", "--env-file", str(env_file), "--profile", "split",
+         "-f", "docker-compose.yml",
+         "config", "--format", "json"],
+        cwd=ROOT, capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    services = json.loads(result.stdout)["services"]
+    for name in ("migrate", "web", "worker", "coordinator", "runner", "sandbox-image"):
+        assert services[name].get("build")

@@ -10,11 +10,10 @@ this replaces, and the second is the serious one:
    version, and the site resolves an unknown one back to ``latest`` itself.
 
 2. **Some installs have no internet at all.** An air-gapped customer gets the
-   documentation as files in their bundle (``scripts/airgap_bundle.sh``), and
-   a link to trellum.dev is worse than useless there -- it looks like the
-   product is broken. ``TRELLUM_DOCS_BASE_URL`` lets that operator point every
-   link in the product at wherever they actually put those files, without
-   patching templates.
+   documentation from an operator-managed internal mirror. A link to
+   trellum.dev is unreachable there and looks like the product is broken.
+   ``TRELLUM_DOCS_BASE_URL`` lets that operator point every link in the product
+   at the internal mirror, without patching templates.
 
 Deliberately NOT solved here: the portal does not render documentation itself.
 That would mean a markdown pipeline, a nav, and a second theme to keep in
