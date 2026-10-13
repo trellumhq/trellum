@@ -1319,6 +1319,7 @@ class TestFwApiSnapshot:
         "annoVisible",
         "buildAnnotations",
         "captureElementForAnalysis",
+        "captureElementSnapshotForAnalysis",
         "captureForAnalysis",
         "chartInstances",
         "currentScope",

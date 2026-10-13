@@ -51,9 +51,10 @@ def _resolve_report_dir(report: str) -> Path | None:
     p = Path(report)
     if p.is_dir() and (p / "report.yaml").exists():
         return p.resolve()
-    candidate = Path(get_project_root()) / "reports" / report
-    if candidate.is_dir() and (candidate / "report.yaml").exists():
-        return candidate.resolve()
+    project = Path(get_project_root())
+    for candidate in (project / report, project / "reports" / report):
+        if candidate.is_dir() and (candidate / "report.yaml").exists():
+            return candidate.resolve()
     print(f"no report at '{report}' -- expected a report directory "
           f"(reports/<slug> with a report.yaml) or a bare slug", file=sys.stderr)
     return None
@@ -118,7 +119,13 @@ def _print_review_batches(batches: list[dict]) -> None:
         head = batch.get("slug") or "report"
         if batch.get("page"):
             head += f"  ({batch['page']})"
+        if batch.get("workspace"):
+            head += " [analysis workspace]"
         print(f"\n── feedback on {head} " + "─" * max(1, 46 - len(head)))
+        if batch.get("workspace"):
+            print("  Workspace source sets intent: report selections add evidence; "
+                  "analysis selections edit the active analysis. Prompts do not "
+                  "change the destination.")
         if batch.get("note"):
             print(f"  Message: {batch['note']}")
         for i, item in enumerate(batch.get("items") or [], 1):
@@ -133,12 +140,39 @@ def _print_review_batches(batches: list[dict]) -> None:
                 named = f', component {comp.get("id") or "?"} ({comp["kind"]}'
                 named += f' "{comp["title"]}")' if comp.get("title") else ")"
             print(f"  [{i}] <{item.get('tag', '?')}>{where}{named}")
+            origin = item.get("origin_slug")
+            if batch.get("workspace") or origin:
+                origin = origin or batch.get("slug") or "?"
+                print(f"      source: {origin} ({item.get('origin_kind', 'report')})")
+                print(f"      default destination: {item.get('default_target_slug') or origin}")
+                action = item.get("workspace_action")
+                if action == "add-evidence":
+                    print(f"      action: add evidence to active analysis "
+                          f"{item.get('analysis_slug') or batch.get('slug')} "
+                          f"from report {origin}")
+                elif action == "edit-analysis":
+                    print(f"      action: edit active analysis "
+                          f"{item.get('analysis_slug') or batch.get('slug')}")
+                if item.get("analysis_slug"):
+                    print(f"      active analysis: {item['analysis_slug']}")
+                if item.get("capture_id"):
+                    print(f"      capture ID: {item['capture_id']}")
+                    print(f"      import: python -m trellum analysis import "
+                          f"reports/{batch.get('slug') or '<analysis-slug>'} --inbox {item['capture_id']}")
             if item.get("selector"):
                 print(f"      selector: {item['selector']}")
             if item.get("text"):
                 print(f"      text: {item['text'][:120]}")
             data = item.get("data") or {}
-            if data.get("type") == "chart-point":
+            if data.get("type") == "analysis-capture":
+                capture_id = data.get("capture_id", "")
+                print(f"      capture from: {data.get('source_slug', '?')}"
+                      f" / {data.get('component_title', '?')}")
+                if capture_id:
+                    print(f"      inbox ID: {capture_id}")
+                    print(f"      import: python -m trellum analysis import "
+                          f"reports/{batch.get('slug') or '<slug>'} --inbox {capture_id}")
+            elif data.get("type") == "chart-point":
                 print(f"      data point: {data.get('series')} @ {data.get('x')} "
                       f"= {data.get('value')}")
                 for s in (data.get("stack") or [])[:8]:

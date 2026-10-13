@@ -101,6 +101,70 @@ alternative text. Raw HTML is disabled; images must be PNG files local to the
 analysis directory. Normal external links are supported. Choose a built-in
 Trellum theme; analyses do not execute custom Python components or themes.
 
+## Create a presentation
+
+Use a presentation when the finding is best explained in an ordered set of
+slides. The default analysis format remains an article.
+
+```bash
+trellum analysis new september-decision --format presentation
+trellum analysis import reports/september-decision path/to/report.trellum-capture.json --name conversion
+```
+
+The scaffold creates `report.yaml` with `kind: analysis` and
+`format: presentation`, `slides.yaml`, and an empty `evidence/` directory.
+It does not require `content.md`. Import evidence as usual, then put the local
+PNG path and descriptive alternative text in a slide:
+
+```yaml
+version: 1
+slides:
+  - id: question
+    layout: title
+    title: Where should we investigate conversion?
+    text: September 2026 findings and recommendation.
+  - id: mobile-finding
+    layout: image-text
+    title: Mobile checkout needs investigation
+    text: |
+      Mobile conversion is **1.80%**. Compare channel mix before choosing an experiment.
+    image: evidence/conversion.png
+    alt: September mobile checkout funnel showing sessions and purchases
+```
+
+Version 1 supports `title`, `text`, `image`, and `image-text` layouts. Every
+slide needs a unique lowercase ID and a title. Text and image-text slides need
+Markdown `text`; a title slide may also include it. Image and image-text slides
+need a local PNG `image` and non-empty descriptive `alt`. Other fields are
+rejected. Raw HTML is disabled and remote images are rejected. Keep IDs stable
+when revising: links use `#slide-mobile-finding`, for example.
+
+Slides keep their authored order, remain readable without JavaScript, and use
+the same evidence captions as articles. The
+[Northwind presentation source](https://github.com/trellumhq/trellum/tree/main/trellum/demo/reports/checkout-presentation)
+demonstrates all four layouts using frozen synthetic evidence.
+
+### Present in a meeting
+
+Choose **Present** to show one slide at a time. In a review session, turn
+**Select** off first. Use **Next** and **Previous**, the arrow keys, or a
+horizontal swipe to move between slides. **Home** and **End** jump to the first
+and last slide. **Escape** or **Exit presentation** returns to the readable
+document. Keyboard focus returns to the Present button. If the browser denies
+fullscreen, the presentation stays usable inside its window.
+
+For Teams, open the presentation on the computer you are presenting from,
+choose Present, and share that browser window or screen. Click inside the
+slide after starting the share so arrow keys reach the presentation. See
+[Microsoft's screen-sharing instructions](https://support.microsoft.com/en-us/teams/meetings/present-content-in-microsoft-teams-meetings).
+Participants viewing the shared screen do not need access to your local
+server; anyone opening a separate analysis link needs its usual access.
+
+Trellum presentations are browser documents. PowerPoint Live requires
+`.pptx` or `.ppsx` files; Trellum does not export those formats. Browser printing
+includes every slide and hides the presentation controls, including when you
+print while presenting.
+
 ## Preview, review, and publish
 
 Build an analysis with the same command used for a report:
@@ -147,6 +211,6 @@ it. Git keeps the revision history. Existing output-retention and repository
 removal behavior also apply to analyses; capture images in Git remain available
 to rebuild them.
 
-Analyses currently use one article with still images. Interactive snapshot
-charts, chapter navigation, slide mode, and editing inside the portal are not
-part of this format.
+Analyses support articles and ordered presentations with still images.
+Interactive snapshot charts, PowerPoint export, and editing inside the portal
+are separate capabilities.

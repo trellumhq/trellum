@@ -963,6 +963,65 @@ serve` server — review endpoints live under `/_fw/review/`, loopback-only,
 and the on-disk HTML is never modified (the overlay is injected into the
 served copy only).
 
+### Building an analysis from a report
+
+When asked to make an analysis from a source report, keep the source report
+slug, destination analysis slug, requested format, and reporting period and
+filters explicit throughout the session. If the source is missing or
+ambiguous, offer the visible report titles and ask which one to open. Default
+to an article unless a presentation is requested. The analysis workspace can
+build a missing or stale source asynchronously; no separate source build or
+second preview server is needed. Start it with the source preselected when
+known:
+
+```
+python -m trellum analysis session reports/<analysis-slug> --source <source-slug>
+```
+
+The first `--source` chooses the initial report. The workspace's source
+picker lists all visible project reports. Embedded pages use the same bottom
+review toolbar and annotation popup as ordinary report review. The source
+pane selects whole charts or sections as evidence for the active analysis;
+the analysis pane targets individual headings and text blocks for edits. Use **Queue** or
+**Queue & send** in the popup; the queue belongs to the analysis session.
+All workspace requests default to the active analysis. Source selections
+carry an evidence-addition action, original report identity, frozen filters,
+and capture; analysis selections carry an editing action. Read the context
+note and update `content.md` or `slides.yaml`. Keep the note and captured
+context together. Ordinary standalone report review retains its source-edit
+behavior; open that review when the user asks to edit the source report itself.
+
+Selection context is captured when the item is queued, including the source
+page, active filters and built version, plus a chart snapshot when available.
+Treat that queued context as the user's evidence even if they later switch
+pages or filters. If the source is rebuilding or its view changed, wait for
+the asynchronous build to finish and ask the user to select it again before
+relying on a new snapshot. For presentations, use the stable `section.id` as
+slide context because a selection may point to an enclosing section. Ask for
+the intended wording when an annotation is unclear or garbled.
+
+Run one destination-scoped listener for the whole workspace:
+`python -m trellum review poll --report <analysis-slug>`. Source and analysis
+requests arrive there together, with the clicked source and default
+destination shown per item. Treat a destination in the user's note as the
+explicit request. The command returns a batch; handle it, reply in
+the same analysis-scoped session, and poll again until the user ends review.
+Keep the agent turn active while waiting. A background listener followed by a
+final answer does not consume feedback. Never start separate source listeners
+for this workspace or drain unrelated report queues. Replies appear in the
+workspace chat; explain which source or analysis you updated.
+
+For chart comparisons, inspect the captured reporting dates and query the
+source before claiming a change. Compute weighted ratios as
+`sum(numerator) / sum(denominator)`; label dates and distinguish percent
+changes from percentage-point changes.
+
+The workspace uses the loopback-only review API. A `localhost` URL on a phone
+points back to the phone, and a bare LAN URL does not make the review API
+available. Remote phone review requires a protected, authenticated proxy that
+keeps review requests on the local server; do not expose the development
+server or review endpoints directly to the LAN.
+
 <!-- topic: portal -->
 ## The portal loop (when `.mcp.json` names a `trellum` server)
 

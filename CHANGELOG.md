@@ -7,8 +7,17 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-10-13
+
 ### Added
 
+- Add local analysis sessions that build and preview Git-authored articles or
+  presentations, with a private capture inbox and review-poll delivery for
+  selected report evidence. A shared workspace includes a report picker and one
+  queue; source selections add frozen evidence, while analysis selections request edits.
+- Add versioned presentation slides with four layouts, stable annotation
+  targets, a readable no-JavaScript view, and a slide player with keyboard,
+  mobile, deep-link and fullscreen controls.
 - Add a release-only Compose overlay that pins matched portal and runner images
   to one required version and removes source image build definitions.
 - Offer organization Assistant access through an accessible-studio picker, with named conversation scope and visible availability reasons and retry.
@@ -28,6 +37,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   saved and draft results, and protection against obsolete test responses.
 - Add a Capture for analysis icon, image preview and persistent instructions
   for importing frozen evidence into an analysis.
+
+### Security
+
+- Bound local capture submissions by loopback, Host, Origin, session token,
+  image validation and request size; keep pending evidence outside the Git
+  repository and generated output.
 
 ### Changed
 
@@ -553,7 +568,9 @@ and demos together in one AGPL-licensed project.
 - Owned Trellum code is released under AGPL-3.0-only. Third-party and
   contributor notices retain their own terms.
 
-[Unreleased]: https://github.com/trellumhq/trellum/compare/v0.4.3...HEAD
+[Unreleased]: https://github.com/trellumhq/trellum/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/trellumhq/trellum/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/trellumhq/trellum/releases/tag/v0.5.0
 [0.4.3]: https://github.com/trellumhq/trellum/releases/tag/v0.4.3
 [0.4.2]: https://github.com/trellumhq/trellum/releases/tag/v0.4.2
 [0.4.1]: https://github.com/trellumhq/trellum/releases/tag/v0.4.1

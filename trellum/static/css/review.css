@@ -80,3 +80,8 @@ body.fwrv-selecting [data-fw-review-ui] textarea{cursor:text!important}
 @keyframes fwrv-spin{to{transform:rotate(360deg)}}
 .fwrv-endbar{position:fixed;top:0;left:0;right:0;z-index:100004;display:none;background:var(--text-main,#151527);color:var(--bg-main,#f8f8fc);font-size:12.5px;font-weight:600;padding:8px 16px;text-align:center}
 .fwrv-empty{font-size:12px;color:var(--text-muted,#8a8aa8);text-align:center;padding:18px 8px}
+@media (max-width:600px){
+    .fwrv-bar{left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom,0px));flex-wrap:wrap;justify-content:center;border-radius:12px}
+    .fwrv-btn{min-height:44px;padding:6px 10px}
+    .fwrv-bar.shifted{transform:none;visibility:hidden}
+}

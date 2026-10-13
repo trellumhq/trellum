@@ -1,5 +1,6 @@
     /* ── chart data targeting (Chart.js charts only) ────────── */
     function chartOf(node) {
+        if (WORKSPACE && WORKSPACE.kind === 'report') return null;
         if (!node || node.tagName !== 'CANVAS') return null;
         if (!window.Chart || typeof Chart.getChart !== 'function') return null;
         try { return Chart.getChart(node) || null; } catch (e) { return null; }
@@ -157,9 +158,14 @@
     document.addEventListener('click', function (e) {
         if (!state.selecting) return;
         if (e.target.closest('[data-fw-review-ui]')) return;
+        if (WORKSPACE && WORKSPACE.kind === 'report' && e.target.closest('button,a,input,select,textarea')) return;
         e.preventDefault();
         e.stopPropagation();
         if (state.suppressClick) { state.suppressClick = false; return; }
+        if (WORKSPACE) {
+            var clicked = e.target.closest && e.target.closest(SNAP);
+            state.target = clicked ? identify(clicked) : null;
+        }
         if (!state.target) {
             // Touch devices never hover, so the tap itself must resolve
             // the target the way mousemove would have.

@@ -48,6 +48,7 @@ RUNTIME_MODULES: tuple[str, ...] = (
     "chunk_loader",
     "csv_download",
     "export",
+    "presentation_player",
     "fw_namespace",
 )
 

@@ -149,7 +149,8 @@ def scan_report_configs(
         # page and a report name like "Insert Coin · Minigame" reaches the
         # gallery as mojibake.
         config = BaseReport.load_config(os.path.dirname(yaml_path))
-        content_path = os.path.join(reports_dir, entry, "content.md")
+        content_name = "slides.yaml" if config.get("format") == "presentation" else "content.md"
+        content_path = os.path.join(reports_dir, entry, content_name)
         required = content_path if config.get("kind", "report") == "analysis" else gen_path
         if not include_hidden and not os.path.isfile(required):
             continue

@@ -137,10 +137,10 @@ def test_every_shipped_js_module_is_actually_loaded():
     """
     from trellum.assets import js_dir
     from trellum.rendering.js_runtime import RUNTIME_MODULES
-    from trellum.review.inject import OVERLAY_MODULES
+    from trellum.review.inject import REVIEW_MODULES
 
     for subdir, declared in (("runtime", RUNTIME_MODULES),
-                             ("review", OVERLAY_MODULES)):
+                             ("review", REVIEW_MODULES)):
         on_disk = {p.stem for p in js_dir(subdir).glob("*.js")}
         assert on_disk == set(declared), (
             f"static/js/{subdir}/ and its module list disagree: "
