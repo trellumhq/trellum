@@ -38,10 +38,50 @@ On Linux, Playwright may also require browser system dependencies; install
 them with `python -m playwright install-deps chromium webkit`.
 
 ```bash
-python -m pytest apps -q
+python scripts/test.py local apps/accounts/tests
+python scripts/test.py local apps/core/tests/test_shared_pickers_browser.py --workers 2
+python scripts/test.py portal --workers 2 --junitxml .data-test/results/portal.xml
 cd trellum/demo
 python -m pytest ../testing -q -m "not slow"
 ```
+
+`local` requires explicit test files, directories, or pytest node IDs; `-k` can
+further narrow that selection. Choose related tests yourself, including shared
+behavior affected by the change. Use focused local checks during development
+and before opening a PR; GitHub runs `portal` as the broader gate, covering
+every ordinary portal test under `apps/`, including Chromium and WebKit browser
+regressions. Running `portal` locally is optional for broad changes or CI
+failure reproduction. It excludes only tests marked `docker_sandbox`;
+real-daemon Docker checks run separately in CI. The standalone framework and
+website suites also remain separate.
+
+The local default is four workers; `portal` defaults to two. Set `--workers`
+from 1 to 16 to match available PostgreSQL connections, memory, and browser
+capacity; 1 runs serially. Parallel scheduling keeps each test class or module
+together with `loadscope`. Both commands print their pytest invocation, elapsed
+time, and the 20 slowest tests, and write JUnit XML under `.data-test/results/`.
+Use `--durations N` and `--junitxml PATH` to adjust reports. Paths are relative
+to the repository root even when invoking the script from another directory.
+`--collect-only` shows selected tests; `--dry-run` prints the command.
+The wrapper clears inherited `PYTEST_ADDOPTS` so shell defaults cannot silently
+filter coverage or change worker counts. Use plain pytest for other options.
+
+For repeated focused runs, optionally retain Django's test databases:
+
+```bash
+python scripts/test.py local apps/accounts/tests --reuse-db
+# Rebuild after changing models or migrations, or switching to a different schema.
+python scripts/test.py local apps/accounts/tests --reuse-db --create-db
+```
+
+Database reuse does **not** apply schema changes automatically. Rebuild with
+`--create-db` whenever the retained schema may be stale. pytest-django gives
+parallel workers separate test databases with `_gw0`, `_gw1`, etc. suffixes;
+the PostgreSQL account must be able to create each one. Concurrent commands or
+worktrees must use separate dedicated `DATABASE_URL` database names, or run
+sequentially, to avoid sharing those worker databases. `portal` always uses
+fresh databases. Test-command argument checks need no database:
+`python scripts/test_test_command.py`.
 
 When finished, `docker rm -f trellum-test-db` removes the disposable test
 database. Website documentation checks have a separate setup in
