@@ -75,3 +75,31 @@ def test_new_choices_during_save_keep_later_edits_dirty_and_leave_cancel(page):
     pending.pop().fulfill(status=400,json={'ok':False,'message':'Invalid','errors':{'title':['Rejected']}})
     expect(page.locator('#draft')).to_have_class('is-dirty')
     expect(page.locator('[name=title]')).to_have_value('Submitted')
+
+
+@pytest.mark.parametrize('newer_edit', [False, True])
+def test_normalization_preserves_recreated_checkbox_and_select_drafts(page, newer_edit):
+    pending = []
+    page.route('https://example.test/editor', lambda route: pending.append(route))
+    page.locator('[name=title]').fill('Submitted')
+    page.locator('button[type=submit]').click()
+    page.wait_for_function("document.querySelector('form').dataset.settingsState==='saving'")
+    page.evaluate('''() => {
+      const form=document.querySelector('form');form.querySelector('[name=people]').remove();
+      const field=document.createElement('input');field.type='checkbox';field.name='people';field.value='1';field.checked=true;
+      form.append(field);TrellumSettingsForms.trackControls(form,[field]);
+      const select=form.querySelector('[name=report]');select.prepend(new Option('Zero','0'));select.value='1';
+    }''')
+    if newer_edit:
+        page.locator('[name=people]').uncheck()
+        page.locator('[name=report]').select_option('0')
+    pending.pop().fulfill(json={'ok': True, 'message': 'Saved.', 'values': {'people': True, 'report': '2', 'groups': ['b', 'a']}})
+    expect(page.locator('[data-settings-dirty-status]')).to_contain_text('Saved.')
+    if newer_edit:
+        expect(page.locator('[name=people]')).not_to_be_checked()
+        expect(page.locator('[name=report]')).to_have_value('0')
+        expect(page.locator('#draft')).to_have_class('is-dirty')
+    else:
+        expect(page.locator('[name=people]')).to_be_checked()
+        expect(page.locator('[name=report]')).to_have_value('2')
+        expect(page.locator('#draft')).not_to_have_class('is-dirty')

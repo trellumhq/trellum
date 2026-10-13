@@ -104,12 +104,14 @@
         entries = entries.filter(function (entry) {
           return entry.field.isConnected || currentValue(entry, values) !== entry.value;
         });
+        var byKey = new Map(), byField = new Map();
+        entries.forEach(function (entry) { if (entry.key) byKey.set(entry.key, entry); else byField.set(entry.field, entry); });
         fields.forEach(function (field) {
           if (field.form !== form || field.hasAttribute('data-settings-ignore') || /^(button|submit|reset|hidden)$/i.test(field.type)) return;
           var key = controlKey(field);
-          var entry = entries.find(function (item) { return key ? item.key === key : item.field === field; });
+          var entry = key ? byKey.get(key) : byField.get(field);
           if (entry) entry.field = field;
-          else entries.push({field: field, key: key, value: value(field)});
+          else { entry = {field: field, key: key, value: value(field)}; entries.push(entry); if (key) byKey.set(key, entry); else byField.set(field, entry); }
         });
         return entries;
       }
@@ -225,6 +227,7 @@
             throw new Error(data.ok === true ? 'The server rejected the save. Please try again.' : data.message || data.error || 'Could not save. Please try again.');
           }
           // Apply normalized values only to the submitted draft, never to a newer edit.
+          var normalizedCurrent = currentValues();
           Object.keys(data.values || {}).forEach(function (name) {
             Array.prototype.forEach.call(form.elements, function (field) {
               if (field.name === name && field.type === 'hidden') field.value = data.values[name] === null ? '' : data.values[name];
@@ -232,7 +235,7 @@
             submitted.forEach(function (entry) {
               if (entry.field.name !== name) return;
               var field = entry.field, normalized = data.values[name];
-              var unchanged = currentValue(entry, currentValues()) === entry.value;
+              var unchanged = currentValue(entry, normalizedCurrent) === entry.value;
               var normalizedValue = normalized === null ? '' : String(normalized);
               if (/^(checkbox|radio)$/i.test(field.type)) {
                 normalizedValue = field.type === 'radio' ? field.value === String(normalized) : !!normalized;
