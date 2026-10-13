@@ -71,18 +71,34 @@ def workspace_browser_project(tmp_path, monkeypatch):
 
 
 def _pane(page, name):
+    dialog = page.locator("#queue-dialog")
+    if name == "Queue" and dialog.count() and dialog.is_visible():
+        return
+    if name != "Queue" and dialog.count() and dialog.is_visible():
+        page.locator("#queue-close").click()
     tab = page.locator('[data-tab="' + name.lower() + '"]')
     if tab.is_visible():
         tab.click()
 
 
-def _queue_in_widget(frame, prompt, send=False):
-    frame.locator("#fwrvSelect").click()
+def _workspace_select(page, on=True):
+    button = page.locator("#global-select")
+    if (button.get_attribute("aria-pressed") == "true") != on:
+        button.click()
+
+
+def _send(page):
+    _pane(page, "Queue")
+    page.locator("#send").click()
+
+
+def _queue_in_widget(page, frame, prompt):
+    _workspace_select(page)
     frame.get_by_role("heading", name="September conversion", exact=True).click()
     pop = frame.locator("#fwrvPop")
     pop.wait_for(state="visible")
     frame.locator("#fwrvPopText").fill(prompt)
-    frame.locator("#fwrvPopQueueSend" if send else "#fwrvPopQueue").click()
+    frame.locator("#fwrvPopQueue").click()
 
 
 @pytest.mark.parametrize("width", [1360, 390])
@@ -100,34 +116,36 @@ def test_embedded_widget_selection_shares_queue_across_sources(workspace_browser
             _pane(page, "Reports")
             source = page.frame_locator("#fw-workspace-report")
             source.get_by_role("heading", name="Source One", exact=True).wait_for()
-            source.locator("#fwrvSelect").wait_for()
-            select = source.locator("#fwrvSelect")
+            select = page.locator("#global-select")
             assert select.is_visible()
+            assert not source.locator("#fwrvBar").is_visible()
+            assert not source.locator("#fwrvPanel").is_visible()
             source.locator("#fwLoading").wait_for(state="hidden")
             page.screenshot(path=f"/tmp/trellum-workspace-widget-{width}.png", full_page=True)
             if width < 768:
                 box = select.bounding_box()
                 assert box and box["y"] + box["height"] <= 844
-            _queue_in_widget(source, "Add this conversion section to the analysis")
-            page.wait_for_function("document.querySelector('#queue-count').textContent === '1'")
+            _queue_in_widget(page, source, "Add this conversion section to the analysis")
+            page.wait_for_function("document.querySelector('#queue-list').textContent.includes('Snapshot ready')")
             assert "Source One · Section" in page.locator("#queue-list").inner_text()
             _pane(page, "Analysis")
             analysis = page.frame_locator("#fw-workspace-analysis")
             analysis.get_by_role("heading", name="Findings", exact=True).wait_for()
-            # Selection mode is shared across both live frames.
-            assert analysis.locator("#fwrvSelect").evaluate("el => el.classList.contains('on')")
+            # Selection follows the visible document through the sole parent control.
+            _workspace_select(page)
+            page.wait_for_function("document.getElementById('fw-workspace-analysis').contentDocument.getElementById('fwrvSelect').classList.contains('on')")
             analysis.get_by_role("heading", name="Findings", exact=True).click()
             analysis.locator("#fwrvPop").wait_for(state="visible")
             analysis.locator("#fwrvPopText").fill("Clarify this finding")
             analysis.locator("#fwrvPopQueue").click()
             page.wait_for_function("document.querySelector('#queue-count').textContent === '2'", timeout=3000)
-            analysis.locator("#fwrvQueueBtn").click()
-            assert "Source One · Section" in analysis.locator("#fwrvList").inner_text()
-            assert "Decision · Heading" in analysis.locator("#fwrvList").inner_text()
-            analysis.locator("#fwrvPanelClose").click()
-            analysis.locator("#fwrvSelect").click()
+            _pane(page, "Queue")
+            assert "Source One · Section" in page.locator("#queue-list").inner_text()
+            assert "Decision · Heading" in page.locator("#queue-list").inner_text()
+            page.locator("#queue-close").click()
+            _workspace_select(page, False)
             page.wait_for_function("!document.getElementById('fw-workspace-report').contentWindow.document.getElementById('fwrvSelect').classList.contains('on')")
-            analysis.locator("#fwrvBarSend").click()
+            _send(page)
             page.wait_for_function("document.querySelector('#queue-count').textContent === '0'")
             status, batches = review.poll(0, "decision")
             assert status == "feedback" and len(batches) == 1
@@ -150,9 +168,10 @@ def test_unconfirmed_widget_send_keeps_newer_note(workspace_browser_project):
             page = browser.new_page(viewport={"width": 1360, "height": 900})
             page.goto(origin + "/_fw/review/workspace?source=source-one")
             frame = page.frame_locator("#fw-workspace-report")
+            _pane(page, "Reports")
             frame.get_by_role("heading", name="Source One", exact=True).wait_for()
-            frame.locator("#fwrvChat").click()
-            note = frame.locator("#fwrvNote")
+            _pane(page, "Queue")
+            note = page.locator("#chat-note")
             note.fill("First report note")
             submitted = []
 
@@ -165,11 +184,11 @@ def test_unconfirmed_widget_send_keeps_newer_note(workspace_browser_project):
                     route.fulfill(response=response)
 
             page.route("**/_fw/review/workspace/feedback", lose_first_response)
-            frame.locator("#fwrvSend").click()
-            frame.get_by_text("Send not confirmed", exact=False).wait_for()
+            page.locator("#send").click()
+            page.locator("#send-status").get_by_text("Send not confirmed", exact=False).wait_for()
             note.fill("Newer report draft")
-            frame.locator("#fwrvSend").click()
-            page.wait_for_function("document.querySelector('#queue-count').textContent === '0'")
+            page.locator("#send").click()
+            page.locator("#send-status").get_by_text("Sent to the analysis session.", exact=True).wait_for()
             assert submitted[0] == submitted[1]
             assert note.input_value() == "Newer report draft"
             status, batches = review.poll(0, "decision")
@@ -203,15 +222,15 @@ def test_custom_canvas_selection_queues_frozen_evidence(workspace_browser_projec
             source.locator("#fwLoading").wait_for(state="hidden")
             source.locator("#custom-funnel").evaluate(
                 "() => fw.filterEngine.setFilter('conversions', 'region-selection', 'region', 'equals', 'NL')")
-            source.locator("#fwrvSelect").click()
+            _workspace_select(page)
             source.locator("#custom-funnel").click()
             source.locator("#fwrvPop").wait_for(state="visible")
             source.locator("#fwrvPopText").fill("Use this funnel in the analysis")
             source.locator("#fwrvPopQueue").click()
             page.wait_for_function("document.getElementById('queue-list').textContent.includes('Snapshot ready')")
             assert "Snapshot ready" in page.locator("#queue-list").inner_text()
-            source.locator("#fwrvBarSend").click()
-            page.wait_for_function("document.querySelectorAll('#queue-list li').length === 0")
+            _send(page)
+            page.wait_for_function("document.querySelectorAll('#queue-list .fw-queue-item').length === 0")
             status, batches = review.poll(0, "decision")
             assert status == "feedback"
             item = batches[0]["items"][0]

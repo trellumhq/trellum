@@ -979,11 +979,15 @@ python -m trellum analysis session reports/<analysis-slug> --source <source-slug
 ```
 
 The first `--source` chooses the initial report. The workspace's source
-picker lists all visible project reports. Embedded pages use the same bottom
-review toolbar and annotation popup as ordinary report review. The source
-pane selects whole charts or sections as evidence for the active analysis;
-the analysis pane targets individual headings and text blocks for edits. Use **Queue** or
+picker lists all visible project reports. **Analysis** and **Reports** each fill
+the workspace. Use **Select element** in the workspace toolbar; embedded pages
+reuse the ordinary annotation popup. The Reports page selects whole charts or
+sections as evidence for the active analysis; the Analysis page targets
+individual headings and text blocks for edits. Use **Queue** or
 **Queue & send** in the popup; the queue belongs to the analysis session.
+The workspace **Queue** button opens the shared queue and chat as an overlay
+without resizing the report. **Report only** / **Analysis only** hides workspace
+controls for screenshots; Escape or **Back to workspace** returns to the session.
 All workspace requests default to the active analysis. Source selections
 carry an evidence-addition action, original report identity, frozen filters,
 and capture; analysis selections carry an editing action. Read the context
