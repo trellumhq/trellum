@@ -109,12 +109,26 @@ def test_mapping_and_seed():
             assert get_user_model().objects.filter(email=email).exists(), role
     mapping = validate()
     assert mapping['mapping_status'] == 'complete', mapping['errors']
-    assert mapping['first_party_routes'] == 192
+    assert mapping['first_party_routes'] == 194
     assert mapping['verification_status'] == 'pending'
     for route in mapping['routes']:
-        for value in route['seeded_parameters'].values():
+        for value in [*route['seeded_parameters'].values(), *route.get('seeded_query_parameters', {}).values()]:
             if value.get('provider'):
                 assert resolve(value['provider'],route) is not None, (route['id'],value['provider'])
+    from urllib.parse import parse_qs, urlsplit
+    from apps.core.tests.portal_e2e.parameters import url_for
+    summary_route = next(row for row in mapping['routes'] if row['name'] == 'studio-metrics-summary')
+    for role, org_slug in [('org-admin', 'alpha'), ('viewer-full', 'beta')]:
+        url = urlsplit(url_for(summary_route, role))
+        assert url.path.startswith('/s/'+org_slug+'/studio-0/')
+        metric = MetricDefinition.objects.get(pk=parse_qs(url.query)['ids'][0])
+        assert metric.studio.org.slug == org_slug
+    missing_query = json.loads(Path(__file__).with_name('routes.json').read_text())
+    next(row for row in missing_query['routes'] if row['name'] == 'studio-metrics-summary')['seeded_query_parameters'].pop('ids')
+    assert any('missing required query fixture' in error for error in validate(missing_query)['errors'])
+    bad_query = json.loads(Path(__file__).with_name('routes.json').read_text())
+    next(row for row in bad_query['routes'] if row['name'] == 'studio-metrics-summary')['seeded_query_parameters']['ids'] = {'provider': 'seed.fabricated'}
+    assert any('unknown parameter provider' in error for error in validate(bad_query)['errors'])
     bad = json.loads(Path(__file__).with_name('routes.json').read_text())
     bad['routes'][0]['case'] = None
     assert validate(bad)['mapping_status'] == 'fail'

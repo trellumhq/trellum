@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "first_party_expected": 192,
+  "first_party_expected": 194,
   "routes": [
     {
       "id": "route-000",
@@ -8711,12 +8711,12 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "13955799672b85ac10b94c6e0352b01f2c2cedd6e5026575c9a83aefda8d318f",
+      "source_sha256": "63b81efe0ea83050a6e7ed391eae9caea194d443e624a7eb8c4f9d697c528a93",
       "request_conditions": [
         "require_full_studio_visibility: plain alpha viewer/group-member/selected denied by seeded private audience; viewer-full samples explicitly granted public-only beta studio0",
         "alpha private-viewer explicitly granted private report remains finite-scope and is denied full-studio overviews under current semantics"
       ],
-      "adapter_sha256": "13955799672b85ac10b94c6e0352b01f2c2cedd6e5026575c9a83aefda8d318f",
+      "adapter_sha256": "63b81efe0ea83050a6e7ed391eae9caea194d443e624a7eb8c4f9d697c528a93",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -8776,12 +8776,12 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "13955799672b85ac10b94c6e0352b01f2c2cedd6e5026575c9a83aefda8d318f",
+      "source_sha256": "63b81efe0ea83050a6e7ed391eae9caea194d443e624a7eb8c4f9d697c528a93",
       "request_conditions": [
         "require_full_studio_visibility: plain alpha viewer/group-member/selected denied by seeded private audience; viewer-full samples explicitly granted public-only beta studio0",
         "alpha private-viewer explicitly granted private report remains finite-scope and is denied full-studio overviews under current semantics"
       ],
-      "adapter_sha256": "13955799672b85ac10b94c6e0352b01f2c2cedd6e5026575c9a83aefda8d318f",
+      "adapter_sha256": "63b81efe0ea83050a6e7ed391eae9caea194d443e624a7eb8c4f9d697c528a93",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -21577,6 +21577,161 @@
           "verification": "pending"
         }
       }
+    },
+    {
+      "id": "route-323",
+      "pattern": "s/<slug:org_slug>/<slug:studio_slug>/api/metrics/summary",
+      "name": "studio-metrics-summary",
+      "view": "apps.reports.metric_summaries.metrics_summary",
+      "first_party": true,
+      "case": "C08",
+      "shard": "L2",
+      "allowed_roles": [
+        "developer",
+        "group-admin",
+        "operator",
+        "org-admin",
+        "studio-admin",
+        "viewer-full"
+      ],
+      "denied_roles": [
+        "anonymous",
+        "cross-org",
+        "group-member",
+        "group-selected",
+        "inactive",
+        "private-viewer",
+        "revoked",
+        "viewer"
+      ],
+      "role_policy": "studio-viewer",
+      "seeded_parameters": {
+        "org_slug": {
+          "value": "alpha"
+        },
+        "studio_slug": {
+          "value": "studio-0"
+        }
+      },
+      "disposition": "non-UI API/asset",
+      "scenarios": [
+        {
+          "method": "GET",
+          "action": null,
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[323-GET]",
+          "verification": "pending"
+        }
+      ],
+      "verification": "pending",
+      "verified_node_ids": [],
+      "source_sha256": "12ae3d64f634f0fb0e323672f0a35d0b36c06ccb8fc9646f8d4d068b14047106",
+      "request_conditions": [
+        "require_full_studio_visibility: plain alpha viewer/group-member/selected denied by seeded private audience; viewer-full samples explicitly granted public-only beta studio0",
+        "alpha private-viewer explicitly granted private report remains finite-scope and is denied full-studio overviews under current semantics",
+        "GET only,1\u201350 distinct authorized definition IDs with current revision; required query fixtures follow actor-specific studio parameters. No storage reads; changed revision409 and malformed400."
+      ],
+      "adapter_sha256": "d81c08b81c603493bfa574c361b87d2786f4d8f18f6da0a465b994d6e0264710",
+      "principal_parameter_overrides": {
+        "viewer-full": {
+          "org_slug": "beta"
+        }
+      },
+      "conditional_roles": {
+        "impersonated": {
+          "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: studio-viewer",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[323-GET]",
+          "verification": "pending"
+        }
+      },
+      "seeded_query_parameters": {
+        "definition_revision": {
+          "provider": "seed.metric_definition_revision"
+        },
+        "ids": {
+          "provider": "seed.metric_definition_id"
+        }
+      },
+      "required_query_parameters": [
+        "definition_revision",
+        "ids"
+      ]
+    },
+    {
+      "id": "route-324",
+      "pattern": "s/<slug:org_slug>/<slug:studio_slug>/metrics/<int:definition_id>/claims",
+      "name": "studio-metric-claims",
+      "view": "apps.reports.metric_summaries.metric_claim_details",
+      "first_party": true,
+      "case": "C08",
+      "shard": "L2",
+      "allowed_roles": [
+        "developer",
+        "group-admin",
+        "operator",
+        "org-admin",
+        "studio-admin",
+        "viewer-full"
+      ],
+      "denied_roles": [
+        "anonymous",
+        "cross-org",
+        "group-member",
+        "group-selected",
+        "inactive",
+        "private-viewer",
+        "revoked",
+        "viewer"
+      ],
+      "role_policy": "studio-viewer",
+      "seeded_parameters": {
+        "org_slug": {
+          "value": "alpha"
+        },
+        "studio_slug": {
+          "value": "studio-0"
+        },
+        "definition_id": {
+          "provider": "seed.metric_definition_id"
+        }
+      },
+      "disposition": "native with feedback",
+      "scenarios": [
+        {
+          "method": "GET",
+          "action": null,
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[324-GET]",
+          "verification": "pending"
+        }
+      ],
+      "verification": "pending",
+      "verified_node_ids": [],
+      "source_sha256": "338b3b36875f1b010c6d943f5fa1716d79185b98c68deea981d0babeeaa337e1",
+      "request_conditions": [
+        "require_full_studio_visibility: plain alpha viewer/group-member/selected denied by seeded private audience; viewer-full samples explicitly granted public-only beta studio0",
+        "alpha private-viewer explicitly granted private report remains finite-scope and is denied full-studio overviews under current semantics",
+        "GET only native50claims/page; require definition revision, changed snapshot409 with accessible retry; disclose incomplete/stale source coverage."
+      ],
+      "adapter_sha256": "eb9b6d9f346c76176b178a6eae46acb506189fe091961bdc842aa039af2cab2a",
+      "principal_parameter_overrides": {
+        "viewer-full": {
+          "org_slug": "beta"
+        }
+      },
+      "conditional_roles": {
+        "impersonated": {
+          "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: studio-viewer",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[324-GET]",
+          "verification": "pending"
+        }
+      },
+      "seeded_query_parameters": {
+        "definition_revision": {
+          "provider": "seed.metric_definition_revision"
+        }
+      },
+      "required_query_parameters": [
+        "definition_revision"
+      ]
     }
   ],
   "scenario_role_policy": "inherits explicit route principal sets unless scenario overrides",

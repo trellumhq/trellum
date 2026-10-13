@@ -4,15 +4,28 @@ Credential values must not be serialized into the portable route manifest.
 """
 from django.contrib.auth import get_user_model
 
-SEED_PARAMETERS = {'connection_id','group_id','invite_id','link_id','proposal_id','report_id','rule_id','run_id','schedule_id','session_id','user_id','token'}
+SEED_PARAMETERS = {'connection_id','group_id','invite_id','link_id','proposal_id','report_id','rule_id','run_id','schedule_id','session_id','user_id','token','metric_definition_id','metric_definition_revision'}
 NATIVE_PARAMETERS = {'app_label','content_type_id','id','object_id','provider_id','token','uidb64','url'}
 
-def resolve(provider, route):
+def resolve(provider, route, role=None):
     from apps.core.tests.portal_e2e.seed import seed_manifest
     namespace, name = provider.split('.', 1)
     if namespace == 'seed':
         if name not in SEED_PARAMETERS:
             raise ValueError('unknown seed parameter '+name)
+        if name in {'metric_definition_id', 'metric_definition_revision'}:
+            from apps.reports.models import MetricDefinition, MetricCatalogState
+            from apps.studios.models import Studio
+            override = route.get('principal_parameter_overrides', {}).get(role, {})
+            scope = {key: override.get(key, route['seeded_parameters'][key]['value'])
+                     for key in ('org_slug', 'studio_slug')}
+            studio = Studio.objects.get(org__slug=scope['org_slug'], slug=scope['studio_slug'])
+            if name == 'metric_definition_revision':
+                return MetricCatalogState.objects.filter(studio=studio).values_list('definition_revision', flat=True).first() or 0
+            metric = MetricDefinition.objects.filter(studio=studio, present_in_scan=True).order_by('name', 'pk').first()
+            if metric is None:
+                raise ValueError('missing metric fixture for '+str(scope))
+            return metric.pk
         if name != 'token':
             if name=='run_id' and route['view'].endswith('from_alert'):
                 from apps.alerts.models import AlertRun
@@ -55,14 +68,18 @@ def resolve(provider, route):
 
 def url_for(route, role=None):
     import re
+    from urllib.parse import urlencode
     def substitute(match):
         name = match.group(1)
         override = route.get('principal_parameter_overrides',{}).get(role,{})
         if name in override:
             return str(override[name])
         spec = route['seeded_parameters'][name]
-        value = spec['value'] if 'value' in spec else resolve(spec['provider'],route)
+        value = spec['value'] if 'value' in spec else resolve(spec['provider'],route,role)
         return str(value)
     if not route['first_party']:
         raise ValueError('native regex recipes must use the native protocol scenario')
-    return '/' + re.sub(r'<(?:[^:>]+:)?([^>]+)>',substitute,route['pattern'])
+    path = '/' + re.sub(r'<(?:[^:>]+:)?([^>]+)>',substitute,route['pattern'])
+    query = {key: spec['value'] if 'value' in spec else resolve(spec['provider'], route, role)
+             for key, spec in route.get('seeded_query_parameters', {}).items()}
+    return path + ('?' + urlencode(query) if query else '')

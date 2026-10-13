@@ -128,7 +128,9 @@ def validate(ledger=None):
         parameters = set(re.findall(r'<(?:[^:>]+:)?([^>]+)>', row['pattern']))
         if parameters != set(row['seeded_parameters']):
             errors.append(prefix+'parameter mapping mismatch')
-        for value in row['seeded_parameters'].values():
+        if set(row.get('required_query_parameters', [])) - set(row.get('seeded_query_parameters', {})):
+            errors.append(prefix+'missing required query fixture')
+        for value in [*row['seeded_parameters'].values(), *row.get('seeded_query_parameters', {}).values()]:
             if not value or not (value.get('provider') or 'value' in value):
                 errors.append(prefix+'empty fixture parameter')
             if value.get('provider'):
