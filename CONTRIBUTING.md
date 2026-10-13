@@ -69,6 +69,18 @@ GitHub retains sanitized JUnit outcomes, test timing JSON, and summaries for
 seven days. Uploaded results omit failure bodies, captured output, and test
 properties. Browser HTML, traces, and screenshots are not uploaded.
 
+The ordinary framework suite excludes `slow` tests. Pull requests that change
+rendering, components, browser code, data or report generation, themes, or
+benchmark sources and shared fixtures run the full slow benchmark lane too.
+Its reports include measurements at each tested row count; the `benchmarks`
+workflow also remains available for manual runs. Unrelated and documentation
+changes skip that expensive lane.
+
+The aggregate check names are `portal checks` and `framework checks`. They
+report on every PR, including documentation changes, and fail if an applicable
+job fails, is canceled, or unexpectedly skips. Making these checks required is
+a separate GitHub repository protection setting.
+
 For repeated focused runs, optionally retain Django's test databases:
 
 ```bash
