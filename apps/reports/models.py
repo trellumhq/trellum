@@ -750,3 +750,59 @@ def record_view(report, *, user=None, share_link=None, request=None) -> None:
             )
     except Exception:  # noqa: BLE001 - capture must never break report serving
         logger.exception("record_view failed for report=%s", getattr(report, "pk", None))
+
+
+class MetricCatalogState(models.Model):
+    """Cross-process generations; artifacts are projected by workers, never GET."""
+
+    studio = models.OneToOneField("studios.Studio", on_delete=models.CASCADE, related_name="metric_catalog_state")
+    definition_revision = models.PositiveBigIntegerField(default=0)
+    summary_revision = models.PositiveBigIntegerField(default=0)
+
+
+class ReportSourceSummary(models.Model):
+    """Observed serving source, kept distinct from mutable last-attempt metadata."""
+
+    report = models.OneToOneField(Report, on_delete=models.CASCADE, related_name="source_summary")
+    schema_version = models.PositiveIntegerField(default=1)
+    backend = models.CharField(max_length=16, blank=True)
+    source_identity = models.CharField(max_length=300, blank=True)
+    claim_digest = models.CharField(max_length=64, blank=True)
+    state = models.CharField(max_length=24, default="pending")
+    quality = models.CharField(max_length=16, default="unknown")
+    served_at = models.DateTimeField(null=True, blank=True)
+    observed_at = models.DateTimeField(null=True, blank=True)
+    attempt_at = models.DateTimeField(null=True, blank=True)
+    attempt_status = models.CharField(max_length=32, blank=True)
+    operation = models.CharField(max_length=64, blank=True)
+    generation = models.PositiveBigIntegerField(default=0)
+    # Leasing is a short DB transaction; source I/O happens after it commits.
+    lease_token = models.CharField(max_length=64, blank=True)
+    lease_until = models.DateTimeField(null=True, blank=True)
+    next_check_at = models.DateTimeField(default=timezone.now, db_index=True)
+    failures = models.PositiveIntegerField(default=0)
+    error_code = models.CharField(max_length=64, blank=True)
+    preview_state = models.CharField(max_length=24, default="not-applicable")
+
+
+class ReportMetricClaim(models.Model):
+    """Complete claims, including names no longer defined by metrics.yaml."""
+
+    summary = models.ForeignKey(ReportSourceSummary, on_delete=models.CASCADE, related_name="claims")
+    metric_name = models.CharField(max_length=200)
+    definition_hash = models.CharField(max_length=64, null=True, blank=True)
+    version = models.PositiveIntegerField(null=True, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["summary", "metric_name"], name="uniq_source_metric_claim")]
+        indexes = [models.Index(fields=["metric_name", "summary"], name="source_claim_metric_idx")]
+
+
+class ReportMetricPreview(models.Model):
+    summary = models.ForeignKey(ReportSourceSummary, on_delete=models.CASCADE, related_name="previews")
+    metric_name = models.CharField(max_length=200)
+    # Canonical chart polyline: at most60points, not a full dataset.
+    points = models.TextField()
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["summary", "metric_name"], name="uniq_source_metric_preview")]
