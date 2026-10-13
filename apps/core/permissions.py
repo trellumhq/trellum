@@ -75,7 +75,7 @@ def _bulk_effective_roles(users, org) -> dict[int, EffectiveRoles]:
 
     Callers handle superusers and inactive organizations.
     """
-    from apps.orgs.models import OrgMembership, PermissionGroup, PermissionGroupGrant
+    from apps.orgs.models import OrgMembership, PermissionGroupMembership, PermissionGroupGrant
     from apps.reports.models import Report
     from apps.studios.models import StudioMembership
 
@@ -119,39 +119,37 @@ def _bulk_effective_roles(users, org) -> dict[int, EffectiveRoles]:
         er.studio_roles[studio_id] = roles.max_role(er.studio_roles.get(studio_id), role)
         er.full_report_studios.add(studio_id)
 
-    groups = (
-        PermissionGroup.objects.filter(org=org, memberships__user_id__in=member_ids)
-        .distinct()
+    memberships = (
+        PermissionGroupMembership.objects.filter(group__org=org, user_id__in=member_ids)
+        .select_related("group")
         .prefetch_related(
-            Prefetch("grants", queryset=PermissionGroupGrant.objects.filter(studio__org=org)),
-            "grants__report_grants", "memberships",
+            Prefetch("group__grants", queryset=PermissionGroupGrant.objects.filter(studio__org=org)),
+            "group__grants__report_grants",
         )
     )
-    for group in groups:
-        for m in group.memberships.all():
-            er = result.get(m.user_id)
-            if m.user_id not in member_ids:
-                continue
-            if group.org_role == roles.ORG_ADMIN:
-                er.is_org_admin = True
-            if group.default_studio_role:
-                er.default_studio_role = roles.max_role(
-                    er.default_studio_role, group.default_studio_role
+    for membership in memberships:
+        group = membership.group
+        er = result[membership.user_id]
+        if group.org_role == roles.ORG_ADMIN:
+            er.is_org_admin = True
+        if group.default_studio_role:
+            er.default_studio_role = roles.max_role(
+                er.default_studio_role, group.default_studio_role
+            )
+        for grant in group.grants.all():
+            er.studio_roles[grant.studio_id] = roles.max_role(
+                er.studio_roles.get(grant.studio_id), grant.role
+            )
+            if grant.role == roles.VIEWER:
+                er.report_ids_by_studio.setdefault(grant.studio_id, set()).update(
+                    row.report_id for row in grant.report_grants.all()
+                    if row.report_id in report_rows
+                    and report_rows[row.report_id][0] == grant.studio_id
+                    and (grant.viewer_scope == grant.REPORT_SCOPE_SELECTED
+                         or report_rows[row.report_id][1] == Report.AUDIENCE_PRIVATE)
                 )
-            for grant in group.grants.all():
-                er.studio_roles[grant.studio_id] = roles.max_role(
-                    er.studio_roles.get(grant.studio_id), grant.role
-                )
-                if grant.role == roles.VIEWER:
-                    er.report_ids_by_studio.setdefault(grant.studio_id, set()).update(
-                        row.report_id for row in grant.report_grants.all()
-                        if row.report_id in report_rows
-                        and report_rows[row.report_id][0] == grant.studio_id
-                        and (grant.viewer_scope == grant.REPORT_SCOPE_SELECTED
-                             or report_rows[row.report_id][1] == Report.AUDIENCE_PRIVATE)
-                    )
-                if grant.viewer_scope != grant.REPORT_SCOPE_SELECTED or grant.role != roles.VIEWER:
-                    er.full_report_studios.add(grant.studio_id)
+            if grant.viewer_scope != grant.REPORT_SCOPE_SELECTED or grant.role != roles.VIEWER:
+                er.full_report_studios.add(grant.studio_id)
     return result
 
 

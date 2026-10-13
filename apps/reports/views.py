@@ -83,12 +83,14 @@ _SERVER_START = time.time()
 
 
 def _get_report(request, slug: str) -> Report:
+    scope = request.org_roles.report_scope_for(request.studio)
+    if scope is not None and not scope:
+        raise Http404
     report = Report.objects.filter(
         studio=request.studio, slug=slug, present_in_scan=True
     ).select_related("studio", "studio__org").first()
     if report is None:
         raise Http404
-    scope = request.org_roles.report_scope_for(request.studio)
     if scope is not None and report.pk not in scope:
         raise Http404
     return report
