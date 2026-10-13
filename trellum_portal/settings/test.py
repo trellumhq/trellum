@@ -14,8 +14,10 @@ PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 STORAGES["staticfiles"] = {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"}  # noqa: F405
 WHITENOISE_AUTOREFRESH = True  # don't require a collectstatic run for tests
 
-# Tests write studio trees into a throwaway dir (overridden per-test via
-# tmp_path fixtures where it matters).
+# The root conftest's autouse data_dir fixture replaces this fallback with a
+# separate tmp_path for every test, including tests on different xdist workers.
+# pytest-django independently suffixes each worker's test database name; keep
+# its normal database setup fixtures rather than sharing a pre-created DB.
 DATA_DIR = BASE_DIR / ".data-test"  # noqa: F405
 
 # The suite stubs subprocess.Popen and never has a Docker daemon; exercise the
