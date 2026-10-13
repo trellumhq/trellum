@@ -1,3 +1,6 @@
+(function () {
+var activeSignal;
+function listen(target, event, callback) { target.addEventListener(event, callback, {signal: activeSignal}); }
 /* Metrics catalog: find a metric, click it, see it (internal planning ticket #114).
  *
  * Two things, both belonging to one page and neither big enough for a file of
@@ -15,19 +18,19 @@
  * static/report_analytics.js — a plain script for one management page, not a
  * widget baked into report builds.
  */
-(function () {
+function mountOverlay(root, signal) {
     'use strict';
 
-    var modal = document.getElementById('metModal');
-    var overlay = document.getElementById('metOverlay');
+    var modal = root.querySelector("#" + 'metModal');
+    var overlay = root.querySelector("#" + 'metOverlay');
     if (!modal || !overlay) return;
 
-    var title = document.getElementById('metModalTitle');
-    var sub = document.getElementById('metModalSub');
-    var body = document.getElementById('metModalBody');
-    var full = document.getElementById('metModalFull');
-    var overview = document.getElementById('metModalOverview');
-    var closeBtn = document.getElementById('metModalClose');
+    var title = root.querySelector("#" + 'metModalTitle');
+    var sub = root.querySelector("#" + 'metModalSub');
+    var body = root.querySelector("#" + 'metModalBody');
+    var full = root.querySelector("#" + 'metModalFull');
+    var overview = root.querySelector("#" + 'metModalOverview');
+    var closeBtn = root.querySelector("#" + 'metModalClose');
     var built = modal.dataset.built === '1';
     var lastTrigger = null;
     var frameObserver = null;
@@ -186,7 +189,7 @@
 
     function watchFrame(frame) {
         activeFrame = frame;
-        frame.addEventListener('load', function () {
+        listen(frame, 'load', function () {
             if (activeFrame !== frame || modal.hidden) return;
             if (frameObserver) frameObserver.disconnect();
             try {
@@ -207,16 +210,16 @@
                         if (activeFrame === frame) scheduleFit();
                     }, 0);
                 }
-                frame.contentDocument.addEventListener('click', afterControls);
-                frame.contentDocument.addEventListener('change', afterControls);
+                listen(frame.contentDocument, 'click', afterControls);
+                listen(frame.contentDocument, 'change', afterControls);
             } catch (e) { /* no ResizeObserver, or gone: the load fit stands */ }
             scheduleFit();
         });
     }
 
-    window.addEventListener('resize', scheduleFit);
-    full.addEventListener('click', function () { if (activeFrame) updateLinks(activeFrame); });
-    overview.addEventListener('click', function () { if (activeFrame) updateLinks(activeFrame); });
+    listen(window, 'resize', scheduleFit);
+    listen(full, 'click', function () { if (activeFrame) updateLinks(activeFrame); });
+    listen(overview, 'click', function () { if (activeFrame) updateLinks(activeFrame); });
 
     function open(row, trigger) {
         stopWatching();
@@ -257,19 +260,20 @@
        keyboard users get one tab stop that does the same thing. Clicks on the
        card's own links and on the "claiming reports" disclosure are left
        alone — they already do something. */
-    document.querySelectorAll('.met-card[data-metric]').forEach(function (row) {
-        row.addEventListener('click', function (ev) {
+    root.querySelectorAll('.met-card[data-metric]').forEach(function (row) {
+        listen(row, 'click', function (ev) {
             if (ev.target.closest('a, summary, details, label, input')) return;
             open(row, row.querySelector('.met-open'));
         });
     });
 
-    closeBtn.addEventListener('click', close);
-    overlay.addEventListener('click', close);
-    document.addEventListener('keydown', function (ev) {
+    listen(closeBtn, 'click', close);
+    listen(overlay, 'click', close);
+    listen(document, 'keydown', function (ev) {
         if (ev.key === 'Escape' && !modal.hidden) close();
     });
-})();
+    return function () { lastTrigger = null; close(); };
+}
 
 /* Filter the catalog as you type.
  *
@@ -283,16 +287,16 @@
  * the MetricDefinition queryset there and paginate, and this becomes a form
  * submit with the same box.
  */
-(function () {
+function mountFilter(root, signal) {
     'use strict';
 
-    var input = document.getElementById('metSearch');
-    var count = document.getElementById('metCount');
-    var empty = document.getElementById('metEmpty');
+    var input = root.querySelector("#" + 'metSearch');
+    var count = root.querySelector("#" + 'metCount');
+    var empty = root.querySelector("#" + 'metEmpty');
     if (!input || !count || !empty) return;
 
     var cards = Array.prototype.slice.call(
-        document.querySelectorAll('.met-card[data-search]')
+        root.querySelectorAll('.met-card[data-search]')
     );
     /* Lower-cased once, not once per keystroke. data-search is exactly the
        fields worth matching (see the template) -- name, id, description, tags,
@@ -319,8 +323,8 @@
         count.textContent = q ? shown + ' of ' + cards.length : '';
     }
 
-    input.addEventListener('input', apply);
-    input.addEventListener('keydown', function (ev) {
+    listen(input, 'input', apply);
+    listen(input, 'keydown', function (ev) {
         if (ev.key !== 'Escape') return;
         /* Escape in the box clears the box and NOTHING else. Without this it
            keeps bubbling to the overlay's own Escape handler on document, and
@@ -330,4 +334,22 @@
         input.value = '';
         apply();
     });
-})();
+}
+
+window.TrellumMetricsOverlay = { mount: function (root, signal) {
+    activeSignal = signal;
+    var cleanup = mountOverlay(root, signal);
+    mountFilter(root, signal);
+    return cleanup || function () {};
+} };
+if (!window.TrellumNavigation) {
+    var fallback = new AbortController();
+    var fallbackCleanup = window.TrellumMetricsOverlay.mount(document, fallback.signal);
+    window.addEventListener('pagehide', function () { fallback.abort(); fallbackCleanup(); });
+    window.addEventListener('pageshow', function (event) {
+        if (!event.persisted) return;
+        fallback = new AbortController();
+        fallbackCleanup = window.TrellumMetricsOverlay.mount(document, fallback.signal);
+    });
+}
+}());

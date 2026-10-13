@@ -331,3 +331,64 @@
     sel.addEventListener('change', show);
     show();
 }());
+
+(function () {
+    var nativeSnapshot = null, nativeTimeout = null;
+    function clear() {
+        clearTimeout(nativeTimeout); nativeTimeout = null;
+        var restored = nativeSnapshot;
+        if (nativeSnapshot) {
+            window.TrellumConsoleShell.setPageTitle(nativeSnapshot.title);
+            nativeSnapshot.links.forEach(function (entry) { entry.node.classList.toggle('active', entry.active); if (entry.current) entry.node.setAttribute('aria-current', entry.current); else entry.node.removeAttribute('aria-current'); });
+            nativeSnapshot = null;
+        }
+        document.querySelectorAll('[data-console-native-pending]').forEach(function (node) { node.remove(); });
+        var main = document.querySelector('main,[data-console-catalog]'); if (main) main.classList.remove('tl-console-native-pending');
+        var status = document.querySelector('[data-console-navigation-native-status]'); if (status) status.textContent = '';
+        if (restored) {
+            window.scrollTo(restored.position[0], restored.position[1]);
+            var focus = restored.focus;
+            if (!focus || !focus.isConnected || !focus.getClientRects().length) focus = document.querySelector('[data-console-toggle]');
+            if (focus) focus.focus({preventScroll:true});
+        }
+    }
+    function cancel(message) {
+        if (!nativeSnapshot) return;
+        window.stop(); clear();
+        if (window.TrellumSettingsForms) window.TrellumSettingsForms.resume();
+        var status = document.querySelector('[data-console-navigation-native-status]');
+        if (status && message) status.textContent = message;
+    }
+    window.addEventListener('click', function (event) {
+        var link = event.target.closest && event.target.closest('a.tl-console-nav-link');
+        if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey ||
+            link.hasAttribute('download') || (link.target && link.target !== '_self')) return;
+        var url = new URL(link.href), title = link.querySelector('.tl-console-label');
+        if (url.origin !== location.origin || url.hash || !title) return;
+        var label = title.textContent.trim();
+        var main = document.querySelector('main,[data-console-catalog]'); if (!main) return;
+        // Run after delegated leave guards and enhanced/report-host owners.
+        if (event.defaultPrevented) return;
+        clear();
+        nativeSnapshot = { position: [scrollX,scrollY], focus: document.activeElement, title: document.querySelector('[data-console-page-title]').textContent, links: Array.from(document.querySelectorAll('.tl-console-nav-link')).map(function (node) { return {node: node, active: node.classList.contains('active'), current: node.getAttribute('aria-current')}; }) };
+        var drawerClose = document.querySelector('[data-console-close]');
+        if (drawerClose && drawerClose.closest('[data-console-shell]').classList.contains('is-open')) drawerClose.click();
+        window.TrellumConsoleShell.setPageTitle(label);
+        document.querySelectorAll('.tl-console-nav-link').forEach(function (node) {
+            var active = node === link; node.classList.toggle('active', active);
+            if (active) node.setAttribute('aria-current', 'page'); else node.removeAttribute('aria-current');
+        });
+        var panel = document.createElement('section'); panel.dataset.consoleNativePending = ''; panel.className = 'page-head';
+        var heading = document.createElement('h1'); heading.textContent = label;
+        var status = document.createElement('p'); status.setAttribute('role', 'status'); status.textContent = 'Opening ' + label + '…';
+        var stop = document.createElement('button'); stop.type = 'button'; stop.className = 'ui-btn ghost'; stop.textContent = 'Cancel loading';
+        stop.addEventListener('click', function () { cancel(); });
+        panel.append(heading, status, stop); main.prepend(panel); main.classList.add('tl-console-native-pending');
+        window.scrollTo(0,0);
+        nativeTimeout = setTimeout(function () { cancel('The page did not finish loading. Try opening it again when ready.'); }, 15000);
+    });
+    window.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && nativeSnapshot) { event.preventDefault(); cancel(); }
+    });
+    window.addEventListener('pageshow', clear);
+}());

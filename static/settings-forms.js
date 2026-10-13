@@ -1,6 +1,7 @@
 (function () {
   'use strict';
-  var nextId = 0, submitHandlers = new WeakMap();
+  var lifecycleGeneration = 0, leaving = false;
+  var nextId = 0, submitHandlers = new WeakMap(), saveRestorers = new Set();
   var refreshGeneration = 0, refreshController = null, pendingRefresh = new Set();
   function refreshRegions(keys) {
     var regions = Array.prototype.slice.call(document.querySelectorAll('[data-settings-refresh]'));
@@ -152,11 +153,22 @@
       var buttons = Array.prototype.filter.call(form.elements, function (field) { return field.type === 'submit'; }).map(function (field) {
         var entry = { field: field, disabled: field.disabled }; field.disabled = true; return entry;
       });
+      function restoreUnknown() {
+        if (!saving) return;
+        saving = false; submitted = null;
+        form.removeAttribute('aria-busy');
+        buttons.forEach(function (entry) { entry.field.disabled = entry.disabled; });
+        form.dataset.settingsState = 'error';
+        status.textContent = 'The save outcome is unknown; check the saved result before retrying.';
+        update(false);
+      }
+      saveRestorers.add(restoreUnknown);
       saving = true;
       clearErrors();
       form.dataset.settingsState = 'saving';
       form.setAttribute('aria-busy', 'true');
       status.textContent = 'Saving…';
+      var saveGeneration = lifecycleGeneration;
       var controller = new AbortController();
       var timeout = setTimeout(function () { controller.abort(); }, 30000);
       fetch(action.href, {
@@ -164,6 +176,7 @@
         redirect: 'error', headers: { 'X-Trellum-Form': '1', 'Accept': 'application/json' }
       }).then(function (response) {
         return response.json().then(function (data) {
+          if (saveGeneration !== lifecycleGeneration) return;
           if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('The server returned an invalid response. Check the saved settings before retrying.');
           if (!response.ok || data.ok !== true) {
             showErrors(data.errors);
@@ -194,7 +207,10 @@
             var key = node.dataset.settingsText;
             if (Object.prototype.hasOwnProperty.call(data.updates || {}, key)) node.textContent = data.updates[key];
           });
+          saveRestorers.delete(restoreUnknown);
           saving = false;
+          form.removeAttribute('aria-busy');
+          buttons.forEach(function (entry) { entry.field.disabled = entry.disabled; });
           form.dispatchEvent(new Event('settings:saved', { bubbles: true }));
           form.dataset.settingsState = 'saved';
           status.textContent = (data.message || 'Saved.') + (form.classList.contains('is-dirty') ? ' Newer changes are still unsaved.' : '');
@@ -212,12 +228,15 @@
           }
         }, function () { throw new Error('The server returned an invalid response. Check the saved settings before retrying.'); });
       }).catch(function (error) {
+        if (saveGeneration !== lifecycleGeneration) return;
         form.dataset.settingsState = 'error';
         status.textContent = error instanceof TypeError || error.name === 'AbortError'
           ? 'Connection interrupted. The save outcome is unknown; check before retrying.' : error.message;
         failureMessage = status.textContent;
       }).finally(function () {
         clearTimeout(timeout);
+        saveRestorers.delete(restoreUnknown);
+        if (saveGeneration !== lifecycleGeneration) return;
         saving = false;
         submitted = null;
         form.removeAttribute('aria-busy');
@@ -232,7 +251,26 @@
     if (root.matches && root.matches('form[data-settings-form],form[data-settings-save]')) init(root);
     root.querySelectorAll('form[data-settings-form],form[data-settings-save]').forEach(init);
   }
-  window.TrellumSettingsForms = { init: initialize, refreshRegions: refreshRegions };
+  function confirmLeave(root, submittedForm) {
+    var forms = Array.from((root || document).querySelectorAll('form[data-settings-initialized]')).filter(function (form) { return form !== submittedForm; });
+    var saving = forms.some(function (form) { return form.getAttribute('aria-busy') === 'true'; });
+    var dirty = forms.some(function (form) { return form.classList.contains('is-dirty'); });
+    if (!saving && !dirty) return true;
+    return window.confirm(saving ? 'Saving is still in progress. Leave and check the saved result later?'
+      : 'Discard unsaved changes? Choose Cancel to keep editing.');
+  }
+  window.TrellumSettingsForms = { init: initialize, refreshRegions: refreshRegions, confirmLeave: confirmLeave,
+    unmount: function () { saveRestorers.forEach(function (restore) { restore(); }); saveRestorers.clear(); ++lifecycleGeneration; ++refreshGeneration; pendingRefresh.clear(); if (refreshController) refreshController.abort(); },
+    nativeLeave: function () { leaving = true; }, resume: function () { leaving = false; }
+  };
+  window.addEventListener('beforeunload', function (event) {
+    if (leaving) return;
+    if (document.querySelector('form.is-dirty,form[data-settings-state="saving"]')) {
+      event.preventDefault(); event.returnValue = '';
+    }
+  });
+  window.addEventListener('pageshow', function () { leaving = false; });
+  window.addEventListener('pagehide', function () { window.TrellumSettingsForms.unmount(); });
   function retryRefresh() {
     if (!pendingRefresh.size) return;
     var generation = refreshGeneration;
@@ -255,16 +293,21 @@
     if (handler) handler(event);
   });
   document.addEventListener('click', function (event) {
-    var link = event.target.closest('a[data-settings-leave]');
+    var link = event.target.closest('a[href]');
     if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     if (link.hasAttribute('download') || (link.target && link.target !== '_self')) return;
-    var form = link.dataset.settingsLeave ? document.getElementById(link.dataset.settingsLeave) : link.closest('form');
-    if (!form || !form.matches('[data-settings-form],[data-settings-save]')) return;
-    var saving = form.getAttribute('aria-busy') === 'true';
-    if (!saving && !form.classList.contains('is-dirty')) return;
-    var message = saving ? 'Saving is still in progress. Leave and check the saved result later?'
-      : 'Discard unsaved changes? Choose Cancel to keep editing.';
-    if (!window.confirm(message)) event.preventDefault();
+    var destination = new URL(link.href, location.href);
+    if (!/^https?:$/.test(destination.protocol) || (destination.origin === location.origin && destination.pathname === location.pathname && destination.search === location.search && destination.hash)) return;
+    if (!confirmLeave(document)) event.preventDefault(); else event.trellumLeaveConfirmed = true;
+  });
+  window.addEventListener('submit', function (event) {
+    if (event.defaultPrevented || !submitHandlers.has(event.target)) return;
+    if (!confirmLeave(document, event.target)) { event.preventDefault(); return; }
+    leaving = true;
+    setTimeout(function () { if (event.defaultPrevented) leaving = false; }, 0);
+  });
+  window.addEventListener('click', function (event) {
+    if (event.trellumLeaveConfirmed && !event.defaultPrevented) leaving = true;
   });
   initialize(document);
 })();

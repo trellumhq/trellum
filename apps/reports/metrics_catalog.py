@@ -425,7 +425,9 @@ def metrics_page(request, org_slug, studio_slug, section="overview"):
         repo_url = request.studio.repo.repo_url
     except StudioRepo.DoesNotExist:
         repo_url = ""
-    return render(
+    from apps.core.navigation import render_navigation
+
+    return render_navigation(
         request,
         "reports/metrics.html",
         {
@@ -446,6 +448,7 @@ def metrics_page(request, org_slug, studio_slug, section="overview"):
             # one whose repo hasn't been set up yet); never a dead link.
             "repo_url": repo_url,
         },
+        controller="metrics", title="Metrics",
     )
 
 

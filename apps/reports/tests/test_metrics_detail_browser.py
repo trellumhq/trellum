@@ -78,7 +78,7 @@ def _catalog_html(*, built=True, embed=True, workspace=False):
     source = (ROOT / "templates/reports/metrics.html").read_text(encoding="utf-8")
     style = source[source.index("<style>"):source.index("</style>") + len("</style>")]
     start = source.index('<div class="met-overlay"')
-    modal = source[start:source.index('<script src="{% static', start)]
+    modal = source[start:source.rindex('{% endif %}')]
     modal = Template(modal).render(Context({"metrics_report_built": built}))
     if workspace:
         modal = (f'<iframe id="metWorkspace" src="{REPORT_PATH}?workspace=1" title="Metrics chart workspace"></iframe>'

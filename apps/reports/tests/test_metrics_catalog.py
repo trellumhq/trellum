@@ -752,7 +752,7 @@ class TestCatalogSearch:
         from pathlib import Path
 
         js = Path("static/metrics_overlay.js").read_text(encoding="utf-8")
-        assert "getElementById('metSearch')" in js
+        assert 'root.querySelector("#" + \'metSearch\')' in js
         assert "card.dataset.search" in js
         assert "ev.stopPropagation();" in js
         assert "card.hidden = !hit;" in js

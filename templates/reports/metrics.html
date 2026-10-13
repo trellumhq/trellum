@@ -183,7 +183,6 @@ body.mgmt main .met-modal.met-compact .met-modal-head h2 { font-size:13px; }
 {% if metrics_section == "comparison" %}
   {% if metrics_report_built %}
   <iframe id="metWorkspace" src="{{ metrics_report_url }}?workspace=1" title="Metrics chart workspace"></iframe>
-  <script src="{% static 'metrics_workspace.js' %}"></script>
   {% else %}
   <div class="panel"><div class="ui-empty">The comparison workspace appears once the generated Metrics report is built.</div></div>
   {% endif %}
@@ -308,7 +307,6 @@ or not bound to a dataset, and the same overlay says so instead.{% endcomment %}
     <a class="ui-btn ghost" id="metModalFull" href="#" hidden>Open metric page →</a>
   </div>
 </div>
-<script src="{% static 'metrics_overlay.js' %}"></script>
 
 {% endif %}
 {% endblock %}

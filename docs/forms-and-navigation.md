@@ -142,3 +142,52 @@ A failed form submission must preserve recipient selections, timezone and local
 time values. Inline errors remain visible even if dropdown options are closed
 or filtered. Newly suggested browser timezones must not replace stored values
 on edits or submitted values on validation rerenders.
+
+## Console navigation adapters
+
+`apps.core.navigation.render_navigation(request, template, context,
+controller=..., title=...)` opts an authorized GET page into the fragment
+contract. Native entry renders its normal document. Requests carrying
+`X-Trellum-Navigation: 1` receive version 1 JSON with `controller`, `title`,
+`url` and `html`; the HTML comes from the same template's content block.
+Responses vary on that header and fragments use private, no-store caching.
+The helper does not authorize a request or bypass middleware.
+
+`TrellumNavigation.register(name, {mount(context)})` registers a known static
+controller. `context` contains the page `root`, an abort `signal` and its `url`.
+`mount` returns a cleanup function or `{unmount, ready}`. Register event
+listeners with the signal; cleanup must disconnect observers, cancel timers,
+stop frames and remove overlays. `ready` resolves when primary layout supports
+history scroll restoration. Do not wait for optional secondary requests.
+Fetched script elements, inline event handlers and JavaScript URLs are removed;
+their code is never evaluated. Load
+controller assets through explicit static template includes or an allowlist.
+
+The initial enhanced cohort is Metrics Overview and Comparison within the
+same studio, departing from an adapted Metrics page. It updates the URL,
+heading, sidebar selection and loading state after the shared leave guard,
+then rejects aborted or superseded replies. New destinations focus their
+heading; Back and Forward restore position after the controller is ready.
+Canceling a dirty Back traversal reverses that traversal without discarding
+Forward history. Report hosts keep their existing history owner.
+
+Other pages remain native until they have explicit lifecycle adapters.
+Sidebar native navigation displays its destination heading and pending state;
+the document URL commits with the browser's response. Cancel loading or Escape
+stops the native request and restores the old page, focus and scroll. After
+15 seconds, an unfinished native request restores the page with retry feedback;
+it does not replay the request. This is a foundation,
+not complete enhancement of the catalog, settings or report hosts. Modifier
+clicks, new tabs, same-page hashes, downloads and authentication retain native
+semantics. A failed enhanced request offers direct entry and does not silently
+execute a login document or claim content is empty.
+
+The shared leave guard inspects every tracked dirty or saving form, including
+sidebar departures. Cancel retains drafts. Accepted departure invalidates
+summary reads and detached save callbacks; it does not replay or pretend to
+cancel a server write. A pending write becomes an unknown outcome with usable
+controls if the old document returns from browser cache. Check persistence
+before retrying. Native tab closing/reloading also uses the browser's draft
+warning when supported. An accepted native submit guards neighboring drafts,
+excludes its own submitted draft from discard confirmation and suppresses the
+redundant unload warning; canceled form confirmations still send no request.
