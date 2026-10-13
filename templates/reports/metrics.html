@@ -19,6 +19,9 @@
 /* Filter. One row above the grid: the box, and what it left standing. The
    count is a live region rather than a heading, so a screen reader hears the
    result of typing without the input losing focus. */
+[data-metric-summary] { display:grid; grid-template-rows:64px 52px; gap:8px; margin-bottom:12px; }
+[data-summary-status] { margin:0; overflow:auto; }
+.met-summary-actions { overflow:auto; }
 [data-metric-summary] [hidden] { display:none; }
 .met-filter { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:0 0 14px; }
 /* By id, for the same reason .met-open is: ui.css gives every input in
@@ -61,6 +64,9 @@ body.mgmt main .met-card .met-open:focus-visible { outline:2px solid var(--accen
    real chart is one click away in the overlay. aria-hidden for the same
    reason: there is no value here a screen reader could usefully read out.
    Accent-coloured through currentColor, so it follows every theme. */
+.met-spark-slot { height:45px; }
+.met-card [data-metric-usage] { height:150px; overflow:auto; overflow-wrap:anywhere; }
+.met-card [data-metric-usage]:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
 .met-spark { display:block; margin-top:9px; max-width:100%; color:var(--accent); }
 
 /* What it means. */
@@ -216,8 +222,10 @@ query that hits everything.{% endcomment %}
 </form>
 <div data-metric-summary data-url="{{ summary_url }}" data-revision="{{ definition_revision }}">
   <p role="status" aria-live="polite" data-summary-status>{% if definition_changed %}Definitions changed during loading. Reload this page.{% else %}Report usage is loading. Definitions are ready.{% endif %}</p>
+  <div class="met-summary-actions" tabindex="0" aria-label="Report usage actions">
   <button type="button" class="ui-btn ghost" data-summary-retry hidden>Retry report usage</button>
   <a class="ui-btn ghost" data-summary-reload href="{% url 'studio-metrics' org.slug studio.slug %}?q={{ metric_query|urlencode }}&amp;page={{ metric_page.number }}"{% if not definition_changed %} hidden{% endif %}>Reload definitions</a>
+  </div>
 </div>
 <noscript><p>Definitions are ready. Open Indexed claims to read report usage without JavaScript.</p></noscript>
 <div class="met-grid">
@@ -235,6 +243,7 @@ query that hits everything.{% endcomment %}
       type, so it belongs with the name rather than competing with the
       tags.{% endcomment %}
       <div class="met-id">{{ m.row.name }} · v{{ m.row.version }} · {{ m.row.format }}</div>
+      <div class="met-spark-slot" data-metric-spark>
       {% if m.spark %}
       <svg class="met-spark" width="{{ spark_w }}" height="{{ spark_h }}"
            viewBox="0 0 {{ spark_w }} {{ spark_h }}" aria-hidden="true" focusable="false">
@@ -242,6 +251,7 @@ query that hits everything.{% endcomment %}
                   stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
       </svg>
       {% endif %}
+      </div>
     </div>
     <div class="met-fact">
       <span class="ui-mono-pill">{{ m.spec }}</span>
@@ -253,7 +263,7 @@ query that hits everything.{% endcomment %}
       {% endif %}
       {% if m.row.owner %}<div class="met-owner"><b>Owner</b><span>{{ m.row.owner }}</span></div>{% endif %}
     </div>
-    <div class="met-usage met-fact" data-metric-usage>Report usage pending. <a href="{{ m.details_url }}">Indexed claims →</a></div>
+    <div class="met-usage met-fact" data-metric-usage tabindex="0" aria-label="Indexed report usage">Report usage pending. <a href="{{ m.details_url }}">Indexed claims →</a></div>
   </div>
   {% endfor %}
 </div>

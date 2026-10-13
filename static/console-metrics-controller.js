@@ -36,7 +36,7 @@
                 line.setAttribute('points', item.spark); line.setAttribute('fill', 'none');
                 line.setAttribute('stroke', 'currentColor'); line.setAttribute('stroke-width', '1.5');
                 line.setAttribute('vector-effect', 'non-scaling-stroke'); svg.appendChild(line);
-                card.querySelector('.met-id').after(svg);
+                card.querySelector('[data-metric-spark]').replaceChildren(svg);
             }
         }
         async function load() {
