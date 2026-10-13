@@ -470,3 +470,54 @@ def test_save_cancels_pending_preview_and_reenables_test_button(rule, login):
         expect(page.locator("[name=instructions]")).not_to_have_attribute("aria-invalid", "true")
         expect(page.locator("#alertPreview")).to_be_hidden()
         browser.close()
+
+
+@pytest.mark.parametrize('engine', ['chromium', 'webkit'])
+@pytest.mark.parametrize('preview_state', ['none', 'pending', 'completed', 'edited'])
+def test_preview_status_describes_actual_work_and_preserves_save_feedback(engine, preview_state, rule, login):
+    url = f'/s/{rule.org.slug}/{rule.studio.slug}/alerts/{rule.pk}/edit'
+    html = login(rule.created_by).get(url).content.decode()
+    with sync_playwright() as playwright:
+        browser = getattr(playwright, engine).launch(headless=True)
+        page = browser.new_page()
+        page.route('**/*', lambda route: route.abort())
+        page.route('http://example.test' + url, lambda route: route.fulfill(body=html, content_type='text/html'))
+        page.goto('http://example.test' + url)
+        page.add_script_tag(content=(ROOT / 'static/settings-forms.js').read_text())
+        page.add_script_tag(content=(ROOT / 'static/alert-editor.js').read_text())
+        form = page.locator('#alertForm')
+        previews, saves = [], []
+        def respond(route):
+            body = route.request.post_data or ''
+            if 'name="action"' in body and 'preview' in body:
+                previews.append(route)
+            else:
+                saves.append(route)
+                route.fulfill(json={'ok': True, 'message': 'Saved.'})
+        page.route('http://example.test' + url, respond)
+        form.locator('[name=instructions]').fill('Changed before any test')
+        expect(form.locator('[data-alert-preview-status]')).to_have_count(0)
+        if preview_state != 'none':
+            form.evaluate("f=>f.dispatchEvent(new SubmitEvent('submit',{bubbles:true,cancelable:true,submitter:f.querySelector('[data-alert-preview]')}))")
+            expect(form.locator('[data-alert-preview-status]')).to_have_text('Testing draft…')
+            if preview_state != 'pending':
+                previews[0].fulfill(json={'ok': True, 'message': 'Draft tested.', 'result': {'status': 'ok', 'condition': 'Met', 'title': 'Current preview'}})
+                expect(page.locator('#alertPreview')).to_be_visible()
+                if preview_state == 'edited':
+                    form.locator('[name=instructions]').fill('Changed after testing')
+                    expect(form.locator('[data-alert-preview-status]')).to_contain_text('Draft changed')
+                    expect(page.locator('#alertPreview')).to_be_hidden()
+        form.evaluate("f=>f.dispatchEvent(new SubmitEvent('submit',{bubbles:true,cancelable:true,submitter:f.querySelector('button[value=save]')}))")
+        expect(form.locator('[data-settings-dirty-status]')).to_contain_text('Saved')
+        assert len(saves) == 1
+        if preview_state in ['pending', 'completed']:
+            expect(form.locator('[data-alert-preview-status]')).to_have_text('Preview result discarded because saving started.')
+        else:
+            expect(form.locator('[data-alert-preview-status]')).to_have_count(0)
+        expect(page.locator('#alertPreview')).to_be_hidden()
+        expect(form.locator('[data-alert-preview]')).to_be_enabled()
+        if preview_state == 'pending':
+            previews[0].fulfill(json={'ok': True, 'message': 'Late draft tested.', 'result': {'title': 'Stale preview'}})
+            expect(page.locator('#alertPreview')).to_be_hidden()
+            expect(form.locator('[data-alert-preview-status]')).not_to_contain_text('Late draft')
+        browser.close()

@@ -6,6 +6,7 @@
   var version = 0, controller = null, button = form.querySelector('[data-alert-preview]');
   var priorFocus = null, priorPosition = null;
   var interaction = 0, interactionAtStart = 0, previewRunning = false;
+  var previewRelevant = !result.hidden && result.childElementCount > 0;
 
   var timezone = form.querySelector('#id_timezone');
   if (timezone && form.hasAttribute('data-browser-timezone-default')) {
@@ -56,6 +57,7 @@
     if (controller) controller.abort();
     controller = null;
     previewRunning = false;
+    previewRelevant = false;
     priorFocus = null;
     priorPosition = null;
     button.disabled = false;
@@ -78,7 +80,7 @@
     node.textContent = text;
   }
   function invalidate() {
-    cancelPending('Draft changed. Test it again to see current results.', true);
+    cancelPending(previewRelevant ? 'Draft changed. Test it again to see current results.' : null, true);
     clearErrors();
   }
   function showErrors(errors) {
@@ -140,7 +142,12 @@
   form.addEventListener('change', function () { if (previewRunning || !priorPosition) invalidate(); });
   form.addEventListener('submit', function (event) {
     if (event.submitter !== button) {
-      cancelPending('Preview result discarded because saving started.', true);
+      var hadPreview = previewRelevant;
+      cancelPending(hadPreview ? 'Preview result discarded because saving started.' : null, true);
+      if (!hadPreview) {
+        var previewStatus = form.querySelector('[data-alert-preview-status]');
+        if (previewStatus) previewStatus.remove();
+      }
       clearErrors();
       return;
     }
@@ -154,6 +161,7 @@
     var active = new AbortController();
     controller = active;
     previewRunning = true;
+    previewRelevant = true;
     interactionAtStart = interaction;
     button.disabled = true;
     result.hidden = true;
