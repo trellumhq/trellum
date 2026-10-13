@@ -42,7 +42,26 @@ def test_mixed_widget_requests_keep_their_original_page(workspace_browser_projec
             source = page.frame_locator("#fw-workspace-report")
             source.locator("#fwLoading").wait_for(state="hidden")
             _queue(source, source.get_by_role("heading", name="September conversion", exact=True), "Add this section to the analysis")
-            page.wait_for_function("document.getElementById('queue-count').textContent === '1'")
+            try:
+                page.wait_for_function("document.getElementById('queue-count').textContent === '1'")
+            except Exception as error:
+                state = page.evaluate("""() => {
+                  const frame = document.getElementById('fw-workspace-report');
+                  const child = frame && frame.contentWindow;
+                  const doc = child && child.document;
+                  const chart = doc && doc.querySelector('canvas');
+                  const chartState = chart && child._chartInstances && child._chartInstances[chart.id];
+                  return {
+                    queueCount: document.getElementById('queue-count')?.textContent,
+                    queueList: document.getElementById('queue-list')?.innerText,
+                    widgetError: doc?.getElementById('fwrvWorkspaceError')?.textContent,
+                    popVisible: !!doc?.getElementById('fwrvPop') && !doc.getElementById('fwrvPop').hidden,
+                    chartReady: !!chartState,
+                    canvasSize: chart && [chart.width, chart.height],
+                    sendStatus: document.getElementById('send-status')?.textContent
+                  };
+                }""")
+                raise AssertionError(f"Source selection did not queue: {state}; page errors: {errors}") from error
             page.get_by_label("Source report", exact=True).select_option("source-two")
             source.get_by_role("heading", name="Source Two", exact=True).wait_for()
             source.locator("#fwrvQueueBtn").click()
