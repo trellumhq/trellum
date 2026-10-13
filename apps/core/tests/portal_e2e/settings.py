@@ -10,3 +10,5 @@ if os.environ.get('PORTAL_E2E_REAL_HASHER') == '1':
     PASSWORD_HASHERS = ['django.contrib.auth.hashers.PBKDF2PasswordHasher']
 
 TRELLUM_REPORT_SCOPED_ACCESS_READY = True
+
+TRELLUM_IMPERSONATION_ENABLED = True

@@ -51,28 +51,184 @@ def test_login_save_reload(viewport):
             browser.close()
     assert get_user_model().objects.get(email='alpha-admin@example.invalid').name == saved_name
 
-@pytest.mark.parametrize('role', ['admin', 'developer', 'viewer', 'group-member', 'group-admin', 'group-selected', 'revoked'])
+@pytest.mark.parametrize('role', ['org-admin', 'studio-admin', 'developer', 'viewer', 'viewer-full', 'private-viewer', 'group-member', 'group-admin', 'group-selected', 'revoked'])
 def test_role_request_baseline(role):
     """Actual login plus permission-separated full HTTP request samples."""
     import requests
     from apps.core.tests.portal_e2e.seed import PASSWORD
+    from apps.core.tests.portal_e2e.identities import ROLES
     session = requests.Session()
+    session.headers['X-Portal-E2E-Role'] = role
+    tenant = 'beta' if role=='viewer-full' else 'alpha'
+    other = 'alpha' if tenant=='beta' else 'beta'
+    session.headers['X-Portal-E2E-Cache-Target'] = f'/s/{tenant}/studio-0/api/registry'
     origin = os.environ['PORTAL_E2E_ORIGIN']
     session.get(origin + '/login', timeout=10)
-    response = session.post(origin + '/login', data={'email': f'alpha-{role}@example.invalid', 'password': PASSWORD, 'csrfmiddlewaretoken': session.cookies['csrftoken']}, headers={'Referer': origin+'/login'}, timeout=10)
+    response = session.post(origin + '/login', data={'email': ROLES[role], 'password': PASSWORD, 'csrfmiddlewaretoken': session.cookies['csrftoken']}, headers={'Referer': origin+'/login'}, timeout=10)
     assert response.status_code == 200
-    for endpoint in ('registry', 'system/status', 'system/run-stats'):
-        url = '/s/alpha/studio-0/api/' + endpoint
-        response = session.get(origin + url, timeout=30, allow_redirects=False)
-        if role == 'revoked':
-            assert response.status_code in (302, 403, 404)
-        elif endpoint == 'registry':
-            assert response.status_code == 200
-        else:
-            assert response.status_code == (200 if role in ('admin', 'developer', 'group-admin') else 403), (role, endpoint, response.status_code)
-        # Retain numeric full-request samples separately from access assertions.
-        row = {'role': role, 'endpoint': endpoint, 'status': response.status_code, 'http_ms': response.elapsed.total_seconds()*1000, 'response_bytes': len(response.content)}
-        with (Path(os.environ['PORTAL_E2E_ARTIFACTS']) / 'roles.jsonl').open('a') as out:
+    for phase in ('registry-cache-cold', 'registry-cache-warm'):
+        session.headers['X-Portal-E2E-Phase'] = phase
+        for endpoint in ('registry', 'system/status', 'system/run-stats'):
+            url = f'/s/{tenant}/studio-0/api/' + endpoint
+            response = session.get(origin + url, timeout=30, allow_redirects=False)
+            if role == 'revoked':
+                assert response.status_code in (302, 403, 404)
+            elif endpoint == 'registry':
+                assert response.status_code == 200
+            else:
+                assert response.status_code == (200 if role in ('org-admin', 'studio-admin', 'developer', 'group-admin') else 403), (role, endpoint, response.status_code)
+            if endpoint == 'registry' and role not in ('revoked',):
+                payload = response.json()['reports']
+                if role == 'group-selected':
+                    assert [row['slug'] for row in payload] == ['report-0000']
+                if role == 'private-viewer':
+                    assert 'report-0004' in {row['slug'] for row in payload}
+                if role in ('viewer','group-member'):
+                    assert 'report-0004' not in {row['slug'] for row in payload}
+            # Retain numeric full-request samples separately from access assertions.
+            row = {'role': role, 'cache_phase': phase, 'endpoint': endpoint, 'status': response.status_code, 'http_ms': response.elapsed.total_seconds()*1000, 'response_bytes': len(response.content)}
+            with (Path(os.environ['PORTAL_E2E_ARTIFACTS']) / 'roles.jsonl').open('a') as out:
+                out.write(json.dumps(row)+'\n')
+            denied = session.get(origin + f'/s/{other}/studio-0/api/' + endpoint, timeout=30, allow_redirects=False)
+            assert denied.status_code in (302, 403, 404), (role, endpoint, denied.status_code)
+
+
+def test_mapping_and_seed():
+    from apps.core.tests.portal_e2e.manifest import validate
+    from apps.core.tests.portal_e2e.seed import seed_manifest
+    from apps.reports.models import Report, MetricDefinition, EmailSchedule
+    from apps.alerts.models import AlertRule
+    from apps.studios.models import Studio
+    from apps.reports.overviews.experiments import studio_experiments
+    from apps.reports.overviews.annotations import calendar_payload
+    from apps.core.tests.portal_e2e.identities import ROLES
+    from apps.core.tests.portal_e2e.parameters import resolve
+    from django.contrib.auth import get_user_model
+    for role,email in ROLES.items():
+        if email:
+            assert get_user_model().objects.filter(email=email).exists(), role
+    mapping = validate()
+    assert mapping['mapping_status'] == 'complete', mapping['errors']
+    assert mapping['first_party_routes'] == 187
+    assert mapping['verification_status'] == 'pending'
+    for route in mapping['routes']:
+        for value in route['seeded_parameters'].values():
+            if value.get('provider'):
+                assert resolve(value['provider'],route) is not None, (route['id'],value['provider'])
+    bad = json.loads(Path(__file__).with_name('routes.json').read_text())
+    bad['routes'][0]['case'] = None
+    assert validate(bad)['mapping_status'] == 'fail'
+    bad_role = json.loads(Path(__file__).with_name('routes.json').read_text())
+    bad_role['routes'][0]['allowed_roles'] = ['fabricated-role']
+    assert any('unknown principal' in error for error in validate(bad_role)['errors'])
+    bad_provider = json.loads(Path(__file__).with_name('routes.json').read_text())
+    parametrized = next(row for row in bad_provider['routes'] if row['seeded_parameters'])
+    key = next(iter(parametrized['seeded_parameters']))
+    parametrized['seeded_parameters'][key] = {'provider':'seed.fabricated'}
+    assert any('unknown parameter provider' in error for error in validate(bad_provider)['errors'])
+    bad_action = json.loads(Path(__file__).with_name('routes.json').read_text())
+    account = next(row for row in bad_action['routes'] if row['pattern']=='account')
+    account['scenarios'] = [scenario for scenario in account['scenarios'] if scenario['action'] != 'action=profile']
+    assert any('unmapped source actions' in error for error in validate(bad_action)['errors'])
+    bad['routes'].pop()
+    assert any('resolver drift' in error for error in validate(bad)['errors'])
+    studio = Studio.objects.get(org__slug='alpha', slug='studio-0')
+    assert MetricDefinition.objects.filter(studio=studio).count() >= 20
+    assert EmailSchedule.objects.filter(report__studio=studio).exists()
+    assert AlertRule.objects.filter(studio=studio).exists()
+    assert studio.reports.filter(kind='analysis').exists()
+    assert studio.reports.filter(audience='private').exists()
+    assert Report.objects.get(studio=studio, slug='report-0002').data_expired_at is not None
+    experiments = studio_experiments(studio)
+    annotations = calendar_payload(studio)
+    assert len(experiments['rows']) >= 2
+    assert annotations['total_count'] >= 3
+    # Require meaningful storage work on cold registry requests and no hidden SQL substitution.
+    samples = [json.loads(line) for line in (Path(os.environ['PORTAL_E2E_ARTIFACTS'])/'work.jsonl').read_text().splitlines()]
+    cold = [row for row in samples if row['role']=='org-admin' and row['path']=='/s/alpha/studio-0/api/registry' and row['cache_phase']=='registry-cache-cold']
+    warm = [row for row in samples if row['role']=='org-admin' and row['path']=='/s/alpha/studio-0/api/registry' and row['cache_phase']=='registry-cache-warm']
+    assert cold and cold[0]['storage_count'] > 0
+    assert warm and warm[0]['storage_count'] == 0
+    assert all(row['sql_count']>0 and row['response_bytes']>0 for row in cold+warm)
+    delay = float(os.environ.get('PORTAL_E2E_SQL_DELAY_MS','0'))
+    if delay:
+        assert all(row['sql_ms'] >= row['sql_count']*delay for row in cold+warm), 'delay did not reach live HTTP SQL threads'
+    recorded = json.loads((Path(os.environ['PORTAL_E2E_ARTIFACTS'])/'seed.json').read_text())
+    assert recorded['counts'] == seed_manifest()['counts']
+
+
+
+@pytest.mark.parametrize('role', ['org-admin','studio-admin','developer','viewer','viewer-full','private-viewer','group-member','group-admin','group-selected','cross-org','revoked','anonymous'])
+def test_seeded_get_mapping(role):
+    """Safe live GETs validate downstream gates for the next list/catalog cases.
+
+This is HTTP role coverage, not execution of the planned browser journeys.
+"""
+    import requests
+    from apps.core.tests.portal_e2e.identities import ROLES
+    from apps.core.tests.portal_e2e.parameters import url_for
+    from apps.core.tests.portal_e2e.seed import PASSWORD
+    session = requests.Session()
+    session.headers.update({'X-Portal-E2E-Role':role,'X-Portal-E2E-Phase':'mapped-GET-baseline'})
+    origin = os.environ['PORTAL_E2E_ORIGIN']
+    if ROLES[role]:
+        session.get(origin+'/login',timeout=10)
+        session.post(origin+'/login',data={'email':ROLES[role],'password':PASSWORD,'csrfmiddlewaretoken':session.cookies['csrftoken']},headers={'Referer':origin+'/login'},timeout=10)
+    ledger = json.loads(Path(__file__).with_name('routes.json').read_text())
+    for route in ledger['routes']:
+        if not route['first_party'] or route['case'] not in ('C04','C06','C07','C08') or not any(s['method']=='GET' and not s['action'] for s in route['scenarios']):
+            continue
+        if role not in route['allowed_roles'] and role not in route['denied_roles']:
+            continue
+        response = session.get(origin+url_for(route,role),timeout=30,allow_redirects=False)
+        redirected_to_login = response.status_code in (301,302) and '/login' in response.headers.get('Location','')
+        outcome = 'allow' if response.status_code in (200,301,302) and not redirected_to_login else 'deny'
+        expected = 'allow' if role in route['allowed_roles'] else 'deny'
+        terminal = None
+        if route.get('redirect_boundary'):
+            terminal = session.get(origin+url_for(route,role),timeout=30)
+            terminal_auth_denied = '/login' in terminal.url or terminal.status_code in (401,403,404)
+            if role in route['redirect_boundary']['denied_destination_roles']:
+                assert terminal_auth_denied, (route['id'],role,'destination should deny authentication')
+            elif role in route['redirect_boundary']['tenant_hidden_roles']:
+                assert '/s/alpha/' not in terminal.text, (route['id'],role,'cross-org studio links leaked')
+        row = {'route_id':route['id'],'role':role,'method':'GET','status':response.status_code,'expected':expected,'actual':outcome,'scope':'redirect entry only; destination checked separately' if route.get('redirect_boundary') else 'direct route response','terminal_status':terminal.status_code if terminal is not None else None,'http_ms':response.elapsed.total_seconds()*1000,'response_bytes':len(response.content)}
+        with (Path(os.environ['PORTAL_E2E_ARTIFACTS'])/'mapped-get.jsonl').open('a') as out:
             out.write(json.dumps(row)+'\n')
-        denied = session.get(origin + '/s/beta/studio-0/api/' + endpoint, timeout=30, allow_redirects=False)
-        assert denied.status_code in (302, 403, 404), (role, endpoint, denied.status_code)
+        assert response.status_code < 500, row
+        assert outcome == expected, row
+
+def test_live_revoke_inactive_and_impersonation():
+    import requests
+    from apps.core.tests.portal_e2e.seed import PASSWORD
+    from django.contrib.auth import get_user_model
+    from apps.orgs.models import OrgMembership
+    from apps.studios.models import StudioMembership
+    from concurrent.futures import ThreadPoolExecutor
+    origin = os.environ['PORTAL_E2E_ORIGIN']
+    def login(email):
+        session = requests.Session()
+        session.get(origin+'/login', timeout=10)
+        session.post(origin+'/login', data={'email':email,'password':PASSWORD,'csrfmiddlewaretoken':session.cookies['csrftoken']},headers={'Referer':origin+'/login'},timeout=10)
+        return session
+    inactive = login('inactive@example.invalid')
+    assert not inactive.get(origin+'/api/me',timeout=10).json().get('authenticated')
+    viewer = login('alpha-viewer@example.invalid')
+    assert viewer.get(origin+'/s/alpha/studio-0/api/registry',timeout=10).status_code == 200
+    def revoke():
+        user = get_user_model().objects.get(email='alpha-viewer@example.invalid')
+        StudioMembership.objects.filter(user=user).delete()
+        OrgMembership.objects.filter(user=user).delete()
+    # DB checks/mutations run outside Playwright's event loop and touch only this disposable seed.
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        executor.submit(revoke).result()
+    assert viewer.get(origin+'/s/alpha/studio-0/api/registry',timeout=10,allow_redirects=False).status_code in (403,404)
+    operator = login('operator@example.invalid')
+    target = get_user_model().objects.get(email='alpha-impersonated@example.invalid')
+    response = operator.post(origin+f'/operator/orgs/alpha/impersonate/{target.pk}', data={'csrfmiddlewaretoken':operator.cookies['csrftoken']},headers={'Referer':origin+'/operator/'},timeout=10)
+    assert response.status_code == 200
+    assert operator.get(origin+'/api/me',timeout=10).json().get('email') == target.email
+    denied = operator.get(origin+'/api/system/health',timeout=10)
+    assert denied.status_code in (403,404)
+    operator.post(origin+'/operator/impersonate/stop',data={'csrfmiddlewaretoken':operator.cookies['csrftoken']},headers={'Referer':origin+'/'},timeout=10)
+    assert operator.get(origin+'/api/me',timeout=10).json().get('email') == 'operator@example.invalid'

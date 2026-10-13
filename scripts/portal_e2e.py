@@ -33,16 +33,19 @@ def main():
     parser.add_argument('--reports', type=int, choices=[20, 200, 1000], default=20)
     parser.add_argument('--members', type=int, choices=[3, 25, 100], default=3)
     parser.add_argument('--studios', type=int, choices=[1, 10, 50], default=1)
+    parser.add_argument('--metrics', type=int, choices=[20,500,2000], default=20)
+    parser.add_argument('--schedules', type=int, choices=[1,10,50], default=1)
+    parser.add_argument('--rules', type=int, choices=[1,10,50], default=1)
     parser.add_argument('--real-hasher', action='store_true')
     args = parser.parse_args()
     artifacts = args.artifacts.resolve()
     if artifacts.exists() and any(artifacts.iterdir()):
         parser.error('artifact directory must be empty to prevent mixed evidence')
     artifacts.mkdir(parents=True, exist_ok=True)
-    result = {'shard': args.shard, 'sha': subprocess.check_output(['git','rev-parse','HEAD'], cwd=ROOT, text=True).strip(), 'seed': 'portal-baseline-v1', 'status': 'blocked', 'command': sys.argv, 'pending_shards': ['L1','L2','L3','L4','L5']}
+    result = {'shard': args.shard, 'sha': subprocess.check_output(['git','rev-parse','HEAD'], cwd=ROOT, text=True).strip(), 'seed': 'portal-baseline-v2', 'status': 'blocked', 'command': sys.argv, 'pending_shards': ['L1','L2','L3','L4','L5']}
     result['dirty_tree'] = bool(subprocess.check_output(['git','status','--porcelain'], cwd=ROOT, text=True).strip())
-    result['scope'] = 'P00a baseline only'
-    result['manifest_mapping_status'] = 'pending P00b'
+    result['scope'] = 'P00 baseline and route planning; future journeys pending'
+    result['manifest_mapping_status'] = 'not yet validated'
     pg = None
     server = None
     try:
@@ -72,9 +75,12 @@ def main():
             with (artifacts/'migrations.log').open('w') as out:
                 run([sys.executable,'manage.py','migrate','--noinput'], env=env, stdout=out, stderr=subprocess.STDOUT)
                 run([sys.executable,'manage.py','makemigrations','--check','--dry-run'], env=env, stdout=out, stderr=subprocess.STDOUT)
-            code = f'import django; django.setup(); from apps.core.tests.portal_e2e.seed import seed; seed({args.reports}, {args.members}, {args.studios})'
+            code = f'import django; django.setup(); from apps.core.tests.portal_e2e.seed import seed, enrich, seed_manifest; seed({args.reports}, {args.members}, {args.studios}); enrich({args.metrics}, {args.schedules}, {args.rules}); import json; from pathlib import Path; Path({str(artifacts/'seed.json')!r}).write_text(json.dumps(seed_manifest(), indent=2))'
             run([sys.executable,'-c',code], env=env)
             run([sys.executable,'-m','apps.core.tests.portal_e2e.manifest',str(artifacts/'routes.json')], env=env)
+            mapping = json.loads((artifacts/'routes.json').read_text())
+            result['manifest_mapping_status'] = mapping['mapping_status']
+            result['coverage'] = {key: mapping[key] for key in ('first_party_routes','native_routes','planned_scenarios','verification_status')}
             with (artifacts/'server.log').open('w') as log:
                 server = subprocess.Popen([sys.executable,'manage.py','runserver',f'127.0.0.1:{httpport}','--noreload','--insecure'], cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT)
                 for _ in range(120):
@@ -98,9 +104,11 @@ def main():
                 if (artifacts/'work.jsonl').exists():
                     samples = [json.loads(line) for line in (artifacts/'work.jsonl').read_text().splitlines()]
                     ledger = []
-                    for path in sorted(set(row['path'] for row in samples)):
-                        rows = [row for row in samples if row['path'] == path]
-                        ledger.append({'path': path, 'window': 'complete live HTTP request', 'cache': 'mixed baseline; cold/warm split pending', 'fixture': {'reports': args.reports, 'members': args.members, 'studios': args.studios}, 'sql_count_baseline_max': max(row['sql_count'] for row in rows), 'sql_ms_baseline_max': max(row['sql_ms'] for row in rows), 'http_ms_baseline_max': max(row['elapsed_ms'] for row in rows), 'threshold': {'sql_count': max(row['sql_count'] for row in rows), 'http_ms': max(row['elapsed_ms'] for row in rows)}, 'reviewer': 'pending coordinator review', 'threshold_scope': 'observed baseline ceiling; not approved feature cap', 'status': 'baseline-only'})
+                    keys = sorted(set((row['method'],row['role'],row['path'],row['cache_phase']) for row in samples))
+                    actual_seed = json.loads((artifacts/'seed.json').read_text())
+                    for method,role,path,phase in keys:
+                        rows = [row for row in samples if (row['method'],row['role'],row['path'],row['cache_phase']) == (method,role,path,phase)]
+                        ledger.append({'method':method,'role':role,'path':path,'cache_phase':phase,'window':'complete HTTP response through stream completion','sample_count':len(rows),'fixture_counts':actual_seed['counts'], 'baseline_max':{metric:max(row[metric] for row in rows) for metric in ('sql_count','sql_ms','storage_count','storage_ms','response_bytes','elapsed_ms')}, 'approved_thresholds':None,'reviewer':'pending coordinator review','status':'measured-baseline; not an acceptance budget'})
                     (artifacts/'budgets.json').write_text(json.dumps(ledger, indent=2))
                 result['baseline_status'] = result['status']
                 if args.all:
