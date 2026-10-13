@@ -1255,6 +1255,10 @@ body.mgmt a.card:hover {
 }
 .card h3 { margin: 0 0 4px; font-size: var(--fs-lg); }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.org-studios-home .grid { grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); }
+.org-studios-home .card { min-width: 0; overflow-wrap: anywhere; }
+body.mgmt .org-studios-home form.ui-list-toolbar input.ui-input[name="q"] { min-width: 0; max-width: min(340px, 100%); }
+.org-studios-home .page-head-row > div { min-width: 0; overflow-wrap: anywhere; }
 .muted { color: var(--text2); }
 /* Two classes several pages already assumed existed (Experiments' "Storage
    unavailable"/"Not built yet" cells, Annotations' scope label, Audit's

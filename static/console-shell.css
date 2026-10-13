@@ -114,9 +114,10 @@ html[data-theme="dark"] .tl-console-shell:not([data-console-theme]),
 .tl-console-account > summary { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 4px 7px; border-radius: 8px; cursor: pointer; list-style: none; }
 .tl-console-account > summary:hover { background: var(--tl-console-hover); }
 .tl-console-avatar { display: inline-grid; place-items: center; width: 28px; height: 28px; flex: none; border-radius: 50%; background: var(--tl-console-hover); color: var(--tl-console-accent); font-weight: 700; }
-.tl-console-account-menu { position: fixed; top: 63px; right: max(12px, env(safe-area-inset-right)); width: min(260px, calc(100vw - 24px)); min-width: 0; max-height: calc(100dvh - 75px); overflow-y: auto; overscroll-behavior: contain; }
+.tl-console-account-menu { position: fixed; top: 63px; right: max(12px, env(safe-area-inset-right)); width: min(260px, calc(100% - 24px)); min-width: 0; max-height: calc(100dvh - 75px); overflow-y: auto; overscroll-behavior: contain; }
 .tl-console-account-menu > span { display: block; padding: 7px 10px 3px; overflow-wrap: anywhere; color: var(--tl-console-text2); font-size: 12px; }
 .tl-console-account-menu form { margin: 0; }
+.tl-console-account-menu .tl-console-account-docs { display: none; }
 .tl-console-theme { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 5px; }
 .tl-console-theme button { min-height: 36px; padding: 5px 4px; border: 1px solid var(--tl-console-border); border-radius: 7px; background: transparent; color: var(--tl-console-text2); font-family: inherit; font-size: 14px; line-height: 1.4; cursor: pointer; }
 .tl-console-theme button:hover { border-color: var(--tl-console-accent); color: var(--tl-console-accent); }
@@ -183,6 +184,14 @@ body.tl-console-drawer-open { overflow: hidden; }
     body.tl-console-title-known main > .page-head-row:first-child h1,
     body.tl-console-title-known main .settings-content > .page-head:first-of-type > h1,
     body.tl-console-title-known main .settings-content > .page-head-row:first-of-type h1 { display: none; }
+}
+
+@media (max-width: 359px) {
+    .tl-console-header { gap: 4px; }
+    .tl-console-header-spacer, .tl-console-docs-link { display: none; }
+    .tl-console-title-known .tl-console-page-title { flex: 1; }
+    .tl-console-assistant-picker > summary { width: 44px; padding: 0; }
+    .tl-console-account-menu .tl-console-account-docs { display: block; }
 }
 
 @media (prefers-reduced-motion: reduce) {
