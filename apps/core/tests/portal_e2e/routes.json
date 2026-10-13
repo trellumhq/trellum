@@ -13215,9 +13215,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "b807e099f662d15331b082ea312233ad9aabebb90212d4406fdff93a07af4b97",
+      "source_sha256": "b12770f0d300eb599727b10e4fad034adc2eb017abda895737f469abc222ce1b",
       "request_conditions": [],
-      "adapter_sha256": "a8fded2cf6c6cb7efb770ac31e39489a10ea89a76e70722fc697ff32bad4d1d1",
+      "adapter_sha256": "1b74007884ec4118d0318116343b7dd14b915299045ae181d6fd6ccb49e68143",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -19785,9 +19785,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "6430e2cd8af0fd4cd3f7a84d0af7c752f9b0c4a61badd28a52f59c50f4c0b5ca",
+      "source_sha256": "7649060ba0a59343eecbed53f440607c01cf3f88319c2892143cf8aa0439247d",
       "request_conditions": [],
-      "adapter_sha256": "9843f2c67df61d14f76287ccd92f9b733d19bee9f95527248b3f141bee4c0760",
+      "adapter_sha256": "654d24ca470a2e8121b637ff6de413c716a3e781a0e4e4f8dfa7005a430f862d",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -22188,11 +22188,11 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "a00b5cde3bb4d2dd208e817e7f5f0065ceb04ae5e31e26300f4df535d4ed5efc",
+      "source_sha256": "43551cf62b04a1eea467f74acc405d0bd9ef455657b40052483bb410738ae039",
       "request_conditions": [
         "Same-organization group and studio/member scope; read-only choices; invalid shapes and cross-tenant IDs rejected; selected draft preserved."
       ],
-      "adapter_sha256": "6c647b419e87c0e5f5ed14b5a01b089b56335e316598a70642e3a397c1d5c1f8",
+      "adapter_sha256": "cb69930d5eb01579b312447c535552a181e39dc850fbb6c4622af68460a2fef9",
       "conditional_roles": {
         "impersonated": {
           "condition": "Active impersonation of alpha member without organization admin rights is denied; use actual start/stop impersonation session.",
