@@ -191,3 +191,40 @@ before retrying. Native tab closing/reloading also uses the browser's draft
 warning when supported. An accepted native submit guards neighboring drafts,
 excludes its own submitted draft from discard confirmation and suppresses the
 redundant unload warning; canceled form confirmations still send no request.
+
+## Opt-in action observations
+
+`apps.core.actions.action_payload` builds a version 1 `action` observation with
+an immutable operation `id`, `state` (`accepted`, `running`, `succeeded`,
+`failed`, or `unconfirmed`), sanitized `message`, optional tested `revision`,
+and optional root-relative `status_url`. It does not admit work or authorize
+status lookup. Each operation retains its existing worker, permissions and
+persistence. Ordinary settings saves keep their existing response contract.
+Provider acceptance is a separate delivery outcome; it does not prove delivery.
+Browser cancellation or timeout does not cancel server mutations or replay them.
+
+`static/actions.js` exposes `TrellumActions.statusURL(value)` to validate
+same-origin lookup URLs and `createPoller({read, onStatus, onError, isTerminal,
+isCurrent, signal, intervalMs, maxIntervalMs, timeoutMs})`. The returned poller
+has `start`, `refresh`, `pause`, `resume` and permanent `stop` methods. It is
+opt-in; loading it binds no forms, page events or visibility listeners. Callers
+pause hidden surfaces, stop on departure, and resume with current operation
+identity after history restoration. An external abort permanently stops it.
+
+The `read({signal, isCurrent, statusURL})` callback must await response bodies
+and all dependent reads, reject malformed or unsuccessful responses, and
+perform no DOM commits. `onStatus` receives only a current observation.
+For Operations, await authorized Git status and any dependent publish history
+and registry reads in that same lifecycle; preserve their existing shapes.
+Repository flags alone do not establish success. The caller supplies
+`isTerminal(result)` using authoritative domain evidence. Without it, polling
+continues. A refresh during a read coalesces one follow-up. Read failures use
+bounded backoff; timeout leaves the outcome unconfirmed and permits explicit
+refresh while ignoring late results. These retries apply only to reads.
+
+Validate status URLs before fetching them and check the current actor's access
+on every server lookup, including revocation. Keep credentials and provider
+exception text out of observations. Verify delayed bodies, dependent reads,
+obsolete responses, timeout recovery, cleanup and native fallback before
+adopting the helper in a route. Helper protocol tests alone do not verify an
+operation's persistence, worker restart or portal performance.
