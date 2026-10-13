@@ -197,7 +197,13 @@ def _open(
         elif "/r/broken/" in request.url:
             route.fulfill(content_type="text/html", body="<p>Never sends ready</p>")
         elif "/r/" in request.url:
-            route.fulfill(content_type="text/html", body=_report_html())
+            body = _report_html()
+            if request.frame == page.main_frame:
+                # The iframe deliberately rewrites its URL to exercise host
+                # recovery. Native report navigation must retain its display
+                # mode rather than exposing only a transient monitor URL.
+                body = body.replace("history.replaceState(null,'',location.pathname);", "")
+            route.fulfill(content_type="text/html", body=body)
         else:
             route.fulfill(content_type="text/html", body=_catalog_html(fast_timeout=fast_timeout))
 
@@ -394,6 +400,7 @@ def test_mobile_monitor_link_opens_canonical_report_from_hosted_console(report_b
         assert "_console_host" not in href
         link.click()
         page.wait_for_url("**/s/demo/casino/r/player-overview/index.html?display=monitor")
+        page.locator("body.tl-report-monitor").wait_for(state="visible")
         assert top_navigations[-1].endswith("?display=monitor")
         assert "_console_host" not in page.url
         assert errors == []
