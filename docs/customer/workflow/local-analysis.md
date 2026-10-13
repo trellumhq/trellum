@@ -35,12 +35,24 @@ and one agent listener for this destination analysis.
 
 ## Select and route feedback
 
-Use **Select** in the familiar bottom review toolbar. In the source-report
-pane, select a whole chart or section and explain what it should contribute
-to the analysis. In the analysis pane, select an individual heading, text
+Switch between the full-width **Analysis** and **Reports** pages. Choose a
+source from the Reports page picker, then use **Select element** in the workspace
+toolbar. On the Reports page, select a whole chart or section and explain what
+it should contribute to the analysis. On the Analysis page, select an individual heading, text
 block, or other element and describe the edit. **Queue** adds the request to
 the shared queue; **Queue & send** adds it and sends the queue to the agent.
-Both panes target the active analysis, with the selected source attached to
+Open **Queue** to review or edit queued notes, read replies, or send a message.
+It overlays the current page without resizing its charts; Escape or Close
+returns to the same report. Filters, selection drafts and scroll positions are
+retained when switching pages or source reports.
+
+Use **Report only** or **Analysis only** for a view without workspace controls.
+On a keyboard, press Escape to return. **Back to workspace** is also available
+at the top right; it fades on desktop until hovered or focused, and remains
+visible on touch devices. This fills the browser viewport; it does not change
+the browser’s fullscreen setting.
+
+Both pages target the active analysis, with the selected source attached to
 each request. For example, a source selection can say:
 
 > Add this chart to the analysis: explain why conversion fell over the
