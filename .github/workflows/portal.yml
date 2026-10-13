@@ -360,10 +360,12 @@ jobs:
           set -e
           python -c "import sys; assert sys.version_info[:2] == (3, 12), sys.version"
           git worktree add --detach ../previous-release "${{ steps.prev.outputs.tag }}"
-          python -m venv /tmp/current-venv
-          /tmp/current-venv/bin/pip install -r requirements-django.txt -r requirements-test.txt
-          python -m venv /tmp/previous-venv
-          /tmp/previous-venv/bin/pip install \
+          # The image has pip but omits ensurepip. Its pip can install into
+          # isolated environments without adding OS packages to the image.
+          python -m venv --without-pip /tmp/current-venv
+          python -m pip --python /tmp/current-venv install -r requirements-django.txt -r requirements-test.txt
+          python -m venv --without-pip /tmp/previous-venv
+          python -m pip --python /tmp/previous-venv install \
             -r ../previous-release/requirements-django.txt \
             -r ../previous-release/requirements-test.txt
 
@@ -424,7 +426,7 @@ jobs:
           cd ../previous-release
           SUITES=(apps)
           echo "running previous release: ${SUITES[*]}"
-          /tmp/previous-venv/bin/python -m pytest -p previous_schema "${SUITES[@]}" -q || {
+          /tmp/previous-venv/bin/python -m pytest -p previous_schema "${SUITES[@]}" -q -ra || {
             echo
             echo "The previous release's tests fail against this branch's schema."
             echo "Check the failure for environment or pre-existing test issues."
