@@ -7,12 +7,14 @@ multi-studio web process.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import threading
 import time as _time
 from datetime import datetime, timedelta, timezone
 
+from django.core.serializers.json import DjangoJSONEncoder
 from django.core.exceptions import ValidationError
 from django.db.models import Max, Sum
 from django.utils import timezone as dj_tz
@@ -121,7 +123,9 @@ def sync_studio_registry(studio) -> int:
     now = dj_tz.now()
     seen: set[str] = set()
     for entry in entries:
-        config = entry.get("config") or {}
+        # YAML timestamps are native date/datetime objects. Store their ISO
+        # representation so valid annotation dates reach JSON-backed projections.
+        config = json.loads(json.dumps(entry.get("config") or {}, cls=DjangoJSONEncoder))
         slug = entry["slug"]
         seen.add(slug)
         kind = config.get("kind", Report.KIND_REPORT)
