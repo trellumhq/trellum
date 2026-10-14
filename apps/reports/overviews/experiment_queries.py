@@ -8,6 +8,7 @@ from django.db.models import Case, CharField, Count, F, OuterRef, Q, Subquery, V
 from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Coalesce, NullIf
 from django.utils import timezone
+from django.utils.functional import cached_property
 
 from apps.reports.models import Report, ReportExperimentSummary
 
@@ -45,8 +46,20 @@ def url(params, **changes):
     return '?' + urlencode({k: v for k, v in values.items() if v not in ('', None)})
 
 
-def pagination(query, number, params, key):
-    page = Paginator(query, PAGE_SIZE).get_page(number)
+class CountedPaginator(Paginator):
+    """Reuse counts from the one scoped table/timeline aggregate."""
+
+    def __init__(self, query, total):
+        super().__init__(query, PAGE_SIZE)
+        self.total = total
+
+    @cached_property
+    def count(self):
+        return self.total
+
+
+def pagination(query, number, params, key, total):
+    page = CountedPaginator(query, total).get_page(number)
     controls = dict(number=page.number, total=page.paginator.count, pages=page.paginator.num_pages)
     if page.has_previous():
         controls['previous'] = url(params, **{key: page.previous_page_number()})
@@ -112,11 +125,14 @@ def overview(studio, *, params=None, now=None):
     current = Q(summary__schema_version=2, declaration_digest=F('summary__declaration_digest'), summary__state__in=('ready', 'missing'), summary__quality__in=('observed', 'verified'), summary__experiment_state__in=('ready', 'missing'), summary__observed_at__gte=now-timedelta(seconds=300), summary__observed_at__lte=now)
     from django.db.models import BooleanField
     entries = entries.annotate(current_result=Case(When(current, then=Value(True)), default=Value(False), output_field=BooleanField()), numeric_result=Case(When(eligible, then=Value(True)), default=Value(False), output_field=BooleanField()), ci_significant=Case(When(significant, then=Value(True)), default=Value(False), output_field=BooleanField()))
-    values = entries.values(*FIELDS, 'current_result', 'numeric_result', 'ci_significant')
-    table, table_controls = pagination(values, state['page'], state, 'page')
     window_start = _shift_months(_month_floor(today), -3)
     window_end = _shift_months(_month_floor(today), 1)
-    overlap = values.filter(start_date__isnull=False, start_date__lte=today, start_date__lt=window_end).filter(Q(end_date__isnull=True) | Q(end_date__gte=window_start)).filter(Q(end_date__isnull=True) | Q(end_date__gte=F('start_date')))
-    timeline_page, timeline_controls = pagination(overlap, state['timeline_page'], state, 'timeline_page')
+    overlaps = (Q(start_date__isnull=False, start_date__lte=today, start_date__lt=window_end)
+                & (Q(end_date__isnull=True) | Q(end_date__gte=window_start))
+                & (Q(end_date__isnull=True) | Q(end_date__gte=F('start_date'))))
+    filtered = entries.order_by().aggregate(table=Count('pk'), timeline=Count('pk', filter=overlaps))
+    values = entries.values(*FIELDS, 'current_result', 'numeric_result', 'ci_significant')
+    table, table_controls = pagination(values, state['page'], state, 'page', filtered['table'])
+    timeline_page, timeline_controls = pagination(values.filter(overlaps), state['timeline_page'], state, 'timeline_page', filtered['timeline'])
     filters = [dict(label=label, value=value, count=totals[count], url=url({'q': q}, status=value)) for label, value, count in (('All', '', 'total'), ('Running', 'running', 'running'), ('Concluded', 'concluded', 'concluded'), ('Past end', 'past_end', 'past_end_running'), ('Scheduled', 'scheduled', 'scheduled'), ('Unknown', 'unknown', 'unknown'))]
     return dict(rows=[present(r) for r in table], row_count=totals['total'], filtered_count=table_controls['total'], tiles=totals, coverage=coverage, timeline=_build_timeline([present(r) for r in timeline_page], today), table_page=table_controls, timeline_page=timeline_controls, status_filter=status, q=q, filters=filters, generated_at=now.isoformat())
