@@ -107,18 +107,25 @@ def report_aggregates(report, *, window_days: int = 90) -> dict:
     return out
 
 
-def studio_run_stats(studio, *, window_days: int = 30) -> dict[str, dict]:
+def studio_run_stats(studio, *, window_days: int = 30, slugs=None) -> dict[str, dict]:
     """Bulk per-slug stats for the Operations view, two queries total.
 
     Returns ``{slug: {"last": {...} | None, "agg": {...}}}`` over terminal
     runs in the window. Grouping by slug (not report FK) rides the existing
     ``(studio, slug, -created_at)`` index and spans report renames the same
-    way the rest of the dashboard does.
+    way the rest of the dashboard does. Optional slugs restrict both queries;
+    None preserves the complete studio result and an empty selection does no work.
     """
     cutoff = timezone.now() - timezone.timedelta(days=window_days)
     qs = Run.objects.filter(
         studio=studio, status__in=TERMINAL_STATUSES, created_at__gte=cutoff
     )
+
+    if slugs is not None:
+        slugs = tuple(dict.fromkeys(slugs))
+        if not slugs:
+            return {}
+        qs = qs.filter(slug__in=slugs)
 
     stats: dict[str, dict] = {}
     for row in qs.values("slug").annotate(
@@ -144,7 +151,7 @@ def studio_run_stats(studio, *, window_days: int = 30) -> dict[str, dict]:
 
     # Latest terminal run per slug: DISTINCT ON (Postgres) keyed to the same
     # order_by prefix.
-    for run in qs.order_by("slug", "-created_at").distinct("slug"):
+    for run in qs.only("slug", "status", "created_at", "started_at", "finished_at", "peak_memory_mb").order_by("slug", "-created_at").distinct("slug"):
         entry = stats.get(run.slug)
         if entry is not None:
             entry["last"] = {
