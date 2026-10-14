@@ -70,7 +70,9 @@ def test_native_options_bounded_selected_additive_and_binding_facts(catalog, mon
         'from': '2026-01-01', 'to': '2026-02-01', 'split_a': 'Platform'})
     assert response.status_code == 200
     html = response.content.decode()
-    selects = re.findall(r'<select\b[^>]*>(.*?)</select>', html, re.S)
+    # The shared shell (scope switcher) owns its own bounded <select id="shell...">; only the
+    # comparison selectors are asserted here.
+    selects = [body for attrs, body in re.findall(r'<select\b([^>]*)>(.*?)</select>', html, re.S) if 'id="shell' not in attrs]
     assert len(selects) == 2 and all(value.count('<option') <= 28 for value in selects)
     assert 'value="metric_1999" selected' in html and 'value="metric_1998" selected' in html
     assert 'Grain: week' in html and 'Time rollup: last' in html
