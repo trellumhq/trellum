@@ -2,6 +2,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import os
+import json
 from urllib.parse import urlparse
 
 import pytest
@@ -87,7 +88,11 @@ def test_group_draft_browse_save_and_native_discovery(engine, width, live_server
         page.locator('[name="report_q"]').fill("059")
         page.get_by_role("button", name="Search reports", exact=True).click()
         expect(page.get_by_role("checkbox", name="Report 059", exact=False)).to_be_checked()
-        assert page.locator("[name=reports]:checked").count() == 2
+        assert page.locator("[name=reports]:checked").count() == 1
+        packet = json.loads(page.locator('[name="reports__selection"]').input_value())
+        assert set(packet["selected"]) == {str(reports[0].pk), str(reports[-1].pk)}
+        assert packet["editable"] == [str(reports[-1].pk)]
+        expect(page.get_by_role("button", name="Remove Report 000", exact=False)).to_be_visible()
         assert assignments() == {reports[0].pk, reports[-1].pk}
         native.close()
         browser.close()

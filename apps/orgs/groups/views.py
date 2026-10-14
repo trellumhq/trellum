@@ -14,6 +14,7 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 from apps.core import roles
 from apps.core.audit import audit, audit_many
 from apps.core.choice_requests import choice_request_params
+from apps.core.compact_choices import decode_compact_selection
 from apps.core.form_responses import is_settings_request, settings_error, settings_success
 from apps.core.permissions import require_org_role, require_studio_role
 from apps.core.report_access import selected_report_access_block_reason
@@ -231,7 +232,14 @@ def group_detail(request, org_slug, group_id):  # noqa: ARG001
         action = request.POST.get("action")
         if action in {"browse_access", "browse_member"}:
             if action == "browse_access":
-                access_form = StudioAccessForm(request.POST, org=request.org)
+                draft = request.POST.copy()
+                selection = decode_compact_selection(draft, "reports")
+                removed = request.GET.get("remove_report")
+                if removed and not selection.error:
+                    draft.pop("reports__selection", None)
+                    draft.setlist("reports", [value for value in selection if value != removed])
+                access_form = StudioAccessForm(draft, org=request.org)
+                access_form.is_valid()
                 tab = "access"
             else:
                 tab = "members"
@@ -379,14 +387,21 @@ def group_detail(request, org_slug, group_id):  # noqa: ARG001
                 "studio": selected_studio, "role": grant.role if grant else "",
                 "viewer_scope": grant.viewer_scope if grant else "all", "reports": selected_ids})
             if access_form:
-                selected_ids = access_form.data.getlist("reports")
+                selected_ids = access_form["reports"].value()
             valid_selected = Report.objects.filter(studio=selected_studio, pk__in=present.report_ids(selected_ids)).only(*present.REPORT_FIELDS).order_by("name", "slug")
             report_q = present.text(request, "report_q")
             report_page = present.window(request, present.report_choices(selected_studio, report_q), "report_page")
             catalog = {r.pk: r for r in report_page.object_list}
             catalog.update({r.pk: r for r in valid_selected})
             catalog_ids = {str(pk) for pk in catalog}
-            row_form.present_reports(catalog.values(), [value for value in selected_ids if str(value) not in catalog_ids])
+            row_form.present_reports(catalog.values(), [value for value in selected_ids if str(value) not in catalog_ids], page_values=[report.pk for report in report_page.object_list])
+            removal_urls = {}
+            for identity in selected_ids:
+                parameters = request.GET.copy()
+                parameters["tab"] = "access"
+                parameters["remove_report"] = str(identity)
+                removal_urls[str(identity)] = request.path + "?" + parameters.urlencode()
+            row_form.fields["reports"].widget.removal_urls = removal_urls
             private = Report.objects.only(*present.REPORT_FIELDS).filter(studio=selected_studio, audience=Report.AUDIENCE_PRIVATE,
                 permission_group_grants__grant=grant).distinct().order_by("name", "slug") if grant else Report.objects.none()
             private_page = present.window(request, private, "private_page")

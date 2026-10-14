@@ -264,3 +264,24 @@ parameters and enforce their usual permissions, CSRF and body limits. This
 keeps large selections below the web server's request-line limit. Choice
 reads do not save, send or audit changes; failures retain the draft and Retry
 remains an explicit action.
+
+## Compact report selection transport
+
+Group studio access opts into `CompactCheckboxSelectMultiple` and
+`data-recipient-compact`. Its native presentation renders at most 25 editable
+checkboxes, selected labels, and browse-only removal controls for off-page
+selections. One hidden `<field>__selection` JSON packet contains `version: 1`,
+`selected` string identities and `editable` string identities. The decoder
+combines `(selected - editable)` with checked submitted values. Unchecking a
+page choice removes it; browsing retains the complete draft and writes no grants
+or audits. Ordinary repeated fields remain accepted for existing callers.
+
+Packets are untrusted form data. Malformed packets produce a visible field
+error and retain the raw packet on rerender; identities still pass the complete
+authorized model choice validation. No global request-field limit is changed.
+The opted-in picker seeds off-page checkbox records from escaped selected-row
+JSON, keeping names, checked/defaultChecked state and shared draft tracking.
+The form's `formdata` event replaces successful checkbox entries with one
+complete packet, respecting disabled controls and fieldsets. Shared Save,
+submitted snapshots, reset and unconfirmed outcomes retain their existing
+contracts; this transport adds no submit handler or write retry.
