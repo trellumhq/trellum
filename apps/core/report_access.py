@@ -52,7 +52,7 @@ def can_view_report(user, report, *, request=None) -> bool:
             or report.audience == report.AUDIENCE_PRIVATE
         ):
             return False
-        return visible_reports(user, Report.objects.filter(pk=report.pk), request=request).exists()
+        return raw_scope_reports(user, Report.objects.filter(pk=report.pk), request=request).exists()
     else:
         er = effective_roles(user, report.studio.org)
     scope = er.report_scope_for(report.studio)
@@ -70,17 +70,17 @@ def raw_scope_reports(user, queryset, *, request=None):
     ``EffectiveRoles.report_scope_for``. Availability-filtered listings use
     ``visible_reports``; content checks use ``can_view_report``.
     """
-    return _report_scope_queryset(user, queryset, request=request, blocked=False)
+    return _report_scope_queryset(user, queryset, request=request, blocked=False, raw=True)
 
 
 def visible_reports(user, queryset, *, request=None):
     """Filter a Report queryset to rows visible under current access readiness."""
     return _report_scope_queryset(
-        user, queryset, request=request, blocked=bool(selected_report_access_block_reason())
+        user, queryset, request=request, blocked=bool(selected_report_access_block_reason()), raw=False
     )
 
 
-def _report_scope_queryset(user, queryset, *, request, blocked):
+def _report_scope_queryset(user, queryset, *, request, blocked, raw):
     """Shared SQL authorization for raw scope and availability-filtered lists."""
     from apps.reports.models import Report
 
@@ -118,7 +118,26 @@ def _report_scope_queryset(user, queryset, *, request, blocked):
     )
     management = (Q(_ra_org_admin=True) | Q(_ra_studio_manager=True) |
                   Q(_ra_group_org_admin=True) | Q(_ra_group_manager=True) | Q(_ra_grant_manager=True))
-    full_viewer = (Q(_ra_studio_viewer=True) | Q(_ra_group_viewer=True) | Q(_ra_grant_viewer=True)) & Q(audience=Report.AUDIENCE_STUDIO)
+    if raw:
+        # The complete resolver records a full path even for a malformed
+        # direct role or grant. A separate valid selected Viewer grant can
+        # supply the role while that path admits studio-audience reports.
+        queryset = queryset.alias(
+            _ra_viewer_role=Exists(scoped_grant.filter(role=roles.VIEWER)),
+            _ra_full_path=Exists(studio_member)
+            | Exists(group_member.filter(group__default_studio_role__in=(
+                roles.VIEWER, roles.DEVELOPER, roles.ADMIN
+            )))
+            | Exists(scoped_grant.exclude(viewer_scope="selected", role=roles.VIEWER)),
+        )
+        full_viewer = (
+            (Q(_ra_studio_viewer=True) | Q(_ra_group_viewer=True) | Q(_ra_viewer_role=True))
+            & Q(_ra_full_path=True, audience=Report.AUDIENCE_STUDIO)
+        )
+    else:
+        full_viewer = (
+            Q(_ra_studio_viewer=True) | Q(_ra_group_viewer=True) | Q(_ra_grant_viewer=True)
+        ) & Q(audience=Report.AUDIENCE_STUDIO)
     if blocked:
         queryset = queryset.alias(
             _has_private_reports=Exists(Report.objects.filter(studio_id=OuterRef("studio_id"), audience=Report.AUDIENCE_PRIVATE)))

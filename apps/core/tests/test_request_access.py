@@ -366,6 +366,68 @@ def test_raw_scope_restricts_superuser_bearer_org(superuser, org, other_org, stu
     assert not raw_scope_reports(superuser, Report.objects.filter(pk=report.pk), request=request).exists()
 
 
+@pytest.mark.parametrize("malformed_source", ["direct", "grant"])
+def test_raw_scope_matches_full_path_from_malformed_row_and_selected_viewer(
+    member, org, studio, make_group, attach_group, grant_studio, settings, malformed_source,
+):
+    from apps.core.report_access import can_view_report, raw_scope_reports, visible_reports
+    from apps.studios.models import StudioMembership
+
+    settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = True
+    public = Report.objects.create(studio=studio, slug=f"raw-{malformed_source}-public")
+    private = Report.objects.create(
+        studio=studio, slug=f"raw-{malformed_source}-private", audience=Report.AUDIENCE_PRIVATE
+    )
+    selected = make_group(f"raw {malformed_source} selected", grants=[(studio, roles.VIEWER)])
+    selected_grant = selected.grants.get()
+    selected_grant.viewer_scope = selected_grant.REPORT_SCOPE_SELECTED
+    selected_grant.save(update_fields=["viewer_scope"])
+    attach_group(member, selected)
+    ReportPermissionGrant.objects.create(grant=selected_grant, report=private)
+    if malformed_source == "direct":
+        grant_studio(member, studio, roles.VIEWER)
+        StudioMembership.objects.filter(user=member, studio=studio).update(role="unknown")
+    else:
+        malformed = make_group("raw malformed grant", grants=[(studio, roles.VIEWER)])
+        attach_group(member, malformed)
+        type(selected_grant).objects.filter(group=malformed, studio=studio).update(role="unknown")
+
+    request = request_for(member)
+    legacy = get_effective(request, org).report_scope_for(studio)
+    assert legacy == frozenset({public.pk, private.pk})
+    rows = raw_scope_reports(member, Report.objects.filter(studio=studio), request=request)
+    assert set(rows.values_list("pk", flat=True)) == set(legacy)
+    assert can_view_report(member, public, request=request)
+    assert not visible_reports(member, Report.objects.filter(pk=public.pk), request=request).exists()
+    settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = False
+    assert set(raw_scope_reports(
+        member, Report.objects.filter(studio=studio), request=request
+    ).values_list("pk", flat=True)) == set(legacy)
+    assert not can_view_report(member, public, request=request)
+
+
+def test_malformed_full_path_without_private_reports_remains_full_when_scoping_blocked(
+    member, org, studio, make_group, attach_group, grant_studio, settings,
+):
+    from apps.core.report_access import can_view_report
+    from apps.studios.models import StudioMembership
+
+    settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = True
+    public = Report.objects.create(studio=studio, slug="malformed-full-public")
+    selected = make_group("malformed full selected", grants=[(studio, roles.VIEWER)])
+    grant = selected.grants.get()
+    grant.viewer_scope = grant.REPORT_SCOPE_SELECTED
+    grant.save(update_fields=["viewer_scope"])
+    attach_group(member, selected)
+    grant_studio(member, studio, roles.VIEWER)
+    StudioMembership.objects.filter(user=member, studio=studio).update(role="unknown")
+    request = request_for(member)
+    assert get_effective(request, org).report_scope_for(studio) is None
+    assert request_org_access(request, org).has_full_studio_visibility(studio)
+    settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = False
+    assert can_view_report(member, public, request=request)
+
+
 def test_selected_report_identity_remains_visible_before_content_503(
     member, org, studio, make_group, attach_group, settings,
 ):
