@@ -133,7 +133,13 @@ def catalog_indicators_payload(request, report_ids, *, now=None):
         observed_attempt = bool(summary and summary["observed_at"] and now-timedelta(seconds=FRESH_SECONDS) <= summary["observed_at"] <= now and (summary["state"] in ("ready", "missing") or (summary["state"] == "uncertain" and summary["attempt_status"])) and (summary["attempt_at"] is None or summary["attempt_at"] <= now))
         worker_attempt = bool(summary and summary["attempt_at"] and now-timedelta(seconds=FRESH_SECONDS) <= summary["attempt_at"] <= now and summary["attempt_status"])
         fresh = bool(summary and summary["schema_version"] == 2 and (observed_attempt or worker_attempt))
-        output_known = bool(summary and observed_attempt and summary["schema_version"] == 2 and summary["quality"] in ("observed", "verified") and summary["state"] in ("ready", "missing") and summary["runtime_state"] == "ready" and summary["has_output"] is not None)
+        output_observed = bool(summary and observed_attempt and summary["schema_version"] == 2 and summary["quality"] in ("observed", "verified") and summary["state"] in ("ready", "missing"))
+        output_known = bool(output_observed and summary["runtime_state"] == "ready" and summary["has_output"] is not None)
+        observation_state = summary["state"] if summary else "pending"
+        if summary and summary["schema_version"] != 2:
+            observation_state = "unsupported"
+        elif observation_state in ("ready", "missing") and not output_observed:
+            observation_state = "stale"
         blocked_projection = summary["blocked"] if summary else []
         invalid_blocked = not isinstance(blocked_projection, list) or len(blocked_projection) > 256 or any(not isinstance(n, str) or len(n) > 200 for n in blocked_projection)
         meta = {"last_status": summary["attempt_status"], "last_error": summary["attempt_error"], "blocked_by": blocked_projection if not invalid_blocked else []} if fresh else {}
@@ -149,7 +155,7 @@ def catalog_indicators_payload(request, report_ids, *, now=None):
         failing = next((s for s in referenced if s.state == SourceState.FAILING), None)
         if source_status == "ready" and row["references"] and (not fresh or (run and run.incomplete)):
             source_status = "unavailable"
-        result[report_id] = dict(slug=row["slug"], source_status=source_status, waiting=bool(blocked) if source_status == "ready" else None, blocked_by=blocked, failing_source={"name": failing.name, "since": failing.last_check_at.isoformat() if failing.last_check_at else None} if failing else None, last_error=build_error(meta, run)[:500] if fresh or run else None, build_status=run.status if run else summary["attempt_status"] if fresh else None, subscriptions={"state": "ready", "count": subscriptions.get(report_id, 0)}, views_30d=daily.get(report_id, 0), last_viewed=last[report_id].isoformat() if last[report_id] else None, observation_state=summary["state"] if summary else "pending")
+        result[report_id] = dict(slug=row["slug"], source_status=source_status, waiting=bool(blocked) if source_status == "ready" else None, blocked_by=blocked, failing_source={"name": failing.name, "since": failing.last_check_at.isoformat() if failing.last_check_at else None} if failing else None, last_error=build_error(meta, run)[:500] if fresh or run else None, build_status=run.status if run else summary["attempt_status"] if fresh else None, subscriptions={"state": "ready", "count": subscriptions.get(report_id, 0)}, views_30d=daily.get(report_id, 0), last_viewed=last[report_id].isoformat() if last[report_id] else None, observation_state=observation_state, output_state="known" if output_known else observation_state if not output_observed else summary["runtime_state"])
         compact = summary["runtime_projection"] if output_known else None
         validation, totals = {}, {}
         if isinstance(compact, dict):
