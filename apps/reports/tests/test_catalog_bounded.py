@@ -38,6 +38,11 @@ def test_growth_global_search_and_paging_are_database_only(studio, org_admin, mo
     assert len(result["categories"]["categories"]) <= 25
     assert len(queries) <= 12
     assert all('"config"' not in q["sql"] for q in queries)
+    for helper, params in ((catalog_categories_payload, {"tab": "missing category"}),
+                           (catalog_personal_payload, {})):
+        with CaptureQueriesContext(connection) as extra_queries:
+            helper(req, params)
+        assert all('"config"' not in q["sql"] for q in extra_queries)
     assert catalog_payload(req, {"q": rows[-1].name})["rows"][0]["id"] == rows[-1].pk
     seen = []
     for page in range(1, (size+24)//25+1):
@@ -133,7 +138,7 @@ def test_full_description_and_long_tag_native_chunks(studio, org_admin):
     assert result["declaration"]["tag_pagination"]["total"] == 41
 
 
-@pytest.mark.parametrize("params", [{"q": "x"*1001}, {"tab": "x"*201}, {"page": "0"}, {"recent": ["x"]*9}, {"sort": "name;DROP"}, {"view": "ops"}])
+@pytest.mark.parametrize("params", [{"q": "\x00"}, {"category_q": "name\x00"}, {"recent": ["bad\x00"]}, {"q": "x"*1001}, {"tab": "x"*201}, {"page": "0"}, {"recent": ["x"]*9}, {"sort": "name;DROP"}, {"view": "ops"}])
 def test_invalid_state_is_rejected_before_database_work(studio, org_admin, params):
     with CaptureQueriesContext(connection) as queries, pytest.raises(ValueError):
         catalog_payload(request(org_admin, studio), params)

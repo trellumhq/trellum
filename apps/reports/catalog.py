@@ -38,7 +38,7 @@ def bounded_payload(payload, ceiling):
 def validate_params(params):
     for key, limit in (("q", 1000), ("tab", 200), ("category_q", 200), ("studio", 512), ("view", 5), ("sort", 12), ("csort", 12), ("asc", 1)):
         value = params.get(key)
-        if value is not None and (not isinstance(value, str) or len(value) > limit):
+        if value is not None and (not isinstance(value, str) or len(value) > limit or "\x00" in value):
             raise ValueError("Invalid catalog state")
     if params.get("view", "cards") not in ("cards", "list") or params.get("asc", "1") not in ("0", "1"):
         raise ValueError("Invalid catalog state")
@@ -77,7 +77,7 @@ def recent_slugs(params):
     values = params.getlist("recent") if hasattr(params, "getlist") else params.get("recent", [])
     if isinstance(values, str):
         values = [values]
-    if not isinstance(values, (list, tuple)) or len(values) > 8 or any(not isinstance(v, str) or len(v) > 200 for v in values):
+    if not isinstance(values, (list, tuple)) or len(values) > 8 or any(not isinstance(v, str) or len(v) > 200 or "\x00" in v for v in values):
         raise ValueError("Invalid recent reports")
     return list(dict.fromkeys(values))
 
@@ -208,7 +208,7 @@ def catalog_categories_payload(request, params, *, kind="report", now=None):
     selected = params.get("tab", "all")
     pinned = None
     if selected not in ("all", "_favorites", "_recent") and not any(r["display_category"] == selected for r in rows):
-        pinned = relation.filter(display_category=selected).aggregate(count=Count("pk"))
+        pinned = relation.filter(display_category=selected).values("pk").aggregate(count=Count("pk"))
         pinned["display_category"] = selected
     return bounded_payload(dict(version=1, categories=rows, selected=pinned, pagination=pagination(page, total)), 24*1024)
 
@@ -220,8 +220,9 @@ def catalog_payload(request, params, *, kind="report", now=None):
     selected, q, folder = _filtered(relation, params, recent)
     _, sort, ascending = _order(params, recent)
     page = page_number(params.get("page"))
-    total = selected.count()
-    coverage = relation.aggregate(total=Count("pk"), known=Count("pk", filter=Q(observation_known=True)))
+    # Count distinct identities without selecting/comparing full config JSON.
+    total = selected.values("pk").count()
+    coverage = relation.values("pk", "observation_known").aggregate(total=Count("pk"), known=Count("pk", filter=Q(observation_known=True)))
     coverage["unknown"] = coverage["total"]-coverage["known"]
     return bounded_payload(dict(version=1, rows=_rows(selected, params, recent, page, grouped=not q and folder == "all"), pagination=pagination(page, total), coverage=coverage, categories=catalog_categories_payload(request, params, kind=kind, now=now), applied=dict(kind=kind, q=q, tab=folder, sort=sort, ascending=ascending)), 128*1024)
 
@@ -235,7 +236,7 @@ def catalog_personal_payload(request, params, *, kind="report", now=None):
     recent = recent_slugs(params)
     favorite_page = page_number(params.get("favorite_page"))
     favorites = relation.filter(is_favorite=True)
-    total = favorites.count()
+    total = favorites.values("pk").count()
     # Favorites follow the current comparator; All's recent order is local.
     favorite_params = dict(params.items())
     favorite_params["tab"] = "_favorites"
