@@ -218,104 +218,13 @@ def _analytics_days(raw) -> int:
 
 @require_studio_role(roles.DEVELOPER)
 def analytics(request, org_slug, studio_slug):  # noqa: ARG001
-    """One row per report, computed with a handful of aggregate queries
-    across the WHOLE studio -- never one query per report. Reports with no
-    views still get a row: the loop below starts from every
-    present-in-scan Report and reads each stat dict with ``.get(pk,
-    default)``, which is what makes this a left join rather than an inner
-    one (a query built the other way around -- starting from
-    ReportViewEvent/ReportViewDaily -- would silently drop a report nobody
-    has ever looked at, exactly the report this page most needs to surface).
-    """
-    from datetime import timedelta
+    """Global studio analytics, with bounded server-side rows and controls."""
+    from apps.reports.analytics import analytics_payload
 
-    days = _analytics_days(request.GET.get("days"))
-    since = timezone.now() - timedelta(days=days)
-
-    reports = list(Report.objects.filter(studio=request.studio, present_in_scan=True))
-    report_ids = [r.pk for r in reports]
-
-    # "Views" for the selected window: the daily rollup, which (unlike the
-    # raw event log below) is kept forever -- see
-    # apps.reports.models.record_view.
-    views_by_report = {
-        row["report"]: row["total"]
-        for row in ReportViewDaily.objects.filter(
-            report_id__in=report_ids, date__gte=since.date()
-        ).values("report").annotate(total=Sum("views"))
-    }
-
-    # Share views and unique viewers both need the raw event log, so both
-    # are bounded by however far back IT goes (capped to the same 90 days
-    # above) -- one query for the share-only count, one for both distinct
-    # counts together (a user viewing from two browsers still counts once;
-    # a link opened by two different people still counts once each --
-    # counted separately per spec, then summed for the table's one column).
-    windowed_events = ReportViewEvent.objects.filter(report_id__in=report_ids, created_at__gte=since)
-    share_views_by_report = {
-        row["report"]: row["n"]
-        for row in windowed_events.filter(share_link__isnull=False)
-        .values("report").annotate(n=Count("id"))
-    }
-    unique_by_report = {
-        row["report"]: (row["unique_users"], row["unique_links"])
-        for row in windowed_events.values("report").annotate(
-            unique_users=Count("user", distinct=True, filter=Q(user__isnull=False)),
-            unique_links=Count("share_link", distinct=True, filter=Q(share_link__isnull=False)),
-        )
-    }
-
-    # "Last viewed" and the stale flag deliberately are NOT re-scoped to the
-    # selected window -- they answer "ever" / "still true right now", same
-    # as the dashboard cards. Reused from apps.reports.scan rather than
-    # reimplemented, so the two surfaces can never disagree about what
-    # "stale" means.
-    views_30d_by_report, last_viewed_by_report = _view_stats_for(reports)
-
-    rows = []
-    for report in reports:
-        unique_users, unique_links = unique_by_report.get(report.pk, (0, 0))
-        runtime_meta: dict = {}
-        try:
-            runtime_meta = storage.read_meta(request.studio, report.slug)
-        except Exception as exc:  # noqa: BLE001 - a stale flag is not worth a broken page
-            logger.warning(f"report storage unreachable: {type(exc).__name__}: {exc}")
-        rows.append(
-            {
-                "report": report,
-                "views": views_by_report.get(report.pk, 0),
-                "unique_users": unique_users,
-                "unique_links": unique_links,
-                "unique_total": unique_users + unique_links,
-                "share_views": share_views_by_report.get(report.pk, 0),
-                "last_viewed": last_viewed_by_report.get(report.pk),
-                "stale": (
-                    views_30d_by_report.get(report.pk, 0) == 0
-                    and _built_recently(runtime_meta.get("last_status"), runtime_meta.get("last_run"))
-                ),
-            }
-        )
-    rows.sort(key=lambda r: (r["report"].name or r["report"].slug).lower())
-
-    # Header subline counts (ui-style-guide.md §1's canon header) -- summed
-    # in Python from the rows already built above, not a fifth query, so the
-    # page's query count still does not scale with the report count.
-    reports_viewed_count = sum(1 for r in rows if r["views"] > 0)
-    total_share_views = sum(r["share_views"] for r in rows)
-
-    return render(
-        request,
-        "reports/analytics.html",
-        {
-            "org": request.org,
-            "studio": request.studio,
-            "rows": rows,
-            "days": days,
-            "day_choices": (7, 30, 90),
-            "reports_viewed_count": reports_viewed_count,
-            "total_share_views": total_share_views,
-        },
-    )
+    payload = analytics_payload(request.studio, request.GET, _analytics_days(request.GET.get("days")))
+    return render(request, "reports/analytics.html", {
+        "org": request.org, "studio": request.studio, **payload,
+    })
 
 
 # ── JSON API (legacy handlers.py shapes) ────────────────────────────────────

@@ -552,15 +552,16 @@ class TestAnalyticsPage:
     def test_admin_also_allowed(self, login, admin_user, prefix, report_row):
         assert login(admin_user).get(f"{prefix}/analytics").status_code == 200
 
-    def test_stale_flag_reuses_the_dashboard_convention(self, login, developer, prefix, studio_tree, report_row, write_meta):
-        write_meta(report_row.slug, last_status="success", last_run=timezone.now().isoformat())
+    def test_stale_flag_uses_fresh_successful_observation(self, login, developer, prefix, report_row):
+        from apps.reports.models import ReportSourceSummary
+
+        ReportSourceSummary.objects.update_or_create(report=report_row, defaults={
+            "state": "ready", "quality": "observed", "observed_at": timezone.now(),
+            "attempt_status": "success", "attempt_at": timezone.now(),
+        })
         resp = login(developer).get(f"{prefix}/analytics")
-        row = resp.context["rows"][0]
-        assert row["stale"] is True
-        # Rendered as the info-toned "unseen" badge (relabelled from "stale",
-        # which is now reserved for the metrics-catalog definition-drift badge).
-        body = resp.content.decode()
-        assert "ui-badge info" in body and "unseen" in body
+        assert resp.context["rows"][0]["stale"] is True
+        assert "unseen" in resp.content.decode()
 
     def test_empty_studio_shows_the_empty_state(self, login, developer, prefix, studio_tree):
         # No report_row fixture pulled in here -- present_in_scan reports:
@@ -568,7 +569,7 @@ class TestAnalyticsPage:
         resp = login(developer).get(f"{prefix}/analytics")
         assert resp.status_code == 200
         assert resp.context["rows"] == []
-        assert "No views recorded yet" in resp.content.decode()
+        assert "No reports in this studio" in resp.content.decode()
 
     def test_days_param_narrows_the_window(self, login, developer, prefix, report_row):
         ReportViewDaily.objects.create(

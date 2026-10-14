@@ -2,22 +2,17 @@
 {% load static %}
 {% block title %}Report Analytics — {{ studio.name }}{% endblock %}
 {% block content %}
-{% comment %}Studio-scoped, developer/admin-only sibling of the dashboard
-(internal planning#4 follow-up) -- who's actually looking at this studio's
-reports, one table. Reuses the same ui.css table/badge/panel conventions
-as templates/reports/my_deliveries.html rather than the dashboard's own
-client-rendered cards, since this is server-rendered tabular data with its
-own filter/sort, not a report-launcher grid. Brought up to the Metrics-page
-canon (ui-style-guide.md, punch-list item 1 -- the worst-styled management
-page before this pass): kicker+h1+subline header, soft-fill .ui-pill range
-buttons, tabular-nums numbers, mono last-viewed, .ui-empty.{% endcomment %}
 <style>
 .analytics-toolbar {
     display: flex; align-items: center; justify-content: space-between;
     gap: 12px; flex-wrap: wrap; margin-bottom: 14px;
 }
 .analytics-range { display: flex; gap: 6px; }
-.analytics-search { width: 240px; }
+.analytics-search { flex: 1; min-width: 0; }
+.analytics-search-form { display:flex; align-items:end; gap:12px; flex-wrap:wrap; flex:1; }
+.analytics-pagination { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:16px; }
+#analyticsTable th a { display:inline-flex; align-items:center; min-height:44px; gap:6px; }
+@media (max-width:767px) { .analytics-search-form { width:100%; flex-direction:column; align-items:stretch; } .analytics-search-form > div, .analytics-search { width:100%; } }
 #analyticsTable th[data-sort] { cursor: pointer; user-select: none; white-space: nowrap; }
 #analyticsTable th[data-sort]:hover { color: var(--accent-ink); }
 #analyticsTable .analytics-sort-ind { color: var(--text3); opacity: 0.55; font-size: 0.9em; }
@@ -26,7 +21,10 @@ buttons, tabular-nums numbers, mono last-viewed, .ui-empty.{% endcomment %}
 #analyticsTable th[aria-sort="ascending"],
 #analyticsTable th[aria-sort="descending"] { color: var(--accent-ink); }
 #analyticsTable td.num, #analyticsTable th.num { text-align: right; font-variant-numeric: tabular-nums; }
-#analyticsTable .analytics-report-cell { display: flex; align-items: center; gap: 8px; }
+#analyticsTable .analytics-report-cell { display: flex; align-items: center; flex-wrap:wrap; gap: 8px; min-width:0; }
+#analyticsTable .analytics-report-cell a { overflow-wrap:anywhere; min-width:0; }
+#analyticsTable .ui-badge { white-space:normal; overflow-wrap:anywhere; }
+@media (max-width:767px) { #analyticsTable tbody, #analyticsTable tbody tr { min-width:0; } }
 </style>
 
 <header class="page-head">
@@ -39,23 +37,40 @@ buttons, tabular-nums numbers, mono last-viewed, .ui-empty.{% endcomment %}
 <div class="panel">
   <div class="analytics-toolbar">
     <div class="analytics-range" role="group" aria-label="Time range">
-      {% for d in day_choices %}
-      <a class="ui-pill{% if d == days %} active{% endif %}" href="?days={{ d }}">{{ d }}d</a>
+      {% for range in ranges %}
+      <a class="ui-pill{% if range.days == days %} active{% endif %}" href="{{ range.url }}"{% if range.days == days %} aria-current="true"{% endif %}>{{ range.days }}d</a>
       {% endfor %}
     </div>
-    <input type="search" id="analyticsSearch" class="ui-input analytics-search"
-           placeholder="Filter reports…" aria-label="Filter reports by name">
+    <form method="get" class="analytics-search-form" role="search" aria-label="Search report analytics">
+      <input type="hidden" name="days" value="{{ days }}">
+      <div>
+        <label for="analyticsSort">Sort by</label>
+        <select name="sort" id="analyticsSort" class="ui-input">
+          {% for header in headers %}<option value="{{ header.key }}"{% if sort == header.key %} selected{% endif %}>{{ header.label }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="analyticsDirection">Order</label>
+        <select name="direction" id="analyticsDirection" class="ui-input">
+          <option value="asc"{% if direction == 'asc' %} selected{% endif %}>Ascending</option>
+          <option value="desc"{% if direction == 'desc' %} selected{% endif %}>Descending</option>
+        </select>
+      </div>
+      <div class="analytics-search">
+        <label for="analyticsSearch">Search report names</label>
+        <input type="search" name="q" value="{{ q }}" maxlength="200" id="analyticsSearch" class="ui-input" placeholder="Name or slug">
+      </div>
+      <button type="submit" class="ui-btn ghost">Search</button>
+    </form>
   </div>
 
   <div class="ui-table-scroll">
   <table class="ui-table" id="analyticsTable" data-mobile-cards>
     <thead>
       <tr>
-        <th data-sort="report">Report</th>
-        <th data-sort="views" class="num">Views</th>
-        <th data-sort="unique" class="num">Unique viewers</th>
-        <th data-sort="share" class="num">Share views</th>
-        <th data-sort="last_viewed">Last viewed</th>
+        {% for header in headers %}
+        <th data-sort="{{ header.key }}" aria-sort="{{ header.aria_sort }}"{% if header.key != 'report' and header.key != 'last_viewed' %} class="num"{% endif %}><a href="{{ header.url }}">{{ header.label }} <span aria-hidden="true">{{ header.indicator }}</span></a></th>
+        {% endfor %}
         <th></th>
       </tr>
     </thead>
@@ -69,6 +84,7 @@ buttons, tabular-nums numbers, mono last-viewed, .ui-empty.{% endcomment %}
         <td data-label="Report">
           <div class="analytics-report-cell">
             <a href="/s/{{ org.slug }}/{{ studio.slug }}/r/{{ row.report.slug }}/?display=console">{{ row.report.name|default:row.report.slug }}</a> <span class="muted">· {{ row.report.get_kind_display }}</span>
+            {% if row.observation %}<span class="ui-badge" title="Build facts are observed separately from view counts">{{ row.observation }}</span>{% endif %}
             {% if row.stale %}<span class="ui-badge info" title="Built recently, but no one has viewed it yet"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8.2 4.2A6.8 6.8 0 0110 4c4 0 7 4 7 6a7.9 7.9 0 01-1.6 2.3M5 5.7C3.1 7 2 8.8 2 10c0 2 3 6 8 6a7 7 0 003-.7"/><path d="M8.6 8.6a2 2 0 002.8 2.8"/><path d="M3 3l14 14"/></svg>unseen</span>{% endif %}
           </div>
         </td>
@@ -80,7 +96,7 @@ buttons, tabular-nums numbers, mono last-viewed, .ui-empty.{% endcomment %}
       </tr>
       {% empty %}
       <tr><td colspan="6">
-        <div class="ui-empty">No views recorded yet.
+        <div class="ui-empty">{% if report_count == 0 %}No reports in this studio.{% else %}No reports match your search.{% endif %}
           <div class="ui-empty-action"><a class="ui-btn ghost" href="/s/{{ org.slug }}/{{ studio.slug }}/">Share or open a report →</a></div>
         </div>
       </td></tr>
@@ -88,6 +104,11 @@ buttons, tabular-nums numbers, mono last-viewed, .ui-empty.{% endcomment %}
     </tbody>
   </table>
   </div>
+  <nav class="analytics-pagination" aria-label="Analytics pages">
+    {% if previous_url %}<a class="ui-btn ghost" href="{{ previous_url }}">Previous</a>{% endif %}
+    <span>Page {{ page.number }} of {{ page.paginator.num_pages }} · {{ page.paginator.count }} report{{ page.paginator.count|pluralize }}</span>
+    {% if next_url %}<a class="ui-btn ghost" href="{{ next_url }}">Next</a>{% endif %}
+  </nav>
 </div>
 
 {# CSP is script-src 'self' with no unsafe-inline -- filter/sort logic lives in a static file, never inline. #}
