@@ -457,3 +457,32 @@ def test_remote_unbuilt_declaration_is_missing_without_data_read(studio_tree, mo
     assert summary.experiment_state == 'missing' and not summary.has_output
     assert summary.experiments.get().payload_state == 'missing'
     assert reads == ['_meta.json']
+
+
+def test_unchanged_source_backs_off_and_change_resets(studio_tree):
+    row = report(studio_tree, meta=metadata("m"))
+    reconcile(row.pk)
+    delays = []
+    for _ in range(4):
+        due(row)
+        assert reconcile(row.pk)["status"] == "ready"
+        summary = ReportSourceSummary.objects.get(report=row)
+        delays.append((summary.next_check_at - timezone.now()).total_seconds())
+    assert all(b > a * 1.5 for a, b in zip(delays, delays[1:]))
+    assert delays[-1] > 300
+    # Idle catalog: nothing is eligible until the backed-off time.
+    assert run_batch()["inspections"] == 0
+    (studio_tree.output_dir / row.slug / "_meta.json").write_text(json.dumps(metadata("changed")))
+    due(row)
+    reconcile(row.pk)
+    summary = ReportSourceSummary.objects.get(report=row)
+    assert summary.idle_checks == 0
+    assert (summary.next_check_at - timezone.now()).total_seconds() < 90
+    # A new run resets the backoff immediately.
+    due(row)
+    reconcile(row.pk)
+    due(row)
+    reconcile(row.pk)
+    assert ReportSourceSummary.objects.get(report=row).idle_checks == 2
+    begin_attempt(row.pk, "op-1")
+    assert ReportSourceSummary.objects.get(report=row).idle_checks == 0

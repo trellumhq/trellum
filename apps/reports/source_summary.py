@@ -24,6 +24,7 @@ PREVIEW_BYTES = 32 * 1024 * 1024
 LEASE_SECONDS = 180
 RECHECK_SECONDS = 60
 MAX_BACKOFF_SECONDS = 3600
+MAX_IDLE_SECONDS = 3600
 INSPECTION_BYTES = 62 * 1024 * 1024 + 128 * 1024
 
 
@@ -53,6 +54,7 @@ def begin_attempt(report_id, operation):
         summary.lease_token = ""
         summary.lease_until = None
         summary.next_check_at = timezone.now()
+        summary.idle_checks = 0
         summary.save()
         _revision(summary.report.studio_id)
 
@@ -70,6 +72,7 @@ def finish_attempt(report_id, operation, status):
         summary.lease_token = ""
         summary.lease_until = None
         summary.next_check_at = timezone.now()
+        summary.idle_checks = 0
         summary.save()
         _revision(summary.report.studio_id)
         return True
@@ -82,7 +85,7 @@ def invalidate_reports(report_ids, state):
         ReportSourceSummary.objects.get_or_create(report_id=pk)
     ReportSourceSummary.objects.filter(report_id__in=report_ids).update(
         state=state, generation=F("generation") + 1, lease_token="", lease_until=None,
-        next_check_at=timezone.now(), quality="unknown", preview_state="unavailable",
+        next_check_at=timezone.now(), idle_checks=0, quality="unknown", preview_state="unavailable",
     )
     # Historical rows remain readable as history, never part of live counts.
     for studio_id in {studio for _, studio in rows}:
@@ -375,9 +378,14 @@ def reconcile(report_id):
         row.error_code = ""
         row.lease_token = ""
         row.lease_until = None
-        row.next_check_at = timezone.now() + timedelta(seconds=RECHECK_SECONDS)
+        changed = _public_identity(row) != previous_identity or preview_changed
+        # Nothing new: back off (60 s, 120 s, ... capped) so an idle catalog
+        # stops re-reading every artifact; any change or run resets to 0.
+        row.idle_checks = 0 if changed else min(row.idle_checks + 1, 12)
+        row.next_check_at = timezone.now() + timedelta(
+            seconds=min(MAX_IDLE_SECONDS, RECHECK_SECONDS * 2 ** row.idle_checks))
         row.save()
-        if _public_identity(row) != previous_identity or preview_changed:
+        if changed:
             _revision(report.studio_id)
     return {"status": result["state"], "bytes": result["bytes"], "encoded_bytes": result["encoded_bytes"], "decoded_bytes": result["decoded_bytes"], "projection_unavailable": result['extension']['runtime_state'] == 'unavailable' or result['extension']['experiment_state'] == 'unavailable'}
 

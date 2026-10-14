@@ -786,6 +786,8 @@ class ReportSourceSummary(models.Model):
     lease_until = models.DateTimeField(null=True, blank=True)
     next_check_at = models.DateTimeField(default=timezone.now, db_index=True)
     failures = models.PositiveIntegerField(default=0)
+    # Consecutive reconciliations that observed nothing new; backs off rechecks.
+    idle_checks = models.PositiveSmallIntegerField(default=0)
     error_code = models.CharField(max_length=64, blank=True)
     preview_state = models.CharField(max_length=24, default="not-applicable")
     # The served artifact's marker, not the current generator/config version.
