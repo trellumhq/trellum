@@ -126,7 +126,7 @@ def available(request):
         return JsonResponse(
             {"available": False, "reason": "No organization context for the AI assistant."}
         )
-    ok, reason = llm.is_available(org)
+    ok, reason = llm.is_available_cached(org)
     return JsonResponse({"available": ok, "reason": reason})
 
 
@@ -173,7 +173,7 @@ def studio_available(request, org_slug, studio_slug):  # noqa: ARG001
     # report page (which renders no form). Minting the token here guarantees
     # the csrftoken cookie exists for the POSTs that follow.
     get_token(request)
-    ok, reason = llm.is_available(request.org)
+    ok, reason = llm.is_available_cached(request.org)
     restricted = not request.org_roles.has_full_studio_visibility(request.studio)
     report = None
     if ok and restricted:

@@ -35,9 +35,14 @@ class LDAPError(Exception):
     bind, bad search base. The message is safe to show and to audit."""
 
 
+#: Seconds. Every socket step (connect, TLS, bind, search) is bounded by these.
+CONNECT_TIMEOUT = 5
+RECEIVE_TIMEOUT = 10
+
+
 def _server(cfg) -> ldap3.Server:
     tls = ldap3.Tls(validate=ssl.CERT_REQUIRED, ca_certs_data=cfg.ldap_ca_cert or None)
-    return ldap3.Server(cfg.ldap_server_uri, tls=tls, get_info=ldap3.NONE, connect_timeout=5)
+    return ldap3.Server(cfg.ldap_server_uri, tls=tls, get_info=ldap3.NONE, connect_timeout=CONNECT_TIMEOUT)
 
 
 def _open(cfg, user: str, password: str) -> ldap3.Connection:
@@ -46,7 +51,7 @@ def _open(cfg, user: str, password: str) -> ldap3.Connection:
     server = _server(cfg)
     conn = ldap3.Connection(
         server, user=user or None, password=password or None,
-        raise_exceptions=True, receive_timeout=10, auto_referrals=False,
+        raise_exceptions=True, receive_timeout=RECEIVE_TIMEOUT, auto_referrals=False,
     )
     conn.open()
     if not server.ssl:

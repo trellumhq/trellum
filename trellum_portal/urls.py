@@ -6,6 +6,7 @@ from django.urls import include, path
 from django.views.generic import RedirectView
 
 from apps.accounts import views as account_views
+from apps.accounts.forms import BoundedPasswordResetForm
 from apps.assistant import mcp as assistant_mcp
 from apps.assistant import views as assistant_views
 from apps.core import views as core_views
@@ -285,7 +286,7 @@ urlpatterns = [
     ),
     path(
         "password-reset/",
-        auth_views.PasswordResetView.as_view(success_url="/password-reset/sent/"),
+        auth_views.PasswordResetView.as_view(success_url="/password-reset/sent/", form_class=BoundedPasswordResetForm),
         name="password_reset",
     ),
     path(
