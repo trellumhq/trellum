@@ -66,7 +66,7 @@ def member_browse(page,journey,data,capture):
     # role option; no substituted HTML/API response is involved.
     form=page.locator('#studio-member-choice')
     form.locator('[name=q]').fill('Cohort person')
-    form.evaluate("f => {let o=document.createElement('option');o.value='not-a-role';o.textContent='Invalid test draft';f.querySelector('[name=role]').append(o);f.querySelector('[name=role]').value='not-a-role';let p=document.createElement('input');p.type='hidden';p.name='page';p.value='2';f.append(p);}")
+    form.evaluate("f => {let o=document.createElement('option');o.value='not-a-role';o.textContent='Invalid test draft';f.querySelector('[name=role]').append(o);f.querySelector('[name=role]').value='not-a-role';}")
     page.get_by_role('button',name='Search',exact=True).evaluate("b => { b.value='2'; }")
     with page.expect_response(lambda r:r.request.method=='POST' and r.url.startswith(base+'/choices')) as response:
         page.get_by_role('button',name='Search',exact=True).click()
