@@ -71,8 +71,12 @@ def test_portal_css_dead_rules_removed():
 
 def test_portal_js_dead_code_removed():
     js = _portal_js()
+    import re
+
+    # Word boundaries: the C15 Operations search debounce legitimately owns
+    # _opsSearchTimer; only the retired identifiers themselves are dead.
     for dead in ("SPINNER_SVG", "_opsSearch", "_opsTestResults"):
-        assert dead not in js, f"portal.js still ships dead symbol {dead}"
+        assert not re.search(rf"\b{dead}\b", js), f"portal.js still ships dead symbol {dead}"
 
 
 # ── Feedback + accessibility ─────────────────────────────────────────────

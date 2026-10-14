@@ -61,7 +61,9 @@ CONSOLE_PAGE_TITLES = {
     "instance-settings": "Instance settings",
     "operator-fleet": "Fleet",
     "operator-orgs": "Organizations",
-    "operator-org-detail": "Organization",
+    # operator-org-detail is deliberately absent: its own h1 is the organization's
+    # name, and a generic "Organization" shell title would hide that h1 on narrow
+    # screens, leaving the operator without the page identity.
     "operator-logs": "Server logs",
 }
 

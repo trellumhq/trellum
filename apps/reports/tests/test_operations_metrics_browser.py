@@ -46,6 +46,7 @@ def _operations_fixture_html():
     html = html.replace('</head>', '''
         <link rel="stylesheet" href="/static/choice-picker.css">
         <link rel="stylesheet" href="/static/console-report-host.css"></head>''')
+    html = html.replace('<script src="/static/portal.js">', '<script src="/static/operations.js"></script><script src="/static/portal.js">')
     return html.replace("initial_view:'reports'", "initial_view:'ops'").replace(
         '<h1>Reports</h1>', '<h1>Operations</h1>'
     )
@@ -57,7 +58,7 @@ def test_polling_updates_summary_with_two_expanded_histories(mobile_browser, wid
         REPORT,
         {**REPORT, "id": 2, "slug": "second-report", "name": "Second report"},
     ]
-    status = {"running": {}, "queue": [], "server_uptime_seconds": 60}
+    status = {"state": "ready", "rows": [], "max_concurrent": 2, "worker_alive": True}
     history = [{"status": "success", "duration_seconds": 30, "peak_memory_mb": 128}]
     agg = {
         "runs": 2, "success_rate": 0.5, "avg_duration_s": 30,
@@ -81,6 +82,7 @@ def test_polling_updates_summary_with_two_expanded_histories(mobile_browser, wid
             "/static/portal.js": PORTAL_JS, "/static/console-shell.js": CONSOLE_JS,
             "/static/ui.css": UI_CSS, "/static/portal.css": PORTAL_CSS,
             "/static/console-shell.css": CONSOLE_CSS,
+            "/static/operations.js": (settings.BASE_DIR / "static" / "operations.js").read_text(),
         }
         for name in ("themes.generated.css", "choice-picker.css", "console-report-host.css"):
             assets[f"/static/{name}"] = (settings.BASE_DIR / "static" / name).read_text()
@@ -97,13 +99,19 @@ def test_polling_updates_summary_with_two_expanded_histories(mobile_browser, wid
                 body=assets[path],
             )
             return
-        if path.endswith("/api/registry"):
-            payload = {"reports": rows}
-        elif path.endswith("/api/system/status"):
+        if path.endswith("/api/operations/catalog"):
+            payload = {
+                "state": "ready", "rows": [{**row, "state": "ok", "build_status": "success"} for row in rows],
+                "counts": {"total": 2, "running": 0, "queued": 0, "waiting": 0, "ok": 2, "error": 0},
+                "pagination": {"page": 1, "pages": 1, "total": 2}, "folders": None,
+            }
+        elif path.endswith("/api/operations/sources"):
+            payload = {"state": "ready", "rows": [], "pagination": {"page": 1, "pages": 1, "total": 0}}
+        elif path.endswith("/api/operations/status"):
             status_calls.append(status.copy())
             payload = status
-        elif path.endswith("/api/system/run-stats"):
-            payload = {"stats": stats}
+        elif path.endswith("/api/operations/stats"):
+            payload = {"state": "ready", "stats": stats}
         elif path.endswith("/api/system/git/status"):
             payload = {"configured": False}
         elif path.endswith("/status") and "/api/reports/" in path:
@@ -136,10 +144,13 @@ def test_polling_updates_summary_with_two_expanded_histories(mobile_browser, wid
         page.evaluate("""window.__metricHistoryOwners =
             Array.from(document.querySelectorAll('.ops-history-stats'))""")
         page.wait_for_function("!_opsStatusInFlight")
-        status = {
-            "running": {"unlisted-running": {"elapsed_seconds": 12}},
-            "queue": [{"slug": "unlisted-queued"}], "server_uptime_seconds": 3661,
-        }
+        # The bounded status carries a run for one page row plus studio-wide
+        # totals; it no longer reports server uptime (the Worker tile keeps its
+        # capacity label).
+        status.update(
+            rows=[{"slug": "second-report", "status": "running", "started_at": "2026-09-06T08:00:00Z"}],
+            active_jobs_total={"running": 1, "queued": 1},
+        )
         calls_before = len(status_calls)
         # Drive the actual scheduled network poll rather than calling the updater directly.
         page.evaluate("""window.__previousStatusCycle = _opsStatusCycle;
@@ -150,9 +161,11 @@ def test_polling_updates_summary_with_two_expanded_histories(mobile_browser, wid
         assert len(status_calls) > calls_before
         assert histories.all_text_contents() == before
         summary = page.locator(".ops-summary:not(.ops-history-stats) .ops-stat-value")
+        assert summary.first.inner_text() == "2"
         assert summary.nth(1).inner_text() == "1"
         assert summary.nth(2).inner_text() == "1"
-        assert summary.last.inner_text() == "1h 1m"
+        assert summary.last.inner_text() == "Capacity 2"
+        assert page.locator('[data-ops-row="second-report"] .ops-row-btn.stop').count() == 1
         assert page.evaluate("""window.__metricHistoryOwners.every((el, i) =>
             el === document.querySelectorAll('.ops-history-stats')[i])""")
         assert page.evaluate("Object.keys(_opsExpandedSlugs).length") == 2
