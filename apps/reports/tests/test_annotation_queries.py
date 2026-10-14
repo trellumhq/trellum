@@ -293,7 +293,7 @@ def test_native_query_structural_increment_does_not_read_configs_or_files(projec
     assert not any('"type_defaults"' in query["sql"] for query in captured[:3])
 
 
-@pytest.mark.parametrize("kwargs", [dict(search="x" * 201), dict(search="🦊" * 201), dict(scope="x" * 257), dict(defaults="true"), dict(hidden_types=["release"])])
+@pytest.mark.parametrize("kwargs", [dict(search="x" * 201), dict(search="🦊" * 201), dict(search="a\x00b"), dict(scope="a\x00b"), dict(scope="x" * 257), dict(defaults="true"), dict(hidden_types=["release"])])
 def test_internal_filter_rejects_invalid_inputs(kwargs):
     with pytest.raises(ValueError):
         EventFilter(**kwargs)
@@ -319,6 +319,12 @@ def test_internal_cursor_and_facet_types_are_checked(studio):
         event_page(events(studio), after={"id": 1})
     with pytest.raises(TypeError):
         facet_page(events(studio), "scope", after="unvalidated")
+
+
+def test_facet_rejects_nul_before_query(studio):
+    with CaptureQueriesContext(connection) as captured, pytest.raises(ValueError):
+        facet_page(events(studio), "scope", search="a\x00b")
+    assert len(captured) == 0
 
 
 def test_month_composition_has_four_data_queries_and_bounded_preview(projected):

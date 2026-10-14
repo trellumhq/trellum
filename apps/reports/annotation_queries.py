@@ -42,9 +42,9 @@ class EventFilter:
     hidden_types: QuerySet | None = field(default=None, compare=False, repr=False)
 
     def __post_init__(self):
-        if not isinstance(self.search, str) or len(self.search) > 200 or len(self.search.encode()) > 800:
+        if not isinstance(self.search, str) or "\x00" in self.search or len(self.search) > 200 or len(self.search.encode()) > 800:
             raise ValueError("invalid search")
-        if self.scope is not None and (not isinstance(self.scope, str) or len(self.scope) > 256 or len(self.scope.encode()) > 1024):
+        if self.scope is not None and (not isinstance(self.scope, str) or "\x00" in self.scope or len(self.scope) > 256 or len(self.scope.encode()) > 1024):
             raise ValueError("invalid scope")
         if not isinstance(self.defaults, bool):
             raise ValueError("invalid visibility mode")
@@ -273,7 +273,7 @@ def facet_page(qs, field, *, search="", after=None):
     """
     if field not in ("event_type", "scope"):
         raise ValueError("invalid facet")
-    if not isinstance(search, str) or len(search) > 200 or len(search.encode()) > 800:
+    if not isinstance(search, str) or "\x00" in search or len(search) > 200 or len(search.encode()) > 800:
         raise ValueError("invalid facet search")
     if search:
         qs = qs.filter(**{field + "__icontains": search})
