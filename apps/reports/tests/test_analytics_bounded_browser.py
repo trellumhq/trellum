@@ -160,16 +160,26 @@ def test_analytics_gunicorn_native_enhanced_devices_roles(analytics_server, engi
                     if javascript and width == 1440 and server["delay"]:
                         # This existing sidebar foundation is separate from local
                         # search/range/paging adapter adoption.
+                        page.evaluate("""() => {
+                          window.addEventListener('click', () => {
+                            const started = performance.now();
+                            requestAnimationFrame(() => {
+                              const panel = document.querySelector('[data-console-native-pending]');
+                              sessionStorage.setItem('analyticsSidebarFeedback', JSON.stringify({
+                                milliseconds:performance.now()-started,
+                                visible:!!(panel && panel.getClientRects().length),
+                                text:panel ? panel.textContent : ''
+                              }));
+                            });
+                          }, {once:true});
+                        }""")
                         started = time.perf_counter()
-                        with page.expect_navigation(wait_until="domcontentloaded"):
-                            page.locator(f'a.tl-console-nav-link[href="{server["path"]}"]').click(no_wait_after=True)
-                            pending = page.locator("[data-console-native-pending]")
-                            expect(pending).to_be_visible(timeout=1000)
-                            expect(pending).to_contain_text("Opening Report Analytics…")
-                            pending_elapsed = time.perf_counter()-started
-                            assert pending_elapsed < .3
+                        page.locator(f'a.tl-console-nav-link[href="{server["path"]}"]').click()
                         expect(page.locator("#analyticsTable tbody tr[data-name]")).to_have_count(25)
-                        timings[-1]["sidebar_pending_seconds"] = pending_elapsed
+                        sidebar_feedback = json.loads(page.evaluate("sessionStorage.getItem('analyticsSidebarFeedback')"))
+                        assert sidebar_feedback["visible"] and "Opening Report Analytics…" in sidebar_feedback["text"]
+                        assert sidebar_feedback["milliseconds"] < 100
+                        timings[-1]["sidebar_pending_feedback"] = sidebar_feedback
                         timings[-1]["sidebar_to_analytics_rows_seconds"] = time.perf_counter()-started
                     page.goto(server["origin"]+server["empty"])
                     expect(page.locator(".ui-empty")).to_contain_text("No reports in this studio.")
