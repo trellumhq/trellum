@@ -857,3 +857,59 @@ class ReportMetricPreview(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["summary", "metric_name"], name="uniq_source_metric_preview")]
+
+
+class AnnotationCatalogState(models.Model):
+    studio = models.OneToOneField("studios.Studio", on_delete=models.CASCADE, related_name="annotation_catalog")
+    revision = models.PositiveBigIntegerField(default=0)
+    published_revision = models.PositiveBigIntegerField(default=0)
+    type_defaults = models.JSONField(default=dict)
+
+
+class AnnotationSourceState(models.Model):
+    studio = models.ForeignKey("studios.Studio", on_delete=models.CASCADE, related_name="annotation_sources")
+    report = models.OneToOneField(Report, null=True, blank=True, on_delete=models.CASCADE, related_name="annotation_source")
+    kind = models.CharField(max_length=8)
+    digest = models.CharField(max_length=64, blank=True)
+    provenance_sha = models.CharField(max_length=64, blank=True)
+    desired_generation = models.PositiveBigIntegerField(default=1)
+    published_generation = models.PositiveBigIntegerField(default=0)
+    owner_workspace_id = models.CharField(max_length=32, blank=True)
+    ownership_generation = models.PositiveBigIntegerField(default=0)
+    status = models.CharField(max_length=16, default="pending")
+    observed_at = models.DateTimeField(null=True, blank=True)
+    indexed_at = models.DateTimeField(null=True, blank=True)
+    row_count = models.PositiveIntegerField(default=0)
+    error_code = models.CharField(max_length=32, blank=True)
+    failures = models.PositiveIntegerField(default=0)
+    next_check_at = models.DateTimeField(default=timezone.now)
+    lease_token = models.CharField(max_length=32, blank=True)
+    lease_until = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["studio"], condition=models.Q(kind="global"), name="anno_one_global"),
+            models.CheckConstraint(condition=(models.Q(kind="global", report__isnull=True) | models.Q(kind="report", report__isnull=False)), name="anno_source_kind"),
+        ]
+        indexes = [models.Index(fields=["owner_workspace_id", "next_check_at", "id"], name="anno_owner_due")]
+
+
+class AnnotationEvent(models.Model):
+    source = models.ForeignKey(AnnotationSourceState, on_delete=models.CASCADE, related_name="events")
+    studio = models.ForeignKey("studios.Studio", on_delete=models.CASCADE)
+    generation = models.PositiveBigIntegerField()
+    ordinal = models.PositiveIntegerField()
+    start_date = models.DateField()
+    end_date = models.DateField(null=True, blank=True)
+    label = models.CharField(max_length=2048, blank=True)
+    event_type = models.CharField(max_length=256)
+    scope = models.CharField(max_length=256, blank=True)
+    visible_default = models.BooleanField(default=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["source", "ordinal"], name="anno_source_ordinal")]
+        indexes = [
+            models.Index(fields=["studio", "start_date", "end_date"], name="anno_studio_dates"),
+            models.Index(fields=["studio", "event_type"], name="anno_studio_type"),
+            models.Index(fields=["studio", "scope"], name="anno_studio_scope"),
+        ]

@@ -906,6 +906,8 @@ class StudioGitSync:
             update_fields=[*consumed, "last_synced_sha", "last_sync_at", "pending_changes", "last_error"]
         )
         row.save()
+        from apps.reports.annotation_reconciliation import authoritative_handoff
+        authoritative_handoff(self.studio, to_sha)
 
         changed = sorted(added | modified | removed)
         logger.info(

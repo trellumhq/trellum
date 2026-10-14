@@ -220,6 +220,11 @@ class Command(BaseCommand):
                 pools=settings.TRELLUM_RUNNER_POOLS,
             )
 
+        annotation_thread = None
+        if not opts["once"]:
+            from apps.reports.annotation_reconciliation import start_for_worker as start_annotations
+            annotation_thread = start_annotations(is_runner=is_runner, pools=settings.TRELLUM_RUNNER_POOLS)
+
         last_reap = time.time()  # _recover_stale_runs already ran above
         try:
             while not shutdown.is_set():
@@ -246,6 +251,8 @@ class Command(BaseCommand):
                     break
                 time.sleep(1)
         finally:
+            if annotation_thread is not None:
+                annotation_thread.stop()
             if summary_thread is not None:
                 summary_thread.stop()
             if beat_thread is not None:
