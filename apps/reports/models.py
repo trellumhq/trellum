@@ -915,3 +915,72 @@ class AnnotationEvent(models.Model):
             models.Index(fields=["studio", "event_type"], name="anno_studio_type"),
             models.Index(fields=["studio", "scope"], name="anno_studio_scope"),
         ]
+
+
+def _annotation_filter_token():
+    return secrets.token_hex(32)
+
+
+class AnnotationFilterState(models.Model):
+    """Ephemeral UI selection; declaration authority and permissions stay separate."""
+    token = models.CharField(max_length=64, unique=True, default=_annotation_filter_token)
+    studio = models.ForeignKey("studios.Studio", on_delete=models.CASCADE)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    actor_fingerprint = models.CharField(max_length=64)
+    client_operation_id = models.CharField(max_length=128)
+    mode = models.CharField(max_length=8)
+    status = models.CharField(max_length=8, default="draft")
+    revision = models.PositiveBigIntegerField(default=0)
+    created_at = models.DateTimeField(default=timezone.now)
+    last_activity_at = models.DateTimeField(default=timezone.now)
+    expires_at = models.DateTimeField()
+    expected_chunks = models.PositiveBigIntegerField()
+    expected_items = models.PositiveBigIntegerField()
+    expected_chain_digest = models.CharField(max_length=64)
+    next_chunk = models.PositiveBigIntegerField(default=0)
+    accepted_items = models.PositiveBigIntegerField(default=0)
+    accepted_distinct = models.PositiveBigIntegerField(default=0)
+    rolling_digest = models.CharField(max_length=64)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["actor_fingerprint", "studio", "client_operation_id"], name="anno_filter_create_op"),
+            models.CheckConstraint(condition=models.Q(mode__in=["explicit", "defaults"]), name="anno_filter_mode"),
+            models.CheckConstraint(condition=models.Q(status__in=["draft", "ready", "retiring"]), name="anno_filter_status"),
+        ]
+        indexes = [
+            models.Index(fields=["actor_fingerprint", "studio", "status", "expires_at", "id"], name="anno_filter_actor_draft"),
+            models.Index(fields=["expires_at", "id"], name="anno_filter_expiry"),
+            models.Index(fields=["status", "expires_at", "id"], name="anno_filter_status_expiry"),
+        ]
+
+
+class AnnotationFilterMembership(models.Model):
+    state = models.ForeignKey(AnnotationFilterState, on_delete=models.CASCADE, related_name="memberships")
+    event_type = models.CharField(max_length=256)
+    hidden = models.BooleanField(default=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["state", "event_type"], name="anno_filter_type")]
+        indexes = [models.Index(fields=["state", "hidden", "event_type"], name="anno_filter_hidden_type")]
+
+
+class AnnotationFilterReceipt(models.Model):
+    state = models.ForeignKey(AnnotationFilterState, on_delete=models.CASCADE, related_name="receipts")
+    kind = models.CharField(max_length=8)
+    operation_id = models.CharField(max_length=128)
+    chunk_index = models.PositiveBigIntegerField(null=True, blank=True)
+    body_digest = models.CharField(max_length=64)
+    base_revision = models.PositiveBigIntegerField(default=0)
+    result_revision = models.PositiveBigIntegerField(default=0)
+    status = models.CharField(max_length=16, default="succeeded")
+    accepted_items = models.PositiveBigIntegerField(default=0)
+    accepted_distinct = models.PositiveBigIntegerField(default=0)
+    next_chunk = models.PositiveBigIntegerField(default=0)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["state", "operation_id"], name="anno_filter_receipt_op"),
+            models.UniqueConstraint(fields=["state", "chunk_index"], condition=models.Q(kind="append"), name="anno_filter_chunk_receipt"),
+        ]
