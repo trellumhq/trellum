@@ -146,7 +146,7 @@ def test_scheduler_refresh_preserves_probe_and_removes_obsolete_report(operator_
 
 def test_csrf_and_borrowed_sessions_cannot_admit_or_read(operator_probe):
     from django.test import Client
-    from apps.core.impersonation import SESSION_OPERATOR_ID
+    from apps.core.impersonation import SESSION_EXPIRES_AT, SESSION_OPERATOR_ID
     actor, client, node = operator_probe
     key = observations.nonce(actor.pk, "full-health")
     strict = Client(enforce_csrf_checks=True)
@@ -156,6 +156,7 @@ def test_csrf_and_borrowed_sessions_cannot_admit_or_read(operator_probe):
     entry, created = observations.admit(actor.pk, "full-health", key)
     session = client.session
     session[SESSION_OPERATOR_ID] = actor.pk
+    session[SESSION_EXPIRES_AT] = (timezone.now() + timedelta(minutes=5)).isoformat()
     session.save()
     assert client.post("/api/system/diagnostics/refresh", {"request_key": key}).status_code == 404
     assert client.get(f"/api/system/diagnostics/{entry['id']}").status_code == 404
