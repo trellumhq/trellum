@@ -571,4 +571,9 @@ urlpatterns = [
 if settings.DEBUG:
     from apps.accounts import dev as accounts_dev
 
-    urlpatterns += [path("__dev__/login/", accounts_dev.dev_login, name="dev-login")]
+    urlpatterns += [
+        path("__dev__/login/", accounts_dev.dev_login, name="dev-login"),
+        # Underscore-free alias: Markdown renders __dev__ as bold and strips
+        # the underscores when these links are shared in chat.
+        path("dev-login/", accounts_dev.dev_login),
+    ]
