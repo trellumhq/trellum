@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from apps.core.models import InstanceConfig
 from apps.core.audit import audit
-from apps.core.permissions import get_effective
+from apps.core.request_access import request_org_access
 from apps.core import roles
 from apps.core.report_access import can_view_report
 from apps.orgs.models import Organization
@@ -18,7 +18,7 @@ from apps.reports.models import EmailSchedule
 
 
 def can_manage_org(request, org):
-    return request.user.is_authenticated and request.user.is_active and get_effective(request, org).is_org_admin
+    return request.user.is_authenticated and request.user.is_active and request_org_access(request, org).is_org_admin
 
 
 def can_manage_schedule(request, schedule):
@@ -28,7 +28,7 @@ def can_manage_schedule(request, schedule):
         return False
     return bool(request.user.is_authenticated and request.user.is_active
         and can_view_report(request.user, schedule.report, request=request)
-        and roles.at_least(get_effective(request, org).role_for(schedule.report.studio), roles.DEVELOPER))
+        and roles.at_least(request_org_access(request, org).role_for(schedule.report.studio), roles.DEVELOPER))
 
 
 def schedule_for_request(request, schedule_id, *, report=None):

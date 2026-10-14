@@ -832,11 +832,11 @@ def me_api(request):
     """Session/identity endpoint used by portal.js."""
     if not request.user.is_authenticated:
         return JsonResponse({"authenticated": False}, status=401)
-    from apps.core.permissions import get_effective
+    from apps.core.request_access import request_org_access
 
     orgs = []
     for m in request.user.org_memberships.select_related("org").filter(org__is_active=True):
-        er = get_effective(request, m.org)
+        er = request_org_access(request, m.org)
         orgs.append(
             {
                 "slug": m.org.slug,
@@ -908,7 +908,7 @@ def api_keys_view(request):
             "new_secret": fresh["secret"] if new_key else None,
             # The `setup portal` one-liner, once, for every studio the key can
             # reach (internal planning ticket #151): create a key, paste one command in the repo.
-            "new_key_studios": visible_studios(request.user, new_key.org) if new_key else [],
+            "new_key_studios": visible_studios(request.user, new_key.org, request=request) if new_key else [],
             "portal_url": base_url(),
         },
     )

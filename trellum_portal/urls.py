@@ -9,6 +9,7 @@ from apps.accounts import views as account_views
 from apps.assistant import mcp as assistant_mcp
 from apps.assistant import views as assistant_views
 from apps.core import views as core_views
+from apps.core import shell_scope_views
 from apps.datasources import views as datasource_views
 from apps.orgs import views as org_views
 from apps.orgs.audit import views as org_audit
@@ -299,6 +300,9 @@ urlpatterns = [
     path("accounts/", include("allauth.urls")),
     # Org switcher / management
     path("", org_views.home, name="home"),
+    path("api/shell/scopes/", shell_scope_views.api_choices, name="shell-scope-choices"),
+    path("scopes/", shell_scope_views.browse, name="shell-scope-browse"),
+    path("scopes/open/", shell_scope_views.open_scope, name="shell-scope-open"),
     path("orgs/new", org_views.org_new, name="org-new"),
     path("orgs/create", org_views.org_create, name="org-create"),
     path("orgs/<slug:org_slug>/", org_views.org_home, name="org-home"),

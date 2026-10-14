@@ -51,7 +51,7 @@ def auth_me(request):
         match = _STUDIO_PATH_RE.search(request.GET.get("path") or "")
         if match:
             from apps.core import roles
-            from apps.core.permissions import effective_roles
+            from apps.core.request_access import request_org_access
             from apps.orgs.models import Organization
             from apps.studios.models import Studio
 
@@ -63,7 +63,7 @@ def auth_me(request):
                 if org is not None else None
             )
             if studio is not None:
-                role = effective_roles(request.user, org).role_for(studio)
+                role = request_org_access(request, org).role_for(studio)
                 is_admin = roles.at_least(role, roles.ADMIN)
     return JsonResponse({"is_admin": is_admin})
 

@@ -208,3 +208,11 @@ body.tl-console-drawer-open { overflow: hidden; }
 /* Hide previous page content while retaining its DOM and drafts for Cancel. */
 .tl-console-native-pending > :not([data-console-native-pending]) { display:none !important; }
 .tl-console-native-pending > [data-console-native-pending] { min-height:160px; }
+
+/* Scope forms retain native browsing when enhancement is unavailable. */
+.tl-console-scope-form { display: grid; gap: 8px; padding: 12px; min-width: 0; }
+.tl-console-scope-form label { font-size: 12px; font-weight: 600; }
+.tl-console-scope-form select { width: 100%; min-width: 0; max-width: 100%; }
+.tl-console-scope-form .ui-choice-picker { min-width: 0; }
+.tl-console-scope-form .ui-picker-trigger { width: 100%; }
+.tl-console-scope-form .ui-btn { justify-self: start; }

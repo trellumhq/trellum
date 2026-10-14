@@ -15,7 +15,6 @@ from apps.core import roles
 from apps.core.audit import audit
 from apps.core.form_responses import is_settings_request, settings_error, settings_success
 from apps.core.permissions import (
-    get_effective,
     require_org_role,
     visible_studios,
 )
@@ -64,7 +63,9 @@ def home(request):
         active = orgs[0]
     if active is not None:
         request.session["active_org"] = active.slug
-        er = get_effective(request, active)
+        from apps.core.request_access import request_org_access
+
+        er = request_org_access(request, active)
         # Decorator-style attributes so the shell renders consistently.
         request.org = active
         request.org_roles = er

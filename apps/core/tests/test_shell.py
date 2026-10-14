@@ -185,7 +185,7 @@ class TestShellRendering:
 
         assert 'data-console-nav-group="studio-work"' in nav
         assert f"/s/{org.slug}/{studio_tree.slug}/settings/repo" in nav
-        assert f'href="/s/{org.slug}/{studio_tree.slug}/" class="active"' in html
+        assert f'<option value="{studio_tree.slug}" selected>' in html
         assert f'action="/s/{org.slug}/{studio_tree.slug}/"' in html
         assert studio_tree.name not in breadcrumbs
         assert "scope-org" in html
@@ -200,9 +200,10 @@ class TestShellRendering:
         html = login(viewer).get(f"/?org={org.slug}").content.decode()
 
         assert 'aria-label="Open AI assistant and choose a studio"' in html
-        assert f'href="/s/{org.slug}/{studio_tree.slug}/?assistant=open"' in html
+        assert 'name="intent" value="assistant"' in html
+        assert f'<option value="{studio_tree.slug}"' in html
         assert studio_tree.name in html
-        assert f'href="/s/{org.slug}/{studio2.slug}/?assistant=open"' not in html
+        assert f'<option value="{studio2.slug}"' not in html
         assert 'class="tl-console-docs-link"' in html
         assert "/api/assistant/widget.js" not in html
 

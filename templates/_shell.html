@@ -7,12 +7,31 @@
     </a>
     {% if shell_org %}
     <div class="tl-console-context tl-console-label">
-      {% if shell_orgs|length > 1 %}
-      <details class="tl-console-switcher"><summary><span class="tl-console-scope-dot org" aria-hidden="true"></span><span>{{ shell_org.name }}</span></summary><div class="tl-console-popover"{% if shell_orgs|length > 8 %} data-scope-menu{% endif %}>{% if shell_orgs|length > 8 %}<input class="tl-console-scope-filter" type="search" placeholder="Search organizations" aria-label="Search organizations"><p class="tl-console-scope-empty" role="status" hidden>No organizations match.</p>{% endif %}{% for o in shell_orgs %}<a href="/?org={{ o.slug }}"{% if o.pk == shell_org.pk %} class="active"{% endif %}>{{ o.name }}</a>{% endfor %}</div></details>
+      {% if shell_orgs_more or shell_orgs|length > 1 %}
+      <details class="tl-console-switcher"><summary><span class="tl-console-scope-dot org" aria-hidden="true"></span><span>{{ shell_org.name }}</span></summary><div class="tl-console-popover">
+        <form class="tl-console-scope-form" method="get" action="/scopes/open/">
+          <input type="hidden" name="kind" value="org"><input type="hidden" name="intent" value="navigate">
+          <label for="shellOrgChoice">Organization</label>
+          <select id="shellOrgChoice" name="selected" required data-choice-picker data-picker-label="Organization" data-choice-source="/api/shell/scopes/?kind=org" data-unavailable-label="Selected organization is unavailable">
+            {% for o in shell_orgs %}<option value="{{ o.slug }}"{% if o.pk == shell_org.pk %} selected{% endif %}>{{ o.name }}</option>{% endfor %}
+          </select><button class="ui-btn" type="submit">Go</button>
+          <a href="/scopes/?kind=org&amp;selected={{ shell_org.slug }}">Browse all organizations</a>
+        </form>
+      </div></details>
       {% else %}
       <a class="tl-console-context-link" href="/?org={{ shell_org.slug }}"><span class="tl-console-scope-dot org" aria-hidden="true"></span>{{ shell_org.name }}</a>
       {% endif %}
-      {% if shell_studios %}<details class="tl-console-switcher"><summary><span class="tl-console-scope-dot studio" aria-hidden="true"></span><span>{% if shell_nav_studio %}{{ shell_nav_studio.name }}{% else %}Choose a studio{% endif %}</span></summary><div class="tl-console-popover"{% if shell_studios|length > 8 %} data-scope-menu{% endif %}>{% if shell_studios|length > 8 %}<input class="tl-console-scope-filter" type="search" placeholder="Search studios" aria-label="Search studios"><p class="tl-console-scope-empty" role="status" hidden>No studios match.</p>{% endif %}{% for s in shell_studios %}<a href="/s/{{ shell_org.slug }}/{{ s.slug }}/"{% if shell_nav_studio and s.pk == shell_nav_studio.pk %} class="active"{% endif %}>{{ s.name }}</a>{% endfor %}</div></details>{% endif %}
+      {% if shell_studios %}<details class="tl-console-switcher"><summary><span class="tl-console-scope-dot studio" aria-hidden="true"></span><span>{% if shell_nav_studio %}{{ shell_nav_studio.name }}{% else %}Choose a studio{% endif %}</span></summary><div class="tl-console-popover">
+        <form class="tl-console-scope-form" method="get" action="/scopes/open/">
+          <input type="hidden" name="kind" value="studio"><input type="hidden" name="org" value="{{ shell_org.slug }}"><input type="hidden" name="intent" value="navigate">
+          <label for="shellStudioChoice">Studio</label>
+          <select id="shellStudioChoice" name="selected" required data-choice-picker data-picker-label="Studio" data-choice-source="/api/shell/scopes/?kind=studio&amp;org={{ shell_org.slug }}" data-unavailable-label="Selected studio is unavailable">
+            {% if not shell_nav_studio %}<option value="" selected>Choose a studio</option>{% endif %}
+            {% for s in shell_studios %}<option value="{{ s.slug }}"{% if shell_nav_studio and s.pk == shell_nav_studio.pk %} selected{% endif %}>{{ s.name }}</option>{% endfor %}
+          </select><button class="ui-btn" type="submit">Go</button>
+          <a href="/scopes/?kind=studio&amp;org={{ shell_org.slug }}{% if shell_nav_studio %}&amp;selected={{ shell_nav_studio.slug }}{% endif %}">Browse all studios</a>
+        </form>
+      </div></details>{% endif %}
     </div>
     {% endif %}
     {% include "_console_nav.html" %}
@@ -27,7 +46,17 @@
       {% if shell_studio %}<span aria-hidden="true">/</span><a href="/s/{{ shell_org.slug }}/{{ shell_studio.slug }}/">{{ shell_studio.name }}</a>{% endif %}
     </nav>
     <span class="tl-console-header-spacer"></span>
-    {% if shell_org and not shell_studio %}<details class="tl-console-assistant-picker"><summary aria-label="Open AI assistant and choose a studio"><svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M8 0c.5 4.2 2.3 6.9 8 8-5.7 1.1-7.5 3.8-8 8-.5-4.2-2.3-6.9-8-8 5.7-1.1 7.5-3.8 8-8z"/></svg><span class="tl-console-assistant-label">AI assistant</span></summary><div class="tl-console-assistant-popover" role="group" aria-label="Choose a studio for AI assistant">{% for s in shell_studios %}<a href="/s/{{ shell_org.slug }}/{{ s.slug }}/?assistant=open">{{ s.name }}<span>Open or resume chat</span></a>{% empty %}<p>No studios are available to your account.</p>{% endfor %}</div></details>{% endif %}
+    {% if shell_org and not shell_studio %}<details class="tl-console-assistant-picker"><summary aria-label="Open AI assistant and choose a studio"><svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M8 0c.5 4.2 2.3 6.9 8 8-5.7 1.1-7.5 3.8-8 8-.5-4.2-2.3-6.9-8-8 5.7-1.1 7.5-3.8 8-8z"/></svg><span class="tl-console-assistant-label">AI assistant</span></summary><div class="tl-console-assistant-popover" role="group" aria-label="Choose a studio for AI assistant">
+      {% if shell_studios %}<form class="tl-console-scope-form" method="get" action="/scopes/open/">
+        <input type="hidden" name="kind" value="studio"><input type="hidden" name="org" value="{{ shell_org.slug }}"><input type="hidden" name="intent" value="assistant">
+        <label for="shellAssistantChoice">Studio for AI assistant</label>
+        <select id="shellAssistantChoice" name="selected" required data-choice-picker data-picker-label="Studio for AI assistant" data-choice-source="/api/shell/scopes/?kind=studio&amp;org={{ shell_org.slug }}" data-unavailable-label="Selected studio is unavailable">
+          {% if not shell_nav_studio %}<option value="" selected>Choose a studio</option>{% endif %}
+          {% for s in shell_studios %}<option value="{{ s.slug }}"{% if shell_nav_studio and s.pk == shell_nav_studio.pk %} selected{% endif %}>{{ s.name }}</option>{% endfor %}
+        </select><button class="ui-btn" type="submit">Open assistant</button>
+        <a href="/scopes/?kind=studio&amp;org={{ shell_org.slug }}&amp;intent=assistant{% if shell_nav_studio %}&amp;selected={{ shell_nav_studio.slug }}{% endif %}">Browse all studios</a>
+      </form>{% else %}<p>No studios are available to your account.</p>{% endif %}
+    </div></details>{% endif %}
     {% if is_operator %}<a class="tl-console-health-alert" data-console-health-alert data-health-status="{{ shell_health.status }}" href="/system" title="{{ shell_health.detail }}" aria-label="{{ shell_health.message }}. {{ shell_health.detail }}"{% if shell_health.status == 'ok' %} hidden{% endif %}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5l8 14H2zM10 7v4M10 14h.01"/></svg><span class="tl-console-health-text" data-console-health-message aria-live="polite" aria-atomic="true">{{ shell_health.message }}</span></a>{% endif %}
     {% if dashboard_shell %}
     <button class="tl-console-search-button" type="button" data-console-search-toggle aria-controls="consoleSearch" aria-expanded="false" aria-label="Search {{ console_page_title|lower }}">⌕</button>

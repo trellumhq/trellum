@@ -228,7 +228,9 @@ def visible_studios(user, org, *, request=None):
     if request is not None:
         if user is not request.user:
             raise ValueError("request visibility must use request.user")
-        er = get_effective(request, org)
+        from apps.core.shell_scope import studio_choices
+
+        return studio_choices(request, org)
     else:
         er = effective_roles(user, org)
     qs = Studio.objects.filter(org=org).order_by("slug")
@@ -290,7 +292,9 @@ def require_org_role(minimum: str):
             if not request.user.is_authenticated:
                 return _unauthenticated(request)
             org = _request_org(request, org_slug)
-            er = get_effective(request, org)
+            from apps.core.request_access import request_org_access
+
+            er = request_org_access(request, org)
             if not er.is_member:
                 raise Http404
             if minimum == roles.ORG_ADMIN and not er.is_org_admin:
@@ -319,7 +323,9 @@ def require_studio_role(minimum: str):
             if not request.user.is_authenticated:
                 return _unauthenticated(request)
             org = _request_org(request, org_slug)
-            er = get_effective(request, org)
+            from apps.core.request_access import request_org_access
+
+            er = request_org_access(request, org)
             if not er.is_member:
                 raise Http404
             studio = getattr(request, "studio", None)

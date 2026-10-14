@@ -36,14 +36,13 @@ from apps.core.audit import audit
 from apps.core.form_responses import is_settings_request, settings_error, settings_success
 from apps.core.http import int_param, json_body
 from apps.core.permissions import (
-    effective_roles,
-    get_effective,
     require_org_role,
     require_studio_role,
 )
 from apps.core.report_access import (
     bulk_can_view_report,
     can_view_report,
+    raw_scope_reports,
     require_full_studio_visibility,
     selected_report_access_block_reason,
     visible_reports,
@@ -83,15 +82,12 @@ _SERVER_START = time.time()
 
 
 def _get_report(request, slug: str) -> Report:
-    scope = request.org_roles.report_scope_for(request.studio)
-    if scope is not None and not scope:
-        raise Http404
-    report = Report.objects.filter(
-        studio=request.studio, slug=slug, present_in_scan=True
+    report = raw_scope_reports(
+        request.user,
+        Report.objects.filter(studio=request.studio, slug=slug, present_in_scan=True),
+        request=request,
     ).select_related("studio", "studio__org").first()
     if report is None:
-        raise Http404
-    if scope is not None and report.pk not in scope:
         raise Http404
     return report
 
@@ -110,12 +106,15 @@ def _selected_content_block(request, report):
 
 def _visible_registry_payload(request) -> dict:
     payload = build_registry_payload(request.studio)
-    scope = request.org_roles.report_scope_for(request.studio)
-    if scope is None:
+    if request.org_roles.has_full_studio_visibility(request.studio):
         return payload
+    ids = [row.get("id") for row in payload.get("reports", []) if row.get("id") is not None]
+    allowed = set(raw_scope_reports(
+        request.user, Report.objects.filter(studio=request.studio, pk__in=ids), request=request
+    ).values_list("pk", flat=True))
     return {
         **payload,
-        "reports": [row for row in payload.get("reports", []) if row.get("id") in scope],
+        "reports": [row for row in payload.get("reports", []) if row.get("id") in allowed],
         # Source inventory belongs to the studio-wide Operations surface.
         "source_states": [],
     }
@@ -268,12 +267,9 @@ def _role_safe(payload: dict, request) -> dict:
 def api_system_status(request, org_slug, studio_slug):  # noqa: ARG001
     studio = request.studio
     now = timezone.now()
-    scope = request.org_roles.report_scope_for(studio)
 
     running = {}
     running_runs = Run.objects.filter(studio=studio, status__in=(Run.STARTING, Run.RUNNING))
-    if scope is not None:
-        running_runs = running_runs.filter(report_id__in=scope)
     for run in running_runs:
         started = run.started_at or run.created_at
         running[run.slug] = {
@@ -285,8 +281,6 @@ def api_system_status(request, org_slug, studio_slug):  # noqa: ARG001
     queued_runs = Run.objects.filter(studio=studio, status=Run.QUEUED).order_by(
         "priority", "created_at"
     )
-    if scope is not None:
-        queued_runs = queued_runs.filter(report_id__in=scope)
     queue = [
         {"slug": r.slug, "priority": r.priority, "cache_mode": r.cache_mode}
         for r in queued_runs
@@ -296,8 +290,6 @@ def api_system_status(request, org_slug, studio_slug):  # noqa: ARG001
     scheduled_reports = Report.objects.filter(
         studio=studio, present_in_scan=True, disabled=False, kind=Report.KIND_REPORT
     ).exclude(schedule_cron="")
-    if scope is not None:
-        scheduled_reports = scheduled_reports.filter(pk__in=scope)
     for report in scheduled_reports:
         scheduled.append(
             {
@@ -831,9 +823,11 @@ def _schedule_dict(schedule, *, viewer=None, request=None, batch=None) -> dict:
     if request is not None:
         editable = deliveries.can_manage_schedule(request, schedule)
     else:
+        from apps.core.request_access import actor_studio_access
+
         editable = bool(viewer is not None and viewer.is_active
             and can_view_report(viewer, schedule.report)
-            and roles.at_least(effective_roles(viewer, schedule.report.studio.org).role_for(schedule.report.studio), roles.DEVELOPER))
+            and roles.at_least(actor_studio_access(viewer, schedule.report.studio).role, roles.DEVELOPER))
     batch = batch or DeliveryPresentationBatch([schedule])
     next_at = deliveries.next_occurrence(schedule, pause=batch.pauses[schedule.report.studio.org_id])
     eligible_recipients = [{"id": user.pk, "email": user.email} for user in batch.eligible(schedule)]
@@ -1620,7 +1614,7 @@ def studio_deliveries(request, org_slug, studio_slug):
         "selected_report_filter": _delivery_report_filter_selection(request),
         "selected_report_id": _delivery_report_filter_id(request),
         "delivery_return_to": f"/s/{org_slug}/{studio_slug}/deliveries",
-        "can_add_delivery": roles.at_least(get_effective(request, request.org).role_for(request.studio), roles.DEVELOPER),
+        "can_add_delivery": roles.at_least(request.studio_role, roles.DEVELOPER),
     })
 
 
@@ -2776,7 +2770,9 @@ def api_share_link_revoke(request, link_id):
     if not request.user.is_authenticated:
         return JsonResponse({"error": "authentication required"}, status=401)
     studio = link.report.studio
-    role = get_effective(request, studio.org).role_for(studio)
+    from apps.core.request_access import request_org_access
+
+    role = request_org_access(request, studio.org).role_for(studio)
     if role is None or not roles.at_least(role, roles.DEVELOPER):
         return JsonResponse({"error": "studio developer required"}, status=403)
 
@@ -3213,24 +3209,12 @@ def _favorites_auth(request):
 
 
 def _visible_favorite_rows(request):
-    rows = (
-        ReportFavorite.objects.filter(user=request.user)
+    allowed_reports = raw_scope_reports(request.user, Report.objects.filter(present_in_scan=True), request=request)
+    return list(
+        ReportFavorite.objects.filter(user=request.user, report_id__in=allowed_reports.order_by().values("pk"))
         .select_related("report", "report__studio", "report__studio__org")
         .order_by("created_at")
     )
-    out = []
-    er_cache: dict[int, object] = {}
-    for fav in rows:
-        studio = fav.report.studio
-        org = studio.org
-        er = er_cache.get(org.pk)
-        if er is None:
-            er = er_cache[org.pk] = get_effective(request, org)
-        scope = er.report_scope_for(studio)
-        if (scope is not None and fav.report_id not in scope) or not fav.report.present_in_scan:
-            continue
-        out.append(fav)
-    return out
 
 
 @require_http_methods(["GET"])
@@ -3258,15 +3242,12 @@ def api_favorite_toggle(request, report_id: int):
     if resp:
         return resp
     report = (
-        Report.objects.filter(pk=report_id)
+        raw_scope_reports(request.user, Report.objects.filter(pk=report_id), request=request)
         .select_related("studio", "studio__org")
         .first()
     )
     if report is None:
         raise Http404
-    scope = get_effective(request, report.studio.org).report_scope_for(report.studio)
-    if scope is not None and report.pk not in scope:
-        raise Http404  # can't see the studio -> can't see the report exists
     if request.method == "PUT":
         ReportFavorite.objects.get_or_create(user=request.user, report=report)
         return JsonResponse({"ok": True, "favorited": True})
@@ -3294,10 +3275,8 @@ def api_favorites_import(request):
             Report.objects.filter(slug=str(slug), present_in_scan=True).select_related(
                 "studio", "studio__org"
             ),
+            request=request,
         )
-        key = getattr(request, "api_key", None)
-        if key is not None:
-            candidates = candidates.filter(studio__org_id=key.org_id)
         for report in candidates:
             _, created = ReportFavorite.objects.get_or_create(user=request.user, report=report)
             imported += int(created)

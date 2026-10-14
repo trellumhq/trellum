@@ -132,6 +132,55 @@ class TestPrivacyAndScoping:
 
 
 class TestReportBoundSessions:
+    def test_bounded_session_rows_preserve_full_and_selected_partitions(
+        self, viewer, selected_viewer, org, studio_tree, studio2, report_row, settings,
+    ):
+        from django.test import RequestFactory
+        from apps.assistant.views import _session_rows
+        from apps.core.request_access import request_org_access
+        from apps.reports.models import Report
+
+        settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = True
+        full = AssistantSession.objects.create(user=viewer, org=org, studio=studio_tree)
+        bound = AssistantSession.objects.create(
+            user=viewer, org=org, studio=studio_tree,
+            scope=AssistantSession.SCOPE_REPORT, report=report_row,
+        )
+        selected_full = AssistantSession.objects.create(user=selected_viewer, org=org, studio=studio_tree)
+        selected_bound = AssistantSession.objects.create(
+            user=selected_viewer, org=org, studio=studio_tree,
+            scope=AssistantSession.SCOPE_REPORT, report=report_row,
+        )
+        foreign = Report.objects.create(studio=studio2, slug="foreign-session")
+        foreign_bound = AssistantSession.objects.create(
+            user=selected_viewer, org=org, studio=studio_tree,
+            scope=AssistantSession.SCOPE_REPORT, report=report_row,
+        )
+        AssistantSession.objects.filter(pk=foreign_bound.pk).update(report=foreign)
+        missing = Report.objects.create(studio=studio_tree, slug="missing-session", present_in_scan=False)
+        missing_bound = AssistantSession.objects.create(
+            user=selected_viewer, org=org, studio=studio_tree,
+            scope=AssistantSession.SCOPE_REPORT, report=missing,
+        )
+        null_bound = AssistantSession.objects.create(
+            user=selected_viewer, org=org, studio=studio_tree,
+            scope=AssistantSession.SCOPE_REPORT, report=report_row,
+        )
+        AssistantSession.objects.filter(pk=null_bound.pk).update(report=None)
+
+        def rows_for(user):
+            request = RequestFactory().get("/")
+            request.user, request.org, request.studio = user, org, studio_tree
+            request.org_roles = request_org_access(request, org)
+            ids = set(_session_rows(request).values_list("pk", flat=True))
+            assert not hasattr(request, "_bi_effective_roles")
+            return ids
+
+        assert rows_for(viewer) == {full.pk, bound.pk}
+        assert rows_for(selected_viewer) == {selected_bound.pk}
+        settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = False
+        assert rows_for(selected_viewer) == set()
+
     def test_selected_viewer_must_bind_an_allowed_report(
         self, login, selected_viewer, prefix, report_row
     ):
