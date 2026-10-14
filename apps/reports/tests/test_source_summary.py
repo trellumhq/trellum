@@ -297,8 +297,11 @@ def test_schema_upgrade_preserves_reports_and_is_reversible(studio_tree):
         MigrationExecutor(connection).migrate([("reports", "0025_emailschedule_delivery_accepted_to_and_more")])
         assert "reports_reportsourcesummary" not in connection.introspection.table_names()
         assert Report.objects.filter(pk=row.pk).exists()
-    finally:
         MigrationExecutor(connection).migrate([("reports", "0026_source_summaries")])
+        assert "reports_reportsourcesummary" in connection.introspection.table_names()
+    finally:
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes("reports"))
     assert Report.objects.filter(pk=row.pk).exists()
     assert ReportSourceSummary.objects.count() == 0  # automatic worker bootstrap
 

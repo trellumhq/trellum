@@ -176,6 +176,17 @@ def inspect_source(report, summary):
     previews = {}
     preview_state = "not-applicable"
     generated = report.slug == "metrics" and "metrics" in (report.tags or [])
+    workspace_version = None
+    if generated and raw:
+        workspace_version = 0
+        if "metrics_workspace" in meta:
+            marker = meta["metrics_workspace"]
+            if not isinstance(marker, dict):
+                raise ValueError("invalid metrics workspace marker")
+            workspace_version = marker.get("version")
+            if (not isinstance(workspace_version, int) or isinstance(workspace_version, bool)
+                    or not 0 <= workspace_version <= 32767):
+                raise ValueError("invalid metrics workspace version")
     reuse_previews = remote and build == summary.source_identity and digest == summary.claim_digest and summary.preview_state == "ready"
     if generated and raw and reuse_previews:
         previews = None
@@ -229,12 +240,13 @@ def inspect_source(report, summary):
         state = "expired" if raw is None else "uncertain"
     return dict(attempt_stamp=_parse_time(attempt_meta.get("last_run")), attempt_status=str(attempt_meta.get("last_status") or ""), identity=identity, quality=quality, state=state, digest=digest,
                 stamp=stamp, status=status, claims=list(unique.values()), previews=previews,
-                preview_state=preview_state, bytes=used)
+                preview_state=preview_state, workspace_version=workspace_version, bytes=used)
 
 
 def _public_identity(row):
     return (row.state, row.quality, row.source_identity, row.claim_digest,
-            row.served_at, row.attempt_at, row.attempt_status, row.preview_state, row.backend)
+            row.served_at, row.attempt_at, row.attempt_status, row.preview_state, row.backend,
+            row.workspace_version)
 
 
 def reconcile(report_id):
@@ -284,6 +296,7 @@ def reconcile(report_id):
             row.served_at = result["stamp"]
             row.quality = result["quality"]
             row.preview_state = result["preview_state"]
+            row.workspace_version = result["workspace_version"]
         row.backend = storage.backend_name()
         row.state = result["state"]
         row.observed_at = timezone.now()
