@@ -238,9 +238,14 @@ class AnnotationThread(threading.Thread):
     def batch(self):
         from apps.studios.models import Studio
         from .models import AnnotationSourceState
-        owner = workspace_identity()
         start = time.monotonic()
         self.report_cursor = backfill_reports(self.report_cursor, pools=self.pools, limit=1)
+        try:
+            owner = workspace_identity()
+        except WorkspaceUnavailable:
+            # Canonical DB declarations do not depend on a local file owner.
+            # There is no empty-owner fallback or global admission here.
+            return
         admitted = 1
         consumed = RAW_BYTES
         candidates = AnnotationSourceState.objects.filter(kind="global", owner_workspace_id=owner, next_check_at__lte=timezone.now()).filter(Q(lease_until__isnull=True) | Q(lease_until__lte=timezone.now()))
@@ -291,15 +296,23 @@ def backfill_reports(cursor=0, *, pools=None, limit=25):
     from .annotation_projection import sync_report_declarations
     if connection.vendor != "postgresql":
         raise WorkspaceUnavailable()
-    candidates = Report.objects.filter(pk__gt=cursor, present_in_scan=True).filter(Q(annotation_source__isnull=True) | ~Q(annotation_source__schema_version=SCHEMA_VERSION))
+    needs_attempt = ~Q(annotation_source__schema_version=SCHEMA_VERSION) | Q(annotation_source__status__in=["parse-error", "oversized", "unavailable"])
+    due_attempt = Q(annotation_source__next_check_at__lte=timezone.now()) | ~Q(annotation_source__attempted_schema_version=SCHEMA_VERSION)
+    candidates = Report.objects.filter(pk__gt=cursor, present_in_scan=True).filter(Q(annotation_source__isnull=True) | (needs_attempt & due_attempt))
     if pools:
         candidates = candidates.filter(studio__pool__in=pools)
     identifiers = list(candidates.order_by("pk").values_list("pk", flat=True)[:limit])
     for pk in identifiers:
         with transaction.atomic():
             report = Report.objects.select_for_update().filter(pk=pk, present_in_scan=True).only("id", "studio_id").first()
-            if report is None or AnnotationSourceState.objects.filter(report_id=pk, schema_version=SCHEMA_VERSION).exists():
+            if report is None:
                 continue
+            current = AnnotationSourceState.objects.filter(report_id=pk).only("schema_version", "attempted_schema_version", "status", "next_check_at").first()
+            if current is not None:
+                needs_retry = current.schema_version != SCHEMA_VERSION or current.status in {"parse-error", "oversized", "unavailable"}
+                due_retry = current.next_check_at <= timezone.now() or current.attempted_schema_version != SCHEMA_VERSION
+                if not (needs_retry and due_retry):
+                    continue
             # This expression excludes unrelated annotation/config keys and
             # keeps missing studio distinct from explicitly null studio.
             with connection.cursor() as db:
