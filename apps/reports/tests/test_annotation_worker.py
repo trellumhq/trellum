@@ -575,7 +575,7 @@ class AnnotationPostgresTests(TransactionTestCase):
         report = Report.objects.get(studio=self.studio, slug="dated")
         self.assertEqual(report.config["annotations"]["events"][0]["date"], "2020-01-01")
         event = AnnotationEvent.objects.get(source__report=report)
-        self.assertEqual(event.date, datetime.date(2020, 1, 1))
+        self.assertEqual(event.start_date, datetime.date(2020, 1, 1))
         self.assertEqual(event.end_date, datetime.date(2020, 1, 3))
         self.assertEqual(event.label, "dated")
 
