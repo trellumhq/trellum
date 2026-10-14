@@ -82,6 +82,21 @@ People should start with [CONTRIBUTING.md](CONTRIBUTING.md).
 - Never commit credentials, send real email, or call paid providers in tests.
   Pushing, releasing and deploying need explicit maintainer approval.
 
+## Launching the portal for someone to review
+
+Use `./scripts/demo.sh --dev-login`. Set `TRELLUM_DEMO_PROJECT` and
+`TRELLUM_PORT` to run beside an existing instance. Always hand the person the
+three instant-login links the script prints, for admin, member (studio
+developer) and viewer:
+
+    <base>/__dev__/login/?as=superuser
+    <base>/__dev__/login/?as=developer:demo/demo
+    <base>/__dev__/login/?as=viewer:demo/demo
+
+They work only because the overlay runs the web process with DEBUG settings.
+Use them on local or LAN review instances only, never on one reachable from
+the internet.
+
 ## Local report previews
 
 To show someone a local report, run
