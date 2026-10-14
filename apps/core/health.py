@@ -19,6 +19,27 @@ _QUICK_SCHEMA_TTL_SECONDS = 30
 _quick_schema_cache: tuple[float, tuple[str, list[str]]] | None = None
 
 
+def worker_facts():
+    """Current DB aggregate, with a bounded mismatch preview, never all rows."""
+    from django.db.models import Count, Q, Sum
+    from apps.runner.models import WorkerHeartbeat
+
+    alive = WorkerHeartbeat.alive()
+    runners = Q(role__in=(WorkerHeartbeat.ROLE_ALL, WorkerHeartbeat.ROLE_RUNNER))
+    coordinators = Q(role__in=(WorkerHeartbeat.ROLE_ALL, WorkerHeartbeat.ROLE_COORDINATOR))
+    mismatch = runners & ~Q(sandbox_mode="docker")
+    result = alive.aggregate(
+        total=Count("pk"), runners=Count("pk", filter=runners),
+        coordinators=Count("pk", filter=coordinators),
+        running=Sum("running_count", filter=runners, default=0),
+        capacity=Sum("max_concurrent", filter=runners, default=0),
+        sandbox_mismatches=Count("pk", filter=mismatch),
+    )
+    result["mismatched_ids"] = list(alive.filter(mismatch).order_by("worker_id", "pk")
+                                    .values_list("worker_id", flat=True)[:5]) if result["sandbox_mismatches"] else []
+    return result
+
+
 def free_bytes() -> int:
     """Free bytes on the data volume, or a large number if unknowable."""
     try:
@@ -356,32 +377,25 @@ def run_checks(*, quick: bool = False) -> list[dict]:
     check("retention", retention)
 
     def worker():
-        from apps.runner.models import WorkerHeartbeat
-
-        alive = list(WorkerHeartbeat.alive().order_by("-last_beat_at"))
-        if not alive:
+        facts = worker_facts()
+        if not facts["total"]:
             raise RuntimeError("no live worker heartbeat (is the worker container running?)")
-
-        runners = [w for w in alive if w.role in (w.ROLE_ALL, w.ROLE_RUNNER)]
-        coordinators = [w for w in alive if w.role in (w.ROLE_ALL, w.ROLE_COORDINATOR)]
         # Each half fails differently and silently: no runner means builds
         # queue forever; no coordinator means schedules never fire.
-        if not runners:
+        if not facts["runners"]:
             raise RuntimeError(
                 "no live runner — builds will queue forever "
-                f"({len(coordinators)} coordinator(s) alive)"
+                f"({facts['coordinators']} coordinator(s) alive)"
             )
-        if not coordinators:
+        if not facts["coordinators"]:
             raise RuntimeError(
                 "no live coordinator — repository sync is paused and scheduled reports "
                 "will not fire "
-                f"({len(runners)} runner(s) alive)"
+                f"({facts['runners']} runner(s) alive)"
             )
-        running = sum(w.running_count for w in runners)
-        capacity = sum(w.max_concurrent for w in runners)
         return (
-            f"{len(runners)} runner(s), {len(coordinators)} coordinator(s), "
-            f"{running}/{capacity} builds running"
+            f"{facts['runners']} runner(s), {facts['coordinators']} coordinator(s), "
+            f"{facts['running']}/{facts['capacity']} builds running"
         )
 
     check("worker", worker)
@@ -390,7 +404,6 @@ def run_checks(*, quick: bool = False) -> list[dict]:
         """Are report builds sandboxed? This check usually runs in the web
         container, which has no Docker socket, so it judges by the configured
         mode and what live runners actually report — not by probing here."""
-        from apps.runner.models import WorkerHeartbeat
         from apps.runner.sandbox import sandbox_mode
 
         mode = sandbox_mode()
@@ -402,22 +415,21 @@ def run_checks(*, quick: bool = False) -> list[dict]:
                 f"Set TRELLUM_SANDBOX=docker in production."
             )
 
-        runners = [
-            w
-            for w in WorkerHeartbeat.alive().order_by("-last_beat_at")
-            if w.role in (w.ROLE_ALL, w.ROLE_RUNNER)
-        ]
-        if not runners:
+        facts = worker_facts()
+        if not facts["runners"]:
             # Absence of a runner is the worker check's job, not this one.
             return "configured 'docker' (no live runner to confirm)"
-        mismatched = [w.worker_id for w in runners if w.sandbox_mode != "docker"]
-        if mismatched:
+        if facts["sandbox_mismatches"]:
+            shown = ", ".join(facts["mismatched_ids"])
+            remaining = facts["sandbox_mismatches"] - len(facts["mismatched_ids"])
+            if remaining:
+                shown += f", +{remaining} more"
             raise RuntimeError(
-                f"TRELLUM_SANDBOX=docker but runner(s) {', '.join(mismatched)} report "
+                f"TRELLUM_SANDBOX=docker but runner(s) {shown} report "
                 f"a different mode — they may have failed sandbox preflight."
             )
         egress = _sandbox_egress_state()
-        return f"docker on {len(runners)} runner(s), egress {egress}"
+        return f"docker on {facts['runners']} runner(s), egress {egress}"
 
     if not quick:
         check("report sandbox", sandbox)
@@ -517,9 +529,24 @@ def health_summary(checks: list[dict]) -> dict:
 
 
 def quick_health_summary() -> dict:
-    """Quick shell status that degrades safely if the checker itself fails."""
+    """Current worker facts and scoped last-known maintenance; no local probes."""
     try:
-        return health_summary(run_checks(quick=True))
+        from apps.core.operator_observations import snapshot
+
+        facts = worker_facts()
+        if not facts["total"]:
+            return health_summary([{"label": "worker", "ok": False, "detail": "no live worker heartbeat"}])
+        if not facts["runners"]:
+            return health_summary([{"label": "worker", "ok": False, "detail": "no live runner"}])
+        if not facts["coordinators"]:
+            return health_summary([{"label": "worker", "ok": False, "detail": "no live coordinator"}])
+        if (settings.TRELLUM_SANDBOX == "docker" and facts["sandbox_mismatches"]) or (settings.TRELLUM_SANDBOX != "docker" and not settings.DEBUG):
+            return {"status": "error", "message": "Runner sandbox needs attention", "detail": "Open Fleet and System health for details", "failure_count": max(1, facts["sandbox_mismatches"])}
+        maintenance = snapshot("maintenance")
+        failures = sum(not check["ok"] for check in maintenance.get("checks", []))
+        if failures:
+            return {"status": "error", "message": f"Coordinator needs attention ({failures})", "detail": "Last observed on coordinator; web-local facts remain unverified", "failure_count": failures}
+        return {"status": "unknown", "message": "Web-local diagnostics unverified", "detail": "Open System health for scoped last-known diagnostics", "failure_count": 0}
     except Exception:  # noqa: BLE001 — status UI must never break its host page
         return {
             "status": "unknown",

@@ -135,9 +135,11 @@ def test_health_endpoint_recovers_when_worker_returns(
     assert failed.json()["message"] == "Worker offline"
     assert failed["Cache-Control"] == "no-store"
 
-    WorkerHeartbeat.objects.create(worker_id="combined", role=WorkerHeartbeat.ROLE_ALL)
+    settings.TRELLUM_SANDBOX = "docker"
+    WorkerHeartbeat.objects.create(worker_id="combined", role=WorkerHeartbeat.ROLE_ALL, sandbox_mode="docker")
     recovered = client.get("/api/system/health")
-    assert recovered.json()["status"] == "ok"
+    assert recovered.json()["status"] == "unknown"
+    assert recovered.json()["message"] == "Web-local diagnostics unverified"
 
 
 @pytest.mark.parametrize("fixture_name", ["org_admin", "member"])

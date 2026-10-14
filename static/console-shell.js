@@ -77,11 +77,19 @@
         if (text) text.textContent = message;
     }
 
+    var healthGeneration = 0, healthController = null;
+    function stopHealthPolling() {
+        healthGeneration++;
+        clearInterval(window.__trellumHealthTimer); window.__trellumHealthTimer = null;
+        if (healthController) healthController.abort();
+    }
     function pollHealth() {
         if (window.__trellumHealthInFlight) return window.__trellumHealthInFlight;
         var root = document.querySelector('[data-console-shell][data-console-health-url]');
-        if (!root) return Promise.resolve();
+        if (!root || document.hidden) return Promise.resolve();
         var controller = new AbortController();
+        healthController = controller;
+        var generation = healthGeneration;
         var timeout = window.setTimeout(function () { controller.abort(); }, 10000);
         window.__trellumHealthInFlight = fetch(root.dataset.consoleHealthUrl, {
             credentials: 'same-origin', cache: 'no-store', signal: controller.signal,
@@ -90,22 +98,32 @@
             if (!response.ok) throw new Error('health request failed');
             return response.json();
         }).then(function (summary) {
-            updateHealth(document.querySelector('[data-console-shell]'), summary);
+            if (generation === healthGeneration && root === document.querySelector('[data-console-shell]') && !controller.signal.aborted) updateHealth(root, summary);
         }).catch(function () {
-            updateHealth(document.querySelector('[data-console-shell]'), {
+            if (generation === healthGeneration && root === document.querySelector('[data-console-shell]') && !controller.signal.aborted) updateHealth(root, {
                 status: 'unknown', message: 'System health unavailable',
                 detail: 'Open System health for details'
             });
         }).finally(function () {
             window.clearTimeout(timeout);
             window.__trellumHealthInFlight = null;
+            if (healthController === controller) healthController = null;
         });
         return window.__trellumHealthInFlight;
     }
 
     function startHealthPolling(root) {
-        if (!root.dataset.consoleHealthUrl || window.__trellumHealthTimer) return;
+        if (!root.dataset.consoleHealthUrl || window.__trellumHealthTimer || document.hidden) return;
         window.__trellumHealthTimer = window.setInterval(pollHealth, 30000);
+        if (!window.__trellumHealthLifecycle) {
+            window.__trellumHealthLifecycle = true;
+            document.addEventListener('visibilitychange', function () {
+                if (document.hidden) stopHealthPolling();
+                else { var current = document.querySelector('[data-console-shell]'); if (current) startHealthPolling(current); }
+            });
+            window.addEventListener('pagehide', stopHealthPolling);
+            window.addEventListener('pageshow', function () { var current = document.querySelector('[data-console-shell]'); if (current) startHealthPolling(current); });
+        }
     }
 
     function init(root) {

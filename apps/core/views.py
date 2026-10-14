@@ -139,14 +139,84 @@ def system_page(request):
         return instance_settings(request)
 
     from apps.core import releases
-    from apps.core.health import run_checks
-    from apps.core.version import version_info
+    import trellum_portal
+    from apps.core import operator_observations as observations
+    from apps.core.version import framework_tag, meta_schema_version, source_url
+
+    diagnostic = observations.snapshot("full-health")
+    current = None
+    if request.GET.get("observation"):
+        try:
+            current = observations.observation(request.GET["observation"], kind="full-health")
+        except observations.ObservationError:
+            pass
 
     return render(request, "core/system.html", {
-        "checks": run_checks(),
+        "checks": diagnostic.get("checks", []),
+        "diagnostic": diagnostic,
+        "probe_nonce": observations.nonce(request.user.pk, "full-health"),
+        "probe_operation": current,
         "releases": releases.current(),
-        "version": version_info(detailed=True),
+        "version": {
+            "version": trellum_portal.__version__, "sha": settings.TRELLUM_VERSION_SHA,
+            "build_time": settings.TRELLUM_VERSION_BUILD_TIME, "source_url": source_url(),
+            "framework": {"tag": framework_tag(), "meta_schema": meta_schema_version()},
+        },
     })
+
+
+def operator_diagnostics_refresh(request):
+    """Explicit admission only; native refresh never executes the probe."""
+    from django.http import HttpResponseNotAllowed
+    from django.shortcuts import redirect
+    from django.urls import reverse
+    from django.db import transaction
+    from apps.core import operator_observations as observations
+    from apps.core.audit import audit
+
+    gate = _require_email_operator(request)
+    if gate is not None:
+        return gate
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    json_request = "application/json" in request.headers.get("Accept", "")
+    try:
+        with transaction.atomic():
+            entry, created = observations.admit(request.user.pk, "full-health", request.POST.get("request_key", ""))
+            if created:
+                audit(request, "operator.diagnostics.refresh", operation_id=entry["id"])
+    except observations.ObservationError as exc:
+        if json_request:
+            return JsonResponse({"ok": False, "message": exc.message}, status=exc.status)
+        from django.contrib import messages
+        messages.error(request, exc.message)
+        return redirect("system")
+    if json_request:
+        response = JsonResponse({"ok": True, **observations.envelope(entry, reverse("system-diagnostics-status", args=[entry["id"]]))}, status=202 if created else 200)
+        response["Cache-Control"] = "no-store"
+        return response
+    return redirect(reverse("system") + "?observation=" + entry["id"])
+
+
+def operator_diagnostics_status(request, operation_id):
+    from django.http import Http404, HttpResponseNotAllowed
+    from django.urls import reverse
+    from apps.core import operator_observations as observations
+
+    if not request.user.is_authenticated:
+        return JsonResponse({"detail": "Authentication required"}, status=401)
+    if not _is_current_operator(request):
+        raise Http404
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET"])
+    try:
+        entry = observations.observation(operation_id, kind="full-health")
+    except observations.ObservationError as exc:
+        return JsonResponse({"message": exc.message}, status=exc.status)
+    response = JsonResponse({**observations.envelope(entry, reverse("system-diagnostics-status", args=[operation_id])), "snapshot": observations.snapshot("full-health"),
+                             "next_nonce": observations.nonce(request.user.pk, "full-health") if entry["state"] in observations.TERMINAL else None})
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 @sensitive_post_parameters()
