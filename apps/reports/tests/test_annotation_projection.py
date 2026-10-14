@@ -18,6 +18,19 @@ class DeclarationAdmissionTests(SimpleTestCase):
         with self.assertRaises(AdmissionError):
             declaration(b'events: &loop [*loop]')
 
+    def test_constructed_config_cycle_is_rejected(self):
+        events = []
+        events.append(events)
+        with self.assertRaises(AdmissionError):
+            normalize({"events": events})
+
+    def test_shared_constructed_graph_counts_repeated_visits(self):
+        from unittest.mock import patch
+
+        shared_event = {"date": "2020-01-01", "label": "shared"}
+        with patch("apps.reports.annotation_projection.MAX_VISITS", 6), self.assertRaises(AdmissionError):
+            normalize({"events": [shared_event, shared_event]})
+
     def test_invalid_dates_and_reversed_end(self):
         result = declaration(b'events: [{date: invalid}, {date: 2020-01-02, end_date: 2020-01-01}]')
         self.assertEqual(len(result.events), 1)
