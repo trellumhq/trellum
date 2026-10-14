@@ -12,6 +12,10 @@ change layouts, controls or interactions that users already know. Any visible
 change needs explicit product approval. Before review, compare the changed pages
 with `main` on desktop and mobile. Specifically:
 
+- Changing a dropdown, select, tab or toggle applies immediately; there is no
+  Apply or Go button. Typing in a search box applies automatically after a short
+  pause (about 400 ms); there is no Search button. Any submit buttons needed
+  without JavaScript are hidden when JavaScript runs.
 - Dropdowns and pickers never paginate. Show every choice, with instant search.
   For a genuinely huge set, switch to search-as-you-type; never show
   Previous/Next pages.
