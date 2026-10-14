@@ -9,6 +9,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- Agent guide: performance work must keep the existing user experience
+  (no paginated dropdowns, no manual retry/apply steps, reachable navigation).
 - Phone layout of console-hosted reports: the report header is one compact row
   (freshness left, labelled Options and Monitor right), annotation chips scroll
   on one row, and the shell header buttons share one neutral bordered style.

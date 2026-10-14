@@ -4,6 +4,25 @@ Every portal page and action must stay fast as an organization grows. These
 are the patterns the portal already uses. A new feature follows them by
 default, and a PR that departs from one says why.
 
+
+## 0. Invisible to users
+
+**User experience comes first.** Performance work is invisible: it must not
+change layouts, controls or interactions that users already know. Any visible
+change needs explicit product approval. Before review, compare the changed pages
+with `main` on desktop and mobile. Specifically:
+
+- Dropdowns and pickers never paginate. Show every choice, with instant search.
+  For a genuinely huge set, switch to search-as-you-type; never show
+  Previous/Next pages.
+- Pages for realistic studio sizes (tens to low hundreds of items) look and
+  behave exactly as on `main`. Server-side bounds stay out of sight until well
+  above that.
+- Never make the user press Retry, Refresh or Apply for something the system can
+  resolve or apply by itself. Poll and retry quietly.
+- Keep navigation reachable. A new page needs a visible entry for the roles that
+  use it.
+
 ## 1. Cost does not grow with data size
 
 - A page or API response does a fixed amount of work whether a studio has 20
