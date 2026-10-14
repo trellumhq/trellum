@@ -2,6 +2,7 @@
 import json
 
 from django import forms
+from django.forms.renderers import get_default_renderer
 from django.template.loader import get_template
 from django.utils.safestring import mark_safe
 
@@ -49,6 +50,10 @@ class CompactCheckboxSelectMultiple(forms.CheckboxSelectMultiple):
     removal_urls = None
 
     def _render(self, template_name, context, renderer=None):
+        renderer = renderer or get_default_renderer()
+        context["widget"]["checkbox_fragment"] = mark_safe(
+            renderer.render("django/forms/widgets/multiple_input.html", context)
+        )
         return mark_safe(get_template(template_name).render(context))
 
     def value_from_datadict(self, data, files, name):
