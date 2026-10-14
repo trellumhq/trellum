@@ -33,7 +33,11 @@ def test_remote_only_served_pointer_names_and_private_head(studio,monkeypatch):
         def get_object(self,**kwargs):
             pytest.fail('private query contents must never be read')
     monkeypatch.setattr(storage,'is_remote',lambda:True)
-    monkeypatch.setattr(storage,'_client',Client)
+    from apps.core import s3
+    def short_client(**kwargs):
+        assert kwargs=={'read_timeout':2}
+        return Client()
+    monkeypatch.setattr(s3,'s3_client',short_client)
     budget=storage.SummaryReadBudget(128*1024)
     facts=storage.summary_output_facts(studio,'sales',build='001',budget=budget)
     assert facts['html_entry']=='index.html' and facts['has_live_queries']
@@ -46,7 +50,11 @@ def test_remote_listing_page_cap(studio,monkeypatch):
         def list_objects_v2(self,**kwargs):
             return {'Contents':[],'IsTruncated':True,'NextContinuationToken':'more'}
     monkeypatch.setattr(storage,'is_remote',lambda:True)
-    monkeypatch.setattr(storage,'_client',Client)
+    from apps.core import s3
+    def short_client(**kwargs):
+        assert kwargs=={'read_timeout':2}
+        return Client()
+    monkeypatch.setattr(s3,'s3_client',short_client)
     with pytest.raises(ValueError,match='oversized'):
         storage.summary_output_facts(studio,'sales',build='001')
 

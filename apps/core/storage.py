@@ -934,6 +934,8 @@ def summary_output_facts(studio, slug: str, *, build: str = '', budget=None):
     elif not build:
         live = False
     else:
+        from apps.core.s3 import s3_client
+        client = s3_client(read_timeout=2)
         prefix = _build_prefix(_remote_prefix(studio, slug), _safe_component(build)) + '/'
         token = None
         listing_bytes = 0
@@ -941,7 +943,7 @@ def summary_output_facts(studio, slug: str, *, build: str = '', budget=None):
             kwargs = {'Bucket': _bucket(), 'Prefix': prefix, 'Delimiter': '/', 'MaxKeys': 128}
             if token:
                 kwargs['ContinuationToken'] = token
-            response = _client().list_objects_v2(**kwargs)
+            response = client.list_objects_v2(**kwargs)
             listing_bytes += len(json.dumps(response,default=str).encode())
             if listing_bytes>64*1024:
                 raise ValueError('output listing metadata oversized')
@@ -962,7 +964,7 @@ def summary_output_facts(studio, slug: str, *, build: str = '', budget=None):
         for base in (_private_prefix(_remote_prefix(studio, slug)), _remote_prefix(studio, slug)):
             key = f'{_build_prefix(base, _safe_component(build))}/{_LIVE_QUERIES_NAME}'
             try:
-                response = _client().head_object(Bucket=_bucket(), Key=key)
+                response = client.head_object(Bucket=_bucket(), Key=key)
             except Exception as exc:
                 if _is_missing(exc):
                     continue
