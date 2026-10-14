@@ -400,7 +400,8 @@ class TestMaintenance:
         assert body == {"configured": False}
 
     def test_datasources_stub(self, login, viewer, prefix, report_row):
-        assert login(viewer).get(f"{prefix}/api/datasources").json() == {"sources": []}
+        body = login(viewer).get(f"{prefix}/api/datasources").json()
+        assert body["sources"] == [] and body["total"] == 0 and body["page"] == 1 and body["has_next"] is False
 
 
 class TestReportServing:
