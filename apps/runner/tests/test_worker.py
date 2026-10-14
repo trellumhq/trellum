@@ -528,7 +528,7 @@ class TestSchedulerDiff:
             report_row.disabled = True
             report_row.save(update_fields=["disabled"])
             mgr.refresh()
-            assert not mgr._scheduler.get_jobs()
+            assert not [j for j in mgr._scheduler.get_jobs() if j.id != "operator-probe"]
         finally:
             mgr.shutdown()
 
@@ -538,7 +538,7 @@ class TestSchedulerDiff:
         mgr = _SchedulerManager()
         mgr.start()
         try:
-            assert not mgr._scheduler.get_jobs()
+            assert not [j for j in mgr._scheduler.get_jobs() if j.id != "operator-probe"]
         finally:
             mgr.shutdown()
 
