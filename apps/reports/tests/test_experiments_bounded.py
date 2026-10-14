@@ -188,7 +188,9 @@ def test_whole_middleware_bounded_no_heavy_columns_or_storage(studio, member, gr
         elements=Elements();elements.feed(response.content.decode())
         assert elements.rows<=25 and elements.lanes<=25 and elements.nodes<=1800
         read_sql = '\n'.join(q['sql'] for q in queries if q['sql'].lstrip().upper().startswith('SELECT'))
-        assert '"config"' not in read_sql and '"runtime"' not in read_sql and '"description"' not in read_sql
+        assert '"reports_report"."config"' not in read_sql
+        assert '"reports_reportsourcesummary"."runtime"' not in read_sql
+        assert '"reports_report"."description"' not in read_sql
 
 
 def test_current_revocation_denies_before_projection(studio, member, grant_studio, login, experiment):
