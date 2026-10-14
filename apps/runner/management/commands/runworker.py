@@ -236,6 +236,13 @@ class Command(BaseCommand):
                 is_runner=is_runner, pools=settings.TRELLUM_RUNNER_POOLS, worker_id=worker_id
             )
 
+        filter_cleanup = None
+        if not opts["once"] and is_coordinator:
+            # DB-only, bounded expiry cleanup; the coordinator holds the
+            # advisory lock so exactly one instance-wide cleaner runs.
+            from apps.reports.annotation_filter_cleanup import CleanupWorker
+            filter_cleanup = CleanupWorker().start()
+
         last_reap = time.time()  # _recover_stale_runs already ran above
         try:
             while not shutdown.is_set():
@@ -262,6 +269,8 @@ class Command(BaseCommand):
                     break
                 time.sleep(1)
         finally:
+            if filter_cleanup is not None:
+                filter_cleanup.stop()
             if maintenance_thread is not None:
                 maintenance_thread.stop()
             if annotation_thread is not None:

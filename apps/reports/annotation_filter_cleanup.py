@@ -1,6 +1,6 @@
 """Bounded expiry cleanup; only a worker/management command may invoke it.
 
-No worker hook is installed by this module. Each tick considers<=25 states
+The coordinator's runworker loop starts CleanupWorker. Each tick considers<=25 states
 and physically deletes<=500 TOTAL rows, including state and receipt rows.
 """
 from __future__ import annotations
