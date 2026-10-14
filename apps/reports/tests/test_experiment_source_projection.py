@@ -127,3 +127,67 @@ def test_declaration_limit_never_publishes_partial_result_rows(studio_tree):
     summary=report.source_summary
     assert summary.experiment_state=='oversized' and not summary.experiments.exists()
     assert summary.claims.count()==1
+
+
+def test_oversized_input_short_circuits_normalization_and_hash(monkeypatch):
+    from apps.reports import report_experiment_projection as projection
+    monkeypatch.setattr(projection,'_ab_entries',lambda config:pytest.fail('oversized list must not be walked'))
+    monkeypatch.setattr(projection.json,'dumps',lambda *a,**k:pytest.fail('oversized input must not be serialized'))
+    config={'ab_test':[{}]*100000}
+    with pytest.raises(projection.ProjectionOversized):
+        projection.declarations(config)
+    assert projection.declaration_identity(config)==projection.OVERSIZED_DECLARATION_DIGEST
+
+
+@pytest.mark.parametrize('value',['x'*100000,{'nested':['x'*100000]}])
+def test_oversized_scalar_short_circuits_json(value,monkeypatch):
+    from apps.reports import report_experiment_projection as projection
+    monkeypatch.setattr(projection.json,'dumps',lambda *a,**k:pytest.fail('oversized scalar must not be serialized'))
+    config={'ab_test':{'name':value}}
+    assert projection.declaration_identity(config)==projection.OVERSIZED_DECLARATION_DIGEST
+
+
+def test_normal_256_names_digest_fully_sensitive():
+    from apps.reports.report_experiment_projection import declarations
+    config={'ab_test':[{'name':str(i),'test_name':str(i)} for i in range(256)]}
+    rows,old=declarations(config)
+    assert len(rows)==256 and rows[-1]['name']=='255'
+    config['ab_test'][-1]['name']='Renamed'
+    assert declarations(config)[1]!=old
+
+
+def test_oversized_scan_repair_transition_keeps_core_and_runtime(studio_tree):
+    from apps.reports.report_experiment_projection import OVERSIZED_DECLARATION_DIGEST
+    report,path=fixture(studio_tree,{'ab_test':[{}]*257},{'components':{'a':component('Alpha')}})
+    with transaction.atomic():
+        sync_declarations(report)
+    first_generation=report.source_summary.generation
+    assert reconcile(report.pk)['status']=='ready'
+    summary=report.source_summary
+    assert summary.experiment_state=='oversized' and summary.declaration_digest==OVERSIZED_DECLARATION_DIGEST
+    assert not summary.experiments.exists() and summary.runtime_state=='ready' and summary.has_output
+    assert summary.claims.get().metric_name=='known'
+    report.config={'ab_test':{'name':'Supported'}}
+    with transaction.atomic():
+        report.save(update_fields=['config']);sync_declarations(report)
+    summary.refresh_from_db()
+    assert summary.generation>first_generation and summary.declaration_digest!=OVERSIZED_DECLARATION_DIGEST
+    assert reconcile(report.pk)['status']=='ready'
+    assert summary.experiments.get().delta_pct==4
+
+
+def test_multi_entry_display_name_rename_without_rebuild(studio_tree):
+    report,path=fixture(studio_tree,{'ab_test':[{'name':'Old','test_name':'Alpha'},{'name':'Second','test_name':'Beta'}]},
+        {'components':{'a':component('Alpha'),'b':component('Beta')}})
+    reconcile(report.pk)
+    identity=report.source_summary.source_identity
+    old_digest=report.source_summary.declaration_digest
+    assert report.source_summary.experiments.get(ordinal=0).declaration['name']=='Old'
+    report.config['ab_test'][0]['name']='New'
+    with transaction.atomic():
+        report.save(update_fields=['config']);sync_declarations(report)
+    reconcile(report.pk)
+    summary=report.source_summary
+    assert summary.source_identity==identity and summary.declaration_digest!=old_digest
+    row=summary.experiments.get(ordinal=0)
+    assert row.declaration['name']=='New' and row.delta_pct==4

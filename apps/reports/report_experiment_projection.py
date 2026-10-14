@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from datetime import date
+from datetime import date, datetime
 
 from django.db import transaction
 from django.utils import timezone
@@ -19,7 +19,8 @@ MAX_COMPONENTS = 256
 MAX_KPIS = 256
 MAX_SCOPES = 16
 PROJECTION_BYTES = 256 * 1024
-DECLARATION_KEYS = ('test_name', 'split', 'control_label', 'test_label', 'start_date', 'end_date', 'planned_end', 'closed', 'primary_metric')
+OVERSIZED_DECLARATION_DIGEST = hashlib.sha256(b'oversized-declarations-v1').hexdigest()
+DECLARATION_KEYS = ('name', 'test_name', 'split', 'control_label', 'test_label', 'start_date', 'end_date', 'planned_end', 'closed', 'primary_metric')
 
 
 class ProjectionOversized(ValueError):
@@ -27,17 +28,54 @@ class ProjectionOversized(ValueError):
 
 
 def text(value, limit=200):
-    value = '' if value is None else str(value)
+    if not isinstance(value, (str, int, float, bool, date, datetime, type(None))):
+        raise ProjectionOversized('nested projection scalar')
+    if isinstance(value, str) and len(value) > limit:
+        raise ProjectionOversized('projection text limit exceeded')
+    try:
+        value = '' if value is None else str(value)
+    except ValueError as exc:
+        raise ProjectionOversized('projection scalar exceeds conversion limit') from exc
     if len(value) > limit:
         raise ProjectionOversized('projection text limit exceeded')
     return value
 
 
+def has_declarations(config):
+    raw = (config or {}).get('ab_test')
+    return isinstance(raw, dict) or isinstance(raw, list) and bool(raw)
+
+
 def declarations(config):
+    raw = (config or {}).get('ab_test')
+    if isinstance(raw, list) and len(raw) > MAX_DECLARATIONS:
+        raise ProjectionOversized('declaration input count exceeded')
     entries = _ab_entries(config)
-    normalized = [{key: entry[key] for key in DECLARATION_KEYS if key in entry} for entry in entries]
+    normalized = []
+    serialized_bytes = 2
+    for entry in entries:
+        values = {}
+        for key in DECLARATION_KEYS:
+            if key in entry:
+                # Admission precedes JSON conversion/hash; preserve valid raw
+                # scalar types so normal declaration identity remains sensitive.
+                text(entry[key])
+                values[key] = entry[key]
+        serialized_bytes += len(json.dumps(values, sort_keys=True, default=str).encode()) + (2 if normalized else 0)
+        if serialized_bytes > PROJECTION_BYTES:
+            raise ProjectionOversized('declaration byte limit exceeded')
+        normalized.append(values)
     digest = hashlib.sha256(json.dumps(normalized, sort_keys=True, default=str).encode()).hexdigest()
     return normalized, digest
+
+
+def declaration_identity(config):
+    try:
+        return declarations(config)[1]
+    except ProjectionOversized:
+        # Only usable with an explicit oversized state and no experiment rows.
+        # Unsupported edits cannot publish numeric results under this sentinel.
+        return OVERSIZED_DECLARATION_DIGEST
 
 
 def parsed_date(value):
@@ -69,7 +107,7 @@ def declared_rows(config):
 def sync_declarations(report, prior_config=None):
     """Caller owns the Report update transaction; changes cancel any old lease."""
     from .source_summary import _revision
-    _, digest = declarations(report.config)
+    digest = declaration_identity(report.config)
     summary = ReportSourceSummary.objects.select_for_update().filter(report=report).first()
     if summary and summary.declaration_digest == digest:
         return

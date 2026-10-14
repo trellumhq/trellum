@@ -142,8 +142,8 @@ def inspect_source(report, summary):
         if not main[0]:
             main[0] = True
             try:
-                from .report_experiment_projection import AB_BYTES, declarations
-                has_ab = bool(declarations(report.config)[0])
+                from .report_experiment_projection import AB_BYTES, has_declarations
+                has_ab = has_declarations(report.config)
                 cap = PREVIEW_BYTES if generated else AB_BYTES if has_ab else PREVIEW_BYTES
                 before = budget.used
                 main[1] = read('data.json', build=build, max_bytes=cap)
@@ -296,8 +296,8 @@ def reconcile(report_id):
         report.refresh_from_db(fields=["present_in_scan", "data_expired_at", "config"])
         if row.generation != generation or row.lease_token != token or not report.present_in_scan or report.data_expired_at:
             return {"status": "superseded", "bytes": result["bytes"]}
-        from .report_experiment_projection import declarations
-        if declarations(report.config)[1] != result['extension']['declaration_digest']:
+        from .report_experiment_projection import declaration_identity
+        if declaration_identity(report.config) != result['extension']['declaration_digest']:
             return {"status": "superseded", "bytes": result["bytes"]}
         previous_identity = _public_identity(row)
         preview_changed = False
@@ -418,10 +418,15 @@ def finish_expiry(report_id, operation, *, expired_at=None):
 def inspect_extensions(report, meta, attempt_meta, build, main_payload, read, budget):
     """Independent compact projections; errors never invalidate proven claims."""
     from .report_experiment_projection import (
-        AB_BYTES, MAX_SCOPES, ProjectionOversized, declarations, declared_rows,
+        AB_BYTES, MAX_SCOPES, ProjectionOversized, declaration_identity, declarations, declared_rows,
         project_results, text,
     )
-    entries, digest = declarations(report.config)
+    digest = declaration_identity(report.config)
+    try:
+        entries, _ = declarations(report.config)
+        oversized_declarations = False
+    except ProjectionOversized:
+        entries, oversized_declarations = [], True
     result = dict(runtime_state='pending', experiment_state='not-applicable', declaration_digest=digest,
                   experiment_rows=None, attempt_error='', attempt_blocked_by=[])
     try:
@@ -458,6 +463,9 @@ def inspect_extensions(report, meta, attempt_meta, build, main_payload, read, bu
         if budget.used == facts_before:
             budget.charge(96*1024,96*1024)
         result['runtime_state'] = 'oversized' if 'oversiz' in str(exc) or isinstance(exc,ProjectionOversized) else 'unavailable'
+    if oversized_declarations:
+        result.update(experiment_state='oversized', experiment_rows=[])
+        return result
     if not entries:
         result['experiment_rows'] = []
         return result
