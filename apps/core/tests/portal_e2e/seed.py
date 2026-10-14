@@ -77,7 +77,7 @@ def enrich(metric_count=20, schedule_count=1, rule_count=1):
         DataSource.objects.create(studio=studio, name='sample', type='file', config={'path':'sample.csv'})
         RepoDataSource.objects.create(studio=studio,name='sample',type='file',config={'path':'files/sample.csv'},source_file='data-sources/config.yaml',shipped_path='data-sources/files/sample.csv')
         (studio.datasources_dir/'files'/'sample.csv').write_text('day,revenue\n2026-10-01,100\n2026-10-02,110\n')
-        MetricDefinition.objects.bulk_create([MetricDefinition(studio=studio, name=f'metric-{n:04}', label=f'Metric {n}', agg='sum', column='revenue', dimensions=['day'], definition_hash=f'{n:064x}') for n in range(metric_count)])
+        MetricDefinition.objects.bulk_create([MetricDefinition(studio=studio, name=f'metric_{n:04}', label=f'Metric {n}', agg='sum', column='revenue', dimensions=['day'], definition_hash=f'{n:064x}') for n in range(metric_count)])
         reports = list(studio.reports.order_by('slug'))
         built, unbuilt, expired, failed, private, analysis = reports[:6]
         for report in (built, private, analysis):
@@ -91,7 +91,7 @@ def enrich(metric_count=20, schedule_count=1, rule_count=1):
             output = studio.output_dir/report.slug
             output.mkdir(parents=True, exist_ok=True)
             (output/'index.html').write_text('<!doctype html><html><head><title>Baseline report</title></head><body><h1>Baseline report</h1><p>Controlled built fixture</p></body></html>')
-            (output/'_meta.json').write_text(json.dumps({'schema_version':2,'last_run':now.isoformat(),'last_status':'success','last_duration':0.1,'metrics_used':[{'id':'metric-0000','definition_hash':f'{0:064x}','version':1}]}))
+            (output/'_meta.json').write_text(json.dumps({'schema_version':2,'last_run':now.isoformat(),'last_status':'success','last_duration':0.1,'metrics_used':[{'id':'metric_0000','definition_hash':f'{0:064x}','version':1}]}))
             component = {'type':'ab_compare','header':{'test_name':'checkout'},'body':{'kpi_rows':[{'metric':'revenue','key':'revenue','delta_pct':10,'ci_pct':[1,19],'higher_is_better':True,'control_val':'100','test_val':'110'}],'volume_rows':[],'timeseries':{}},'modes':None,'default_mode':''}
             (output/'data.json').write_text(json.dumps({'components':{'fw_c1':component,'fw_c2':dict(component,header={'test_name':'upsell'})},'_freshness':{'generated_at':now.isoformat()}}))
             Run.objects.create(studio=studio, report=report, slug=report.slug, status=Run.SUCCESS, finished_at=now, started_at=now-timedelta(seconds=1), exit_code=0)
@@ -113,7 +113,7 @@ def enrich(metric_count=20, schedule_count=1, rule_count=1):
             analysis_state.save()
         (studio.project_root/'events.yaml').write_text('events:\n  - date: 2026-10-01\n    label: Baseline campaign\n    type: campaign\n  - date: 2026-10-02\n    end_date: 2026-10-05\n    label: Baseline experiment\n    type: ab_test\n')
         import yaml
-        (studio.project_root/'metrics.yaml').write_text(yaml.safe_dump({'metrics':[{'name':f'metric-{n:04}','label':f'Metric {n}','agg':'sum','column':'revenue'} for n in range(metric_count)]}))
+        (studio.project_root/'metrics.yaml').write_text(yaml.safe_dump({'metrics':[{'name':f'metric_{n:04}','label':f'Metric {n}','agg':'sum','column':'revenue'} for n in range(metric_count)]}))
         for report in studio.reports.all():
             folder = studio.reports_dir/report.slug
             folder.mkdir(parents=True,exist_ok=True)

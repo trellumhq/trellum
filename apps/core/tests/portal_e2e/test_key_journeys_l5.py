@@ -10,17 +10,6 @@ BOTH = [pytest.param('chromium-desktop'), pytest.param('webkit-mobile', marks=HE
 TERMINAL_RUN = ('success', 'error', 'timeout', 'oom', 'stopped')
 
 
-def drop_invalid_seed_metrics():
-    """The baseline metric ids are deliberately not valid slugs; building would fail validation.
-
-    Removing the studio's metrics.yaml in this private unit keeps the journey about running
-    a report rather than about metric validation.
-    """
-    from apps.studios.models import Studio
-    path = Studio.objects.get(org__slug='alpha', slug='studio-0').project_root / 'metrics.yaml'
-    path.unlink(missing_ok=True)
-
-
 def latest_run():
     from apps.runner.models import Run
     run = Run.objects.filter(studio__org__slug='alpha', studio__slug='studio-0', slug='report-0001').order_by('-created_at').first()
@@ -39,7 +28,6 @@ def test_operations_run_log_registry_refresh(journey, variant):
     from playwright.sync_api import expect
     spec = VARIANTS[variant]
     origin = journey.unit.origin
-    journey.database(drop_invalid_seed_metrics)
     with browser_session(journey, 'org-admin', spec, condition='key-operations-run') as (page, context):
         page.goto(origin + S + '/operations')
         row = page.locator('[data-ops-row=report-0001]')
