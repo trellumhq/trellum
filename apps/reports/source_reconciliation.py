@@ -11,13 +11,13 @@ from django.utils import timezone
 
 from apps.core import storage
 from .models import Report, ReportSourceSummary
-from .source_summary import META_BYTES, PREVIEW_BYTES, reconcile
+from .source_summary import INSPECTION_BYTES, reconcile
 
 logger = logging.getLogger(__name__)
 MAX_INSPECTIONS = 25
 BATCH_SECONDS = 5.0  # Admission window, not a preemption guarantee for one I/O.
 BATCH_BYTES = 64 * 1024 * 1024
-MAX_INSPECTION_BYTES = 2 * META_BYTES + PREVIEW_BYTES + 8192
+MAX_INSPECTION_BYTES = INSPECTION_BYTES
 POLL_SECONDS = 5.0
 
 
@@ -53,7 +53,8 @@ def run_batch(*, pools=None, limit=MAX_INSPECTIONS):
         results.append({"report_id": pk, **result})
         # Outage/oversize has already installed per-row backoff. A batch stops
         # on it so a broken provider does not receive25successive probes.
-        if result["status"] == "unavailable":
+        if result["status"] == "unavailable" or result.get("projection_unavailable"):
+            # Selective extension-store outages also latch this admission pass.
             break
     return {"inspections": len(results), "bytes": used, "seconds": time.monotonic() - started, "results": results}
 

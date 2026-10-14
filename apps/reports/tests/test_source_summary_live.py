@@ -84,6 +84,16 @@ def test_actual_worker_publish_failure_restart_and_freshness(studio_tree, settin
     if backend == "s3":
         storage.publish_build(studio_tree, old.slug, str(old_output), uuid.uuid4())
 
+    old_ab = Report.objects.create(studio=studio_tree, slug="historical-ab", config={"ab_test": [{"test_name": "Alpha"}, {"test_name": "Missing"}]})
+    ab_output = studio_tree.output_dir / old_ab.slug
+    ab_output.mkdir(parents=True)
+    (ab_output / "_meta.json").write_text(json.dumps({"last_status": "success", "metrics_used": []}))
+    (ab_output / "index.html").write_text("historical AB")
+    (ab_output / "data.json").write_text(json.dumps({"components": {}, "_scopeFiles": {"first": "data_ab.json"}}))
+    (ab_output / "data_ab.json").write_text(json.dumps({"components": {"ab": {"type": "ab_compare", "header": {"test_name": "Alpha"}, "body": {"kpi_rows": [{"metric": "Revenue", "delta_pct": 4, "ci_pct": [1, 5]}]}}}}))
+    if backend == "s3":
+        storage.publish_build(studio_tree, old_ab.slug, str(ab_output), uuid.uuid4())
+
     overrides = {
         "DATABASES": {"default": {**connection.settings_dict, "CONN_MAX_AGE": 0}},
         "DATA_DIR": str(settings.DATA_DIR), "TRELLUM_STORAGE_BACKEND": backend,
@@ -145,10 +155,19 @@ def test_actual_worker_publish_failure_restart_and_freshness(studio_tree, settin
         historical = wait_until(lambda: summary_ready(old.pk))
         assert historical.claims.count() == 2000
         evidence["events"].append("automatic historical2000claim startup")
+        historical_ab = wait_until(lambda: summary_ready(old_ab.pk))
+        assert historical_ab.schema_version == 2 and historical_ab.runtime_state == "ready"
+        assert historical_ab.has_output and historical_ab.html_entry == "index.html"
+        assert historical_ab.experiment_state == "ready"
+        assert historical_ab.experiments.get(ordinal=0).delta_pct == 4
+        assert historical_ab.experiments.get(ordinal=1).payload_state == "missing"
+        evidence["events"].append("automatic scoped declared AB and served runtime startup projection")
         success = build(Run.SUCCESS)
         summary = wait_until(lambda: summary_ready(report.pk))
         assert summary.claims.get(metric_name="m").version == 1
         assert summary.quality == "verified"
+        assert summary.schema_version == 2 and summary.runtime_state == "ready"
+        assert summary.has_output and summary.html_entry == "index.html"
         identity = summary.source_identity
         revision = summary.report.studio.metric_catalog_state.summary_revision
         evidence["events"].append("actual subprocess success and verified publication")

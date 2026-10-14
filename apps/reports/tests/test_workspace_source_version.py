@@ -143,9 +143,11 @@ def test_binding_and_layout_upgrade_preserves_historical_unknowns(studio_tree):
         old.get_model('reports', 'MetricDefinition').objects.create(studio_id=studio_tree.pk, name='historical')
         old.get_model('reports', 'ReportSourceSummary').objects.create(report_id=row.pk)
         executor = MigrationExecutor(connection)
-        executor.migrate([('reports', '0027_metric_binding_workspace_layout')])
-        assert MetricDefinition.objects.get(studio=studio_tree, name='historical').binding is None
-        assert ReportSourceSummary.objects.get(report=row).workspace_version is None
+        target = [('reports', '0027_metric_binding_workspace_layout')]
+        executor.migrate(target)
+        projected = executor.loader.project_state(target).apps
+        assert projected.get_model('reports', 'MetricDefinition').objects.get(studio_id=studio_tree.pk, name='historical').binding is None
+        assert projected.get_model('reports', 'ReportSourceSummary').objects.get(report_id=row.pk).workspace_version is None
         assert Report.objects.filter(pk=row.pk).exists()
         executor = MigrationExecutor(connection); executor.migrate(previous)
         columns = {column.name for column in connection.introspection.get_table_description(connection.cursor(), 'reports_reportsourcesummary')}

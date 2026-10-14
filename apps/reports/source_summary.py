@@ -17,13 +17,14 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 from apps.core import storage
-from .models import MetricCatalogState, Report, ReportMetricClaim, ReportMetricPreview, ReportSourceSummary
+from .models import MetricCatalogState, Report, ReportMetricClaim, ReportMetricPreview, ReportSourceSummary, ReportExperimentSummary
 
 META_BYTES = 2 * 1024 * 1024
 PREVIEW_BYTES = 32 * 1024 * 1024
 LEASE_SECONDS = 180
 RECHECK_SECONDS = 60
 MAX_BACKOFF_SECONDS = 3600
+INSPECTION_BYTES = 62 * 1024 * 1024 + 128 * 1024
 
 
 def _revision(studio_id, *, definitions=False):
@@ -130,18 +131,38 @@ def inspect_source(report, summary):
     from trellum.meta import normalize_metrics_used
 
     remote = storage.is_remote()
+    budget = storage.SummaryReadBudget(INSPECTION_BYTES)
+    # Pointer bodies are bounded independently; reservation includes both.
+    if remote:
+        budget.charge(8194, 8194)
+    def read(name, **kwargs):
+        return storage.read_summary_artifact(report.studio, report.slug, name, budget=budget, **kwargs)
+    main = [False, None, None]
+    def main_payload():
+        if not main[0]:
+            main[0] = True
+            try:
+                from .report_experiment_projection import AB_BYTES, declarations
+                has_ab = bool(declarations(report.config)[0])
+                cap = PREVIEW_BYTES if generated else AB_BYTES if has_ab else PREVIEW_BYTES
+                before = budget.used
+                main[1] = read('data.json', build=build, max_bytes=cap)
+                main_payload.cost = budget.used - before
+                main_payload.parsed = json.loads(main[1]) if main[1] else None
+            except Exception as exc:
+                main[2] = exc
+        if main[2]:
+            raise main[2]
+        return main[1]
     build = storage.summary_build_identity(report.studio, report.slug) if remote else ""
     if len(build) > 300:
         raise ValueError("serving identity exceeds index limit")
-    raw = storage.read_summary_artifact(report.studio, report.slug, "_meta.json", build=build, max_bytes=META_BYTES) if not remote or build else None
+    raw = read("_meta.json", build=build, max_bytes=META_BYTES) if not remote or build else None
     if remote and build and raw is None:
         raise FileNotFoundError("referenced immutable metadata missing")
     if raw == b"":
         raise ValueError("empty metadata artifact")
-    used = len(raw or b"")
-    attempt_raw = storage.read_summary_artifact(report.studio, report.slug, "_meta.json", max_bytes=META_BYTES, mutable_status=True) if remote else raw
-    if remote:
-        used += len(attempt_raw or b"")
+    attempt_raw = read("_meta.json", max_bytes=META_BYTES, mutable_status=True) if remote else raw
     attempt_meta = json.loads(attempt_raw) if attempt_raw else {}
     if not isinstance(attempt_meta, dict):
         raise ValueError("invalid attempt metadata object")
@@ -195,20 +216,18 @@ def inspect_source(report, summary):
         preview_state = "missing"
         payload = None
         try:
-            payload = storage.read_summary_artifact(report.studio, report.slug, "data.json", build=build, max_bytes=PREVIEW_BYTES)
-            used += len(payload or b"")
+            payload = main_payload()
             if payload:
                 # Existing pure series routine bounds each output to60points.
                 from .metrics_catalog import _spark_series
-                previews = _spark_series(json.loads(payload))
+                previews = _spark_series(main_payload.parsed)
                 if any(len(name) > 200 or len(points.split()) > 60 for name, points in previews.items()):
                     raise ValueError("preview projection limit exceeded")
                 preview_state = "ready"
         except Exception:
-            if payload is None:
-                used += PREVIEW_BYTES + 1
             previews = {}
             preview_state = "invalid-or-oversized"
+    extension = inspect_extensions(report, meta, attempt_meta, build, main_payload, read, budget)
     if remote:
         if storage.summary_build_identity(report.studio, report.slug) != build:
             raise ValueError("serving pointer changed during inspection")
@@ -232,21 +251,22 @@ def inspect_source(report, summary):
             identity = f"run:{summary.operation}:{digest}"
             quality = "verified"
         # Catch a concurrent external write to local metadata before commit.
-        again = storage.read_summary_artifact(report.studio, report.slug, "_meta.json", max_bytes=META_BYTES)
-        used += len(again or b"")
+        again = read("_meta.json", max_bytes=META_BYTES)
         if again != raw:
             raise ValueError("local metadata changed during inspection")
     if summary.operation.startswith("expiry:"):
         state = "expired" if raw is None else "uncertain"
     return dict(attempt_stamp=_parse_time(attempt_meta.get("last_run")), attempt_status=str(attempt_meta.get("last_status") or ""), identity=identity, quality=quality, state=state, digest=digest,
                 stamp=stamp, status=status, claims=list(unique.values()), previews=previews,
-                preview_state=preview_state, workspace_version=workspace_version, bytes=used)
+                preview_state=preview_state, workspace_version=workspace_version, extension=extension, bytes=budget.used, encoded_bytes=budget.encoded, decoded_bytes=budget.decoded)
 
 
 def _public_identity(row):
     return (row.state, row.quality, row.source_identity, row.claim_digest,
             row.served_at, row.attempt_at, row.attempt_status, row.preview_state, row.backend,
-            row.workspace_version)
+            row.workspace_version, row.runtime_state, row.runtime, row.has_output, row.html_entry,
+            row.has_live_queries, row.output_digest, row.attempt_error, row.attempt_blocked_by,
+            row.experiment_state, row.declaration_digest)
 
 
 def reconcile(report_id):
@@ -270,11 +290,14 @@ def reconcile(report_id):
                 row.next_check_at = timezone.now() + timedelta(seconds=min(MAX_BACKOFF_SECONDS, 5 * 2 ** min(row.failures, 10)))
                 row.save()
                 _revision(report.studio_id)
-        return {"status": "unavailable", "bytes": 2 * META_BYTES + PREVIEW_BYTES + 8192, "byte_measurement": "conservative-upper-bound", "error": type(exc).__name__}
+        return {"status": "unavailable", "bytes": INSPECTION_BYTES, "byte_measurement": "conservative-upper-bound", "error": type(exc).__name__}
     with transaction.atomic():
         row = ReportSourceSummary.objects.select_for_update().get(report_id=report_id)
-        report.refresh_from_db(fields=["present_in_scan", "data_expired_at"])
+        report.refresh_from_db(fields=["present_in_scan", "data_expired_at", "config"])
         if row.generation != generation or row.lease_token != token or not report.present_in_scan or report.data_expired_at:
+            return {"status": "superseded", "bytes": result["bytes"]}
+        from .report_experiment_projection import declarations
+        if declarations(report.config)[1] != result['extension']['declaration_digest']:
             return {"status": "superseded", "bytes": result["bytes"]}
         previous_identity = _public_identity(row)
         preview_changed = False
@@ -297,6 +320,44 @@ def reconcile(report_id):
             row.quality = result["quality"]
             row.preview_state = result["preview_state"]
             row.workspace_version = result["workspace_version"]
+        extension = result['extension']
+        if result['state'] in ('uncertain', 'expired'):
+            # Declarations are current DB authority even when artifact results
+            # are untrustworthy. Retain same-declaration historical results,
+            # but never borrow their numbers for a changed declaration.
+            from .report_experiment_projection import declared_rows, ProjectionOversized
+            try:
+                declared, _ = declared_rows(report.config)
+                if row.declaration_digest != extension['declaration_digest'] or row.experiments.count() != len(declared):
+                    row.experiments.all().delete()
+                    for item in declared:
+                        item['payload_state'] = 'unavailable' if result['state'] == 'uncertain' else 'expired'
+                    ReportExperimentSummary.objects.bulk_create([ReportExperimentSummary(summary=row, **item) for item in declared])
+                    preview_changed = True
+                row.experiment_state = 'unavailable' if result['state'] == 'uncertain' else 'expired'
+            except ProjectionOversized:
+                row.experiment_state = 'oversized'
+                row.experiments.all().delete()
+            row.declaration_digest = extension['declaration_digest']
+            row.runtime_state = 'unavailable' if result['state'] == 'uncertain' else 'expired'
+        if result['state'] not in ('uncertain', 'expired'):
+            for field in ('runtime_state', 'experiment_state', 'declaration_digest'):
+                setattr(row, field, extension[field])
+            if extension['runtime_state'] == 'ready':
+                for field in ('has_output', 'html_entry', 'has_live_queries', 'output_digest', 'runtime'):
+                    setattr(row, field, extension[field])
+            if extension['experiment_rows'] is not None:
+                rows = [ReportExperimentSummary(summary=row, **r) for r in extension['experiment_rows']]
+                fields = [f.name for f in ReportExperimentSummary._meta.fields if f.name not in ('id','summary')]
+                old = list(row.experiments.order_by('ordinal').values(*fields))
+                comparable = [{field:getattr(r,field) for field in fields} for r in rows]
+                if old != comparable:
+                    preview_changed = True
+                    row.experiments.all().delete()
+                    ReportExperimentSummary.objects.bulk_create(rows)
+        row.attempt_error = extension['attempt_error']
+        row.attempt_blocked_by = extension['attempt_blocked_by']
+        row.schema_version = 2
         row.backend = storage.backend_name()
         row.state = result["state"]
         row.observed_at = timezone.now()
@@ -314,7 +375,7 @@ def reconcile(report_id):
         row.save()
         if _public_identity(row) != previous_identity or preview_changed:
             _revision(report.studio_id)
-    return {"status": result["state"], "bytes": result["bytes"]}
+    return {"status": result["state"], "bytes": result["bytes"], "encoded_bytes": result["encoded_bytes"], "decoded_bytes": result["decoded_bytes"], "projection_unavailable": result['extension']['runtime_state'] == 'unavailable' or result['extension']['experiment_state'] == 'unavailable'}
 
 
 def begin_expiry(report_id):
@@ -352,3 +413,120 @@ def finish_expiry(report_id, operation, *, expired_at=None):
             Report.objects.filter(pk=report_id).update(data_expired_at=expired_at)
         _revision(row.report.studio_id)
         return True
+
+
+def inspect_extensions(report, meta, attempt_meta, build, main_payload, read, budget):
+    """Independent compact projections; errors never invalidate proven claims."""
+    from .report_experiment_projection import (
+        AB_BYTES, MAX_SCOPES, ProjectionOversized, declarations, declared_rows,
+        project_results, text,
+    )
+    entries, digest = declarations(report.config)
+    result = dict(runtime_state='pending', experiment_state='not-applicable', declaration_digest=digest,
+                  experiment_rows=None, attempt_error='', attempt_blocked_by=[])
+    try:
+        result['attempt_error'] = str(attempt_meta.get('last_error') or '')[:500]
+        blocked = attempt_meta.get('blocked_by') or []
+        if not isinstance(blocked,list) or len(blocked)>256 or any(not isinstance(n,str) or len(n)>200 for n in blocked):
+            raise ValueError('invalid blocked source names')
+        result['attempt_blocked_by'] = blocked
+    except Exception:
+        result['attempt_error'] = ''
+        result['attempt_blocked_by'] = []
+    try:
+        facts_before = budget.used
+        facts = storage.summary_output_facts(report.studio, report.slug, build=build, budget=budget)
+        runtime = {}
+        validation = meta.get('validation')
+        if isinstance(validation,dict) and isinstance(validation.get('summary'),dict):
+            runtime['validation'] = {'summary': {key:value for key,value in validation['summary'].items()
+                if key in ('pass','fail','warn','info','suppressed','total') and isinstance(value,int) and not isinstance(value,bool) and value>=0}}
+        details = meta.get('details') or meta.get('health')
+        if isinstance(details,dict) and isinstance(details.get('totals'),dict):
+            # Numeric aggregate totals only: no datasets, paths, check messages,
+            # query parameters, filter matrices or private source payloads.
+            runtime['details'] = {'totals': {key:value for key,value in details['totals'].items()
+                if key in ('datasource_count','chart_count','total_rows','total_size_bytes') and isinstance(value,(int,float)) and not isinstance(value,bool)
+                and __import__('math').isfinite(value) and value>=0}}
+        if isinstance(details,dict) and details.get('data_source') in ('mock','real') and 'details' in runtime:
+            runtime['details']['data_source'] = details['data_source']
+        runtime['framework_version'] = text(meta.get('framework_version'))
+        if len(json.dumps(runtime).encode())>16*1024:
+            raise ProjectionOversized('runtime projection exceeded')
+        result.update(facts, runtime=runtime, runtime_state='ready')
+    except Exception as exc:
+        if budget.used == facts_before:
+            budget.charge(96*1024,96*1024)
+        result['runtime_state'] = 'oversized' if 'oversiz' in str(exc) or isinstance(exc,ProjectionOversized) else 'unavailable'
+    if not entries:
+        result['experiment_rows'] = []
+        return result
+    try:
+        declared, _ = declared_rows(report.config)
+        raw = main_payload()
+        if not raw:
+            for row in declared:
+                row['payload_state'] = 'missing'
+            result.update(experiment_state='missing', experiment_rows=declared)
+            return result
+        if max(len(raw),getattr(main_payload,'cost',len(raw)))>AB_BYTES:
+            raise ProjectionOversized('AB main payload oversized')
+        main = main_payload.parsed
+        if not isinstance(main,dict):
+            raise ValueError('invalid AB payload')
+        observed = [('data.json', raw)]
+        from .overviews.experiments import _find_ab_components
+        components = _find_ab_components(main.get('components'))
+        if not components:
+            scopes = main.get('_scopeFiles') or {}
+            if not isinstance(scopes,dict):
+                raise ValueError('invalid scope map')
+            if len(scopes)>MAX_SCOPES:
+                raise ProjectionOversized('scope count exceeded')
+            total = max(len(raw), getattr(main_payload,'cost',len(raw)))
+            seen = {'data.json'}
+            for name in scopes.values():
+                if not isinstance(name,str):
+                    continue
+                if name in seen:
+                    continue
+                seen.add(name)
+                if total>=AB_BYTES:
+                    raise ProjectionOversized('AB aggregate byte limit exceeded')
+                before = budget.used
+                scope_raw = read(name, build=build, max_bytes=AB_BYTES-total, scope=True)
+                total += budget.used-before
+                if scope_raw:
+                    observed.append((name,scope_raw))
+                    try:
+                        data = json.loads(scope_raw)
+                    except (ValueError, UnicodeDecodeError):
+                        continue
+                    if not isinstance(data,dict):
+                        continue
+                    components = _find_ab_components(data.get('components'))
+                    if components:
+                        break
+        rows, _ = project_results(report.config, main, components)
+        if not storage.is_remote():
+            # Re-read all participating local content, never a path/mtime cache.
+            rechecked = 0
+            for name, old in observed:
+                before = budget.used
+                again = read(name, build=build, max_bytes=AB_BYTES-rechecked, scope=name!='data.json')
+                rechecked += budget.used-before
+                if again!=old:
+                    raise ValueError('local AB source changed during inspection')
+        result.update(experiment_state='ready', experiment_rows=rows)
+    except Exception as exc:
+        result['experiment_state'] = 'oversized' if isinstance(exc,ProjectionOversized) or 'byte limit' in str(exc) else 'unavailable'
+        # Replace declarations without accepting a success prefix; historical
+        # results remain gated unavailable when declarations themselves invalid.
+        try:
+            rows,_ = declared_rows(report.config)
+            for row in rows:
+                row['payload_state'] = result['experiment_state']
+            result['experiment_rows'] = rows
+        except ProjectionOversized:
+            result['experiment_rows'] = []
+    return result

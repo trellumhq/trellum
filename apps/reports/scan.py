@@ -147,12 +147,16 @@ def sync_studio_registry(studio) -> int:
             "present_in_scan": True,
             "last_scanned_at": now,
         }
-        Report.objects.update_or_create(
-            studio=studio,
-            slug=slug,
-            defaults=defaults,
-            create_defaults={**defaults, "audience": audience},
-        )
+        from django.db import transaction
+        from .report_experiment_projection import sync_declarations
+        with transaction.atomic():
+            row, _ = Report.objects.update_or_create(
+                studio=studio,
+                slug=slug,
+                defaults=defaults,
+                create_defaults={**defaults, "audience": audience},
+            )
+            sync_declarations(row)
     from django.db import transaction
     from .source_summary import invalidate_reports
 

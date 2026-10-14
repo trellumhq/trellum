@@ -819,7 +819,7 @@ def summary_build_identity(studio, slug: str) -> str:
     return build
 
 
-def read_summary_artifact(studio, slug: str, name: str, *, build: str = "", max_bytes: int, mutable_status: bool = False) -> bytes | None:
+def read_summary_artifact(studio, slug: str, name: str, *, build: str = "", max_bytes: int, mutable_status: bool = False, scope: bool = False, budget=None) -> bytes | None:
     """Bounded worker-only artifact read; remote metadata is tied to immutable build.
 
     Limits decoded bytes too, including gzip objects. Does not materialise a
@@ -828,7 +828,10 @@ def read_summary_artifact(studio, slug: str, name: str, *, build: str = "", max_
     import gzip
     import io
 
-    if name not in ("_current", "_meta.json", "data.json"):
+    if scope:
+        if not isinstance(name, str) or not name.endswith('.json') or _safe_component(name) != name or name in ('_current', '_meta.json', '_live_queries.json'):
+            raise ValueError("invalid summary scope artifact")
+    elif name not in ("_current", "_meta.json", "data.json"):
         raise ValueError("unsupported summary artifact")
     if mutable_status and name != "_meta.json":
         raise ValueError("mutable summary reads are status-only")
@@ -836,6 +839,8 @@ def read_summary_artifact(studio, slug: str, name: str, *, build: str = "", max_
         if name == "_current":
             return None
         path = studio.output_dir / slug / name
+        if scope and ((studio.output_dir / slug).is_symlink() or path.is_symlink() or path.resolve().parent != (studio.output_dir / slug).resolve()):
+            raise ValueError("scope escaped output root")
         try:
             with path.open("rb") as source:
                 raw = source.read(max_bytes + 1)
@@ -857,13 +862,125 @@ def read_summary_artifact(studio, slug: str, name: str, *, build: str = "", max_
         body = response["Body"]
         try:
             raw = body.read(max_bytes + 1)
+        except Exception:
+            if budget:
+                budget.charge(max_bytes + 1, 0)
+            raise
         finally:
             body.close()
+    encoded_bytes = len(raw)
     if len(raw) > max_bytes:
+        if budget:
+            budget.charge(encoded_bytes, 0)
         raise ValueError("summary artifact encoded byte limit exceeded")
     if raw[:2] == b"\x1f\x8b" or (is_remote() and response.get("ContentEncoding") == "gzip"):
-        with gzip.GzipFile(fileobj=io.BytesIO(raw)) as source:
-            raw = source.read(max_bytes + 1)
+        try:
+            with gzip.GzipFile(fileobj=io.BytesIO(raw)) as source:
+                raw = source.read(max_bytes + 1)
+        except Exception:
+            if budget:
+                budget.charge(encoded_bytes, max_bytes + 1)
+            raise
+    if budget:
+        budget.charge(encoded_bytes, len(raw))
     if len(raw) > max_bytes:
         raise ValueError("summary artifact decoded byte limit exceeded")
     return raw
+
+
+class SummaryReadBudget:
+    """Logical read bytes, with separate encoded/decoded evidence counters."""
+
+    def __init__(self, limit):
+        self.limit = limit
+        self.used = self.encoded = self.decoded = 0
+
+    def charge(self, encoded, decoded):
+        self.encoded += encoded
+        self.decoded += decoded
+        self.used += max(encoded, decoded)
+        if self.used > self.limit:
+            raise ValueError('summary inspection byte budget exceeded')
+
+
+def summary_output_facts(studio, slug: str, *, build: str = '', budget=None):
+    """Worker-only top-level facts belonging exclusively to the served identity."""
+    import hashlib
+    import re
+
+    names = []
+    charged = 0
+    def admit(name):
+        nonlocal charged
+        if not isinstance(name, str) or '/' in name or '\\' in name or len(name) > 255:
+            raise ValueError('invalid output filename')
+        charged += len(name.encode())
+        if len(names) >= 256 or charged > 64 * 1024:
+            raise ValueError('output filename projection oversized')
+        names.append(name)
+    if not is_remote():
+        root = studio.output_dir / slug
+        if root.is_symlink():
+            raise ValueError('output root symlink rejected')
+        try:
+            for ordinal, entry in enumerate(root.iterdir()):
+                if ordinal >= 256:
+                    raise ValueError('output directory entry count oversized')
+                if not entry.is_symlink() and entry.is_file():
+                    admit(entry.name)
+        except FileNotFoundError:
+            pass
+        live = '_live_queries.json' in names
+    elif not build:
+        live = False
+    else:
+        prefix = _build_prefix(_remote_prefix(studio, slug), _safe_component(build)) + '/'
+        token = None
+        listing_bytes = 0
+        for page_number in range(2):
+            kwargs = {'Bucket': _bucket(), 'Prefix': prefix, 'Delimiter': '/', 'MaxKeys': 128}
+            if token:
+                kwargs['ContinuationToken'] = token
+            response = _client().list_objects_v2(**kwargs)
+            listing_bytes += len(json.dumps(response,default=str).encode())
+            if listing_bytes>64*1024:
+                raise ValueError('output listing metadata oversized')
+            for item in response.get('Contents', []):
+                key = item.get('Key', '')
+                if not key.startswith(prefix):
+                    raise ValueError('output listing escaped served prefix')
+                name = key[len(prefix):]
+                if '/' not in name and name:
+                    admit(name)
+            if not response.get('IsTruncated'):
+                break
+            token = response.get('NextContinuationToken')
+        else:
+            raise ValueError('output listing projection oversized')
+        charged = max(charged, listing_bytes)
+        live = False
+        for base in (_private_prefix(_remote_prefix(studio, slug)), _remote_prefix(studio, slug)):
+            key = f'{_build_prefix(base, _safe_component(build))}/{_LIVE_QUERIES_NAME}'
+            try:
+                response = _client().head_object(Bucket=_bucket(), Key=key)
+            except Exception as exc:
+                if _is_missing(exc):
+                    continue
+                raise
+            metadata_bytes = len(json.dumps(response, default=str).encode())
+            if metadata_bytes > 8192:
+                raise ValueError('manifest HEAD metadata oversized')
+            charged += metadata_bytes
+            live = True
+    if budget:
+        budget.charge(charged, charged)
+    # C09 introduces the shared helper; old host checkouts use exact compatible
+    # versioned names until the framework producer is composed.
+    try:
+        from trellum.metrics_workspace import owned_name
+    except ImportError:
+        owned_name = lambda name: bool(re.fullmatch(r'_metrics-workspace-[0-9a-f]{32}-page-[1-9][0-9]*\.html', name))
+    html = sorted(name for name in names if name.endswith('.html') and not owned_name(name))
+    digest = hashlib.sha256(json.dumps([sorted(names), live]).encode()).hexdigest()
+    return {'has_output': bool(html), 'html_entry': entry_for(html) if html else '',
+            'has_live_queries': live, 'output_digest': digest}
