@@ -481,7 +481,15 @@
         + '.fw-header-right .rmw-scope-original,.fw-header-right .rmw-theme-original{display:none!important}'
         + '.rmw-mobile-scope{display:block;flex:1 1 0;width:0;height:44px}'
         + '.rmw-monitor-link{display:inline-flex;align-items:center;justify-content:center;flex:none;min-width:68px;font-size:14px;text-decoration:none;white-space:nowrap}'
-        + 'body.tl-report-console .fw-help-wrap,body.tl-report-focus .fw-help-wrap{display:none!important}}'
+        + 'body.tl-report-console .fw-help-wrap,body.tl-report-focus .fw-help-wrap{display:none!important}'
+        // Hosted phone chrome is one compact row: freshness left, actions right.
+        + 'body.tl-report-console .fw-report-chrome,body.tl-report-focus .fw-report-chrome{grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto;align-items:center;padding:4px 12px}'
+        + 'body.tl-report-console .fw-report-chrome>.fw-report-metadata,body.tl-report-focus .fw-report-chrome>.fw-report-metadata{grid-area:1/1}'
+        + 'body.tl-report-console .fw-report-chrome .fw-header-right,body.tl-report-focus .fw-report-chrome .fw-header-right{grid-area:1/2;flex:none;width:auto;min-width:0;margin-left:0}'
+        + '#fwOptionsWrap{flex:0 0 auto}.fw-header-right .rmw-mobile-options{width:auto;min-width:96px}'
+        // Annotation chips stay on one row and scroll sideways instead of wrapping.
+        + 'body.tl-report-console .fw-anno-bar,body.tl-report-focus .fw-anno-bar{flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none}'
+        + 'body.tl-report-console .fw-anno-bar>*,body.tl-report-focus .fw-anno-bar>*{flex:none;white-space:nowrap}}'
         + 'body.tl-report-monitor .fw-header,body.tl-report-monitor .fw-anno-bar,'
         + 'body.tl-report-monitor .fw-filter-bar,body.tl-report-monitor #assistantLauncher,'
         + 'body.tl-report-monitor #assistantAsk,body.tl-report-monitor #assistantPill,'
