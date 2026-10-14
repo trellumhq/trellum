@@ -26,7 +26,7 @@ def authorized_ids(request, report_ids):
     if not isinstance(report_ids, (list, tuple)) or len(report_ids) > 64 or any(isinstance(v, bool) or not isinstance(v, int) or v < 1 for v in report_ids):
         raise ValueError("Invalid report identities")
     check_catalog_context(request)
-    relation = visible_reports(request.user, Report.objects.filter(studio=request.studio, present_in_scan=True, pk__in=set(report_ids)))
+    relation = visible_reports(request.user, Report.objects.filter(studio=request.studio, present_in_scan=True, pk__in=set(report_ids)), request=request)
     return relation if request.user.is_active else relation.none()
 
 

@@ -87,7 +87,7 @@ def catalog_relation(request, *, kind="report", now=None):
     if kind not in (Report.KIND_REPORT, Report.KIND_ANALYSIS):
         raise ValueError("Invalid catalog kind")
     now = now or timezone.now()
-    relation = visible_reports(request.user, Report.objects.filter(studio=request.studio, present_in_scan=True, kind=kind))
+    relation = visible_reports(request.user, Report.objects.filter(studio=request.studio, present_in_scan=True, kind=kind), request=request)
     if not request.user.is_active:
         relation = relation.none()
     relation = relation.exclude(slug="metrics", tags__contains=["metrics"])
