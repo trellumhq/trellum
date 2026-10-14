@@ -211,7 +211,13 @@ def staged_render(ctx, out, render, **kwargs):
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     previous = collect_old_pages(out)
-    with tempfile.TemporaryDirectory(prefix='.metrics-stage-', dir=out.parent) as stage:
+    # Stage inside `out`: the build sandbox mounts only this report's output
+    # directory writable, so a sibling of it (out.parent) is read-only there.
+    # Dot-prefixed and removed on exit; collect_old_pages ran before it exists.
+    for leftover in out.glob('.metrics-stage-*'):
+        if leftover.is_dir() and not leftover.is_symlink():
+            shutil.rmtree(leftover, ignore_errors=True)
+    with tempfile.TemporaryDirectory(prefix='.metrics-stage-', dir=out) as stage:
         ctx._metric_workspace_staging = True
         try:
             render(ctx, output_dir=stage, **kwargs)

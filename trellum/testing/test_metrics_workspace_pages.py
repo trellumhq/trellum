@@ -129,3 +129,30 @@ def test_early_routing_precedes_bootstrap_and_encodes_untrusted_anchors(tmp_path
     for bad in (True, 0, -1, 4, '3'):
         with pytest.raises(ValueError):
             early_route([{'anchor': 'metric-safe', 'page': bad}], marker['build'], 1, 3)
+
+
+def test_staged_render_only_writes_inside_its_own_output_dir(tmp_path):
+    """The build sandbox mounts only output/<slug> writable, never its parent."""
+    import os
+    from trellum.metrics_workspace import staged_render
+
+    parent = tmp_path / 'output'
+    out = parent / 'metrics'
+    out.mkdir(parents=True)
+    (out / '.metrics-stage-stale').mkdir()
+    parent.chmod(0o555)
+    try:
+        if os.access(parent, os.W_OK):
+            import pytest
+            pytest.skip('cannot make the parent read-only (running as root)')
+
+        def render(ctx, output_dir):
+            (Path(output_dir) / 'index.html').write_text('<html></html>')
+            (Path(output_dir) / '_meta.json').write_text('{}')
+
+        staged_render(type('Ctx', (), {})(), out, render)
+    finally:
+        parent.chmod(0o755)
+    assert (out / 'index.html').exists()
+    assert sorted(p.name for p in out.iterdir() if p.name.startswith('.metrics-stage-')) == []
+    assert sorted(p.name for p in parent.iterdir()) == ['metrics']
