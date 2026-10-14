@@ -18,6 +18,8 @@ class WorkspaceUnavailable(Exception):
 
 def workspace_identity(root):
     """Live bounded lookup for explicit background producers only."""
+    if not all(hasattr(os, flag) for flag in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY")):
+        raise WorkspaceUnavailable()
     root = Path(root)
     temporary = None
     try:
