@@ -83,7 +83,7 @@ def descriptors(monkeypatch):
     return active, peak, sizes
 
 
-@pytest.mark.parametrize('value', [None, True, 1, '1', '', 'x'*36, '../' + 'a'*33, uuid4().hex])
+@pytest.mark.parametrize('value', [None, True, 1, '1', '', 'x'*36, '../' + 'a'*33, '0123456789abcdef0123456789abcdef'])
 def test_uuid_selection_rejects_ambiguous_or_path_inputs(value):
     with pytest.raises(ValueError):
         logs._uuid(value)
