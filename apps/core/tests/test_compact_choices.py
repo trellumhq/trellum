@@ -61,3 +61,15 @@ def test_nested_json_and_oversize_packet_are_visible_errors():
         assert result.error
         assert result.packet == raw if len(raw) <= 1024 * 1024 else result.packet == "Invalid oversized selection packet"
     assert decode_compact_selection(data({"version": 1, "selected": [], "editable": [str(i) for i in range(1, 27)]}), "reports").error
+
+
+def test_field_iteration_keeps_stock_option_rendering():
+    from django import forms
+    class ChoicesForm(forms.Form):
+        reports = forms.MultipleChoiceField(choices=[("1", "One"), ("2", "Two")], widget=CompactCheckboxSelectMultiple)
+    form = ChoicesForm(initial={"reports": ["1"]})
+    rendered = [str(option.tag()) for option in form["reports"]]
+    assert len(rendered) == 2
+    assert 'value="1"' in rendered[0] and 'checked' in rendered[0]
+    assert 'value="2"' in rendered[1] and 'checked' not in rendered[1]
+    assert 'reports__selection' not in ''.join(rendered)

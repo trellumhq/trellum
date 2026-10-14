@@ -51,6 +51,8 @@ class CompactCheckboxSelectMultiple(forms.CheckboxSelectMultiple):
 
     def _render(self, template_name, context, renderer=None):
         renderer = renderer or get_default_renderer()
+        if template_name != self.template_name:
+            return mark_safe(renderer.render(template_name, context))
         context["widget"]["checkbox_fragment"] = mark_safe(
             renderer.render("django/forms/widgets/multiple_input.html", context)
         )

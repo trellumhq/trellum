@@ -147,7 +147,7 @@ def test_compact_pending_snapshot_neighbor_and_unknown_outcome(engine):
         uncheck(2)
         pending[0].fulfill(json={"ok": True, "message": "Saved."})
         expect(save).to_be_enabled()
-        expect(form.locator('[data-settings-dirty-status]')).to_contain_text("Unsaved changes")
+        expect(form.locator('[data-settings-dirty-status]')).to_contain_text("Newer changes are still unsaved")
         assert len(pending) == 1
         assert not form.locator('[name="reports"][value="2"]').is_checked()
         expect(page.locator('#neighbor input')).to_have_value("Neighbor draft")
