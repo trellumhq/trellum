@@ -108,7 +108,7 @@ def test_analytics_gunicorn_native_enhanced_devices_roles(analytics_server, engi
                     context = browser.new_context(java_script_enabled=javascript, viewport={"width": width, "height": 900}, reduced_motion="reduce", color_scheme="dark" if width == 720 else "light")
                     page = context.new_page(); page.set_default_timeout(15000)
                     if javascript:
-                        page.add_init_script("""document.addEventListener('click', () => {
+                        page.add_init_script("""window.addEventListener('click', () => {
                           const started = performance.now();
                           queueMicrotask(() => {
                             const status = document.querySelector('[data-console-navigation-native-status]');
@@ -144,11 +144,11 @@ def test_analytics_gunicorn_native_enhanced_devices_roles(analytics_server, engi
                     # Paging retains range/order and uses keyboard-operable links.
                     page.get_by_role("link", name="Next", exact=True).focus()
                     page.keyboard.press("Enter")
+                    expect(page.locator(".analytics-pagination")).to_contain_text("Page 2 of 40")
                     if javascript:
                         feedback = json.loads(page.evaluate("sessionStorage.getItem('analyticsNavigationFeedback')"))
                         assert feedback["text"] == "Opening page…" and feedback["milliseconds"] < 100
                         timings[-1]["native_navigation_feedback"] = feedback
-                    expect(page.locator(".analytics-pagination")).to_contain_text("Page 2 of 40")
                     assert "sort=views" in page.url and "direction=desc" in page.url and "days=7" in page.url
                     page.get_by_label("Search report names", exact=True).fill("no-matching-report")
                     page.get_by_role("button", name="Search", exact=True).click()
