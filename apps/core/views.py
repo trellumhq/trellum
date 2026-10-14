@@ -187,7 +187,7 @@ def operator_diagnostics_refresh(request):
                 audit(request, "operator.diagnostics.refresh", operation_id=entry["id"])
     except observations.ObservationError as exc:
         if json_request:
-            return JsonResponse({"ok": False, "message": exc.message}, status=exc.status)
+            return JsonResponse({"ok": False, "message": exc.message, "busy": exc.busy}, status=exc.status)
         from django.contrib import messages
         messages.error(request, exc.message)
         return redirect("system")

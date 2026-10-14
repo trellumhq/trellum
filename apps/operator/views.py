@@ -247,7 +247,7 @@ def org_usage_refresh(request, org_slug):
                 audit(request, "operator.usage.refresh", org=org, operation_id=entry["id"])
     except observations.ObservationError as exc:
         if json_request:
-            return JsonResponse({"ok": False, "message": exc.message}, status=exc.status)
+            return JsonResponse({"ok": False, "message": exc.message, "busy": exc.busy}, status=exc.status)
         messages.error(request, exc.message)
         return redirect("operator-org-detail", org_slug=org.slug)
     if json_request:

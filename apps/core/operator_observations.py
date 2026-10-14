@@ -25,8 +25,9 @@ NONCE_SALT = "operator-probe-v1"
 
 
 class ObservationError(Exception):
-    def __init__(self, message, status=400):
+    def __init__(self, message, status=400, *, busy=None):
         self.message, self.status = message, status
+        self.busy = busy
         super().__init__(message)
 
 
@@ -101,6 +102,8 @@ def _coordinator():
 def admit(actor_id, kind, key, *, org_id=None):
     if kind not in EXPLICIT:
         raise ObservationError("Invalid diagnostic operation")
+    if not isinstance(key, str) or len(key) > 1024:
+        raise ObservationError("Invalid refresh request")
     try:
         signed = signing.loads(key, salt=NONCE_SALT, max_age=300)
         operation_id = str(UUID(signed["id"]))
@@ -117,7 +120,8 @@ def admit(actor_id, kind, key, *, org_id=None):
                 return entry, False
         active = payload.get("active")
         if active and active["state"] not in TERMINAL:
-            raise ObservationError("Another diagnostic measurement is in progress.", 409)
+            raise ObservationError("Another diagnostic measurement is in progress.", 409,
+                                   busy={name: active.get(name) for name in ("id", "kind", "org_id", "state")})
         if payload.get("blocked"):
             raise ObservationError("Previous measurement termination is unconfirmed. Check the coordinator.", 503)
         last = stamp(payload.get("last_admitted"))
