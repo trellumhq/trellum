@@ -281,16 +281,16 @@ def _state_filter(relation, state):
 def _counts(relation):
     counts = relation.aggregate(
         total=Count('pk'), **{key: Count('pk', filter=Q(outcome=key)) for key in STATES if key not in ('all', 'v_fail', 'v_warn', 'healthy', 'v_unknown')},
-        validation_known=Count('pk', filter=Q(validation_known=True)),
+        validation_known_count=Count('pk', filter=Q(validation_known=True)),
         v_fail=Count('pk', filter=Q(validation_known=True, validation_fail=True)),
         v_warn=Count('pk', filter=Q(validation_known=True, validation_fail=False, validation_warn=True)),
         healthy=Count('pk', filter=Q(validation_known=True, validation_fail=False, validation_warn=False)),
-        waiting_known=Count('pk', filter=Q(waiting_compatible=True)),
-        waiting_stale=Count('pk', filter=Q(waiting_compatible=True, waiting_stale=True)),
+        waiting_known_count=Count('pk', filter=Q(waiting_compatible=True)),
+        waiting_stale_count=Count('pk', filter=Q(waiting_compatible=True, waiting_stale=True)),
     )
-    counts['v_unknown'] = counts['total']-counts['validation_known']
-    coverage = dict(waiting=dict(known=counts.pop('waiting_known'), stale=counts.pop('waiting_stale')),
-                    validation=dict(known=counts.pop('validation_known'), unknown=counts['v_unknown']))
+    counts['v_unknown'] = counts['total']-counts['validation_known_count']
+    coverage = dict(waiting=dict(known=counts.pop('waiting_known_count'), stale=counts.pop('waiting_stale_count')),
+                    validation=dict(known=counts.pop('validation_known_count'), unknown=counts['v_unknown']))
     coverage['waiting']['unknown'] = counts['total']-coverage['waiting']['known']
     counts['outcomes'] = {key: counts[key] for key in ('running','queued','waiting','error','oom','timeout','stopped','ok','not_run','unknown')}
     # The existing Failed pill includes timeout/OOM while their own pills
