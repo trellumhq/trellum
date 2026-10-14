@@ -232,6 +232,7 @@ def _observations(relation, now):
         validation_warn=ValidationFlag(F('source_summary__runtime'), 'warn'),
         attempt=Case(When(latest_status__isnull=False, then=F('latest_status')), When(attempt_known, then=F('source_summary__attempt_status')), default=Value('unknown'), output_field=CharField()),
     ).annotate(
+        attempt_time=Coalesce(F('latest_at'), F('source_summary__attempt_at')),
         validation_known=Case(When(runtime_known=True, validation_valid=True, then=Value(True)), default=Value(False), output_field=BooleanField()),
         waiting_compatible=Case(When(waiting_known=True, latest_at__isnull=True, then=Value(True)), When(waiting_known=True, latest_at__lte=F('source_summary__attempt_at'), then=Value(True)), default=Value(False), output_field=BooleanField()),
     ).annotate(
@@ -264,6 +265,8 @@ def _filtered(relation, state):
 
 
 def _state_filter(relation, state):
+    if state == 'error':
+        return relation.filter(outcome__in=('error', 'oom', 'timeout'))
     if state == 'v_unknown':
         return relation.filter(validation_known=False)
     if state == 'v_fail':
@@ -289,6 +292,10 @@ def _counts(relation):
     coverage = dict(waiting=dict(known=counts.pop('waiting_known'), stale=counts.pop('waiting_stale')),
                     validation=dict(known=counts.pop('validation_known'), unknown=counts['v_unknown']))
     coverage['waiting']['unknown'] = counts['total']-coverage['waiting']['known']
+    counts['outcomes'] = {key: counts[key] for key in ('running','queued','waiting','error','oom','timeout','stopped','ok','not_run','unknown')}
+    # The existing Failed pill includes timeout/OOM while their own pills
+    # remain available. Exclusive outcome buckets are separate for totals.
+    counts['error'] += counts['oom'] + counts['timeout']
     counts['waiting_observed'] = counts['waiting']
     return counts, coverage
 
@@ -336,7 +343,7 @@ def operations_page_payload(request, params, *, now=None):
     counts, coverage = _counts(relation)
     selected = _state_filter(relation, state.state)
     total = selected.count()
-    sort = {'name': 'display_name', 'category': 'display_category', 'priority': 'priority', 'status': 'outcome', 'last_run': 'latest_at'}[state.sort]
+    sort = {'name': 'display_name', 'category': 'display_category', 'priority': 'priority', 'status': 'outcome', 'last_run': 'attempt_time'}[state.sort]
     order = F(sort).asc(nulls_last=True) if state.ascending else F(sort).desc(nulls_last=True)
     rows = list(selected.annotate(
         description_preview=Substr('description', 1, 500), description_length=Length('description'),

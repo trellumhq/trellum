@@ -355,3 +355,15 @@ def test_complete_source_usage_paging_is_not_report_name_search(org_admin, org, 
     assert blocked['mode'] == 'last-observed-blocks' and blocked['rows'] == page['rows']
     with pytest.raises(ValueError):
         operations.operations_source_reports_payload(request, 'db/../secret', {})
+
+
+@pytest.mark.django_db
+def test_failed_pill_preserves_oom_timeout_union_and_exclusive_totals(org_admin, org, studio, forbid_io):
+    postgres()
+    for slug, status in [('error', Run.ERROR), ('oom', Run.OOM_KILLED), ('timeout', Run.TIMEOUT), ('success', Run.SUCCESS)]:
+        report = Report.objects.create(studio=studio, slug=slug)
+        Run.objects.create(report=report, studio=studio, slug=slug, status=status)
+    result = operations.operations_page_payload(request_for(org_admin, org, studio), {'state': 'error'})
+    assert result['pagination']['total'] == 3 and result['counts']['error'] == 3
+    assert result['counts']['outcomes']['error'] == 1
+    assert sum(result['counts']['outcomes'].values()) == result['counts']['total'] == 4
