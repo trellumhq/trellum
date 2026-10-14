@@ -250,3 +250,15 @@ def test_producer_invalid_delta_fixtures_remain_ineligible(studio, experiment, r
     data=overview(studio)
     assert data['tiles']['concluded']==1 and data['tiles']['concluded_with_metric']==0
     assert data['rows'][0]['primary'] is None
+
+
+def test_equal_names_order_by_report_identity_then_declared_ordinal(studio, experiment):
+    entries=[{'name':'Shared name','test_name':'first'},{'name':'Shared name','test_name':'second'}]
+    experiment('z-created-first',entries=entries)
+    experiment('a-created-second',entries=entries)
+    data=overview(studio)
+    assert [(r['slug'],r['test_name']) for r in data['rows']]==[
+        ('z-created-first','first'),('z-created-first','second'),
+        ('a-created-second','first'),('a-created-second','second'),
+    ]
+    assert overview(studio,params={'q':'Shared name'})['filtered_count']==4
