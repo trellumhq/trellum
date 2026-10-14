@@ -562,6 +562,23 @@ class AnnotationPostgresTests(TransactionTestCase):
         self.assertEqual(self.source_state().status, "oversized")
         self.assertEqual(AnnotationEvent.objects.filter(source=self.source).count(), 100000)
 
+    def test_registry_scan_projects_unquoted_yaml_dates(self):
+        import datetime
+        from apps.reports.scan import sync_studio_registry
+        directory = self.studio.reports_dir / "dated"
+        directory.mkdir(parents=True)
+        (directory / "generator.py").write_text("def generate(): return []\n")
+        (directory / "report.yaml").write_text(
+            "name: Dated\nannotations:\n  events:\n"
+            "  - {date: 2020-01-01, end_date: 2020-01-03, label: dated}\n")
+        sync_studio_registry(self.studio)
+        report = Report.objects.get(studio=self.studio, slug="dated")
+        self.assertEqual(report.config["annotations"]["events"][0]["date"], "2020-01-01")
+        event = AnnotationEvent.objects.get(source__report=report)
+        self.assertEqual(event.date, datetime.date(2020, 1, 1))
+        self.assertEqual(event.end_date, datetime.date(2020, 1, 3))
+        self.assertEqual(event.label, "dated")
+
     def test_registry_declaration_write_rolls_back_with_report_update(self):
         from apps.reports.scan import sync_studio_registry
         directory = self.studio.reports_dir / "atomic"
