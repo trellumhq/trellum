@@ -71,6 +71,10 @@ class Command(BaseCommand):
         is_coordinator = role in (ROLE_ALL, ROLE_COORDINATOR)
         is_runner = role in (ROLE_ALL, ROLE_RUNNER)
 
+        from apps.core.workspace import initialize_workspace_identity
+
+        initialize_workspace_identity()
+
         worker_id = f"{socket.gethostname()}-{os.getpid()}"
         shutdown = threading.Event()
 

@@ -27,40 +27,12 @@ class WorkspaceUnavailable(Exception):
 
 
 def workspace_identity():
-    """Publish a flushed complete marker using atomic hard-link create-once."""
-    root = Path(settings.DATA_DIR)
-    marker = root / ".annotation-workspace"
-    if not root.is_dir():
-        raise WorkspaceUnavailable()
-    if not marker.exists():
-        temporary = root / (".annotation-workspace-" + secrets.token_hex(16))
-        try:
-            fd = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-            with os.fdopen(fd, "wb") as file:
-                file.write(secrets.token_hex(16).encode("ascii") + b"\n")
-                file.flush()
-                os.fsync(file.fileno())
-            try:
-                os.link(temporary, marker)
-            except FileExistsError:
-                pass
-            directory = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
-            try:
-                os.fsync(directory)
-            finally:
-                os.close(directory)
-        except OSError as exc:
-            raise WorkspaceUnavailable() from exc
-        finally:
-            temporary.unlink(missing_ok=True)
+    """Live compatibility lookup; annotation ownership never uses HTTP cache."""
+    from apps.core.workspace import WorkspaceUnavailable as Unavailable, workspace_identity as identity
+
     try:
-        with marker.open("rb") as file:
-            value = file.read(34)
-        decoded = value.decode("ascii").strip()
-        if len(decoded) != 32 or any(c not in "0123456789abcdef" for c in decoded):
-            raise WorkspaceUnavailable()
-        return decoded
-    except (OSError, UnicodeError) as exc:
+        return identity(settings.DATA_DIR)
+    except Unavailable as exc:
         raise WorkspaceUnavailable() from exc
 
 
