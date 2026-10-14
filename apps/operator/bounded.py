@@ -67,4 +67,6 @@ def usage(org, quota):
     }
     # Display recorded limits even when enforcement is off.
     values.update({name: getattr(quota, name, 0) for name in quotas.LIMIT_FIELDS})
+    from apps.core.operator_observations import snapshot
+    values["storage_observation"] = snapshot("upload-usage", org.pk)
     return values

@@ -39,7 +39,7 @@ them.{% endcomment %}
 <section class="panel" data-operator-observation data-observation-kind="full-health"{% if probe_operation %} data-observation-url="{% url 'system-diagnostics-status' probe_operation.id %}" data-observation-id="{{ probe_operation.id }}"{% endif %}>
 <p data-observation-status role="status" aria-live="polite">{% if probe_operation %}{{ probe_operation.message }}{% else %}{{ diagnostic.message }}{% endif %}</p>
 <p class="muted" data-observation-age>{% if diagnostic.completed_at %}Observed {{ diagnostic.completed_at }} on coordinator {{ diagnostic.producer_node }} · {{ diagnostic.state }}{% endif %}</p>
-<form method="post" action="{% url 'system-diagnostics-refresh' %}" data-observation-refresh>
+<form method="post" action="{% url 'system-diagnostics-refresh' %}" data-observation-refresh data-settings-form>
   {% csrf_token %}<input type="hidden" name="request_key" value="{{ probe_nonce }}">
   <div class="ui-form-actions"><button type="submit" class="ui-btn ghost">Refresh coordinator diagnostics</button><a class="ui-btn ghost" href="{% url 'system' %}">Read latest observation</a></div>
 </form>

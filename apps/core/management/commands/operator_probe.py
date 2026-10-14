@@ -27,8 +27,13 @@ class Command(BaseCommand):
         if observations.fingerprint(entry["kind"], producer=True) != entry["producer_fingerprint"]:
             raise CommandError("Diagnostic producer context changed")
         if entry["kind"] == "upload-usage":
-            # This branch is supplied by the separately scoped usage consumer.
-            raise CommandError("Storage measurement is not available")
+            from apps.operator.usage_observations import scan
+            result = scan(entry["org_id"], entry["workspace_id"])
+            result.update(version=1, kind=entry["kind"], workspace_id=cached_workspace_identity(),
+                          producer_fingerprint=entry["producer_fingerprint"], started_at=entry["started_at"],
+                          observed_at=timezone.now().isoformat())
+            self.stdout.write(json.dumps(result, separators=(",", ":")))
+            return
         from apps.core.health import run_checks
         checks = run_checks(quick=entry["kind"] == "maintenance")
         # Raw provider exceptions/config paths never cross the observation pipe.

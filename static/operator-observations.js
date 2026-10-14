@@ -2,6 +2,7 @@
 (function () {
   'use strict';
   var controllers = new Set();
+  var observer = null;
   function mount(root) {
     if (root._operatorObservation || !window.TrellumActions) return;
     var form = root.querySelector('[data-observation-refresh]');
@@ -102,8 +103,17 @@
   function initialize() {
     Array.from(controllers).forEach(function (cleanup) { if (!cleanup.root.isConnected) cleanup(); });
     document.querySelectorAll('[data-operator-observation]').forEach(mount);
+    if (!observer && controllers.size) {
+      observer = new MutationObserver(function () {
+        Array.from(controllers).forEach(function (cleanup) { if (!cleanup.root.isConnected) cleanup(); });
+      });
+      observer.observe(document.body, {childList: true, subtree: true});
+    }
   }
-  window.addEventListener('pagehide', function () { Array.from(controllers).forEach(function (cleanup) { cleanup(); }); });
+  window.addEventListener('pagehide', function () {
+    Array.from(controllers).forEach(function (cleanup) { cleanup(); });
+    if (observer) observer.disconnect(); observer = null;
+  });
   window.addEventListener('pageshow', initialize);
   document.addEventListener('settings:updated', initialize);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initialize); else initialize();

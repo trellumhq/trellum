@@ -63,7 +63,11 @@ def fingerprint(kind, *, producer=False, workspace=None):
             "backend": settings.TRELLUM_STORAGE_BACKEND,
             "bucket": getattr(settings, "TRELLUM_REPORTS_BUCKET", ""),
             "endpoint": _endpoint(getattr(settings, "TRELLUM_STORAGE_ENDPOINT_URL", "")),
+            "access_model": getattr(settings, "TRELLUM_REPORT_ACCESS_MODEL", "proxy"),
+            "cdn_endpoint": _endpoint(getattr(settings, "TRELLUM_CDN_BASE_URL", "")),
+            "sandbox_network": settings.TRELLUM_SANDBOX_NETWORK,
             "backup_path": str(settings.BACKUP_DIR),
+            "backup_age": settings.BACKUP_MAX_AGE_HOURS,
             "cleanup_age": settings.CLEANUP_MAX_AGE_HOURS,
         })
     return hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest()
@@ -151,6 +155,14 @@ def observation(operation_id, *, kind, org_id=None):
                     result.update(state="unconfirmed", message="Request context changed. This observation is historical.")
                 return result
     raise ObservationError("Diagnostic observation has retired or is unavailable.", 404)
+
+
+def current_operation(kind, org_id=None):
+    row = OpsState.objects.filter(key=SLOT).values("payload").first()
+    entry = row and row["payload"].get("active")
+    if entry and entry["kind"] == kind and entry.get("org_id") == org_id and entry["state"] not in TERMINAL:
+        return observation(entry["id"], kind=kind, org_id=org_id)
+    return None
 
 
 def envelope(entry, status_url):
@@ -267,9 +279,17 @@ def finish(entry, *, result=None, state="unconfirmed", message="Measurement outc
                            for check in result["checks"])):
                 result = None
                 state, message = "failed", "Measurement returned invalid check data."
-            elif entry["kind"] == "upload-usage" and (result.get("workspace_id") != entry["workspace_id"] or result.get("quality") != "complete"):
-                result = None
-                state, message = "failed", "Storage measurement is incomplete; the previous total is retained."
+            elif entry["kind"] == "upload-usage":
+                progress = {name: result.get(name, 0) for name in ("inspected", "total_candidates", "metadata_calls", "missing")}
+                if any(type(value) is not int or value < 0 for value in progress.values()):
+                    result = None
+                    state, message = "failed", "Storage measurement returned invalid progress."
+                else:
+                    active["progress"] = progress
+                    if (result.get("workspace_id") != entry["workspace_id"] or result.get("quality") != "complete"
+                            or type(result.get("bytes")) is not int or result["bytes"] < 0):
+                        result = None
+                        state, message = "failed", "Storage measurement is incomplete; the previous total is retained."
         if result is not None:
             result.update(id=entry["id"], completed_at=now.isoformat(), producer_node=entry["producer_node"], request_fingerprint=entry["request_fingerprint"])
             OpsState.objects.update_or_create(key=snapshot_key(entry["kind"], entry.get("org_id")),

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}{{ org.slug }} — Operator{% endblock %}
 {% block content %}
 <header class="page-head">
@@ -31,7 +32,7 @@
 instance. Values below are recorded but not applied — set
 <code>TRELLUM_QUOTAS_ENABLED=true</code> to enforce them.</p>
 {% endif %}
-<div class="panel" data-settings-refresh="quota-usage">
+<div class="panel" data-settings-refresh="quota-usage" data-operator-observation data-observation-kind="upload-usage"{% if usage_operation %} data-observation-url="{% url 'operator-org-usage-status' org.slug usage_operation.id %}" data-observation-id="{{ usage_operation.id }}"{% endif %}>
 <table class="ui-table dense">
   <thead><tr><th>Resource</th><th>Used</th><th>Limit</th></tr></thead>
   <tbody>
@@ -43,10 +44,16 @@ instance. Values below are recorded but not applied — set
         <td>{% if usage.max_studios %}{{ usage.max_studios }}{% else %}unlimited{% endif %}</td></tr>
     <tr><td>Reports</td><td>{{ usage.reports }}</td>
         <td>{% if usage.max_reports %}{{ usage.max_reports }}{% else %}unlimited{% endif %}</td></tr>
-    <tr><td>Uploaded files</td><td><span class="ui-badge">Unknown</span> <span class="muted">Storage has not been measured.</span></td>
+    <tr><td>Uploaded files</td><td data-observation-value>{% if usage.storage_observation.quality == 'complete' %}{{ usage.storage_observation.bytes|filesizeformat }} (last observed · {{ usage.storage_observation.state }}){% else %}<span class="ui-badge">Unknown</span> <span class="muted">Storage has not been measured.</span>{% endif %}</td>
         <td>{% if usage.max_storage_mb %}{{ usage.max_storage_mb }} MB{% else %}unlimited{% endif %}</td></tr>
   </tbody>
 </table>
+<p data-observation-status role="status" aria-live="polite">{% if usage_operation %}{{ usage_operation.message }}{% else %}{{ usage.storage_observation.message }}{% endif %}</p>
+<p class="muted" data-observation-age>{% if usage.storage_observation.completed_at %}Observed {{ usage.storage_observation.completed_at }} · shared workspace · reference accounting; files can change after observation.{% endif %}</p>
+<form method="post" action="{% url 'operator-org-usage-refresh' org.slug %}" data-observation-refresh data-settings-form>
+  {% csrf_token %}<input type="hidden" name="request_key" value="{{ usage_nonce }}">
+  <div class="ui-form-actions"><button type="submit" class="ui-btn ghost">Measure uploaded files</button><a class="ui-btn ghost" href="{% url 'operator-org-detail' org.slug %}">Read latest observation</a></div>
+</form>
 </div>
 
 <form method="post" action="{% url 'operator-org-quota' org.slug %}" class="ui-form-section" data-settings-form data-settings-save>
@@ -174,4 +181,6 @@ instance. Values below are recorded but not applied — set
   </tbody>
 </table>
 </div>
+<script src="{% static 'actions.js' %}" defer></script>
+<script src="{% static 'operator-observations.js' %}" defer></script>
 {% endblock %}

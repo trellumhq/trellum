@@ -52,6 +52,13 @@ def termination_known(proof):
 
 
 def kill_and_reap(process):
+    if process.poll() is not None:
+        # Never signal a recycled PID/group after the leader was reaped.
+        try:
+            os.killpg(process.pid, 0)
+        except ProcessLookupError:
+            return True
+        return False
     for sig, timeout in ((signal.SIGTERM, 1), (signal.SIGKILL, 1)):
         try:
             os.killpg(process.pid, sig)
@@ -63,10 +70,10 @@ def kill_and_reap(process):
             continue
         # Reap first, then ensure the process group has disappeared too.
         try:
-            os.killpg(process.pid, signal.SIGKILL)
             os.killpg(process.pid, 0)
         except ProcessLookupError:
             return True
+        return False
     return False
 
 
@@ -155,8 +162,8 @@ class ProbeSupervisor:
 
     def stop(self):
         self.stopping.set()
-        if self.process is not None:
-            kill_and_reap(self.process)
+        # The owning tick observes the flag within its .1s select window and
+        # alone kills/reaps; competing wait/kill calls could race PID reuse.
         # Wait only a bounded grace; any unreaped work remains unconfirmed.
         if self.lock.acquire(timeout=3):
             self.lock.release()

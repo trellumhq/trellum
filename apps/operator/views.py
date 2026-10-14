@@ -144,6 +144,13 @@ def orgs(request):
 @require_operator
 def org_detail(request, org_slug):
     org = get_object_or_404(Organization, slug=org_slug)
+    from apps.core import operator_observations as observations
+    usage_operation = observations.current_operation("upload-usage", org.pk)
+    if request.GET.get("usage_observation"):
+        try:
+            usage_operation = observations.observation(request.GET["usage_observation"], kind="upload-usage", org_id=org.pk)
+        except observations.ObservationError:
+            pass
     studio_q = bounded.search(request.GET, "studio_q")
     member_q = bounded.search(request.GET, "member_q")
     studios = Studio.objects.filter(org=org)
@@ -209,6 +216,8 @@ def org_detail(request, org_slug):
                 "member_preserved": bounded.preserved(request.GET, ("studio_q", "studio_page")),
                 "recent_runs": recent,
                 "usage": bounded.usage(org, quota),
+                "usage_nonce": observations.nonce(request.user.pk, "upload-usage", org.pk),
+                "usage_operation": usage_operation,
                 "quota": quota,
                 "quota_values": quota_values,
                 "quota_errors": getattr(request, "quota_errors", {}),
@@ -218,6 +227,55 @@ def org_detail(request, org_slug):
             }
         ),
     )
+
+
+@require_operator
+@require_POST
+def org_usage_refresh(request, org_slug):
+    from django.db import transaction
+    from django.http import Http404, JsonResponse
+    from django.urls import reverse
+    from apps.core import operator_observations as observations
+    if impersonation.is_impersonating(request):
+        raise Http404
+    org = get_object_or_404(Organization, slug=org_slug)
+    json_request = "application/json" in request.headers.get("Accept", "")
+    try:
+        with transaction.atomic():
+            entry, created = observations.admit(request.user.pk, "upload-usage", request.POST.get("request_key", ""), org_id=org.pk)
+            if created:
+                audit(request, "operator.usage.refresh", org=org, operation_id=entry["id"])
+    except observations.ObservationError as exc:
+        if json_request:
+            return JsonResponse({"ok": False, "message": exc.message}, status=exc.status)
+        messages.error(request, exc.message)
+        return redirect("operator-org-detail", org_slug=org.slug)
+    if json_request:
+        response = JsonResponse({"ok": True, **observations.envelope(entry, reverse("operator-org-usage-status", args=[org.slug, entry["id"]]))}, status=202 if created else 200)
+        response["Cache-Control"] = "no-store"
+        return response
+    return redirect(reverse("operator-org-detail", args=[org.slug]) + "?usage_observation=" + entry["id"])
+
+
+@require_operator
+def org_usage_status(request, org_slug, operation_id):
+    from django.http import Http404, HttpResponseNotAllowed, JsonResponse
+    from django.urls import reverse
+    from apps.core import operator_observations as observations
+    if impersonation.is_impersonating(request):
+        raise Http404
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET"])
+    org = get_object_or_404(Organization, slug=org_slug)
+    try:
+        entry = observations.observation(operation_id, kind="upload-usage", org_id=org.pk)
+    except observations.ObservationError as exc:
+        return JsonResponse({"message": exc.message}, status=exc.status)
+    response = JsonResponse({**observations.envelope(entry, reverse("operator-org-usage-status", args=[org.slug, operation_id])),
+                             "snapshot": observations.snapshot("upload-usage", org.pk),
+                             "next_nonce": observations.nonce(request.user.pk, "upload-usage", org.pk) if entry["state"] in observations.TERMINAL else None})
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 @require_operator
