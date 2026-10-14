@@ -908,7 +908,7 @@ def api_keys_view(request):
             "new_secret": fresh["secret"] if new_key else None,
             # The `setup portal` one-liner, once, for every studio the key can
             # reach (internal planning ticket #151): create a key, paste one command in the repo.
-            "new_key_studios": visible_studios(request.user, new_key.org) if new_key else [],
+            "new_key_studios": visible_studios(request.user, new_key.org, request=request) if new_key else [],
             "portal_url": base_url(),
         },
     )
