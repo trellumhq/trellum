@@ -86,6 +86,10 @@ class Runtime:
         self.units = {}
         self.attached = False
         self.session_salt = uuid.uuid4().hex
+        from .coverage import source_digest
+        from .bindings import binding_digest
+        self.source = source_digest(ROOT)
+        self.binding_hash = binding_digest()
 
     def db_url(self, name):
         return f"postgres://postgres:disposable@127.0.0.1:{self.dbport}/{name}"
@@ -97,7 +101,8 @@ class Runtime:
                     PORTAL_E2E_WORK_LOG=str(work_log or self.artifacts / "work.jsonl"),
                     PORTAL_E2E_ARTIFACTS=str(self.artifacts),
                     PORTAL_E2E_ORIGIN=origin or "http://127.0.0.1:1",
-                    PORTAL_E2E_BROWSER=self.browser, PORTAL_E2E_REAL_HASHER="1")
+                    PORTAL_E2E_BROWSER=self.browser, PORTAL_E2E_REAL_HASHER="1",
+                    PORTAL_E2E_SOURCE_DIGEST=self.source, PORTAL_E2E_BINDING_DIGEST=self.binding_hash)
 
     def __enter__(self):
         if (ROOT / ".env").exists():

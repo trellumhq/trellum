@@ -10,6 +10,7 @@ def valid_case():
                       'profile-save', 'test_profile[mobile]', ('actor', 'db', 'reload'))
     actor = {'principal': 'org-admin', 'actor_id': 17, 'session_digest': 'hashed-session', 'impersonator_id': None}
     event = {'event_id': 'request-1', 'complete': True, 'status': 302, 'node_id': binding.node_id,
+             'source': 'source-1', 'binding_hash': 'binding-1',
              'correlation': 'window-1', 'route': binding.route, 'method': binding.method,
              'action': binding.action, 'principal': binding.principal, 'condition': binding.condition,
              **{key: actor[key] for key in ('actor_id', 'session_digest', 'impersonator_id')}}
@@ -33,7 +34,7 @@ def test_valid_executed_binding():
     'wrong-route', 'wrong-method', 'wrong-action', 'wrong-principal', 'wrong-condition',
     'wrong-actor', 'wrong-session', 'wrong-impersonator', 'no-actor', 'unreviewed-condition',
     'duplicate-event', 'spoofed-role-header', 'no-session-proof', 'no-identity-registry',
-    'duplicate-collected', 'no-status',
+    'duplicate-collected', 'no-status', 'stale-event-source', 'stale-event-binding',
 ])
 def test_mutated_evidence_blocks(mutation):
     case = valid_case()
@@ -67,6 +68,8 @@ def test_mutated_evidence_blocks(mutation):
     elif mutation == 'no-identity-registry': case['identity_registry'] = {}
     elif mutation == 'duplicate-collected': case['collected'] *= 2
     elif mutation == 'no-status': event.pop('status')
+    elif mutation == 'stale-event-source': event['source'] = 'old-source'
+    elif mutation == 'stale-event-binding': event['binding_hash'] = 'old-binding'
     assert validate_execution(**case)['status'] == 'blocked'
 
 
@@ -116,3 +119,12 @@ def test_malformed_evidence_shape_blocks(payload):
     case = valid_case()
     case['evidence'] = [payload]
     assert validate_execution(**case)['status'] == 'blocked'
+
+
+def test_binding_cannot_certify_another_principal_policy_tuple():
+    case = valid_case()
+    required = {(row['id'], 'POST', 'action=profile', principal, disposition, condition): [case['bindings'][0].key]
+                for row in ledger()['routes'] for principal, disposition, condition in
+                [('org-admin', 'allowed_roles', None), ('viewer', 'denied_roles', None), ('revoked', 'conditional_roles', 'Own account only')]}
+    result = coverage_summary(ledger(), case['bindings'], validate_execution(**case), required)
+    assert result['status'] == 'blocked' and len(result['pending_policy_tuples']) == 2

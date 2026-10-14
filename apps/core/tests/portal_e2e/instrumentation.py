@@ -116,6 +116,8 @@ class MeasureRequests:
             row = {'path': '/' + pattern if pattern is not None else '<unresolved>', 'route': route['id'] if route else None,
                    'method': request.method, 'action': action, 'role': role, 'cache_phase': phase, **identity,
                    'event_id': uuid.uuid4().hex, 'complete': complete,
+                   'source': os.environ.get('PORTAL_E2E_SOURCE_DIGEST'),
+                   'binding_hash': os.environ.get('PORTAL_E2E_BINDING_DIGEST'),
                    'node_id': label('X-Portal-E2E-Node', r'apps/core/tests/portal_e2e/[\w./:\[\], -]+', 300),
                    'correlation': label('X-Portal-E2E-Correlation', r'[0-9a-f]{32}', 32),
                    'principal': role if role in self.principals else 'unclassified',

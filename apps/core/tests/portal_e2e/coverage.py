@@ -1,6 +1,5 @@
 """Fail-closed evidence validation; passing infrastructure is not coverage."""
 from collections import Counter
-from dataclasses import asdict
 import hashlib
 import json
 from pathlib import Path
@@ -63,6 +62,8 @@ def validate_execution(bindings, collected, outcomes, evidence, events, *, sourc
         if not isinstance(value, (list, tuple)) or len(value) != 8 or any(not isinstance(item, (str, type(None))) for item in value):
             return ()
         return tuple(value)
+    if any(not isinstance(event.get('event_id'), str) for event in events):
+        return {'status': 'blocked', 'errors': ['malformed request identifier'], 'executed_bindings': 0}
     event_ids = Counter(event.get("event_id") for event in events)
     if any(count != 1 for count in event_ids.values()):
         errors.append("duplicate request event")
@@ -123,6 +124,8 @@ def validate_execution(bindings, collected, outcomes, evidence, events, *, sourc
                 continue
             if not event.get("complete") or event.get("node_id") != binding.node_id or event.get("correlation") != row.get("correlation"):
                 errors.append(prefix + "incomplete or foreign request window")
+            if event.get('source') != source or event.get('binding_hash') != binding_hash:
+                errors.append(prefix + 'stale request provenance')
             if (event.get("route"), event.get("method"), event.get("action")) != (binding.route, binding.method, binding.action):
                 errors.append(prefix + "wrong request route/action")
             if any(event.get(key) != actor.get(key) for key in ("actor_id", "session_digest", "impersonator_id")):
@@ -147,7 +150,7 @@ def coverage_summary(ledger, bindings, execution, reviewed_requirements=None):
     for row in planned:
         policy_key = (row['route'], row['method'], row['action'], row['principal'], row['disposition'], row['condition'])
         required = reviewed_requirements.get(policy_key)
-        if not required or not set(required) <= actual:
+        if not required or any(len(key) != 8 or tuple(key[:4]) != policy_key[:4] for key in required) or not set(required) <= actual:
             pending.append(row)
     return {"status": "blocked" if pending or execution["status"] != "pass" else "pass",
             "planned_scenarios": sum(len(row["scenarios"]) for row in ledger["routes"]),
