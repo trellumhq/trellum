@@ -114,16 +114,22 @@ def test_delayed_real_summary_retains_measurement_without_replay(engine, width, 
             else:
                 route.continue_()
 
+        reads = []
+
         def delay_summary(route):
+            # Hold only the one pre-admission read; any later legitimate read
+            # (e.g. a retry once focus leaves the region) uses the real path.
             if route.request.method == "GET" and not route.request.is_navigation_request():
-                response = route.fetch()
-                assert response.status == 200
-                assert "No completed observation." in response.text()
-                assert "data-observation-id=" not in response.text()
-                held["summary"] = (route, response)
-                page.evaluate("window.summaryHeld = true")
-            else:
-                route.continue_()
+                reads.append(route.request.url)
+                if "summary" not in held:
+                    response = route.fetch()
+                    assert response.status == 200
+                    assert "No completed observation." in response.text()
+                    assert "data-observation-id=" not in response.text()
+                    held["summary"] = (route, response)
+                    page.evaluate("window.summaryHeld = true")
+                    return
+            route.continue_()
 
         def delay_admission(route):
             admissions.append(route.request.method)
@@ -150,11 +156,18 @@ def test_delayed_real_summary_retains_measurement_without_replay(engine, width, 
         page.wait_for_function("window.summaryHeld === true")
         summary_csrf = page.evaluate("""html => new DOMParser().parseFromString(html, 'text/html')
             .querySelector('form[data-observation-refresh] [name=csrfmiddlewaretoken]').value""", held["summary"][1].text())
-        page.get_by_role("button", name="Measure uploaded files", exact=True).click()
+        # Submit through the real form handler without focusing the button: a
+        # pointer click that later blurs inside the summary region legitimately
+        # retries (and supersedes) the in-flight read, which is not the stale
+        # delivery under test.
+        page.evaluate("""() => {
+            const form = document.querySelector('form[data-observation-refresh]');
+            form.requestSubmit(form.querySelector('button[type=submit]'));
+        }""")
         page.wait_for_function("window.admissionHeld === true")
         operation_id = held["admission"][1].json()["action"]["id"]
         quota.get_by_label("Notes", exact=True).fill("Preserved neighboring draft")
-        page.evaluate("window.positionBeforeSummary = scrollY")
+        page.evaluate("window.positionBeforeSummary = scrollY; window.heightBeforeSummary = document.documentElement.scrollHeight")
         form = page.locator('form[data-observation-refresh]')
 
         if release_at == "pending":
@@ -197,9 +210,13 @@ def test_delayed_real_summary_retains_measurement_without_replay(engine, width, 
 
         expect(quota.get_by_label("Notes", exact=True)).to_have_value("Preserved neighboring draft")
         expect(quota.get_by_label("Notes", exact=True)).to_be_focused()
-        assert page.evaluate("Math.abs(scrollY - window.positionBeforeSummary) <= 2")
+        # Replacing the summary must not jump the page. Browser scroll anchoring may
+        # shift scrollY by at most the height the real measurement adds/removes.
+        assert page.evaluate("""() => Math.abs(scrollY - window.positionBeforeSummary)
+            <= Math.max(2, Math.abs(document.documentElement.scrollHeight - window.heightBeforeSummary))""")
         with ThreadPoolExecutor(max_workers=1) as pool:
             assert pool.submit(persisted).result() == (operation_id, 4096, 1)
         assert len(admissions) == 1
+        assert len(reads) == 1
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
         context.close(); browser.close()
