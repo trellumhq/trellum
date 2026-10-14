@@ -166,3 +166,40 @@ journey catalog therefore keeps the full gate blocked for both browsers.
 
 Full suites, real worker/restart behavior and Docker sandbox checks remain
 separate final gates. Phase 1 never certifies those gates or remaining journeys.
+
+## Bounded member/access cohort
+
+Run `python scripts/portal_e2e.py --cohort members-access --browser both
+--artifacts <empty-directory>` for the reviewed three-executor cohort matrix.
+It runs 14 pairwise browser cases (group overview, native/enhanced bounded access
+browse and Save, native Studio Members browsing), 15 HTTP principal cases in a
+declared business-readonly unit, and one isolated operator Save. Login/session
+and security audit bookkeeping is distinct from unchanged business data/audit.
+Mutation cases use their own cloned database/DATA_DIR. The expected grant audit
+multiset includes `group.grant` and every actually added/removed report action.
+Selected missing/inactive reports and separate Private assignments are retained.
+
+`--browser chromium` or `webkit` selects that browser plus HTTP cases and reports
+a cohort subset. Its matrix remains blocked until both engines and HTTP execute.
+Collection/outcomes are namespaced by executor and actual pytest node ID, so
+repeated node names on different engines cannot substitute for each other.
+Automatic matrix aggregation requires identical source, binding, manifest and
+logical fixture hashes. Duplicate/missing/nonpass executors block the matrix.
+
+The planned scenario action and observed transport selector are separate.
+Workers derive GET and POST parameter fingerprints and physical action from the
+actual request, not an assertion header. The reviewed Save-after-browse alias
+requires the same explicit `studio_access` Save, persisted delta, and a recorded
+browse response completed before that Save began. Only that explicit alias pair
+may share a request event. Unrelated event reuse and missing behavior checkpoints
+block verification. Portable parameter observations are hashes, not token URLs,
+credentials or raw request bodies. NA dispositions require reviewed policy and a
+governing executed proof; they never manufacture an executed node. This cohort
+has no proposed principal NA dispositions.
+
+The full `--all` gate additionally runs the registered cohort matrix, but remains
+nonzero while the rest of L1–L5 and reviewed principal conditions are incomplete.
+An Alpha-target denial for the beta full viewer does not certify its own-Beta
+condition. C20 member write endpoints and 1000-selection HTTP Save remain
+pending, as do Effective/report/share and later member/lifecycle cohorts. This
+cohort pass is not complete C06/C07/L3 or full portal acceptance.

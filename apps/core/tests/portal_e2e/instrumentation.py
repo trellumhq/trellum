@@ -59,6 +59,7 @@ class MeasureRequests:
             from apps.reports.scan import invalidate_registry_cache
             invalidate_registry_cache()
         started = time.perf_counter()
+        started_ns = time.monotonic_ns()
         counts = {'sql_count': 0, 'sql_ms': 0.0, 'storage_count': 0, 'storage_ms': 0.0, 'storage_operations': {}}
         token = _current.set(counts)
         def measure(execute, sql, params, many, context):
@@ -100,6 +101,14 @@ class MeasureRequests:
             pattern = getattr(match, 'route', None)
             route = self.routes.get(pattern)
             action = None
+            from .coverage import parameter_fingerprint
+            names=('action','tab','q','page','report_q','report_page','grant_q','grant_page','role','viewer_scope','user_id','studio','reports','selected')
+            parameters={'query':{},'body':{}}
+            try:
+                for source_name, data in (('query',request.GET),('body',request.POST)):
+                    parameters[source_name]={name:parameter_fingerprint(data.getlist(name)) for name in names if name in data}
+            except Exception:
+                parameters['unreadable']=True
             if route:
                 declared = {item.get('action') for item in route['scenarios']}
                 try:
@@ -116,6 +125,8 @@ class MeasureRequests:
             row = {'path': '/' + pattern if pattern is not None else '<unresolved>', 'route': route['id'] if route else None,
                    'method': request.method, 'action': action, 'role': role, 'cache_phase': phase, **identity,
                    'event_id': uuid.uuid4().hex, 'complete': complete,
+                   'executor': os.environ.get('PORTAL_E2E_BROWSER'), 'parameters': parameters,
+                   'started_ns': started_ns, 'finished_ns': time.monotonic_ns(),
                    'source': os.environ.get('PORTAL_E2E_SOURCE_DIGEST'),
                    'binding_hash': os.environ.get('PORTAL_E2E_BINDING_DIGEST'),
                    'node_id': label('X-Portal-E2E-Node', r'apps/core/tests/portal_e2e/[\w./:\[\], -]+', 300),

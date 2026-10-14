@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 import sys
 import shutil
+import hashlib
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -14,6 +15,8 @@ from apps.core.tests.portal_e2e.bindings import (BINDINGS, CONDITIONS, INFRASTRU
     JOURNEY_MODULES, REVIEWED_REQUIREMENTS, binding_digest, infrastructure_bindings)
 from apps.core.tests.portal_e2e.coverage import coverage_summary, source_digest, validate_execution
 from apps.core.tests.portal_e2e.runtime import Runtime
+from apps.core.tests.portal_e2e.bindings import COHORT,COHORT_MODULE
+from apps.core.tests.portal_e2e.coverage import validate_cohort,aggregate_cohort
 
 BASELINE = ['apps/core/tests/portal_e2e/test_baseline.py']
 INFRASTRUCTURE = ['apps/core/tests/portal_e2e/' + name for name in (
@@ -48,6 +51,29 @@ def run_tests(modules, env, directory):
     return {'status': status, 'exit_code': completed.returncode, 'collected': collected, 'outcomes': outcomes}
 
 
+def run_cohort(runtime,env,artifacts,executors,registry,ledger):
+    from apps.core.tests.portal_e2e.journey_fixtures import FIXTURE_HASH
+    manifest_hash=hashlib.sha256((ROOT/'apps/core/tests/portal_e2e/routes.json').read_bytes()).hexdigest()
+    bundles=[]
+    for executor in executors:
+        testenv=dict(env,PORTAL_E2E_EXECUTOR=executor,PORTAL_E2E_BROWSER=executor)
+        result=run_tests([COHORT_MODULE,'apps/core/tests/portal_e2e/test_engine_evidence_contract.py'],testenv,artifacts/('cohort-'+executor))
+        assertions=lines(artifacts/'assertions.jsonl')
+        selected=[row for row in assertions if row.get('scope')=='cohort' and row.get('executor')==executor]
+        variables={row.get('variant') or 'http':row['variables'] for row in selected}
+        execution=validate_cohort(executor,result['collected'],result['outcomes'],selected,lines(artifacts/'work.jsonl'),
+            source=runtime.source,digest=runtime.binding_hash,manifest_hash=manifest_hash,
+            fixture_variables=variables,identities=registry,ledger=ledger)
+        bundle={'executor':executor,'source':runtime.source,'binding_hash':runtime.binding_hash,'manifest_hash':manifest_hash,
+            'fixture_hash':FIXTURE_HASH,'status':'pass' if result['status']=='pass' and execution['status']=='pass' else 'blocked',
+            'collected':result['collected'],'outcomes':result['outcomes'],'execution':execution}
+        (artifacts/('cohort-'+executor)/'bundle.json').write_text(json.dumps(bundle,indent=2))
+        bundles.append(bundle)
+    return {'scope':'members-access cohort only','bundles':bundles,'matrix':aggregate_cohort(bundles),
+            'status':'pass' if bundles and all(row['status']=='pass' for row in bundles) else 'blocked',
+            'full_journey_gate':'pending; first cohort never certifies the full shard'}
+
+
 def write_budgets(artifacts):
     samples = lines(artifacts / 'work.jsonl')
     counts = json.loads((artifacts / 'seed.json').read_text())['counts']
@@ -70,7 +96,8 @@ def main():
     parser.add_argument('--all', action='store_true')
     parser.add_argument('--infrastructure', action='store_true', help='Phase 1 proof only, not journey coverage')
     parser.add_argument('--artifacts', type=Path, required=True)
-    parser.add_argument('--browser', choices=['chromium', 'webkit'], default='chromium')
+    parser.add_argument('--browser', choices=['chromium', 'webkit','both'], default='chromium')
+    parser.add_argument('--cohort',choices=[COHORT])
     for name, choices, default in (('reports', [20, 200, 1000], 20), ('members', [3, 25, 100], 3),
         ('studios', [1, 10, 50], 1), ('metrics', [20, 500, 2000], 20), ('schedules', [1, 10, 50], 1), ('rules', [1, 10, 50], 1)):
         parser.add_argument('--' + name, type=int, choices=choices, default=default)
@@ -88,7 +115,7 @@ def main():
     result['dirty_tree'] = bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT, text=True).strip())
     result['source_digest'] = source_digest(ROOT)
     result['binding_digest'] = binding_digest()
-    result['scope'] = 'journey gate' if args.all else 'infrastructure only' if args.infrastructure else 'L0 baseline only' if args.shard == 'L0' else 'journey gate'
+    result['scope'] = 'journey gate' if args.all else 'members-access cohort subset' if args.cohort else 'infrastructure only' if args.infrastructure else 'L0 baseline only' if args.shard == 'L0' else 'journey gate'
     result['manifest_mapping_status'] = 'not yet validated'
     try:
         if sys.version_info[:2] != (3, 12): raise RuntimeError('Python 3.12 required')
@@ -99,11 +126,13 @@ def main():
                               'node': node, 'gunicorn': importlib.metadata.version('gunicorn'), 'postgres_image': 'postgres:16-alpine'}
         ledger = json.loads((ROOT / 'apps/core/tests/portal_e2e/routes.json').read_text())
         runs = []
-        if not args.infrastructure and not args.all and not SHARDS[args.shard]:
+        if args.browser=='both' and not (args.cohort or args.all):raise RuntimeError('--browser both requires --cohort or --all')
+        if args.cohort and args.infrastructure:raise RuntimeError('--cohort and --infrastructure have distinct scopes')
+        if not args.cohort and not args.infrastructure and not args.all and not SHARDS[args.shard]:
             result['reason'] = f'{args.shard} has no implemented journey bindings; empty shards never pass'
             result['coverage'] = coverage_summary(ledger, BINDINGS, {'status': 'blocked', 'errors': ['no executed journey bindings']})
         else:
-            with Runtime(artifacts, browser=args.browser, reports=args.reports, members=args.members,
+            with Runtime(artifacts, browser='chromium' if args.browser=='both' else args.browser, reports=args.reports, members=args.members,
                          studios=args.studios, metrics=args.metrics, schedules=args.schedules, rules=args.rules) as runtime:
                 env = runtime.environment(runtime.template_db, runtime.template_data)
                 env['PORTAL_E2E_RUNTIME'] = str(runtime.descriptor)
@@ -116,7 +145,7 @@ def main():
                         'users={role: (get_user_model().objects.get(email=email).pk if email else None) for role,email in ROLES.items()}; '
                         "print(json.dumps({role:{'actor_id':None if role=='inactive' else pk,'impersonator_id':users['operator'] if role=='impersonated' else None} for role,pk in users.items()}))")
                 registry = json.loads(subprocess.check_output([sys.executable, '-c', code], cwd=ROOT, env=env, text=True))
-                if args.all or (args.shard == 'L0' and not args.infrastructure):
+                if args.all or (args.shard == 'L0' and not args.infrastructure and not args.cohort):
                     with runtime.unit('L0-baseline', legacy_baseline=True) as unit:
                         run = run_tests(BASELINE, unit.env, artifacts / 'baseline')
                         runs.append(run)
@@ -125,6 +154,9 @@ def main():
                     run = run_tests(INFRASTRUCTURE, env, artifacts / 'infrastructure')
                     runs.append(run)
                     result['infrastructure_status'] = run['status']
+                if args.cohort or args.all:
+                    executors=['chromium','webkit','http'] if args.all or args.browser=='both' else [args.browser,'http']
+                    result['cohort']=run_cohort(runtime,env,artifacts,executors,registry,ledger)
                 for shard in (list(JOURNEY_MODULES) if args.all else [args.shard]):
                     if not args.infrastructure and shard in JOURNEY_MODULES and JOURNEY_MODULES[shard]:
                         runs.append(run_tests(JOURNEY_MODULES[shard], env, artifacts / shard.lower()))
@@ -142,9 +174,10 @@ def main():
                 source=result['source_digest'], binding_hash=result['binding_digest'], conditions=CONDITIONS,
                 ledger=selected_ledger, identity_registry=registry)
             result['coverage'] = coverage_summary(selected_ledger, selected_bindings, execution, REVIEWED_REQUIREMENTS)
-            result['status'] = 'pass' if runs and all(run['status'] == 'pass' for run in runs) else 'blocked'
+            result['status'] = 'pass' if (runs and all(run['status'] == 'pass' for run in runs)) or (args.cohort and not args.all and result.get('cohort',{}).get('status')=='pass') else 'blocked'
+            if result.get('cohort',{}).get('status')=='blocked':result['status']='blocked'
             if args.infrastructure or args.all:
-                infrastructure_execution = validate_execution(infrastructure_bindings(args.browser), collected, outcomes,
+                infrastructure_execution = validate_execution(infrastructure_bindings('chromium' if args.browser=='both' else args.browser), collected, outcomes,
                     [row for row in assertions if row.get('scope') == 'infrastructure'], lines(artifacts / 'work.jsonl'),
                     source=result['source_digest'], binding_hash=result['binding_digest'],
                     conditions=INFRASTRUCTURE_CONDITIONS, ledger=ledger, identity_registry=registry)

@@ -63,8 +63,10 @@ class Journey:
         cookies = {cookie['name']: cookie['value'] for cookie in context.cookies(self.unit.origin)}
         key = cookies.get(settings.SESSION_COOKIE_NAME)
         def verify():
-            if principal == 'anonymous':
+            if principal in ('anonymous','inactive'):
                 assert not key or '_auth_user_id' not in Session.objects.get(session_key=key).get_decoded()
+                if principal=='inactive':
+                    assert not get_user_model().objects.get(email=ROLES[principal]).is_active
                 return None, None
             assert key, 'authenticated session cookie missing'
             session = Session.objects.get(session_key=key).get_decoded()
@@ -143,3 +145,14 @@ def browser_metrics(page):
       resources: performance.getEntriesByType('resource').map(e => ({
         type:e.initiatorType, transferBytes:e.transferSize,
         encodedBytes:e.encodedBodySize, decodedBytes:e.decodedBodySize}))})""")
+
+
+def cohort_record(journey,binding,event_ids,checkpoints,prior_events,variables):
+    from .bindings import FIXTURE_ID
+    row={'scope':'cohort','executor':binding.browser,'fixture':FIXTURE_ID,'variant':binding.variant,
+         'node_id':journey.node_id,'key':list(binding.key),'source':journey.source,'binding_hash':journey.binding_hash,
+         'manifest_hash':hashlib.sha256(Path(__file__).with_name('routes.json').read_bytes()).hexdigest(),
+         'correlation':journey.correlation,'actor':journey.actor,'events':event_ids,'prior_events':prior_events,
+         'checkpoints':sorted(set(('actor','observed-actor',*checkpoints))),'variables':variables}
+    with (Path(journey.unit.env['PORTAL_E2E_ARTIFACTS'])/'assertions.jsonl').open('a') as output:
+        output.write(json.dumps(row)+'\n')
