@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from apps.core import operator_observations as observations
 from apps.core.models import OpsState
-from apps.core.workspace import cached_workspace_identity, workspace_identity
+from apps.core.workspace import WorkspaceUnavailable, cached_workspace_identity, workspace_identity
 
 
 class Command(BaseCommand):
@@ -46,6 +46,10 @@ class Command(BaseCommand):
                         "detail": "Passed on coordinator." if check["ok"] else "Failed on coordinator. Run manage.py doctor there for details."}
                        for check in checks[:32]],
         }
-        if len(checks) > 32 or workspace_identity(settings.DATA_DIR) != entry["producer_workspace_id"]:
+        try:
+            current_workspace = workspace_identity(settings.DATA_DIR)
+        except WorkspaceUnavailable:
+            current_workspace = None
+        if len(checks) > 32 or current_workspace != entry["producer_workspace_id"]:
             raise CommandError("Diagnostic scope changed or exceeded its limit")
         self.stdout.write(json.dumps(result, separators=(",", ":")))
