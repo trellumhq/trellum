@@ -135,6 +135,8 @@ helpers, preserve drafts and scroll, and reject obsolete background results.
 ## Pull requests
 
 Keep one concern per change and explain why it belongs in the affected layer.
+New portal features follow [docs/performance-patterns.md](docs/performance-patterns.md)
+(bounded pages, background work, timeouts, lean tests); note any deliberate exception in the PR.
 Add an entry under `[Unreleased]` in `CHANGELOG.md`. There is no CLA or DCO;
 submitting a change offers the files you touched under AGPL-3.0-only.
 
