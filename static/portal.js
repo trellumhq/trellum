@@ -294,8 +294,25 @@ function dashboardReports() {
     });
 }
 
+/* Operations folder tabs come from the server's studio-wide counts: the page
+   only ever holds one bounded slice of the reports. */
+function folderCounts() {
+    if (IS_OPS_PAGE) {
+        var f = window._opsFolders || {};
+        var recent = getRecent();
+        return { all: f.all || 0, fav: f.favorites || 0, recent: recent.length ? Math.min(recent.length, 8) : 0 };
+    }
+    var favCount = dashboardReports().filter(function(r) { return isFav(r.slug); }).length;
+    var recentCount = getRecent().filter(function(s) { return dashboardReports().some(function(r) { return r.slug === s; }); }).length;
+    return { all: dashboardReports().length, fav: favCount, recent: recentCount };
+}
+
 function getCategories() {
     const cats = new Map();
+    if (IS_OPS_PAGE) {
+        ((window._opsFolders && window._opsFolders.categories) || []).forEach(function(c) { cats.set(c.name, c.count); });
+        return cats;
+    }
     dashboardReports().forEach(r => {
         const c = r.category || 'Uncategorized';
         cats.set(c, (cats.get(c) || 0) + 1);
@@ -409,6 +426,15 @@ function renderSummary() {
 function syncToUrl() {
     if (window.TrellumConsoleReportHost && window.TrellumConsoleReportHost.isActive()) return;
     var params = new URLSearchParams();
+    if (IS_OPS_PAGE) {
+        /* Operations is a server-paged surface: its URL carries the same
+           parameters the no-JavaScript page reads. */
+        var opsParams = TrellumOperations.catalogQuery(_opsQueryState());
+        opsParams.delete('source_q'); opsParams.delete('source_page');
+        var opsQs = opsParams.toString();
+        history.replaceState(null, '', opsQs ? '?' + opsQs : location.pathname);
+        return;
+    }
     if (activeFolder !== 'all') params.set('tab', activeFolder);
     if (searchQuery) params.set('q', searchQuery);
     /* Only the launcher's own cards/list state belongs in the URL — the ops
@@ -425,6 +451,15 @@ function syncToUrl() {
 }
 function readFromUrl() {
     var params = new URLSearchParams(location.search);
+    if (IS_OPS_PAGE) {
+        var folder = params.get('folder');
+        activeFolder = folder === 'favorites' ? '_favorites' : folder === 'recent' ? '_recent' : (params.get('category') || 'all');
+        searchQuery = params.get('q') || '';
+        document.getElementById('searchInput').value = searchQuery;
+        _opsFilter = params.get('state') || 'all';
+        _opsPage = Math.max(1, parseInt(params.get('page') || '1', 10) || 1);
+        return;
+    }
     if (params.has('tab')) activeFolder = params.get('tab');
     if (params.has('q')) {
         searchQuery = params.get('q');
@@ -697,6 +732,14 @@ function listTableHtml(groups) {
     html += '</tbody></table></div>';
     return html;
 }
+function _opsPagerHTML(p, kind) {
+    var pages = p.pages || 1, page = p.page || 1;
+    if (pages <= 1 && !(p.total > 0)) return '';
+    return '<nav class="ops-native-pager ops-pager" aria-label="' + (kind === 'ds-page' ? 'Data source pages' : 'Pages') + '">'
+        + '<button class="ops-action-btn" type="button" data-' + kind + '="' + (page - 1) + '"' + (page <= 1 ? ' disabled' : '') + '>Previous</button>'
+        + '<span>Page ' + page + ' of ' + pages + ' (' + p.total + ')</span>'
+        + '<button class="ops-action-btn" type="button" data-' + kind + '="' + (page + 1) + '"' + (page >= pages ? ' disabled' : '') + '>Next</button></nav>';
+}
 
 /* Cards and rows use the same catalog sections. Favorites and recents stay
    visible above the category catalog on All; focused tabs and search results
@@ -757,7 +800,7 @@ function catTabHtml(cat, count) {
 }
 
 function categorySelectHtml(cats, favCount, recentCount) {
-    var options = [['all', 'All', dashboardReports().length]];
+    var options = [['all', 'All', folderCounts().all]];
     if (favCount > 0) options.push(['_favorites', 'Favorites', favCount]);
     if (recentCount > 0) options.push(['_recent', 'Recent', recentCount]);
     cats.forEach(function(cat) { options.push([cat[0], cat[0], cat[1]]); });
@@ -772,9 +815,9 @@ function categorySelectHtml(cats, favCount, recentCount) {
 function renderTabs(preservePickerState) {
     const cats = Array.from(getCategories());
     const tabsEl = document.getElementById('folderTabs');
-    const favCount = dashboardReports().filter(function(r) { return isFav(r.slug); }).length;
-    const recentSlugs = getRecent();
-    const recentCount = recentSlugs.filter(function(s) { return dashboardReports().some(function(r) { return r.slug === s; }); }).length;
+    const counts = folderCounts();
+    const favCount = counts.fav;
+    const recentCount = counts.recent;
 
     if (window.matchMedia('(max-width: 767px)').matches) {
         const currentSelect = tabsEl.querySelector('.category-select select');
@@ -809,7 +852,7 @@ function renderTabs(preservePickerState) {
 
     /* Pinned tabs never move into the menu — they are the high-traffic ones. */
     let pinned = '<button class="folder-tab' + (activeFolder === 'all' ? ' active' : '') + '" data-folder="all">'
-        + FOLDER_SVG + 'All <span class="count">' + dashboardReports().length + '</span></button>';
+        + FOLDER_SVG + 'All <span class="count">' + counts.all + '</span></button>';
     if (favCount > 0) {
         pinned += '<button class="folder-tab' + (activeFolder === '_favorites' ? ' active' : '') + '" data-folder="_favorites">'
             + STAR_FILLED + 'Favorites <span class="count">' + favCount + '</span></button>';
@@ -1059,6 +1102,12 @@ function clearSearch() {
 document.getElementById('searchInput').addEventListener('input', function(e) {
     searchQuery = e.target.value;
     if (searchQuery) activeFolder = 'all';
+    if (IS_OPS_PAGE) {
+        _opsPage = 1;
+        clearTimeout(_opsSearchTimer);
+        _opsSearchTimer = setTimeout(render, 250);
+        return;
+    }
     render();
 });
 
@@ -1067,6 +1116,7 @@ document.getElementById('folderTabs').addEventListener('click', function(e) {
     if (!tab) return;
     activeFolder = tab.dataset.folder;
     localStorage.setItem('trellum_portal_tab', activeFolder);
+    _opsPage = 1;
     /* Picking from the menu closes it; renderTabs then promotes the chosen
        category into the visible row. */
     const menu = this.querySelector('.folder-more');
@@ -1078,6 +1128,7 @@ document.getElementById('folderTabs').addEventListener('change', function(e) {
     if (!e.target.closest('.category-select')) return;
     activeFolder = e.target.value;
     localStorage.setItem('trellum_portal_tab', activeFolder);
+    _opsPage = 1;
     render(false);
 });
 
@@ -1754,6 +1805,62 @@ document.addEventListener('keydown', function(e) {
    OPERATIONS VIEW
    ══════════════════════════════════════════════════ */
 var _opsFilter = 'all';
+var _opsPage = 1;
+var _opsSourcePage = 1;
+var _opsSourceQuery = '';
+var _opsSearchTimer = null;
+var _opsCatalogController = null;
+var _opsCatalog = null;
+window._opsFolders = null;
+window._opsPageSlugs = [];
+function _opsQueryState() {
+    return {
+        q: searchQuery, state: _opsFilter, page: _opsPage, sourceQ: _opsSourceQuery, sourcePage: _opsSourcePage,
+        folder: activeFolder === '_favorites' ? 'favorites' : activeFolder === '_recent' ? 'recent' : 'all',
+        category: (activeFolder && activeFolder !== 'all' && activeFolder.charAt(0) !== '_') ? activeFolder : '',
+        recent: getRecent()
+    };
+}
+/* One bounded page of Operations rows (+ counts, folders, first source page).
+   A newer request aborts the older one so a stale page can never render. */
+function _opsFetchCatalog() {
+    if (_opsCatalogController) _opsCatalogController.abort();
+    var controller = new AbortController();
+    _opsCatalogController = controller;
+    var qs = TrellumOperations.catalogQuery(_opsQueryState());
+    var url = apiUrl('/api/operations/catalog') + (qs.toString() ? '?' + qs.toString() : '');
+    return boundedFetch(url, { cache: 'no-store', signal: controller.signal })
+        .then(function(r) {
+            return r.json().then(function(data) {
+                if (!r.ok || data.state !== 'ready') throw new Error(data.message || 'Operations unavailable');
+                return data;
+            });
+        })
+        .then(function(data) {
+            if (_opsCatalogController !== controller) throw new DOMException('superseded', 'AbortError');
+            _opsCatalogController = null;
+            _opsCatalog = data;
+            window._opsFolders = data.folders || null;
+            reports = (data.rows || []).map(TrellumOperations.mapRow);
+            window._opsPageSlugs = reports.map(function(r) { return r.slug; });
+            if (_opsPage > 1 && !reports.length && data.pagination && data.pagination.pages > 0 && _opsPage > data.pagination.pages) {
+                _opsPage = data.pagination.pages;
+                return _opsFetchCatalog();
+            }
+            return data;
+        });
+}
+function _opsFetchSources() {
+    var qs = TrellumOperations.catalogQuery({ sourceQ: _opsSourceQuery, sourcePage: _opsSourcePage });
+    return boundedFetch(apiUrl('/api/operations/sources') + (qs.toString() ? '?' + qs.toString() : ''), { cache: 'no-store' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.state !== 'ready') throw new Error(data.message || 'Sources unavailable');
+            window._opsSourcesPayload = data;
+            _dsSources = (data.rows || []).map(TrellumOperations.mapSource);
+            return data;
+        });
+}
 var _opsExpandedSlugs = {};
 var _opsLivePollers = {};
 var _opsUserRoles = null;
@@ -1819,25 +1926,34 @@ function _renderOpsContent() {
         }).catch(function() { window._gitSyncConfigured = false; window._gitSyncChecked = true; });
 
     gitReady.then(function() {
-        Promise.all([
-            _opsFetchSystemStatus(),
-            boundedFetch(apiUrl('/api/registry')).then(function(r) { return r.json(); }),
-            _opsFetchRunStats(isCurrent)
-        ]).then(function(results) {
+        /* The page is the single required read; status, stats and sources
+           are secondary and never blank usable rows when they fail. */
+        _opsFetchCatalog().then(function() {
+            return Promise.all([
+                _opsFetchSystemStatus().catch(function() { return { running: {}, queue: [], max_concurrent: null }; }),
+                _opsFetchRunStats(isCurrent),
+                _opsFetchSources().catch(function() { _dsSources = []; })
+            ]);
+        }).then(function(results) {
             if (!isCurrent()) return;
-            var status = results[0], reg = results[1];
-            reports = reg.reports || reports;
-            container.innerHTML = _buildOpsHTML(status, reg.reports || reports);
+            var status = results[0];
+            container.innerHTML = _buildOpsHTML(status, reports);
             signalCatalogReady(container);
-            _opsBindEvents(status, reg.reports || reports);
+            _opsBindEvents(status, reports);
             _restoreDsState();
             _opsStartLivePollers(status);
-        }).catch(function() {
-            if (!isCurrent()) return;
-            container.innerHTML = _buildOpsHTML({running:{},queue:[],max_concurrent:10}, reports);
-            signalCatalogReady(container);
-            _opsBindEvents({running:{},queue:[]}, reports);
-            _restoreDsState();
+            syncToUrl();
+        }).catch(function(error) {
+            if (!isCurrent() || (error && error.name === 'AbortError')) return;
+            /* Keep any server-rendered or previous rows; say what failed. */
+            if (!container.querySelector('[data-ops-row], [data-ops-native]')) {
+                container.innerHTML = '<p class="ops-native-note" role="alert">Operations could not be loaded. '
+                    + '<button class="ops-action-btn" type="button" data-ops-retry>Retry</button></p>';
+                var retry = container.querySelector('[data-ops-retry]');
+                if (retry) retry.addEventListener('click', renderOperations);
+            } else {
+                showToast('Operations could not be refreshed.', 'error');
+            }
         });
     });
 }
@@ -1851,10 +1967,16 @@ function _opsFetchSystemStatus() {
     var controller = new AbortController();
     _opsSystemStatusController = controller;
     var timer = setTimeout(function() { controller.abort(); }, 8000);
-    var request = studioFetch('/api/system/status', { signal: controller.signal })
+    var statusQuery = TrellumOperations.slugQuery(window._opsPageSlugs).toString();
+    var request = studioFetch('/api/operations/status' + (statusQuery ? '?' + statusQuery : ''), { signal: controller.signal, cache: 'no-store' })
         .then(function(r) {
             if (!r.ok) throw new Error('Status request failed');
             return r.json();
+        })
+        .then(function(payload) {
+            if (payload.state !== 'ready') throw new Error('Status unavailable');
+            window._opsStatusPayload = payload;
+            return TrellumOperations.statusToLegacy(payload, reports);
         })
         .finally(function() { clearTimeout(timer); });
     _opsSystemStatusRequest = request.finally(function() {
@@ -1867,48 +1989,33 @@ function _opsFetchSystemStatus() {
 }
 
 function _opsFetchRunStats(isCurrent) {
-    return boundedFetch(apiUrl('/api/system/run-stats'))
+    var statsQuery = TrellumOperations.slugQuery(window._opsPageSlugs).toString();
+    if (!window._opsPageSlugs.length) { _opsRunStats = {}; return Promise.resolve(true); }
+    return boundedFetch(apiUrl('/api/operations/stats?' + statsQuery), { cache: 'no-store' })
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (isCurrent && !isCurrent()) return false;
-            _opsRunStats = (data && data.stats) || {};
+            _opsRunStats = (data && data.state === 'ready' && data.stats) || {};
             return true;
         })
         .catch(function() {});
 }
 
 function _buildOpsHTML(status, reportList) {
-    /* Apply folder/category filter (same as cards/list views) */
-    if (activeFolder === '_favorites') {
-        reportList = reportList.filter(function(r) { return isFav(r.slug); });
-    } else if (activeFolder === '_recent') {
-        var recentOrder = getRecent();
-        reportList = recentOrder.map(function(s) { return reportList.find(function(r) { return r.slug === s; }); }).filter(Boolean);
-    } else if (activeFolder && activeFolder !== 'all') {
-        reportList = reportList.filter(function(r) { return (r.category || 'Uncategorized') === activeFolder; });
-    }
-
-    /* Apply top search bar filter */
-    if (searchQuery) {
-        var q = searchQuery.toLowerCase();
-        reportList = reportList.filter(function(r) {
-            return (r.name || '').toLowerCase().indexOf(q) >= 0
-                || (r.slug || '').toLowerCase().indexOf(q) >= 0
-                || (r.description || '').toLowerCase().indexOf(q) >= 0;
-        });
-    }
-
+    /* Folder, search, state, counts and paging were applied by the server. */
+    var catalog = _opsCatalog || { counts: {}, pagination: { page: 1, pages: 1, total: reportList.length } };
     var running = status.running || {};
     var queue = status.queue || [];
     var queueSlugs = queue.map(function(q) { return q.slug || q; });
-    var counts = {total:reportList.length, running:0, queued:0, ok:0, error:0, oom:0, timeout:0, stopped:0, not_run:0, waiting:0};
-    reportList.forEach(function(r) {
-        var state = _opsReportState(r, running, queueSlugs);
-        if (state === 'oom' || state === 'timeout') counts.error++;
-        counts[state]++;
-    });
+    var counts = catalog.counts || {};
+    var activeTotals = (status.active_jobs_total || {});
+    var statCounts = {
+        total: counts.total || 0, running: counts.running || 0, queued: counts.queued || 0,
+        waiting: counts.waiting || 0, ok: counts.ok || 0, error: counts.error || 0
+    };
     window._opsLatestStatus = status;
     var uptime = status.server_uptime_seconds ? _fmtDuration(status.server_uptime_seconds) : '-';
+    var workerLabel = status.worker_alive === false ? 'Worker offline' : (status.max_concurrent ? 'Capacity ' + status.max_concurrent : '-');
 
     /* Data sources that need someone's attention sit above everything else;
        otherwise the section keeps its place under the system actions. */
@@ -1919,13 +2026,13 @@ function _buildOpsHTML(status, reportList) {
 
     var html = dsAttention ? dsHtml : '';
     html += '<div class="ops-summary">';
-    html += _opsStat(counts.total, 'Reports', '');
-    html += _opsStat(counts.running, 'Running', 'running');
-    html += _opsStat(counts.queued, 'Queued', '');
-    html += _opsStat(counts.waiting, 'Waiting for data source', 'warn');
-    html += _opsStat(counts.ok, 'Succeeded', 'ok');
-    html += _opsStat(counts.error, 'Failed', 'error');
-    html += _opsStat(uptime, 'Uptime', '');
+    html += _opsStat(statCounts.total, 'Reports', '');
+    html += _opsStat(statCounts.running, 'Running', 'running');
+    html += _opsStat(statCounts.queued, 'Queued', '');
+    html += _opsStat(statCounts.waiting, 'Last observed waiting', 'warn');
+    html += _opsStat(statCounts.ok, 'Succeeded', 'ok');
+    html += _opsStat(statCounts.error, 'Failed', 'error');
+    html += _opsStat(status.uptime_label || workerLabel, 'Worker', '');
     html += '</div>';
 
     if (opsHasRole('developer', 'admin')) {
@@ -1954,23 +2061,14 @@ function _buildOpsHTML(status, reportList) {
     if (!dsAttention) html += dsHtml;
 
     html += '<div class="ops-filters">';
-    /* Count validation states */
-    var vCounts = {healthy:0, v_warn:0, v_fail:0};
-    reportList.forEach(function(r) {
-        var v = r.validation && r.validation.summary;
-        if (!v) return;
-        if (v.fail > 0) vCounts.v_fail++;
-        else if (v.warn > 0) vCounts.v_warn++;
-        else vCounts.healthy++;
-    });
-
     [['all','All',counts.total],['running','Running',counts.running],['queued','Queued',counts.queued],
-     ['waiting','Waiting',counts.waiting],
+     ['waiting','Last observed waiting',counts.waiting],
      ['error','Failed',counts.error],['oom','Out of memory',counts.oom],['timeout','Timed out',counts.timeout],
      ['stopped','Stopped',counts.stopped],['ok','Success',counts.ok],['not_run','Not run',counts.not_run],
-     ['v_fail','Validation Fails',vCounts.v_fail],['v_warn','Warnings',vCounts.v_warn],['healthy','No issues',vCounts.healthy]].forEach(function(f) {
+     ['unknown','Unknown',counts.unknown],
+     ['v_fail','Validation Fails',counts.v_fail],['v_warn','Warnings',counts.v_warn],['healthy','No issues',counts.healthy]].forEach(function(f) {
         html += '<button class="ops-filter-pill' + (_opsFilter === f[0] ? ' active' : '') + '" data-ops-filter="' + f[0] + '" aria-pressed="' + (_opsFilter === f[0]) + '">'
-            + f[1] + '<span class="ops-filter-count">' + f[2] + '</span></button>';
+            + f[1] + '<span class="ops-filter-count">' + (f[2] == null ? 0 : f[2]) + '</span></button>';
     });
     html += '</div>';
 
@@ -1978,7 +2076,7 @@ function _buildOpsHTML(status, reportList) {
     reportList.forEach(function(r) {
         var isRunning = !!running[r.slug], isQueued = queueSlugs.indexOf(r.slug) >= 0;
         var expanded = !!_opsExpandedSlugs[r.slug];
-        html += '<tr' + (expanded ? ' class="expanded"' : '') + ' data-ops-row="' + r.slug + '"' + (_opsFilterMatches(r, running, queueSlugs) ? '' : ' hidden') + '>';
+        html += '<tr' + (expanded ? ' class="expanded"' : '') + ' data-ops-row="' + r.slug + '"' + '' + '>';
         html += '<td class="ops-report-cell" data-label="Report"><div class="ops-report-name">' + esc(r.name) + '</div><div class="ops-report-slug">' + (r.kind === 'analysis' ? 'Analysis' : 'Report') + ' · ' + esc(r.slug) + '</div></td>';
         html += '<td data-label="Data">' + _opsDataCell(r) + '</td>';
         html += '<td data-label="Schedule">' + _opsCronCell(r, status) + '</td>';
@@ -2005,8 +2103,9 @@ function _buildOpsHTML(status, reportList) {
                 + '</td></tr>';
         }
     });
-    html += '<tr data-ops-empty hidden><td colspan="8" style="text-align:center;color:var(--text3);padding:24px">No reports match this filter.</td></tr>';
+    html += '<tr data-ops-empty' + (reportList.length ? ' hidden' : '') + '><td colspan="8" style="text-align:center;color:var(--text3);padding:24px">No reports match this filter.</td></tr>';
     html += '</tbody></table></div>';
+    html += _opsPagerHTML(catalog.pagination || {}, 'ops-page');
     return html;
 }
 
@@ -2073,9 +2172,10 @@ function _opsStatusCell(r, running, isQueued) {
     if (r.waiting) {
         /* Held before it started: not a failure of the build. */
         return '<div class="ops-status waiting"><span class="ops-status-dot"></span><span class="ops-status-text">Waiting for data source</span></div>'
-            + '<div class="ops-status-detail"><code>' + esc((r.blocked_by || []).join(', ')) + '</code></div>';
+            + '<div class="ops-status-detail"><code>' + esc((r.blocked_by || []).join(', ')) + '</code>'
+            + (r.waiting_current === true ? '' : ' (last observed)') + '</div>';
     }
-    var labels = {success:'Success', error:'Failed', oom_killed:'Out of memory', timeout:'Timed out', stopped:'Stopped'};
+    var labels = {success:'Success', error:'Failed', oom_killed:'Out of memory', timeout:'Timed out', stopped:'Stopped', unknown:'Unknown'};
     var label = labels[s] || 'Not run';
     var failure = s === 'error' ? sourceFailure(r.last_error) : null;
     if (failure) label += ' \u00b7 data source <code>' + esc(failure.name) + '</code>';
@@ -2202,7 +2302,7 @@ function _opsReportState(r, running, queueSlugs) {
     if (status === 'timeout') return 'timeout';
     if (status === 'stopped') return 'stopped';
     if (status === 'error') return 'error';
-    return 'not_run';
+    return status === 'unknown' ? 'unknown' : 'not_run';
 }
 function _opsFilterMatches(r, running, queueSlugs) {
     var state = _opsReportState(r, running, queueSlugs);
@@ -2228,14 +2328,12 @@ function _opsApplyFilterToRows(status, focusedSlug) {
     var running = (status && status.running) || {};
     window._opsLatestStatus = status || window._opsLatestStatus || {};
     var queueSlugs = ((status && status.queue) || []).map(function(q) { return q.slug || q; });
-    var counts = {running:0, queued:0, waiting:0, error:0, oom:0, timeout:0, stopped:0, ok:0, not_run:0};
     document.querySelectorAll('[data-ops-row]').forEach(function(row) {
         var r = reports.find(function(item) { return item.slug === row.dataset.opsRow; });
         if (!r) return;
-        var state = _opsReportState(r, running, queueSlugs);
-        if (counts[state] != null) counts[state]++;
-        if (state === 'oom' || state === 'timeout') counts.error++;
-        var visible = _opsFilterMatches(r, running, queueSlugs);
+        /* The server already applied the filter to the whole relation; counts
+           and membership are not recomputed from one page of rows. */
+        var visible = true;
         var details = row.nextElementSibling;
         if (details && !details.classList.contains('ops-expand-row')) details = null;
         if (!visible && (row.contains(document.activeElement) || (details && details.contains(document.activeElement)) || focusedSlug === row.dataset.opsRow)) {
@@ -2244,10 +2342,6 @@ function _opsApplyFilterToRows(status, focusedSlug) {
         }
         row.hidden = !visible;
         if (details) details.hidden = !visible;
-    });
-    Object.keys(counts).forEach(function(state) {
-        var pill = document.querySelector('[data-ops-filter="' + state + '"] .ops-filter-count');
-        if (pill) pill.textContent = counts[state];
     });
     document.querySelectorAll('[data-ops-filter]').forEach(function(pill) {
         pill.classList.toggle('active', pill.dataset.opsFilter === _opsFilter);
@@ -2258,8 +2352,19 @@ function _opsApplyFilterToRows(status, focusedSlug) {
     if (empty) empty.hidden = anyVisible;
 }
 function _opsBindEvents(status, reportList) {
+    document.querySelectorAll('[data-ops-page]').forEach(function(b) {
+        b.addEventListener('click', function() {
+            _opsPage = parseInt(this.dataset.opsPage, 10) || 1;
+            renderOperations();
+            window.scrollTo({ top: 0 });
+        });
+    });
     document.querySelectorAll('[data-ops-filter]').forEach(function(b) {
-        b.addEventListener('click', function() { _opsFilter = this.dataset.opsFilter; _opsApplyFilterToRows(window._opsLatestStatus || status); });
+        b.addEventListener('click', function() {
+            _opsFilter = this.dataset.opsFilter;
+            _opsPage = 1;
+            renderOperations();
+        });
     });
     document.querySelectorAll('[data-ops-action]').forEach(function(b) {
         b.addEventListener('click', function() { _opsDoAction(this.dataset.opsAction); });
@@ -2430,9 +2535,16 @@ function opsStop(slug) {
             if (r) tds[7].innerHTML = _opsActionsCell(r, false, false);
         }
     }
-    studioFetch('/api/reports/' + encodeURIComponent(slug) + '/stop', {method:'POST'}).then(function() {
+    studioFetch('/api/reports/' + encodeURIComponent(slug) + '/stop', {method:'POST'}).then(function(resp) {
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        return resp.json().catch(function() { return {}; });
+    }).then(function(data) {
+        if (data && data.ok === false) throw new Error(data.message || data.error || 'Stop was not accepted');
         /* Confirm with server after 500ms */
         setTimeout(function() { _opsRefreshAfterAction(slug, false); }, 500);
+    }).catch(function(error) {
+        showToast('Stop request could not be confirmed: ' + (error.message || 'network error'), 'error');
+        _opsRefreshAfterAction(slug, false);
     });
 }
 function opsToggleExpand(slug) {
@@ -2498,21 +2610,36 @@ function _opsStartLivePollers(status) {
 }
 function _opsStartLivePoll(slug) {
     if (_opsLivePollers[slug]) return;
+    /* At most four live terminals read worker files at once. */
+    if (Object.keys(_opsLivePollers).length >= TrellumOperations.MAX_LIVE_TERMINALS) {
+        var body = document.getElementById('opsTermBody_' + slug);
+        if (body && (body.textContent === 'Loading...' || body.textContent === '(waiting for output...)')) {
+            body.textContent = 'Live output is limited to ' + TrellumOperations.MAX_LIVE_TERMINALS + ' open terminals. Close another to follow this one.';
+        }
+        return;
+    }
     _opsFetchLive(slug);
     _opsLivePollers[slug] = setInterval(function() { _opsFetchLive(slug); }, 2000);
 }
 function _opsFetchLive(slug) {
     var requestId = (_opsLiveRequests[slug] || 0) + 1;
     _opsLiveRequests[slug] = requestId;
-    boundedFetch(apiUrl('/api/reports/' + encodeURIComponent(slug) + '/log/live'))
+    boundedFetch(apiUrl('/api/operations/reports/' + encodeURIComponent(slug) + '/log?mode=live'), { cache: 'no-store' })
         .then(function(r) { return r.json(); }).then(function(data) {
             if (_opsLiveRequests[slug] !== requestId || !_opsExpandedSlugs[slug]) return;
             var el = document.getElementById('opsTermBody_' + slug);
             if (!el) return;
-            var text = typeof data === 'string' ? data : (data.stdout_tail || data.stdout || data.output || '');
-
-            if (!text || !text.trim()) {
-                return; /* Empty live output cannot distinguish queued, quiet or completed runs. */
+            var shown = TrellumOperations.logText(data);
+            if (shown.unavailable) {
+                /* Unavailable is not quiet and not finished: say so, keep polling. */
+                if (el.textContent === 'Loading...' || el.dataset.unavailable) { el.textContent = shown.text; el.dataset.unavailable = '1'; }
+                return;
+            }
+            delete el.dataset.unavailable;
+            var text = shown.quiet ? '' : shown.text;
+            if (!text) {
+                if (el.textContent === 'Loading...') el.textContent = shown.text;
+                return;
             }
             var wasAtBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 50;
             el.innerHTML = _opsColorize(text);
@@ -2526,19 +2653,29 @@ function _opsFetchLive(slug) {
 function _opsLoadLog(slug) {
     var requestId = (_opsLiveRequests[slug] || 0) + 1;
     _opsLiveRequests[slug] = requestId;
-    boundedFetch(apiUrl('/api/reports/' + encodeURIComponent(slug) + '/log?run=0'))
-        .then(function(r) { return r.json(); }).then(function(data) {
+    boundedFetch(apiUrl('/api/operations/reports/' + encodeURIComponent(slug) + '/log?mode=last'), { cache: 'no-store' })
+        .then(function(r) { return r.json().then(function(d) { d._http = r.status; return d; }); }).then(function(data) {
             if (_opsLiveRequests[slug] !== requestId || !_opsExpandedSlugs[slug]) return;
             var el = document.getElementById('opsTermBody_' + slug);
             if (!el) return;
-            var failed = _opsIsFailedStatus(data && data.status);
+            if (data._http === 404) { el.textContent = 'No log available. Run the report to generate output.'; return; }
+            var run = data.run || {};
+            var failed = _opsIsFailedStatus(run.status);
             _opsSetTerminalState(slug, failed ? 'Failed' : 'Last run', failed, null);
-            var text = '';
-            if (data && data.stdout) text = data.stdout;
-            if (data && data.stderr) text += (text ? '\n\n--- stderr ---\n' : '') + data.stderr;
-            if (!text && data) text = 'Status: ' + (data.status||'unknown') + ' (exit ' + (data.exit_code||'?') + ')';
-            if (!text) text = 'No log available. Run the report to generate output.';
-            el.innerHTML = _opsColorize(text);
+            var shown = TrellumOperations.logText(data);
+            el.innerHTML = shown.unavailable || shown.quiet ? esc(shown.text) : _opsColorize(shown.text);
+            var old = document.getElementById('opsTermDl_' + slug);
+            if (old) old.remove();
+            if (data.state === 'ready' && run.id) {
+                var link = document.createElement('a');
+                link.id = 'opsTermDl_' + slug;
+                link.className = 'ops-row-btn';
+                link.href = apiUrl('/api/operations/reports/' + encodeURIComponent(slug) + '/log/download?run=' + encodeURIComponent(run.id));
+                link.textContent = 'Download persisted tails';
+                link.title = 'Complete persisted stdout/stderr tails of this run (not the original worker log)';
+                link.setAttribute('download', '');
+                el.parentNode.appendChild(link);
+            }
         }).catch(function() {
             if (_opsLiveRequests[slug] !== requestId || !_opsExpandedSlugs[slug]) return;
             var el = document.getElementById('opsTermBody_' + slug);
@@ -2653,20 +2790,14 @@ function renderDsTable() {
     if (!body) return;
     var sources = _dsSources;
 
-    if (sources.length === 0) {
+    if (sources.length === 0 && !_opsSourceQuery) {
         body.innerHTML = '<div class="ds-empty">No data sources declared. Add them to <code>data-sources/config.yaml</code> in your repository and publish.</div>';
         return;
     }
 
-    /* Filter by search */
+    /* Search and paging are server-side (25 sources per page). */
     var filtered = sources;
-    if (_dsSearch) {
-        var q = _dsSearch.toLowerCase();
-        filtered = sources.filter(function(s) {
-            return (s.name || '').toLowerCase().indexOf(q) >= 0
-                || (s.type || '').toLowerCase().indexOf(q) >= 0;
-        });
-    }
+    var payload = window._opsSourcesPayload || {};
 
     var html = '<input class="ds-search" type="text" placeholder="Search data sources..." value="' + esc(_dsSearch) + '" id="dsSearchInput">';
     html += '<table class="ds-table"><thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Used By</th><th>Actions</th></tr></thead><tbody>';
@@ -2680,7 +2811,7 @@ function renderDsTable() {
             + (s.detail && s.state !== 'connected' ? '<div class="ds-desc">' + esc(s.detail.substring(0, 80)) + '</div>' : '') + '</td>';
         html += '<td>' + (s.blocks && s.blocks.length
             ? 'blocks ' + s.blocks.map(function(slug) { return '<code>' + esc(slug) + '</code>'; }).join(', ')
-            : 'used by ' + (s.used_by || []).length) + '</td>';
+            : 'used by ' + (s.used_by_total || 0)) + '</td>';
         html += '<td><div class="ds-actions">';
         if (needs && opsHasRole('admin')) {
             html += '<a class="ds-action-btn" href="' + apiUrl('/settings/datasources?configure=' + encodeURIComponent(s.name)) + '#configure">Configure</a>';
@@ -2697,11 +2828,28 @@ function renderDsTable() {
         html += '</tr>';
     });
     html += '</tbody></table>';
+    html += _opsPagerHTML(payload.pagination || {}, 'ds-page');
     body.innerHTML = html;
 
-    /* Bind search */
     var si = document.getElementById('dsSearchInput');
-    if (si) si.addEventListener('input', function() { _dsSearch = this.value; renderDsTable(); });
+    if (si) si.addEventListener('input', function() {
+        _dsSearch = this.value;
+        clearTimeout(window._dsSearchTimer);
+        window._dsSearchTimer = setTimeout(function() {
+            _opsSourceQuery = _dsSearch; _opsSourcePage = 1;
+            _opsFetchSources().then(function() {
+                renderDsTable();
+                var input = document.getElementById('dsSearchInput');
+                if (input) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
+            }).catch(function() { showToast('Data sources could not be searched.', 'error'); });
+        }, 250);
+    });
+    body.querySelectorAll('[data-ds-page]').forEach(function(b) {
+        b.addEventListener('click', function() {
+            _opsSourcePage = parseInt(this.dataset.dsPage, 10) || 1;
+            _opsFetchSources().then(renderDsTable).catch(function() { showToast('Data sources could not be loaded.', 'error'); });
+        });
+    });
 }
 
 function dsSendUpload(name, input) {
@@ -2764,8 +2912,9 @@ function _opsApplyStatus(status, revision, cycle) {
     /* Update summary stat values in-place */
     var stats = document.querySelectorAll('#content > .ops-summary > .ops-stat > .ops-stat-value');
     if (stats.length >= 7) {
-        stats[1].textContent = Object.keys(running).length;
-        stats[2].textContent = queue.length;
+        var totals = status.active_jobs_total;
+        stats[1].textContent = totals ? totals.running : Object.keys(running).length;
+        stats[2].textContent = totals ? totals.queued : queue.length;
         if (status.server_uptime_seconds) stats[stats.length - 1].textContent = _fmtDuration(status.server_uptime_seconds);
     }
 
@@ -2830,11 +2979,9 @@ function _opsApplyStatus(status, revision, cycle) {
                 if (_opsLivePollers[slug]) { clearInterval(_opsLivePollers[slug]); delete _opsLivePollers[slug]; }
                 _opsLiveRequests[slug] = (_opsLiveRequests[slug] || 0) + 1;
             });
-            return boundedFetch(apiUrl('/api/registry'))
-                .then(function(resp) { return resp.json(); })
-                .then(function(reg) {
+            return _opsFetchCatalog()
+                .then(function() {
                     if (!isCurrent()) return;
-                    reports = reg.reports || reports;
                     transitioned.forEach(function(slug) {
                         var r = reports.find(function(x) { return x.slug === slug; });
                         var row = document.querySelector('[data-ops-row="' + slug + '"]');
@@ -2935,10 +3082,12 @@ function boot() {
         }
     }
 
-    var registryLoaded = boundedFetch(apiUrl('/api/registry'), { cache: 'no-store' })
-        .then(function(r) { return r.ok ? r.json() : { reports: [] }; })
-        .then(function(reg) { reports = reg.reports || []; })
-        .catch(function() { reports = []; });
+    var registryLoaded = IS_OPS_PAGE
+        ? (readFromUrl(), _opsFetchCatalog().catch(function() { reports = []; }))
+        : boundedFetch(apiUrl('/api/registry'), { cache: 'no-store' })
+            .then(function(r) { return r.ok ? r.json() : { reports: [] }; })
+            .then(function(reg) { reports = reg.reports || []; })
+            .catch(function() { reports = []; });
     registryLoaded.then(function() {
         _seedErrorLog();
         _initStudios();

@@ -336,6 +336,22 @@ def _next_run(cron, zone, now):
         return None
 
 
+CATEGORY_LIMIT = 100
+
+
+def _folders(request):
+    """Studio-wide folder tabs, independent of the active filters (3 queries)."""
+    base = operations_relation(request).order_by()
+    category = Coalesce(Func(F('category'), Value(''), function='NULLIF'), Value('Uncategorized'))
+    categories = list(base.annotate(display=category).values('display').annotate(n=Count('pk')).order_by('display')[:CATEGORY_LIMIT + 1])
+    favorites = ReportFavorite.objects.filter(user_id=request.user.pk, report__in=base).count()
+    return dict(
+        all=base.count(), favorites=favorites,
+        categories=[dict(name=row['display'][:200], count=row['n']) for row in categories[:CATEGORY_LIMIT]],
+        categories_truncated=len(categories) > CATEGORY_LIMIT,
+    )
+
+
 def operations_page_payload(request, params, *, now=None):
     state = validate_operations_params(params)
     now = now or timezone.now()
@@ -396,7 +412,7 @@ def operations_page_payload(request, params, *, now=None):
             observed_at=row['source_summary__observed_at'], served_at=row['source_summary__served_at'],
             quality=row['source_summary__quality'] or 'unknown', observation_known=known,
         ))
-    return _bounded(dict(version=1, state='ready', rows=presentation, pagination=_pagination(state.page, total), counts=counts, coverage=coverage,
+    return _bounded(dict(version=1, state='ready', rows=presentation, pagination=_pagination(state.page, total), counts=counts, folders=_folders(request), coverage=coverage,
                          applied=dict(q=state.q, category=state.category, folder=state.folder, state=state.state, sort=state.sort, ascending=state.ascending), observed_at=now))
 
 

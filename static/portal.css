@@ -1297,3 +1297,12 @@ html[data-theme="dark"] .console-dashboard select { color-scheme: dark; }
 }
 .details-matrix, .ops-table, .ops-history-table, .ds-table { font-size: 13px; }
 .ops-action-btn, .ops-row-btn, .ds-action-btn { font-size: 14px; }
+
+/* Operations: no-JavaScript surface and server paging */
+.ops-native-note { margin: 12px 0; color: var(--text2); }
+.ops-native-search { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; margin: 12px 0; }
+.ops-native-search input[type="search"] { min-height: 44px; min-width: 0; max-width: 100%; }
+.ops-native-pager { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 16px 0; }
+.ops-native-pager .ops-action-btn { min-height: 44px; display: inline-flex; align-items: center; }
+.ops-native-heading { margin: 24px 0 8px; font-size: 16px; }
+.ops-terminal-body[data-unavailable] { color: var(--warn); }

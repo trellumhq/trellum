@@ -18,17 +18,19 @@ from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db.models import Count, F, Q, Sum
 from django.db import transaction
+from django.core.serializers.json import DjangoJSONEncoder
 from django.http import (
     FileResponse,
     Http404,
     HttpResponse,
     JsonResponse,
+    StreamingHttpResponse,
 )
 from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_http_methods, require_POST
+from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from apps.core import roles, storage
 from apps.core.docs import docs_url
@@ -50,6 +52,7 @@ from apps.core.report_access import (
 )
 from apps.reports import notify
 from apps.reports import deliveries
+from apps.reports.operations_logs import OperationsLogChanged
 from apps.reports.recipient_access import DeliveryPresentationBatch
 from apps.reports.models import (
     DEFAULT_LIVE_QUERY_RATE_LIMIT,
@@ -123,7 +126,7 @@ def _visible_registry_payload(request) -> dict:
 
 # ── Dashboard shell ─────────────────────────────────────────────────────────
 
-def _dashboard_page(request, *, initial_view: str):
+def _dashboard_page(request, *, initial_view: str, extra: dict | None = None):
     """The SPA shell shared by Reports, Analyses and Operations.
     ``initial_view`` ("reports" | "analyses" | "ops") rides in the portal context;
     portal.js boots the matching surface — these are pages with URLs, not
@@ -154,6 +157,7 @@ def _dashboard_page(request, *, initial_view: str):
             "portal_ctx_json": json.dumps(ctx_blob),
             "studio_role": request.studio_role,
             "console_page_title": page_title,
+            **(extra or {}),
             # studio_theme (the viewer's named theme, or "" for the Trellum
             # default) comes from the shell context processor, which already
             # merges into every render() call -- no need to duplicate it here.
@@ -184,7 +188,157 @@ def analyses(request, org_slug, studio_slug):  # noqa: ARG001
 def operations(request, org_slug, studio_slug):  # noqa: ARG001
     """The Operations tab: run/queue state, system actions, data sources.
     Operational details and controls belong to developers and admins."""
-    return _dashboard_page(request, initial_view="ops")
+    from apps.reports import operations as ops
+
+    native = None
+    try:
+        # The no-JS surface: the same bounded reads the enhanced page uses.
+        native = {
+            "page": ops.operations_page_payload(request, request.GET),
+            "sources": ops.operations_sources_payload(request, request.GET),
+        }
+        native["links"] = _ops_native_links(request, native["page"])
+    except ValueError as exc:
+        native = {"invalid": str(exc)}
+    response = _dashboard_page(request, initial_view="ops", extra={"ops_native": native})
+    if native.get("invalid"):
+        response.status_code = 400
+    return response
+
+
+_OPS_PILLS = (
+    ("all", "All"), ("running", "Running"), ("queued", "Queued"), ("waiting", "Last observed waiting"),
+    ("error", "Failed"), ("oom", "Out of memory"), ("timeout", "Timed out"), ("stopped", "Stopped"),
+    ("ok", "Success"), ("not_run", "Not run"), ("unknown", "Unknown"),
+    ("v_fail", "Validation fails"), ("v_warn", "Warnings"), ("healthy", "No issues"),
+)
+
+
+def _ops_native_links(request, page):
+    """Plain GET links for the no-JavaScript surface; all filters preserved."""
+    from urllib.parse import urlencode
+
+    base = f"/s/{request.org.slug}/{request.studio.slug}/operations"
+    applied = page.get("applied", {})
+    keep = {k: applied[k] for k in ("q", "category", "folder") if applied.get(k) and applied[k] != "all"}
+
+    def link(**changes):
+        query = {**keep, **({"state": applied["state"]} if applied.get("state") not in (None, "all") else {}), **changes}
+        query = {k: v for k, v in query.items() if v not in (None, "", "all", 1)}
+        return base + ("?" + urlencode(query) if query else "")
+
+    counts = page.get("counts", {})
+    pills = [
+        {"state": key, "label": label, "count": counts.get("total" if key == "all" else key),
+         "active": applied.get("state") == key, "href": link(state=key, page=None)}
+        for key, label in _OPS_PILLS
+    ]
+    pagination = page.get("pagination", {})
+    current = pagination.get("page", 1)
+    return {
+        "pills": pills,
+        "prev": link(page=current - 1) if current > 1 else None,
+        "next": link(page=current + 1) if current < pagination.get("pages", 1) else None,
+        "reset": base,
+    }
+
+
+def _ops_json(build):
+    """Run one Operations read; explicit states, never a false empty success."""
+    try:
+        return JsonResponse(build(), encoder=DjangoJSONEncoder)
+    except ValueError as exc:
+        return JsonResponse({"version": 1, "state": "invalid", "message": str(exc)}, status=400)
+    except OperationsLogChanged as exc:
+        return JsonResponse({"version": 1, "state": "changed", "message": str(exc)}, status=409)
+
+
+def _ops_get(view):
+    return require_studio_role(roles.DEVELOPER)(require_GET(require_full_studio_visibility(view)))
+
+
+def _no_store(response):
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+@_ops_get
+def api_operations_catalog(request, org_slug, studio_slug):  # noqa: ARG001
+    from apps.reports.operations import operations_page_payload
+
+    return _no_store(_ops_json(lambda: operations_page_payload(request, request.GET)))
+
+
+@_ops_get
+def api_operations_status(request, org_slug, studio_slug):  # noqa: ARG001
+    from apps.reports.operations import operations_status_payload
+
+    return _no_store(_ops_json(lambda: operations_status_payload(request, request.GET.getlist("slug"))))
+
+
+@_ops_get
+def api_operations_stats(request, org_slug, studio_slug):  # noqa: ARG001
+    from apps.reports.operations import operations_stats_payload
+
+    return _no_store(_ops_json(lambda: operations_stats_payload(request, request.GET.getlist("slug"))))
+
+
+@_ops_get
+def api_operations_sources(request, org_slug, studio_slug):  # noqa: ARG001
+    from apps.reports.operations import operations_sources_payload
+
+    return _no_store(_ops_json(lambda: operations_sources_payload(request, request.GET)))
+
+
+def _log_args(request):
+    mode = request.GET.get("mode", "last")
+    run = request.GET.get("run") or None
+    return mode, run
+
+
+@_ops_get
+def api_operations_report_log(request, org_slug, studio_slug, slug):  # noqa: ARG001
+    from apps.reports.operations_logs import operations_log_payload
+
+    mode, run = _log_args(request)
+    return _no_store(_ops_json(lambda: operations_log_payload(request, slug, mode=mode, run_id=run)))
+
+
+@_ops_get
+def operations_report_log(request, org_slug, studio_slug, slug):  # noqa: ARG001
+    """No-JS reading view of the same bounded payload (never raw JSON)."""
+    from apps.reports.operations_logs import operations_log_payload
+
+    mode, run = _log_args(request)
+    try:
+        payload = operations_log_payload(request, slug, mode=mode, run_id=run)
+        status = 200
+    except ValueError as exc:
+        payload, status = {"state": "invalid", "message": str(exc)}, 400
+    response = render(request, "portal/operations_log.html", {
+        "org": request.org, "studio": request.studio, "slug": slug, "log": payload,
+        "console_page_title": "Operations log",
+    }, status=status)
+    return _no_store(response)
+
+
+@_ops_get
+def api_operations_report_log_download(request, org_slug, studio_slug, slug):  # noqa: ARG001
+    """Complete persisted stdout/stderr tails of one terminal Run.
+
+    Not the original worker disk logs, which no route has ever served."""
+    from apps.reports.operations_logs import operations_persisted_tail_stream
+
+    try:
+        stream = operations_persisted_tail_stream(request, slug, run_id=request.GET.get("run"))
+    except ValueError as exc:
+        return JsonResponse({"version": 1, "state": "invalid", "message": str(exc)}, status=400)
+    except OperationsLogChanged as exc:
+        return JsonResponse({"version": 1, "state": "changed", "message": str(exc)}, status=409)
+    response = StreamingHttpResponse(stream, content_type=stream.content_type)
+    response["Content-Disposition"] = f'attachment; filename="{stream.filename}"'
+    response["X-Content-Type-Options"] = "nosniff"
+    return _no_store(response)
 
 
 # ── Studio analytics (internal planning#4 follow-up) ──────────────────────────────

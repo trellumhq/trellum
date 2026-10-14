@@ -47,7 +47,7 @@ shell; the visible page title and category controls belong to this page.{% endco
 </div>
 
 <div class="portal-body">
-  <div class="portal-body-inner" id="content"></div>
+  <div class="portal-body-inner" id="content">{% if ops_native %}{% include "portal/_operations_native.html" %}{% endif %}</div>
 </div>
 </div>
 
@@ -98,6 +98,7 @@ shell; the visible page title and category controls belong to this page.{% endco
 {# Same file the report pages load (see apps.reports.views.delivery_widget_js) — one implementation behind window.PORTAL_CTX, not a parallel widget. #}
 <script src="{% static 'report_delivery.js' %}"></script>
 <script src="{% static 'choice-picker.js' %}"></script>
+<script src="{% static 'operations.js' %}"></script>
 <script src="{% static 'portal.js' %}"></script>
 <script src="{% static 'console-shell.js' %}"></script>
 <script src="{% static 'console-report-host.js' %}"></script>
