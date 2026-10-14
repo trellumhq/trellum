@@ -1,134 +1,143 @@
 #!/usr/bin/env python3
-"""Run isolated browser → Django → PostgreSQL baseline, retaining evidence."""
+"""Run owned Gunicorn/PostgreSQL gates; incomplete journey coverage blocks."""
 import argparse
 import importlib.metadata
 import json
-import os
 from pathlib import Path
-import socket
 import subprocess
 import sys
-import tempfile
-import time
-import uuid
-import xml.etree.ElementTree as ET
-from urllib.request import urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from apps.core.tests.portal_e2e.bindings import BINDINGS, CONDITIONS, binding_digest
+from apps.core.tests.portal_e2e.coverage import coverage_summary, source_digest, validate_execution
+from apps.core.tests.portal_e2e.runtime import Runtime
 
-def port():
-    with socket.socket() as sock:
-        sock.bind(('127.0.0.1', 0))
-        return sock.getsockname()[1]
+BASELINE = ['apps/core/tests/portal_e2e/test_baseline.py']
+INFRASTRUCTURE = ['apps/core/tests/portal_e2e/' + name for name in (
+    'test_coverage_contract.py', 'test_runtime_contract.py', 'test_fixture_isolation.py', 'test_runtime_smoke.py')]
+SHARDS = {'L0': BASELINE, **{f'L{n}': [] for n in range(1, 6)}}
 
-def run(args, **kwargs):
-    return subprocess.run(args, cwd=ROOT, check=True, **kwargs)
+
+def lines(path):
+    return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+
+def run_tests(modules, env, directory):
+    directory.mkdir()
+    env = dict(env, PYTEST_ADDOPTS='', PORTAL_E2E_ARTIFACTS=str(directory))
+    completed = subprocess.run([sys.executable, '-c',
+        'import django; django.setup(); import pytest; raise SystemExit(pytest.main(__import__("sys").argv[1:]))',
+        *modules, '--confcutdir=apps/core/tests/portal_e2e', '-v', '--junitxml=' + str(directory / 'junit.xml'),
+        '-p', 'no:django', '-o', 'DJANGO_SETTINGS_MODULE='], cwd=ROOT, env=env)
+    collected = json.loads((directory / 'collection.json').read_text()) if (directory / 'collection.json').exists() else []
+    reports = lines(directory / 'outcomes.jsonl')
+    outcomes = {}
+    for node in collected:
+        rows = [row for row in reports if row['node_id'] == node]
+        if len(rows) != 3 or {row['phase'] for row in rows} != {'setup', 'call', 'teardown'}:
+            outcomes[node] = 'incomplete'
+        elif any(row['xfail'] or row['outcome'] == 'skipped' for row in rows):
+            outcomes[node] = 'skipped-or-xfail'
+        else:
+            outcomes[node] = 'passed' if all(row['outcome'] == 'passed' for row in rows) else 'failed'
+    status = 'pass' if completed.returncode == 0 and collected and all(value == 'passed' for value in outcomes.values()) else 'blocked'
+    return {'status': status, 'exit_code': completed.returncode, 'collected': collected, 'outcomes': outcomes}
+
+
+def write_budgets(artifacts):
+    samples = lines(artifacts / 'work.jsonl')
+    counts = json.loads((artifacts / 'seed.json').read_text())['counts']
+    ledger = []
+    keys = sorted(set((row['method'], row['role'], row['path'], row['cache_phase']) for row in samples))
+    for method, role, path, phase in keys:
+        rows = [row for row in samples if (row['method'], row['role'], row['path'], row['cache_phase']) == (method, role, path, phase)]
+        ledger.append({'method': method, 'role': role, 'path': path, 'cache_phase': phase,
+            'window': 'complete HTTP response through stream completion', 'sample_count': len(rows), 'fixture_counts': counts,
+            'baseline_max': {metric: max(row[metric] for row in rows) for metric in
+                ('sql_count', 'sql_ms', 'storage_count', 'storage_ms', 'response_bytes', 'elapsed_ms')},
+            'approved_thresholds': None, 'reviewer': 'pending coordinator review',
+            'status': 'measured-baseline; not an acceptance budget'})
+    (artifacts / 'budgets.json').write_text(json.dumps(ledger, indent=2))
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--shard', choices=['L0', 'L1', 'L2', 'L3', 'L4', 'L5'], default='L0')
+    parser.add_argument('--shard', choices=list(SHARDS), default='L0')
     parser.add_argument('--all', action='store_true')
+    parser.add_argument('--infrastructure', action='store_true', help='Phase 1 proof only, not journey coverage')
     parser.add_argument('--artifacts', type=Path, required=True)
     parser.add_argument('--browser', choices=['chromium', 'webkit'], default='chromium')
-    parser.add_argument('--reports', type=int, choices=[20, 200, 1000], default=20)
-    parser.add_argument('--members', type=int, choices=[3, 25, 100], default=3)
-    parser.add_argument('--studios', type=int, choices=[1, 10, 50], default=1)
-    parser.add_argument('--metrics', type=int, choices=[20,500,2000], default=20)
-    parser.add_argument('--schedules', type=int, choices=[1,10,50], default=1)
-    parser.add_argument('--rules', type=int, choices=[1,10,50], default=1)
-    parser.add_argument('--real-hasher', action='store_true')
+    for name, choices, default in (('reports', [20, 200, 1000], 20), ('members', [3, 25, 100], 3),
+        ('studios', [1, 10, 50], 1), ('metrics', [20, 500, 2000], 20), ('schedules', [1, 10, 50], 1), ('rules', [1, 10, 50], 1)):
+        parser.add_argument('--' + name, type=int, choices=choices, default=default)
+    parser.add_argument('--real-hasher', action='store_true', help='Compatibility flag; PBKDF2 is always used')
     args = parser.parse_args()
     artifacts = args.artifacts.resolve()
     if artifacts.exists() and any(artifacts.iterdir()):
         parser.error('artifact directory must be empty to prevent mixed evidence')
     artifacts.mkdir(parents=True, exist_ok=True)
-    result = {'shard': args.shard, 'sha': subprocess.check_output(['git','rev-parse','HEAD'], cwd=ROOT, text=True).strip(), 'seed': 'portal-baseline-v2', 'status': 'blocked', 'command': sys.argv, 'pending_shards': ['L1','L2','L3','L4','L5']}
-    result['dirty_tree'] = bool(subprocess.check_output(['git','status','--porcelain'], cwd=ROOT, text=True).strip())
-    result['scope'] = 'P00 baseline and route planning; future journeys pending'
+    result = {'shard': args.shard, 'sha': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
+              'seed': 'portal-baseline-v2', 'status': 'blocked', 'command': sys.argv, 'cwd': str(ROOT), 'python': sys.executable,
+              'runtime_module': str(Path(sys.modules[Runtime.__module__].__file__).resolve()),
+              'pending_shards': [shard for shard, modules in SHARDS.items() if not modules]}
+    result['dirty_tree'] = bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT, text=True).strip())
+    result['source_digest'] = source_digest(ROOT)
+    result['binding_digest'] = binding_digest()
+    result['scope'] = 'infrastructure only' if args.infrastructure else 'L0 baseline only' if args.shard == 'L0' and not args.all else 'journey gate'
     result['manifest_mapping_status'] = 'not yet validated'
-    pg = None
-    server = None
     try:
-        if (ROOT/'.env').exists():
-            raise RuntimeError('Refusing checkout with .env; use a clean task worktree')
-        if sys.version_info[:2] != (3, 12):
-            raise RuntimeError('Python 3.12 required')
-        if importlib.metadata.version('playwright') != '1.62.0':
-            raise RuntimeError('Playwright 1.62.0 required')
-        result['versions'] = {'python': sys.version, 'playwright': importlib.metadata.version('playwright'), 'node': subprocess.check_output(['node','--version'], text=True).strip()}
-        if not result['versions']['node'].startswith('v22.'):
-            raise RuntimeError('Node 22 required (use a task-local PATH)')
-        if args.shard != 'L0':
-            raise RuntimeError(f'{args.shard} is pending implementation; no pass claimed')
-        with tempfile.TemporaryDirectory(prefix='portal-p00-') as temporary:
-            dbport, httpport = port(), port()
-            pg = 'portal-p00-' + uuid.uuid4().hex[:12]
-            run(['docker','run','--rm','-d','--name',pg,'-e','POSTGRES_PASSWORD=disposable','-e','POSTGRES_DB=portal_e2e','-p',f'127.0.0.1:{dbport}:5432','postgres:16-alpine'], stdout=subprocess.DEVNULL)
-            for _ in range(120):
-                if subprocess.run(['docker','exec',pg,'pg_isready','-U','postgres'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
-                    break
-                time.sleep(.25)
-            else:
-                raise RuntimeError('disposable PostgreSQL did not become ready')
-            inherited = {key: value for key, value in os.environ.items() if key in {'PATH','LD_LIBRARY_PATH','PLAYWRIGHT_BROWSERS_PATH','LANG','LC_ALL','HOME','PORTAL_E2E_SQL_DELAY_MS'}}
-            env = dict(inherited, DATABASE_URL=f'postgres://postgres:disposable@127.0.0.1:{dbport}/portal_e2e', DJANGO_SETTINGS_MODULE='apps.core.tests.portal_e2e.settings', PORTAL_E2E_DATA_DIR=temporary, PORTAL_E2E_WORK_LOG=str(artifacts/'work.jsonl'), PORTAL_E2E_ARTIFACTS=str(artifacts), PORTAL_E2E_ORIGIN=f'http://127.0.0.1:{httpport}', PORTAL_E2E_BROWSER=args.browser, PORTAL_E2E_REAL_HASHER='1' if args.real_hasher else '0')
-            with (artifacts/'migrations.log').open('w') as out:
-                run([sys.executable,'manage.py','migrate','--noinput'], env=env, stdout=out, stderr=subprocess.STDOUT)
-                run([sys.executable,'manage.py','makemigrations','--check','--dry-run'], env=env, stdout=out, stderr=subprocess.STDOUT)
-            code = f'import django; django.setup(); from apps.core.tests.portal_e2e.seed import seed, enrich, seed_manifest; seed({args.reports}, {args.members}, {args.studios}); enrich({args.metrics}, {args.schedules}, {args.rules}); import json; from pathlib import Path; Path({str(artifacts/'seed.json')!r}).write_text(json.dumps(seed_manifest(), indent=2))'
-            run([sys.executable,'-c',code], env=env)
-            run([sys.executable,'-m','apps.core.tests.portal_e2e.manifest',str(artifacts/'routes.json')], env=env)
-            mapping = json.loads((artifacts/'routes.json').read_text())
-            result['manifest_mapping_status'] = mapping['mapping_status']
-            result['coverage'] = {key: mapping[key] for key in ('first_party_routes','native_routes','planned_scenarios','verification_status')}
-            with (artifacts/'server.log').open('w') as log:
-                server = subprocess.Popen([sys.executable,'manage.py','runserver',f'127.0.0.1:{httpport}','--noreload','--insecure'], cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT)
-                for _ in range(120):
-                    if server.poll() is not None:
-                        raise RuntimeError('Django exited; see server.log')
-                    try:
-                        urlopen(env['PORTAL_E2E_ORIGIN']+'/healthz', timeout=1).close()
-                        break
-                    except OSError:
-                        time.sleep(.25)
-                else:
-                    raise RuntimeError('Django did not become ready')
-                # Database is already migrated/seeded: never let pytest create a substitute test DB.
-                testenv = dict(env, PYTEST_ADDOPTS='')
-                completed = subprocess.run([sys.executable,'-c','import django; django.setup(); import pytest; raise SystemExit(pytest.main(__import__("sys").argv[1:]))','apps/core/tests/portal_e2e/test_baseline.py','--confcutdir=apps/core/tests/portal_e2e','-v','--junitxml='+str(artifacts/'junit.xml'),'-p','no:django','-o','DJANGO_SETTINGS_MODULE='], cwd=ROOT, env=testenv)
-                result['status'] = 'pass' if completed.returncode == 0 else 'fail'
-                result['node_ids'] = [case.get('classname')+'::'+case.get('name') for case in ET.parse(artifacts/'junit.xml').iter('testcase')]
-                if any(True for _ in ET.parse(artifacts/'junit.xml').iter('skipped')):
-                    result['status'] = 'blocked'
-                    result['reason'] = 'required baseline test skipped'
-                if (artifacts/'work.jsonl').exists():
-                    samples = [json.loads(line) for line in (artifacts/'work.jsonl').read_text().splitlines()]
-                    ledger = []
-                    keys = sorted(set((row['method'],row['role'],row['path'],row['cache_phase']) for row in samples))
-                    actual_seed = json.loads((artifacts/'seed.json').read_text())
-                    for method,role,path,phase in keys:
-                        rows = [row for row in samples if (row['method'],row['role'],row['path'],row['cache_phase']) == (method,role,path,phase)]
-                        ledger.append({'method':method,'role':role,'path':path,'cache_phase':phase,'window':'complete HTTP response through stream completion','sample_count':len(rows),'fixture_counts':actual_seed['counts'], 'baseline_max':{metric:max(row[metric] for row in rows) for metric in ('sql_count','sql_ms','storage_count','storage_ms','response_bytes','elapsed_ms')}, 'approved_thresholds':None,'reviewer':'pending coordinator review','status':'measured-baseline; not an acceptance budget'})
-                    (artifacts/'budgets.json').write_text(json.dumps(ledger, indent=2))
-                result['baseline_status'] = result['status']
-                if args.all:
-                    result['status'] = 'blocked'
-                    result['reason'] = 'L1–L5 and route/action verification pending'
+        if sys.version_info[:2] != (3, 12): raise RuntimeError('Python 3.12 required')
+        if importlib.metadata.version('playwright') != '1.62.0': raise RuntimeError('Playwright 1.62.0 required')
+        node = subprocess.check_output(['node', '--version'], text=True).strip()
+        if not node.startswith('v22.'): raise RuntimeError('Node 22 required (use task-local PATH)')
+        result['versions'] = {'python': sys.version, 'playwright': importlib.metadata.version('playwright'),
+                              'node': node, 'gunicorn': importlib.metadata.version('gunicorn'), 'postgres_image': 'postgres:16-alpine'}
+        ledger = json.loads((ROOT / 'apps/core/tests/portal_e2e/routes.json').read_text())
+        runs = []
+        if not args.infrastructure and not args.all and not SHARDS[args.shard]:
+            result['reason'] = f'{args.shard} has no implemented journey bindings; empty shards never pass'
+            result['coverage'] = coverage_summary(ledger, BINDINGS, {'status': 'blocked', 'errors': ['no executed journey bindings']})
+        else:
+            with Runtime(artifacts, browser=args.browser, reports=args.reports, members=args.members,
+                         studios=args.studios, metrics=args.metrics, schedules=args.schedules, rules=args.rules) as runtime:
+                env = runtime.environment(runtime.template_db, runtime.template_data)
+                env['PORTAL_E2E_RUNTIME'] = str(runtime.descriptor)
+                subprocess.run([sys.executable, '-m', 'apps.core.tests.portal_e2e.manifest', str(artifacts / 'routes.json')], cwd=ROOT, env=env, check=True)
+                mapping = json.loads((artifacts / 'routes.json').read_text())
+                result['manifest_mapping_status'] = mapping['mapping_status']
+                if mapping['mapping_status'] != 'complete': raise RuntimeError('manifest mapping guard failed')
+                if args.all or (args.shard == 'L0' and not args.infrastructure):
+                    with runtime.unit('L0-baseline') as unit:
+                        run = run_tests(BASELINE, unit.env, artifacts / 'baseline')
+                        runs.append(run)
+                        result['baseline_status'] = run['status']
+                if args.infrastructure or args.all:
+                    run = run_tests(INFRASTRUCTURE, env, artifacts / 'infrastructure')
+                    runs.append(run)
+                    result['infrastructure_status'] = run['status']
+                write_budgets(artifacts)
+                result['runtime_cleanup'] = {'live_units': len(runtime.units), 'owned_container_removed_on_exit': True}
+            collected = [node_id for run in runs for node_id in run['collected']]
+            outcomes = {node_id: value for run in runs for node_id, value in run['outcomes'].items()}
+            result['node_ids'] = collected
+            evidence = [row for row in lines(artifacts / 'assertions.jsonl') if row.get('scope') == 'journey']
+            execution = validate_execution(BINDINGS, collected, outcomes, evidence, lines(artifacts / 'work.jsonl'),
+                source=result['source_digest'], binding_hash=result['binding_digest'], conditions=CONDITIONS, ledger=ledger)
+            result['coverage'] = coverage_summary(ledger, BINDINGS, execution)
+            result['status'] = 'pass' if runs and all(run['status'] == 'pass' for run in runs) else 'blocked'
+            if args.all or (not args.infrastructure and args.shard != 'L0'):
+                result['status'] = result['coverage']['status'] if result['status'] == 'pass' else 'blocked'
+                result['reason'] = 'all required journey/principal/condition bindings must execute and pass'
+            if source_digest(ROOT) != result['source_digest']:
+                result['status'], result['reason'] = 'blocked', 'source changed during execution'
     except Exception as exc:
         result['reason'] = str(exc)
     finally:
-        if server is not None:
-            server.terminate()
-            try:
-                server.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                server.kill()
-                server.wait()
-        if pg:
-            subprocess.run(['docker','rm','-f',pg], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        (artifacts/'result.json').write_text(json.dumps(result, indent=2))
-        print(json.dumps(result, indent=2))
+        (artifacts / 'result.json').write_text(json.dumps(result, indent=2))
+        print(json.dumps({key: value for key, value in result.items() if key not in ('coverage', 'node_ids')}, indent=2))
     return 0 if result['status'] == 'pass' else 1
+
 
 if __name__ == '__main__':
     raise SystemExit(main())

@@ -5,6 +5,11 @@ import json
 import os
 import threading
 import time
+import hashlib
+import hmac
+from pathlib import Path
+import uuid
+import re
 from django.db import connection
 
 _lock = threading.Lock()
@@ -43,6 +48,10 @@ class MeasureRequests:
     def __init__(self, get_response):
         self.get_response = get_response
         install_storage_measurements()
+        ledger = json.loads(Path(__file__).with_name('routes.json').read_text())
+        self.routes = {row['pattern']: row for row in ledger['routes']}
+        self.principals = set(ledger['principal_universe']) | {'unlabeled'}
+        self.salt = os.environ.get('PORTAL_E2E_SESSION_SALT', uuid.uuid4().hex).encode()
 
     def __call__(self, request):
         phase = request.headers.get('X-Portal-E2E-Phase', 'unlabeled')
@@ -62,9 +71,16 @@ class MeasureRequests:
             finally:
                 counts['sql_count'] += 1
                 counts['sql_ms'] += (time.perf_counter()-tick)*1000
+        identity = {}
         try:
             with connection.execute_wrapper(measure):
                 response = self.get_response(request)
+                user = getattr(request, 'user', None)
+                session = getattr(request, 'session', None)
+                key = getattr(session, 'session_key', None)
+                identity = {'actor_id': user.pk if user is not None and user.is_authenticated else None,
+                            'impersonator_id': session.get('impersonator_id') if session is not None else None,
+                            'session_digest': hmac.new(self.salt, key.encode(), hashlib.sha256).hexdigest() if key else None}
         finally:
             _current.reset(token)
         role = request.headers.get('X-Portal-E2E-Role', 'unlabeled')
@@ -72,8 +88,34 @@ class MeasureRequests:
         # Header labels are attribution supplied by the test, not an auth bypass.
         if len(role)>40 or len(phase)>40:
             role,phase = 'invalid-label','invalid-label'
-        def record(size):
-            row = {'path': request.path, 'method': request.method, 'role': role, 'cache_phase': phase, 'actor_id': getattr(getattr(request, '_cached_user', None), 'pk', None),
+        def label(name, pattern, maximum):
+            value = request.headers.get(name, '')
+            return value if len(value) <= maximum and re.fullmatch(pattern, value) else ''
+        def record(size, complete=True):
+            match = getattr(request, 'resolver_match', None)
+            pattern = getattr(match, 'route', None)
+            route = self.routes.get(pattern)
+            action = None
+            if route:
+                declared = {item.get('action') for item in route['scenarios']}
+                try:
+                    # Only reviewed selectors enter portable evidence. Never
+                    # serialize arbitrary body values, query strings or tokens.
+                    selectors = request.POST if request.method == 'POST' else request.GET
+                    for name in ('action', 'tab'):
+                        candidate = name + '=' + selectors.get(name, '')
+                        if candidate in declared:
+                            action = candidate
+                            break
+                except Exception:
+                    action = '<unreadable-body>'
+            row = {'path': '/' + pattern if pattern else '<unresolved>', 'route': route['id'] if route else None,
+                   'method': request.method, 'action': action, 'role': role, 'cache_phase': phase, **identity,
+                   'event_id': uuid.uuid4().hex, 'complete': complete,
+                   'node_id': label('X-Portal-E2E-Node', r'apps/core/tests/portal_e2e/[\w./:\[\], -]+', 300),
+                   'correlation': label('X-Portal-E2E-Correlation', r'[0-9a-f]{32}', 32),
+                   'principal': role if role in self.principals else 'unclassified',
+                   'condition': label('X-Portal-E2E-Condition', r'[a-z0-9-]+', 80),
                    'status': response.status_code, 'response_bytes': size, 'elapsed_ms': (time.perf_counter()-started)*1000, **counts}
             with _lock, open(os.environ['PORTAL_E2E_WORK_LOG'], 'a') as out:
                 out.write(json.dumps(row)+'\n')
@@ -82,13 +124,15 @@ class MeasureRequests:
             def complete():
                 token = _current.set(counts)
                 size = 0
+                finished = False
                 with connection.execute_wrapper(measure):
                     try:
                         for chunk in original:
                             size += len(chunk)
                             yield chunk
+                        finished = True
                     finally:
-                        record(size)
+                        record(size, complete=finished)
                         _current.reset(token)
             response.streaming_content = complete()
         else:

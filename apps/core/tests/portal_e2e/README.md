@@ -105,3 +105,52 @@ PORTAL_E2E_DATA_DIR=/tmp/isolated-manifest-check DJANGO_SETTINGS_MODULE=apps.cor
 ```
 
 This command is a deliberate reviewed ledger edit, not an automatic runner step.
+# Phase 1 runtime and evidence
+
+`scripts/portal_e2e.py --infrastructure --browser chromium --artifacts <empty-dir>`
+runs the owned runtime contract and live smoke checks. Repeat with `webkit`.
+The smoke checks use widths 1440/390 and 720/195 (equivalent layout widths at
+200% browser zoom), native and JavaScript-enabled account POST/redirect Save,
+and an actual shared AJAX group settings Save. They assert session identity,
+server-observed actor identity, PostgreSQL persistence, reload, rejected CSRF
+without a write, and visible feedback with nonzero geometry. This is **runtime
+infrastructure proof**, not complete account/group journey coverage.
+
+The runtime migrates and seeds an owned PostgreSQL 16 container once, collects
+static assets outside the checkout, and clones a database plus DATA_DIR per
+stateful journey unit. Seed-local absolute paths in database text/JSON and copied
+files are relocated into the clone; symlinks and binary path references fail
+closed. Each unit starts real Gunicorn with its default request/body limits and
+PBKDF2 passwords. No pytest-django substitute database or rollback surrounds
+external HTTP writes. Mutation-isolation checks verify the next unit and the
+seed template remain unchanged. Only owned processes, databases and files are
+removed. Multiple sessions within a unit can test revocation.
+
+Default `--shard L0` retains the existing baseline checks. Empty L1–L5 journey
+shards never pass. `--all` remains nonzero until every required reviewed journey
+binding is collected, executes, and passes. The separate `bindings.py` catalog
+starts empty: planned route IDs and successful HTTP statuses are not execution
+evidence. Root-reviewed route policy stays in `routes.json`.
+
+Coverage bindings identify the exact route/method/action, principal, named
+condition, browser/layout/mode, pytest node ID and assertion obligations.
+Portable evidence contains normalized route patterns, scoped numeric actor IDs,
+salted session digests, correlation IDs, completed request observations, explicit
+assertion checkpoints, pytest outcomes and source/binding digests. Role headers
+are attribution only. Required skipped/xfail/error/uncollected nodes, stale or
+foreign evidence, incomplete requests, wrong actors and missing persistence
+checkpoints block verification. Reviewed required condition lists prevent one
+happy path from certifying a whole policy tuple. No conditions are automatically
+invented from policy prose. Contract mutation tests exercise these failure modes.
+
+Browser resource measurements retain transfer/encoded/decoded byte counts,
+DOM/frame/chart counts and geometry without resource URLs. SQL operation delay
+remains explicitly local simulated latency. Measured baselines have no accepted
+threshold until separately reviewed. Streaming measurements include completion;
+aborted streams cannot certify a complete response window. Trace ZIPs and server
+logs are private local artifacts and may contain authenticated snapshots; do not
+publish them. Portable summaries omit cookies, resolved token URLs and bodies.
+
+Full suites, real worker/restart behavior and Docker sandbox checks remain
+separate final gates. Phase 1 never certifies those gates or remaining journeys.
+
