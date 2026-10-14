@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Browse {% if scope_params.kind == 'org' %}organizations{% else %}studios{% endif %} — Trellum{% endblock %}
+{% block content %}
+<div class="settings-wrap"><div class="settings-content">
+<header class="page-head"><h1>Browse {% if scope_params.kind == 'org' %}organizations{% else %}studios{% endif %}</h1>{% if scope_org %}<p class="muted">{{ scope_org.name }}{% if scope_params.intent == 'assistant' %} · Choose a studio for AI assistant{% endif %}</p>{% endif %}</header>
+<form class="ui-list-toolbar" method="get" action="/scopes/" role="search">
+  <input type="hidden" name="kind" value="{{ scope_params.kind }}"><input type="hidden" name="intent" value="{{ scope_params.intent }}">
+  {% if scope_params.org %}<input type="hidden" name="org" value="{{ scope_params.org }}">{% endif %}
+  {% if scope_params.selected %}<input type="hidden" name="selected" value="{{ scope_params.selected }}">{% endif %}
+  <label for="scopeBrowseSearch">Search {% if scope_params.kind == 'org' %}organizations{% else %}studios{% endif %}</label>
+  <input id="scopeBrowseSearch" class="ui-input" type="search" name="q" value="{{ scope_params.q }}" maxlength="200" placeholder="Search by name or slug">
+  <button class="ui-btn" type="submit">Search</button><span class="ui-list-count">{{ scope_page.paginator.count }} choices</span>
+</form>
+{% if scope_selected %}<p>Selected: <a href="{{ scope_selected_url }}">{{ scope_selected.name }}</a></p>{% elif scope_params.selected %}<p class="muted">Selected scope is unavailable.</p>{% endif %}
+<ul class="ui-list" aria-label="{% if scope_params.kind == 'org' %}Organizations{% else %}Studios{% endif %}">
+{% for item in scope_items %}<li><a href="{{ item.url }}">{{ item.row.name }}</a> <span class="muted">{{ item.row.slug }}</span></li>{% empty %}<li>{% if scope_params.q %}No choices match your search.{% else %}No choices are available to your account.{% endif %}</li>{% endfor %}
+</ul>
+<nav class="ui-pager" aria-label="Scope pages">
+{% if scope_page.has_previous %}<a class="ui-btn ghost" href="{{ scope_previous }}">Previous</a>{% endif %}
+<span class="ui-pager-status">Page {{ scope_page.number }} of {{ scope_page.paginator.num_pages }} · {{ scope_page.paginator.count }} choices</span>
+{% if scope_page.has_next %}<a class="ui-btn ghost" href="{{ scope_next }}">Next</a>{% endif %}
+</nav>
+</div></div>
+{% endblock %}

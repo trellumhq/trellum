@@ -102,7 +102,7 @@ def test_shell_reuses_guard_roles_and_theme_preference(
     StudioPreference.objects.create(user=org_admin, studio=studio, theme='dracula')
     request = request_for(org_admin, org, studio)
     get_effective(request, org)
-    with patch('apps.core.permissions.effective_roles', side_effect=AssertionError('roles resolved again')):
+    with patch('apps.core.permissions.get_effective', side_effect=AssertionError('shell called get_effective')):
         ctx = shell(request)
     assert ctx['shell_is_org_admin']
     assert ctx['studio_theme'] == ctx['viewer_studio_theme'] == 'dracula'
