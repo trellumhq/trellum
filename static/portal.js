@@ -1938,9 +1938,19 @@ function _renderOpsContent() {
         }).then(function(results) {
             if (!isCurrent()) return;
             var status = results[0];
+            /* The page is replaced by the server's next bounded read; keep
+               keyboard focus on the same filter, or on the active one when
+               its row is no longer part of the page. */
+            var focused = document.activeElement;
+            var hadFocus = !!(focused && focused !== container && container.contains(focused));
+            var focusedFilter = hadFocus && focused.dataset ? focused.dataset.opsFilter : '';
             container.innerHTML = _buildOpsHTML(status, reports);
             signalCatalogReady(container);
             _opsBindEvents(status, reports);
+            if (hadFocus) {
+                var pill = container.querySelector('[data-ops-filter="' + (focusedFilter || _opsFilter) + '"]');
+                if (pill) pill.focus({ preventScroll: true });
+            }
             _restoreDsState();
             _opsStartLivePollers(status);
             syncToUrl();

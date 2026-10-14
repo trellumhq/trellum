@@ -450,6 +450,10 @@
     function start() {
         if (!active) return;
         announceReady();
+        /* A history restore may reuse a cached copy of the server-rendered page
+           (no bfcache pageshow); ask the bounded endpoint for the current page. */
+        var navigation = window.performance && performance.getEntriesByType && performance.getEntriesByType('navigation')[0];
+        if (navigation && navigation.type === 'back_forward') refreshPrimary();
         refreshPersonal();
         refreshIndicators();
     }

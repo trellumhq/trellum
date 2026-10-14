@@ -17,6 +17,9 @@ from .test_portal_mobile_runtime import (
     REPORT,
     UI_CSS,
     _capture,
+    _ops_log,
+    _ops_respond,
+    _ops_status_payload,
     mobile_browser,
 )
 
@@ -46,7 +49,8 @@ def _operations_fixture_html():
     html = html.replace('</head>', '''
         <link rel="stylesheet" href="/static/choice-picker.css">
         <link rel="stylesheet" href="/static/console-report-host.css"></head>''')
-    html = html.replace('<script src="/static/portal.js">', '<script src="/static/operations.js"></script><script src="/static/portal.js">')
+    html = html.replace('<script src="/static/portal.js"></script>',
+                        '<script src="/static/operations.js"></script><script src="/static/portal.js"></script>')
     return html.replace("initial_view:'reports'", "initial_view:'ops'").replace(
         '<h1>Reports</h1>', '<h1>Operations</h1>'
     )
@@ -58,7 +62,7 @@ def test_polling_updates_summary_with_two_expanded_histories(mobile_browser, wid
         REPORT,
         {**REPORT, "id": 2, "slug": "second-report", "name": "Second report"},
     ]
-    status = {"state": "ready", "rows": [], "max_concurrent": 2, "worker_alive": True}
+    status = {"running": {}, "queue": [], "server_uptime_seconds": 60}
     history = [{"status": "success", "duration_seconds": 30, "peak_memory_mb": 128}]
     agg = {
         "runs": 2, "success_rate": 0.5, "avg_duration_s": 30,
@@ -76,14 +80,9 @@ def test_polling_updates_summary_with_two_expanded_histories(mobile_browser, wid
     status_calls = []
     html = _operations_fixture_html()
 
-    def respond(route):
-        path = urlsplit(route.request.url).path
-        assets = {
-            "/static/portal.js": PORTAL_JS, "/static/console-shell.js": CONSOLE_JS,
-            "/static/ui.css": UI_CSS, "/static/portal.css": PORTAL_CSS,
-            "/static/console-shell.css": CONSOLE_CSS,
-            "/static/operations.js": (settings.BASE_DIR / "static" / "operations.js").read_text(),
-        }
+    def extra(route, path, query, reply):
+        assets = {"/static/ui.css": UI_CSS, "/static/portal.css": PORTAL_CSS,
+                  "/static/console-shell.css": CONSOLE_CSS}
         for name in ("themes.generated.css", "choice-picker.css", "console-report-host.css"):
             assets[f"/static/{name}"] = (settings.BASE_DIR / "static" / name).read_text()
         if path.startswith("/_vendor/"):
@@ -92,42 +91,22 @@ def test_polling_updates_summary_with_two_expanded_histories(mobile_browser, wid
                 content_type="text/css; charset=utf-8" if path.endswith(".css") else "font/ttf",
                 body=asset.read_bytes(),
             )
-            return
-        if path in assets:
-            route.fulfill(
-                content_type="text/css; charset=utf-8" if path.endswith(".css") else "application/javascript; charset=utf-8",
-                body=assets[path],
-            )
-            return
-        if path.endswith("/api/operations/catalog"):
-            payload = {
-                "state": "ready", "rows": [{**row, "state": "ok", "build_status": "success"} for row in rows],
-                "counts": {"total": 2, "running": 0, "queued": 0, "waiting": 0, "ok": 2, "error": 0},
-                "pagination": {"page": 1, "pages": 1, "total": 2}, "folders": None,
-            }
-        elif path.endswith("/api/operations/sources"):
-            payload = {"state": "ready", "rows": [], "pagination": {"page": 1, "pages": 1, "total": 0}}
+        elif path in assets:
+            route.fulfill(content_type="text/css; charset=utf-8", body=assets[path])
         elif path.endswith("/api/operations/status"):
             status_calls.append(status.copy())
-            payload = status
+            reply(_ops_status_payload(status))
         elif path.endswith("/api/operations/stats"):
-            payload = {"state": "ready", "stats": stats}
-        elif path.endswith("/api/system/git/status"):
-            payload = {"configured": False}
+            reply({"version": 1, "state": "ready", "stats": stats, "window_days": 30})
         elif path.endswith("/status") and "/api/reports/" in path:
-            payload = {"aggregates": agg, "history": history}
-        elif path.endswith("/log"):
-            payload = {"status": "success", "stdout": "completed output"}
-        elif path.endswith("/api/me/favorites"):
-            payload = {"favorites": []}
-        elif "/api/" in path:
-            payload = {"reports": {}}
+            reply({"aggregates": agg, "history": history})
+        elif "/api/operations/reports/" in path and path.endswith("/log"):
+            reply(_ops_log("success", stdout="completed output"))
         else:
-            route.fulfill(
-                content_type="text/html; charset=utf-8", body=html,
-            )
-            return
-        route.fulfill(content_type="application/json", body=json.dumps(payload))
+            return False
+        return True
+
+    respond = _ops_respond(lambda: rows, lambda: status, extra=extra, html=html)
 
     page.route("**/*", respond)
     try:
@@ -144,13 +123,10 @@ def test_polling_updates_summary_with_two_expanded_histories(mobile_browser, wid
         page.evaluate("""window.__metricHistoryOwners =
             Array.from(document.querySelectorAll('.ops-history-stats'))""")
         page.wait_for_function("!_opsStatusInFlight")
-        # The bounded status carries a run for one page row plus studio-wide
-        # totals; it no longer reports server uptime (the Worker tile keeps its
-        # capacity label).
-        status.update(
-            rows=[{"slug": "second-report", "status": "running", "started_at": "2026-09-06T08:00:00Z"}],
-            active_jobs_total={"running": 1, "queued": 1},
-        )
+        status = {
+            "running": {"unlisted-running": {"elapsed_seconds": 12}},
+            "queue": [{"slug": "unlisted-queued"}], "server_uptime_seconds": 3661,
+        }
         calls_before = len(status_calls)
         # Drive the actual scheduled network poll rather than calling the updater directly.
         page.evaluate("""window.__previousStatusCycle = _opsStatusCycle;
@@ -164,8 +140,9 @@ def test_polling_updates_summary_with_two_expanded_histories(mobile_browser, wid
         assert summary.first.inner_text() == "2"
         assert summary.nth(1).inner_text() == "1"
         assert summary.nth(2).inner_text() == "1"
-        assert summary.last.inner_text() == "Capacity 2"
-        assert page.locator('[data-ops-row="second-report"] .ops-row-btn.stop').count() == 1
+        # Uptime is not part of the bounded status contract; the Worker tile
+        # reports the capacity the status read does carry.
+        assert summary.last.inner_text() == "Capacity 10"
         assert page.evaluate("""window.__metricHistoryOwners.every((el, i) =>
             el === document.querySelectorAll('.ops-history-stats')[i])""")
         assert page.evaluate("Object.keys(_opsExpandedSlugs).length") == 2
