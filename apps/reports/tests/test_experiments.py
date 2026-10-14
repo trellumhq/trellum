@@ -655,6 +655,7 @@ def _write_multi_ab_payload(studio, slug, tests):
         "_freshness": {"generated_at": "2026-08-01T00:00:00+00:00"},
         "_framework_version": "9.9.9",
     }), encoding="utf-8")
+    _observe(studio, slug, json.loads((out / "data.json").read_text()), has_output=True)
 
 
 class TestIsAbReportList:
