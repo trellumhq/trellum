@@ -130,7 +130,7 @@ Default `--shard L0` retains the existing baseline checks. Empty L1–L5 journey
 shards never pass. `--all` remains nonzero until every required reviewed journey
 binding is collected, executes, and passes. The separate `bindings.py` catalog
 starts empty: planned route IDs and successful HTTP statuses are not execution
-evidence. Root-reviewed route policy stays in `routes.json`.
+evidence. Reviewed route policy stays in `routes.json`.
 
 Coverage bindings identify the exact route/method/action, principal, named
 condition, browser/layout/mode, pytest node ID and assertion obligations.

@@ -84,9 +84,10 @@ def test_shared_ajax_group_save(journey, size):
             with page.expect_response(lambda response: response.request.method == 'POST' and response.url == origin + path) as saved:
                 form.get_by_role('button', name='Save changes', exact=True).click()
             assert saved.value.status == 200
-            assert saved.value.request.headers['x-requested-with'] == 'XMLHttpRequest'
+            assert saved.value.request.headers['x-trellum-form'] == '1'
+            assert saved.value.json()['ok'] is True
             status = form.locator('[data-settings-dirty-status]')
-            expect(status).to_have_text('Saved')
+            expect(status).to_have_text('Group updated.')
             visible_geometry(status)
             journey.checkpoint('ajax-visible-feedback')
             journey.database(group.refresh_from_db)
