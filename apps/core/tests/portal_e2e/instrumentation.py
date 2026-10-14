@@ -125,6 +125,12 @@ class MeasureRequests:
                    'status': response.status_code, 'response_bytes': size, 'elapsed_ms': (time.perf_counter()-started)*1000, **counts}
             with _lock, open(os.environ['PORTAL_E2E_WORK_LOG'], 'a') as out:
                 out.write(json.dumps(row)+'\n')
+            # Retain the unchanged baseline's literal-path storage guard in a
+            # separate private log. Portable work.jsonl always stays normalized.
+            private_log = os.environ.get('PORTAL_E2E_PRIVATE_BASELINE_LOG')
+            if private_log:
+                with _lock, open(private_log, 'a') as out:
+                    out.write(json.dumps({**row, 'path': request.path})+'\n')
         if response.streaming:
             original = response.streaming_content
             def complete():

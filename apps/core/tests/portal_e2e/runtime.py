@@ -82,6 +82,7 @@ class Runtime:
         self.browser = browser
         self.counts = (reports, members, studios, metrics, schedules, rules)
         self.container = None
+        self.container_created = False
         self.temporary = None
         self.units = {}
         self.attached = False
@@ -119,6 +120,7 @@ class Runtime:
             checked(["docker", "run", "--rm", "-d", "--name", self.container,
                      "-e", "POSTGRES_PASSWORD=disposable", "-e", f"POSTGRES_DB={self.template_db}",
                      "-p", f"127.0.0.1:{self.dbport}:5432", "postgres:16-alpine"], stdout=subprocess.DEVNULL)
+            self.container_created = True
             for _ in range(120):
                 ready = subprocess.run(["docker", "exec", self.container, "pg_isready", "-U", "postgres"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 if ready.returncode == 0:
@@ -161,7 +163,7 @@ class Runtime:
         return runtime
 
     @contextmanager
-    def unit(self, label):
+    def unit(self, label, *, legacy_baseline=False):
         import psycopg
         from psycopg import sql
         name = "unit_" + uuid.uuid4().hex[:16]
@@ -180,6 +182,10 @@ class Runtime:
             origin = f"http://127.0.0.1:{free_port()}"
             env = self.environment(name, directory, origin=origin)
             env['PORTAL_E2E_SESSION_SALT'] = self.session_salt
+            if legacy_baseline:
+                baseline_directory = self.artifacts / 'baseline'
+                baseline_directory.mkdir()
+                env['PORTAL_E2E_PRIVATE_BASELINE_LOG'] = str(baseline_directory / 'work.jsonl')
             env["PORTAL_E2E_RUNTIME"] = str(self.descriptor)
             log = (self.artifacts / f"{name}-gunicorn.log").open("w")
             # Match deployed WSGI defaults, including the 4094-byte request line.
@@ -220,9 +226,10 @@ class Runtime:
     def close(self):
         if self.units:
             raise RuntimeError("live unit contexts must close before runtime")
-        if self.container:
-            subprocess.run(["docker", "rm", "-f", self.container], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if self.container and self.container_created:
+            checked(["docker", "rm", "-f", self.container], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             self.container = None
+            self.container_created = False
         if self.temporary:
             self.temporary.cleanup()
             self.temporary = None

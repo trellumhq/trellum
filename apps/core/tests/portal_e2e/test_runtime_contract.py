@@ -53,3 +53,22 @@ def test_owner_cannot_close_active_contexts(tmp_path):
     runtime.units['owned-unit'] = object()
     with pytest.raises(RuntimeError, match='live unit'):
         runtime.close()
+
+
+def test_failed_create_does_not_remove_an_unowned_container(tmp_path, monkeypatch):
+    runtime = Runtime(tmp_path)
+    runtime.container = 'name-not-successfully-created'
+    monkeypatch.setattr('subprocess.run', lambda *args, **kwargs: pytest.fail('unowned container removal'))
+    runtime.close()
+
+
+def test_failed_owned_cleanup_cannot_claim_success(tmp_path, monkeypatch):
+    import subprocess
+    runtime = Runtime(tmp_path)
+    runtime.container, runtime.container_created = 'owned', True
+    def failure(*args, **kwargs):
+        raise subprocess.CalledProcessError(1, args[0])
+    monkeypatch.setattr('subprocess.run', failure)
+    with pytest.raises(subprocess.CalledProcessError):
+        runtime.close()
+    assert runtime.container_created

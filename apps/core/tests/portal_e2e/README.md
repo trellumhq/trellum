@@ -150,6 +150,10 @@ threshold until separately reviewed. Streaming measurements include completion;
 aborted streams cannot certify a complete response window. Trace ZIPs and server
 logs are private local artifacts and may contain authenticated snapshots; do not
 publish them. Portable summaries omit cookies, resolved token URLs and bodies.
+The unchanged L0 storage guard retains a literal-path compatibility log under
+`baseline/work.jsonl`; that legacy log is private. The root `work.jsonl` and
+budget summaries use normalized route patterns. Artifact directories are mode
+0700, and seed metadata is copied into each pytest invocation directory.
 
 Full suites, real worker/restart behavior and Docker sandbox checks remain
 separate final gates. Phase 1 never certifies those gates or remaining journeys.

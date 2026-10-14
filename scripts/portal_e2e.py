@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import shutil
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -25,7 +26,8 @@ def lines(path):
 
 
 def run_tests(modules, env, directory):
-    directory.mkdir()
+    directory.mkdir(exist_ok=True)
+    shutil.copyfile(directory.parent / 'seed.json', directory / 'seed.json')
     env = dict(env, PYTEST_ADDOPTS='', PORTAL_E2E_ARTIFACTS=str(directory))
     completed = subprocess.run([sys.executable, '-c',
         'import django; django.setup(); import pytest; raise SystemExit(pytest.main(__import__("sys").argv[1:]))',
@@ -78,6 +80,7 @@ def main():
     if artifacts.exists() and any(artifacts.iterdir()):
         parser.error('artifact directory must be empty to prevent mixed evidence')
     artifacts.mkdir(parents=True, exist_ok=True)
+    artifacts.chmod(0o700)
     result = {'shard': args.shard, 'sha': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
               'seed': 'portal-baseline-v2', 'status': 'blocked', 'command': sys.argv, 'cwd': str(ROOT), 'python': sys.executable,
               'runtime_module': str(Path(sys.modules[Runtime.__module__].__file__).resolve()),
@@ -114,7 +117,7 @@ def main():
                         "print(json.dumps({role:{'actor_id':None if role=='inactive' else pk,'impersonator_id':users['operator'] if role=='impersonated' else None} for role,pk in users.items()}))")
                 registry = json.loads(subprocess.check_output([sys.executable, '-c', code], cwd=ROOT, env=env, text=True))
                 if args.all or (args.shard == 'L0' and not args.infrastructure):
-                    with runtime.unit('L0-baseline') as unit:
+                    with runtime.unit('L0-baseline', legacy_baseline=True) as unit:
                         run = run_tests(BASELINE, unit.env, artifacts / 'baseline')
                         runs.append(run)
                         result['baseline_status'] = run['status']
