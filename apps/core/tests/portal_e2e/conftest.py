@@ -21,6 +21,7 @@ def pytest_collection_finish(session):
 
 def pytest_configure(config):
     config.addinivalue_line('markers','cohort_executor(name): explicitly scoped live cohort executor')
+    config.addinivalue_line('markers','worker: journey unit also runs an owned runner-role worker')
 
 
 def pytest_collection_modifyitems(config,items):
@@ -64,7 +65,7 @@ def journey(owned_runtime, request):
     from .fixtures import Journey, configure_database
     from .runtime import ROOT
     from django.db import connections
-    with owned_runtime.unit(request.node.name) as unit:
+    with owned_runtime.unit(request.node.name, worker=request.node.get_closest_marker('worker') is not None) as unit:
         configure_database(unit)
         value = Journey(unit, request.node.nodeid, source_digest(ROOT), binding_digest())
         yield value

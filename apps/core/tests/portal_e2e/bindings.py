@@ -29,11 +29,89 @@ class Binding:
                 self.condition, self.browser, self.viewport, self.mode)
 
 
-# Do not populate these from status codes or prose in routes.json. Conditions
-# are named explicit cases; fixture IDs and secrets are resolved only at runtime.
-BINDINGS: tuple[Binding, ...] = ()
-CONDITIONS: dict[str, str] = {}
-JOURNEY_MODULES = {f'L{number}': () for number in range(1, 6)}
+KEY_DIR = 'apps/core/tests/portal_e2e/'
+DESKTOP_VARIANT = ('chromium-desktop', 'chromium', '1440x900')
+MOBILE_VARIANT = ('webkit-mobile', 'webkit', '390x844')
+
+# Small, reviewed set of the most common user journeys. This is deliberately NOT
+# the full permission matrix: the unbound remainder of routes.json is declared
+# out of scope below instead of staying "pending" forever. Conditions are named
+# journeys, never inferred from status codes or policy prose.
+KEY_CONDITIONS = {
+    'key-login-dashboard': 'Real login form submit lands on the organization dashboard listing the studio.',
+    'key-catalog-back': 'Catalog search and paging, open a report, then Back restores page, search and scroll.',
+    'key-metrics': 'Metrics definitions search, a metric detail view and the comparison workspace.',
+    'key-analytics-experiments': 'Analytics and Experiments render primary rows, then secondary content settles without errors.',
+    'key-schedules': 'Deliveries list, create a schedule and edit it; persisted after reload.',
+    'key-alerts': 'Alerts list, edit a rule and save; persisted after reload.',
+    'key-invite-access': 'Invite a member (no real mail) and change a member studio access; persisted after reload.',
+    'key-operations-filter': 'Operations state filter and search against the real bounded status contract.',
+    'key-operations-run': 'Run a report through a real worker, read its log, and run registry refresh to a terminal state.',
+    'key-datasource-test': 'Datasource connection test: a file source succeeds and a network source whose endpoint never answers reports a bounded timeout (no external service).',
+    'key-selected-scope': 'A viewer scoped to selected reports sees only those reports and cannot open others.',
+}
+
+
+def _journey(module, test, condition, principal, variants, rows):
+    """rows: (route, method, action, checkpoints) -> one reviewed binding per row/variant."""
+    result = []
+    for variant, engine, viewport in variants:
+        for route, method, action, checkpoints in rows:
+            result.append(Binding(route, method, action, principal, condition, f'{KEY_DIR}{module}.py::{test}[{variant}]',
+                ('actor', 'observed-actor', *checkpoints), engine, viewport, 'enhanced'))
+    return result
+
+
+BOTH = (DESKTOP_VARIANT, MOBILE_VARIANT)
+DESKTOP = (DESKTOP_VARIANT,)
+KEY_BINDINGS: tuple[Binding, ...] = tuple([
+    # L2 reports / overviews / operations
+    *_journey('test_key_journeys_l2', 'test_catalog_search_open_back', 'key-catalog-back', 'org-admin', BOTH,
+        [('route-139', 'GET', None, ('catalog-search', 'catalog-paging', 'report-open', 'back-restored', 'scroll-restored'))]),
+    *_journey('test_key_journeys_l2', 'test_metrics_detail_comparison', 'key-metrics', 'org-admin', DESKTOP,
+        [('route-146', 'GET', None, ('definitions', 'search')),
+         ('route-324', 'GET', None, ('metric-detail',)),
+         ('route-147', 'GET', None, ('comparison',))]),
+    *_journey('test_key_journeys_l2', 'test_analytics_experiments_progressive', 'key-analytics-experiments', 'org-admin', DESKTOP,
+        [('route-145', 'GET', None, ('primary-rows', 'secondary-settled')),
+         ('route-149', 'GET', None, ('primary-rows', 'secondary-settled'))]),
+    *_journey('test_key_journeys_l2', 'test_operations_filter', 'key-operations-filter', 'org-admin', BOTH,
+        [('route-144', 'GET', None, ('filter', 'search')),
+         ('route-346', 'GET', None, ('status-contract',))]),
+    *_journey('test_key_journeys_l2', 'test_selected_scope_viewer', 'key-selected-scope', 'group-selected', DESKTOP,
+        [('route-139', 'GET', None, ('scope-visible', 'scope-hidden', 'direct-url-denied')),
+         ('route-146', 'GET', None, ('scope-denied',))]),
+    # L3 lists / permissions
+    *_journey('test_key_journeys_l3', 'test_login_lands_on_dashboard', 'key-login-dashboard', 'org-admin', BOTH,
+        [('route-244', 'GET', None, ('landing', 'studio-card'))]),
+    *_journey('test_key_journeys_l3', 'test_schedules_list_create_edit', 'key-schedules', 'org-admin', DESKTOP,
+        [('route-141', 'GET', None, ('list',)),
+         ('route-142', 'POST', None, ('db-persistence', 'reload-persistence', 'visible-feedback')),
+         ('route-178', 'POST', 'action=save', ('db-persistence', 'reload-persistence', 'visible-feedback'))]),
+    *_journey('test_key_journeys_l3', 'test_alerts_list_edit_save', 'key-alerts', 'org-admin', DESKTOP,
+        [('route-196', 'GET', None, ('list',)),
+         ('route-199', 'POST', 'action=save', ('db-persistence', 'reload-persistence', 'visible-feedback'))]),
+    # L4 forms / mutations
+    *_journey('test_key_journeys_l4', 'test_invite_member_and_change_access', 'key-invite-access', 'org-admin', DESKTOP,
+        [('route-306', 'POST', None, ('db-persistence', 'reload-persistence', 'no-mail')),
+         ('route-292', 'POST', None, ('db-persistence', 'reload-persistence', 'visible-feedback'))]),
+    *_journey('test_key_journeys_l4', 'test_datasource_connection_test', 'key-datasource-test', 'org-admin', DESKTOP,
+        [('route-263', 'POST', None, ('test-success', 'test-timeout'))]),
+    # L5 services / operator
+    *_journey('test_key_journeys_l5', 'test_operations_run_log_registry_refresh', 'key-operations-run', 'org-admin', BOTH,
+        [('route-174', 'POST', None, ('run-accepted', 'run-terminal', 'log-visible')),
+         ('route-157', 'POST', None, ('refresh-terminal',))]),
+])
+BINDINGS: tuple[Binding, ...] = KEY_BINDINGS
+CONDITIONS: dict[str, str] = dict(KEY_CONDITIONS)
+JOURNEY_MODULES = {'L1': (),
+    'L2': (KEY_DIR + 'test_key_journeys_l2.py',), 'L3': (KEY_DIR + 'test_key_journeys_l3.py',),
+    'L4': (KEY_DIR + 'test_key_journeys_l4.py',), 'L5': (KEY_DIR + 'test_key_journeys_l5.py',)}
+# Everything in routes.json that no key journey binds is reported as out of
+# scope (counted by the gate), never as pending. Adding a binding above brings a
+# policy tuple back into scope only through REVIEWED_REQUIREMENTS.
+OUT_OF_SCOPE_REMAINDER = ('Full permission matrix (all principals x conditions x methods, 7,470 cases) and L1 navigation '
+                          'shard: explicitly out of scope for the key-journey set; see README "Key journeys".')
 # policy tuple -> exact required binding keys; populated only by reviewed
 # condition/variant inventories, never inferred from response status or prose.
 REVIEWED_REQUIREMENTS = {}
