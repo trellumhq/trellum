@@ -37,12 +37,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="suite", required=True)
     local = commands.add_parser("local", help="run explicitly selected portal tests")
-    portal = commands.add_parser("portal", help="run every ordinary portal test, including browsers")
+    portal = commands.add_parser("portal", help="run every ordinary portal test, including browsers (heavy tests excluded)")
+    heavy = commands.add_parser("heavy", help="run only the opt-in heavy tests (scale, browser matrices, real processes)")
     local.add_argument("tests", nargs="+", help="test paths or node IDs, relative to the repository root")
     local.add_argument("-k", dest="keyword", help="further narrow the explicit selection")
     local.add_argument("--reuse-db", action="store_true", help="keep worker test databases between runs")
     local.add_argument("--create-db", action="store_true", help="rebuild reused databases after schema changes")
-    for command, workers in ((local, 4), (portal, 2)):
+    for command in (local, portal):
+        command.add_argument("--heavy", action="store_true", help="also run the opt-in heavy tests")
+    for command, workers in ((local, 4), (portal, 2), (heavy, 2)):
         command.add_argument("--workers", type=worker_count, default=workers, help=f"1 to 16; 1 runs serially (default: {workers})")
         command.add_argument("--durations", type=nonnegative, default=20, help="number of slowest tests to report (default: 20)")
         command.add_argument("--junitxml", type=Path, help="JUnit output path (default: .data-test/results/<command>.xml)")
@@ -56,6 +59,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return args
 
 
+def marker_expression(args: argparse.Namespace) -> str:
+    base = "not docker_sandbox and not portal_e2e"
+    if args.suite == "heavy":
+        return f"heavy and {base}"
+    return base if getattr(args, "heavy", False) else f"{base} and not heavy"
+
+
 def pytest_command(args: argparse.Namespace) -> list[str]:
     # Explicit counts prevent machine CPU counts from unexpectedly multiplying
     # PostgreSQL databases or browser processes. One worker means plain pytest.
@@ -63,7 +73,7 @@ def pytest_command(args: argparse.Namespace) -> list[str]:
         sys.executable, "-m", "pytest", "-q", "-ra",
         "-n", str(0 if args.workers == 1 else args.workers),
         "--dist", "loadscope", "--durations", str(args.durations),
-        "--junitxml", str(args.junitxml), "-m", "not docker_sandbox and not portal_e2e",
+        "--junitxml", str(args.junitxml), "-m", marker_expression(args),
     ]
     if args.collect_only:
         command.append("--collect-only")

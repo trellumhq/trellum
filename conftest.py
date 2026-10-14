@@ -278,3 +278,95 @@ def queued_run(report_row, org_admin):
         status=Run.STARTING,
         requested_by=org_admin,
     )
+
+
+# ---------------------------------------------------------------------------
+# Heavy tests: opt-in, excluded from the ordinary run (see CONTRIBUTING.md).
+#
+# Marked ``heavy`` here, at collection time, so the parametrize decorators stay
+# untouched and every case still exists:
+#   * Browser matrices keep ONE smoke case per test function and other
+#     parameters: chromium, desktop viewport, smallest scale. Other engines,
+#     viewports and sizes are heavy.
+#   * Scale/performance tests that build 200 to 100,000 rows.
+#   * Real-process lifecycle tests (supervised children, SIGKILL).
+# Correctness and permission tests are never marked here.
+# ---------------------------------------------------------------------------
+_ENGINE_AXES = {"engine", "metrics_browser"}
+_VIEWPORT_AXES = {"width", "size", "mobile"}
+_SCALE_AXES = {"experiments_server", "analytics_server", "count"}
+_DESKTOP_WIDTH = 1024
+
+# Whole tests (node id fragments) that are heavy regardless of parameters.
+_HEAVY_TESTS = (
+    "test_annotation_worker.py::AnnotationPostgresTests::test_owned_100000_events",
+    "test_annotation_projection.py::DeclarationAdmissionTests::test_100000_ordinary_events",
+    "test_operations_routes.py::test_whole_request_sql_and_bytes_stay_bounded_as_reports_grow",
+    "test_metric_workspace_browser.py::test_large_offpage_focused_workspace_readiness",
+    "test_operator_probe_process.py::",
+    "test_annotation_filter_cleanup.py::test_sigkill_rolls_back_partial_tick",
+)
+# Integer ``size`` values above the smallest are scale cases in these modules.
+_SCALE_SIZE_MODULES = ("test_catalog_bounded.py",)
+# Browser tests whose file name does not end in ``_browser.py``.
+_BROWSER_MODULES = (
+    "test_portal_mobile_runtime.py", "test_report_display_runtime.py",
+    "test_native_page_feedback.py", "test_navigation_foundation.py",
+)
+
+
+def _viewport_rank(value):
+    if isinstance(value, bool):
+        return (0, 0) if not value else (1, 0)  # mobile=False is desktop
+    width = value[0] if isinstance(value, tuple) else value
+    return (0, width) if width >= _DESKTOP_WIDTH else (1, width)
+
+
+def _matrix_key(item):
+    """Return (group, rank) for a matrix item, or None when it has no matrix axes."""
+    params = getattr(getattr(item, "callspec", None), "params", None)
+    if not params:
+        return None
+    module = item.nodeid.split("::", 1)[0]
+    scale_size = module.endswith(_SCALE_SIZE_MODULES)
+    browser = module.endswith(("_browser.py",) + _BROWSER_MODULES)
+    engine = [v for k, v in params.items() if browser and k in _ENGINE_AXES]
+    viewport = [
+        _viewport_rank(v) for k, v in params.items()
+        if browser and k in _VIEWPORT_AXES
+    ]
+    scale = [v for k, v in params.items() if (browser and k in _SCALE_AXES) or (k == "size" and scale_size)]
+    if not (engine or viewport or scale):
+        return None
+    axes = _ENGINE_AXES | _VIEWPORT_AXES | _SCALE_AXES
+    others = tuple(sorted(
+        (k, repr(v)) for k, v in params.items()
+        if k not in axes
+    ))
+    group = (module, item.originalname, others)
+    rank = (
+        tuple(0 if e == "chromium" else 1 for e in engine),
+        tuple(viewport),
+        tuple(scale),
+    )
+    return group, rank
+
+
+def pytest_collection_modifyitems(config, items):
+    heavy = pytest.mark.heavy
+    best = {}
+    keyed = []
+    for item in items:
+        if any(fragment in item.nodeid for fragment in _HEAVY_TESTS):
+            item.add_marker(heavy)
+            continue
+        found = _matrix_key(item)
+        if found is None:
+            continue
+        group, rank = found
+        keyed.append((item, group, rank))
+        if group not in best or rank < best[group]:
+            best[group] = rank
+    for item, group, rank in keyed:
+        if rank != best[group]:
+            item.add_marker(heavy)

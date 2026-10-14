@@ -51,9 +51,30 @@ behavior affected by the change. Use focused local checks during development
 and before opening a PR; GitHub runs `portal` as the broader gate, covering
 every ordinary portal test under `apps/`, including Chromium and WebKit browser
 regressions. Running `portal` locally is optional for broad changes or CI
-failure reproduction. It excludes only tests marked `docker_sandbox`;
-real-daemon Docker checks run separately in CI. The standalone framework and
+failure reproduction. It excludes tests marked `docker_sandbox` (real-daemon
+Docker checks run separately in CI) and `heavy` (below). The standalone framework and
 website suites also remain separate.
+
+### Heavy tests
+
+Tests marked `heavy` are opt-in: scale and performance measurements (hundreds
+to 100,000 rows), the non-smoke cases of browser matrices (WebKit, mobile
+viewports, larger sizes; one Chromium desktop smoke case per test stays in the
+default run), and real-process lifecycle tests. They roughly double the
+runtime of `portal`, so neither `scripts/test.py portal` nor the GitHub
+`portal` workflow runs them by default. Run them before merging a
+performance-sensitive change or a release, or when you touch the area they
+cover:
+
+```bash
+python scripts/test.py heavy              # only the heavy tests
+python scripts/test.py portal --heavy     # everything, heavy included
+python scripts/test.py local <paths> --heavy
+```
+
+In GitHub, start the `portal` workflow manually with `heavy` set, or label a
+pull request `heavy-tests`. A skipped heavy job does not block the required
+checks; a requested one must pass. Marking happens in the root `conftest.py`.
 
 The local default is four workers; `portal` defaults to two. Set `--workers`
 from 1 to 16 to match available PostgreSQL connections, memory, and browser

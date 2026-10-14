@@ -3,9 +3,16 @@ name: portal
 # Always start the workflow so required aggregate checks report on docs-only PRs.
 on:
   workflow_dispatch:
+    inputs:
+      heavy:
+        description: Also run the heavy tests (scale, browser matrices, real processes)
+        type: boolean
+        default: false
   push:
     branches: [main, develop]
   pull_request:
+    # `labeled` lets adding the heavy-tests label start the heavy job.
+    types: [opened, synchronize, reopened, labeled]
 
 permissions:
   contents: read
@@ -211,7 +218,8 @@ jobs:
 
       - name: Django test suite
         # Docker integration runs in the sandbox jobs, where bind-mount paths
-        # belong to the daemon's host rather than this test container.
+        # belong to the daemon's host rather than this test container. Heavy
+        # tests are opt-in: see the django-heavy-tests job.
         run: python scripts/test.py portal --workers 2 --junitxml .test-results/portal.xml --durations 20
 
       - name: Summarize test outcomes and timings
@@ -237,6 +245,72 @@ jobs:
             echo "Add one, or put your change under [Unreleased]."
             exit 1
           }
+
+  django-heavy-tests:
+    # Opt-in only: manual dispatch with heavy=true, or a PR labelled
+    # heavy-tests. Never scheduled. A skipped run does not block portal checks.
+    needs: changes
+    if: >-
+      needs.changes.outputs.portal == 'yes' && (
+      (github.event_name == 'workflow_dispatch' && inputs.heavy) ||
+      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'heavy-tests')))
+    name: django heavy tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    container:
+      # Keep this tag aligned with the Playwright pin in requirements-django.txt.
+      image: mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:51d31fdfacb0cff99a1a724152e34ae408d2bd4e7da310ff157450f49261cc59
+      options: --ipc=host
+    defaults:
+      run:
+        shell: bash
+    env:
+      DATABASE_URL: postgres://trellum:trellum@postgres:5432/trellum_portal
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: trellum
+          POSTGRES_PASSWORD: trellum
+          POSTGRES_DB: trellum_portal
+        options: >-
+          --health-cmd "pg_isready -U trellum"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ runner.arch }}-noble-py3.12-${{ hashFiles('requirements-django.txt', 'requirements-test.txt') }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: |
+          python -c "import sys; assert sys.version_info[:2] == (3, 12), sys.version"
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-django.txt -r requirements-test.txt
+
+      - name: Heavy test suite
+        run: python scripts/test.py heavy --workers 2 --junitxml .test-results/heavy.xml --durations 20
+
+      - name: Summarize test outcomes and timings
+        if: always()
+        run: python .github/workflows/test_summary.py --junit .test-results/heavy.xml --out-dir .test-results/ci/heavy --title 'Heavy portal tests (2 workers)'
+
+      - name: Keep sanitized test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: heavy-test-results
+          path: .test-results/ci/heavy/
+          if-no-files-found: ignore
+          retention-days: 7
 
   sandbox:
     needs: changes
@@ -677,7 +751,7 @@ jobs:
 
   portal-checks:
     name: portal checks
-    needs: [changes, fast-checks, django-tests, sandbox, sandbox-compatibility, migration-safety, django-e2e]
+    needs: [changes, fast-checks, django-tests, django-heavy-tests, sandbox, sandbox-compatibility, migration-safety, django-e2e]
     if: always()
     runs-on: ubuntu-latest
     steps:

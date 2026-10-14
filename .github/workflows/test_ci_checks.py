@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ci_checks import PORTAL_JOBS, changed_paths, classify, framework_failures, portal_failures
+from ci_checks import OPTIONAL_JOBS, PORTAL_JOBS, changed_paths, classify, framework_failures, portal_failures
 
 
 class ClassificationTests(unittest.TestCase):
@@ -70,7 +70,8 @@ class AggregateTests(unittest.TestCase):
     def needs(self, docs=False):
         return {"changes": {"result": "success", "outputs": {"portal": "no" if docs else "yes"}},
                 "fast-checks": {"result": "success"},
-                **{job: {"result": "skipped" if docs else "success"} for job in PORTAL_JOBS}}
+                **{job: {"result": "skipped" if docs else "success"} for job in PORTAL_JOBS},
+                "django-heavy-tests": {"result": "skipped"}}
 
     def test_success_and_docs_only(self):
         self.assertEqual(portal_failures(self.needs()), [])
@@ -86,6 +87,22 @@ class AggregateTests(unittest.TestCase):
                     needs[job]["result"] = result
                 with self.subTest(job=job, result=result):
                     self.assertTrue(portal_failures(needs))
+
+    def test_heavy_job_is_optional_but_must_pass_when_it_ran(self):
+        for result in ("skipped", "success"):
+            needs = self.needs()
+            needs["django-heavy-tests"]["result"] = result
+            with self.subTest(result=result):
+                self.assertEqual(portal_failures(needs), [])
+        for result in ("failure", "cancelled", "missing"):
+            needs = self.needs()
+            if result == "missing":
+                del needs["django-heavy-tests"]
+            else:
+                needs["django-heavy-tests"]["result"] = result
+            with self.subTest(result=result):
+                self.assertTrue(portal_failures(needs))
+        self.assertEqual(OPTIONAL_JOBS, ("django-heavy-tests",))
 
     def test_docs_failure_and_unclassified_skip_are_not_success(self):
         needs = self.needs(docs=True)
