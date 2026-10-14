@@ -131,11 +131,11 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "637de6cc0bf094b6d9afb40c477e5740fbc8225a1c1f703d43000ef1e1bc5431",
+      "source_sha256": "959c9edebcb6fc8769dd5a2d9bc87d193bede3b2804fd6e25d88e4ff778d4f95",
       "request_conditions": [
         "public entry; invalid input/token scenarios apply separately"
       ],
-      "adapter_sha256": "637de6cc0bf094b6d9afb40c477e5740fbc8225a1c1f703d43000ef1e1bc5431"
+      "adapter_sha256": "959c9edebcb6fc8769dd5a2d9bc87d193bede3b2804fd6e25d88e4ff778d4f95"
     },
     {
       "id": "route-003",
@@ -271,7 +271,7 @@
       "request_conditions": [
         "returns availability; never grants data access"
       ],
-      "adapter_sha256": "8375dc5210064015b74d66e45e5e9158ebec18b11dbc769a3a16c247d4e1aa28",
+      "adapter_sha256": "6a133fce22841690390c2b1f29b85a0639211048d84bb6bfe1fb14b4c7155389",
       "conditional_roles": {
         "revoked": {
           "condition": "Active authenticated alpha-revoked identity has no organization membership; own-account/global entry differs from tenant-target access. Policy context: public-availability-probe",
@@ -694,9 +694,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "aaa45ac87d23fab3c73ff15bb3296544907fc2f2d8f1757da96615ea63a89b35",
+      "source_sha256": "f5131fdb5bcdd2ac00ebcf6b08651df466900048ff4af1a6791bd8c545e9f068",
       "request_conditions": [],
-      "adapter_sha256": "75bbd3b81aebf5903902e03a955e79ffc45e7bbd938acb03022a501151097b69",
+      "adapter_sha256": "b71c6a77bfd8c4aec27b3e669ce18b49d9f469a21d1b12aaecfb30d7599e0f69",
       "conditional_roles": {
         "impersonated": {
           "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: link owning studio effective role >=developer",
@@ -7664,7 +7664,7 @@
       "verified_node_ids": [],
       "source_sha256": "a3c7cd2c4da068ace980663bdeb2ba05d7d13e4d3d9a47401de1e64cb63abd83",
       "request_conditions": [],
-      "adapter_sha256": "e9d482f066ef837ae114891713a04b340dea660e2983500fd8a130be6ec72698"
+      "adapter_sha256": "a2b82bbba576a9d37e0ea3a3b33a79963bbd17c1a42ee43a50e1b21e41108d5a"
     },
     {
       "id": "route-129",
@@ -7706,9 +7706,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "3587d2192e49e738bc9cad425a7e81690a6fcfc5c70479f98d0455fa8c7d6c28",
+      "source_sha256": "e511c0db0d6f9308578d6fd10d722d2081e1c42b87ed9ce83ff06c445c449443",
       "request_conditions": [],
-      "adapter_sha256": "c9bf0b162fb5c1e1d5f4cffa9fd109730dcab527a10669f2a225c708586f050d"
+      "adapter_sha256": "93e4f920caf13a515258cbd6fd8d620ea5231c0073418ade157be08497fa5a16"
     },
     {
       "id": "route-130",
@@ -7761,9 +7761,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "2884362be47c78df781d6b2e3138ba7203378028c95316868703222bd1568717",
+      "source_sha256": "75619536b0406eed44ce62bab4bce49f90e548ec4d4d69cb36c544dbc3a2c62f",
       "request_conditions": [],
-      "adapter_sha256": "e3f3ddecd42a26a0d07561076427c2444819678dd741317b71cda3f9a32970cf"
+      "adapter_sha256": "1efffc8dcb29e793557375195f19ae0dfbd277a2822816ce3b00c05a09512a24"
     },
     {
       "id": "route-131",
@@ -7807,7 +7807,7 @@
       "verified_node_ids": [],
       "source_sha256": "3b92e5154ee6a23d3bf5180d0f103fa76d945107f29b7bf3377e00bf64219255",
       "request_conditions": [],
-      "adapter_sha256": "aa92b83ee53bdff54b567de4ab03d470abc95fe7a3e09719a5b9630d3f406503"
+      "adapter_sha256": "fdba1bff376fc167bff0bc86fdd24ac6eb5a3117589ed31648dfbfd3aa0e6f3e"
     },
     {
       "id": "route-132",
@@ -7972,9 +7972,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "99a25216a0625428004865ea2facb9b771b72c9b319206c351b9680e1f557e62",
+      "source_sha256": "74cea22fd43034d9492e61d557c7d52cde3f5e4a6fa60ac73369a5cabb3a167b",
       "request_conditions": [],
-      "adapter_sha256": "99a25216a0625428004865ea2facb9b771b72c9b319206c351b9680e1f557e62"
+      "adapter_sha256": "74cea22fd43034d9492e61d557c7d52cde3f5e4a6fa60ac73369a5cabb3a167b"
     },
     {
       "id": "route-135",
@@ -8245,7 +8245,7 @@
       "verified_node_ids": [],
       "source_sha256": "6d567406dc7a18024fb6606677adcfffbf455ec71d80c3ad22ef6791d5368e2f",
       "request_conditions": [],
-      "adapter_sha256": "425bacc64c6fe5b99a40176381a9e140bb8769ce7e802eaea87e8cdb64cbad9d",
+      "adapter_sha256": "bb5ba57bb65007210dc8b24121cba657b9e18381304fe34bbafb7f304ed817a3",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -8307,7 +8307,7 @@
       "verified_node_ids": [],
       "source_sha256": "ae1c01599eb0de6ae9077239868dc425de9da49578e2fdbebd06d43882a05261",
       "request_conditions": [],
-      "adapter_sha256": "157d524cd21328fd94583cec3eb6ae2a938969c1523bd4b6a89f26f58f916dfc",
+      "adapter_sha256": "a1a35aefb467b4f3f59a5969c779e88acf01401cb0f19e3a48a6e16fe77950f4",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -8367,9 +8367,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "148a4a85a485e68cb26d94867316026290b25430312f5657047a2fe00111a491",
+      "source_sha256": "c7ef8dbb5b26ba62910f72daea8ef433f46b911172135f4e995b90f8e1abf72d",
       "request_conditions": [],
-      "adapter_sha256": "77fcb5c34dd5d795ddb799d18db26678eba11294e59d112f7cdcfa2dcc8ba8b3",
+      "adapter_sha256": "6eb27483d1fc36df30a496058aeca482a16914c8cb7bfea19baff5d360a646d7",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -8571,7 +8571,7 @@
       "verified_node_ids": [],
       "source_sha256": "bd1571eda476d720243d0e842614abe3843baec7922755e9ad741510357b64b7",
       "request_conditions": [],
-      "adapter_sha256": "bc910506ace56e6f021d227d339386ed2e7f98710f234a2065d755f7fa12ff22",
+      "adapter_sha256": "657d57e1168b9c417d76561795ebd2b7a4ed5190420efe289cd392e7d82a4c08",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -8711,12 +8711,12 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "6266d7a09a79c292ed2975a0ae0d9081e37a972882e5a543e7c2f231bfd269d5",
+      "source_sha256": "4632e351dbbb009604b7bb9ce9831f1a4e3f79c4043de458f8a61c52428c5b54",
       "request_conditions": [
         "require_full_studio_visibility: plain alpha viewer/group-member/selected denied by seeded private audience; viewer-full samples explicitly granted public-only beta studio0",
         "alpha private-viewer explicitly granted private report remains finite-scope and is denied full-studio overviews under current semantics"
       ],
-      "adapter_sha256": "6266d7a09a79c292ed2975a0ae0d9081e37a972882e5a543e7c2f231bfd269d5",
+      "adapter_sha256": "4632e351dbbb009604b7bb9ce9831f1a4e3f79c4043de458f8a61c52428c5b54",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -8776,12 +8776,12 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "6266d7a09a79c292ed2975a0ae0d9081e37a972882e5a543e7c2f231bfd269d5",
+      "source_sha256": "4632e351dbbb009604b7bb9ce9831f1a4e3f79c4043de458f8a61c52428c5b54",
       "request_conditions": [
         "require_full_studio_visibility: plain alpha viewer/group-member/selected denied by seeded private audience; viewer-full samples explicitly granted public-only beta studio0",
         "alpha private-viewer explicitly granted private report remains finite-scope and is denied full-studio overviews under current semantics"
       ],
-      "adapter_sha256": "6266d7a09a79c292ed2975a0ae0d9081e37a972882e5a543e7c2f231bfd269d5",
+      "adapter_sha256": "4632e351dbbb009604b7bb9ce9831f1a4e3f79c4043de458f8a61c52428c5b54",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -8841,12 +8841,12 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "040d35e1bac32f000e64ba57b211fded526799b16db7be2dadb942117ba8fc05",
+      "source_sha256": "b9d87871451c3bca70366cba62baffc8623542259bededbcdab2edec6a1d1971",
       "request_conditions": [
         "require_full_studio_visibility: plain alpha viewer/group-member/selected denied by seeded private audience; viewer-full samples explicitly granted public-only beta studio0",
         "alpha private-viewer explicitly granted private report remains finite-scope and is denied full-studio overviews under current semantics"
       ],
-      "adapter_sha256": "040d35e1bac32f000e64ba57b211fded526799b16db7be2dadb942117ba8fc05",
+      "adapter_sha256": "b9d87871451c3bca70366cba62baffc8623542259bededbcdab2edec6a1d1971",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -8973,7 +8973,7 @@
       "verified_node_ids": [],
       "source_sha256": "84ac927da1db83c622bb1097906985b73d977be8340e32ba499f1f1431a4a346",
       "request_conditions": [],
-      "adapter_sha256": "1d53032dde59cc466e2c3b2c0f613ab261cf860f6130466d0ab7dcb202d80a9b",
+      "adapter_sha256": "c5d196458b86465576f7e19b9d340112574efa7b2376b8f5d99667e356b4a5c4",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -9031,9 +9031,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "ddbcf93bdb226488db315d7a38bb8234d102a59dbeea3ec0d5ed310d41571f42",
+      "source_sha256": "087e6bf6bd88720efab487035317b5da7dfd4a643be914c7b02cd8183f3b13bd",
       "request_conditions": [],
-      "adapter_sha256": "7a6512c46dd0e1c81c44195caef6b5813c9073821ff3fb19fd30763652a0aba1",
+      "adapter_sha256": "45ccc17ea32b30cdf8b5f1ffa5025f71185ff526dcd936d6461198906093210d",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -9451,9 +9451,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "82f5e3c2a1eac2caf24896bf9fa825ef0ae13e7db6ecf1948f3f2a13f79a3513",
+      "source_sha256": "1e2b8a096f60f47bb78fd1172829bfd71245eac65825ae3c602570c3ab3bbd5c",
       "request_conditions": [],
-      "adapter_sha256": "82f5e3c2a1eac2caf24896bf9fa825ef0ae13e7db6ecf1948f3f2a13f79a3513",
+      "adapter_sha256": "0f21e52b5699a1d5ae18bcd166fc0bb48197c589900265a15089beba140bb34e",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -10357,7 +10357,7 @@
       "verified_node_ids": [],
       "source_sha256": "04a0aee9e87b807b183eb2d87a7f947887d0a851d4f59fec6a6c7f446b64b6e3",
       "request_conditions": [],
-      "adapter_sha256": "92018dd2ba55cdbd132708d3e9d39d563b727f1c2be221baf5410a444e854f03",
+      "adapter_sha256": "7711e2744d0e4e2668bad086efff93ed82b8376608c170c4e5a79ff917637024",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -10429,7 +10429,7 @@
       "verified_node_ids": [],
       "source_sha256": "3bbe0e34053b96ac539af2cd5e3a97b187b975420fae0c88100a2d64b1eb28cc",
       "request_conditions": [],
-      "adapter_sha256": "c327d02779bc3fb56a60a5be3cac9a5cd70263ae64d17039de928beaaba5c5b8",
+      "adapter_sha256": "1b44570695b22dc5def460cbbdb9de033807c607e157c963ff42dc38502b864f",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -10492,7 +10492,7 @@
       "verified_node_ids": [],
       "source_sha256": "ef00a57d1b24164d716cad8c13727303f87f02dcae15f758c6694e4c8f2eeaef",
       "request_conditions": [],
-      "adapter_sha256": "39c0e8da352df7b414bf90bd75f8bbb1db3aa194765db60f1d82a22e26015a0f",
+      "adapter_sha256": "9c574328e39645c3ae2f622b0a664163721d76e09e28f5f146cf8c98881c0940",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -10565,7 +10565,7 @@
       "verified_node_ids": [],
       "source_sha256": "c431f9d55306ad0a9b14b6d177afe8e54ec0684554f5bae125ba448e53dfb3a8",
       "request_conditions": [],
-      "adapter_sha256": "f84e220af606de718d8c7dc3a2387072b50015925db11873acb1888f093d2b30",
+      "adapter_sha256": "b9bb345a267c647670f3dfe89181a563a96e0ec990a5d47c55e66c3a5d647a22",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -10640,7 +10640,7 @@
       "verified_node_ids": [],
       "source_sha256": "a5bad474cc39b47b7298b53b48b272de1a03b7227a44cff4dd631275c5fd5806",
       "request_conditions": [],
-      "adapter_sha256": "f732ed782e15d4f4e52d1936983221ba0058ad53182c36ebd5f593beae446007",
+      "adapter_sha256": "fed022099559ac31c54392abea232b92753c590badf98473a34f2dfa93918312",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -10703,7 +10703,7 @@
       "verified_node_ids": [],
       "source_sha256": "1e3cd9eb3335571a28bc7297704ff257493cf38abd8132ec87ecbc739c91d2ff",
       "request_conditions": [],
-      "adapter_sha256": "37a611c84c1956cc598bea2b85ab45250051c5dbdf0feb0a2e559f0adb3308b8",
+      "adapter_sha256": "7c3b7866d9f6a9a205750e83962fa3974ee7267455c7a507b56b9bba201a1472",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -10776,7 +10776,7 @@
       "verified_node_ids": [],
       "source_sha256": "3f17638fb44559579de29791ee4c334837a755ca54462fb0c430b2221d0161b8",
       "request_conditions": [],
-      "adapter_sha256": "bb880010c9dc145d5f82b3336785c124685bb377529eb1539784ca1564981d74",
+      "adapter_sha256": "a5b0dec7c415eef738a03a3c708be4d50d9ab2ab8d2fb6a028f6e0ee06673511",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -11002,7 +11002,7 @@
         "POST collection always creates; native action=toggle only changes field parsing, not an existing schedule toggle",
         "Native browse_choices and named page-submit controls preserve full submitted draft without save/send/evaluate; explicit Save/Preview wins over retained pagination keys; CSRF and current permission remain required."
       ],
-      "adapter_sha256": "18b9eb6c69d2d187330850bb36d239db699463e5232df235b510d042679bf272",
+      "adapter_sha256": "1316118d918c47773851783851fb0066f73df4d9281f29df7738b5162baec8f9",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -11116,7 +11116,7 @@
         "native action=delete needs confirm_delete=yes or enhanced form; owner_id invalid; JSON {enabled:false} updates without changing recipients",
         "Native browse_choices and named page-submit controls preserve full submitted draft without save/send/evaluate; explicit Save/Preview wins over retained pagination keys; CSRF and current permission remain required."
       ],
-      "adapter_sha256": "36b01a3478ee50f1445a2473ba7525e36e712586bcee2a089bab3f47d968ed4c",
+      "adapter_sha256": "b8f7a479c159a6c45814536a54cace1c127f41ab39c89a07655049131bfeb6ef",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -11185,7 +11185,7 @@
       "verified_node_ids": [],
       "source_sha256": "e3410b5909b4150abd2503d6109ddecf81d8513b613007cee0f1bfabd51cdcb7",
       "request_conditions": [],
-      "adapter_sha256": "f30f9e7254c4e813bf1547d4692380369dd1488ca01716c30af5213ae2beeadb",
+      "adapter_sha256": "d2c86f90a353e866fa0cf77ffd3f97a3cdcd579dd03a8ce18f8d6938457d2103",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -11248,7 +11248,7 @@
       "verified_node_ids": [],
       "source_sha256": "2662e9b7bc20d978e4683b1b60a2de4451e42aabd49a7b1bb762c710031dfbf6",
       "request_conditions": [],
-      "adapter_sha256": "7fdf836a3f7d855c46ac1df3260b182e78909dcfed3a5468de5f9b52adb36f91",
+      "adapter_sha256": "60cb3ce3aa57aa2892b72e769605fd56aa47e18fbd60019ad249082e0ad29edf",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -11327,7 +11327,7 @@
       "verified_node_ids": [],
       "source_sha256": "2f159595b3656c0f8ae62504382b989faad3207ae0e767fb131369b4e16730a6",
       "request_conditions": [],
-      "adapter_sha256": "eb0578bc1a4fb180a4ce257b816e81a2c734bc624e419df3d83d88e9a6f214f7",
+      "adapter_sha256": "de122a7d89774229b6ab09ed116f051aa355c62ae71ff7271777049d1089fdc6",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -11400,7 +11400,7 @@
       "verified_node_ids": [],
       "source_sha256": "e17c1d08a548a66aee44e2ef9e2f726021d7903b9335be9a9c3dd95ab1474c96",
       "request_conditions": [],
-      "adapter_sha256": "14972fb17232f05319e1f09035163537dc0413afedcadcb93f034b4482ec6a66",
+      "adapter_sha256": "b55536e5c8fbb4de1604613cfc104ab686c1857a7668a0341ac567d87d00cdfa",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -11475,7 +11475,7 @@
       "verified_node_ids": [],
       "source_sha256": "de5fac66c06cd93969784206002bb7392d4bea86b3979ff1179f2191f46cc610",
       "request_conditions": [],
-      "adapter_sha256": "87ba33ce4e9a01f981dd626d5610f015fc7dfc448ddcd629ddd9c89ebb782338",
+      "adapter_sha256": "7d3b7d0d9596e414ef57d42ec94f78e75ed5849ffc343fabd04d092b60b53717",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -11548,7 +11548,7 @@
       "request_conditions": [
         "JSON POST is read-only choice transport with required CSRF; bearer write restrictions remain unchanged."
       ],
-      "adapter_sha256": "07de3aeabb7be49df5449c3ae7dbff91ca08c777c668da44bd59f8cc54a8a422",
+      "adapter_sha256": "d1ee119690223ca93a667430acffcc7e94cd21c311662febd6cef9237a8aec89",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -11673,9 +11673,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "9af8ea1f1c23d07c451523f8b0e249e5a374a3dcdb6fb403c09ab350187fc784",
+      "source_sha256": "522d486167c4a529145dff05261cfb57734fc9921d30fffb2bc13e3be9cf1b8a",
       "request_conditions": [],
-      "adapter_sha256": "b4cc885afada7939db2a66ab7df31551e5fa0fe619647f26216dde3637359182",
+      "adapter_sha256": "77df395e3fb6d69282274c7ecd56ec7fce0844be3066a64f0a239d7393ed05c6",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -11803,9 +11803,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "61a7bf74c00b8096d0f79483e4741ac55a5ddb341eeb6e83fad41a22ff78568e",
+      "source_sha256": "cf6284778868dfeb456c59cc8a495c1213f226d1b09378523b65508f29e46325",
       "request_conditions": [],
-      "adapter_sha256": "e3fb31b8f3d00cfc3de1263569167df75de770ea3a236e0a75cfc8c703704917",
+      "adapter_sha256": "22ad283b02191035f7c0904dbc4063c8e4054b7fba2b8d8b3726a88d1216dc04",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -11877,7 +11877,7 @@
       "verified_node_ids": [],
       "source_sha256": "0dc763c1935c2c3d49dbdaecb2b8fda7e6c6ca684ae0c7c06d7d949d78ed674f",
       "request_conditions": [],
-      "adapter_sha256": "ec2ce559a766fc60a11b4133d6b495b5855cc88f29d00a6db659e35d9358c523",
+      "adapter_sha256": "eca49793a3e558c3b8c17e4bea97fef33d7232dfb974793124b06334e8a62503",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -11941,9 +11941,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "3674b43294b5e1fd5e6fce2418cb4dc640b119da24e9db2c68f0f1ddfea14339",
+      "source_sha256": "9ce928040048f07cb22b52570953855d46e3751d6d6fbaa460bee8634ad1f2a1",
       "request_conditions": [],
-      "adapter_sha256": "44b85beda32efe24eeae4f3e7fafce690c76e91bed74ef90425dc2c8b2812983",
+      "adapter_sha256": "393dc7b27d27667320b91cf767ff193a0b1dd402d2cf173756e506184d02df9c",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -12009,7 +12009,7 @@
       "verified_node_ids": [],
       "source_sha256": "fad1be328ad494d8594ce8254219fc28eaf222e240636676ca8dbe0317d32729",
       "request_conditions": [],
-      "adapter_sha256": "6ab3cd9888caae95a10460bc9e08b1eb4a34c6c5ba9bea9686de4900ab536969",
+      "adapter_sha256": "a87d6f8121c39762bc552c087831e8cd5ac1064b0f376c3ecb3bc9015266d803",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -12075,7 +12075,7 @@
       "verified_node_ids": [],
       "source_sha256": "3b34232d8faeea42e11e54cf56cb176976e2ede25f926edce7e3d5e7a27a10f3",
       "request_conditions": [],
-      "adapter_sha256": "591013bb9a149785d258eea3225832331950403fd6d9e4d67cf9e23abd9fd0ba",
+      "adapter_sha256": "516fb3da35fe618deefa2bc56d6657cea4d50525db384621c198786b24aeb285",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -12137,7 +12137,7 @@
       "verified_node_ids": [],
       "source_sha256": "3e1a6135e91c1fa230d8ec12fad0909e05897782585c884044aef4c074222e61",
       "request_conditions": [],
-      "adapter_sha256": "e903c32796d5ac0435a51c1fdec70e067cdf5be482b9a44db9e65b84b364d846",
+      "adapter_sha256": "59f108672e55d362c177cc2626ff6fa5d394d63e1542c8df9b9d30b285d054e3",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -12201,9 +12201,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "0b9c9d95895e426c3ef8398fc284744486ad5f53c014597c1df3fdd48be9943f",
+      "source_sha256": "521551c5161d91c56b5ad4fec7bdbc07eb6be51b85ad39c18ec8305c55fda98e",
       "request_conditions": [],
-      "adapter_sha256": "0b9c9d95895e426c3ef8398fc284744486ad5f53c014597c1df3fdd48be9943f",
+      "adapter_sha256": "521551c5161d91c56b5ad4fec7bdbc07eb6be51b85ad39c18ec8305c55fda98e",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -13125,7 +13125,7 @@
       "verified_node_ids": [],
       "source_sha256": "bac23712828df66ef19d68ecddf58067f5b179743851276bbc233ba7be2e6674",
       "request_conditions": [],
-      "adapter_sha256": "65b1c3fab2684046577d5d18c7af92d35f0eac394716c77ab5ee389fcda247ad",
+      "adapter_sha256": "593c1c680b27c6662e91dc158b65ce5783394df76af8dca5a5b5665f379df46e",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -13300,7 +13300,7 @@
       "verified_node_ids": [],
       "source_sha256": "97a165645653bf383a4f940c926b86dab7cddc8e279aa81fcd3b88baac2a7a8d",
       "request_conditions": [],
-      "adapter_sha256": "ad45e9806abbf593e89d3e5a28be380525aa93e9cfbbd434a9e337d60e826be7",
+      "adapter_sha256": "6e5312ea52594d3dbb49834c73168ec823940c169888d2f274bfa6624eb3d9e4",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -14475,9 +14475,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "f56f524c287f9a4e57a57bc3fbf8c4872ac0c8ed2fb18ffd60d8df9b57471a00",
+      "source_sha256": "1020fad08e9599bc049f0adf9c622f0f9320deb216d390ec1dd0e68aedb95eec",
       "request_conditions": [],
-      "adapter_sha256": "f56f524c287f9a4e57a57bc3fbf8c4872ac0c8ed2fb18ffd60d8df9b57471a00"
+      "adapter_sha256": "1020fad08e9599bc049f0adf9c622f0f9320deb216d390ec1dd0e68aedb95eec"
     },
     {
       "id": "route-230",
@@ -15331,9 +15331,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "545d3f1c6280475fb2e847a9d6e030adff1aa7f69669b79ec4b2d0c5c062e177",
+      "source_sha256": "0ab1a48c6ef33f7e2ccd6ddcf0b1172f07eb5671865d2efac19fc1f487cb9ad6",
       "request_conditions": [],
-      "adapter_sha256": "f84f71604b92912154610945609226603f93f99a53c16ee61b89b178999a729a"
+      "adapter_sha256": "0780b1ac664fef06a857fda5c1359f3d50e2b6da29c11c9884d079a4b4fc02fe"
     },
     {
       "id": "route-245",
@@ -17024,9 +17024,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "312a4097716cb26610bbc67c3e39f72944de4a80c338382187eea2e71fea2a87",
+      "source_sha256": "c5d817d9d4e94f8617e0741fb6609754b5f61ad77af0b089ab3d5a24c791dedd",
       "request_conditions": [],
-      "adapter_sha256": "429d2423376b8ad34abb0841e9d342e64d372dcfe9b6e8c13ae6379f53b1ef23",
+      "adapter_sha256": "694bc8986a5307996d9f7be23892cb3bebda469705fdcdfb4c46069cab8476c5",
       "conditional_roles": {
         "revoked": {
           "condition": "Active authenticated alpha-revoked identity has no organization membership; own-account/global entry differs from tenant-target access. Policy context: current-nonimpersonated-operator",
@@ -18027,9 +18027,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "014d3ba886876eef8ceaa063590655887e696a072061d4bcb38ea9e3c0d7e2a1",
+      "source_sha256": "396977a95e033131610457c192ba47c1d0b8e26598bb12552bb36ba856d8cf43",
       "request_conditions": [],
-      "adapter_sha256": "fc783e4960b2d2bb987a6167de1340153f8466eebb646f3c5b48700cb48bb253",
+      "adapter_sha256": "2bc81079e9b58d5ab8077d5ce18e6fb8272bd5e77647941f19510428577e64eb",
       "conditional_roles": {
         "revoked": {
           "condition": "Active authenticated alpha-revoked identity has no organization membership; own-account/global entry differs from tenant-target access. Policy context: operator-or-special-branch",
@@ -18105,9 +18105,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "0ca4efc8d0e4a2189ad6b526323461db16fbbf73bfb66fd4530e6b6eb9bed6cc",
+      "source_sha256": "072adfa5d87023ecdd01f3f3be050732974db568e17f3277df1f34c460518ab8",
       "request_conditions": [],
-      "adapter_sha256": "05e677a829b1b6088a0bbc37d658208ff8d475fbffd16b80c8e29d89328c646f",
+      "adapter_sha256": "6b4da81df89a3cf1c21a7fad4003680dcd7501eb49203aaca7298a33e9d26ad7",
       "conditional_roles": {
         "revoked": {
           "condition": "Active authenticated alpha-revoked identity has no organization membership; own-account/global entry differs from tenant-target access. Policy context: operator-or-special-branch",
@@ -18187,9 +18187,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "d93159bb96aef8396da48a3499aa780b84611544b24dc19362c772b81904c9ef",
+      "source_sha256": "2faf50ef2b0f4479ed8b74832fe0fb494e0688da3c730bba8c5e458be8401dce",
       "request_conditions": [],
-      "adapter_sha256": "87526edcb4792f06820a6e8b5f068fe2d5faebc5ab98b0a55c42dafcaf505b9b",
+      "adapter_sha256": "3342f529233dd8a25a6831b359c03b256a928ecfda4c48a3578576de8b8cbdfa",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -20476,9 +20476,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "6f40b443cc411b43a5470ce683f8c3e3f1d8179c735403f5fa5dad7d75dd5fc2",
+      "source_sha256": "3ab4b9f5ebd670fb88dc6ee68c94fdcc7dffab45b5159d5017b6d1c75f0740cf",
       "request_conditions": [],
-      "adapter_sha256": "64bf655eab72867826a6da76ae1363565b1d768f60daf417f64e2a5ec5f607f3",
+      "adapter_sha256": "cfda3cfb3de22d5628943c9cad3468bcfd48a893e2c517242382df80a48673b8",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -21801,13 +21801,13 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "12ae3d64f634f0fb0e323672f0a35d0b36c06ccb8fc9646f8d4d068b14047106",
+      "source_sha256": "af30590c0efe560d8a9f6f57c0dcc2c6c9c97de88b72cc32b1d6f77a85b5ff9d",
       "request_conditions": [
         "require_full_studio_visibility: plain alpha viewer/group-member/selected denied by seeded private audience; viewer-full samples explicitly granted public-only beta studio0",
         "alpha private-viewer explicitly granted private report remains finite-scope and is denied full-studio overviews under current semantics",
         "GET only,1\u201350 distinct authorized definition IDs with current revision; required query fixtures follow actor-specific studio parameters. No storage reads; changed revision409 and malformed400."
       ],
-      "adapter_sha256": "d81c08b81c603493bfa574c361b87d2786f4d8f18f6da0a465b994d6e0264710",
+      "adapter_sha256": "d063e36ef9507fe0133200a1bb4d28e3281d58695d159a92864267b76293d5d4",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
