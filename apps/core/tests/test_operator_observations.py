@@ -58,11 +58,10 @@ def test_nonce_actor_scope_and_ttl(operator_probe, monkeypatch):
     with pytest.raises(observations.ObservationError):
         observations.admit(actor.pk, "upload-usage", key, org_id=1)
     from django.core import signing
-    original = signing.loads
-    monkeypatch.setattr(signing, "loads", lambda *args, **kwargs: (_ for _ in ()).throw(signing.SignatureExpired()))
+    original_clock = signing.time.time
+    monkeypatch.setattr(signing.time, "time", lambda: original_clock() + 301)
     with pytest.raises(observations.ObservationError):
         observations.admit(actor.pk, "full-health", key)
-    monkeypatch.setattr(signing, "loads", original)
 
 
 def test_fenced_late_completion_and_invalid_output_keep_previous(operator_probe):
@@ -143,3 +142,20 @@ def test_scheduler_refresh_preserves_probe_and_removes_obsolete_report(operator_
     monkeypatch.setattr("apps.reports.notify.flush_broken_buffers", lambda: None)
     manager.refresh()
     assert removed == ["report-999999"]
+
+
+def test_csrf_and_borrowed_sessions_cannot_admit_or_read(operator_probe):
+    from django.test import Client
+    from apps.core.impersonation import SESSION_OPERATOR_ID
+    actor, client, node = operator_probe
+    key = observations.nonce(actor.pk, "full-health")
+    strict = Client(enforce_csrf_checks=True)
+    strict.force_login(actor)
+    assert strict.post("/api/system/diagnostics/refresh", {"request_key": key}, HTTP_ACCEPT="application/json").status_code == 403
+    assert not OpsState.objects.filter(key=observations.SLOT).exists()
+    entry, created = observations.admit(actor.pk, "full-health", key)
+    session = client.session
+    session[SESSION_OPERATOR_ID] = actor.pk
+    session.save()
+    assert client.post("/api/system/diagnostics/refresh", {"request_key": key}).status_code == 404
+    assert client.get(f"/api/system/diagnostics/{entry['id']}").status_code == 404

@@ -119,3 +119,19 @@ def test_incomplete_result_retains_previous_total(storage_workspace, org):
     observations.finish(entry, result=result)
     assert observations.snapshot("upload-usage", org.pk)["bytes"] == 42
     assert observations.observation(entry["id"], kind="upload-usage", org_id=org.pk)["state"] == "failed"
+
+
+def test_org_identity_status_and_live_operator_boundary(storage_workspace, org, other_org, client):
+    from django.contrib.auth import get_user_model
+    from apps.runner.models import WorkerHeartbeat
+    actor = get_user_model().objects.create_user(email="scope-usage@portal.local", is_operator_flag=True)
+    WorkerHeartbeat.objects.create(worker_id="scope-usage-node")
+    client.force_login(actor)
+    key = observations.nonce(actor.pk, "upload-usage", org.pk)
+    response = client.post(f"/operator/orgs/{org.slug}/usage/refresh", {"request_key": key}, HTTP_ACCEPT="application/json")
+    assert response.status_code == 202
+    operation_id = response.json()["action"]["id"]
+    assert client.get(f"/operator/orgs/{other_org.slug}/usage/{operation_id}").status_code == 404
+    assert client.get(response.json()["action"]["status_url"]).status_code == 200
+    get_user_model().objects.filter(pk=actor.pk).update(is_operator_flag=False)
+    assert client.get(response.json()["action"]["status_url"]).status_code == 404
