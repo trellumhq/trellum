@@ -9,6 +9,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- Phone layout of console-hosted reports: the report header is one compact row
+  (freshness left, labelled Options and Monitor right), annotation chips scroll
+  on one row, and the shell header buttons share one neutral bordered style.
 - `scripts/demo.sh --dev-login` prints one-click admin, member and viewer
   login links for local review, and seeds fixtures as the invoking user on Linux.
 - Document required portal performance patterns in `docs/performance-patterns.md`
