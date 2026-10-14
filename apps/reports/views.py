@@ -51,9 +51,11 @@ from apps.reports import notify
 from apps.reports import deliveries
 from apps.reports.models import (
     DEFAULT_LIVE_QUERY_RATE_LIMIT,
+    DEFAULT_REFRESH_SUSPEND_DAYS,
     EmailSchedule,
     MetricDefinition,
     OrgLiveQueryPolicy,
+    OrgRefreshPolicy,
     OrgSharePolicy,
     Report,
     ReportFavorite,
@@ -63,6 +65,7 @@ from apps.reports.models import (
     get_share_policy,
     live_query_rate_limit,
     record_view,
+    refresh_suspend_days,
 )
 from apps.reports.scan import (
     _built_recently,
@@ -540,6 +543,19 @@ def api_report_run(request, org_slug, studio_slug, slug):  # noqa: ARG001
     )
     status = enqueue(report, cache_mode=cache_mode, trigger="manual", user=request.user)
     audit(request, "run.enqueue", target=report, slug=slug, cache_mode=cache_mode)
+    return JsonResponse({"ok": True, "status": status})
+
+
+@require_studio_role(roles.DEVELOPER)
+@require_POST
+def api_report_resume_refresh(request, org_slug, studio_slug, slug):  # noqa: ARG001
+    """Lift an idle-refresh suspension: restart the activity clock and queue
+    an immediate rebuild. Resume is manual-only (docs/idle-refresh-suspension.md)."""
+    report = _get_report(request, slug)
+    now = timezone.now()
+    Report.objects.filter(pk=report.pk).update(refresh_suspended_at=None, refresh_resumed_at=now)
+    status = enqueue(report, trigger="manual", user=request.user)
+    audit(request, "report.refresh_resume", target=report, slug=slug)
     return JsonResponse({"ok": True, "status": status})
 
 
@@ -3157,6 +3173,76 @@ def org_live_query_settings(request, org_slug):  # noqa: ARG001
             "org": request.org,
             "rate_limit_per_minute": policy.rate_limit_per_minute if policy else None,
             "default_rate_limit_per_minute": DEFAULT_LIVE_QUERY_RATE_LIMIT,
+        },
+    )
+
+
+# Idle auto-refresh suspension threshold: same shape as the live-query pair
+# above (see docs/idle-refresh-suspension.md).
+
+@require_org_role(roles.ORG_ADMIN)
+@require_POST
+def api_refresh_policy(request, org_slug):  # noqa: ARG001
+    """Body: ``{"suspend_after_days": int|null}`` -- null resets to the
+    default (DEFAULT_REFRESH_SUSPEND_DAYS), 0 means never suspend. Validated
+    before touching the database, same discipline as api_live_query_policy.
+    """
+    form_post = request.content_type in {"application/x-www-form-urlencoded", "multipart/form-data"}
+    body = {"suspend_after_days": request.POST.get("suspend_after_days", "")} if form_post else json_body(request)
+
+    def invalid(message, field="__all__"):
+        if is_settings_request(request):
+            return settings_error(request, message, errors={field: [message]})
+        if form_post:
+            messages.error(request, message)
+            return redirect(f"/orgs/{request.org.slug}/settings/auto-refresh")
+        return JsonResponse({"ok": False, "error": message}, status=400)
+    if "suspend_after_days" not in body or (form_post and "suspend_after_days" not in request.POST):
+        return invalid("no recognized fields")
+
+    raw = body["suspend_after_days"]
+    if raw is None or raw == "":
+        value = None
+    else:
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            return invalid("invalid suspend_after_days", "suspend_after_days")
+        # 0 is the org's "never suspend" switch; negatives are nonsense.
+        if value < 0:
+            return invalid("invalid suspend_after_days", "suspend_after_days")
+
+    policy, _created = OrgRefreshPolicy.objects.get_or_create(org=request.org)
+    policy.suspend_after_days = value
+    policy.updated_by = request.user
+    policy.save(update_fields=["suspend_after_days", "updated_by", "updated_at"])
+
+    audit(request, "refresh_policy.update", org=request.org, suspend_after_days=value)
+
+    if is_settings_request(request):
+        return settings_success(request, "Saved.")
+    if form_post:
+        messages.success(request, "Saved.")
+        return redirect(f"/orgs/{request.org.slug}/settings/auto-refresh")
+
+    return JsonResponse({
+        "ok": True,
+        "suspend_after_days": policy.suspend_after_days,
+        "effective_suspend_after_days": refresh_suspend_days(request.org),
+    })
+
+
+@require_org_role(roles.ORG_ADMIN)
+def org_refresh_settings(request, org_slug):  # noqa: ARG001
+    """The "Auto-refresh" org-settings tab (see org_live_query_settings)."""
+    policy = OrgRefreshPolicy.objects.filter(org=request.org).first()
+    return render(
+        request,
+        "reports/org_refresh_settings.html",
+        {
+            "org": request.org,
+            "suspend_after_days": policy.suspend_after_days if policy else None,
+            "default_suspend_after_days": DEFAULT_REFRESH_SUSPEND_DAYS,
         },
     )
 

@@ -517,6 +517,16 @@ function staleBadgeHtml(r) {
         + EYE_OFF_SVG + 'unseen</span>';
 }
 
+function refreshPausedBadgeHtml(r) {
+    if (!r.refresh_suspended_at) return '';
+    var d = new Date(r.refresh_suspended_at);
+    var when = isNaN(d.getTime()) ? r.refresh_suspended_at : d.toLocaleDateString();
+    return '<span class="ui-badge info" title="'
+        + escAttr('Not viewed for a while, so scheduled refreshes are paused since ' + when
+            + '. Resume to rebuild and restart the schedule.')
+        + '">Auto-refresh paused</span>';
+}
+
 /* A report that runs live queries when opened — data is fetched at view time,
    not baked into the last build. The pulsing dot separates it from a normal
    status badge. Server-gated: r.live is already false when the org disabled
@@ -558,6 +568,7 @@ function cardHtml(r) {
         +   (r.studio ? '<span class="studio-badge">' + r.studio.toUpperCase() + '</span>' : '')
         +   tags
         +   staleBadgeHtml(r)
+        +   refreshPausedBadgeHtml(r)
         + '</div>'
         + '<div class="card-footer">'
         +   '<span>' + (r.last_run ? 'Updated ' + relativeTime(r.last_run) : 'Not yet run') + '</span>'
@@ -2148,6 +2159,10 @@ function _opsActionsCell(r, isRunning, isQueued) {
             + '<button class="ops-run-menu-item" onclick="event.stopPropagation(); opsRun(\'' + r.slug + '\',\'debug-fresh\')">&#128269; Debug fresh<span class="ops-run-menu-hint">verbose + no cache</span></button>'
             + '</div></div>';
     }
+    if (r.refresh_suspended_at) {
+        h += '<button class="ops-row-btn" onclick="event.stopPropagation(); opsResumeRefresh(\'' + r.slug + '\')"'
+            + ' title="Rebuild now and restart the refresh schedule">Resume</button>';
+    }
     h += '<details class="ops-secondary" onclick="event.stopPropagation()">'
         + '<summary class="ops-row-btn">More</summary><div class="ops-secondary-menu">';
     if (r.has_output) {
@@ -2416,6 +2431,23 @@ function opsRun(slug, mode) {
             'The run request could not be confirmed: ' + (error.message || 'network error'));
         showToast('Run request could not be confirmed: ' + (error.message || 'network error'), 'error');
         _opsRefreshAfterAction(slug, false);
+    });
+}
+function opsResumeRefresh(slug) {
+    studioFetch('/api/reports/' + encodeURIComponent(slug) + '/resume_refresh', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+    }).then(function(resp) {
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        return resp.json();
+    }).then(function(data) {
+        if (!data || !data.ok) throw new Error((data && (data.message || data.error)) || 'Resume was not accepted');
+        var r = reports.find(function(x) { return x.slug === slug; });
+        if (r) r.refresh_suspended_at = null;
+        showToast('Auto-refresh resumed' + (r ? ' for ' + r.name : ''), 'success');
+        _opsRefreshAfterAction(slug, true);
+        renderOperations();
+    }).catch(function(error) {
+        showToast('Could not resume auto-refresh: ' + (error.message || 'network error'), 'error');
     });
 }
 function opsStop(slug) {

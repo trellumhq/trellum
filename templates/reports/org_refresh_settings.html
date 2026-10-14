@@ -1,0 +1,31 @@
+{% extends "settings_base.html" %}
+{% block title %}Auto-refresh — {{ org.name }}{% endblock %}
+{% block settings %}
+<h1>Auto-refresh</h1>
+<p class="muted">Scheduled reports rebuild on their cron whether or not anyone still opens
+  them, which costs warehouse time and worker capacity. When a report has gone this many
+  days without a view, its scheduled refresh is <strong>suspended</strong>: the schedule
+  stays in <code>report.yaml</code>, but it no longer fires. Reports with an enabled email
+  schedule or schedule-triggered alert are never suspended, since the people receiving
+  those never open the portal. A suspended report is resumed manually by a developer with
+  <strong>Resume auto-refresh</strong>, which also queues an immediate rebuild.</p>
+
+<div class="panel formrow" id="refreshPolicyPanel">
+  <form id="refreshPolicyForm" data-settings-form data-settings-save method="post" action="/orgs/{{ org.slug }}/api/refresh_policy">
+    {% csrf_token %}
+    <div style="max-width:320px">
+      <label for="refreshPolicySuspendDays">Suspend after (days without a view)</label>
+      <input class="ui-input" type="number" min="0" step="1"
+             id="refreshPolicySuspendDays" name="suspend_after_days"
+             value="{{ suspend_after_days|default_if_none:'' }}"
+             placeholder="{{ default_suspend_after_days }} (default)">
+      <span class="helptext">Blank = the default ({{ default_suspend_after_days }} days).
+        A new report gets a full window before it can be suspended, and resuming restarts
+        the clock. <strong>Set to 0 to never suspend</strong> in this organization.</span>
+    </div>
+    <div id="refreshPolicyStatus" data-settings-status data-settings-dirty-status class="muted" role="status" aria-live="polite" style="margin-top:14px"></div>
+    <button type="submit" class="ui-btn primary" style="margin-top:14px">Save changes</button>
+  </form>
+</div>
+
+{% endblock %}

@@ -69,6 +69,7 @@ studio_patterns = [
     path("api/reports/<str:slug>/log", report_views.api_report_log),
     path("api/reports/<str:slug>/validation", report_views.api_report_validation),
     path("api/reports/<str:slug>/run", report_views.api_report_run),
+    path("api/reports/<str:slug>/resume_refresh", report_views.api_report_resume_refresh),
     path("api/reports/<str:slug>/stop", report_views.api_report_stop),
     # Scheduled email delivery (personal, VIEWER-gated — see the views for
     # why this differs from the DEVELOPER-gated run controls above). Failure
@@ -315,6 +316,13 @@ urlpatterns = [
         report_views.api_live_query_policy,
         name="api-org-live-query-policy",
     ),
+    # Org-level idle auto-refresh suspension threshold: same ownership
+    # rationale as share_policy above.
+    path(
+        "orgs/<slug:org_slug>/api/refresh_policy",
+        report_views.api_refresh_policy,
+        name="api-org-refresh-policy",
+    ),
     # Org settings -> Appearance: the org's default mode + the per-studio-
     # override lock -- see apps.orgs.views.appearance_settings and
     # apps.core.themes.resolve_studio_theme rungs 1/3.
@@ -447,6 +455,7 @@ urlpatterns = [
         report_views.org_live_query_settings,
         name="org-live-queries",
     ),
+    path("orgs/<slug:org_slug>/settings/auto-refresh", report_views.org_refresh_settings, name="org-refresh"),
     path("orgs/<slug:org_slug>/settings/invites", org_views.invites, name="org-invites"),
     path("orgs/<slug:org_slug>/settings/api-keys", account_views.org_api_keys_view, name="org-api-keys"),
     path(
