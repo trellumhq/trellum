@@ -496,6 +496,7 @@ class AnnotationPostgresTests(TransactionTestCase):
         source = Path(self.temporary.name) / "import"
         (source / "reports" / "imported").mkdir(parents=True)
         (source / "reports" / "imported" / "report.yaml").write_text("name: Imported\n")
+        (source / "reports" / "imported" / "generator.py").write_text("def generate(): return []\n")
         (source / "data-sources").mkdir()
         (source / "data-sources" / "config.yaml").write_text("{}")
         (self.root_a / ".annotation-workspace").write_text("corrupt")
@@ -565,6 +566,7 @@ class AnnotationPostgresTests(TransactionTestCase):
         from apps.reports.scan import sync_studio_registry
         directory = self.studio.reports_dir / "atomic"
         directory.mkdir(parents=True)
+        (directory / "generator.py").write_text("def generate(): return []\n")
         (directory / "report.yaml").write_text('name: Atomic\nannotations:\n  events: [{date: 2020-01-01, label: atomic}]\n')
         with patch("apps.reports.annotation_projection.sync_report_declarations", side_effect=RuntimeError("injected projection failure")), self.assertRaises(RuntimeError):
             sync_studio_registry(self.studio)
