@@ -906,8 +906,11 @@ class StudioGitSync:
             update_fields=[*consumed, "last_synced_sha", "last_sync_at", "pending_changes", "last_error"]
         )
         row.save()
-        from apps.reports.annotation_reconciliation import authoritative_handoff
-        authoritative_handoff(self.studio, to_sha)
+        from apps.reports.annotation_reconciliation import WorkspaceUnavailable, authoritative_handoff
+        try:
+            authoritative_handoff(self.studio, to_sha)
+        except WorkspaceUnavailable:
+            logger.warning("annotation workspace unavailable for studio=%s", self.studio.pk)
 
         changed = sorted(added | modified | removed)
         logger.info(
