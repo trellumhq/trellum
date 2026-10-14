@@ -119,3 +119,11 @@ def test_historical_unbuilt_declarations_without_scan_or_metadata(studio_tree,at
     assert all(row.delta_pct is None for row in rows)
     assert all(row.payload_state in ('missing','unavailable') for row in rows)
     assert not summary.has_output
+
+
+def test_declaration_limit_never_publishes_partial_result_rows(studio_tree):
+    report,path=fixture(studio_tree,{'ab_test':[{'test_name':str(i)} for i in range(257)]},{'components':{}})
+    assert reconcile(report.pk)['status']=='ready'
+    summary=report.source_summary
+    assert summary.experiment_state=='oversized' and not summary.experiments.exists()
+    assert summary.claims.count()==1

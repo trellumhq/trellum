@@ -124,3 +124,20 @@ def test_details_data_source_qualifier(studio_tree,qualifier):
     reconcile(report.pk)
     details=report.source_summary.runtime['details']
     assert details.get('data_source')==(qualifier if qualifier in ('mock','real') else None)
+
+
+def test_scope_aggregate_exception_has_no_success_prefix_or_extra_read(studio_tree,monkeypatch):
+    report,path=setup(studio_tree)
+    (path/'data.json').write_bytes(padded({'components':{},'_scopeFiles':{'first':'data_a.json'}},16*MIB))
+    (path/'data_a.json').write_bytes(padded({'components':{'a':{'type':'ab_compare','body':{'kpi_rows':[]}}}},10*MIB+1))
+    reads=[]
+    original=storage.read_summary_artifact
+    def observe(*args,**kwargs):
+        reads.append(args[2]);return original(*args,**kwargs)
+    monkeypatch.setattr(storage,'read_summary_artifact',observe)
+    result=reconcile(report.pk)
+    summary=report.source_summary
+    assert summary.experiment_state=='oversized' and summary.experiments.get().delta_pct is None
+    assert summary.preview_state=='ready' and summary.workspace_version==1 and summary.claims.count()==1
+    assert reads.count('data.json')==reads.count('data_a.json')==1
+    assert 26*MIB<result['bytes']<INSPECTION_BYTES
