@@ -203,3 +203,46 @@ An Alpha-target denial for the beta full viewer does not certify its own-Beta
 condition. C20 member write endpoints and 1000-selection HTTP Save remain
 pending, as do Effective/report/share and later member/lifecycle cohorts. This
 cohort pass is not complete C06/C07/L3 or full portal acceptance.
+
+## Key journeys (small set, not the permission matrix)
+
+The full 7,470-case principal x condition matrix is explicitly out of scope.
+`bindings.KEY_BINDINGS` instead binds ten of the most common flows to reviewed
+route/method/action tuples, each executed in a real browser against the owned
+Gunicorn/PostgreSQL unit (and, for operations, an owned runner-role worker):
+
+| Shard | Journey | Node |
+| --- | --- | --- |
+| L3 | 1 Login lands on the dashboard | `test_key_journeys_l3.py::test_login_lands_on_dashboard` |
+| L2 | 2 Catalog search, paging, open a report, Back restores page and scroll | `test_key_journeys_l2.py::test_catalog_search_open_back` |
+| L2 | 3 Metrics search, metric detail, comparison | `test_metrics_detail_comparison` |
+| L2 | 4 Analytics and Experiments primary rows, then secondary content | `test_analytics_experiments_progressive` |
+| L3 | 5 Schedules list, create, edit | `test_key_journeys_l3.py::test_schedules_list_create_edit` |
+| L3 | 6 Alerts list, edit, save | `test_alerts_list_edit_save` |
+| L4 | 7 Invite a member (copyable link, no mail), accept, change studio access | `test_key_journeys_l4.py::test_invite_member_and_change_access` |
+| L2/L5 | 8 Operations filter; run a report, read its log, registry refresh to a terminal state | `test_operations_filter`, `test_key_journeys_l5.py::test_operations_run_log_registry_refresh` |
+| L4 | 9 Datasource test: success (file source) and bounded timeout (silent local endpoint) | `test_datasource_connection_test` |
+| L2 | 10 Selected-report viewer sees and opens only authorized reports | `test_selected_scope_viewer` |
+
+Chromium desktop (1440x900) is the default. A WebKit mobile (390x844) variant,
+marked `@pytest.mark.heavy`, exists only for journeys 1, 2 and 8. The runner
+executes heavy variants too; ordinary `scripts/test.py` runs exclude `portal_e2e`.
+`worker`-marked tests start a runner-role worker beside their private unit.
+
+Run a shard (each owns its own PostgreSQL container; hold the runtime lock):
+
+```sh
+flock /tmp/trellum-portal-runtime.lock python scripts/portal_e2e.py --shard L2 --artifacts /absolute/new/dir
+```
+
+Every binding records the server-observed request (route, method, action, actor
+and session digest), explicit assertion checkpoints and the pytest outcome; a
+skipped, failed or uncollected node blocks. `bindings.OUT_OF_SCOPE_REMAINDER`
+is a reviewed scope decision: `coverage_summary` then reports the unbound policy
+tuples as `out_of_scope_policy_tuples` (counted, never hidden) instead of
+`pending_policy_tuples`, and the gate passes once every bound journey passes.
+The L1 navigation shard has no key-journey binding and is listed under
+`out_of_scope_shards`. Without that constant the original fail-closed behaviour
+applies. Known limits: the datasource "success" is a file source because
+the network database drivers are not installed in the test environment, and the
+seed's invalid metric ids are removed from the private unit before the build.

@@ -138,7 +138,7 @@ def validate_execution(bindings, collected, outcomes, evidence, events, *, sourc
             "executed_bindings": len(bindings), "empty": not bindings}
 
 
-def coverage_summary(ledger, bindings, execution, reviewed_requirements=None):
+def coverage_summary(ledger, bindings, execution, reviewed_requirements=None, out_of_scope=None):
     planned = requirements(ledger)
     # An explicit condition catalog must bind every planned tuple before full
     # coverage. Phase 1 has no journey bindings and reports every tuple pending.
@@ -152,6 +152,16 @@ def coverage_summary(ledger, bindings, execution, reviewed_requirements=None):
         required = reviewed_requirements.get(policy_key)
         if not required or any(len(key) != 8 or tuple(key[:4]) != policy_key[:4] for key in required) or not set(required) <= actual:
             pending.append(row)
+    # An explicit, reviewed scope decision (never inferred) may declare the
+    # unbound remainder out of scope. The bound key journeys must still execute
+    # and pass; the remainder is counted, not silently dropped or left pending.
+    if out_of_scope:
+        return {"status": "blocked" if execution["status"] != "pass" else "pass",
+                "scope": "key journeys only; the remainder is explicitly out of scope",
+                "out_of_scope_reason": out_of_scope,
+                "planned_scenarios": sum(len(row["scenarios"]) for row in ledger["routes"]),
+                "required_policy_tuples": len(planned), "pending_policy_tuples": [],
+                "out_of_scope_policy_tuples": len(pending), "execution": execution}
     return {"status": "blocked" if pending or execution["status"] != "pass" else "pass",
             "planned_scenarios": sum(len(row["scenarios"]) for row in ledger["routes"]),
             "required_policy_tuples": len(planned), "pending_policy_tuples": pending,

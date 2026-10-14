@@ -163,7 +163,7 @@ class Runtime:
         return runtime
 
     @contextmanager
-    def unit(self, label, *, legacy_baseline=False):
+    def unit(self, label, *, legacy_baseline=False, worker=False):
         import psycopg
         from psycopg import sql
         name = "unit_" + uuid.uuid4().hex[:16]
@@ -171,6 +171,7 @@ class Runtime:
         server = None
         log = None
         created = False
+        runner = None
         try:
             with psycopg.connect(self.db_url("postgres"), autocommit=True) as db:
                 db.execute(sql.SQL("CREATE DATABASE {} TEMPLATE {}").format(sql.Identifier(name), sql.Identifier(self.template_db)))
@@ -206,8 +207,20 @@ class Runtime:
                     time.sleep(.25)
             else:
                 raise RuntimeError("Gunicorn readiness timeout")
+            if worker:
+                # A runner-role worker claims report runs and maintenance actions
+                # for this unit only; it never starts the cron coordinator.
+                runner = subprocess.Popen([sys.executable, "manage.py", "runworker", "--role=runner"], cwd=ROOT, env=env,
+                    stdout=log, stderr=subprocess.STDOUT)
             yield unit
         finally:
+            if runner is not None:
+                runner.terminate()
+                try:
+                    runner.wait(timeout=20)
+                except subprocess.TimeoutExpired:
+                    runner.kill()
+                    runner.wait(timeout=5)
             if server is not None:
                 server.terminate()
                 try:

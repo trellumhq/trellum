@@ -12,7 +12,7 @@ import hashlib
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from apps.core.tests.portal_e2e.bindings import (BINDINGS, CONDITIONS, INFRASTRUCTURE_CONDITIONS,
-    JOURNEY_MODULES, REVIEWED_REQUIREMENTS, binding_digest, infrastructure_bindings)
+    JOURNEY_MODULES, OUT_OF_SCOPE_REMAINDER, REVIEWED_REQUIREMENTS, binding_digest, infrastructure_bindings)
 from apps.core.tests.portal_e2e.coverage import coverage_summary, source_digest, validate_execution
 from apps.core.tests.portal_e2e.runtime import Runtime
 from apps.core.tests.portal_e2e.bindings import COHORT,COHORT_MODULE
@@ -20,7 +20,8 @@ from apps.core.tests.portal_e2e.coverage import validate_cohort,aggregate_cohort
 
 BASELINE = ['apps/core/tests/portal_e2e/test_baseline.py']
 INFRASTRUCTURE = ['apps/core/tests/portal_e2e/' + name for name in (
-    'test_coverage_contract.py', 'test_runtime_contract.py', 'test_fixture_isolation.py', 'test_runtime_smoke.py')]
+    'test_coverage_contract.py', 'test_runtime_contract.py', 'test_fixture_isolation.py', 'test_runtime_smoke.py',
+    'test_key_journeys_contract.py')]
 SHARDS = {'L0': BASELINE, **JOURNEY_MODULES}
 
 
@@ -113,7 +114,7 @@ def main():
     result = {'shard': args.shard, 'sha': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
               'seed': 'portal-baseline-v2', 'status': 'blocked', 'command': sys.argv, 'cwd': str(ROOT), 'python': sys.executable,
               'runtime_module': str(Path(sys.modules[Runtime.__module__].__file__).resolve()),
-              'pending_shards': [shard for shard, modules in SHARDS.items() if not modules]}
+              ('out_of_scope_shards' if OUT_OF_SCOPE_REMAINDER else 'pending_shards'): [shard for shard, modules in SHARDS.items() if not modules]}
     result['dirty_tree'] = bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT, text=True).strip())
     result['source_digest'] = source_digest(ROOT)
     result['binding_digest'] = binding_digest()
@@ -131,7 +132,7 @@ def main():
         if args.browser=='both' and not (args.cohort or args.all):raise RuntimeError('--browser both requires --cohort or --all')
         if args.cohort and args.infrastructure:raise RuntimeError('--cohort and --infrastructure have distinct scopes')
         if not args.cohort and not args.infrastructure and not args.all and not SHARDS[args.shard]:
-            result['reason'] = f'{args.shard} has no implemented journey bindings; empty shards never pass'
+            result['reason'] = f'{args.shard} has no implemented journey bindings; empty shards never pass' + (' (explicitly out of scope for the key-journey set)' if OUT_OF_SCOPE_REMAINDER else '')
             result['coverage'] = coverage_summary(ledger, BINDINGS, {'status': 'blocked', 'errors': ['no executed journey bindings']})
         else:
             with Runtime(artifacts, browser='chromium' if args.browser=='both' else args.browser, reports=args.reports, members=args.members,
@@ -175,7 +176,7 @@ def main():
             execution = validate_execution(selected_bindings, collected, outcomes, evidence, lines(artifacts / 'work.jsonl'),
                 source=result['source_digest'], binding_hash=result['binding_digest'], conditions=CONDITIONS,
                 ledger=selected_ledger, identity_registry=registry)
-            result['coverage'] = coverage_summary(selected_ledger, selected_bindings, execution, REVIEWED_REQUIREMENTS)
+            result['coverage'] = coverage_summary(selected_ledger, selected_bindings, execution, REVIEWED_REQUIREMENTS, OUT_OF_SCOPE_REMAINDER)
             result['status'] = 'pass' if (runs and all(run['status'] == 'pass' for run in runs)) or (args.cohort and not args.all and result.get('cohort',{}).get('status')=='pass') else 'blocked'
             if result.get('cohort',{}).get('status')=='blocked':result['status']='blocked'
             if args.infrastructure or args.all:
