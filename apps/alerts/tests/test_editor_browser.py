@@ -183,7 +183,7 @@ def test_browser_recipient_and_timezone_pickers(engine, rule, login):
         expect(page.locator("[data-alert-preview-status]")).to_have_count(0)
         assert page.locator("#alertForm").get_attribute("data-browser-timezone-default") is not None
         page.locator('input[name="trigger"][value="schedule"]').check()
-        timezone_picker = page.locator("[data-choice-picker]").nth(1)
+        timezone_picker = page.locator("#alertForm [data-choice-picker]").nth(1)
         timezone_picker.locator(".ui-picker-trigger").click()
         search = timezone_picker.locator(".ui-picker-search")
         expect(search).to_be_visible()

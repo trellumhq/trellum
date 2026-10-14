@@ -34,13 +34,22 @@ def test_inactive_recipient_is_filtered_and_second_batch_revokes(org_admin, repo
     assert DeliveryPresentationBatch([row]).eligible(row) == []
 
 
-def test_empty_report_scope_denies_without_an_impossible_lookup(studio, django_assert_num_queries):
+def test_empty_report_scope_denies_without_an_impossible_lookup(studio, make_user, django_assert_num_queries):
     from types import SimpleNamespace
+    from django.contrib.auth.models import AnonymousUser
     from django.http import Http404
     from apps.core.permissions import EffectiveRoles
     from apps.reports.views import _get_report
-    request = SimpleNamespace(studio=studio, org_roles=EffectiveRoles())
+    # Scope is now enforced in SQL from request.user (C21): an unauthenticated
+    # request never reaches the database, and a user with no membership gets one
+    # bounded scoped lookup that matches nothing.
+    anonymous = AnonymousUser()
+    request = SimpleNamespace(studio=studio, org_roles=EffectiveRoles(), user=anonymous)
     with django_assert_num_queries(0), pytest.raises(Http404):
+        _get_report(request, 'inaccessible')
+    outsider = make_user('empty-scope-outsider@example.test')
+    request = SimpleNamespace(studio=studio, org_roles=EffectiveRoles(), user=outsider)
+    with django_assert_num_queries(1), pytest.raises(Http404):
         _get_report(request, 'inaccessible')
 
 

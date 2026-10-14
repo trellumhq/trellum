@@ -107,6 +107,12 @@ class MeasureRequests:
             try:
                 for source_name, data in (('query',request.GET),('body',request.POST)):
                     parameters[source_name]={name:parameter_fingerprint(data.getlist(name)) for name in names if name in data}
+                    if 'reports__selection' in data:
+                        # C20b compact transport: the effective report selection is the
+                        # server-derived (packet selected - editable) | checked set.
+                        from apps.core.compact_choices import decode_compact_selection
+                        selection=decode_compact_selection(data,'reports')
+                        if not selection.error:parameters[source_name]['reports']=parameter_fingerprint(list(selection))
             except Exception:
                 parameters['unreadable']=True
             if route:

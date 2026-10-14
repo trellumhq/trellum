@@ -14,6 +14,19 @@ def checked_values(form):
     return form.locator('input[name=reports]:checked').evaluate_all('nodes => nodes.map(n => n.value).sort()')
 
 
+def selected_reports(form,mode):
+    """Effective report draft: C20b renders only the current 25-row page as checkboxes.
+
+    Off-page selections travel in the compact packet (and appear as Remove
+    controls); the server derives (packet selected - editable) | checked.
+    """
+    if mode!='native':return checked_values(form)
+    entries=form_values(form)
+    packet=json.loads(next(value for name,value in entries if name=='reports__selection'))
+    checked={value for name,value in entries if name=='reports'}
+    return sorted((set(packet['selected'])-set(packet['editable']))|checked)
+
+
 def form_values(form):
     return form.evaluate('f => Array.from(new FormData(f).entries())')
 
@@ -90,7 +103,12 @@ def access(page,context,journey,data,capture,mode):
     expect(form).to_be_visible()
     before=journey.database(business_state);audit_before=journey.database(audit_rows)
     expect(form.locator(f'[name=reports][value="{data["reports"]["29"]}"]')).to_be_checked()
-    expect(form.locator(f'[name=reports][value="{data["reports"]["59"]}"]')).to_be_checked()
+    if mode=='native':
+        # Inactive report 59 is outside the first 25-row page: it is a selected off-page row, not a checkbox.
+        expect(form.locator(f'[name=reports][value="{data["reports"]["59"]}"]')).to_have_count(0)
+        expect(form.get_by_role('button',name='Remove Report 59',exact=False)).to_be_visible()
+    else:
+        expect(form.locator(f'[name=reports][value="{data["reports"]["59"]}"]')).to_be_checked()
     if mode=='native':
         form.locator(f'[name=reports][value="{data["reports"]["1"]}"]').uncheck()
         page.get_by_role('button',name='Next reports',exact=True).click()
@@ -123,11 +141,11 @@ def access(page,context,journey,data,capture,mode):
         option=picker.locator(f'[name=reports][value="{data["reports"]["50"]}"]')
         expect(option).to_be_visible();option.check()
         page.keyboard.press('Escape')
-        assert checked_values(form)==data['variables']['saved_reports']
+        assert selected_reports(form,mode)==data['variables']['saved_reports']
         assert 'missing from repository' in form.text_content() and 'inactive' in form.text_content()
         no_beta(page.content());assert journey.database(business_state)==before
         capture.record('access-search',capture.event('route-328','GET'),('draft','search','scope','missing-inactive-labels','no-write'))
-    assert checked_values(form)==data['variables']['saved_reports']
+    assert selected_reports(form,mode)==data['variables']['saved_reports']
     # Add a real foreign ID only as an invalid request draft. Product APIs and
     # HTML still reach the live origin and perform authoritative validation.
     form.evaluate("(f,value) => {let c=document.createElement('input');c.type='checkbox';c.name='reports';c.value=value;c.checked=true;c.id='foreign-draft';f.append(c);if(window.TrellumSettingsForms)TrellumSettingsForms.trackControls(f,[c]);c.dispatchEvent(new Event('input',{bubbles:true}));}",str(data['beta_report']))
@@ -138,11 +156,19 @@ def access(page,context,journey,data,capture,mode):
     form=page.locator('[data-studio-access]')
     error=form.locator('[data-settings-error],.errorlist').first
     visible_geometry(error)
-    assert checked_values(form)==data['variables']['invalid_reports']
+    assert selected_reports(form,mode)==data['variables']['invalid_reports']
     expect(form.locator('[name=role]')).to_have_value('viewer')
     no_beta(page.content());assert journey.database(business_state)==before
     capture.record('access-invalid',capture.event('route-297','POST'),('draft','visible-error','scope','no-write'))
-    form.locator(f'[name=reports][value="{data["beta_report"]}"]').uncheck()
+    if mode=='native':
+        # The foreign identity is off-page: C20b exposes it as a browse-only Remove control, never a write.
+        with page.expect_navigation():
+            form.get_by_role('button',name='Remove Selected report is unavailable').click()
+        form=page.locator('[data-studio-access]')
+        assert selected_reports(form,mode)==data['variables']['saved_reports']
+        no_beta(page.content());assert journey.database(business_state)==before
+    else:
+        form.locator(f'[name=reports][value="{data["beta_report"]}"]').uncheck()
     save=form.get_by_role('button',name='Save changes',exact=True)
     save.scroll_into_view_if_needed();y=page.evaluate('scrollY')
     with page.expect_response(lambda r:r.request.method=='POST' and '/settings/groups/' in r.url) as saved:
@@ -160,7 +186,7 @@ def access(page,context,journey,data,capture,mode):
     saved_event=capture.event('route-297','POST')
     assert sum(row['method']=='POST' and row['action']=='action=studio_access' and row['status'] in (200,302) for row in journey.events())==(2 if mode=='native' else 1)
     page.reload()
-    assert checked_values(page.locator('[data-studio-access]'))==data['variables']['saved_reports']
+    assert selected_reports(page.locator('[data-studio-access]'),mode)==data['variables']['saved_reports']
     checkpoints=('db-persistence','reload-persistence','visible-feedback','audit-delta','single-save','scope')
     capture.record('access-save',saved_event,checkpoints)
     capture.record('access-save-after-browse',saved_event,(*checkpoints,'prior-browse'))
@@ -240,8 +266,13 @@ def test_operator_bounded_access_save(cohort_case):
     assert journey.database(assignments,data)==set(data['saved'])
     journey.database(assert_audit_delta,before,data)
     response=session.get(journey.unit.origin+path,timeout=20)
-    actual=html_checked_reports(response.text)
-    assert actual==data['variables']['saved_reports'];no_beta(response.text)
+    # C20b renders only the current 25-row page as checkboxes; the complete saved
+    # selection is carried by the compact packet and off-page Remove controls.
+    packet=json.loads(next(row['value'] for row in InputParser(response.text).inputs if row.get('name')=='reports__selection'))
+    assert sorted(packet['selected'])==data['variables']['saved_reports']
+    assert html_checked_reports(response.text)==sorted(set(packet['selected'])&set(packet['editable']))
+    assert set(packet['selected'])-set(packet['editable'])<set(packet['selected'])
+    no_beta(response.text)
     assert sum(row['method']=='POST' and row['route']=='route-297' for row in journey.events())==1
     capture.record('operator-save',capture.event('route-297','POST'),('db-persistence','reload-persistence','audit-delta','single-save','scope'))
     session.close()
