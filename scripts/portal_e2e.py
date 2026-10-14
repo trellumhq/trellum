@@ -69,8 +69,10 @@ def run_cohort(runtime,env,artifacts,executors,registry,ledger):
             'collected':result['collected'],'outcomes':result['outcomes'],'execution':execution}
         (artifacts/('cohort-'+executor)/'bundle.json').write_text(json.dumps(bundle,indent=2))
         bundles.append(bundle)
-    return {'scope':'members-access cohort only','bundles':bundles,'matrix':aggregate_cohort(bundles),
-            'status':'pass' if bundles and all(row['status']=='pass' for row in bundles) else 'blocked',
+    matrix=aggregate_cohort(bundles)
+    complete=set(executors)=={'chromium','webkit','http'}
+    return {'scope':'members-access cohort only','bundles':bundles,'matrix':matrix,
+            'status':'pass' if bundles and all(row['status']=='pass' for row in bundles) and (not complete or matrix['status']=='pass') else 'blocked',
             'full_journey_gate':'pending; first cohort never certifies the full shard'}
 
 

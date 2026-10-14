@@ -111,8 +111,8 @@ def cohort_bindings(executor):
         else:
             add('route-322','POST',None,principal,'members-browse',node,('search','draft','scope','counts','no-write'),
                 body={'q':'$member_search','page':'1','role':'viewer','user_id':'$candidate'},**common)
-            add('route-322','POST',None,principal,'members-invalid-role',node,('visible-error','draft','no-write'),
-                body={'page':'2','role':'not-a-role','user_id':'$candidate'},status=400,**common)
+            add('route-322','POST',None,principal,'members-invalid-role',node,('visible-error','draft','page-preserved','search','no-write'),
+                body={'q':'Cohort person','page':'2','role':'not-a-role','user_id':'$candidate'},status=400,**common)
     if executor == 'http':
         for principal in COHORT_PRINCIPALS:
             node=COHORT_MODULE+f'::test_authorization_boundaries[{principal}]'

@@ -39,7 +39,7 @@ def overview(page,journey,data,capture):
     path=f'/orgs/alpha/settings/groups/{data["summary_group"]}?tab=overview&grant_q='+data['variables']['studio_search']
     page.goto(journey.unit.origin+path)
     expect(page.locator('main')).to_contain_text('3 explicit studio grants.')
-    expect(page.locator('main')).to_contain_text('Cohort studio 2')
+    expect(page.locator('main')).to_contain_text(data['variables']['studio_search'])
     no_beta(page.content());assert journey.database(business_state)==before
     capture.record('overview-discovery',capture.event('route-297','GET'),('counts','search','scope','no-write'))
 
@@ -72,12 +72,12 @@ def member_browse(page,journey,data,capture):
         page.get_by_role('button',name='Search',exact=True).click()
     assert response.value.status==400
     expect(page.locator('.ui-pager-status')).to_contain_text('26–50')
-    expect(page.locator('[name=q]')).to_have_value('Cohort person')
+    expect(page.locator('#studio-member-choice [name=q]')).to_have_value('Cohort person')
     visible_geometry(page.locator('#memberChoiceRoleError'))
     expect(page.locator('input[name=user_id]:checked')).to_have_value(data['variables']['candidate'])
     expect(page.locator('select[name=role]')).to_have_value('not-a-role')
     assert journey.database(business_state)==before
-    capture.record('members-invalid-role',capture.event('route-322','POST',status=400),('visible-error','draft','no-write'))
+    capture.record('members-invalid-role',capture.event('route-322','POST',status=400),('visible-error','draft','page-preserved','search','no-write'))
     assert not any(row['route']=='route-312' for row in journey.events())
 
 
