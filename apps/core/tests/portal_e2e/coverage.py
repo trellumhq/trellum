@@ -51,20 +51,29 @@ def validate_execution(bindings, collected, outcomes, evidence, events, *, sourc
     impersonation records both effective and operator identities.
     """
     errors = []
+    if len(collected) != len(set(collected)):
+        errors.append('duplicate collected node')
     keys = Counter(row.key for row in bindings)
     if any(count != 1 for count in keys.values()):
         errors.append("duplicate binding ownership")
+    if any(not isinstance(row, dict) for row in (*evidence, *events)):
+        return {'status': 'blocked', 'errors': ['malformed evidence shape'], 'executed_bindings': 0}
+    def evidence_key(row):
+        value = row.get('key')
+        if not isinstance(value, (list, tuple)) or len(value) != 8 or any(not isinstance(item, (str, type(None))) for item in value):
+            return ()
+        return tuple(value)
     event_ids = Counter(event.get("event_id") for event in events)
     if any(count != 1 for count in event_ids.values()):
         errors.append("duplicate request event")
-    evidence_keys = Counter(tuple(row.get("key", ())) for row in evidence)
+    evidence_keys = Counter(evidence_key(row) for row in evidence)
     if any(count != 1 for count in evidence_keys.values()):
         errors.append("duplicate evidence ownership")
     known = set(keys)
     if set(evidence_keys) - known:
         errors.append("unbound evidence")
     observed = {event["event_id"]: event for event in events if event.get("event_id")}
-    by_key = {tuple(row.get("key", ())): row for row in evidence}
+    by_key = {evidence_key(row): row for row in evidence}
     route_map = {row["id"]: row for row in (ledger or {}).get("routes", ())}
     for binding in bindings:
         prefix = str(binding.key) + ": "
@@ -102,7 +111,7 @@ def validate_execution(bindings, collected, outcomes, evidence, events, *, sourc
         expected_actor = (identity_registry or {}).get(binding.principal)
         if expected_actor is None or any(actor.get(name) != expected_actor.get(name) for name in ('actor_id', 'impersonator_id')):
             errors.append(prefix + "fixture identity mismatch")
-        if binding.principal != 'anonymous' and not actor.get('session_digest'):
+        if expected_actor and expected_actor.get('actor_id') is not None and not actor.get('session_digest'):
             errors.append(prefix + "missing authenticated session proof")
         refs = row.get("events", ())
         if not refs:
@@ -120,6 +129,8 @@ def validate_execution(bindings, collected, outcomes, evidence, events, *, sourc
                 errors.append(prefix + "observed identity mismatch")
             if event.get("principal") != binding.principal or event.get("condition") != binding.condition:
                 errors.append(prefix + "wrong principal/condition")
+            if not isinstance(event.get('status'), int):
+                errors.append(prefix + 'missing actual response status')
     return {"status": "pass" if bindings and not errors else "blocked", "errors": errors,
             "executed_bindings": len(bindings), "empty": not bindings}
 

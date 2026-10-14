@@ -99,6 +99,11 @@ class Journey:
         self.checkpoints.add(name)
 
     def record(self, *, key=None, event_ids=(), scope='infrastructure'):
+        if key is None and scope == 'infrastructure':
+            from .bindings import infrastructure_bindings
+            matches = [row for row in infrastructure_bindings(self.unit.env['PORTAL_E2E_BROWSER']) if row.node_id == self.node_id]
+            assert len(matches) == 1, 'infrastructure record must have an explicit binding'
+            key = matches[0].key
         row = {'scope': scope, 'node_id': self.node_id, 'source': self.source,
                'binding_hash': self.binding_hash, 'correlation': self.correlation,
                'checkpoints': sorted(self.checkpoints), 'actor': self.actor,

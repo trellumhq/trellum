@@ -9,7 +9,7 @@ def valid_case():
     binding = Binding('route-account', 'POST', 'action=profile', 'org-admin',
                       'profile-save', 'test_profile[mobile]', ('actor', 'db', 'reload'))
     actor = {'principal': 'org-admin', 'actor_id': 17, 'session_digest': 'hashed-session', 'impersonator_id': None}
-    event = {'event_id': 'request-1', 'complete': True, 'node_id': binding.node_id,
+    event = {'event_id': 'request-1', 'complete': True, 'status': 302, 'node_id': binding.node_id,
              'correlation': 'window-1', 'route': binding.route, 'method': binding.method,
              'action': binding.action, 'principal': binding.principal, 'condition': binding.condition,
              **{key: actor[key] for key in ('actor_id', 'session_digest', 'impersonator_id')}}
@@ -33,6 +33,7 @@ def test_valid_executed_binding():
     'wrong-route', 'wrong-method', 'wrong-action', 'wrong-principal', 'wrong-condition',
     'wrong-actor', 'wrong-session', 'wrong-impersonator', 'no-actor', 'unreviewed-condition',
     'duplicate-event', 'spoofed-role-header', 'no-session-proof', 'no-identity-registry',
+    'duplicate-collected', 'no-status',
 ])
 def test_mutated_evidence_blocks(mutation):
     case = valid_case()
@@ -64,6 +65,8 @@ def test_mutated_evidence_blocks(mutation):
         row['actor']['actor_id'] = event['actor_id'] = 999
     elif mutation == 'no-session-proof': row['actor']['session_digest'] = event['session_digest'] = None
     elif mutation == 'no-identity-registry': case['identity_registry'] = {}
+    elif mutation == 'duplicate-collected': case['collected'] *= 2
+    elif mutation == 'no-status': event.pop('status')
     assert validate_execution(**case)['status'] == 'blocked'
 
 
@@ -106,3 +109,10 @@ def test_binding_hash_tracks_conditions_and_obligations():
     digest = binding_digest(case['bindings'], case['conditions'])
     assert digest != binding_digest(case['bindings'], {'profile-save': 'different'})
     assert digest != binding_digest([], case['conditions'])
+
+
+@pytest.mark.parametrize('payload', [None, {}, {'key': None}, {'key': [['unhashable']]}, 'not-an-object'])
+def test_malformed_evidence_shape_blocks(payload):
+    case = valid_case()
+    case['evidence'] = [payload]
+    assert validate_execution(**case)['status'] == 'blocked'

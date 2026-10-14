@@ -78,7 +78,7 @@ def test_shared_ajax_group_save(journey, size):
             journey.assert_actor(context, 'org-admin')
             page.goto(origin + path)
             form = page.locator('#groupSettingsForm')
-            expect(form).to_have_attribute('data-settings-initialized', '')
+            expect(form).to_have_attribute('data-settings-initialized', '1')
             name = 'Infrastructure edited group'
             form.locator('input[name=name]').fill(name)
             with page.expect_response(lambda response: response.request.method == 'POST' and response.url == origin + path) as saved:

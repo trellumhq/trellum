@@ -88,6 +88,10 @@ class MeasureRequests:
         # Header labels are attribution supplied by the test, not an auth bypass.
         if len(role)>40 or len(phase)>40:
             role,phase = 'invalid-label','invalid-label'
+        if role not in self.principals:
+            role = 'unclassified'
+        if phase not in {'unlabeled', 'registry-cache-cold', 'registry-cache-warm', 'cold', 'warm'}:
+            phase = 'invalid-label'
         def label(name, pattern, maximum):
             value = request.headers.get(name, '')
             return value if len(value) <= maximum and re.fullmatch(pattern, value) else ''
