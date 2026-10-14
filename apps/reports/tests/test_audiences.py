@@ -274,7 +274,7 @@ def test_bulk_permission_query_count_does_not_grow_per_user(
         attach_group(user, group)
     ReportPermissionGrant.objects.create(grant=group.grants.get(), report=private)
     assert private.studio.org == org  # Resolve the relation outside the measured bulk walk.
-    with django_assert_num_queries(7):
+    with django_assert_num_queries(6):
         result = bulk_can_view_report(users, private)
     assert all(result.values())
 
