@@ -382,31 +382,18 @@ class TestMaintenance:
         assert not cache_dir.exists()
 
     def test_registry_refresh(self, login, developer, prefix, studio_tree, write_report, report_row):
+        from apps.runner import maintenance_actions as maint
+
         write_report("newone")
-        body = login(developer).post(f"{prefix}/api/system/registry/refresh").json()
-        assert body == {"ok": True, "reports": 2, "warning": ""}
-
-    def test_registry_refresh_refused_while_sync_holds_the_lock(self, login, developer, prefix, report_row):
-        import psycopg
-        from django.db import connections
-
-        from apps.runner.gitsync import GITSYNC_LOCK_NAMESPACE
-
-        params = connections["default"].get_connection_params()
-        for k in ("cursor_factory", "context"):
-            params.pop(k, None)
-        with psycopg.connect(**params) as other:
-            with other.cursor() as cur:
-                cur.execute(
-                    "SELECT pg_try_advisory_lock(%s, %s)",
-                    [GITSYNC_LOCK_NAMESPACE, report_row.studio.pk],
-                )
-                assert cur.fetchone()[0] is True
-                resp = login(developer).post(f"{prefix}/api/system/registry/refresh")
-        assert resp.status_code == 409
+        resp = login(developer).post(f"{prefix}/api/system/registry/refresh")
+        assert resp.status_code == 202
         body = resp.json()
-        assert body["ok"] is False
-        assert "sync" in body["message"].lower()
+        assert body["scheduled"] is True and body["state"] == "accepted"
+        assert body["status_url"].endswith(f"/api/system/actions/{body['operation_id']}")
+        assert maint.run_once("test-worker") is True
+        done = login(developer).get(body["status_url"]).json()
+        assert done["state"] == "succeeded"
+        assert (done["reports"], done["warning"], done["ok"]) == (2, "", True)
 
     def test_git_status_unconfigured(self, login, developer, prefix, report_row):
         body = login(developer).get(f"{prefix}/api/system/git/status").json()

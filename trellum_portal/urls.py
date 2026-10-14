@@ -63,6 +63,11 @@ studio_patterns = [
     path("api/system/stop-all", report_views.api_stop_all),
     path("api/system/cache/clear", report_views.api_cache_clear),
     path("api/system/registry/refresh", report_views.api_registry_refresh),
+    path(
+        "api/system/actions/<uuid:action_id>",
+        report_views.api_maintenance_action,
+        name="api-maintenance-action",
+    ),
     path("api/system/git/status", report_views.api_git_status),
     path("api/system/git/sync", report_views.api_git_sync),
     path("api/system/git/check", report_views.api_git_check),

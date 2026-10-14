@@ -152,3 +152,83 @@ class WorkerHeartbeat(models.Model):
 
     def __str__(self) -> str:
         return f"worker {self.worker_id} @ {self.last_beat_at:%H:%M:%S}"
+
+
+class StudioMaintenanceAction(models.Model):
+    """A durable, studio-scoped maintenance action (registry refresh today).
+
+    Deliberately narrow, not a general task queue: ``kind`` is a closed set,
+    the public result is a bounded summary, and at most one action per
+    (studio, kind) is active. The web process only *admits* a row; a runner
+    executes it under a lease. Lease expiry never re-runs a possibly running
+    mutation: it records the outcome as ``unconfirmed``.
+    """
+
+    REGISTRY_REFRESH = "registry_refresh"
+    QUERY_CACHE_CLEAR = "query_cache_clear"  # reserved; not wired to a worker yet
+    KIND_CHOICES = [
+        (REGISTRY_REFRESH, "Registry refresh"),
+        (QUERY_CACHE_CLEAR, "Query cache clear"),
+    ]
+
+    ACCEPTED = "accepted"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    UNCONFIRMED = "unconfirmed"
+    STATE_CHOICES = [
+        (ACCEPTED, "Accepted"), (RUNNING, "Running"), (SUCCEEDED, "Succeeded"),
+        (FAILED, "Failed"), (UNCONFIRMED, "Unconfirmed"),
+    ]
+    ACTIVE_STATES = (ACCEPTED, RUNNING)
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    studio = models.ForeignKey(
+        "studios.Studio", on_delete=models.CASCADE, related_name="maintenance_actions"
+    )
+    org = models.ForeignKey(
+        "orgs.Organization", on_delete=models.CASCADE, related_name="+"
+    )
+    kind = models.CharField(max_length=24, choices=KIND_CHOICES)
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    #: Client-supplied retry key ("" = none). Unique per actor+studio+kind.
+    idempotency_key = models.CharField(max_length=80, blank=True, default="")
+    state = models.CharField(max_length=12, choices=STATE_CHOICES, default=ACCEPTED)
+    accepted_at = models.DateTimeField(default=timezone.now)
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    #: Public, bounded outcome. Never filesystem paths or exception text.
+    message = models.CharField(max_length=300, blank=True, default="")
+    warning = models.CharField(max_length=300, blank=True, default="")
+    reports = models.PositiveIntegerField(null=True, blank=True)
+    worker_id = models.CharField(max_length=100, blank=True, default="")
+    lease_token = models.UUIDField(null=True, blank=True)
+    lease_expires_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["studio", "kind"],
+                condition=models.Q(state__in=["accepted", "running"]),
+                name="maint_one_active_per_studio_kind",
+            ),
+            models.UniqueConstraint(
+                fields=["requested_by", "studio", "kind", "idempotency_key"],
+                condition=~models.Q(idempotency_key=""),
+                name="maint_idempotency_scope",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["state", "accepted_at"], name="maint_state_accepted_idx"),
+            models.Index(fields=["org", "state"], name="maint_org_state_idx"),
+        ]
+
+    @property
+    def is_terminal(self) -> bool:
+        return self.state not in self.ACTIVE_STATES
+
+    def __str__(self) -> str:
+        return f"{self.kind} {self.id} [{self.state}]"

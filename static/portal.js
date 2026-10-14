@@ -1795,6 +1795,7 @@ function opsHasRole() {
 }
 
 function renderOperations() {
+    if (viewMode === 'ops' && !_opsTracked && typeof _opsResumeTracking === 'function') _opsResumeTracking();
     _opsRenderSerial++;
     Object.keys(_opsLivePollers).forEach(function(s) { clearInterval(_opsLivePollers[s]); });
     _opsLivePollers = {};
@@ -1945,7 +1946,7 @@ function _buildOpsHTML(status, reportList) {
         if (window._gitSyncConfigured) {
             html += _opsActionBtn('git-sync', '&#8635; ' + (gs.publish_mode === 'manual' ? 'Check for changes' : 'Sync now'));
         }
-        html += _opsActionBtn('refresh', '&#8635; Reload Registry');
+        html += _opsActionBtn('refresh', _opsRefreshLabel());
         html += '<button class="ops-action-btn" data-ops-action="server-log">&#128196; Build activity</button>';
         html += '</div>';
         if (window._gitSyncConfigured) html += _opsRepoCard(gs);
@@ -2470,9 +2471,20 @@ function _opsDoAction(action) {
         case 'refresh': url='/api/system/registry/refresh'; break;
         case 'git-sync': url='/api/system/git/sync'; break;
     }
-    studioFetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)})
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
+    var headers = {'Content-Type':'application/json'};
+    if (action === 'refresh') headers['Idempotency-Key'] = _opsNewKey();
+    studioFetch(url, {method:'POST', headers:headers, body:JSON.stringify(body)})
+        .then(function(r) { return r.json().then(function(data) { return {status: r.status, data: data}; }); })
+        .then(function(res) {
+            var data = res.data;
+            if (res.status === 202 && data.status_url && data.operation_id) {
+                /* Accepted, NOT done: keep the action busy and poll its status. */
+                _opsActionStatusLabel = data.state === 'running' ? 'Running\u2026' : 'Scheduled\u2026';
+                showToast(data.message || 'Registry refresh scheduled', 'info');
+                _opsTrackAction(action, data.status_url);
+                renderOperations();
+                return;
+            }
             _opsSystemActions[action] = false;
             if (action === 'git-sync') window._gitSyncChecked = false;  /* re-read the repository card */
             if (data.ok) {
@@ -2485,12 +2497,134 @@ function _opsDoAction(action) {
             renderOperations();
         }).catch(function(e) {
             _opsSystemActions[action] = false;
-            var errMsg = 'System action failed: ' + (e.message || action);
+            /* The POST is never replayed. For the durable action the outcome of
+               a failed request is unknown, so say so instead of "failed". */
+            var errMsg = action === 'refresh'
+                ? 'Registry refresh not confirmed \u2014 check Operations before trying again.'
+                : 'System action failed: ' + (e.message || action);
             showToast(errMsg, 'error');
             addError('system', action.replace(/-/g,' '), errMsg);
             renderOperations();
         });
 }
+
+/* ── Durable system action tracking (202 + status URL) ──
+   One request in flight, a generation guard against stale responses, paused
+   while the tab is hidden or the page is unmounted, never re-POSTs. */
+var _opsActionStatusLabel = '';
+var _opsTracked = null;   /* {action, url, gen, timer, ctrl, inFlight, failures} */
+var _opsTrackGen = 0;
+var _OPS_TRACK_KEY = 'trellum.opsAction';
+function _opsRefreshLabel() {
+    return _opsSystemActions.refresh && _opsActionStatusLabel ? _opsActionStatusLabel : '&#8635; Reload Registry';
+}
+function _opsNewKey() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'k' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+}
+function _opsSetActionLabel(text) {
+    _opsActionStatusLabel = text;
+    var btn = document.querySelector('[data-ops-action="refresh"]');
+    if (btn) btn.textContent = text;
+}
+function _opsTrackAction(action, url) {
+    _opsStopTracking();
+    _opsTracked = {action: action, url: url, gen: ++_opsTrackGen, timer: null, ctrl: null, inFlight: false, failures: 0, polls: 0};
+    try { sessionStorage.setItem(_OPS_TRACK_KEY, JSON.stringify({action: action, url: url})); } catch (e) {}
+    _opsScheduleTrack(800);
+}
+function _opsStopTracking() {
+    if (!_opsTracked) return;
+    _opsTrackGen++;
+    clearTimeout(_opsTracked.timer);
+    if (_opsTracked.ctrl) _opsTracked.ctrl.abort();
+    _opsTracked = null;
+}
+function _opsScheduleTrack(delay) {
+    var t = _opsTracked;
+    if (!t) return;
+    clearTimeout(t.timer);
+    if (document.hidden || !_opsPageActive) return;   /* resumed by visibility/pageshow */
+    t.timer = setTimeout(function() { t.timer = null; _opsPollTracked(t.gen); }, delay);
+}
+function _opsPollTracked(gen) {
+    var t = _opsTracked;
+    if (!t || t.gen !== gen || t.inFlight) return;
+    if (document.hidden || !_opsPageActive) return;
+    if (viewMode !== 'ops') {
+        /* Unmounted: stop polling; the saved id resumes when Operations returns. */
+        var a = t.action;
+        _opsStopTracking();
+        _opsSystemActions[a] = false;
+        _opsActionStatusLabel = '';
+        return;
+    }
+    t.inFlight = true;
+    t.polls++;
+    t.ctrl = new AbortController();
+    var timer = setTimeout(function() { t.ctrl.abort(); }, 8000);
+    apiFetch(t.url, {cache: 'no-store', signal: t.ctrl.signal})
+        .then(function(r) {
+            if (r.status === 404 || r.status === 403) { var e = new Error('gone'); e.terminal = true; throw e; }
+            return r.json();
+        })
+        .then(function(data) {
+            clearTimeout(timer);
+            if (!_opsTracked || _opsTracked.gen !== gen) return;   /* stale */
+            t.inFlight = false;
+            t.failures = 0;
+            if (data.terminal) { _opsFinishTracked(data); return; }
+            _opsSetActionLabel(data.state === 'running' ? 'Running\u2026' : 'Scheduled\u2026');
+            _opsScheduleTrack(t.polls < 5 ? 1000 : 3000);
+        })
+        .catch(function(e) {
+            clearTimeout(timer);
+            if (!_opsTracked || _opsTracked.gen !== gen) return;
+            t.inFlight = false;
+            t.failures++;
+            if ((e && e.terminal) || t.failures >= 5) {
+                _opsFinishTracked({state: 'unconfirmed', terminal: true, message: 'Status could not be confirmed \u2014 check Operations before trying again.'});
+                return;
+            }
+            _opsScheduleTrack(Math.min(1000 * Math.pow(2, t.failures), 8000));
+        });
+}
+function _opsFinishTracked(data) {
+    var action = _opsTracked ? _opsTracked.action : 'refresh';
+    _opsStopTracking();
+    try { sessionStorage.removeItem(_OPS_TRACK_KEY); } catch (e) {}
+    _opsSystemActions[action] = false;
+    _opsActionStatusLabel = '';
+    if (data.state === 'succeeded') {
+        var msg = (data.message || 'Registry refreshed') + (typeof data.reports === 'number' ? ' (' + data.reports + ' reports)' : '');
+        showToast(msg, 'success');
+        if (data.warning) showToast(data.warning, 'warning');
+    } else {
+        var errMsg = data.message || 'Registry refresh failed';
+        showToast(errMsg, 'error');
+        addError('system', action.replace(/-/g,' '), errMsg);
+    }
+    renderOperations();   /* re-reads /api/registry once for the active page */
+}
+function _opsResumeTracking() {
+    if (_opsTracked) {
+        if (!_opsTracked.timer && !_opsTracked.inFlight) _opsScheduleTrack(200);
+        return;
+    }
+    var saved = null;
+    try { saved = JSON.parse(sessionStorage.getItem(_OPS_TRACK_KEY) || 'null'); } catch (e) {}
+    if (!saved || !saved.url || _opsSystemActions[saved.action]) return;
+    _opsSystemActions[saved.action] = true;
+    _opsActionStatusLabel = 'Scheduled\u2026';
+    _opsTrackAction(saved.action, saved.url);
+}
+document.addEventListener('visibilitychange', function() {
+    if (document.hidden) {
+        if (_opsTracked) { clearTimeout(_opsTracked.timer); if (_opsTracked.ctrl) _opsTracked.ctrl.abort(); _opsTracked.inFlight = false; }
+    } else {
+        _opsResumeTracking();
+    }
+});
 function _opsStartLivePollers(status) {
     Object.keys(_opsExpandedSlugs).forEach(function(slug) {
         if ((status.running || {})[slug]) _opsStartLivePoll(slug);
@@ -2896,6 +3030,7 @@ function _opsScheduleStatusPoll(delay) {
 _opsScheduleStatusPoll();
 window.addEventListener('pagehide', function() {
     _opsPageActive = false;
+    if (_opsTracked) { clearTimeout(_opsTracked.timer); if (_opsTracked.ctrl) _opsTracked.ctrl.abort(); _opsTracked.inFlight = false; }
     _opsStatusRevision++;
     _opsStatusCycle++;
     clearTimeout(_opsStatusTimer);
@@ -2912,6 +3047,7 @@ window.addEventListener('pageshow', function(event) {
     if (!event.persisted && _opsPageActive) return;
     _opsPageActive = true;
     if (viewMode === 'ops') {
+        _opsResumeTracking();
         Object.keys(_opsExpandedSlugs).forEach(_opsStartLivePoll);
         _opsScheduleStatusPoll(0);
     }
