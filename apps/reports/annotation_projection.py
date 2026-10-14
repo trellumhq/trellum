@@ -150,8 +150,10 @@ def normalize(value, *, local=False):
             value = {}
         if not isinstance(value, dict):
             raise AdmissionError("parse-error")
-        inputs = value.get("events") or []
-        defaults = value.get("type_defaults") or {}
+        inputs = value.get("events")
+        inputs = [] if inputs is None else inputs
+        defaults = value.get("type_defaults")
+        defaults = {} if defaults is None else defaults
     if not isinstance(inputs, list) or not isinstance(defaults, dict):
         raise AdmissionError("parse-error")
     if len(inputs) > MAX_EVENTS or len(defaults) > 1000:

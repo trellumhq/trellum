@@ -90,8 +90,10 @@ def _identity(stat):
 
 
 def _read(path):
+    opened = False
     try:
         with path.open("rb") as file:
+            opened = True
             before = os.fstat(file.fileno())
             if before.st_size > RAW_BYTES:
                 raise AdmissionError()
@@ -102,13 +104,15 @@ def _read(path):
         if len(raw) > RAW_BYTES:
             raise AdmissionError()
         return raw, _identity(after)
-    except FileNotFoundError:
+    except FileNotFoundError as exc:
+        if opened:
+            raise AdmissionError("unavailable") from exc
         return None, None
     except OSError as exc:
         raise AdmissionError("unavailable") from exc
 
 
-def observe(source_id, owner=None):
+def observe(source_id, owner=None, *, cancelled=None):
     from .models import AnnotationSourceState
     owner = owner or workspace_identity()
     with transaction.atomic():
@@ -158,6 +162,8 @@ def observe(source_id, owner=None):
         catalog = _catalog(source.studio_id)
         current = AnnotationSourceState.objects.select_for_update().get(pk=source_id)
         if (current.owner_workspace_id, current.ownership_generation, current.desired_generation, current.lease_token, current.digest) != fence:
+            return len(raw or b"")
+        if cancelled is not None and cancelled.is_set():
             return len(raw or b"")
         if not current.lease_until or current.lease_until <= timezone.now():
             return len(raw or b"")
@@ -218,7 +224,7 @@ class AnnotationThread(threading.Thread):
 
     def stop(self):
         self.shutdown.set()
-        self.join(timeout=5)
+        self.join(timeout=60)
 
     def batch(self):
         from apps.studios.models import Studio
@@ -236,7 +242,7 @@ class AnnotationThread(threading.Thread):
         for source_id in candidates.order_by("next_check_at", "pk").values_list("pk", flat=True)[:25]:
             if self.shutdown.is_set() or admitted >= 25 or consumed + RAW_BYTES > 64 * 1024 * 1024 or time.monotonic() - start >= 5:
                 break
-            consumed += observe(source_id, owner)
+            consumed += observe(source_id, owner, cancelled=self.shutdown)
             admitted += 1
         # Keyset discovery does not repeatedly walk every studio on every tick.
         candidates = list(studios.filter(pk__gt=self.upgrade_cursor).exclude(annotation_sources__kind="global", annotation_sources__owner_workspace_id__gt="").order_by("pk")[:1])
