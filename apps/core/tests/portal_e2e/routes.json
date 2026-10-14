@@ -8906,12 +8906,12 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "2f69dc4ddf48e7d331da51d7ad0053089308adcb632282faa9fb07e3d094af87",
+      "source_sha256": "f9844ae895cc67a08ce0a14dc17093f1db590ddc6a9a204d1c1f1244089e611a",
       "request_conditions": [
         "require_full_studio_visibility: plain alpha viewer/group-member/selected denied by seeded private audience; viewer-full samples explicitly granted public-only beta studio0",
         "alpha private-viewer explicitly granted private report remains finite-scope and is denied full-studio overviews under current semantics"
       ],
-      "adapter_sha256": "4f82457049dafbab1571689ea8054a3ff6e765e776cf000e4d210ccfcde1f214",
+      "adapter_sha256": "f9844ae895cc67a08ce0a14dc17093f1db590ddc6a9a204d1c1f1244089e611a",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"

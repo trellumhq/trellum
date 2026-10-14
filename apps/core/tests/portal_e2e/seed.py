@@ -118,6 +118,13 @@ def enrich(metric_count=20, schedule_count=1, rule_count=1):
             folder = studio.reports_dir/report.slug
             folder.mkdir(parents=True,exist_ok=True)
             (folder/'report.yaml').write_text(yaml.safe_dump({'name':report.name, 'kind':report.kind, **report.config}))
+        # Exercise the real producer after both declarations and artifacts exist.
+        # Request handlers must not repair missing projections during a journey.
+        from apps.reports.source_summary import reconcile
+        for report in (built, private, analysis):
+            observation = reconcile(report.pk)
+            if observation['status'] != 'ready' or observation.get('projection_unavailable'):
+                raise RuntimeError('Controlled report projection did not become ready')
         for n in range(schedule_count):
             schedule = EmailSchedule.objects.create(report=built, created_by=admin, recipient_roles=['everyone'], enabled=False, send_hour=n%24)
             schedule.recipients.add(admin)
