@@ -170,6 +170,8 @@ class MetricDefinition(models.Model):
     #: the identity a built report's _meta.json/`_metrics` claim is compared
     #: against to decide "current" vs. "built against an older version".
     definition_hash = models.CharField(max_length=64, blank=True, default="")
+    # NULL distinguishes historical rows from a scanned unbound/snapshot metric.
+    binding = models.JSONField(null=True, blank=True, default=None)
     present_in_scan = models.BooleanField(default=True)
     first_seen_at = models.DateTimeField(default=timezone.now)
     last_scanned_at = models.DateTimeField(default=timezone.now)
@@ -205,6 +207,9 @@ class MetricDefinition(models.Model):
             dimensions=tuple(self.dimensions or ()),
             tags=tuple(self.tags or ()),
             definition_hash=self.definition_hash,
+            dataset=(self.binding or {}).get("dataset"),
+            time_agg=(self.binding or {}).get("time_agg"),
+            date_col=(self.binding or {}).get("time_column"),
         )
 
     def spec_text(self) -> str:
@@ -783,6 +788,8 @@ class ReportSourceSummary(models.Model):
     failures = models.PositiveIntegerField(default=0)
     error_code = models.CharField(max_length=64, blank=True)
     preview_state = models.CharField(max_length=24, default="not-applicable")
+    # The served artifact's marker, not the current generator/config version.
+    workspace_version = models.PositiveSmallIntegerField(null=True, blank=True, default=None)
 
 
 class ReportMetricClaim(models.Model):

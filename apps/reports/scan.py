@@ -219,6 +219,7 @@ def sync_studio_metrics(studio) -> int:
         seen: set[str] = set()
         for metric in result.metrics.values():
             seen.add(metric.name)
+            dataset = result.datasets.get(metric.dataset)
             MetricDefinition.objects.update_or_create(
                 studio=studio,
                 name=metric.name,
@@ -236,6 +237,10 @@ def sync_studio_metrics(studio) -> int:
                     "dimensions": list(metric.dimensions),
                     "tags": list(metric.tags),
                     "definition_hash": metric.definition_hash,
+                    "binding": {"dataset": metric.dataset,
+                                "time_column": dataset.time_column if dataset else None,
+                                "grain": dataset.grain if dataset else None,
+                                "time_agg": metric.time_agg},
                     "present_in_scan": True,
                     "last_scanned_at": now,
                 },
