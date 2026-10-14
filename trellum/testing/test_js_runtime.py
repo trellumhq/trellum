@@ -55,6 +55,34 @@ def test_workspace_table_global_metadata_and_bounded_optin_leave_defaults_unchan
     assert result == {'before': 25, 'first': 'metric_0079owner_79', 'next': 'metric_0054owner_54', 'ordinary': 80,
                       'lastFocus': True, 'firstFocus': True}
 
+def test_metric_draw_queue_coalesces_latest_filter_disposes_and_restores(capture_page):
+    """Synthetic consumer callbacks verify lifecycle, not live chart timings."""
+    result = capture_page.evaluate("""async () => {
+        document.body.innerHTML='<div id="q0"></div><div id="q1"></div><div id="q2"></div>';
+        window._fwMetricsWorkspace={};window._fwWorkspaceWork={max_consumer_ms:0,max_chart_ms:0};
+        var engine=window._fwFilterEngine, seen=[];
+        engine.init('queue-probe',[{kind:'A'},{kind:'B'},{kind:'C'}]);
+        function attach(){for(let i=0;i<3;i++) window._fwLiveWrap('q'+i,{dataset_id:'queue-probe',type:'chart'},rows=>seen.push([i,rows.map(r=>r.kind).join('')]))}
+        attach();seen=[];
+        engine.setFilter('queue-probe','choice','kind','equals','A');
+        engine.setFilter('queue-probe','choice','kind','equals','B');
+        engine.setFilter('queue-probe','choice','kind','equals','C');
+        await new Promise(resolve=>setTimeout(resolve,120));
+        var latest=seen.slice();seen=[];
+        engine.setFilter('queue-probe','choice','kind','equals','A');
+        window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true}));
+        await new Promise(resolve=>setTimeout(resolve,40));var detached=seen.length;
+        window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}));
+        history.replaceState(null,'',location.pathname+'?only=probe');attach();seen=[];
+        engine.setFilter('queue-probe','choice','kind','equals','B');
+        var focused=seen.slice();history.replaceState(null,'',location.pathname);
+        return {latest,detached,focused};
+    }""")
+    assert sorted(result['latest']) == [[0, 'C'], [1, 'C'], [2, 'C']]
+    assert result['detached'] == 0
+    assert sorted(result['focused']) == [[0, 'B'], [1, 'B'], [2, 'B']]
+
+
 # ── Fixtures ──────────────────────────────────────────────────
 
 def _find_free_port() -> int:

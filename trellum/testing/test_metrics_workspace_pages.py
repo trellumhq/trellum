@@ -113,3 +113,19 @@ def test_untrusted_manifest_cannot_delete_paths_or_symlink_targets(tmp_path):
     gc_old_pages(out, collect_old_pages(out), set())
     assert target.read_text() == 'untouched' and (out / safe).is_symlink()
     assert not owned_name('../' + safe)
+
+
+def test_early_routing_precedes_bootstrap_and_encodes_untrusted_anchors(tmp_path, monkeypatch):
+    from trellum.metrics_workspace import early_route
+    out = build(tmp_path, 56, monkeypatch)
+    html = (out / 'index.html').read_text()
+    assert html.index('data-metrics-early-route') < html.index('window._fwMetricsWorkspace=')
+    assert html.index('data-metrics-early-route') < html.index('<script src=')
+    marker = json.loads((out / '_meta.json').read_bytes())['metrics_workspace']
+    script = early_route([{'anchor': '</script><script>bad()\u2028\u2029', 'page': 3}], marker['build'], 1, 3)
+    assert '</script><script>bad()' not in script
+    assert '\\u003c/script>' in script and '\\u2028' in script and '\\u2029' in script
+    assert 'window.stop();location.replace(url.href)' in script
+    for bad in (True, 0, -1, 4, '3'):
+        with pytest.raises(ValueError):
+            early_route([{'anchor': 'metric-safe', 'page': bad}], marker['build'], 1, 3)

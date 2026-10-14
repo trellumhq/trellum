@@ -22,7 +22,11 @@
                 throw new Error('Metric catalog changed; refresh this page');
             }
             window._fwMetricsCatalog = catalog.metrics;
-            var target = new URLSearchParams(location.search).get('only') || location.hash.slice(1);
+            var target = new URLSearchParams(location.search).get('only');
+            if (!target) {
+                target = location.hash.slice(1);
+                try { target = decodeURIComponent(target); } catch (error) {}
+            }
             var metric = catalog.metrics.find(function(row) { return row.anchor === target; });
             if (new URLSearchParams(location.search).has('only') && !metric) throw new Error('Selected metric is unavailable');
             if (metric && metric.page !== workspace.page) {
@@ -93,7 +97,7 @@
         })
         .catch(function(err) {
             if (workspace) {
-                window._fwWorkspaceState = 'failed';
+                window._fwWorkspaceDisposed = true; window._fwWorkspaceState = 'failed';
                 window.dispatchEvent(new CustomEvent('fw-workspace-state', {detail: {state: 'failed'}}));
             }
             console.error('Failed to load data.json:', err);
@@ -243,15 +247,18 @@
                 if (!pending) return;
                 delete _lazyQueue[id];
                 _lazyObserver.unobserve(entry.target);
-                var renderer = window._fwRenderers[pending.type];
-                if (renderer) renderer(id, pending);
+                if (workspace) pending.schedule();
+                else {
+                    var renderer = window._fwRenderers[pending.type];
+                    if (renderer) renderer(id, pending);
+                }
             });
         }, {rootMargin: '200px'})
         : null;
 
     function _renderComps(comps) {
         var epoch = workspace ? (window._fwWorkspaceRenderEpoch = (window._fwWorkspaceRenderEpoch || 0) + 1) : 0;
-        var deferred = [];
+        var deferred = [], pendingVisible = 0, deferredDone = false, completed = false;
         var only = workspace && new URLSearchParams(location.search).get('only');
         function visible(el) {
             var block = el && el.closest('.fw-metric-block');
@@ -282,11 +289,61 @@
         });
         _attachFilterHealthBadges(comps);
         function ready() {
-            if (!workspace) return;
+            if (!workspace || !deferredDone || pendingVisible || completed || window._fwWorkspaceDisposed || epoch !== window._fwWorkspaceRenderEpoch) return;
+            completed = true;
             window._fwWorkspaceState = 'ready';
             window.dispatchEvent(new CustomEvent('fw-workspace-state', {detail: {state: 'ready'}}));
         }
-        if (deferred.length === 0) { ready(); return; }
+        if (deferred.length === 0) { deferredDone = true; ready(); return; }
+        function renderable(el) {
+            var block = el && el.closest('.fw-metric-block');
+            var toggle = el && el.closest('.fw-toggle-vis');
+            return visible(el) && el.getClientRects().length && !(block && block.hidden)
+                && !el.closest('.fw-collapsed') && !(toggle && toggle.style.display === 'none');
+        }
+        function lazy(id, cfg) {
+            var pending = {epoch: epoch, queued: false};
+            pending.schedule = function() {
+                if (pending.queued || window._fwWorkspaceDisposed || epoch !== window._fwWorkspaceRenderEpoch) return;
+                pending.queued = true;
+                var lease = (window._fwMetricDrawLeases || {})[id];
+                if (lease) lease(); // An old subscription must not replace this queued initial draw.
+                var required = !completed;
+                if (required) pendingVisible++;
+                window._fwQueueMetricDraw(id, function() {
+                    if (window._fwWorkspaceDisposed || epoch !== window._fwWorkspaceRenderEpoch) return;
+                    var el = document.getElementById(id);
+                    try {
+                        if (renderable(el)) draw(id, cfg);
+                        else if (el) {
+                            pending.queued = false; _lazyQueue[id] = pending; _lazyObserver.observe(el);
+                        }
+                    } catch (error) {
+                        completed = true; window._fwWorkspaceDisposed = true; window._fwWorkspaceState = 'failed';
+                        window.dispatchEvent(new CustomEvent('fw-workspace-state', {detail: {state: 'failed'}}));
+                        console.error('Failed to render metric consumer:', error);
+                    } finally {
+                        if (required) pendingVisible--;
+                        ready();
+                    }
+                });
+            };
+            return pending;
+        }
+        function finishDeferred() {
+            if (!workspace) { deferredDone = true; ready(); return; }
+            // Allow fitted iframe geometry and observer delivery to settle,
+            // then explicitly include every required visible lazy consumer.
+            requestAnimationFrame(function() {
+                if (window._fwWorkspaceDisposed || epoch !== window._fwWorkspaceRenderEpoch) return;
+                Object.keys(_lazyQueue).forEach(function(id) {
+                    var pending = _lazyQueue[id], el = document.getElementById(id);
+                    if (pending.epoch !== epoch || !renderable(el) || el.getBoundingClientRect().top > innerHeight + 200) return;
+                    delete _lazyQueue[id]; _lazyObserver.unobserve(el); pending.schedule();
+                });
+                deferredDone = true; ready();
+            });
+        }
         _loadingMsg('Rendering charts...');
         var i = 0;
         function next() {
@@ -302,20 +359,20 @@
                 var offScreen = rect.top > window.innerHeight + 200;
                 var toggleVis = el.closest('.fw-toggle-vis');
                 var inHiddenToggle = toggleVis && toggleVis.style.display === 'none';
-                if (_lazyObserver && (inCollapsed || offScreen || inHiddenToggle)) {
-                    _lazyQueue[id] = cfg;
+                if (_lazyObserver && (inCollapsed || offScreen || inHiddenToggle || workspace && !renderable(el))) {
+                    _lazyQueue[id] = workspace ? lazy(id, cfg) : cfg;
                     _lazyObserver.observe(el);
                 } else {
                     draw(id, cfg);
                 }
                 if (workspace && performance.now() - started >= 8 && i + 1 < deferred.length) {
                     i++;
-                    setTimeout(next, 0);
+                    setTimeout(next, 16);
                     return;
                 }
             }
             _attachFilterHealthBadges(comps);
-            ready();
+            finishDeferred();
         }
         (window.requestIdleCallback || setTimeout)(next, {timeout: 50});
     }

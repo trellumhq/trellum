@@ -81,6 +81,23 @@ def controls(catalog, page, pages, build):
         '<p id="fwMetricsEmpty" hidden>No metrics selected. Use Show all to restore them.</p>')
 
 
+def early_route(catalog, build, page, pages):
+    """Route focus before bootstrapping an obsolete page's vendors or consumers."""
+    if not isinstance(build, str) or not re.fullmatch(r'[0-9a-f]{32}', build) or type(page) is not int or type(pages) is not int or not 1 <= page <= pages:
+        raise ValueError('invalid generated workspace routing identity')
+    routes = {row['anchor']: row['page'] for row in catalog}
+    if any(type(number) is not int or not 1 <= number <= pages for number in routes.values()):
+        raise ValueError('invalid generated workspace route page')
+    encoded = orjson.dumps(routes).decode().replace('<', '\\u003c').replace('\u2028', '\\u2028').replace('\u2029', '\\u2029')
+    return ('<script data-metrics-early-route>(function(){'
+        'var url=new URL(location.href),target=url.searchParams.get("only");'
+        'if(!target){target=url.hash.slice(1);try{target=decodeURIComponent(target)}catch(e){}}'
+        'if(!target)return;var routes=' + encoded + ',page=routes[target];'
+        f'if(!Number.isInteger(page)||page<1||page>{pages}||page==={page})return;'
+        f'url.pathname=url.pathname.replace(/[^/]*$/, "{PREFIX}{build}-page-"+page+".html");'
+        'window.stop();location.replace(url.href);})();</script>')
+
+
 def write_pages(out, html, report_data, render_ctx, catalog, build, definitions=()):
     """Keep root data complete; each immutable page carries only its consumers."""
     blocks = render_ctx._metric_workspace_blocks
@@ -134,7 +151,7 @@ def write_pages(out, html, report_data, render_ctx, catalog, build, definitions=
                   'data': data_name, 'catalog': catalog_name, 'root': 'index.html',
                   'definitionId': definition_id}
         # The fixed JSON script contains only validated generated file names.
-        boot = ('<script>window._fwMetricsWorkspace=' + orjson.dumps(config).decode() + ';</script>'
+        boot = (early_route(catalog, build, page, pages) + '<script>window._fwMetricsWorkspace=' + orjson.dumps(config).decode() + ';</script>'
                 '<noscript><style>.fw-loading{display:none!important}</style></noscript>')
         definition_rows = definitions[(page - 1) * PAGE_SIZE:page * PAGE_SIZE]
         columns = ('metric', 'label', 'owner', 'spec', 'reason', 'claimed by')

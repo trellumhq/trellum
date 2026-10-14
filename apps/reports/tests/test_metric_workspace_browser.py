@@ -59,9 +59,11 @@ def workspace_http(studio_tree, member, grant_studio, monkeypatch, settings):
     report = Report.objects.create(studio=studio_tree, slug='metrics', name='Metrics', tags=['metrics'])
     assert reconcile(report.pk)['status'] == 'ready'
     client = Client(); client.force_login(member)
-    held = threading.Event(); release = threading.Event(); state = {'delay': False}
+    held = threading.Event(); release = threading.Event(); state = {'delay': False, 'requests': [], 'request_urls': []}
     application = StaticFilesHandler(get_wsgi_application())
     def app(environ, start_response):
+        state['requests'].append(environ['PATH_INFO'])
+        state['request_urls'].append(environ['PATH_INFO'] + ('?' + environ['QUERY_STRING'] if environ.get('QUERY_STRING') else ''))
         if state['delay'] and '_metrics-workspace-' in environ['PATH_INFO'] and environ['PATH_INFO'].endswith('.json'):
             held.set(); release.wait(8)
         response = application(environ, start_response)
@@ -81,7 +83,7 @@ def workspace_http(studio_tree, member, grant_studio, monkeypatch, settings):
     base = f'http://127.0.0.1:{server.server_port}'
     yield {'base': base, 'prefix': f'/s/{studio_tree.org.slug}/{studio_tree.slug}',
         'cookie': {'name': settings.SESSION_COOKIE_NAME, 'value': client.cookies[settings.SESSION_COOKIE_NAME].value, 'url': base},
-        'held': held, 'release': release, 'state': state}
+        'held': held, 'release': release, 'state': state, 'output': output}
     release.set(); server.shutdown(); server.server_close(); thread.join(timeout=2)
     invalidate_metrics_cache()
 
@@ -302,5 +304,67 @@ def test_obsolete_workspace_recovers_to_root_without_loading_chart_payload(metri
         page.get_by_text('Metrics ready.', exact=True).wait_for()
         assert page.locator('#metWorkspace').is_visible()
         assert 'only=' not in page.locator('#metWorkspace').get_attribute('src')
+    finally:
+        context.close()
+
+
+@pytest.mark.parametrize('target', ['?only=metric-%6detric_0055&from=2026-08-05', '#%6detric-metric_0055'])
+def test_offpage_route_precedes_old_document_bootstrap_and_preserves_local_links(metrics_browser, workspace_http, target):
+    context, page = open_context(metrics_browser, workspace_http)
+    try:
+        workspace_http['state']['requests'].clear(); workspace_http['state']['request_urls'].clear()
+        page.goto(workspace_http['base'] + workspace_http['prefix'] + '/r/metrics/index.html' + target)
+        page.wait_for_url('**-page-3.html*')
+        page.wait_for_function('window._fwWorkspaceState === "ready"')
+        assert page.locator('#metric-metric_0055').count() == 1
+        requests = workspace_http['state']['requests']
+        destination = next(i for i, path in enumerate(requests) if path.endswith('-page-3.html'))
+        before = requests[:destination]
+        assert not any(path.endswith('-catalog.json') or '-page-' in path and path.endswith('.json') for path in before)
+        assert not any('/vendor/' in path or '/fonts/' in path or '/static/' in path for path in before), before
+        assert sum(path.endswith('-catalog.json') for path in requests) == 1
+        if target.startswith('?'):
+            destination_url = next(url for url in workspace_http['state']['request_urls'] if url.split('?', 1)[0].endswith('-page-3.html'))
+            assert 'from=2026-08-05' in destination_url
+            assert 'only=metric-' in page.url
+            assert page.evaluate('Object.keys(window._chartInstances || {}).length') == 1
+        else:
+            assert page.url.endswith(target)
+        # Direct file routing uses the same immutable sibling, independent of
+        # a portal URL and before file-fetch/browser CORS limitations apply.
+        context.route('https://**', lambda route: route.abort())
+        page.goto(workspace_http['output'].joinpath('index.html').as_uri() + target)
+        page.wait_for_url('file://**-page-3.html*')
+        assert Path(page.url.split('?', 1)[0].split('#', 1)[0].removeprefix('file://')).parent == workspace_http['output']
+    finally:
+        context.close()
+
+
+def test_lazy_chart_uses_latest_rapid_filter_without_rendering_hidden_selection(metrics_browser, workspace_http):
+    context, page = open_context(metrics_browser, workspace_http)
+    try:
+        page.goto(workspace_http['base'] + workspace_http['prefix'] + '/r/metrics/index.html')
+        page.wait_for_function('window._fwWorkspaceState === "ready"')
+        assert page.evaluate('Object.keys(window._chartInstances || {}).length') < 25
+        assert page.evaluate('''() => Object.entries(window._reportData.components).filter(([id,c]) => {
+            var el=document.getElementById(id), rect=el && el.getBoundingClientRect();
+            return c.type==='chart' && el.getClientRects().length && rect.top < innerHeight+200;
+        }).every(([id]) => !!window._chartInstances[id])''')
+        chart_id = page.evaluate('''() => window._reportData._metrics.metric_0024.component_ids.find(id => window._reportData.components[id]?.type === 'chart')''')
+        page.locator('#fwMetricsWorkspace summary').click()
+        page.locator('input[value="metric-metric_0024"]').uncheck()
+        page.evaluate('''() => {
+            for (var max of ['2026-08-05','2026-08-20','2026-08-15'])
+                window.fw.filterEngine.setFilter('daily','rapid-probe','date','range',{min:'2026-08-05',max:max+'\\uffff'});
+        }''')
+        page.locator('#metric-metric_0023').scroll_into_view_if_needed()
+        page.wait_for_timeout(100)
+        assert page.evaluate('id => !window._chartInstances[id]', chart_id)
+        page.get_by_role('button', name='Show all', exact=True).click()
+        page.locator('#metric-metric_0024').scroll_into_view_if_needed()
+        page.wait_for_function('id => !!window._chartInstances[id]', arg=chart_id)
+        labels = page.evaluate('id => window._chartInstances[id].data.labels', chart_id)
+        assert labels and min(str(label)[:10] for label in labels) >= '2026-08-05' and max(str(label)[:10] for label in labels) <= '2026-08-15'
+        assert page.evaluate('Object.keys(window._chartInstances).length') <= 25
     finally:
         context.close()

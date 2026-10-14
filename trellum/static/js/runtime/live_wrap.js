@@ -7,7 +7,7 @@
             if (leases[id]) leases[id]();
             var active = true;
             function current() {
-                if (active && document.getElementById(id)) {
+                if (active && !window._fwWorkspaceDisposed && document.getElementById(id)) {
                     var started = performance.now(); drawFn(window._fwFilterEngine.getFiltered(cfg.dataset_id));
                     var work = window._fwWorkspaceWork;
                     if (work) {
@@ -48,7 +48,7 @@
                 queue.delete(entry[0]); entry[1]();
                 if (performance.now() - started >= 8) break;
             }
-            if (queue.size && !disposed) timer = setTimeout(drain, 0);
+            if (queue.size && !disposed) timer = setTimeout(drain, 16);
         }
         window._fwQueueMetricDraw = function(id, draw) {
             if (disposed) return;
