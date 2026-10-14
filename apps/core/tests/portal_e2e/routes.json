@@ -19787,7 +19787,7 @@
       "verified_node_ids": [],
       "source_sha256": "7649060ba0a59343eecbed53f440607c01cf3f88319c2892143cf8aa0439247d",
       "request_conditions": [],
-      "adapter_sha256": "654d24ca470a2e8121b637ff6de413c716a3e781a0e4e4f8dfa7005a430f862d",
+      "adapter_sha256": "b8e574308cebbfa2ea8ba5b1ad0b330665ec1485184dbed021cbd1bba0222ec9",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
