@@ -60,3 +60,38 @@ def test_failed_journey_cleans_its_owned_clone(owned_runtime):
     with psycopg.connect(owned_runtime.db_url('postgres'), autocommit=True) as database:
         assert database.execute('SELECT 1 FROM pg_database WHERE datname=%s', (database_name,)).fetchone() is None
     assert not owned_runtime.units
+
+
+def test_seed_survives_real_registry_refresh(owned_runtime):
+    """Seeded reports remain discoverable during actual refresh/Git journeys."""
+    from django.db import connections
+    from apps.studios.models import Studio
+    from apps.reports.models import AnnotationSourceState
+    from apps.reports.scan import sync_studio_registry
+    from apps.runner.gitsync import studio_sync_lock
+    from trellum.runner import scan_report_configs
+    from .fixtures import configure_database
+
+    with owned_runtime.unit('seed-registry-refresh') as unit:
+        configure_database(unit)
+        try:
+            for studio in Studio.objects.all():
+                before = dict(studio.reports.values_list('slug', 'kind'))
+                audiences = dict(studio.reports.values_list('slug', 'audience'))
+                discovered = scan_report_configs(str(studio.reports_dir))
+                assert {entry['slug'] for entry in discovered} == set(before)
+                sources = AnnotationSourceState.objects.filter(studio=studio)
+                assert sources.filter(kind='report', status='ready').count() == len(before)
+                global_source = sources.get(kind='global')
+                assert global_source.status == 'ready'
+                assert global_source.owner_workspace_id
+                assert global_source.provenance_sha
+                with studio_sync_lock(studio.pk) as locked:
+                    assert locked
+                    assert sync_studio_registry(studio) == len(before)
+                assert dict(studio.reports.values_list('slug', 'kind')) == before
+                assert dict(studio.reports.values_list('slug', 'audience')) == audiences
+                assert studio.reports.filter(present_in_scan=True).count() == len(before)
+                assert sources.filter(kind='report', status='ready').count() == len(before)
+        finally:
+            connections.close_all()
