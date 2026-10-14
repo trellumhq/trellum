@@ -632,13 +632,17 @@ def account_view(request):
                 messages.success(request, "Session signed out.")
             return redirect("account")
 
-    sessions = list(UserSession.objects.filter(user=request.user).order_by("-last_seen"))
+    from apps.orgs.views import paginate
+
+    session_page = paginate(request, UserSession.objects.filter(user=request.user).order_by("-last_seen", "pk"), 25)
+    sessions = list(session_page.object_list)
     return render(
         request,
         "accounts/account.html",
         {
             "password_form": password_form,
             "sessions": sessions,
+            "page": session_page,
             "current_session_key": request.session.session_key,
             "has_mfa": request.user.has_mfa,
             "recovery_codes_remaining": (
@@ -895,6 +899,11 @@ def api_keys_view(request):
             "form": form, "can_create": form.fields["org"].queryset.exists(),
         })
 
+    from apps.orgs.views import paginate
+
+    key_page = paginate(
+        request, ApiKey.objects.filter(user=request.user).select_related("org").order_by("-created_at", "-pk"), 25
+    )
     fresh = request.session.pop("new_api_key", None)
     new_key = ApiKey.objects.filter(pk=fresh["id"], user=request.user).first() if fresh else None
     return render(
@@ -903,7 +912,8 @@ def api_keys_view(request):
         {
             "form": form,
             "can_create": form.fields["org"].queryset.exists(),
-            "keys": ApiKey.objects.filter(user=request.user).select_related("org"),
+            "keys": key_page.object_list,
+            "page": key_page,
             "new_key": new_key,
             "new_secret": fresh["secret"] if new_key else None,
             # The `setup portal` one-liner, once, for every studio the key can
@@ -974,8 +984,13 @@ def org_api_keys_view(request, org_slug):  # noqa: ARG001
             )
         return redirect(request.path)
 
+    from apps.orgs.views import paginate
+
+    key_page = paginate(
+        request, ApiKey.objects.filter(org=org).select_related("user").order_by("-created_at", "-pk"), 25
+    )
     return render(
         request,
         "accounts/org_api_keys.html",
-        {"org": org, "keys": ApiKey.objects.filter(org=org).select_related("user")},
+        {"org": org, "keys": key_page.object_list, "page": key_page},
     )

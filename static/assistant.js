@@ -1038,15 +1038,20 @@
         btn.setAttribute('aria-expanded', show ? 'true' : 'false');
         if (!show) return;
         pop.innerHTML = '<div class="assistant-hnote">Loading…</div>';
-        _fetch(API_BASE + '/sessions')
-            .then(function (r) { return r.ok ? r.json() : []; })
-            .then(function (list) {
-                list = Array.isArray(list) ? list : (list && list.sessions) || [];
-                list = list.filter(function (s) {
-                    return s.scope !== 'report' || s.report === _contextReport;
-                });
-                pop.innerHTML = '';
-                if (!list.length) {
+        loadHistoryPage(pop, 0);
+    }
+
+    // History is served in bounded pages; "Show more" appends the next one.
+    function loadHistoryPage(pop, offset) {
+        _fetch(API_BASE + '/sessions?report=' + encodeURIComponent(_contextReport || '') + '&offset=' + offset)
+            .then(function (r) { return r.ok ? r.json() : {}; })
+            .then(function (data) {
+                var list = Array.isArray(data) ? data : (data && data.sessions) || [];
+                var next = Array.isArray(data) ? null : data.next_offset;
+                var more = pop.querySelector('.assistant-hmore');
+                if (more) more.remove();
+                if (!offset) pop.innerHTML = '';
+                if (!list.length && !offset) {
                     pop.appendChild(el('div', 'assistant-hnote', 'No conversations yet.'));
                     return;
                 }
@@ -1079,6 +1084,12 @@
                     row.appendChild(del);
                     pop.appendChild(row);
                 });
+                if (next != null) {
+                    var btn = el('button', 'assistant-hmore ui-btn ghost', 'Show more');
+                    btn.type = 'button';
+                    btn.addEventListener('click', function () { btn.disabled = true; loadHistoryPage(pop, next); });
+                    pop.appendChild(btn);
+                }
             })
             .catch(function () {
                 pop.innerHTML = '<div class="assistant-hnote">Could not load history.</div>';

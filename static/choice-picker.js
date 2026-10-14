@@ -3,7 +3,23 @@
   if (window.TrellumChoices) { window.TrellumChoices.init(document); return; }
   var nextId = 0, active = null;
   window.addEventListener('pagehide', function () { if (active) active.close(false); });
-  new MutationObserver(function () { if (active && !active.root.isConnected) active.close(false); }).observe(document.documentElement, {childList: true, subtree: true});
+  // Remote pickers register a canceller so hide/unmount aborts in-flight work, not just an open popup.
+  var remotes = new Set();
+  function stopRemotes(onlyDetached) {
+    remotes.forEach(function (entry) {
+      if (onlyDetached && entry.root.isConnected) return;
+      entry.stop();
+      if (!entry.root.isConnected) remotes.delete(entry);
+    });
+  }
+  ['trellum:catalog-hide', 'console:native-start'].forEach(function (name) {
+    document.addEventListener(name, function () { if (active) active.close(false); stopRemotes(false); });
+  });
+  window.addEventListener('pagehide', function () { stopRemotes(false); });
+  new MutationObserver(function () {
+    if (active && !active.root.isConnected) active.close(false);
+    if (remotes.size) stopRemotes(true);
+  }).observe(document.documentElement, {childList: true, subtree: true});
 
   function element(tag, className, text) {
     var node = document.createElement(tag);
@@ -276,6 +292,7 @@
       var localOpen = api.open, localClose = api.close;
       api.open = function () { localOpen(); if (!api.popup.hidden) loadRemote(1); };
       api.close = function (focus) { cancelRemote(); localClose(focus); };
+      remotes.add({ root: root, stop: function () { cancelRemote(); if (remoteState === 'loading') { remoteState = ''; } api.close(false); } });
       api.search.addEventListener('input', function () {
         cancelRemote(); remoteState = 'loading'; remoteRows = []; remotePage = null; api.refresh();
         debounce = setTimeout(function () { loadRemote(1); }, 180);
