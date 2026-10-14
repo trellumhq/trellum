@@ -324,11 +324,19 @@
   });
   window.addEventListener('pageshow', function () { leaving = false; });
   window.addEventListener('pagehide', function () { window.TrellumSettingsForms.unmount(); });
+  var WAIT_HINT = ' Summary update waits until editing is finished.';
   function retryRefresh() {
     if (!pendingRefresh.size) return;
     var generation = refreshGeneration;
     setTimeout(function () {
-      if (generation === refreshGeneration && pendingRefresh.size) refreshRegions(Array.from(pendingRefresh)).catch(function () {});
+      if (generation !== refreshGeneration || !pendingRefresh.size) return;
+      refreshRegions(Array.from(pendingRefresh)).then(function (pending) {
+        // The retry superseded the save-driven refresh whose hint it would have set.
+        if (pending && pending.length) document.querySelectorAll('[data-settings-dirty-status]').forEach(function (status) {
+          var owner = status.closest('form');
+          if (owner && owner.dataset.settingsState === 'saved' && status.textContent.indexOf(WAIT_HINT) < 0) status.textContent += WAIT_HINT;
+        });
+      }).catch(function () {});
     }, 0);
   }
   document.addEventListener('settings:saved', retryRefresh);

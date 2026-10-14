@@ -6,7 +6,7 @@ from dataclasses import replace
 from urllib.parse import quote
 
 from django.contrib import messages
-from django.db.models import Count
+from django.db.models.functions import Collate
 from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -37,10 +37,11 @@ from apps.datasources.models import (
 from apps.datasources.status import (
     SourceState,
     binding_state,
-    blocked_reports,
     effective_fields,
-    source_states,
+    _state,
 )
+from apps.datasources import catalog
+from apps.datasources.catalog import effective_bindings, states_for
 from apps.datasources.testing import STALE_CHECK, check_binding, check_draft, check_revision, draft_revision, fmt_size, run_state_check
 from apps.orgs import quotas
 from apps.orgs.views import paginate
@@ -68,18 +69,6 @@ def _upload_target(studio, name: str) -> DataSource | None:
     return DataSource.objects.create(
         studio=studio, name=name, type=declaration.type, config={"upload": True}
     )
-
-
-def _filter_rows(rows: list[dict], query: str) -> list[dict]:
-    """Name/type/description search over the merged source rows."""
-    q = query.lower()
-    return [
-        r
-        for r in rows
-        if q in r["name"].lower()
-        or q in (r["state"].type or "").lower()
-        or q in r["description"].lower()
-    ]
 
 
 #: Source states the legacy ``configured`` status stands for.
@@ -117,16 +106,23 @@ def _source_info(ds: DataSource, state: SourceState) -> dict:
     return info
 
 
-def _states_by_name(studio) -> dict[str, SourceState]:
-    return {s.name: s for s in source_states(studio)}
-
-
 @require_studio_role(roles.VIEWER)
 @require_full_studio_visibility
 def api_list(request, org_slug, studio_slug):  # noqa: ARG001
-    states = _states_by_name(request.studio)
-    sources = [_source_info(ds, states[ds.name]) for ds in sources_for_studio(request.studio)]
-    return JsonResponse({"sources": sources})
+    """One page (default 50, ``?page=``, ``?limit=`` up to 200) of the studio's
+    effective sources, by name; ``total``/``has_next`` say whether to ask again."""
+    try:
+        limit = max(1, min(int(request.GET.get("limit") or 50), 200))
+    except ValueError:
+        limit = 50
+    bindings = effective_bindings(request.studio).annotate(n=Collate("name", "C")).order_by("n")
+    page = paginate(request, bindings, per_page=limit)
+    items = list(page.object_list)
+    states = states_for(request.studio, [ds.name for ds in items])
+    return JsonResponse({
+        "sources": [_source_info(ds, states[ds.name]) for ds in items],
+        "total": page.paginator.count, "page": page.number, "has_next": page.has_next(),
+    })
 
 
 def _store_upload(request, ds: DataSource, name: str) -> JsonResponse:
@@ -582,24 +578,6 @@ def _configure(request, name: str):
     return redirect(request.path)
 
 
-def _banner(states: list[SourceState], studio) -> dict | None:
-    """The page-top warning while declared sources wait for credentials."""
-    needs = [s for s in states if s.state in NEEDS_STATES]
-    if not needs:
-        return None
-    waiting = sum(
-        1
-        for blockers in blocked_reports(studio, states).values()
-        if any(b.state in NEEDS_STATES for b in blockers)
-    )
-    return {
-        "count": len(needs),
-        "waiting": waiting,
-        "noun": "a file" if all(s.state == SourceState.NEEDS_UPLOAD for s in needs) else "credentials",
-        "sources": needs,
-    }
-
-
 def _saved_response(request, ds, studio=None, *, configured=False, redirect_to=None):
     base = (
         f"/orgs/{request.org.slug}/settings/datasources/" if ds.org_id
@@ -700,21 +678,18 @@ def settings_page(request, org_slug, studio_slug):  # noqa: ARG001
     else:
         form = DataSourceForm(instance=editing, **form_kwargs)
 
-    states = source_states(request.studio)
     has_repo = StudioRepo.objects.filter(studio=request.studio, repo_url__gt="").exists()
 
-    rows = [
-        _row(request, st, studio=request.studio)
-        for st in states
-        if st.state != SourceState.UNKNOWN
-    ]
-    # source_states merges declarations, org- and studio-level bindings and
-    # references, so this is a list, not a queryset — filter and page it in Python.
     q = (request.GET.get("q") or "").strip()
-    if q:
-        rows = _filter_rows(rows, q)
-    total = len(rows)
-    page = paginate(request, rows)
+    page = paginate(request, catalog.studio_names(request.studio, q))
+    names = list(page.object_list)
+    by_name = catalog.states_for(request.studio, names)
+    rows = [_row(request, by_name[n], studio=request.studio) for n in names]
+    total = page.paginator.count
+    unknown_names = catalog.unknown_names(request.studio)
+    unknown_more = len(unknown_names) > catalog.UNKNOWN_PAGE
+    unknown_names = unknown_names[:catalog.UNKNOWN_PAGE]
+    unknown = list(catalog.states_for(request.studio, unknown_names).values())
 
     return render(
         request,
@@ -722,9 +697,10 @@ def settings_page(request, org_slug, studio_slug):  # noqa: ARG001
         {
             "org": request.org,
             "studio": request.studio,
-            "rows": page.object_list,
-            "unknown": [s for s in states if s.state == SourceState.UNKNOWN],
-            "banner": _banner(states, request.studio),
+            "rows": rows,
+            "unknown": unknown,
+            "unknown_more": unknown_more,
+            "banner": catalog.banner(request.studio),
             "has_repo": has_repo,
             "form": form,
             "editing": editing,
@@ -781,24 +757,17 @@ def org_settings_page(request, org_slug):  # noqa: ARG001
     else:
         form = DataSourceForm(instance=editing, **form_kwargs)
 
-    # How many of the org's studios declare each name -- the "Used by" cell
-    # here (the per-studio listing is a later ticket).
-    declared_by = {
-        r["name"]: r["n"]
-        for r in RepoDataSource.objects.filter(studio__org=request.org, present=True)
-        .values("name").annotate(n=Count("studio"))
-    }
-    rows = []
-    for ds in DataSource.objects.filter(org=request.org).order_by("name"):
-        row = _row(request, binding_state(ds), studio=None)
-        row["declared_by"] = declared_by.get(ds.name, 0)
-        rows.append(row)
-
     q = (request.GET.get("q") or "").strip()
-    if q:
-        rows = _filter_rows(rows, q)
-    total = len(rows)
-    page = paginate(request, rows)
+    page = paginate(request, catalog.org_bindings(request.org, q))
+    bindings = list(page.object_list)
+    declared = catalog.org_declarations(request.org, [ds.name for ds in bindings])
+    rows = []
+    for ds in bindings:
+        decl, declared_by = declared.get(ds.name, (None, 0))
+        row = _row(request, _state(ds.name, decl, ds, []), studio=None)
+        row["declared_by"] = declared_by
+        rows.append(row)
+    total = page.paginator.count
 
     return render(
         request,
@@ -806,7 +775,7 @@ def org_settings_page(request, org_slug):  # noqa: ARG001
         {
             "org": request.org,
             "studio": None,
-            "rows": page.object_list,
+            "rows": rows,
             "form": form,
             "editing": editing,
             "type_fields": TYPE_FIELDS,
@@ -867,7 +836,7 @@ def _editor_state(request, name, studio, *, org_target=False):
     if studio is None:
         ds = get_object_or_404(DataSource, org=request.org, name=name)
         return binding_state(ds)
-    state = next((s for s in source_states(studio) if s.name == name), None)
+    state = states_for(studio, [name])[name]
     if state is None or state.state == SourceState.UNKNOWN:
         raise Http404
     if org_target:
