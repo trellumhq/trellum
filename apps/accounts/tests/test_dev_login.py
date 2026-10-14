@@ -60,12 +60,14 @@ class TestLogin:
         assert response.status_code == 404
         assert b"<script>" not in response.content
 
-    def test_cross_site_requests_rejected(self, rf_get, make_user, org):
+    def test_cross_site_requests_only_confirm(self, rf_get, make_user, org):
         make_user("who@demo.example", org=org)
         request = rf_get("?user=who@demo.example")
         request.META["HTTP_SEC_FETCH_SITE"] = "cross-site"
         response = dev_login(request)
-        assert response.status_code == 403
+        assert response.status_code == 200
+        assert b">Continue</a>" in response.content
+        assert b"who@demo.example" in response.content  # same-origin link back
         assert SESSION_KEY not in request.session
 
     def test_offsite_next_is_dropped(self, rf_get, make_user, org):

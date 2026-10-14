@@ -41,11 +41,19 @@ def dev_login(request):
     if not settings.DEBUG:
         raise Http404
 
-    # Login happens via GET for one-click convenience, so refuse drive-by
-    # embeds from other sites (login CSRF against a developer's localhost).
-    # Typed URLs ("none") and same-site links still work.
+    # Login happens via GET for one-click convenience, so never log in on a
+    # drive-by request from another site (login CSRF against a developer's
+    # localhost). Typed URLs ("none") and same-site links log in directly; a
+    # link clicked in another app gets a confirmation page whose same-origin
+    # Continue link completes the login.
     if request.headers.get("Sec-Fetch-Site") == "cross-site":
-        return HttpResponse("cross-site requests are not allowed", status=403)
+        return HttpResponse(format_html(
+            "<!doctype html><title>Dev login</title>"
+            "<body style='font-family:monospace;max-width:640px;margin:40px auto'>"
+            "<h2>Dev login (DEBUG only)</h2>"
+            "<p><a href='{}'>Continue</a></p></body>",
+            request.get_full_path(),
+        ))
 
     email = request.GET.get("user", "").strip()
     persona = request.GET.get("as", "").strip()
