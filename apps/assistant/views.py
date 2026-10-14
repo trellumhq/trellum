@@ -39,7 +39,7 @@ from apps.assistant.tools import AssistantToolbox
 from apps.core import roles
 from apps.core.audit import audit
 from apps.core.http import json_body
-from apps.core.permissions import effective_roles, require_studio_role
+from apps.core.permissions import require_studio_role
 from apps.core.report_access import can_view_report, raw_scope_reports, selected_report_access_block_reason
 from apps.core.request_access import request_org_access
 
@@ -291,7 +291,7 @@ def sessions(request, org_slug, studio_slug):  # noqa: ARG001
     body = json_body(request)
     report_slug = (body.get("report") or "").strip()
     report = _report_for(request.studio, report_slug)
-    full = effective_roles(request.user, request.org).has_full_studio_visibility(request.studio)
+    full = request.org_roles.has_full_studio_visibility(request.studio)
     if not full:
         if selected_report_access_block_reason():
             return JsonResponse(
@@ -299,7 +299,7 @@ def sessions(request, org_slug, studio_slug):  # noqa: ARG001
             )
         if not report_slug:
             return JsonResponse({"error": "A report is required for this conversation."}, status=400)
-        if report is None or not can_view_report(request.user, report):
+        if report is None or not can_view_report(request.user, report, request=request):
             raise Http404
     session = AssistantSession.objects.create(
         user=request.user,
@@ -327,13 +327,12 @@ def from_alert(request, org_slug, studio_slug, run_id):
     run = get_object_or_404(
         AlertRun.objects.select_related("rule__report"), pk=run_id, rule__studio=request.studio
     )
-    permissions = effective_roles(request.user, request.org)
-    full = permissions.has_full_studio_visibility(request.studio)
+    full = request.org_roles.has_full_studio_visibility(request.studio)
     if not full and selected_report_access_block_reason():
         return JsonResponse(
             {"error": "Selected report access is temporarily unavailable."}, status=503
         )
-    if not can_view_report(request.user, run.rule.report):
+    if not can_view_report(request.user, run.rule.report, request=request):
         raise Http404
     session = AssistantSession.objects.create(
         user=request.user, org=request.org, studio=request.studio, report=run.rule.report,

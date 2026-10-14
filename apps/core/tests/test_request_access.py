@@ -199,8 +199,9 @@ def test_request_facts_match_complete_roles_across_sources(
                 complete.role_for(target), complete.has_full_studio_visibility(target)
             )
             nonrequest = actor_studio_access(user, target)
-            assert (nonrequest.role, nonrequest.full) == (
-                complete.role_for(target), complete.has_full_studio_visibility(target)
+            assert (nonrequest.role, nonrequest.full, nonrequest.is_org_admin) == (
+                complete.role_for(target), complete.has_full_studio_visibility(target),
+                complete.is_org_admin,
             )
 
 
@@ -267,6 +268,21 @@ def test_request_facts_next_request_reflects_revocation(
     from apps.studios.models import StudioMembership
     StudioMembership.objects.filter(user=member, studio=studio).delete()
     assert request_org_access(request_for(member), org).role_for(studio) is None
+
+
+def test_nonrequest_facts_use_fresh_org_and_grants(member, org, studio, grant_studio):
+    from apps.orgs.models import Organization
+    from apps.studios.models import StudioMembership
+
+    grant_studio(member, studio, roles.VIEWER)
+    studio.org = org  # Keep a stale related organization on the studio.
+    assert actor_studio_access(member, studio).role == roles.VIEWER
+    StudioMembership.objects.filter(user=member, studio=studio).delete()
+    assert actor_studio_access(member, studio).role is None
+    grant_studio(member, studio, roles.VIEWER)
+    Organization.objects.filter(pk=org.pk).update(is_active=False)
+    fresh_org = Organization.objects.get(pk=org.pk)
+    assert actor_studio_access(member, studio, org=fresh_org).role is None
 
 
 def test_guard_facts_do_not_fetch_unrelated_report_rows(
@@ -398,12 +414,14 @@ def test_raw_scope_matches_full_path_from_malformed_row_and_selected_viewer(
     rows = raw_scope_reports(member, Report.objects.filter(studio=studio), request=request)
     assert set(rows.values_list("pk", flat=True)) == set(legacy)
     assert can_view_report(member, public, request=request)
+    assert can_view_report(member, public)
     assert not visible_reports(member, Report.objects.filter(pk=public.pk), request=request).exists()
     settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = False
     assert set(raw_scope_reports(
         member, Report.objects.filter(studio=studio), request=request
     ).values_list("pk", flat=True)) == set(legacy)
     assert not can_view_report(member, public, request=request)
+    assert not can_view_report(member, public)
 
 
 def test_malformed_full_path_without_private_reports_remains_full_when_scoping_blocked(
@@ -426,6 +444,7 @@ def test_malformed_full_path_without_private_reports_remains_full_when_scoping_b
     assert request_org_access(request, org).has_full_studio_visibility(studio)
     settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = False
     assert can_view_report(member, public, request=request)
+    assert can_view_report(member, public)
 
 
 def test_selected_report_identity_remains_visible_before_content_503(

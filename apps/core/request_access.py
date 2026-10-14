@@ -13,6 +13,7 @@ from apps.core.request_context import actor_key
 class StudioAccess:
     role: str | None = None
     full: bool = False
+    is_org_admin: bool = False
 
 
 @dataclass
@@ -108,15 +109,16 @@ def _actor_org_facts(user, org, *, api_key=None) -> tuple[str | None, bool]:
     return role, role == roles.ORG_ADMIN or is_group_admin
 
 
-def actor_studio_access(user, studio) -> StudioAccess:
+def actor_studio_access(user, studio, *, org=None) -> StudioAccess:
     """Fresh, non-request actor facts for background/toolbox callers.
 
     This has no bearer authority and no cross-request cache. HTTP callers use
     ``request_org_access`` to enforce the request's API-key organization.
     """
-    org = studio.org
+    org = org if org is not None else studio.org
     role, admin = _actor_org_facts(user, org)
-    return _studio_access_for_user(user, org, studio, is_member=role is not None, is_admin=admin)
+    facts = _studio_access_for_user(user, org, studio, is_member=role is not None, is_admin=admin)
+    return StudioAccess(facts.role, facts.full, admin)
 
 
 def _studio_access(access: RequestOrgAccess, studio) -> StudioAccess:

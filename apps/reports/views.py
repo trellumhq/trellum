@@ -36,7 +36,6 @@ from apps.core.audit import audit
 from apps.core.form_responses import is_settings_request, settings_error, settings_success
 from apps.core.http import int_param, json_body
 from apps.core.permissions import (
-    effective_roles,
     require_org_role,
     require_studio_role,
 )
@@ -824,9 +823,11 @@ def _schedule_dict(schedule, *, viewer=None, request=None, batch=None) -> dict:
     if request is not None:
         editable = deliveries.can_manage_schedule(request, schedule)
     else:
+        from apps.core.request_access import actor_studio_access
+
         editable = bool(viewer is not None and viewer.is_active
             and can_view_report(viewer, schedule.report)
-            and roles.at_least(effective_roles(viewer, schedule.report.studio.org).role_for(schedule.report.studio), roles.DEVELOPER))
+            and roles.at_least(actor_studio_access(viewer, schedule.report.studio).role, roles.DEVELOPER))
     batch = batch or DeliveryPresentationBatch([schedule])
     next_at = deliveries.next_occurrence(schedule, pause=batch.pauses[schedule.report.studio.org_id])
     eligible_recipients = [{"id": user.pk, "email": user.email} for user in batch.eligible(schedule)]

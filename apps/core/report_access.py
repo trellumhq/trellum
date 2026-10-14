@@ -8,7 +8,7 @@ from django.conf import settings
 from django.db.models import Exists, OuterRef, Q
 
 from apps.core import roles
-from apps.core.permissions import EffectiveRoles, bulk_effective_roles, _forbidden, effective_roles
+from apps.core.permissions import EffectiveRoles, bulk_effective_roles, _forbidden
 
 
 def selected_report_access_block_reason() -> str | None:
@@ -53,14 +53,15 @@ def can_view_report(user, report, *, request=None) -> bool:
         ):
             return False
         return raw_scope_reports(user, Report.objects.filter(pk=report.pk), request=request).exists()
-    else:
-        er = effective_roles(user, report.studio.org)
-    scope = er.report_scope_for(report.studio)
-    if (
-        scope is not None or report.audience == report.AUDIENCE_PRIVATE
-    ) and selected_report_access_block_reason():
+    from apps.core.request_access import actor_studio_access
+    from apps.reports.models import Report
+
+    facts = actor_studio_access(user, report.studio)
+    if selected_report_access_block_reason() and (
+        not facts.full or report.audience == report.AUDIENCE_PRIVATE
+    ):
         return False
-    return scope is None or report.pk in scope
+    return raw_scope_reports(user, Report.objects.filter(pk=report.pk)).exists()
 
 
 def raw_scope_reports(user, queryset, *, request=None):
