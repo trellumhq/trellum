@@ -33,7 +33,7 @@ def test_account_persistence_and_csrf(journey, size, javascript):
             expect(page.locator('input[name=name]')).to_have_value(name)
             visible_geometry(page.get_by_role('status').filter(has_text='Profile updated.'))
             journey.checkpoint('visible-feedback')
-            assert get_user_model().objects.get(pk=actor['actor_id']).name == name
+            assert journey.database(lambda: get_user_model().objects.get(pk=actor['actor_id']).name) == name
             journey.checkpoint('db-persistence')
             page.reload()
             expect(page.locator('input[name=name]')).to_have_value(name)
@@ -41,7 +41,7 @@ def test_account_persistence_and_csrf(journey, size, javascript):
             response = context.request.post(origin + '/account', form={'action': 'profile', 'name': 'CSRF must reject'},
                                             headers={'Referer': origin + '/account'})
             assert response.status == 403
-            assert get_user_model().objects.get(pk=actor['actor_id']).name == name
+            assert journey.database(lambda: get_user_model().objects.get(pk=actor['actor_id']).name) == name
             journey.checkpoint('csrf-no-write')
             events = [row for row in journey.events() if row['route'] == 'route-212' and row['method'] == 'POST']
             assert len(events) == 2 and [row['status'] for row in events] == [302, 403]
@@ -89,7 +89,7 @@ def test_shared_ajax_group_save(journey, size):
             expect(status).to_have_text('Saved')
             visible_geometry(status)
             journey.checkpoint('ajax-visible-feedback')
-            group.refresh_from_db()
+            journey.database(group.refresh_from_db)
             assert group.name == name
             journey.checkpoint('db-persistence')
             page.reload()

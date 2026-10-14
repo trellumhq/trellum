@@ -109,7 +109,7 @@ class MeasureRequests:
                             break
                 except Exception:
                     action = '<unreadable-body>'
-            row = {'path': '/' + pattern if pattern else '<unresolved>', 'route': route['id'] if route else None,
+            row = {'path': '/' + pattern if pattern is not None else '<unresolved>', 'route': route['id'] if route else None,
                    'method': request.method, 'action': action, 'role': role, 'cache_phase': phase, **identity,
                    'event_id': uuid.uuid4().hex, 'complete': complete,
                    'node_id': label('X-Portal-E2E-Node', r'apps/core/tests/portal_e2e/[\w./:\[\], -]+', 300),

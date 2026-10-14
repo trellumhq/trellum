@@ -5,6 +5,19 @@ import hmac
 import json
 from pathlib import Path
 import uuid
+from concurrent.futures import ThreadPoolExecutor
+
+
+def database_call(function, *args):
+    """Playwright's sync bridge runs an event loop; keep ORM off that thread."""
+    from django.db import connections
+    def call():
+        try:
+            return function(*args)
+        finally:
+            connections.close_all()
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        return executor.submit(call).result()
 
 
 def configure_database(unit):
@@ -49,26 +62,30 @@ class Journey:
         from .identities import ROLES
         cookies = {cookie['name']: cookie['value'] for cookie in context.cookies(self.unit.origin)}
         key = cookies.get(settings.SESSION_COOKIE_NAME)
-        if principal == 'anonymous':
-            assert not key or '_auth_user_id' not in Session.objects.get(session_key=key).get_decoded()
-            user_id, impersonator = None, None
-        else:
+        def verify():
+            if principal == 'anonymous':
+                assert not key or '_auth_user_id' not in Session.objects.get(session_key=key).get_decoded()
+                return None, None
             assert key, 'authenticated session cookie missing'
             session = Session.objects.get(session_key=key).get_decoded()
             user = get_user_model().objects.get(email=ROLES[principal])
             assert user.is_active
             assert session['_auth_user_id'] == str(user.pk)
-            user_id = user.pk
             impersonator = session.get('impersonator_id')
             if principal == 'impersonated':
                 assert impersonator == get_user_model().objects.get(email=ROLES['operator']).pk
             else:
                 assert impersonator is None
+            return user.pk, impersonator
+        user_id, impersonator = database_call(verify)
         digest = hmac.new(self.unit.env['PORTAL_E2E_SESSION_SALT'].encode(), key.encode(), hashlib.sha256).hexdigest() if key else None
         self.actor = {'principal': principal, 'actor_id': user_id,
                       'session_digest': digest, 'impersonator_id': impersonator}
         self.checkpoints.add('actor')
         return self.actor
+
+    def database(self, function, *args):
+        return database_call(function, *args)
 
     def assert_observed_actor(self, event):
         assert self.actor is not None
