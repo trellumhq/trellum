@@ -206,7 +206,7 @@ def audit_many(request, action: str, targets, *, org=None, actor=None,
         return None
 
 
-def audit_system(action: str, org=None, **metadata) -> AuditLog | None:
+def audit_system(action: str, org=None, outcome: str = "success", **metadata) -> AuditLog | None:
     """Record an event with no request behind it, such as the nightly
     retention purge's summary row.
 
@@ -224,7 +224,7 @@ def audit_system(action: str, org=None, **metadata) -> AuditLog | None:
             impersonator=None,
             action=action,
             category=category,
-            outcome="success",
+            outcome=outcome,
             target_type="",
             target_id="",
             metadata=_prepare_metadata(metadata),

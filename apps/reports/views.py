@@ -24,11 +24,11 @@ from django.http import (
     HttpResponse,
     JsonResponse,
 )
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_http_methods, require_POST
+from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from apps.core import roles, storage
 from apps.core.docs import docs_url
@@ -503,32 +503,80 @@ def api_cache_clear(request, org_slug, studio_slug):  # noqa: ARG001
     return JsonResponse({"ok": True, "message": "Cache directory does not exist (already clean)"})
 
 
+def _action_payload(request, action) -> dict:
+    from django.urls import reverse
+
+    url = reverse(
+        "api-maintenance-action",
+        kwargs={
+            "org_slug": request.org.slug,
+            "studio_slug": request.studio.slug,
+            "action_id": action.pk,
+        },
+    )
+    payload = {
+        "ok": action.state not in ("failed", "unconfirmed"),
+        "operation_id": str(action.pk),
+        "status_url": url,
+        "kind": action.kind,
+        "state": action.state,
+        "terminal": action.is_terminal,
+        "message": action.message,
+        "accepted_at": action.accepted_at.isoformat(),
+        "finished_at": action.finished_at.isoformat() if action.finished_at else None,
+    }
+    if action.state == "succeeded":
+        payload["reports"] = action.reports
+        payload["warning"] = action.warning
+    return payload
+
+
 @require_studio_role(roles.DEVELOPER)
 @require_POST
 def api_registry_refresh(request, org_slug, studio_slug):  # noqa: ARG001
-    from apps.reports.scan import ReportQuotaExceeded
-    from apps.runner.gitsync import studio_sync_lock
+    """Admit a durable registry refresh; a runner executes it under the
+    studio sync lock (see ``apps.runner.maintenance_actions``)."""
+    from apps.runner import maintenance_actions as maint
 
-    # Same cross-process lock GitSync.sync holds while it copies the checkout:
-    # scanning mid-copy would transiently mark half the reports absent.
-    with studio_sync_lock(request.studio.pk) as acquired:
-        if not acquired:
-            return JsonResponse(
-                {
-                    "ok": False,
-                    "message": "A repository sync is in progress; the registry will refresh when it finishes.",
-                },
-                status=409,
-            )
-        warning = ""
-        try:
-            n = sync_studio_registry(request.studio)
-        except ReportQuotaExceeded as exc:
-            # Reports that fit are registered; say what was left out rather than
-            # reporting a failure the user cannot distinguish from a broken scan.
-            warning = str(exc)
-            n = Report.objects.filter(studio=request.studio, present_in_scan=True).count()
-    return JsonResponse({"ok": True, "reports": n, "warning": warning})
+    key = (request.headers.get("Idempotency-Key") or "").strip()
+    if key and not maint.valid_key(key):
+        return JsonResponse({"ok": False, "message": "Invalid idempotency key"}, status=400)
+    try:
+        action, created = maint.admit(
+            studio=request.studio, user=request.user, idempotency_key=key
+        )
+    except maint.PendingLimitReached as exc:
+        audit(request, "registry.refresh_requested", org=request.org, outcome="failure",
+              reason="pending_limit", scope=exc.scope)
+        resp = JsonResponse(
+            {
+                "ok": False,
+                "message": "Too many maintenance actions are pending; try again shortly.",
+                "retry_after": exc.retry_after,
+            },
+            status=429,
+        )
+        resp["Retry-After"] = str(exc.retry_after)
+        return resp
+    audit(request, "registry.refresh_requested", org=request.org,
+          action_id=str(action.pk), duplicate=not created)
+    payload = _action_payload(request, action)
+    payload.update(scheduled=True, duplicate=not created)
+    resp = JsonResponse(payload, status=202)
+    resp["Cache-Control"] = "no-store"
+    return resp
+
+
+@require_studio_role(roles.DEVELOPER)
+@require_GET
+def api_maintenance_action(request, org_slug, studio_slug, action_id):  # noqa: ARG001
+    """Status of one action, readable only inside its own studio."""
+    from apps.runner.models import StudioMaintenanceAction
+
+    action = get_object_or_404(StudioMaintenanceAction, pk=action_id, studio=request.studio)
+    resp = JsonResponse(_action_payload(request, action))
+    resp["Cache-Control"] = "no-store"
+    return resp
 
 
 def git_status_payload(studio) -> dict:
