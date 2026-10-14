@@ -976,8 +976,8 @@ def summary_output_facts(studio, slug: str, *, build: str = '', budget=None):
             live = True
     if budget:
         budget.charge(charged, charged)
-    # C09 introduces the shared helper; old host checkouts use exact compatible
-    # versioned names until the framework producer is composed.
+    # The framework exports the shared basename predicate. Older host
+    # checkouts use the exact compatible versioned names until composition.
     try:
         from trellum.metrics_workspace import owned_name
     except ImportError:

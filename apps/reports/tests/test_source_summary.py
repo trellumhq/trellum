@@ -16,6 +16,25 @@ from apps.reports.source_summary import (
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
+@pytest.fixture(autouse=True)
+def isolated_mocked_remote_output_facts(monkeypatch):
+    """These remote cases mock artifact bodies; facts share that fake boundary.
+
+    Real HTTP/provider publication is exercised in test_source_summary_live.
+    Never discover ambient SDK credentials for an otherwise mocked observation.
+    """
+    from apps.core import storage
+    original = storage.summary_output_facts
+
+    def facts(studio, slug, **kwargs):
+        if storage.is_remote():
+            return dict(has_output=False, html_entry='', has_live_queries=False,
+                        output_digest='0' * 64)
+        return original(studio, slug, **kwargs)
+
+    monkeypatch.setattr(storage, 'summary_output_facts', facts)
+
+
 def report(studio_tree, slug="one", meta=None):
     row = Report.objects.create(studio=studio_tree, slug=slug)
     path = studio_tree.output_dir / slug
