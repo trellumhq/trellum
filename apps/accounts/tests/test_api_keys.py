@@ -417,3 +417,12 @@ class TestOrgKeysPage:
         org.refresh_from_db()
         assert org.api_keys_enabled
         assert Client().get(f"{prefix}/api/registry", **bearer(secret)).status_code == 200
+
+
+def test_key_and_session_lists_are_paged(login, developer, org):
+    for i in range(27):
+        mint(developer, org, name=f"k{i}")
+    client = login(developer)
+    page = client.get("/me/api-keys").context["page"]
+    assert len(page.object_list) == 25 and page.paginator.count == 27
+    assert len(client.get("/me/api-keys?page=2").context["keys"]) == 2

@@ -321,3 +321,20 @@ class TestReportBoundSessions:
             AssistantSession.objects.create(
                 user=viewer, org=org, studio=studio_tree, scope=AssistantSession.SCOPE_REPORT
             )
+
+
+class TestBoundedHistory:
+    def test_listing_is_paged_and_report_filtered(self, login, viewer, org, studio_tree, prefix, report_row):
+        for i in range(27):
+            AssistantSession.objects.create(user=viewer, org=org, studio=studio_tree, title=f"s{i}")
+        AssistantSession.objects.create(
+            user=viewer, org=org, studio=studio_tree, title="r", scope=AssistantSession.SCOPE_REPORT, report=report_row
+        )
+        client = login(viewer)
+        first = client.get(f"{prefix}/sessions?report=&offset=0").json()
+        assert len(first["sessions"]) == 25 and first["next_offset"] == 25
+        second = client.get(f"{prefix}/sessions?report=&offset=25").json()
+        assert len(second["sessions"]) == 2 and second["next_offset"] is None
+        own = client.get(f"{prefix}/sessions?report={report_row.slug}").json()
+        assert "r" in {s["title"] for s in own["sessions"]}
+        assert client.get(f"{prefix}/sessions?offset=junk").status_code == 200

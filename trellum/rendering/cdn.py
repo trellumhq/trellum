@@ -7,6 +7,7 @@ See ``trellum/static/vendor/MANIFEST.json`` for versions and licenses.
 See ``trellum/static/vendor/UPDATING.md`` for how to update.
 """
 
+import json
 from pathlib import Path
 
 _VENDOR_DIR = Path(__file__).resolve().parent.parent / "static" / "vendor"
@@ -208,9 +209,10 @@ _ALWAYS_INCLUDED = {
     "chartjs_zoom",
     "chartjs_annotation",
     "chartjs_datalabels",
-    "html2canvas",
-    "jspdf",
 }
+
+# Export-only libraries: not in the page's script tags; export.js loads them on use.
+_LAZY_EXPORT = ("html2canvas", "jspdf")
 
 
 def register_cdn(name: str, url: str) -> None:
@@ -266,4 +268,6 @@ def build_cdn_tags(keys: set[str]) -> str:
         else:
             parts.append(f'    <script src="{url}"></script>')
 
+    lazy = {key: f"{_vendor_url_base}{_LIBRARIES[key]}" for key in _LAZY_EXPORT}
+    parts.append(f"    <script>window._fwVendor={json.dumps(lazy)};</script>")
     return "\n".join(parts)

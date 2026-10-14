@@ -186,7 +186,7 @@ class TestProvenanceAndHistory:
         assert "function reportKey(slug)" in source
         assert "body: JSON.stringify({ report: _contextReport || '' })" in source
         assert "s.scope === 'report' && s.report !== _contextReport" in source
-        assert "s.report === _contextReport" in source
+        assert "'/sessions?report=' + encodeURIComponent(_contextReport || '')" in source
 
     def test_console_report_change_refreshes_access_and_context(self, source):
         assert "if (sessionScope === 'report'" in source
