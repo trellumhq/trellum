@@ -166,4 +166,3 @@ journey catalog therefore keeps the full gate blocked for both browsers.
 
 Full suites, real worker/restart behavior and Docker sandbox checks remain
 separate final gates. Phase 1 never certifies those gates or remaining journeys.
-
