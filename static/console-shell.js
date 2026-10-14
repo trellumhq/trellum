@@ -334,11 +334,16 @@
 
 (function () {
     var nativeSnapshot = null, nativeTimeout = null;
-    function clear() {
+    function clear(quiet) {
         clearTimeout(nativeTimeout); nativeTimeout = null;
         var restored = nativeSnapshot;
         if (nativeSnapshot) {
             window.TrellumConsoleShell.setPageTitle(nativeSnapshot.title);
+            nativeSnapshot.content.forEach(function (entry) {
+                entry.node.inert = entry.inert;
+                if (entry.hidden === null) entry.node.removeAttribute('hidden');
+                else entry.node.setAttribute('hidden', entry.hidden);
+            });
             nativeSnapshot.links.forEach(function (entry) { entry.node.classList.toggle('active', entry.active); if (entry.current) entry.node.setAttribute('aria-current', entry.current); else entry.node.removeAttribute('aria-current'); });
             nativeSnapshot = null;
         }
@@ -350,6 +355,7 @@
             var focus = restored.focus;
             if (!focus || !focus.isConnected || !focus.getClientRects().length) focus = document.querySelector('[data-console-toggle]');
             if (focus) focus.focus({preventScroll:true});
+            if (quiet !== true) document.dispatchEvent(new CustomEvent('console:native-restored', {detail: {url: location.href}}));
         }
     }
     function cancel(message) {
@@ -359,36 +365,102 @@
         var status = document.querySelector('[data-console-navigation-native-status]');
         if (status && message) status.textContent = message;
     }
-    window.addEventListener('click', function (event) {
-        var link = event.target.closest && event.target.closest('a.tl-console-nav-link');
-        if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey ||
-            link.hasAttribute('download') || (link.target && link.target !== '_self')) return;
-        var url = new URL(link.href), title = link.querySelector('.tl-console-label');
-        if (url.origin !== location.origin || url.hash || !title) return;
-        var label = title.textContent.trim();
-        var main = document.querySelector('main,[data-console-catalog]'); if (!main) return;
-        // Run after delegated leave guards and enhanced/report-host owners.
-        if (event.defaultPrevented) return;
-        clear();
-        nativeSnapshot = { position: [scrollX,scrollY], focus: document.activeElement, title: document.querySelector('[data-console-page-title]').textContent, links: Array.from(document.querySelectorAll('.tl-console-nav-link')).map(function (node) { return {node: node, active: node.classList.contains('active'), current: node.getAttribute('aria-current')}; }) };
+    function pageURL(url) {
+        if (url.origin !== location.origin || !/^https?:$/.test(url.protocol)) return false;
+        if (url.pathname === location.pathname && url.search === location.search && url.hash) return false;
+        // Only console documents. Assets, report hosts, APIs, auth and downloads
+        // keep their own lifecycle; a pending document timeout must not stop them.
+        var path = url.pathname;
+        if (/\.(?:csv|json|zip|pdf|xlsx?|gz|txt|log)\/?$/i.test(path) ||
+            /^\/(?:api\/|s\/[^/]+\/[^/]+\/api\/|orgs\/[^/]+\/api\/)/.test(path) ||
+            /\/(?:export|download|choices)\/?$/.test(path) ||
+            url.searchParams.has('download') || url.searchParams.has('export')) return false;
+        return path === '/' || /^\/scopes(?:\/open)?\/?$/.test(path) ||
+            /^\/system\/email-connections\/(?:new|[0-9]+)\/?$/.test(path) ||
+            /^\/s\/[^/]+\/[^/]+\/r\/[^/]+\/access\/?$/.test(path) || /^\/(?:account(?:\/security\/mfa\/(?:setup|recovery-codes))?|system|instance\/settings)\/?$/.test(path) ||
+            /^\/(?:me\/(?:deliveries|api-keys(?:\/new)?)|deliveries(?:\/[0-9]+\/edit)?|operator(?:\/(?:orgs(?:\/[^/]+)?|logs(?:\/runs\/[0-9a-f-]+)?))?)\/?$/.test(path) ||
+            /^\/orgs\/(?:new|[^/]+(?:\/settings(?:\/[^/]+)*|\/studios\/new)?)\/?$/.test(path) ||
+            /^\/s\/[^/]+\/[^/]+\/(?:analyses|operations|analytics|metrics(?:\/(?:comparison|compare|[0-9]+\/claims))?|experiments|annotations|alerts(?:\/[^/]+)*|deliveries(?:\/[^/]+)*|settings(?:\/[^/]+)*)?\/?$/.test(path);
+    }
+    function begin(url, label, link) {
+        var main = document.querySelector('main,[data-console-catalog]');
+        var pageTitle = document.querySelector('[data-console-page-title]');
+        if (!main || !pageTitle) return false;
+        clear(true);
+        nativeSnapshot = { content: Array.from(main.children).map(function (node) {
+            return {node:node, inert:node.inert, hidden:node.getAttribute('hidden')};
+        }), position: [scrollX,scrollY], focus: document.activeElement, title: pageTitle.textContent, links: Array.from(document.querySelectorAll('.tl-console-nav-link')).map(function (node) { return {node: node, active: node.classList.contains('active'), current: node.getAttribute('aria-current')}; }) };
+        history.replaceState(Object.assign({}, history.state || {}, {
+            trellumNativePosition: {url:location.href, position:nativeSnapshot.position}
+        }), '', location.href);
         var drawerClose = document.querySelector('[data-console-close]');
         if (drawerClose && drawerClose.closest('[data-console-shell]').classList.contains('is-open')) drawerClose.click();
         window.TrellumConsoleShell.setPageTitle(label);
-        document.querySelectorAll('.tl-console-nav-link').forEach(function (node) {
+        if (link && link.matches('.tl-console-nav-link')) document.querySelectorAll('.tl-console-nav-link').forEach(function (node) {
             var active = node === link; node.classList.toggle('active', active);
             if (active) node.setAttribute('aria-current', 'page'); else node.removeAttribute('aria-current');
         });
         var panel = document.createElement('section'); panel.dataset.consoleNativePending = ''; panel.className = 'page-head';
-        var heading = document.createElement('h1'); heading.textContent = label;
+        var heading = document.createElement('h1'); heading.textContent = label; heading.tabIndex = -1;
         var status = document.createElement('p'); status.setAttribute('role', 'status'); status.textContent = 'Opening ' + label + '…';
         var stop = document.createElement('button'); stop.type = 'button'; stop.className = 'ui-btn ghost'; stop.textContent = 'Cancel loading';
         stop.addEventListener('click', function () { cancel(); });
+        // Prevent keyboard focus from entering the previous page while loading.
+        nativeSnapshot.content.forEach(function (entry) { entry.node.inert = true; entry.node.hidden = true; });
         panel.append(heading, status, stop); main.prepend(panel); main.classList.add('tl-console-native-pending');
+        heading.focus({preventScroll:true});
+        var sharedStatus = document.querySelector('[data-console-navigation-native-status]');
+        if (sharedStatus) sharedStatus.textContent = 'Opening page…';
         window.scrollTo(0,0);
         nativeTimeout = setTimeout(function () { cancel('The page did not finish loading. Try opening it again when ready.'); }, 15000);
+        document.dispatchEvent(new CustomEvent('console:native-start', {detail: {url: url.href}}));
+        return true;
+    }
+    window.addEventListener('click', function (event) {
+        var link = event.target.closest && event.target.closest('a[href]');
+        if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey ||
+            link.hasAttribute('download') || link.hasAttribute('data-console-no-feedback') || (link.target && link.target !== '_self')) return;
+        if (!link.closest('[data-console-shell],main[data-console-page],[data-console-catalog]')) return;
+        var url = new URL(link.href);
+        if (!pageURL(url)) return;
+        // Runs after delegated dirty guards and enhanced/report-host owners.
+        if (!event.trellumLeaveConfirmed && window.TrellumSettingsForms && !window.TrellumSettingsForms.confirmLeave(document)) {
+            event.preventDefault(); return;
+        }
+        if (window.TrellumSettingsForms) window.TrellumSettingsForms.nativeLeave();
+        var heading = document.querySelector('main h1,[data-console-page-title]');
+        var title = link.querySelector('.tl-console-label');
+        var label = title ? title.textContent : url.pathname === location.pathname && heading ? heading.textContent : link.textContent;
+        begin(url, label.trim() || 'page', link);
+    });
+    window.addEventListener('submit', function (event) {
+        var form = event.target, submitter = event.submitter;
+        if (event.defaultPrevented || !form.matches('form') || form.hasAttribute('data-console-no-feedback')) return;
+        var method = (submitter && submitter.getAttribute('formmethod')) || form.method;
+        var target = (submitter && submitter.getAttribute('formtarget')) || form.target;
+        if (method.toLowerCase() !== 'get' || (target && target !== '_self')) return;
+        if (!form.closest('[data-console-shell],main[data-console-page],[data-console-catalog]')) return;
+        var url = new URL((submitter && submitter.getAttribute('formaction')) || form.action, location.href);
+        if (!pageURL(url)) return;
+        if (!event.trellumLeaveConfirmed && window.TrellumSettingsForms && !window.TrellumSettingsForms.confirmLeave(document, form)) {
+            event.preventDefault(); return;
+        }
+        event.trellumLeaveConfirmed = true;
+        url.search = new URLSearchParams(new FormData(form)).toString();
+        if (submitter && submitter.name) url.searchParams.append(submitter.name, submitter.value);
+        if (!pageURL(url)) return;
+        if (window.TrellumSettingsForms) window.TrellumSettingsForms.nativeLeave();
+        var heading = document.querySelector('main h1,[data-console-page-title]');
+        begin(url, heading ? heading.textContent.trim() : 'page');
     });
     window.addEventListener('keydown', function (event) {
         if (event.key === 'Escape' && nativeSnapshot) { event.preventDefault(); cancel(); }
     });
-    window.addEventListener('pageshow', clear);
+    window.addEventListener('pageshow', function () {
+        clear();
+        var saved = history.state && history.state.trellumNativePosition;
+        if (saved && saved.url === location.href && Array.isArray(saved.position)) {
+            requestAnimationFrame(function () { window.scrollTo(saved.position[0], saved.position[1]); });
+        }
+    });
 }());

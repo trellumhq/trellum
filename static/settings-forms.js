@@ -355,7 +355,8 @@
   });
   window.addEventListener('submit', function (event) {
     if (event.defaultPrevented || !submitHandlers.has(event.target)) return;
-    if (!confirmLeave(document, event.target)) { event.preventDefault(); return; }
+    if (!event.trellumLeaveConfirmed && !confirmLeave(document, event.target)) { event.preventDefault(); return; }
+    event.trellumLeaveConfirmed = true;
     leaving = true;
     setTimeout(function () { if (event.defaultPrevented) leaving = false; }, 0);
   });
