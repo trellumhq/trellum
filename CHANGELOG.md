@@ -9,6 +9,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- The studio Annotations tab opens the new annotations browser; the legacy
+  `/annotations` URL keeps working for one more release.
 - `scripts/demo.sh --dev-login` prints one-click admin, member and viewer
   login links for local review, and seeds fixtures as the invoking user on Linux.
 - Document required portal performance patterns in `docs/performance-patterns.md`

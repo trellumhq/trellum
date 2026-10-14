@@ -42,6 +42,7 @@ CONSOLE_PAGE_TITLES = {
     "metric-comparison": "Metrics",
     "studio-experiments": "Experiments",
     "studio-annotations": "Annotations",
+    "studio-annotations-browse": "Annotations",
     "studio-alerts": "Alerts",
     "studio-alert": "Alert rule",
     "studio-alert-new": "New alert",
