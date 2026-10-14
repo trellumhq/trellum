@@ -792,6 +792,50 @@ class ReportSourceSummary(models.Model):
     workspace_version = models.PositiveSmallIntegerField(null=True, blank=True, default=None)
 
 
+    has_output = models.BooleanField(null=True, default=None)
+    html_entry = models.CharField(max_length=255, blank=True)
+    has_live_queries = models.BooleanField(null=True, default=None)
+    runtime_state = models.CharField(max_length=24, default="pending")
+    runtime = models.JSONField(null=True, default=None, blank=True)
+    attempt_error = models.CharField(max_length=500, blank=True)
+    attempt_blocked_by = models.JSONField(default=list, blank=True)
+    experiment_state = models.CharField(max_length=24, default="pending")
+    declaration_digest = models.CharField(max_length=64, blank=True)
+    output_digest = models.CharField(max_length=64, blank=True)
+
+
+class ReportExperimentSummary(models.Model):
+    """One declared experiment, with bounded worker-observed result facts."""
+
+    summary = models.ForeignKey(ReportSourceSummary, on_delete=models.CASCADE, related_name="experiments")
+    ordinal = models.PositiveIntegerField()
+    declaration_digest = models.CharField(max_length=64)
+    declaration = models.JSONField(default=dict)
+    start_date = models.DateField(null=True, blank=True)
+    end_date = models.DateField(null=True, blank=True)
+    closed = models.BooleanField(default=False)
+    test_name = models.CharField(max_length=200, blank=True)
+    split = models.CharField(max_length=200, blank=True)
+    control_label = models.CharField(max_length=200, blank=True)
+    test_label = models.CharField(max_length=200, blank=True)
+    payload_state = models.CharField(max_length=24, default="pending")
+    mode_label = models.CharField(max_length=200, blank=True)
+    generated_at = models.DateTimeField(null=True, blank=True)
+    framework_version = models.CharField(max_length=200, blank=True)
+    metric = models.CharField(max_length=200, blank=True)
+    control_val = models.CharField(max_length=500, blank=True)
+    test_val = models.CharField(max_length=500, blank=True)
+    delta_pct = models.FloatField(null=True, blank=True)
+    ci_low = models.FloatField(null=True, blank=True)
+    ci_high = models.FloatField(null=True, blank=True)
+    higher_is_better = models.BooleanField(null=True, default=None)
+    significant = models.BooleanField(default=False)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["summary", "ordinal"], name="uniq_source_experiment")]
+        indexes = [models.Index(fields=["start_date", "end_date"], name="source_experiment_dates")]
+
+
 class ReportMetricClaim(models.Model):
     """Complete claims, including names no longer defined by metrics.yaml."""
 
