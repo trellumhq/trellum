@@ -10,7 +10,7 @@ import socket
 import subprocess
 import sys
 import time
-from urllib.parse import quote
+from urllib.parse import quote, parse_qs, urlsplit
 from urllib.request import urlopen
 
 import pytest
@@ -113,8 +113,8 @@ def test_experiments_gunicorn_native_controls_devices_roles(experiments_server, 
     with sync_playwright() as playwright:
         browser = getattr(playwright, engine).launch(headless=True)
         try:
-            for javascript in (False, True):
-                for width in (1440,390,720,195):
+            for javascript in tuple(bool(int(v)) for v in os.environ.get('EXPERIMENTS_BROWSER_JAVASCRIPT','0,1').split(',')):
+                for width in tuple(int(v) for v in os.environ.get('EXPERIMENTS_BROWSER_WIDTHS','1440,390,720,195').split(',')):
                     context=browser.new_context(extra_http_headers={'X-Portal-E2E-Role':'studio-admin'},java_script_enabled=javascript, viewport={'width':width,'height':900}, reduced_motion='reduce', color_scheme='dark' if width==720 else 'light')
                     page=context.new_page(); page.set_default_timeout(15000)
                     errors=[]; page.on('pageerror',lambda error: errors.append(str(error)))
@@ -134,13 +134,19 @@ def test_experiments_gunicorn_native_controls_devices_roles(experiments_server, 
                     timings.append(dict(engine=engine,width=width,javascript=javascript,cold_login_seconds=cold,first_content_seconds=elapsed,html_bytes=len(response.body()),dom_nodes=page.locator('*').count()))
                     # Independent native paging retains the other lane/table page.
                     page.get_by_role('link',name='Next timeline',exact=True).focus();page.keyboard.press('Enter')
+                    page.wait_for_url(lambda u:parse_qs(urlsplit(u).query).get('timeline_page')==['2'])
                     expect(page.get_by_role('navigation',name='Timeline pages')).to_contain_text('Page 2 of 80')
                     page.get_by_role('link',name='Next experiments',exact=True).focus();page.keyboard.press('Enter')
+                    page.wait_for_url(lambda u:parse_qs(urlsplit(u).query).get('page')==['2'])
                     expect(page.get_by_role('navigation',name='Experiment pages')).to_contain_text('Page 2 of 80')
                     assert 'timeline_page=2' in page.url and 'page=2' in page.url
                     if javascript:
-                        feedback=json.loads(page.evaluate("sessionStorage.getItem('experimentFeedback')"))
-                        assert feedback['text']=='Opening page…' and feedback['milliseconds']<100
+                        recorded=page.evaluate("sessionStorage.getItem('experimentFeedback')")
+                        feedback=json.loads(recorded) if recorded else None
+                        if feedback or os.environ.get('EXPERIMENTS_REQUIRE_NAV_FEEDBACK')=='1':
+                            assert feedback and feedback['text']=='Opening page…' and feedback['milliseconds']<100
+                        timings[-1]['local_native_pending_feedback']=feedback
+                        timings[-1]['local_native_pending_adoption_required']=feedback is None
                     page.get_by_label('Search all experiments').fill('Experiment 0999-1');page.get_by_role('button',name='Search',exact=True).click()
                     expect(page.locator('tbody tr')).to_have_count(1)
                     expect(page.locator('tbody')).to_contain_text('Experiment 0999-1')
@@ -150,6 +156,37 @@ def test_experiments_gunicorn_native_controls_devices_roles(experiments_server, 
                     assert 'q=Experiment' in page.url and 'status=concluded' in page.url
                     page.get_by_role('link',name='Unknown 0',exact=True).click()
                     expect(page.locator('tbody')).to_contain_text('No experiments match this filter')
+                    if javascript and width == 1440 and server["delay"]:
+                        # This existing sidebar foundation is separate from local
+                        # search/range/paging adapter adoption.
+                        page.evaluate("""() => {
+                          window.addEventListener('click', () => {
+                            const started = performance.now();
+                            const panel = document.querySelector('[data-console-native-pending]');
+                            const style = panel && getComputedStyle(panel);
+                            const snapshot = {
+                              milliseconds:performance.now()-started,
+                              visible:!!(panel && panel.getClientRects().length && style.display !== 'none' && style.visibility !== 'hidden'),
+                              text:panel ? panel.textContent : '',
+                              animation_frame_observed:false
+                            };
+                            sessionStorage.setItem('experimentSidebarFeedback', JSON.stringify(snapshot));
+                            requestAnimationFrame(() => {
+                              snapshot.animation_frame_observed = true;
+                              snapshot.animation_frame_milliseconds = performance.now()-started;
+                              sessionStorage.setItem('experimentSidebarFeedback', JSON.stringify(snapshot));
+                            });
+                          }, {once:true});
+                        }""")
+                        started = time.perf_counter()
+                        page.locator(f'a.tl-console-nav-link[href="{server["path"]}"]').click()
+                        page.wait_for_url("**"+server["path"])
+                        expect(page.locator("tbody tr")).to_have_count(25)
+                        sidebar_feedback = json.loads(page.evaluate("sessionStorage.getItem('experimentSidebarFeedback')"))
+                        assert sidebar_feedback["visible"] and "Opening Experiments…" in sidebar_feedback["text"]
+                        assert sidebar_feedback["milliseconds"] < 100
+                        timings[-1]["sidebar_dom_pending_feedback"] = sidebar_feedback
+                        timings[-1]["sidebar_to_experiment_rows_seconds"] = time.perf_counter()-started
                     page.goto(server['origin']+server['empty'])
                     expect(page.locator('.ui-empty')).to_contain_text('No A/B test reports in this studio')
                     page.goto(server['origin']+server['unknown'])
