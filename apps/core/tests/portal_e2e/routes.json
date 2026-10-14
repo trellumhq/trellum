@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "first_party_expected": 214,
+  "first_party_expected": 221,
   "routes": [
     {
       "id": "route-000",
@@ -23254,6 +23254,505 @@
         "group-selected": {
           "condition": "Active alpha member assigned only report-0000 through selected-report group grant; other report IDs require denial setup. Policy context: organization-admin",
           "planned_node_id": "apps/core/tests/portal_e2e/test_l4_routes.py::test_route[344-POST]",
+          "verification": "pending"
+        }
+      }
+    },
+    {
+      "id": "route-345",
+      "pattern": "s/<slug:org_slug>/<slug:studio_slug>/api/operations/catalog",
+      "name": null,
+      "view": "apps.reports.views.api_operations_catalog",
+      "first_party": true,
+      "case": "C15",
+      "shard": "L2",
+      "allowed_roles": [
+        "developer",
+        "group-admin",
+        "operator",
+        "org-admin",
+        "studio-admin"
+      ],
+      "denied_roles": [
+        "anonymous",
+        "group-selected",
+        "inactive",
+        "private-viewer",
+        "revoked",
+        "viewer",
+        "viewer-full"
+      ],
+      "role_policy": "studio-developer",
+      "seeded_parameters": {
+        "org_slug": {
+          "value": "alpha"
+        },
+        "studio_slug": {
+          "value": "studio-0"
+        }
+      },
+      "disposition": "non-UI API/asset",
+      "scenarios": [
+        {
+          "method": "GET",
+          "action": null,
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[345-GET]",
+          "verification": "pending"
+        }
+      ],
+      "verification": "pending",
+      "verified_node_ids": [],
+      "source_sha256": "6ff467e21d7f317e9e7afb5d0fd76fc45dd866e48703f701699970b73efc1588",
+      "request_conditions": [],
+      "adapter_sha256": "c0ed2c3eaecc010b5ddbc6d4e21d5ec2f6624577d57e2c9cf07711cfa3bfcfad",
+      "principal_parameter_overrides": {
+        "viewer-full": {
+          "org_slug": "beta"
+        }
+      },
+      "conditional_roles": {
+        "group-member": {
+          "condition": "Active alpha member with group-derived all-public-reports viewer access; private report is unassigned. Policy context: studio-developer",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[345-GET]",
+          "verification": "pending"
+        },
+        "cross-org": {
+          "condition": "Active beta viewer requests primary alpha objects without alpha membership; global own-account/public entry and unconditional redirects differ from tenant data. Policy context: studio-developer",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[345-GET]",
+          "verification": "pending"
+        },
+        "impersonated": {
+          "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: studio-developer",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[345-GET]",
+          "verification": "pending"
+        }
+      }
+    },
+    {
+      "id": "route-346",
+      "pattern": "s/<slug:org_slug>/<slug:studio_slug>/api/operations/status",
+      "name": null,
+      "view": "apps.reports.views.api_operations_status",
+      "first_party": true,
+      "case": "C15",
+      "shard": "L2",
+      "allowed_roles": [
+        "developer",
+        "group-admin",
+        "operator",
+        "org-admin",
+        "studio-admin"
+      ],
+      "denied_roles": [
+        "anonymous",
+        "group-selected",
+        "inactive",
+        "private-viewer",
+        "revoked",
+        "viewer",
+        "viewer-full"
+      ],
+      "role_policy": "studio-developer",
+      "seeded_parameters": {
+        "org_slug": {
+          "value": "alpha"
+        },
+        "studio_slug": {
+          "value": "studio-0"
+        }
+      },
+      "disposition": "non-UI API/asset",
+      "scenarios": [
+        {
+          "method": "GET",
+          "action": null,
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[346-GET]",
+          "verification": "pending"
+        }
+      ],
+      "verification": "pending",
+      "verified_node_ids": [],
+      "source_sha256": "1af935e17fe8b94aadef8b7aff039e434bbb647f2e98ad4b1d1c1ff0d2badf50",
+      "request_conditions": [],
+      "adapter_sha256": "ced8d226a13e04719563f3f346afb1f099091d169d77bcce600651248aa47b42",
+      "principal_parameter_overrides": {
+        "viewer-full": {
+          "org_slug": "beta"
+        }
+      },
+      "conditional_roles": {
+        "group-member": {
+          "condition": "Active alpha member with group-derived all-public-reports viewer access; private report is unassigned. Policy context: studio-developer",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[346-GET]",
+          "verification": "pending"
+        },
+        "cross-org": {
+          "condition": "Active beta viewer requests primary alpha objects without alpha membership; global own-account/public entry and unconditional redirects differ from tenant data. Policy context: studio-developer",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[346-GET]",
+          "verification": "pending"
+        },
+        "impersonated": {
+          "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: studio-developer",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[346-GET]",
+          "verification": "pending"
+        }
+      }
+    },
+    {
+      "id": "route-347",
+      "pattern": "s/<slug:org_slug>/<slug:studio_slug>/api/operations/stats",
+      "name": null,
+      "view": "apps.reports.views.api_operations_stats",
+      "first_party": true,
+      "case": "C15",
+      "shard": "L2",
+      "allowed_roles": [
+        "developer",
+        "group-admin",
+        "operator",
+        "org-admin",
+        "studio-admin"
+      ],
+      "denied_roles": [
+        "anonymous",
+        "group-selected",
+        "inactive",
+        "private-viewer",
+        "revoked",
+        "viewer",
+        "viewer-full"
+      ],
+      "role_policy": "studio-developer",
+      "seeded_parameters": {
+        "org_slug": {
+          "value": "alpha"
+        },
+        "studio_slug": {
+          "value": "studio-0"
+        }
+      },
+      "disposition": "non-UI API/asset",
+      "scenarios": [
+        {
+          "method": "GET",
+          "action": null,
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[347-GET]",
+          "verification": "pending"
+        }
+      ],
+      "verification": "pending",
+      "verified_node_ids": [],
+      "source_sha256": "6ec3b5dc16e40acb45a5a0276c7b5f06a02ee702cafdd4465a50857bfcd3acda",
+      "request_conditions": [],
+      "adapter_sha256": "f5be3a5a329df56126d9c258c5678802e9e78f2713fc5838b2390e29460eebab",
+      "principal_parameter_overrides": {
+        "viewer-full": {
+          "org_slug": "beta"
+        }
+      },
+      "conditional_roles": {
+        "group-member": {
+          "condition": "Active alpha member with group-derived all-public-reports viewer access; private report is unassigned. Policy context: studio-developer",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[347-GET]",
+          "verification": "pending"
+        },
+        "cross-org": {
+          "condition": "Active beta viewer requests primary alpha objects without alpha membership; global own-account/public entry and unconditional redirects differ from tenant data. Policy context: studio-developer",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[347-GET]",
+          "verification": "pending"
+        },
+        "impersonated": {
+          "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: studio-developer",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[347-GET]",
+          "verification": "pending"
+        }
+      }
+    },
+    {
+      "id": "route-348",
+      "pattern": "s/<slug:org_slug>/<slug:studio_slug>/api/operations/sources",
+      "name": null,
+      "view": "apps.reports.views.api_operations_sources",
+      "first_party": true,
+      "case": "C15",
+      "shard": "L2",
+      "allowed_roles": [
+        "developer",
+        "group-admin",
+        "operator",
+        "org-admin",
+        "studio-admin"
+      ],
+      "denied_roles": [
+        "anonymous",
+        "group-selected",
+        "inactive",
+        "private-viewer",
+        "revoked",
+        "viewer",
+        "viewer-full"
+      ],
+      "role_policy": "studio-developer",
+      "seeded_parameters": {
+        "org_slug": {
+          "value": "alpha"
+        },
+        "studio_slug": {
+          "value": "studio-0"
+        }
+      },
+      "disposition": "non-UI API/asset",
+      "scenarios": [
+        {
+          "method": "GET",
+          "action": null,
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[348-GET]",
+          "verification": "pending"
+        }
+      ],
+      "verification": "pending",
+      "verified_node_ids": [],
+      "source_sha256": "a1917091552309241c34f9facc27f0fe723126cd59730858997387d92fb0a48c",
+      "request_conditions": [],
+      "adapter_sha256": "dca387f0570e54b644ecc1d22f4b57a4c01bd9b092b7da0d5025d459722b51b4",
+      "principal_parameter_overrides": {
+        "viewer-full": {
+          "org_slug": "beta"
+        }
+      },
+      "conditional_roles": {
+        "group-member": {
+          "condition": "Active alpha member with group-derived all-public-reports viewer access; private report is unassigned. Policy context: studio-developer",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[348-GET]",
+          "verification": "pending"
+        },
+        "cross-org": {
+          "condition": "Active beta viewer requests primary alpha objects without alpha membership; global own-account/public entry and unconditional redirects differ from tenant data. Policy context: studio-developer",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[348-GET]",
+          "verification": "pending"
+        },
+        "impersonated": {
+          "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: studio-developer",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[348-GET]",
+          "verification": "pending"
+        }
+      }
+    },
+    {
+      "id": "route-349",
+      "pattern": "s/<slug:org_slug>/<slug:studio_slug>/api/operations/reports/<str:slug>/log",
+      "name": null,
+      "view": "apps.reports.views.api_operations_report_log",
+      "first_party": true,
+      "case": "C15",
+      "shard": "L2",
+      "allowed_roles": [
+        "developer",
+        "group-admin",
+        "operator",
+        "org-admin",
+        "studio-admin"
+      ],
+      "denied_roles": [
+        "anonymous",
+        "group-selected",
+        "inactive",
+        "private-viewer",
+        "revoked",
+        "viewer",
+        "viewer-full"
+      ],
+      "role_policy": "studio-developer",
+      "seeded_parameters": {
+        "org_slug": {
+          "value": "alpha"
+        },
+        "studio_slug": {
+          "value": "studio-0"
+        },
+        "slug": {
+          "value": "report-0000"
+        }
+      },
+      "disposition": "non-UI API/asset",
+      "scenarios": [
+        {
+          "method": "GET",
+          "action": null,
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[349-GET]",
+          "verification": "pending"
+        }
+      ],
+      "verification": "pending",
+      "verified_node_ids": [],
+      "source_sha256": "7f7ee2382a381a8d2801777b866fc0c2b903a3111055d19caa6b83c092e33253",
+      "request_conditions": [],
+      "adapter_sha256": "7c5225a6460145fc5f8ac1dfede22c2c3909ec00faa6cb0cc4b88d33e5c13ced",
+      "principal_parameter_overrides": {
+        "viewer-full": {
+          "org_slug": "beta"
+        }
+      },
+      "conditional_roles": {
+        "group-member": {
+          "condition": "Active alpha member with group-derived all-public-reports viewer access; private report is unassigned. Policy context: studio-developer",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[349-GET]",
+          "verification": "pending"
+        },
+        "cross-org": {
+          "condition": "Active beta viewer requests primary alpha objects without alpha membership; global own-account/public entry and unconditional redirects differ from tenant data. Policy context: studio-developer",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[349-GET]",
+          "verification": "pending"
+        },
+        "impersonated": {
+          "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: studio-developer",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[349-GET]",
+          "verification": "pending"
+        }
+      }
+    },
+    {
+      "id": "route-350",
+      "pattern": "s/<slug:org_slug>/<slug:studio_slug>/api/operations/reports/<str:slug>/log/download",
+      "name": null,
+      "view": "apps.reports.views.api_operations_report_log_download",
+      "first_party": true,
+      "case": "C15",
+      "shard": "L2",
+      "allowed_roles": [
+        "developer",
+        "group-admin",
+        "operator",
+        "org-admin",
+        "studio-admin"
+      ],
+      "denied_roles": [
+        "anonymous",
+        "group-selected",
+        "inactive",
+        "private-viewer",
+        "revoked",
+        "viewer",
+        "viewer-full"
+      ],
+      "role_policy": "studio-developer",
+      "seeded_parameters": {
+        "org_slug": {
+          "value": "alpha"
+        },
+        "studio_slug": {
+          "value": "studio-0"
+        },
+        "slug": {
+          "value": "report-0000"
+        }
+      },
+      "disposition": "non-UI API/asset",
+      "scenarios": [
+        {
+          "method": "GET",
+          "action": null,
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[350-GET]",
+          "verification": "pending"
+        }
+      ],
+      "verification": "pending",
+      "verified_node_ids": [],
+      "source_sha256": "175187ddb924e54b64410f4bff270416a6e9a76259ca1f44f3c879b727be0f44",
+      "request_conditions": [],
+      "adapter_sha256": "86ae69ec5c869a2160e742aa594b306a05f3f1a2c46b0d3298f51a898c26f21f",
+      "principal_parameter_overrides": {
+        "viewer-full": {
+          "org_slug": "beta"
+        }
+      },
+      "conditional_roles": {
+        "group-member": {
+          "condition": "Active alpha member with group-derived all-public-reports viewer access; private report is unassigned. Policy context: studio-developer",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[350-GET]",
+          "verification": "pending"
+        },
+        "cross-org": {
+          "condition": "Active beta viewer requests primary alpha objects without alpha membership; global own-account/public entry and unconditional redirects differ from tenant data. Policy context: studio-developer",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[350-GET]",
+          "verification": "pending"
+        },
+        "impersonated": {
+          "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: studio-developer",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[350-GET]",
+          "verification": "pending"
+        }
+      }
+    },
+    {
+      "id": "route-351",
+      "pattern": "s/<slug:org_slug>/<slug:studio_slug>/operations/reports/<str:slug>/log",
+      "name": null,
+      "view": "apps.reports.views.operations_report_log",
+      "first_party": true,
+      "case": "C15",
+      "shard": "L2",
+      "allowed_roles": [
+        "developer",
+        "group-admin",
+        "operator",
+        "org-admin",
+        "studio-admin"
+      ],
+      "denied_roles": [
+        "anonymous",
+        "group-selected",
+        "inactive",
+        "private-viewer",
+        "revoked",
+        "viewer",
+        "viewer-full"
+      ],
+      "role_policy": "studio-developer",
+      "seeded_parameters": {
+        "org_slug": {
+          "value": "alpha"
+        },
+        "studio_slug": {
+          "value": "studio-0"
+        },
+        "slug": {
+          "value": "report-0000"
+        }
+      },
+      "disposition": "native with feedback",
+      "scenarios": [
+        {
+          "method": "GET",
+          "action": null,
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[351-GET]",
+          "verification": "pending"
+        }
+      ],
+      "verification": "pending",
+      "verified_node_ids": [],
+      "source_sha256": "5b6e009f558efe6b94af11abd9972573dce3c66845d87c4c2ae7cc7e6eded574",
+      "request_conditions": [],
+      "adapter_sha256": "f8bc94a6d2414521ea5cbf251ccefbfda00f4f3b6361056dcb9351991c6747ed",
+      "principal_parameter_overrides": {
+        "viewer-full": {
+          "org_slug": "beta"
+        }
+      },
+      "conditional_roles": {
+        "group-member": {
+          "condition": "Active alpha member with group-derived all-public-reports viewer access; private report is unassigned. Policy context: studio-developer",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[351-GET]",
+          "verification": "pending"
+        },
+        "cross-org": {
+          "condition": "Active beta viewer requests primary alpha objects without alpha membership; global own-account/public entry and unconditional redirects differ from tenant data. Policy context: studio-developer",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[351-GET]",
+          "verification": "pending"
+        },
+        "impersonated": {
+          "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: studio-developer",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[351-GET]",
           "verification": "pending"
         }
       }
