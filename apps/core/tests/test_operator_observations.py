@@ -115,7 +115,8 @@ def test_current_workers_and_sandbox_mismatch_are_full_aggregate(operator_probe)
     assert client.get("/api/system/health").json()["status"] == "error"
 
 
-def test_admission_audit_once_and_read_access_revocation(operator_probe):
+def test_admission_audit_once_and_read_access_revocation(operator_probe, settings):
+    settings.DEBUG = True
     actor, client, node = operator_probe
     key = observations.nonce(actor.pk, "full-health")
     first = client.post("/api/system/diagnostics/refresh", {"request_key": key}, HTTP_ACCEPT="application/json")
