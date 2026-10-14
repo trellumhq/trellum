@@ -2,6 +2,7 @@
 {% load docs %}
 {% block title %}Experiments — {{ studio.name }} — trellum{% endblock %}
 {% block content %}
+<div class="experiments-overview">
 
 {% if row_count == 0 %}
 <header class="page-head">
@@ -10,7 +11,7 @@
 </header>
 <div class="panel">
   <div class="ui-empty">
-    No A/B test reports in this studio.<br>
+    {% if coverage.uncovered %}Experiment declarations are not fully indexed yet. {{ coverage.unindexed }} unindexed and {{ coverage.oversized }} oversized reports need observation.<br>{% else %}No A/B test reports in this studio.<br>{% endif %}
     A report joins this page when its <code>report.yaml</code> declares an <code>ab_test:</code> block.
     <div class="ui-empty-action">
       <a class="ui-btn ghost" href="{% docs_url 'portal/experiments/' %}">How experiments are declared →</a>
@@ -26,12 +27,9 @@
     Reports without the block are simply absent.</p>
 </header>
 
-{% if storage_unavailable %}
-<div class="ui-flash warning" role="alert" style="margin:12px 0">
-  Report storage is unreachable right now — rows below may be missing their built numbers until it recovers.
-</div>
+{% if coverage.uncovered %}
+<div class="ui-flash warning" role="status">Declaration coverage: {{ coverage.indexed }} of {{ coverage.reports }} reports indexed; {{ coverage.unindexed }} unindexed and {{ coverage.oversized }} oversized. Totals describe indexed declarations; uncovered reports may contain additional experiments.</div>
 {% endif %}
-
 <div class="ui-stat-row">
   <div class="ui-stat">
     <div class="lbl">Running</div>
@@ -47,21 +45,25 @@
     <div class="lbl">Win rate</div>
     <div class="num">{% if tiles.win_rate is not None %}{{ tiles.win_rate }}%{% else %}—{% endif %}</div>
     <div class="sub">
-      {% if tiles.concluded_with_metric %}{{ tiles.wins }} of {{ tiles.concluded_with_metric }} concluded were wins
-      {% else %}no concluded experiments with a metric yet{% endif %}
+      {% if tiles.concluded_with_metric %}{{ tiles.wins }} wins of {{ tiles.concluded_with_metric }} eligible concluded results
+      {% else %}no eligible concluded results yet{% endif %}
+      <span>{{ tiles.excluded }} concluded excluded; lifecycle totals include all indexed declarations.</span>
     </div>
   </div>
 </div>
 
-<div class="filter-row">
-  <a class="ui-pill{% if not status_filter %} active{% endif %}" href="?">All <span class="n">{{ row_count }}</span></a>
-  <a class="ui-pill{% if status_filter == 'running' %} active{% endif %}" href="?status=running">Running <span class="n">{{ tiles.running }}</span></a>
-  <a class="ui-pill{% if status_filter == 'concluded' %} active{% endif %}" href="?status=concluded">Concluded <span class="n">{{ tiles.concluded }}</span></a>
+<form method="get" class="ui-form-row" role="search">
+  <div class="ui-field"><label for="experiment-search">Search all experiments</label><input id="experiment-search" class="ui-input" type="search" name="q" value="{{ q }}" maxlength="200"></div>
+  {% if status_filter %}<input type="hidden" name="status" value="{{ status_filter }}">{% endif %}
+  <button class="ui-btn" type="submit">Search</button>
+</form>
+<div class="filter-row" aria-label="Experiment status">
+  {% for filter in filters %}<a class="ui-pill{% if status_filter == filter.value %} active{% endif %}" href="{{ filter.url }}"{% if status_filter == filter.value %} aria-current="page"{% endif %}>{{ filter.label }} <span class="n">{{ filter.count }}</span></a>{% endfor %}
 </div>
-
+<p class="subtle">{{ filtered_count }} matching experiments of {{ row_count }} indexed declarations.</p>
 {% if timeline.lanes %}
 <div class="panel">
-  <div class="tl-title">Overlap timeline · last 4 months</div>
+  <div class="tl-title">Overlap timeline · last 4 months · {{ timeline_page.total }} matching lanes</div>
   <div class="tl">
     <div class="tl-axis">
       {% for m in timeline.months %}<span style="flex:0 0 {{ m.width_pct }}%">{{ m.label }}</span>{% endfor %}
@@ -76,6 +78,7 @@
       {% endfor %}
     </div>
   </div>
+  <nav aria-label="Timeline pages" class="filter-row">{% if timeline_page.previous %}<a class="ui-btn ghost" href="{{ timeline_page.previous }}">Previous timeline</a>{% endif %}<span>Page {{ timeline_page.number }} of {{ timeline_page.pages }}</span>{% if timeline_page.next %}<a class="ui-btn ghost" href="{{ timeline_page.next }}">Next timeline</a>{% endif %}</nav>
   <p class="subtle" style="margin:8px 0 0">Overlapping bars = concurrent tests on the same audience — a validity risk made visible.</p>
 </div>
 {% endif %}
@@ -91,7 +94,7 @@
         {% for row in rows %}
         <tr>
           <td data-label="Experiment">
-            <div class="exp-name">{{ row.test_name }}</div>
+            <div class="exp-name">{{ row.name }}</div>
             <div class="exp-meta">{{ row.slug }}{% if row.split %} · {{ row.split }}{% endif %}{% if row.mode_label %} · {{ row.mode_label }}{% endif %}</div>
           </td>
           <td data-label="Status">
@@ -104,20 +107,8 @@
             {% if row.status == 'past_end' %}<span class="exp-meta">ended {{ row.ended_days_ago }} day{{ row.ended_days_ago|pluralize }} ago</span>{% endif %}
           </td>
           <td class="days" data-label="Days">{% if row.days is not None %}{{ row.days }}{% else %}—{% endif %}</td>
-          {% if row.storage_unavailable %}
-          <td class="subtle" data-label="Primary metric">Storage unavailable</td>
-          <td class="subtle" data-label="Lift">—</td>
-          <td class="subtle" data-label="Significance">—</td>
-          {% elif not row.built %}
-          <td class="subtle" data-label="Primary metric">Not built yet</td>
-          <td class="subtle" data-label="Lift">—</td>
-          <td class="subtle" data-label="Significance">—</td>
-          {% elif row.payload_missing %}
-          <td class="subtle" data-label="Primary metric">No A/B payload in the latest build</td>
-          <td class="subtle" data-label="Lift">—</td>
-          <td class="subtle" data-label="Significance">—</td>
-          {% elif not row.primary %}
-          <td class="subtle" data-label="Primary metric">No KPI rows in the payload</td>
+          {% if not row.primary %}
+          <td class="subtle" data-label="Primary metric">{{ row.result_state }}</td>
           <td class="subtle" data-label="Lift">—</td>
           <td class="subtle" data-label="Significance">—</td>
           {% else %}
@@ -147,11 +138,14 @@
   </div>
 </div>
 
+<nav aria-label="Experiment pages" class="filter-row">{% if table_page.previous %}<a class="ui-btn ghost" href="{{ table_page.previous }}">Previous experiments</a>{% endif %}<span>Page {{ table_page.number }} of {{ table_page.pages }}</span>{% if table_page.next %}<a class="ui-btn ghost" href="{{ table_page.next }}">Next experiments</a>{% endif %}</nav>
+
 <div class="design-note">Lift only turns green/red when the statistics support calling a winner — see
   <a href="{% docs_url 'portal/experiments/' %}">how experiments are read →</a>.</div>
 
 {% endif %}
 
+</div>
 <style>
 /* Page-specific: overlap timeline, lift/CI formatting. Stat tiles and filter
    pills promoted to ui.css as .ui-stat-row/.ui-stat/.ui-pill
@@ -164,7 +158,10 @@
    ab_test annotation style). */
 :root { --exp: #4C8BF5; --exp-soft: rgba(76, 139, 245, .18); }
 
-.filter-row { display:flex; gap:6px; align-items:center; margin:0 0 14px; }
+.experiments-overview .ui-stat-row { grid-template-columns:repeat(auto-fit,minmax(min(160px,100%),1fr)); }
+.experiments-overview .ui-stat .sub { max-height:none; overflow:visible; }
+.experiments-overview .ui-stat, .experiments-overview .filter-row { min-width:0; overflow-wrap:anywhere; }
+.filter-row { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin:0 0 14px; }
 
 .tl-title { font-size:var(--fs-xs); font-weight:600; text-transform:uppercase; letter-spacing:.08em; color:var(--text3); margin-bottom:8px; }
 .tl { position:relative; margin-top:8px; }
@@ -174,7 +171,7 @@
 .tl-axis { display:flex; font-size:var(--fs-xs); color:var(--text3); border-bottom:1px solid var(--border); padding-bottom:4px; margin-bottom:8px; }
 .tl-axis span { border-left:1px solid var(--border); padding-left:6px; box-sizing:border-box; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .tl-lane { position:relative; height:26px; margin-bottom:6px; }
-.tl-bar { position:absolute; top:2px; height:20px; border-radius:var(--r-sm); border:1px solid var(--exp); background:var(--exp-soft); font-size:var(--fs-sm); line-height:18px; padding:0 8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text); }
+.tl-bar { position:absolute; top:2px; height:20px; border-radius:var(--r-sm); border:1px solid var(--exp); background:var(--exp-soft); font-size:var(--fs-sm); line-height:18px; padding:0 8px; box-sizing:border-box; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text); }
 .tl-bar.done { border-color:var(--border); background:var(--bg-hover); color:var(--text2); }
 .tl-bar.open-end { border-right-style:dashed; }
 .tl-today { position:absolute; top:-4px; bottom:0; width:0; border-left:2px solid var(--accent); }

@@ -27,6 +27,34 @@ from apps.reports.scan import sync_studio_registry
 pytestmark = pytest.mark.django_db
 
 
+def _observe(studio, slug, payload=None, *, has_output=False):
+    """Producer-normalized fixtures; the consumer never observes artifacts."""
+    from apps.reports.models import Report, ReportSourceSummary, ReportExperimentSummary
+    from apps.reports.report_experiment_projection import declared_rows, project_results
+    from django.utils import timezone as dj_timezone
+    report = Report.objects.get(studio=studio, slug=slug)
+    if payload is None:
+        rows, digest = declared_rows(report.config)
+        for row in rows:
+            row['payload_state'] = 'missing'
+    else:
+        rows, digest = project_results(report.config, payload, list(payload['components'].values()))
+    summary, _ = ReportSourceSummary.objects.update_or_create(report=report, defaults=dict(schema_version=2, state='ready' if has_output else 'missing', quality='observed', observed_at=dj_timezone.now(), declaration_digest=digest, experiment_state='ready' if payload else 'missing' if rows else 'not-applicable', has_output=has_output))
+    summary.experiments.all().delete()
+    ReportExperimentSummary.objects.bulk_create([ReportExperimentSummary(summary=summary, **row) for row in rows])
+
+
+_original_sync_registry = sync_studio_registry
+
+
+def sync_studio_registry(studio):
+    result = _original_sync_registry(studio)
+    from apps.reports.models import Report
+    for slug in Report.objects.filter(studio=studio, present_in_scan=True).values_list('slug', flat=True):
+        _observe(studio, slug)
+    return result
+
+
 # ── is_ab_report ─────────────────────────────────────────────────────────
 
 class TestIsAbReport:
@@ -282,6 +310,7 @@ def _write_ab_payload(studio, slug, *, delta_pct, ci_pct, higher_is_better=True,
         "_freshness": {"generated_at": "2026-08-01T00:00:00+00:00"},
         "_framework_version": "9.9.9",
     }), encoding="utf-8")
+    _observe(studio, slug, json.loads((out / "data.json").read_text()), has_output=True)
 
 
 class TestStudioExperiments:
@@ -366,7 +395,7 @@ class TestStudioExperiments:
         write_report("never-built", ab_test={"start_date": "2026-01-01"})
         sync_studio_registry(studio_tree)
         row = studio_experiments(studio_tree)["rows"][0]
-        assert row["built"] is False
+        assert row["result_state"] == "Not built yet"
         assert row["url"] == (
             f"/s/{studio_tree.org.slug}/{studio_tree.slug}/r/never-built/"
             "?display=console"
@@ -375,28 +404,19 @@ class TestStudioExperiments:
     def test_built_with_no_payload_is_flagged(self, studio_tree, write_report):
         write_report("built-empty", ab_test={"start_date": "2026-01-01"})
         sync_studio_registry(studio_tree)
-        (studio_tree.output_dir / "built-empty").mkdir(parents=True, exist_ok=True)
+        _observe(studio_tree, "built-empty", has_output=True)
         row = studio_experiments(studio_tree)["rows"][0]
-        assert row["built"] is True
-        assert row["payload_missing"] is True
+        assert row["result_state"] == "No A/B payload in the observed build"
 
-    def test_storage_outage_degrades_without_raising(self, studio_tree, write_report, monkeypatch):
-        write_report("a", ab_test={"start_date": "2026-01-01"})
-        write_report("b", ab_test={"start_date": "2026-01-01"})
+    def test_unavailable_observation_does_not_read_storage(self, studio_tree, write_report, monkeypatch):
+        from apps.reports.models import ReportSourceSummary
+        write_report('a', ab_test={'start_date': '2026-01-01'})
         sync_studio_registry(studio_tree)
-
-        calls = []
-
-        def _boom(studio, slug):
-            calls.append(slug)
-            raise RuntimeError("store unreachable")
-
-        monkeypatch.setattr("apps.reports.overviews.experiments.storage.output_root", _boom)
+        ReportSourceSummary.objects.filter(report__studio=studio_tree).update(state='unavailable', has_output=None)
+        monkeypatch.setattr('apps.core.storage.output_root', lambda *args: pytest.fail('GET read storage'))
         data = studio_experiments(studio_tree)
-        assert data["storage_unavailable"] is True
-        assert all(r["storage_unavailable"] for r in data["rows"])
-        # Latched after the first failure: the second report is never probed.
-        assert calls == ["a"]
+        assert data['rows'][0]['result_state'] == 'Observation unavailable'
+        assert data['tiles']['running'] == 1
 
     def test_cache_is_invalidated_explicitly(self, studio_tree, write_report):
         write_report("a", ab_test={"start_date": "2026-01-01"})
@@ -431,8 +451,8 @@ class TestExtractCacheBound:
         sync_studio_registry(studio_tree)
         _write_ab_payload(studio_tree, "checkout", delta_pct=1.0, ci_pct=[0.1, 2.0])
 
-        data = studio_experiments(studio_tree)
-        assert data["rows"][0]["primary"]["delta_pct"] == 1.0
+        data = experiments_mod._cached_extract(studio_tree, "checkout", studio_tree.output_dir / "checkout")
+        assert primary_metric(data["components"][0]["body"], {})["delta_pct"] == 1.0
         assert len(_cache_entries_for(studio_tree)) == 1
 
         # Simulate a rebuild: new content, mtime moved forward explicitly
@@ -443,9 +463,8 @@ class TestExtractCacheBound:
         newer = path.stat().st_mtime + 5
         os.utime(path, (newer, newer))
 
-        invalidate_experiments_cache(studio_tree)  # bypass only the 5s studio-level TTL
-        data = studio_experiments(studio_tree)
-        assert data["rows"][0]["primary"]["delta_pct"] == 9.0
+        data = experiments_mod._cached_extract(studio_tree, "checkout", studio_tree.output_dir / "checkout")
+        assert primary_metric(data["components"][0]["body"], {})["delta_pct"] == 9.0
         # Still exactly one entry for this report: the rebuild replaced the
         # existing cache entry rather than adding a second one.
         assert len(_cache_entries_for(studio_tree)) == 1
@@ -454,7 +473,7 @@ class TestExtractCacheBound:
         write_report("checkout", ab_test={"start_date": "2026-01-01"})
         sync_studio_registry(studio_tree)
         _write_ab_payload(studio_tree, "checkout", delta_pct=1.0, ci_pct=[0.1, 2.0])
-        studio_experiments(studio_tree)
+        experiments_mod._cached_extract(studio_tree, "checkout", studio_tree.output_dir / "checkout")
         assert len(_cache_entries_for(studio_tree)) == 1
 
         invalidate_experiments_cache(studio_tree)
@@ -725,8 +744,7 @@ class TestMultiExperimentReports:
         invalidate_experiments_cache(studio_tree)
 
         rows = studio_experiments(studio_tree)["rows"]
-        assert [r["status"] for r in rows] == ["running", "past_end",
-                                               "concluded"]
+        assert {r["test_name"]: r["status"] for r in rows} == {"running-t": "running", "past-end-t": "past_end", "concluded-t": "concluded"}
 
     def test_entries_without_names_fall_back_to_build_order(
         self, studio_tree, write_report
@@ -767,8 +785,8 @@ class TestMultiExperimentReports:
         invalidate_experiments_cache(studio_tree)
 
         rows = {r["test_name"]: r for r in studio_experiments(studio_tree)["rows"]}
-        assert rows["present"]["payload_missing"] is False
+        assert rows["present"]["primary"] is not None
         assert rows["present"]["primary"]["delta_pct"] == 1.0
         # Better an honest "no payload" row than another experiment's numbers.
-        assert rows["absent"]["payload_missing"] is True
+        assert rows["absent"]["result_state"] == "No A/B payload in the observed build"
         assert rows["absent"]["primary"] is None
