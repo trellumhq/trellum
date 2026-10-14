@@ -7,12 +7,12 @@
     display: flex; align-items: center; justify-content: space-between;
     gap: 12px; flex-wrap: wrap; margin-bottom: 14px;
 }
-.analytics-range { display: flex; gap: 6px; }
+.analytics-range { display: flex; flex-wrap: wrap; gap: 6px; }
 .analytics-search { flex: 1; min-width: 0; }
 .analytics-search-form { display:flex; align-items:end; gap:12px; flex-wrap:wrap; flex:1; }
 .analytics-pagination { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:16px; }
 #analyticsTable th a { display:inline-flex; align-items:center; min-height:44px; gap:6px; }
-@media (max-width:767px) { .analytics-search-form { width:100%; flex-direction:column; align-items:stretch; } .analytics-search-form > div, .analytics-search { width:100%; } }
+@media (max-width:767px) { .analytics-search-form { flex:1 0 100%; width:100%; flex-direction:column; align-items:stretch; } .analytics-search-form > div, .analytics-search { width:100%; } }
 #analyticsTable th[data-sort] { cursor: pointer; user-select: none; white-space: nowrap; }
 #analyticsTable th[data-sort]:hover { color: var(--accent-ink); }
 #analyticsTable .analytics-sort-ind { color: var(--text3); opacity: 0.55; font-size: 0.9em; }
