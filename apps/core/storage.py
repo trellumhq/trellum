@@ -976,12 +976,7 @@ def summary_output_facts(studio, slug: str, *, build: str = '', budget=None):
             live = True
     if budget:
         budget.charge(charged, charged)
-    # The framework exports the shared basename predicate. Older host
-    # checkouts use the exact compatible versioned names until composition.
-    try:
-        from trellum.metrics_workspace import owned_name
-    except ImportError:
-        owned_name = lambda name: bool(re.fullmatch(r'_metrics-workspace-[0-9a-f]{32}-page-[1-9][0-9]*\.html', name))
+    from trellum.metrics_workspace import owned_name
     html = sorted(name for name in names if name.endswith('.html') and not owned_name(name))
     digest = hashlib.sha256(json.dumps([sorted(names), live]).encode()).hexdigest()
     return {'has_output': bool(html), 'html_entry': entry_for(html) if html else '',
