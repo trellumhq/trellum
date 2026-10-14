@@ -238,3 +238,38 @@ class TestInvitationEmail:
         c.force_login(org_admin)
         assert c.post(url).status_code == 403
         self.send.assert_not_called()
+
+    @pytest.mark.parametrize("enhanced", [False, True])
+    @pytest.mark.parametrize("delivery_status, audit_outcome", [
+        ("accepted", "success"), ("failed", "failure"),
+        ("unconfigured", "denied"), ("expired", "denied"),
+    ])
+    def test_resend_persists_canonical_audit_outcome(
+        self, enhanced, delivery_status, audit_outcome, login, org_admin, org, invite,
+    ):
+        from apps.core.models import AuditLog
+
+        if delivery_status == "unconfigured":
+            self.configured.return_value = False
+        elif delivery_status == "failed":
+            self.send.side_effect = RuntimeError("private-provider-secret")
+        elif delivery_status == "expired":
+            invite.expires_at = timezone.now() - timezone.timedelta(seconds=1)
+            invite.save(update_fields=["expires_at"])
+        headers = {"HTTP_X_TRELLUM_FORM": "1", "HTTP_ACCEPT": "application/json"} if enhanced else {}
+        response = login(org_admin).post(
+            f"/orgs/{org.slug}/settings/invites/{invite.pk}/resend", **headers,
+        )
+        expected_status = (200 if delivery_status == "accepted" else 400) if enhanced else 302
+        assert response.status_code == expected_status
+        rows = AuditLog.objects.filter(action="member.invite_resend", target_id=str(invite.pk))
+        assert rows.count() == 1
+        row = rows.get()
+        assert row.org_id == org.pk
+        assert row.actor_id == org_admin.pk
+        assert row.outcome == audit_outcome
+        assert row.metadata["delivery_status"] == delivery_status
+        assert row.metadata["email"] == invite.email
+        assert "private-provider-secret" not in str(row.metadata)
+        assert invite.token not in str(row.metadata)
+        assert self.send.call_count == int(delivery_status in {"accepted", "failed"})

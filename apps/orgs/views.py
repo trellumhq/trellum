@@ -1187,7 +1187,12 @@ def invite_resend(request, org_slug, invite_id):  # noqa: ARG001
         outcome = "expired"
     else:
         outcome = _try_send_invite_mail(invite)
-        audit(request, "member.invite_resend", target=invite, email=invite.email, outcome=outcome)
+    audit(
+        request, "member.invite_resend", target=invite, email=invite.email,
+        outcome=("success" if outcome == "accepted" else
+                 "failure" if outcome == "failed" else "denied"),
+        delivery_status=outcome,
+    )
     text = _INVITE_MAIL_MESSAGES[outcome]
     if is_settings_request(request):
         if outcome == "accepted":
