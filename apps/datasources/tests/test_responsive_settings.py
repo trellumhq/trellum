@@ -5,7 +5,7 @@ import pytest
 from django.test import Client
 from django.utils import timezone
 
-from apps.datasources.models import DataSource, RepoDataSource
+from apps.datasources.models import DataSource, RepoDataSource, UnblockRequest
 from apps.datasources.testing import check_binding, check_revision
 
 pytestmark = pytest.mark.django_db
@@ -106,31 +106,28 @@ def test_changed_configuration_during_probe_is_not_applied(bound_source, studio_
             changed.save()
         return True, "Connected."
     monkeypatch.setattr("apps.datasources.testing.test_datasource", probe)
-    rebuild = Mock()
-    monkeypatch.setattr("apps.datasources.testing.rebuild_unblocked", rebuild)
     ok, detail = check_binding(bound_source, studio_tree)
     assert not ok and "Configuration changed" in detail and bound_source._check_stale
     bound_source.refresh_from_db()
     assert bound_source.last_check_ok is None
-    rebuild.assert_not_called()
+    assert not UnblockRequest.objects.exists()
 
 
 def test_changed_before_enqueue_does_not_queue(bound_source, studio_tree, monkeypatch):
+    from apps.datasources.unblock import process_next
     from apps.reports.models import Report
     from apps.runner.models import Run
-    from apps.datasources.testing import rebuild_unblocked
 
     Report.objects.create(studio=studio_tree, slug="sales", config={"data_sources": ["wh"]})
     monkeypatch.setattr("apps.datasources.testing.test_datasource", lambda source: (True, "Connected."))
-    def rebuild_after_save(binding, **kwargs):
-        newer = DataSource.objects.get(pk=binding.pk)
-        newer.config = {"host": "new"}
-        newer.last_check_ok = None
-        newer.save()
-        return rebuild_unblocked(binding, **kwargs)
-    monkeypatch.setattr("apps.datasources.testing.rebuild_unblocked", rebuild_after_save)
-    ok, detail = check_binding(bound_source, studio_tree)
-    assert not ok and "Configuration changed" in detail
+    ok, _ = check_binding(bound_source, studio_tree)
+    assert ok and not Run.objects.exists()  # admitted, not walked, on the request
+    newer = DataSource.objects.get(pk=bound_source.pk)
+    newer.config = {"host": "new"}
+    newer.last_check_ok = None
+    newer.save()
+    while process_next():
+        pass
     assert not Run.objects.exists()
 
 

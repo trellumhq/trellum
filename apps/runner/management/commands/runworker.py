@@ -236,6 +236,11 @@ class Command(BaseCommand):
                     if executor is not None:
                         executor.tick()
                         self._claim_loop(executor)
+                        # Admitted "queue what this source unblocked" walks:
+                        # one studio per step, resumable, off the web request.
+                        from apps.datasources.unblock import process_next as unblock_step
+
+                        unblock_step()
                     if scheduler is not None:
                         scheduler.refresh_if_due()
                     # Boot-time reaping alone is not enough: a worker killed

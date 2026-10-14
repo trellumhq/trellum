@@ -41,7 +41,7 @@ from apps.datasources.status import (
     effective_fields,
     source_states,
 )
-from apps.datasources.testing import STALE_CHECK, check_binding, check_draft, check_revision, draft_revision, fmt_size, rebuild_unblocked, run_state_check
+from apps.datasources.testing import STALE_CHECK, check_binding, check_draft, check_revision, draft_revision, fmt_size, run_state_check
 from apps.orgs import quotas
 from apps.orgs.views import paginate
 
@@ -477,17 +477,13 @@ def save_credentials(
     )
     name, studio = decl.name, request.studio
     ds._check_studio = studio
+    ds._admit_unblock = True
 
     ok, detail = run_state_check(binding_state(ds, studio))
     if not ok:
         return False, f"“{name}” saved but the connection test failed: {detail}"
-    queued = rebuild_unblocked(ds, guard_check=True)
-    if getattr(ds, "_check_stale", False):
-        return False, f"“{name}” saved. {STALE_CHECK}"
-    text = f"“{name}” connected."
-    if queued:
-        text += f" {queued} waiting report{'s' if queued != 1 else ''} ha{'ve' if queued != 1 else 's'} been queued to build."
-    return True, text
+    # Waiting reports are queued by the worker, not on this request.
+    return True, f"“{name}” connected."
 
 
 def _row(request, st: SourceState, *, studio) -> dict:
