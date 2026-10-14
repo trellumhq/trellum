@@ -14,7 +14,7 @@ from datetime import timedelta
 import yaml
 from django.db import transaction
 from django.utils import timezone
-from yaml.nodes import MappingNode, ScalarNode, SequenceNode
+from yaml.nodes import MappingNode, ScalarNode
 
 RAW_BYTES = 16 * 1024 * 1024
 NORMALIZED_BYTES = 32 * 1024 * 1024
@@ -137,15 +137,21 @@ def _text(value, maximum):
 
 
 def normalize(value, *, local=False):
-    _bounded_graph(value)
     if local:
-        config = value if isinstance(value, dict) else {}
-        annotations = config.get("annotations") or {}
+        original = value if isinstance(value, dict) else {}
+        annotations = original.get("annotations")
+        annotations = {} if annotations is None else annotations
         if not isinstance(annotations, dict):
-            return [], {}
-        inputs = annotations.get("events") or []
+            raise AdmissionError("parse-error")
+        inputs = annotations.get("events")
+        inputs = [] if inputs is None else inputs
+        config = {"annotations": {"events": inputs}}
+        if "studio" in original:
+            config["studio"] = original["studio"]
+        _bounded_graph(config)
         defaults = {}
     else:
+        _bounded_graph(value)
         if value is None:
             value = {}
         if not isinstance(value, dict):
@@ -206,13 +212,14 @@ def _catalog(studio_id):
 def _publish(source, catalog, result, *, error=""):
     from .models import AnnotationEvent
     now = timezone.now()
-    changed = source.digest != result.digest or source.status != result.status
+    changed = source.digest != result.digest or source.status != result.status or (not error and source.schema_version != SCHEMA_VERSION)
     if not error and changed:
         AnnotationEvent.objects.filter(source=source).delete()
         AnnotationEvent.objects.bulk_create([
             AnnotationEvent(source=source, studio_id=source.studio_id, generation=source.desired_generation, **event)
             for event in result.events
         ], batch_size=500)
+        source.schema_version = SCHEMA_VERSION
         source.published_generation = source.desired_generation
         source.row_count = len(result.events)
         source.indexed_at = now
@@ -247,7 +254,7 @@ def sync_report_declarations(report):
         except AdmissionError as exc:
             result = Declaration(source.digest, [], {}, exc.code)
             error = exc.code
-        if result.digest != source.digest or result.status != source.status:
+        if result.digest != source.digest or result.status != source.status or (not error and source.schema_version != SCHEMA_VERSION):
             source.desired_generation += 1
         _publish(source, catalog, result, error=error)
 
