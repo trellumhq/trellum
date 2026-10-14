@@ -12,6 +12,14 @@
     _loadingMsg('Loading data...');
     var workspace = window._fwMetricsWorkspace;
     if (workspace) window._fwWorkspaceWork = {max_consumer_ms: 0, max_chart_ms: 0, charts_created: 0};
+    if (workspace) {
+        window.addEventListener('wheel', function() { window._fwMetricsUserScrolled = true; }, {once: true, passive: true});
+        window.addEventListener('touchmove', function() { window._fwMetricsUserScrolled = true; }, {once: true, passive: true});
+        window.addEventListener('keydown', function(event) {
+            if (['PageUp','PageDown','Home','End','ArrowUp','ArrowDown'].indexOf(event.key) !== -1 &&
+                !event.target.closest('input,select,textarea,[contenteditable]')) window._fwMetricsUserScrolled = true;
+        });
+    }
     var prepared = Promise.resolve();
     if (workspace) {
         prepared = fetch(workspace.catalog).then(function(response) {
@@ -260,6 +268,11 @@
         var epoch = workspace ? (window._fwWorkspaceRenderEpoch = (window._fwWorkspaceRenderEpoch || 0) + 1) : 0;
         var deferred = [], pendingVisible = 0, deferredDone = false, completed = false;
         var only = workspace && new URLSearchParams(location.search).get('only');
+        var definitionHash = '';
+        if (workspace && location.hash) {
+            try { definitionHash = decodeURIComponent(location.hash.slice(1)); } catch (error) {}
+            if (!(window._fwMetricsCatalog || []).some(function(row) { return row.monitored === false && row.anchor === definitionHash; })) definitionHash = '';
+        }
         function visible(el) {
             var block = el && el.closest('.fw-metric-block');
             return el && (!only || !block || block.id === only);
@@ -357,6 +370,7 @@
                 var inCollapsed = el.closest('.fw-collapsed');
                 var rect = el.getBoundingClientRect();
                 var offScreen = rect.top > window.innerHeight + 200;
+                if (workspace && id === workspace.definitionId && definitionHash) offScreen = false;
                 var toggleVis = el.closest('.fw-toggle-vis');
                 var inHiddenToggle = toggleVis && toggleVis.style.display === 'none';
                 if (_lazyObserver && (inCollapsed || offScreen || inHiddenToggle || workspace && !renderable(el))) {

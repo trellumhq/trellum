@@ -18,6 +18,14 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
     // Only generated workspace definition tables opt in. Their rows are light
     // catalog metadata; ordinary authored tables keep their existing contract.
     var _pageSize = window._fwMetricsWorkspace && cfg.workspacePageSize === 25 ? 25 : 0;
+    var _definitionAnchors = null, _definitionHash = '';
+    if (_pageSize && window._fwMetricsWorkspace.definitionId === id) {
+        _definitionAnchors = Object.create(null);
+        (window._fwMetricsCatalog || []).forEach(function(row) {
+            if (row.monitored === false && typeof row.anchor === 'string') _definitionAnchors[row.name] = row.anchor;
+        });
+        try { _definitionHash = decodeURIComponent(location.hash.slice(1)); } catch (error) {}
+    }
     var _page = _pageSize && Number.isInteger(cfg.workspacePage) && cfg.workspacePage > 0 ? cfg.workspacePage : 1;
     if (_pageSize && el._fwWorkspaceTableState) {
         var saved = el._fwWorkspaceTableState;
@@ -165,6 +173,19 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
         el.innerHTML = '<table class="fw-table"' + tableAttr + '>' + colgroup
             + '<thead><tr>' + hdr + '</tr></thead><tbody>'
             + body + '</tbody></table>' + note;
+        if (_definitionAnchors) {
+            el.querySelectorAll('tbody tr').forEach(function(row, index) {
+                var anchor = _definitionAnchors[visible[index][0]];
+                if (anchor) row.id = anchor; // Exact catalog anchor through the DOM API.
+            });
+            var target = _definitionHash && document.getElementById(_definitionHash);
+            if (target && el.contains(target) && !el._fwDefinitionHashHandled) {
+                el._fwDefinitionHashHandled = true;
+                var navigation = performance.getEntriesByType('navigation')[0];
+                if (!window._fwMetricsUserScrolled && !(navigation && navigation.type === 'back_forward'))
+                    target.scrollIntoView({block: 'center'});
+            }
+        }
         // First natural render of a live table: lock its column widths so the
         // next commit's data cannot reshape it. Stored on the element because
         // the live path re-invokes this whole function with a fresh closure.
@@ -185,6 +206,7 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
         if (cfg.sortable) {
             el.querySelectorAll('th.fw-sortable').forEach(function(th) {
                 th.addEventListener('click', function() {
+                    if (_definitionAnchors) el._fwDefinitionHashHandled = true;
                     var idx = parseInt(th.getAttribute('data-col-idx'), 10);
                     if (idx === _sortCol) {
                         _sortDir = -_sortDir;
@@ -212,6 +234,7 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
             [['previous', -1], ['next', 1]].forEach(function(direction) {
                 var selector = '[data-workspace-table-' + direction[0] + ']';
                 el.querySelector(selector).onclick = function() {
+                    el._fwDefinitionHashHandled = true;
                     _page += direction[1]; _renderRows(_lastCols, _lastRows, _lastTotal);
                     var target = el.querySelector(selector);
                     if (target.disabled) target = el.querySelector('[data-workspace-table-' + (direction[0] === 'next' ? 'previous' : 'next') + ']');
@@ -238,6 +261,7 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
         var _debounce = null;
         if (_pageSize) clearTimeout(el._fwWorkspaceSearchTimer);
         function search() {
+            if (_definitionAnchors) el._fwDefinitionHashHandled = true;
             clearTimeout(_debounce);
             _debounce = setTimeout(function() {
                 _searchTerm = searchInput.value.trim().toLowerCase();

@@ -350,7 +350,8 @@ def test_lazy_chart_uses_latest_rapid_filter_without_rendering_hidden_selection(
             var el=document.getElementById(id), rect=el && el.getBoundingClientRect();
             return c.type==='chart' && el.getClientRects().length && rect.top < innerHeight+200;
         }).every(([id]) => !!window._chartInstances[id])''')
-        chart_id = page.evaluate('''() => window._reportData._metrics.metric_0024.component_ids.find(id => window._reportData.components[id]?.type === 'chart')''')
+        chart_id = page.evaluate('''() => Object.entries(window._reportData.components).find(([id,c]) => c.type==='chart' && document.getElementById(id)?.closest('.fw-metric-block')?.id==='metric-metric_0024')?.[0]''')
+        assert chart_id
         page.locator('#fwMetricsWorkspace summary').click()
         page.locator('input[value="metric-metric_0024"]').uncheck()
         page.evaluate('''() => {
@@ -368,3 +369,45 @@ def test_lazy_chart_uses_latest_rapid_filter_without_rendering_hidden_selection(
         assert page.evaluate('Object.keys(window._chartInstances).length') <= 25
     finally:
         context.close()
+
+
+def test_offpage_definition_hash_scroll_uses_catalog_anchor_and_preserves_user_position(metrics_browser, workspace_http):
+    import json
+    context, page = open_context(metrics_browser, workspace_http)
+    try:
+        page.goto(workspace_http['base'] + workspace_http['prefix'] + '/metrics/comparison')
+        page.get_by_text('Metrics ready.', exact=True).wait_for()
+        frame = page.locator('#metWorkspace').element_handle().content_frame()
+        frame.locator('#fwMetricsWorkspace summary').click()
+        frame.locator('#fwMetricsSearch').fill('Unbound 0029')
+        frame.locator('#fwMetricsSearchResults a').click()
+        frame.wait_for_url('**-page-2.html*#definition-unbound_0029')
+        frame.wait_for_function('window._fwWorkspaceState === "ready"')
+        target = frame.locator('#definition-unbound_0029')
+        assert target.is_visible() and 'Unbound 0029' in target.inner_text()
+        box = target.bounding_box()
+        assert box and 0 <= box['y'] < page.viewport_size['height']
+        # A later rerender must not repeat the initial hash scroll.
+        frame.evaluate('window.scrollTo(0,0)')
+        page.evaluate('window.scrollTo(0,0)')
+        frame.evaluate('window.renderAll()')
+        frame.wait_for_timeout(250)
+        assert page.evaluate('scrollY') == 0
+        page.evaluate('history.back()'); frame.wait_for_url('**/index.html*')
+        frame.wait_for_function('window._fwWorkspaceState === "ready"')
+        page.evaluate('history.forward()'); frame.wait_for_url('**-page-2.html*#definition-unbound_0029')
+        frame.wait_for_function('window._fwWorkspaceState === "ready"')
+        page.wait_for_timeout(150)
+        assert page.evaluate('scrollY') == 0
+    finally:
+        context.close()
+    native, page = open_context(metrics_browser, workspace_http, native=True)
+    try:
+        marker = json.loads((workspace_http['output'] / '_meta.json').read_text())['metrics_workspace']
+        name = f'_metrics-workspace-{marker["build"]}-page-2.html'
+        page.goto(workspace_http['base'] + workspace_http['prefix'] + '/r/metrics/' + name + '#definition-unbound_0029')
+        row = page.locator('#definition-unbound_0029')
+        assert row.is_visible() and 'Unbound 0029' in row.inner_text()
+        assert page.locator('noscript tbody tr').count() == 5
+    finally:
+        native.close()
