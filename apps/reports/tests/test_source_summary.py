@@ -434,3 +434,26 @@ def test_legacy_missing_claims_and_valid_empty_list_remain_valid(studio_tree, le
     assert summary.quality == "observed"
     assert summary.failures == 0
     assert summary.claims.count() == 0
+
+
+def test_remote_unbuilt_declaration_is_missing_without_data_read(studio_tree, monkeypatch):
+    from apps.core import storage
+    row = report(studio_tree, 'unbuilt-ab')
+    row.config = {'ab_test': {}}
+    row.save(update_fields=['config'])
+    reads = []
+    monkeypatch.setattr(storage, 'is_remote', lambda: True)
+    monkeypatch.setattr(storage, 'summary_build_identity', lambda *args: '')
+
+    def read(*args, **kwargs):
+        reads.append(args[2])
+        assert args[2] != 'data.json', 'No serving pointer: never read unpublished data'
+        return None
+
+    monkeypatch.setattr(storage, 'read_summary_artifact', read)
+    result = reconcile(row.pk)
+    summary = row.source_summary
+    assert result['status'] == 'missing' and not result['projection_unavailable']
+    assert summary.experiment_state == 'missing' and not summary.has_output
+    assert summary.experiments.get().payload_state == 'missing'
+    assert reads == ['_meta.json']

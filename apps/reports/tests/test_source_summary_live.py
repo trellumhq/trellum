@@ -84,6 +84,7 @@ def test_actual_worker_publish_failure_restart_and_freshness(studio_tree, settin
     if backend == "s3":
         storage.publish_build(studio_tree, old.slug, str(old_output), uuid.uuid4())
 
+    unbuilt_ab = Report.objects.create(studio=studio_tree, slug="historical-unbuilt-ab", config={"ab_test": {}})
     old_ab = Report.objects.create(studio=studio_tree, slug="historical-ab", config={"ab_test": [{"test_name": "Alpha"}, {"test_name": "Missing"}]})
     ab_output = studio_tree.output_dir / old_ab.slug
     ab_output.mkdir(parents=True)
@@ -155,6 +156,10 @@ def test_actual_worker_publish_failure_restart_and_freshness(studio_tree, settin
         historical = wait_until(lambda: summary_ready(old.pk))
         assert historical.claims.count() == 2000
         evidence["events"].append("automatic historical2000claim startup")
+        unbuilt = wait_until(lambda: ReportSourceSummary.objects.filter(report=unbuilt_ab, state="missing", experiment_state="missing").first())
+        assert unbuilt.schema_version == 2 and unbuilt.runtime_state == "ready"
+        assert not unbuilt.has_output and unbuilt.experiments.get().payload_state == "missing"
+        evidence["events"].append("historical unbuilt declared AB with no metadata/output is known missing")
         historical_ab = wait_until(lambda: summary_ready(old_ab.pk))
         assert historical_ab.schema_version == 2 and historical_ab.runtime_state == "ready"
         assert historical_ab.has_output and historical_ab.html_entry == "index.html"

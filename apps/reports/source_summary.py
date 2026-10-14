@@ -141,6 +141,10 @@ def inspect_source(report, summary):
     def main_payload():
         if not main[0]:
             main[0] = True
+            if remote and not build:
+                # Verified absent pointer means unbuilt, not a store outage.
+                # Never inspect unpublished uploads or a mutable data path.
+                return None
             try:
                 from .report_experiment_projection import AB_BYTES, has_declarations
                 has_ab = has_declarations(report.config)
