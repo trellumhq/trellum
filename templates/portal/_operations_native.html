@@ -1,0 +1,58 @@
+{% comment %}No-JavaScript Operations surface: the same bounded, authorized
+read the enhanced page uses. Run and Stop need JavaScript; nothing here is a
+GET action. portal.js replaces this block only after a successful fetch.{% endcomment %}
+<div data-ops-native>
+{% if ops_native.invalid %}
+  <p class="ops-native-note" role="alert">{{ ops_native.invalid }}. <a href="{{ ops_native.reset|default:'?' }}">Clear filters</a></p>
+{% else %}
+{% with page=ops_native.page links=ops_native.links %}
+{% if page.state != 'ready' %}
+  <p class="ops-native-note" role="alert">{{ page.message }}</p>
+{% else %}
+  <div class="ops-summary">
+    <div class="ops-stat"><div class="ops-stat-value">{{ page.counts.total }}</div><div class="ops-stat-label">Reports</div></div>
+    <div class="ops-stat running"><div class="ops-stat-value">{{ page.counts.running }}</div><div class="ops-stat-label">Running</div></div>
+    <div class="ops-stat"><div class="ops-stat-value">{{ page.counts.queued }}</div><div class="ops-stat-label">Queued</div></div>
+    <div class="ops-stat warn"><div class="ops-stat-value">{{ page.counts.waiting }}</div><div class="ops-stat-label">Last observed waiting</div></div>
+    <div class="ops-stat ok"><div class="ops-stat-value">{{ page.counts.ok }}</div><div class="ops-stat-label">Succeeded</div></div>
+    <div class="ops-stat error"><div class="ops-stat-value">{{ page.counts.error }}</div><div class="ops-stat-label">Failed</div></div>
+  </div>
+  <form method="get" class="ops-native-search" role="search">
+    <label>Search reports <input type="search" name="q" value="{{ page.applied.q }}" maxlength="1000"></label>
+    {% if page.applied.state != 'all' %}<input type="hidden" name="state" value="{{ page.applied.state }}">{% endif %}
+    <button class="ops-action-btn" type="submit">Search</button>
+  </form>
+  <div class="ops-filters">
+    {% for pill in links.pills %}<a class="ops-filter-pill{% if pill.active %} active{% endif %}" href="{{ pill.href }}"{% if pill.active %} aria-current="true"{% endif %}>{{ pill.label }}<span class="ops-filter-count">{{ pill.count }}</span></a>{% endfor %}
+  </div>
+  <p class="ops-native-note">Run and Stop controls require JavaScript.</p>
+  <div class="ops-table-wrap"><table class="ops-table"><thead><tr><th>Report</th><th>Schedule</th><th>Status</th><th>Details</th><th>Log</th></tr></thead><tbody>
+  {% for row in page.rows %}
+    <tr data-ops-row="{{ row.slug }}">
+      <td class="ops-report-cell" data-label="Report"><div class="ops-report-name">{{ row.name }}</div><div class="ops-report-slug">{{ row.kind }} &middot; {{ row.slug }}</div></td>
+      <td data-label="Schedule">{{ row.schedule|default:"&mdash;" }}</td>
+      <td data-label="Status"><div class="ops-status {{ row.state }}"><span class="ops-status-dot"></span><span class="ops-status-text">{{ row.state }}</span></div>{% if row.last_error %}<div class="ops-status-detail">{{ row.last_error|truncatechars:80 }}</div>{% endif %}</td>
+      <td data-label="Details">{% if row.validation %}pass {{ row.validation.summary.pass|default:0 }} / warn {{ row.validation.summary.warn|default:0 }} / fail {{ row.validation.summary.fail|default:0 }}{% else %}&mdash;{% endif %}</td>
+      <td data-label="Log"><a href="{% url 'operations-report-log' org_slug=org.slug studio_slug=studio.slug slug=row.slug %}">Last run log</a></td>
+    </tr>
+  {% empty %}
+    <tr><td colspan="5" style="text-align:center;padding:24px">No reports match this filter.</td></tr>
+  {% endfor %}
+  </tbody></table></div>
+  <nav class="ops-native-pager" aria-label="Pages">
+    {% if links.prev %}<a class="ops-action-btn" href="{{ links.prev }}" rel="prev">Previous</a>{% endif %}
+    <span>Page {{ page.pagination.page }} of {{ page.pagination.pages|default:1 }} ({{ page.pagination.total }})</span>
+    {% if links.next %}<a class="ops-action-btn" href="{{ links.next }}" rel="next">Next</a>{% endif %}
+  </nav>
+{% endif %}
+{% with sources=ops_native.sources %}
+{% if sources.state == 'ready' and sources.rows %}
+  <h2 class="ops-native-heading">Data sources ({{ sources.pagination.total }})</h2>
+  <div class="ops-table-wrap"><table class="ops-table"><thead><tr><th>Name</th><th>Type</th><th>State</th><th>Used by</th></tr></thead><tbody>
+  {% for s in sources.rows %}<tr><td data-label="Name">{{ s.name }}</td><td data-label="Type">{{ s.type }}</td><td data-label="State">{{ s.state }}</td><td data-label="Used by">{{ s.used_by_total }}</td></tr>{% endfor %}
+  </tbody></table></div>
+{% endif %}
+{% endwith %}
+{% endwith %}
+{% endif %}
+</div>

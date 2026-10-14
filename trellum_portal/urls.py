@@ -36,6 +36,17 @@ studio_patterns = [
     # the ops surface active. Old ?view=ops/?view=health deep links redirect
     # here from the dashboard view.
     path("operations", report_views.operations, name="studio-operations"),
+    path("operations/reports/<str:slug>/log", report_views.operations_report_log, name="operations-report-log"),
+    path("api/operations/catalog", report_views.api_operations_catalog, name="api-operations-catalog"),
+    path("api/operations/status", report_views.api_operations_status, name="api-operations-status"),
+    path("api/operations/stats", report_views.api_operations_stats, name="api-operations-stats"),
+    path("api/operations/sources", report_views.api_operations_sources, name="api-operations-sources"),
+    path("api/operations/reports/<str:slug>/log", report_views.api_operations_report_log, name="api-operations-report-log"),
+    path(
+        "api/operations/reports/<str:slug>/log/download",
+        report_views.api_operations_report_log_download,
+        name="api-operations-report-log-download",
+    ),
     path("analytics", report_views.analytics, name="studio-analytics"),
     path("metrics", metrics_catalog.metrics_page, name="studio-metrics"),
     path("api/metrics/summary", metric_summaries.metrics_summary, name="studio-metrics-summary"),
