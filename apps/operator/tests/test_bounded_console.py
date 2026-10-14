@@ -56,7 +56,8 @@ def test_org_counts_without_join_crossproduct(console, org, studio, member):
         get_user_model()(email=f"counted-{i}@portal.local") for i in range(30)
     ])
     OrgMembership.objects.bulk_create([OrgMembership(org=org, user=user) for user in users])
-    Run.objects.create(studio=extra[-1], slug="building", status=Run.RUNNING)
+    report = Report.objects.create(studio=extra[-1], slug="building", name="Building")
+    Run.objects.create(studio=extra[-1], report=report, slug="building", status=Run.RUNNING)
     response = console.get("/operator/orgs/", {"q": org.slug})
     row = list(response.context["orgs"])[0]
     assert row.studio_count == Studio.objects.filter(org=org).count()
@@ -123,8 +124,9 @@ def test_fleet_full_aggregates_and_bounded_existing_sections(console, org, studi
     WorkerHeartbeat.objects.create(worker_id="coordinator", role="coordinator")
     WorkerHeartbeat.objects.create(worker_id="stale", role="runner",
                                    last_beat_at=timezone.now() - timezone.timedelta(seconds=120))
+    report = Report.objects.create(studio=studio, slug="failing", name="Failing")
     Run.objects.bulk_create([
-        Run(studio=studio, slug=f"failed-{i}", status=Run.ERROR, peak_memory_mb=i + 1,
+        Run(studio=studio, report=report, slug=f"failed-{i}", status=Run.ERROR, peak_memory_mb=i + 1,
             stdout_tail="large output" * 100, stderr_tail="large error" * 100)
         for i in range(30)
     ])

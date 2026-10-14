@@ -68,6 +68,7 @@ EMAIL_BEARING_ACTIONS = (
     "auth.sso_denied",
     "group.add_user",
     "member.invite",
+    "member.invite_resend",
     "member.invite_revoke",
     "member.remove",
     "operator.impersonate.expired",

@@ -54,8 +54,8 @@ def test_studio_settings_render_without_overflow_in_both_themes(
                     assert dimensions["scroll"] <= dimensions["width"], (name, width, theme, dimensions)
                     page.screenshot(path=str(SCREENSHOTS / f"{name}-{width}-{theme}.png"), full_page=True)
                     if name == "members":
-                        page.locator(".ui-choice-picker .ui-picker-trigger").click()
-                        popup = page.locator(".ui-picker-popup")
+                        page.locator("main .ui-choice-picker .ui-picker-trigger").click()
+                        popup = page.locator("main .ui-choice-picker .ui-picker-popup")
                         assert popup.is_visible()
                         assert popup.bounding_box()["x"] >= 0
                         assert popup.bounding_box()["x"] + popup.bounding_box()["width"] <= width

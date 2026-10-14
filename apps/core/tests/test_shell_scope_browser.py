@@ -7,7 +7,15 @@ from playwright.sync_api import expect, sync_playwright
 
 from apps.studios.models import Studio
 
-pytestmark = pytest.mark.django_db
+pytestmark = pytest.mark.django_db(transaction=True)
+
+
+@pytest.fixture(autouse=True)
+def _route_handlers_use_the_orm(monkeypatch):
+    # Playwright route handlers run in its event loop, which gets its own
+    # database connection: committed rows and the async-unsafe override are
+    # both required for the handlers to render authenticated pages.
+    monkeypatch.setenv("DJANGO_ALLOW_ASYNC_UNSAFE", "true")
 
 
 def serve_browser(browser, client, *, width=1440, javascript=True, failure=None, native_theme=None):
