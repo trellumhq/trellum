@@ -64,10 +64,30 @@ class _MetricBlock(Section):
     time_column: str | None = None
 
     def render_html(self, ctx):
+        before = ctx._counter
         html = super().render_html(ctx)
         time = escape(self.time_column or "", quote=True)
-        return html.replace('<div class="fw-section"',
+        html = html.replace('<div class="fw-section"',
                             f'<div class="fw-section fw-metric-block" data-metric-time="{time}"', 1)
+        if getattr(self, '_workspace_page', False):
+            if not hasattr(ctx, '_metric_workspace_blocks'):
+                ctx._metric_workspace_blocks = []
+            ctx._metric_workspace_blocks.append({'html': html,
+                'ids': [f'fw_c{number}' for number in range(before + 1, ctx._counter + 1)]})
+            return ''
+        return html
+
+
+class _MetricsDefinitions(DataTable):
+    _no_section_wrap = True
+
+    def render_html(self, ctx):
+        from trellum.metrics_workspace import DEFINITIONS
+        before = ctx._counter
+        html = super().render_html(ctx)
+        ctx._metric_workspace_definition_id = f'fw_c{before + 1}'
+        ctx._metric_workspace_definition_html = html
+        return DEFINITIONS
 
 
 class MetricsReport(BaseReport):
@@ -98,31 +118,34 @@ class MetricsReport(BaseReport):
 
         bound.sort(key=lambda m: ((m.tags[0] if m.tags else "Other").casefold(),
                                   (m.label or m.name).casefold(), m.name))
-        if bound:
-            choices = "".join(
-                f'<label><input type="checkbox" value="metric-{m.name}" '
-                f'data-category="{escape(m.tags[0] if m.tags else "Other", quote=True)}" checked> '
-                f'{escape(m.tags[0] if m.tags else "Other")} · {escape(m.label or m.name)}</label>'
-                for m in bound)
-            ctx.add_section("", [_MetricsWorkspace(
-                '<div id="fwMetricsWorkspace"><details><summary>Show / hide metrics</summary>'
-                f'<div class="fw-metric-choices">{choices}</div></details>'
-                '<div class="fw-metric-actions">'
-                '<button type="button" id="fwMetricsShowAll">Show all</button>'
-                '<button type="button" id="fwMetricsHideAll">Hide all</button>'
-                '<span id="fwMetricsCount" role="status" aria-live="polite"></span>'
-                '</div></div>'
-                '<p id="fwMetricsEmpty" hidden>No metrics selected. Use Show all to restore them.</p>'
-            )])
+        from trellum.metrics_workspace import BLOCKS, CONTROLS, DEFINITIONS, PAGE_SIZE
+        ctx._metric_workspace_catalog = [
+            {'name': m.name, 'anchor': f'metric-{m.name}', 'label': m.label or m.name,
+             'category': m.tags[0] if m.tags else 'Other', 'page': index // PAGE_SIZE + 1,
+             'monitored': True, 'binding': {'dataset': m.dataset,
+                 'time_column': reg.datasets[m.dataset].time_column,
+                 'grain': reg.datasets[m.dataset].grain, 'time_agg': m.time_agg}}
+            for index, m in enumerate(bound)]
+        ctx.add_section("", [_MetricsWorkspace(CONTROLS + BLOCKS)])
         for m in bound:
-            ctx.add_section("", [_block(m, frames[m.dataset], reg.datasets[m.dataset])])
+            block = _block(m, frames[m.dataset], reg.datasets[m.dataset])
+            block._workspace_page = True
+            block._no_section_wrap = True
+            ctx.add_section("", [block])
 
-        rest = [m for m in reg.metrics.values() if m not in bound]
+        bound_names = {metric.name for metric in bound}
+        rest = [m for m in reg.metrics.values() if m.name not in bound_names]
+        ctx._metric_workspace_definitions = []
         if rest:
-            ctx.add_section("Defined but not monitored", [
-                DataTable(_not_monitored(rest), title="Bind these to a dataset in "
-                          "metrics.yaml to monitor them here", static=True),
-            ])
+            unmonitored = _not_monitored(rest)
+            ctx._metric_workspace_definitions = unmonitored.to_dict('records')
+            ctx.add_section('', [_MetricsDefinitions(unmonitored,
+                title='Bind these to a dataset in metrics.yaml to monitor them here',
+                max_rows=len(unmonitored), static=True, sortable=True)])
+            ctx._metric_workspace_catalog.extend(
+                {'name': m.name, 'anchor': f'definition-{m.name}', 'label': m.label or m.name,
+                 'category': m.tags[0] if m.tags else 'Other', 'page': index // PAGE_SIZE + 1,
+                 'monitored': False} for index, m in enumerate(rest))
 
     def _date_range(self, ctx, datasets, by_ds, frames) -> None:
         """One untitled section: every DataSource, and the page's single

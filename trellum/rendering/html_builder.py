@@ -187,6 +187,12 @@ def render_report(
             compresses on the fly.
     """
     out = output_dir or ctx.output_dir
+    if (hasattr(ctx, '_metric_workspace_catalog')
+            and not getattr(ctx, '_metric_workspace_staging', False)):
+        from trellum.metrics_workspace import staged_render
+        return staged_render(ctx, out, render_report, data=data,
+            auto_refresh=auto_refresh, validation=validation, production=production,
+            details=details, gc_stale_chunks=gc_stale_chunks)
     os.makedirs(out, exist_ok=True)
 
     theme = ctx.theme
@@ -561,6 +567,15 @@ setTimeout(function(){
                 timings=ctx._timings, details=details,
                 metrics_used=metrics_used_entries(metrics_block))
     _write_live_queries(out, live_registry)
+    if hasattr(ctx, '_metric_workspace_catalog'):
+        from trellum.metrics_workspace import write_pages
+        from uuid import uuid4
+        workspace_ctx = all_render_ctxs[0]
+        if not hasattr(workspace_ctx, '_metric_workspace_blocks'):
+            workspace_ctx._metric_workspace_blocks = []
+        write_pages(out, html, report_data, workspace_ctx,
+                    ctx._metric_workspace_catalog, uuid4().hex,
+                    ctx._metric_workspace_definitions)
     return html_path, json_path
 
 

@@ -36,6 +36,7 @@ function mountOverlay(root, signal) {
     var frameObserver = null;
     var fitRequest = null;
     var activeFrame = null;
+    var frameDeadline = null, frameReader = null;
 
     function esc(s) {
         var d = document.createElement('div');
@@ -44,6 +45,10 @@ function mountOverlay(root, signal) {
     }
 
     function chartHtml(row) {
+        if (row.dataset.chartState === 'legacy') {
+            return '<p class="met-modal-note">This artifact uses the legacy workspace. Rebuild for bounded metric pages. '
+                + (row.dataset.legacyUrl ? '<a href="' + esc(row.dataset.legacyUrl) + '">View legacy metric explicitly</a>' : '') + '</p>';
+        }
         if (row.dataset.chartState && !['ready', 'not-monitored'].includes(row.dataset.chartState)) {
             return '<p class="met-modal-note">Chart availability is ' + esc(row.dataset.chartState)
                 + '. Definitions remain available; retry report usage from the catalog.</p>';
@@ -52,7 +57,9 @@ function mountOverlay(root, signal) {
         if (embed) {
             /* Not loading="lazy": the frame is created only when the overlay
                opens, already on screen, and fitFrame waits on its load. */
-            return '<iframe src="' + esc(embed) + '" title="'
+            var quality = row.dataset.workspaceQuality;
+            var qualifier = ['verified', 'observed'].includes(quality) ? '<p class="met-modal-note">Indexed source identity: ' + esc(quality) + '.</p>' : '';
+            return qualifier + '<iframe data-workspace-version="' + esc(row.dataset.workspaceVersion || '') + '" src="' + esc(embed) + '" title="'
                 + esc(row.dataset.label) + ' — chart"></iframe>';
         }
         if (!built && !row.dataset.chartState) {
@@ -184,6 +191,8 @@ function mountOverlay(root, signal) {
     }
 
     function stopWatching() {
+        clearTimeout(frameDeadline); frameDeadline = null;
+        if (frameReader) frameReader.abort(); frameReader = null;
         if (frameObserver) frameObserver.disconnect();
         frameObserver = null;
         if (fitRequest !== null) window.cancelAnimationFrame(fitRequest);
@@ -193,29 +202,49 @@ function mountOverlay(root, signal) {
 
     function watchFrame(frame) {
         activeFrame = frame;
-        listen(frame, 'load', function () {
-            if (activeFrame !== frame || modal.hidden) return;
+        var modern = frame.dataset.workspaceVersion === '1';
+        var failed = false;
+        function unavailable() {
+            if (failed || activeFrame !== frame || modal.hidden) return;
+            failed = true; clearTimeout(frameDeadline);
+            if (frameReader) frameReader.abort();
             if (frameObserver) frameObserver.disconnect();
+            frame.hidden = true;
+            var note = document.createElement('p'); note.className = 'met-modal-note';
+            note.setAttribute('role', 'status');
+            note.textContent = 'This metric’s chart is unavailable. Close and reopen to retry, or open the metric page explicitly.';
+            body.insertBefore(note, frame);
+        }
+        frameDeadline = setTimeout(unavailable, 12000);
+        listen(frame, 'load', function () {
+            if (failed || activeFrame !== frame || modal.hidden) return;
+            if (frameObserver) frameObserver.disconnect();
+            if (frameReader) frameReader.abort();
+            frameReader = new AbortController();
             try {
-                if (!frame.contentDocument.body.classList.contains('fw-only')) {
-                    frame.hidden = true;
-                    var note = document.createElement('p');
-                    note.className = 'met-modal-note';
-                    note.setAttribute('role', 'status');
-                    note.textContent = 'This metric’s chart is unavailable in the current build. Open the metric page or Metrics overview to continue.';
-                    body.insertBefore(note, frame);
-                    return;
-                }
+                var doc = frame.contentDocument;
+                var connected = false;
+                function connect() {
+                if (connected || failed || activeFrame !== frame || modal.hidden || frame.contentDocument !== doc) return;
+                if (modern && frame.contentWindow._fwWorkspaceState === 'failed') { unavailable(); return; }
+                if (modern && frame.contentWindow._fwWorkspaceState !== 'ready') return;
+                if (!doc.body.classList.contains('fw-only')) { unavailable(); return; }
+                connected = true;
+                clearTimeout(frameDeadline); frameDeadline = null;
                 frameObserver = new ResizeObserver(scheduleFit);
-                frameObserver.observe(frame.contentDocument.body);
+                frameObserver.observe(doc.body);
                 function afterControls() {
                     // Chart URL writes finish after their button handlers.
                     window.setTimeout(function () {
                         if (activeFrame === frame) scheduleFit();
                     }, 0);
                 }
-                listen(frame.contentDocument, 'click', afterControls);
-                listen(frame.contentDocument, 'change', afterControls);
+                doc.addEventListener('click', afterControls, {signal: frameReader.signal});
+                doc.addEventListener('change', afterControls, {signal: frameReader.signal});
+                scheduleFit();
+                }
+                frame.contentWindow.addEventListener('fw-workspace-state', connect, {once: true, signal: frameReader.signal});
+                connect();
             } catch (e) { /* no ResizeObserver, or gone: the load fit stands */ }
             scheduleFit();
         });

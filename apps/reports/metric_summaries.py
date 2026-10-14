@@ -95,7 +95,8 @@ def metrics_summary(request, org_slug, studio_slug):
                 summary__report_id=OuterRef("pk"), metric_name__in=names).order_by("metric_name").values(
                     json=JSONObject(name="metric_name", points="points")))
         ).values("pk", "source_summary__state", "source_summary__quality",
-                 "source_summary__preview_state", "source_summary__observed_at", "spark_rows").first()
+                 "source_summary__preview_state", "source_summary__observed_at",
+                 "source_summary__workspace_version", "spark_rows").first()
         claims = _claims(studio).filter(metric_name__in=names)
         # Compute full counts before rank filtering, while returning at most
         # three rows per metric, including when a metric has thousands of claims.
@@ -112,11 +113,15 @@ def metrics_summary(request, org_slug, studio_slug):
             counts[claim.metric_name] = claim.claim_total
             if claim.generated_total:
                 generated_claims.add(claim.metric_name)
-        generated_ready = bool(generated and generated["source_summary__state"] == "ready" and
-                               generated["source_summary__quality"] == "verified" and
+        generated_source_ready = bool(generated and generated["source_summary__state"] == "ready" and
+                               generated["source_summary__quality"] in ('verified', 'observed') and
                                generated["source_summary__observed_at"] and generated["source_summary__observed_at"] >=
                                timezone.now() - timedelta(seconds=SOURCE_FRESH_SECONDS))
-        sparks = {item["name"]: item["points"] for item in generated["spark_rows"]} if generated_ready else {}
+        workspace_version = generated['source_summary__workspace_version'] if generated else None
+        generated_ready = generated_source_ready and workspace_version == 1
+        # Existing indexed previews remain useful even when an old artifact
+        # needs explicit loading. Format gating controls frame creation only.
+        sparks = {item["name"]: item["points"] for item in generated["spark_rows"]} if generated_source_ready and generated['source_summary__quality'] == 'verified' else {}
         result = []
         for definition in definitions:
             monitored = generated_ready and definition.name in generated_claims
@@ -126,7 +131,11 @@ def metrics_summary(request, org_slug, studio_slug):
                 "details_url": reverse("studio-metric-claims", args=[org_slug, studio_slug, definition.pk]) +
                                f"?definition_revision={revision}",
                 "spark": " ".join(sparks.get(definition.name, "").split()[:60]),
-                "chart_state": "ready" if monitored else "not-monitored" if generated_ready else "unknown",
+                "chart_state": "ready" if monitored else "not-monitored" if generated_ready else
+                               "legacy" if generated_source_ready and workspace_version == 0 else "unknown",
+                'workspace_version': workspace_version,
+                'workspace_quality': generated['source_summary__quality'] if generated else 'unknown',
+                'legacy_url': f'{base}?only=metric-{definition.name}' if generated_source_ready and workspace_version == 0 else '',
                 "embed_url": f"{base}?only=metric-{definition.name}" if monitored else "",
                 "chart_url": f"{base}?only=metric-{definition.name}" if monitored else "",
                 "overview_url": f"{base}#metric-{definition.name}" if monitored else ""})

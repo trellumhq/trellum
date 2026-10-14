@@ -26,6 +26,63 @@ from trellum.rendering.html_builder import _generate_base_css
 from trellum.rendering.js_runtime import generate_js_runtime
 from trellum.themes import THEME_REGISTRY
 
+
+def test_workspace_table_global_metadata_and_bounded_optin_leave_defaults_unchanged(capture_page):
+    page = capture_page
+    result = page.evaluate("""js => {
+        document.body.innerHTML = '<div id="paged"></div><div id="ordinary"></div>';
+        window._fwRenderers = window._fwRenderers || {};
+        window._fwMetricsWorkspace = {};
+        eval(js);
+        var rows = Array.from({length: 80}, (_, i) => ['metric_' + String(i).padStart(4,'0'), 'owner_' + i]);
+        window._fwRenderers.table('paged', {columns:['Metric','Owner'], rows:rows, totalRows:80,
+            maxRows:25, sortable:true, workspacePageSize:25, workspacePage:1});
+        window._fwRenderers.table('ordinary', {columns:['Metric','Owner'], rows:rows, totalRows:80, maxRows:25});
+        var before = document.querySelectorAll('#paged tbody tr').length;
+        document.querySelector('#paged th').click();
+        var first = document.querySelector('#paged tbody tr').textContent;
+        document.querySelector('#paged [data-workspace-table-next]').click();
+        var next = document.querySelector('#paged tbody tr').textContent;
+        document.querySelector('#paged [data-workspace-table-next]').click();
+        document.querySelector('#paged [data-workspace-table-next]').click();
+        var lastFocus = document.activeElement.hasAttribute('data-workspace-table-previous');
+        for (var i=0;i<3;i++) document.querySelector('#paged [data-workspace-table-previous]').click();
+        var firstFocus = document.activeElement.hasAttribute('data-workspace-table-next');
+        var ordinary = document.querySelectorAll('#ordinary tbody tr').length;
+        delete window._fwMetricsWorkspace;
+        return {before,first,next,ordinary,lastFocus,firstFocus};
+    }""", load_js('components/data_table.js'))
+    assert result == {'before': 25, 'first': 'metric_0079owner_79', 'next': 'metric_0054owner_54', 'ordinary': 80,
+                      'lastFocus': True, 'firstFocus': True}
+
+def test_metric_draw_queue_coalesces_latest_filter_disposes_and_restores(capture_page):
+    """Synthetic consumer callbacks verify lifecycle, not live chart timings."""
+    result = capture_page.evaluate("""async () => {
+        document.body.innerHTML='<div id="q0"></div><div id="q1"></div><div id="q2"></div>';
+        window._fwMetricsWorkspace={};window._fwWorkspaceWork={max_consumer_ms:0,max_chart_ms:0};
+        var engine=window._fwFilterEngine, seen=[];
+        engine.init('queue-probe',[{kind:'A'},{kind:'B'},{kind:'C'}]);
+        function attach(){for(let i=0;i<3;i++) window._fwLiveWrap('q'+i,{dataset_id:'queue-probe',type:'chart'},rows=>seen.push([i,rows.map(r=>r.kind).join('')]))}
+        attach();seen=[];
+        engine.setFilter('queue-probe','choice','kind','equals','A');
+        engine.setFilter('queue-probe','choice','kind','equals','B');
+        engine.setFilter('queue-probe','choice','kind','equals','C');
+        await new Promise(resolve=>setTimeout(resolve,120));
+        var latest=seen.slice();seen=[];
+        engine.setFilter('queue-probe','choice','kind','equals','A');
+        window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true}));
+        await new Promise(resolve=>setTimeout(resolve,40));var detached=seen.length;
+        window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}));
+        history.replaceState(null,'',location.pathname+'?only=probe');attach();seen=[];
+        engine.setFilter('queue-probe','choice','kind','equals','B');
+        var focused=seen.slice();history.replaceState(null,'',location.pathname);
+        return {latest,detached,focused};
+    }""")
+    assert sorted(result['latest']) == [[0, 'C'], [1, 'C'], [2, 'C']]
+    assert result['detached'] == 0
+    assert sorted(result['focused']) == [[0, 'B'], [1, 'B'], [2, 'B']]
+
+
 # ── Fixtures ──────────────────────────────────────────────────
 
 def _find_free_port() -> int:

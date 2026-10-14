@@ -23,17 +23,27 @@
 </nav>
 <p class="muted">Charts use separate axes and their original units. This view shows trends, without KPI totals. Snapshot metrics show observations at each date, not a filtered balance.</p>
 <form class="mc-selection" id="mcSelection" action="{{ comparison_url }}" method="get">
+  <input type="hidden" name="from" value="{{ state.from }}"><input type="hidden" name="to" value="{{ state.to }}">
+  <input type="hidden" name="split_a" value="{{ state.split_a }}"><input type="hidden" name="split_b" value="{{ state.split_b }}">
+  {% if workspace_requested_legacy %}<input type="hidden" name="legacy" value="1">{% endif %}
   {% for card in cards %}
   <label for="mc-{{ card.slot }}">Metric {{ forloop.counter }}
-    <select id="mc-{{ card.slot }}" name="{{ card.slot }}" class="ui-input" data-choice-picker data-picker-label="Metric {{ forloop.counter }}" data-picker-search-placeholder="Search metrics" data-picker-empty-state="No metrics match.">
+    <select id="mc-{{ card.slot }}" name="{{ card.slot }}" class="ui-input" data-choice-picker data-choice-source="{{ choice_url }}" data-unavailable-label="Selected metric is unavailable" data-picker-label="Metric {{ forloop.counter }}" data-picker-search-placeholder="Search metrics" data-picker-empty-state="No metrics match.">
       <option value="">Remove metric / choose a metric</option>
       {% for m in metrics %}<option value="{{ m.row.name }}" {% if card.row.name == m.row.name %}selected{% endif %}>{{ m.row.label|default:m.row.name }}</option>{% endfor %}
     </select>
   </label>
   {% endfor %}
   <button class="ui-btn">Update comparison</button>
+  <div data-browse-choices><label>Search all metrics <input name="q" maxlength="200" value="{{ choice_query }}"></label>
+  <button type="submit" name="page" value="1">Search choices</button>
+  {% if choice_page.has_previous %}<button type="submit" name="page" value="{{ choice_page.previous_page_number }}">Previous choices</button>{% endif %}
+  {% if choice_page.has_next %}<button type="submit" name="page" value="{{ choice_page.next_page_number }}">Next choices</button>{% endif %}
+  <span>Page {{ choice_page.number }} · {{ choice_page.paginator.count }} choices</span></div>
 </form>
+{% if not metrics_report_built %}<p class="ui-flash warning">{% if workspace_legacy %}This is a legacy artifact. Rebuild for bounded metric pages, or <a href="?a={{ state.a|urlencode }}&amp;b={{ state.b|urlencode }}&amp;legacy=1">view the legacy comparison explicitly</a>.{% else %}Workspace format unknown, stale or unavailable. Refresh after source reconciliation.{% endif %}</p>{% endif %}
 <form class="mc-dates" id="mcDates" action="{{ comparison_url }}" method="get">
+  {% if workspace_requested_legacy %}<input type="hidden" name="legacy" value="1">{% endif %}
   <input type="hidden" name="a" value="{{ state.a }}"><input type="hidden" name="b" value="{{ state.b }}">
   <input type="hidden" name="split_a" value="{{ state.split_a }}"><input type="hidden" name="split_b" value="{{ state.split_b }}">
   <label for="mcFrom">Shared start date <input class="ui-input" id="mcFrom" name="from" type="date" value="{{ state.from }}" required></label>
@@ -43,12 +53,12 @@
 <p id="mcStatus" role="status" aria-live="polite">Choose two metrics to compare. Loading selected charts…</p>
 <div class="mc-grid" id="mcComparison">
   {% for card in cards %}
-  <section class="mc-card" data-slot="{{ card.slot }}" data-id="{{ card.row.name }}" data-embed="{{ card.embed_url }}">
+  <section class="mc-card" data-slot="{{ card.slot }}" data-id="{{ card.row.name }}" data-embed="{{ card.embed_url }}" data-workspace-version="{{ workspace_version }}">
     {% if card.row %}
     <h2>{{ card.row.label|default:card.row.name }}</h2>
     <p class="mc-facts">Current definition — units/format: {{ card.row.format }} · Aggregation: {{ card.spec }} · Time rollup: {{ card.time_agg|default:"sum" }} · Grain: {{ card.grain|default:"none (snapshot)" }}</p>
-    <p class="mc-facts">Build: {% if card.built_at %}{{ card.built_at|date:"Y-m-d H:i" }}{% else %}unavailable{% endif %} · {% if card.current %}current definition{% else %}unverified or stale definition; rebuild before relying on this comparison{% endif %}</p>
-    <p class="mc-range" role="status">{% if not metrics_report_built %}The Metrics report has not been built yet.{% elif not card.embed_url %}This metric is not monitored in the current build.{% else %}Loading chart…{% endif %}</p>
+    <p class="mc-facts">Build: {% if card.built_at %}{{ card.built_at|date:"Y-m-d H:i" }}{% else %}unavailable{% endif %} · {% if card.current %}matching canonical metric definition; compare built binding facts below{% else %}unverified or stale definition; rebuild before relying on this comparison{% endif %} · indexed source {{ workspace_quality }}</p>
+    <p class="mc-range" role="status">{% if not workspace_report_exists %}The Metrics report has not been built yet.{% elif not metrics_report_built %}The served workspace format is unknown, legacy or unavailable; use the explicit fallback above.{% elif not card.embed_url %}This metric is not monitored in the current build.{% else %}Loading chart…{% endif %}</p>
     <div class="mc-chart"></div>
     {% else %}<h2>Metric {{ forloop.counter }}</h2><p>Choose a metric above.</p><div class="mc-chart"></div>{% endif %}
   </section>
