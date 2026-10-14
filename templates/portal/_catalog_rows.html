@@ -1,0 +1,20 @@
+{% for row in rows %}
+<article class="c14-item{% if row.has_output == False %} is-unbuilt{% endif %}" data-catalog-id="{{ row.id }}" data-catalog-slug="{{ row.slug }}">
+  <div class="c14-item-main">
+    <div class="c14-item-heading">
+      <a class="c14-report-link" data-console-report-title="{{ row.name }}" href="/s/{{ org.slug }}/{{ studio.slug }}/r/{{ row.slug|urlencode }}/{% if row.has_output and row.html_entry %}{{ row.html_entry|urlencode }}{% endif %}">{{ row.name }}</a>
+      <span class="c14-state" data-catalog-output>{% if row.has_output == None %}Output unknown · open normally{% elif row.has_output %}Ready{% else %}No output{% endif %}</span>
+    </div>
+    {% if row.description %}<p class="c14-description">{{ row.description }}</p>{% endif %}
+    <div class="c14-tags">{% for tag in row.tags %}<a data-catalog-tag="{{ tag }}" href="{{ catalog_path }}?q={{ tag|urlencode }}">{{ tag }}</a>{% endfor %}</div>
+    <div class="c14-meta"><span>{{ row.category }}</span><span>{{ row.studio }}</span><span>{% if row.schedule %}{{ row.schedule }}{% else %}Schedule unknown{% endif %}</span></div>
+  </div>
+  <div class="c14-item-actions">
+    <span data-catalog-indicator="{{ row.id }}" role="status">Indicators pending</span>
+    <button type="button" data-catalog-favorite="{{ row.id }}" aria-label="{% if row.is_favorite %}Remove {{ row.name }} from favorites{% else %}Add {{ row.name }} to favorites{% endif %}" aria-pressed="{% if row.is_favorite %}true{% else %}false{% endif %}">{% if row.is_favorite %}★{% else %}☆{% endif %}</button>
+    <a data-catalog-detail="{{ row.id }}" href="/s/{{ org.slug }}/{{ studio.slug }}/catalog/details/{{ row.id }}">More details</a>
+    <button type="button" data-catalog-delivery="{{ row.slug }}" data-catalog-name="{{ row.name }}">Delivery</button>
+    {% if studio_role == "admin" or studio_role == "developer" %}<button type="button" data-catalog-run="{{ row.slug }}">Run</button>{% endif %}
+  </div>
+</article>
+{% empty %}<p class="c14-empty">No matching {{ catalog_kind }}s. Try a different search or category.</p>{% endfor %}

@@ -145,6 +145,35 @@ def _dashboard_page(request, *, initial_view: str):
         "initial_view": initial_view,
     }
     page_title = {"ops": "Operations", "analyses": "Analyses"}.get(initial_view, "Reports")
+    catalog_context = {}
+    if initial_view != "ops":
+        from apps.reports.catalog import catalog_payload, catalog_personal_payload
+        try:
+            kind = Report.KIND_ANALYSIS if initial_view == "analyses" else Report.KIND_REPORT
+            query = request.GET.copy()
+            def catalog_url(**changes):
+                params = query.copy()
+                for key, value in changes.items():
+                    params[key] = str(value)
+                return request.path + ("?" + params.urlencode() if params else "")
+            catalog_context = {
+                "catalog": catalog_payload(request, request.GET, kind=kind),
+                "catalog_personal": catalog_personal_payload(request, request.GET, kind=kind),
+                "catalog_kind": kind,
+                "catalog_query": request.GET,
+                "catalog_path": request.path,
+                "catalog_all_url": catalog_url(tab="all", page=1),
+                "catalog_favorites_url": catalog_url(tab="_favorites", page=1),
+                "catalog_recent_url": catalog_url(tab="_recent", page=1),
+                "catalog_cards_url": catalog_url(view="cards", page=1),
+                "catalog_list_url": catalog_url(view="list", page=1),
+                "catalog_next_url": catalog_url(page=int(request.GET.get("page") or 1)+1),
+                "catalog_previous_url": catalog_url(page=max(1, int(request.GET.get("page") or 1)-1)),
+                "catalog_favorite_next_url": catalog_url(favorite_page=int(request.GET.get("favorite_page") or 1)+1),
+                "catalog_favorite_previous_url": catalog_url(favorite_page=max(1, int(request.GET.get("favorite_page") or 1)-1)),
+            }
+        except ValueError:
+            return HttpResponse("Invalid catalog state", status=400)
     return render(
         request,
         "portal/index.html",
@@ -154,6 +183,7 @@ def _dashboard_page(request, *, initial_view: str):
             "portal_ctx_json": json.dumps(ctx_blob),
             "studio_role": request.studio_role,
             "console_page_title": page_title,
+            **catalog_context,
             # studio_theme (the viewer's named theme, or "" for the Trellum
             # default) comes from the shell context processor, which already
             # merges into every render() call -- no need to duplicate it here.
@@ -177,6 +207,83 @@ def dashboard(request, org_slug, studio_slug):  # noqa: ARG001
 @require_studio_role(roles.VIEWER)
 def analyses(request, org_slug, studio_slug):  # noqa: ARG001
     return _dashboard_page(request, initial_view="analyses")
+
+
+def _catalog_kind(request):
+    kind = request.GET.get("kind", "report")
+    if kind not in (Report.KIND_REPORT, Report.KIND_ANALYSIS):
+        raise ValueError("Invalid catalog kind")
+    return kind
+
+
+def _catalog_json(call):
+    try:
+        return JsonResponse(call())
+    except ValueError:
+        return JsonResponse({"version": 1, "state": "invalid", "message": "Invalid catalog state."}, status=400)
+
+
+@require_studio_role(roles.VIEWER)
+@require_http_methods(["GET"])
+def api_catalog(request, org_slug, studio_slug):  # noqa: ARG001
+    from apps.reports.catalog import catalog_payload
+    return _catalog_json(lambda: catalog_payload(request, request.GET, kind=_catalog_kind(request)))
+
+
+@require_studio_role(roles.VIEWER)
+@require_http_methods(["GET"])
+def api_catalog_categories(request, org_slug, studio_slug):  # noqa: ARG001
+    from apps.reports.catalog import catalog_categories_payload
+    return _catalog_json(lambda: catalog_categories_payload(request, request.GET, kind=_catalog_kind(request)))
+
+
+@require_studio_role(roles.VIEWER)
+@require_http_methods(["GET"])
+def api_catalog_personal(request, org_slug, studio_slug):  # noqa: ARG001
+    from apps.reports.catalog import catalog_personal_payload
+    return _catalog_json(lambda: catalog_personal_payload(request, request.GET, kind=_catalog_kind(request)))
+
+
+@require_studio_role(roles.VIEWER)
+@require_http_methods(["GET"])
+def api_catalog_indicators(request, org_slug, studio_slug):  # noqa: ARG001
+    from apps.reports.catalog_indicators import catalog_indicators_payload
+    def read():
+        raw = request.GET.getlist("id")
+        if len(raw) > 64 or any(not value.isascii() or not value.isdecimal() or len(value) > 10 for value in raw):
+            raise ValueError("Invalid report identities")
+        return catalog_indicators_payload(request, [int(value) for value in raw])
+    return _catalog_json(read)
+
+
+@require_studio_role(roles.VIEWER)
+@require_http_methods(["GET"])
+def api_catalog_details(request, org_slug, studio_slug, report_id):  # noqa: ARG001
+    from apps.reports.catalog_details import catalog_details_payload
+    return _catalog_json(lambda: catalog_details_payload(request, report_id, request.GET))
+
+
+@require_studio_role(roles.VIEWER)
+@require_http_methods(["GET"])
+def catalog_details(request, org_slug, studio_slug, report_id):  # noqa: ARG001
+    from apps.reports.catalog_details import catalog_details_payload
+    from apps.reports.catalog_indicators import authorized_ids
+    try:
+        detail = catalog_details_payload(request, report_id, request.GET)
+    except ValueError:
+        return HttpResponse("Invalid detail state", status=400)
+    slug = authorized_ids(request, [report_id]).values_list("slug", flat=True).first()
+    if slug is None:
+        raise Http404
+    from urllib.parse import quote
+    base = f"/s/{quote(org_slug, safe='')}/{quote(studio_slug, safe='')}"
+    back = request.GET.get("back", base + "/")
+    if not back.startswith(base + "/") or back.startswith("//") or "\x00" in back:
+        back = base + "/"
+    response = render(request, "portal/catalog_details.html", {"detail": detail, "report_id": report_id, "report_link": f"{base}/r/{quote(slug, safe='')}/", "catalog_back": back, "tag_index": request.GET.get("tag_index", "")})
+    if len(response.content) > 128 * 1024:
+        return HttpResponse("Details exceed the presentation limit. Narrow the selection.", status=413)
+    return response
 
 
 @require_studio_role(roles.DEVELOPER)
