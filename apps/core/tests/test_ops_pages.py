@@ -29,8 +29,31 @@ class TestAuditViewer:
         assert f"/orgs/{org.slug}/settings/audit" in html
 
 
+def _complete_diagnostics(checks):
+    """Store the completed coordinator measurement that /system displays."""
+    from django.utils import timezone
+
+    from apps.core.models import OpsState
+
+    OpsState.objects.update_or_create(key="operator.health", defaults={
+        "ran_at": timezone.now(), "ok": True,
+        "payload": {"checks": checks, "completed_at": timezone.now().isoformat(), "producer_node": "coord-test"},
+    })
+
+
 class TestSystemPage:
+    def test_no_checks_until_a_measurement_completes(self, login, superuser):
+        """C16: a page load never runs checks; it reports the unknown state."""
+        html = login(superuser).get("/system").content.decode()
+        assert "Diagnostics are unknown until a coordinator measurement completes." in html
+        assert "SECRET_ENCRYPTION_KEY" not in html
+
     def test_operator_sees_checks(self, login, superuser):
+        _complete_diagnostics([
+            {"label": "database", "ok": True, "detail": "reachable"},
+            {"label": "SECRET_ENCRYPTION_KEY", "ok": True, "detail": "valid"},
+            {"label": "worker", "ok": True, "detail": "heartbeat"},
+        ])
         html = login(superuser).get("/system").content.decode()
         assert "database" in html
         assert "SECRET_ENCRYPTION_KEY" in html
@@ -44,6 +67,7 @@ class TestSystemPage:
         assert 'name="max_upload_mb"' in html
 
     def test_free_space_is_reported(self, login, superuser):
+        _complete_diagnostics([{"label": "data volume free space", "ok": True, "detail": "12 GB free"}])
         html = login(superuser).get("/system").content.decode()
         assert "data volume free space" in html
 

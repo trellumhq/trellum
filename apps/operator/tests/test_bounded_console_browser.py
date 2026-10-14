@@ -6,6 +6,7 @@ Run only in a disposable PostgreSQL environment after runtime coordination.
 from concurrent.futures import ThreadPoolExecutor
 import os
 from pathlib import Path
+import time
 from urllib.parse import urlparse
 
 import pytest
@@ -76,6 +77,25 @@ def test_native_discovery_independent_sections_and_quota(
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
 
+        def tap(locator):
+            if engine == "webkit" and not javascript:
+                # Headless WebKit without JavaScript does not deliver the
+                # animation frames Playwright's stability check waits for (this
+                # also fails at the test's own introducing commit). Poll the
+                # box until the stylesheet-driven layout settles, then click;
+                # the expectations after each click still prove the navigation.
+                previous, steady = None, 0
+                for _ in range(100):
+                    box = locator.bounding_box()
+                    steady = steady + 1 if box is not None and box == previous else 0
+                    if steady >= 3:
+                        break
+                    previous = box
+                    time.sleep(0.1)
+                locator.click(force=True)
+            else:
+                locator.click()
+
         def static(route):
             root = (settings.BASE_DIR / "static").resolve()
             path = (root / urlparse(route.request.url).path.split("/static/", 1)[1]).resolve()
@@ -92,23 +112,23 @@ def test_native_discovery_independent_sections_and_quota(
         page.wait_for_url("**/operator/orgs/")
         expect(page.get_by_role("heading", name="Organizations", exact=True)).to_be_visible()
         expect(page.locator(".ui-table tbody tr")).to_have_count(25)
-        page.get_by_role("link", name="Next organizations", exact=True).click()
+        tap(page.get_by_role("link", name="Next organizations", exact=True))
         expect(page.get_by_role("navigation", name="Organizations pages")).to_contain_text("Page 2 of 3")
         org_search = page.get_by_role("form", name="Search organizations")
         org_search.get_by_label("Search organizations", exact=True).fill("Browser organization 059")
-        org_search.get_by_role("button", name="Search organizations", exact=True).click()
+        tap(org_search.get_by_role("button", name="Search organizations", exact=True))
         expect(page.locator(".ui-table tbody tr")).to_have_count(1)
-        page.get_by_role("link", name=org.slug, exact=True).click()
+        tap(page.get_by_role("link", name=org.slug, exact=True))
         expect(page.get_by_role("heading", name=org.name, exact=True)).to_be_visible()
         expect(page.get_by_role("navigation", name="Studios pages")).to_contain_text("50 matching")
         expect(page.get_by_role("navigation", name="Members pages")).to_contain_text("100 matching")
-        page.get_by_role("link", name="Next members", exact=True).click()
-        page.get_by_role("link", name="Next studios", exact=True).click()
+        tap(page.get_by_role("link", name="Next members", exact=True))
+        tap(page.get_by_role("link", name="Next studios", exact=True))
         expect(page.get_by_role("navigation", name="Members pages")).to_contain_text("Page 2 of 4")
         expect(page.get_by_role("navigation", name="Studios pages")).to_contain_text("Page 2 of 2")
         member_search = page.get_by_role("form", name="Search members")
         member_search.get_by_label("Search members", exact=True).fill("Person 099")
-        member_search.get_by_role("button", name="Search members", exact=True).click()
+        tap(member_search.get_by_role("button", name="Search members", exact=True))
         expect(page.get_by_role("navigation", name="Studios pages")).to_contain_text("Page 2 of 2")
         expect(page.get_by_role("navigation", name="Members pages")).to_contain_text("1 matching")
         expect(page.get_by_text("browser-person-099@portal.local", exact=True)).to_be_visible()
@@ -129,13 +149,13 @@ def test_native_discovery_independent_sections_and_quota(
             expect(field).to_be_focused()
             quota.get_by_label("Notes", exact=True).fill("Keep this draft")
             page.once("dialog", lambda dialog: dialog.dismiss())
-            page.get_by_role("link", name="Previous studios", exact=True).click()
+            tap(page.get_by_role("link", name="Previous studios", exact=True))
             expect(quota.get_by_label("Notes", exact=True)).to_have_value("Keep this draft")
             expect(page.get_by_role("navigation", name="Studios pages")).to_contain_text("Page 2 of 2")
             # Clear the draft before the deliberate native departure.
             quota.get_by_label("Notes", exact=True).fill("")
         else:
-            quota.get_by_role("button", name="Save quota", exact=True).click()
+            tap(quota.get_by_role("button", name="Save quota", exact=True))
             page.wait_for_url(host + f"/operator/orgs/{org.slug}/")
             expect(page.get_by_label("Max concurrent builds", exact=True)).to_have_value("7")
         assert database_read(lambda: OrgQuota.objects.get(org_id=org.pk).max_concurrent_runs) == 7
@@ -147,10 +167,10 @@ def test_native_discovery_independent_sections_and_quota(
 
         page.goto(host + "/operator/")
         expect(page.get_by_role("navigation", name="Workers pages")).to_contain_text("101 total")
-        page.get_by_role("link", name="Next workers", exact=True).click()
+        tap(page.get_by_role("link", name="Next workers", exact=True))
         worker_search = page.get_by_role("form", name="Search workers")
         worker_search.get_by_label("Search workers", exact=True).fill("browser-worker-099")
-        worker_search.get_by_role("button", name="Search workers", exact=True).click()
+        tap(worker_search.get_by_role("button", name="Search workers", exact=True))
         expect(page.get_by_text("browser-worker-099", exact=True)).to_be_visible()
         expect(page.get_by_role("navigation", name="Workers pages")).to_contain_text("1 matching")
         expect(page.get_by_role("navigation", name="Workers pages")).to_contain_text("101 total")

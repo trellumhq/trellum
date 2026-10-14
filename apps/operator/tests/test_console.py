@@ -159,7 +159,8 @@ class TestQuotaEditing:
         result.update(version=1, kind="upload-usage", workspace_id=workspace, producer_fingerprint=entry["producer_fingerprint"])
         assert observations.finish(entry, result=result)
         html = login(operator).get(f"/operator/orgs/{org.slug}/").content.decode()
-        assert "2.0 MB" in html
+        # Django filesizeformat joins the number and unit with a no-break space.
+        assert "2.0\xa0MB (last observed" in html
 
     def test_non_numeric_is_rejected_without_saving(self, login, operator, org):
         response = login(operator).post(
