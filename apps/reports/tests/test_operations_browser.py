@@ -1,4 +1,5 @@
-"""Real HTTP + browser contracts for the routed Operations surface."""
+"""Real HTTP + browser contract for the Operations page: it reads from the
+bounded endpoints and looks and behaves as it always has."""
 from pathlib import Path
 import os
 from urllib.parse import urlparse
@@ -32,9 +33,9 @@ def _seed(studio, data_dir):
 
 
 @pytest.mark.parametrize("engine,width", [("chromium", 1440), ("chromium", 390), ("webkit", 1440), ("webkit", 390)])
-def test_operations_enhanced_and_native(engine, width, live_server, login, org_admin, org, studio, settings, tmp_path):
+def test_operations_page(engine, width, live_server, login, org_admin, org, studio, settings, tmp_path):
     settings.DATA_DIR = tmp_path / "data"
-    done = _seed(studio, settings.DATA_DIR)
+    _seed(studio, settings.DATA_DIR)
     client = login(org_admin)
     host = live_server.url
     path = f"/s/{org.slug}/{studio.slug}/operations"
@@ -53,55 +54,43 @@ def test_operations_enhanced_and_native(engine, width, live_server, login, org_a
             route.fulfill(path=str(asset)) if asset.is_file() else route.continue_()
         page.route("**/static/**", static)
         page.goto(host + path)
-        # Enhanced content replaces the native block only after a ready fetch.
-        expect(page.locator("[data-ops-native]")).to_have_count(0)
-        expect(page.locator("tr[data-ops-row]")).to_have_count(25)
+        # Every report is listed at once: no pager, no extra page of rows.
+        expect(page.locator("tr[data-ops-row]")).to_have_count(60)
+        expect(page.locator(".ops-pager, .ops-native-pager")).to_have_count(0)
+        expect(page.get_by_role("button", name="Next", exact=True)).to_have_count(0)
         assert not any("/api/registry" in url or "/api/system/status" in url for url in requests)
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")
+        # The summary row, labels and filter chips are the ones the page always had.
+        labels = page.locator(".ops-summary > .ops-stat .ops-stat-label").all_inner_texts()
+        assert [label.lower() for label in labels] == [
+            "reports", "running", "queued", "waiting for data source", "succeeded", "failed", "uptime"]
+        chips = page.locator(".ops-filter-pill").evaluate_all("els => els.map(el => el.dataset.opsFilter)")
+        assert chips == ["all", "running", "queued", "waiting", "error", "oom", "timeout", "stopped", "ok",
+                         "not_run", "v_fail", "v_warn", "healthy"]
         expect(page.locator(".ops-filter-pill[data-ops-filter=all] .ops-filter-count")).to_have_text("60")
-        # Server filter + paging.
+        expect(page.locator(".ops-filter-pill[data-ops-filter=not_run] .ops-filter-count")).to_have_text("57")
+        # State chips apply at once, without a new read.
+        before = len(requests)
         page.locator(".ops-filter-pill[data-ops-filter=ok]").click()
-        expect(page.locator("tr[data-ops-row]")).to_have_count(1)
+        expect(page.locator("tr[data-ops-row]:visible")).to_have_count(1)
         page.locator(".ops-filter-pill[data-ops-filter=all]").click()
-        expect(page.locator("tr[data-ops-row]")).to_have_count(25)
-        page.get_by_role("button", name="Next", exact=True).first.click()
-        expect(page.locator(".ops-pager").first).to_contain_text("Page 2 of 3")
-        expect(page.locator("tr[data-ops-row]").first).to_be_visible()
-        page.get_by_role("button", name="Previous", exact=True).first.click()
-        expect(page.locator(".ops-pager").first).to_contain_text("Page 1 of 3")
-        # Persisted log + bounded download link.
+        expect(page.locator("tr[data-ops-row]:visible")).to_have_count(60)
+        assert len(requests) == before
+        # Persisted log, with nothing added to the terminal.
         page.locator("tr[data-ops-row=browser001]").click()
         expect(page.locator("#opsTermBody_browser001")).to_contain_text("persisted out")
-        expect(page.locator("#opsTermDl_browser001")).to_have_attribute("href", f"{path.rsplit('/operations', 1)[0]}/api/operations/reports/browser001/log/download?run={done.pk}")
+        expect(page.locator("#opsTerm_browser001 a")).to_have_count(0)
         # Live log from the bounded file reader.
         page.locator("tr[data-ops-row=browser000]").click()
         expect(page.locator("#opsTermBody_browser000")).to_contain_text("live line two 界")
         if artifacts:
             Path(artifacts).mkdir(parents=True, exist_ok=True)
             page.screenshot(path=str(Path(artifacts) / f"ops-{engine}-{width}.png"), full_page=True)
-        # Server-side search.
+        # Search applies after a typing pause, with no button.
         if width < 768:
             page.locator("[data-console-search-toggle]").click()
         page.locator("#searchInput").fill("browser059")
-        expect(page.locator("tr[data-ops-row]")).to_have_count(1)
+        expect(page.locator("tr[data-ops-row]:visible")).to_have_count(1)
         assert errors == []
         context.close()
-
-        native = browser.new_context(java_script_enabled=False, viewport={"width": width, "height": 900})
-        native.add_cookies([{"name": "sessionid", "value": client.cookies["sessionid"].value, "url": host}])
-        page = native.new_page()
-        page.route("**/static/**", static)
-        page.goto(host + path)
-        expect(page.locator("tr[data-ops-row]")).to_have_count(25)
-        expect(page.get_by_text("Run and Stop controls require JavaScript")).to_be_visible()
-        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")
-        page.get_by_role("link", name="Next", exact=True).click()
-        expect(page.get_by_text("Page 2 of 3")).to_be_visible()
-        page.goto(host + path + "?state=ok")
-        page.get_by_role("link", name="Last run log").click()
-        expect(page.locator("pre").first).to_contain_text("persisted out")
-        expect(page.get_by_role("link", name="Download persisted tails")).to_be_visible()
-        if artifacts:
-            page.screenshot(path=str(Path(artifacts) / f"ops-native-log-{engine}-{width}.png"), full_page=True)
-        native.close()
         browser.close()

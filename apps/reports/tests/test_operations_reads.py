@@ -58,6 +58,7 @@ def forbid_io(monkeypatch):
 
 @pytest.mark.parametrize('query', [
     'page=0', 'page=-1', 'page=1.0', 'page=1e2', 'page=1000001', 'page=1&page=2',
+    'page_size=0', 'page_size=501', 'page_size=1.5', 'page_size=-1', 'page_size=10&page_size=20',
     'source_page=0', 'q=a&q=b', 'state=bogus', 'sort=bogus', 'asc=true',
     'folder=unknown', 'recent=x/y', 'recent=x%5Cy', 'recent=%00',
 ])
@@ -72,6 +73,8 @@ def test_input_caps_are_explicit():
             operations.validate_operations_params(params)
     params = operations.validate_operations_params({'q': '界'*1000, 'page': '1000000', 'recent': ['a', 'a', 'b']})
     assert params.q == '界'*1000 and params.page == 1000000 and params.recent == ('a', 'b')
+    assert params.page_size == operations.PAGE_SIZE
+    assert operations.validate_operations_params({'page_size': str(operations.ROW_CAP)}).page_size == operations.ROW_CAP
     # Unknown query keys still participate in the total encoded query limit.
     with pytest.raises(ValueError):
         operations.validate_operations_params({'padding': '界'*11000})
@@ -210,18 +213,25 @@ def test_missing_or_malformed_validation_is_unknown(org_admin, org, studio, runt
 
 
 @pytest.mark.django_db
-def test_validation_filter_covers_full_relation_and_stale_is_unknown(org_admin, org, studio, forbid_io):
+def test_validation_filter_covers_full_relation_and_old_checks_keep_last_known(org_admin, org, studio, forbid_io):
     postgres()
     now = timezone.now()
     for i in range(30):
         report = Report.objects.create(studio=studio, slug=f'r{i:02}', priority=i)
         summary(report, now=now, runtime={'validation': {'summary': {'fail': 1 if i == 29 else 0, 'pass': 1, 'warn': 0}, 'checks': ['secret']}})
-    stale = Report.objects.create(studio=studio, slug='stale')
-    summary(stale, now=now-timedelta(seconds=301))
+    # The age of the last inspection never blanks what the build reported...
+    old = Report.objects.create(studio=studio, slug='old')
+    summary(old, now=now-timedelta(hours=3))
+    # ...but an observation that is not a ready/missing one still says unknown.
+    uncertain = Report.objects.create(studio=studio, slug='uncertain')
+    summary(uncertain, now=now)
+    ReportSourceSummary.objects.filter(report=uncertain).update(state='uncertain')
     payload = operations.operations_page_payload(request_for(org_admin, org, studio), {'state': 'v_fail'}, now=now)
     assert payload['pagination']['total'] == 1 and payload['rows'][0]['slug'] == 'r29'
-    assert payload['counts']['healthy'] == 29 and payload['counts']['v_unknown'] == 1
+    assert payload['counts']['healthy'] == 30 and payload['counts']['v_unknown'] == 1
     assert 'secret' not in json.dumps(payload, cls=DjangoJSONEncoder)
+    healthy = operations.operations_page_payload(request_for(org_admin, org, studio), {'q': 'old'}, now=now)
+    assert healthy['rows'][0]['validation']['summary']['pass'] == 1
 
 
 @pytest.mark.django_db
@@ -261,6 +271,52 @@ def test_status_page_bounded_global_active_counts_and_cross_org_slugs(org_admin,
     assert all(r['slug'] != 'foreign' for r in payload['rows'])
     full = operations.operations_page_payload(request, {'state': 'queued', 'page': '2'})
     assert full['pagination']['total'] == 30 and len(full['rows']) == 5
+
+
+@pytest.mark.django_db
+def test_studio_wide_status_and_stats_cover_every_authorized_report(org_admin, org, studio, other_studio, forbid_io):
+    postgres()
+    now = timezone.now()
+    for i in range(30):
+        report = Report.objects.create(studio=studio, slug=f'r{i:02}')
+        Run.objects.create(report=report, studio=studio, slug=report.slug, status=Run.QUEUED)
+        Run.objects.create(report=report, studio=studio, slug=report.slug, status=Run.SUCCESS, created_at=now-timedelta(seconds=5), finished_at=now)
+    hidden = Report.objects.create(studio=studio, slug='hidden', present_in_scan=False)
+    Run.objects.create(report=hidden, studio=studio, slug='hidden', status=Run.RUNNING)
+    foreign = Report.objects.create(studio=other_studio, slug='foreign')
+    Run.objects.create(report=foreign, studio=other_studio, slug='foreign', status=Run.RUNNING)
+    request = request_for(org_admin, org, studio)
+    with CaptureQueriesContext(connection) as queries:
+        payload = operations.operations_status_payload(request, [], studio_wide=True)
+    assert len(payload['rows']) == 30 and {r['slug'] for r in payload['rows']} == {f'r{i:02}' for i in range(30)}
+    assert payload['coverage']['active_rows_complete'] and payload['active_jobs_total']['queued'] == 30
+    assert payload['server_uptime_seconds'] >= 0 and len(queries) <= 6
+    # Without the studio scope an empty selection is still an empty read.
+    assert operations.operations_status_payload(request, [])['rows'] == []
+    stats = operations.operations_stats_payload(request, [], studio_wide=True)
+    assert set(stats['stats']) == {f'r{i:02}' for i in range(30)}
+    assert operations.operations_stats_payload(request, [])['stats'] == {}
+
+
+@pytest.mark.django_db
+def test_capped_page_resolves_every_source_it_lists(org_admin, org, studio, forbid_io, monkeypatch):
+    postgres()
+    for i in range(40):
+        name = f'db{i:02}'
+        report = Report.objects.create(studio=studio, slug=f'r{i:02}', priority=i, config={'data_sources': [name]})
+        summary(report, status='error', blocked=[name])
+        RepoDataSource.objects.create(studio=studio, name=name, type='postgres', config={'host': 'localhost'})
+    request = request_for(org_admin, org, studio)
+    with CaptureQueriesContext(connection) as queries:
+        payload = operations.operations_page_payload(request, {'page_size': '500'})
+    assert len(payload['rows']) == 40 and payload['pagination'] == dict(page=1, page_size=500, total=40, pages=1)
+    # Past the default page's 25 sources, readiness is still known for the 40th row.
+    assert payload['rows'][-1]['waiting_current'] is not None
+    assert len(queries) <= 30
+    default = operations.operations_page_payload(request, {})
+    assert len(default['rows']) == 25 and default['pagination']['page_size'] == 25
+    sources = operations.operations_sources_payload(request, {'page_size': '500'})
+    assert len(sources['rows']) == 40 and sources['pagination']['pages'] == 1
 
 
 @pytest.mark.django_db

@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "first_party_expected": 225,
+  "first_party_expected": 224,
   "routes": [
     {
       "id": "route-000",
@@ -8569,9 +8569,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "6e0105a8300b8ac0c02cbbf1c4ebfeaf0885fd831366d3ef05ad831efab5be5e",
+      "source_sha256": "bd1571eda476d720243d0e842614abe3843baec7922755e9ad741510357b64b7",
       "request_conditions": [],
-      "adapter_sha256": "238a4f5ab13601ba248bf414286e522ab48aa171bb85f6a0838a6b14054c158e",
+      "adapter_sha256": "9622527d13147b0c05bfbf642fbbda3307d6c87154b754d0889efa05d54f0989",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -23372,9 +23372,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "1af935e17fe8b94aadef8b7aff039e434bbb647f2e98ad4b1d1c1ff0d2badf50",
+      "source_sha256": "b73e3bda464934b917fd225dd9f0b9adc8c81d50afb43aedb72a783b2d4d2aa0",
       "request_conditions": [],
-      "adapter_sha256": "ced8d226a13e04719563f3f346afb1f099091d169d77bcce600651248aa47b42",
+      "adapter_sha256": "d935387e60fa2df53b15654afa63e0a3ae68b854b7d7e2fbe2e092847eeba282",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -23442,9 +23442,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "6ec3b5dc16e40acb45a5a0276c7b5f06a02ee702cafdd4465a50857bfcd3acda",
+      "source_sha256": "c5e9aeafe15ab38dd22b74bf2c89cd5c2ab90434972c26d16364829344c8d3ee",
       "request_conditions": [],
-      "adapter_sha256": "f5be3a5a329df56126d9c258c5678802e9e78f2713fc5838b2390e29460eebab",
+      "adapter_sha256": "6afc1a54eb2d82dbface4364562fbd542703941cfe96a199f5d610bf81175673",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -23680,79 +23680,6 @@
         "impersonated": {
           "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: studio-developer",
           "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[350-GET]",
-          "verification": "pending"
-        }
-      }
-    },
-    {
-      "id": "route-351",
-      "pattern": "s/<slug:org_slug>/<slug:studio_slug>/operations/reports/<str:slug>/log",
-      "name": null,
-      "view": "apps.reports.views.operations_report_log",
-      "first_party": true,
-      "case": "C15",
-      "shard": "L2",
-      "allowed_roles": [
-        "developer",
-        "group-admin",
-        "operator",
-        "org-admin",
-        "studio-admin"
-      ],
-      "denied_roles": [
-        "anonymous",
-        "group-selected",
-        "inactive",
-        "private-viewer",
-        "revoked",
-        "viewer",
-        "viewer-full"
-      ],
-      "role_policy": "studio-developer",
-      "seeded_parameters": {
-        "org_slug": {
-          "value": "alpha"
-        },
-        "studio_slug": {
-          "value": "studio-0"
-        },
-        "slug": {
-          "value": "report-0000"
-        }
-      },
-      "disposition": "native with feedback",
-      "scenarios": [
-        {
-          "method": "GET",
-          "action": null,
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[351-GET]",
-          "verification": "pending"
-        }
-      ],
-      "verification": "pending",
-      "verified_node_ids": [],
-      "source_sha256": "5b6e009f558efe6b94af11abd9972573dce3c66845d87c4c2ae7cc7e6eded574",
-      "request_conditions": [],
-      "adapter_sha256": "f8bc94a6d2414521ea5cbf251ccefbfda00f4f3b6361056dcb9351991c6747ed",
-      "principal_parameter_overrides": {
-        "viewer-full": {
-          "org_slug": "beta"
-        }
-      },
-      "conditional_roles": {
-        "group-member": {
-          "condition": "Active alpha member with group-derived all-public-reports viewer access; private report is unassigned. Policy context: studio-developer",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[351-GET]",
-          "verification": "pending"
-        },
-        "cross-org": {
-          "condition": "Active beta viewer requests primary alpha objects without alpha membership; global own-account/public entry and unconditional redirects differ from tenant data. Policy context: studio-developer",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[351-GET]",
-          "verification": "pending"
-        },
-        "impersonated": {
-          "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: studio-developer",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[351-GET]",
           "verification": "pending"
         }
       }

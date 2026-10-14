@@ -64,7 +64,6 @@ REPORTS = [REPORT] + [
 
 
 OPERATIONS_JS = (settings.BASE_DIR / "static" / "operations.js").read_text(encoding="utf-8")
-_OPS_COUNT_KEYS = ("running", "queued", "waiting", "error", "oom", "timeout", "stopped", "ok", "not_run", "unknown")
 
 
 def _ops_html():
@@ -92,31 +91,14 @@ def _ops_outcome(report, status):
 
 
 def _ops_catalog_payload(reports, status, query):
-    """The bounded /api/operations/catalog contract, filtered like the server."""
-    q = (query.get("q") or [""])[0].lower()
-    category = (query.get("category") or [""])[0]
-    state = (query.get("state") or ["all"])[0]
-    selected = [
-        report for report in reports
-        if (not q or q in report["name"].lower() or q in report["slug"].lower())
-        and (not category or report.get("category") == category)
-    ]
-    outcomes = {report["slug"]: _ops_outcome(report, status) for report in selected}
-    counts = {key: sum(1 for value in outcomes.values() if value == key) for key in _OPS_COUNT_KEYS}
-    counts["total"] = len(selected)
-    counts["error"] += counts["oom"] + counts["timeout"]
-    counts.update(v_fail=0, v_warn=0, healthy=0)
-    if state == "error":
-        shown = [r for r in selected if outcomes[r["slug"]] in ("error", "oom", "timeout")]
-    else:
-        shown = [r for r in selected if state == "all" or outcomes[r["slug"]] == state]
+    """The bounded /api/operations/catalog contract: one read lists every report."""
     rows = [
         {
-            "id": report["id"], "slug": report["slug"], "kind": "report", "metrics_report": None,
+            "id": report["id"], "slug": report["slug"], "kind": report.get("kind", "report"), "metrics_report": None,
             "name": report["name"], "category": report.get("category"),
             "description": report.get("description", ""), "description_truncated": False,
             "schedule": None, "schedule_timezone": None, "next_run": None, "disabled": False,
-            "state": outcomes[report["slug"]],
+            "state": _ops_outcome(report, status),
             "build_status": report.get("build_status") or report.get("last_status") or "not_run",
             "last_attempt_at": report.get("last_run"), "last_error": report.get("last_error"),
             "waiting_current": bool(report.get("waiting")), "blocked_by": [], "failing_source": None,
@@ -124,19 +106,11 @@ def _ops_catalog_payload(reports, status, query):
             "validation": report.get("validation"), "framework_version": None,
             "observation_known": True, "quality": "current",
         }
-        for report in shown
+        for report in reports
     ]
-    categories = {}
-    for report in reports:
-        categories[report.get("category") or "Uncategorized"] = categories.get(report.get("category") or "Uncategorized", 0) + 1
     return {
         "version": 1, "state": "ready", "rows": rows,
-        "pagination": {"page": 1, "page_size": 25, "total": len(shown), "pages": 1 if shown else 0},
-        "counts": counts, "coverage": {},
-        "folders": {
-            "all": len(reports), "favorites": 0, "categories_truncated": False,
-            "categories": [{"name": name, "count": count} for name, count in sorted(categories.items())],
-        },
+        "pagination": {"page": 1, "page_size": 500, "total": len(rows), "pages": 1 if rows else 0},
     }
 
 
@@ -155,6 +129,7 @@ def _ops_status_payload(status):
         "active_jobs_total": {"total": len(rows), "selected": len(rows), "running": len(status.get("running") or {}),
                               "queued": len(status.get("queue") or [])},
         "coverage": {"active_rows_complete": True},
+        "server_uptime_seconds": status.get("server_uptime_seconds"),
     }
 
 
@@ -192,7 +167,7 @@ def _ops_respond(reports, status, *, css=None, log=None, run=None, extra=None, h
         elif path.endswith("/api/operations/stats"):
             reply({"version": 1, "state": "ready", "stats": {}, "window_days": 30})
         elif path.endswith("/api/operations/sources"):
-            reply({"version": 1, "state": "ready", "rows": [], "pagination": {"page": 1, "page_size": 25, "total": 0, "pages": 0}})
+            reply({"version": 1, "state": "ready", "rows": [], "pagination": {"page": 1, "page_size": 500, "total": 0, "pages": 0}})
         elif "/api/operations/reports/" in path and path.endswith("/log"):
             if (query.get("mode") or ["last"])[0] == "live":
                 reply(_ops_log("running", mode="live"))
@@ -449,13 +424,6 @@ def test_operations_state_filters_follow_live_state_and_scope(mobile_browser):
     try:
         page.goto("http://portal.test/s/acme/analytics/operations", wait_until="load")
         page.locator('[data-ops-row="failed"]').wait_for()
-        def wait_rows(expected):
-            # Filtering is applied by the server; wait for the bounded page.
-            page.wait_for_function(
-                "n => [...document.querySelectorAll('[data-ops-row]')].filter(r => !r.hidden && r.offsetParent !== null).length === n",
-                arg=expected,
-            )
-
         count = lambda name: int(page.locator(f'[data-ops-filter="{name}"] .ops-filter-count').inner_text())
         assert count("error") == 3
         assert count("ok") == 1
@@ -467,9 +435,8 @@ def test_operations_state_filters_follow_live_state_and_scope(mobile_browser):
         assert page.locator('[data-ops-row="stopped"] .ops-status-text').inner_text() == "Stopped"
 
         page.locator('[data-ops-filter="error"]').click()
-        wait_rows(3)
+        assert page.locator('[data-ops-row]:visible').count() == 3
         page.locator('[data-ops-filter="oom"]').click()
-        wait_rows(1)
         assert page.locator('[data-ops-row]:visible').evaluate_all("rows => rows.map(r => r.dataset.opsRow)") == ["oom"]
         assert page.locator('[data-ops-filter="oom"]').get_attribute("aria-pressed") == "true"
 
@@ -487,7 +454,7 @@ def test_operations_state_filters_follow_live_state_and_scope(mobile_browser):
         page.wait_for_function("document.querySelector('[data-ops-filter=all] .ops-filter-count')?.textContent === '1'")
         assert count("oom") == 1
         page.locator('[data-ops-filter="timeout"]').click()
-        wait_rows(0)
+        assert page.locator('[data-ops-row]:visible').count() == 0
         assert page.locator('[data-ops-empty]').is_visible()
         page.locator('[data-ops-filter="all"]').click()
 
@@ -501,35 +468,22 @@ def test_operations_state_filters_follow_live_state_and_scope(mobile_browser):
         failed_row = page.locator('[data-ops-row="failed"]')
         failed_row.evaluate("row => row.nextElementSibling.querySelector('.ops-terminal-body').setAttribute('tabindex','-1')")
         page.locator('[data-ops-row="failed"] + .ops-expand-row .ops-terminal-body').focus()
-        # Filter membership is the server's: a row that starts running leaves the
-        # Failed page on the next bounded read, not by local hiding of one page.
-        ops_status["running"] = {"failed": {"elapsed_seconds": 8}, "running": {"elapsed_seconds": 4}}
         page.evaluate("_opsApplyStatus({running:{failed:{elapsed_seconds:8},running:{elapsed_seconds:4}},queue:['queued']},_opsStatusRevision,_opsStatusCycle)")
-        page.evaluate("renderOperations()")
-        wait_rows(2)
-        assert page.locator('[data-ops-row="failed"]').count() == 0
+        assert failed_row.is_hidden()
+        assert failed_row.evaluate("row => row.nextElementSibling.hidden")
         assert page.locator('[data-ops-filter="error"]').evaluate("el => el === document.activeElement")
-        page.wait_for_function("document.querySelector('[data-ops-filter=error] .ops-filter-count')?.textContent === '2'")
+        assert count("error") == 2
 
         ops_reports[-1]["build_status"] = "error"
-        ops_status["queue"] = []
         page.evaluate("_opsApplyStatus({running:{failed:{elapsed_seconds:8},running:{elapsed_seconds:4}},queue:[]},_opsStatusRevision,_opsStatusCycle)")
-        # The queued row was never part of the Failed page; it joins on the next read.
-        assert page.locator('[data-ops-row="queued"]').count() == 0
-        page.evaluate("renderOperations()")
         page.wait_for_function("document.querySelector('[data-ops-row=queued] .ops-status-text')?.textContent === 'Failed'")
-        page.wait_for_function("document.querySelector('[data-ops-filter=error] .ops-filter-count')?.textContent === '3'")
+        assert count("error") == 3
         assert not page.locator('[data-ops-row="queued"]').is_hidden()
 
         ops_reports[0]["build_status"] = "success"
-        ops_status["running"] = {"running": {"elapsed_seconds": 4}}
         page.evaluate("_opsApplyStatus({running:{running:{elapsed_seconds:4}},queue:[]},_opsStatusRevision,_opsStatusCycle)")
-        page.evaluate("renderOperations()")
-        # The finished-successfully row is not on the Failed page; the other
-        # failed outcomes (oom, timeout, queued->error) still are.
-        wait_rows(3)
-        page.wait_for_function("document.querySelector('[data-ops-filter=error] .ops-filter-count')?.textContent === '3'")
-        assert page.locator('[data-ops-row="failed"]').count() == 0
+        page.wait_for_function("document.querySelector('[data-ops-filter=error] .ops-filter-count')?.textContent === '2'")
+        assert page.locator('[data-ops-row="failed"]').is_hidden()
         assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
     finally:
         context.close()
