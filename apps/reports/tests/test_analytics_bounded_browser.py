@@ -83,11 +83,16 @@ def analytics_server(request, django_db_setup, django_db_blocker, tmp_path_facto
 
 
 def _login(page, server, role):
+    from playwright.sync_api import expect
     page.goto(server["origin"]+"/login?next="+server["path"])
     page.get_by_label("Email", exact=True).fill(server["users"][role])
     page.get_by_label("Password", exact=True).fill("Analytics-test-42")
+    started = time.perf_counter()
     page.get_by_role("button", name="Continue", exact=True).click()
     page.wait_for_url("**"+server["path"])
+    expect(page.locator("#analyticsTable tbody tr[data-name]")).to_have_count(25)
+    expect(page.locator("#analyticsTable tbody tr[data-name]").first).to_be_visible()
+    return time.perf_counter()-started
 
 
 @pytest.mark.parametrize("engine", ("chromium", "webkit"))
@@ -111,7 +116,8 @@ def test_analytics_gunicorn_native_enhanced_devices_roles(analytics_server, engi
                           });
                         });""")
                     errors = []; page.on("pageerror", lambda error: errors.append(str(error)))
-                    _login(page, server, "admin")
+                    cold_first_rows = _login(page, server, "admin")
+                    assert cold_first_rows <= {0:3, 20:4.5, 50:6.5}[server["delay"]]
                     started = time.perf_counter()
                     response = page.goto(server["origin"]+server["path"], wait_until="domcontentloaded")
                     expect(page.locator("#analyticsTable tbody tr[data-name]")).to_have_count(25)
@@ -122,7 +128,7 @@ def test_analytics_gunicorn_native_enhanced_devices_roles(analytics_server, engi
                     page.screenshot(path=str(server["artifacts"] / f"{engine}-{width}-js{int(javascript)}.png"), full_page=False)
                     assert page.locator("body").evaluate("e => e.scrollWidth <= innerWidth"), page.evaluate("Array.from(document.querySelectorAll('body *')).filter(e => e.getBoundingClientRect().right > innerWidth+1).map(e => ({tag:e.tagName, cls:e.className, text:e.textContent.slice(0,60), parent:e.parentElement.className, right:e.getBoundingClientRect().right})).slice(0,30)")
                     assert page.get_by_text("Build observation unavailable", exact=True).count() > 0
-                    timings.append(dict(engine=engine, width=width, javascript=javascript, first_rows_seconds=elapsed, html_bytes=len(response.body()), dom_nodes=page.locator("*").count()))
+                    timings.append(dict(engine=engine, width=width, javascript=javascript, cold_login_first_rows_seconds=cold_first_rows, first_rows_seconds=elapsed, html_bytes=len(response.body()), dom_nodes=page.locator("*").count()))
                     # Native search and sorting are equally usable on mobile cards.
                     page.get_by_label("Search report names", exact=True).fill("report-0999")
                     page.get_by_label("Search report names", exact=True).press("Enter")
