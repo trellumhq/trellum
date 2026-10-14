@@ -5,10 +5,10 @@ from __future__ import annotations
 from functools import wraps
 
 from django.conf import settings
-from django.db.models import Exists, F, OuterRef, Q
+from django.db.models import Exists, OuterRef, Q
 
 from apps.core import roles
-from apps.core.permissions import EffectiveRoles, bulk_effective_roles, _forbidden, effective_roles, get_effective
+from apps.core.permissions import EffectiveRoles, bulk_effective_roles, _forbidden, effective_roles
 
 
 def selected_report_access_block_reason() -> str | None:
@@ -43,7 +43,16 @@ def can_view_report(user, report, *, request=None) -> bool:
     if request is not None:
         if user is not request.user:
             raise ValueError("request report access must use request.user")
-        er = get_effective(request, report.studio.org)
+        from apps.core.request_access import request_org_access
+        from apps.reports.models import Report
+
+        access = request_org_access(request, report.studio.org)
+        if selected_report_access_block_reason() and (
+            not access.has_full_studio_visibility(report.studio)
+            or report.audience == report.AUDIENCE_PRIVATE
+        ):
+            return False
+        return visible_reports(user, Report.objects.filter(pk=report.pk), request=request).exists()
     else:
         er = effective_roles(user, report.studio.org)
     scope = er.report_scope_for(report.studio)
@@ -54,12 +63,18 @@ def can_view_report(user, report, *, request=None) -> bool:
     return scope is None or report.pk in scope
 
 
-def visible_reports(user, queryset):
+def visible_reports(user, queryset, *, request=None):
     """Filter a Report queryset to rows visible to ``user`` without N+1 queries."""
     from apps.reports.models import Report
 
     if user is None or not user.is_authenticated:
         return queryset.none()
+    if request is not None:
+        if user is not request.user:
+            raise ValueError("request report access must use request.user")
+        key = getattr(request, "api_key", None)
+        if key is not None:
+            queryset = queryset.filter(studio__org_id=key.org_id)
     blocked = selected_report_access_block_reason()
     if user.is_superuser:
         return queryset.filter(studio__org__is_active=True)

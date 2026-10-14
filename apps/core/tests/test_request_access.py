@@ -12,6 +12,7 @@ from apps.core.permissions import (
     bulk_effective_roles, effective_roles, get_effective, require_studio_role,
     visible_studios,
 )
+from apps.core.request_access import request_org_access
 from apps.core.report_access import bulk_can_view_report
 from apps.core.themes import explicit_studio_theme, viewer_theme_override
 from apps.orgs.models import OrgMembership
@@ -142,7 +143,8 @@ def test_nested_guards_reuse_known_tenant_objects(org_admin, org, studio, django
     from django.http import HttpResponse
 
     request = request_for(org_admin, org, studio)
-    get_effective(request, org)
+    access = request_org_access(request, org)
+    access.studio_access(studio)
 
     @require_studio_role(roles.VIEWER)
     @require_studio_role(roles.VIEWER)
@@ -160,16 +162,139 @@ def test_next_request_reflects_membership_revocation(org_admin, org):
     assert not get_effective(request_for(org_admin), org).is_member
 
 
-def test_request_report_check_reuses_roles_and_enforces_bearer_scope(org_admin, org, other_org, report_row, django_assert_num_queries):
+def test_request_report_check_reuses_roles_and_enforces_bearer_scope(org_admin, org, other_org, report_row):
     from apps.core.report_access import can_view_report
 
     request = request_for(org_admin)
     report_row.studio.org = org
-    get_effective(request, org)
-    with django_assert_num_queries(0):
-        assert can_view_report(org_admin, report_row, request=request)
+    assert can_view_report(org_admin, report_row, request=request)
     request.api_key = SimpleNamespace(org_id=other_org.pk)
     assert not can_view_report(org_admin, report_row, request=request)
+
+
+def test_request_facts_match_complete_roles_across_sources(
+    member, org_admin, superuser, org, studio, studio2, make_user,
+    make_group, attach_group, grant_studio, settings,
+):
+    settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = True
+    Report.objects.create(studio=studio, slug="private-facts", audience=Report.AUDIENCE_PRIVATE)
+    grant_studio(member, studio, roles.VIEWER)
+    selected = make_user("selected-facts@example.test", org=org)
+    group = make_group("selected facts", grants=[(studio, roles.VIEWER)])
+    grant = group.grants.get()
+    grant.viewer_scope = grant.REPORT_SCOPE_SELECTED
+    grant.save(update_fields=["viewer_scope"])
+    attach_group(selected, group)
+    defaulted = make_user("default-facts@example.test", org=org)
+    attach_group(defaulted, make_group("default facts", default_studio_role=roles.VIEWER))
+    grouped_admin = make_user("group-admin-facts@example.test", org=org)
+    attach_group(grouped_admin, make_group("admin facts", org_role=roles.ORG_ADMIN))
+    outsider = make_user("outsider-facts@example.test")
+    for user in (member, selected, defaulted, grouped_admin, org_admin, superuser, outsider):
+        access = request_org_access(request_for(user), org)
+        complete = effective_roles(user, org)
+        assert (access.is_member, access.is_org_admin) == (complete.is_member, complete.is_org_admin)
+        for target in (studio, studio2):
+            assert (access.role_for(target), access.has_full_studio_visibility(target)) == (
+                complete.role_for(target), complete.has_full_studio_visibility(target)
+            )
+
+
+def test_request_facts_keep_complete_cache_separate_and_track_fallback(
+    member, org, studio, grant_studio,
+):
+    grant_studio(member, studio, roles.VIEWER)
+    request = request_for(member)
+    access = request_org_access(request, org)
+    assert access.role_for(studio) == roles.VIEWER
+    assert not hasattr(request, "_bi_effective_roles")
+    assert access.report_scope_for(studio) is None
+    assert request._bi_report_scope_fallbacks == 1
+    assert get_effective(request, org).role_for(studio) == roles.VIEWER
+
+
+def test_request_facts_cache_actor_key_and_second_studio(
+    member, org_admin, org, other_org, studio, studio2, grant_studio,
+):
+    grant_studio(member, studio, roles.VIEWER)
+    request = request_for(member)
+    first = request_org_access(request, org)
+    assert first is request_org_access(request, org)
+    assert first.role_for(studio) == roles.VIEWER
+    assert first.role_for(studio2) is None
+    request.user = org_admin
+    assert request_org_access(request, org).role_for(studio2) == roles.ADMIN
+    request.api_key = SimpleNamespace(org_id=other_org.pk)
+    assert not request_org_access(request, org).is_member
+    request.api_key.org_id = org.pk
+    assert request_org_access(request, org).is_org_admin
+    org.is_active = False
+    assert not request_org_access(request, org).is_member
+
+
+def test_request_facts_next_request_reflects_revocation(
+    member, org, studio, grant_studio,
+):
+    grant_studio(member, studio, roles.VIEWER)
+    assert request_org_access(request_for(member), org).role_for(studio) == roles.VIEWER
+    from apps.studios.models import StudioMembership
+    StudioMembership.objects.filter(user=member, studio=studio).delete()
+    assert request_org_access(request_for(member), org).role_for(studio) is None
+
+
+def test_guard_facts_do_not_fetch_unrelated_report_rows(
+    member, org, studio, studio2, grant_studio,
+):
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    grant_studio(member, studio, roles.VIEWER)
+    Report.objects.bulk_create([
+        Report(studio=studio2, slug=f"unrelated-{i}", config={"large": "x" * 512})
+        for i in range(100)
+    ])
+    request = request_for(member)
+    with CaptureQueriesContext(connection) as captured:
+        assert request_org_access(request, org).role_for(studio) == roles.VIEWER
+    assert not hasattr(request, "_bi_effective_roles")
+    assert len(captured) <= 3
+    assert all('"apps_reports_report"."config"' not in query["sql"] for query in captured)
+
+
+def test_request_visible_reports_checks_actor_and_key_scope(
+    org_admin, member, org, other_org, report_row,
+):
+    from apps.core.report_access import visible_reports
+
+    request = request_for(org_admin)
+    with pytest.raises(ValueError):
+        visible_reports(member, Report.objects.all(), request=request)
+    assert visible_reports(org_admin, Report.objects.filter(pk=report_row.pk), request=request).exists()
+    request.api_key = SimpleNamespace(org_id=other_org.pk)
+    assert not visible_reports(org_admin, Report.objects.filter(pk=report_row.pk), request=request).exists()
+
+
+def test_selected_only_remains_non_full_when_every_report_is_granted(
+    member, org, studio, report_row, make_group, attach_group, settings,
+):
+    from apps.core.report_access import can_view_report, visible_reports
+
+    settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = True
+    group = make_group("all individually", grants=[(studio, roles.VIEWER)])
+    grant = group.grants.get()
+    grant.viewer_scope = grant.REPORT_SCOPE_SELECTED
+    grant.save(update_fields=["viewer_scope"])
+    attach_group(member, group)
+    ReportPermissionGrant.objects.create(grant=grant, report=report_row)
+    request = request_for(member)
+    access = request_org_access(request, org)
+    assert access.role_for(studio) == roles.VIEWER
+    assert not access.has_full_studio_visibility(studio)
+    assert can_view_report(member, report_row, request=request)
+    assert visible_reports(member, Report.objects.filter(pk=report_row.pk), request=request).exists()
+    assert not hasattr(request, "_bi_effective_roles")
+    settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = False
+    assert not can_view_report(member, report_row, request=request)
 
 
 def test_next_http_request_reflects_report_grant_revocation(

@@ -83,7 +83,12 @@ def studio_facts(request, studio):
     er = cached_roles(request, studio.org)
     if er is not None:
         return er.role_for(studio), er.has_full_studio_visibility(studio)
-    return studio.shell_role, studio.shell_full
+    if hasattr(studio, 'shell_role') and hasattr(studio, 'shell_full'):
+        return studio.shell_role, studio.shell_full
+    from apps.core.request_access import request_org_access
+
+    access = request_org_access(request, studio.org)
+    return access.role_for(studio), access.has_full_studio_visibility(studio)
 
 
 def can_manage_any_org(request, rows, *, has_more=True):
