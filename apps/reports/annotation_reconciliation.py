@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import secrets
+import stat
 import subprocess
 import threading
 import time
@@ -16,7 +17,9 @@ from django.db import close_old_connections, transaction
 from django.db.models import Q
 from django.utils import timezone
 
-from .annotation_projection import AdmissionError, Declaration, MISSING_DIGEST, RAW_BYTES, _catalog, _publish, declaration
+from .annotation_projection import AdmissionError, Declaration, MISSING_DIGEST, RAW_BYTES, SCHEMA_VERSION, _catalog, _publish, declaration
+
+LEASE_RENEW_SECONDS = 60
 
 
 class WorkspaceUnavailable(Exception):
@@ -92,14 +95,19 @@ def _identity(stat):
 def _read(path):
     opened = False
     try:
-        with path.open("rb") as file:
-            opened = True
+        # Never block opening a FIFO or follow a link into another workspace.
+        descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+        opened = True
+        with os.fdopen(descriptor, "rb") as file:
             before = os.fstat(file.fileno())
+            if not stat.S_ISREG(before.st_mode):
+                raise AdmissionError("unavailable")
             if before.st_size > RAW_BYTES:
                 raise AdmissionError()
             raw = file.read(RAW_BYTES + 1)
             after = os.fstat(file.fileno())
-        if _identity(before) != _identity(after) or _identity(after) != _identity(path.stat()):
+        current = path.lstat()
+        if not stat.S_ISREG(current.st_mode) or _identity(before) != _identity(after) or _identity(after) != _identity(current):
             raise AdmissionError("unavailable")
         if len(raw) > RAW_BYTES:
             raise AdmissionError()
@@ -129,7 +137,7 @@ def observe(source_id, owner=None, *, cancelled=None):
     def renew():
         close_old_connections()
         try:
-            while not renew_stop.wait(60):
+            while not renew_stop.wait(LEASE_RENEW_SECONDS):
                 now = timezone.now()
                 updated = AnnotationSourceState.objects.filter(
                     pk=source_id, owner_workspace_id=fence[0], ownership_generation=fence[1],
@@ -147,7 +155,7 @@ def observe(source_id, owner=None, *, cancelled=None):
         raw, identity = _read(path)
         result = declaration(raw) if raw is not None else Declaration(MISSING_DIGEST, [], {}, "missing")
         # Verify after normalization, before opening the publication transaction.
-        if identity is not None and _identity(path.stat()) != identity:
+        if identity is not None and _identity(path.lstat()) != identity:
             raise AdmissionError("unavailable")
         if identity is None and path.exists():
             raise AdmissionError("unavailable")
@@ -167,7 +175,7 @@ def observe(source_id, owner=None, *, cancelled=None):
             return len(raw or b"")
         if not current.lease_until or current.lease_until <= timezone.now():
             return len(raw or b"")
-        if result.digest != current.digest:
+        if result.digest != current.digest or (not error and current.schema_version != SCHEMA_VERSION):
             current.desired_generation += 1
         _publish(current, catalog, result, error=error)
     return len(raw or b"")
@@ -184,7 +192,8 @@ def proven_git_upgrade(studio):
         if not locked:
             return False
         repo.refresh_from_db()
-        relative = str(Path(repo.path) / "events.yaml")
+        from apps.runner.gitsync import StudioGitSync
+        relative = StudioGitSync(repo)._root_file_relpath("events.yaml")
         def git(*args):
             import tempfile
             # A spooled tempfile prevents an unbounded pipe capture in RAM;
@@ -276,58 +285,49 @@ def start_for_worker(*, is_runner, pools):
 
 
 def backfill_reports(cursor=0, *, pools=None, limit=25):
-    """PostgreSQL selects only admitted declaration keys, never whole configs."""
+    """Lock each narrow candidate, then admit only current declaration keys."""
     from django.db import connection
     from .models import Report, AnnotationSourceState
     from .annotation_projection import sync_report_declarations
     if connection.vendor != "postgresql":
-        # Unsupported admission is explicit, rather than a heavy fallback.
         raise WorkspaceUnavailable()
-    pool_clause = " AND s.pool = ANY(%s)" if pools else ""
-    parameters = [cursor]
+    candidates = Report.objects.filter(pk__gt=cursor, present_in_scan=True).filter(Q(annotation_source__isnull=True) | ~Q(annotation_source__schema_version=SCHEMA_VERSION))
     if pools:
-        parameters.append(list(pools))
-    parameters.append(limit)
-    with connection.cursor() as db:
-        db.execute("""
-            SELECT r.id, r.studio_id,
-              CASE WHEN octet_length(COALESCE(r.config->'annotations','{}'::jsonb)::text) + octet_length(COALESCE(r.config->'studio','null'::jsonb)::text) <= 16777216
-                AND CASE WHEN jsonb_typeof(r.config->'annotations'->'events')='array'
-                  THEN jsonb_array_length(r.config->'annotations'->'events') <= 100000
-                  ELSE TRUE END
-              THEN jsonb_build_object('annotations', r.config->'annotations', 'studio', r.config->'studio', '_studio_present', r.config ? 'studio')
-              ELSE NULL END
-            FROM reports_report r JOIN studios_studio s ON s.id=r.studio_id
-            LEFT JOIN reports_annotationsourcestate a ON a.report_id=r.id
-            WHERE r.id > %s AND r.present_in_scan AND a.id IS NULL
-        """ + pool_clause + " ORDER BY r.id LIMIT %s", parameters)
-        rows = db.fetchall()
-    for pk, studio_id, config in rows:
-        if isinstance(config, str):
-            config = json.loads(config)
-        report = Report(pk=pk, studio_id=studio_id, config=config or {})
-        if config is not None:
-            # Missing studio must retain the framework's absent-key default.
-            if not config.pop("_studio_present", False):
-                config.pop("studio", None)
-            with transaction.atomic():
-                # Serialize with scans and recheck current declaration identity
-                # before publishing a previously admitted snapshot.
-                current = Report.objects.select_for_update().filter(pk=pk, present_in_scan=True).only("id", "studio_id").first()
-                if current is None or AnnotationSourceState.objects.filter(report_id=pk).exists():
-                    continue
-                with connection.cursor() as check:
-                    check.execute("SELECT jsonb_build_object('annotations', config->'annotations', 'studio', config->'studio', '_studio_present', config ? 'studio') FROM reports_report WHERE id=%s", [pk])
-                    latest = check.fetchone()[0]
-                if isinstance(latest, str):
-                    latest = json.loads(latest)
-                if not latest.pop("_studio_present", False):
-                    latest.pop("studio", None)
-                if latest != config:
-                    continue
+        candidates = candidates.filter(studio__pool__in=pools)
+    identifiers = list(candidates.order_by("pk").values_list("pk", flat=True)[:limit])
+    for pk in identifiers:
+        with transaction.atomic():
+            report = Report.objects.select_for_update().filter(pk=pk, present_in_scan=True).only("id", "studio_id").first()
+            if report is None or AnnotationSourceState.objects.filter(report_id=pk, schema_version=SCHEMA_VERSION).exists():
+                continue
+            # This expression excludes unrelated annotation/config keys and
+            # keeps missing studio distinct from explicitly null studio.
+            with connection.cursor() as db:
+                db.execute("""
+                    WITH declaration AS (
+                      SELECT CASE WHEN jsonb_typeof(config->'annotations')='object'
+                        THEN jsonb_build_object('events', config->'annotations'->'events')
+                        ELSE COALESCE(config->'annotations','null'::jsonb) END AS annotations,
+                        config->'studio' AS scope, config ? 'studio' AS scope_present
+                      FROM reports_report WHERE id=%s
+                    ) SELECT CASE WHEN
+                      octet_length(annotations::text) + octet_length(COALESCE(scope,'null'::jsonb)::text) <= 16777216
+                      AND CASE WHEN jsonb_typeof(annotations->'events')='array'
+                        THEN jsonb_array_length(annotations->'events') <= 100000 ELSE TRUE END
+                      THEN jsonb_build_object('annotations', annotations, 'studio', scope, '_studio_present', scope_present)
+                      ELSE NULL END FROM declaration
+                """, [pk])
+                config = db.fetchone()[0]
+            if isinstance(config, str):
+                config = json.loads(config)
+            if config is not None:
+                if not config.pop("_studio_present", False):
+                    config.pop("studio", None)
+                report.config = config
                 sync_report_declarations(report)
-        else:
-            with transaction.atomic():
-                _catalog(studio_id)
-                AnnotationSourceState.objects.get_or_create(studio_id=studio_id, report_id=pk, kind="report", defaults={"status": "oversized", "error_code": "oversized"})
-    return rows[-1][0] if rows else 0
+            else:
+                catalog = _catalog(report.studio_id)
+                source, _ = AnnotationSourceState.objects.get_or_create(studio_id=report.studio_id, report_id=pk, kind="report")
+                source = AnnotationSourceState.objects.select_for_update().get(pk=source.pk)
+                _publish(source, catalog, Declaration(source.digest, [], {}, "oversized"), error="oversized")
+    return identifiers[-1] if identifiers else 0

@@ -72,8 +72,11 @@ class Command(BaseCommand):
                 n = Report.objects.filter(studio=studio, present_in_scan=True).count()
                 self.stderr.write(self.style.WARNING(str(exc)))
 
-            from apps.reports.annotation_reconciliation import authoritative_handoff
-            authoritative_handoff(studio)
+            from apps.reports.annotation_reconciliation import WorkspaceUnavailable, authoritative_handoff
+            try:
+                authoritative_handoff(studio)
+            except WorkspaceUnavailable:
+                self.stderr.write(self.style.WARNING("Annotation workspace unavailable; declaration coverage remains unknown."))
 
         # Data sources become DB rows (the portal owns config.yaml now and
         # rewrites it before every run — YAML-only sources would vanish).

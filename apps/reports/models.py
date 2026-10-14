@@ -872,6 +872,7 @@ class AnnotationSourceState(models.Model):
     kind = models.CharField(max_length=8)
     digest = models.CharField(max_length=64, blank=True)
     provenance_sha = models.CharField(max_length=64, blank=True)
+    schema_version = models.PositiveIntegerField(default=0)
     desired_generation = models.PositiveBigIntegerField(default=1)
     published_generation = models.PositiveBigIntegerField(default=0)
     owner_workspace_id = models.CharField(max_length=32, blank=True)

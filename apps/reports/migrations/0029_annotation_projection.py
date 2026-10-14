@@ -20,6 +20,7 @@ class Migration(migrations.Migration):
             ("kind", models.CharField(max_length=8)),
             ("digest", models.CharField(blank=True, max_length=64)),
             ("provenance_sha", models.CharField(blank=True, max_length=64)),
+            ("schema_version", models.PositiveIntegerField(default=0)),
             ("desired_generation", models.PositiveBigIntegerField(default=1)),
             ("published_generation", models.PositiveBigIntegerField(default=0)),
             ("owner_workspace_id", models.CharField(blank=True, max_length=32)),
