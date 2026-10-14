@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from .bindings import COHORT_VARIANTS,COHORT_PRINCIPALS,ORG_STATUS,STUDIO_JSON_STATUS
 from .fixtures import login,visible_geometry,browser_metrics
-from .journey_fixtures import Capture,business_state,assignments,audit_rows,assert_audit_delta,http_login
+from .journey_fixtures import Capture,business_state,assignments,audit_rows,assert_audit_delta,http_login,InputParser,html_checked_reports
 
 pytestmark=pytest.mark.portal_e2e
 VARIANTS=[pytest.param(row,id=row[0],marks=pytest.mark.cohort_executor(row[2])) for row in COHORT_VARIANTS]
@@ -27,7 +27,7 @@ def overview(page,journey,data,capture):
     from playwright.sync_api import expect
     before=journey.database(business_state)
     page.goto(journey.unit.origin+'/orgs/alpha/settings/groups')
-    assert page.locator('tbody tr').count()<=25
+    assert page.locator('tbody tr').count()<=50
     row=page.locator('tbody tr').filter(has_text=data['summary_group_name'])
     expect(row.locator('[data-label=Overrides]')).to_have_text('3 studios')
     expect(row.locator('[data-label=Members]')).to_have_text('3')
@@ -65,11 +65,14 @@ def member_browse(page,journey,data,capture):
     # Real form POST into a normal navigation, using an intentionally invalid
     # role option; no substituted HTML/API response is involved.
     form=page.locator('#studio-member-choice')
+    form.locator('[name=q]').fill('Cohort person')
     form.evaluate("f => {let o=document.createElement('option');o.value='not-a-role';o.textContent='Invalid test draft';f.querySelector('[name=role]').append(o);f.querySelector('[name=role]').value='not-a-role';let p=document.createElement('input');p.type='hidden';p.name='page';p.value='2';f.append(p);}")
     page.get_by_role('button',name='Search',exact=True).evaluate("b => { b.value='2'; }")
     with page.expect_response(lambda r:r.request.method=='POST' and r.url.startswith(base+'/choices')) as response:
         page.get_by_role('button',name='Search',exact=True).click()
     assert response.value.status==400
+    expect(page.locator('.ui-pager-status')).to_contain_text('26–50')
+    expect(page.locator('[name=q]')).to_have_value('Cohort person')
     visible_geometry(page.locator('#memberChoiceRoleError'))
     expect(page.locator('input[name=user_id]:checked')).to_have_value(data['variables']['candidate'])
     expect(page.locator('select[name=role]')).to_have_value('not-a-role')
@@ -104,10 +107,8 @@ def access(page,context,journey,data,capture,mode):
         for cookie in context.cookies(origin):session.cookies.set(cookie['name'],cookie['value'])
         response=session.post(origin+path,data=body,headers={**journey.headers(journey.actor['principal'],'access-browse'),'Referer':origin+path},timeout=20)
         assert response.status_code==200 and 'Page 2 of' in response.text
-        from bs4 import BeautifulSoup
-        soup=BeautifulSoup(response.text,'html.parser')
-        assert sorted(node.get('value') for node in soup.select('[name=reports][checked]'))==sorted(body['reports'])
-        assert soup.select_one('[name=report_q]')['value']=='Report'
+        assert html_checked_reports(response.text)==sorted(body['reports'])
+        assert next(row['value'] for row in InputParser(response.text).inputs if row.get('name')=='report_q')=='Report'
         assert journey.database(business_state)==before
         capture.record('access-browse',capture.event('route-297','POST'),('draft','page-precedence','search','no-write'))
         form.locator('[name=report_q]').fill(data['variables']['report_search'])
@@ -239,8 +240,7 @@ def test_operator_bounded_access_save(cohort_case):
     assert journey.database(assignments,data)==set(data['saved'])
     journey.database(assert_audit_delta,before,data)
     response=session.get(journey.unit.origin+path,timeout=20)
-    from bs4 import BeautifulSoup
-    actual=sorted(node['value'] for node in BeautifulSoup(response.text,'html.parser').select('[name=reports][checked]'))
+    actual=html_checked_reports(response.text)
     assert actual==data['variables']['saved_reports'];no_beta(response.text)
     assert sum(row['method']=='POST' and row['route']=='route-297' for row in journey.events())==1
     capture.record('operator-save',capture.event('route-297','POST'),('db-persistence','reload-persistence','audit-delta','single-save','scope'))

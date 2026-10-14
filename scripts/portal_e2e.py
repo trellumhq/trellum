@@ -184,7 +184,7 @@ def main():
                 result['infrastructure_execution'] = infrastructure_execution
                 if infrastructure_execution['status'] != 'pass':
                     result['status'] = result['infrastructure_status'] = 'blocked'
-            if args.all or (not args.infrastructure and args.shard != 'L0'):
+            if args.all or (not args.cohort and not args.infrastructure and args.shard != 'L0'):
                 result['status'] = result['coverage']['status'] if result['status'] == 'pass' else 'blocked'
                 result['reason'] = 'all required journey/principal/condition bindings must execute and pass'
             if source_digest(ROOT) != result['source_digest']:

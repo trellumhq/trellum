@@ -1,5 +1,6 @@
 """Small post-clone business fixtures and explicit cohort evidence capture."""
 from collections import Counter
+from html.parser import HTMLParser
 import hashlib
 import json
 from pathlib import Path
@@ -9,6 +10,23 @@ from .bindings import FIXTURE_ID, cohort_bindings
 PLAN = {'id':FIXTURE_ID,'studios':3,'groups':60,'reports':60,'eligible_members':60,
         'initial_public':[1,29,59],'private':4,'save_remove':1,'save_add':50}
 FIXTURE_HASH = hashlib.sha256(json.dumps(PLAN,sort_keys=True).encode()).hexdigest()
+
+
+class InputParser(HTMLParser):
+    """Inspect actual native HTML without adding a browser/test dependency."""
+    def __init__(self, html):
+        super().__init__()
+        self.inputs = []
+        self.feed(html)
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "input":
+            self.inputs.append(dict(attrs))
+
+
+def html_checked_reports(html):
+    return sorted(row["value"] for row in InputParser(html).inputs
+                  if row.get("name") == "reports" and "checked" in row)
 
 
 def build():
