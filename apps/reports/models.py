@@ -769,7 +769,7 @@ class ReportSourceSummary(models.Model):
     """Observed serving source, kept distinct from mutable last-attempt metadata."""
 
     report = models.OneToOneField(Report, on_delete=models.CASCADE, related_name="source_summary")
-    schema_version = models.PositiveIntegerField(default=1)
+    schema_version = models.PositiveIntegerField(default=2)
     backend = models.CharField(max_length=16, blank=True)
     source_identity = models.CharField(max_length=300, blank=True)
     claim_digest = models.CharField(max_length=64, blank=True)

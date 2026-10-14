@@ -20,6 +20,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.AlterField(model_name="reportsourcesummary", name="schema_version", field=models.PositiveIntegerField(default=2)),
         migrations.AddField(
             model_name='reportsourcesummary',
             name='attempt_blocked_by',

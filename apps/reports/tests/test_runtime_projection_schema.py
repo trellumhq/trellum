@@ -33,3 +33,12 @@ def test_extension_upgrade_and_reverse_preserve_history(studio_tree):
         assert apps.get_model('reports', 'ReportSourceSummary').objects.get(pk=old.pk).source_identity == 'prior'
     finally:
         MigrationExecutor(connection).migrate(leaf)
+
+
+def test_new_row_is_pending_schema_two(studio_tree):
+    from apps.reports.models import Report
+    report = Report.objects.create(studio=studio_tree, slug="new")
+    summary = ReportSourceSummary.objects.create(report=report)
+    assert summary.schema_version == 2
+    assert summary.runtime_state == summary.experiment_state == "pending"
+    assert summary.has_output is None
