@@ -423,6 +423,11 @@ class TestStoredChecks:
         assert connecting_driver == {"host": "db.repo.internal", "user": "u", "password": "p"}
         ds.refresh_from_db()
         assert ds.last_check_ok is True and ds.last_check_at is not None
+        assert not Run.objects.exists()  # admitted; the worker queues, not the request
+        from apps.datasources.unblock import process_next
+
+        while process_next():
+            pass
         run = Run.objects.get(slug="sales")
         assert run.status == Run.QUEUED and run.trigger == "manual"
 
@@ -501,7 +506,7 @@ class TestCheckHygiene:
     ):
         from django.utils import timezone
 
-        from apps.datasources.testing import rebuild_unblocked
+        from apps.datasources.unblock import admit, process_next
         from apps.reports.models import Report
         from apps.runner.models import Run
 
@@ -526,5 +531,10 @@ class TestCheckHygiene:
         )
         write_meta("held", last_status="error", blocked_by=["wh"])
 
-        assert rebuild_unblocked(ds) == 4
+        ds.last_check_ok = True
+        ds.last_check_at = timezone.now()
+        ds.save()
+        admit(ds)
+        while process_next():
+            pass
         assert set(Run.objects.values_list("slug", flat=True)) == {"r0", "r1", "r2", "held"}
