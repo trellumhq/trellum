@@ -338,3 +338,20 @@ def test_future_and_incompatible_summary_never_claim_known_validation_or_output(
     result = operations.operations_page_payload(request_for(org_admin, org, studio), {}, now=now)
     assert result['counts']['healthy'] == 0 and result['counts']['v_unknown'] == 2
     assert all(row['has_output'] is None and row['validation'] is None for row in result['rows'])
+
+
+@pytest.mark.django_db
+def test_complete_source_usage_paging_is_not_report_name_search(org_admin, org, studio, other_studio, forbid_io):
+    postgres()
+    for i in range(30):
+        report = Report.objects.create(studio=studio, slug=f'r{i:02}', name='No source name here', config={'data_sources': ['db', 'db']})
+        summary(report, status='error', blocked=['db'])
+    Report.objects.create(studio=other_studio, slug='foreign', config={'data_sources': ['db']})
+    request = request_for(org_admin, org, studio)
+    page = operations.operations_source_reports_payload(request, 'db', {'page': '2'})
+    assert page['pagination']['total'] == 30 and len(page['rows']) == 5
+    assert [row['slug'] for row in page['rows']] == [f'r{i:02}' for i in range(25, 30)]
+    blocked = operations.operations_source_reports_payload(request, 'db', {'page': '2'}, observed_blocks=True)
+    assert blocked['mode'] == 'last-observed-blocks' and blocked['rows'] == page['rows']
+    with pytest.raises(ValueError):
+        operations.operations_source_reports_payload(request, 'db/../secret', {})

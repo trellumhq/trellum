@@ -498,3 +498,26 @@ def operations_sources_payload(request, params, *, now=None):
         ))
     return _bounded(dict(version=1, state='ready', rows=rows, pagination=_pagination(state.source_page, total),
                          coverage=dict(readiness='page-only', global_current_readiness='unknown'), applied=dict(source_q=state.source_q), observed_at=now))
+
+
+def operations_source_reports_payload(request, name, params, *, observed_blocks=False, now=None):
+    """Complete paged access behind source usage/observed-block previews.
+
+    This selects current authorized references, never searches report names to
+    approximate source usage. Observed blockers remain labelled observations.
+    """
+    if not isinstance(name, str) or not re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}', name):
+        raise ValueError('Invalid Operations source name')
+    state = validate_operations_params(params)
+    now = now or timezone.now()
+    cte, arguments = _source_cte(request, now)
+    table = 'observed_blocks' if observed_blocks else 'source_refs'
+    # table is a local allowlist; source identity and pagination are parameters.
+    with connection.cursor() as cursor:
+        cursor.execute(cte + f' SELECT count(DISTINCT report_id) FROM {table} WHERE name=%s', (*arguments, name))
+        total = cursor.fetchone()[0]
+        cursor.execute(cte + f' SELECT DISTINCT report_id,slug FROM {table} WHERE name=%s ORDER BY slug,report_id LIMIT %s OFFSET %s', (*arguments, name, PAGE_SIZE, (state.page-1)*PAGE_SIZE))
+        rows = [dict(id=identity, slug=slug) for identity, slug in cursor.fetchall()]
+    return _bounded(dict(version=1, state='ready', rows=rows, source=name,
+                         mode='last-observed-blocks' if observed_blocks else 'current-references',
+                         pagination=_pagination(state.page, total), observed_at=now))
