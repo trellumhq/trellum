@@ -81,14 +81,18 @@ def request_org_access(request, org) -> RequestOrgAccess:
 
 
 def _org_access(request, org) -> RequestOrgAccess:
-    user = request.user
-    if not org.is_active or not user.is_authenticated:
-        return RequestOrgAccess(request, org)
-    api_key = getattr(request, "api_key", None)
+    role, admin = _actor_org_facts(request.user, org, api_key=getattr(request, "api_key", None))
+    return RequestOrgAccess(request, org, role, admin)
+
+
+def _actor_org_facts(user, org, *, api_key=None) -> tuple[str | None, bool]:
+    """Current actor facts, with an optional bearer restriction for requests."""
+    if not org.is_active or user is None or not user.is_authenticated:
+        return None, False
     if api_key is not None and api_key.org_id != org.pk:
-        return RequestOrgAccess(request, org)
+        return None, False
     if user.is_superuser:
-        return RequestOrgAccess(request, org, roles.ORG_ADMIN, True)
+        return roles.ORG_ADMIN, True
 
     from apps.orgs.models import OrgMembership, PermissionGroupMembership
 
@@ -99,22 +103,39 @@ def _org_access(request, org) -> RequestOrgAccess:
         group_admin=Exists(group_admin)
     ).values_list("role", "group_admin").first()
     if membership is None:
-        return RequestOrgAccess(request, org)
+        return None, False
     role, is_group_admin = membership
-    return RequestOrgAccess(request, org, role, role == roles.ORG_ADMIN or is_group_admin)
+    return role, role == roles.ORG_ADMIN or is_group_admin
+
+
+def actor_studio_access(user, studio) -> StudioAccess:
+    """Fresh, non-request actor facts for background/toolbox callers.
+
+    This has no bearer authority and no cross-request cache. HTTP callers use
+    ``request_org_access`` to enforce the request's API-key organization.
+    """
+    org = studio.org
+    role, admin = _actor_org_facts(user, org)
+    return _studio_access_for_user(user, org, studio, is_member=role is not None, is_admin=admin)
 
 
 def _studio_access(access: RequestOrgAccess, studio) -> StudioAccess:
-    if not access.is_member:
+    return _studio_access_for_user(
+        access.request.user, access.org, studio,
+        is_member=access.is_member, is_admin=access.is_org_admin,
+    )
+
+
+def _studio_access_for_user(user, org, studio, *, is_member: bool, is_admin: bool) -> StudioAccess:
+    if not is_member or studio.org_id != org.pk:
         return StudioAccess()
-    if access.is_org_admin:
+    if is_admin:
         return StudioAccess(roles.ADMIN, True)
 
     from apps.orgs.models import PermissionGroupGrant, PermissionGroupMembership
     from apps.reports.models import Report
     from apps.studios.models import Studio, StudioMembership
 
-    user, org = access.request.user, access.org
     direct = StudioMembership.objects.filter(user=user, studio_id=OuterRef("pk"))
     groups = PermissionGroupMembership.objects.filter(user=user, group__org=org)
     grants = PermissionGroupGrant.objects.filter(

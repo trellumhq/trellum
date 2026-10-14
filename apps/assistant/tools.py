@@ -785,9 +785,9 @@ class AssistantToolbox:
         scope = self.scope
         limits = []
         if self.actor is not None and not self.is_report_bound:
-            from apps.core.permissions import effective_roles
+            from apps.core.request_access import actor_studio_access
 
-            if effective_roles(self.actor, self.studio.org).report_scope_for(self.studio) is not None:
+            if not actor_studio_access(self.actor, self.studio).full:
                 writes = []
                 scope = "selected reports"
                 limits.append("only currently selected reports are accessible")

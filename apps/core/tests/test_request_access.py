@@ -12,7 +12,7 @@ from apps.core.permissions import (
     bulk_effective_roles, effective_roles, get_effective, require_studio_role,
     visible_studios,
 )
-from apps.core.request_access import request_org_access
+from apps.core.request_access import actor_studio_access, request_org_access
 from apps.core.report_access import bulk_can_view_report
 from apps.core.themes import explicit_studio_theme, viewer_theme_override
 from apps.orgs.models import OrgMembership
@@ -196,6 +196,10 @@ def test_request_facts_match_complete_roles_across_sources(
         assert (access.is_member, access.is_org_admin) == (complete.is_member, complete.is_org_admin)
         for target in (studio, studio2):
             assert (access.role_for(target), access.has_full_studio_visibility(target)) == (
+                complete.role_for(target), complete.has_full_studio_visibility(target)
+            )
+            nonrequest = actor_studio_access(user, target)
+            assert (nonrequest.role, nonrequest.full) == (
                 complete.role_for(target), complete.has_full_studio_visibility(target)
             )
 

@@ -832,11 +832,11 @@ def me_api(request):
     """Session/identity endpoint used by portal.js."""
     if not request.user.is_authenticated:
         return JsonResponse({"authenticated": False}, status=401)
-    from apps.core.permissions import get_effective
+    from apps.core.request_access import request_org_access
 
     orgs = []
     for m in request.user.org_memberships.select_related("org").filter(org__is_active=True):
-        er = get_effective(request, m.org)
+        er = request_org_access(request, m.org)
         orgs.append(
             {
                 "slug": m.org.slug,

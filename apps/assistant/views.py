@@ -39,8 +39,9 @@ from apps.assistant.tools import AssistantToolbox
 from apps.core import roles
 from apps.core.audit import audit
 from apps.core.http import json_body
-from apps.core.permissions import effective_roles, get_effective, require_studio_role
-from apps.core.report_access import can_view_report, selected_report_access_block_reason
+from apps.core.permissions import effective_roles, require_studio_role
+from apps.core.report_access import can_view_report, raw_scope_reports, selected_report_access_block_reason
+from apps.core.request_access import request_org_access
 
 logger = logging.getLogger(__name__)
 
@@ -95,13 +96,15 @@ def _org_from_request(request):
             slug = m.group(1)
     if slug:
         org = Organization.objects.filter(slug=slug, is_active=True).first()
-        if org is None or not get_effective(request, org).is_member:
+        if org is None or not request_org_access(request, org).is_member:
             return None
         return org
 
-    memberships = list(
-        OrgMembership.objects.filter(user=request.user, org__is_active=True).select_related("org")[:2]
-    )
+    memberships = OrgMembership.objects.filter(user=request.user, org__is_active=True)
+    key = getattr(request, "api_key", None)
+    if key is not None:
+        memberships = memberships.filter(org_id=key.org_id)
+    memberships = list(memberships.select_related("org")[:2])
     if len(memberships) == 1:
         return memberships[0].org
     return None
@@ -171,25 +174,29 @@ def studio_available(request, org_slug, studio_slug):  # noqa: ARG001
     # the csrftoken cookie exists for the POSTs that follow.
     get_token(request)
     ok, reason = llm.is_available(request.org)
-    scope = request.org_roles.report_scope_for(request.studio)
+    restricted = not request.org_roles.has_full_studio_visibility(request.studio)
     report = None
-    if ok and scope is not None:
+    if ok and restricted:
         if selected_report_access_block_reason():
             ok = False
             reason = "Selected report access is temporarily unavailable."
         else:
             match = _REPORT_PATH_RE.search(request.GET.get("path") or "")
             report = _report_for(request.studio, match.group(1)) if match else None
-            if report is None or report.pk not in scope:
+            from apps.reports.models import Report
+
+            if report is None or not raw_scope_reports(
+                request.user, Report.objects.filter(pk=report.pk), request=request
+            ).exists():
                 ok = False
                 reason = "Open a report you can view to use the AI assistant."
     toolbox = AssistantToolbox(
         request.studio,
         actor=request.user,
-        scope="report" if scope is not None else "full",
+        scope="report" if restricted else "full",
         report=report,
     )
-    can_configure = get_effective(request, request.org).is_org_admin
+    can_configure = request.org_roles.is_org_admin
     return JsonResponse({
         "available": ok,
         "reason": reason,
@@ -228,19 +235,26 @@ def _session_rows(request):
     rows = AssistantSession.objects.filter(
         user=request.user, org=request.org, studio=request.studio
     ).select_related("report", "alert_run__rule")
-    scope = effective_roles(request.user, request.org).report_scope_for(request.studio)
-    if scope is not None and selected_report_access_block_reason():
+    restricted = not request.org_roles.has_full_studio_visibility(request.studio)
+    if restricted and selected_report_access_block_reason():
         return rows.none()
-    if scope is None:
+    if not restricted:
         return rows.filter(Q(scope=AssistantSession.SCOPE_FULL) | Q(
             scope=AssistantSession.SCOPE_REPORT,
             report__isnull=False,
             report__studio=request.studio,
             report__present_in_scan=True,
         ))
+    from apps.reports.models import Report
+
+    permitted = raw_scope_reports(
+        request.user,
+        Report.objects.filter(studio=request.studio, present_in_scan=True),
+        request=request,
+    ).order_by().values("pk")
     return rows.filter(
         scope=AssistantSession.SCOPE_REPORT,
-        report_id__in=scope,
+        report_id__in=permitted,
         report__isnull=False,
         report__studio=request.studio,
         report__present_in_scan=True,
@@ -423,7 +437,7 @@ def session_message(request, org_slug, studio_slug, session_id):  # noqa: ARG001
 
     # A provider failure carries a technical ``detail`` line; only someone who
     # can fix the configuration gets to see it.
-    is_admin = get_effective(request, org).is_org_admin
+    is_admin = request.org_roles.is_org_admin
 
     # One reply at a time per conversation. A conditional UPDATE is the
     # whole lock: it succeeds only when no other turn holds the row, and the
