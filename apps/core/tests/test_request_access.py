@@ -223,6 +223,10 @@ def test_request_facts_cache_actor_key_and_second_studio(
     assert first.role_for(studio) == roles.VIEWER
     assert first.role_for(studio2) is None
     request.user = org_admin
+    assert not first.is_member
+    assert not first.is_org_admin
+    assert first.role_for(studio) is None
+    assert first.report_scope_for(studio) == frozenset()
     assert request_org_access(request, org).role_for(studio2) == roles.ADMIN
     request.api_key = SimpleNamespace(org_id=other_org.pk)
     assert not request_org_access(request, org).is_member
@@ -230,6 +234,25 @@ def test_request_facts_cache_actor_key_and_second_studio(
     assert request_org_access(request, org).is_org_admin
     org.is_active = False
     assert not request_org_access(request, org).is_member
+
+
+def test_unknown_group_default_does_not_make_selected_viewer_full(
+    member, org, studio, make_group, attach_group, settings,
+):
+    settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = True
+    selected = make_group("selected with malformed default", grants=[(studio, roles.VIEWER)])
+    grant = selected.grants.get()
+    grant.viewer_scope = grant.REPORT_SCOPE_SELECTED
+    grant.save(update_fields=["viewer_scope"])
+    attach_group(member, selected)
+    malformed = make_group("malformed default")
+    type(malformed).objects.filter(pk=malformed.pk).update(default_studio_role="unknown")
+    attach_group(member, malformed)
+    complete = effective_roles(member, org)
+    access = request_org_access(request_for(member), org)
+    assert complete.role_for(studio) == access.role_for(studio) == roles.VIEWER
+    assert not complete.has_full_studio_visibility(studio)
+    assert not access.has_full_studio_visibility(studio)
 
 
 def test_request_facts_next_request_reflects_revocation(

@@ -20,15 +20,25 @@ class RequestOrgAccess:
     request: object
     org: object
     org_role: str | None = None
-    is_org_admin: bool = False
+    _is_org_admin: bool = False
+    _actor: tuple = field(default_factory=tuple)
+    _org_active: bool = False
     _studios: dict[int, StudioAccess] = field(default_factory=dict)
 
     @property
     def is_member(self) -> bool:
-        return self.org_role is not None
+        return self._current_actor and self.org_role is not None
+
+    @property
+    def is_org_admin(self) -> bool:
+        return self._current_actor and self._is_org_admin
+
+    @property
+    def _current_actor(self) -> bool:
+        return actor_key(self.request) == self._actor and self.org.is_active == self._org_active
 
     def studio_access(self, studio) -> StudioAccess:
-        if studio.org_id != self.org.pk:
+        if not self._current_actor or studio.org_id != self.org.pk:
             return StudioAccess()
         if studio.pk not in self._studios:
             self._studios[studio.pk] = _studio_access(self, studio)
@@ -48,6 +58,9 @@ class RequestOrgAccess:
         """
         from apps.core.permissions import get_effective
 
+        if not self._current_actor:
+            return frozenset()
+
         self.request._bi_report_scope_fallbacks = getattr(
             self.request, "_bi_report_scope_fallbacks", 0
         ) + 1
@@ -60,7 +73,10 @@ def request_org_access(request, org) -> RequestOrgAccess:
         cache = request._bi_request_org_access = {}
     key = (actor_key(request), org.pk, org.is_active)
     if key not in cache:
-        cache[key] = _org_access(request, org)
+        access = _org_access(request, org)
+        access._actor = key[0]
+        access._org_active = org.is_active
+        cache[key] = access
     return cache[key]
 
 
@@ -114,7 +130,7 @@ def _studio_access(access: RequestOrgAccess, studio) -> StudioAccess:
         _grant_admin=Exists(grants.filter(role=roles.ADMIN)),
         _grant_developer=Exists(grants.filter(role=roles.DEVELOPER)),
         _grant_viewer=Exists(grants.filter(role=roles.VIEWER)),
-        _full_path=Exists(direct) | Exists(groups.exclude(group__default_studio_role="").exclude(group__default_studio_role__isnull=True)) | Exists(grants.exclude(viewer_scope="selected", role=roles.VIEWER)),
+        _full_path=Exists(direct) | Exists(groups.filter(group__default_studio_role__in=(roles.VIEWER, roles.DEVELOPER, roles.ADMIN))) | Exists(grants.exclude(viewer_scope="selected", role=roles.VIEWER)),
         _private=Exists(Report.objects.filter(studio_id=OuterRef("pk"), audience=Report.AUDIENCE_PRIVATE)),
     ).annotate(
         access_role=Case(
