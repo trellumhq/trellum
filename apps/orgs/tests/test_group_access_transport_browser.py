@@ -122,6 +122,9 @@ def test_compact_pending_snapshot_neighbor_and_unknown_outcome(engine):
         page = browser.new_page(viewport={"width": 390, "height": 900})
         page.route("https://example.test/editor", lambda route: route.fulfill(body=html, content_type="text/html"))
         page.goto("https://example.test/editor")
+        page.evaluate("document.body.className='mgmt'")
+        for css in ("ui.css", "choice-picker.css", "recipient-picker.css"):
+            page.add_style_tag(content=(root / "static" / css).read_text())
         for script in ("choice-picker.js", "settings-forms.js", "recipient-picker.js"):
             page.add_script_tag(content=(root / "static" / script).read_text())
         form = page.locator("#access")
@@ -137,6 +140,7 @@ def test_compact_pending_snapshot_neighbor_and_unknown_outcome(engine):
         before_y = page.evaluate("scrollY")
         save.click()
         expect(save).to_be_disabled()
+        assert abs(page.evaluate("scrollY") - before_y) <= 2
         page.wait_for_timeout(30)
         assert len(pending) == 1
         body = pending[0].request.post_data_buffer
@@ -145,6 +149,9 @@ def test_compact_pending_snapshot_neighbor_and_unknown_outcome(engine):
         # snapshot while the shared handler acknowledges just this request.
         form.evaluate("f => f.dispatchEvent(new SubmitEvent('submit',{bubbles:true,cancelable:true}))")
         uncheck(2)
+        # Removing a chip changes layout and native scroll anchoring. The save
+        # acknowledgment must preserve the viewport after that deliberate edit.
+        before_y = page.evaluate("scrollY")
         pending[0].fulfill(json={"ok": True, "message": "Saved."})
         expect(save).to_be_enabled()
         expect(form.locator('[data-settings-dirty-status]')).to_contain_text("Newer changes are still unsaved")

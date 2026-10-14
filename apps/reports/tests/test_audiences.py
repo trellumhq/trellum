@@ -265,16 +265,17 @@ def test_private_transition_alerts_respect_report_access_gate(
     assert member not in alert_recipients(private, "failure")
 
 
+@pytest.mark.parametrize("user_count", [1, 20, 100])
 def test_bulk_permission_query_count_does_not_grow_per_user(
-    private, org, make_user, make_group, attach_group, django_assert_num_queries,
+    private, org, make_user, make_group, attach_group, django_assert_num_queries, user_count,
 ):
     group = make_group("All viewers", grants=[(private.studio, roles.VIEWER)])
-    users = [make_user(f"viewer{index}@demo.example", org=org) for index in range(20)]
+    users = [make_user(f"viewer{index}@demo.example", org=org) for index in range(user_count)]
     for user in users:
         attach_group(user, group)
     ReportPermissionGrant.objects.create(grant=group.grants.get(), report=private)
     assert private.studio.org == org  # Resolve the relation outside the measured bulk walk.
-    with django_assert_num_queries(7):
+    with django_assert_num_queries(6):
         result = bulk_can_view_report(users, private)
     assert all(result.values())
 
