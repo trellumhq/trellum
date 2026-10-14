@@ -60,6 +60,7 @@ MIDDLEWARE = [
     "apps.core.middleware.ContentSecurityPolicyMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
+    "apps.core.public_assets.PublicAssetMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
