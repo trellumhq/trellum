@@ -164,6 +164,7 @@ def test_oversized_scan_repair_transition_keeps_core_and_runtime(studio_tree):
     first_generation=report.source_summary.generation
     assert reconcile(report.pk)['status']=='ready'
     summary=report.source_summary
+    summary.refresh_from_db()
     assert summary.experiment_state=='oversized' and summary.declaration_digest==OVERSIZED_DECLARATION_DIGEST
     assert not summary.experiments.exists() and summary.runtime_state=='ready' and summary.has_output
     assert summary.claims.get().metric_name=='known'
@@ -188,6 +189,7 @@ def test_multi_entry_display_name_rename_without_rebuild(studio_tree):
         report.save(update_fields=['config']);sync_declarations(report)
     reconcile(report.pk)
     summary=report.source_summary
+    summary.refresh_from_db()
     assert summary.source_identity==identity and summary.declaration_digest!=old_digest
     row=summary.experiments.get(ordinal=0)
     assert row.declaration['name']=='New' and row.delta_pct==4
