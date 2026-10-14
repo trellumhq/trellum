@@ -29,7 +29,7 @@ def event():
 
 
 URLS = ["/operator/logs/", "/operator/logs/events/", "/operator/logs/export/",
-        f"/operator/logs/runs/{uuid.uuid4()}/"]
+        "/operator/logs/runs/00000000-0000-4000-8000-000000000001/"]
 
 
 def test_operator_page_renders_real_shell_and_valid_filter_defaults(login, operator):
