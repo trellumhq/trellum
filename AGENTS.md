@@ -1,0 +1,91 @@
+# Agent guide
+
+This is the main instruction file for AI coding agents working in this
+repository, whichever model or tool you use. Read it before changing code.
+People should start with [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Repository
+
+- This is a monorepo with two layers. The AGPL-3.0-only portal is in `apps/`
+  and `trellum_portal/`. The standalone reporting framework is in `trellum/`;
+  report-building agents also follow [trellum/AGENTS.md](trellum/AGENTS.md).
+- The framework never imports Django, the portal or an application module, and
+  CI enforces this. The portal consumes it through
+  `trellum/docs/COMPATIBILITY.md`.
+- Both layers share one version: `trellum_portal/__init__.py` and
+  `trellum/__init__.py` must agree.
+- New core code goes in `apps/` or `trellum/`. Do not add paid editions,
+  licence gates or capability caps.
+- Keep tenant boundaries, roles, MFA policy, append-only audit records,
+  encryption, resource bounds and the support-bundle schema intact.
+
+## Required reading by area
+
+| Changing | Read first |
+|---|---|
+| Any portal page, API, list, action or background job | [docs/performance-patterns.md](docs/performance-patterns.md) |
+| Pages, forms, selectors, dialogs, shared controls | [docs/design-system.md](docs/design-system.md) |
+| Forms, saves, polling, navigation | [docs/forms-and-navigation.md](docs/forms-and-navigation.md) |
+| Models or migrations | [docs/MIGRATIONS.md](docs/MIGRATIONS.md) |
+| Reports built with the framework | [trellum/AGENTS.md](trellum/AGENTS.md) |
+
+## Rules for every feature
+
+1. **Bounded cost.** Page and API work stays flat as data grows. Paginate in
+   SQL with 25 rows by default, never make per-row queries, and byte-bound
+   payloads. Load primary content first and secondary sections independently.
+2. **No unbounded waits.** Every external call has a timeout, and the timeout
+   really stops the work. Anything slow at realistic scale becomes a durable
+   background action: transactional admission, a `202` response with a status
+   URL that the UI polls, a worker lease, and no silent re-run. Never
+   automatically retry a write with an unknown outcome; show it as
+   unconfirmed.
+3. **Native first.** Pages work without JavaScript. Enhanced fetches are
+   abortable, keep one request in flight per region, and reject stale
+   responses. Polling stops when the tab is hidden or the view unmounts.
+4. **Reuse shared UI.** Use the shared controls and the settings save
+   contract. Don't write another per-page submit pattern or reload the
+   document after a routine save. Saving preserves scroll, focus and
+   neighbouring drafts, and shows saving, saved, error and unconfirmed states.
+5. **Permissions.** Resolve access with `apps/core/request_access.py` and
+   filter reports with `visible_reports(..., request=request)`. Never widen an
+   existing role gate. Add new routes to
+   `apps/core/tests/portal_e2e/routes.json`.
+6. **Lean tests.**
+   - Write logic and PostgreSQL tests, plus one Chromium desktop browser check
+     for each new UI.
+   - Mark scale, timing, other-engine, mobile and real-process tests
+     `@pytest.mark.heavy`, or add them to the heavy rules in `conftest.py`.
+     Run heavy tests only before merging a performance-sensitive change or a
+     release.
+   - A performance fix includes one heavy test showing the bound.
+   - For UI changes, also look at the rendered page on desktop and mobile.
+     Passing tests do not prove the layout.
+
+## Workflow
+
+- Do product work in a task branch and git worktree, never directly on `main`.
+- Keep PRs small, with one concern each, and merge to `main` early. Don't
+  build up many long-lived parallel branches. If you run parallel agents,
+  integrate each one as soon as it passes.
+- Before review, run `python scripts/test.py local <paths>` for the touched
+  areas, `python manage.py makemigrations --check`, and, for broad changes,
+  `python scripts/test.py portal` on the combined branch.
+- Delegate long test runs and mechanical execution to cheaper or faster
+  models where your tool supports subagents. Give them exact scopes and ask
+  for short reports: commit SHA, what passed, what is still open.
+- Add an `[Unreleased]` entry to `CHANGELOG.md`.
+- Commit messages, code comments and docs state product facts. Product
+  strategy, roadmap reasoning and research belong in the maintainers' private
+  planning notes, not in this repository or its history. Never reference
+  other products as inspiration.
+- Never commit credentials, send real email, or call paid providers in tests.
+  Pushing, releasing and deploying need explicit maintainer approval.
+
+## Local report previews
+
+To show someone a local report, run
+`python -m trellum review start reports/<slug>`, then follow
+`python -m trellum guide review`. Poll with `--report <slug>` and rebuild
+before replying. Build changed source first with `--no-serve`, or pass
+`--rebuild`.

@@ -58,13 +58,9 @@ terraform.tfvars
 # The demo path writes its own throwaway env file (scripts/demo.sh).
 .env.demo
 
-# Agent instructions and project context live in internal planning, not here.
-# They carry product reasoning, board conventions and internal repo names,
-# none of which belong in a repository that is meant to become public.
-# Root-anchored: trellum/AGENTS.md is part of the framework package and ships
-# to consumers, so it must stay tracked.
+# AGENTS.md is the tracked, tool-neutral agent guide. Tool-specific files and
+# private planning context stay out of the repository.
 /CLAUDE.md
-/AGENTS.md
 
 # Static website build output and generated release documentation.
 *.sqlite3

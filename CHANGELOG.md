@@ -10,7 +10,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Changed
 
 - Document required portal performance patterns in `docs/performance-patterns.md`
-  with a new-feature checklist.
+  with a new-feature checklist,
+  and track a tool-neutral `AGENTS.md` agent guide.
 - Add focused local and parallel portal test commands, CI timing reports,
   and a portal check that also reports for documentation-only changes.
 
