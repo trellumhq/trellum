@@ -15,6 +15,21 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
     var _countEl = null;
     var _sortCol = -1;   /* -1 = no active sort */
     var _sortDir = 1;    /* 1 = asc, -1 = desc */
+    // Only generated workspace definition tables opt in. Their rows are light
+    // catalog metadata; ordinary authored tables keep their existing contract.
+    var _pageSize = window._fwMetricsWorkspace && cfg.workspacePageSize === 25 ? 25 : 0;
+    var _page = _pageSize && Number.isInteger(cfg.workspacePage) && cfg.workspacePage > 0 ? cfg.workspacePage : 1;
+    if (_pageSize && el._fwWorkspaceTableState) {
+        var saved = el._fwWorkspaceTableState;
+        _page = saved.page; _searchTerm = saved.term; _sortCol = saved.sortCol; _sortDir = saved.sortDir;
+    }
+    if (_pageSize) {
+        if (el._fwWorkspaceTableAbort) el._fwWorkspaceTableAbort.abort();
+        el._fwWorkspaceTableAbort = new AbortController();
+        window.addEventListener('pagehide', function() {
+            clearTimeout(el._fwWorkspaceSearchTimer); el._fwWorkspaceSearchTimer = null;
+        }, {signal: el._fwWorkspaceTableAbort.signal});
+    }
 
     function _escapeHtml(value) {
         return String(value).replace(/[&<>"']/g, function(ch) {
@@ -88,6 +103,9 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
     function _renderRows(columns, rows, totalRows) {
         var filtered = _searchTerm ? rows.filter(_matchSearch) : rows;
         filtered = _sortRows(filtered);
+        var pages = _pageSize ? Math.max(1, Math.ceil(filtered.length / _pageSize)) : 1;
+        if (_pageSize) _page = Math.min(pages, Math.max(1, _page));
+        var visible = _pageSize ? filtered.slice((_page - 1) * _pageSize, _page * _pageSize) : filtered;
         var barCol = (cfg.barColumn != null) ? cfg.barColumn : -1;
         var barMax = 0;
         if (barCol >= 0) {
@@ -106,7 +124,7 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
             return '<th class="' + cls + '" data-col-idx="' + idx + '">'
                 + label + arrow + '</th>';
         }).join('');
-        var body = filtered.map(function(row) {
+        var body = visible.map(function(row) {
             return '<tr>' + row.map(function(v, i) {
                 var condRules = cf[columns[i]];
                 var style = '';
@@ -129,6 +147,13 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
         } else if (totalRows > cfg.maxRows) {
             note = '<div class="fw-table-note">Showing ' + cfg.maxRows
                 + ' of ' + totalRows + ' rows — CSV download includes all ' + totalRows + '</div>';
+        }
+        if (_pageSize) {
+            note = '<div class="fw-table-note" data-workspace-table-status tabindex="-1" role="status">' + filtered.length + ' of ' + totalRows + ' rows · Page ' + _page + ' of ' + pages
+                + '</div><div class="fw-metric-actions" data-workspace-table-pager>'
+                + '<button type="button" data-workspace-table-previous' + (_page <= 1 ? ' disabled' : '') + '>Previous definitions</button>'
+                + '<button type="button" data-workspace-table-next' + (_page >= pages ? ' disabled' : '') + '>Next definitions</button></div>';
+            el._fwWorkspaceTableState = {page: _page, term: _searchTerm, sortCol: _sortCol, sortDir: _sortDir};
         }
         var colgroup = '', tableAttr = '';
         if (_colWidths && _colWidths.length === columns.length) {
@@ -167,8 +192,32 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
                         _sortCol = idx;
                         _sortDir = -1; /* new col: default descending for numeric-first UX */
                     }
+                    if (_pageSize) _page = 1;
                     if (_lastRows) _renderRows(_lastCols, _lastRows, _lastTotal);
+                    if (_pageSize) {
+                        var replacement = el.querySelector('th[data-col-idx="' + idx + '"]');
+                        if (replacement) replacement.focus({preventScroll: true});
+                    }
                 });
+                if (_pageSize) {
+                    th.tabIndex = 0;
+                    th.setAttribute('aria-sort', parseInt(th.dataset.colIdx, 10) === _sortCol ? (_sortDir > 0 ? 'ascending' : 'descending') : 'none');
+                    th.addEventListener('keydown', function(event) {
+                        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); th.click(); }
+                    });
+                }
+            });
+        }
+        if (_pageSize) {
+            [['previous', -1], ['next', 1]].forEach(function(direction) {
+                var selector = '[data-workspace-table-' + direction[0] + ']';
+                el.querySelector(selector).onclick = function() {
+                    _page += direction[1]; _renderRows(_lastCols, _lastRows, _lastTotal);
+                    var target = el.querySelector(selector);
+                    if (target.disabled) target = el.querySelector('[data-workspace-table-' + (direction[0] === 'next' ? 'previous' : 'next') + ']');
+                    if (target.disabled) target = el.querySelector('[data-workspace-table-status]');
+                    target.focus({preventScroll: true});
+                };
             });
         }
     }
@@ -177,17 +226,28 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
     var _lastRows = null, _lastCols = null, _lastTotal = 0;
     var searchInput = document.querySelector('[data-table-search="' + id + '"]');
     if (searchInput && cfg.searchable) {
-        _countEl = document.createElement('span');
-        _countEl.className = 'fw-table-count';
-        searchInput.parentNode.insertBefore(_countEl, searchInput.nextSibling);
+        if (_pageSize && _searchTerm !== searchInput.value.trim().toLowerCase()) {
+            _searchTerm = searchInput.value.trim().toLowerCase(); _page = 1;
+        }
+        _countEl = _pageSize && searchInput.parentNode.querySelector('.fw-table-count');
+        if (!_countEl) {
+            _countEl = document.createElement('span');
+            _countEl.className = 'fw-table-count';
+            searchInput.parentNode.insertBefore(_countEl, searchInput.nextSibling);
+        }
         var _debounce = null;
-        searchInput.addEventListener('input', function() {
+        if (_pageSize) clearTimeout(el._fwWorkspaceSearchTimer);
+        function search() {
             clearTimeout(_debounce);
             _debounce = setTimeout(function() {
                 _searchTerm = searchInput.value.trim().toLowerCase();
+                if (_pageSize) _page = 1;
                 if (_lastRows) _renderRows(_lastCols, _lastRows, _lastTotal);
             }, 200);
-        });
+            if (_pageSize) el._fwWorkspaceSearchTimer = _debounce;
+        }
+        if (_pageSize) searchInput.oninput = search;
+        else searchInput.addEventListener('input', search);
     }
 
     /* ── Live mode ── */

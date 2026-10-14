@@ -191,9 +191,18 @@ body.mgmt main .met-modal.met-compact .met-modal-head h2 { font-size:13px; }
 {% endif %}
 {% if metrics_section == "comparison" %}
   {% if metrics_report_built %}
-  <iframe id="metWorkspace" src="{{ metrics_report_url }}?workspace=1" title="Metrics chart workspace"></iframe>
+  {% if workspace_requested_legacy %}<p class="ui-flash warning">Legacy artifact loaded explicitly. Rebuild to use bounded metric pages. Last indexed state: {{ workspace_state }}{% if not workspace_fresh %} · stale observation{% endif %}; current artifact may differ.</p>{% endif %}
+  <p class="muted">Indexed artifact · {{ workspace_quality }}{% if workspace_quality == 'observed' %}; build identity is observed{% endif %}</p>
+  <iframe id="metWorkspace" src="{{ metrics_report_url }}?workspace=1" data-workspace-version="{{ workspace_version }}" title="Metrics chart workspace"></iframe>
+  <p data-workspace-status role="status" aria-live="polite">Loading metrics…</p>
   {% else %}
-  <div class="panel"><div class="ui-empty">The comparison workspace appears once the generated Metrics report is built.</div></div>
+  <div class="panel"><div class="ui-empty">
+    {% if workspace_legacy %}This artifact uses the legacy workspace. Rebuild the Metrics report to use bounded pages.
+    <a href="?legacy=1">View legacy workspace explicitly</a>
+    {% elif workspace_unsupported %}This workspace format is unsupported. Rebuild with a compatible framework.
+    {% else %}The workspace's served format is unknown or its source index is stale or unavailable. Refresh after source reconciliation; rebuild if needed.{% endif %}
+    {% if metrics_report_url %}<a href="{{ metrics_report_url }}">Open report explicitly</a>{% endif %}
+  </div></div>
   {% endif %}
 {% elif defined_count == 0 %}
 <div class="panel">

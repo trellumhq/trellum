@@ -435,8 +435,9 @@ def metric_definition_page(studio, query="", page=1):
 @require_GET
 def metrics_page(request, org_slug, studio_slug, section="overview"):
     from apps.studios.models import StudioRepo
+    from .metric_workspace import workspace_projection
 
-    data = (studio_metrics_overview(request.studio) if section == "comparison" else
+    data = (workspace_projection(request.studio, legacy=request.GET.get('legacy') == '1') if section == "comparison" else
             metric_definition_page(request.studio, request.GET.get("q", "").strip(), request.GET.get("page", 1)))
     # A reverse OneToOneField raises DoesNotExist (not AttributeError) when
     # unset, so plain getattr(..., "repo", None) would not catch it.
@@ -469,11 +470,13 @@ def metrics_page(request, org_slug, studio_slug, section="overview"):
 
 @require_studio_role(roles.VIEWER)
 @require_full_studio_visibility
+@require_GET
 def metric_comparison(request, org_slug, studio_slug):
     """Two current studio identities; report access is checked again by each frame."""
     from datetime import date
 
-    from trellum.metrics import load_metrics_result
+    from .metric_workspace import definition_choices, workspace_projection
+    from .models import ReportMetricClaim
 
     ids = [request.GET.get(key, "") for key in ("a", "b")]
     if any(len(value) > 200 or (value and not re.fullmatch(r"[a-z0-9][a-z0-9_]*", value))
@@ -490,32 +493,41 @@ def metric_comparison(request, org_slug, studio_slug):
     if any(len(value) > 200 for value in splits):
         return HttpResponseBadRequest("Choose an available split.")
     # Do not use the overview's short cache for an identity/access decision.
-    available = set(MetricDefinition.objects.filter(
-        studio=request.studio, present_in_scan=True).values_list("name", flat=True))
+    selected_rows = list(MetricDefinition.objects.filter(
+        studio=request.studio, present_in_scan=True, name__in=ids))
+    available = {row.name for row in selected_rows}
     if any(value and value not in available for value in ids):
         return HttpResponseBadRequest("Choose two different available metrics.")
-    data = studio_metrics_overview(request.studio)
-    registry = load_metrics_result(str(request.studio.project_root))
+    query = request.GET.get('q', '').strip()
+    if len(query) > 200:
+        return HttpResponseBadRequest('Choose a metric search of at most 200 characters.')
+    choices, page = definition_choices(request.studio, query, request.GET.get('page', 1), ids)
+    data = workspace_projection(request.studio, legacy=request.GET.get('legacy') == '1')
+    summary = data['_workspace_summary']
+    claims = {claim.metric_name: claim for claim in ReportMetricClaim.objects.filter(
+        summary=summary, metric_name__in=ids)} if summary else {}
+    selected = {row.name: row for row in selected_rows}
     cards = []
     for key, metric_id in zip(("a", "b"), ids, strict=True):
-        metric = next((m for m in data["metrics"] if m["row"].name == metric_id), None)
-        if not metric:
+        row = selected.get(metric_id)
+        if not row:
             cards.append({"slot": key})
             continue
-        definition = registry.metrics.get(metric_id)
-        dataset = registry.datasets.get(definition.dataset) if definition else None
-        generated = next((u for u in metric["usage"] if is_generated_metrics_report(u["report"])), None)
-        cards.append({**metric, "slot": key,
-                      "grain": dataset.grain if dataset else "unknown",
-                      "time_agg": definition.time_agg if definition else "unknown",
-                      "built_at": generated["built_at"] if generated else None,
-                      "current": bool(generated and generated["current"])})
+        claim = claims.get(metric_id)
+        cards.append({'row': row, 'spec': row.spec_text(), 'slot': key,
+                      'grain': ('unbound' if not row.binding.get('dataset') else row.binding.get('grain')) if row.binding is not None else 'unknown',
+                      'time_agg': ('not applicable' if not row.binding.get('dataset') else row.binding.get('time_agg')) if row.binding is not None else 'unknown',
+                      'built_at': summary.served_at if claim else None,
+                      'current': bool(claim and claim.definition_hash and claim.definition_hash == row.definition_hash),
+                      'embed_url': f'{data["metrics_report_url"]}?only=metric-{metric_id}' if claim and data['metrics_report_built'] else ''})
     return render(request, "reports/metric_comparison.html", {
         "org": request.org, "studio": request.studio, "cards": cards,
-        "metrics": data["metrics"], "metrics_report_built": data["metrics_report_built"],
+        'metrics': [{'row': row} for row in choices], 'choice_page': page, 'choice_query': query,
+        'choice_url': reverse('studio-metric-choices', args=[org_slug, studio_slug]),
+        **data,
         "comparison_url": reverse("metric-comparison", args=[org_slug, studio_slug]),
         "catalog_url": reverse("studio-metrics", args=[org_slug, studio_slug]),
         "workspace_url": reverse("studio-metrics-comparison", args=[org_slug, studio_slug]),
         "state": {"a": ids[0], "b": ids[1], "from": dates[0], "to": dates[1],
-                  "split_a": splits[0], "split_b": splits[1]},
+                  "split_a": splits[0], "split_b": splits[1], 'legacy': '1' if data['workspace_requested_legacy'] else ''},
     })

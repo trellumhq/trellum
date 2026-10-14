@@ -123,6 +123,32 @@ Anything prefixed with `_` that is not listed above, including:
 
 ## Security compatibility notes
 
+Generated Metrics workspaces declare `_meta.json.metrics_workspace.version = 1`.
+Its `build` is a 32-character lowercase hexadecimal identity. The reserved sibling
+files `_metrics-workspace-<build>-page-<positive integer>.html` and `.json`, plus
+`_metrics-workspace-<build>-catalog.json`, are pages of the same report, not authored
+views. Hosts can use `trellum.metrics_workspace.owned_name` to identify them.
+Each page displays at most 25 monitored blocks and 25 unmonitored definitions;
+catalog search and native page links retain access to the complete definition set.
+Root `data.json`, `_meta.json.metrics_used` and build details remain complete for
+source indexes and exports. Initial chart loading uses the immutable page payload
+and rejects an HTML/catalog/metadata build mismatch with a refreshable failure.
+
+Publication stages the entire replacement before exposing it. Root replacement
+temporarily marks mutable metadata uncertain, publishes success last, and restores
+the prior roots on failure. Previous owned page files are removed only after
+success; an untrusted old manifest never authorizes deletion outside this exact
+basename grammar or through symlinks. Deep links to obsolete pages therefore stop
+serving prior content after a successful smaller rebuild.
+
+Missing workspace markers on successfully inspected served artifacts mean legacy
+format (version 0). Uninspected historical artifacts remain unknown, and hosts
+must not infer format from current source code or report configuration. Legacy
+artifacts remain available through explicit viewing and rebuilding; their
+monolithic rendering cost is separate from the version 1 page budgets. Fresh,
+ready external artifacts marked version 1 remain usable with an honest observed
+source-quality label. Failed attempts do not supersede a served build's marker.
+
 Ordinary `DataTable` cell/header strings and `PivotTable` dimension labels display
 literally. Reports that relied on embedded HTML strings should use explicitly
 authored `RawHTML` content. CSV exports retain the literal data.
@@ -132,3 +158,12 @@ URL, compressed sibling and filename aliases for GET and HEAD. Portal remote
 builds store it under a separate `_private/` namespace; operators must update
 their edge gateway and plan legacy manifest/cache cleanup as described in the
 portal's storage upgrade notes. The host still reads older build manifests.
+
+The workspace-only DataTable `workspacePageSize: 25` opt-in uses the complete
+light catalog metadata for all-column search, sort and CSV, while rendering at
+most 25 matching rows. `workspacePage` chooses the initial native page; ordinary
+tables retain their existing behavior. Chart page payloads project needed series
+columns without changing the complete root payload. Selection preferences belong
+to the artifact root and survive page navigation. A host unable to inspect a
+legitimate cross-origin served iframe retains a bounded visible viewport and
+labels chart readiness unconfirmed; iframe load is not chart-ready evidence.

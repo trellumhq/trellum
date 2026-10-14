@@ -417,6 +417,11 @@ def build_registry_payload(studio) -> dict:
     for row in rows:
         config = row.config or {}
         html_names = html_index.get(row.slug, [])
+        if row.slug == 'metrics' and 'metrics' in (row.tags or []):
+            # Generated workspace siblings are native pages of one report,
+            # never additional authored views in the registry chooser.
+            from trellum.metrics_workspace import owned_name
+            html_names = [name for name in html_names if not owned_name(name)]
         runtime_meta: dict = {}
         if not storage_down:
             try:

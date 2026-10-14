@@ -26,6 +26,9 @@
             var details = text(usage, 'a', 'All indexed claims →'); details.href = item.details_url;
             card.dataset.chartState = item.chart_state;
             card.dataset.embed = item.embed_url; card.dataset.chart = item.chart_url;
+            card.dataset.workspaceVersion = item.workspace_version == null ? '' : String(item.workspace_version);
+            card.dataset.workspaceQuality = item.workspace_quality || 'unknown';
+            card.dataset.legacyUrl = item.legacy_url || '';
             card.dataset.overview = item.overview_url;
             card.querySelectorAll('.met-spark').forEach(function (spark) { spark.remove(); });
             if (item.spark && item.chart_state === 'ready') {

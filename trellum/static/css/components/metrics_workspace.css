@@ -30,3 +30,8 @@ body.fw-metrics-embedded .fw-metric-snapshot-note { display:none; }
   #fwMetricsShowAll, #fwMetricsHideAll { min-height:44px; }
   .fw-metric-choices label { min-height:36px; }
 }
+/* Generated pages retain native links and search all lightweight catalog identities. */
+#fwMetricsWorkspace nav { display:flex; flex-wrap:wrap; gap:12px; margin-top:12px; }
+#fwMetricsWorkspace nav [aria-current="page"] { font-weight:700; }
+#fwMetricsSearchResults a { display:block; padding:6px 0; }
+#fwMetricsWorkspace input[type="search"] { max-width:100%; }

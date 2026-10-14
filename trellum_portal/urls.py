@@ -16,7 +16,7 @@ from apps.orgs.groups import views as org_groups
 from apps.orgs.security import views as org_security
 from apps.orgs.sso import views as org_sso
 from apps.reports import livequery as report_livequery
-from apps.reports import metrics_catalog, metric_summaries
+from apps.reports import metrics_catalog, metric_summaries, metric_workspace
 from apps.reports import views as report_views
 from apps.reports.overviews import annotations, experiments
 from apps.reports.vendor import vendor_asset
@@ -46,6 +46,7 @@ studio_patterns = [
         name="studio-metrics-comparison",
     ),
     path("metrics/compare", metrics_catalog.metric_comparison, name="metric-comparison"),
+    path("metrics/choices", metric_workspace.metric_choices, name="studio-metric-choices"),
     path("experiments", experiments.experiments_page, name="studio-experiments"),
     path("api/registry", report_views.api_registry, name="api-registry"),
     path("api/system/status", report_views.api_system_status),

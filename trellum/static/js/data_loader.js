@@ -10,15 +10,42 @@
     }
 
     _loadingMsg('Loading data...');
+    var workspace = window._fwMetricsWorkspace;
+    if (workspace) window._fwWorkspaceWork = {max_consumer_ms: 0, max_chart_ms: 0, charts_created: 0};
+    var prepared = Promise.resolve();
+    if (workspace) {
+        prepared = fetch(workspace.catalog).then(function(response) {
+            if (!response.ok) throw new Error('Metric catalog unavailable');
+            return response.json();
+        }).then(function(catalog) {
+            if (catalog.version !== 1 || catalog.build !== workspace.build || !Array.isArray(catalog.metrics)) {
+                throw new Error('Metric catalog changed; refresh this page');
+            }
+            window._fwMetricsCatalog = catalog.metrics;
+            var target = new URLSearchParams(location.search).get('only') || location.hash.slice(1);
+            var metric = catalog.metrics.find(function(row) { return row.anchor === target; });
+            if (new URLSearchParams(location.search).has('only') && !metric) throw new Error('Selected metric is unavailable');
+            if (metric && metric.page !== workspace.page) {
+                var destination = new URL(location.href);
+                destination.pathname = destination.pathname.replace(/[^/]*$/, '_metrics-workspace-' + workspace.build + '-page-' + metric.page + '.html');
+                location.replace(destination.href);
+                return new Promise(function() {});
+            }
+        });
+    }
+    window._fwWorkspaceCatalogReady = prepared;
     /* Cache-busting via ?v=<last_run>: read _meta.json (short cache) to learn
        the current data version, then fetch data.json?v=<version>. data.json
        can then be cached for 24h+ -- a new run produces a new URL. */
-    fetch('_meta.json', {cache: 'no-store'})
+    prepared.then(function() { return fetch('_meta.json', {cache: 'no-store'}); })
         .then(function(r) { return r.ok ? r.json() : {}; })
         .catch(function() { return {}; })
         .then(function(meta) {
             window._dataVersion = (meta && meta.last_run) || String(Date.now());
-            return fetch('data.json?v=' + encodeURIComponent(window._dataVersion));
+            if (workspace && (!meta.metrics_workspace || meta.metrics_workspace.build !== workspace.build)) {
+                throw new Error('Metrics were rebuilt; refresh this page');
+            }
+            return fetch((workspace ? workspace.data : 'data.json') + '?v=' + encodeURIComponent(window._dataVersion));
         })
         .then(function(r) {
             window._fwTimings.fetch_ms = Math.round(performance.now() - _t0);
@@ -30,6 +57,16 @@
             window._currentScope = window._currentScope || data.defaultScope;
 
             var comps = data.components || {};
+            if (workspace && workspace.definitionId && comps[workspace.definitionId]) {
+                var definitions = window._fwMetricsCatalog.filter(function(row) { return row.monitored === false; });
+                var table = comps[workspace.definitionId];
+                if (table.type !== 'table' || table.workspacePageSize !== 25 ||
+                    definitions.some(function(row) { return !Array.isArray(row.details) || row.details.length !== 4; })) {
+                    throw new Error('Definition catalog changed; refresh this page');
+                }
+                table.rows = definitions.map(function(row) { return [row.name, row.label].concat(row.details); });
+                table.totalRows = table.rows.length;
+            }
             if (data.defaultScope) {
                 window._scopeCache[data.defaultScope] = comps;
             }
@@ -55,10 +92,21 @@
             if (window._fwUrlSync) window._fwUrlSync.write();
         })
         .catch(function(err) {
+            if (workspace) {
+                window._fwWorkspaceState = 'failed';
+                window.dispatchEvent(new CustomEvent('fw-workspace-state', {detail: {state: 'failed'}}));
+            }
             console.error('Failed to load data.json:', err);
             if (loading) {
                 loading.querySelector('.fw-loading-text').textContent = 'Failed to load data';
                 loading.querySelector('.fw-spinner').style.display = 'none';
+                if (workspace) {
+                    var latest = new URL(location.href);
+                    latest.pathname = latest.pathname.replace(/[^/]*$/, 'index.html');
+                    latest.searchParams.delete('only'); latest.hash = '';
+                    var recovery = document.createElement('a'); recovery.href = latest.href;
+                    recovery.textContent = 'Open latest metric workspace'; loading.appendChild(recovery);
+                }
             }
         });
 
@@ -202,27 +250,53 @@
         : null;
 
     function _renderComps(comps) {
+        var epoch = workspace ? (window._fwWorkspaceRenderEpoch = (window._fwWorkspaceRenderEpoch || 0) + 1) : 0;
         var deferred = [];
+        var only = workspace && new URLSearchParams(location.search).get('only');
+        function visible(el) {
+            var block = el && el.closest('.fw-metric-block');
+            return el && (!only || !block || block.id === only);
+        }
+        function draw(id, cfg) {
+            var renderer = window._fwRenderers[cfg.type];
+            if (!renderer) return;
+            var started = performance.now(); renderer(id, cfg);
+            if (workspace) {
+                var elapsed = performance.now() - started, work = window._fwWorkspaceWork;
+                work.max_consumer_ms = Math.max(work.max_consumer_ms, elapsed);
+                if (cfg.type === 'chart') {
+                    work.max_chart_ms = Math.max(work.max_chart_ms, elapsed);
+                    work.charts_created++;
+                }
+            }
+        }
         Object.keys(comps).forEach(function(id) {
             var cfg = comps[id];
             if (_PRIORITY_TYPES[cfg.type]) {
                 var el = document.getElementById(id);
-                if (!el) return;
-                var renderer = window._fwRenderers[cfg.type];
-                if (renderer) renderer(id, cfg);
+                if (!visible(el)) return;
+                draw(id, cfg);
             } else {
                 deferred.push(id);
             }
         });
         _attachFilterHealthBadges(comps);
-        if (deferred.length === 0) return;
+        function ready() {
+            if (!workspace) return;
+            window._fwWorkspaceState = 'ready';
+            window.dispatchEvent(new CustomEvent('fw-workspace-state', {detail: {state: 'ready'}}));
+        }
+        if (deferred.length === 0) { ready(); return; }
         _loadingMsg('Rendering charts...');
-        (window.requestIdleCallback || setTimeout)(function() {
-            for (var i = 0; i < deferred.length; i++) {
+        var i = 0;
+        function next() {
+            if (workspace && (window._fwWorkspaceDisposed || epoch !== window._fwWorkspaceRenderEpoch)) return;
+            var started = performance.now();
+            for (; i < deferred.length; i++) {
                 var id = deferred[i];
                 var cfg = comps[id];
                 var el = document.getElementById(id);
-                if (!el) continue;
+                if (!visible(el)) continue;
                 var inCollapsed = el.closest('.fw-collapsed');
                 var rect = el.getBoundingClientRect();
                 var offScreen = rect.top > window.innerHeight + 200;
@@ -232,12 +306,18 @@
                     _lazyQueue[id] = cfg;
                     _lazyObserver.observe(el);
                 } else {
-                    var renderer = window._fwRenderers[cfg.type];
-                    if (renderer) renderer(id, cfg);
+                    draw(id, cfg);
+                }
+                if (workspace && performance.now() - started >= 8 && i + 1 < deferred.length) {
+                    i++;
+                    setTimeout(next, 0);
+                    return;
                 }
             }
             _attachFilterHealthBadges(comps);
-        }, {timeout: 50});
+            ready();
+        }
+        (window.requestIdleCallback || setTimeout)(next, {timeout: 50});
     }
 
     /* ── Per-chart filter health badges ──────────────────────
