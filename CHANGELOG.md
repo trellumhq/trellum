@@ -7,6 +7,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Changed
+
+- Add focused local and parallel portal test commands, CI timing reports,
+  and a portal check that also reports for documentation-only changes.
+
 ### Fixed
 
 - Use the report theme font for chart labels, matching report headers and

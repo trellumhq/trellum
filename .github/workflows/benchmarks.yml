@@ -1,12 +1,13 @@
 name: benchmarks
 
-# The `slow` tests: report generation at 1k-100k rows, driven through a real
-# browser. Minutes per case, so they do not belong on a pull request. On
-# demand only: a nightly schedule was ~15 runner-minutes a night for a
-# rendering path that changes rarely -- run this manually after touching it,
-# and consider re-scheduling it once the repo is public (free minutes).
+# Full scaling benchmarks run for rendering/data changes via framework.yml,
+# and remain available separately for manual validation.
 on:
   workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
 
 jobs:
   benchmarks:
@@ -19,6 +20,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: pip
+          cache-dependency-path: |
+            trellum/requirements.txt
+            trellum/requirements-drivers.txt
 
       - name: Install dependencies
         run: |
@@ -28,4 +33,20 @@ jobs:
 
       - name: Run the slow benchmarks
         working-directory: trellum/demo
-        run: python -m pytest ../testing -q -m slow -s
+        run: |
+          export PYTHONPATH="$GITHUB_WORKSPACE/.github/workflows${PYTHONPATH:+:$PYTHONPATH}"
+          python -m pytest ../testing -q -m slow -s -p benchmark_metrics --durations=20 \
+            --junitxml="$GITHUB_WORKSPACE/.test-results/benchmarks.xml"
+
+      - name: Summarize benchmark outcomes and timings
+        if: always()
+        run: python .github/workflows/test_summary.py --junit .test-results/benchmarks.xml --out-dir .test-results/ci/benchmarks --title 'Framework scaling benchmarks'
+
+      - name: Keep sanitized benchmark reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: framework-benchmark-results
+          path: .test-results/ci/benchmarks/
+          if-no-files-found: ignore
+          retention-days: 7

@@ -109,8 +109,14 @@ def login(client):
 
 # ── Studio-on-disk fixtures (runner + reports suites) ───────────────────────
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def data_dir(settings, tmp_path):
+    """Keep every test's studio files separate, including view-created studios.
+
+    Database rollback does not remove directories. Tests that do not request
+    ``studio_tree`` can still write files through views, so they must also get
+    a fresh data root. pytest's temporary paths are separate for xdist workers.
+    """
     settings.DATA_DIR = tmp_path
     return tmp_path
 

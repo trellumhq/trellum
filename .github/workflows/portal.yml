@@ -1,21 +1,14 @@
 name: portal
 
-# A docs-only change cannot break the portal, and every job here pays a
-# whole billed minute whatever it does. Note what `paths-ignore` means on
-# `pull_request`: a PR touching nothing but docs runs NO job at all. That is
-# intended — no required status checks are configured on this repository, so
-# nothing is left hanging in "expected". Revisit this if that ever changes.
+# Always start the workflow so required aggregate checks report on docs-only PRs.
 on:
   workflow_dispatch:
   push:
     branches: [main, develop]
-    paths-ignore:
-      - "docs/**"
-      - "**/*.md"
   pull_request:
-    paths-ignore:
-      - "docs/**"
-      - "**/*.md"
+
+permissions:
+  contents: read
 
 # A superseded run is pure cost: when a PR gets a new push, kill the old run.
 concurrency:
@@ -23,6 +16,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: what changed
+    runs-on: ubuntu-latest
+    outputs:
+      portal: ${{ steps.diff.outputs.portal }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Classify the diff
+        id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: python3 .github/workflows/ci_checks.py changes --event "$EVENT" --base "$BASE"
+
   fast-checks:
     # Every grep and version comparison that needs nothing but a checkout,
     # in ONE job. They used to be two, and billing is per job rounded up to
@@ -33,6 +42,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Verify CI selection, aggregate and report helpers
+        run: |
+          python3 -m unittest discover -s .github/workflows -p 'test_*checks.py'
+          python3 scripts/test_test_command.py
+
+      - name: Verify sanitized test reports
+        run: python3 -m unittest discover -s .github/workflows -p 'test_test_summary.py'
+
+      - name: Verify benchmark metric reports
+        run: python3 -m unittest discover -s .github/workflows -p 'test_benchmark_metrics.py'
 
       # The framework used to be a pinned submodule, and this check used to
       # prove the pin sat on a tag. It lives here now, so there is no pin to
@@ -109,6 +129,8 @@ jobs:
           fi
 
   django-tests:
+    needs: changes
+    if: needs.changes.outputs.portal == 'yes'
     name: django unit tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -190,7 +212,20 @@ jobs:
       - name: Django test suite
         # Docker integration runs in the sandbox jobs, where bind-mount paths
         # belong to the daemon's host rather than this test container.
-        run: python -m pytest apps -q -ra -m "not docker_sandbox and not portal_e2e"
+        run: python scripts/test.py portal --workers 2 --junitxml .test-results/portal.xml --durations 20
+
+      - name: Summarize test outcomes and timings
+        if: always()
+        run: python .github/workflows/test_summary.py --junit .test-results/portal.xml --out-dir .test-results/ci/portal --title 'Portal tests (2 workers)'
+
+      - name: Keep sanitized test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal-test-results
+          path: .test-results/ci/portal/
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: The changelog mentions this version
         # Cheap guard against the version being bumped with nothing said about
@@ -204,6 +239,8 @@ jobs:
           }
 
   sandbox:
+    needs: changes
+    if: needs.changes.outputs.portal == 'yes'
     # The report sandbox: the runner image must build, and the container
     # hardening (read-only rootfs, non-root uid, cap drop) must actually hold
     # on a real daemon. Ubuntu runners ship Docker, so this is the only job
@@ -258,6 +295,8 @@ jobs:
         run: python -m pytest apps/runner/tests/test_sandbox.py -m docker_sandbox -q
 
   sandbox-compatibility:
+    needs: changes
+    if: needs.changes.outputs.portal == 'yes'
     name: sandbox on Docker ${{ matrix.docker }}
     runs-on: ubuntu-latest
     strategy:
@@ -295,6 +334,8 @@ jobs:
           python -m pytest apps/core/tests/test_docker_compatibility.py -q
 
   migration-safety:
+    needs: changes
+    if: needs.changes.outputs.portal == 'yes'
     # Does this branch's schema still work under the PREVIOUS release's code?
     #
     # That is the property that makes scripts/upgrade.sh recoverable. The
@@ -440,6 +481,8 @@ jobs:
           }
 
   django-e2e:
+    needs: changes
+    if: needs.changes.outputs.portal == 'yes'
     # The multi-tenant pipeline end to end: bootstrap, studio, import the
     # demo project, enqueue over the session-authenticated API, the worker
     # builds via the framework in this repo, output carries the host-contract
@@ -631,3 +674,15 @@ jobs:
         with:
           name: portal-live-browser-evidence
           path: ${{ runner.temp }}/portal-e2e-*
+
+  portal-checks:
+    name: portal checks
+    needs: [changes, fast-checks, django-tests, sandbox, sandbox-compatibility, migration-safety, django-e2e]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require every applicable portal check
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: python3 .github/workflows/ci_checks.py portal-gate

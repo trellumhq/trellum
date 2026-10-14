@@ -1,23 +1,8 @@
 name: framework
 
-# Pull requests are the only automatic trigger. A push to main is the merge
-# of an already-green PR, and the nightly schedule bought little per minute
-# billed, so
-# everything heavier than a grep is gated on whether the code it protects
-# actually changed (see the `changes` job). GitHub counts a skipped job as
-# passing for required status checks, so gated PRs stay mergeable.
+# Always report the aggregate; the classifier scopes expensive jobs below.
 on:
-  # No branch filter: every pull request runs, whatever it targets. This is
-  # the gate -- see the required status checks on `main`.
-  #
-  # Path-scoped since the monorepo: a control-plane-only PR should not pay for
-  # Chromium and five containers. Note the reverse is deliberately NOT true --
-  # portal.yml runs on framework changes too, because the framework is what
-  # builds reports and its e2e is the only thing that proves that still works.
   pull_request:
-    paths:
-      - "trellum/**"
-      - ".github/workflows/framework.yml"
   workflow_dispatch:
     inputs:
       publish:
@@ -27,6 +12,9 @@ on:
           a public repository. See CONTRIBUTING.md and trellum/RELEASING.md.
         type: boolean
         default: false
+
+permissions:
+  contents: read
 
 # A superseded run is pure cost: when a PR gets a new push, kill the old run.
 concurrency:
@@ -62,14 +50,15 @@ jobs:
         run: ruff check . --output-format=github
   changes:
     # One cheap job classifies the diff; the jobs below key off its outputs.
-    # `code` is anything that isn't documentation; `data` is the data path
-    # that warrants the container matrix. On workflow_dispatch there is no
-    # diff to classify, so everything runs.
+    # `code` covers framework runtime/tests; `data` warrants the container
+    # matrix; `benchmark` covers rendering/data performance paths. Dispatch
+    # validates every lane, while unrelated and docs-only PRs skip heavy jobs.
     name: what changed
     runs-on: ubuntu-latest
     outputs:
       code: ${{ steps.diff.outputs.code }}
       data: ${{ steps.diff.outputs.data }}
+      benchmark: ${{ steps.diff.outputs.benchmark }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -80,31 +69,9 @@ jobs:
       - name: Classify the diff
         id: diff
         env:
+          EVENT: ${{ github.event_name }}
           BASE: ${{ github.event.pull_request.base.sha }}
-        run: |
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
-            echo "code=yes" >> "$GITHUB_OUTPUT"
-            echo "data=yes" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          files=$(git diff --name-only "$BASE"...HEAD)
-          echo "$files"
-          # Narrow to what this workflow is responsible for -- but keep the
-          # workflow itself in scope, or editing the pipeline never exercises
-          # the pipeline. That is not hypothetical: folding the standalone
-          # checks in here changed only this file, so every job skipped and
-          # the new steps went untested.
-          files=$(echo "$files" | grep -E '^trellum/|^\.github/workflows/framework\.yml' || true)
-          if echo "$files" | grep -vE '^trellum/docs/|\.md$' | grep -q .; then
-            echo "code=yes" >> "$GITHUB_OUTPUT"
-          else
-            echo "code=no" >> "$GITHUB_OUTPUT"
-          fi
-          if echo "$files" | grep -qE '^(trellum/data/|trellum/itest/|trellum/requirements|\.github/workflows/framework\.yml)'; then
-            echo "data=yes" >> "$GITHUB_OUTPUT"
-          else
-            echo "data=no" >> "$GITHUB_OUTPUT"
-          fi
+        run: python3 .github/workflows/ci_checks.py changes --event "$EVENT" --base "$BASE"
 
   tests:
     name: tests + demo build
@@ -151,7 +118,7 @@ jobs:
       # The WHOLE suite, not a hand-listed subset -- an unlisted file is a file
       # nobody runs, which is how test_interactions.py sat dead for months.
       # -m "not slow" drops only the browser benchmarks (minutes each); they
-      # run on demand via the benchmarks job below.
+      # run for relevant changes via the benchmarks job below, or manually.
       #
       # Run from trellum/demo, whose trellum/ shim makes the checkout
       # importable as `trellum` -- the same shape a consumer gets from the
@@ -161,7 +128,8 @@ jobs:
         working-directory: trellum/demo
         run: |
           set -o pipefail
-          python -m pytest ../testing -q -m "not slow" -rs \
+          python -m pytest ../testing -q -m "not slow" -rs --durations=20 \
+            --junitxml="$GITHUB_WORKSPACE/.test-results/framework.xml" \
             --cov=.. --cov-config=../.coveragerc \
             --cov-report=term --cov-report=json:/tmp/coverage.json \
             | tee /tmp/pytest.out
@@ -233,6 +201,19 @@ jobs:
             exit 1
           fi
           echo "OK: no host assumed"
+
+      - name: Summarize test outcomes and timings
+        if: always()
+        run: python .github/workflows/test_summary.py --junit .test-results/framework.xml --out-dir .test-results/ci/framework --title 'Framework tests'
+
+      - name: Keep sanitized test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: framework-test-results
+          path: .test-results/ci/framework/
+          if-no-files-found: ignore
+          retention-days: 7
 
   integration:
     # The itest harness: every driver against a real server -- containers
@@ -466,6 +447,24 @@ jobs:
           name: trellum-wheel
           path: dist/*.whl
           retention-days: 14
+
+  benchmarks:
+    name: performance benchmarks
+    needs: changes
+    if: needs.changes.outputs.benchmark == 'yes'
+    uses: ./.github/workflows/benchmarks.yml
+
+  framework-checks:
+    name: framework checks
+    needs: [changes, lint, tests, integration, package, benchmarks]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require every applicable framework check
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: python3 .github/workflows/ci_checks.py framework-gate
 
   publish:
     # DELIBERATELY MANUAL. Publishing is a release-owner action, not something

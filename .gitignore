@@ -36,6 +36,7 @@ output/
 .venv/
 .data-dev/
 .data-test/
+.test-results/
 staticfiles/
 
 # Design review artifacts (Lavish); working material, not product code.

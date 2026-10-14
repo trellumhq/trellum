@@ -207,6 +207,19 @@ def _geometry(page):
     }""")
 
 
+def _wait_for_metric_fit(page, *, chart_height=None):
+    # Fitting runs through animation frames and ResizeObserver callbacks.
+    # Wait for their visible result rather than a fixed delay under CI load.
+    page.wait_for_function("""expectedHeight => {
+        const frame = document.querySelector('#metModal iframe');
+        const doc = frame && frame.contentDocument;
+        const chart = doc && doc.querySelector('#metric-gross_revenue .fw-chart-container');
+        return chart && doc.fonts.status === 'loaded'
+            && doc.documentElement.scrollHeight - frame.clientHeight <= 2
+            && (expectedHeight === null || Math.abs(chart.getBoundingClientRect().height - expectedHeight) <= 1);
+    }""", arg=chart_height, timeout=5000)
+
+
 @pytest.mark.parametrize("size", SIZES)
 def test_metric_modal_geometry(open_metric, size):
     page, errors = open_metric(size)
@@ -267,11 +280,12 @@ def test_metric_page_retains_dates_and_split_and_overview_link(open_metric):
 
 def test_resize_reopen_disconnects_observer_and_restores_chart(open_metric):
     page, errors = open_metric()
+    _wait_for_metric_fit(page)
     initial = _geometry(page)
     original = initial["chartHeight"]
     for size in [(390, 844), (844, 390), (800, 600), (1440, 900)] * 2:
         page.set_viewport_size({"width": size[0], "height": size[1]})
-        page.wait_for_timeout(120)
+        _wait_for_metric_fit(page, chart_height=original if size == (1440, 900) else None)
         assert _geometry(page)["innerOverflow"] <= 2
     assert abs(_geometry(page)["chartHeight"] - original) <= 1
     for _ in range(3):
@@ -282,7 +296,7 @@ def test_resize_reopen_disconnects_observer_and_restores_chart(open_metric):
         assert page.locator("iframe").count() == 0
         page.locator(".met-open").click()
         page.frame_locator("iframe").locator("#metric-gross_revenue canvas").wait_for(state="visible")
-        page.wait_for_timeout(120)
+        _wait_for_metric_fit(page, chart_height=original)
         assert abs(_geometry(page)["chartHeight"] - original) <= 1, (initial, _geometry(page))
     assert errors == []
 
