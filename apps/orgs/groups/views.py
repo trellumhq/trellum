@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import BooleanField, Case, Prefetch, Q, Value, When
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -12,7 +12,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from apps.core import roles
-from apps.core.audit import audit
+from apps.core.audit import audit, audit_many
 from apps.core.choice_requests import choice_request_params
 from apps.core.form_responses import is_settings_request, settings_error, settings_success
 from apps.core.permissions import require_org_role, require_studio_role
@@ -64,17 +64,20 @@ def _save_group_access(request, group, form):
     if role == roles.VIEWER and scope == "selected" and block_reason:
         form.add_error(None, block_reason)
         return False
-    report_ids = set(form.cleaned_data["reports"].values_list("pk", flat=True))
+    # Keep the identities validated by the form. A fresh values_list() query
+    # could silently drop a report deleted before we acquire its lock.
+    report_ids = {report.pk for report in form.cleaned_data["reports"]}
     with transaction.atomic():
         group = _group_or_404(request.org, group.pk, lock=True)
         studio = get_object_or_404(
             Studio.objects.select_for_update(), org=request.org, pk=studio.pk
         )
-        locked_report_ids = set(
-            Report.objects.select_for_update()
+        locked_reports = {
+            report.pk: report for report in Report.objects.select_for_update()
             .filter(studio=studio, pk__in=report_ids)
-            .values_list("pk", flat=True)
-        )
+            .only("pk", "studio_id", "audience")
+        }
+        locked_report_ids = set(locked_reports)
         if locked_report_ids != report_ids:
             form.add_error("reports", "Selected reports changed; review and try again.")
             return False
@@ -92,6 +95,10 @@ def _save_group_access(request, group, form):
 
         if grant is None:
             grant = PermissionGroupGrant(group=group, studio=studio)
+        # Hydrate the locked relations for assignment validation without a
+        # foreign-key lookup per report. Their identity was checked above.
+        grant.group = group
+        grant.studio = studio
         grant.role = role
         grant.viewer_scope = scope if role == roles.VIEWER else "all"
         try:
@@ -118,10 +125,20 @@ def _save_group_access(request, group, form):
             report_id__in=selected_ids
         ).delete()
         try:
-            for report_id in selected_ids - old_ids:
-                ReportPermissionGrant.objects.create(grant=grant, report_id=report_id)
-        except ValidationError as exc:
-            form.add_error(None, exc)
+            additions = []
+            for report_id in sorted(selected_ids - old_ids):
+                report = locked_reports[report_id]
+                report.studio = studio
+                assignment = ReportPermissionGrant(grant=grant, report=report)
+                # Both foreign keys are validated under locks, and database
+                # constraints still enforce uniqueness. Keep the model's
+                # domain checks (including readiness and Private audience).
+                assignment.clean()
+                additions.append(assignment)
+            ReportPermissionGrant.objects.bulk_create(additions, batch_size=250)
+        except (ValidationError, IntegrityError) as exc:
+            message = exc if isinstance(exc, ValidationError) else "Selected reports changed; review and try again."
+            form.add_error(None, message)
             transaction.set_rollback(True)
             return False
         audit(
@@ -133,20 +150,14 @@ def _save_group_access(request, group, form):
             viewer_scope=grant.viewer_scope,
             report_count=len(selected_ids),
         )
-        for report_id in selected_ids - old_ids:
-            audit(
-                request,
-                "group.report_grant",
-                target=Report(pk=report_id),
-                group_id=group.pk,
-            )
-        for report_id in old_ids - selected_ids:
-            audit(
-                request,
-                "group.report_ungrant",
-                target=Report(pk=report_id),
-                group_id=group.pk,
-            )
+        audit_many(
+            request, "group.report_grant",
+            (Report(pk=pk) for pk in sorted(selected_ids - old_ids)), group_id=group.pk,
+        )
+        audit_many(
+            request, "group.report_ungrant",
+            (Report(pk=pk) for pk in sorted(old_ids - selected_ids)), group_id=group.pk,
+        )
     return True
 
 

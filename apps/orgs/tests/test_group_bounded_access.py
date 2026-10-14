@@ -246,4 +246,6 @@ def test_large_report_columns_never_transfer_for_presentation(login, org_admin, 
             # Field validation still sees the complete studio and its reports.
             form = response.context["access_rows"][0]["form"]
             assert form.fields["reports"].queryset.count() == 100
-            assert not form.fields["reports"].queryset.query.deferred_loading[0]
+            # Projected columns must not restrict valid off-page identities.
+            selected = form.fields["reports"].clean([str(reports[-2].pk)])
+            assert [row.pk for row in selected] == [reports[-2].pk]

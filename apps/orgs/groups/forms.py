@@ -63,7 +63,9 @@ class StudioAccessForm(forms.Form):
         if studio:
             self.auto_id = f"id_studio_{studio.pk}_%s"
         self.fields["reports"].queryset = (
-            Report.objects.filter(studio=studio).order_by("name", "slug")
+            Report.objects.filter(studio=studio).only(
+                "pk", "studio_id", "audience", "name", "slug", "kind", "disabled", "present_in_scan"
+            ).order_by("name", "slug")
             if studio
             else Report.objects.none()
         )
