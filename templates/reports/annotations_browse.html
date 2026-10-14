@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Annotations — {{ studio.name }}{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{% static 'annotations_browse.css' %}">
+<div class="anno-browse" data-anno-root data-anno-ready="false"
+     data-data-url="{{ data_url }}" data-filter-url="{{ filter_url }}" data-status-url="{{ status_url }}"
+     data-org="{{ org.slug }}" data-studio="{{ studio.slug }}"
+     data-view="{{ p.view|default:'list' }}" data-state="{{ ctx_filter.state|default:'' }}"
+     data-revision="{{ ctx_filter.revision|default:'' }}" data-mode="{{ ctx_filter.mode|default:'' }}">
+  <h1>Annotations</h1>
+  <p class="anno-status" data-anno-status role="status" aria-live="polite"></p>
+  {% if error %}
+  <p class="anno-banner anno-error" role="alert">{{ error.message }} <a href="{{ base }}">Reset filters</a></p>
+  {% else %}
+  {% if notice %}<p class="anno-banner" role="status">{{ notice }}</p>{% endif %}
+  {% if pending %}
+  <form method="post" action="{{ filter_url }}" class="anno-banner">{% csrf_token %}
+    <input type="hidden" name="request_key" value="{{ request_key }}">
+    <input type="hidden" name="state" value="{{ ctx_filter.state|default:'' }}">
+    <input type="hidden" name="view" value="{{ p.view }}"><input type="hidden" name="q" value="{{ p.search }}">
+    <button type="submit" name="toggle" value="{% if pending.hidden %}1{% else %}0{% endif %}:{{ pending.type }}">Apply again: {% if pending.hidden %}hide{% else %}show{% endif %} {{ pending.type }}</button>
+  </form>
+  {% endif %}
+  {% if not coverage.complete %}
+  <p class="anno-banner" data-anno-coverage>Index coverage is incomplete ({{ coverage.current }} of {{ coverage.expected }} sources current{% if coverage.retained %}, {{ coverage.retained }} showing retained history{% endif %}{% if coverage.unknown %}, {{ coverage.unknown }} not indexed yet{% endif %}). Totals describe indexed events only.</p>
+  {% endif %}
+
+  <nav class="anno-tabs" aria-label="View">
+    <a href="{{ list_link }}"{% if p.view == 'list' %} aria-current="page"{% endif %}>List</a>
+    <a href="{{ month_link }}"{% if p.view == 'month' %} aria-current="page"{% endif %}>Month</a>
+    <a href="{{ day_link }}"{% if p.view == 'day' %} aria-current="page"{% endif %}>Day</a>
+    <a href="{{ reset_link }}">Show all</a>
+    <a href="{{ defaults_link }}">Project defaults</a>
+  </nav>
+
+  <form method="get" action="{{ base }}" class="anno-search" data-anno-search>
+    <input type="hidden" name="view" value="{{ p.view }}">
+    {% if ctx_filter.state %}<input type="hidden" name="state" value="{{ ctx_filter.state }}"><input type="hidden" name="revision" value="{{ ctx_filter.revision }}">{% endif %}
+    {% if p.defaults %}<input type="hidden" name="defaults" value="1">{% endif %}
+    {% if p.scope is not None %}<input type="hidden" name="scope" value="{{ p.scope }}">{% endif %}
+    <label>Search <input type="search" name="q" value="{{ p.search }}" maxlength="200"></label>
+    <button type="submit">Search</button>
+  </form>
+
+  <div class="anno-layout">
+    <aside class="anno-facets">
+      <form method="post" action="{{ filter_url }}" data-anno-types>{% csrf_token %}
+        <input type="hidden" name="request_key" value="{{ request_key }}">
+        <input type="hidden" name="state" value="{{ ctx_filter.state|default:'' }}">
+        <input type="hidden" name="revision" value="{{ ctx_filter.revision|default:'' }}">
+        <input type="hidden" name="view" value="{{ p.view }}"><input type="hidden" name="q" value="{{ p.search }}">
+        <input type="hidden" name="month" value="{{ main.month|default:'' }}"><input type="hidden" name="date" value="{{ main.date|default:'' }}">
+        {% if p.scope is not None %}<input type="hidden" name="scope" value="{{ p.scope }}">{% endif %}
+        {% if p.defaults %}<input type="hidden" name="defaults" value="1">{% endif %}
+        <h2>Types <span class="anno-count">{{ types.total }}</span></h2>
+        <ul>
+          {% for t in types.rows %}
+          <li><button type="submit" name="toggle" value="{% if t.hidden %}0{% else %}1{% endif %}:{{ t.value }}" aria-pressed="{% if t.hidden %}false{% else %}true{% endif %}" data-type="{{ t.value }}">
+            <span class="anno-dot t-{{ t.css }}"></span>{{ t.label }} <span class="anno-count">{{ t.count }}</span> <span class="anno-state">{% if t.hidden %}hidden{% else %}shown{% endif %}</span></button></li>
+          {% empty %}<li class="anno-empty">No event types indexed.</li>{% endfor %}
+        </ul>
+      </form>
+      {% if types_next %}<a href="{{ types_next }}">More types</a>{% endif %}
+      <h2>Scope <span class="anno-count">{{ scopes.total }}</span></h2>
+      <ul data-anno-scopes>
+        <li><a href="{{ all_scopes_link }}"{% if p.scope is None %} aria-current="true"{% endif %}>All</a></li>
+        {% for s in scope_rows %}
+        <li><a href="{{ s.href }}"{% if s.selected %} aria-current="true"{% endif %}>{{ s.value|default:"(empty scope)" }} <span class="anno-count">{{ s.count }}</span></a></li>
+        {% endfor %}
+      </ul>
+      {% if scopes_next %}<a href="{{ scopes_next }}">More scopes</a>{% endif %}
+    </aside>
+
+    <section class="anno-main" data-anno-main aria-label="Events">
+      {% if p.view == 'month' %}
+      <div class="anno-monthbar"><a href="{{ month_links.previous }}">Previous month</a> <strong>{{ month_links.label }}</strong> <a href="{{ month_links.next }}">Next month</a></div>
+      <table class="anno-grid" data-anno-grid><thead><tr><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th><th>Sun</th></tr></thead>
+        <tbody>{% for week in grid_weeks %}<tr>{% for d in week %}<td{% if d.outside %} class="outside"{% endif %}><a href="{{ d.href }}"><span>{{ d.day }}</span>{% if d.count %} <b class="anno-count">{{ d.count }}</b>{% endif %}</a></td>{% endfor %}</tr>{% endfor %}</tbody></table>
+      {% endif %}
+      {% if p.view == 'day' %}<h2>{{ main.date }}</h2>{% endif %}
+      <p class="anno-total" data-anno-total>{{ main.total }} event{{ main.total|pluralize }}{% if p.view == 'month' and main.overflow %} in this grid; showing the first {{ main.rows|length }}{% endif %}</p>
+      <ol class="anno-rows" data-anno-rows>
+        {% for ev in main.rows %}
+        <li class="anno-row" data-event-id="{{ ev.id }}">
+          <span class="anno-dates">{{ ev.dates_display }}</span>
+          <span class="anno-dot t-{{ ev.type_css }}"></span><span class="anno-label">{{ ev.label }}</span>
+          <span class="anno-badge">{{ ev.scope|default:"(empty scope)" }}</span>
+          {% if ev.retained %}<span class="anno-badge">retained</span>{% endif %}
+          {% if ev.report_url %}<a href="{{ ev.report_url }}">{{ ev.source_label }}</a>{% else %}<span>{{ ev.source_label }}</span>{% endif %}
+        </li>
+        {% empty %}<li class="anno-empty" data-anno-empty>{% if coverage.complete %}No events match these filters.{% else %}No indexed events match these filters yet.{% endif %}</li>{% endfor %}
+      </ol>
+      <nav class="anno-pager" aria-label="Pages">
+        {% if p.cursor %}<a href="{{ first_link }}" rel="first">First page</a>{% endif %}
+        {% if next_link %}<a href="{{ next_link }}" rel="next" data-anno-next>Next 25</a>{% endif %}
+      </nav>
+    </section>
+  </div>
+  {% endif %}
+</div>
+<script src="{% static 'actions.js' %}" defer></script>
+<script src="{% static 'annotations_browse.js' %}" defer></script>
+{% endblock %}

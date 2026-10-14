@@ -17,7 +17,7 @@ from apps.orgs.groups import views as org_groups
 from apps.orgs.security import views as org_security
 from apps.orgs.sso import views as org_sso
 from apps.reports import livequery as report_livequery
-from apps.reports import metrics_catalog, metric_summaries, metric_workspace
+from apps.reports import annotation_http, metrics_catalog, metric_summaries, metric_workspace
 from apps.reports import views as report_views
 from apps.reports.overviews import annotations, experiments
 from apps.reports.vendor import vendor_asset
@@ -160,6 +160,10 @@ studio_patterns = [
         name="studio-assistant-from-alert",
     ),
     path("annotations", annotations.calendar_page, name="studio-annotations"),
+    path("annotations/browse", annotation_http.browse, name="studio-annotations-browse"),
+    path("annotations/data", annotation_http.data, name="studio-annotations-data"),
+    path("annotations/filter", annotation_http.filter_post, name="studio-annotations-filter"),
+    path("annotations/filter-status", annotation_http.filter_status, name="studio-annotations-filter-status"),
     # Agentic alerts (internal planning ticket #147): rules, run log, Test now.
     path("alerts", include("apps.alerts.urls")),
     # Per-studio theming (studio owns its theme; a viewer keeps a personal

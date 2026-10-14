@@ -349,3 +349,25 @@ def test_empty_or_exhausted_facet_page_keeps_exact_total(projected):
     p["event"]()
     exhausted = facet_page(events(p["studio"]), "scope", after=FacetPosition(10, "zzzz"))
     assert exhausted.total == 1 and exhausted.rows == [] and exhausted.next_after is None
+
+
+def test_defaults_mode_shown_override_wins_over_default_but_not_hidden(projected):
+    from apps.reports.models import AnnotationFilterMembership, AnnotationFilterState  # noqa: F401
+    p = projected
+    p["event"](label="c", event_type="campaign")
+    p["event"](label="r", event_type="release")
+    p["event"](label="i", event_type="incident")
+    studio = p["studio"]
+    assert event_page(events(studio, EventFilter(defaults=True), now=p["now"])).total == 2
+    from django.contrib.auth import get_user_model
+    user = get_user_model().objects.create_user(email="shown@example.com", password="pw-Str0ng-pw")
+    state = AnnotationFilterState.objects.create(
+        studio=studio, user=user, actor_fingerprint="a" * 64, client_operation_id="o", mode="defaults",
+        status="ready", revision=1, expires_at=p["now"] + timedelta(hours=1), expected_chunks=0,
+        expected_items=0, expected_chain_digest="0" * 64, rolling_digest="0" * 64)
+    AnnotationFilterMembership.objects.create(state=state, event_type="campaign", hidden=False)
+    AnnotationFilterMembership.objects.create(state=state, event_type="incident", hidden=True)
+    members = AnnotationFilterMembership.objects.filter(state=state)
+    result = events(studio, EventFilter(defaults=True, hidden_types=members.filter(hidden=True).values("event_type"),
+                                         shown_types=members.filter(hidden=False).values("event_type")), now=p["now"])
+    assert sorted(result.values_list("event_type", flat=True)) == ["campaign", "release"]

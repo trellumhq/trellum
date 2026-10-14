@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "first_party_expected": 221,
+  "first_party_expected": 225,
   "routes": [
     {
       "id": "route-000",
@@ -23753,6 +23753,270 @@
         "impersonated": {
           "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: studio-developer",
           "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[351-GET]",
+          "verification": "pending"
+        }
+      }
+    },
+    {
+      "id": "route-352",
+      "pattern": "s/<slug:org_slug>/<slug:studio_slug>/annotations/browse",
+      "name": "studio-annotations-browse",
+      "view": "apps.reports.annotation_http.browse",
+      "first_party": true,
+      "case": "C13",
+      "shard": "L2",
+      "allowed_roles": [
+        "developer",
+        "group-admin",
+        "operator",
+        "org-admin",
+        "studio-admin",
+        "viewer-full"
+      ],
+      "denied_roles": [
+        "anonymous",
+        "cross-org",
+        "group-member",
+        "group-selected",
+        "inactive",
+        "private-viewer",
+        "revoked",
+        "viewer"
+      ],
+      "role_policy": "studio-viewer",
+      "seeded_parameters": {
+        "org_slug": {
+          "value": "alpha"
+        },
+        "studio_slug": {
+          "value": "studio-0"
+        }
+      },
+      "disposition": "native with feedback",
+      "scenarios": [
+        {
+          "method": "GET",
+          "action": null,
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[352-GET]",
+          "verification": "pending"
+        }
+      ],
+      "verification": "pending",
+      "verified_node_ids": [],
+      "source_sha256": "a03c000ff4ee99bf10777ce44ddd69400b943e37424afeadfb3a742338277c2c",
+      "request_conditions": [
+        "require_full_studio_visibility: plain alpha viewer/group-member/selected denied by seeded private audience; viewer-full samples explicitly granted public-only beta studio0",
+        "alpha private-viewer explicitly granted private report remains finite-scope and is denied full-studio overviews under current semantics",
+        "Native-first bounded browser page; legacy /annotations stays until this replaces it."
+      ],
+      "adapter_sha256": "d463682c0080926c2de8857439572b6d5a4f1ef29ff8703a45ace4bdda416738",
+      "principal_parameter_overrides": {
+        "viewer-full": {
+          "org_slug": "beta"
+        }
+      },
+      "conditional_roles": {
+        "impersonated": {
+          "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: studio-viewer",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[352-GET]",
+          "verification": "pending"
+        }
+      }
+    },
+    {
+      "id": "route-353",
+      "pattern": "s/<slug:org_slug>/<slug:studio_slug>/annotations/data",
+      "name": "studio-annotations-data",
+      "view": "apps.reports.annotation_http.data",
+      "first_party": true,
+      "case": "C13",
+      "shard": "L2",
+      "allowed_roles": [
+        "developer",
+        "group-admin",
+        "operator",
+        "org-admin",
+        "studio-admin",
+        "viewer-full"
+      ],
+      "denied_roles": [
+        "anonymous",
+        "cross-org",
+        "group-member",
+        "group-selected",
+        "inactive",
+        "private-viewer",
+        "revoked",
+        "viewer"
+      ],
+      "role_policy": "studio-viewer",
+      "seeded_parameters": {
+        "org_slug": {
+          "value": "alpha"
+        },
+        "studio_slug": {
+          "value": "studio-0"
+        }
+      },
+      "disposition": "non-UI API/asset",
+      "scenarios": [
+        {
+          "method": "GET",
+          "action": null,
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[353-GET]",
+          "verification": "pending"
+        }
+      ],
+      "verification": "pending",
+      "verified_node_ids": [],
+      "source_sha256": "d69a45ca9287a06e8db825c774c25e8c93c1106a94e89871ed205e103a2842b8",
+      "request_conditions": [
+        "require_full_studio_visibility: plain alpha viewer/group-member/selected denied by seeded private audience; viewer-full samples explicitly granted public-only beta studio0",
+        "alpha private-viewer explicitly granted private report remains finite-scope and is denied full-studio overviews under current semantics",
+        "Bounded JSON read (list/month/day/types/scopes) in one repeatable-read read-only snapshot; signed cursors."
+      ],
+      "adapter_sha256": "e435f83a86285721a0ee3c2eec5bef122043d666c3d0ebfb99f8a86a792f9dfc",
+      "principal_parameter_overrides": {
+        "viewer-full": {
+          "org_slug": "beta"
+        }
+      },
+      "conditional_roles": {
+        "impersonated": {
+          "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: studio-viewer",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[353-GET]",
+          "verification": "pending"
+        }
+      }
+    },
+    {
+      "id": "route-354",
+      "pattern": "s/<slug:org_slug>/<slug:studio_slug>/annotations/filter",
+      "name": "studio-annotations-filter",
+      "view": "apps.reports.annotation_http.filter_post",
+      "first_party": true,
+      "case": "C13",
+      "shard": "L2",
+      "allowed_roles": [
+        "developer",
+        "group-admin",
+        "operator",
+        "org-admin",
+        "studio-admin",
+        "viewer-full"
+      ],
+      "denied_roles": [
+        "anonymous",
+        "cross-org",
+        "group-member",
+        "group-selected",
+        "inactive",
+        "private-viewer",
+        "revoked",
+        "viewer"
+      ],
+      "role_policy": "studio-viewer",
+      "seeded_parameters": {
+        "org_slug": {
+          "value": "alpha"
+        },
+        "studio_slug": {
+          "value": "studio-0"
+        }
+      },
+      "disposition": "non-UI API/asset",
+      "scenarios": [
+        {
+          "method": "POST",
+          "action": null,
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[354-POST]",
+          "verification": "pending"
+        }
+      ],
+      "verification": "pending",
+      "verified_node_ids": [],
+      "source_sha256": "473ccd08539afe211a144e0a1ed09545b2c751809fb5d1581dffe79c3c9d415a",
+      "request_conditions": [
+        "require_full_studio_visibility: plain alpha viewer/group-member/selected denied by seeded private audience; viewer-full samples explicitly granted public-only beta studio0",
+        "alpha private-viewer explicitly granted private report remains finite-scope and is denied full-studio overviews under current semantics",
+        "Session CSRF only: bearer/API-key state mutation is denied; JSON steps and the native toggle form."
+      ],
+      "adapter_sha256": "13dbe2bb4911ea74a9089bf9622a712d299a0a6f7597a0a27b73aef19089a24e",
+      "principal_parameter_overrides": {
+        "viewer-full": {
+          "org_slug": "beta"
+        }
+      },
+      "conditional_roles": {
+        "impersonated": {
+          "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: studio-viewer",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[354-POST]",
+          "verification": "pending"
+        }
+      }
+    },
+    {
+      "id": "route-355",
+      "pattern": "s/<slug:org_slug>/<slug:studio_slug>/annotations/filter-status",
+      "name": "studio-annotations-filter-status",
+      "view": "apps.reports.annotation_http.filter_status",
+      "first_party": true,
+      "case": "C13",
+      "shard": "L2",
+      "allowed_roles": [
+        "developer",
+        "group-admin",
+        "operator",
+        "org-admin",
+        "studio-admin",
+        "viewer-full"
+      ],
+      "denied_roles": [
+        "anonymous",
+        "cross-org",
+        "group-member",
+        "group-selected",
+        "inactive",
+        "private-viewer",
+        "revoked",
+        "viewer"
+      ],
+      "role_policy": "studio-viewer",
+      "seeded_parameters": {
+        "org_slug": {
+          "value": "alpha"
+        },
+        "studio_slug": {
+          "value": "studio-0"
+        }
+      },
+      "disposition": "non-UI API/asset",
+      "scenarios": [
+        {
+          "method": "GET",
+          "action": null,
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[355-GET]",
+          "verification": "pending"
+        }
+      ],
+      "verification": "pending",
+      "verified_node_ids": [],
+      "source_sha256": "0861651377bad02cf72d4416aaaf73f28f5a600ca5ccc4c3fe27c335e37c55cb",
+      "request_conditions": [
+        "require_full_studio_visibility: plain alpha viewer/group-member/selected denied by seeded private audience; viewer-full samples explicitly granted public-only beta studio0",
+        "alpha private-viewer explicitly granted private report remains finite-scope and is denied full-studio overviews under current semantics",
+        "Scalar read-back of one filter operation; never writes or renews state."
+      ],
+      "adapter_sha256": "671be966f189036567db31e0c9061a049704bbf65b70b57ee00c60100049f8b3",
+      "principal_parameter_overrides": {
+        "viewer-full": {
+          "org_slug": "beta"
+        }
+      },
+      "conditional_roles": {
+        "impersonated": {
+          "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: studio-viewer",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[355-GET]",
           "verification": "pending"
         }
       }
