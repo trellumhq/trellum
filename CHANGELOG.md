@@ -9,6 +9,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- Agent guide: the portal is JavaScript-first; pages, filters and pickers no
+  longer need a separate no-JavaScript mode.
 - Agent guide: performance work must keep the existing user experience
   (no paginated dropdowns, no manual retry/apply steps, reachable navigation).
 - Phone layout of console-hosted reports: the report header is one compact row

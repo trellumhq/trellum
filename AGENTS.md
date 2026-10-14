@@ -38,8 +38,7 @@ with `main` on desktop and mobile. Specifically:
 
 - Changing a dropdown, select, tab or toggle applies immediately; there is no
   Apply or Go button. Typing in a search box applies automatically after a short
-  pause (about 400 ms); there is no Search button. Any submit buttons needed
-  without JavaScript are hidden when JavaScript runs.
+  pause (about 400 ms); there is no Search button.
 - Dropdowns and pickers never paginate. Show every choice, with instant search.
   For a genuinely huge set, switch to search-as-you-type; never show
   Previous/Next pages.
@@ -62,8 +61,10 @@ Then:
    URL that the UI polls, a worker lease, and no silent re-run. Never
    automatically retry a write with an unknown outcome; show it as
    unconfirmed.
-3. **Native first.** Pages work without JavaScript. Enhanced fetches are
-   abortable, keep one request in flight per region, and reject stale
+3. **JavaScript-first.** The portal is a JavaScript application; don't build
+   or test a separate no-JavaScript mode for pages, filters, search, pickers or
+   switchers. Settings saves keep their existing real HTML forms enhanced by the
+   shared save handler. Fetches are abortable, keep one request in flight per region, and reject stale
    responses. Polling stops when the tab is hidden or the view unmounts.
 4. **Reuse shared UI.** Use the shared controls and the settings save
    contract. Don't write another per-page submit pattern or reload the

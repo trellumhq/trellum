@@ -14,8 +14,7 @@ with `main` on desktop and mobile. Specifically:
 
 - Changing a dropdown, select, tab or toggle applies immediately; there is no
   Apply or Go button. Typing in a search box applies automatically after a short
-  pause (about 400 ms); there is no Search button. Any submit buttons needed
-  without JavaScript are hidden when JavaScript runs.
+  pause (about 400 ms); there is no Search button.
 - Dropdowns and pickers never paginate. Show every choice, with instant search.
   For a genuinely huge set, switch to search-as-you-type; never show
   Previous/Next pages.
@@ -67,8 +66,9 @@ with `main` on desktop and mobile. Specifically:
 
 ## 3. Browser behavior
 
-- Pages work without JavaScript: native forms, links and server-side paging.
-  JavaScript enhances them.
+- The portal is JavaScript-first. Don't build or test a separate no-JavaScript
+  mode for pages, filters, search, pickers or switchers. Settings saves keep
+  their real HTML forms enhanced by the shared save handler.
 - Use `boundedFetch` (in `static/portal.js`) with an `AbortController`. Keep
   one request in flight per region and use a generation or currency guard so a
   stale response never overwrites newer state.
@@ -115,8 +115,8 @@ with `main` on desktop and mobile. Specifically:
 2. Anything slow, or anything that calls an external service, has a timeout
    or runs as a durable background action. Nothing auto-retries an unknown
    write.
-3. It works without JavaScript. Enhanced fetches are abortable and guarded
-   against stale responses.
+3. It feels instant: filters apply on change, search after a short pause.
+   Fetches are abortable and guarded against stale responses.
 4. Permissions come from the request access facts. New routes are added to
    `routes.json`.
 5. Default tests cover the logic plus one Chromium desktop browser check.
