@@ -124,7 +124,7 @@ def sync_studio_registry(studio) -> int:
     seen: set[str] = set()
     for entry in entries:
         # YAML timestamps are native date/datetime objects. Store their ISO
-        # representation so valid annotation dates reach JSON-backed projections.
+        # representation so the JSON config column accepts annotation dates.
         config = json.loads(json.dumps(entry.get("config") or {}, cls=DjangoJSONEncoder))
         slug = entry["slug"]
         seen.add(slug)
@@ -161,8 +161,6 @@ def sync_studio_registry(studio) -> int:
                 create_defaults={**defaults, "audience": audience},
             )
             sync_declarations(row)
-            from .annotation_projection import sync_report_declarations
-            sync_report_declarations(row)
     from django.db import transaction
     from .source_summary import invalidate_reports
 
@@ -171,8 +169,6 @@ def sync_studio_registry(studio) -> int:
         missing_ids = list(missing.values_list("pk", flat=True))
         missing.update(present_in_scan=False, last_scanned_at=now)
         invalidate_reports(missing_ids, "removed")
-        from .annotation_projection import invalidate_report_declarations
-        invalidate_report_declarations(missing_ids)
     invalidate_registry_cache(studio)
     try:
         sync_studio_metrics(studio)

@@ -32,6 +32,10 @@ from apps.core import roles
 from apps.core.permissions import require_studio_role
 from apps.core.report_access import require_full_studio_visibility
 
+#: ``safe_load`` with libyaml when it is installed: the same safe subset, about
+#: five times faster on a few thousand events.
+_SAFE_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+
 #: Soft limit: above this many merged events the template shows a warning
 #: banner. Events are never truncated — this is a "your events.yaml has
 #: grown large" nudge, not a page-breaking limit.
@@ -158,7 +162,7 @@ def load_studio_events(studio) -> tuple[list[dict], dict[str, bool], str]:
 
     try:
         raw = path.read_text(encoding="utf-8")
-        data = yaml.safe_load(raw)
+        data = yaml.load(raw, Loader=_SAFE_LOADER)
     except Exception as exc:  # noqa: BLE001 - surfaced to the page, not raised
         return [], {}, str(exc)
 

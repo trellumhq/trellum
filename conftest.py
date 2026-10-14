@@ -299,12 +299,9 @@ _DESKTOP_WIDTH = 1024
 
 # Whole tests (node id fragments) that are heavy regardless of parameters.
 _HEAVY_TESTS = (
-    "test_annotation_worker.py::AnnotationPostgresTests::test_owned_100000_events",
-    "test_annotation_projection.py::DeclarationAdmissionTests::test_100000_ordinary_events",
     "test_operations_routes.py::test_whole_request_sql_and_bytes_stay_bounded_as_reports_grow",
     "test_metric_workspace_browser.py::test_large_offpage_focused_workspace_readiness",
     "test_operator_probe_process.py::",
-    "test_annotation_filter_cleanup.py::test_sigkill_rolls_back_partial_tick",
 )
 # Integer ``size`` values above the smallest are scale cases in these modules.
 _SCALE_SIZE_MODULES = ("test_catalog_bounded.py",)

@@ -128,8 +128,6 @@ def enrich(metric_count=20, schedule_count=1, rule_count=1):
                     '    def generate(self, ctx):\n'
                     '        ctx.add_section("Fixture", [ReportMetadata(values={"Source": "Disposable fixture"})])\n'
                 )
-            from apps.reports.annotation_projection import sync_report_declarations
-            sync_report_declarations(report)
         # Exercise the real producer after both declarations and artifacts exist.
         # Request handlers must not repair missing projections during a journey.
         from apps.reports.source_summary import reconcile
@@ -167,19 +165,10 @@ def enrich(metric_count=20, schedule_count=1, rule_count=1):
     subprocess.run(['git','-C',str(source),'push','--quiet',str(remote),'main'],check=True)
     for studio in Studio.objects.all():
         from apps.runner.gitsync import studio_sync_lock
-        from apps.reports.annotation_reconciliation import authoritative_handoff, observe
-        from apps.reports.models import AnnotationSourceState
         with studio_sync_lock(studio.pk) as locked:
             if not locked:
                 raise RuntimeError('Controlled fixture checkout is locked')
             subprocess.run(['git','-C',str(studio.repo_dir),'pull','--quiet','--ff-only'],check=True)
-            sha = subprocess.check_output(['git','-C',str(studio.repo_dir),'rev-parse','HEAD'],text=True).strip()
-            authoritative_handoff(studio, sha)
-            global_source = AnnotationSourceState.objects.get(studio=studio, kind='global')
-            observe(global_source.pk)
-            global_source.refresh_from_db()
-            if global_source.status != 'ready':
-                raise RuntimeError('Controlled global annotation projection did not become ready')
     for org in Organization.objects.all():
         DataSource.objects.create(org=org,name='sample',type='file',config={'path':'sample.csv'})
         org.datasources_dir.mkdir(parents=True,exist_ok=True)
