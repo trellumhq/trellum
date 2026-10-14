@@ -20,7 +20,7 @@ from django.db import OperationalError, connection, transaction
 from django.http import HttpRequest
 from django.utils import timezone
 
-from apps.core.permissions import get_effective
+from apps.core.request_access import request_org_access
 from apps.core.request_context import actor_key
 from .models import AnnotationFilterMembership, AnnotationFilterReceipt, AnnotationFilterState
 
@@ -64,8 +64,9 @@ def context_from_request(request):
     if (user is None or not user.is_authenticated or not user.is_active or getattr(request, "api_key", None) is not None
             or studio is None or org is None or studio.org_id != org.pk or not org.is_active):
         raise PermissionDenied("filter state unavailable")
-    effective = get_effective(request, org)
-    if not effective.has_full_studio_visibility(studio):
+    # C21 request facts: the guard already resolved these for this request.
+    access = getattr(request, "org_roles", None) or request_org_access(request, org)
+    if not access.has_full_studio_visibility(studio):
         raise PermissionDenied("full studio access required")
     identity = json.dumps(actor_key(request), separators=(",", ":")).encode("utf-8")
     fingerprint = hashlib.sha256(identity).hexdigest()
@@ -430,3 +431,20 @@ def active_import(context, *, now=None):
     result = _snapshot(state)
     result["operation_id"] = state.client_operation_id
     return result
+
+
+def relations(context, token, *, revision=None, now=None):
+    """One narrow state read plus unevaluated hidden/shown relations.
+
+    ``revision=None`` means "the current ready revision" (explicit load-latest);
+    otherwise it is an exact compare. Evaluate in the same RR snapshot.
+    """
+    _context(context)
+    state = _state(context, token, _now(now))
+    if state.status != "ready":
+        raise FilterStateError("revision_conflict")
+    if revision is not None and state.revision != _counter(revision):
+        raise FilterStateError("revision_conflict")
+    base = AnnotationFilterMembership.objects.filter(state_id=state.pk)
+    return (_snapshot(state), base.filter(hidden=True).values("event_type"),
+            base.filter(hidden=False).values("event_type"))

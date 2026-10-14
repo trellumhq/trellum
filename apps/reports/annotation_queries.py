@@ -40,6 +40,9 @@ class EventFilter:
     scope: str | None = None
     defaults: bool = False
     hidden_types: QuerySet | None = field(default=None, compare=False, repr=False)
+    # Defaults mode only: types the user explicitly turned back on. Same shape
+    # as hidden_types; a shown type is still excluded if also hidden.
+    shown_types: QuerySet | None = field(default=None, compare=False, repr=False)
 
     def __post_init__(self):
         if not isinstance(self.search, str) or "\x00" in self.search or len(self.search) > 200 or len(self.search.encode()) > 800:
@@ -48,17 +51,21 @@ class EventFilter:
             raise ValueError("invalid scope")
         if not isinstance(self.defaults, bool):
             raise ValueError("invalid visibility mode")
-        if self.hidden_types is not None:
-            if not isinstance(self.hidden_types, QuerySet):
+        for relation in (self.hidden_types, self.shown_types):
+            if relation is None:
+                continue
+            if not isinstance(relation, QuerySet):
                 raise ValueError("hidden membership must be a queryset")
             # A narrow, unsliced relation is required; no eager list or multi-
             # column model queryset can accidentally become a huge SQL array.
-            query = self.hidden_types.query
+            query = relation.query
             if len(query.values_select) != 1 or query.annotation_select or query.is_sliced:
                 raise ValueError("hidden membership must select one field")
-            selected = self.hidden_types.model._meta.get_field(query.values_select[0])
+            selected = relation.model._meta.get_field(query.values_select[0])
             if not isinstance(selected, CharField):
                 raise ValueError("hidden membership must select text")
+        if self.shown_types is not None and not self.defaults:
+            raise ValueError("shown types require defaults mode")
 
 
 @dataclass(frozen=True)
@@ -157,7 +164,15 @@ def events(studio, filters=None, *, now=None, using="default"):
         qs = qs.filter(search)
     if filters.defaults:
         defaults = _defaults(using)
-        qs = qs.alias(_type_default=_TypeDefault(Subquery(defaults), F("event_type"))).filter(_type_default=True)
+        qs = qs.alias(_type_default=_TypeDefault(Subquery(defaults), F("event_type")))
+        visible = Q(_type_default=True)
+        if filters.shown_types is not None:
+            if filters.shown_types.db != using:
+                raise ValueError("shown membership must use the same database")
+            column = filters.shown_types.query.values_select[0]
+            shown = filters.shown_types.filter(**{column + "__isnull": False}).order_by()
+            visible |= Q(event_type__in=Subquery(shown))
+        qs = qs.filter(visible)
     if filters.hidden_types is not None:
         if filters.hidden_types.db != using:
             raise ValueError("hidden membership must use the same database")
