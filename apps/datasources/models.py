@@ -338,7 +338,7 @@ class UnblockRequest(models.Model):
     follows, so it survives a crash between check and walk. One row per
     binding: a newer admission resets the row, which turns any worker still
     holding an older revision into a no-op. The worker (apps/datasources/
-    unblock.py) walks one studio per step and records the cursor. It holds no
+    unblock.py) examines at most 25 reports per step and records the cursor. It holds no
     credentials and no source configuration.
     """
 
@@ -356,6 +356,8 @@ class UnblockRequest(models.Model):
     status = models.CharField(max_length=10, choices=STATUSES, default=PENDING)
     #: Last fully processed studio id (keyset cursor).
     cursor_studio_id = models.BigIntegerField(default=0)
+    #: Last report id handled in the studio after ``cursor_studio_id`` (0 = none yet).
+    cursor_report_id = models.BigIntegerField(default=0)
     queued = models.PositiveIntegerField(default=0)
     #: Claims since the last progress; a request that keeps failing is abandoned.
     attempts = models.PositiveSmallIntegerField(default=0)

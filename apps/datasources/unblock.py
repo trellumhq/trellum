@@ -3,7 +3,7 @@
 Admission (:func:`admit`) happens inside the transaction that stores a
 successful check, so it cannot be lost to a crash or a response that never
 arrives. The worker (:func:`process_next`) then walks the organization's
-studios one at a time, keeping a keyset cursor on the request row. It reuses
+studios in bounded batches of reports, keeping a keyset cursor on the request row. It reuses
 ``apps.runner.services.enqueue`` (idempotent while a run is active) for each
 eligible report, and re-validates the exact binding/declaration revision under
 the declaration->binding lock order before every enqueue. Obsolete requests
@@ -27,6 +27,8 @@ logger = logging.getLogger("trellum.unblock")
 
 LEASE_SECONDS = 60
 MAX_ATTEMPTS = 5
+#: Reports examined per worker step.
+BATCH_REPORTS = 25
 
 
 def _digest(snapshot) -> str:
@@ -42,7 +44,7 @@ def admit(binding, *, check_studio=None) -> UnblockRequest:
             "check_studio_id": getattr(check_studio, "pk", None),
             "binding_updated_at": binding.updated_at,
             "declaration_digest": _digest(getattr(binding, "_check_declaration", None)),
-            "status": UnblockRequest.PENDING, "cursor_studio_id": 0, "queued": 0,
+            "status": UnblockRequest.PENDING, "cursor_studio_id": 0, "cursor_report_id": 0, "queued": 0,
             "attempts": 0, "lease_until": None, "created_at": timezone.now(),
         },
     )
@@ -82,32 +84,42 @@ def _progress(request, **fields) -> bool:
     ).update(**fields))
 
 
-def _walk_studio(request, binding, studio) -> int:
-    from apps.datasources.status import blocked_reports, referenced_names
+def _walk_batch(request, binding, studio) -> tuple[int, int | None, bool]:
+    """Examine the next BATCH_REPORTS reports of ``studio`` after the cursor.
+    Returns ``(queued, last_report_id, studio_done)``; ``queued`` is -1 when the
+    request was superseded mid-batch."""
+    from apps.datasources.catalog import states_for
+    from apps.datasources.status import referenced_names
     from apps.reports.models import Report
     from apps.runner.services import enqueue
     from trellum.meta import read_meta
 
+    batch = list(
+        Report.objects.filter(studio=studio, present_in_scan=True, disabled=False, pk__gt=request.cursor_report_id)
+        .order_by("pk").select_related("studio")[:BATCH_REPORTS]
+    )
+    if not batch:
+        return 0, None, True
+    refs = {r.pk: referenced_names(r.config) for r in batch}
+    names = {n for v in refs.values() for n in v}
+    states = states_for(studio, names, with_usage=False) if names else {}
     queued = 0
-    reports = Report.objects.filter(
-        studio=studio, present_in_scan=True, disabled=False
-    ).exclude(slug__in=blocked_reports(studio)).select_related("studio")
-    for report in reports:
-        if binding.name not in referenced_names(report.config):
+    for report in batch:
+        if binding.name not in refs[report.pk] or any(states[n].blocking for n in refs[report.pk]):
             continue
         blocked_by = read_meta(str(studio.output_dir / report.slug)).get("blocked_by") or []
         if report.last_built_at is None or binding.name in blocked_by:
             # Only the final DB decision is locked; file reads stay outside.
             with transaction.atomic():
                 if not _is_current(request, lock=True):
-                    return -1
+                    return -1, None, True
                 if enqueue(report, trigger="manual") == "queued":
                     queued += 1
-    return queued
+    return queued, batch[-1].pk, len(batch) < BATCH_REPORTS
 
 
 def process_next(*, now=None) -> bool:
-    """Claim one admitted request and advance it by one studio. Returns whether
+    """Claim one admitted request and advance it by one report batch. Returns whether
     there was work. Safe to call from several runners."""
     from apps.studios.models import Studio
 
@@ -143,12 +155,13 @@ def process_next(*, now=None) -> bool:
     if studio is None:
         _progress(request, **finish)
         return True
-    queued = _walk_studio(request, binding, studio)
+    queued, last_report, studio_done = _walk_batch(request, binding, studio)
     if queued < 0:  # superseded mid-walk
         _progress(request, **finish)
         return True
     _progress(
-        request, cursor_studio_id=studio.pk, queued=request.queued + queued,
-        attempts=0, lease_until=None,
+        request, queued=request.queued + queued, attempts=0, lease_until=None,
+        cursor_studio_id=studio.pk if studio_done else request.cursor_studio_id,
+        cursor_report_id=0 if studio_done else last_report,
     )
     return True

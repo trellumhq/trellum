@@ -1823,7 +1823,21 @@ function _opsQueryState() {
 }
 /* One bounded page of Operations rows (+ counts, folders, first source page).
    A newer request aborts the older one so a stale page can never render. */
+var _OPS_STATUS_FIELDS = ['build_status', 'last_run', 'last_error', 'blocked_by', 'waiting', 'waiting_current', 'failing_source', 'ops_state'];
+/* A status observation newer than the request wins over the catalog's copy. */
+function _opsMergeCatalogRows(rows, previous, startRevision) {
+    var old = {};
+    (previous || []).forEach(function(r) { old[r.slug] = r; });
+    rows.forEach(function(row) {
+        var prev = old[row.slug];
+        if (!prev || !(prev._statusRev > startRevision)) return;
+        _OPS_STATUS_FIELDS.forEach(function(k) { row[k] = prev[k]; });
+        row._statusRev = prev._statusRev;
+    });
+    return rows;
+}
 function _opsFetchCatalog() {
+    var startRevision = _opsStatusRevision;
     if (_opsCatalogController) _opsCatalogController.abort();
     var controller = new AbortController();
     _opsCatalogController = controller;
@@ -1841,7 +1855,7 @@ function _opsFetchCatalog() {
             _opsCatalogController = null;
             _opsCatalog = data;
             window._opsFolders = data.folders || null;
-            reports = (data.rows || []).map(TrellumOperations.mapRow);
+            reports = _opsMergeCatalogRows((data.rows || []).map(TrellumOperations.mapRow), reports, startRevision);
             window._opsPageSlugs = reports.map(function(r) { return r.slug; });
             if (_opsPage > 1 && !reports.length && data.pagination && data.pagination.pages > 0 && _opsPage > data.pagination.pages) {
                 _opsPage = data.pagination.pages;
@@ -3083,6 +3097,10 @@ function _opsApplyStatus(status, revision, cycle) {
             var wasFinishing = !!tr.querySelector('.ops-status.finishing');
 
             if ((window._opsRunPending || {})[slug]) return;
+            if (r) {
+                r._statusRev = revision;
+                if (isRunning || isQueued) r.build_status = isRunning ? 'running' : 'queued';
+            }
 
             /* Update status cell */
             if (isRunning) {

@@ -93,11 +93,11 @@ def test_org_binding_walks_one_studio_per_step_and_resumes_after_crash(org, stud
     # Crash mid-step: lease not yet expired -> nobody else takes it; expired -> resumes at the cursor.
     UnblockRequest.objects.filter(pk=request.pk).update(lease_until=now + timedelta(seconds=30))
     assert not unblock.process_next(now=now)
-    original = unblock._walk_studio
-    monkeypatch.setattr(unblock, "_walk_studio", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("worker died")))
+    original = unblock._walk_batch
+    monkeypatch.setattr(unblock, "_walk_batch", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("worker died")))
     with pytest.raises(RuntimeError):
         unblock.process_next(now=now + timedelta(seconds=61))
-    monkeypatch.setattr(unblock, "_walk_studio", original)
+    monkeypatch.setattr(unblock, "_walk_batch", original)
     UnblockRequest.objects.filter(pk=request.pk).update(lease_until=now)
     assert drain() >= 1
     assert Run.objects.count() == 2  # no duplicate for the first studio, second one queued
@@ -133,7 +133,7 @@ def test_deleted_binding_cascades(source, studio_tree, passing):
 
 def test_poison_request_is_abandoned(source, studio_tree, passing, monkeypatch):
     check_binding(source, studio_tree)
-    monkeypatch.setattr(unblock, "_walk_studio", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("x")))
+    monkeypatch.setattr(unblock, "_walk_batch", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("x")))
     now = timezone.now()
     for i in range(unblock.MAX_ATTEMPTS):
         with pytest.raises(RuntimeError):
@@ -141,3 +141,16 @@ def test_poison_request_is_abandoned(source, studio_tree, passing, monkeypatch):
     assert unblock.process_next(now=now + timedelta(seconds=1000))
     assert UnblockRequest.objects.get(binding=source).status == UnblockRequest.DONE
     assert not Studio.objects.none()
+
+
+def test_a_step_examines_at_most_25_reports_and_resumes_from_the_cursor(source, studio_tree, passing):
+    studio_tree.ensure_dirs()
+    for i in range(60):
+        Report.objects.create(studio=studio_tree, slug=f"r{i:02d}", config={"data_sources": ["wh"]})
+    check_binding(source)
+    assert unblock.process_next()
+    request = UnblockRequest.objects.get(binding=source)
+    assert Run.objects.count() == 25 and request.queued == 25 and request.cursor_studio_id == 0
+    assert drain() >= 2
+    assert Run.objects.count() == 60
+    assert UnblockRequest.objects.get(binding=source).status == UnblockRequest.DONE
