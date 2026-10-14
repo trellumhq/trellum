@@ -221,6 +221,8 @@ def test_second_origin_workspace_is_visible_unconfirmed_retry_and_cleanup(metric
     edge = ThreadingHTTPServer(('127.0.0.1', 0), Edge)
     class Parent(BaseHTTPRequestHandler):
         def do_GET(self):
+            if self.path == '/legacy':
+                self.send_response(200); self.end_headers(); self.wfile.write(b'<h1>Legacy HTML, chart readiness unknown</h1>'); return
             if self.path == '/redirect':
                 state['redirects'] += 1
                 self.send_response(302); self.send_header('Location', f'http://127.0.0.1:{edge.server_port}/workspace'); self.end_headers(); return
@@ -244,11 +246,27 @@ def test_second_origin_workspace_is_visible_unconfirmed_retry_and_cleanup(metric
         page.get_by_role('button', name='Retry metrics').click()
         page.get_by_text('Metrics opened on another origin; chart readiness cannot be confirmed.', exact=False).wait_for()
         assert state['redirects'] == 2
+        page.evaluate('window.dispatchEvent(new PageTransitionEvent("pageshow",{persisted:true}))')
+        page.clock.fast_forward(13000)
+        assert page.locator('#metWorkspace').is_visible()
+        page.evaluate('controller.abort();cleanup();controller=new AbortController();cleanup=TrellumMetricsWorkspace.mount(document,controller.signal)')
+        page.clock.fast_forward(13000)
+        assert page.locator('#metWorkspace').is_visible()
+        assert page.get_by_text('Metrics ready.', exact=True).count() == 0
         page.evaluate('controller.abort();cleanup()')
         page.locator('#metWorkspace').evaluate("el => el.src='/redirect'")
         page.wait_for_timeout(100)
         assert page.locator('#metWorkspace').evaluate('el => el.style.height') == '700px'
         assert page.get_by_text('Metrics ready.', exact=True).count() == 0
+        page.evaluate('controller=new AbortController();document.getElementById("metWorkspace").dataset.workspaceVersion="0";cleanup=TrellumMetricsWorkspace.mount(document,controller.signal);document.getElementById("metWorkspace").src="/legacy"')
+        page.get_by_text('Metrics opened; chart readiness cannot be confirmed.', exact=False).wait_for()
+        assert page.locator('#metWorkspace').is_visible()
+        assert page.get_by_text('Metrics ready.', exact=True).count() == 0
+        page.evaluate('document.getElementById("metWorkspace").dataset.workspaceVersion="1";document.getElementById("metWorkspace").src="about:blank"')
+        page.wait_for_function('document.getElementById("metWorkspace").contentWindow.location.href === "about:blank"')
+        page.clock.fast_forward(13000)
+        assert page.locator('#metWorkspace').is_hidden()
+        assert page.get_by_role('button', name='Retry metrics').is_visible()
     finally:
         context.close()
         for server in (parent, edge): server.shutdown(); server.server_close()

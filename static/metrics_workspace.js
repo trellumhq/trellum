@@ -18,11 +18,11 @@ window.TrellumMetricsWorkspace = { mount: function (root, signal) {
         frame.src = destination.href;
     }
     var ready = new Promise(function (resolve) { resolveReady = resolve; });
-    function finish(state) {
+    function finish(state, external) {
         clearTimeout(timer); timer = null;
         if (state === 'failed') { failed = true; discardDocument(); frame.hidden = true; }
         if (status) {
-            status.textContent = state === 'ready' ? 'Metrics ready.' : state === 'unconfirmed' ? 'Metrics opened on another origin; chart readiness cannot be confirmed.' : 'Metrics unavailable.';
+            status.textContent = state === 'ready' ? 'Metrics ready.' : state === 'unconfirmed' ? (external ? 'Metrics opened on another origin; chart readiness cannot be confirmed.' : 'Metrics opened; chart readiness cannot be confirmed.') : 'Metrics unavailable.';
             if (state !== 'ready') {
                 var button = document.createElement('button'); button.type = 'button';
                 button.textContent = 'Retry metrics'; button.addEventListener('click', retry, {signal: signal});
@@ -62,17 +62,15 @@ window.TrellumMetricsWorkspace = { mount: function (root, signal) {
         var doc, child;
         try {
             doc = frame.contentDocument; child = frame.contentWindow;
-            if (!doc && event && event.type === 'load') {
-                frame.style.height = '700px'; finish('unconfirmed'); return;
-            }
-            if (!doc || !doc.body || child.location.href === 'about:blank') {
+            var href = child && child.location.href;
+            if (!doc || !doc.body || !href || href === 'about:blank') {
                 var waiting = epoch;
                 timer = setTimeout(function() { if (waiting === epoch && !signal.aborted) finish('failed'); }, 12000);
                 return;
             }
         } catch (error) {
-            if (event && event.type === 'load') { frame.style.height = '700px'; finish('unconfirmed'); }
-            else { var waiting = epoch; timer = setTimeout(function() { if (waiting === epoch && !signal.aborted) finish('failed'); }, 12000); }
+            if (child && error.name === 'SecurityError') { frame.style.height = '700px'; finish('unconfirmed', true); }
+            else finish('failed');
             return;
         }
         var current = epoch;
@@ -94,7 +92,7 @@ window.TrellumMetricsWorkspace = { mount: function (root, signal) {
             if (signal.aborted || current !== epoch || frame.contentDocument !== doc) return;
             var state = child._fwWorkspaceState;
             if (state === 'ready' || state === 'failed') { fit(); finish(state); return; }
-            if (frame.dataset.workspaceVersion === '0') { finish('ready'); return; }
+            if (frame.dataset.workspaceVersion === '0') { finish('unconfirmed'); return; }
             if (performance.now() >= deadline) { finish('failed'); return; }
             clearTimeout(timer); timer = setTimeout(check, 25);
         }
