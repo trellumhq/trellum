@@ -221,6 +221,7 @@ class AssistantConfigForm(forms.ModelForm):
 
 
 class InviteForm(forms.Form):
+    send_email = forms.BooleanField(required=False, initial=True, label="Send invitation by email")
     email = forms.EmailField()
     org_role = forms.ChoiceField(choices=roles.ORG_ROLE_CHOICES, initial=roles.ORG_MEMBER)
     groups = forms.ModelMultipleChoiceField(
@@ -228,9 +229,12 @@ class InviteForm(forms.Form):
         widget=forms.CheckboxSelectMultiple,
     )
 
-    def __init__(self, *args, org: Organization, **kwargs):
+    def __init__(self, *args, org: Organization, email_available=True, **kwargs):
         super().__init__(*args, **kwargs)
         self.org = org
+        self.fields["send_email"].disabled = not email_available
+        if not email_available:
+            self.fields["send_email"].initial = False
         self.fields["groups"].queryset = org.permission_groups.order_by("name")
         # One role choice per studio: applied as direct StudioMemberships
         # the moment the invitation is accepted.

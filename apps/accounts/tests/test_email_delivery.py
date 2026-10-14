@@ -36,7 +36,7 @@ def test_invitation_and_password_reset_use_selected_api_sender(login, org_admin,
     with patch("apps.core.mail.build_api_backend", return_value=backend) as builder:
         client = login(org_admin)
         response = client.post(f"/orgs/{org.slug}/settings/invites",
-                               {"email": "new@example.com", "org_role": "member"})
+                               {"email": "new@example.com", "org_role": "member", "send_email": "on"})
         assert response.status_code == 200
         client.logout()
         reset = client.post("/password-reset/", {"email": member.email})

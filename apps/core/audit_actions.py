@@ -123,6 +123,7 @@ ACTIONS: dict[str, ActionSpec] = {
 
     # ── authz ───────────────────────────────────────────────────────────
     "member.invite": _m(CATEGORY_AUTHZ, "Member invited"),
+    "member.invite_resend": _m(CATEGORY_AUTHZ, "Invitation email requested again"),
     "member.invite_revoke": _m(CATEGORY_AUTHZ, "Invitation revoked"),
     "member.join": _m(CATEGORY_AUTHZ, "Member joined"),
     "member.set_role": _m(CATEGORY_AUTHZ, "Org role changed"),
