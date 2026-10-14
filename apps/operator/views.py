@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from django.conf import settings
 from django.contrib import messages
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Sum
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
@@ -18,8 +18,9 @@ from apps.core import impersonation
 from apps.core.audit import audit
 from apps.core.form_responses import is_settings_request, settings_error, settings_success
 from apps.core.permissions import require_operator
-from apps.orgs import quotas as quota_service
+from apps.operator import bounded
 from apps.orgs.models import Organization, OrgMembership, OrgQuota
+from apps.reports.models import Report
 from apps.runner.models import Run, WorkerHeartbeat
 from apps.studios.models import POOL_CHOICES, Studio
 
@@ -33,7 +34,31 @@ def _shell(extra: dict) -> dict:
 @require_operator
 def fleet(request):
     """Instance-wide health: workers, queue depth, recent failures."""
-    workers = list(WorkerHeartbeat.alive().order_by("role", "worker_id"))
+    worker_q = bounded.search(request.GET, "worker_q")
+    worker_role = bounded.choice(request.GET, "worker_role", dict(WorkerHeartbeat.ROLE_CHOICES))
+    cutoff = timezone.now() - timezone.timedelta(seconds=60)
+    alive = WorkerHeartbeat.objects.filter(last_beat_at__gte=cutoff)
+    runners = Q(role__in=(WorkerHeartbeat.ROLE_ALL, WorkerHeartbeat.ROLE_RUNNER))
+    coordinators = Q(role__in=(WorkerHeartbeat.ROLE_ALL, WorkerHeartbeat.ROLE_COORDINATOR))
+    worker_totals = alive.aggregate(
+        total=Count("pk"), runners=Count("pk", filter=runners),
+        coordinators=Count("pk", filter=coordinators),
+        running=Sum("running_count", filter=runners, default=0),
+        capacity=Sum("max_concurrent", filter=runners, default=0),
+        reserved_memory=Sum("reserved_memory_mb", filter=runners, default=0),
+        memory_budget=Sum("memory_budget_mb", filter=runners, default=0),
+    )
+    workers = alive
+    if worker_q:
+        workers = workers.filter(worker_id__icontains=worker_q)
+    if worker_role:
+        workers = workers.filter(role=worker_role)
+    worker_page = bounded.paginate(
+        workers.only("id", "worker_id", "role", "running_count", "max_concurrent",
+                     "memory_budget_mb", "reserved_memory_mb", "last_beat_at")
+        .order_by("role", "worker_id", "pk"), request.GET,
+        name="worker_page", total=worker_totals["total"],
+    )
     queue = Run.objects.filter(status=Run.QUEUED).count()
     running = Run.objects.filter(status__in=(Run.STARTING, Run.RUNNING)).count()
 
@@ -48,12 +73,16 @@ def fleet(request):
             status__in=(Run.ERROR, Run.OOM_KILLED, Run.TIMEOUT), created_at__gte=since
         )
         .select_related("studio", "studio__org")
-        .order_by("-created_at")[:20]
+        .only("id", "created_at", "slug", "status", "peak_memory_mb",
+              "studio__id", "studio__slug", "studio__org__id", "studio__org__slug")
+        .order_by("-created_at", "-pk")[:20]
     )
     heaviest = (
         Run.objects.filter(peak_memory_mb__isnull=False, created_at__gte=since)
         .select_related("studio", "studio__org")
-        .order_by("-peak_memory_mb")[:10]
+        .only("id", "slug", "memory_limit_mb", "peak_memory_mb",
+              "studio__id", "studio__slug", "studio__org__id", "studio__org__slug")
+        .order_by("-peak_memory_mb", "-pk")[:10]
     )
 
     return render(
@@ -61,7 +90,12 @@ def fleet(request):
         "operator/fleet.html",
         _shell(
             {
-                "workers": workers,
+                "workers": worker_page["page"],
+                "worker_page": worker_page,
+                "worker_totals": worker_totals,
+                "worker_q": worker_q,
+                "worker_role": worker_role,
+                "worker_roles": WorkerHeartbeat.ROLE_CHOICES,
                 "queue_depth": queue,
                 "running": running,
                 "by_status": by_status,
@@ -75,40 +109,80 @@ def fleet(request):
 @require_operator
 def orgs(request):
     """Every organization, with the numbers that matter for support."""
-    rows = (
-        Organization.objects.annotate(
-            studio_count=Count("studios", distinct=True),
-            member_count=Count("memberships", distinct=True),
-        )
-        .order_by("slug")
-        .prefetch_related("quota")
+    q = bounded.search(request.GET)
+    state = bounded.choice(request.GET, "state", ("active", "suspended"))
+    base = Organization.objects.all()
+    rows = base
+    if q:
+        rows = rows.filter(Q(slug__icontains=q) | Q(name__icontains=q))
+    if state:
+        rows = rows.filter(is_active=state == "active")
+    listing = bounded.paginate(
+        rows.only("id", "slug", "name", "is_active").order_by("slug", "pk"),
+        request.GET, total=base.count() if q or state else None,
     )
+    ids = [org.pk for org in listing["page"]]
+    studio_counts = dict(Studio.objects.filter(org_id__in=ids)
+                         .values("org_id").annotate(n=Count("pk")).values_list("org_id", "n"))
+    member_counts = dict(OrgMembership.objects.filter(org_id__in=ids)
+                         .values("org_id").annotate(n=Count("pk")).values_list("org_id", "n"))
     active = {
         row["studio__org_id"]: row["n"]
-        for row in Run.objects.filter(status__in=(Run.STARTING, Run.RUNNING))
+        for row in Run.objects.filter(studio__org_id__in=ids, status__in=(Run.STARTING, Run.RUNNING))
         .values("studio__org_id")
         .annotate(n=Count("id"))
     }
-    for org in rows:
+    for org in listing["page"]:
+        org.studio_count = studio_counts.get(org.pk, 0)
+        org.member_count = member_counts.get(org.pk, 0)
         org.active_runs = active.get(org.pk, 0)
-    return render(request, "operator/orgs.html", _shell({"orgs": rows}))
+    return render(request, "operator/orgs.html", _shell({
+        "orgs": listing["page"], "org_page": listing, "q": q, "state": state,
+    }))
 
 
 @require_operator
 def org_detail(request, org_slug):
     org = get_object_or_404(Organization, slug=org_slug)
-    studios = Studio.objects.filter(org=org).annotate(
-        report_count=Count("reports", filter=Q(reports__present_in_scan=True))
+    from apps.core import operator_observations as observations
+    usage_operation = observations.current_operation("upload-usage", org.pk)
+    if request.GET.get("usage_observation"):
+        try:
+            usage_operation = observations.observation(request.GET["usage_observation"], kind="upload-usage", org_id=org.pk)
+        except observations.ObservationError:
+            pass
+    studio_q = bounded.search(request.GET, "studio_q")
+    member_q = bounded.search(request.GET, "member_q")
+    studios = Studio.objects.filter(org=org)
+    studio_total = studios.count() if studio_q else None
+    if studio_q:
+        studios = studios.filter(Q(slug__icontains=studio_q) | Q(name__icontains=studio_q))
+    studio_page = bounded.paginate(
+        studios.only("id", "slug", "name", "pool").order_by("slug", "pk"),
+        request.GET, name="studio_page", total=studio_total,
     )
-    members = (
-        OrgMembership.objects.filter(org=org)
+    studio_ids = [studio.pk for studio in studio_page["page"]]
+    report_counts = dict(Report.objects.filter(studio_id__in=studio_ids, present_in_scan=True)
+                         .values("studio_id").annotate(n=Count("pk")).values_list("studio_id", "n"))
+    for studio in studio_page["page"]:
+        studio.report_count = report_counts.get(studio.pk, 0)
+    members = OrgMembership.objects.filter(org=org)
+    member_total = members.count() if member_q else None
+    if member_q:
+        members = members.filter(Q(user__email__icontains=member_q) | Q(user__name__icontains=member_q))
+    member_page = bounded.paginate(
+        members
         .select_related("user")
-        .order_by("user__email")
+        .only("id", "user_id", "role", "user__id", "user__email",
+              "user__is_operator_flag", "user__is_superuser")
+        .order_by("user__email", "pk"),
+        request.GET, name="member_page", total=member_total,
     )
     recent = (
         Run.objects.filter(studio__org=org)
         .select_related("studio")
-        .order_by("-created_at")[:20]
+        .only("id", "created_at", "slug", "status", "peak_memory_mb", "studio__id", "studio__slug")
+        .order_by("-created_at", "-pk")[:20]
     )
     quota = OrgQuota.objects.filter(org=org).first()
     quota_fields = (
@@ -132,10 +206,18 @@ def org_detail(request, org_slug):
         _shell(
             {
                 "org": org,
-                "studios": studios,
-                "members": members,
+                "studios": studio_page["page"],
+                "members": member_page["page"],
+                "studio_page": studio_page,
+                "member_page": member_page,
+                "studio_q": studio_q,
+                "member_q": member_q,
+                "studio_preserved": bounded.preserved(request.GET, ("member_q", "member_page")),
+                "member_preserved": bounded.preserved(request.GET, ("studio_q", "studio_page")),
                 "recent_runs": recent,
-                "usage": quota_service.usage_state(org),
+                "usage": bounded.usage(org, quota),
+                "usage_nonce": observations.nonce(request.user.pk, "upload-usage", org.pk),
+                "usage_operation": usage_operation,
                 "quota": quota,
                 "quota_values": quota_values,
                 "quota_errors": getattr(request, "quota_errors", {}),
@@ -145,6 +227,55 @@ def org_detail(request, org_slug):
             }
         ),
     )
+
+
+@require_operator
+@require_POST
+def org_usage_refresh(request, org_slug):
+    from django.db import transaction
+    from django.http import Http404, JsonResponse
+    from django.urls import reverse
+    from apps.core import operator_observations as observations
+    if impersonation.is_impersonating(request):
+        raise Http404
+    org = get_object_or_404(Organization, slug=org_slug)
+    json_request = "application/json" in request.headers.get("Accept", "")
+    try:
+        with transaction.atomic():
+            entry, created = observations.admit(request.user.pk, "upload-usage", request.POST.get("request_key", ""), org_id=org.pk)
+            if created:
+                audit(request, "operator.usage.refresh", org=org, operation_id=entry["id"])
+    except observations.ObservationError as exc:
+        if json_request:
+            return JsonResponse({"ok": False, "message": exc.message, "busy": exc.busy}, status=exc.status)
+        messages.error(request, exc.message)
+        return redirect("operator-org-detail", org_slug=org.slug)
+    if json_request:
+        response = JsonResponse({"ok": True, **observations.envelope(entry, reverse("operator-org-usage-status", args=[org.slug, entry["id"]]))}, status=202 if created else 200)
+        response["Cache-Control"] = "no-store"
+        return response
+    return redirect(reverse("operator-org-detail", args=[org.slug]) + "?usage_observation=" + entry["id"])
+
+
+@require_operator
+def org_usage_status(request, org_slug, operation_id):
+    from django.http import Http404, HttpResponseNotAllowed, JsonResponse
+    from django.urls import reverse
+    from apps.core import operator_observations as observations
+    if impersonation.is_impersonating(request):
+        raise Http404
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET"])
+    org = get_object_or_404(Organization, slug=org_slug)
+    try:
+        entry = observations.observation(operation_id, kind="upload-usage", org_id=org.pk)
+    except observations.ObservationError as exc:
+        return JsonResponse({"message": exc.message}, status=exc.status)
+    response = JsonResponse({**observations.envelope(entry, reverse("operator-org-usage-status", args=[org.slug, operation_id])),
+                             "snapshot": observations.snapshot("upload-usage", org.pk),
+                             "next_nonce": observations.nonce(request.user.pk, "upload-usage", org.pk) if entry["state"] in observations.TERMINAL else None})
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 @require_operator

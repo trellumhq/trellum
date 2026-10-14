@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load docs %}
+{% load docs static %}
 {% block title %}System health — trellum{% endblock %}
 {% block content %}
 <header class="page-head-row">
@@ -12,8 +12,8 @@
   <a class="ui-btn ghost" href="{% url 'instance-settings' %}">Instance settings</a>
   {% if user.is_superuser %}<a class="ui-btn ghost" href="/orgs/new">+ New organization</a>{% endif %}
 </header>
-<p class="muted">Instance-level view for the operator. Same checks as
-<code>manage.py doctor</code>.
+<p class="muted">Last-known coordinator diagnostics. Web-local mounts, permissions
+and configuration remain unverified; run <code>manage.py doctor</code> in the web service to check them.
 {% comment %}A dev checkout has no build metadata, and printing
 "unknown@unknown · built unknown" reads like a fault rather than an absence.{% endcomment %}
 Version: <code>{{ version.version }}</code>
@@ -36,20 +36,27 @@ them.{% endcomment %}
 </p>
 {% endif %}
 
-<div class="panel">
+<section class="panel" data-operator-observation data-observation-kind="full-health"{% if probe_operation %} data-observation-url="{% url 'system-diagnostics-status' probe_operation.id %}" data-observation-id="{{ probe_operation.id }}"{% endif %}>
+<p data-observation-status role="status" aria-live="polite">{% if probe_operation %}{{ probe_operation.message }}{% else %}{{ diagnostic.message }}{% endif %}</p>
+<p class="muted" data-observation-age>{% if diagnostic.completed_at %}Observed {{ diagnostic.completed_at }} on coordinator {{ diagnostic.producer_node }} · {{ diagnostic.state }}{% endif %}</p>
+<form method="post" action="{% url 'system-diagnostics-refresh' %}" data-observation-refresh data-settings-form>
+  {% csrf_token %}<input type="hidden" name="request_key" value="{{ probe_nonce }}">
+  <div class="ui-form-actions"><button type="submit" class="ui-btn ghost">Refresh coordinator diagnostics</button><a class="ui-btn ghost" href="{% url 'system' %}">Read latest observation</a></div>
+</form>
 <table class="ui-table" data-mobile-cards>
   <thead><tr><th>Check</th><th>Status</th><th>Detail</th></tr></thead>
-  <tbody>
+  <tbody data-observation-checks>
   {% for c in checks %}
   <tr>
     <td data-label="Check"><strong>{{ c.label }}</strong></td>
     <td data-label="Status">{% if c.ok %}<span class="ui-badge ok">ok</span>{% else %}<span class="ui-badge fail">FAIL</span>{% endif %}</td>
     <td data-label="Detail" class="muted">{{ c.detail }}</td>
   </tr>
+  {% empty %}<tr><td colspan="3">Diagnostics are unknown until a coordinator measurement completes.</td></tr>
   {% endfor %}
   </tbody>
 </table>
-</div>
+</section>
 
 {% comment %}Present only when the opt-in check has ever succeeded. Off, or a
 feed that never answered, means no section at all -- not an empty one.{% endcomment %}
@@ -88,4 +95,6 @@ feed that never answered, means no section at all -- not an empty one.{% endcomm
 <div class="panel">
   <p style="margin:0">Workers and build execution: <a href="{% url 'operator-fleet' %}">Open Fleet</a>.</p>
 </div>
+<script src="{% static 'actions.js' %}" defer></script>
+<script src="{% static 'operator-observations.js' %}" defer></script>
 {% endblock %}

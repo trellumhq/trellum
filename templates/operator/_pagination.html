@@ -1,0 +1,5 @@
+<nav class="ui-form-actions" aria-label="{{ label }} pages">
+  <span class="muted">{{ listing.matching }} matching · {{ listing.total }} total · Page {{ listing.page.number }} of {{ listing.page.paginator.num_pages }}</span>
+  {% if listing.previous %}<a class="ui-btn ghost" href="{{ listing.previous }}">Previous {{ label|lower }}</a>{% endif %}
+  {% if listing.next %}<a class="ui-btn ghost" href="{{ listing.next }}">Next {{ label|lower }}</a>{% endif %}
+</nav>

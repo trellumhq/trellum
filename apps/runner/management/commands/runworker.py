@@ -71,6 +71,10 @@ class Command(BaseCommand):
         is_coordinator = role in (ROLE_ALL, ROLE_COORDINATOR)
         is_runner = role in (ROLE_ALL, ROLE_RUNNER)
 
+        from apps.core.workspace import initialize_workspace_identity
+
+        initialize_workspace_identity()
+
         worker_id = f"{socket.gethostname()}-{os.getpid()}"
         shutdown = threading.Event()
 
@@ -548,6 +552,13 @@ class _SchedulerManager:
 
         self._scheduler.add_listener(_on_event, EVENT_JOB_ERROR | EVENT_JOB_MISSED)
         self._scheduler.start()
+        from apps.core.operator_probe_worker import ProbeSupervisor
+
+        self._operator_probes = ProbeSupervisor(f"{socket.gethostname()}-{os.getpid()}")
+        self._scheduler.add_job(
+            self._operator_probes.tick, "interval", seconds=5, id="operator-probe",
+            replace_existing=True, coalesce=True, max_instances=1, misfire_grace_time=5,
+        )
         self._schedule_cleanup()
         self._schedule_update_check()
         self.refresh()
@@ -658,6 +669,8 @@ class _SchedulerManager:
 
         current = {job.id: job for job in self._scheduler.get_jobs()}
         for job_id in current:
+            if job_id == "operator-probe":
+                continue
             if job_id not in desired:
                 self._scheduler.remove_job(job_id)
         for job_id, (obj_id, cron_or_schedule, tz_name) in desired.items():
@@ -706,6 +719,9 @@ class _SchedulerManager:
 
     def shutdown(self) -> None:
         if self._scheduler:
+            probes = getattr(self, "_operator_probes", None)
+            if probes is not None:
+                probes.stop()
             self._scheduler.shutdown(wait=False)
             self._scheduler = None
 

@@ -220,6 +220,8 @@ ACTIONS: dict[str, ActionSpec] = {
     "run.enqueue_all": _m(CATEGORY_SYSTEM, "All reports queued"),
     "run.stop_all": _m(CATEGORY_SYSTEM, "All runs stopped"),
     "cache.clear": _m(CATEGORY_SYSTEM, "Cache cleared"),
+    "operator.diagnostics.refresh": _m(CATEGORY_SYSTEM, "Coordinator diagnostics requested"),
+    "operator.usage.refresh": _m(CATEGORY_SYSTEM, "Organization storage observation requested"),
     "git.sync_now": _m(CATEGORY_SYSTEM, "Repository sync requested"),
     "git.check": _m(CATEGORY_SYSTEM, "Repository check requested"),
     "git.publish": _m(CATEGORY_SYSTEM, "Repository publish requested"),
