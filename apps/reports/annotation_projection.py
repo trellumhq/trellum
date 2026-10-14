@@ -225,6 +225,7 @@ def _publish(source, catalog, result, *, error=""):
         source.indexed_at = now
         if source.kind == "global":
             catalog.type_defaults = result.defaults
+    source.attempted_schema_version = SCHEMA_VERSION
     source.digest = result.digest
     source.status = result.status
     source.error_code = error

@@ -383,6 +383,11 @@ class AnnotationPostgresTests(TransactionTestCase):
         self.assertEqual((source.status, source.error_code), ("oversized", "oversized"))
         self.assertGreater(AnnotationCatalogState.objects.get(studio=self.studio).revision, previous)
         self.assertFalse(AnnotationEvent.objects.filter(source=source).exists())
+        worker = AnnotationThread(["standard"])
+        for _ in range(4):
+            worker.batch()
+        source.refresh_from_db()
+        self.assertEqual(source.failures, 1)
 
     def test_removed_report_is_not_backfilled(self):
         report = Report.objects.create(studio=self.studio, slug="removed", name="Removed", present_in_scan=False, config={"annotations": {"events": [{"date": "2020-01-01"}]}})
@@ -481,7 +486,7 @@ class AnnotationPostgresTests(TransactionTestCase):
         from apps.reports.annotation_projection import SCHEMA_VERSION
         report = Report.objects.create(studio=self.studio, slug="version", name="Version", config={"annotations": {"events": [{"date": "2020-01-01"}]}})
         sync_report_declarations(report)
-        AnnotationSourceState.objects.filter(report=report).update(schema_version=SCHEMA_VERSION + 1)
+        AnnotationSourceState.objects.filter(report=report).update(schema_version=SCHEMA_VERSION + 1, attempted_schema_version=SCHEMA_VERSION + 1)
         backfill_reports()
         self.assertEqual(AnnotationSourceState.objects.get(report=report).schema_version, SCHEMA_VERSION)
 
@@ -564,3 +569,72 @@ class AnnotationPostgresTests(TransactionTestCase):
         with patch("apps.reports.annotation_projection.sync_report_declarations", side_effect=RuntimeError("injected projection failure")), self.assertRaises(RuntimeError):
             sync_studio_registry(self.studio)
         self.assertFalse(Report.objects.filter(studio=self.studio, slug="atomic").exists())
+
+
+    def test_failed_legacy_backfill_obeys_backoff_without_starving_good_report(self):
+        from apps.reports.annotation_projection import SCHEMA_VERSION
+        bad = Report.objects.create(studio=self.studio, slug="bad-legacy", name="Bad legacy", config={"annotations": {"events": {}}})
+        good = Report.objects.create(studio=self.studio, slug="good-legacy", name="Good legacy", config={"annotations": {"events": [{"date": "2020-01-01", "label": "good"}]}})
+        worker = AnnotationThread(["standard"])
+        worker.batch()
+        bad_source = AnnotationSourceState.objects.get(report=bad)
+        self.assertEqual((bad_source.status, bad_source.failures), ("parse-error", 1))
+        self.assertEqual(bad_source.schema_version, 0)
+        self.assertEqual(bad_source.attempted_schema_version, SCHEMA_VERSION)
+        worker.batch()
+        self.assertEqual(AnnotationEvent.objects.get(source__report=good).label, "good")
+        for _ in range(5):
+            worker.batch()
+        bad_source.refresh_from_db()
+        self.assertEqual(bad_source.failures, 1)
+        # Once due, exactly one admitted retry advances the bounded backoff.
+        AnnotationSourceState.objects.filter(pk=bad_source.pk).update(next_check_at=timezone.now() - timedelta(seconds=1))
+        worker.report_cursor = 0
+        worker.batch()
+        bad_source.refresh_from_db()
+        self.assertEqual(bad_source.failures, 2)
+        self.assertGreater(bad_source.next_check_at, timezone.now() + timedelta(seconds=100))
+        worker.report_cursor = 0
+        worker.batch()
+        bad_source.refresh_from_db()
+        self.assertEqual(bad_source.failures, 2)
+
+    def test_new_parser_version_retries_failure_without_claiming_last_success(self):
+        from apps.reports.annotation_projection import SCHEMA_VERSION
+        report = Report.objects.create(studio=self.studio, slug="old-attempt", name="Old attempt", config={"annotations": []})
+        sync_report_declarations(report)
+        source = AnnotationSourceState.objects.get(report=report)
+        self.assertEqual(source.schema_version, 0)
+        AnnotationSourceState.objects.filter(pk=source.pk).update(attempted_schema_version=SCHEMA_VERSION + 1, next_check_at=timezone.now() + timedelta(hours=1))
+        backfill_reports()
+        source.refresh_from_db()
+        self.assertEqual(source.attempted_schema_version, SCHEMA_VERSION)
+        self.assertEqual(source.schema_version, 0)
+        self.assertEqual(source.failures, 2)
+
+    def test_explicit_scan_change_ignores_background_retry_backoff(self):
+        report = Report.objects.create(studio=self.studio, slug="explicit-change", name="Explicit change", config={"annotations": []})
+        sync_report_declarations(report)
+        source = AnnotationSourceState.objects.get(report=report)
+        self.assertGreater(source.next_check_at, timezone.now())
+        report.config = {"annotations": {"events": [{"date": "2020-01-01", "label": "fixed"}]}}
+        report.save(update_fields=["config"])
+        sync_report_declarations(report)
+        source.refresh_from_db()
+        self.assertEqual((source.status, source.failures), ("ready", 0))
+        self.assertEqual(AnnotationEvent.objects.get(source=source).label, "fixed")
+
+    def test_corrupt_workspace_marker_does_not_block_db_report_backfill(self):
+        report = Report.objects.create(studio=self.studio, slug="db-only", name="DB only", config={"annotations": {"events": [{"date": "2020-01-01", "label": "canonical"}]}})
+        original_owner = self.source_state().owner_workspace_id
+        (self.root_a / ".annotation-workspace").write_text("corrupt")
+        self.write("must-not-observe")
+        AnnotationSourceState.objects.filter(pk=self.source.pk).update(next_check_at=timezone.now())
+        worker = AnnotationThread(["standard"])
+        with patch("apps.reports.annotation_reconciliation.proven_git_upgrade") as upgrade, patch("apps.reports.annotation_reconciliation.observe") as global_observe:
+            worker.batch()
+        upgrade.assert_not_called()
+        global_observe.assert_not_called()
+        self.assertEqual(AnnotationEvent.objects.get(source__report=report).label, "canonical")
+        self.assertEqual(self.source_state().owner_workspace_id, original_owner)
+        self.assertEqual(self.labels(), ["first"])
