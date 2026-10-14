@@ -163,13 +163,19 @@ def test_analytics_gunicorn_native_enhanced_devices_roles(analytics_server, engi
                         page.evaluate("""() => {
                           window.addEventListener('click', () => {
                             const started = performance.now();
+                            const panel = document.querySelector('[data-console-native-pending]');
+                            const style = panel && getComputedStyle(panel);
+                            const snapshot = {
+                              milliseconds:performance.now()-started,
+                              visible:!!(panel && panel.getClientRects().length && style.display !== 'none' && style.visibility !== 'hidden'),
+                              text:panel ? panel.textContent : '',
+                              animation_frame_observed:false
+                            };
+                            sessionStorage.setItem('analyticsSidebarFeedback', JSON.stringify(snapshot));
                             requestAnimationFrame(() => {
-                              const panel = document.querySelector('[data-console-native-pending]');
-                              sessionStorage.setItem('analyticsSidebarFeedback', JSON.stringify({
-                                milliseconds:performance.now()-started,
-                                visible:!!(panel && panel.getClientRects().length),
-                                text:panel ? panel.textContent : ''
-                              }));
+                              snapshot.animation_frame_observed = true;
+                              snapshot.animation_frame_milliseconds = performance.now()-started;
+                              sessionStorage.setItem('analyticsSidebarFeedback', JSON.stringify(snapshot));
                             });
                           }, {once:true});
                         }""")
@@ -179,7 +185,7 @@ def test_analytics_gunicorn_native_enhanced_devices_roles(analytics_server, engi
                         sidebar_feedback = json.loads(page.evaluate("sessionStorage.getItem('analyticsSidebarFeedback')"))
                         assert sidebar_feedback["visible"] and "Opening Report Analytics…" in sidebar_feedback["text"]
                         assert sidebar_feedback["milliseconds"] < 100
-                        timings[-1]["sidebar_pending_feedback"] = sidebar_feedback
+                        timings[-1]["sidebar_dom_pending_feedback"] = sidebar_feedback
                         timings[-1]["sidebar_to_analytics_rows_seconds"] = time.perf_counter()-started
                     page.goto(server["origin"]+server["empty"])
                     expect(page.locator(".ui-empty")).to_contain_text("No reports in this studio.")
