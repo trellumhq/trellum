@@ -158,19 +158,32 @@ def load_studio_events(studio) -> tuple[list[dict], dict[str, bool], str]:
 
     try:
         raw = path.read_text(encoding="utf-8")
-        data = yaml.safe_load(raw) or {}
+        data = yaml.safe_load(raw)
     except Exception as exc:  # noqa: BLE001 - surfaced to the page, not raised
         return [], {}, str(exc)
 
+    if data is None:
+        data = {}
     if not isinstance(data, dict):
         return [], {}, "events.yaml must be a mapping with an `events:` list"
 
+    defaults = data.get("type_defaults")
+    if defaults is None:
+        defaults = {}
+    if not isinstance(defaults, dict):
+        return [], {}, "events.yaml `type_defaults` must be a mapping"
+    source_events = data.get("events")
+    if source_events is None:
+        source_events = []
+    if not isinstance(source_events, list):
+        return [], {}, "events.yaml `events` must be a list"
+
     type_defaults: dict[str, bool] = {}
-    for key, val in (data.get("type_defaults") or {}).items():
+    for key, val in defaults.items():
         type_defaults[str(key)] = bool(val)
 
     events: list[dict] = []
-    for raw_event in data.get("events") or []:
+    for raw_event in source_events:
         if not isinstance(raw_event, dict):
             continue
         date_iso = _normalize_date(raw_event.get("date"))
