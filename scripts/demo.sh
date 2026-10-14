@@ -233,9 +233,9 @@ $(if [ "$DEV_LOGIN" = "1" ]; then
   BASE="$(grep -E '^PORTAL_BASE_URL=' "$ENV_FILE" | cut -d= -f2-)"
   BASE="${BASE:-http://localhost:${PORT}}"
   printf 'Instant login (local review only, never expose to the internet):\n\n'
-  printf '    admin     %s/__dev__/login/?as=superuser\n' "$BASE"
-  printf '    member    %s/__dev__/login/?as=developer:%s/%s\n' "$BASE" "$ORG_SLUG" "$STUDIO_SLUG"
-  printf '    viewer    %s/__dev__/login/?as=viewer:%s/%s\n\n' "$BASE" "$ORG_SLUG" "$STUDIO_SLUG"
+  printf '    admin     %s/dev-login/?as=superuser\n' "$BASE"
+  printf '    member    %s/dev-login/?as=developer:%s/%s\n' "$BASE" "$ORG_SLUG" "$STUDIO_SLUG"
+  printf '    viewer    %s/dev-login/?as=viewer:%s/%s\n\n' "$BASE" "$ORG_SLUG" "$STUDIO_SLUG"
 fi)
 This demo uses the same product features as a self-hosted installation.
 

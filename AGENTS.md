@@ -89,9 +89,9 @@ Use `./scripts/demo.sh --dev-login`. Set `TRELLUM_DEMO_PROJECT` and
 three instant-login links the script prints, for admin, member (studio
 developer) and viewer:
 
-    <base>/__dev__/login/?as=superuser
-    <base>/__dev__/login/?as=developer:demo/demo
-    <base>/__dev__/login/?as=viewer:demo/demo
+    <base>/dev-login/?as=superuser
+    <base>/dev-login/?as=developer:demo/demo
+    <base>/dev-login/?as=viewer:demo/demo
 
 They work only because the overlay runs the web process with DEBUG settings.
 Use them on local or LAN review instances only, never on one reachable from
