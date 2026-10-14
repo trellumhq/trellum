@@ -72,3 +72,47 @@ def test_failed_owned_cleanup_cannot_claim_success(tmp_path, monkeypatch):
     with pytest.raises(subprocess.CalledProcessError):
         runtime.close()
     assert runtime.container_created
+
+
+def test_final_evidence_error_cannot_return_a_pass(tmp_path, monkeypatch):
+    """Inject a runner I/O error after its successful test-result decision."""
+    import importlib.util
+    import json
+    import sys
+    from .runtime import ROOT
+    spec = importlib.util.spec_from_file_location('portal_gate_contract', ROOT / 'scripts/portal_e2e.py')
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+    artifacts = tmp_path / 'artifacts'
+    monkeypatch.setattr(sys, 'argv', ['portal_e2e.py', '--infrastructure', '--artifacts', str(artifacts)])
+    class SuccessfulRuntime:
+        template_db, template_data, descriptor = 'private', tmp_path, tmp_path / 'descriptor'
+        units = {}
+        def __init__(self, *args, **kwargs): pass
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def environment(self, *args): return {}
+    monkeypatch.setattr(runner, 'Runtime', SuccessfulRuntime)
+    def output(command, **kwargs):
+        if command[0] == 'git': return 'source-sha' if command[1] == 'rev-parse' else ''
+        if command[0] == 'node': return 'v22.0.0'
+        return '{}'
+    monkeypatch.setattr(runner.subprocess, 'check_output', output)
+    def manifest(*args, **kwargs):
+        (artifacts / 'routes.json').write_text(json.dumps({'mapping_status': 'complete'}))
+    monkeypatch.setattr(runner.subprocess, 'run', manifest)
+    monkeypatch.setattr(runner, 'run_tests', lambda *args: {'status': 'pass', 'collected': ['synthetic-unit-proof'], 'outcomes': {'synthetic-unit-proof': 'passed'}})
+    monkeypatch.setattr(runner, 'write_budgets', lambda *args: None)
+    monkeypatch.setattr(runner, 'validate_execution', lambda *args, **kwargs: {'status': 'pass'})
+    calls = 0
+    def source(*args):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError('final source read failed')
+        return 'initial-source'
+    monkeypatch.setattr(runner, 'source_digest', source)
+    assert runner.main() == 1
+    result = json.loads((artifacts / 'result.json').read_text())
+    assert result['status'] == 'blocked' and result['reason'] == 'final source read failed'
+    assert result['infrastructure_status'] == 'pass'

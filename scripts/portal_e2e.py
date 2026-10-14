@@ -157,6 +157,7 @@ def main():
             if source_digest(ROOT) != result['source_digest']:
                 result['status'], result['reason'] = 'blocked', 'source changed during execution'
     except Exception as exc:
+        result['status'] = 'blocked'
         result['reason'] = str(exc)
     finally:
         (artifacts / 'result.json').write_text(json.dumps(result, indent=2))

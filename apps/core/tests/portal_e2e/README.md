@@ -155,6 +155,15 @@ The unchanged L0 storage guard retains a literal-path compatibility log under
 budget summaries use normalized route patterns. Artifact directories are mode
 0700, and seed metadata is copied into each pytest invocation directory.
 
+Multi-engine product journey coverage is not implemented in Phase 1. Current
+future journey selection filters routes, not browser variants: a single-engine
+run cannot certify bindings that require both engines. Phase 2 must explicitly
+namespace execution identities by engine and merge independently executed
+results on the same source/binding hashes, or execute both engines within one
+gate. Do not silently drop other-engine requirements or merge repeated pytest
+node names as if they were distinct executed variants. The current empty
+journey catalog therefore keeps the full gate blocked for both browsers.
+
 Full suites, real worker/restart behavior and Docker sandbox checks remain
 separate final gates. Phase 1 never certifies those gates or remaining journeys.
 
