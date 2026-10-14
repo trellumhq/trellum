@@ -17,6 +17,9 @@ from .test_portal_mobile_runtime import (
     REPORT,
     UI_CSS,
     _capture,
+    _ops_log,
+    _ops_respond,
+    _ops_status_payload,
     mobile_browser,
 )
 
@@ -46,6 +49,8 @@ def _operations_fixture_html():
     html = html.replace('</head>', '''
         <link rel="stylesheet" href="/static/choice-picker.css">
         <link rel="stylesheet" href="/static/console-report-host.css"></head>''')
+    html = html.replace('<script src="/static/portal.js"></script>',
+                        '<script src="/static/operations.js"></script><script src="/static/portal.js"></script>')
     return html.replace("initial_view:'reports'", "initial_view:'ops'").replace(
         '<h1>Reports</h1>', '<h1>Operations</h1>'
     )
@@ -75,13 +80,9 @@ def test_polling_updates_summary_with_two_expanded_histories(mobile_browser, wid
     status_calls = []
     html = _operations_fixture_html()
 
-    def respond(route):
-        path = urlsplit(route.request.url).path
-        assets = {
-            "/static/portal.js": PORTAL_JS, "/static/console-shell.js": CONSOLE_JS,
-            "/static/ui.css": UI_CSS, "/static/portal.css": PORTAL_CSS,
-            "/static/console-shell.css": CONSOLE_CSS,
-        }
+    def extra(route, path, query, reply):
+        assets = {"/static/ui.css": UI_CSS, "/static/portal.css": PORTAL_CSS,
+                  "/static/console-shell.css": CONSOLE_CSS}
         for name in ("themes.generated.css", "choice-picker.css", "console-report-host.css"):
             assets[f"/static/{name}"] = (settings.BASE_DIR / "static" / name).read_text()
         if path.startswith("/_vendor/"):
@@ -90,36 +91,22 @@ def test_polling_updates_summary_with_two_expanded_histories(mobile_browser, wid
                 content_type="text/css; charset=utf-8" if path.endswith(".css") else "font/ttf",
                 body=asset.read_bytes(),
             )
-            return
-        if path in assets:
-            route.fulfill(
-                content_type="text/css; charset=utf-8" if path.endswith(".css") else "application/javascript; charset=utf-8",
-                body=assets[path],
-            )
-            return
-        if path.endswith("/api/registry"):
-            payload = {"reports": rows}
-        elif path.endswith("/api/system/status"):
+        elif path in assets:
+            route.fulfill(content_type="text/css; charset=utf-8", body=assets[path])
+        elif path.endswith("/api/operations/status"):
             status_calls.append(status.copy())
-            payload = status
-        elif path.endswith("/api/system/run-stats"):
-            payload = {"stats": stats}
-        elif path.endswith("/api/system/git/status"):
-            payload = {"configured": False}
+            reply(_ops_status_payload(status))
+        elif path.endswith("/api/operations/stats"):
+            reply({"version": 1, "state": "ready", "stats": stats, "window_days": 30})
         elif path.endswith("/status") and "/api/reports/" in path:
-            payload = {"aggregates": agg, "history": history}
-        elif path.endswith("/log"):
-            payload = {"status": "success", "stdout": "completed output"}
-        elif path.endswith("/api/me/favorites"):
-            payload = {"favorites": []}
-        elif "/api/" in path:
-            payload = {"reports": {}}
+            reply({"aggregates": agg, "history": history})
+        elif "/api/operations/reports/" in path and path.endswith("/log"):
+            reply(_ops_log("success", stdout="completed output"))
         else:
-            route.fulfill(
-                content_type="text/html; charset=utf-8", body=html,
-            )
-            return
-        route.fulfill(content_type="application/json", body=json.dumps(payload))
+            return False
+        return True
+
+    respond = _ops_respond(lambda: rows, lambda: status, extra=extra, html=html)
 
     page.route("**/*", respond)
     try:
@@ -152,7 +139,9 @@ def test_polling_updates_summary_with_two_expanded_histories(mobile_browser, wid
         summary = page.locator(".ops-summary:not(.ops-history-stats) .ops-stat-value")
         assert summary.nth(1).inner_text() == "1"
         assert summary.nth(2).inner_text() == "1"
-        assert summary.last.inner_text() == "1h 1m"
+        # Uptime is not part of the bounded status contract; the Worker tile
+        # reports the capacity the status read does carry.
+        assert summary.last.inner_text() == "Capacity 10"
         assert page.evaluate("""window.__metricHistoryOwners.every((el, i) =>
             el === document.querySelectorAll('.ops-history-stats')[i])""")
         assert page.evaluate("Object.keys(_opsExpandedSlugs).length") == 2

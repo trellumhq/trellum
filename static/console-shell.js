@@ -293,7 +293,14 @@
             }
         }, true);
         document.addEventListener('click', function (event) {
-            var details = event.target.closest && event.target.closest('details');
+            /* Choice pickers re-render (and detach) the clicked option before
+               the event reaches the document, so use the dispatch-time path. */
+            var path = event.composedPath ? event.composedPath() : [];
+            var details = null;
+            for (var i = 0; i < path.length && !details; i += 1) {
+                if (path[i].tagName === 'DETAILS') details = path[i];
+            }
+            if (!details && event.target.closest) details = event.target.closest('details');
             if (!details || !root.contains(details)) closeMenus();
         });
         document.addEventListener('keydown', function (event) {

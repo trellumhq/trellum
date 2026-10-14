@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from django.conf import settings
@@ -61,6 +61,159 @@ REPORTS = [REPORT] + [
     }
     for number in range(2, 12)
 ]
+
+
+OPERATIONS_JS = (settings.BASE_DIR / "static" / "operations.js").read_text(encoding="utf-8")
+_OPS_COUNT_KEYS = ("running", "queued", "waiting", "error", "oom", "timeout", "stopped", "ok", "not_run", "unknown")
+
+
+def _ops_html():
+    """Operations shell as index.html serves it: operations.js before portal.js."""
+    return PORTAL_HTML.replace("initial_view:'reports'", "initial_view:'ops'").replace(
+        "<h1>Reports</h1>", "<h1>Operations</h1>"
+    ).replace(
+        '<script src="/static/portal.js"></script>',
+        '<script src="/static/operations.js"></script><script src="/static/portal.js"></script>',
+    )
+
+
+def _ops_outcome(report, status):
+    slug = report["slug"]
+    if slug in (status.get("running") or {}):
+        return "running"
+    if slug in [item.get("slug") if isinstance(item, dict) else item for item in status.get("queue") or []]:
+        return "queued"
+    if report.get("waiting"):
+        return "waiting"
+    attempt = report.get("build_status") or report.get("last_status") or "not_run"
+    return {"success": "ok", "oom_killed": "oom", "timeout": "timeout", "stopped": "stopped", "error": "error"}.get(
+        attempt, "unknown" if attempt == "unknown" else "not_run"
+    )
+
+
+def _ops_catalog_payload(reports, status, query):
+    """The bounded /api/operations/catalog contract, filtered like the server."""
+    q = (query.get("q") or [""])[0].lower()
+    category = (query.get("category") or [""])[0]
+    state = (query.get("state") or ["all"])[0]
+    selected = [
+        report for report in reports
+        if (not q or q in report["name"].lower() or q in report["slug"].lower())
+        and (not category or report.get("category") == category)
+    ]
+    outcomes = {report["slug"]: _ops_outcome(report, status) for report in selected}
+    counts = {key: sum(1 for value in outcomes.values() if value == key) for key in _OPS_COUNT_KEYS}
+    counts["total"] = len(selected)
+    counts["error"] += counts["oom"] + counts["timeout"]
+    counts.update(v_fail=0, v_warn=0, healthy=0)
+    if state == "error":
+        shown = [r for r in selected if outcomes[r["slug"]] in ("error", "oom", "timeout")]
+    else:
+        shown = [r for r in selected if state == "all" or outcomes[r["slug"]] == state]
+    rows = [
+        {
+            "id": report["id"], "slug": report["slug"], "kind": "report", "metrics_report": None,
+            "name": report["name"], "category": report.get("category"),
+            "description": report.get("description", ""), "description_truncated": False,
+            "schedule": None, "schedule_timezone": None, "next_run": None, "disabled": False,
+            "state": outcomes[report["slug"]],
+            "build_status": report.get("build_status") or report.get("last_status") or "not_run",
+            "last_attempt_at": report.get("last_run"), "last_error": report.get("last_error"),
+            "waiting_current": bool(report.get("waiting")), "blocked_by": [], "failing_source": None,
+            "has_output": report.get("has_output"), "html_entry": report.get("html_entry"), "live": False,
+            "validation": report.get("validation"), "framework_version": None,
+            "observation_known": True, "quality": "current",
+        }
+        for report in shown
+    ]
+    categories = {}
+    for report in reports:
+        categories[report.get("category") or "Uncategorized"] = categories.get(report.get("category") or "Uncategorized", 0) + 1
+    return {
+        "version": 1, "state": "ready", "rows": rows,
+        "pagination": {"page": 1, "page_size": 25, "total": len(shown), "pages": 1 if shown else 0},
+        "counts": counts, "coverage": {},
+        "folders": {
+            "all": len(reports), "favorites": 0, "categories_truncated": False,
+            "categories": [{"name": name, "count": count} for name, count in sorted(categories.items())],
+        },
+    }
+
+
+def _ops_status_payload(status):
+    rows = [
+        {"slug": slug, "status": "running", "created_at": "2026-09-06T08:00:00Z",
+         "started_at": "2026-09-06T08:00:00Z", "priority": 0, "cache_mode": "normal"}
+        for slug in (status.get("running") or {})
+    ] + [
+        {"slug": item.get("slug") if isinstance(item, dict) else item, "status": "queued",
+         "created_at": "2026-09-06T08:00:00Z", "started_at": None, "priority": 0, "cache_mode": "normal"}
+        for item in status.get("queue") or []
+    ]
+    return {
+        "version": 1, "state": "ready", "rows": rows, "max_concurrent": 10, "worker_alive": True,
+        "active_jobs_total": {"total": len(rows), "selected": len(rows), "running": len(status.get("running") or {}),
+                              "queued": len(status.get("queue") or [])},
+        "coverage": {"active_rows_complete": True},
+    }
+
+
+def _ops_log(status, stdout="", stderr="", mode="last"):
+    payload = {"version": 1, "state": "ready", "mode": mode, "stdout": stdout, "stderr": stderr,
+               "streams": {"stdout": {"truncated": False}, "stderr": {"truncated": False}}}
+    if mode == "last":
+        payload["run"] = {"id": 1, "status": status}
+    return payload
+
+
+def _ops_respond(reports, status, *, css=None, log=None, run=None, extra=None, html=None):
+    """Route handler for the Operations page; ``reports``/``status``/``log`` are called per request."""
+    def respond(route):
+        url = urlsplit(route.request.url)
+        path, query = url.path, parse_qs(url.query)
+
+        def reply(body, content_type="application/json", code=200):
+            route.fulfill(status=code, content_type=content_type, body=body if isinstance(body, str) else json.dumps(body))
+
+        if extra and extra(route, path, query, reply):
+            return
+        if path.endswith("/static/portal.js"):
+            reply(PORTAL_JS, "application/javascript")
+        elif path.endswith("/static/operations.js"):
+            reply(OPERATIONS_JS, "application/javascript")
+        elif path.endswith("/static/console-shell.js"):
+            reply(CONSOLE_JS, "application/javascript")
+        elif path.endswith(".css"):
+            reply((css or {}).get(path.rsplit("/", 1)[-1], ""), "text/css")
+        elif path.endswith("/api/operations/catalog"):
+            reply(_ops_catalog_payload(reports(), status(), query))
+        elif path.endswith("/api/operations/status"):
+            reply(_ops_status_payload(status()))
+        elif path.endswith("/api/operations/stats"):
+            reply({"version": 1, "state": "ready", "stats": {}, "window_days": 30})
+        elif path.endswith("/api/operations/sources"):
+            reply({"version": 1, "state": "ready", "rows": [], "pagination": {"page": 1, "page_size": 25, "total": 0, "pages": 0}})
+        elif "/api/operations/reports/" in path and path.endswith("/log"):
+            if (query.get("mode") or ["last"])[0] == "live":
+                reply(_ops_log("running", mode="live"))
+            else:
+                reply(log() if log else _ops_log("success"))
+        elif path.endswith("/api/system/git/status"):
+            reply('{"configured":false}')
+        elif path.endswith("/api/me/favorites"):
+            reply('{"favorites":[]}')
+        elif path.endswith("/api/my-subscriptions"):
+            reply('{"reports":{}}')
+        elif "/api/reports/" in path and path.endswith("/status"):
+            reply('{"aggregates":{},"history":[]}')
+        elif run and path.endswith("/run"):
+            run(reply)
+        elif "/api/" in path:
+            reply("{}")
+        else:
+            reply(html or _ops_html(), "text/html")
+
+    return respond
 
 
 def _capture(page, browser, name: str) -> None:
@@ -290,37 +443,19 @@ def test_operations_state_filters_follow_live_state_and_scope(mobile_browser):
     context = mobile_browser.new_context(viewport={"width": 390, "height": 844}, is_mobile=True)
     page = context.new_page()
 
-    def respond(route):
-        path = urlsplit(route.request.url).path
-        if path.endswith("/static/ui.css"):
-            route.fulfill(content_type="text/css", body=UI_CSS)
-        elif path.endswith("/static/portal.css"):
-            route.fulfill(content_type="text/css", body=PORTAL_CSS)
-        elif path.endswith("/static/console-shell.css"):
-            route.fulfill(content_type="text/css", body=CONSOLE_CSS)
-        elif path.endswith("/static/portal.js"):
-            route.fulfill(content_type="application/javascript", body=PORTAL_JS)
-        elif path.endswith("/static/console-shell.js"):
-            route.fulfill(content_type="application/javascript", body=CONSOLE_JS)
-        elif path.endswith("/api/registry"):
-            route.fulfill(content_type="application/json", body=json.dumps({"reports": ops_reports}))
-        elif path.endswith("/api/system/status"):
-            route.fulfill(content_type="application/json", body=json.dumps(ops_status))
-        elif path.endswith("/api/system/git/status"):
-            route.fulfill(content_type="application/json", body='{"configured":false}')
-        elif path.endswith("/api/system/run-stats"):
-            route.fulfill(content_type="application/json", body='{"stats":{}}')
-        elif "/api/" in path:
-            route.fulfill(content_type="application/json", body='{}')
-        else:
-            route.fulfill(content_type="text/html", body=PORTAL_HTML.replace(
-                "initial_view:'reports'", "initial_view:'ops'"
-            ))
+    respond = _ops_respond(lambda: ops_reports, lambda: ops_status, css={"ui.css": UI_CSS, "portal.css": PORTAL_CSS, "console-shell.css": CONSOLE_CSS})
 
     page.route("**/*", respond)
     try:
         page.goto("http://portal.test/s/acme/analytics/operations", wait_until="load")
         page.locator('[data-ops-row="failed"]').wait_for()
+        def wait_rows(expected):
+            # Filtering is applied by the server; wait for the bounded page.
+            page.wait_for_function(
+                "n => [...document.querySelectorAll('[data-ops-row]')].filter(r => !r.hidden && r.offsetParent !== null).length === n",
+                arg=expected,
+            )
+
         count = lambda name: int(page.locator(f'[data-ops-filter="{name}"] .ops-filter-count').inner_text())
         assert count("error") == 3
         assert count("ok") == 1
@@ -332,8 +467,9 @@ def test_operations_state_filters_follow_live_state_and_scope(mobile_browser):
         assert page.locator('[data-ops-row="stopped"] .ops-status-text').inner_text() == "Stopped"
 
         page.locator('[data-ops-filter="error"]').click()
-        assert page.locator('[data-ops-row]:visible').count() == 3
+        wait_rows(3)
         page.locator('[data-ops-filter="oom"]').click()
+        wait_rows(1)
         assert page.locator('[data-ops-row]:visible').evaluate_all("rows => rows.map(r => r.dataset.opsRow)") == ["oom"]
         assert page.locator('[data-ops-filter="oom"]').get_attribute("aria-pressed") == "true"
 
@@ -351,7 +487,7 @@ def test_operations_state_filters_follow_live_state_and_scope(mobile_browser):
         page.wait_for_function("document.querySelector('[data-ops-filter=all] .ops-filter-count')?.textContent === '1'")
         assert count("oom") == 1
         page.locator('[data-ops-filter="timeout"]').click()
-        assert page.locator('[data-ops-row]:visible').count() == 0
+        wait_rows(0)
         assert page.locator('[data-ops-empty]').is_visible()
         page.locator('[data-ops-filter="all"]').click()
 
@@ -365,22 +501,35 @@ def test_operations_state_filters_follow_live_state_and_scope(mobile_browser):
         failed_row = page.locator('[data-ops-row="failed"]')
         failed_row.evaluate("row => row.nextElementSibling.querySelector('.ops-terminal-body').setAttribute('tabindex','-1')")
         page.locator('[data-ops-row="failed"] + .ops-expand-row .ops-terminal-body').focus()
+        # Filter membership is the server's: a row that starts running leaves the
+        # Failed page on the next bounded read, not by local hiding of one page.
+        ops_status["running"] = {"failed": {"elapsed_seconds": 8}, "running": {"elapsed_seconds": 4}}
         page.evaluate("_opsApplyStatus({running:{failed:{elapsed_seconds:8},running:{elapsed_seconds:4}},queue:['queued']},_opsStatusRevision,_opsStatusCycle)")
-        assert failed_row.is_hidden()
-        assert failed_row.evaluate("row => row.nextElementSibling.hidden")
+        page.evaluate("renderOperations()")
+        wait_rows(2)
+        assert page.locator('[data-ops-row="failed"]').count() == 0
         assert page.locator('[data-ops-filter="error"]').evaluate("el => el === document.activeElement")
-        assert count("error") == 2
+        page.wait_for_function("document.querySelector('[data-ops-filter=error] .ops-filter-count')?.textContent === '2'")
 
         ops_reports[-1]["build_status"] = "error"
+        ops_status["queue"] = []
         page.evaluate("_opsApplyStatus({running:{failed:{elapsed_seconds:8},running:{elapsed_seconds:4}},queue:[]},_opsStatusRevision,_opsStatusCycle)")
+        # The queued row was never part of the Failed page; it joins on the next read.
+        assert page.locator('[data-ops-row="queued"]').count() == 0
+        page.evaluate("renderOperations()")
         page.wait_for_function("document.querySelector('[data-ops-row=queued] .ops-status-text')?.textContent === 'Failed'")
-        assert count("error") == 3
+        page.wait_for_function("document.querySelector('[data-ops-filter=error] .ops-filter-count')?.textContent === '3'")
         assert not page.locator('[data-ops-row="queued"]').is_hidden()
 
         ops_reports[0]["build_status"] = "success"
+        ops_status["running"] = {"running": {"elapsed_seconds": 4}}
         page.evaluate("_opsApplyStatus({running:{running:{elapsed_seconds:4}},queue:[]},_opsStatusRevision,_opsStatusCycle)")
-        page.wait_for_function("document.querySelector('[data-ops-filter=error] .ops-filter-count')?.textContent === '2'")
-        assert page.locator('[data-ops-row="failed"]').is_hidden()
+        page.evaluate("renderOperations()")
+        # The finished-successfully row is not on the Failed page; the other
+        # failed outcomes (oom, timeout, queued->error) still are.
+        wait_rows(3)
+        page.wait_for_function("document.querySelector('[data-ops-filter=error] .ops-filter-count')?.textContent === '3'")
+        assert page.locator('[data-ops-row="failed"]').count() == 0
         assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
     finally:
         context.close()
@@ -961,47 +1110,7 @@ def test_operations_records_and_actions_are_reachable(mobile_browser, width):
         }
         for report in REPORTS[:2]
     ]
-    ops_html = PORTAL_HTML.replace("initial_view:'reports'", "initial_view:'ops'").replace(
-        "<h1>Reports</h1>", "<h1>Operations</h1>"
-    )
-
-    def respond(route):
-        path = urlsplit(route.request.url).path
-        if path.endswith("/static/ui.css"):
-            route.fulfill(content_type="text/css", body=UI_CSS)
-        elif path.endswith("/static/portal.css"):
-            route.fulfill(content_type="text/css", body=PORTAL_CSS)
-        elif path.endswith("/static/console-shell.css"):
-            route.fulfill(content_type="text/css", body=CONSOLE_CSS)
-        elif path.endswith("/static/portal.js"):
-            route.fulfill(content_type="application/javascript", body=PORTAL_JS)
-        elif path.endswith("/static/console-shell.js"):
-            route.fulfill(content_type="application/javascript", body=CONSOLE_JS)
-        elif path.endswith("/api/registry"):
-            route.fulfill(
-                content_type="application/json", body=json.dumps({"reports": ops_reports})
-            )
-        elif path.endswith("/api/system/status"):
-            route.fulfill(
-                content_type="application/json",
-                body='{"running":{},"queue":[],"max_concurrent":10}',
-            )
-        elif path.endswith("/api/system/git/status"):
-            route.fulfill(content_type="application/json", body='{"configured":false}')
-        elif path.endswith("/api/system/run-stats"):
-            route.fulfill(content_type="application/json", body='{"stats":{}}')
-        elif "/api/reports/" in path and path.endswith("/status"):
-            route.fulfill(
-                content_type="application/json", body='{"aggregates":{},"history":[]}'
-            )
-        elif path.endswith("/api/me/favorites"):
-            route.fulfill(content_type="application/json", body='{"favorites":[]}')
-        elif path.endswith("/api/my-subscriptions"):
-            route.fulfill(content_type="application/json", body='{"reports":{}}')
-        elif "/api/" in path:
-            route.fulfill(content_type="application/json", body="{}")
-        else:
-            route.fulfill(content_type="text/html", body=ops_html)
+    respond = _ops_respond(lambda: ops_reports, lambda: {"running": {}, "queue": []}, css={"ui.css": UI_CSS, "portal.css": PORTAL_CSS, "console-shell.css": CONSOLE_CSS})
 
     page.route("**/*", respond)
     page.goto("http://portal.test/s/acme/analytics/operations", wait_until="load")
@@ -1088,34 +1197,18 @@ def test_operations_transition_reconciliation_cannot_overwrite_newer_action(mobi
     ]
     status_calls = []
 
-    def respond(route):
-        path = urlsplit(route.request.url).path
-        if path.endswith("/static/portal.js"):
-            route.fulfill(content_type="application/javascript", body=PORTAL_JS)
-        elif path.endswith("/static/console-shell.js"):
-            route.fulfill(content_type="application/javascript", body=CONSOLE_JS)
-        elif path.endswith(".css"):
-            route.fulfill(content_type="text/css", body="")
-        elif path.endswith("/api/registry"):
-            route.fulfill(content_type="application/json", body=json.dumps({"reports": ops_reports}))
-        elif path.endswith("/api/system/status"):
+    def extra(route, path, query, reply):
+        if path.endswith("/api/operations/status"):
             status_calls.append(len(status_calls))
-            value = statuses[min(len(status_calls) - 1, len(statuses) - 1)]
-            route.fulfill(content_type="application/json", body=json.dumps(value))
-        elif path.endswith("/api/system/git/status"):
-            route.fulfill(content_type="application/json", body='{"configured":false}')
-        elif path.endswith("/api/system/run-stats"):
-            route.fulfill(content_type="application/json", body='{"stats":{}}')
-        elif path.endswith("/api/me/favorites"):
-            route.fulfill(content_type="application/json", body='{"favorites":[]}')
-        elif path.endswith("/api/my-subscriptions"):
-            route.fulfill(content_type="application/json", body='{"reports":{}}')
-        elif "/api/" in path:
-            route.fulfill(content_type="application/json", body="{}")
-        else:
-            route.fulfill(content_type="text/html", body=PORTAL_HTML.replace(
-                "initial_view:'reports'", "initial_view:'ops'"
-            ))
+            reply(_ops_status_payload(statuses[min(len(status_calls) - 1, len(statuses) - 1)]))
+            return True
+        return False
+
+    respond = _ops_respond(
+        lambda: ops_reports,
+        lambda: statuses[min(max(len(status_calls) - 1, 0), len(statuses) - 1)],
+        extra=extra,
+    )
 
     page.route("**/*", respond)
     try:
@@ -1127,10 +1220,11 @@ def test_operations_transition_reconciliation_cannot_overwrite_newer_action(mobi
           const nativeFetch = window.fetch.bind(window);
           window.fetch = (input, init) => {
             const url = typeof input === 'string' ? input : input.url;
-            if (window.__holdRegistry && url.includes('/api/registry')) {
+            if (window.__holdRegistry && url.includes('/api/operations/catalog')) {
               window.__holdRegistry = false;
               return new Promise(resolve => { window.__releaseRegistry = () => resolve(
-                new Response(JSON.stringify({reports:[{slug:'revenue-overview',name:'Player Overview',last_status:'success'}]}),
+                new Response(JSON.stringify({version:1,state:'ready',rows:[{id:1,slug:'revenue-overview',name:'Player Overview',state:'ok',build_status:'success'}],
+                  pagination:{page:1,page_size:25,total:1,pages:1},counts:{total:1,ok:1},folders:null}),
                   {status:200,headers:{'Content-Type':'application/json'}})); });
             }
             return nativeFetch(input, init);
@@ -1143,7 +1237,9 @@ def test_operations_transition_reconciliation_cannot_overwrite_newer_action(mobi
         page.evaluate("_opsRefreshAfterAction('revenue-overview', false)")
         page.evaluate("window.__releaseRegistry()")
         page.wait_for_function("document.querySelector('[data-ops-row] .ops-status.running') !== null")
-        assert page.evaluate("reports[0].last_status") == "error"
+        # The stale catalog page may refresh the data, but it must not paint
+        # the finished state over the newer action the user already started.
+        assert "Finishing" not in row.locator('[data-label="Status"]').inner_text()
         assert page.evaluate("window.__rowIdentity === document.querySelector('[data-ops-row]')")
         assert page.evaluate("_opsStatusInFlight") is False
     finally:
@@ -1154,47 +1250,17 @@ def test_operations_rerun_replaces_terminal_only_with_current_run(mobile_browser
     context = mobile_browser.new_context()
     page = context.new_page()
     ops_reports = [{**REPORT, "last_status": "error", "last_error": "previous failure"}]
-    latest_log = {"status": "error", "stderr": "previous failure"}
+    latest_log = _ops_log("error", stderr="previous failure")
     ops_status = {"running": {}, "queue": []}
     run_rejected = False
 
-    def respond(route):
-        path = urlsplit(route.request.url).path
-        if path.endswith("/static/portal.js"):
-            route.fulfill(content_type="application/javascript", body=PORTAL_JS)
-        elif path.endswith("/static/console-shell.js"):
-            route.fulfill(content_type="application/javascript", body=CONSOLE_JS)
-        elif path.endswith(".css"):
-            route.fulfill(content_type="text/css", body="")
-        elif path.endswith("/api/registry"):
-            route.fulfill(content_type="application/json", body=json.dumps({"reports": ops_reports}))
-        elif path.endswith("/api/system/status"):
-            route.fulfill(content_type="application/json", body=json.dumps(ops_status))
-        elif path.endswith("/api/system/git/status"):
-            route.fulfill(content_type="application/json", body='{"configured":false}')
-        elif path.endswith("/api/system/run-stats"):
-            route.fulfill(content_type="application/json", body='{"stats":{}}')
-        elif path.endswith("/api/me/favorites"):
-            route.fulfill(content_type="application/json", body='{"favorites":[]}')
-        elif path.endswith("/api/my-subscriptions"):
-            route.fulfill(content_type="application/json", body='{"reports":{}}')
-        elif path.endswith("/api/reports/revenue-overview/status"):
-            route.fulfill(content_type="application/json", body='{"aggregates":{},"history":[]}')
-        elif path.endswith("/api/reports/revenue-overview/log/live"):
-            route.fulfill(content_type="application/json", body='{"slug":"revenue-overview","stdout_tail":""}')
-        elif path.endswith("/api/reports/revenue-overview/log"):
-            route.fulfill(content_type="application/json", body=json.dumps(latest_log))
-        elif path.endswith("/api/reports/revenue-overview/run"):
-            if run_rejected:
-                route.fulfill(status=503, content_type="application/json", body='{"ok":false,"message":"queue unavailable"}')
-            else:
-                route.fulfill(content_type="application/json", body='{"ok":true,"status":"queued"}')
-        elif "/api/" in path:
-            route.fulfill(content_type="application/json", body="{}")
+    def run(reply):
+        if run_rejected:
+            reply('{"ok":false,"message":"queue unavailable"}', code=503)
         else:
-            route.fulfill(content_type="text/html", body=PORTAL_HTML.replace(
-                "initial_view:'reports'", "initial_view:'ops'"
-            ))
+            reply('{"ok":true,"status":"queued"}')
+
+    respond = _ops_respond(lambda: ops_reports, lambda: ops_status, log=lambda: latest_log, run=run)
 
     page.route("**/*", respond)
     try:
@@ -1228,16 +1294,16 @@ def test_operations_rerun_replaces_terminal_only_with_current_run(mobile_browser
                 new Response(JSON.stringify({ok:true,status:'queued'}),
                   {status:200,headers:{'Content-Type':'application/json'}})); });
             }
-            if (window.__holdOldStatus && url.includes('/api/system/status')) {
+            if (window.__holdOldStatus && url.includes('/api/operations/status')) {
               window.__holdOldStatus = false;
               return new Promise(resolve => { window.__releaseOldStatus = () => resolve(
-                new Response(JSON.stringify({running:{},queue:[]}),
+                new Response(JSON.stringify({version:1,state:'ready',rows:[],max_concurrent:10,worker_alive:true,active_jobs_total:{total:0,selected:0,running:0,queued:0}}),
                   {status:200,headers:{'Content-Type':'application/json'}})); });
             }
-            if (window.__holdOldLog && url.includes('/log?run=0')) {
+            if (window.__holdOldLog && url.includes('/log?mode=last')) {
               window.__holdOldLog = false;
               return new Promise(resolve => { window.__releaseOldLog = () => resolve(
-                new Response(JSON.stringify({status:'error',stderr:'previous failure'}),
+                new Response(JSON.stringify({version:1,state:'ready',mode:'last',run:{id:1,status:'error'},stdout:'',stderr:'previous failure'}),
                   {status:200,headers:{'Content-Type':'application/json'}})); });
             }
             return nativeFetch(input, init);
@@ -1295,7 +1361,7 @@ def test_operations_rerun_replaces_terminal_only_with_current_run(mobile_browser
         page.evaluate("Date.now = window.__nativeNow")
 
         ops_reports[0] = {**REPORT, "last_status": "success"}
-        latest_log = {"status": "success", "stdout": "new successful output"}
+        latest_log = _ops_log("success", stdout="new successful output")
         ops_status = {"running": {}, "queue": []}
         page.evaluate("_opsApplyStatus({running:{},queue:[]},_opsStatusRevision,_opsStatusCycle)")
         page.wait_for_function("document.querySelector('#opsTerm_revenue-overview .ops-terminal-body')?.textContent.includes('new successful output')")
@@ -1310,7 +1376,7 @@ def test_operations_rerun_replaces_terminal_only_with_current_run(mobile_browser
         ops_status = {"running": {REPORT["slug"]: {"elapsed_seconds": 2}}, "queue": []}
         page.evaluate("_opsApplyStatus({running:{'revenue-overview':{elapsed_seconds:2}},queue:[]},_opsStatusRevision,_opsStatusCycle)")
         ops_reports[0] = {**REPORT, "last_status": "error", "last_error": "new failure"}
-        latest_log = {"status": "error", "stderr": "new failure"}
+        latest_log = _ops_log("error", stderr="new failure")
         ops_status = {"running": {}, "queue": []}
         page.evaluate("_opsApplyStatus({running:{},queue:[]},_opsStatusRevision,_opsStatusCycle)")
         page.wait_for_function("document.querySelector('#opsTerm_revenue-overview .ops-terminal-title')?.textContent.includes('Failed')")

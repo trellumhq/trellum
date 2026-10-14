@@ -30,11 +30,13 @@ def _inline_shell_assets(html: str) -> str:
 
 
 def _inline_portal_js(html: str) -> str:
-    portal = (settings.BASE_DIR / "static" / "portal.js").read_text(
+    # Studio catalog pages boot portal-catalog.js; portal.js is only loaded for
+    # views without a bounded catalog (Operations).
+    portal = (settings.BASE_DIR / "static" / "portal-catalog.js").read_text(
         encoding="utf-8"
     )
     return re.sub(
-        r'<script src="[^\"]*portal\.js"></script>',
+        r'<script src="[^\"]*portal-catalog\.js"></script>',
         lambda _: f"<script>{portal}</script>",
         html,
     )
@@ -66,6 +68,12 @@ def _page(
     page.goto("http://shell.test/", wait_until="domcontentloaded")
     page.locator("[data-console-shell]").wait_for(state="attached")
     return context, page
+
+
+def _assert_docs_in_account_menu(page):
+    page.locator(".tl-console-account > summary").click()
+    assert page.locator(".tl-console-account-docs").is_visible()
+    page.keyboard.press("Escape")
 
 
 def _box(page, selector):
@@ -390,7 +398,7 @@ def test_dashboard_portal_boot_keeps_placeholder_and_search_shortcut(
       window.__portalRegistryRequested = false;
       const originalFetch = window.fetch.bind(window);
       window.fetch = (...args) => {{
-        if (String(args[0]).includes('/api/registry')) {{
+        if (String(args[0]).includes('/api/catalog')) {{
           window.__portalRegistryRequested = true;
         }}
         return originalFetch(...args);
@@ -428,18 +436,27 @@ def test_org_assistant_picker_coexists_with_docs_on_narrow_screens(
             context, page = _page(instance, html, width=width)
             picker = page.locator(".tl-console-assistant-picker")
             docs = page.locator(".tl-console-docs-link")
-            assert picker.is_visible() and docs.is_visible()
-            picker_box, docs_box = _box(page, ".tl-console-assistant-picker > summary"), _box(
-                page, ".tl-console-docs-link"
-            )
-            assert picker_box["x"] + picker_box["width"] <= docs_box["x"]
-            assert docs_box["x"] + docs_box["width"] <= width
+            assert picker.is_visible()
+            if width < 360:
+                # Below 360px the header docs link folds into the account menu.
+                assert not docs.is_visible()
+                _assert_docs_in_account_menu(page)
+            else:
+                assert docs.is_visible()
+                picker_box, docs_box = _box(page, ".tl-console-assistant-picker > summary"), _box(
+                    page, ".tl-console-docs-link"
+                )
+                assert picker_box["x"] + picker_box["width"] <= docs_box["x"]
+                assert docs_box["x"] + docs_box["width"] <= width
             picker.locator("summary").click()
-            studio_link = picker.locator(
-                f'a[href="/s/{org.slug}/{studio_tree.slug}/?assistant=open"]'
-            )
-            assert studio_link.is_visible()
-            assert "Open or resume chat" in studio_link.inner_text()
+            # Studios are a bounded native form (with an enhanced picker), not
+            # an unbounded list of links.
+            form = picker.locator("form.tl-console-scope-form")
+            assert form.locator("select#shellAssistantChoice").count() == 1
+            assert form.get_by_role("button", name="Open assistant").is_visible()
+            browse = form.get_by_role("link", name="Browse all studios")
+            assert browse.is_visible()
+            assert f"/scopes/?kind=studio&org={org.slug}&intent=assistant" in browse.get_attribute("href")
             popover = picker.locator(".tl-console-assistant-popover")
             popover.evaluate(
                 """el => {
@@ -501,7 +518,8 @@ def test_unavailable_assistant_reason_popover_keeps_docs_and_account_reachable(
             settings_box = _box(page, ".assistant-setup")
             help_link = page.locator(".assistant-unavailable-help")
             help_color = help_link.evaluate("e => getComputedStyle(e).color")
-            docs_box = _box(page, ".tl-console-docs-link")
+            narrow = width < 360
+            docs_box = None if narrow else _box(page, ".tl-console-docs-link")
             account_box = _box(page, ".tl-console-account > summary")
             assert reason_box["y"] + reason_box["height"] <= retry_box["y"]
             assert retry_box["y"] + retry_box["height"] <= settings_box["y"]
@@ -509,9 +527,12 @@ def test_unavailable_assistant_reason_popover_keeps_docs_and_account_reachable(
             assert help_link.evaluate("e => getComputedStyle(e).textDecorationLine") == "underline"
             assert popover_box["x"] >= 0
             assert popover_box["x"] + popover_box["width"] <= width
-            assert popover_box["y"] >= docs_box["y"] + docs_box["height"]
+            if narrow:
+                assert not page.locator(".tl-console-docs-link").is_visible()
+            else:
+                assert popover_box["y"] >= docs_box["y"] + docs_box["height"]
+                assert docs_box["x"] + docs_box["width"] <= account_box["x"]
             assert popover_box["y"] >= account_box["y"] + account_box["height"]
-            assert docs_box["x"] + docs_box["width"] <= account_box["x"]
             assert account_box["x"] + account_box["width"] <= width
             page.screenshot(path=str(artifacts / f"assistant-unavailable-{engine}-{width}.png"))
             context.close()
@@ -543,17 +564,20 @@ def test_mobile_org_header_keeps_search_health_assistant_docs_and_account_reacha
             assert page.locator("[data-console-search-toggle]").is_visible()
             assert page.locator("[data-console-health-alert]").is_visible()
             assert page.locator(".tl-console-assistant-picker > summary").is_visible()
-            assert page.locator(".tl-console-docs-link").is_visible()
             assert page.locator(".tl-console-account > summary").is_visible()
             assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
-            boxes = [
-                _box(page, selector)
-                for selector in (
-                    "[data-console-toggle]", ".tl-console-assistant-picker > summary",
-                    "[data-console-health-alert]", "[data-console-search-toggle]",
-                    ".tl-console-docs-link", ".tl-console-account > summary",
-                )
+            selectors = [
+                "[data-console-toggle]", ".tl-console-assistant-picker > summary",
+                "[data-console-health-alert]", "[data-console-search-toggle]",
+                ".tl-console-docs-link", ".tl-console-account > summary",
             ]
+            if width < 360:
+                # The header docs link folds into the account menu at this width.
+                assert not page.locator(".tl-console-docs-link").is_visible()
+                selectors.remove(".tl-console-docs-link")
+            else:
+                assert page.locator(".tl-console-docs-link").is_visible()
+            boxes = [_box(page, selector) for selector in selectors]
             assert all(box["x"] >= 0 and box["x"] + box["width"] <= width for box in boxes), boxes
             assert all(
                 left["x"] + left["width"] <= right["x"] + 0.5
