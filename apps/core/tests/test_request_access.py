@@ -320,6 +320,71 @@ def test_selected_only_remains_non_full_when_every_report_is_granted(
     assert not can_view_report(member, report_row, request=request)
 
 
+@pytest.mark.parametrize("ready", [True, False])
+def test_raw_scope_matches_complete_roles_independent_of_access_readiness(
+    org_admin, member, org, studio, make_user, make_group, attach_group,
+    grant_studio, settings, ready,
+):
+    from apps.core.report_access import raw_scope_reports, visible_reports
+
+    settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = True
+    public = Report.objects.create(studio=studio, slug="raw-public")
+    private = Report.objects.create(studio=studio, slug="raw-private", audience=Report.AUDIENCE_PRIVATE)
+    selected = make_group("raw selected", grants=[(studio, roles.VIEWER)])
+    grant = selected.grants.get()
+    grant.viewer_scope = grant.REPORT_SCOPE_SELECTED
+    grant.save(update_fields=["viewer_scope"])
+    attach_group(member, selected)
+    ReportPermissionGrant.objects.create(grant=grant, report=private)
+    full_viewer = make_user("raw-full@example.test", org=org)
+    grant_studio(full_viewer, studio, roles.VIEWER)
+    stranger = make_user("raw-stranger@example.test")
+    settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = ready
+    for user in (org_admin, member, full_viewer, stranger):
+        request = request_for(user)
+        scope = effective_roles(user, org).report_scope_for(studio)
+        expected = {public.pk, private.pk} if scope is None else set(scope)
+        rows = raw_scope_reports(user, Report.objects.filter(studio=studio), request=request)
+        assert set(rows.values_list("pk", flat=True)) == expected
+        assert not hasattr(request, "_bi_effective_roles")
+    request = request_for(member)
+    assert raw_scope_reports(member, Report.objects.filter(pk=private.pk), request=request).exists()
+    assert visible_reports(member, Report.objects.filter(pk=private.pk), request=request).exists() is ready
+
+
+def test_raw_scope_restricts_superuser_bearer_org(superuser, org, other_org, studio):
+    from apps.core.report_access import raw_scope_reports
+
+    report = Report.objects.create(studio=studio, slug="key-raw")
+    request = request_for(superuser)
+    assert raw_scope_reports(superuser, Report.objects.filter(pk=report.pk), request=request).exists()
+    request.api_key = SimpleNamespace(org_id=other_org.pk)
+    assert not raw_scope_reports(superuser, Report.objects.filter(pk=report.pk), request=request).exists()
+
+
+def test_selected_report_identity_remains_visible_before_content_503(
+    member, org, studio, make_group, attach_group, settings,
+):
+    from apps.reports.models import ReportFavorite
+    from apps.reports.views import _get_report, _selected_content_block, _visible_favorite_rows
+
+    settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = True
+    private = Report.objects.create(studio=studio, slug="raw-selected-private", audience=Report.AUDIENCE_PRIVATE)
+    group = make_group("identity selected", grants=[(studio, roles.VIEWER)])
+    grant = group.grants.get()
+    grant.viewer_scope = grant.REPORT_SCOPE_SELECTED
+    grant.save(update_fields=["viewer_scope"])
+    attach_group(member, group)
+    ReportPermissionGrant.objects.create(grant=grant, report=private)
+    request = request_for(member, org, studio)
+    request.org_roles = request_org_access(request, org)
+    settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = False
+    assert _get_report(request, private.slug).pk == private.pk
+    assert _selected_content_block(request, private).status_code == 503
+    ReportFavorite.objects.create(user=member, report=private)
+    assert [row.report_id for row in _visible_favorite_rows(request)] == [private.pk]
+
+
 def test_next_http_request_reflects_report_grant_revocation(
     member, org, studio, report_row, make_group, attach_group, login, settings,
 ):

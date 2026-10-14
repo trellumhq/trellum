@@ -63,19 +63,35 @@ def can_view_report(user, report, *, request=None) -> bool:
     return scope is None or report.pk in scope
 
 
+def raw_scope_reports(user, queryset, *, request=None):
+    """Filter by effective report scope, regardless of scoped-access readiness.
+
+    Use for report identity and metadata checks that historically called
+    ``EffectiveRoles.report_scope_for``. Availability-filtered listings use
+    ``visible_reports``; content checks use ``can_view_report``.
+    """
+    return _report_scope_queryset(user, queryset, request=request, blocked=False)
+
+
 def visible_reports(user, queryset, *, request=None):
-    """Filter a Report queryset to rows visible to ``user`` without N+1 queries."""
+    """Filter a Report queryset to rows visible under current access readiness."""
+    return _report_scope_queryset(
+        user, queryset, request=request, blocked=bool(selected_report_access_block_reason())
+    )
+
+
+def _report_scope_queryset(user, queryset, *, request, blocked):
+    """Shared SQL authorization for raw scope and availability-filtered lists."""
     from apps.reports.models import Report
 
-    if user is None or not user.is_authenticated:
-        return queryset.none()
     if request is not None:
         if user is not request.user:
             raise ValueError("request report access must use request.user")
         key = getattr(request, "api_key", None)
         if key is not None:
             queryset = queryset.filter(studio__org_id=key.org_id)
-    blocked = selected_report_access_block_reason()
+    if user is None or not user.is_authenticated:
+        return queryset.none()
     if user.is_superuser:
         return queryset.filter(studio__org__is_active=True)
 
