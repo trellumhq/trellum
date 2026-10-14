@@ -380,6 +380,8 @@ TRELLUM_IMPERSONATION_MINUTES = env.int("TRELLUM_IMPERSONATION_MINUTES", default
 EMAIL_URL_CONFIGURED = bool(env("EMAIL_URL", default=""))
 if EMAIL_URL_CONFIGURED:
     vars().update(env.email_url("EMAIL_URL"))
+# Socket timeout for every SMTP connect/read; Django defaults to none (hangs forever).
+EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT", default=10)
 EMAIL_BACKEND = "apps.core.mail.InstanceEmailBackend"
 
 # Build metadata (baked in by the Docker build).

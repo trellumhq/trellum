@@ -1,6 +1,7 @@
 from datetime import datetime, time
 
 from django import forms
+from django.contrib.auth.forms import PasswordResetForm
 from django.contrib.auth.password_validation import validate_password
 from django.utils import timezone
 
@@ -155,3 +156,17 @@ class ApiKeyCreateForm(forms.Form):
             raise forms.ValidationError("Pick a date after today.")
         # The key works through the whole of the chosen day.
         return timezone.make_aware(datetime.combine(day, time.max))
+
+
+class BoundedPasswordResetForm(PasswordResetForm):
+    """A slow or failing mail route must not 500 the reset page or reveal
+    which addresses have accounts: the reply is always the neutral
+    "if an account exists, mail was sent". Mail is never retried automatically."""
+
+    def send_mail(self, *args, **kwargs):
+        try:
+            super().send_mail(*args, **kwargs)
+        except Exception:  # noqa: BLE001 - SMTP/provider errors carry secrets
+            import logging
+
+            logging.getLogger(__name__).warning("password reset mail was not accepted", exc_info=False)

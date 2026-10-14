@@ -242,6 +242,43 @@ def is_available(org, purpose="chat") -> tuple[bool, str]:
     return True, ""
 
 
+_AVAILABLE_TTL_S = 30.0
+_available_cache: dict = {}
+
+
+def is_available_cached(org, purpose="chat") -> tuple[bool, str]:
+    """Per-page readiness probe: ``is_available`` memoized per process for a
+    few seconds. It never calls the provider (stored connection-check results
+    only); this just skips the config query on every page. Saving or deleting
+    the org's config drops the entry here; other workers catch up within the
+    TTL. Settings pages and chat turns call ``is_available`` directly."""
+    key = (getattr(org, "pk", None), purpose)
+    hit = _available_cache.get(key)
+    now = time.monotonic()
+    if hit is not None and now - hit[0] < _AVAILABLE_TTL_S:
+        return hit[1]
+    result = is_available(org, purpose)
+    if key[0] is not None:
+        _available_cache[key] = (now, result)
+    return result
+
+
+def _drop_available(sender, instance, **kwargs):  # noqa: ARG001
+    for key in [k for k in _available_cache if k[0] == instance.org_id]:
+        _available_cache.pop(key, None)
+
+
+def _connect_invalidation():
+    from django.db.models.signals import post_delete, post_save
+
+    for sig in (post_save, post_delete):
+        sig.connect(_drop_available, sender="orgs.OrgAssistantConfig",
+                    dispatch_uid=f"assistant-available-{sig.__class__.__name__}-{id(sig)}")
+
+
+_connect_invalidation()
+
+
 # ---------------------------------------------------------------------------
 # Clients (module-level so tests can monkeypatch them)
 # ---------------------------------------------------------------------------
