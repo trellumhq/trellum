@@ -37,22 +37,24 @@ def metrics_browser(request, workspace_http):
 
 
 @pytest.fixture
-def workspace_http(studio_tree, member, grant_studio, monkeypatch, settings):
+def workspace_http(studio_tree, member, grant_studio, monkeypatch, settings, request):
     settings.ALLOWED_HOSTS = ['127.0.0.1', 'testserver']
     grant_studio(member, studio_tree, roles.VIEWER)
     project = studio_tree.project_root; project.mkdir(parents=True, exist_ok=True)
     metric = {'agg': 'sum', 'column': 'value', 'dataset': 'daily',
               'description': 'Controlled synthetic daily observations for real workspace browser flows.', 'tags': ['Revenue']}
-    metrics = [{**metric, 'name': f'metric_{i:04}', 'label': f'Metric {i:04}'} for i in range(56)]
+    count = getattr(request, 'param', 56)
+    metrics = [{**metric, 'name': f'metric_{i:04}', 'label': f'Metric {i:04}',
+                **({'time_agg': 'last'} if count == 1000 and i == 0 else {})} for i in range(count)]
     metrics.extend({'name': f'unbound_{i:04}', 'label': f'Unbound {i:04}',
-                    'owner': 'late-owner-0029' if i == 29 else 'owner'} for i in range(30))
+                    'owner': 'late-owner-0029' if i == 29 else 'owner'} for i in range(1000 if count == 1000 else 30))
     (project / 'metrics.yaml').write_text(yaml.safe_dump({'version': 1, 'datasets': {
-        'daily': {'provider': 'fixture:daily', 'dimensions': ['platform'], 'time': {'column': 'date', 'grain': 'day'}}}, 'metrics': metrics}))
+        'daily': {'provider': 'fixture:daily', 'dimensions': ['platform', 'region'] if count == 1000 else ['platform'], 'time': {'column': 'date', 'grain': 'day'}}}, 'metrics': metrics}))
     monkeypatch.setattr('trellum.project._project_root_override', str(project))
     invalidate_metrics_cache(); sync_studio_metrics(studio_tree)
     output = studio_tree.output_dir / 'metrics'
     context = ReportContext({'name': 'Metrics', 'tags': ['metrics']}, 'metrics', str(output))
-    rows = pd.DataFrame([{'date': day.strftime('%Y-%m-%d'), 'platform': f'Platform {i}', 'value': 1 + i}
+    rows = pd.DataFrame([{'date': day.strftime('%Y-%m-%d'), 'platform': f'Platform {i}', 'region': f'Region {i % 2}', 'value': 1 + i}
         for day in pd.date_range('2026-08-01', periods=60) for i in range(4)])
     context.metrics = lambda *args, **kwargs: rows.copy()
     MetricsReport().generate(context); render_report(context, auto_refresh=False)
@@ -83,7 +85,7 @@ def workspace_http(studio_tree, member, grant_studio, monkeypatch, settings):
     base = f'http://127.0.0.1:{server.server_port}'
     yield {'base': base, 'prefix': f'/s/{studio_tree.org.slug}/{studio_tree.slug}',
         'cookie': {'name': settings.SESSION_COOKIE_NAME, 'value': client.cookies[settings.SESSION_COOKIE_NAME].value, 'url': base},
-        'held': held, 'release': release, 'state': state, 'output': output}
+        'held': held, 'release': release, 'state': state, 'output': output, 'last': count - 1}
     release.set(); server.shutdown(); server.server_close(); thread.join(timeout=2)
     invalidate_metrics_cache()
 
@@ -146,8 +148,15 @@ def test_native_pages_and_enhanced_selection_persist_across_history(metrics_brow
 def test_offpage_focused_comparison_instantiates_one_chart_per_frame(metrics_browser, workspace_http):
     context, page = open_context(metrics_browser, workspace_http)
     try:
-        page.goto(workspace_http['base'] + workspace_http['prefix'] + '/metrics/compare?a=metric_0000&b=metric_0055')
-        page.wait_for_function("document.querySelectorAll('iframe[data-ready=\"1\"]').length === 2")
+        page.goto(workspace_http['base'] + workspace_http['prefix'] + f'/metrics/compare?a=metric_0000&b=metric_{workspace_http["last"]:04}')
+        try:
+            page.wait_for_function("document.querySelectorAll('iframe[data-ready=\"1\"]').length === 2", timeout=15000)
+        except Exception:
+            states = [frame.evaluate("""() => ({url:location.href,state:window._fwWorkspaceState,
+                disposed:window._fwWorkspaceDisposed,data:!!window._reportData,body:document.body.className,
+                charts:Object.keys(window._chartInstances||{}).length,work:window._fwWorkspaceWork,
+                hidden:document.hidden,readyState:document.readyState})""") for frame in page.frames[1:]]
+            pytest.fail(str({'frames':states,'cards':page.locator('.mc-card').all_inner_texts()}))
         for handle in page.locator('iframe').element_handles():
             frame = handle.content_frame()
             assert frame.evaluate('Object.keys(window._chartInstances || {}).length') == 1
@@ -158,6 +167,11 @@ def test_offpage_focused_comparison_instantiates_one_chart_per_frame(metrics_bro
         assert 'Filters: 2026-08-05 – 2026-08-20' in page.locator('.mc-range').first.inner_text()
     finally:
         context.close()
+
+
+@pytest.mark.parametrize('workspace_http', [1000], indirect=True)
+def test_large_offpage_focused_workspace_readiness(metrics_browser, workspace_http):
+    test_offpage_focused_comparison_instantiates_one_chart_per_frame(metrics_browser, workspace_http)
 
 
 def test_navigation_cancels_old_workspace_before_delayed_payload_finishes(metrics_browser, workspace_http):
