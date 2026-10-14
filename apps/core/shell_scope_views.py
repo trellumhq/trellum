@@ -36,6 +36,8 @@ def _parameters(request, *, opening=False):
     if kind not in ('org', 'studio') or intent not in ('navigate', 'assistant') or (kind == 'org' and intent != 'navigate'):
         raise ValueError('Invalid scope kind or intent.')
     q = data.get('q', '')
+    if '\x00' in q:
+        raise ValueError('Search contains an invalid character.')
     if len(q) > 200:
         raise ValueError('Search must contain at most 200 characters.')
     raw_page = data.get('page', '1')

@@ -187,6 +187,7 @@ def test_malformed_remembered_map_does_not_break_shell(member, org, remembered):
 @pytest.mark.parametrize('params', [
     {'kind': 'bad'}, {'kind': 'org', 'intent': 'assistant'}, {'kind': 'studio'},
     {'kind': 'org', 'q': 'x' * 201}, {'kind': 'org', 'page': '0'},
+    {'kind': 'org', 'q': '\x00'}, {'kind': 'org', 'q': 'name\x00suffix'},
     {'kind': 'org', 'page': '2147483648'}, {'kind': 'org', 'page': '١'},
     {'kind': 'org', 'page': '-1'}, {'kind': 'org', 'page': '1.0'},
     {'kind': 'org', 'selected': 'x' * 65}, {'kind': 'org', 'selected': '../evil'},
