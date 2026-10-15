@@ -114,7 +114,14 @@ def test_effective_sources_and_reports_are_listed_in_full(login, org_admin, org,
     assert len(row["sources"]) == 60 and row["sources"][-1] == "Source 059: default Viewer on every studio"
     assert row["reports"] == reports and row["reports_count"] == 60
     assert private.name.encode() not in response.content
-    assert "member-choices" not in response.content.decode()
+    html = response.content.decode()
+    assert "member-choices" not in html
+    # Choosing a member applies at once: no Preview, Search or Go button and no pager.
+    form = html.split('id="effectiveMember"', 1)[1].split("</form>", 1)[0]
+    assert 'onchange="this.form.submit()"' in form and "<button" not in form
+    tab = html.split("<h2>Effective access</h2>", 1)[1].split("<script", 1)[0]
+    for text in ("Search", "Previous", "Next", "ui-pager"):
+        assert text not in tab, text
     monkeypatch.setattr("apps.orgs.groups.presentation.CHOICE_LIMIT", 5)
     response = client.get(url(org, groups[0], "effective"), {"tab": "effective", "member": member.pk})
     row = next(r for r in response.context["effective_rows"] if r["studio"].pk == studio.pk)
