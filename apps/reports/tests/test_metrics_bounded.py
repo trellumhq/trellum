@@ -1,9 +1,10 @@
-"""Paged definitions and complete, bounded DB projections under live permissions."""
+"""Bounded definitions and complete, bounded DB projections under live permissions."""
 import pytest
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from apps.core import roles
+from apps.reports.metric_summaries import CLAIM_PREVIEW
 from apps.reports.metrics_catalog import metric_definition_page
 from apps.reports.models import MetricCatalogState, MetricDefinition, Report, ReportSourceSummary, ReportMetricClaim, ReportMetricPreview
 
@@ -42,19 +43,33 @@ def test_primary_global_search_and_bound(catalog):
     studio, client, rows = catalog
     with CaptureQueriesContext(connection) as captured:
         page = metric_definition_page(studio)
-        assert len(page["metrics"]) == 50 and page["defined_count"] == 2000
-    assert len(captured) == 4
+        assert len(page["metrics"]) == 500 and page["defined_count"] == 2000 and page["truncated"]
+    assert len(captured) == 5
     for query in ("metric_1999", "Metric 1999", "last-description", "last-owner", "last-tag"):
         result = metric_definition_page(studio, query)
         assert result["matching_count"] == 1 and result["metrics"][0]["row"].pk == rows[-1].pk
-    response = client.get(_url(studio) + "/metrics", {"page": 40})
+        assert not result["truncated"]
+    response = client.get(_url(studio) + "/metrics")
     assert response.status_code == 200
     html = response.content.decode()
-    assert html.count('class="met-card"') == 50
-    assert "metric_1999" in html and "unused" not in html and "no reports claim" not in html
-    assert '<iframe' not in html and 'method="get" data-metric-search' in html
+    # One grid with a browser-side filter: no pager, no search button.
+    assert html.count('class="met-card"') == 500
+    assert "Showing the first 500 of 2000 matching metrics" in html and "Previous" not in html and "Next" not in html
+    assert '<iframe' not in html and 'data-metric-search' not in html and 'Search metrics' not in html
+    assert 'data-server-filter' in html
+    filtered = client.get(_url(studio) + "/metrics", {"q": "last-owner"}).content.decode()
+    assert filtered.count('class="met-card"') == 1 and "metric_1999" in filtered
     fragment = client.get(_url(studio) + "/metrics", {"q": "last-owner"}, HTTP_X_TRELLUM_NAVIGATION="1")
     assert fragment.json()["html"].count('class="met-card"') == 1
+
+
+def test_small_catalog_is_one_grid_filtered_in_the_browser(studio, member, grant_studio, login):
+    grant_studio(member, studio, roles.VIEWER)
+    MetricDefinition.objects.bulk_create([MetricDefinition(studio=studio, name=f"m_{i}", definition_hash="h") for i in range(3)])
+    html = login(member).get(_url(studio) + "/metrics").content.decode()
+    assert html.count('class="met-card"') == 3
+    assert 'data-server-filter' not in html and "Showing the first" not in html
+    assert "3 defined, 0 claimed by reports" in html
 
 
 def test_complete_counts_bounded_previews_and_points(catalog):
@@ -69,8 +84,8 @@ def test_complete_counts_bounded_previews_and_points(catalog):
     assert response.status_code == 200, response.content
     data = response.json()
     assert data["state"] == "ready" and len(data["metrics"]) == 50
-    assert all(item["claim_count"] == 201 and len(item["claims"]) == 3 and len(item["spark"].split()) == 60 for item in data["metrics"])
-    assert len(response.content) <= 128 * 1024
+    assert all(item["claim_count"] == 201 and len(item["claims"]) == CLAIM_PREVIEW and len(item["spark"].split()) == 60 for item in data["metrics"])
+    assert len(response.content) <= 512 * 1024
     details = client.get(data["metrics"][0]["details_url"], {"definition_revision": 7, "page": 5})
     assert details.status_code == 200 and b"report-0199" in details.content
     assert b"201 indexed claims" in details.content
@@ -84,7 +99,7 @@ def test_incomplete_sources_never_complete_zero(catalog, state, quality):
     source.state = state; source.quality = quality; source.save()
     data = _summary(catalog).json()
     assert data["state"] == "partial"
-    assert all(item["claim_count"] == 0 and not item["count_complete"] and item["chart_state"] == "unknown" for item in data["metrics"])
+    assert all(item["claim_count"] == 0 and not item["count_complete"] and item["chart_state"] == "unbuilt" for item in data["metrics"])
 
 
 def test_missing_summary_is_partial(catalog):
@@ -144,17 +159,42 @@ def test_finite_viewer_denied(studio, member, make_group, attach_group, login, s
 
 
 def test_stopped_worker_observations_are_historical(catalog):
+    """Stale usage stays marked as such, but a chart never waits for the worker."""
     from datetime import timedelta
     studio, _, rows = catalog
-    source = _source(studio, "metrics", preview_state="ready")
+    source = _source(studio, "metrics", preview_state="ready", workspace_version=1)
     source.observed_at = timezone.now() - timedelta(seconds=301); source.save()
     ReportMetricClaim.objects.create(summary=source, metric_name=rows[0].name, definition_hash="current")
     ReportMetricPreview.objects.create(summary=source, metric_name=rows[0].name, points="0,1 1,2")
     data = _summary(catalog).json()
     assert data["state"] == "partial"
     assert data["metrics"][0]["claim_count"] == 1 and not data["metrics"][0]["count_complete"]
-    assert not data["metrics"][0]["claims"][0]["fresh"] and data["metrics"][0]["spark"] == ""
-    assert data["metrics"][0]["chart_state"] == "unknown"
+    assert not data["metrics"][0]["claims"][0]["fresh"]
+    assert data["metrics"][0]["spark"] == "0,1 1,2"
+    assert data["metrics"][0]["chart_state"] == "ready" and data["metrics"][0]["embed_url"]
+
+
+@pytest.mark.parametrize("state,quality,version,expected", [
+    ("ready", "verified", 1, "ready"), ("missing", "verified", None, "unbuilt"),
+    ("ready", "verified", 0, "legacy"), ("pending", "unknown", None, "unknown"),
+    ("uncertain", "unknown", 1, "unknown"), ("ready", "verified", None, "unknown")])
+def test_chart_state_follows_the_indexed_report_not_the_clock(catalog, state, quality, version, expected):
+    from datetime import timedelta
+    studio, _, rows = catalog
+    source = _source(studio, "metrics", workspace_version=version)
+    ReportSourceSummary.objects.filter(pk=source.pk).update(state=state, quality=quality, observed_at=timezone.now() - timedelta(hours=2))
+    ReportMetricClaim.objects.create(summary=source, metric_name=rows[0].name, definition_hash="current")
+    assert _summary(catalog).json()["metrics"][0]["chart_state"] == expected
+
+
+def test_idle_backoff_never_ages_a_source_into_unknown():
+    """The idle re-check interval must stay inside every reader's freshness window."""
+    from apps.reports import annotation_queries, catalog, metric_summaries, operations
+    from apps.reports.source_reconciliation import POLL_SECONDS
+    from apps.reports.source_summary import MAX_IDLE_SECONDS
+    window = min(metric_summaries.SOURCE_FRESH_SECONDS, catalog.FRESH_SECONDS,
+                 operations.FRESH_SECONDS, annotation_queries.FRESH_SECONDS)
+    assert MAX_IDLE_SECONDS + POLL_SECONDS < window
 
 
 @pytest.mark.parametrize("query", [{"ids": str(2**63)}, {"definition_revision": str(2**63)}, {"ids": "9"*1000}])

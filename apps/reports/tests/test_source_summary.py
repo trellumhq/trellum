@@ -9,7 +9,7 @@ from django.utils import timezone
 from apps.reports.models import MetricCatalogState, Report, ReportSourceSummary
 from apps.reports.source_reconciliation import run_batch
 from apps.reports.source_summary import (
-    META_BYTES, acquire, begin_attempt, begin_expiry, definitions_changed,
+    MAX_IDLE_SECONDS, META_BYTES, acquire, begin_attempt, begin_expiry, definitions_changed,
     finish_attempt, finish_expiry, invalidate_reports, reconcile,
 )
 
@@ -459,6 +459,18 @@ def test_remote_unbuilt_declaration_is_missing_without_data_read(studio_tree, mo
     assert reads == ['_meta.json']
 
 
+def test_schedule_longer_than_the_idle_cap_is_due(studio_tree):
+    """Rows scheduled under an older, longer cap are re-observed instead of ageing into unknown."""
+    row = report(studio_tree, meta=metadata("m"))
+    reconcile(row.pk)
+    ReportSourceSummary.objects.filter(report=row).update(next_check_at=timezone.now() + timedelta(seconds=3000), idle_checks=8)
+    assert run_batch()["inspections"] == 1
+    assert (ReportSourceSummary.objects.get(report=row).next_check_at - timezone.now()).total_seconds() <= MAX_IDLE_SECONDS
+    # A failure back-off is a deliberate wait and stays untouched.
+    ReportSourceSummary.objects.filter(report=row).update(next_check_at=timezone.now() + timedelta(seconds=3000), failures=2)
+    assert run_batch()["inspections"] == 0
+
+
 def test_unchanged_source_backs_off_and_change_resets(studio_tree):
     row = report(studio_tree, meta=metadata("m"))
     reconcile(row.pk)
@@ -468,8 +480,9 @@ def test_unchanged_source_backs_off_and_change_resets(studio_tree):
         assert reconcile(row.pk)["status"] == "ready"
         summary = ReportSourceSummary.objects.get(report=row)
         delays.append((summary.next_check_at - timezone.now()).total_seconds())
-    assert all(b > a * 1.5 for a, b in zip(delays, delays[1:]))
-    assert delays[-1] > 300
+    assert delays[0] < delays[-1] and all(b >= a - 1 for a, b in zip(delays, delays[1:]))
+    # Capped inside the readers' five-minute freshness window.
+    assert delays[-1] <= MAX_IDLE_SECONDS + 1 and delays[-1] > MAX_IDLE_SECONDS - 5
     # Idle catalog: nothing is eligible until the backed-off time.
     assert run_batch()["inspections"] == 0
     (studio_tree.output_dir / row.slug / "_meta.json").write_text(json.dumps(metadata("changed")))

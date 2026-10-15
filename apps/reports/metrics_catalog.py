@@ -394,12 +394,18 @@ def studio_metrics_overview(studio) -> dict:
     return payload
 
 
-def metric_definition_page(studio, query="", page=1):
+# Definitions rendered on one page. Far above a realistic catalog, so the
+# overview is one scrolling grid filtered in the browser; past it the page
+# says so and the filter box narrows server-side.
+CATALOG_LIMIT = 500
+
+
+def metric_definition_page(studio, query=""):
     """Bounded primary catalog. Definitions never require artifact reads."""
-    from django.core.paginator import Paginator
     from django.db.models import Q, TextField, Count
     from django.db.models.functions import Cast
     from apps.reports.models import MetricCatalogState
+    from .metric_summaries import claimed_count
 
     revision = MetricCatalogState.objects.filter(studio=studio).values_list(
         "definition_revision", flat=True).first() or 0
@@ -414,9 +420,7 @@ def metric_definition_page(studio, query="", page=1):
         defined_count=Count("pk"), matching_count=Count("pk", filter=match),
         synced_at=Max("last_scanned_at"), repo_url=Max("studio__repo__repo_url"))
     defined_count = statistics["defined_count"]
-    pager = Paginator(definitions.filter(match).order_by("name", "pk"), 50)
-    pager.count = statistics["matching_count"]  # Reuse the exact filtered count already read.
-    selected = pager.get_page(page)
+    selected = list(definitions.filter(match).order_by("name", "pk")[:CATALOG_LIMIT])
     metrics = [{"row": row, "spec": row.spec_text(),
                 "not_monitored_reason": ("descriptive — no aggregation spec to compute" if not row.agg else
                                          "not present in the latest indexed Metrics build"), "details_url":
@@ -425,7 +429,9 @@ def metric_definition_page(studio, query="", page=1):
     current_revision = MetricCatalogState.objects.filter(studio=studio).values_list(
         "definition_revision", flat=True).first() or 0
     return {"metrics": metrics, "defined_count": defined_count,
-            "matching_count": pager.count, "metric_page": selected, "synced_at": statistics["synced_at"], "repo_url": statistics["repo_url"] or "",
+            "matching_count": statistics["matching_count"], "truncated": statistics["matching_count"] > len(selected),
+            "shown_count": len(selected), "claimed_count": claimed_count(studio),
+            "synced_at": statistics["synced_at"], "repo_url": statistics["repo_url"] or "",
             "definition_revision": revision, "definition_changed": revision != current_revision,
             "metric_query": query}
 
@@ -438,7 +444,7 @@ def metrics_page(request, org_slug, studio_slug, section="overview"):
     from .metric_workspace import workspace_projection
 
     data = (workspace_projection(request.studio, legacy=request.GET.get('legacy') == '1') if section == "comparison" else
-            metric_definition_page(request.studio, request.GET.get("q", "").strip(), request.GET.get("page", 1)))
+            metric_definition_page(request.studio, request.GET.get("q", "").strip()[:200]))
     # A reverse OneToOneField raises DoesNotExist (not AttributeError) when
     # unset, so plain getattr(..., "repo", None) would not catch it.
     if section != "comparison":

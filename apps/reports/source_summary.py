@@ -24,7 +24,12 @@ PREVIEW_BYTES = 32 * 1024 * 1024
 LEASE_SECONDS = 180
 RECHECK_SECONDS = 60
 MAX_BACKOFF_SECONDS = 3600
-MAX_IDLE_SECONDS = 3600
+# Every reader treats an observation older than five minutes as stale and shows
+# "unknown" (catalog, operations, analytics, metrics). The idle back-off must
+# therefore stay well inside that window: an unchanged, healthy source is
+# re-observed at least this often, so it never ages into "unknown" while the
+# worker is running.
+MAX_IDLE_SECONDS = 180
 INSPECTION_BYTES = 62 * 1024 * 1024 + 128 * 1024
 
 
@@ -98,7 +103,11 @@ def acquire(report_id):
     with transaction.atomic():
         summary, _ = ReportSourceSummary.objects.get_or_create(report_id=report_id, defaults={"next_check_at": now})
         summary = ReportSourceSummary.objects.select_for_update(skip_locked=True).filter(pk=summary.pk).first()
-        if summary is None or summary.next_check_at > now or (summary.lease_until and summary.lease_until > now):
+        # Not due yet, unless a healthy schedule was written under an older,
+        # longer idle cap (see eligible_reports).
+        scheduled_later = summary is not None and summary.next_check_at > now and not (
+            summary.failures == 0 and summary.next_check_at > now + timedelta(seconds=MAX_IDLE_SECONDS))
+        if summary is None or scheduled_later or (summary.lease_until and summary.lease_until > now):
             return None
         # Active runs own the directory/publish fence. Restart repair waits for
         # normal worker stale-run recovery rather than racing unfinished builds.

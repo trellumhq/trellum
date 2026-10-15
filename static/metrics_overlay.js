@@ -45,13 +45,24 @@ function mountOverlay(root, signal) {
     }
 
     function chartHtml(row) {
-        if (row.dataset.chartState === 'legacy') {
+        var state = row.dataset.chartState;
+        if (state === 'legacy') {
             return '<p class="met-modal-note">This artifact uses the legacy workspace. Rebuild for bounded metric pages. '
                 + (row.dataset.legacyUrl ? '<a href="' + esc(row.dataset.legacyUrl) + '">View legacy metric explicitly</a>' : '') + '</p>';
         }
-        if (row.dataset.chartState && !['ready', 'not-monitored'].includes(row.dataset.chartState)) {
-            return '<p class="met-modal-note">Chart availability is ' + esc(row.dataset.chartState)
-                + '. Definitions remain available; retry report usage from the catalog.</p>';
+        if (state === 'unbuilt') {
+            /* No build to draw from yet. Say that rather than "not
+               monitored", which would be a guess. */
+            return '<p class="met-modal-note">The Metrics report has not been built yet, '
+                + 'so there is no chart to show. Run it and this metric\'s trend appears here.</p>';
+        }
+        if (state === 'loading' || state === 'unknown') {
+            /* The catalog is still reading which charts exist; it keeps
+               asking by itself and this panel redraws when the answer lands. */
+            return '<p class="met-modal-note" role="status">Loading the chart…</p>';
+        }
+        if (state === 'error' || state === 'changed') {
+            return '<p class="met-modal-note">This metric’s chart is not available right now.</p>';
         }
         var embed = row.dataset.embed;
         if (embed) {
@@ -62,7 +73,7 @@ function mountOverlay(root, signal) {
             return qualifier + '<iframe data-workspace-version="' + esc(row.dataset.workspaceVersion || '') + '" src="' + esc(embed) + '" title="'
                 + esc(row.dataset.label) + ' — chart"></iframe>';
         }
-        if (!built && !row.dataset.chartState) {
+        if (!built && !state) {
             /* Bound or not, there is no build to draw from yet. Say that
                rather than "not monitored", which would be a guess. */
             return '<p class="met-modal-note">The Metrics report has not been built yet, '
@@ -254,24 +265,37 @@ function mountOverlay(root, signal) {
     listen(full, 'click', function () { if (activeFrame) updateLinks(activeFrame); });
     listen(overview, 'click', function () { if (activeFrame) updateLinks(activeFrame); });
 
-    function open(row, trigger) {
-        stopWatching();
-        lastTrigger = trigger;
-        title.textContent = row.dataset.label;
-        sub.textContent = row.dataset.metric;
+    var openRow = null, drawnState = null;
 
+    function draw(row) {
+        stopWatching();
         var facts = Array.prototype.map.call(
             row.querySelectorAll('.met-fact'), function (f) { return f.outerHTML; }
         ).join('');
+        drawnState = row.dataset.chartState;
         body.innerHTML = chartHtml(row) + '<div class="met-modal-facts">' + facts + '</div>';
         var frame = body.querySelector('iframe');
         applyCompact(frame);
         if (frame) watchFrame(frame);
-
         full.hidden = !row.dataset.chart;
         if (row.dataset.chart) full.href = row.dataset.chart;
         overview.hidden = !row.dataset.overview;
         if (row.dataset.overview) overview.href = row.dataset.overview;
+    }
+
+    /* The catalog's own summary request answers after the page is up. If the
+       panel was opened before that, redraw it once the state is known. */
+    listen(root, 'metric-summary', function (ev) {
+        var row = ev.detail && ev.detail.card;
+        if (row && row === openRow && !modal.hidden && row.dataset.chartState !== drawnState) draw(row);
+    });
+
+    function open(row, trigger) {
+        lastTrigger = trigger;
+        openRow = row;
+        title.textContent = row.dataset.label;
+        sub.textContent = row.dataset.metric;
+        draw(row);
 
         overlay.hidden = false;
         modal.hidden = false;
@@ -281,6 +305,7 @@ function mountOverlay(root, signal) {
 
     function close() {
         stopWatching();
+        openRow = null;
         modal.hidden = true;
         overlay.hidden = true;
         lockScroll(false);
@@ -313,27 +338,19 @@ function mountOverlay(root, signal) {
  * Its own IIFE, not part of the overlay's: a page that somehow had no modal
  * would still have cards worth filtering, and the overlay bails early.
  *
- * ponytail: filters the cards already rendered, which is right at the ~13 a
- * studio has today and stays right into the low hundreds -- it is one string
- * compare per card per keystroke over markup the server already sent. Past a
- * few hundred, stop shipping every card: take `?q=` in metrics_page, filter
- * the MetricDefinition queryset there and paginate, and this becomes a form
- * submit with the same box.
+ * Filters the cards already rendered, which is right up to the 500 the page
+ * renders and costs one string compare per card per keystroke over markup the
+ * server already sent. Past that the page says it is showing the first 500 and
+ * the same box also narrows server-side (`?q=`) after a typing pause.
  */
 function mountFilter(root, signal) {
     'use strict';
 
     var input = root.querySelector("#" + 'metSearch');
     var count = root.querySelector("#" + 'metCount');
+    if (count && !count.dataset.idle) count.dataset.idle = count.textContent;
     var empty = root.querySelector("#" + 'metEmpty');
     if (!input || !count || !empty) return;
-    if (input.form && input.form.hasAttribute('data-metric-search')) {
-        listen(input, 'keydown', function (ev) {
-            if (ev.key === 'Escape') { ev.stopPropagation(); input.value = ''; }
-        });
-        return; // Global search and pagination use the native GET contract.
-    }
-
     var cards = Array.prototype.slice.call(
         root.querySelectorAll('.met-card[data-search]')
     );
@@ -359,10 +376,35 @@ function mountFilter(root, signal) {
         empty.hidden = shown > 0;
         /* Silent until there is something to say: announcing "13 of 13" on an
            empty box is noise, and the page header already carries the total. */
-        count.textContent = q ? shown + ' of ' + cards.length : '';
+        count.textContent = q ? shown + ' of ' + cards.length : (count.dataset.idle || '');
     }
 
-    listen(input, 'input', apply);
+    /* Only for a catalog larger than one page: after ~400 ms without typing,
+       ask the server for the matches instead of the rendered subset. */
+    var serverUrl = input.dataset.serverFilter, loaded = input.value.trim(), pause = null;
+    function narrow() {
+        var q = input.value.trim();
+        if (q === loaded) return;
+        var url = new URL(serverUrl, location.href);
+        if (q) url.searchParams.set('q', q);
+        try { sessionStorage.setItem('metSearchFocus', '1'); } catch (e) { /* storage blocked */ }
+        if (window.TrellumNavigation) window.TrellumNavigation.navigate(url.href);
+        else location.assign(url.href);
+    }
+    if (serverUrl) {
+        try {
+            if (sessionStorage.getItem('metSearchFocus')) {
+                sessionStorage.removeItem('metSearchFocus');
+                input.focus(); input.setSelectionRange(input.value.length, input.value.length);
+            }
+        } catch (e) { /* storage blocked */ }
+        signal.addEventListener('abort', function () { clearTimeout(pause); }, {once: true});
+    }
+
+    listen(input, 'input', function () {
+        apply();
+        if (serverUrl) { clearTimeout(pause); pause = setTimeout(narrow, 400); }
+    });
     listen(input, 'keydown', function (ev) {
         if (ev.key !== 'Escape') return;
         /* Escape in the box clears the box and NOTHING else. Without this it
@@ -372,6 +414,7 @@ function mountFilter(root, signal) {
         ev.stopPropagation();
         input.value = '';
         apply();
+        if (serverUrl) { clearTimeout(pause); pause = setTimeout(narrow, 400); }
     });
 }
 

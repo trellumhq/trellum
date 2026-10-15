@@ -259,9 +259,10 @@ def test_second_origin_workspace_is_visible_unconfirmed_retry_and_cleanup(metric
         assert page.get_by_text('Metrics ready.', exact=True).count() == 0
         page.clock.install(); page.clock.fast_forward(13000)
         assert page.locator('#metWorkspace').is_visible()
-        page.get_by_role('button', name='Retry metrics').click()
+        # Nothing to retry: the page opened, only its readiness cannot be read.
+        assert page.get_by_role('button', name='Retry metrics').count() == 0
         page.get_by_text('Metrics opened on another origin; chart readiness cannot be confirmed.', exact=False).wait_for()
-        assert state['redirects'] == 2
+        assert state['redirects'] == 1
         page.evaluate('window.dispatchEvent(new PageTransitionEvent("pageshow",{persisted:true}))')
         page.clock.fast_forward(13000)
         assert page.locator('#metWorkspace').is_visible()
@@ -282,7 +283,9 @@ def test_second_origin_workspace_is_visible_unconfirmed_retry_and_cleanup(metric
         page.wait_for_function('document.getElementById("metWorkspace").contentWindow.location.href === "about:blank"')
         page.clock.fast_forward(13000)
         assert page.locator('#metWorkspace').is_hidden()
-        assert page.get_by_role('button', name='Retry metrics').is_visible()
+        status_text = page.locator('[data-workspace-status]').inner_text()
+        assert status_text.startswith('Metrics unavailable; retrying'), status_text
+        assert page.get_by_role('button', name='Retry metrics').count() == 0
     finally:
         context.close()
         for server in (parent, edge): server.shutdown(); server.server_close()
@@ -314,8 +317,8 @@ def test_obsolete_workspace_recovers_to_root_without_loading_chart_payload(metri
         if failure == 'replaced-build':
             assert payloads == []
             context.unroute('**/_meta.json*')
-        page.get_by_role('button', name='Retry metrics').click()
-        page.get_by_text('Metrics ready.', exact=True).wait_for()
+        assert page.get_by_role('button', name='Retry metrics').count() == 0
+        page.get_by_text('Metrics ready.', exact=True).wait_for(timeout=15000)
         assert page.locator('#metWorkspace').is_visible()
         assert 'only=' not in page.locator('#metWorkspace').get_attribute('src')
     finally:

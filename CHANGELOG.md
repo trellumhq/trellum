@@ -26,6 +26,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - Use the report theme font for chart labels, matching report headers and
   metadata, including after theme changes and font loading.
+- Metrics charts and sparklines no longer disappear when the worker has not
+  re-observed a report for five minutes. The idle re-check interval is capped
+  inside that window, chart availability no longer waits on observation
+  freshness, and the Metrics page fills in usage and charts by itself (with
+  quiet retries) instead of offering a "Retry report usage" button. The
+  Metrics overview is one grid with a browser-side filter, as before.
+- The Metrics comparison workspace retries a failed load by itself.
+- Operators get an "Operator console" entry in the shell sidebar.
 
 ## [0.6.0] — 2026-10-13
 

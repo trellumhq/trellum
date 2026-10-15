@@ -18,7 +18,7 @@ pytestmark = pytest.mark.django_db
     (1, 'verified', 'ready', True, True), (1, 'observed', 'ready', True, True),
     (0, 'verified', 'ready', True, False), (None, 'verified', 'ready', True, False),
     (2, 'verified', 'ready', True, False), (1, 'verified', 'unavailable', True, False),
-    (1, 'verified', 'ready', False, False), (1, 'historical', 'ready', True, False)])
+    (1, 'verified', 'ready', False, True), (1, 'historical', 'ready', True, False)])
 def test_format_and_source_state_gate_before_any_frame(catalog, monkeypatch, version, quality, state, fresh, automatic):
     studio, client, rows = catalog
     source = _source(studio, 'metrics', workspace_version=version)

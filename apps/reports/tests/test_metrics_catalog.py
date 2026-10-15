@@ -277,7 +277,7 @@ class TestMetricsPageView:
         grant_studio(member, studio_tree, roles.VIEWER)
         client = login(member)
         resp = client.get(self._url(studio_tree))
-        assert "Report usage pending" in resp.content.decode()
+        assert "data-metric-usage" in resp.content.decode()
         data = _indexed_summary(client, studio_tree)
         assert data["state"] == "ready"
         assert data["metrics"][0]["claim_count"] == 0 and data["metrics"][0]["count_complete"]
@@ -307,7 +307,7 @@ class TestMetricsPageView:
         client = login(member)
         resp = client.get(self._url(studio_tree))
         body = resp.content.decode()
-        assert "Report usage pending" in body
+        assert "data-metric-usage" in body
         data = _indexed_summary(client, studio_tree)
         claim = data["metrics"][0]["claims"][0]
         assert claim["current"] is False and claim["claimed_version"] == 1
@@ -434,13 +434,12 @@ class TestCatalogOverlay:
 
         body = login(member).get(f"/s/{studio_tree.org.slug}/{studio_tree.slug}/metrics").content.decode()
         assert 'class="met-open"' in body
-        assert 'data-chart-state="unknown"' in body
+        assert 'data-chart-state="loading"' in body
         data = _indexed_summary(login(member), studio_tree)
         assert data["metrics"][0]["claim_count"] == 1
         assert data["metrics"][0]["chart_state"] == "legacy"
         assert data["metrics"][0]["embed_url"] == ''
         assert 'role="dialog" aria-modal="true"' in body
-        assert 'data-built=""' in body
         assert "metrics_overlay.js" in body
 
 
