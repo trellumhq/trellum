@@ -106,6 +106,23 @@ def test_home_lists_every_studio_and_joins_actual_report_studio(login, org_admin
     assert "Search studios" not in content and "ui-pager" not in content
 
 
+def test_home_last_run_is_one_limited_probe_per_shown_studio(login, org_admin, org):
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    studios = [Studio.objects.create(org=org, slug=f"probe{i}", name=f"Probe {i}") for i in range(4)]
+    for studio in studios:
+        report = Report.objects.create(studio=studio, slug="r")
+        Run.objects.create(report=report, studio=studio, slug="r", status="success", created_at=timezone.now() - timedelta(hours=2))
+        Run.objects.create(report=report, studio=studio, slug="r", status="error", created_at=timezone.now() - timedelta(hours=1))
+    client = login(org_admin)
+    with CaptureQueriesContext(connection) as captured:
+        response = client.get("/", {"org": org.slug})
+    runs = [item["sql"] for item in captured if 'FROM "runner_run"' in item["sql"]]
+    assert len(runs) == 4 and all("LIMIT 1" in sql and "ROW_NUMBER" not in sql.upper() for sql in runs)
+    assert {c["last_run"].status for c in response.context["cards"]} == {"error"}
+
+
 def test_home_pages_only_beyond_the_studio_cap(login, org_admin, org, monkeypatch):
     monkeypatch.setattr("apps.orgs.views.STUDIO_LIST_CAP", 5)
     for i in range(6):

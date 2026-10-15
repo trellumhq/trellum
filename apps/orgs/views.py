@@ -79,8 +79,7 @@ def home(request):
         studios = []
 
     # Page authorized studios before computing their DB-only health hints.
-    from django.db.models import Count, F, Window
-    from django.db.models.functions import RowNumber
+    from django.db.models import Count
     from apps.reports.models import Report
     from apps.runner.models import Run
 
@@ -91,14 +90,12 @@ def home(request):
     reports = visible_reports(request.user, Report.objects.filter(
         studio_id__in=[studio.pk for studio in shown], present_in_scan=True))
     counts = dict(reports.order_by().values("studio_id").annotate(n=Count("pk")).values_list("studio_id", "n"))
+    # One indexed ORDER BY created_at DESC LIMIT 1 per shown studio, as ever;
+    # a studio's runs are never ranked together.
     latest = {
-        run._card_studio_id: run
-        for run in Run.objects.filter(report__in=reports)
-        .exclude(status__in=Run.ACTIVE_STATUSES)
-        .annotate(_card_studio_id=F("report__studio_id"), _card_rank=Window(
-            expression=RowNumber(), partition_by=[F("report__studio_id")],
-            order_by=[F("created_at").desc(), F("pk").desc()]))
-        .filter(_card_rank=1)
+        studio.pk: Run.objects.filter(report__in=reports.filter(studio_id=studio.pk))
+        .exclude(status__in=Run.ACTIVE_STATUSES).order_by("-created_at").first()
+        for studio in shown
     }
     cards = [{"studio": studio, "report_count": counts.get(studio.pk, 0),
               "last_run": latest.get(studio.pk)} for studio in shown]
