@@ -37,7 +37,7 @@ These are valid seeded artifacts, not a claim that a worker produced them.
 Schedules/rules are disabled and no workers run in this runner, so no provider
 calls or emails are triggered. Outbound mail uses Django's in-memory backend.
 
-`routes.json` is a checked-in plan for all 198 first-party routes plus native
+`routes.json` is a checked-in plan for all 199 first-party routes plus native
 Django/admin/allauth boundaries. Each entry has explicit owner case/shard,
 principal names from `identities.py`, request conditions, method/action/tab
 scenarios and planned test IDs. Public entry has an explicit empty denied-role

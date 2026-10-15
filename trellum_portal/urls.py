@@ -19,6 +19,7 @@ from apps.orgs.security import views as org_security
 from apps.orgs.sso import views as org_sso
 from apps.reports import livequery as report_livequery
 from apps.reports import metrics_catalog, metric_summaries, metric_workspace
+from apps.reports import jump as report_jump
 from apps.reports import views as report_views
 from apps.reports.overviews import annotations, experiments
 from apps.reports.vendor import vendor_asset
@@ -31,6 +32,7 @@ studio_patterns = [
     path("analyses", report_views.analyses, name="studio-analyses"),
     path("deliveries", report_views.studio_deliveries, name="studio-deliveries"),
     path("api/delivery-reports", report_views.api_delivery_report_choices, name="api-delivery-report-choices"),
+    path("api/jump", report_jump.api_jump, name="api-report-jump"),
     path("deliveries/new", report_views.studio_delivery_new, name="studio-delivery-new"),
     path("deliveries/<int:schedule_id>/edit", report_views.studio_delivery_edit, name="studio-delivery-edit"),
     # The Operations tab (studio tab bar): the dashboard template booted with
