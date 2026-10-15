@@ -7,6 +7,7 @@ from django.contrib.auth import authenticate, login as auth_login, logout as aut
 from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_POST
@@ -21,6 +22,7 @@ from apps.studios.models import Studio, StudioMembership
 from .forms import (
     InviteAcceptForm,
     LoginForm,
+    PasswordStepForm,
     MfaCodeForm,
     SetupAccountForm,
     SetupOrgForm,
@@ -36,90 +38,205 @@ MFA_STASH_TTL_SECONDS = 5 * 60
 _MFA_STASH_KEYS = ("mfa_user_id", "mfa_started", "mfa_next", "mfa_login_method")
 
 
-NO_SSO_ROUTE_MESSAGE = (
-    "Enter your password. Single sign-on isn't set up for this email address "
-    "\u2014 if your organization uses it, contact your administrator."
-)
+#: Session key carrying the email from the login page's first step to its
+#: password step. Routing is re-run from it on every submit.
+LOGIN_EMAIL_SESSION_KEY = "login_email"
+
+
+def _login_url(request, name: str = "login") -> str:
+    """The login step's URL with ``?next=`` carried along."""
+    from urllib.parse import urlencode
+
+    url = reverse(name)
+    nxt = request.GET.get("next")
+    return f"{url}?{urlencode({'next': nxt})}" if nxt else url
+
+
+def _render_email_step(request, form):
+    return render(
+        request, "accounts/login.html",
+        {"form": form, "step": "email", "reason": request.GET.get("reason", "")},
+    )
+
+
+def _render_password_step(request, form, email: str):
+    """Same page for every email, existing or not. Only the label varies, and
+    only by the domain's routing (public already via the redirect to the IdP)."""
+    return render(
+        request, "accounts/login.html",
+        {
+            "form": form, "step": "password", "login_email": email,
+            "password_label": "Directory password" if _is_directory(email) else "Password",
+            "change_email_url": _login_url(request),
+            "form_action": _login_url(request, "login-password"),
+        },
+    )
+
+
+def _is_directory(email: str) -> bool:
+    from apps.accounts import sso
+
+    cfg = sso.config_for_email_domain(email)
+    return cfg is not None and cfg.is_ldap
 
 
 def login_view(request):
-    """Email-first login.
+    """Identifier-first login, step 1: the email.
 
-    If the email's domain belongs to an org with enabled SSO:
-    - password login forbidden for that org -> always redirect to its IdP;
-    - otherwise redirect to its IdP only when no password was typed;
-    - a directory (LDAP) org has nowhere to redirect to: the typed password
-      is checked against the directory instead (_directory_login), falling
-      back to the local password only where the org still allows one.
-    Everyone else: plain password login, with a TOTP step-up between
-    authenticate() and auth_login() for anyone with a confirmed device (see
-    _start_mfa_stepup / mfa_verify_view below).
+    A submit with only an email applies the SSO routing; when nothing routes
+    it, the email goes in the session and the person continues at
+    /login/password. A POST that already carries a password (scripts, password
+    managers, older clients) is routed or authenticated in one go.
     """
-    from apps.accounts import sso, throttle
-
     if request.user.is_authenticated:
         return redirect("/")
     if not User.objects.exists():
         return redirect("setup")
 
-    form = LoginForm(request.POST or None)
-    if request.method == "POST" and form.is_valid():
-        email = form.cleaned_data["email"].strip()
-        password = form.cleaned_data["password"]
-        # Org-mandated SSO beats everything: members of an enforcing org
-        # never get password login (operators exempt — lockout safety).
-        enforced = sso.enforced_config_for_user(email)
-        cfg = enforced or sso.config_for_email_domain(email)
-        directory = cfg is not None and cfg.is_ldap
-        if not directory:
-            if enforced is not None:
-                return redirect(sso.provider_login_url(request, enforced))
-            if cfg is not None and (not cfg.allow_password_login or not password):
-                return redirect(sso.provider_login_url(request, cfg))
-            if not password:
-                # No route and nothing typed: the person is probably expecting
-                # single sign-on. Same text whether or not the account exists,
-                # and not a throttle failure -- nothing was guessed.
-                sso.log_unroutable_domain(email)
-                form.add_error("password", NO_SSO_ROUTE_MESSAGE)
-                return render(request, "accounts/login.html", {"form": form})
-        elif not password:
-            form.add_error("password", "Enter your directory password.")
-            return render(request, "accounts/login.html", {"form": form})
+    if request.method != "POST":
+        # Arriving here (including via "Use a different email") starts over.
+        previous = request.session.pop(LOGIN_EMAIL_SESSION_KEY, "")
+        return _render_email_step(request, LoginForm(initial={"email": previous}))
 
-        # Checked after the SSO redirects, so throttling can never strand a
-        # member of an enforcing org: their route out is the IdP, not a
-        # password, and it should stay open however many attempts were made.
-        if throttle.is_throttled(email, request):
-            # Same wording as a wrong password: telling an attacker they found
-            # the limit tells them the limit exists and where.
-            form.add_error(None, "Invalid email or password.")
-            return render(request, "accounts/login.html", {"form": form})
+    form = LoginForm(request.POST)
+    if not form.is_valid():
+        return _render_email_step(request, form)
+    email = form.cleaned_data["email"].strip()
+    password = form.cleaned_data["password"]
+    if password:
+        return _attempt_login(
+            request, form, email, password,
+            rerender=lambda: _render_email_step(request, form),
+        )
+    # "Sign in with a password instead" skips the automatic IdP redirect, but
+    # never the refusal: enforcing orgs and password-less domains still go
+    # to the IdP.
+    if request.POST.get("method") == "password":
+        redirection = _password_refused_redirect(request, email)
+    else:
+        redirection = _sso_redirect(request, email)
+    if redirection is not None:
+        return redirection
+    request.session[LOGIN_EMAIL_SESSION_KEY] = email
+    return redirect(_login_url(request, "login-password"))
 
-        user = None
-        if directory:
-            user, stop = _directory_login(
-                request, form, cfg, email, password,
-                local_allowed=enforced is None and cfg.allow_password_login,
-            )
-            if stop is not None:
-                return stop
-        elif password:
-            user = authenticate(request, username=email, password=password)
-        if user is not None:
-            if user.has_mfa:
-                return _start_mfa_stepup(request, user, next_url=request.GET.get("next") or "/")
-            auth_login(request, user)
-            throttle.clear(email, request)
-            return redirect(_safe_next(request.GET.get("next") or "/"))
-        throttle.record_failure(email, request)
-        form.add_error(None, "Invalid email or password.")
-    return render(
-        request, "accounts/login.html", {"form": form, "reason": request.GET.get("reason", "")}
+
+@sensitive_post_parameters("password")
+def login_password_view(request):
+    """Identifier-first login, step 2: the password for the email from step 1.
+
+    The email comes from the session, and the password refusal is re-checked on every request,
+    so a member of an enforcing org cannot password-login with a crafted POST.
+    """
+    from apps.accounts import sso
+
+    if request.user.is_authenticated:
+        return redirect("/")
+    email = request.session.get(LOGIN_EMAIL_SESSION_KEY)
+    if not email:
+        return redirect(_login_url(request))
+
+    redirection = _password_refused_redirect(request, email)
+    if redirection is not None:
+        return redirection
+
+    if request.method != "POST":
+        # Landing here for a listed-but-unverified domain: operators should know.
+        sso.log_unroutable_domain(email)
+        return _render_password_step(request, PasswordStepForm(), email)
+
+    form = PasswordStepForm(request.POST)
+    password = form.cleaned_data["password"] if form.is_valid() else ""
+    if not password:
+        form.add_error(
+            "password",
+            "Enter your directory password." if _is_directory(email) else "Enter your password.",
+        )
+        return _render_password_step(request, form, email)
+    return _attempt_login(
+        request, form, email, password,
+        rerender=lambda: _render_password_step(request, form, email),
     )
 
 
-def _directory_login(request, form, cfg, email: str, password: str, *, local_allowed: bool):
+def _sso_redirect(request, email: str):
+    """The redirect to the IdP for an email submitted with no password, else
+    None. Org-mandated SSO beats everything (operators exempt -- lockout
+    safety, see sso.enforced_config_for_user); a routable OIDC domain is sent
+    to its IdP. A directory (LDAP) org has nowhere to redirect to."""
+    from apps.accounts import sso
+
+    cfg = sso.enforced_config_for_user(email) or sso.config_for_email_domain(email)
+    if cfg is None or cfg.is_ldap:
+        return None
+    return redirect(sso.provider_login_url(request, cfg))
+
+
+def _password_refused_redirect(request, email: str):
+    """The redirect to the IdP when this email may not sign in with a
+    password, else None: a member of an enforcing org (operators exempt --
+    lockout safety), or a routable domain whose org turned password login off.
+    Shared by the password step and _attempt_login so they cannot drift. A
+    directory (LDAP) org checks the password against the directory instead."""
+    from apps.accounts import sso
+
+    enforced = sso.enforced_config_for_user(email)
+    cfg = enforced or sso.config_for_email_domain(email)
+    if cfg is None or cfg.is_ldap:
+        return None
+    if enforced is not None or not cfg.allow_password_login:
+        return redirect(sso.provider_login_url(request, cfg))
+    return None
+
+
+def _attempt_login(request, form, email: str, password: str, *, rerender):
+    """A typed password: SSO routing first (an enforcing org never gets a
+    password login), then the password / directory check, throttle and MFA
+    step-up. ``rerender`` shows the failing form again."""
+    from apps.accounts import sso, throttle
+
+    enforced = sso.enforced_config_for_user(email)
+    cfg = enforced or sso.config_for_email_domain(email)
+    directory = cfg is not None and cfg.is_ldap
+    redirection = _password_refused_redirect(request, email)
+    if redirection is not None:
+        return redirection
+
+    # Checked after the SSO redirects, so throttling can never strand a
+    # member of an enforcing org: their route out is the IdP, not a
+    # password, and it should stay open however many attempts were made.
+    if throttle.is_throttled(email, request):
+        # Same wording as a wrong password: telling an attacker they found
+        # the limit tells them the limit exists and where.
+        form.add_error(None, "Invalid email or password.")
+        return rerender()
+
+    if directory:
+        user, stop = _directory_login(
+            request, form, cfg, email, password,
+            local_allowed=enforced is None and cfg.allow_password_login,
+            rerender=rerender,
+        )
+        if stop is not None:
+            return stop
+    else:
+        user = authenticate(request, username=email, password=password)
+    if user is not None:
+        next_url = request.GET.get("next") or "/"
+        if user.has_mfa:
+            return _start_mfa_stepup(request, user, next_url=next_url)
+        request.session.pop(LOGIN_EMAIL_SESSION_KEY, None)
+        auth_login(request, user)
+        throttle.clear(email, request)
+        return redirect(_safe_next(next_url))
+    throttle.record_failure(email, request)
+    form.add_error(None, "Invalid email or password.")
+    return rerender()
+
+
+def _directory_login(
+    request, form, cfg, email: str, password: str, *, local_allowed: bool, rerender
+):
     """The typed password checked against the org's directory, then the same
     membership rules as the OpenID Connect callback (adapters.admission).
 
@@ -158,7 +275,7 @@ def _directory_login(request, form, cfg, email: str, password: str, *, local_all
         form.add_error(
             None, "Sign-in is unavailable right now. Try again later or contact your administrator.",
         )
-        return None, render(request, "accounts/login.html", {"form": form})
+        return None, rerender()
     if info is None:
         if local_allowed:
             # authenticate() fires user_login_failed itself when this fails.

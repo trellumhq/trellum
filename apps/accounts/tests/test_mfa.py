@@ -295,7 +295,7 @@ class TestSsoUsersAreNeverPrompted:
 
     def test_sso_login_never_reaches_the_totp_step_up(self, client, org, make_user):
         """SSO logins are handled entirely by apps.accounts.adapters /
-        allauth, never by login_view's password branch -- the step-up code
+        allauth, never by the password branch (_attempt_login) -- the step-up code
         (has_mfa check) is simply never on that call path. This documents
         the invariant rather than driving a full OIDC round-trip (covered by
         apps/accounts/tests/test_sso*.py)."""
@@ -303,11 +303,11 @@ class TestSsoUsersAreNeverPrompted:
 
         from apps.accounts import views as account_views
 
-        source = inspect.getsource(account_views.login_view)
+        source = inspect.getsource(account_views._attempt_login)
         # The step-up only fires after authenticate() succeeds on the
         # PASSWORD branch; the SSO branches return before reaching it.
         assert "has_mfa" in source
-        assert source.index("provider_login_url(request, cfg)") < source.index("has_mfa")
+        assert source.index("_password_refused_redirect(request, email)") < source.index("has_mfa")
 
 
 class TestOrgPolicyEnforcement:

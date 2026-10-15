@@ -345,12 +345,21 @@ domains in a warning, and also warns when no listed domain routes at all.
 because people would then have no way to sign in. **Enforce SSO** is not
 blocked, since it applies to existing members whatever their email domain.
 
-People sign in to single sign-on by entering their work email on the login
-page and leaving the password empty. If the address does not route to single
-sign-on, the login page asks for a password and says that single sign-on isn't
-set up for the address, whether or not an account exists. The portal logs a
-warning when the address's domain is listed by an enabled configuration but
-is unverified.
+The login page asks for the work email first and nothing else. If the
+address routes to single sign-on (or belongs to a member of an organization
+that enforces it), the person is sent straight to the identity provider.
+**Sign in with a password instead**, shown to everyone, skips that redirect
+where the organization still allows password login (**`allow_password_login`**
+on, and the person is not a member of an organization that enforces SSO);
+instance operators are exempt from enforcement, so they can always reach the
+password step if single sign-on breaks. If the address does not route, or the
+person chose a password, the next page shows the email read-only, with a **Use a
+different email** link, and asks for the password (labelled **Directory
+password** when the address routes to a directory). That page looks the same
+whether or not an account exists, and the routing is checked again when the
+password is submitted, so an enforcing organization's members can never sign
+in with a password. The portal logs a warning when the address's domain is
+listed by an enabled configuration but is unverified.
 
 New installations using the supplied `.env.example`, and newly generated demo
 environments, set `TRELLUM_SSO_DOMAIN_VERIFICATION=false`. This suits an instance
