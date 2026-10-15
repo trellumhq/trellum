@@ -43,6 +43,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- The console top bar no longer jumps while a page loads. The AI assistant has
+  one slot, in the same place on every page, and its space is reserved from
+  the first paint, so the health warning, search box and Docs link stop shifting
+  when the assistant finishes loading. The assistant button, its unavailable
+  entry and the organization picker now share one look.
 - Use the report theme font for chart labels, matching report headers and
   metadata, including after theme changes and font loading.
 - Metrics charts and sparklines no longer disappear when the worker has not

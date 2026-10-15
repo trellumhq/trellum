@@ -293,8 +293,12 @@
             new MutationObserver(put).observe(right, { childList: true });
         } else if (tools) {
             ask.classList.add('assistant-ask-shell');
+            // The console header reserves a slot for the button (and its
+            // unavailable entry) so mounting never moves the other items.
+            var slot = tools.querySelector('[data-console-assistant-slot]');
             var account = tools.querySelector('.tl-console-account');
-            tools.insertBefore(ask, account || null);
+            if (slot) slot.appendChild(ask);
+            else tools.insertBefore(ask, account || null);
         } else {
             // ponytail: page without a header cluster — pin it top-right.
             ask.classList.add('assistant-ask-float');

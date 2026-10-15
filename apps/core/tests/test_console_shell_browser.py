@@ -1,5 +1,6 @@
 """Browser checks against complete Django-rendered console pages."""
 import re
+import time
 from itertools import pairwise
 
 import pytest
@@ -581,3 +582,116 @@ def test_mobile_org_header_keeps_search_health_assistant_docs_and_account_reacha
             assert header.evaluate("e => e.scrollWidth <= e.clientWidth")
             context.close()
         instance.close()
+
+
+# Records the header children's boxes on every animation frame in which any of
+# them moved, tagged with the page path (sessionStorage survives navigations).
+_HEADER_FRAME_SAMPLER = """
+(() => {
+  let last = '';
+  const frame = () => {
+    const header = document.querySelector('.tl-console-header');
+    if (header) {
+      const items = [...header.children].map((el) => {
+        const r = el.getBoundingClientRect();
+        return [el.className.split(' ')[0], +r.left.toFixed(1), +r.top.toFixed(1),
+                +r.width.toFixed(1), +r.height.toFixed(1)];
+      }).filter((item) => item[3] || item[4]);
+      const signature = JSON.stringify(items);
+      if (signature !== last) {
+        last = signature;
+        const frames = JSON.parse(sessionStorage.getItem('headerFrames') || '[]');
+        frames.push([location.pathname, items]);
+        sessionStorage.setItem('headerFrames', JSON.stringify(frames));
+      }
+    }
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+})();
+"""
+
+
+def test_header_items_hold_one_layout_across_pages_and_navigation(
+    login, org_admin, org, studio_tree, monkeypatch
+):
+    """Studio, org and operator pages render the same bar, and the AI assistant
+    widget settling in after first paint moves nothing."""
+    from apps.assistant.views import _widget_bundle
+    from apps.core import health
+
+    org_admin.is_operator_flag = True
+    org_admin.save(update_fields=["is_operator_flag"])
+    monkeypatch.setattr(health, "quick_health_summary", lambda: {
+        "status": "error", "message": "Worker offline", "detail": "Background jobs are paused",
+    })
+    studio = f"/s/{org.slug}/{studio_tree.slug}"
+    paths = [
+        f"{studio}/", f"{studio}/settings/members", f"{studio}/settings/datasources",
+        f"/orgs/{org.slug}/settings/invites", "/system",
+    ]
+    client = login(org_admin)
+    client.get(f"{studio}/")  # remembers the studio, so org pages carry the search box too
+    pages = {}
+    for path in paths:
+        response = client.get(path)
+        assert response.status_code == 200, path
+        pages[path] = _inline_shell_assets(response.content.decode())
+    unavailable = (
+        '{"available": false, "reason": "The AI assistant is disabled for this organization."}'
+    )
+
+    def serve(route):
+        path = route.request.url.removeprefix("http://shell.test")
+        if route.request.resource_type == "document" and path in pages:
+            route.fulfill(body=pages[path], content_type="text/html")
+        elif path == "/api/assistant/widget.js":
+            time.sleep(0.15)  # the widget always lands after the first paint
+            route.fulfill(body=_widget_bundle(), content_type="application/javascript")
+        elif "/api/assistant/available" in path:
+            time.sleep(0.1)
+            route.fulfill(body=unavailable, content_type="application/json")
+        else:
+            route.fulfill(status=204)
+
+    layouts = {}
+    with sync_playwright() as playwright:
+        instance = playwright.chromium.launch(headless=True)
+        context = instance.new_context(viewport={"width": 1440, "height": 760})
+        context.add_init_script(_HEADER_FRAME_SAMPLER)
+        page = context.new_page()
+        page.route("http://shell.test/**", serve)
+        page.goto("http://shell.test" + paths[0], wait_until="domcontentloaded")
+        for path in paths:
+            if page.url != "http://shell.test" + path:
+                page.evaluate("sessionStorage.removeItem('headerFrames')")
+                page.locator(f'a.tl-console-nav-link[href="{path}"]').click()
+                page.wait_for_url("**" + path)
+            if path.startswith("/s/"):
+                page.locator(".assistant-unavailable").wait_for()
+            page.wait_for_timeout(250)  # room for any late shift to be sampled
+            frames = [
+                items
+                for frame_path, items in page.evaluate(
+                    "JSON.parse(sessionStorage.getItem('headerFrames') || '[]')"
+                )
+                if frame_path == path
+            ]
+            assert frames, path
+            # One layout from the first painted frame to the settled page.
+            assert len(frames) == 1, (path, frames)
+            layouts[path] = [
+                item for item in frames[0]
+                if item[0] not in {"tl-console-breadcrumbs", "tl-console-header-spacer"}
+            ]
+        context.close()
+        instance.close()
+
+    reference = layouts[paths[0]]
+    names = [item[0] for item in reference]
+    assert names == [
+        "tl-console-assistant-slot", "tl-console-health-alert", "tl-console-search",
+        "tl-console-docs-link", "tl-console-account",
+    ]
+    for path, layout in layouts.items():
+        assert layout == reference, "\n".join(map(str, [path, layout, reference]))

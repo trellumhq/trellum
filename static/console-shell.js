@@ -301,6 +301,10 @@
             }
         }
 
+        // A widget that never arrives must not leave a dead-looking button behind.
+        var pendingAssistant = root.querySelector('.tl-console-assistant-pending');
+        if (pendingAssistant) window.setTimeout(function () { pendingAssistant.hidden = true; }, 6000);
+
         syncTheme();
         setCollapsed(stored('tl-console-collapsed') === '1');
         syncSidebarState();
