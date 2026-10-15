@@ -11045,24 +11045,6 @@
         },
         {
           "method": "POST",
-          "action": "action=browse_choices",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-177-action-browse_choices]",
-          "verification": "pending"
-        },
-        {
-          "method": "POST",
-          "action": "people_page=2",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-177-people_page-2]",
-          "verification": "pending"
-        },
-        {
-          "method": "POST",
-          "action": "group_page=2",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-177-group_page-2]",
-          "verification": "pending"
-        },
-        {
-          "method": "POST",
           "action": "action=save",
           "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-177-action-save]",
           "verification": "pending"
@@ -11072,8 +11054,7 @@
       "verified_node_ids": [],
       "source_sha256": "a819eb1208266311a7c26dba9d96e39fcc3173cdd8117c8a69ecb01dc9ae249c",
       "request_conditions": [
-        "POST collection always creates; native action=toggle only changes field parsing, not an existing schedule toggle",
-        "Native browse_choices and named page-submit controls preserve full submitted draft without save/send/evaluate; explicit Save/Preview wins over retained pagination keys; CSRF and current permission remain required."
+        "POST collection always creates; native action=toggle only changes field parsing, not an existing schedule toggle"
       ],
       "adapter_sha256": "3bbc9f78eb881a2ca8db54e041282314e863da9c5c558988af95d18742b250d9",
       "principal_parameter_overrides": {
@@ -11159,24 +11140,6 @@
         },
         {
           "method": "POST",
-          "action": "action=browse_choices",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-178-action-browse_choices]",
-          "verification": "pending"
-        },
-        {
-          "method": "POST",
-          "action": "people_page=2",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-178-people_page-2]",
-          "verification": "pending"
-        },
-        {
-          "method": "POST",
-          "action": "group_page=2",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-178-group_page-2]",
-          "verification": "pending"
-        },
-        {
-          "method": "POST",
           "action": "action=save",
           "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-178-action-save]",
           "verification": "pending"
@@ -11186,8 +11149,7 @@
       "verified_node_ids": [],
       "source_sha256": "4391e4eb7e29972436bde75f3df5be58a29cbc6c36bdd9b41857e9b99432d548",
       "request_conditions": [
-        "native action=delete needs confirm_delete=yes or enhanced form; owner_id invalid; JSON {enabled:false} updates without changing recipients",
-        "Native browse_choices and named page-submit controls preserve full submitted draft without save/send/evaluate; explicit Save/Preview wins over retained pagination keys; CSRF and current permission remain required."
+        "native action=delete needs confirm_delete=yes or enhanced form; owner_id invalid; JSON {enabled:false} updates without changing recipients"
       ],
       "adapter_sha256": "e44bcc4f9af5d0d60c09d6ea908b0a25f6bcd4e3f32a693c5919441436aafb69",
       "principal_parameter_overrides": {
@@ -12472,41 +12434,15 @@
         },
         {
           "method": "POST",
-          "action": "action=browse_choices",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-197-action-browse_choices]",
-          "verification": "pending"
-        },
-        {
-          "method": "POST",
-          "action": "people_page=2",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-197-people_page-2]",
-          "verification": "pending"
-        },
-        {
-          "method": "POST",
-          "action": "group_page=2",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-197-group_page-2]",
-          "verification": "pending"
-        },
-        {
-          "method": "POST",
           "action": "action=save",
           "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-197-action-save]",
-          "verification": "pending"
-        },
-        {
-          "method": "POST",
-          "action": "report_page=2",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-197-report_page-2]",
           "verification": "pending"
         }
       ],
       "verification": "pending",
       "verified_node_ids": [],
       "source_sha256": "262df5b31da51ab412285ee2ffb7cfd44eb6df79ecf06e82b3dec6366567cda7",
-      "request_conditions": [
-        "Native browse_choices and named page-submit controls preserve full submitted draft without save/send/evaluate; explicit Save/Preview wins over retained pagination keys; CSRF and current permission remain required."
-      ],
+      "request_conditions": [],
       "adapter_sha256": "cc6d64260a35c1e928d99aeefea684165309842d6244b5cbade4216ae7a43ade",
       "principal_parameter_overrides": {
         "viewer-full": {
@@ -12656,41 +12592,15 @@
         },
         {
           "method": "POST",
-          "action": "action=browse_choices",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-199-action-browse_choices]",
-          "verification": "pending"
-        },
-        {
-          "method": "POST",
-          "action": "people_page=2",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-199-people_page-2]",
-          "verification": "pending"
-        },
-        {
-          "method": "POST",
-          "action": "group_page=2",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-199-group_page-2]",
-          "verification": "pending"
-        },
-        {
-          "method": "POST",
           "action": "action=save",
           "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-199-action-save]",
-          "verification": "pending"
-        },
-        {
-          "method": "POST",
-          "action": "report_page=2",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-199-report_page-2]",
           "verification": "pending"
         }
       ],
       "verification": "pending",
       "verified_node_ids": [],
       "source_sha256": "262df5b31da51ab412285ee2ffb7cfd44eb6df79ecf06e82b3dec6366567cda7",
-      "request_conditions": [
-        "Native browse_choices and named page-submit controls preserve full submitted draft without save/send/evaluate; explicit Save/Preview wins over retained pagination keys; CSRF and current permission remain required."
-      ],
+      "request_conditions": [],
       "adapter_sha256": "cc6d64260a35c1e928d99aeefea684165309842d6244b5cbade4216ae7a43ade",
       "principal_parameter_overrides": {
         "viewer-full": {
@@ -19885,18 +19795,6 @@
           "verification": "pending"
         },
         {
-          "method": "POST",
-          "action": "action=browse_access",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-297-browse_access-draft-no-writes]",
-          "verification": "pending"
-        },
-        {
-          "method": "POST",
-          "action": "action=browse_member",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-297-browse_member-draft-no-writes]",
-          "verification": "pending"
-        },
-        {
           "method": "GET",
           "action": "overview-paging",
           "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-297-overview-paging]",
@@ -19918,12 +19816,6 @@
           "method": "GET",
           "action": "effective-report-source-paging-search",
           "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-297-effective-report-source-paging-search]",
-          "verification": "pending"
-        },
-        {
-          "method": "POST",
-          "action": "explicit-save-after-browse",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_action[route-297-save-wins-persistence]",
           "verification": "pending"
         }
       ],
