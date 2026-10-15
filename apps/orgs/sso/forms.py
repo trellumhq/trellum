@@ -132,12 +132,15 @@ class SSOConfigForm(forms.ModelForm):
             verified = domains.verified_domains(self.org)
             listed = [d for d in listed if d in verified]
         if not listed:
+            fix = (
+                "Verify a domain under Domain ownership"
+                if domains.enforcement_enabled()
+                else "List at least one email domain"
+            )
             self.add_error(
                 "email_domains_text",
                 "Password login can only be turned off once at least one email "
-                "domain routes to single sign-on. Verify a domain below"
-                + ("" if domains.enforcement_enabled() else " or list one above")
-                + ", or keep password login on.",
+                f"domain routes to single sign-on. {fix}, or keep password login on.",
             )
 
     def _clean_source(self, data):

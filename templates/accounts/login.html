@@ -21,13 +21,13 @@ screen of empty space under it.{% endcomment %}
         {{ form.email }}{{ form.email.errors }}
       </div>
       <div class="ui-field">
-        <label for="id_password">Password</label>
+        <label for="id_password">Password <span class="ui-label-hint">(leave blank to use single sign-on)</span></label>
         {{ form.password }}{{ form.password.errors }}
       </div>
-      <p class="ui-help">Using single sign-on? Enter your work email and leave
-        the password empty &mdash; we'll send you to your organization's sign-in
-        page. If your organization signs you in against a directory, the
-        password above is your directory password.</p>
+      <p class="ui-help">Using your work account? Enter your email and click
+        Continue &mdash; you'll be redirected to your organization's sign-in.
+        If your organization signs you in against a directory, enter your
+        directory password instead.</p>
       <div class="ui-form-actions">
         <button class="ui-btn primary" type="submit">Continue</button>
         <a href="/password-reset/" class="auth-alt-link">Forgot password?</a>
