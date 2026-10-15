@@ -67,6 +67,15 @@ class TestApiLiveQueryPolicy:
         policy = OrgLiveQueryPolicy.objects.get(org=org)
         assert policy.rate_limit_per_minute is None
 
+    def test_out_of_integer_range_rejected(self, login, org_admin, org):
+        resp = login(org_admin).post(
+            f"/orgs/{org.slug}/api/live_query_policy",
+            data=json.dumps({"rate_limit_per_minute": 2_147_483_648}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+        assert not OrgLiveQueryPolicy.objects.filter(org=org).exists()
+
     def test_negative_rejected(self, login, org_admin, org):
         resp = login(org_admin).post(
             f"/orgs/{org.slug}/api/live_query_policy",

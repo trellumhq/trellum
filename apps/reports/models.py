@@ -628,6 +628,10 @@ def live_query_rate_limit(org) -> int:
 
 #: Days without a view before scheduled refresh is suspended, for an org with no row.
 DEFAULT_REFRESH_SUSPEND_DAYS = 60
+#: Upper bound for an org's threshold. Far above any useful window, and far
+#: below the point where ``now - timedelta(days=...)`` overflows the datetime
+#: range inside the scheduler job (about 740,000 days).
+MAX_REFRESH_SUSPEND_DAYS = 3650
 
 
 class OrgRefreshPolicy(models.Model):

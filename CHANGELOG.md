@@ -7,6 +7,17 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- Pause the scheduled refresh of reports nobody has viewed for an
+  organization-configurable number of days, set under **Org settings →
+  Auto-refresh** (60 by default, up to 3650; `0` never pauses and resumes
+  paused reports). Portal and share-link views count as activity; reports
+  with an enabled email delivery or schedule-triggered alert are exempt.
+  Paused reports show an **Auto-refresh paused** badge in card and list views
+  and restart through **Resume** in Operations, which also queues a rebuild.
+  Pauses and resumes are audited.
+
 ### Changed
 
 - Add focused local and parallel portal test commands, CI timing reports,
@@ -16,6 +27,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - Use the report theme font for chart labels, matching report headers and
   metadata, including after theme changes and font loading.
+- Reject live-query rate limits too large to store instead of failing with a
+  server error.
+- Make `scripts/demo.sh`, `scripts/upgrade.sh`, `scripts/rollback.sh` and
+  `scripts/check-docker.sh` executable, so the documented `./scripts/demo.sh`
+  and `scripts/upgrade.sh` commands run on macOS and Linux.
 
 ## [0.6.0] — 2026-10-13
 
