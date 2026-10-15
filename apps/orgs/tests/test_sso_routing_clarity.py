@@ -130,3 +130,33 @@ class TestPasswordLoginNeedsARoute:
         resp = _post(login(org_admin), org, allow_password_login="on", enforce_sso="on")
         assert resp.status_code == 302
         assert OrgSSOConfig.objects.get(org=org).enforce_sso is True
+
+
+class TestTestResultInvalidation:
+    """A recorded Test sign-in pass is cleared when the identity source or
+    the domains it was tested against change."""
+
+    def test_changing_the_issuer_clears_a_pass(self, login, org_admin, org):
+        cfg = _cfg(org, last_test_ok=True)
+        _post(
+            login(org_admin), org, allow_password_login="on",
+            issuer_url="https://idp.example/realms/other",
+        )
+        cfg.refresh_from_db()
+        assert cfg.last_test_ok is None
+
+    def test_changing_the_domains_clears_a_pass(self, login, org_admin, org):
+        cfg = _cfg(org, last_test_ok=True)
+        _post(
+            login(org_admin), org, allow_password_login="on",
+            email_domains_text="demo.example\nother.example",
+        )
+        cfg.refresh_from_db()
+        assert cfg.last_test_ok is None
+
+    def test_unrelated_change_keeps_a_pass(self, login, org_admin, org):
+        cfg = _cfg(org, last_test_ok=True)
+        _post(login(org_admin), org, allow_password_login="on", groups_claim="roles")
+        cfg.refresh_from_db()
+        assert cfg.groups_claim == "roles"
+        assert cfg.last_test_ok is True
