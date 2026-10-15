@@ -379,6 +379,9 @@ class TestImpersonation:
         c.post(f"/operator/orgs/{org.slug}/impersonate/{colleague.pk}")
         assert c.session["_auth_user_id"] == str(operator.pk)
 
+    def test_stopping_without_impersonating_is_a_plain_404(self, login, operator):
+        assert login(operator).post("/operator/impersonate/stop").status_code == 404
+
     def test_the_banner_offers_a_way_out(self, login, operator, org, member):
         c = login(operator)
         c.post(f"/operator/orgs/{org.slug}/impersonate/{member.pk}")
