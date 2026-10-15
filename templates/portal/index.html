@@ -30,14 +30,11 @@ Light/Dark/Auto preference. Named report themes apply inside reports only.{% end
 shell; the visible page title and category controls belong to this page.{% endcomment %}
 {% include "_shell.html" with dashboard_shell=1 %}
 
-<div data-console-catalog data-console-inert{% if catalog_kind %} data-c14-page{% endif %}>
+<div data-console-catalog data-console-inert>
 <header class="page-head">
   <div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }}</div>
   <h1>{{ console_page_title }}</h1>
 </header>
-{% if catalog_kind %}
-{% include "portal/_catalog.html" %}
-{% else %}
 <div class="folder-bar">
   <div class="folder-rail">
     <div class="folder-inner" id="folderTabs"></div>
@@ -52,7 +49,6 @@ shell; the visible page title and category controls belong to this page.{% endco
 <div class="portal-body">
   <div class="portal-body-inner" id="content"></div>
 </div>
-{% endif %}
 </div>
 
 <section class="tl-console-report-host" data-console-report-host data-console-inert
@@ -63,23 +59,23 @@ shell; the visible page title and category controls belong to this page.{% endco
   <iframe data-console-report-frame title="Report" allow="fullscreen" allowfullscreen hidden></iframe>
 </section>
 
-<div class="error-log-overlay" id="errorLogOverlay"{% if not catalog_kind %} onclick="toggleErrorLog()"{% endif %}></div>
+<div class="error-log-overlay" id="errorLogOverlay" onclick="toggleErrorLog()"></div>
 <div class="error-log-drawer" id="errorLogDrawer" role="dialog" aria-modal="true" aria-label="Error log" aria-hidden="true" inert>
   <div class="error-log-header">
     <h2>Error Log <span class="error-log-count" id="errorLogCount"></span></h2>
     <div class="error-log-actions">
-      <button class="error-log-btn" type="button"{% if not catalog_kind %} onclick="clearErrorLog()"{% endif %}>Clear all</button>
-      <button class="error-log-close" type="button"{% if not catalog_kind %} onclick="toggleErrorLog()"{% endif %} title="Close" aria-label="Close error log">&times;</button>
+      <button class="error-log-btn" type="button" onclick="clearErrorLog()">Clear all</button>
+      <button class="error-log-close" type="button" onclick="toggleErrorLog()" title="Close" aria-label="Close error log">&times;</button>
     </div>
   </div>
   <div class="error-log-body" id="errorLogBody"></div>
 </div>
 
-<div class="validation-overlay" id="validationOverlay"{% if not catalog_kind %} onclick="toggleValidation()"{% endif %}></div>
+<div class="validation-overlay" id="validationOverlay" onclick="toggleValidation()"></div>
 <div class="validation-drawer" id="validationDrawer" role="dialog" aria-modal="true" aria-label="Report details" aria-hidden="true" inert>
   <div class="validation-header">
     <h2 id="validationTitle">Report details</h2>
-    <button class="validation-close" type="button"{% if not catalog_kind %} onclick="toggleValidation()"{% endif %} title="Close" aria-label="Close report details">&times;</button>
+    <button class="validation-close" type="button" onclick="toggleValidation()" title="Close" aria-label="Close report details">&times;</button>
   </div>
   <div class="validation-body" id="validationBody"></div>
 </div>
@@ -102,10 +98,10 @@ shell; the visible page title and category controls belong to this page.{% endco
 {# Same file the report pages load (see apps.reports.views.delivery_widget_js) — one implementation behind window.PORTAL_CTX, not a parallel widget. #}
 <script src="{% static 'report_delivery.js' %}"></script>
 <script src="{% static 'choice-picker.js' %}"></script>
-{% if not catalog_kind %}<script src="{% static 'operations.js' %}"></script><script src="{% static 'portal.js' %}"></script>{% endif %}
+<script src="{% static 'operations.js' %}"></script>
+<script src="{% static 'portal.js' %}"></script>
 <script src="{% static 'console-shell.js' %}"></script>
 <script src="{% static 'console-report-host.js' %}"></script>
-{% if catalog_kind %}<script src="{% static 'portal-catalog.js' %}"></script>{% endif %}
 <script src="/api/assistant/widget.js" defer></script>
 </body>
 </html>

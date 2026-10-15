@@ -37,8 +37,5 @@ def test_dashboard_hidden_from_non_members(login, make_user, org, studio_tree):
 
 def test_static_assets_referenced(login, viewer, org, studio_tree, report_row):
     html = login(viewer).get(f"/s/{org.slug}/{studio_tree.slug}/").content.decode()
-    # C14: Reports/Analyses boot the bounded native catalog, not the legacy
-    # portal.js SPA (which still serves Operations).
-    assert "portal-catalog.js" in html
-    assert "portal.js" not in html.replace("portal-catalog.js", "")
+    assert "portal.js" in html
     assert "portal.css" in html

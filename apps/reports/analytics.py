@@ -1,4 +1,9 @@
-"""Bounded, studio-wide report analytics without artifact reads."""
+"""Bounded, studio-wide report analytics without artifact reads.
+
+A studio of up to ``CLIENT_ROWS`` reports gets every row in one response, with
+filtering and sorting done in the browser. Only a larger studio switches to
+server-side search and sort with ``PAGE_SIZE`` rows per page.
+"""
 from datetime import timedelta
 from urllib.parse import urlencode
 
@@ -8,10 +13,12 @@ from django.db.models.functions import Coalesce, Lower, NullIf
 from django.utils import timezone
 
 from .models import Report, ReportViewDaily, ReportViewEvent
+from .scan import _STALE_BUILD_WINDOW_DAYS
 
-PAGE_SIZE = 25
-SOURCE_FRESH_SECONDS = 300
+CLIENT_ROWS = 500
+PAGE_SIZE = 200
 SORTS = ("report", "views", "unique", "share", "last_viewed")
+DAY_CHOICES = (7, 30, 90)
 
 
 def analytics_relation(studio, days, now):
@@ -35,19 +42,16 @@ def analytics_relation(studio, days, now):
     ).annotate(unique_total=F("unique_users") + F("unique_links"), name_order=Lower("display_name"))
 
 
-def _observation(report, now):
+def _unseen(report, now):
+    """No views in 30 days although the last build succeeded recently.
+
+    Reads the recorded last attempt; a report whose attempt is unknown simply
+    shows no chip.
+    """
     summary = getattr(report, "source_summary", None)
-    fresh = bool(summary and summary.schema_version == 2 and summary.observed_at
-                 and now-timedelta(seconds=SOURCE_FRESH_SECONDS) <= summary.observed_at <= now)
-    if not fresh:
-        return False, "Build observation unavailable"
-    if summary.state == "missing" and summary.quality in ("observed", "verified") and not summary.attempt_at:
-        return False, "Not built"
-    if summary.state != "ready" or summary.quality not in ("observed", "verified"):
-        return False, "Build observation unavailable"
-    recent_success = bool(summary.attempt_status == "success" and summary.attempt_at
-                          and now-timedelta(days=7) <= summary.attempt_at <= now)
-    return report.views_30d == 0 and recent_success, ""
+    if summary is None or summary.attempt_status != "success" or not summary.attempt_at:
+        return False
+    return report.views_30d == 0 and now - summary.attempt_at <= timedelta(days=_STALE_BUILD_WINDOW_DAYS)
 
 
 def analytics_payload(studio, params, days, *, now=None):
@@ -59,46 +63,39 @@ def analytics_payload(studio, params, days, *, now=None):
         report__studio=studio, report__present_in_scan=True,
         created_at__gte=now-timedelta(days=days), share_link__isnull=False,
     ).count()
-    q = str(params.get("q", "")).strip()[:200]
-    sort = params.get("sort", "report")
-    sort = sort if sort in SORTS else "report"
-    direction = params.get("direction", "asc")
-    direction = direction if direction in ("asc", "desc") else "asc"
-    if q:
-        relation = relation.filter(Q(display_name__icontains=q) | Q(slug__icontains=q))
-    field = {"report": "name_order", "unique": "unique_total", "share": "share_views"}.get(sort, sort)
-    order = F(field).asc(nulls_first=True) if direction == "asc" else F(field).desc(nulls_last=True)
+    server_side = totals["report_count"] > CLIENT_ROWS
+    q, sort, direction, page = "", "report", "asc", None
+    if server_side:
+        q = str(params.get("q", "")).strip()[:200]
+        sort = params.get("sort", "report")
+        sort = sort if sort in SORTS else "report"
+        direction = params.get("direction", "asc")
+        direction = direction if direction in ("asc", "desc") else "asc"
+        if q:
+            relation = relation.filter(Q(display_name__icontains=q) | Q(slug__icontains=q))
+        field = {"report": "name_order", "unique": "unique_total", "share": "share_views"}.get(sort, sort)
+        order = F(field).asc(nulls_first=True) if direction == "asc" else F(field).desc(nulls_last=True)
+    else:
+        order = F("name_order").asc()
     relation = relation.order_by(order, "name_order", "pk").select_related("source_summary").only(
-        "id", "slug", "name", "kind", "source_summary__id", "source_summary__schema_version",
-        "source_summary__state", "source_summary__quality", "source_summary__observed_at",
-        "source_summary__attempt_at", "source_summary__attempt_status",
+        "id", "slug", "name", "kind", "source_summary__id", "source_summary__attempt_at",
+        "source_summary__attempt_status",
     )
-    paginator = Paginator(relation, PAGE_SIZE)
-    raw_page = str(params.get("page", "1"))
-    # Bound integer parsing even for pathological input.
-    page_number = int(raw_page) if raw_page.isascii() and raw_page.isdigit() and len(raw_page) <= 9 else 1
-    page = paginator.get_page(max(1, page_number))
-    rows = []
-    for report in page.object_list:
-        stale, observation = _observation(report, now)
-        rows.append(dict(report=report, views=report.views, unique_users=report.unique_users,
-                         unique_links=report.unique_links, unique_total=report.unique_total,
-                         share_views=report.share_views, last_viewed=report.last_viewed,
-                         stale=stale, observation=observation))
-
-    def url(**changes):
-        values = dict(days=days, q=q, sort=sort, direction=direction)
-        values.update(changes)
-        return "?" + urlencode(values)
-
-    headers = []
-    for key, label in zip(SORTS, ("Report", "Views", "Unique viewers", "Share views", "Last viewed")):
-        active = sort == key
-        next_direction = "desc" if active and direction == "asc" else "asc"
-        headers.append(dict(key=key, label=label, url=url(sort=key, direction=next_direction),
-                            aria_sort=("ascending" if direction == "asc" else "descending") if active else "none",
-                            indicator=("↑" if direction == "asc" else "↓") if active else "↕"))
-    return dict(totals, rows=rows, days=days, q=q, sort=sort, direction=direction,
-                headers=headers, ranges=[dict(days=d, url=url(days=d)) for d in (7, 30, 90)],
-                page=page, previous_url=url(page=page.previous_page_number()) if page.has_previous() else "",
-                next_url=url(page=page.next_page_number()) if page.has_next() else "")
+    if server_side:
+        raw_page = str(params.get("page", "1"))
+        # Bound integer parsing even for pathological input.
+        page_number = int(raw_page) if raw_page.isascii() and raw_page.isdigit() and len(raw_page) <= 9 else 1
+        page = Paginator(relation, PAGE_SIZE).get_page(max(1, page_number))
+        reports = page.object_list
+    else:
+        reports = relation
+    rows = [dict(report=report, views=report.views, unique_users=report.unique_users,
+                 unique_links=report.unique_links, unique_total=report.unique_total,
+                 share_views=report.share_views, last_viewed=report.last_viewed,
+                 stale=_unseen(report, now)) for report in reports]
+    # Range links keep a server-side search and sort; the client-side filter
+    # has nothing to carry over.
+    kept = dict(q=q, sort=sort, direction=direction) if server_side and (q or sort != "report" or direction != "asc") else {}
+    return dict(totals, rows=rows, days=days, day_choices=DAY_CHOICES, server_side=server_side,
+                q=q, sort=sort, direction=direction, page=page,
+                ranges=[dict(days=d, url="?" + urlencode(dict(days=d, **kept))) for d in DAY_CHOICES])

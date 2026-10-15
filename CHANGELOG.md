@@ -16,6 +16,16 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   assistant picker are plain lists of links again, and delivery, metric and
   alert pickers apply as soon as you choose, without Go, Search or Update
   buttons.
+- The Reports and Analyses catalog reads the registry from the database in
+  bounded slices (`/api/registry?page=`) and renders it with the same controls
+  as before: category tabs, instant search and sorting, cards and list. A
+  studio of any size costs one bounded request per 50 reports; beyond 500
+  reports the catalog offers "Show more" and searches on the server.
+- Experiments and Report Analytics show every row on one page again, with the
+  same controls as before: status pills, an instant filter box, click-to-sort
+  headers and no Search or Apply buttons. Only a studio far beyond a realistic
+  size (200 experiments or reports) pages, with the shared pager, and searches
+  on the server after a short pause.
 - Phone layout of console-hosted reports: the report header is one compact row
   (freshness left, labelled Options and Monitor right), annotation chips scroll
   on one row, and the shell header buttons share one neutral bordered style.

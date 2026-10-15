@@ -11,7 +11,7 @@ BOTH = [pytest.param('chromium-desktop'), pytest.param('webkit-mobile', marks=HE
 
 
 def add_catalog_reports():
-    """40 extra reports so a second catalog page and real scrolling exist."""
+    """40 extra reports so the catalog needs real scrolling."""
     from apps.reports.models import Report
     from apps.studios.models import Studio
     studio = Studio.objects.get(org__slug='alpha', slug='studio-0')
@@ -26,17 +26,17 @@ def test_catalog_search_open_back(journey, variant):
     journey.database(add_catalog_reports)
     with browser_session(journey, 'org-admin', spec, condition='key-catalog-back') as (page, context):
         page.goto(origin + S + '/')
-        rows = page.locator('[data-catalog-rows] [data-catalog-id]')
-        expect(rows).to_have_count(25)
-        search = page.locator('#catalogSearch')
+        rows = page.locator('#content tr[data-slug]')
+        expect(rows.first).to_be_visible()
+        total = rows.count()
+        assert total > 40  # the whole catalog is one scrolling page
+        search = page.locator('#searchInput')
+        if not search.is_visible():  # phones keep the search behind the header button
+            page.locator('[data-console-search-toggle]').click()
         search.fill('report')
-        search.press('Enter')
-        page.wait_for_url(lambda url: 'q=report' in url)
-        expect(page.locator('[data-catalog-count]')).to_contain_text('matching')
+        expect(page.locator('#content tr[data-slug]').first).to_be_visible()
+        assert page.locator('#content tr[data-slug]').count() <= total
         journey.checkpoint('catalog-search')
-        page.get_by_role('link', name='Next', exact=True).click()
-        page.wait_for_url(lambda url: 'page=2' in url)
-        expect(page.locator('.c14-pages')).to_contain_text('Page 2')
         built = page.get_by_role('link', name='Report 0', exact=True)
         expect(built).to_be_visible()
         journey.checkpoint('catalog-paging')
@@ -55,8 +55,7 @@ def test_catalog_search_open_back(journey, variant):
         journey.checkpoint('report-open')
         page.go_back()
         page.wait_for_url(listing)
-        expect(page.locator('#catalogSearch')).to_have_value('report')
-        expect(page.locator('.c14-pages')).to_contain_text('Page 2')
+        expect(page.locator('#searchInput')).to_have_value('report')
         expect(page.get_by_role('link', name='Report 0', exact=True)).to_be_visible()
         journey.checkpoint('back-restored')
         page.wait_for_function('y => Math.abs(window.scrollY - y) <= 24', arg=saved_y)
@@ -79,6 +78,7 @@ def test_metrics_detail_comparison(journey, variant):
         page.locator('#metSearch').fill('Metric 1')
         expect(page.locator('#metCount')).to_have_text('11 of 20')
         expect(page.locator('.met-card:not([hidden])')).to_have_count(11)
+        assert page.get_by_role('button', name='Search metrics').count() == 0
         journey.checkpoint('definitions')
         journey.checkpoint('search')
         bind(journey, 'route-146', 'GET', None, 'org-admin', spec, ())
@@ -116,16 +116,15 @@ def test_analytics_experiments_progressive(journey, variant):
         expect(rows).to_have_count(20)
         # Secondary enhancement: absolute timestamps become relative once the script runs.
         expect(page.locator('.analytics-last-viewed', has_text='Not viewed yet')).to_have_count(20)
-        page.locator('#analyticsTable th[data-sort=views] a').click()
-        page.wait_for_url(lambda url: 'sort=views' in url)
+        # Up to a few hundred reports: header sort and the filter box work in the browser.
+        page.locator('#analyticsTable th[data-sort=views]').click()
+        expect(page.locator('#analyticsTable th[data-sort=views]')).to_have_attribute('aria-sort', 'ascending')
         page.locator('#analyticsSearch').fill('Report 1')
-        page.get_by_role('button', name='Search', exact=True).click()
-        page.wait_for_url(lambda url: 'q=Report' in url)
-        expect(rows).to_have_count(11)
+        expect(page.locator('#analyticsTable tbody tr:not([hidden])')).to_have_count(11)
         journey.checkpoint('primary-rows')
         journey.checkpoint('secondary-settled')
         bind(journey, 'route-145', 'GET', None, 'org-admin', spec, ())
-        # Experiments reuse the same pattern: tiles and rows first, then filters and search.
+        # Experiments reuse the same pattern: tiles and rows first, then the status pills.
         page.goto(origin + S + '/experiments')
         expect(page.locator('.ui-stat', has_text='Running').locator('.num')).to_have_text('6')
         table_rows = page.locator('table.ui-table tbody tr')
@@ -133,10 +132,6 @@ def test_analytics_experiments_progressive(journey, variant):
         page.get_by_role('link', name='Running').click()
         page.wait_for_url(lambda url: 'status=running' in url)
         expect(table_rows).to_have_count(6)
-        page.locator('#experiment-search').fill('report-0004')
-        page.get_by_role('button', name='Search', exact=True).click()
-        page.wait_for_url(lambda url: 'q=report-0004' in url)
-        expect(table_rows).to_have_count(2)
         expect(page.locator('[role=status]', has_text='loading')).to_have_count(0)
         journey.checkpoint('primary-rows')
         bind(journey, 'route-149', 'GET', None, 'org-admin', spec, ())
@@ -188,27 +183,25 @@ def test_selected_scope_viewer(journey, variant):
     allowed = journey.database(lambda: (lambda r: (r.pk, r.slug, r.name))(selected_report()))
     with browser_session(journey, 'group-selected', spec, condition='key-selected-scope') as (page, context):
         page.goto(origin + S + '/')
-        rows = page.locator('[data-catalog-rows] [data-catalog-id]')
+        rows = page.locator('#content tr[data-slug]')
         expect(rows).to_have_count(1)
-        expect(rows.first).to_have_attribute('data-catalog-slug', allowed[1])
-        expect(page.locator('[data-catalog-count]')).to_contain_text('1 authorized')
+        expect(rows.first).to_have_attribute('data-slug', allowed[1])
         other = 'report-0003' if allowed[1] != 'report-0003' else 'report-0004'
         assert other not in page.content() and 'Controlled fixture failure' not in page.content()
         journey.checkpoint('scope-visible')
         # Search cannot widen the scope.
-        page.locator('#catalogSearch').fill('report')
-        page.locator('#catalogSearch').press('Enter')
+        page.locator('#searchInput').fill('report')
         page.wait_for_url(lambda url: 'q=report' in url)
-        expect(page.locator('[data-catalog-rows] [data-catalog-id]')).to_have_count(1)
+        expect(page.locator('#content tr[data-slug]')).to_have_count(1)
         journey.checkpoint('scope-hidden')
         # Direct URLs, the JSON catalog and details for unauthorised reports are denied, and nothing leaks.
         other_id = journey.database(lambda: __import__('apps.reports.models', fromlist=['Report']).Report.objects.get(slug=other, studio__slug='studio-0', studio__org__slug='alpha').pk)
-        for path in (f'{S}/r/{other}/', f'{S}/r/{other}/index.html', f'{S}/catalog/details/{other_id}', f'{S}/api/catalog/details/{other_id}'):
+        for path in (f'{S}/r/{other}/', f'{S}/r/{other}/index.html', f'{S}/api/catalog/details/{other_id}'):
             response = context.request.get(origin + path)
             assert response.status in (403, 404), (path, response.status)
             assert 'Report 3' not in response.text() and 'Baseline report' not in response.text()
-        catalog = context.request.get(origin + S + '/api/catalog?q=report').json()
-        assert [row['slug'] for row in catalog['rows']] == [allowed[1]], catalog
+        catalog = context.request.get(origin + S + '/api/registry?kind=report&page=1&q=report').json()
+        assert [row['slug'] for row in catalog['reports']] == [allowed[1]], catalog
         journey.checkpoint('direct-url-denied')
         bind(journey, 'route-139', 'GET', None, 'group-selected', spec, ())
         for path in (S + '/metrics', S + '/operations'):

@@ -1,10 +1,12 @@
-"""Paged Metrics definitions and the existing comparison projection.
+"""Bounded Metrics definitions and the existing comparison projection.
 
-Overview renders at most 50 definitions from SQL. Report usage and generated
-sparkline projections load through ``metric_summaries`` from worker-produced
-indexes; neither Overview request reads artifacts. The legacy comparison
-projection below retains its own build-read behavior. Pure sparkline routines
-also support worker publication of bounded previews.
+Overview renders up to ``CATALOG_LIMIT`` definitions from SQL (every card of a
+realistic studio, filtered in the browser; a larger studio is narrowed on the
+server by the filter box). Report usage and generated sparkline projections load through
+``metric_summaries`` from worker-produced indexes; neither Overview request
+reads artifacts. The legacy comparison projection below retains its own
+build-read behavior. Pure sparkline routines also support worker publication of
+bounded previews.
 """
 from __future__ import annotations
 
@@ -409,17 +411,21 @@ def metric_definition_page(studio, query=""):
 
     revision = MetricCatalogState.objects.filter(studio=studio).values_list(
         "definition_revision", flat=True).first() or 0
-    definitions = MetricDefinition.objects.filter(studio=studio, present_in_scan=True)
+    everything = MetricDefinition.objects.filter(studio=studio)
+    present = Q(present_in_scan=True)
     match = Q()
     if query:
-        definitions = definitions.annotate(search_tags=Cast("tags", TextField()))
+        everything = everything.annotate(search_tags=Cast("tags", TextField()))
         match = (Q(name__icontains=query) | Q(label__icontains=query) |
                  Q(description__icontains=query) | Q(owner__icontains=query) |
                  Q(search_tags__icontains=query))
-    statistics = definitions.aggregate(
-        defined_count=Count("pk"), matching_count=Count("pk", filter=match),
+    # "synced" is the studio's last scan, whether or not a retired definition
+    # was still on file, like the catalog has always said it.
+    statistics = everything.aggregate(
+        defined_count=Count("pk", filter=present), matching_count=Count("pk", filter=present & match),
         synced_at=Max("last_scanned_at"), repo_url=Max("studio__repo__repo_url"))
     defined_count = statistics["defined_count"]
+    definitions = everything.filter(present)
     selected = list(definitions.filter(match).order_by("name", "pk")[:CATALOG_LIMIT])
     metrics = [{"row": row, "spec": row.spec_text(),
                 "not_monitored_reason": ("descriptive — no aggregation spec to compute" if not row.agg else

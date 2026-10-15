@@ -905,7 +905,7 @@ body.mgmt form.ui-list-toolbar input.ui-input[name="q"] {
 }
 .ui-list-count { color: var(--text3); font-size: var(--fs-md); }
 .ui-pager {
-    display: flex; align-items: center; gap: var(--sp-3);
+    display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3);
     margin-top: var(--sp-3);
 }
 .ui-pager-status { color: var(--text2); font-size: var(--fs-md); }

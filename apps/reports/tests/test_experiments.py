@@ -395,7 +395,7 @@ class TestStudioExperiments:
         write_report("never-built", ab_test={"start_date": "2026-01-01"})
         sync_studio_registry(studio_tree)
         row = studio_experiments(studio_tree)["rows"][0]
-        assert row["result_state"] == "Not built yet"
+        assert row["built"] is False
         assert row["url"] == (
             f"/s/{studio_tree.org.slug}/{studio_tree.slug}/r/never-built/"
             "?display=console"
@@ -406,7 +406,8 @@ class TestStudioExperiments:
         sync_studio_registry(studio_tree)
         _observe(studio_tree, "built-empty", has_output=True)
         row = studio_experiments(studio_tree)["rows"][0]
-        assert row["result_state"] == "No A/B payload in the observed build"
+        assert row["built"] is True
+        assert row["payload_missing"] is True
 
     def test_unavailable_observation_does_not_read_storage(self, studio_tree, write_report, monkeypatch):
         from apps.reports.models import ReportSourceSummary
@@ -415,7 +416,8 @@ class TestStudioExperiments:
         ReportSourceSummary.objects.filter(report__studio=studio_tree).update(state='unavailable', has_output=None)
         monkeypatch.setattr('apps.core.storage.output_root', lambda *args: pytest.fail('GET read storage'))
         data = studio_experiments(studio_tree)
-        assert data['rows'][0]['result_state'] == 'Observation unavailable'
+        # Not observed: quiet dash on the page, never "Not built yet".
+        assert data['rows'][0]['pending'] is True and data['rows'][0]['built'] is True
         assert data['tiles']['running'] == 1
 
     def test_cache_is_invalidated_explicitly(self, studio_tree, write_report):
@@ -745,7 +747,8 @@ class TestMultiExperimentReports:
         invalidate_experiments_cache(studio_tree)
 
         rows = studio_experiments(studio_tree)["rows"]
-        assert {r["test_name"]: r["status"] for r in rows} == {"running-t": "running", "past-end-t": "past_end", "concluded-t": "concluded"}
+        assert [r["status"] for r in rows] == ["running", "past_end",
+                                               "concluded"]
 
     def test_entries_without_names_fall_back_to_build_order(
         self, studio_tree, write_report
@@ -786,8 +789,8 @@ class TestMultiExperimentReports:
         invalidate_experiments_cache(studio_tree)
 
         rows = {r["test_name"]: r for r in studio_experiments(studio_tree)["rows"]}
-        assert rows["present"]["primary"] is not None
+        assert rows["present"]["payload_missing"] is False
         assert rows["present"]["primary"]["delta_pct"] == 1.0
         # Better an honest "no payload" row than another experiment's numbers.
-        assert rows["absent"]["result_state"] == "No A/B payload in the observed build"
+        assert rows["absent"]["payload_missing"] is True
         assert rows["absent"]["primary"] is None

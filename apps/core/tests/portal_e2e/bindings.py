@@ -39,7 +39,7 @@ MOBILE_VARIANT = ('webkit-mobile', 'webkit', '390x844')
 # journeys, never inferred from status codes or policy prose.
 KEY_CONDITIONS = {
     'key-login-dashboard': 'Real login form submit lands on the organization dashboard listing the studio.',
-    'key-catalog-back': 'Catalog search and paging, open a report, then Back restores page, search and scroll.',
+    'key-catalog-back': 'Catalog search, open a report, then Back restores search and scroll.',
     'key-metrics': 'Metrics definitions search, a metric detail view and the comparison workspace.',
     'key-analytics-experiments': 'Analytics and Experiments render primary rows, then secondary content settles without errors.',
     'key-schedules': 'Deliveries list, create a schedule and edit it; persisted after reload.',

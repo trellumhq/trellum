@@ -1,9 +1,10 @@
 """The per-studio experiment overview (internal planning: cross-report A/B roll-up).
 
 The request consumer reads normalized worker-observed declarations and result
-facts from the database. It aggregates the complete studio relation and pages
-the table and timeline independently. The artifact extraction helpers remain
-available for producer normalization and compatibility tests.
+facts from the database, aggregates the complete studio relation, and shows
+every experiment on one page (the shared pager appears only for a studio far
+larger than a realistic one). The artifact extraction helpers remain available
+for producer normalization and compatibility tests.
 
 **Status rule (the one non-obvious piece of business logic here).** An
 experiment's lifecycle is derived from ``ab_test.start_date`` and

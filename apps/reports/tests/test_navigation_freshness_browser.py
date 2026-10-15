@@ -12,14 +12,15 @@ from django.conf import settings
 from apps.core import roles
 
 
-def _run_restore(*, page_html, page_path, row_slug, payload, payload_path, static_api, engine, surface):
-    """Restore a page from history while the bounded catalog endpoint changes.
+def _run_restore(*, page_html, page_path, row_slug, payload, payload_path, static_api, engine, surface,
+                 registry_headers=None, rows_key="rows"):
+    """Restore a page from history while its read endpoint changes.
 
-    Both surfaces now read one authorized page from their bounded endpoint
-    (``payload_path``) instead of the retired full registry, so freshness is
-    proven by that endpoint being asked again and the new row painted.
+    Freshness is proven by ``payload_path`` being asked again after the
+    restore and the new row painted: the catalog reads the registry in slices,
+    Operations its bounded catalog.
     """
-    registry_headers = {"Cache-Control": "no-store"}
+    registry_headers = registry_headers or {"Cache-Control": "no-store"}
     registry_calls = []
     status_calls = []
     history = {
@@ -98,13 +99,16 @@ def _run_restore(*, page_html, page_path, row_slug, payload, payload_path, stati
             try:
                 base = f"http://127.0.0.1:{server.server_port}"
                 page.goto(base + page_path)
-                selector = f'[data-{"ops-row" if surface == "operations" else "catalog-slug"}="{row_slug}"]'
+                selector = f'[data-{"ops-row" if surface == "operations" else "slug"}="{row_slug}"]'
                 page.locator(selector).wait_for()
                 original_row = page.locator(selector)
                 assert original_row.inner_text().strip()
+                if surface == "catalog":
+                    assert payload[rows_key][0]["name"] in original_row.inner_text()
                 requests_before_leaving = len(registry_calls)
                 page.goto(base + "/away")
-                payload["rows"][0] = {**payload["rows"][0], "name": "Updated Player Overview"}
+                payload[rows_key][0] = {**payload[rows_key][0], "name": "Updated Player Overview",
+                                        **({"last_run": "2026-10-11T12:00:00Z"} if surface == "catalog" else {})}
                 page.go_back()
                 page.locator(selector).wait_for()
                 try:
@@ -153,17 +157,21 @@ def test_catalog_refreshes_current_registry_after_real_history_restore(
     client = login(developer)
     response = client.get(page_path)
     assert response.status_code == 200
-    catalog_response = client.get(page_path + "api/catalog")
-    assert catalog_response.status_code == 200
-    payload = catalog_response.json()
-    assert payload["rows"][0]["slug"] == report_row.slug
-    static_api = {
-        page_path + "api/catalog/personal": client.get(page_path + "api/catalog/personal").content,
+    registry_response = client.get(page_path + "api/registry?kind=report&page=1")
+    assert registry_response.status_code == 200
+    registry_headers = {
+        name: registry_response.headers[name]
+        for name in ("Cache-Control", "Vary", "ETag", "Last-Modified", "Expires")
+        if name in registry_response.headers
     }
+    report = next(
+        item for item in registry_response.json()["reports"]
+        if item["slug"] == report_row.slug
+    )
     _run_restore(
         page_html=response.content.decode(), page_path=page_path, row_slug=report_row.slug,
-        payload=payload, payload_path="/api/catalog", static_api=static_api,
-        engine=engine, surface="catalog",
+        payload={"reports": [report]}, payload_path="/api/registry", static_api={},
+        registry_headers=registry_headers, rows_key="reports", engine=engine, surface="catalog",
     )
 
 
