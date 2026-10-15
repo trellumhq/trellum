@@ -24,3 +24,22 @@ counts and timestamps, not viewer names or IP addresses. View events are
 stored by the self-hosted portal; Trellum does not send them to an external
 analytics service. Authenticated report views may also appear as hourly
 deduplicated `report.view` events in the portal's audit history.
+
+## Idle reports stop auto-refreshing
+
+Scheduled reports that nobody opens still cost warehouse time. To avoid that,
+Trellum pauses the scheduled refresh of a report once it has gone unviewed for
+a set number of days.
+
+Organization admins set the threshold under **Org settings → Auto-refresh**.
+The default is 60 days, and `0` means reports are never paused.
+
+- Views from the portal and from share links both count as activity. A new
+  report gets a full window before it can be paused.
+- A report with an email delivery or a scheduled alert is exempt, because the
+  people who receive those never open the portal.
+- A paused report shows an **Auto-refresh paused** badge. Its schedule in
+  `report.yaml` is unchanged, but it no longer fires.
+- Opening a paused report does not restart it, and neither does **Run now**,
+  which builds the report once. Only a developer pressing **Resume** restarts
+  the schedule. Resume also queues an immediate rebuild.

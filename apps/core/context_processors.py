@@ -22,6 +22,7 @@ CONSOLE_PAGE_TITLES = {
     "org-assistant": "AI settings",
     "org-sharing": "Report sharing",
     "org-live-queries": "Live queries",
+    "org-refresh": "Auto-refresh",
     "org-groups": "Groups",
     "org-group-detail": "Group",
     "org-group-new": "New group",

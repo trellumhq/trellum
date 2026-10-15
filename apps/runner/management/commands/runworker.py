@@ -651,8 +651,11 @@ class _SchedulerManager:
         flush_broken_buffers()
 
         desired: dict[str, tuple[int, str, str]] = {}
-        rows = Report.objects.filter(present_in_scan=True, disabled=False, kind=Report.KIND_REPORT).exclude(
-            schedule_cron=""
+        rows = (
+            Report.objects.filter(
+                present_in_scan=True, disabled=False, kind=Report.KIND_REPORT, refresh_suspended_at__isnull=True
+            )
+            .exclude(schedule_cron="")
         )
         for r in rows:
             if len(r.schedule_cron.split()) >= 5:
@@ -769,7 +772,10 @@ def _run_update_check() -> None:
 def _enqueue_scheduled(report_id: int) -> None:
     """APScheduler job target (runs on a scheduler thread)."""
     close_old_connections()
-    from apps.reports.models import Report
+    from django.utils import timezone
+
+    from apps.core.audit import audit_system
+    from apps.reports.models import Report, should_suspend_refresh
     from apps.runner.services import enqueue
 
     report = (
@@ -777,8 +783,22 @@ def _enqueue_scheduled(report_id: int) -> None:
         .select_related("studio", "studio__org")
         .first()
     )
-    if report is not None:
-        enqueue(report, trigger="schedule")
+    if report is None:
+        return
+    now = timezone.now()
+    if report.refresh_suspended_at is None and should_suspend_refresh(report, now):
+        # Idle past the org threshold: skip this run and stop registering the
+        # job (refresh() filters on refresh_suspended_at). Resume is manual.
+        Report.objects.filter(pk=report.pk).update(refresh_suspended_at=now)
+        logger.info(f"suspending scheduled refresh for idle report {report.studio.slug}/{report.slug}")
+        audit_system(
+            "report.refresh_suspend", org=report.studio.org,
+            report_id=report.pk, slug=report.slug,
+        )
+        return
+    if report.refresh_suspended_at is not None:
+        return
+    enqueue(report, trigger="schedule")
 
 
 def _email_schedule_trigger(schedule, tz):

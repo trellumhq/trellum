@@ -52,6 +52,14 @@ class Report(models.Model):
     present_in_scan = models.BooleanField(default=True)
     first_seen_at = models.DateTimeField(default=timezone.now)
     last_scanned_at = models.DateTimeField(default=timezone.now)
+    #: Latest recorded view (portal or share link); denormalised from
+    #: ReportViewEvent by record_view(). Feeds the idle-refresh activity clock.
+    last_viewed_at = models.DateTimeField(null=True, blank=True)
+    #: When the scheduler stopped auto-refreshing this report for lack of
+    #: views; NULL while active. Cleared only by a manual resume.
+    refresh_suspended_at = models.DateTimeField(null=True, blank=True)
+    #: When someone last manually resumed auto-refresh; restarts the idle clock.
+    refresh_resumed_at = models.DateTimeField(null=True, blank=True)
     #: When this report last built SUCCESSFULLY -- the clock the built-data
     #: retention window runs on (apps.core.retention.purge_built_data).
     #:
@@ -616,6 +624,72 @@ def live_query_rate_limit(org) -> int:
     return policy.rate_limit_per_minute
 
 
+# ── Idle refresh suspension ───────────────────────────────────────────────────────
+#
+# A scheduled report nobody opens still costs warehouse time. Once its
+# activity clock is older than the org's threshold the scheduler stops
+# rebuilding it (see docs/idle-refresh-suspension.md). Same posture as
+# OrgLiveQueryPolicy above: no row / blank field = the default.
+
+#: Days without a view before scheduled refresh is suspended, for an org with no row.
+DEFAULT_REFRESH_SUSPEND_DAYS = 60
+
+
+class OrgRefreshPolicy(models.Model):
+    """Per-org override of the idle-refresh suspension threshold."""
+
+    org = models.OneToOneField(
+        "orgs.Organization", on_delete=models.CASCADE, related_name="refresh_policy"
+    )
+    #: None = use DEFAULT_REFRESH_SUSPEND_DAYS; 0 = never suspend. Nullable
+    #: for the same reason as OrgLiveQueryPolicy.rate_limit_per_minute.
+    suspend_after_days = models.PositiveIntegerField(null=True, blank=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        days = DEFAULT_REFRESH_SUSPEND_DAYS if self.suspend_after_days is None else self.suspend_after_days
+        return f"refresh-policy({self.org}, {days}d)"
+
+
+def refresh_suspend_days(org) -> int:
+    """The effective idle threshold in days for *org* (0 = never suspend)."""
+    policy = OrgRefreshPolicy.objects.filter(org=org).first()
+    if policy is None or policy.suspend_after_days is None:
+        return DEFAULT_REFRESH_SUSPEND_DAYS
+    return policy.suspend_after_days
+
+
+def refresh_idle_since(report):
+    """The report's activity clock: latest of last view, last manual resume
+    and first_seen_at (so a new report gets a full window)."""
+    return max(
+        t for t in (report.last_viewed_at, report.refresh_resumed_at, report.first_seen_at) if t is not None
+    )
+
+
+def should_suspend_refresh(report, now=None) -> bool:
+    """True when *report*'s scheduled refresh should be suspended as idle.
+
+    Never for an org with the feature off (0 days), nor for a report with an
+    enabled email schedule or schedule-triggered alert: those consumers never
+    open the portal, so they would never register a view.
+    """
+    from apps.alerts.models import AlertRule
+
+    days = refresh_suspend_days(report.studio.org)
+    if days == 0:
+        return False
+    if report.email_schedules.filter(enabled=True).exists():
+        return False
+    if report.alert_rules.filter(enabled=True, trigger=AlertRule.TRIGGER_SCHEDULE).exists():
+        return False
+    now = now or timezone.now()
+    return refresh_idle_since(report) < now - timedelta(days=days)
+
+
 # ── View analytics (internal planning#4) ──────────────────────────────────────────
 #
 # Who actually looks at which report. Two capture surfaces feed this: the
@@ -731,6 +805,7 @@ def record_view(report, *, user=None, share_link=None, request=None) -> None:
             return  # lost the race -- the winner already counted this view
         if not created:
             return
+        Report.objects.filter(pk=report.pk).update(last_viewed_at=now)
         # Only bump the daily rollup when this call actually created the
         # event -- a deduped (already-counted) view must not double-count
         # the day either.

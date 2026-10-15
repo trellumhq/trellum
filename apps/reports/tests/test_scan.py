@@ -163,7 +163,7 @@ class TestPayload:
             "schedule", "last_run", "last_status", "build_status", "last_error",
             "has_output", "html_entry", "validation", "details", "framework_version",
             # View analytics (internal planning#4): apps.reports.scan._view_stats_for.
-            "views_30d", "last_viewed", "stale",
+            "views_30d", "last_viewed", "refresh_suspended_at", "stale",
             # Runs live queries at view time (apps.core.storage.live_query_index).
             "live",
             # Data source state (apps.datasources.status): what holds the

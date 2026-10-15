@@ -490,6 +490,7 @@ def build_registry_payload(studio) -> dict:
                 "framework_version": runtime_meta.get("framework_version"),
                 "views_30d": views_30d,
                 "last_viewed": last_viewed.isoformat() if last_viewed else None,
+                "refresh_suspended_at": row.refresh_suspended_at.isoformat() if row.refresh_suspended_at else None,
                 # "Nobody has looked at a build that finished recently" --
                 # the signal that a report may need pointing out to whoever
                 # it's for, not that it's broken.
