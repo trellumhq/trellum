@@ -21,13 +21,13 @@ same people; ``denied()`` is the one audit-and-refuse path for both.
 """
 from __future__ import annotations
 
-from allauth.account.adapter import DefaultAccountAdapter
-from allauth.core.exceptions import ImmediateHttpResponse
-from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
 import base64
 import logging
 import secrets
 
+from allauth.account.adapter import DefaultAccountAdapter
+from allauth.core.exceptions import ImmediateHttpResponse
+from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
 from django.contrib.auth import get_user_model
 from django.shortcuts import render
 
