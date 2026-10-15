@@ -31,6 +31,10 @@ User = get_user_model()
 #: form per member per studio.
 PAGE_SIZE = 50
 
+#: Invisible upper bound for per-studio lists on one screen: the org home grid
+#: pages beyond it, the org members table links to the per-member studio page.
+STUDIO_LIST_CAP = 200
+
 
 def paginate(request, qs, per_page: int = PAGE_SIZE):
     """One pager for every list screen (the audit log had the only one)."""
@@ -80,10 +84,9 @@ def home(request):
     from apps.reports.models import Report
     from apps.runner.models import Run
 
-    q = (request.GET.get("q") or "").strip()
-    if q:
-        studios = studios.filter(models.Q(name__icontains=q) | models.Q(slug__icontains=q)) if active else []
-    page = paginate(request, studios, 24)
+    # Every studio card on one page, as ever; the pager only appears for an
+    # org with more studios than STUDIO_LIST_CAP.
+    page = paginate(request, studios, STUDIO_LIST_CAP)
     shown = list(page.object_list)
     reports = visible_reports(request.user, Report.objects.filter(
         studio_id__in=[studio.pk for studio in shown], present_in_scan=True))
@@ -108,7 +111,7 @@ def home(request):
             "orgs": orgs,
             "org": active,
             "cards": cards,
-            "page": page, "q": q, "total": page.paginator.count,
+            "page": page,
             "studios": studios,
             "is_org_admin": is_org_admin,
             "getting_started": _getting_started(active) if is_org_admin else None,
@@ -644,30 +647,35 @@ def members(request, org_slug):  # noqa: ARG001
     for user_id, studio_id, role in StudioMembership.objects.filter(
             user_id__in=ids, studio__org=request.org).values_list("user_id", "studio_id", "role"):
         direct.setdefault(user_id, {})[studio_id] = role
-    from django.db.models.functions import RowNumber
-    group_memberships = PermissionGroupMembership.objects.filter(user_id__in=ids, group__org=request.org)
-    group_counts = dict(group_memberships.order_by().values("user_id").annotate(n=models.Count("pk")).values_list("user_id", "n"))
     groups = {}
-    summaries = group_memberships.select_related("group").annotate(_member_group_rank=models.Window(
-        expression=RowNumber(), partition_by=[models.F("user_id")],
-        order_by=[models.F("group__name").asc(), models.F("group_id").asc()])).filter(_member_group_rank__lte=3).order_by("group__name", "group_id")
-    for pgm in summaries:
+    for pgm in PermissionGroupMembership.objects.filter(
+            user_id__in=ids, group__org=request.org).select_related("group").order_by("pk"):
         groups.setdefault(pgm.user_id, []).append(pgm.group)
     confirmed = set(TotpDevice.objects.filter(user_id__in=ids, confirmed_at__isnull=False).values_list("user_id", flat=True))
+    # Invisible bound: an org with more than STUDIO_LIST_CAP studios lists the
+    # first STUDIO_LIST_CAP per member and links to the full per-member page.
+    capped = len(studios) > STUDIO_LIST_CAP
     member_rows = []
     for m in memberships:
         er = effective_roles[m.user_id]
-        summary = []
-        count = 0
+        member_direct = direct.get(m.user_id, {})
+        effective = []
         for studio in studios:
-            role = er.role_for(studio)
-            if role is None:
+            if len(effective) >= STUDIO_LIST_CAP and capped:
+                break
+            if er.role_for(studio) is None:
                 continue
-            count += 1
-            if len(summary) < 3:
-                summary.append(_member_studio_access(studio, er, direct.get(m.user_id, {})))
-        member_rows.append({"m": m, "groups": groups.get(m.user_id, [])[:3], "group_count": group_counts.get(m.user_id, 0), "effective": summary,
-                            "effective_count": count, "has_mfa": m.user_id in confirmed})
+            effective.append(_member_studio_access(studio, er, member_direct))
+        member_rows.append({
+            "m": m,
+            "groups": groups.get(m.user_id, []),
+            "effective": effective,
+            "studio_editor": [
+                {"studio": s, "direct_role": member_direct.get(s.pk, "")}
+                for s in studios[:STUDIO_LIST_CAP]
+            ],
+            "has_mfa": m.user_id in confirmed,
+        })
     total = page.paginator.count
 
     return render(
@@ -679,6 +687,7 @@ def members(request, org_slug):  # noqa: ARG001
             "org_roles_choices": roles.ORG_ROLE_CHOICES,
             "studio_role_choices": roles.STUDIO_ROLE_CHOICES,
             "studios": studios,
+            "studios_capped": capped,
             "page": page,
             "q": q,
             "total": total,

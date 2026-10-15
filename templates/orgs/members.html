@@ -43,7 +43,6 @@ Each chip names where its role comes from.</p>
       {% for g in row.groups %}
         <a class="ui-badge accent" href="/orgs/{{ org.slug }}/settings/groups/{{ g.pk }}">{{ g.name }}</a>
       {% empty %}<span class="muted">—</span>{% endfor %}
-      {% if row.group_count %}<a href="/orgs/{{ org.slug }}/settings/members/{{ row.m.user_id }}/studios?tab=groups">View all {{ row.group_count }} group{{ row.group_count|pluralize }}</a>{% endif %}
     </td>
     <td data-label="Effective access" data-settings-refresh="member-effective-{{ row.m.user_id }}">
       {% comment %}The chip says where the role comes from in words. The old
@@ -56,8 +55,6 @@ Each chip names where its role comes from.</p>
           <span class="ui-badge-source">via {{ e.source }}</span>{% endif %}
         </span>
       {% empty %}<span class="ui-badge warn" title="No studio access — use Manage to grant a role, attach a permission group, or make them an org admin.">no access</span>{% endfor %}
-      <a href="/orgs/{{ org.slug }}/settings/members/{{ row.m.user_id }}/studios">View all {{ row.effective_count }} studio{{ row.effective_count|pluralize }}</a>
-
     </td>
     {% comment %}One control per row, always in the same place. Remove used to
     sit beside it and vanish on your own row, so the right edge of the table
@@ -66,7 +63,24 @@ Each chip names where its role comes from.</p>
       <details class="shell-dd">
         <summary aria-label="Manage {{ row.m.user.email }}">Manage</summary>
         <div class="shell-menu shell-menu-right" style="min-width:250px">
-          <a href="/orgs/{{ org.slug }}/settings/members/{{ row.m.user_id }}/studios">Manage studio access</a>
+          <span class="shell-menu-note">Studio roles</span>
+          {% for e in row.studio_editor %}
+          <form id="studio-role-{{ row.m.user_id }}-{{ e.studio.pk }}" class="inline" method="post" data-settings-form data-settings-save
+                style="padding:4px 10px;display:flex;gap:6px;align-items:center"
+                action="/orgs/{{ org.slug }}/settings/members/{{ row.m.user_id }}/studio-role">
+            {% csrf_token %}<input type="hidden" name="q" value="{{ q|default:'' }}"><input type="hidden" name="page" value="{{ page.number }}">
+            <input type="hidden" name="studio_id" value="{{ e.studio.pk }}">
+            <span style="flex:1">{{ e.studio.slug }}</span>
+            <select name="role" aria-label="{{ e.studio.slug }} role">
+              <option value="" {% if not e.direct_role %}selected{% endif %}>none</option>
+              {% for value, label in studio_role_choices %}
+              <option value="{{ value }}" {% if e.direct_role == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+            <button class="ui-btn ghost" type="submit">Save changes</button>
+          </form>
+          {% empty %}<span class="shell-menu-note">No studios yet.</span>{% endfor %}
+          {% if studios_capped %}<a href="/orgs/{{ org.slug }}/settings/members/{{ row.m.user_id }}/studios">Manage studio access</a>{% endif %}
           <span class="shell-menu-note">Account security</span>
           <form method="post" style="padding:2px 10px"
                 action="/orgs/{{ org.slug }}/settings/members/{{ row.m.user_id }}/unlock">

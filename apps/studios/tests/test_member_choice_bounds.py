@@ -1,4 +1,4 @@
-"""Authorized bounded choices and native browsing preserve explicit drafts."""
+"""Studio members screen lists everyone; bounds behind it are invisible."""
 import pytest
 from django.urls import reverse
 
@@ -8,7 +8,7 @@ from apps.studios.models import StudioMembership
 pytestmark = pytest.mark.django_db
 
 
-def test_choices_search_offpage_selection_and_native_browse(login, org_admin, studio, org, make_user):
+def test_choices_api_search_offpage_selection_and_browse_route(login, org_admin, studio, org, make_user):
     users = [make_user(f"choice{i:02}@example.test") for i in range(30)]
     OrgMembership.objects.bulk_create([OrgMembership(user=u, org=org, role="member") for u in users])
     client = login(org_admin)
@@ -36,14 +36,40 @@ def test_choices_search_offpage_selection_and_native_browse(login, org_admin, st
     assert client.post(api, {}).status_code == 405
 
 
-def test_direct_members_list_is_paged_and_person_ids_validate(login, org_admin, studio, org, make_user):
+def test_members_screen_lists_everyone_without_toolbar_pager_or_browse(login, org_admin, studio, org, make_user):
     users = [make_user(f"direct{i:02}@example.test") for i in range(55)]
     OrgMembership.objects.bulk_create([OrgMembership(user=u, org=org, role="member") for u in users])
-    StudioMembership.objects.bulk_create([StudioMembership(user=u, studio=studio, role="viewer") for u in users])
+    StudioMembership.objects.bulk_create([StudioMembership(user=u, studio=studio, role="viewer") for u in users[:54]])
     client = login(org_admin)
     path = reverse("studio-members", args=[org.slug, studio.slug])
     response = client.get(path)
-    assert len(response.context["rows"]) == 50
-    assert client.get(path, {"q": "direct54"}).context["total"] == 1
+    assert len(response.context["rows"]) == 54
+    html = response.content.decode()
+    for gone in ("Search direct members", "ui-pager", "settings/members/choices", "Choose a person", "Add member"):
+        assert gone not in html
+    assert " people</button>" not in html
+    assert 'type="submit">Add</button>' in html
+    assert "api/member-choices" not in html and "direct members." not in html
+    assert [m.user_id for m in response.context["org_users"] if m.user_id == users[-1].pk] == [users[-1].pk]
     setter = f"/s/{org.slug}/{studio.slug}/settings/members/set"
     assert client.post(setter, {"user_id": "bad", "role": "admin"}).status_code == 404
+
+
+def test_members_screen_caps_rows_and_switches_picker_to_server_search(login, org_admin, studio, org, make_user, monkeypatch):
+    users = [make_user(f"cap{i:02}@example.test") for i in range(12)]
+    OrgMembership.objects.bulk_create([OrgMembership(user=u, org=org, role="member") for u in users])
+    StudioMembership.objects.bulk_create([StudioMembership(user=u, studio=studio, role="viewer") for u in users[:6]])
+    eligible = OrgMembership.objects.filter(org=org).exclude(user__studio_memberships__studio=studio).count()
+    client = login(org_admin)
+    path = reverse("studio-members", args=[org.slug, studio.slug])
+    monkeypatch.setattr("apps.studios.views.MEMBER_LIST_CAP", 5)
+    response = client.get(path)
+    html = response.content.decode()
+    assert len(response.context["rows"]) == 5 and "Showing the first 5 direct members." in html
+    assert len(response.context["org_users"]) == 5 and "api/member-choices" in html
+    # At exactly the cap nothing is truncated and the picker searches client-side.
+    monkeypatch.setattr("apps.studios.views.MEMBER_LIST_CAP", max(eligible, 6))
+    response = client.get(path)
+    html = response.content.decode()
+    assert len(response.context["rows"]) == 6 and len(response.context["org_users"]) == eligible
+    assert "direct members." not in html and "api/member-choices" not in html
