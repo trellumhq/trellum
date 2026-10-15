@@ -192,3 +192,13 @@ class SSOConfigForm(forms.ModelForm):
             obj.save()
             self.save_m2m()
         return obj
+
+
+class DirectoryTestForm(forms.Form):
+    """The settings page's directory "Test sign-in": a login to check, never
+    stored, never re-rendered."""
+
+    email = forms.CharField(max_length=254, label="Directory login")
+    password = forms.CharField(
+        max_length=1024, widget=forms.PasswordInput(render_value=False), label="Password",
+    )

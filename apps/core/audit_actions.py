@@ -201,6 +201,7 @@ ACTIONS: dict[str, ActionSpec] = {
     "sso.domain.claim": _m(CATEGORY_ADMIN, "SSO domain claimed"),
     "sso.domain.verify": _m(CATEGORY_ADMIN, "SSO domain verification attempted"),
     "sso.domain.remove": _m(CATEGORY_ADMIN, "SSO domain removed"),
+    "sso.test_signin": _a(CATEGORY_ADMIN, "Single sign-on test sign-in"),
     "sso.ldap.test": _a(CATEGORY_ADMIN, "Directory connection tested"),
     "share_policy.enable": _m(CATEGORY_ADMIN, "Share links enabled"),
     "share_policy.disable": _m(CATEGORY_ADMIN, "Share links disabled"),

@@ -4,8 +4,8 @@ from __future__ import annotations
 from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect, render
 
-from apps.accounts import ldap
-from apps.accounts.sso import redirect_uri_for_org
+from apps.accounts import ldap, sso_test
+from apps.accounts.sso import provider_login_url, redirect_uri_for_org
 from apps.core import roles
 from apps.core.audit import audit
 from apps.core.form_responses import is_settings_request, settings_error, settings_success
@@ -13,7 +13,7 @@ from apps.core.permissions import require_org_role
 from apps.orgs import domains as domain_service
 from apps.orgs.models import OrgDomain, OrgSSOConfig
 
-from .forms import SSOConfigForm
+from .forms import DirectoryTestForm, SSOConfigForm
 
 
 @require_org_role(roles.ORG_ADMIN)
@@ -60,6 +60,28 @@ def sso_settings(request, org_slug):  # noqa: ARG001
         messages.success(request, "Domain claim removed.")
         return redirect(request.path)
 
+    if request.method == "POST" and action == "test-signin":
+        # Org admin only (the decorator), POST only, CSRF-checked by the
+        # middleware. The marker lives in this admin's session.
+        if cfg is None or not cfg.enabled or cfg.is_ldap or not cfg.client_id or not cfg.issuer_url:
+            messages.error(request, "Save and enable an OpenID Connect configuration first.")
+            return redirect(request.path)
+        sso_test.begin(request, request.org)
+        return redirect(provider_login_url(request, cfg))
+
+    if request.method == "POST" and action == "test-directory":
+        if cfg is None or not cfg.enabled or not cfg.is_ldap:
+            messages.error(request, "Save and enable a directory configuration first.")
+            return redirect(request.path)
+        test_form = DirectoryTestForm(request.POST)
+        if not test_form.is_valid():
+            messages.error(request, "Enter the directory login and its password.")
+            return redirect(request.path)
+        sso_test.run_directory(
+            request, cfg, test_form.cleaned_data["email"].strip(), test_form.cleaned_data["password"],
+        )
+        return redirect(request.path)
+
     if request.method == "POST" and action == "test-ldap":
         if cfg is None or not cfg.is_ldap:
             messages.error(request, "Save a directory configuration first.")
@@ -83,7 +105,7 @@ def sso_settings(request, org_slug):  # noqa: ARG001
                 enabled=form.instance.enabled, auth_method=form.instance.auth_method,
             )
             if is_settings_request(request):
-                return settings_success(request, "SSO settings saved.", values={"client_secret": "", "ldap_bind_password": ""}, refresh=["sso-directory-test", "sso-unclaimed-domains", "sso-routing-warning"])
+                return settings_success(request, "SSO settings saved.", values={"client_secret": "", "ldap_bind_password": ""}, refresh=["sso-test-signin", "sso-directory-test", "sso-unclaimed-domains", "sso-routing-warning"])
             doc = form.discovery
             messages.success(
                 request,
@@ -108,6 +130,15 @@ def sso_settings(request, org_slug):  # noqa: ARG001
     )
     verification_required = domain_service.enforcement_enabled()
     routing_warning = cfg is not None and cfg.enabled
+    test_result = request.session.pop(sso_test.SESSION_RESULT, None) or (
+        cfg.last_test_summary if cfg and cfg.last_test_summary else None
+    )
+    # Non-blocking: enforcing SSO (or removing the password fallback) without
+    # ever having seen it work is how an org locks itself out.
+    untested = (
+        cfg is not None and cfg.enabled and not cfg.last_test_ok
+        and (cfg.enforce_sso or not cfg.allow_password_login)
+    )
     return render(
         request,
         "orgs/sso.html",
@@ -125,5 +156,8 @@ def sso_settings(request, org_slug):  # noqa: ARG001
                 if routing_warning and verification_required else []
             ),
             "no_routable_domains": routing_warning and not routable,
+            "test_result": test_result,
+            "sso_untested": untested,
+            "directory_test_form": DirectoryTestForm(),
         },
     )

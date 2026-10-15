@@ -63,6 +63,43 @@ disabling verification: point `REQUESTS_CA_BUNDLE` at your CA bundle in the
 portal's environment. Discovery and the login flow share one HTTP client, so
 that single variable covers both.
 
+## Test sign-in
+
+Before you turn on **Enforce SSO** or turn off password login, check that
+single sign-on works from end to end. **Organization settings → Single
+sign-on → Test sign-in** runs the real sign-in and tells you what would have
+happened. It never logs anyone in, links an account, creates a user or changes
+a group, and you stay signed in as yourself throughout. Only organization
+admins can run it, and it uses the settings as last saved with SSO enabled.
+
+**OpenID Connect.** Press **Test sign-in**. Your identity provider opens
+and asks which account to use; choose the account you want to try (a test user
+is ideal). You come back to the settings page with a checklist:
+
+- Identity provider reached
+- Email claim found, with the address the provider sent
+- Email domain routes to single sign-on, or why not: the domain is not listed,
+  or it is listed but not yet verified
+- Email verified by the identity provider
+- Admission outcome: would sign in the existing member, would create a new
+  account, or would be refused, with the reason
+- Groups claim found and how many groups it listed, which mapped permission
+  groups would be granted, and which would be removed
+
+The test only counts for ten minutes after you press the button and works once.
+
+**Directory (LDAP / Active Directory).** Enter a directory login and password
+under **Test sign-in** and press the button. The password is checked against
+the directory and is never stored or logged. The checklist is the same, minus
+the provider's email verification.
+
+The page keeps the last result, who ran it and when. Each run is recorded in
+the audit log as `sso.test_signin` with the outcome and the checklist, never
+with tokens or passwords. A failing line (a red cross) means a real sign-in
+would be refused; a warning, such as a missing groups claim, does not fail the
+test but is worth reading. If you enforce SSO or turn off password login
+without a passing test on record, the page shows a warning. It does not stop you.
+
 ## Provider setup
 
 The portal requests the `openid`, `profile` and `email` scopes and reads the

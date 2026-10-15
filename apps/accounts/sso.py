@@ -217,6 +217,48 @@ def extract_email(sociallogin) -> str:
     return (c.get("email") or c.get("preferred_username") or c.get("upn") or "").strip()
 
 
+class GroupPlan:
+    """What the group mapping makes of one set of claims, before any write.
+
+    ``grant`` / ``revoke`` are the mapped PermissionGroups the claims say the
+    user should / should not be in; ``present`` and ``count`` describe the
+    claim itself. Shared by :func:`sync_groups` and the SSO test sign-in
+    preview, so the preview can never drift from what a login does.
+    """
+
+    def __init__(self, *, present=False, count=0, overflow=False, grant=(), revoke=()):
+        self.present = present
+        self.count = count
+        self.overflow = overflow
+        self.grant = list(grant)
+        self.revoke = list(revoke)
+
+
+def plan_group_sync(cfg, claims: dict) -> GroupPlan:
+    from apps.orgs.models import PermissionGroup
+
+    present = cfg.groups_claim in claims
+    # Group overage (Entra, above 200 groups): the list was replaced by a
+    # pointer to a directory endpoint the portal does not follow.
+    overflow = cfg.groups_claim in (claims.get("_claim_names") or {})
+    asserted = claims.get(cfg.groups_claim) or []
+    if isinstance(asserted, str):  # a lone group comes as a bare string from some IdPs
+        asserted = [asserted]
+    plan = GroupPlan(present=present, count=len(asserted), overflow=overflow)
+    if overflow:
+        return plan
+    # DNs are case-insensitive and directories return them in their own
+    # casing; OpenID Connect group ids stay exact.
+    fold = str.lower if cfg.is_ldap else str
+    wanted = {fold(g) for g in asserted}
+    for idp_group, group_pk in (cfg.group_map or {}).items():
+        group = PermissionGroup.objects.filter(pk=group_pk, org=cfg.org).first()
+        if group is None:
+            continue
+        (plan.grant if fold(idp_group) in wanted else plan.revoke).append(group)
+    return plan
+
+
 def sync_groups(user, cfg, claims: dict) -> None:
     """Map identity-provider groups -> portal PermissionGroups, on every login.
 
@@ -225,33 +267,20 @@ def sync_groups(user, cfg, claims: dict) -> None:
     the map are touched; memberships granted in the portal UI for unmapped
     groups are left alone.
     """
-    from apps.orgs.models import PermissionGroup, PermissionGroupMembership
+    from apps.orgs.models import PermissionGroupMembership
 
-    mapping = cfg.group_map or {}
-    if not mapping:
+    if not cfg.group_map:
         return
-    if cfg.groups_claim in (claims.get("_claim_names") or {}):
-        # Group overage (Entra, above 200 groups): the list was replaced by a
-        # pointer to a directory endpoint the portal does not follow. Leave
-        # the user's mapped memberships as they are rather than revoking them
-        # all for a claim that is merely elsewhere.
+    plan = plan_group_sync(cfg, claims)
+    if plan.overflow:
+        # Leave the user's mapped memberships as they are rather than
+        # revoking them all for a claim that is merely elsewhere.
         log.warning("SSO groups claim for %s overflowed the token; sync skipped", user.email)
         return
-    asserted = claims.get(cfg.groups_claim) or []
-    if isinstance(asserted, str):  # a lone group comes as a bare string from some IdPs
-        asserted = [asserted]
-    # DNs are case-insensitive and directories return them in their own
-    # casing; OpenID Connect group ids stay exact.
-    fold = str.lower if cfg.is_ldap else str
-    asserted = {fold(g) for g in asserted}
-    for idp_group, group_pk in mapping.items():
-        group = PermissionGroup.objects.filter(pk=group_pk, org=cfg.org).first()
-        if group is None:
-            continue
-        if fold(idp_group) in asserted:
-            PermissionGroupMembership.objects.get_or_create(user=user, group=group)
-        else:
-            PermissionGroupMembership.objects.filter(user=user, group=group).delete()
+    for group in plan.grant:
+        PermissionGroupMembership.objects.get_or_create(user=user, group=group)
+    for group in plan.revoke:
+        PermissionGroupMembership.objects.filter(user=user, group=group).delete()
 
 
 def provision_membership(user, cfg) -> None:

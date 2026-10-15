@@ -7,6 +7,19 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- Add **Test sign-in** to the organization's single sign-on settings. An org
+  admin can run a real OpenID Connect round trip, or check a directory login,
+  and see what would happen -- identity provider reached, email claim, whether
+  the domain routes, whether the email is verified, whether the person would be
+  signed in, created or refused, and which permission groups would be granted
+  or removed -- without anyone being logged in, linked, created or synced, and
+  without leaving the admin's own session. The last result, who ran it and when
+  are kept on the page and audited as `sso.test_signin`. Turning on **Enforce
+  SSO** or turning off password login before a successful test now shows a
+  non-blocking warning.
+
 ### Changed
 
 - Make single sign-on routing failures visible. The SSO settings page warns
