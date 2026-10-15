@@ -63,6 +63,43 @@ disabling verification: point `REQUESTS_CA_BUNDLE` at your CA bundle in the
 portal's environment. Discovery and the login flow share one HTTP client, so
 that single variable covers both.
 
+## Test sign-in
+
+Before you turn on **Enforce SSO** or turn off password login, check that
+single sign-on works from end to end. **Organization settings → Single
+sign-on → Test sign-in** runs the real sign-in and tells you what would have
+happened. It never logs anyone in, links an account, creates a user or changes
+a group, and you stay signed in as yourself throughout. Only organization
+admins can run it, and it uses the settings as last saved with SSO enabled.
+
+**OpenID Connect.** Press **Test sign-in**. Your identity provider opens
+and asks which account to use; choose the account you want to try (a test user
+is ideal). You come back to the settings page with a checklist:
+
+- Identity provider reached
+- Email claim found, with the address the provider sent
+- Email domain routes to single sign-on, or why not: the domain is not listed,
+  or it is listed but not yet verified
+- Email verified by the identity provider
+- Admission outcome: would sign in the existing member, would create a new
+  account, or would be refused, with the reason
+- Groups claim found and how many groups it listed, which mapped permission
+  groups would be granted, and which would be removed
+
+The test only counts for ten minutes after you press the button and works once.
+
+**Directory (LDAP / Active Directory).** Enter a directory login and password
+under **Test sign-in** and press the button. The password is checked against
+the directory and is never stored or logged. The checklist is the same, minus
+the provider's email verification.
+
+The page keeps the last result, who ran it and when. Each run is recorded in
+the audit log as `sso.test_signin` with the outcome and the checklist, never
+with tokens or passwords. A failing line (a red cross) means a real sign-in
+would be refused; a warning, such as a missing groups claim, does not fail the
+test but is worth reading. If you enforce SSO or turn off password login
+without a passing test on record, the page shows a warning. It does not stop you.
+
 ## Provider setup
 
 The portal requests the `openid`, `profile` and `email` scopes and reads the
@@ -307,6 +344,32 @@ failed login. A directory that cannot be reached during a login shows a
 generic "sign-in is unavailable" message and records the error in the audit
 trail. Passwords are never logged or recorded.
 
+## When sign-in fails
+
+If single sign-on fails after the identity provider has answered, the person
+sees **We couldn't sign you in**, a one-line cause, a **Try again** button
+(back to your identity provider when starting over can help, otherwise the
+login page), a **Back to sign-in** link, and a reference such as `K3M7Q2XA`.
+
+| Message | Meaning |
+|---|---|
+| Your account isn't a member of *Org* yet. Ask an organization admin to invite you. | A portal account exists for that email but isn't in the organization. |
+| *Org* doesn't create accounts automatically. Ask an organization admin to invite you. | No account yet and auto-provisioning is off. |
+| *email* isn't in an email domain *Org* uses for single sign-on. | The email's domain isn't one of the organization's routed domains. |
+| Your identity provider didn't confirm your email address. | The provider didn't mark the email as verified. |
+| Your identity provider didn't send an email address. | The token carries no email claim. |
+| Single sign-on isn't turned on for *Org*. | SSO was switched off, for example after the link was bookmarked. |
+| Sign-in was cancelled. | The person declined at the provider. |
+| Your sign-in session expired or was already used. | The sign-in started in another tab, took too long, or was reloaded. |
+| Your identity provider reported a problem. / declined the sign-in. | The provider returned an error (for example an Entra `AADSTS` code, a wrong client secret or issuer). Details are in the server log, never on the page. |
+
+**Finding a reference.** Open **Organization settings → Audit log** and
+search the reference. The matching `auth.sso_denied` row carries the reference
+and a `reason_code` (for example `existing_non_member_account` or
+`idp_state_invalid`) in its details; the same reference is written to the
+server log next to the reason, along with the provider's error text for
+identity-provider failures.
+
 ## Security model
 
 Instance operators are exempt from SSO enforcement, so a misconfiguration
@@ -337,6 +400,29 @@ _trellum-verification.example.com   TXT   trellum-verification=<token>
 
 The token is per claim, so publishing someone else's proves nothing, and a
 domain can be held by only one organization at a time.
+
+While verification is required, a listed email domain that is not verified
+does not route logins to single sign-on. The settings page lists those
+domains in a warning, and also warns when no listed domain routes at all.
+**Still allow password login** cannot be turned off while no domain routes,
+because people would then have no way to sign in. **Enforce SSO** is not
+blocked, since it applies to existing members whatever their email domain.
+
+The login page asks for the work email first and nothing else. If the
+address routes to single sign-on (or belongs to a member of an organization
+that enforces it), the person is sent straight to the identity provider.
+**Sign in with a password instead**, shown to everyone, skips that redirect
+where the organization still allows password login (**`allow_password_login`**
+on, and the person is not a member of an organization that enforces SSO);
+instance operators are exempt from enforcement, so they can always reach the
+password step if single sign-on breaks. If the address does not route, or the
+person chose a password, the next page shows the email read-only, with a **Use a
+different email** link, and asks for the password (labelled **Directory
+password** when the address routes to a directory). That page looks the same
+whether or not an account exists, and the routing is checked again when the
+password is submitted, so an enforcing organization's members can never sign
+in with a password. The portal logs a warning when the address's domain is
+listed by an enabled configuration but is unverified.
 
 New installations using the supplied `.env.example`, and newly generated demo
 environments, set `TRELLUM_SSO_DOMAIN_VERIFICATION=false`. This suits an instance

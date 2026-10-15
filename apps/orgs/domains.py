@@ -146,15 +146,26 @@ def verified_domains(org) -> set[str]:
     )
 
 
+def claimed_domains(cfg) -> list[str]:
+    """The config's listed email domains, normalised and without blanks."""
+    claimed = [normalise(d) for d in (cfg.email_domains or [])]
+    return [d for d in claimed if d]
+
+
 def routable_domains(cfg) -> list[str]:
     """Which of an SSO config's claimed domains may actually route logins.
 
     With enforcement off, every claimed domain routes, exactly as before.
     With it on, only domains this org has proved it owns.
     """
-    claimed = [normalise(d) for d in (cfg.email_domains or [])]
-    claimed = [d for d in claimed if d]
+    claimed = claimed_domains(cfg)
     if not enforcement_enabled():
         return claimed
     verified = verified_domains(cfg.org)
     return [d for d in claimed if d in verified]
+
+
+def unroutable_domains(cfg) -> list[str]:
+    """Listed domains that do not route logins, because they are unverified."""
+    routable = set(routable_domains(cfg))
+    return [d for d in claimed_domains(cfg) if d not in routable]

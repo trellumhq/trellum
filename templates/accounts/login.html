@@ -14,25 +14,38 @@ screen of empty space under it.{% endcomment %}
     <ul class="messages"><li class="warning" role="status">Your session was ended. Sign in again to continue.</li></ul>
     {% endif %}
     {{ form.non_field_errors }}
+    {% if step == "password" %}
+    <form method="post" action="{{ form_action }}">
+      {% csrf_token %}
+      <div class="ui-field">
+        <label for="id_email_display">Email</label>
+        <input type="email" id="id_email_display" value="{{ login_email }}" readonly autocomplete="username">
+        <span class="ui-help"><a href="{{ change_email_url }}">Use a different email</a></span>
+      </div>
+      <div class="ui-field">
+        <label for="id_password">{{ password_label }}</label>
+        {{ form.password }}{{ form.password.errors }}
+      </div>
+      <div class="ui-form-actions">
+        <button class="ui-btn primary" type="submit">Log in</button>
+        <a href="/password-reset/" class="auth-alt-link">Forgot password?</a>
+      </div>
+    </form>
+    {% else %}
     <form method="post">
       {% csrf_token %}
       <div class="ui-field">
         <label for="id_email">Email</label>
         {{ form.email }}{{ form.email.errors }}
+        <span class="ui-help">If your organization uses single sign-on, you'll be sent to its sign-in page.</span>
       </div>
-      <div class="ui-field">
-        <label for="id_password">Password</label>
-        {{ form.password }}{{ form.password.errors }}
-      </div>
-      <p class="ui-help">If your organization uses single sign-on,
-        you'll be redirected automatically after entering your email.
-        If it signs you in against a directory, the password above is your
-        directory password.</p>
       <div class="ui-form-actions">
         <button class="ui-btn primary" type="submit">Continue</button>
+        <button class="ui-btn" type="submit" name="method" value="password">Sign in with a password instead</button>
         <a href="/password-reset/" class="auth-alt-link">Forgot password?</a>
       </div>
     </form>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

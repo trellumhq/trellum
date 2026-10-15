@@ -19,6 +19,43 @@
   {% include "_copy_field.html" with value=redirect_uri %}
 </div>
 
+<div data-settings-refresh="sso-routing-warning">
+{% if unroutable_domains %}
+<div class="ui-flash warning" role="status" style="margin:0 0 14px">
+  {# One block child: .ui-flash is a flex row and would split inline text into columns. #}
+  <div>
+    <strong>Not yet sending logins to single sign-on:</strong>
+    {% for d in unroutable_domains %}<code>{{ d }}</code>{% if not forloop.last %}, {% endif %}{% endfor %}.
+    {% if unroutable_domains|length == 1 %}This domain isn't{% else %}These domains aren't{% endif %}
+    verified yet, so people signing in with {% if unroutable_domains|length == 1 %}it{% else %}them{% endif %}
+    are asked for a password instead.
+    <a href="#domain-ownership">Verify under Domain ownership</a>, or, on an instance used by a single
+    organization, have the operator set <code>TRELLUM_SSO_DOMAIN_VERIFICATION=false</code>.
+  </div>
+</div>
+{% endif %}
+{% if no_routable_domains %}
+<div class="ui-flash warning" role="status" style="margin:0 0 14px">
+  <div>
+    <strong>No email domain routes to single sign-on.</strong>
+    People can't start single sign-on from the login page{% if domain_verification_required %} until at least
+    one listed domain is verified (see <a href="#domain-ownership">Domain ownership</a>){% else %} until you list
+    at least one email domain below{% endif %}. Members of an organization that enforces single sign-on are
+    still redirected.
+  </div>
+</div>
+{% endif %}
+{% if sso_untested %}
+<div class="ui-flash warning" role="status" style="margin:0 0 14px">
+  {% if sso_last_test_failed %}
+  The last Test sign-in didn't pass. Fix what it reported below and test again before enforcing single sign-on.
+  {% else %}
+  Single sign-on hasn't been tested yet. Use Test sign-in before enforcing it.
+  {% endif %}
+</div>
+{% endif %}
+</div>
+
 <fieldset style="border:0;padding:0;margin:0;min-width:0">
   <form id="orgSsoForm" method="post" data-settings-form data-settings-save>
     {% csrf_token %}
@@ -91,9 +128,60 @@
 </div>
 
 </fieldset>
+
+<div data-settings-refresh="sso-test-signin">
+<h2 id="test-signin">Test sign-in</h2>
+<div class="ui-panel">
+  {% if cfg and cfg.enabled %}
+  <p class="muted" style="margin-top:0">Check single sign-on end to end before you enforce it.
+    Nothing is created or changed, and you stay signed in as yourself.</p>
+  {% if cfg.is_ldap %}
+  <form method="post" class="inline">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="test-directory">
+    <div class="ui-form-row">
+      <div class="ui-field"><label for="sso-test-email">{{ directory_test_form.email.label }}</label>
+        <input id="sso-test-email" name="email" type="text" autocomplete="off" required></div>
+      <div class="ui-field"><label for="sso-test-password">{{ directory_test_form.password.label }}</label>
+        <input id="sso-test-password" name="password" type="password" autocomplete="off" required></div>
+    </div>
+    <button class="ui-btn ghost" type="submit">Test sign-in</button>
+    <span class="helptext">The password is checked against the directory and never stored.</span>
+  </form>
+  {% else %}
+  <form method="post" class="inline">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="test-signin">
+    <button class="ui-btn ghost" type="submit">Test sign-in</button>
+    <span class="helptext">Opens your identity provider so you can pick a test account.
+      Uses the saved settings.</span>
+  </form>
+  {% endif %}
+  {% else %}
+  <p class="muted" style="margin:0">Save and enable single sign-on to test it.</p>
+  {% endif %}
+
+  {% if test_result %}
+  <ul class="ui-checklist" style="list-style:none;padding:0;margin:14px 0 0">
+    {% for c in test_result.checks %}
+    <li class="sso-test-{{ c.level }}">
+      <strong aria-hidden="true">{% if c.level == "pass" %}&#10003;{% elif c.level == "fail" %}&#10007;{% elif c.level == "warn" %}!{% else %}&middot;{% endif %}</strong>
+      <span class="sr-only">{% if c.level == "pass" %}Passed:{% elif c.level == "fail" %}Failed:{% elif c.level == "warn" %}Warning:{% endif %}</span>
+      {{ c.label }}{% if c.detail %} <span class="muted">&mdash; {{ c.detail }}</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if cfg and cfg.last_test_at %}
+  <p class="muted" style="margin-bottom:0">Last tested {{ cfg.last_test_at|date:"j M Y H:i" }} UTC
+    by {{ cfg.last_test_by.email|default:"a removed user" }} &mdash;
+    {% if cfg.last_test_ok %}passed{% else %}did not pass{% endif %}.</p>
+  {% endif %}
+</div>
+</div>
 </div>
 
-<h2>Domain ownership</h2>
+<h2 id="domain-ownership">Domain ownership</h2>
 <div class="panel">
 {% if not domain_verification_required %}
 <details>

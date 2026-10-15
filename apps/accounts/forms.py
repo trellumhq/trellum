@@ -26,11 +26,20 @@ __all__ = [
 
 
 class LoginForm(forms.Form):
-    email = forms.EmailField(widget=forms.EmailInput(attrs={"autofocus": True}))
+    email = forms.EmailField(widget=forms.EmailInput(attrs={"autofocus": True, "autocomplete": "username"}))
     password = forms.CharField(widget=forms.PasswordInput, required=False)
     # No remember-me field: InstanceConfig.session_remember_me_enabled exists
     # as a stubbed-off knob (see its docstring) but the checkbox itself is
     # deferred v1 UI -- see .lavish/session-security-design.md open question 3.
+
+
+class PasswordStepForm(forms.Form):
+    """The login page's second step; the email lives in the session."""
+
+    password = forms.CharField(
+        widget=forms.PasswordInput(attrs={"autofocus": True, "autocomplete": "current-password"}),
+        required=False,
+    )
 
 
 class MfaCodeForm(forms.Form):
@@ -93,7 +102,7 @@ class SetupOrgForm(forms.Form):
 class SetupAccountForm(PasswordPairMixin):
     """First-run wizard, step 4: the instance operator's account."""
 
-    email = forms.EmailField(widget=forms.EmailInput(attrs={"autofocus": True}))
+    email = forms.EmailField(widget=forms.EmailInput(attrs={"autofocus": True, "autocomplete": "username"}))
     name = forms.CharField(label="Your name", max_length=150, required=False)
 
     def clean_email(self):

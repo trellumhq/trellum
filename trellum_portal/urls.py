@@ -269,6 +269,7 @@ urlpatterns = [
     path("s/<slug:org_slug>/<slug:studio_slug>/", include(studio_patterns)),
     # Auth / account lifecycle
     path("login", account_views.login_view, name="login"),
+    path("login/password", account_views.login_password_view, name="login-password"),
     path("login/verify", account_views.mfa_verify_view, name="mfa-verify"),
     path("logout", account_views.logout_view, name="logout"),
     path("account", account_views.account_view, name="account"),

@@ -7,8 +7,39 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- Add **Test sign-in** to the organization's single sign-on settings. An org
+  admin can run a real OpenID Connect round trip, or check a directory login,
+  and see what would happen -- identity provider reached, email claim, whether
+  the domain routes, whether the email is verified, whether the person would be
+  signed in, created or refused, and which permission groups would be granted
+  or removed -- without anyone being logged in, linked, created or synced, and
+  without leaving the admin's own session. The last result, who ran it and when
+  are kept on the page and audited as `sso.test_signin`. Turning on **Enforce
+  SSO** or turning off password login before a successful test now shows a
+  non-blocking warning.
+
 ### Changed
 
+- Show a clearer page when single sign-on fails after the identity provider
+  answers. "We couldn't sign you in" gives a plain-language cause for each
+  refusal (and for cancelled, expired or provider-reported errors), a Try again
+  button, and a short reference. The reference is recorded on the
+  `auth.sso_denied` audit row, so an administrator can search for it in the
+  audit log.
+
+- Make single sign-on routing failures visible. The SSO settings page warns
+  about listed email domains that are not yet verified (and when no domain
+  routes at all), and refuses to turn off password login while no domain
+  routes. The portal logs a warning when a listed domain is unverified.
+- Sign in in two steps. The login page asks for the email first and sends
+  single sign-on users straight to their identity provider; everyone else
+  continues to a password page (**Directory password** for directory logins)
+  at `/login/password` that shows the email read-only with a **Use a
+  different email** link. SSO enforcement is re-checked on the password step,
+  and a POST to `/login` that already carries an email and password still
+  signs in in one request.
 - Search now lives in the page it searches. The top bar no longer carries a
   "Search reports" box on every page, and the phone search button is gone.
   Reports, Analyses and Operations have their own search field in the folder bar

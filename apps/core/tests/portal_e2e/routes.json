@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "first_party_expected": 220,
+  "first_party_expected": 221,
   "routes": [
     {
       "id": "route-000",
@@ -13342,11 +13342,62 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "da4a2211a2fe80537450d9c352de92f51c4fce432c099e9eb156f1b57dc3e1c3",
+      "source_sha256": "bb91856bc690a30b46fa89e31ed98bc54b7ff918f9bd2327a6cc40b63421812e",
       "request_conditions": [
         "public entry; invalid input/token scenarios apply separately"
       ],
-      "adapter_sha256": "ed1bb61fcbee10f04ade7ea97f68b6f9d0edd28ef2dcda6f672616eb14b2a35c"
+      "adapter_sha256": "86cd05cc9360eeb43861cae1956591d9c64e704f191677c5d9c700edaba1a49d"
+    },
+    {
+      "id": "route-359",
+      "pattern": "login/password",
+      "name": "login-password",
+      "view": "apps.accounts.views.login_password_view",
+      "first_party": true,
+      "case": "C20",
+      "shard": "L4",
+      "allowed_roles": [
+        "anonymous",
+        "cross-org",
+        "developer",
+        "group-admin",
+        "group-member",
+        "group-selected",
+        "impersonated",
+        "inactive",
+        "operator",
+        "org-admin",
+        "private-viewer",
+        "revoked",
+        "studio-admin",
+        "viewer",
+        "viewer-full"
+      ],
+      "denied_roles": [],
+      "role_policy": "native-public-boundary",
+      "seeded_parameters": {},
+      "disposition": "native with feedback",
+      "scenarios": [
+        {
+          "method": "GET",
+          "action": null,
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l4_routes.py::test_route[359-GET]",
+          "verification": "pending"
+        },
+        {
+          "method": "POST",
+          "action": null,
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l4_routes.py::test_route[359-POST]",
+          "verification": "pending"
+        }
+      ],
+      "verification": "pending",
+      "verified_node_ids": [],
+      "source_sha256": "f1f5d530e500c591a77ad080e04b447563f22b41f1fe4976e848ac2b3f237ff8",
+      "request_conditions": [
+        "public entry; invalid input/token scenarios apply separately"
+      ],
+      "adapter_sha256": "5d02609533ed781f3e096cb55ec051cc20d4c1ed55da737c9b0a7f241c5b8c0c"
     },
     {
       "id": "route-210",
@@ -19984,8 +20035,20 @@
         },
         {
           "method": "POST",
+          "action": "action=test-directory",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_action[299-action-test-directory]",
+          "verification": "pending"
+        },
+        {
+          "method": "POST",
           "action": "action=test-ldap",
           "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_action[299-action-test-ldap]",
+          "verification": "pending"
+        },
+        {
+          "method": "POST",
+          "action": "action=test-signin",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_action[299-action-test-signin]",
           "verification": "pending"
         },
         {
@@ -19997,9 +20060,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "5abfe1b93e86e702c5dc7519b4f2f6a2b4d063ec1d2ee8d0ce4b9972c18b236c",
+      "source_sha256": "39f18ef9ce3212168b99bf6f3b59a81447478c6482b88690af5fbccf01ec44b6",
       "request_conditions": [],
-      "adapter_sha256": "5abfe1b93e86e702c5dc7519b4f2f6a2b4d063ec1d2ee8d0ce4b9972c18b236c",
+      "adapter_sha256": "39f18ef9ce3212168b99bf6f3b59a81447478c6482b88690af5fbccf01ec44b6",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"

@@ -74,6 +74,7 @@ EMAIL_BEARING_ACTIONS = (
     "operator.impersonate.expired",
     "operator.impersonate.start",
     "operator.impersonate.stop",
+    "sso.test_signin",
 )
 
 

@@ -89,6 +89,7 @@
     <span class="ui-badge">{{ denial.row.action }}</span>
     <span>{{ denial.who }}</span>
     <span class="muted">{{ denial.row.metadata.reason_code }}</span>
+    {% if denial.row.metadata.reference %}<span class="muted mono">{{ denial.row.metadata.reference }}</span>{% endif %}
     <span class="muted">{{ denial.row.ip|default:"" }}</span>
   </div>
   {% endfor %}

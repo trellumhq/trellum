@@ -66,3 +66,6 @@ terraform.tfvars
 *.sqlite3
 website/dist/
 website/content/docs/
+
+# Screenshots written by the browser test suite
+.artifacts/

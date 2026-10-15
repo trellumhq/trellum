@@ -1,7 +1,17 @@
 from django import forms
 
 from apps.accounts import sso
+from apps.orgs import domains
 from apps.orgs.models import Organization, OrgSSOConfig, PermissionGroup
+
+
+#: Settings a recorded Test sign-in result depends on; changing any of them
+#: clears the pass so the "not tested yet" warning returns.
+TEST_RELEVANT_FIELDS = (
+    "auth_method", "issuer_url", "client_id", "client_secret", "email_domains",
+    "ldap_server_uri", "ldap_user_search_base", "ldap_bind_dn", "ldap_bind_password",
+    "ldap_email_attr",
+)
 
 
 class SSOConfigForm(forms.ModelForm):
@@ -110,6 +120,39 @@ class SSOConfigForm(forms.ModelForm):
 
     def clean(self):
         data = super().clean()
+        data = self._clean_source(data)
+        if not self.errors:
+            self._clean_routing(data)
+        return data
+
+    def _clean_routing(self, data):
+        """Refuse to save a config that would leave people with no way in.
+
+        Turning password login off sends the config's domains to single
+        sign-on; if none of them routes, nobody is sent anywhere and nobody
+        can type a password either. ``enforce_sso`` is not blocked here: it
+        applies to existing members whatever their domain, and the settings
+        page warns instead.
+        """
+        if not data.get("enabled") or data.get("allow_password_login"):
+            return
+        listed = data.get("email_domains_text") or []
+        if domains.enforcement_enabled():
+            verified = domains.verified_domains(self.org)
+            listed = [d for d in listed if d in verified]
+        if not listed:
+            fix = (
+                "Verify a domain under Domain ownership"
+                if domains.enforcement_enabled()
+                else "List at least one email domain"
+            )
+            self.add_error(
+                "email_domains_text",
+                "Password login can only be turned off once at least one email "
+                f"domain routes to single sign-on. {fix}, or keep password login on.",
+            )
+
+    def _clean_source(self, data):
         if data.get("auth_method") == OrgSSOConfig.AUTH_LDAP:
             return self._clean_ldap(data)
         if self.errors.get("issuer_url"):
@@ -154,7 +197,21 @@ class SSOConfigForm(forms.ModelForm):
                 obj.client_secret = stored.client_secret
             if not self.cleaned_data.get("ldap_bind_password"):
                 obj.ldap_bind_password = stored.ldap_bind_password
+            # A pass recorded against another identity source or other
+            # domains proves nothing about this one: ask for a new test.
+            if any(getattr(obj, f) != getattr(stored, f) for f in TEST_RELEVANT_FIELDS):
+                obj.last_test_ok = None
         if commit:
             obj.save()
             self.save_m2m()
         return obj
+
+
+class DirectoryTestForm(forms.Form):
+    """The settings page's directory "Test sign-in": a login to check, never
+    stored, never re-rendered."""
+
+    email = forms.CharField(max_length=254, label="Directory login")
+    password = forms.CharField(
+        max_length=1024, widget=forms.PasswordInput(render_value=False), label="Password",
+    )
