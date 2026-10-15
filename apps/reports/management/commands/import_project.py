@@ -39,33 +39,38 @@ class Command(BaseCommand):
         if not (src / "reports").is_dir():
             raise CommandError(f"{src} has no reports/ directory")
 
-        studio.ensure_dirs()
-        copied = []
-        for name in ("reports", "data-sources"):
-            src_dir = src / name
-            if src_dir.is_dir():
-                dst = studio.project_root / name
-                if dst.exists():
-                    shutil.rmtree(dst)
-                shutil.copytree(src_dir, dst)
-                copied.append(name + "/")
-        from apps.runner.executor import project_root_materialized_files
+        from apps.runner.gitsync import studio_sync_lock
 
-        for name in project_root_materialized_files():
-            if (src / name).is_file():
-                shutil.copyfile(src / name, studio.project_root / name)
-                copied.append(name)
-        studio.ensure_dirs()  # recreate anything the copies replaced
+        with studio_sync_lock(studio.pk) as locked:
+            if not locked:
+                raise CommandError("studio synchronization is already running")
+            studio.ensure_dirs()
+            copied = []
+            for name in ("reports", "data-sources"):
+                src_dir = src / name
+                if src_dir.is_dir():
+                    dst = studio.project_root / name
+                    if dst.exists():
+                        shutil.rmtree(dst)
+                    shutil.copytree(src_dir, dst)
+                    copied.append(name + "/")
+            from apps.runner.executor import project_root_materialized_files
 
-        from apps.reports.scan import ReportQuotaExceeded
+            for name in project_root_materialized_files():
+                if (src / name).is_file():
+                    shutil.copyfile(src / name, studio.project_root / name)
+                    copied.append(name)
+            studio.ensure_dirs()  # recreate anything the copies replaced
 
-        try:
-            n = sync_studio_registry(studio)
-        except ReportQuotaExceeded as exc:
-            from apps.reports.models import Report
+            from apps.reports.scan import ReportQuotaExceeded
 
-            n = Report.objects.filter(studio=studio, present_in_scan=True).count()
-            self.stderr.write(self.style.WARNING(str(exc)))
+            try:
+                n = sync_studio_registry(studio)
+            except ReportQuotaExceeded as exc:
+                from apps.reports.models import Report
+
+                n = Report.objects.filter(studio=studio, present_in_scan=True).count()
+                self.stderr.write(self.style.WARNING(str(exc)))
 
         # Data sources become DB rows (the portal owns config.yaml now and
         # rewrites it before every run — YAML-only sources would vanish).

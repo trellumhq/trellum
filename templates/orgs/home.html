@@ -41,6 +41,7 @@ Organization switching lives in the user menu (top right).{% endcomment %}
   </a>
   {% endfor %}
 </div>
+{% include "_pagination.html" with page=page %}
 {% else %}
 <div class="ui-panel"><div class="ui-empty">
   {% if is_org_admin %}

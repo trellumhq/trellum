@@ -1,19 +1,10 @@
 """The per-studio experiment overview (internal planning: cross-report A/B roll-up).
 
-A report joins this page the moment its ``report.yaml`` declares an
-``ab_test:`` block — nothing else has to change about how the report itself
-is built. This module never computes a statistic: every number on the page
-(the delta, its confidence interval, which mode is the report's own default)
-comes straight out of the report's own built ``ab_compare`` payload
-(``trellum/components/ab_compare.py``), read from its ``data.json``. The
-portal's only job is to read that payload for every A/B report in a studio
-and lay them out as one portfolio.
-
-``ab_test:`` is one experiment's block — or a **list** of such blocks, for a
-report that carries several experiments on one page (a portfolio page, or a
-programme review). Each entry becomes its own row here, matched to its own
-``ab_compare`` component in the built payload by ``test_name`` (falling back
-to build order when no names are declared).
+The request consumer reads normalized worker-observed declarations and result
+facts from the database, aggregates the complete studio relation, and shows
+every experiment on one page (the shared pager appears only for a studio far
+larger than a realistic one). The artifact extraction helpers remain available
+for producer normalization and compatibility tests.
 
 **Status rule (the one non-obvious piece of business logic here).** An
 experiment's lifecycle is derived from ``ab_test.start_date`` and
@@ -47,16 +38,14 @@ from __future__ import annotations
 import json
 import logging
 import threading
-import time as _time
 from datetime import date, datetime, timezone
 from pathlib import Path
 
 from django.shortcuts import render
 
-from apps.core import roles, storage
+from apps.core import roles
 from apps.core.permissions import require_studio_role
 from apps.core.report_access import require_full_studio_visibility
-from apps.reports.models import Report
 
 logger = logging.getLogger(__name__)
 
@@ -64,8 +53,6 @@ _MONTH_ABBR = [
     "Jan", "Feb", "Mar", "Apr", "May", "Jun",
     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ]
-
-_STATUS_FILTERS = ("running", "concluded", "past_end", "scheduled")
 
 
 # ── report.yaml / data.json plumbing ────────────────────────────────────────
@@ -473,11 +460,10 @@ def _build_timeline(rows: list[dict], today: date) -> dict:
     }
 
 
-# ── per-studio aggregation (cached) ─────────────────────────────────────────
+# ── compatibility cache invalidation ─────────────────────────────────────────
 
 _studio_cache_lock = threading.Lock()
 _studio_cache: dict[int, tuple[float, dict]] = {}
-_STUDIO_CACHE_TTL = 5.0
 
 
 def invalidate_experiments_cache(studio=None) -> None:
@@ -500,157 +486,10 @@ def _matches_status(row_status: str, wanted: str) -> bool:
     return row_status == wanted
 
 
-def studio_experiments(studio) -> dict:
-    """Every A/B report in ``studio``, with its lifecycle, its built payload's
-    primary metric (if any), tile totals, and timeline layout.
-
-    A storage outage degrades every row *after* the first failure rather than
-    500ing the page or retrying a store we already know is down (mirrors
-    ``apps.reports.scan.build_registry_payload``'s single-latch pattern): once
-    ``storage.output_root`` raises for one report, every remaining report in
-    the pass is marked ``storage_unavailable`` without a further attempt.
-    """
-    now = _time.time()
-    with _studio_cache_lock:
-        hit = _studio_cache.get(studio.pk)
-        if hit is not None and (now - hit[0]) < _STUDIO_CACHE_TTL:
-            return hit[1]
-
-    today = datetime.now(timezone.utc).date()
-    storage_down = False
-    rows: list[dict] = []
-
-    for report in Report.objects.filter(studio=studio, present_in_scan=True):
-        config = report.config or {}
-        entries = _ab_entries(config)
-        if not entries:
-            continue
-        schedule_active = (not report.disabled) and bool(report.schedule_cron)
-        multi = len(entries) > 1
-
-        report_rows: list[tuple[dict, dict]] = []
-        for ab_cfg in entries:
-            status = derive_status(ab_cfg, today, schedule_active=schedule_active)
-            # A multi-experiment report's rows (and timeline lanes) go by the
-            # entry's own name -- three bars all labelled with the report's
-            # title would be indistinguishable.
-            name = report.name or report.slug
-            if multi:
-                name = str(ab_cfg.get("name") or ab_cfg.get("test_name") or name)
-            report_rows.append((ab_cfg, {
-                "slug": report.slug,
-                "name": name,
-                "url": f"/s/{studio.org.slug}/{studio.slug}/r/{report.slug}/?display=console",
-                "test_name": ab_cfg.get("test_name") or name,
-                "split": ab_cfg.get("split", ""),
-                "control_label": ab_cfg.get("control_label") or "Control",
-                "test_label": ab_cfg.get("test_label") or "Test",
-                **status,
-                "mode_label": "",
-                "primary": None,
-                "generated_at": None,
-                "framework_version": None,
-                "built": False,
-                "payload_missing": False,
-                "storage_unavailable": False,
-            }))
-
-        if not storage_down:
-            try:
-                output_dir = storage.output_root(studio, report.slug)
-            except Exception as exc:  # noqa: BLE001 - driver raises per-operation classes
-                logger.warning(f"report storage unreachable: {type(exc).__name__}: {exc}")
-                storage_down = True
-
-        if storage_down:
-            for _, row in report_rows:
-                row["storage_unavailable"] = True
-                rows.append(row)
-            continue
-
-        if not output_dir.is_dir():
-            rows.extend(row for _, row in report_rows)
-            continue
-
-        extracted = _cached_extract(studio, report.slug, output_dir)
-        components = extracted["components"] if extracted else []
-
-        for idx, (ab_cfg, row) in enumerate(report_rows):
-            row["built"] = True
-            component = _component_for_entry(ab_cfg, components, idx,
-                                             len(report_rows))
-            if component is None:
-                row["payload_missing"] = True
-                rows.append(row)
-                continue
-
-            header = component.get("header") or {}
-            # The report.yaml declaration is authoritative for identity fields;
-            # the built payload's header only fills gaps. Payload headers can
-            # carry a generator's stale copy of another experiment's name, and
-            # re-declaring in report.yaml must win without waiting for a
-            # rebuild.
-            if not ab_cfg.get("test_name"):
-                row["test_name"] = header.get("test_name") or row["test_name"]
-            if not ab_cfg.get("split"):
-                row["split"] = header.get("split") or row["split"]
-            if not ab_cfg.get("control_label"):
-                row["control_label"] = (header.get("control_label")
-                                        or row["control_label"])
-            if not ab_cfg.get("test_label"):
-                row["test_label"] = header.get("test_label") or row["test_label"]
-            row["generated_at"] = extracted["generated_at"]
-            row["framework_version"] = extracted["framework_version"]
-
-            body, mode_label = _active_body(component)
-            row["mode_label"] = mode_label
-            row["primary"] = primary_metric(body, ab_cfg)
-
-            rows.append(row)
-
-    running = sum(1 for r in rows if r["status"] in ("running", "past_end"))
-    past_end_running = sum(1 for r in rows if r["status"] == "past_end")
-    concluded = sum(1 for r in rows if r["status"] == "concluded")
-
-    wins = 0
-    concluded_with_metric = 0
-    for row in rows:
-        if row["status"] != "concluded" or not row["primary"]:
-            continue
-        primary = row["primary"]
-        delta = primary["delta_pct"]
-        if delta is None:
-            # No usable number to judge a win/loss by -- excluded from the
-            # win-rate denominator entirely rather than coerced to 0.0, which
-            # would silently count a data gap as "not a win".
-            continue
-        concluded_with_metric += 1
-        if not primary["significant"]:
-            continue
-        favourable = delta > 0 if primary["higher_is_better"] else delta < 0
-        if favourable:
-            wins += 1
-    win_rate = round(wins / concluded_with_metric * 100) if concluded_with_metric else None
-
-    payload = {
-        "rows": rows,
-        "tiles": {
-            "running": running,
-            "past_end_running": past_end_running,
-            "concluded": concluded,
-            "win_rate": win_rate,
-            "wins": wins,
-            "concluded_with_metric": concluded_with_metric,
-        },
-        "timeline": _build_timeline(rows, today),
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-    }
-    if storage_down:
-        payload["storage_unavailable"] = True
-
-    with _studio_cache_lock:
-        _studio_cache[studio.pk] = (now, payload)
-    return payload
+def studio_experiments(studio, *, params=None) -> dict:
+    """Read bounded worker-observed facts, with global database aggregates."""
+    from .experiment_queries import overview
+    return overview(studio, params=params)
 
 
 # ── view ─────────────────────────────────────────────────────────────────
@@ -658,30 +497,7 @@ def studio_experiments(studio) -> dict:
 @require_studio_role(roles.VIEWER)
 @require_full_studio_visibility
 def experiments_page(request, org_slug, studio_slug):  # noqa: ARG001
-    data = studio_experiments(request.studio)
-    all_rows = data["rows"]
-
-    status_filter = request.GET.get("status", "")
-    if status_filter not in _STATUS_FILTERS:
-        status_filter = ""
-    rows = (
-        [r for r in all_rows if _matches_status(r["status"], status_filter)]
-        if status_filter
-        else all_rows
-    )
-
-    return render(
-        request,
-        "reports/experiments.html",
-        {
-            "org": request.org,
-            "studio": request.studio,
-            "rows": rows,
-            "row_count": len(all_rows),
-            "tiles": data["tiles"],
-            "timeline": data["timeline"],
-            "status_filter": status_filter,
-            "storage_unavailable": data.get("storage_unavailable", False),
-            "generated_at": data["generated_at"],
-        },
-    )
+    data = studio_experiments(request.studio, params=request.GET)
+    return render(request, "reports/experiments.html", {
+        "org": request.org, "studio": request.studio, **data,
+    })

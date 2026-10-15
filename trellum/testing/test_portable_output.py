@@ -111,3 +111,13 @@ def test_vendor_manifest_only_claims_files_that_ship():
     for name, entry in manifest["libraries"].items():
         files = entry.get("files") or [entry.get("file")]
         assert all(filename and (cdn._VENDOR_DIR / filename).is_file() for filename in files), name
+
+
+def test_export_libraries_load_lazily_and_fonts_ship_woff2():
+    cdn.set_vendor_url_base("/_vendor/")
+    tags = cdn.build_cdn_tags(set())
+    assert '<script src="/_vendor/html2canvas.min.js">' not in tags
+    assert '<script src="/_vendor/jspdf.umd.min.js">' not in tags
+    assert '"html2canvas": "/_vendor/html2canvas.min.js"' in tags
+    css = (cdn._VENDOR_DIR / "inter.css").read_text(encoding="utf-8")
+    assert css.count("format('woff2'), url(") == 4 and css.count("format('truetype')") == 4

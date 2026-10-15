@@ -75,7 +75,7 @@ def _bulk_effective_roles(users, org) -> dict[int, EffectiveRoles]:
 
     Callers handle superusers and inactive organizations.
     """
-    from apps.orgs.models import OrgMembership, PermissionGroup, PermissionGroupGrant
+    from apps.orgs.models import OrgMembership, PermissionGroupMembership, PermissionGroupGrant
     from apps.reports.models import Report
     from apps.studios.models import StudioMembership
 
@@ -91,6 +91,10 @@ def _bulk_effective_roles(users, org) -> dict[int, EffectiveRoles]:
     if not result:
         return result
 
+    member_ids = {uid for uid, er in result.items() if not er.is_org_admin}
+    if not member_ids:
+        return result
+
     report_rows = {
         pk: (studio_id, audience)
         for pk, studio_id, audience in Report.objects.filter(studio__org=org).values_list(
@@ -103,11 +107,11 @@ def _bulk_effective_roles(users, org) -> dict[int, EffectiveRoles]:
         studio_report_ids.setdefault(studio_id, set()).add(pk)
         if audience == Report.AUDIENCE_PRIVATE:
             private_report_ids.setdefault(studio_id, set()).add(pk)
-    for er in result.values():
+    for uid in member_ids:
+        er = result[uid]
         er.studio_report_ids = studio_report_ids
         er.private_report_ids = private_report_ids
 
-    member_ids = set(result)
     for uid, studio_id, role in StudioMembership.objects.filter(
         user_id__in=member_ids, studio__org=org
     ).values_list("user_id", "studio_id", "role"):
@@ -115,49 +119,65 @@ def _bulk_effective_roles(users, org) -> dict[int, EffectiveRoles]:
         er.studio_roles[studio_id] = roles.max_role(er.studio_roles.get(studio_id), role)
         er.full_report_studios.add(studio_id)
 
-    groups = (
-        PermissionGroup.objects.filter(org=org, memberships__user_id__in=member_ids)
-        .distinct()
+    memberships = (
+        PermissionGroupMembership.objects.filter(group__org=org, user_id__in=member_ids)
+        .select_related("group")
         .prefetch_related(
-            Prefetch("grants", queryset=PermissionGroupGrant.objects.filter(studio__org=org)),
-            "grants__report_grants", "memberships",
+            Prefetch("group__grants", queryset=PermissionGroupGrant.objects.filter(studio__org=org)),
+            "group__grants__report_grants",
         )
     )
-    for group in groups:
-        for m in group.memberships.all():
-            er = result.get(m.user_id)
-            if er is None:
-                continue
-            if group.org_role == roles.ORG_ADMIN:
-                er.is_org_admin = True
-            if group.default_studio_role:
-                er.default_studio_role = roles.max_role(
-                    er.default_studio_role, group.default_studio_role
+    for membership in memberships:
+        group = membership.group
+        er = result[membership.user_id]
+        if group.org_role == roles.ORG_ADMIN:
+            er.is_org_admin = True
+        if group.default_studio_role:
+            er.default_studio_role = roles.max_role(
+                er.default_studio_role, group.default_studio_role
+            )
+        for grant in group.grants.all():
+            er.studio_roles[grant.studio_id] = roles.max_role(
+                er.studio_roles.get(grant.studio_id), grant.role
+            )
+            if grant.role == roles.VIEWER:
+                er.report_ids_by_studio.setdefault(grant.studio_id, set()).update(
+                    row.report_id for row in grant.report_grants.all()
+                    if row.report_id in report_rows
+                    and report_rows[row.report_id][0] == grant.studio_id
+                    and (grant.viewer_scope == grant.REPORT_SCOPE_SELECTED
+                         or report_rows[row.report_id][1] == Report.AUDIENCE_PRIVATE)
                 )
-            for grant in group.grants.all():
-                er.studio_roles[grant.studio_id] = roles.max_role(
-                    er.studio_roles.get(grant.studio_id), grant.role
-                )
-                if grant.role == roles.VIEWER:
-                    er.report_ids_by_studio.setdefault(grant.studio_id, set()).update(
-                        row.report_id for row in grant.report_grants.all()
-                        if row.report_id in report_rows
-                        and report_rows[row.report_id][0] == grant.studio_id
-                        and (grant.viewer_scope == grant.REPORT_SCOPE_SELECTED
-                             or report_rows[row.report_id][1] == Report.AUDIENCE_PRIVATE)
-                    )
-                if grant.viewer_scope != grant.REPORT_SCOPE_SELECTED or grant.role != roles.VIEWER:
-                    er.full_report_studios.add(grant.studio_id)
+            if grant.viewer_scope != grant.REPORT_SCOPE_SELECTED or grant.role != roles.VIEWER:
+                er.full_report_studios.add(grant.studio_id)
+    return result
+
+
+def bulk_effective_roles(users, org) -> dict[int, EffectiveRoles]:
+    """Resolve a batch once per organization, including denied user ids.
+
+    This user-based API is for cross-user eligibility. Request authorization
+    must use ``get_effective`` to enforce API-key organization scope.
+    """
+    users = list(users)
+    result = {user.pk: EffectiveRoles() for user in users}
+    if not org.is_active:
+        return result
+    authenticated = [user for user in users if user.is_authenticated]
+    for user in authenticated:
+        if user.is_superuser:
+            result[user.pk] = EffectiveRoles(org_role=roles.ORG_ADMIN, is_org_admin=True)
+    result.update(_bulk_effective_roles(
+        [user for user in authenticated if not user.is_superuser], org
+    ))
     return result
 
 
 def effective_roles(user, org) -> EffectiveRoles:
     """Resolve a user's effective roles with a bounded set of queries."""
-    if user is None or not user.is_authenticated or not org.is_active:
+    if user is None or not user.is_authenticated:
         return EffectiveRoles()
-    if user.is_superuser:
-        return EffectiveRoles(org_role=roles.ORG_ADMIN, is_org_admin=True)
-    return _bulk_effective_roles([user], org).get(user.pk) or EffectiveRoles()
+    return bulk_effective_roles([user], org)[user.pk]
 
 
 def bulk_role_for_studio(users, studio) -> dict:
@@ -176,19 +196,8 @@ def bulk_role_for_studio(users, studio) -> dict:
     users = list(users)
     if not users:
         return {}
-    org = studio.org
-    result: dict[int, str | None] = {u.pk: None for u in users}
-    if not org.is_active:
-        return result
-
-    for u in users:
-        if u.is_superuser:
-            result[u.pk] = roles.ADMIN
-
-    resolved = _bulk_effective_roles([u for u in users if not u.is_superuser], org)
-    for uid, er in resolved.items():
-        result[uid] = er.role_for(studio)
-    return result
+    resolved = bulk_effective_roles(users, studio.org)
+    return {uid: er.role_for(studio) for uid, er in resolved.items()}
 
 
 def get_effective(request, org) -> EffectiveRoles:
@@ -202,24 +211,43 @@ def get_effective(request, org) -> EffectiveRoles:
     cache = getattr(request, "_bi_effective_roles", None)
     if cache is None:
         cache = request._bi_effective_roles = {}
-    if org.pk not in cache:
+    from apps.core.request_context import actor_key
+
+    cache_key = (actor_key(request), org.pk, org.is_active)
+    if cache_key not in cache:
         key = getattr(request, "api_key", None)
         crosses = key is not None and key.org_id != org.pk
-        cache[org.pk] = EffectiveRoles() if crosses else effective_roles(request.user, org)
-    return cache[org.pk]
+        cache[cache_key] = EffectiveRoles() if crosses else effective_roles(request.user, org)
+    return cache[cache_key]
 
 
-def visible_studios(user, org):
+def visible_studios(user, org, *, request=None):
     """Queryset of studios in ``org`` the user may at least view."""
     from apps.studios.models import Studio
 
-    er = effective_roles(user, org)
+    if request is not None:
+        if user is not request.user:
+            raise ValueError("request visibility must use request.user")
+        from apps.core.shell_scope import studio_choices
+
+        return studio_choices(request, org)
+    else:
+        er = effective_roles(user, org)
     qs = Studio.objects.filter(org=org).order_by("slug")
     if not er.is_member:
         return qs.none()
     if er.is_org_admin or er.default_studio_role:
         return qs
     return qs.filter(pk__in=er.studio_roles.keys())
+
+
+def _request_org(request, slug):
+    from apps.orgs.models import Organization
+
+    org = getattr(request, "org", None)
+    if org is None or org.slug != slug or not org.is_active:
+        org = get_object_or_404(Organization, slug=slug, is_active=True)
+    return org
 
 
 # ── View guards ──────────────────────────────────────────────────────────────
@@ -261,12 +289,12 @@ def require_org_role(minimum: str):
     def decorator(view):
         @wraps(view)
         def wrapper(request, *args, org_slug: str, **kwargs):
-            from apps.orgs.models import Organization
-
             if not request.user.is_authenticated:
                 return _unauthenticated(request)
-            org = get_object_or_404(Organization, slug=org_slug, is_active=True)
-            er = get_effective(request, org)
+            org = _request_org(request, org_slug)
+            from apps.core.request_access import request_org_access
+
+            er = request_org_access(request, org)
             if not er.is_member:
                 raise Http404
             if minimum == roles.ORG_ADMIN and not er.is_org_admin:
@@ -290,16 +318,20 @@ def require_studio_role(minimum: str):
     def decorator(view):
         @wraps(view)
         def wrapper(request, *args, org_slug: str, studio_slug: str, **kwargs):
-            from apps.orgs.models import Organization
             from apps.studios.models import Studio
 
             if not request.user.is_authenticated:
                 return _unauthenticated(request)
-            org = get_object_or_404(Organization, slug=org_slug, is_active=True)
-            er = get_effective(request, org)
+            org = _request_org(request, org_slug)
+            from apps.core.request_access import request_org_access
+
+            er = request_org_access(request, org)
             if not er.is_member:
                 raise Http404
-            studio = get_object_or_404(Studio, org=org, slug=studio_slug)
+            studio = getattr(request, "studio", None)
+            if studio is None or studio.org_id != org.pk or studio.slug != studio_slug:
+                studio = get_object_or_404(Studio, org=org, slug=studio_slug)
+            studio.org = org
             role = er.role_for(studio)
             if role is None:
                 # A member with no grant on this studio: hide its existence.

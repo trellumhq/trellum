@@ -287,7 +287,7 @@ def _authorize_action(request, tool: str, args: dict) -> None:
     from django.contrib.auth import get_user_model
 
     from apps.assistant.tools import TOOL_SCHEMAS
-    from apps.core.permissions import effective_roles
+    from apps.core.request_access import actor_studio_access
     from apps.orgs.models import Organization, OrgAssistantConfig
 
     schema = next((s for s in TOOL_SCHEMAS if s["name"] == tool and s["mutates"]), None)
@@ -298,8 +298,8 @@ def _authorize_action(request, tool: str, args: dict) -> None:
     org = Organization.objects.filter(pk=studio.org_id, is_active=True).first()
     if actor is None or org is None:
         raise ActionFailed("You can no longer perform this action in this studio.")
-    permissions = effective_roles(actor, org)
-    role = ORG_ADMIN if permissions.is_org_admin else permissions.role_for(studio)
+    facts = actor_studio_access(actor, studio, org=org)
+    role = ORG_ADMIN if facts.is_org_admin else facts.role
     required_role = ORG_ADMIN if tool == "configure_data_source" and args.get("org_level") else schema["role"]
     if rank(role) < rank(required_role):
         raise ActionFailed("You can no longer perform this action in this studio.")

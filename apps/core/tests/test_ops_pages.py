@@ -29,8 +29,45 @@ class TestAuditViewer:
         assert f"/orgs/{org.slug}/settings/audit" in html
 
 
+def _complete_diagnostics(checks):
+    """Store the completed coordinator measurement that /system displays."""
+    from django.utils import timezone
+
+    from apps.core.models import OpsState
+
+    OpsState.objects.update_or_create(key="operator.health", defaults={
+        "ran_at": timezone.now(), "ok": True,
+        "payload": {"checks": checks, "completed_at": timezone.now().isoformat(), "producer_node": "coord-test"},
+    })
+
+
 class TestSystemPage:
+    def test_without_a_measurement_the_checks_run_in_the_request(self, login, superuser, monkeypatch):
+        """Nothing from the coordinator yet: show the in-process checks, never an empty table."""
+        from apps.core import health
+
+        monkeypatch.setattr(health, "run_checks", lambda **kw: [{"label": "local-probe", "ok": True, "detail": "ran here"}])
+        html = login(superuser).get("/system").content.decode()
+        assert "local-probe" in html and "ran here" in html
+        assert "Running the first check" not in html
+        assert "data-operator-observation" not in html  # no live coordinator to ask
+
+    def test_health_shows_without_buttons_and_in_plain_time(self, login, superuser):
+        _complete_diagnostics([{"label": "database", "ok": True, "detail": "PostgreSQL 16"}])
+        html = login(superuser).get("/system").content.decode()
+        assert "PostgreSQL 16" in html
+        assert "Checked just now" in html
+        assert "Refresh coordinator diagnostics" not in html
+        assert "Read latest observation" not in html
+        # The raw timestamp is data for the page's script, never text to read.
+        assert "Observed" not in html
+
     def test_operator_sees_checks(self, login, superuser):
+        _complete_diagnostics([
+            {"label": "database", "ok": True, "detail": "reachable"},
+            {"label": "SECRET_ENCRYPTION_KEY", "ok": True, "detail": "valid"},
+            {"label": "worker", "ok": True, "detail": "heartbeat"},
+        ])
         html = login(superuser).get("/system").content.decode()
         assert "database" in html
         assert "SECRET_ENCRYPTION_KEY" in html
@@ -44,6 +81,7 @@ class TestSystemPage:
         assert 'name="max_upload_mb"' in html
 
     def test_free_space_is_reported(self, login, superuser):
+        _complete_diagnostics([{"label": "data volume free space", "ok": True, "detail": "12 GB free"}])
         html = login(superuser).get("/system").content.decode()
         assert "data volume free space" in html
 

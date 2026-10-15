@@ -1,6 +1,6 @@
 """Template context for the global shell: which orgs/studios the user can
-switch to, and what's active. Cheap (two indexed queries) and cached on the
-request so the shell include never re-queries."""
+switch to, and what's active. Role and theme resolution share the request
+cache with view guards, so shell rendering does not repeat their work."""
 from __future__ import annotations
 
 # Shared mobile header titles.  Keeping these against named routes makes the
@@ -62,7 +62,9 @@ CONSOLE_PAGE_TITLES = {
     "instance-settings": "Instance settings",
     "operator-fleet": "Fleet",
     "operator-orgs": "Organizations",
-    "operator-org-detail": "Organization",
+    # operator-org-detail is deliberately absent: its own h1 is the organization's
+    # name, and a generic "Organization" shell title would hide that h1 on narrow
+    # screens, leaving the operator without the page identity.
     "operator-logs": "Server logs",
 }
 
@@ -80,8 +82,19 @@ def shell(request):
     user = getattr(request, "user", None)
     if user is None or not user.is_authenticated:
         return {"trellum_source_url": source_url()}
+    from apps.core.request_context import actor_key
+
+    requested_org = getattr(request, "org", None)
+    requested_studio = getattr(request, "studio", None)
+    identity = (
+        actor_key(request),
+        getattr(requested_org, "pk", None),
+        getattr(requested_org, "is_active", None),
+        getattr(requested_studio, "pk", None),
+        getattr(requested_studio, "org_id", None),
+    )
     cached = getattr(request, "_shell_ctx", None)
-    if cached is not None:
+    if cached is not None and getattr(request, "_shell_identity", None) == identity:
         return cached
 
     from apps.core import impersonation
@@ -102,84 +115,61 @@ def shell(request):
 
         impersonation_ctx["shell_health"] = quick_health_summary()
 
-    from apps.core.permissions import visible_studios
-    from apps.orgs.models import Organization
+    from apps.core.shell_scope import (
+        can_manage_any_org, initial_choices, organization_choices, selected_choice,
+        studio_choices, studio_facts, with_selected,
+    )
 
-    if user.is_superuser:
-        orgs = list(Organization.objects.filter(is_active=True).order_by("slug"))
-    else:
-        orgs = list(
-            Organization.objects.filter(
-                is_active=True, memberships__user=user
-            ).order_by("slug")
-        )
-
+    org_rows = organization_choices(request)
+    orgs, orgs_more = initial_choices(org_rows)
     session = request.session if hasattr(request, "session") else None
-    raw_remembered_studios = (
-        session.get(_ACTIVE_STUDIOS_SESSION_KEY, {}) if session is not None else {}
-    )
-    remembered_studios = (
-        raw_remembered_studios if isinstance(raw_remembered_studios, dict) else {}
-    )
-    visible_org_slugs = {org.slug for org in orgs}
-    valid_remembered_studios = {
-        slug: studio_id
-        for slug, studio_id in remembered_studios.items()
-        if slug in visible_org_slugs
-    }
-    if session is not None and valid_remembered_studios != raw_remembered_studios:
-        session[_ACTIVE_STUDIOS_SESSION_KEY] = valid_remembered_studios
-    remembered_studios = valid_remembered_studios
+    raw_remembered = session.get(_ACTIVE_STUDIOS_SESSION_KEY, {}) if session is not None else {}
+    remembered_studios = raw_remembered if isinstance(raw_remembered, dict) else {}
+    if remembered_studios:
+        # Query only session keys: never enumerate every accessible organization.
+        page_slugs = {org.slug for org in orgs}
+        missing = set(remembered_studios) - page_slugs
+        valid_slugs = page_slugs | set(org_rows.filter(slug__in=missing).values_list("slug", flat=True)) if missing else page_slugs
+        remembered_studios = {slug: pk for slug, pk in remembered_studios.items() if slug in valid_slugs}
+    if session is not None and remembered_studios != raw_remembered:
+        session[_ACTIVE_STUDIOS_SESSION_KEY] = remembered_studios
 
-    from apps.core.permissions import effective_roles
-
-    active_org = getattr(request, "org", None)
-    if active_org is not None and hasattr(request, "session"):
-        # Remember the last org the user actually worked in.
-        if request.session.get("active_org") != active_org.slug:
-            request.session["active_org"] = active_org.slug
+    active_org = selected_choice(org_rows, orgs, pk=getattr(requested_org, "pk", None))
+    if active_org is not None and session is not None:
+        if session.get("active_org") != active_org.slug:
+            session["active_org"] = active_org.slug
     if active_org is None:
-        # Session-remembered choice, else the user's only/first org — the
-        # shell must work on pages without a decorator-resolved org (home!).
-        session_slug = request.session.get("active_org") if hasattr(request, "session") else None
-        if session_slug:
-            active_org = next((o for o in orgs if o.slug == session_slug), None)
-        if active_org is None and orgs:
-            active_org = orgs[0]
+        remembered_org = session.get("active_org") if session is not None else None
+        active_org = selected_choice(org_rows, orgs, slug=remembered_org) if isinstance(remembered_org, str) else None
+        active_org = active_org or (orgs[0] if orgs else None)
+    orgs = with_selected(orgs, active_org)
 
-    studios = list(visible_studios(user, active_org)) if active_org else []
-
-    # Admin flags computed HERE (not from request.org_roles, which only
-    # exists behind the permission decorators).
-    er = effective_roles(user, active_org) if active_org else None
-    from apps.reports.deliveries import can_manage_org
-
-    can_manage_deliveries = user.is_active and (
-        (user.is_superuser and getattr(request, "api_key", None) is None)
-        or any(can_manage_org(request, org) for org in orgs)
-    )
-    # Keep request scope separate from the last studio used for navigation:
-    # org pages must never acquire a request.studio through shell state.
-    active_studio = getattr(request, "studio", None)
-    nav_studio = None
+    studio_rows = studio_choices(request, active_org) if active_org else None
+    studios, studios_more = initial_choices(studio_rows) if active_org else ([], False)
+    active_studio = None
+    if requested_studio is not None and active_org and requested_studio.org_id == active_org.pk:
+        active_studio = selected_choice(studio_rows, studios, pk=requested_studio.pk)
+    nav_studio = active_studio
     if active_org:
-        visible_by_id = {studio.pk: studio for studio in studios}
-
+        remembered_id = remembered_studios.get(active_org.slug)
         if active_studio is not None:
-            nav_studio = visible_by_id.get(active_studio.pk)
-            if session is not None and nav_studio is not None:
-                if remembered_studios.get(active_org.slug) != nav_studio.pk:
-                    remembered_studios = {
-                        **remembered_studios,
-                        active_org.slug: nav_studio.pk,
-                    }
-                    session[_ACTIVE_STUDIOS_SESSION_KEY] = remembered_studios
-        elif active_org.slug in remembered_studios:
-            nav_studio = visible_by_id.get(remembered_studios[active_org.slug])
+            if session is not None and remembered_id != active_studio.pk:
+                remembered_studios = {**remembered_studios, active_org.slug: active_studio.pk}
+                session[_ACTIVE_STUDIOS_SESSION_KEY] = remembered_studios
+        elif remembered_id is not None:
+            # Session values are untrusted; malformed values cannot reach ORM coercion.
+            if isinstance(remembered_id, int) and not isinstance(remembered_id, bool) and 0 < remembered_id <= 9223372036854775807:
+                nav_studio = selected_choice(studio_rows, studios, pk=remembered_id)
             if nav_studio is None and session is not None:
                 remembered_studios = {**remembered_studios}
-                remembered_studios.pop(active_org.slug)
+                remembered_studios.pop(active_org.slug, None)
                 session[_ACTIVE_STUDIOS_SESSION_KEY] = remembered_studios
+    studios = with_selected(studios, nav_studio)
+    for studio in studios:
+        studio.org = active_org
+    active_role, _ = studio_facts(request, active_studio)
+    nav_role, nav_full = studio_facts(request, nav_studio)
+    can_manage_deliveries = can_manage_any_org(request, orgs, has_more=orgs_more)
 
     from apps.core.themes import explicit_studio_theme, viewer_theme_override
     from trellum.themes import THEME_REGISTRY
@@ -198,12 +188,12 @@ def shell(request):
     # answers to "nothing was picked". Org/product pages never see
     # active_studio set, so they cost zero conditional logic here beyond
     # this one attribute and always render the Trellum brand look.
-    studio_theme = explicit_studio_theme(user, active_studio) if active_studio else ""
+    studio_theme = explicit_studio_theme(user, active_studio, request=request) if active_studio else ""
     # What THIS viewer personally chose, for the picker's `selected` state --
     # not the resolved `studio_theme` above, which may be a studio/org
     # default nobody at this row actually picked (see viewer_theme_override's
     # docstring).
-    viewer_studio_theme = viewer_theme_override(user, active_studio) if active_studio else ""
+    viewer_studio_theme = viewer_theme_override(user, active_studio, request=request) if active_studio else ""
     # Whether THIS viewer may change their per-studio override — the studio
     # header's Appearance picker hides/disables itself when the org has
     # locked overrides off (organization.lock_studio_theme). Meaningless
@@ -220,17 +210,17 @@ def shell(request):
 
     ctx = {
         "shell_orgs": orgs,
+        "shell_orgs_more": orgs_more,
         "shell_studios": studios,
+        "shell_studios_more": studios_more,
         "shell_org": active_org,
         "shell_studio": active_studio,
         "shell_nav_studio": nav_studio,
-        "shell_is_org_admin": bool(er and er.is_org_admin),
+        "shell_is_org_admin": bool(active_org and active_org.shell_admin),
         "shell_can_manage_deliveries": bool(can_manage_deliveries),
-        "shell_studio_role": er.role_for(active_studio) if er and active_studio else None,
-        "shell_nav_studio_role": er.role_for(nav_studio) if er and nav_studio else None,
-        "shell_nav_full_studio_visibility": bool(
-            er and nav_studio and er.has_full_studio_visibility(nav_studio)
-        ),
+        "shell_studio_role": active_role,
+        "shell_nav_studio_role": nav_role,
+        "shell_nav_full_studio_visibility": nav_full,
         "console_page_title": console_page_title(request),
         "theme_registry": list(THEME_REGISTRY),
         "studio_theme": studio_theme,
@@ -240,5 +230,6 @@ def shell(request):
         "trellum_source_url": source_url(),
         **impersonation_ctx,
     }
+    request._shell_identity = identity
     request._shell_ctx = ctx
     return ctx

@@ -490,7 +490,7 @@ class AssistantToolbox:
         if actor is None:
             return "This account can no longer access the assistant."
 
-        from apps.core.permissions import effective_roles
+        from apps.core.request_access import actor_studio_access
         from apps.core.report_access import (
             can_view_report,
             selected_report_access_block_reason,
@@ -500,14 +500,14 @@ class AssistantToolbox:
         org = Organization.objects.filter(pk=self.studio.org_id, is_active=True).first()
         if org is None:
             return "This conversation's organization is no longer available."
-        permissions = effective_roles(actor, org)
-        current_role = "org_admin" if permissions.is_org_admin else permissions.role_for(self.studio)
+        facts = actor_studio_access(actor, self.studio, org=org)
+        current_role = "org_admin" if facts.is_org_admin else facts.role
         if rank(current_role) < rank(self.role):
             self.role = current_role
         if self.may_write and not OrgAssistantConfig.objects.filter(org=org, actions_enabled=True).exists():
             self.may_write = False
         if self.scope == "full":
-            if permissions.has_full_studio_visibility(self.studio):
+            if facts.full:
                 return None
             return "This conversation no longer has full studio access."
         if not self.is_report_bound or not self.report_id:
@@ -523,7 +523,7 @@ class AssistantToolbox:
         if slug is not None and slug != report.slug:
             return "This conversation cannot access that report."
         if (
-            not permissions.has_full_studio_visibility(self.studio)
+            not facts.full
             and selected_report_access_block_reason()
         ):
             return "Selected report access is temporarily unavailable."
@@ -785,9 +785,9 @@ class AssistantToolbox:
         scope = self.scope
         limits = []
         if self.actor is not None and not self.is_report_bound:
-            from apps.core.permissions import effective_roles
+            from apps.core.request_access import actor_studio_access
 
-            if effective_roles(self.actor, self.studio.org).report_scope_for(self.studio) is not None:
+            if not actor_studio_access(self.actor, self.studio).full:
                 writes = []
                 scope = "selected reports"
                 limits.append("only currently selected reports are accessible")

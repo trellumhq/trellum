@@ -7,12 +7,14 @@ multi-studio web process.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import threading
 import time as _time
 from datetime import datetime, timedelta, timezone
 
+from django.core.serializers.json import DjangoJSONEncoder
 from django.core.exceptions import ValidationError
 from django.db.models import Max, Sum
 from django.utils import timezone as dj_tz
@@ -121,7 +123,9 @@ def sync_studio_registry(studio) -> int:
     now = dj_tz.now()
     seen: set[str] = set()
     for entry in entries:
-        config = entry.get("config") or {}
+        # YAML timestamps are native date/datetime objects. Store their ISO
+        # representation so the JSON config column accepts annotation dates.
+        config = json.loads(json.dumps(entry.get("config") or {}, cls=DjangoJSONEncoder))
         slug = entry["slug"]
         seen.add(slug)
         kind = config.get("kind", Report.KIND_REPORT)
@@ -147,15 +151,24 @@ def sync_studio_registry(studio) -> int:
             "present_in_scan": True,
             "last_scanned_at": now,
         }
-        Report.objects.update_or_create(
-            studio=studio,
-            slug=slug,
-            defaults=defaults,
-            create_defaults={**defaults, "audience": audience},
-        )
-    Report.objects.filter(studio=studio, present_in_scan=True).exclude(slug__in=seen).update(
-        present_in_scan=False, last_scanned_at=now
-    )
+        from django.db import transaction
+        from .report_experiment_projection import sync_declarations
+        with transaction.atomic():
+            row, _ = Report.objects.update_or_create(
+                studio=studio,
+                slug=slug,
+                defaults=defaults,
+                create_defaults={**defaults, "audience": audience},
+            )
+            sync_declarations(row)
+    from django.db import transaction
+    from .source_summary import invalidate_reports
+
+    with transaction.atomic():
+        missing = Report.objects.filter(studio=studio, present_in_scan=True).exclude(slug__in=seen)
+        missing_ids = list(missing.values_list("pk", flat=True))
+        missing.update(present_in_scan=False, last_scanned_at=now)
+        invalidate_reports(missing_ids, "removed")
     invalidate_registry_cache(studio)
     try:
         sync_studio_metrics(studio)
@@ -206,34 +219,44 @@ def sync_studio_metrics(studio) -> int:
     invalidate_metrics_cache()
     result = load_metrics_result(str(studio.project_root))
 
-    now = dj_tz.now()
-    seen: set[str] = set()
-    for metric in result.metrics.values():
-        seen.add(metric.name)
-        MetricDefinition.objects.update_or_create(
-            studio=studio,
-            name=metric.name,
-            defaults={
-                "label": metric.label,
-                "description": metric.description,
-                "owner": metric.owner,
-                "format": metric.format,
-                "version": metric.version,
-                "agg": metric.agg or "",
-                "column": metric.column or "",
-                "numerator": metric.numerator or "",
-                "denominator": metric.denominator or "",
-                "sql": metric.sql,
-                "dimensions": list(metric.dimensions),
-                "tags": list(metric.tags),
-                "definition_hash": metric.definition_hash,
-                "present_in_scan": True,
-                "last_scanned_at": now,
-            },
-        )
-    MetricDefinition.objects.filter(studio=studio, present_in_scan=True).exclude(
-        name__in=seen
-    ).update(present_in_scan=False, last_scanned_at=now)
+    from django.db import transaction
+    from .source_summary import definitions_changed
+
+    with transaction.atomic():
+        now = dj_tz.now()
+        seen: set[str] = set()
+        for metric in result.metrics.values():
+            seen.add(metric.name)
+            dataset = result.datasets.get(metric.dataset)
+            MetricDefinition.objects.update_or_create(
+                studio=studio,
+                name=metric.name,
+                defaults={
+                    "label": metric.label,
+                    "description": metric.description,
+                    "owner": metric.owner,
+                    "format": metric.format,
+                    "version": metric.version,
+                    "agg": metric.agg or "",
+                    "column": metric.column or "",
+                    "numerator": metric.numerator or "",
+                    "denominator": metric.denominator or "",
+                    "sql": metric.sql,
+                    "dimensions": list(metric.dimensions),
+                    "tags": list(metric.tags),
+                    "definition_hash": metric.definition_hash,
+                    "binding": {"dataset": metric.dataset,
+                                "time_column": dataset.time_column if dataset else None,
+                                "grain": dataset.grain if dataset else None,
+                                "time_agg": metric.time_agg},
+                    "present_in_scan": True,
+                    "last_scanned_at": now,
+                },
+            )
+        MetricDefinition.objects.filter(studio=studio, present_in_scan=True).exclude(
+            name__in=seen
+        ).update(present_in_scan=False, last_scanned_at=now)
+        definitions_changed(studio.pk)
     return len(seen)
 
 
@@ -402,6 +425,11 @@ def build_registry_payload(studio) -> dict:
     for row in rows:
         config = row.config or {}
         html_names = html_index.get(row.slug, [])
+        if row.slug == 'metrics' and 'metrics' in (row.tags or []):
+            # Generated workspace siblings are native pages of one report,
+            # never additional authored views in the registry chooser.
+            from trellum.metrics_workspace import owned_name
+            html_names = [name for name in html_names if not owned_name(name)]
         runtime_meta: dict = {}
         if not storage_down:
             try:

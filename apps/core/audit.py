@@ -1,13 +1,13 @@
 """The one way to write audit rows.
 
-Two entry points: :func:`audit` for anything with a request, and
+Request entry points :func:`audit` and :func:`audit_many`, and
 :func:`audit_system` for the handful of events that happen with no request in
-sight (for example, the nightly retention purge). Both funnel
+sight (for example, the nightly retention purge). All funnel
 through the same redaction, size cap and category resolution, so "one table,
 one write path" (see apps/core/models.py's AuditLog docstring) holds for
 system rows too.
 
-Recording must never break the thing it audits. Both functions catch and log
+Recording must never break the thing it audits. All entry points catch and log
 rather than raise once the row's shape is decided -- a database hiccup while
 writing an audit row is not worth a 500 on the request it was describing.
 """
@@ -137,57 +137,76 @@ def audit(
     category = _resolve_category(action)
 
     try:
-        from apps.core import impersonation  # circular at module scope
-
-        user = actor if actor is not None else getattr(request, "user", None)
-        if user is not None and not user.is_authenticated:
-            user = None
-        # An operator acting as a customer is still the operator. Without
-        # this the trail reads as if the customer did it -- for the whole
-        # impersonation window, including the row that opened it.
-        impersonator = impersonation.operator_of(request)
-        if org is None:
-            org = getattr(request, "org", None)
-        target_type = ""
-        target_id = ""
-        if target is not None:
-            target_type = target._meta.label_lower
-            target_id = str(target.pk)
-
-        meta = getattr(request, "META", None) or {}
-        user_agent = str(meta.get("HTTP_USER_AGENT", "") or "")[:_USER_AGENT_MAX]
-
-        metadata = _prepare_metadata(metadata)
-        # A script acting under a personal key is still that person, but the
-        # trail says which key did it (apps.accounts.api_keys). Added after
-        # redaction on purpose: "key" is a sensitive marker, and this is the
-        # row id, never the secret -- which is not stored anywhere anyway.
-        api_key = getattr(request, "api_key", None)
-        if api_key is not None:
-            metadata["api_key"] = api_key.pk
-
-        return AuditLog.objects.create(
-            org=org,
-            actor=user,
-            impersonator=impersonator,
-            action=action,
-            category=category,
-            outcome=outcome,
-            target_type=target_type,
-            target_id=target_id,
-            metadata=metadata,
-            # Not REMOTE_ADDR: this portal runs behind a reverse proxy, so that is
-            # the proxy's address for every user. See apps/core/net.py for why the
-            # forwarded header is only trusted as far as TRELLUM_TRUSTED_PROXIES says.
-            ip=client_ip(request),
-            user_agent=user_agent,
-        )
+        context = _request_context(request, org=org, actor=actor)
+        return AuditLog.objects.create(**_request_values(
+            context, action, category, target, outcome, metadata,
+        ))
     except Exception:  # noqa: BLE001 - recording must never break the request
         logger.exception("audit() failed to record action=%s", action)
         return None
 
 
-def audit_system(action: str, org=None, **metadata) -> AuditLog | None:
+def _request_context(request, *, org=None, actor=None):
+    """Resolve request attribution once for one audit operation."""
+    from apps.core import impersonation  # circular at module scope
+
+    user = actor if actor is not None else getattr(request, "user", None)
+    if user is not None and not user.is_authenticated:
+        user = None
+    meta = getattr(request, "META", None) or {}
+    api_key = getattr(request, "api_key", None)
+    return {
+        "org": org if org is not None else getattr(request, "org", None),
+        "actor": user,
+        "impersonator": impersonation.operator_of(request),
+        "ip": client_ip(request),
+        "user_agent": str(meta.get("HTTP_USER_AGENT", "") or "")[:_USER_AGENT_MAX],
+        "api_key_id": api_key.pk if api_key is not None else None,
+    }
+
+
+def _request_values(context, action, category, target, outcome, metadata):
+    """The same row preparation for single and batched request events."""
+    metadata = _prepare_metadata(metadata)
+    # Only the key's database id, added after redaction like ordinary audit().
+    if context["api_key_id"] is not None:
+        metadata["api_key"] = context["api_key_id"]
+    return {
+        **{key: value for key, value in context.items() if key != "api_key_id"},
+        "action": action, "category": category, "outcome": outcome,
+        "target_type": target._meta.label_lower if target is not None else "",
+        "target_id": str(target.pk) if target is not None else "",
+        "metadata": metadata,
+    }
+
+
+def audit_many(request, action: str, targets, *, org=None, actor=None,
+               outcome: str = "success", **metadata) -> list[AuditLog] | None:
+    """Record one same-action event per target with shared request attribution.
+
+    Each row keeps its own target, category and prepared metadata. Inserts use
+    batches of 250; an audit failure rolls back the audit operation's savepoint,
+    preserving the surrounding business transaction's best-effort contract.
+    """
+    from django.db import transaction
+
+    category = _resolve_category(action)
+    try:
+        targets = list(targets)
+        if not targets:
+            return []
+        context = _request_context(request, org=org, actor=actor)
+        rows = [AuditLog(**_request_values(
+            context, action, category, target, outcome, metadata,
+        )) for target in targets]
+        with transaction.atomic():
+            return AuditLog.objects.bulk_create(rows, batch_size=250)
+    except Exception:  # noqa: BLE001 - recording must never break the request
+        logger.exception("audit_many() failed to record action=%s", action)
+        return None
+
+
+def audit_system(action: str, org=None, outcome: str = "success", **metadata) -> AuditLog | None:
     """Record an event with no request behind it, such as the nightly
     retention purge's summary row.
 
@@ -205,7 +224,7 @@ def audit_system(action: str, org=None, **metadata) -> AuditLog | None:
             impersonator=None,
             action=action,
             category=category,
-            outcome="success",
+            outcome=outcome,
             target_type="",
             target_id="",
             metadata=_prepare_metadata(metadata),

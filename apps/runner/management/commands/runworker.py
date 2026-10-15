@@ -71,6 +71,10 @@ class Command(BaseCommand):
         is_coordinator = role in (ROLE_ALL, ROLE_COORDINATOR)
         is_runner = role in (ROLE_ALL, ROLE_RUNNER)
 
+        from apps.core.workspace import initialize_workspace_identity
+
+        initialize_workspace_identity()
+
         worker_id = f"{socket.gethostname()}-{os.getpid()}"
         shutdown = threading.Event()
 
@@ -211,6 +215,22 @@ class Command(BaseCommand):
             )
             beat_thread.start()
 
+        summary_thread = None
+        if not opts["once"]:
+            from apps.reports.source_reconciliation import start_for_worker
+
+            summary_thread = start_for_worker(
+                is_coordinator=is_coordinator, is_runner=is_runner,
+                pools=settings.TRELLUM_RUNNER_POOLS,
+            )
+
+        maintenance_thread = None
+        if not opts["once"]:
+            from apps.runner.maintenance_actions import start_for_worker as start_maintenance
+            maintenance_thread = start_maintenance(
+                is_runner=is_runner, pools=settings.TRELLUM_RUNNER_POOLS, worker_id=worker_id
+            )
+
         last_reap = time.time()  # _recover_stale_runs already ran above
         try:
             while not shutdown.is_set():
@@ -222,6 +242,11 @@ class Command(BaseCommand):
                     if executor is not None:
                         executor.tick()
                         self._claim_loop(executor)
+                        # Admitted "queue what this source unblocked" walks:
+                        # one studio per step, resumable, off the web request.
+                        from apps.datasources.unblock import process_next as unblock_step
+
+                        unblock_step()
                     if scheduler is not None:
                         scheduler.refresh_if_due()
                     # Boot-time reaping alone is not enough: a worker killed
@@ -237,6 +262,10 @@ class Command(BaseCommand):
                     break
                 time.sleep(1)
         finally:
+            if maintenance_thread is not None:
+                maintenance_thread.stop()
+            if summary_thread is not None:
+                summary_thread.stop()
             if beat_thread is not None:
                 beat_thread.join(timeout=5)
             if git_thread is not None:
@@ -394,6 +423,11 @@ class Command(BaseCommand):
             if run is None:
                 return False  # a racing runner got there first
 
+            from apps.reports.models import ReportSourceSummary
+
+            if ReportSourceSummary.objects.filter(report_id=run.report_id, state="expiring").exists():
+                return False  # expiry/restart repair owns output; leave queued
+
             memory_mb = executor.memory_for(run)
 
             # next_run_ids() already skips orgs at their concurrency cap, but
@@ -507,8 +541,8 @@ class _SchedulerManager:
 
     REFRESH_SECONDS = 60
     # Job ids refresh() owns and may remove. Fixed jobs registered once at
-    # start (retention-cleanup, update-check) sit outside these prefixes, so
-    # the diff never drops them.
+    # start (operator-probe, retention-cleanup, update-check) sit outside
+    # these prefixes, so the diff never drops them.
     SYNCED_PREFIXES = ("report-", "email-", "alert-")
 
     def __init__(self):
@@ -529,6 +563,13 @@ class _SchedulerManager:
 
         self._scheduler.add_listener(_on_event, EVENT_JOB_ERROR | EVENT_JOB_MISSED)
         self._scheduler.start()
+        from apps.core.operator_probe_worker import ProbeSupervisor
+
+        self._operator_probes = ProbeSupervisor(f"{socket.gethostname()}-{os.getpid()}")
+        self._scheduler.add_job(
+            self._operator_probes.tick, "interval", seconds=5, id="operator-probe",
+            replace_existing=True, coalesce=True, max_instances=1, misfire_grace_time=5,
+        )
         self._schedule_cleanup()
         self._schedule_update_check()
         self.refresh()
@@ -689,6 +730,9 @@ class _SchedulerManager:
 
     def shutdown(self) -> None:
         if self._scheduler:
+            probes = getattr(self, "_operator_probes", None)
+            if probes is not None:
+                probes.stop()
             self._scheduler.shutdown(wait=False)
             self._scheduler = None
 

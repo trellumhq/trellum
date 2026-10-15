@@ -146,6 +146,20 @@ class TestQuotaEditing:
         assert OrgQuota.objects.get(org=org).max_storage_mb == 4096
         html = login(operator).get(f"/operator/orgs/{org.slug}/").content.decode()
         assert 'name="max_storage_mb"' in html
+        # Uploaded files are never walked while the page renders.
+        assert "2.0 MB" not in html
+        from apps.core import operator_observations as observations
+        from apps.core.workspace import initialize_workspace_identity
+        from apps.operator.usage_observations import scan
+        from apps.runner.models import WorkerHeartbeat
+        workspace = initialize_workspace_identity()
+        WorkerHeartbeat.objects.create(worker_id="quota-observer")
+        observations.admit(operator.pk, "upload-usage", observations.nonce(operator.pk, "upload-usage", org.pk), org_id=org.pk)
+        entry = observations.claim("quota-observer", "quota-observer-epoch")
+        result = scan(org.pk, workspace)
+        result.update(version=1, kind="upload-usage", workspace_id=workspace, producer_fingerprint=entry["producer_fingerprint"])
+        assert observations.finish(entry, result=result)
+        html = login(operator).get(f"/operator/orgs/{org.slug}/").content.decode()
         assert "2.0 MB" in html
 
     def test_non_numeric_is_rejected_without_saving(self, login, operator, org):
@@ -364,6 +378,9 @@ class TestImpersonation:
         c = login(operator)
         c.post(f"/operator/orgs/{org.slug}/impersonate/{colleague.pk}")
         assert c.session["_auth_user_id"] == str(operator.pk)
+
+    def test_stopping_without_impersonating_is_a_plain_404(self, login, operator):
+        assert login(operator).post("/operator/impersonate/stop").status_code == 404
 
     def test_the_banner_offers_a_way_out(self, login, operator, org, member):
         c = login(operator)

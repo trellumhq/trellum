@@ -7,6 +7,10 @@
 
 pytest
 fakesnow>=0.9
+# fakesnow 0.11.x imports snowflake.connector.converter, which
+# snowflake-connector-python 5.0 removed. Match the product constraint
+# (constraints.txt pins 4.7.3) until fakesnow supports 5.x.
+snowflake-connector-python<5
 
 # pymysql's caching_sha2_password auth plugin (MySQL 8's default) needs
 # this. Today it only rides in transitively via snowflake-connector-python

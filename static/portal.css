@@ -93,6 +93,16 @@ html[data-theme="dark"] .console-dashboard select { color-scheme: dark; }
 .category-select { display: none; }
 .catalog-toolbar { flex: 0 0 auto; min-width: 0; }
 .catalog-toolbar:empty { display: none; }
+/* The catalog's own search, in the folder bar before the sort control (Reports,
+   Analyses, Operations). Same #searchInput the shell used to carry. */
+.folder-rail .catalog-search { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; margin: 0; }
+body.mgmt .folder-rail input.catalog-search-input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]) {
+    width: 240px; height: 30px; padding: 4px 10px; font-size: 13px; border-radius: 6px; background: var(--bg);
+}
+body.mgmt .folder-rail input.catalog-search-input:focus { border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: 1px; }
+.catalog-search-count { color: var(--text3); font-size: 12px; white-space: nowrap; }
+.catalog-search-count[hidden] { display: none; }
+.empty-state .ui-btn { margin-top: 12px; }
 
 /* ── "More" category menu ──
    Everything that does not fit the row lives here, with a filter box, so a
@@ -285,7 +295,7 @@ html[data-theme="dark"] .console-dashboard select { color-scheme: dark; }
     padding: 60px 20px;
 }
 .empty-state svg { width: 48px; height: 48px; color: var(--text3); margin-bottom: 12px; }
-.empty-state p { font-size: 14px; }
+.empty-state p { font-size: 14px; overflow-wrap: anywhere; }
 
 /* (search info is now part of summary bar) */
 
@@ -1089,6 +1099,11 @@ html[data-theme="dark"] .console-dashboard select { color-scheme: dark; }
     .card-grid { grid-template-columns: 1fr; }
     .folder-bar { padding: 8px 12px; position: relative; top: auto; }
     .folder-rail { display: grid; gap: 8px; }
+    .folder-rail .catalog-search { order: -1; width: 100%; }
+    body.mgmt .folder-rail input.catalog-search-input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]) {
+        width: 100%; height: auto; min-height: 44px; font-size: 16px; border-radius: 8px; background: var(--bg-card);
+    }
+    .catalog-search-count { display: none; }
     .catalog-toolbar { width: 100%; }
     .catalog-toolbar .summary-bar { flex-wrap: wrap; }
     .category-select {
@@ -1297,3 +1312,9 @@ html[data-theme="dark"] .console-dashboard select { color-scheme: dark; }
 }
 .details-matrix, .ops-table, .ops-history-table, .ds-table { font-size: 13px; }
 .ops-action-btn, .ops-row-btn, .ds-action-btn { font-size: 14px; }
+
+/* Operations: a log that could not be read is not a quiet one */
+.ops-terminal-body[data-unavailable] { color: var(--warn); }
+
+/* Only a studio beyond the preloaded rows ever shows this footer. */
+.catalog-more { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px; padding: 20px 0; color: var(--text2); font-size: var(--fs-sm, 13px); }

@@ -1,6 +1,7 @@
 (function () {
   'use strict';
-  var nextId = 0, submitHandlers = new WeakMap();
+  var lifecycleGeneration = 0, leaving = false;
+  var nextId = 0, submitHandlers = new WeakMap(), controlTrackers = new WeakMap(), saveRestorers = new Set();
   var refreshGeneration = 0, refreshController = null, pendingRefresh = new Set();
   function refreshRegions(keys) {
     var regions = Array.prototype.slice.call(document.querySelectorAll('[data-settings-refresh]'));
@@ -54,12 +55,22 @@
   function value(field) {
     if (/^(checkbox|radio)$/i.test(field.type)) return field.checked;
     if (field.tagName === 'SELECT') {
-      return Array.prototype.map.call(field.options, function (option) { return option.selected; }).join(',');
+      return JSON.stringify(Array.prototype.filter.call(field.options, function (option) { return option.selected; }).map(function (option) { return option.value; }).sort());
     }
     return field.value;
   }
+  function controlKey(field) {
+    return /^(checkbox|radio)$/i.test(field.type) && field.name ? JSON.stringify([field.type, field.name, field.value]) : null;
+  }
   function snapshot(form) {
-    return controls(form, true).map(function (field) { return { field: field, value: value(field) }; });
+    var entries = [], named = new Map();
+    controls(form, true).forEach(function (field) {
+      var key = controlKey(field), existing = key && named.get(key);
+      if (existing) { existing.value = existing.value || value(field); return; }
+      var entry = {field: field, key: key, value: value(field)};
+      entries.push(entry); if (key) named.set(key, entry);
+    });
+    return entries;
   }
   function init(form) {
     if (form.dataset.settingsInitialized) return;
@@ -71,14 +82,51 @@
     status.setAttribute('role', 'status');
     status.setAttribute('aria-live', 'polite');
     if (!status.parentNode) {
-      var submit = form.querySelector('[type="submit"]');
+      var submits = Array.prototype.filter.call(form.querySelectorAll('[type="submit"], button:not([type])'), function (field) {
+        return !field.hasAttribute('data-alert-preview');
+      });
+      var submit = submits.find(function (field) { return field.closest('.ui-form-actions'); }) || submits[0];
       if (submit) submit.insertAdjacentElement('afterend', status);
       else form.appendChild(status);
     }
     var baseline = snapshot(form), saving = false, submitted = null;
+    function currentValues() {
+      var values = new Map();
+      controls(form, true).forEach(function (field) {
+        var key = controlKey(field);
+        if (key) values.set(key, !!values.get(key) || field.checked);
+      });
+      return values;
+    }
+    function currentValue(entry, values) {
+      return entry.key ? !!values.get(entry.key) : value(entry.field);
+    }
+    function track(fields) {
+      var values = currentValues();
+      function extend(entries) {
+        entries = entries.filter(function (entry) {
+          return entry.field.isConnected || currentValue(entry, values) !== entry.value;
+        });
+        var byKey = new Map(), byField = new Map();
+        entries.forEach(function (entry) { if (entry.key) byKey.set(entry.key, entry); else byField.set(entry.field, entry); });
+        fields.forEach(function (field) {
+          if (field.form !== form || field.hasAttribute('data-settings-ignore') || /^(button|submit|reset|hidden)$/i.test(field.type)) return;
+          var key = controlKey(field);
+          var entry = key ? byKey.get(key) : byField.get(field);
+          if (entry) entry.field = field;
+          else { entry = {field: field, key: key, value: value(field)}; entries.push(entry); if (key) byKey.set(key, entry); else byField.set(field, entry); }
+        });
+        return entries;
+      }
+      baseline = extend(baseline);
+      if (submitted) submitted = extend(submitted);
+      update(false);
+    }
+    controlTrackers.set(form, track);
     function update(clearState) {
+      var values = currentValues();
       var dirty = baseline.some(function (entry) {
-        return !entry.field.matches(':disabled') && value(entry.field) !== entry.value;
+        return !entry.field.matches(':disabled') && currentValue(entry, values) !== entry.value;
       });
       form.classList.toggle('is-dirty', dirty);
       if (saving) return;
@@ -152,11 +200,22 @@
       var buttons = Array.prototype.filter.call(form.elements, function (field) { return field.type === 'submit'; }).map(function (field) {
         var entry = { field: field, disabled: field.disabled }; field.disabled = true; return entry;
       });
+      function restoreUnknown() {
+        if (!saving) return;
+        saving = false; submitted = null;
+        form.removeAttribute('aria-busy');
+        buttons.forEach(function (entry) { entry.field.disabled = entry.disabled; });
+        form.dataset.settingsState = 'error';
+        status.textContent = 'The save outcome is unknown; check the saved result before retrying.';
+        update(false);
+      }
+      saveRestorers.add(restoreUnknown);
       saving = true;
       clearErrors();
       form.dataset.settingsState = 'saving';
       form.setAttribute('aria-busy', 'true');
       status.textContent = 'Saving…';
+      var saveGeneration = lifecycleGeneration;
       var controller = new AbortController();
       var timeout = setTimeout(function () { controller.abort(); }, 30000);
       fetch(action.href, {
@@ -164,12 +223,14 @@
         redirect: 'error', headers: { 'X-Trellum-Form': '1', 'Accept': 'application/json' }
       }).then(function (response) {
         return response.json().then(function (data) {
+          if (saveGeneration !== lifecycleGeneration) return;
           if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('The server returned an invalid response. Check the saved settings before retrying.');
           if (!response.ok || data.ok !== true) {
             showErrors(data.errors);
             throw new Error(data.ok === true ? 'The server rejected the save. Please try again.' : data.message || data.error || 'Could not save. Please try again.');
           }
           // Apply normalized values only to the submitted draft, never to a newer edit.
+          var normalizedCurrent = currentValues();
           Object.keys(data.values || {}).forEach(function (name) {
             Array.prototype.forEach.call(form.elements, function (field) {
               if (field.name === name && field.type === 'hidden') field.value = data.values[name] === null ? '' : data.values[name];
@@ -177,14 +238,15 @@
             submitted.forEach(function (entry) {
               if (entry.field.name !== name) return;
               var field = entry.field, normalized = data.values[name];
-              var unchanged = value(field) === entry.value;
+              var unchanged = currentValue(entry, normalizedCurrent) === entry.value;
               var normalizedValue = normalized === null ? '' : String(normalized);
               if (/^(checkbox|radio)$/i.test(field.type)) {
                 normalizedValue = field.type === 'radio' ? field.value === String(normalized) : !!normalized;
                 if (unchanged) field.checked = normalizedValue;
               } else if (field.tagName === 'SELECT') {
-                if (unchanged) field.value = normalizedValue;
-                normalizedValue = Array.prototype.map.call(field.options, function (option) { return option.value === String(normalized); }).join(',');
+                var values = Array.isArray(normalized) ? normalized.map(String) : [normalizedValue];
+                if (unchanged) Array.prototype.forEach.call(field.options, function (option) { option.selected = values.indexOf(option.value) >= 0; });
+                normalizedValue = JSON.stringify(Array.prototype.filter.call(field.options, function (option) { return values.indexOf(option.value) >= 0; }).map(function (option) { return option.value; }).sort());
               } else if (unchanged) field.value = normalizedValue;
               entry.value = normalizedValue;
             });
@@ -194,7 +256,10 @@
             var key = node.dataset.settingsText;
             if (Object.prototype.hasOwnProperty.call(data.updates || {}, key)) node.textContent = data.updates[key];
           });
+          saveRestorers.delete(restoreUnknown);
           saving = false;
+          form.removeAttribute('aria-busy');
+          buttons.forEach(function (entry) { entry.field.disabled = entry.disabled; });
           form.dispatchEvent(new Event('settings:saved', { bubbles: true }));
           form.dataset.settingsState = 'saved';
           status.textContent = (data.message || 'Saved.') + (form.classList.contains('is-dirty') ? ' Newer changes are still unsaved.' : '');
@@ -212,12 +277,15 @@
           }
         }, function () { throw new Error('The server returned an invalid response. Check the saved settings before retrying.'); });
       }).catch(function (error) {
+        if (saveGeneration !== lifecycleGeneration) return;
         form.dataset.settingsState = 'error';
         status.textContent = error instanceof TypeError || error.name === 'AbortError'
           ? 'Connection interrupted. The save outcome is unknown; check before retrying.' : error.message;
         failureMessage = status.textContent;
       }).finally(function () {
         clearTimeout(timeout);
+        saveRestorers.delete(restoreUnknown);
+        if (saveGeneration !== lifecycleGeneration) return;
         saving = false;
         submitted = null;
         form.removeAttribute('aria-busy');
@@ -232,12 +300,42 @@
     if (root.matches && root.matches('form[data-settings-form],form[data-settings-save]')) init(root);
     root.querySelectorAll('form[data-settings-form],form[data-settings-save]').forEach(init);
   }
-  window.TrellumSettingsForms = { init: initialize, refreshRegions: refreshRegions };
+  function confirmLeave(root, submittedForm) {
+    var forms = Array.from((root || document).querySelectorAll('form[data-settings-initialized]')).filter(function (form) { return form !== submittedForm; });
+    var saving = forms.some(function (form) { return form.getAttribute('aria-busy') === 'true'; });
+    var dirty = forms.some(function (form) { return form.classList.contains('is-dirty'); });
+    if (!saving && !dirty) return true;
+    return window.confirm(saving ? 'Saving is still in progress. Leave and check the saved result later?'
+      : 'Discard unsaved changes? Choose Cancel to keep editing.');
+  }
+  window.TrellumSettingsForms = { init: initialize, trackControls: function (form, fields) {
+    var tracker = controlTrackers.get(form);
+    if (tracker) tracker(Array.prototype.slice.call(fields));
+  }, refreshRegions: refreshRegions, confirmLeave: confirmLeave,
+    unmount: function () { saveRestorers.forEach(function (restore) { restore(); }); saveRestorers.clear(); ++lifecycleGeneration; ++refreshGeneration; pendingRefresh.clear(); if (refreshController) refreshController.abort(); },
+    nativeLeave: function () { leaving = true; }, resume: function () { leaving = false; }
+  };
+  window.addEventListener('beforeunload', function (event) {
+    if (leaving) return;
+    if (document.querySelector('form.is-dirty,form[data-settings-state="saving"]')) {
+      event.preventDefault(); event.returnValue = '';
+    }
+  });
+  window.addEventListener('pageshow', function () { leaving = false; });
+  window.addEventListener('pagehide', function () { window.TrellumSettingsForms.unmount(); });
+  var WAIT_HINT = ' Summary update waits until editing is finished.';
   function retryRefresh() {
     if (!pendingRefresh.size) return;
     var generation = refreshGeneration;
     setTimeout(function () {
-      if (generation === refreshGeneration && pendingRefresh.size) refreshRegions(Array.from(pendingRefresh)).catch(function () {});
+      if (generation !== refreshGeneration || !pendingRefresh.size) return;
+      refreshRegions(Array.from(pendingRefresh)).then(function (pending) {
+        // The retry superseded the save-driven refresh whose hint it would have set.
+        if (pending && pending.length) document.querySelectorAll('[data-settings-dirty-status]').forEach(function (status) {
+          var owner = status.closest('form');
+          if (owner && owner.dataset.settingsState === 'saved' && status.textContent.indexOf(WAIT_HINT) < 0) status.textContent += WAIT_HINT;
+        });
+      }).catch(function () {});
     }, 0);
   }
   document.addEventListener('settings:saved', retryRefresh);
@@ -255,16 +353,22 @@
     if (handler) handler(event);
   });
   document.addEventListener('click', function (event) {
-    var link = event.target.closest('a[data-settings-leave]');
+    var link = event.target.closest('a[href]');
     if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     if (link.hasAttribute('download') || (link.target && link.target !== '_self')) return;
-    var form = link.dataset.settingsLeave ? document.getElementById(link.dataset.settingsLeave) : link.closest('form');
-    if (!form || !form.matches('[data-settings-form],[data-settings-save]')) return;
-    var saving = form.getAttribute('aria-busy') === 'true';
-    if (!saving && !form.classList.contains('is-dirty')) return;
-    var message = saving ? 'Saving is still in progress. Leave and check the saved result later?'
-      : 'Discard unsaved changes? Choose Cancel to keep editing.';
-    if (!window.confirm(message)) event.preventDefault();
+    var destination = new URL(link.href, location.href);
+    if (!/^https?:$/.test(destination.protocol) || (destination.origin === location.origin && destination.pathname === location.pathname && destination.search === location.search && destination.hash)) return;
+    if (!confirmLeave(document)) event.preventDefault(); else event.trellumLeaveConfirmed = true;
+  });
+  window.addEventListener('submit', function (event) {
+    if (event.defaultPrevented || !submitHandlers.has(event.target)) return;
+    if (!event.trellumLeaveConfirmed && !confirmLeave(document, event.target)) { event.preventDefault(); return; }
+    event.trellumLeaveConfirmed = true;
+    leaving = true;
+    setTimeout(function () { if (event.defaultPrevented) leaving = false; }, 0);
+  });
+  window.addEventListener('click', function (event) {
+    if (event.trellumLeaveConfirmed && !event.defaultPrevented) leaving = true;
   });
   initialize(document);
 })();

@@ -5,6 +5,7 @@ from types import SimpleNamespace as S
 import pytest
 from django.conf import settings
 from django.template.loader import render_to_string
+from django.test import RequestFactory
 
 UI_CSS = (settings.BASE_DIR / "static" / "ui.css").read_text(encoding="utf-8")
 CONSOLE_SHELL_CSS = (settings.BASE_DIR / "static" / "console-shell.css").read_text(
@@ -51,7 +52,7 @@ def _delivery_html(rows):
         "schedule_rows": rows, "studio_deliveries": True,
         "can_add_delivery": True,
         "delivery_return_to": "/s/acme/studio/deliveries",
-    })
+    }, request=RequestFactory().get("/s/acme/studio/deliveries"))
 
 
 def _delivery_row():

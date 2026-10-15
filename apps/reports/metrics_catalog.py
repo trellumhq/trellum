@@ -1,30 +1,12 @@
-"""The per-studio Metrics catalog (semantic-layer Phase 2).
+"""Bounded Metrics definitions and the existing comparison projection.
 
-This is a studio-wide roll-up over built output (see
-``apps.reports.overviews``). Business-metric definitions belong beside the
-reports that use them.
-
-``MetricDefinition`` rows (synced by ``apps.reports.scan.sync_studio_metrics``)
-are the source for a metric's identity, spec and description -- always the
-*current* definition, per the design: the catalog reads what metrics.yaml
-says today, then layers on, per claiming report, whether that report's last
-build actually reflects it.
-
-The "current vs. stale" comparison never opens a report's data.json. Each
-report's own ``_meta.json`` already carries, per claim, the
-``definition_hash``/``version`` it was built against (schema v2, see
-``trellum.meta.normalize_metrics_used`` and ``docs/COMPATIBILITY.md`` in the
-framework) -- comparing that against ``MetricDefinition.definition_hash`` is
-one small read per report (``apps.core.storage.read_meta``), not a directory
-pull, which matters because a report's data.json can be read from S3 in the
-remote backend (internal planning#93/#67).
-
-The card sparklines are the one thing here that does read a data.json, and it
-is exactly ONE: the generated metrics report's, read and parsed once per
-overview (so once per cache window, not once per metric). Nothing is
-recomputed and no query is issued -- the build already holds every series this
-page draws, and ``_spark_series`` only re-buckets what the report's own charts
-plot. See it there for what it costs and where it stops.
+Overview renders up to ``CATALOG_LIMIT`` definitions from SQL (every card of a
+realistic studio, filtered in the browser; a larger studio is narrowed on the
+server by the filter box). Report usage and generated sparkline projections load through
+``metric_summaries`` from worker-produced indexes; neither Overview request
+reads artifacts. The legacy comparison projection below retains its own
+build-read behavior. Pure sparkline routines also support worker publication of
+bounded previews.
 """
 from __future__ import annotations
 
@@ -39,6 +21,7 @@ from django.db.models import Max
 from django.http import HttpResponseBadRequest
 from django.shortcuts import render
 from django.urls import reverse
+from django.views.decorators.http import require_GET
 
 from apps.core import roles
 from apps.core.permissions import require_studio_role
@@ -413,49 +396,99 @@ def studio_metrics_overview(studio) -> dict:
     return payload
 
 
+# Definitions rendered on one page. Far above a realistic catalog, so the
+# overview is one scrolling grid filtered in the browser; past it the page
+# says so and the filter box narrows server-side.
+CATALOG_LIMIT = 500
+
+
+def metric_definition_page(studio, query=""):
+    """Bounded primary catalog. Definitions never require artifact reads."""
+    from django.db.models import Q, TextField, Count
+    from django.db.models.functions import Cast
+    from apps.reports.models import MetricCatalogState
+    from .metric_summaries import claimed_count
+
+    revision = MetricCatalogState.objects.filter(studio=studio).values_list(
+        "definition_revision", flat=True).first() or 0
+    everything = MetricDefinition.objects.filter(studio=studio)
+    present = Q(present_in_scan=True)
+    match = Q()
+    if query:
+        everything = everything.annotate(search_tags=Cast("tags", TextField()))
+        match = (Q(name__icontains=query) | Q(label__icontains=query) |
+                 Q(description__icontains=query) | Q(owner__icontains=query) |
+                 Q(search_tags__icontains=query))
+    # "synced" is the studio's last scan, whether or not a retired definition
+    # was still on file, like the catalog has always said it.
+    statistics = everything.aggregate(
+        defined_count=Count("pk", filter=present), matching_count=Count("pk", filter=present & match),
+        synced_at=Max("last_scanned_at"), repo_url=Max("studio__repo__repo_url"))
+    defined_count = statistics["defined_count"]
+    definitions = everything.filter(present)
+    selected = list(definitions.filter(match).order_by("name", "pk")[:CATALOG_LIMIT])
+    metrics = [{"row": row, "spec": row.spec_text(),
+                "not_monitored_reason": ("descriptive — no aggregation spec to compute" if not row.agg else
+                                         "not present in the latest indexed Metrics build"), "details_url":
+                reverse("studio-metric-claims", args=[studio.org.slug, studio.slug, row.pk]) +
+                f"?definition_revision={revision}"} for row in selected]
+    current_revision = MetricCatalogState.objects.filter(studio=studio).values_list(
+        "definition_revision", flat=True).first() or 0
+    return {"metrics": metrics, "defined_count": defined_count,
+            "matching_count": statistics["matching_count"], "truncated": statistics["matching_count"] > len(selected),
+            "shown_count": len(selected), "claimed_count": claimed_count(studio),
+            "synced_at": statistics["synced_at"], "repo_url": statistics["repo_url"] or "",
+            "definition_revision": revision, "definition_changed": revision != current_revision,
+            "metric_query": query}
+
+
 @require_studio_role(roles.VIEWER)
 @require_full_studio_visibility
+@require_GET
 def metrics_page(request, org_slug, studio_slug, section="overview"):
     from apps.studios.models import StudioRepo
+    from .metric_workspace import workspace_projection
 
-    data = studio_metrics_overview(request.studio)
+    data = (workspace_projection(request.studio, legacy=request.GET.get('legacy') == '1') if section == "comparison" else
+            metric_definition_page(request.studio, request.GET.get("q", "").strip()[:200]))
     # A reverse OneToOneField raises DoesNotExist (not AttributeError) when
     # unset, so plain getattr(..., "repo", None) would not catch it.
-    try:
-        repo_url = request.studio.repo.repo_url
-    except StudioRepo.DoesNotExist:
-        repo_url = ""
-    return render(
+    if section != "comparison":
+        repo_url = data["repo_url"]
+    else:
+        try:
+            repo_url = request.studio.repo.repo_url
+        except StudioRepo.DoesNotExist:
+            repo_url = ""
+    from apps.core.navigation import render_navigation
+
+    return render_navigation(
         request,
         "reports/metrics.html",
         {
             "org": request.org,
             "studio": request.studio,
             "metrics_section": section,
-            "metrics": data["metrics"],
-            "synced_at": data["synced_at"],
-            "defined_count": data["defined_count"],
-            "claimed_count": data["claimed_count"],
-            "storage_unavailable": data["storage_unavailable"],
-            "metrics_report_url": data["metrics_report_url"],
-            "metrics_report_built": data["metrics_report_built"],
-            "spark_w": data["spark_w"],
-            "spark_h": data["spark_h"],
+            **data,
+            "summary_url": reverse("studio-metrics-summary", args=[org_slug, studio_slug]) if section != "comparison" else "",
             # Footer "edit via pull request" link -- the studio's own repo,
             # when one is configured. Plain text otherwise (a fresh studio, or
             # one whose repo hasn't been set up yet); never a dead link.
             "repo_url": repo_url,
         },
+        controller="metrics", title="Metrics",
     )
 
 
 @require_studio_role(roles.VIEWER)
 @require_full_studio_visibility
+@require_GET
 def metric_comparison(request, org_slug, studio_slug):
     """Two current studio identities; report access is checked again by each frame."""
     from datetime import date
 
-    from trellum.metrics import load_metrics_result
+    from .metric_workspace import inline_definition_choices, workspace_projection
+    from .models import ReportMetricClaim
 
     ids = [request.GET.get(key, "") for key in ("a", "b")]
     if any(len(value) > 200 or (value and not re.fullmatch(r"[a-z0-9][a-z0-9_]*", value))
@@ -472,32 +505,38 @@ def metric_comparison(request, org_slug, studio_slug):
     if any(len(value) > 200 for value in splits):
         return HttpResponseBadRequest("Choose an available split.")
     # Do not use the overview's short cache for an identity/access decision.
-    available = set(MetricDefinition.objects.filter(
-        studio=request.studio, present_in_scan=True).values_list("name", flat=True))
+    selected_rows = list(MetricDefinition.objects.filter(
+        studio=request.studio, present_in_scan=True, name__in=ids))
+    available = {row.name for row in selected_rows}
     if any(value and value not in available for value in ids):
         return HttpResponseBadRequest("Choose two different available metrics.")
-    data = studio_metrics_overview(request.studio)
-    registry = load_metrics_result(str(request.studio.project_root))
+    choices, searchable = inline_definition_choices(request.studio, ids)
+    data = workspace_projection(request.studio, legacy=request.GET.get('legacy') == '1')
+    summary = data['_workspace_summary']
+    claims = {claim.metric_name: claim for claim in ReportMetricClaim.objects.filter(
+        summary=summary, metric_name__in=ids)} if summary else {}
+    selected = {row.name: row for row in selected_rows}
     cards = []
     for key, metric_id in zip(("a", "b"), ids, strict=True):
-        metric = next((m for m in data["metrics"] if m["row"].name == metric_id), None)
-        if not metric:
+        row = selected.get(metric_id)
+        if not row:
             cards.append({"slot": key})
             continue
-        definition = registry.metrics.get(metric_id)
-        dataset = registry.datasets.get(definition.dataset) if definition else None
-        generated = next((u for u in metric["usage"] if is_generated_metrics_report(u["report"])), None)
-        cards.append({**metric, "slot": key,
-                      "grain": dataset.grain if dataset else "unknown",
-                      "time_agg": definition.time_agg if definition else "unknown",
-                      "built_at": generated["built_at"] if generated else None,
-                      "current": bool(generated and generated["current"])})
+        claim = claims.get(metric_id)
+        cards.append({'row': row, 'spec': row.spec_text(), 'slot': key,
+                      'grain': ('unbound' if not row.binding.get('dataset') else row.binding.get('grain')) if row.binding is not None else 'unknown',
+                      'time_agg': ('not applicable' if not row.binding.get('dataset') else row.binding.get('time_agg')) if row.binding is not None else 'unknown',
+                      'built_at': summary.served_at if claim else None,
+                      'current': bool(claim and claim.definition_hash and claim.definition_hash == row.definition_hash),
+                      'embed_url': f'{data["metrics_report_url"]}?only=metric-{metric_id}' if claim and data['metrics_report_built'] else ''})
     return render(request, "reports/metric_comparison.html", {
         "org": request.org, "studio": request.studio, "cards": cards,
-        "metrics": data["metrics"], "metrics_report_built": data["metrics_report_built"],
+        'metrics': [{'row': row} for row in choices],
+        'choice_url': reverse('studio-metric-choices', args=[org_slug, studio_slug]) if searchable else '',
+        **data,
         "comparison_url": reverse("metric-comparison", args=[org_slug, studio_slug]),
         "catalog_url": reverse("studio-metrics", args=[org_slug, studio_slug]),
         "workspace_url": reverse("studio-metrics-comparison", args=[org_slug, studio_slug]),
         "state": {"a": ids[0], "b": ids[1], "from": dates[0], "to": dates[1],
-                  "split_a": splits[0], "split_b": splits[1]},
+                  "split_a": splits[0], "split_b": splits[1], 'legacy': '1' if data['workspace_requested_legacy'] else ''},
     })

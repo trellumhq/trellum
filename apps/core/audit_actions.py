@@ -123,6 +123,7 @@ ACTIONS: dict[str, ActionSpec] = {
 
     # ── authz ───────────────────────────────────────────────────────────
     "member.invite": _m(CATEGORY_AUTHZ, "Member invited"),
+    "member.invite_resend": _m(CATEGORY_AUTHZ, "Invitation email requested again"),
     "member.invite_revoke": _m(CATEGORY_AUTHZ, "Invitation revoked"),
     "member.join": _m(CATEGORY_AUTHZ, "Member joined"),
     "member.set_role": _m(CATEGORY_AUTHZ, "Org role changed"),
@@ -224,6 +225,10 @@ ACTIONS: dict[str, ActionSpec] = {
     "run.enqueue_all": _m(CATEGORY_SYSTEM, "All reports queued"),
     "run.stop_all": _m(CATEGORY_SYSTEM, "All runs stopped"),
     "cache.clear": _m(CATEGORY_SYSTEM, "Cache cleared"),
+    "operator.diagnostics.refresh": _m(CATEGORY_SYSTEM, "Coordinator diagnostics requested"),
+    "operator.usage.refresh": _m(CATEGORY_SYSTEM, "Organization storage observation requested"),
+    "registry.refresh_requested": _m(CATEGORY_SYSTEM, "Registry refresh requested"),
+    "registry.refresh_finished": _m(CATEGORY_SYSTEM, "Registry refresh finished"),
     "git.sync_now": _m(CATEGORY_SYSTEM, "Repository sync requested"),
     "git.check": _m(CATEGORY_SYSTEM, "Repository check requested"),
     "git.publish": _m(CATEGORY_SYSTEM, "Repository publish requested"),

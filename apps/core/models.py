@@ -226,10 +226,11 @@ class AuditLog(models.Model):
     export downloaded, live query run), and the handful of system events
     that have no request behind them (for example, retention's nightly purge).
 
-    Written via ``apps.core.audit.audit()`` for anything tied to a request,
+    Written via ``apps.core.audit.audit()`` or its ``audit_many()`` batch
+    entry point for anything tied to a request,
     or ``apps.core.audit.audit_system()`` for the request-less system rows
     -- never construct rows by hand in views, so the shape (and the
-    category/outcome/redaction those two funnels apply) stays uniform. See
+    category/outcome/redaction those shared funnels apply) stays uniform. See
     ``apps.core.audit_actions`` for the full action taxonomy.
     """
 

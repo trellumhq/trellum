@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from apps.core.models import InstanceConfig
 from apps.core.audit import audit
-from apps.core.permissions import get_effective
+from apps.core.request_access import request_org_access
 from apps.core import roles
 from apps.core.report_access import can_view_report
 from apps.orgs.models import Organization
@@ -18,7 +18,7 @@ from apps.reports.models import EmailSchedule
 
 
 def can_manage_org(request, org):
-    return request.user.is_authenticated and request.user.is_active and get_effective(request, org).is_org_admin
+    return request.user.is_authenticated and request.user.is_active and request_org_access(request, org).is_org_admin
 
 
 def can_manage_schedule(request, schedule):
@@ -27,8 +27,8 @@ def can_manage_schedule(request, schedule):
     if key is not None and (key.org_id != org.pk or not getattr(key, "can_write", False)):
         return False
     return bool(request.user.is_authenticated and request.user.is_active
-        and can_view_report(request.user, schedule.report)
-        and roles.at_least(get_effective(request, org).role_for(schedule.report.studio), roles.DEVELOPER))
+        and can_view_report(request.user, schedule.report, request=request)
+        and roles.at_least(request_org_access(request, org).role_for(schedule.report.studio), roles.DEVELOPER))
 
 
 def schedule_for_request(request, schedule_id, *, report=None):
@@ -109,9 +109,9 @@ def owner_repair_required(schedule):
     return owner is None or not owner.is_active or not can_view_report(owner, schedule.report)
 
 
-def next_occurrence(schedule, now=None):
+def next_occurrence(schedule, now=None, *, pause=None):
     now = now or timezone.now()
-    if not schedule.enabled or not schedule.report.present_in_scan or schedule.report.disabled or delivery_pause(schedule.report.studio.org_id):
+    if not schedule.enabled or not schedule.report.present_in_scan or schedule.report.disabled or (delivery_pause(schedule.report.studio.org_id) if pause is None else pause):
         return None
     kwargs = {"hour": schedule.send_hour, "minute": schedule.send_minute, "timezone": schedule.timezone}
     if schedule.freq == EmailSchedule.FREQ_WEEKDAYS:
@@ -207,10 +207,11 @@ class ScheduleSettingsForm(forms.ModelForm):
 
     def __init__(self, *args, members, groups, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["recipient_ids"].choices = []
+        person_choices = []
         for row in members:
             name, email = row.get("name") or row["email"], row["email"]
-            self.fields["recipient_ids"].choices.append((row["id"], f"{name} · {email}" if name != email else email))
+            person_choices.append((row["id"], f"{name} · {email}" if name != email else email))
+        self.fields["recipient_ids"].choices = person_choices
         self.fields["recipient_group_ids"].choices = [(row["id"], row["name"]) for row in groups]
         saved_timezone = getattr(self.instance, "timezone", None)
         if saved_timezone and saved_timezone not in dict(self.fields["timezone"].choices):

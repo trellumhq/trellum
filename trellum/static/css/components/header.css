@@ -8,6 +8,10 @@
     background: var(--bg-header);
     position: sticky; top: 0; z-index: 100;
 }
+/* Classic Dark uses white ink throughout its red report header. */
+[data-theme="dark"] .fw-report-chrome {
+    --on-accent: #fff;
+}
 .fw-report-chrome > .fw-header { display: contents; }
 .fw-report-chrome > .fw-report-metadata { grid-area: 2 / 1; }
 .fw-report-chrome .fw-header-left { grid-area: 1 / 1; }

@@ -445,6 +445,9 @@ class TestRoles:
         )
         monkeypatch.setattr("apps.runner.sandbox.sandbox_mode", lambda: "off")
         monkeypatch.setattr("apps.runner.gitsync.GitSyncThread", StubGitSyncThread)
+        monkeypatch.setattr("apps.reports.source_reconciliation.start_for_worker", lambda **kwargs: None)
+        monkeypatch.setattr("apps.runner.maintenance_actions.start_for_worker", lambda **kwargs: None)
+        monkeypatch.setattr("apps.datasources.unblock.process_next", lambda *args, **kwargs: None)
         run = make_run()
         Command().handle(once=False, role="runner")
         assert events[:2] == ["beat", "claim"]
@@ -538,8 +541,9 @@ class TestSchedulerDiff:
             mgr.shutdown()
 
     def test_refresh_keeps_fixed_jobs(self, settings, monkeypatch, report_row):
-        """Retention cleanup and the release check are registered once at
-        start; the diff against Report rows must not remove them."""
+        """Retention cleanup, the release check and the operator probe are
+        registered once at start; the diff against Report rows must not
+        remove them."""
         from apps.runner.management.commands import runworker
 
         settings.CLEANUP_ENABLED = True
@@ -551,7 +555,7 @@ class TestSchedulerDiff:
         try:
             mgr.refresh()
             jobs = {j.id for j in mgr._scheduler.get_jobs()}
-            assert {"retention-cleanup", "update-check"} <= jobs
+            assert {"operator-probe", "retention-cleanup", "update-check"} <= jobs
         finally:
             mgr.shutdown()
 

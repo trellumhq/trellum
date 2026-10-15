@@ -186,7 +186,9 @@ class TestShellRendering:
         assert 'data-console-nav-group="studio-work"' in nav
         assert f"/s/{org.slug}/{studio_tree.slug}/settings/repo" in nav
         assert f'href="/s/{org.slug}/{studio_tree.slug}/" class="active"' in html
-        assert f'action="/s/{org.slug}/{studio_tree.slug}/"' in html
+        # The header's jump control follows the remembered studio (it replaced the search form that did).
+        assert f'data-jump-source="/s/{org.slug}/{studio_tree.slug}/api/jump"' in html
+        assert 'id="searchInput"' not in html
         assert studio_tree.name not in breadcrumbs
         assert "scope-org" in html
         assert "data-studio-theme" not in html

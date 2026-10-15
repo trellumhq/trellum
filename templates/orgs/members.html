@@ -80,13 +80,14 @@ Each chip names where its role comes from.</p>
             <button class="ui-btn ghost" type="submit">Save changes</button>
           </form>
           {% empty %}<span class="shell-menu-note">No studios yet.</span>{% endfor %}
+          {% if studios_capped %}<a href="/orgs/{{ org.slug }}/settings/members/{{ row.m.user_id }}/studios">Manage studio access</a>{% endif %}
           <span class="shell-menu-note">Account security</span>
           <form method="post" style="padding:2px 10px"
                 action="/orgs/{{ org.slug }}/settings/members/{{ row.m.user_id }}/unlock">
             {% csrf_token %}<input type="hidden" name="q" value="{{ q|default:'' }}"><input type="hidden" name="page" value="{{ page.number }}">
             <button class="ui-btn ghost" type="submit" style="width:100%">Clear login lockout</button>
           </form>
-          {% if row.m.user.has_mfa %}
+          {% if row.has_mfa %}
           <form method="post" style="padding:2px 10px 6px"
                 action="/orgs/{{ org.slug }}/settings/members/{{ row.m.user_id }}/reset-mfa"
                 onsubmit="return confirm('Reset MFA for {{ row.m.user.email }}? Their device and recovery codes are removed and their sessions end; they will be asked to re-enroll.')">

@@ -3,7 +3,38 @@
         '.fw-filter-bar', '.fw-anno-bar', '.fw-table-search',
         '.fw-table-count', '.fw-csv-btn', '.fw-chart-dl', '.fw-export-wrap',
     ];
-    function _fwExportCapture(cb) {
+    // Export-only libraries load on first use; `_fwVendor` maps name -> URL (see cdn.py).
+    var _exportGlobals = {html2canvas: function() { return typeof html2canvas === 'function'; },
+        jspdf: function() { return typeof jspdf !== 'undefined' && !!jspdf.jsPDF; }};
+    var _exportLoads = {};
+    function _fwLoadExportLib(name) {
+        if (_exportGlobals[name]()) return Promise.resolve();
+        var url = (window._fwVendor || {})[name];
+        if (!url) return Promise.reject(new Error('Image capture is unavailable because the capture library did not load.'));
+        if (!_exportLoads[name]) _exportLoads[name] = new Promise(function(resolve, reject) {
+            var tag = document.createElement('script');
+            tag.src = url;
+            tag.onload = resolve;
+            tag.onerror = function() { delete _exportLoads[name]; tag.remove(); reject(new Error('Image capture is unavailable because the capture library did not load.')); };
+            document.head.appendChild(tag);
+        });
+        return _exportLoads[name];
+    }
+    function _fwLoadExportLibs(names) { return Promise.all(names.map(_fwLoadExportLib)); }
+
+    function _fwExportCapture(cb, libs) {
+        var btnLoad = document.getElementById('fwExportBtn');
+        if (btnLoad) btnLoad.classList.add('running');
+        _fwLoadExportLibs(libs || ['html2canvas']).then(function() {
+            if (btnLoad) btnLoad.classList.remove('running');
+            _fwExportCaptureNow(cb);
+        }).catch(function(err) {
+            if (btnLoad) btnLoad.classList.remove('running');
+            console.error('Export failed:', err);
+        });
+    }
+
+    function _fwExportCaptureNow(cb) {
         var container = document.querySelector('.fw-container');
         if (!container) return;
         var btn = document.getElementById('fwExportBtn');
@@ -58,7 +89,7 @@
             var pdf = new jspdf.jsPDF(orientation, 'mm', [pdfW, pdfH]);
             pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH);
             pdf.save(slug + '.pdf');
-        });
+        }, ['html2canvas', 'jspdf']);
     }
 
     // Selection UI is temporary and is removed before html2canvas runs.
@@ -454,8 +485,6 @@
     function _analysisRender(target) {
         var pending = _analysisPending();
         if (pending) return Promise.reject(new Error(pending));
-        if (typeof html2canvas !== 'function')
-            return Promise.reject(new Error('Image capture is unavailable because the capture library did not load.'));
         if (!document.fonts || !document.fonts.ready)
             return Promise.reject(new Error('This browser cannot wait for fonts before capture.'));
         if (!target.isConnected || !_analysisVisible(target))
@@ -466,7 +495,7 @@
         var componentId = target.classList.contains('fw-section')
             ? (target.id || 'section') : (canvas ? canvas.id : (target.id || 'section'));
         var componentTitle = _analysisTitle(target);
-        return document.fonts.ready.then(function() { return new Promise(function(resolve) {
+        return _fwLoadExportLib('html2canvas').then(function() { return document.fonts.ready; }).then(function() { return new Promise(function(resolve) {
                 requestAnimationFrame(function() { requestAnimationFrame(resolve); });
             }); }).then(function() { return _analysisFinalRender(target); }).then(function() {
                 var recheck = _analysisPending();

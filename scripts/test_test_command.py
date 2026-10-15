@@ -27,14 +27,28 @@ class TestCommandTests(unittest.TestCase):
         self.assertEqual(command[command.index("-n") + 1], "4")
         self.assertEqual(command[command.index("-k") + 1], "save or login")
 
-    def test_portal_always_selects_all_apps_and_only_excludes_docker(self):
+    def test_portal_selects_all_apps_except_docker_e2e_and_heavy(self):
         command = runner.pytest_command(self.parse("portal"))
         self.assertEqual(command[-1], "apps")
-        self.assertEqual(command[command.index("-m", 3) + 1], "not docker_sandbox")
+        self.assertEqual(command[command.index("-m", 3) + 1], "not docker_sandbox and not portal_e2e and not heavy")
         self.assertNotIn("-k", command)
         for filtering in (("-k", "browser"), ("apps/core/tests",), ("--reuse-db",)):
             with self.subTest(filtering=filtering), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
                 self.parse("portal", *filtering)
+
+    def test_heavy_is_opt_in_everywhere(self):
+        marker = lambda command: command[command.index("-m", 3) + 1]
+        self.assertEqual(marker(runner.pytest_command(self.parse("portal", "--heavy"))), "not docker_sandbox and not portal_e2e")
+        command = runner.pytest_command(self.parse("heavy"))
+        self.assertEqual(command[-1], "apps")
+        self.assertEqual(marker(command), "heavy and not docker_sandbox and not portal_e2e")
+        self.assertEqual(self.parse("heavy").junitxml.name, "heavy.xml")
+        local = self.parse("local", "apps/core/tests")
+        self.assertIn("not heavy", marker(runner.pytest_command(local)))
+        local = self.parse("local", "apps/core/tests", "--heavy")
+        self.assertNotIn("heavy", marker(runner.pytest_command(local)))
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            self.parse("heavy", "--heavy")
 
     def test_explicit_worker_count_can_run_serially_or_in_parallel(self):
         for requested, actual in ((1, "0"), (2, "2"), (16, "16")):

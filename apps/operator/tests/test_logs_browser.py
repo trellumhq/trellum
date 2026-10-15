@@ -9,6 +9,7 @@ from django.conf import settings
 
 
 JS = (settings.BASE_DIR / "static" / "server-logs.js").read_text(encoding="utf-8")
+AUTO = (settings.BASE_DIR / "static" / "auto-filter.js").read_text(encoding="utf-8")
 CSS = (settings.BASE_DIR / "static" / "server-logs.css").read_text(encoding="utf-8")
 TEMPLATE = (settings.BASE_DIR / "templates" / "operator" / "logs.html").read_text(encoding="utf-8")
 UI_CSS = (settings.BASE_DIR / "static" / "ui.css").read_text(encoding="utf-8")
@@ -48,7 +49,7 @@ def open_logs(browser, width=1280, routes=()):
     # Keep the console shell contract in the harness; the component's markup and
     # JavaScript/CSS are the same files served by the application.
     document = """<!doctype html><html data-theme="light"><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>""" + UI_CSS + "\n" + CSS + """</style></head><body class="mgmt"><header class="shell"><nav aria-label="Console"><a href="/operator/logs/" aria-current="page">Server logs</a></nav></header>
-        <main><div class="server-logs" data-server-logs data-events-url="/operator/logs/events/" data-export-url="/operator/logs/export/" data-run-url="/operator/logs/runs/"><header class="page-head-row"><h1>Server logs</h1><button class="ui-btn ghost" data-refresh>Refresh</button></header><p>Application and retained build output. Host, kernel and container runtime logs are managed separately.</p><div class="panel logs-coverage" data-coverage hidden></div><form class="panel logs-filters" data-filter-form><div class="logs-filter-grid"><div class="ui-field"><label for="logs-since">Since</label><select class="ui-input" id="logs-since" name="since"><option value="1h">Last hour</option><option value="24h" selected>Last 24 hours</option><option value="7d">Last 7 days</option></select></div><div class="ui-field"><label for="logs-level">Minimum level</label><select class="ui-input" id="logs-level" name="level"><option value="INFO" selected>Info</option><option value="ERROR">Error</option></select></div><div class="ui-field"><label for="logs-service">Service</label><select class="ui-input" id="logs-service" name="service"><option value="">All services</option><option>worker</option><option>web</option></select></div><div class="ui-field"><label for="logs-report">Report slug</label><input class="ui-input" id="logs-report" name="report_slug"></div><div class="ui-field"><label for="logs-worker">Worker ID</label><input class="ui-input" id="logs-worker" name="worker_id"></div><div class="ui-field"><label for="logs-run">Run ID</label><input class="ui-input" id="logs-run" name="run_id"></div><div class="ui-field"><label for="logs-search">Search</label><input class="ui-input" id="logs-search" name="q" maxlength="200"></div><details class="logs-extra-filters"><summary>More filters</summary><input name="request_id"></details></div><div class="logs-actions"><button class="ui-btn primary" type="submit">Apply filters</button><button class="ui-btn ghost" data-live aria-pressed="true" type="button">Pause live</button><button class="ui-btn ghost" data-load-older type="button">Load older</button><a data-download href="/operator/logs/export/">Download NDJSON</a></div></form><div class="panel logs-table-panel"><p class="logs-status" data-status role="status" aria-live="polite">Loading</p><div class="ui-table-scroll logs-scroll" data-log-scroll><table class="ui-table dense logs-table"><thead><tr><th>Seen</th><th>Level</th><th>Service</th><th>Message</th><th>Details</th></tr></thead><tbody data-entries></tbody></table></div></div></div></main><script>""" + JS + "</script></body></html>"
+        <main><div class="server-logs" data-server-logs data-events-url="/operator/logs/events/" data-export-url="/operator/logs/export/" data-run-url="/operator/logs/runs/"><header class="page-head-row"><h1>Server logs</h1><button class="ui-btn ghost" data-refresh>Refresh</button></header><p>Application and retained build output. Host, kernel and container runtime logs are managed separately.</p><div class="panel logs-coverage" data-coverage hidden></div><form class="panel logs-filters" data-filter-form data-auto-filter="inline"><div class="logs-filter-grid"><div class="ui-field"><label for="logs-since">Since</label><select class="ui-input" id="logs-since" name="since"><option value="1h">Last hour</option><option value="24h" selected>Last 24 hours</option><option value="7d">Last 7 days</option></select></div><div class="ui-field"><label for="logs-level">Minimum level</label><select class="ui-input" id="logs-level" name="level"><option value="INFO" selected>Info</option><option value="ERROR">Error</option></select></div><div class="ui-field"><label for="logs-service">Service</label><select class="ui-input" id="logs-service" name="service"><option value="">All services</option><option>worker</option><option>web</option></select></div><div class="ui-field"><label for="logs-report">Report slug</label><input class="ui-input" id="logs-report" name="report_slug"></div><div class="ui-field"><label for="logs-worker">Worker ID</label><input class="ui-input" id="logs-worker" name="worker_id"></div><div class="ui-field"><label for="logs-run">Run ID</label><input class="ui-input" id="logs-run" name="run_id"></div><div class="ui-field"><label for="logs-search">Search</label><input class="ui-input" id="logs-search" name="q" maxlength="200"></div><details class="logs-extra-filters"><summary>More filters</summary><input name="request_id"></details></div><div class="logs-actions"><button class="ui-btn ghost" data-live aria-pressed="true" type="button">Pause live</button><button class="ui-btn ghost" data-load-older type="button">Load older</button><a data-download href="/operator/logs/export/">Download NDJSON</a></div></form><div class="panel logs-table-panel"><p class="logs-status" data-status role="status" aria-live="polite">Loading</p><div class="ui-table-scroll logs-scroll" data-log-scroll><table class="ui-table dense logs-table"><thead><tr><th>Seen</th><th>Level</th><th>Service</th><th>Message</th><th>Details</th></tr></thead><tbody data-entries></tbody></table></div></div></div></main><script>""" + AUTO + "</script><script>" + JS + "</script></body></html>"
     page.route("**/operator/logs/", lambda route: route.fulfill(status=200, content_type="text/html", body=document))
     page.goto("http://portal.test/operator/logs/")
     return context, page
@@ -61,6 +62,9 @@ def test_template_keeps_operator_shell_contract_and_coverage_note():
     assert "Host, kernel and container runtime logs are managed separately" in TEMPLATE
     assert "aria-live=\"polite\"" in TEMPLATE
     assert 'value="INFO" selected' in TEMPLATE
+    # Filters apply by themselves: no Apply button, and the shared auto-filter drives the form.
+    assert "Apply filters" not in TEMPLATE
+    assert 'data-filter-form data-auto-filter="inline"' in TEMPLATE
 
 
 def test_filters_pause_older_catchup_and_untrusted_text(browser):
@@ -91,17 +95,28 @@ def test_filters_pause_older_catchup_and_untrusted_text(browser):
         page.get_by_role("button", name="Load older").click()
         page.wait_for_timeout(100)
         assert len(calls) >= 2 and "before=oldest" in calls[1]
+        assert page.get_by_role("button", name="Apply filters").count() == 0
+        # A select applies at once; typing applies after a pause; Enter applies now.
         page.locator("#logs-service").select_option("worker")
+        page.wait_for_timeout(150)
+        assert "service=worker" in calls[-1]
         page.locator("#logs-level").select_option("ERROR")
+        page.wait_for_timeout(150)
+        assert "level=ERROR" in calls[-1]
+        count = len(calls)
         page.locator("#logs-search").fill("worker started")
-        page.get_by_role("button", name="Apply filters").click()
-        page.wait_for_timeout(100)
+        page.wait_for_timeout(150)
+        assert len(calls) == count  # still inside the pause
+        page.wait_for_timeout(600)
         assert "service=worker" in calls[-1] and "level=ERROR" in calls[-1] and "q=worker+started" in calls[-1]
         assert "q=worker+started" in page.locator("[data-download]").get_attribute("href")
-        page.locator("#logs-search").fill("unsaved draft")
+        page.locator("#logs-search").fill("enter now")
+        page.locator("#logs-search").press("Enter")
+        page.wait_for_timeout(150)
+        assert "q=enter+now" in calls[-1]
         page.get_by_role("button", name="Refresh").click()
         page.wait_for_timeout(100)
-        assert "q=worker+started" in calls[-1] and "unsaved" not in calls[-1]
+        assert "q=enter+now" in calls[-1]
         assert page.locator(".server-logs").evaluate("el => el.getBoundingClientRect().width") <= 390
     finally:
         context.close()
@@ -128,8 +143,7 @@ def test_expanded_entry_run_details_and_pause_resume(browser):
         page.get_by_role("button", name="Pause live").click()
         assert page.get_by_role("button", name="Resume live").get_attribute("aria-pressed") == "false"
         page.locator("#logs-worker").fill("worker-b")
-        page.get_by_role("button", name="Apply filters").click()
-        assert "worker_id=worker-b" in page.locator("[data-download]").get_attribute("href")
+        page.wait_for_function("document.querySelector('[data-download]').getAttribute('href').includes('worker_id=worker-b')")
         page.get_by_role("button", name="Resume live").click()
     finally:
         context.close()
@@ -158,10 +172,8 @@ def test_delayed_old_filter_response_cannot_replace_newer_results(browser):
           };
         })()""")
         page.locator("#logs-search").fill("old")
-        page.get_by_role("button", name="Apply filters").click()
         page.wait_for_function("typeof window.__releaseOld === 'function'")
         page.locator("#logs-search").fill("new")
-        page.get_by_role("button", name="Apply filters").click()
         page.wait_for_selector("text=fresh response")
         page.evaluate("window.__releaseOld()")
         page.wait_for_timeout(50)
@@ -197,7 +209,6 @@ def test_run_detail_response_is_invalidated_by_filter_change(browser):
         page.get_by_role("button", name="Build details").click()
         page.wait_for_function("typeof window.__releaseRun === 'function'", timeout=3000)
         page.locator("#logs-search").fill("new")
-        page.get_by_role("button", name="Apply filters").click()
         page.get_by_text("filtered entry").wait_for()
         page.evaluate("window.__releaseRun()")
         page.wait_for_timeout(50)

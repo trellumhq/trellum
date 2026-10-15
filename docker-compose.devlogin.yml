@@ -1,0 +1,8 @@
+# Local review overlay -- added by `scripts/demo.sh --dev-login`.
+# Runs only the web process with development settings so the DEBUG-only
+# instant login at /__dev__/login/ exists. Never use this on an instance
+# reachable from the internet: anyone who can open the URL can log in.
+services:
+  web:
+    environment:
+      DJANGO_SETTINGS_MODULE: trellum_portal.settings.dev

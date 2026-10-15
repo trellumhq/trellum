@@ -59,7 +59,7 @@ def test_create_page_picker_and_responsive_themes(login, api_key_user, org, db):
                        Math.abs(r.width - parent.clientWidth + start + end) < 2;
             }""")
 
-            picker = page.locator(".ui-choice-picker")
+            picker = page.locator("main .ui-choice-picker")
             trigger = picker.locator(".ui-picker-trigger")
             trigger.click()
             popup = picker.locator(".ui-picker-popup")

@@ -488,7 +488,12 @@ class TestDataSourceScreen:
         assert ds.credentials == {"user": "svc", "password": "pw"}
         assert ds.last_check_ok is True
         page = client.get(f"{prefix}/settings/datasources").content.decode()
-        assert "connected. 1 waiting report has been queued to build." in page
+        assert "connected." in page
+        assert not report.runs.exists()  # the request itself walks nothing
+        from apps.datasources.unblock import process_next
+
+        while process_next():
+            pass
         assert report.runs.filter(status="queued").exists()
 
     def test_configure_reports_a_failed_test(self, login, org_admin, prefix, studio_tree, monkeypatch):

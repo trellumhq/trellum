@@ -491,7 +491,14 @@
 
         subscribe: function(dsId, id, fn) {
             if (!this._subscribers[dsId]) this._subscribers[dsId] = [];
-            this._subscribers[dsId].push({id: id, fn: fn});
+            var entry = {id: id, fn: fn};
+            this._subscribers[dsId].push(entry);
+            var engine = this;
+            return function() {
+                var rows = engine._subscribers[dsId] || [];
+                var index = rows.indexOf(entry);
+                if (index !== -1) rows.splice(index, 1);
+            };
         },
 
         notify: function(dsId) {

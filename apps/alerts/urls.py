@@ -11,6 +11,8 @@ from apps.alerts import views
 urlpatterns = [
     path("", views.alerts_page, name="studio-alerts"),
     path("/", include([
+        path("report-choices", views.report_choices, name="studio-alert-report-choices"),
+        path("recipient-choices", views.recipient_choices, name="studio-alert-recipient-choices"),
         path("new", views.rule_form, name="studio-alert-new"),
         path("<int:rule_id>", views.rule_detail, name="studio-alert"),
         path("<int:rule_id>/edit", views.rule_form, name="studio-alert-edit"),

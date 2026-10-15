@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}{{ org.slug }} — Operator{% endblock %}
 {% block content %}
 <header class="page-head">
@@ -31,7 +32,10 @@
 instance. Values below are recorded but not applied — set
 <code>TRELLUM_QUOTAS_ENABLED=true</code> to enforce them.</p>
 {% endif %}
-<div class="panel" data-settings-refresh="quota-usage">
+{% comment %}Uploaded files are measured on the coordinator, never while this page
+renders. The page asks for a fresh measurement whenever the last one is five
+minutes old and updates the figure itself.{% endcomment %}
+<div class="panel" data-settings-refresh="quota-usage" data-operator-observation data-observation-kind="upload-usage" data-observation-refresh="300" data-observation-done="· measured" data-observation-busy="· measuring…"{% if usage.storage_observation.completed_at %} data-observation-at="{{ usage.storage_observation.completed_at }}" data-observation-age="{{ usage.storage_observation.age_seconds }}"{% endif %}{% if usage_operation %} data-observation-url="{% url 'operator-org-usage-status' org.slug usage_operation.id %}" data-observation-id="{{ usage_operation.id }}"{% endif %}>
 <table class="ui-table dense">
   <thead><tr><th>Resource</th><th>Used</th><th>Limit</th></tr></thead>
   <tbody>
@@ -43,10 +47,13 @@ instance. Values below are recorded but not applied — set
         <td>{% if usage.max_studios %}{{ usage.max_studios }}{% else %}unlimited{% endif %}</td></tr>
     <tr><td>Reports</td><td>{{ usage.reports }}</td>
         <td>{% if usage.max_reports %}{{ usage.max_reports }}{% else %}unlimited{% endif %}</td></tr>
-    <tr><td>Uploaded files</td><td>{{ usage.storage_mb }} MB</td>
+    <tr><td>Uploaded files</td><td><span data-observation-value>{% if usage.storage_mb is not None %}{{ usage.storage_mb }} MB{% else %}—{% endif %}</span> <span class="muted" data-observation-status>{% if usage.storage_age %}· measured {{ usage.storage_age }}{% else %}· measuring…{% endif %}</span></td>
         <td>{% if usage.max_storage_mb %}{{ usage.max_storage_mb }} MB{% else %}unlimited{% endif %}</td></tr>
   </tbody>
 </table>
+<form method="post" action="{% url 'operator-org-usage-refresh' org.slug %}" data-observation-admission hidden>
+  {% csrf_token %}<input type="hidden" name="request_key" value="{{ usage_nonce }}">
+</form>
 </div>
 
 <form method="post" action="{% url 'operator-org-quota' org.slug %}" class="ui-form-section" data-settings-form data-settings-save>
@@ -118,6 +125,7 @@ instance. Values below are recorded but not applied — set
   {% endfor %}
   </tbody>
 </table>
+{% if studios_more %}<p class="muted" style="margin:8px 0 0">Showing the first {{ studios_more.shown }} of {{ studios_more.total }} studios.</p>{% endif %}
 </div>
 
 <h2>Members</h2>
@@ -142,6 +150,7 @@ instance. Values below are recorded but not applied — set
   {% endfor %}
   </tbody>
 </table>
+{% if members_more %}<p class="muted" style="margin:8px 0 0">Showing the first {{ members_more.shown }} of {{ members_more.total }} members.</p>{% endif %}
 </div>
 
 <h2>Recent runs</h2>
@@ -162,4 +171,6 @@ instance. Values below are recorded but not applied — set
   </tbody>
 </table>
 </div>
+<script src="{% static 'actions.js' %}" defer></script>
+<script src="{% static 'operator-observations.js' %}" defer></script>
 {% endblock %}

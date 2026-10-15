@@ -158,6 +158,7 @@
     <li><code>{{ s.name }}</code> — referenced by {{ s.used_by|join:", " }}</li>
     {% endfor %}
   </ul>
+  {% if unknown_more %}<p class="muted">Showing the first {{ unknown|length }}; more are referenced.</p>{% endif %}
   <p class="muted">Declare these in <code>data-sources/config.yaml</code> and publish, or
     add a portal-only source with the same name.</p>
 </div>

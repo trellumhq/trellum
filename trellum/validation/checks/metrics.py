@@ -112,6 +112,19 @@ def _check_metrics(
 
     # Visibility controls and focused URLs both depend on the metric anchor.
     from trellum.metrics_report import _MetricBlock
+    catalog = getattr(ctx, '_metric_workspace_catalog', None)
+    if catalog is not None:
+        from trellum.metrics_workspace import PAGE_SIZE
+        anchors = [row.get('anchor') for row in catalog]
+        if len(set(anchors)) != len(anchors) or any(not isinstance(anchor, str) or not anchor for anchor in anchors):
+            result.fail('metric-workspace-pages', 'Workspace catalog anchors must be distinct nonempty identities.')
+        for monitored in (True, False):
+            entries = [row for row in catalog if row.get('monitored', True) is monitored]
+            if any(row.get('page') != index // PAGE_SIZE + 1 for index, row in enumerate(entries)):
+                result.fail('metric-workspace-pages', 'Workspace catalog must route every metric to its bounded native page.')
+        blocks = [comp for comp, _ in comps if isinstance(comp, _MetricBlock)]
+        if len(blocks) != sum(row.get('monitored', True) for row in catalog):
+            result.fail('metric-workspace-claims', 'Every monitored catalog metric must retain its complete build-time block and claim.')
     for comp, sec in comps:
         if isinstance(comp, _MetricBlock):
             claims = [claim for child in comp.children for claim in getattr(child, "kpis", [])

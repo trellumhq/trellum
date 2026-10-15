@@ -40,9 +40,83 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   different email** link. SSO enforcement is re-checked on the password step,
   and a POST to `/login` that already carries an email and password still
   signs in in one request.
+- Search now lives in the page it searches. The top bar no longer carries a
+  "Search reports" box on every page, and the phone search button is gone.
+  Reports, Analyses and Operations have their own search field in the folder bar
+  before Sort (the first row on phones), with an "N of M" count and a "Clear
+  search" button when nothing matches. A new search icon in the top bar, with a
+  Ctrl+K badge, opens "Jump to a report": your studio's reports and analyses,
+  filtered as you type, with the arrow keys, Enter to open and Esc to close.
+  Ctrl+K focuses the page's own search field where there is one and opens the
+  jump list everywhere else. Metrics, Report Analytics and category filters now
+  read "Search ...".
+- The annotations calendar reads a large `events.yaml` several times faster.
+- Pickers list every choice with instant search again, with no pages inside a
+  dropdown. Only lists over 500 choices use search-as-you-type with a "keep
+  typing" hint. The sidebar organization and studio switchers and the AI
+  assistant picker are plain lists of links again, and delivery, metric and
+  alert pickers apply as soon as you choose, without Go, Search or Update
+  buttons.
+- The Reports and Analyses catalog reads the registry from the database in
+  bounded slices (`/api/registry?page=`) and renders it with the same controls
+  as before: category tabs, instant search and sorting, cards and list. A
+  studio of any size costs one bounded request per 50 reports; beyond 500
+  reports the catalog offers "Show more" and searches on the server.
+- Experiments and Report Analytics show every row on one page again, with the
+  same controls as before: status pills, an instant filter box, click-to-sort
+  headers and no Search or Apply buttons. Only a studio far beyond a realistic
+  size (200 experiments or reports) pages, with the shared pager, and searches
+  on the server after a short pause.
+- Agent guide: the portal is JavaScript-first; pages, filters and pickers no
+  longer need a separate no-JavaScript mode.
+- Agent guide: performance work must keep the existing user experience
+  (no paginated dropdowns, no manual retry/apply steps, reachable navigation).
+- Phone layout of console-hosted reports: the report header is one compact row
+  (freshness left, labelled Options and Monitor right), annotation chips scroll
+  on one row, and the shell header buttons share one neutral bordered style.
+- `scripts/demo.sh --dev-login` prints one-click admin, member and viewer
+  login links for local review, and seeds fixtures as the invoking user on Linux.
+- Document required portal performance patterns in `docs/performance-patterns.md`
+  with a new-feature checklist,
+  and track a tool-neutral `AGENTS.md` agent guide.
 
 ### Fixed
 
+- The console top bar no longer jumps while a page loads. The AI assistant has
+  one slot, in the same place on every page, and its space is reserved from
+  the first paint, so the health warning, search box and Docs link stop shifting
+  when the assistant finishes loading. The assistant button, its unavailable
+  entry and the organization picker now share one look.
+- Metrics charts and sparklines no longer disappear when the worker has not
+  re-observed a report for five minutes. The idle re-check interval is capped
+  inside that window, chart availability no longer waits on observation
+  freshness, and the Metrics page fills in usage and charts by itself (with
+  quiet retries) instead of offering a "Retry report usage" button. The
+  Metrics overview is one grid with a browser-side filter, as before.
+- Background reconciliation of report sources confirms an unchanged report from
+  a file stamp (or the object ETag on remote storage) instead of re-reading its
+  metadata, so an idle catalog costs almost nothing and charts stay current.
+- The Metrics comparison workspace retries a failed load by itself and shows no
+  pager when all metrics fit on one page.
+- List search boxes (members, groups, studios, invitations, data sources) and
+  the Server logs filters apply by themselves: selects at once, typing after a
+  short pause. The Search and Apply filters buttons are gone.
+- Opening the live log of a build that has just been requested shows an empty
+  "waiting" state instead of a 404.
+- Operators get an "Operator console" entry in the shell sidebar.
+- The System health page and an organization's uploaded-file usage measure on
+  the coordinator by themselves, only while the page is open: the page asks for
+  a fresh measurement about every minute (five for uploads), shows "Checked 2
+  minutes ago", and has no refresh buttons. Without a usable coordinator
+  measurement, System health runs its checks in the request as before. The
+  header health alert is unchanged: quick local checks, no sandbox check. The
+  thirty-second gap between measurements applies per kind, the pages check
+  before posting so waiting never logs an error, and an incomplete uploaded-files
+  measurement shows as "measuring…" instead of a total. The operator Fleet, Organizations and organization pages
+  match their earlier layout again.
+- The Operations page lists every report in one capped read with no pager, the
+  Uptime tile and the earlier state chips and filters; Reload Registry keeps its
+  Scheduled and result feedback. The no-JavaScript Operations page is removed.
 - Keep the nightly retention cleanup and the daily release check scheduled on
   the coordinator. The schedule sync removed both right after start, so
   cleanup never ran and `manage.py doctor` failed its retention check.

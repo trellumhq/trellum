@@ -417,3 +417,43 @@ class TestOrgKeysPage:
         org.refresh_from_db()
         assert org.api_keys_enabled
         assert Client().get(f"{prefix}/api/registry", **bearer(secret)).status_code == 200
+
+
+def test_key_and_session_lists_show_every_row_without_a_pager(login, developer, org_admin, org):
+    from django.utils import timezone
+
+    from apps.accounts.models import UserSession
+
+    for i in range(27):
+        mint(developer, org, name=f"k{i}")
+    client = login(developer)
+    for i in range(27):
+        UserSession.objects.create(user=developer, session_key=f"extra-session-{i:02d}", last_seen=timezone.now())
+    response = client.get("/me/api-keys")
+    assert len(response.context["keys"]) == 27
+    assert "page" not in response.context
+    assert b"Previous" not in response.content and b"Next" not in response.content
+    response = login(org_admin).get(f"/orgs/{org.slug}/settings/api-keys")
+    assert len(response.context["keys"]) == 27
+    assert "page" not in response.context
+    assert b"Previous" not in response.content and b"Next" not in response.content
+    client = login(developer)
+    account = client.get("/account")
+    assert len(account.context["sessions"]) >= 27
+    assert "page" not in account.context
+    assert b"Sign out every other session" in account.content
+    assert b"Previous" not in account.content
+
+
+def test_key_and_session_tables_have_an_invisible_cap(login, developer, org, monkeypatch):
+    from django.utils import timezone
+
+    from apps.accounts.models import UserSession
+
+    monkeypatch.setattr("apps.accounts.views._LIST_CAP", 3)
+    for i in range(5):
+        mint(developer, org, name=f"k{i}")
+        UserSession.objects.create(user=developer, session_key=f"capped-session-{i}", last_seen=timezone.now())
+    client = login(developer)
+    assert len(client.get("/me/api-keys").context["keys"]) == 3
+    assert len(client.get("/account").context["sessions"]) == 3

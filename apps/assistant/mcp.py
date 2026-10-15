@@ -107,16 +107,18 @@ def _call(request, toolbox: AssistantToolbox, name: str, args: dict) -> dict:
             return _text("Error: write scope required -- this API key is read-only.", True)
         return _text(f"Error: '{name}' is not available to you in this studio.", True)
 
-    report_scope = request.org_roles.report_scope_for(request.studio)
-    if report_scope is not None:
+    if not request.org_roles.has_full_studio_visibility(request.studio):
         reason = selected_report_access_block_reason()
         if reason:
             return _text(f"Error: selected report access is unavailable: {reason}.", True)
 
+        from apps.core.report_access import raw_scope_reports
         from apps.reports.models import Report
 
-        reports = Report.objects.filter(
-            studio=request.studio, present_in_scan=True, pk__in=report_scope
+        reports = raw_scope_reports(
+            request.user,
+            Report.objects.filter(studio=request.studio, present_in_scan=True),
+            request=request,
         ).order_by("name", "slug")
         if name == "list_alerts":
             result = toolbox._list_alerts(args)

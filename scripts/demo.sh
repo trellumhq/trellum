@@ -8,6 +8,8 @@
 #
 #   ./scripts/demo.sh          bring it up and seed it
 #   ./scripts/demo.sh --down   throw it all away again
+#   ./scripts/demo.sh --dev-login   also print one-click admin/member/viewer
+#                                   login links (local review only)
 #
 # Not for production. It generates throwaway secrets and a known password,
 # and says so on the way past. The real install path is in the docs.
@@ -40,7 +42,12 @@ say()  { printf '\n\033[1;36m==>\033[0m \033[1m%s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33m !  %s\033[0m\n' "$*"; }
 die()  { printf '\n\033[1;31mERROR:\033[0m %s\n\n' "$*" >&2; exit 1; }
 
-compose() { docker compose -p "$PROJECT" -f docker-compose.yml -f docker-compose.demo.yml "$@"; }
+DEV_LOGIN="${TRELLUM_DEV_LOGIN:-0}"
+for arg in "$@"; do [ "$arg" = "--dev-login" ] && DEV_LOGIN=1; done
+COMPOSE_FILES=(-f docker-compose.yml -f docker-compose.demo.yml)
+if [ "$DEV_LOGIN" = "1" ]; then COMPOSE_FILES+=(-f docker-compose.devlogin.yml); fi
+
+compose() { docker compose -p "$PROJECT" "${COMPOSE_FILES[@]}" "$@"; }
 
 # ── teardown ────────────────────────────────────────────────────────────────
 if [ "${1:-}" = "--down" ]; then
@@ -184,9 +191,14 @@ HOST_DEMO="$(pwd)/trellum/demo"
 if command -v cygpath >/dev/null 2>&1; then
   HOST_DEMO="$(cygpath -w "$HOST_DEMO")"
 fi
+# On Linux the container user cannot write into the bind-mounted checkout, so
+# the fixture generator runs as the invoking user.
+SEED_USER=()
+if [ "$(uname -s)" = "Linux" ]; then SEED_USER=(--user "$(id -u):$(id -g)" -e HOME=/tmp); fi
 seed() { MSYS_NO_PATHCONV=1 compose run --rm -v "${HOST_DEMO}:/seed" -T web "$@"; }
+seed_as_user() { MSYS_NO_PATHCONV=1 compose run --rm "${SEED_USER[@]}" -v "${HOST_DEMO}:/seed" -T web "$@"; }
 
-seed python /seed/tools/make_fixtures.py --small
+seed_as_user python /seed/tools/make_fixtures.py --small
 seed python manage.py import_project "${ORG_SLUG}/${STUDIO_SLUG}" /seed
 
 say "Queueing a build for every imported report"
@@ -217,6 +229,14 @@ $(printf '\033[1;32m')Trellum is running.$(printf '\033[0m')
     email     ${EMAIL}
     password  ${PASSWORD}
 
+$(if [ "$DEV_LOGIN" = "1" ]; then
+  BASE="$(grep -E '^PORTAL_BASE_URL=' "$ENV_FILE" | cut -d= -f2-)"
+  BASE="${BASE:-http://localhost:${PORT}}"
+  printf 'Instant login (local review only, never expose to the internet):\n\n'
+  printf '    admin     %s/dev-login/?as=superuser\n' "$BASE"
+  printf '    member    %s/dev-login/?as=developer:%s/%s\n' "$BASE" "$ORG_SLUG" "$STUDIO_SLUG"
+  printf '    viewer    %s/dev-login/?as=viewer:%s/%s\n\n' "$BASE" "$ORG_SLUG" "$STUDIO_SLUG"
+fi)
 This demo uses the same product features as a self-hosted installation.
 
     logs      docker compose -p $PROJECT logs -f web worker

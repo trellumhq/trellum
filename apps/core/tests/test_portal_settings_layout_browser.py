@@ -31,11 +31,13 @@ def _assert_layout(page, page_name, html, width, theme):
         assert page.locator(".recipient-picker").count() == 1
         assert page.locator("[data-recipient-picker] input[type=checkbox]").count() == 1
         assert page.locator(".recipient-picker .ui-picker-trigger").is_enabled()
-        assert not page.locator(".recipient-picker-fallback").is_visible()
+        # The picker keeps its original checkboxes, hidden.
+        assert all(not fallback.is_visible() for fallback in page.locator(".recipient-picker-fallback").all())
     if page_name in {"sso", "invites", "group-access"}:
         assert page.locator(".recipient-picker").count() == 1, page_name
     if page_name in {"audit", "group-effective"}:
-        assert page.locator(".ui-choice-picker").count() == 1, page_name
+        # The console shell carries its own scope pickers; count only the page's.
+        assert page.locator("main .ui-choice-picker").count() == 1, page_name
     # The normal theme boot may apply an OS/default preference after parsing.
     # Pin both console and document themes for each explicit visual scenario.
     page.evaluate("""theme => {

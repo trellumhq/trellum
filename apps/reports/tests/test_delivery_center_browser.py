@@ -66,8 +66,10 @@ def test_list_add_edit_and_cancel_use_dedicated_pages(delivery_browser):
     assert page.locator('[data-schedule-editor]').count() == 0
     page.get_by_role('link', name='Add delivery', exact=True).click()
     expect(page.locator('#delivery-report')).to_be_visible()
+    # Choosing the report goes straight to its form: no Continue button.
+    assert page.get_by_role('button', name='Continue', exact=True).count() == 0
+    page.add_script_tag(content=(ROOT / 'static/auto-filter.js').read_text(encoding='utf-8'))
     page.locator('#delivery-report').select_option(index=1)
-    page.get_by_role('button', name='Continue', exact=True).click()
     expect(page.locator('#delivery-schedule-form')).to_be_visible()
     page.get_by_role('link', name='Cancel', exact=True).click()
     expect(page).to_have_url('https://example.test' + listing)
@@ -154,6 +156,8 @@ def test_delivery_recipient_picker_supports_multiple_search_chips_and_keyboard(d
     page.add_style_tag(content=(ROOT / 'static/ui.css').read_text(encoding='utf-8'))
     page.add_style_tag(content=(ROOT / 'static/choice-picker.css').read_text(encoding='utf-8'))
     page.add_style_tag(content=(ROOT / 'static/recipient-picker.css').read_text(encoding='utf-8'))
+    # People the form already lists server-side (the picker shows these too).
+    listed = page.locator('[data-recipient-picker] [data-recipient-type="people"] label').count()
     page.evaluate('''() => {
       const field = document.querySelector('[data-recipient-picker]');
       const list = field.querySelector('[data-recipient-type="people"]');
@@ -175,7 +179,7 @@ def test_delivery_recipient_picker_supports_multiple_search_chips_and_keyboard(d
     field.locator('.ui-picker-trigger').click()
     search.focus()
     expect(popup).to_be_visible()
-    assert len(results.locator('label:visible').all()) == 103
+    assert len(results.locator('label:visible').all()) == 103 + listed
     assert results.evaluate('(el) => el.scrollHeight > el.clientHeight')
     search.fill('Person 99')
     assert len(results.locator('label:visible').all()) == 1

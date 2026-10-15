@@ -142,3 +142,127 @@ A failed form submission must preserve recipient selections, timezone and local
 time values. Inline errors remain visible even if dropdown options are closed
 or filtered. Newly suggested browser timezones must not replace stored values
 on edits or submitted values on validation rerenders.
+
+## Console navigation adapters
+
+`apps.core.navigation.render_navigation(request, template, context,
+controller=..., title=...)` opts an authorized GET page into the fragment
+contract. Native entry renders its normal document. Requests carrying
+`X-Trellum-Navigation: 1` receive version 1 JSON with `controller`, `title`,
+`url` and `html`; the HTML comes from the same template's content block.
+Responses vary on that header and fragments use private, no-store caching.
+The helper does not authorize a request or bypass middleware.
+
+`TrellumNavigation.register(name, {mount(context)})` registers a known static
+controller. `context` contains the page `root`, an abort `signal` and its `url`.
+`mount` returns a cleanup function or `{unmount, ready}`. Register event
+listeners with the signal; cleanup must disconnect observers, cancel timers,
+stop frames and remove overlays. `ready` resolves when primary layout supports
+history scroll restoration. Do not wait for optional secondary requests.
+Fetched script elements, inline event handlers and JavaScript URLs are removed;
+their code is never evaluated. Load
+controller assets through explicit static template includes or an allowlist.
+
+The initial enhanced cohort is Metrics Overview and Comparison within the
+same studio, departing from an adapted Metrics page. It updates the URL,
+heading, sidebar selection and loading state after the shared leave guard,
+then rejects aborted or superseded replies. New destinations focus their
+heading; Back and Forward restore position after the controller is ready.
+Canceling a dirty Back traversal reverses that traversal without discarding
+Forward history. Report hosts keep their existing history owner.
+
+Other pages remain native until they have explicit lifecycle adapters.
+Sidebar native navigation displays its destination heading and pending state;
+the document URL commits with the browser's response. Cancel loading or Escape
+stops the native request and restores the old page, focus and scroll. After
+15 seconds, an unfinished native request restores the page with retry feedback;
+it does not replay the request. This is a foundation,
+not complete enhancement of the catalog, settings or report hosts. Modifier
+clicks, new tabs, same-page hashes, downloads and authentication retain native
+semantics. A failed enhanced request offers direct entry and does not silently
+execute a login document or claim content is empty.
+
+The shared leave guard inspects every tracked dirty or saving form, including
+sidebar departures. Cancel retains drafts. Accepted departure invalidates
+summary reads and detached save callbacks; it does not replay or pretend to
+cancel a server write. A pending write becomes an unknown outcome with usable
+controls if the old document returns from browser cache. Check persistence
+before retrying. Native tab closing/reloading also uses the browser's draft
+warning when supported. An accepted native submit guards neighboring drafts,
+excludes its own submitted draft from discard confirmation and suppresses the
+redundant unload warning; canceled form confirmations still send no request.
+
+## Opt-in action observations
+
+`apps.core.actions.action_payload` builds a version 1 `action` observation with
+an immutable operation `id`, `state` (`accepted`, `running`, `succeeded`,
+`failed`, or `unconfirmed`), sanitized `message`, optional tested `revision`,
+and optional root-relative `status_url`. It does not admit work or authorize
+status lookup. Each operation retains its existing worker, permissions and
+persistence. Ordinary settings saves keep their existing response contract.
+Provider acceptance is a separate delivery outcome; it does not prove delivery.
+Browser cancellation or timeout does not cancel server mutations or replay them.
+
+`static/actions.js` exposes `TrellumActions.statusURL(value)` to validate
+same-origin lookup URLs and `createPoller({read, onStatus, onError, isTerminal,
+isCurrent, signal, intervalMs, maxIntervalMs, timeoutMs})`. The returned poller
+has `start`, `refresh`, `pause`, `resume` and permanent `stop` methods. It is
+opt-in; loading it binds no forms, page events or visibility listeners. Callers
+pause hidden surfaces, stop on departure, and resume with current operation
+identity after history restoration. An external abort permanently stops it.
+
+The `read({signal, isCurrent, statusURL})` callback must await response bodies
+and all dependent reads, reject malformed or unsuccessful responses, and
+perform no DOM commits. `onStatus` receives only a current observation.
+For Operations, await authorized Git status and any dependent publish history
+and registry reads in that same lifecycle; preserve their existing shapes.
+Repository flags alone do not establish success. The caller supplies
+`isTerminal(result)` using authoritative domain evidence. Without it, polling
+continues. A refresh during a read coalesces one follow-up. Read failures use
+bounded backoff; timeout leaves the outcome unconfirmed and permits explicit
+refresh while ignoring late results. These retries apply only to reads.
+
+Validate status URLs before fetching them and check the current actor's access
+on every server lookup, including revocation. Keep credentials and provider
+exception text out of observations. Verify delayed bodies, dependent reads,
+obsolete responses, timeout recovery, cleanup and native fallback before
+adopting the helper in a route. Helper protocol tests alone do not verify an
+operation's persistence, worker restart or portal performance.
+
+Propagate the supplied signal to every dependent fetch. Timeout and pause may
+detach a reader that ignores cancellation: the helper guarantees one current
+observation and guarded commit, not physical cancellation or bounded underlying
+server concurrency for such readers. A newer action or configuration requires
+explicit invalidation through pause/resume or replacing the poller, together
+with the current identity predicate; `refresh` alone coalesces reads. Lifecycle
+callback exceptions stop polling safely; read failures retain bounded backoff.
+
+## Long choice lists
+
+Pickers never show pages. Render every choice inline, up to
+`INLINE_CHOICE_LIMIT` (500, `apps/core/choice_requests.py`), and the browser
+filters them instantly. Use `inline_choices(rows)`: it returns the rows and a
+`searchable` flag. Only when more than 500 choices exist does the page render a
+short preview and set a same-origin source (`data-choice-source` on a single
+select, `data-recipient-source` on the checkbox picker, `data-scope-source` on
+the shell switchers). Typing then asks that source for one bounded set of
+matches; the popup says "Keep typing to narrow the list" when more exist. A
+failed search retries once without a button, then shows a plain message; it
+never clears a selection.
+
+For the checkbox picker, `data-recipient-mode="choices"` accepts one collection
+with `data-recipient-name` set to the checkbox field name. The GET sends `q`,
+`page=1` and repeated `selected` values and returns `results` (at most 25
+`{value, label}` objects), `selected` (every authorized selected object) and
+`pagination`; only `has_next` is read, to show the hint. Preserve unavailable
+selections with `data-unavailable-label`.
+
+When the encoded choice URL exceeds 3,000 bytes, the shared picker uses a
+read-only JSON POST to the same endpoint, with `X-CSRFToken` from its native
+form. Endpoints accept only known parameters and enforce their usual
+permissions, CSRF and body limits. Choice reads do not save, send or audit
+changes.
+
+Forms and filters that mark `data-auto-filter` (`static/auto-filter.js`) apply
+immediately: selects and pickers on change, text boxes after a 400 ms pause or
+Enter. They carry no Apply, Go or Search button.

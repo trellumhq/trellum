@@ -26,8 +26,8 @@ Light/Dark/Auto preference. Named report themes apply inside reports only.{% end
 </head>
 <body class="mgmt tl-console-page console-dashboard{% if console_page_title %} tl-console-title-known{% endif %}">
 
-{% comment %}One utility header. The dashboard search lives in the shared
-shell; the visible page title and category controls belong to this page.{% endcomment %}
+{% comment %}One utility header. The catalog search field sits in the folder bar below
+(#searchInput); the visible page title and category controls belong to this page.{% endcomment %}
 {% include "_shell.html" with dashboard_shell=1 %}
 
 <div data-console-catalog data-console-inert>
@@ -38,6 +38,7 @@ shell; the visible page title and category controls belong to this page.{% endco
 <div class="folder-bar">
   <div class="folder-rail">
     <div class="folder-inner" id="folderTabs"></div>
+    <label class="catalog-search"><span class="sr-only">Search {{ console_page_title|lower }}</span><input type="search" class="ui-input catalog-search-input" id="searchInput" data-page-search placeholder="Search {{ console_page_title|lower }}…" aria-label="Search {{ console_page_title|lower }}" autocomplete="off" spellcheck="false"><span class="catalog-search-count" id="catalogSearchCount" aria-live="polite" hidden></span></label>
     <div class="catalog-toolbar" id="catalogToolbar"></div>
   </div>
 </div>
@@ -98,6 +99,7 @@ shell; the visible page title and category controls belong to this page.{% endco
 {# Same file the report pages load (see apps.reports.views.delivery_widget_js) — one implementation behind window.PORTAL_CTX, not a parallel widget. #}
 <script src="{% static 'report_delivery.js' %}"></script>
 <script src="{% static 'choice-picker.js' %}"></script>
+<script src="{% static 'operations.js' %}"></script>
 <script src="{% static 'portal.js' %}"></script>
 <script src="{% static 'console-shell.js' %}"></script>
 <script src="{% static 'console-report-host.js' %}"></script>

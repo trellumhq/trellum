@@ -1,0 +1,125 @@
+"""Shared remote picker lifecycle; live persistence is covered separately."""
+from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
+import pytest
+from playwright.sync_api import expect, sync_playwright
+
+ROOT = Path(__file__).resolve().parents[3]
+
+
+@pytest.fixture(params=['chromium', 'webkit'])
+def remote_picker(request):
+    with sync_playwright() as playwright:
+        browser = getattr(playwright, request.param).launch(headless=True)
+        page = browser.new_page(viewport={'width': 390, 'height': 844})
+        behavior = {'fail': False, 'hold': False, 'held': [], 'requests': []}
+        page.route('http://test.local/', lambda route: route.fulfill(content_type='text/html', body='''<form><label>Report<select name="report" data-choice-picker data-picker-label="Report" data-choice-source="/api/choices"><option value="">All reports</option><option value="99" selected>Saved selection</option><option value="1">Inline 1</option><option value="2">Inline 2</option></select></label></form>'''))
+        def choices(route):
+            params = parse_qs(urlsplit(route.request.url).query)
+            behavior['requests'].append(params)
+            if behavior['hold']:
+                behavior['held'].append(route)
+                return
+            if behavior['fail']:
+                route.fulfill(status=503, json={})
+                return
+            number = int(params.get('page', ['1'])[0])
+            value = params.get('q', [''])[0] or str(number)
+            route.fulfill(json={'results': [{'value': value, 'label': 'Choice ' + value}],
+                'selected': {'value': '99', 'label': 'Saved selection'},
+                'pagination': {'page': number, 'total': 50, 'has_previous': number > 1, 'has_next': number < 2}})
+        page.route('**/api/choices?*', choices)
+        page.goto('http://test.local/')
+        page.add_style_tag(content=(ROOT / 'static/choice-picker.css').read_text())
+        page.add_script_tag(content=(ROOT / 'static/choice-picker.js').read_text())
+        page.evaluate("window.draftChanges=0;document.querySelector('form').addEventListener('change',()=>window.draftChanges++)")
+        yield page, behavior
+        browser.close()
+
+
+def test_inline_choices_first_then_search_as_you_type_without_paging(remote_picker):
+    page, behavior = remote_picker
+    trigger = page.locator('.ui-picker-trigger')
+    trigger.click()
+    # The preview is already there: no request, no pager, no Previous/Next.
+    expect(page.get_by_role('button', name='Inline 1', exact=True)).to_be_visible()
+    expect(page.locator('.ui-picker-message')).to_contain_text('Keep typing')
+    assert not behavior['requests']
+    assert page.get_by_role('button', name='Next', exact=True).count() == 0
+    assert page.get_by_role('button', name='Previous', exact=True).count() == 0
+    assert page.locator('.ui-picker-pager').count() == 0
+    page.locator('.ui-picker-search').fill('fresh')
+    expect(page.get_by_role('button', name='Choice fresh', exact=True)).to_be_visible()
+    assert behavior['requests'][-1]['q'] == ['fresh'] and behavior['requests'][-1]['page'] == ['1']
+    assert page.locator('[name=report]').input_value() == '99'
+    page.locator('.ui-picker-search').fill('')
+    expect(page.get_by_role('button', name='Inline 1', exact=True)).to_be_visible()
+    page.keyboard.press('Escape')
+    expect(trigger).to_be_focused()
+    expect(page.locator('.ui-picker-popup')).to_be_hidden()
+    assert page.evaluate('window.draftChanges') == 0
+    trigger.click()
+    page.get_by_role('button', name='Inline 1', exact=True).click()
+    assert page.locator('[name=report]').input_value() == '1'
+    assert page.evaluate('window.draftChanges') == 1
+    expect(trigger).to_be_focused()
+
+
+def test_failed_search_retries_quietly_and_never_asks_for_a_button(remote_picker):
+    page, behavior = remote_picker
+    page.locator('.ui-picker-trigger').click()
+    behavior['fail'] = True
+    page.locator('.ui-picker-search').fill('again')
+    expect(page.locator('.ui-picker-message')).to_contain_text('Searching')
+    behavior['fail'] = False
+    # The single quiet retry succeeds without any visible control.
+    expect(page.get_by_role('button', name='Choice again', exact=True)).to_be_visible(timeout=5000)
+    assert page.get_by_role('button', name='Retry', exact=True).count() == 0
+    behavior['fail'] = True
+    page.locator('.ui-picker-search').fill('down')
+    expect(page.locator('.ui-picker-message')).to_contain_text('Keep typing to try again', timeout=8000)
+    assert page.get_by_role('button', name='Retry', exact=True).count() == 0
+    assert page.locator('[name=report]').input_value() == '99'
+
+
+def test_timeout_and_removed_picker_reject_pending_work(remote_picker):
+    page, behavior = remote_picker
+    page.clock.install()
+    behavior['hold'] = True
+    page.locator('.ui-picker-trigger').click()
+    page.locator('.ui-picker-search').fill('slow')
+    page.clock.fast_forward(200)
+    page.wait_for_timeout(100)
+    page.clock.fast_forward(15001)
+    page.clock.fast_forward(1300)
+    page.wait_for_timeout(100)
+    page.clock.fast_forward(15001)
+    expect(page.locator('.ui-picker-message')).to_contain_text('Keep typing to try again')
+    assert page.locator('[name=report]').input_value() == '99'
+    behavior['hold'] = False
+    page.locator('.ui-picker-search').fill('fresh')
+    page.clock.fast_forward(200)
+    expect(page.get_by_role('button', name='Choice fresh', exact=True)).to_be_visible()
+    for route in behavior['held']:
+        try:
+            route.fulfill(json={'results': [{'value': 'stale', 'label': 'Stale'}], 'pagination': {'page': 1, 'total': 1}})
+        except Exception:
+            pass  # Browser aborted the old read; it cannot update the picker.
+    assert page.get_by_role('button', name='Stale', exact=True).count() == 0
+    behavior['hold'] = True
+    page.locator('.ui-picker-search').fill('pending')
+    page.clock.fast_forward(200)
+    page.evaluate("document.querySelector('.ui-choice-picker').remove()")
+    page.wait_for_timeout(100)
+    assert page.locator('.ui-picker-popup:popover-open').count() == 0
+    assert page.evaluate('window.draftChanges') == 0
+
+
+def test_remote_picker_stays_inside_scaled_viewport(remote_picker):
+    page, behavior = remote_picker
+    page.locator('.ui-picker-trigger').click()
+    expect(page.get_by_role('button', name='Inline 1', exact=True)).to_be_visible()
+    page.evaluate("document.documentElement.style.zoom='2';window.dispatchEvent(new Event('resize'))")
+    bounds = page.locator('.ui-picker-popup').bounding_box()
+    assert bounds['x'] >= 0 and bounds['x'] + bounds['width'] <= 391
+    assert bounds['y'] >= 0 and bounds['y'] + bounds['height'] <= 845

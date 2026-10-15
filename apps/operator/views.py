@@ -10,6 +10,7 @@ from __future__ import annotations
 from django.conf import settings
 from django.contrib import messages
 from django.db.models import Count, Q
+from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
@@ -18,8 +19,9 @@ from apps.core import impersonation
 from apps.core.audit import audit
 from apps.core.form_responses import is_settings_request, settings_error, settings_success
 from apps.core.permissions import require_operator
-from apps.orgs import quotas as quota_service
+from apps.operator import bounded
 from apps.orgs.models import Organization, OrgMembership, OrgQuota
+from apps.reports.models import Report
 from apps.runner.models import Run, WorkerHeartbeat
 from apps.studios.models import POOL_CHOICES, Studio
 
@@ -33,7 +35,12 @@ def _shell(extra: dict) -> dict:
 @require_operator
 def fleet(request):
     """Instance-wide health: workers, queue depth, recent failures."""
-    workers = list(WorkerHeartbeat.alive().order_by("role", "worker_id"))
+    workers, workers_more = bounded.capped(
+        WorkerHeartbeat.alive()
+        .only("id", "worker_id", "role", "running_count", "max_concurrent",
+              "memory_budget_mb", "reserved_memory_mb", "last_beat_at")
+        .order_by("role", "worker_id", "pk")
+    )
     queue = Run.objects.filter(status=Run.QUEUED).count()
     running = Run.objects.filter(status__in=(Run.STARTING, Run.RUNNING)).count()
 
@@ -48,12 +55,16 @@ def fleet(request):
             status__in=(Run.ERROR, Run.OOM_KILLED, Run.TIMEOUT), created_at__gte=since
         )
         .select_related("studio", "studio__org")
-        .order_by("-created_at")[:20]
+        .only("id", "created_at", "slug", "status", "peak_memory_mb",
+              "studio__id", "studio__slug", "studio__org__id", "studio__org__slug")
+        .order_by("-created_at", "-pk")[:20]
     )
     heaviest = (
         Run.objects.filter(peak_memory_mb__isnull=False, created_at__gte=since)
         .select_related("studio", "studio__org")
-        .order_by("-peak_memory_mb")[:10]
+        .only("id", "slug", "memory_limit_mb", "peak_memory_mb",
+              "studio__id", "studio__slug", "studio__org__id", "studio__org__slug")
+        .order_by("-peak_memory_mb", "-pk")[:10]
     )
 
     return render(
@@ -62,6 +73,7 @@ def fleet(request):
         _shell(
             {
                 "workers": workers,
+                "workers_more": workers_more,
                 "queue_depth": queue,
                 "running": running,
                 "by_status": by_status,
@@ -75,40 +87,50 @@ def fleet(request):
 @require_operator
 def orgs(request):
     """Every organization, with the numbers that matter for support."""
-    rows = (
-        Organization.objects.annotate(
-            studio_count=Count("studios", distinct=True),
-            member_count=Count("memberships", distinct=True),
-        )
-        .order_by("slug")
-        .prefetch_related("quota")
+    rows, more = bounded.capped(
+        Organization.objects.only("id", "slug", "name", "is_active").order_by("slug", "pk")
     )
+    ids = [org.pk for org in rows]
+    studio_counts = dict(Studio.objects.filter(org_id__in=ids)
+                         .values("org_id").annotate(n=Count("pk")).values_list("org_id", "n"))
+    member_counts = dict(OrgMembership.objects.filter(org_id__in=ids)
+                         .values("org_id").annotate(n=Count("pk")).values_list("org_id", "n"))
     active = {
         row["studio__org_id"]: row["n"]
-        for row in Run.objects.filter(status__in=(Run.STARTING, Run.RUNNING))
+        for row in Run.objects.filter(studio__org_id__in=ids, status__in=(Run.STARTING, Run.RUNNING))
         .values("studio__org_id")
         .annotate(n=Count("id"))
     }
     for org in rows:
+        org.studio_count = studio_counts.get(org.pk, 0)
+        org.member_count = member_counts.get(org.pk, 0)
         org.active_runs = active.get(org.pk, 0)
-    return render(request, "operator/orgs.html", _shell({"orgs": rows}))
+    return render(request, "operator/orgs.html", _shell({"orgs": rows, "orgs_more": more}))
 
 
 @require_operator
 def org_detail(request, org_slug):
     org = get_object_or_404(Organization, slug=org_slug)
-    studios = Studio.objects.filter(org=org).annotate(
-        report_count=Count("reports", filter=Q(reports__present_in_scan=True))
+    from apps.core import operator_observations as observations
+    studios, studios_more = bounded.capped(
+        Studio.objects.filter(org=org).only("id", "slug", "name", "pool").order_by("slug", "pk")
     )
-    members = (
+    report_counts = dict(Report.objects.filter(studio_id__in=[studio.pk for studio in studios], present_in_scan=True)
+                         .values("studio_id").annotate(n=Count("pk")).values_list("studio_id", "n"))
+    for studio in studios:
+        studio.report_count = report_counts.get(studio.pk, 0)
+    members, members_more = bounded.capped(
         OrgMembership.objects.filter(org=org)
         .select_related("user")
-        .order_by("user__email")
+        .only("id", "user_id", "role", "user__id", "user__email",
+              "user__is_operator_flag", "user__is_superuser")
+        .order_by("user__email", "pk")
     )
     recent = (
         Run.objects.filter(studio__org=org)
         .select_related("studio")
-        .order_by("-created_at")[:20]
+        .only("id", "created_at", "slug", "status", "peak_memory_mb", "studio__id", "studio__slug")
+        .order_by("-created_at", "-pk")[:20]
     )
     quota = OrgQuota.objects.filter(org=org).first()
     quota_fields = (
@@ -133,9 +155,13 @@ def org_detail(request, org_slug):
             {
                 "org": org,
                 "studios": studios,
+                "studios_more": studios_more,
                 "members": members,
+                "members_more": members_more,
                 "recent_runs": recent,
-                "usage": quota_service.usage_state(org),
+                "usage": bounded.usage(org),
+                "usage_nonce": observations.nonce(request.user.pk, "upload-usage", org.pk),
+                "usage_operation": observations.current_operation("upload-usage", org.pk),
                 "quota": quota,
                 "quota_values": quota_values,
                 "quota_errors": getattr(request, "quota_errors", {}),
@@ -145,6 +171,65 @@ def org_detail(request, org_slug):
             }
         ),
     )
+
+
+def _usage_status_url(org):
+    from django.urls import reverse
+
+    return lambda operation_id: reverse("operator-org-usage-status", args=[org.slug, operation_id])
+
+
+@require_operator
+def org_usage_refresh(request, org_slug):
+    """Admit one uploaded-files measurement; the org page asks (GET) and posts by itself."""
+    from django.db import transaction
+    from django.http import Http404, HttpResponseNotAllowed, JsonResponse
+    from apps.core import operator_observations as observations
+    if impersonation.is_impersonating(request):
+        raise Http404
+    if request.method not in ("GET", "POST"):
+        return HttpResponseNotAllowed(["GET", "POST"])
+    org = get_object_or_404(Organization, slug=org_slug)
+    status_url = _usage_status_url(org)
+    if request.method == "GET":
+        response = JsonResponse(observations.preflight(request.user.pk, "upload-usage", status_url, org_id=org.pk))
+        response["Cache-Control"] = "no-store"
+        return response
+    try:
+        with transaction.atomic():
+            entry, created = observations.admit(request.user.pk, "upload-usage", request.POST.get("request_key", ""), org_id=org.pk)
+            if created:
+                audit(request, "operator.usage.refresh", org=org, operation_id=entry["id"])
+    except observations.ObservationError as exc:
+        response = JsonResponse(observations.refusal(exc, request.user.pk, "upload-usage", status_url, org_id=org.pk), status=exc.status)
+        response["Cache-Control"] = "no-store"
+        return response
+    response = JsonResponse({"ok": True, **observations.envelope(entry, status_url(entry["id"]))}, status=202 if created else 200)
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+@require_operator
+def org_usage_status(request, org_slug, operation_id):
+    from django.http import Http404, HttpResponseNotAllowed, JsonResponse
+    from apps.core import operator_observations as observations
+    if impersonation.is_impersonating(request):
+        raise Http404
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET"])
+    org = get_object_or_404(Organization, slug=org_slug)
+    status_url = _usage_status_url(org)
+    try:
+        entry = observations.observation(operation_id, kind="upload-usage", org_id=org.pk)
+    except observations.ObservationError as exc:
+        response = JsonResponse(observations.refusal(exc, request.user.pk, "upload-usage", status_url, org_id=org.pk), status=exc.status)
+        response["Cache-Control"] = "no-store"
+        return response
+    response = JsonResponse({**observations.envelope(entry, status_url(operation_id)),
+                             "snapshot": observations.snapshot("upload-usage", org.pk),
+                             "next_nonce": observations.nonce(request.user.pk, "upload-usage", org.pk) if entry["state"] in observations.TERMINAL else None})
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 @require_operator

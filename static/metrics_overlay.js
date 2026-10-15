@@ -1,3 +1,6 @@
+(function () {
+var activeSignal;
+function listen(target, event, callback) { target.addEventListener(event, callback, {signal: activeSignal}); }
 /* Metrics catalog: find a metric, click it, see it (internal planning ticket #114).
  *
  * Two things, both belonging to one page and neither big enough for a file of
@@ -15,24 +18,25 @@
  * static/report_analytics.js — a plain script for one management page, not a
  * widget baked into report builds.
  */
-(function () {
+function mountOverlay(root, signal) {
     'use strict';
 
-    var modal = document.getElementById('metModal');
-    var overlay = document.getElementById('metOverlay');
+    var modal = root.querySelector("#" + 'metModal');
+    var overlay = root.querySelector("#" + 'metOverlay');
     if (!modal || !overlay) return;
 
-    var title = document.getElementById('metModalTitle');
-    var sub = document.getElementById('metModalSub');
-    var body = document.getElementById('metModalBody');
-    var full = document.getElementById('metModalFull');
-    var overview = document.getElementById('metModalOverview');
-    var closeBtn = document.getElementById('metModalClose');
+    var title = root.querySelector("#" + 'metModalTitle');
+    var sub = root.querySelector("#" + 'metModalSub');
+    var body = root.querySelector("#" + 'metModalBody');
+    var full = root.querySelector("#" + 'metModalFull');
+    var overview = root.querySelector("#" + 'metModalOverview');
+    var closeBtn = root.querySelector("#" + 'metModalClose');
     var built = modal.dataset.built === '1';
     var lastTrigger = null;
     var frameObserver = null;
     var fitRequest = null;
     var activeFrame = null;
+    var frameDeadline = null, frameReader = null;
 
     function esc(s) {
         var d = document.createElement('div');
@@ -41,14 +45,33 @@
     }
 
     function chartHtml(row) {
+        var state = row.dataset.chartState;
+        if (state === 'legacy') {
+            return '<p class="met-modal-note">This artifact uses the legacy workspace. Rebuild for bounded metric pages. '
+                + (row.dataset.legacyUrl ? '<a href="' + esc(row.dataset.legacyUrl) + '">View legacy metric explicitly</a>' : '') + '</p>';
+        }
+        if (state === 'unbuilt') {
+            /* No build to draw from yet. Say that rather than "not
+               monitored", which would be a guess. */
+            return '<p class="met-modal-note">The Metrics report has not been built yet, '
+                + 'so there is no chart to show. Run it and this metric\'s trend appears here.</p>';
+        }
+        if (state === 'loading' || state === 'unknown') {
+            /* The catalog is still reading which charts exist; it keeps
+               asking by itself and this panel redraws when the answer lands. */
+            return '<p class="met-modal-note" role="status">Loading the chart…</p>';
+        }
+        if (state === 'error' || state === 'changed') {
+            return '<p class="met-modal-note">This metric’s chart is not available right now.</p>';
+        }
         var embed = row.dataset.embed;
         if (embed) {
             /* Not loading="lazy": the frame is created only when the overlay
                opens, already on screen, and fitFrame waits on its load. */
-            return '<iframe src="' + esc(embed) + '" title="'
+            return '<iframe data-workspace-version="' + esc(row.dataset.workspaceVersion || '') + '" src="' + esc(embed) + '" title="'
                 + esc(row.dataset.label) + ' — chart"></iframe>';
         }
-        if (!built) {
+        if (!built && !state) {
             /* Bound or not, there is no build to draw from yet. Say that
                rather than "not monitored", which would be a guess. */
             return '<p class="met-modal-note">The Metrics report has not been built yet, '
@@ -177,6 +200,8 @@
     }
 
     function stopWatching() {
+        clearTimeout(frameDeadline); frameDeadline = null;
+        if (frameReader) frameReader.abort(); frameReader = null;
         if (frameObserver) frameObserver.disconnect();
         frameObserver = null;
         if (fitRequest !== null) window.cancelAnimationFrame(fitRequest);
@@ -186,56 +211,89 @@
 
     function watchFrame(frame) {
         activeFrame = frame;
-        frame.addEventListener('load', function () {
-            if (activeFrame !== frame || modal.hidden) return;
+        var modern = frame.dataset.workspaceVersion === '1';
+        var failed = false;
+        function unavailable() {
+            if (failed || activeFrame !== frame || modal.hidden) return;
+            failed = true; clearTimeout(frameDeadline);
+            if (frameReader) frameReader.abort();
             if (frameObserver) frameObserver.disconnect();
+            frame.hidden = true;
+            var note = document.createElement('p'); note.className = 'met-modal-note';
+            note.setAttribute('role', 'status');
+            note.textContent = 'This metric’s chart is unavailable. Close and reopen to retry, or open the metric page explicitly.';
+            body.insertBefore(note, frame);
+        }
+        frameDeadline = setTimeout(unavailable, 12000);
+        listen(frame, 'load', function () {
+            if (failed || activeFrame !== frame || modal.hidden) return;
+            if (frameObserver) frameObserver.disconnect();
+            if (frameReader) frameReader.abort();
+            frameReader = new AbortController();
             try {
-                if (!frame.contentDocument.body.classList.contains('fw-only')) {
-                    frame.hidden = true;
-                    var note = document.createElement('p');
-                    note.className = 'met-modal-note';
-                    note.setAttribute('role', 'status');
-                    note.textContent = 'This metric’s chart is unavailable in the current build. Open the metric page or Metrics overview to continue.';
-                    body.insertBefore(note, frame);
-                    return;
-                }
+                var doc = frame.contentDocument;
+                var connected = false;
+                function connect() {
+                if (connected || failed || activeFrame !== frame || modal.hidden || frame.contentDocument !== doc) return;
+                if (modern && frame.contentWindow._fwWorkspaceState === 'failed') { unavailable(); return; }
+                if (modern && frame.contentWindow._fwWorkspaceState !== 'ready') return;
+                if (!doc.body.classList.contains('fw-only')) { unavailable(); return; }
+                connected = true;
+                clearTimeout(frameDeadline); frameDeadline = null;
                 frameObserver = new ResizeObserver(scheduleFit);
-                frameObserver.observe(frame.contentDocument.body);
+                frameObserver.observe(doc.body);
                 function afterControls() {
                     // Chart URL writes finish after their button handlers.
                     window.setTimeout(function () {
                         if (activeFrame === frame) scheduleFit();
                     }, 0);
                 }
-                frame.contentDocument.addEventListener('click', afterControls);
-                frame.contentDocument.addEventListener('change', afterControls);
+                doc.addEventListener('click', afterControls, {signal: frameReader.signal});
+                doc.addEventListener('change', afterControls, {signal: frameReader.signal});
+                scheduleFit();
+                }
+                frame.contentWindow.addEventListener('fw-workspace-state', connect, {once: true, signal: frameReader.signal});
+                connect();
             } catch (e) { /* no ResizeObserver, or gone: the load fit stands */ }
             scheduleFit();
         });
     }
 
-    window.addEventListener('resize', scheduleFit);
-    full.addEventListener('click', function () { if (activeFrame) updateLinks(activeFrame); });
-    overview.addEventListener('click', function () { if (activeFrame) updateLinks(activeFrame); });
+    listen(window, 'resize', scheduleFit);
+    listen(full, 'click', function () { if (activeFrame) updateLinks(activeFrame); });
+    listen(overview, 'click', function () { if (activeFrame) updateLinks(activeFrame); });
 
-    function open(row, trigger) {
+    var openRow = null, drawnState = null;
+
+    function draw(row) {
         stopWatching();
-        lastTrigger = trigger;
-        title.textContent = row.dataset.label;
-        sub.textContent = row.dataset.metric;
-
         var facts = Array.prototype.map.call(
             row.querySelectorAll('.met-fact'), function (f) { return f.outerHTML; }
         ).join('');
+        drawnState = row.dataset.chartState;
         body.innerHTML = chartHtml(row) + '<div class="met-modal-facts">' + facts + '</div>';
         var frame = body.querySelector('iframe');
         applyCompact(frame);
         if (frame) watchFrame(frame);
-
         full.hidden = !row.dataset.chart;
         if (row.dataset.chart) full.href = row.dataset.chart;
         overview.hidden = !row.dataset.overview;
         if (row.dataset.overview) overview.href = row.dataset.overview;
+    }
+
+    /* The catalog's own summary request answers after the page is up. If the
+       panel was opened before that, redraw it once the state is known. */
+    listen(root, 'metric-summary', function (ev) {
+        var row = ev.detail && ev.detail.card;
+        if (row && row === openRow && !modal.hidden && row.dataset.chartState !== drawnState) draw(row);
+    });
+
+    function open(row, trigger) {
+        lastTrigger = trigger;
+        openRow = row;
+        title.textContent = row.dataset.label;
+        sub.textContent = row.dataset.metric;
+        draw(row);
 
         overlay.hidden = false;
         modal.hidden = false;
@@ -245,6 +303,7 @@
 
     function close() {
         stopWatching();
+        openRow = null;
         modal.hidden = true;
         overlay.hidden = true;
         lockScroll(false);
@@ -257,42 +316,41 @@
        keyboard users get one tab stop that does the same thing. Clicks on the
        card's own links and on the "claiming reports" disclosure are left
        alone — they already do something. */
-    document.querySelectorAll('.met-card[data-metric]').forEach(function (row) {
-        row.addEventListener('click', function (ev) {
+    root.querySelectorAll('.met-card[data-metric]').forEach(function (row) {
+        listen(row, 'click', function (ev) {
             if (ev.target.closest('a, summary, details, label, input')) return;
             open(row, row.querySelector('.met-open'));
         });
     });
 
-    closeBtn.addEventListener('click', close);
-    overlay.addEventListener('click', close);
-    document.addEventListener('keydown', function (ev) {
+    listen(closeBtn, 'click', close);
+    listen(overlay, 'click', close);
+    listen(document, 'keydown', function (ev) {
         if (ev.key === 'Escape' && !modal.hidden) close();
     });
-})();
+    return function () { lastTrigger = null; close(); };
+}
 
 /* Filter the catalog as you type.
  *
  * Its own IIFE, not part of the overlay's: a page that somehow had no modal
  * would still have cards worth filtering, and the overlay bails early.
  *
- * ponytail: filters the cards already rendered, which is right at the ~13 a
- * studio has today and stays right into the low hundreds -- it is one string
- * compare per card per keystroke over markup the server already sent. Past a
- * few hundred, stop shipping every card: take `?q=` in metrics_page, filter
- * the MetricDefinition queryset there and paginate, and this becomes a form
- * submit with the same box.
+ * Filters the cards already rendered, which is right up to the 500 the page
+ * renders and costs one string compare per card per keystroke over markup the
+ * server already sent. Past that the page says it is showing the first 500 and
+ * the same box also narrows server-side (`?q=`) after a typing pause.
  */
-(function () {
+function mountFilter(root, signal) {
     'use strict';
 
-    var input = document.getElementById('metSearch');
-    var count = document.getElementById('metCount');
-    var empty = document.getElementById('metEmpty');
+    var input = root.querySelector("#" + 'metSearch');
+    var count = root.querySelector("#" + 'metCount');
+    if (count && !count.dataset.idle) count.dataset.idle = count.textContent;
+    var empty = root.querySelector("#" + 'metEmpty');
     if (!input || !count || !empty) return;
-
     var cards = Array.prototype.slice.call(
-        document.querySelectorAll('.met-card[data-search]')
+        root.querySelectorAll('.met-card[data-search]')
     );
     /* Lower-cased once, not once per keystroke. data-search is exactly the
        fields worth matching (see the template) -- name, id, description, tags,
@@ -316,11 +374,36 @@
         empty.hidden = shown > 0;
         /* Silent until there is something to say: announcing "13 of 13" on an
            empty box is noise, and the page header already carries the total. */
-        count.textContent = q ? shown + ' of ' + cards.length : '';
+        count.textContent = q ? shown + ' of ' + cards.length : (count.dataset.idle || '');
     }
 
-    input.addEventListener('input', apply);
-    input.addEventListener('keydown', function (ev) {
+    /* Only for a catalog larger than one page: after ~400 ms without typing,
+       ask the server for the matches instead of the rendered subset. */
+    var serverUrl = input.dataset.serverFilter, loaded = input.value.trim(), pause = null;
+    function narrow() {
+        var q = input.value.trim();
+        if (q === loaded) return;
+        var url = new URL(serverUrl, location.href);
+        if (q) url.searchParams.set('q', q);
+        try { sessionStorage.setItem('metSearchFocus', '1'); } catch (e) { /* storage blocked */ }
+        // A query string is not a console route, so this is an ordinary page load.
+        location.assign(url.href);
+    }
+    if (serverUrl) {
+        try {
+            if (sessionStorage.getItem('metSearchFocus')) {
+                sessionStorage.removeItem('metSearchFocus');
+                input.focus(); input.setSelectionRange(input.value.length, input.value.length);
+            }
+        } catch (e) { /* storage blocked */ }
+        signal.addEventListener('abort', function () { clearTimeout(pause); }, {once: true});
+    }
+
+    listen(input, 'input', function () {
+        apply();
+        if (serverUrl) { clearTimeout(pause); pause = setTimeout(narrow, 400); }
+    });
+    listen(input, 'keydown', function (ev) {
         if (ev.key !== 'Escape') return;
         /* Escape in the box clears the box and NOTHING else. Without this it
            keeps bubbling to the overlay's own Escape handler on document, and
@@ -329,5 +412,24 @@
         ev.stopPropagation();
         input.value = '';
         apply();
+        if (serverUrl) { clearTimeout(pause); pause = setTimeout(narrow, 400); }
     });
-})();
+}
+
+window.TrellumMetricsOverlay = { mount: function (root, signal) {
+    activeSignal = signal;
+    var cleanup = mountOverlay(root, signal);
+    mountFilter(root, signal);
+    return cleanup || function () {};
+} };
+if (!window.TrellumNavigation) {
+    var fallback = new AbortController();
+    var fallbackCleanup = window.TrellumMetricsOverlay.mount(document, fallback.signal);
+    window.addEventListener('pagehide', function () { fallback.abort(); fallbackCleanup(); });
+    window.addEventListener('pageshow', function (event) {
+        if (!event.persisted) return;
+        fallback = new AbortController();
+        fallbackCleanup = window.TrellumMetricsOverlay.mount(document, fallback.signal);
+    });
+}
+}());

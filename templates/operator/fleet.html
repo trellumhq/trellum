@@ -33,6 +33,7 @@
   {% endfor %}
   </tbody>
 </table>
+{% if workers_more %}<p class="muted" style="margin:8px 0 0">Showing the first {{ workers_more.shown }} of {{ workers_more.total }} live workers.</p>{% endif %}
 </div>
 
 <h2>Last 24 hours</h2>

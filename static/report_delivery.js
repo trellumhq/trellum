@@ -272,7 +272,8 @@
                 + '" data-recipient-name="' + esc(text) + '" data-recipient-identity="' + esc(identity || '') + '"'
                 + (selected ? ' checked' : '') + (ready ? '' : ' disabled') + '>' + esc(text) + '</label>';
         }
-        return '<div class="rdw-field rdw-wide" data-f="recipients" data-recipient-picker data-picker-label="Recipients">'
+        return '<div class="rdw-field rdw-wide" data-f="recipients" data-recipient-picker data-picker-label="Recipients"'
+            + (chips.source ? ' data-recipient-people-name="recipient_ids" data-recipient-group-name="recipient_group_ids" data-recipient-source="' + esc(chips.source) + '"' : '') + '>'
             + '<label class="rdw-label">Recipients</label><div data-recipient-type="people">'
             + members.map(function (row) { return checkbox('recipient_ids', row.id, row.name || row.email, row.email, people.indexOf(String(row.id)) >= 0); }).join('')
             + '</div><div data-recipient-type="roles">'
@@ -482,7 +483,8 @@
             if (!response.ok) throw new Error('Could not load recipients.');
             return response.json();
         }).then(function (result) {
-            return { ok: true, data: { members: result.members || [], roles: result.roles || {}, groups: result.groups || [], studio_name: result.studio_name || '' } };
+            // The whole audience is listed; only a huge one ("truncated") is searched server-side.
+            return { ok: true, data: { members: result.members || [], roles: result.roles || {}, groups: result.groups || [], studio_name: result.studio_name || '', source: result.truncated ? reportApiBase + '/recipients' : '' } };
         }).catch(function () { return { ok: false }; });
     }
     function currentSession(session) { return state === session && session.active; }

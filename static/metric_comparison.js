@@ -7,7 +7,7 @@
     var from = document.getElementById('mcFrom'), to = document.getElementById('mcTo');
     var status = document.getElementById('mcStatus');
     var frames = [], applying = false, fitRequest = null;
-    var keys = ['a', 'b', 'from', 'to', 'split_a', 'split_b'];
+    var keys = ['a', 'b', 'from', 'to', 'split_a', 'split_b', 'legacy'];
     from.value = state.from; to.value = state.to;
 
     function urlFor(next) {
@@ -73,6 +73,11 @@
         var count = fw.filterEngine.getFiltered(item.chart.dataset_id).length;
         var metric = (fw.data._metrics || {})[item.id] || {};
         var note = 'Built metric format: ' + (metric.format || 'unknown') + '; aggregation: ' + (metric.agg || 'unknown') + '. ';
+        var built = (item.frame.contentWindow._fwMetricsCatalog || []).find(function(row) { return row.name === item.id; });
+        if (built && built.binding) {
+            note += 'Built dataset: ' + built.binding.dataset + '; grain: ' + (built.binding.grain || 'none (snapshot)')
+                + '; time rollup: ' + (built.binding.time_agg || 'sum') + '. ';
+        }
         note += 'Available loaded dates: ' + (item.min ? item.min + ' – ' + item.max : 'no time axis') + '. ';
         if (!item.hasTime) note += 'Shared dates do not apply to this snapshot chart. ';
         else if (!count) note += 'No data in the shared date range. ';
@@ -112,8 +117,10 @@
         settle();
     }
     function ready(item) {
-        if (item.ready || !item.frame.isConnected) return;
+        if (item.ready || item.failed || !item.frame.isConnected) return;
         var win = item.frame.contentWindow, doc = item.frame.contentDocument;
+        if (item.modern && win._fwWorkspaceState !== 'ready') return;
+        if (!doc.body.classList.contains('fw-only')) { failed(item); return; }
         if (!win.fw || !win.fw.data) return;
         var section = doc.getElementById('metric-' + item.id);
         var chartId = section && section.querySelector('canvas') && section.querySelector('canvas').id;
@@ -164,17 +171,19 @@
         if (destination.origin !== location.origin || !destination.pathname.startsWith(location.pathname.split('/metrics')[0] + '/r/')) return;
         var frame = document.createElement('iframe'); frame.style.visibility = 'hidden';
         frame.title = card.querySelector('h2').textContent + ' chart';
-        var item = {frame: frame, slot: card.dataset.slot, id: card.dataset.id, note: card.querySelector('.mc-range')};
+        var item = {frame: frame, slot: card.dataset.slot, id: card.dataset.id, note: card.querySelector('.mc-range'), modern: card.dataset.workspaceVersion === '1'};
         frames.push(item);
         frame.addEventListener('load', function () {
-            if (!frame.isConnected) return;
+            if (!frame.isConnected || item.failed) return;
+            if (item.loading) item.loading.disconnect();
             try {
                 var resolved = new URL(frame.contentWindow.location.href);
                 if (resolved.origin !== destination.origin || !resolved.pathname.startsWith(destination.pathname)
-                    || !frame.contentDocument.body.classList.contains('fw-only')) throw new Error('unavailable');
+                    || !item.modern && !frame.contentDocument.body.classList.contains('fw-only')) throw new Error('unavailable');
                 var style = frame.contentDocument.createElement('style');
                 style.textContent = '.fw-kpi-grid,.fw-filter-bar{display:none!important}';
                 frame.contentDocument.head.appendChild(style);
+                frame.contentWindow.addEventListener('fw-workspace-state', function() { ready(item); }, {once: true});
                 item.loading = new MutationObserver(function () { ready(item); });
                 item.loading.observe(frame.contentDocument.body, {childList: true, subtree: true});
                 ready(item);
@@ -202,6 +211,10 @@
         if (a !== state.a) next.split_a = '';
         if (b !== state.b) next.split_b = '';
         location.assign(urlFor(next).href);
+    });
+    // Choosing a metric applies at once; there is no separate Update button.
+    document.getElementById('mcSelection').addEventListener('change', function (event) {
+        if (event.target.matches('select')) this.requestSubmit();
     });
     window.addEventListener('popstate', function () {
         var params = new URL(location.href).searchParams;

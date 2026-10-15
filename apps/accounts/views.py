@@ -37,6 +37,10 @@ from .models import Invitation, User
 MFA_STASH_TTL_SECONDS = 5 * 60
 _MFA_STASH_KEYS = ("mfa_user_id", "mfa_started", "mfa_next", "mfa_login_method")
 
+#: Safety bound on the unpaginated account/API-key tables: far above realistic
+#: sizes and silent (the page shows every row up to it).
+_LIST_CAP = 500
+
 
 #: Session key carrying the email from the login page's first step to its
 #: password step. Routing is re-run from it on every submit.
@@ -762,7 +766,9 @@ def account_view(request):
                 messages.success(request, "Session signed out.")
             return redirect("account")
 
-    sessions = list(UserSession.objects.filter(user=request.user).order_by("-last_seen"))
+    # Every session, newest first. The cap is an invisible safety bound far above
+    # what a person accumulates, not a pager.
+    sessions = list(UserSession.objects.filter(user=request.user).order_by("-last_seen", "pk")[:_LIST_CAP])
     return render(
         request,
         "accounts/account.html",
@@ -962,11 +968,11 @@ def me_api(request):
     """Session/identity endpoint used by portal.js."""
     if not request.user.is_authenticated:
         return JsonResponse({"authenticated": False}, status=401)
-    from apps.core.permissions import get_effective
+    from apps.core.request_access import request_org_access
 
     orgs = []
     for m in request.user.org_memberships.select_related("org").filter(org__is_active=True):
-        er = get_effective(request, m.org)
+        er = request_org_access(request, m.org)
         orgs.append(
             {
                 "slug": m.org.slug,
@@ -1025,6 +1031,7 @@ def api_keys_view(request):
             "form": form, "can_create": form.fields["org"].queryset.exists(),
         })
 
+    keys = list(ApiKey.objects.filter(user=request.user).select_related("org").order_by("-created_at", "-pk")[:_LIST_CAP])
     fresh = request.session.pop("new_api_key", None)
     new_key = ApiKey.objects.filter(pk=fresh["id"], user=request.user).first() if fresh else None
     return render(
@@ -1033,12 +1040,12 @@ def api_keys_view(request):
         {
             "form": form,
             "can_create": form.fields["org"].queryset.exists(),
-            "keys": ApiKey.objects.filter(user=request.user).select_related("org"),
+            "keys": keys,
             "new_key": new_key,
             "new_secret": fresh["secret"] if new_key else None,
             # The `setup portal` one-liner, once, for every studio the key can
             # reach (internal planning ticket #151): create a key, paste one command in the repo.
-            "new_key_studios": visible_studios(request.user, new_key.org) if new_key else [],
+            "new_key_studios": visible_studios(request.user, new_key.org, request=request) if new_key else [],
             "portal_url": base_url(),
         },
     )
@@ -1107,5 +1114,8 @@ def org_api_keys_view(request, org_slug):  # noqa: ARG001
     return render(
         request,
         "accounts/org_api_keys.html",
-        {"org": org, "keys": ApiKey.objects.filter(org=org).select_related("user")},
+        {
+            "org": org,
+            "keys": list(ApiKey.objects.filter(org=org).select_related("user").order_by("-created_at", "-pk")[:_LIST_CAP]),
+        },
     )

@@ -63,7 +63,9 @@ class StudioAccessForm(forms.Form):
         if studio:
             self.auto_id = f"id_studio_{studio.pk}_%s"
         self.fields["reports"].queryset = (
-            Report.objects.filter(studio=studio).order_by("name", "slug")
+            Report.objects.filter(studio=studio).only(
+                "pk", "studio_id", "audience", "name", "slug", "kind", "disabled", "present_in_scan"
+            ).order_by("name", "slug")
             if studio
             else Report.objects.none()
         )
@@ -77,3 +79,8 @@ class StudioAccessForm(forms.Form):
         elif role != roles.VIEWER:
             cleaned["viewer_scope"] = "all"
         return cleaned
+
+    def present_reports(self, reports):
+        """Render only these choices; validation still uses the whole studio."""
+        field = self.fields["reports"]
+        field.choices = [(report.pk, field.label_from_instance(report)) for report in reports]

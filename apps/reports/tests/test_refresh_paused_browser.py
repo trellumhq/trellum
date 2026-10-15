@@ -15,6 +15,8 @@ from .test_portal_mobile_runtime import (
     PORTAL_JS,
     REPORT,
     UI_CSS,
+    _ops_catalog_payload,
+    _ops_respond,
     mobile_browser,  # noqa: F401 -- pytest fixture
 )
 
@@ -90,14 +92,40 @@ def test_list_view_marks_paused_report(mobile_browser):  # noqa: F811
 
 def test_operations_shows_pause_instead_of_next_run(mobile_browser):  # noqa: F811
     next_run = (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat()
-    status = {
-        "running": {}, "queue": [], "server_uptime_seconds": 60,
-        # The server lists only reports the scheduler will actually fire.
-        "scheduled_jobs": [{"id": "report-2", "slug": "active-report", "next_run": next_run}],
-    }
+    # The catalog lists a paused report with its pause and no next run, as the
+    # server does; an active one keeps its next run.
+    rows = [
+        {**PAUSED, "name": "Paused report", "next_run": None},
+        {**ACTIVE, "name": "Active report", "next_run": next_run},
+    ]
+    status = {"running": {}, "queue": [], "server_uptime_seconds": 60}
+
+    def extra(route, path, query, reply):
+        if path.startswith("/_vendor/"):
+            asset = settings.BASE_DIR / "trellum" / "static" / "vendor" / path.removeprefix("/_vendor/")
+            route.fulfill(
+                content_type="text/css; charset=utf-8" if path.endswith(".css") else "font/ttf",
+                body=asset.read_bytes(),
+            )
+        elif path.endswith("/api/operations/catalog"):
+            payload = _ops_catalog_payload(rows, status, query)
+            for source, row in zip(rows, payload["rows"]):
+                row.update(schedule=source["schedule"], next_run=source["next_run"],
+                           refresh_suspended_at=source["refresh_suspended_at"])
+            reply(payload)
+        elif path.endswith("/api/operations/stats"):
+            reply({"version": 1, "state": "ready", "stats": {}, "window_days": 30})
+        elif path.rsplit("/", 1)[-1] in ("themes.generated.css", "choice-picker.css", "console-report-host.css"):
+            route.fulfill(content_type="text/css; charset=utf-8",
+                          body=(settings.BASE_DIR / "static" / path.rsplit("/", 1)[-1]).read_text())
+        else:
+            return False
+        return True
+
+    css = {"ui.css": UI_CSS, "portal.css": PORTAL_CSS, "console-shell.css": CONSOLE_CSS}
     context = mobile_browser.new_context(viewport={"width": 1280, "height": 844})
     page = context.new_page()
-    _route(page, _operations_fixture_html(), status)
+    page.route("**/*", _ops_respond(lambda: rows, lambda: status, css=css, extra=extra, html=_operations_fixture_html()))
     try:
         page.goto("http://portal.test/s/acme/analytics/operations")
         page.locator('[data-ops-row="paused-report"]').wait_for()

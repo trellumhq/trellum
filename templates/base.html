@@ -1,4 +1,4 @@
-{% load static %}<!doctype html>
+{% if not navigation_fragment %}{% load static %}<!doctype html>
 {% comment %}Authenticated console pages use the neutral Light/Dark/Auto
 surface. Report documents resolve their named theme independently.{% endcomment %}
 <html lang="en">
@@ -19,6 +19,7 @@ a theme token, but the management surface overrides them with Portal Neutral
 <link href="{% static 'recipient-picker.css' %}" rel="stylesheet">
 <script src="{% static 'choice-picker.js' %}" defer></script>
 <script src="{% static 'recipient-picker.js' %}" defer></script>
+<script src="{% static 'auto-filter.js' %}" defer></script>
 <link href="{% static 'console-shell.css' %}" rel="stylesheet">
 </head>
 {% comment %}body.mgmt scopes the management-surface rules in ui.css; the
@@ -37,30 +38,18 @@ portal.css.{% endcomment %}
 </div>
 {% endif %}
 {% if user.is_authenticated %}{% include "_shell.html" %}{% endif %}
-<main{% if user.is_authenticated %} data-console-inert{% endif %}>
+<main data-console-page data-console-controller="{{ navigation_controller|default:'native' }}"{% if user.is_authenticated %} data-console-inert{% endif %}>
 {% if messages %}
 <ul class="messages">
   {% for message in messages %}<li class="{{ message.tags }}" role="status">{{ message }}</li>{% endfor %}
 </ul>
 {% endif %}
-{% block content %}{% endblock %}
+{% endif %}{% block content %}{% endblock %}{% if not navigation_fragment %}
 </main>
 <footer style="padding:1rem;text-align:center;font-size:.8rem">
   <a href="{{ trellum_source_url }}" target="_blank" rel="noopener">Trellum source code</a>
 </footer>
 <script>
-/* Ctrl/Cmd+K focuses the studio search box (_shell.html), mirroring the
-   dashboard's own shortcut (static/portal.js, which this page never loads).
-   The search box now renders identically on every studio tab
-   (ui-consistency-punchlist.md item 3), so the shortcut does too; guarded
-   because org/account/operator pages carry no search box at all. */
-document.addEventListener('keydown', function (ev) {
-  if ((ev.metaKey || ev.ctrlKey) && ev.key === 'k') {
-    var input = document.getElementById('searchInput');
-    if (input) { ev.preventDefault(); input.focus(); input.select(); }
-  }
-});
-
 /* Hover prefetch: the server answers in ~5ms, so warming the next page on
    pointerover makes navigation feel instant. GET-only, same-origin plain
    paths; query-string links (e.g. /?org=) are skipped because they mutate
@@ -161,43 +150,6 @@ function setMgmtTheme(pref) {
   });
 })();
 
-/* Search-as-you-type on the list screens. The results come from the server
-   (the lists are paginated), so this reloads — the caret is put back at the
-   end of what you typed so it does not feel like the page fought you. */
-(function () {
-  var forms = document.querySelectorAll('form.ui-list-toolbar');
-  for (var i = 0; i < forms.length; i++) {
-    (function (form) {
-      var input = form.querySelector('input[name="q"]');
-      if (!input) return;
-      form.classList.add('js-search-ready');
-      var timer = null;
-      input.addEventListener('input', function () {
-        clearTimeout(timer);
-        timer = setTimeout(function () { form.submit(); }, 400);
-      });
-      /* Landed here from a search submit: resume where the typing left off.
-         The test is "was a q parameter submitted", NOT "is the box non-empty" —
-         backspacing to empty still submits, and keying off the value dropped
-         focus at exactly the moment the user cleared the last character. */
-      var params = new URLSearchParams(window.location.search);
-      if (params.has('q')) {
-        input.focus();
-        var end = input.value.length;
-        try { input.setSelectionRange(end, end); } catch (e) { /* type=search quirk */ }
-        /* An empty q filters nothing, so do not leave it in the address bar
-           for the user to copy — but only tidy it AFTER it has done its job
-           of telling us the box was being typed in. */
-        if (!input.value && window.history.replaceState) {
-          params.delete('q');
-          var rest = params.toString();
-          window.history.replaceState({}, '', window.location.pathname + (rest ? '?' + rest : ''));
-        }
-      }
-    })(forms[i]);
-  }
-})();
-
 /* Studio tab bar: on narrow screens the rail scrolls horizontally, so bring
    the active tab into view on load (a no-op when everything already fits). */
 (function () {
@@ -235,7 +187,8 @@ document.addEventListener('click', function (ev) {
 });
 </script>
 {% if user.is_authenticated %}<script src="{% static 'console-shell.js' %}"></script>{% endif %}
-{% if user.is_authenticated %}<script src="{% static 'settings-forms.js' %}"></script>{% endif %}
+{% if user.is_authenticated %}<script src="{% static 'settings-forms.js' %}"></script><script src="{% static 'console-navigation.js' %}"></script>{% if navigation_controller == "metrics" %}<script src="{% static 'metrics_overlay.js' %}"></script><script src="{% static 'metrics_workspace.js' %}"></script><script src="{% static 'console-metrics-controller.js' %}"></script>{% endif %}{% endif %}
 {% if user.is_authenticated and shell_studio %}<script src="/api/assistant/widget.js" defer></script>{% endif %}
 </body>
 </html>
+{% endif %}

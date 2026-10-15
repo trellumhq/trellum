@@ -51,7 +51,7 @@ def auth_me(request):
         match = _STUDIO_PATH_RE.search(request.GET.get("path") or "")
         if match:
             from apps.core import roles
-            from apps.core.permissions import effective_roles
+            from apps.core.request_access import request_org_access
             from apps.orgs.models import Organization
             from apps.studios.models import Studio
 
@@ -63,7 +63,7 @@ def auth_me(request):
                 if org is not None else None
             )
             if studio is not None:
-                role = effective_roles(request.user, org).role_for(studio)
+                role = request_org_access(request, org).role_for(studio)
                 is_admin = roles.at_least(role, roles.ADMIN)
     return JsonResponse({"is_admin": is_admin})
 
@@ -139,14 +139,93 @@ def system_page(request):
         return instance_settings(request)
 
     from apps.core import releases
-    from apps.core.health import run_checks
-    from apps.core.version import version_info
+    import trellum_portal
+    from apps.core import operator_observations as observations
+    from apps.core.version import framework_tag, meta_schema_version, schema_state, source_url
 
+    # The coordinator measures and static/operator-observations.js keeps the page
+    # current. When there is nothing usable from the coordinator (never measured,
+    # or stale with no live coordinator), the checks run here, as they always did.
+    diagnostic = observations.snapshot("full-health")
+    live = observations.available()
+    if not diagnostic.get("checks") or (diagnostic["state"] != "observed" and not live):
+        from apps.core.health import run_checks
+
+        # No age: with a live coordinator the page asks for its measurement at once.
+        diagnostic = {"checks": run_checks(), "state": "unmeasured"}
     return render(request, "core/system.html", {
-        "checks": run_checks(),
+        "checks": diagnostic.get("checks", []),
+        "diagnostic": diagnostic,
+        "diagnostic_age": observations.age_text(diagnostic.get("age_seconds")),
+        "probe_live": live,
+        "probe_nonce": observations.nonce(request.user.pk, "full-health"),
+        "probe_operation": observations.current_operation("full-health"),
         "releases": releases.current(),
-        "version": version_info(detailed=True),
+        "version": {
+            "version": trellum_portal.__version__, "sha": settings.TRELLUM_VERSION_SHA,
+            "build_time": settings.TRELLUM_VERSION_BUILD_TIME, "source_url": source_url(),
+            "framework": {"tag": framework_tag(), "meta_schema": meta_schema_version()},
+            "unapplied_migrations": schema_state()[1],
+        },
     })
+
+
+def _diagnostics_status_url(operation_id):
+    from django.urls import reverse
+
+    return reverse("system-diagnostics-status", args=[operation_id])
+
+
+def operator_diagnostics_refresh(request):
+    """Admit one coordinator measurement; the system page asks (GET) and posts by itself."""
+    from django.http import HttpResponseNotAllowed
+    from django.db import transaction
+    from apps.core import operator_observations as observations
+    from apps.core.audit import audit
+
+    gate = _require_email_operator(request)
+    if gate is not None:
+        return gate
+    if request.method == "GET":
+        response = JsonResponse(observations.preflight(request.user.pk, "full-health", _diagnostics_status_url))
+        response["Cache-Control"] = "no-store"
+        return response
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["GET", "POST"])
+    try:
+        with transaction.atomic():
+            entry, created = observations.admit(request.user.pk, "full-health", request.POST.get("request_key", ""))
+            if created:
+                audit(request, "operator.diagnostics.refresh", operation_id=entry["id"])
+    except observations.ObservationError as exc:
+        response = JsonResponse(observations.refusal(exc, request.user.pk, "full-health", _diagnostics_status_url), status=exc.status)
+        response["Cache-Control"] = "no-store"
+        return response
+    response = JsonResponse({"ok": True, **observations.envelope(entry, _diagnostics_status_url(entry["id"]))}, status=202 if created else 200)
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+def operator_diagnostics_status(request, operation_id):
+    from django.http import Http404, HttpResponseNotAllowed
+    from apps.core import operator_observations as observations
+
+    if not request.user.is_authenticated:
+        return JsonResponse({"detail": "Authentication required"}, status=401)
+    if not _is_current_operator(request):
+        raise Http404
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET"])
+    try:
+        entry = observations.observation(operation_id, kind="full-health")
+    except observations.ObservationError as exc:
+        response = JsonResponse(observations.refusal(exc, request.user.pk, "full-health", _diagnostics_status_url), status=exc.status)
+        response["Cache-Control"] = "no-store"
+        return response
+    response = JsonResponse({**observations.envelope(entry, _diagnostics_status_url(operation_id)), "snapshot": observations.snapshot("full-health"),
+                             "next_nonce": observations.nonce(request.user.pk, "full-health") if entry["state"] in observations.TERMINAL else None})
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 @sensitive_post_parameters()

@@ -107,11 +107,20 @@ def test_moved_forms_keep_drafts_focus_scroll_and_newer_edits(engine, width, log
         assert page.evaluate("document === window.documentIdentity")
 
         # Explicit sign-out still confirms before issuing any request.
-        page.on("dialog", lambda dialog: dialog.dismiss())
+        dialogs = []
+
+        def answer(dialog):
+            # Dismiss the sign-out confirmation; leaving with unsaved drafts must
+            # ask first (beforeunload), and the test then deliberately leaves.
+            dialogs.append(dialog.type)
+            dialog.accept() if dialog.type == "beforeunload" else dialog.dismiss()
+
+        page.on("dialog", answer)
         signout = page.locator('form:has(input[value="sign_everyone_out"])')
         signout.evaluate("f => f.requestSubmit(f.querySelector('[type=submit]'))")
         assert len(requests) == 3
         page.goto("http://settings.test/system", wait_until="domcontentloaded")
+        assert dialogs == ["confirm", "beforeunload"], dialogs
         assert page.locator("body").evaluate("e => e.scrollWidth <= innerWidth + 1")
         assert page.locator("table[data-mobile-cards]").first.evaluate("e => e.scrollWidth <= e.clientWidth + 1")
         assert page.locator("#instance-settings-form").count() == 0

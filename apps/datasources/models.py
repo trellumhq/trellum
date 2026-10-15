@@ -329,3 +329,41 @@ class RepoDataSource(models.Model):
 
     def __str__(self) -> str:
         return f"{self.studio}/{self.name} ({self.type}, {self.source_file})"
+
+
+class UnblockRequest(models.Model):
+    """Durable admission of "queue the reports this source just unblocked".
+
+    Written in the same transaction as the successful check evidence it
+    follows, so it survives a crash between check and walk. One row per
+    binding: a newer admission resets the row, which turns any worker still
+    holding an older revision into a no-op. The worker (apps/datasources/
+    unblock.py) examines at most 25 reports per step and records the cursor. It holds no
+    credentials and no source configuration.
+    """
+
+    PENDING = "pending"
+    RUNNING = "running"
+    DONE = "done"
+    STATUSES = [(PENDING, "Pending"), (RUNNING, "Running"), (DONE, "Done")]
+
+    binding = models.OneToOneField(DataSource, on_delete=models.CASCADE, related_name="unblock_request")
+    #: Studio the check was made for (selects the declaration); null = none given.
+    check_studio_id = models.BigIntegerField(null=True, blank=True)
+    #: Revision the admitting check was stored against.
+    binding_updated_at = models.DateTimeField()
+    declaration_digest = models.CharField(max_length=64, blank=True, default="")
+    status = models.CharField(max_length=10, choices=STATUSES, default=PENDING)
+    #: Last fully processed studio id (keyset cursor).
+    cursor_studio_id = models.BigIntegerField(default=0)
+    #: Last report id handled in the studio after ``cursor_studio_id`` (0 = none yet).
+    cursor_report_id = models.BigIntegerField(default=0)
+    queued = models.PositiveIntegerField(default=0)
+    #: Claims since the last progress; a request that keeps failing is abandoned.
+    attempts = models.PositiveSmallIntegerField(default=0)
+    lease_until = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["status", "lease_until"], name="unblock_status_lease_idx")]

@@ -78,7 +78,7 @@
 
     <section class="ui-form-section">
       <h2>Recipients</h2>
-      <div class="ui-field ui-field-wide" data-recipient-picker>
+      <div class="ui-field ui-field-wide" data-recipient-picker{% if form.recipient_source %} data-recipient-source="{{ form.recipient_source }}" data-recipient-people-name="recipients" data-recipient-group-name="recipient_groups"{% endif %}>
         <label>People, roles and groups</label>
         <div data-recipient-type="people" class="al-checks">{{ form.recipients }}{{ form.recipients.errors }}</div>
         <div data-recipient-type="roles" class="al-checks">{{ form.recipient_roles }}{{ form.recipient_roles.errors }}</div>

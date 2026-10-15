@@ -15,7 +15,7 @@
   <p class="muted">Application and retained build output. Host, kernel and container runtime logs are managed separately.</p>
   <div class="panel logs-coverage" data-coverage hidden></div>
 
-  <form class="panel logs-filters" data-filter-form>
+  <form class="panel logs-filters" data-filter-form data-auto-filter="inline">
     <div class="logs-filter-grid">
       <div class="ui-field"><label for="logs-since">Since</label>
         <select class="ui-input" id="logs-since" name="since"><option value="1h">Last hour</option><option value="24h" selected>Last 24 hours</option><option value="7d">Last 7 days</option></select>
@@ -29,11 +29,10 @@
       <div class="ui-field"><label for="logs-report">Report slug</label><input class="ui-input" id="logs-report" name="report_slug" type="text" autocomplete="off"></div>
       <div class="ui-field"><label for="logs-worker">Worker ID</label><input class="ui-input" id="logs-worker" name="worker_id" type="text" autocomplete="off"></div>
       <div class="ui-field"><label for="logs-run">Run ID</label><input class="ui-input" id="logs-run" name="run_id" type="text" autocomplete="off"></div>
-      <div class="ui-field"><label for="logs-search">Search</label><input class="ui-input" id="logs-search" name="q" type="search" maxlength="200" autocomplete="off"></div>
+      <div class="ui-field"><label for="logs-search">Search</label><input class="ui-input" id="logs-search" name="q" type="search" data-page-search maxlength="200" autocomplete="off"></div>
       <details class="logs-extra-filters"><summary>More filters</summary><div class="ui-field"><label for="logs-request">Request ID</label><input class="ui-input" id="logs-request" name="request_id" type="text" autocomplete="off"></div></details>
     </div>
     <div class="logs-actions">
-      <button class="ui-btn primary" type="submit">Apply filters</button>
       <button class="ui-btn ghost" type="button" data-live aria-pressed="true">Pause live</button>
       <button class="ui-btn ghost" type="button" data-load-older>Load older</button>
       <a class="ui-btn ghost" data-download href="{% url 'operator-log-export' %}">Download NDJSON</a>

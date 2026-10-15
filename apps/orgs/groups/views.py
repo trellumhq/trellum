@@ -4,14 +4,15 @@ from __future__ import annotations
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
-from django.db import transaction
-from django.db.models import Q
+from django.db import IntegrityError, transaction
+from django.db.models import Count, Prefetch, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.views.decorators.http import require_http_methods, require_POST
+from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from apps.core import roles
-from apps.core.audit import audit
+from apps.core.audit import audit, audit_many
+from apps.core.choice_requests import choice_request_params
 from apps.core.form_responses import is_settings_request, settings_error, settings_success
 from apps.core.permissions import effective_roles, require_org_role, require_studio_role
 from apps.core.report_access import selected_report_access_block_reason, visible_reports
@@ -25,7 +26,8 @@ from apps.orgs.views import PAGE_SIZE, paginate
 from apps.reports.models import Report, ReportPermissionGrant, ShareLink
 from apps.studios.models import Studio, StudioMembership
 
-from .forms import GroupForm, StudioAccessForm
+from .forms import GroupForm, ReportChoiceField, StudioAccessForm
+from . import presentation as present
 
 TABS = {
     "overview": "Overview",
@@ -61,17 +63,20 @@ def _save_group_access(request, group, form):
     if role == roles.VIEWER and scope == "selected" and block_reason:
         form.add_error(None, block_reason)
         return False
-    report_ids = set(form.cleaned_data["reports"].values_list("pk", flat=True))
+    # Keep the identities validated by the form. A fresh values_list() query
+    # could silently drop a report deleted before we acquire its lock.
+    report_ids = {report.pk for report in form.cleaned_data["reports"]}
     with transaction.atomic():
         group = _group_or_404(request.org, group.pk, lock=True)
         studio = get_object_or_404(
             Studio.objects.select_for_update(), org=request.org, pk=studio.pk
         )
-        locked_report_ids = set(
-            Report.objects.select_for_update()
+        locked_reports = {
+            report.pk: report for report in Report.objects.select_for_update()
             .filter(studio=studio, pk__in=report_ids)
-            .values_list("pk", flat=True)
-        )
+            .only("pk", "studio_id", "audience")
+        }
+        locked_report_ids = set(locked_reports)
         if locked_report_ids != report_ids:
             form.add_error("reports", "Selected reports changed; review and try again.")
             return False
@@ -89,6 +94,10 @@ def _save_group_access(request, group, form):
 
         if grant is None:
             grant = PermissionGroupGrant(group=group, studio=studio)
+        # Hydrate the locked relations for assignment validation without a
+        # foreign-key lookup per report. Their identity was checked above.
+        grant.group = group
+        grant.studio = studio
         grant.role = role
         grant.viewer_scope = scope if role == roles.VIEWER else "all"
         try:
@@ -115,10 +124,20 @@ def _save_group_access(request, group, form):
             report_id__in=selected_ids
         ).delete()
         try:
-            for report_id in selected_ids - old_ids:
-                ReportPermissionGrant.objects.create(grant=grant, report_id=report_id)
-        except ValidationError as exc:
-            form.add_error(None, exc)
+            additions = []
+            for report_id in sorted(selected_ids - old_ids):
+                report = locked_reports[report_id]
+                report.studio = studio
+                assignment = ReportPermissionGrant(grant=grant, report=report)
+                # Both foreign keys are validated under locks, and database
+                # constraints still enforce uniqueness. Keep the model's
+                # domain checks (including readiness and Private audience).
+                assignment.clean()
+                additions.append(assignment)
+            ReportPermissionGrant.objects.bulk_create(additions, batch_size=250)
+        except (ValidationError, IntegrityError) as exc:
+            message = exc if isinstance(exc, ValidationError) else "Selected reports changed; review and try again."
+            form.add_error(None, message)
             transaction.set_rollback(True)
             return False
         audit(
@@ -130,20 +149,14 @@ def _save_group_access(request, group, form):
             viewer_scope=grant.viewer_scope,
             report_count=len(selected_ids),
         )
-        for report_id in selected_ids - old_ids:
-            audit(
-                request,
-                "group.report_grant",
-                target=Report(pk=report_id),
-                group_id=group.pk,
-            )
-        for report_id in old_ids - selected_ids:
-            audit(
-                request,
-                "group.report_ungrant",
-                target=Report(pk=report_id),
-                group_id=group.pk,
-            )
+        audit_many(
+            request, "group.report_grant",
+            (Report(pk=pk) for pk in sorted(selected_ids - old_ids)), group_id=group.pk,
+        )
+        audit_many(
+            request, "group.report_ungrant",
+            (Report(pk=pk) for pk in sorted(old_ids - selected_ids)), group_id=group.pk,
+        )
     return True
 
 
@@ -174,21 +187,29 @@ def _effective_member(request, group):
 
     user = membership.user
     er = effective_roles(user, request.org)
+    studios = Studio.objects.filter(org=request.org)
+    if not er.is_org_admin and not er.default_studio_role:
+        # Only studios with an explicit grant can carry a role.
+        studios = studios.filter(pk__in=er.studio_roles)
+    studios = [s for s in studios.order_by("slug", "pk")[: present.STUDIO_LIMIT] if er.role_for(s)]
+    studio_ids = [studio.pk for studio in studios]
     direct_roles = dict(
         StudioMembership.objects.filter(user=user, studio__org=request.org).values_list(
             "studio_id", "role"
         )
     )
     member_groups = list(
-        PermissionGroup.objects.filter(org=request.org, memberships__user=user)
-        .prefetch_related("grants__report_grants")
-        .order_by("name")
+        PermissionGroup.objects.filter(org=request.org, memberships__user=user).order_by("name", "pk")[: present.CHOICE_LIMIT]
     )
+    grants = {
+        (grant.group_id, grant.studio_id): grant
+        for grant in PermissionGroupGrant.objects.filter(
+            group__in=member_groups, studio_id__in=studio_ids
+        ).annotate(report_count=Count("report_grants"))
+    }
     rows = []
-    for studio in Studio.objects.filter(org=request.org).order_by("slug"):
+    for studio in studios:
         role = er.role_for(studio)
-        if role is None:
-            continue
         full = roles.at_least(role, roles.DEVELOPER)
         sources = []
         if membership.role == roles.ORG_ADMIN:
@@ -211,31 +232,31 @@ def _effective_member(request, group):
                     f"{source_group.name}: default "
                     f"{source_group.default_studio_role.title()} on every studio"
                 )
-            grant = next(
-                (g for g in source_group.grants.all() if g.studio_id == studio.pk), None
-            )
+            grant = grants.get((source_group.pk, studio.pk))
             if grant:
                 label = grant.role.title()
                 if grant.role == roles.VIEWER and grant.viewer_scope == "selected":
-                    count = len(grant.report_grants.all())
+                    count = grant.report_count
                     label += f" for {count} selected report{'s' if count != 1 else ''}"
                 else:
                     label += " with Studio audience" if grant.role == roles.VIEWER else " with all reports"
-                    if grant.role == roles.VIEWER and grant.report_grants.all():
-                        label += f" plus {len(grant.report_grants.all())} explicit Private assignments"
+                    if grant.role == roles.VIEWER and grant.report_count:
+                        label += f" plus {grant.report_count} explicit Private assignments"
                 sources.append(f"{source_group.name}: {label}")
+        reports, reports_count = [], 0
+        if not full:
+            visible = visible_reports(user, Report.objects.filter(studio=studio)).only(
+                "pk", "studio_id", "name", "slug", "kind"
+            ).order_by("name", "slug")
+            reports, more = present.limited(visible)
+            reports_count = visible.count() if more else len(reports)
         rows.append(
             {
                 "studio": studio,
                 "role": role,
                 "full": full,
-                "reports": list(
-                    visible_reports(user, Report.objects.filter(studio=studio)).order_by(
-                        "name", "slug"
-                    )
-                )
-                if not full
-                else [],
+                "reports": reports,
+                "reports_count": reports_count,
                 "sources": sources,
             }
         )
@@ -255,9 +276,7 @@ def groups(request, org_slug):  # noqa: ARG001
             messages.success(request, f"Group “{group.name}” created.")
             return redirect(f"/orgs/{request.org.slug}/settings/groups/{group.pk}")
 
-    group_qs = request.org.permission_groups.prefetch_related(
-        "grants__studio", "memberships"
-    ).order_by("name")
+    group_qs = present.group_summary_counts(request.org.permission_groups.all()).order_by("name", "pk")
     q = (request.GET.get("q") or "").strip()
     if q:
         group_qs = group_qs.filter(Q(name__icontains=q) | Q(description__icontains=q))
@@ -404,85 +423,38 @@ def group_detail(request, org_slug, group_id):  # noqa: ARG001
                     audit(request, "group.remove_user", target=group, user_id=user_id)
             return redirect(_group_url(request.org, group, "members"))
 
-    grants = list(group.grants.select_related("studio").order_by("studio__slug"))
-    q = (request.GET.get("q") or "").strip()
-    member_page = None
-    member_total = 0
-    addable_members = None
-    if tab == "members":
-        member_qs = group.memberships.select_related("user").order_by("user__email")
-        if q:
-            member_qs = member_qs.filter(
-                Q(user__email__icontains=q) | Q(user__name__icontains=q)
-            )
-        member_total = member_qs.count()
-        member_page = paginate(request, member_qs, PAGE_SIZE)
-        addable_members = (
-            OrgMembership.objects.filter(org=request.org)
-            .exclude(user__permission_group_memberships__group=group)
-            .select_related("user")
-            .order_by("user__email")
+    context = {
+        "org": request.org, "group": group, "console_page_title": group.name,
+        "form": form, "tabs": TABS, "tab": tab, "can_manage": True,
+        "q": present.text(request, "q"), "selected_block_reason": selected_report_access_block_reason(),
+        "access_rows": [], "grants": [],
+    }
+    if tab == "overview":
+        context["grants"] = list(group.grants.select_related("studio").order_by("studio__slug", "pk")[: present.CHOICE_LIMIT])
+    elif tab == "members":
+        members = group.memberships.select_related("user").order_by("user__email", "pk")
+        if context["q"]:
+            members = members.filter(Q(user__email__icontains=context["q"]) | Q(user__name__icontains=context["q"]))
+        member_page = paginate(request, members, PAGE_SIZE)
+        addable, addable_remote = present.limited(present.member_choices(request.org, group, "addable"))
+        context.update(member_page=member_page, member_total=member_page.paginator.count,
+                       addable_members=addable, addable_remote=addable_remote)
+    elif tab == "access":
+        rows, studios_more = present.access_rows(
+            request.org, group,
+            lambda studio, initial: StudioAccessForm(org=request.org, studio=studio, initial=initial),
+            access_form,
         )
-    access_rows = []
-    selected_block_reason = selected_report_access_block_reason()
-    if tab == "access":
-        selected_by_grant = {}
-        for grant_id, report_id in ReportPermissionGrant.objects.filter(
-            grant__group=group
-        ).values_list("grant_id", "report_id"):
-            selected_by_grant.setdefault(grant_id, []).append(report_id)
-        for studio in Studio.objects.filter(org=request.org).order_by("slug"):
-            grant = next((g for g in grants if g.studio_id == studio.pk), None)
-            initial = {
-                "studio": studio,
-                "role": grant.role if grant else "",
-                "viewer_scope": grant.viewer_scope if grant else "all",
-                "reports": selected_by_grant.get(grant.pk, []) if grant else [],
-            }
-            row_form = (
-                access_form
-                if access_form and str(access_form.data.get("studio")) == str(studio.pk)
-                else StudioAccessForm(org=request.org, studio=studio, initial=initial)
-            )
-            access_rows.append({
-                "studio": studio, "grant": grant, "form": row_form,
-                "private_reports": Report.objects.filter(
-                    studio=studio, audience=Report.AUDIENCE_PRIVATE,
-                    pk__in=selected_by_grant.get(grant.pk, []) if grant else [],
-                ).order_by("name", "slug"),
-            })
-    selected_member, effective_rows = (
-        _effective_member(request, group) if tab == "effective" else (None, [])
-    )
-    effective_members = (
-        group.memberships.select_related("user").order_by("user__email")
-        if tab == "effective"
-        else None
-    )
-    return render(
-        request,
-        "orgs/group_detail.html",
-        {
-            "org": request.org,
-            "group": group,
-            "console_page_title": group.name,
-            "form": form,
-            "grants": grants,
-            "tabs": TABS,
-            "tab": tab,
-            "can_manage": True,
-            "member_page": member_page,
-            "member_total": member_total,
-            "q": q,
-            "addable_members": addable_members,
-            "access_rows": access_rows,
-            "selected_block_reason": selected_block_reason,
-            "selected_member": selected_member,
-            "effective_rows": effective_rows,
-            "effective_members": effective_members,
-            "studio_role_choices": roles.STUDIO_ROLE_CHOICES,
-        },
-    )
+        context.update(access_rows=rows, studios_more=studios_more, studio_limit=present.STUDIO_LIMIT)
+    elif tab == "effective":
+        selected_member, effective_rows = _effective_member(request, group)
+        members, members_remote = present.limited(group.memberships.select_related("user").order_by("user__email", "pk"))
+        if selected_member and all(m.user_id != selected_member.user_id for m in members):
+            members.append(selected_member)
+        context.update(selected_member=selected_member, effective_rows=effective_rows,
+                       effective_members=members, effective_members_remote=members_remote,
+                       report_limit=present.CHOICE_LIMIT)
+    return render(request, "orgs/group_detail.html", context)
 
 
 @require_org_role(roles.ORG_ADMIN)
@@ -499,7 +471,8 @@ def group_delete(request, org_slug, group_id):  # noqa: ARG001
 @require_studio_role(roles.ADMIN)
 @require_http_methods(["GET", "POST"])
 def report_access(request, org_slug, studio_slug, slug):  # noqa: ARG001
-    report = get_object_or_404(Report, studio=request.studio, slug=slug)
+    reports = Report.objects.only(*present.REPORT_FIELDS) if request.method == "GET" else Report.objects.all()
+    report = get_object_or_404(reports, studio=request.studio, slug=slug)
     if request.method == "GET" and request.headers.get("Accept", "").startswith(
         "application/json"
     ):
@@ -619,7 +592,7 @@ def report_access(request, org_slug, studio_slug, slug):  # noqa: ARG001
         return redirect(request.path)
 
     group_qs = PermissionGroup.objects.filter(org=request.org).prefetch_related(
-        "grants"
+        Prefetch("grants", queryset=PermissionGroupGrant.objects.filter(studio=request.studio))
     )
     q = (request.GET.get("q") or "").strip()
     if q:
@@ -627,6 +600,7 @@ def report_access(request, org_slug, studio_slug, slug):  # noqa: ARG001
     group_qs = group_qs.order_by("name")
     total = group_qs.count()
     page = paginate(request, group_qs, PAGE_SIZE)
+    selected_group_ids = set(ReportPermissionGrant.objects.filter(report=report, grant__group_id__in=[g.pk for g in page.object_list], grant__studio=request.studio).values_list("grant__group_id", flat=True))
     rows = []
     for group in page.object_list:
         grant = next(
@@ -652,12 +626,7 @@ def report_access(request, org_slug, studio_slug, slug):  # noqa: ARG001
             )
         elif grant and grant.viewer_scope == "all" and report.audience == Report.AUDIENCE_STUDIO:
             full_reason = "This Viewer grant includes the Studio audience."
-        selected = bool(
-            grant
-            and ReportPermissionGrant.objects.filter(
-                grant=grant, report=report
-            ).exists()
-        )
+        selected = group.pk in selected_group_ids
         rows.append(
             {
                 "group": group,
@@ -666,9 +635,6 @@ def report_access(request, org_slug, studio_slug, slug):  # noqa: ARG001
                 "selected": selected,
             }
         )
-    public_links = ShareLink.objects.filter(report=report).defer(
-        "token", "password_hash"
-    )
     return render(
         request,
         "orgs/report_access.html",
@@ -682,8 +648,45 @@ def report_access(request, org_slug, studio_slug, slug):  # noqa: ARG001
             "q": q,
             "total": total,
             "page": page,
-            "public_links": public_links,
+            "link_total": ShareLink.objects.filter(report=report).count(),
             "can_manage": True,
             "selected_block_reason": selected_report_access_block_reason(),
         },
     )
+
+
+@require_org_role(roles.ORG_ADMIN)
+@require_GET
+def group_member_choices(request, org_slug, group_id):
+    group = _group_or_404(request.org, group_id)
+    kind = request.GET.get("kind", "addable")
+    if kind not in {"addable", "effective"}:
+        return JsonResponse({"error": "Choose a valid member list."}, status=400)
+    page = present.window(request, present.member_choices(request.org, group, kind, present.text(request, "q")), "page")
+    raw = request.GET.get("selected")
+    selected = present.member_choices(request.org, group, kind).filter(user_id=raw).first() if str(raw or "").isdecimal() else None
+    def record(member):
+        return {"value": member.user_id, "label": member.user.email, "hint": ""}
+    response = JsonResponse({"results": [record(m) for m in page.object_list], "selected": record(selected) if selected else None, "pagination": present.pagination(page)})
+    response["Cache-Control"] = "private, no-store"
+    return response
+
+
+@require_org_role(roles.ORG_ADMIN)
+@require_http_methods(["GET", "POST"])
+def group_report_choices(request, org_slug, group_id, studio_id):
+    _group_or_404(request.org, group_id)
+    studio = get_object_or_404(Studio, org=request.org, pk=studio_id)
+    try:
+        parameters = choice_request_params(request)
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+    page = present.window(request, present.report_choices(studio, parameters.get("q", "").strip()), "page", parameters=parameters)
+    ids = present.report_ids([v for raw in parameters.getlist("selected") for v in raw.split(",")])
+    selected = Report.objects.filter(studio=studio, pk__in=ids).only(*present.REPORT_FIELDS).order_by("name", "slug")
+    field = ReportChoiceField(queryset=Report.objects.none())
+    def record(report):
+        return {"value": str(report.pk), "label": field.label_from_instance(report)}
+    response = JsonResponse({"results": [record(r) for r in page.object_list], "selected": [record(r) for r in selected], "pagination": present.pagination(page)})
+    response["Cache-Control"] = "private, no-store"
+    return response

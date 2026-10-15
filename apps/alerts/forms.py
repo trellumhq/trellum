@@ -13,6 +13,7 @@ from django.contrib.auth import get_user_model
 from apps.alerts.models import AlertRule
 from apps.orgs.models import OrgMembership, PermissionGroup
 from apps.reports.models import Report
+from apps.reports.recipient_choices import cap_model_choices
 
 
 class RecipientCheckboxSelectMultiple(forms.CheckboxSelectMultiple):
@@ -64,7 +65,7 @@ class AlertRuleForm(forms.ModelForm):
             "recipient_groups": "Permission groups",
         }
 
-    def __init__(self, *args, studio, **kwargs):
+    def __init__(self, *args, studio, actor=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.timezones = sorted(available_timezones())
         timezone_choices = [(zone, zone.replace("_", " ")) for zone in self.timezones]
@@ -86,11 +87,19 @@ class AlertRuleForm(forms.ModelForm):
         self.fields["notification_policy"].initial = (self.instance.notification_policy or AlertRule.POLICY_REPEAT)
         if not self.is_bound:
             self.initial["notification_policy"] = self.instance.notification_policy or AlertRule.POLICY_REPEAT
-        self.fields["report"].queryset = Report.objects.filter(
-            studio=studio, present_in_scan=True, kind=Report.KIND_REPORT
-        ).order_by("name", "slug")
+        reports = Report.objects.filter(studio=studio, present_in_scan=True, kind=Report.KIND_REPORT)
+        if actor is not None:
+            from apps.core.report_access import visible_reports
+
+            reports = visible_reports(actor, reports)
+        self.fields["report"].queryset = reports.order_by("name", "slug", "pk")
         self.fields["report"].empty_label = None
         self.fields["report"].label_from_instance = lambda report: report.name or report.slug
+        # Only a genuinely huge studio switches the shared picker to server-side search.
+        if cap_model_choices(self.fields["report"], lambda: self.data.get(self.add_prefix("report")) if self.is_bound
+                             else self.instance.report_id):
+            self.fields["report"].widget.attrs["data-choice-source"] = (
+                f"/s/{studio.org.slug}/{studio.slug}/alerts/report-choices")
         # Same eligibility as the delivery drawer's picker (reports.views.
         # api_studio_members): anyone with an effective role on this studio.
         from apps.core.permissions import bulk_role_for_studio
@@ -107,11 +116,25 @@ class AlertRuleForm(forms.ModelForm):
             ("admins", "All admins"), ("developers", "All developers"),
             ("everyone", f"Everyone in {studio.name}"),
         ]
-        groups = PermissionGroup.objects.filter(org=studio.org).order_by("name")
+        groups = PermissionGroup.objects.filter(org=studio.org).select_related("org").order_by("name", "pk")  # label: "org/name"
+
+        def submitted(name, current):
+            if not self.is_bound:
+                return current
+            getlist = getattr(self.data, "getlist", None)
+            return getlist(self.add_prefix(name)) if getlist else self.data.get(self.add_prefix(name), [])
+
+        large = cap_model_choices(people, lambda: submitted(
+            "recipients", [user.pk for user in self.instance.recipients.all()] if self.instance.pk else []))
         if groups.exists():
             self.fields["recipient_groups"].queryset = groups
+            large = cap_model_choices(self.fields["recipient_groups"], lambda: submitted(
+                "recipient_groups", [group.pk for group in self.instance.recipient_groups.all()]
+                if self.instance.pk else [])) or large
         else:
             del self.fields["recipient_groups"]
+        # Only a genuinely huge audience switches the shared picker to server-side search.
+        self.recipient_source = f"/s/{studio.org.slug}/{studio.slug}/alerts/recipient-choices" if large else ""
 
     def clean(self):
         data = super().clean()

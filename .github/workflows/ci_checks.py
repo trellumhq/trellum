@@ -10,6 +10,9 @@ from pathlib import Path
 PORTAL_JOBS = (
     "django-tests", "sandbox", "sandbox-compatibility", "migration-safety", "django-e2e",
 )
+# Opt-in (workflow_dispatch `heavy` input or the `heavy-tests` PR label): being
+# skipped never blocks, but a run that was requested must pass.
+OPTIONAL_JOBS = ("django-heavy-tests",)
 CI_HELPERS = {
     ".github/workflows/ci_checks.py", ".github/workflows/test_ci_checks.py",
     ".github/workflows/test_summary.py", ".github/workflows/test_test_summary.py",
@@ -72,6 +75,10 @@ def portal_failures(needs):
         result = needs.get(job, {}).get("result", "missing")
         if result != expected:
             failures.append(f"{job}: {result} (expected {expected})")
+    for job in OPTIONAL_JOBS:
+        result = needs.get(job, {}).get("result", "missing")
+        if result not in {"success", "skipped"}:
+            failures.append(f"{job}: {result} (expected success or skipped)")
     return failures
 
 
@@ -113,7 +120,7 @@ def main():
         needs = json.loads(os.environ["CI_NEEDS"])
         portal = args.command == "portal-gate"
         failures = portal_failures(needs) if portal else framework_failures(needs)
-        jobs = ("changes", "fast-checks", *PORTAL_JOBS) if portal else ("changes", "lint", "tests", "package", "integration", "benchmarks")
+        jobs = ("changes", "fast-checks", *PORTAL_JOBS, *OPTIONAL_JOBS) if portal else ("changes", "lint", "tests", "package", "integration", "benchmarks")
         lines = [f"## {'Portal' if portal else 'Framework'} checks", "", "| Job | Result |", "|---|---|"]
         lines.extend(f"| {job} | {needs.get(job, {}).get('result', 'missing')} |"
                      for job in jobs)

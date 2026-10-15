@@ -12,8 +12,15 @@ from django.conf import settings
 from apps.core import roles
 
 
-def _run_restore(*, page_html, page_path, row_slug, report, registry_headers, engine, surface):
-    rows = [report]
+def _run_restore(*, page_html, page_path, row_slug, payload, payload_path, static_api, engine, surface,
+                 registry_headers=None, rows_key="rows"):
+    """Restore a page from history while its read endpoint changes.
+
+    Freshness is proven by ``payload_path`` being asked again after the
+    restore and the new row painted: the catalog reads the registry in slices,
+    Operations its bounded catalog.
+    """
+    registry_headers = registry_headers or {"Cache-Control": "no-store"}
     registry_calls = []
     status_calls = []
     history = {
@@ -27,9 +34,11 @@ def _run_restore(*, page_html, page_path, row_slug, report, registry_headers, en
 
         def do_GET(self):
             path = self.path.split("?", 1)[0]
-            if path.endswith("/api/registry"):
+            if path.endswith(payload_path):
                 registry_calls.append(None)
-                body, content_type = json.dumps({"reports": rows}).encode(), "application/json"
+                body, content_type = json.dumps(payload).encode(), "application/json"
+            elif path in static_api:
+                body, content_type = static_api[path], "application/json"
             elif path.endswith("/api/system/status"):
                 status_calls.append(None)
                 body, content_type = b'{"running":{},"queue":[]}', "application/json"
@@ -67,7 +76,7 @@ def _run_restore(*, page_html, page_path, row_slug, report, registry_headers, en
                 return
             self.send_response(200)
             self.send_header("Content-Type", content_type)
-            if path.endswith("/api/registry"):
+            if path.endswith(payload_path):
                 for name, value in registry_headers.items():
                     self.send_header(name, value)
             self.send_header("Content-Length", str(len(body)))
@@ -93,10 +102,13 @@ def _run_restore(*, page_html, page_path, row_slug, report, registry_headers, en
                 selector = f'[data-{"ops-row" if surface == "operations" else "slug"}="{row_slug}"]'
                 page.locator(selector).wait_for()
                 original_row = page.locator(selector)
-                assert report["name"] in original_row.inner_text()
+                assert original_row.inner_text().strip()
+                if surface == "catalog":
+                    assert payload[rows_key][0]["name"] in original_row.inner_text()
+                requests_before_leaving = len(registry_calls)
                 page.goto(base + "/away")
-                rows[0] = {**rows[0], "name": "Updated Player Overview",
-                           "last_run": "2026-10-11T12:00:00Z"}
+                payload[rows_key][0] = {**payload[rows_key][0], "name": "Updated Player Overview",
+                                        **({"last_run": "2026-10-11T12:00:00Z"} if surface == "catalog" else {})}
                 page.go_back()
                 page.locator(selector).wait_for()
                 try:
@@ -120,7 +132,7 @@ def _run_restore(*, page_html, page_path, row_slug, report, registry_headers, en
                     json.dumps(state, indent=2), encoding="utf-8"
                 )
                 assert "Updated Player Overview" in page.locator(selector).inner_text(), state
-                assert state["registry_requests"] >= 2, state
+                assert state["registry_requests"] > requests_before_leaving, state
             finally:
                 context.close()
                 browser.close()
@@ -142,9 +154,10 @@ def test_catalog_refreshes_current_registry_after_real_history_restore(
     engine, login, developer, org, studio_tree, report_row
 ):
     page_path = f"/s/{org.slug}/{studio_tree.slug}/"
-    response = login(developer).get(page_path)
+    client = login(developer)
+    response = client.get(page_path)
     assert response.status_code == 200
-    registry_response = login(developer).get(page_path + "api/registry")
+    registry_response = client.get(page_path + "api/registry?kind=report&page=1")
     assert registry_response.status_code == 200
     registry_headers = {
         name: registry_response.headers[name]
@@ -157,7 +170,8 @@ def test_catalog_refreshes_current_registry_after_real_history_restore(
     )
     _run_restore(
         page_html=response.content.decode(), page_path=page_path, row_slug=report_row.slug,
-        report=report, registry_headers=registry_headers, engine=engine, surface="catalog",
+        payload={"reports": [report]}, payload_path="/api/registry", static_api={},
+        registry_headers=registry_headers, rows_key="reports", engine=engine, surface="catalog",
     )
 
 
@@ -167,20 +181,19 @@ def test_operations_restores_current_registry_after_real_history_navigation(
     engine, login, developer, org, studio_tree, report_row
 ):
     page_path = f"/s/{org.slug}/{studio_tree.slug}/operations"
-    response = login(developer).get(page_path)
+    client = login(developer)
+    response = client.get(page_path)
     assert response.status_code == 200
-    registry_response = login(developer).get(f"/s/{org.slug}/{studio_tree.slug}/api/registry")
-    assert registry_response.status_code == 200
-    registry_headers = {
-        name: registry_response.headers[name]
-        for name in ("Cache-Control", "Vary", "ETag", "Last-Modified", "Expires")
-        if name in registry_response.headers
+    api = f"/s/{org.slug}/{studio_tree.slug}/api/operations/"
+    catalog_response = client.get(api + "catalog")
+    assert catalog_response.status_code == 200
+    payload = catalog_response.json()
+    assert payload["rows"][0]["slug"] == report_row.slug
+    static_api = {
+        api + name: client.get(api + name).content for name in ("sources", "status", "stats")
     }
-    report = next(
-        item for item in registry_response.json()["reports"]
-        if item["slug"] == report_row.slug
-    )
     _run_restore(
         page_html=response.content.decode(), page_path=page_path, row_slug=report_row.slug,
-        report=report, registry_headers=registry_headers, engine=engine, surface="operations",
+        payload=payload, payload_path="/api/operations/catalog", static_api=static_api,
+        engine=engine, surface="operations",
     )

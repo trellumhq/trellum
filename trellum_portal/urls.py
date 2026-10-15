@@ -6,9 +6,11 @@ from django.urls import include, path
 from django.views.generic import RedirectView
 
 from apps.accounts import views as account_views
+from apps.accounts.forms import BoundedPasswordResetForm
 from apps.assistant import mcp as assistant_mcp
 from apps.assistant import views as assistant_views
 from apps.core import views as core_views
+from apps.core import shell_scope_views
 from apps.datasources import views as datasource_views
 from apps.orgs import views as org_views
 from apps.orgs.audit import views as org_audit
@@ -16,7 +18,8 @@ from apps.orgs.groups import views as org_groups
 from apps.orgs.security import views as org_security
 from apps.orgs.sso import views as org_sso
 from apps.reports import livequery as report_livequery
-from apps.reports import metrics_catalog
+from apps.reports import metrics_catalog, metric_summaries, metric_workspace
+from apps.reports import jump as report_jump
 from apps.reports import views as report_views
 from apps.reports.overviews import annotations, experiments
 from apps.reports.vendor import vendor_asset
@@ -28,14 +31,28 @@ studio_patterns = [
     path("", report_views.dashboard, name="studio-dashboard"),
     path("analyses", report_views.analyses, name="studio-analyses"),
     path("deliveries", report_views.studio_deliveries, name="studio-deliveries"),
+    path("api/delivery-reports", report_views.api_delivery_report_choices, name="api-delivery-report-choices"),
+    path("api/jump", report_jump.api_jump, name="api-report-jump"),
     path("deliveries/new", report_views.studio_delivery_new, name="studio-delivery-new"),
     path("deliveries/<int:schedule_id>/edit", report_views.studio_delivery_edit, name="studio-delivery-edit"),
     # The Operations tab (studio tab bar): the dashboard template booted with
     # the ops surface active. Old ?view=ops/?view=health deep links redirect
     # here from the dashboard view.
     path("operations", report_views.operations, name="studio-operations"),
+    path("api/operations/catalog", report_views.api_operations_catalog, name="api-operations-catalog"),
+    path("api/operations/status", report_views.api_operations_status, name="api-operations-status"),
+    path("api/operations/stats", report_views.api_operations_stats, name="api-operations-stats"),
+    path("api/operations/sources", report_views.api_operations_sources, name="api-operations-sources"),
+    path("api/operations/reports/<str:slug>/log", report_views.api_operations_report_log, name="api-operations-report-log"),
+    path(
+        "api/operations/reports/<str:slug>/log/download",
+        report_views.api_operations_report_log_download,
+        name="api-operations-report-log-download",
+    ),
     path("analytics", report_views.analytics, name="studio-analytics"),
     path("metrics", metrics_catalog.metrics_page, name="studio-metrics"),
+    path("api/metrics/summary", metric_summaries.metrics_summary, name="studio-metrics-summary"),
+    path("metrics/<int:definition_id>/claims", metric_summaries.metric_claim_details, name="studio-metric-claims"),
     path(
         "metrics/comparison",
         metrics_catalog.metrics_page,
@@ -43,8 +60,14 @@ studio_patterns = [
         name="studio-metrics-comparison",
     ),
     path("metrics/compare", metrics_catalog.metric_comparison, name="metric-comparison"),
+    path("metrics/choices", metric_workspace.metric_choices, name="studio-metric-choices"),
     path("experiments", experiments.experiments_page, name="studio-experiments"),
     path("api/registry", report_views.api_registry, name="api-registry"),
+    path("api/catalog", report_views.api_catalog, name="api-catalog"),
+    path("api/catalog/categories", report_views.api_catalog_categories, name="api-catalog-categories"),
+    path("api/catalog/personal", report_views.api_catalog_personal, name="api-catalog-personal"),
+    path("api/catalog/indicators", report_views.api_catalog_indicators, name="api-catalog-indicators"),
+    path("api/catalog/details/<int:report_id>", report_views.api_catalog_details, name="api-catalog-details"),
     path("api/system/status", report_views.api_system_status),
     path("api/system/run-stats", report_views.api_run_stats),
     path("api/system/log", report_views.api_system_log),
@@ -52,6 +75,11 @@ studio_patterns = [
     path("api/system/stop-all", report_views.api_stop_all),
     path("api/system/cache/clear", report_views.api_cache_clear),
     path("api/system/registry/refresh", report_views.api_registry_refresh),
+    path(
+        "api/system/actions/<uuid:action_id>",
+        report_views.api_maintenance_action,
+        name="api-maintenance-action",
+    ),
     path("api/system/git/status", report_views.api_git_status),
     path("api/system/git/sync", report_views.api_git_sync),
     path("api/system/git/check", report_views.api_git_check),
@@ -59,6 +87,7 @@ studio_patterns = [
     path("api/system/git/history", report_views.api_git_history),
     path("api/git/webhook", report_views.api_git_webhook),
     path("api/members", report_views.api_studio_members),
+    path("api/member-choices", studio_views.api_member_choices, name="studio-member-choices-api"),
     path("api/datasources", datasource_views.api_list),
     path("api/datasources/<str:name>/upload", datasource_views.api_upload),
     path("api/datasources/<str:name>/test", datasource_views.api_test),
@@ -221,6 +250,7 @@ urlpatterns = [
     # Per-user deliveries & alerts, across every studio (cross-studio, like favorites)
     path("me/deliveries", report_views.my_deliveries, name="my-deliveries"),
     path("deliveries", report_views.manage_deliveries, name="manage-deliveries"),
+    path("api/delivery-reports", report_views.delivery_report_choices_global, name="delivery-report-choices-global"),
     path("deliveries/<int:schedule_id>/edit", report_views.manage_delivery_edit, name="manage-delivery-edit"),
     # Personal API keys (internal planning ticket #002): cross-org like deliveries; the org-admin
     # list sits with the other org settings tabs further down.
@@ -258,7 +288,7 @@ urlpatterns = [
     ),
     path(
         "password-reset/",
-        auth_views.PasswordResetView.as_view(success_url="/password-reset/sent/"),
+        auth_views.PasswordResetView.as_view(success_url="/password-reset/sent/", form_class=BoundedPasswordResetForm),
         name="password_reset",
     ),
     path(
@@ -296,6 +326,7 @@ urlpatterns = [
     path("accounts/", include("allauth.urls")),
     # Org switcher / management
     path("", org_views.home, name="home"),
+    path("api/shell/scopes/", shell_scope_views.api_choices, name="shell-scope-choices"),
     path("orgs/new", org_views.org_new, name="org-new"),
     path("orgs/create", org_views.org_create, name="org-create"),
     path("orgs/<slug:org_slug>/", org_views.org_home, name="org-home"),
@@ -381,9 +412,12 @@ urlpatterns = [
     path("system/email-connections/<int:connection_id>/<str:action>", core_views.email_connection_action,
          name="email-connection-action"),
     path("api/system/health", core_views.system_health, name="system-health"),
+    path("api/system/diagnostics/refresh", core_views.operator_diagnostics_refresh, name="system-diagnostics-refresh"),
+    path("api/system/diagnostics/<uuid:operation_id>", core_views.operator_diagnostics_status, name="system-diagnostics-status"),
     # Cross-organization operator console (404s for non-operators).
     path("operator/", include("apps.operator.urls")),
     path("orgs/<slug:org_slug>/settings/members", org_views.members, name="org-members"),
+    path("orgs/<slug:org_slug>/settings/members/<int:user_id>/studios", org_views.member_studios, name="org-member-studios"),
     path(
         "orgs/<slug:org_slug>/settings/members/<int:user_id>/role",
         org_views.member_set_role,
@@ -429,6 +463,16 @@ urlpatterns = [
         name="org-group-detail",
     ),
     path(
+        "orgs/<slug:org_slug>/settings/groups/<int:group_id>/member-choices",
+        org_groups.group_member_choices,
+        name="org-group-member-choices",
+    ),
+    path(
+        "orgs/<slug:org_slug>/settings/groups/<int:group_id>/studios/<int:studio_id>/report-choices",
+        org_groups.group_report_choices,
+        name="org-group-report-choices",
+    ),
+    path(
         "orgs/<slug:org_slug>/settings/groups/<int:group_id>/delete",
         org_groups.group_delete,
         name="org-group-delete",
@@ -468,6 +512,11 @@ urlpatterns = [
         "orgs/<slug:org_slug>/settings/invites/<int:invite_id>/revoke",
         org_views.invite_revoke,
         name="org-invite-revoke",
+    ),
+    path(
+        "orgs/<slug:org_slug>/settings/invites/<int:invite_id>/resend",
+        org_views.invite_resend,
+        name="org-invite-resend",
     ),
     # Studio-scoped settings
     path(
@@ -521,4 +570,9 @@ urlpatterns = [
 if settings.DEBUG:
     from apps.accounts import dev as accounts_dev
 
-    urlpatterns += [path("__dev__/login/", accounts_dev.dev_login, name="dev-login")]
+    urlpatterns += [
+        path("__dev__/login/", accounts_dev.dev_login, name="dev-login"),
+        # Underscore-free alias: Markdown renders __dev__ as bold and strips
+        # the underscores when these links are shared in chat.
+        path("dev-login/", accounts_dev.dev_login),
+    ]

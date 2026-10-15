@@ -16,7 +16,7 @@ buttons, tabular-nums numbers, mono last-viewed, .ui-empty.{% endcomment %}
     display: flex; align-items: center; justify-content: space-between;
     gap: 12px; flex-wrap: wrap; margin-bottom: 14px;
 }
-.analytics-range { display: flex; gap: 6px; }
+.analytics-range { display: flex; flex-wrap: wrap; gap: 6px; }
 .analytics-search { width: 240px; }
 #analyticsTable th[data-sort] { cursor: pointer; user-select: none; white-space: nowrap; }
 #analyticsTable th[data-sort]:hover { color: var(--accent-ink); }
@@ -26,7 +26,9 @@ buttons, tabular-nums numbers, mono last-viewed, .ui-empty.{% endcomment %}
 #analyticsTable th[aria-sort="ascending"],
 #analyticsTable th[aria-sort="descending"] { color: var(--accent-ink); }
 #analyticsTable td.num, #analyticsTable th.num { text-align: right; font-variant-numeric: tabular-nums; }
-#analyticsTable .analytics-report-cell { display: flex; align-items: center; gap: 8px; }
+#analyticsTable .analytics-report-cell { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
+#analyticsTable .analytics-report-cell a { overflow-wrap: anywhere; min-width: 0; }
+#analyticsTable .ui-badge { white-space: normal; overflow-wrap: anywhere; }
 </style>
 
 <header class="page-head">
@@ -39,16 +41,17 @@ buttons, tabular-nums numbers, mono last-viewed, .ui-empty.{% endcomment %}
 <div class="panel">
   <div class="analytics-toolbar">
     <div class="analytics-range" role="group" aria-label="Time range">
-      {% for d in day_choices %}
-      <a class="ui-pill{% if d == days %} active{% endif %}" href="?days={{ d }}">{{ d }}d</a>
+      {% for range in ranges %}
+      <a class="ui-pill{% if range.days == days %} active{% endif %}" href="{{ range.url }}">{{ range.days }}d</a>
       {% endfor %}
     </div>
-    <input type="search" id="analyticsSearch" class="ui-input analytics-search"
-           placeholder="Filter reports…" aria-label="Filter reports by name">
+    <input type="search" id="analyticsSearch" class="ui-input analytics-search" data-page-search
+           placeholder="Search reports…" aria-label="Search reports by name"{% if server_side %} value="{{ q }}" maxlength="200"{% endif %}>
   </div>
 
+  <div id="analyticsRegion">
   <div class="ui-table-scroll">
-  <table class="ui-table" id="analyticsTable" data-mobile-cards>
+  <table class="ui-table" id="analyticsTable" data-mobile-cards{% if server_side %} data-server-side data-sort-col="{{ sort }}" data-sort-dir="{{ direction }}"{% endif %}>
     <thead>
       <tr>
         <th data-sort="report">Report</th>
@@ -80,13 +83,15 @@ buttons, tabular-nums numbers, mono last-viewed, .ui-empty.{% endcomment %}
       </tr>
       {% empty %}
       <tr><td colspan="6">
-        <div class="ui-empty">No views recorded yet.
-          <div class="ui-empty-action"><a class="ui-btn ghost" href="/s/{{ org.slug }}/{{ studio.slug }}/">Share or open a report →</a></div>
+        <div class="ui-empty">{% if q %}No reports match your search.{% else %}No views recorded yet.
+          <div class="ui-empty-action"><a class="ui-btn ghost" href="/s/{{ org.slug }}/{{ studio.slug }}/">Share or open a report →</a></div>{% endif %}
         </div>
       </td></tr>
       {% endfor %}
     </tbody>
   </table>
+  </div>
+  {% if server_side %}{% include "_pagination.html" with page=page %}{% endif %}
   </div>
 </div>
 

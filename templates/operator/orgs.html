@@ -28,5 +28,6 @@
   {% endfor %}
   </tbody>
 </table>
+{% if orgs_more %}<p class="muted" style="margin:8px 0 0">Showing the first {{ orgs_more.shown }} of {{ orgs_more.total }} organizations.</p>{% endif %}
 </div>
 {% endblock %}

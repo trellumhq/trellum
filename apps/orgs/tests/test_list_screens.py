@@ -21,6 +21,15 @@ def test_list_screens_offer_search(client, login, org_admin, org, url_name):
     assert 'name="q"' in html, f"{url_name} has no search box"
 
 
+@pytest.mark.parametrize("url_name", LIST_URLS)
+def test_list_search_applies_by_itself_with_no_search_button(client, login, org_admin, org, url_name):
+    """Typing searches after a pause (static/auto-filter.js); the toolbar has no Search button."""
+    html = login(org_admin).get(reverse(url_name, args=[org.slug])).content.decode()
+    toolbar = html.split('class="ui-list-toolbar"', 1)[1].split("</form>", 1)[0]
+    assert "data-auto-filter" in html.split('class="ui-list-toolbar"', 1)[1].split(">", 1)[0]
+    assert 'type="submit"' not in toolbar and ">Search</button>" not in toolbar
+
+
 def test_members_are_paginated(client, login, org_admin, org, make_user):
     from apps.orgs.models import OrgMembership
 

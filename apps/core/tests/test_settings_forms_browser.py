@@ -263,3 +263,65 @@ def test_dirty_fragment_waits_for_reset_and_read_only_refresh_preserves_scroll(s
     page.locator("#other").evaluate("form => form.reset()")
     expect(page.locator('[name="draft"]')).to_have_value("Updated")
     assert page.locator('#other [data-settings-dirty-status]').count() == 1
+
+
+@pytest.mark.parametrize('engine', ['chromium', 'webkit'])
+@pytest.mark.parametrize('temporary_native', [False, True])
+def test_native_tracked_submit_guards_neighbors_without_discarding_own_write(engine, temporary_native):
+    helper = (ROOT / 'static' / 'settings-forms.js').read_text(encoding='utf-8')
+    html = '''<form method=post action=/create data-settings-form>
+      <input name=create value=Original><button>Create record</button></form>
+      <form data-settings-form><input name=neighbor value=Keep></form>'''
+    if temporary_native:
+        html = html.replace('action=/create data-settings-form', 'action=/create data-settings-save')
+    requests, dialogs = [], []
+    accept = False
+    with sync_playwright() as playwright:
+        browser = getattr(playwright, engine).launch()
+        page = browser.new_page()
+        page.route('http://native.test/settings', lambda route: route.fulfill(body=html, content_type='text/html'))
+        def created(route):
+            requests.append(route.request.post_data)
+            route.fulfill(body='<h1>Created</h1>', content_type='text/html')
+        page.route('http://native.test/create', created)
+        def dialog_handler(dialog):
+            dialogs.append(dialog.type)
+            if accept:
+                dialog.accept()
+            else:
+                dialog.dismiss()
+        page.on('dialog', dialog_handler)
+        page.goto('http://native.test/settings')
+        page.add_script_tag(content=helper)
+        if temporary_native:
+            page.locator('form[action="/create"]').evaluate("form => form.removeAttribute('data-settings-save')")
+        page.locator('[name=create]').fill('New record')
+        page.get_by_role('button', name='Create record').click()
+        page.wait_for_url('http://native.test/create')
+        assert len(requests) == 1 and not dialogs
+        page.goto('http://native.test/settings')
+        page.add_script_tag(content=helper)
+        if temporary_native:
+            page.locator('form[action="/create"]').evaluate("form => form.removeAttribute('data-settings-save')")
+        page.locator('[name=create]').fill('Next record')
+        page.locator('[name=neighbor]').fill('Neighbor draft')
+        page.get_by_role('button', name='Create record').click()
+        assert len(requests) == 1 and dialogs == ['confirm']
+        assert page.locator('[name=create]').input_value() == 'Next record'
+        assert page.locator('[name=neighbor]').input_value() == 'Neighbor draft'
+        accept = True
+        page.get_by_role('button', name='Create record').click()
+        page.wait_for_url('http://native.test/create')
+        assert len(requests) == 2 and dialogs == ['confirm', 'confirm']
+        browser.close()
+
+
+def test_explicit_settings_status_keeps_its_declared_placement():
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.set_content('<form data-settings-form><input name="draft"><span id="declared" data-settings-dirty-status></span><div class="ui-form-actions"><button type="submit">Save</button></div></form>')
+        page.add_script_tag(content=(ROOT / 'static/settings-forms.js').read_text())
+        assert page.locator('#declared').evaluate('node=>node.parentElement.tagName') == 'FORM'
+        assert page.locator('[data-settings-dirty-status]').count() == 1
+        browser.close()

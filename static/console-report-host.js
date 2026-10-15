@@ -69,6 +69,12 @@
         restoreCatalogScroll();
     });
 
+    /* New catalog seam: its controller announces a primary read before it starts
+       so scroll restoration waits for the rows it will restore into. */
+    window.addEventListener('trellum:catalog-loading', function () {
+        catalogReady = false;
+    });
+
     window.addEventListener('scroll', function () {
         if (active || restoringCatalogScroll || pendingCatalogScroll || scrollSavePending) return;
         scrollSavePending = true;
@@ -138,6 +144,7 @@
     }
 
     function showReport(target, title, token, depth) {
+        if (!active) document.dispatchEvent(new CustomEvent('trellum:catalog-hide'));
         document.body.classList.remove('tl-console-presenting');
         window.clearTimeout(timeout);
         active = {
@@ -173,6 +180,9 @@
         setPageTitle(catalogPageTitle);
         document.title = catalogTitle;
         notifyAssistant(null);
+        /* Listeners may announce trellum:catalog-loading synchronously, which
+           defers the restoration below until the catalog is ready again. */
+        document.dispatchEvent(new CustomEvent('trellum:catalog-return'));
         var state = history.state && history.state.tlConsoleCatalog;
         restoreCatalogScroll(state);
     }

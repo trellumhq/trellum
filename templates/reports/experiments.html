@@ -10,7 +10,7 @@
 </header>
 <div class="panel">
   <div class="ui-empty">
-    No A/B test reports in this studio.<br>
+    {% if coverage.uncovered %}Experiment declarations are not fully indexed yet.{% else %}No A/B test reports in this studio.{% endif %}<br>
     A report joins this page when its <code>report.yaml</code> declares an <code>ab_test:</code> block.
     <div class="ui-empty-action">
       <a class="ui-btn ghost" href="{% docs_url 'portal/experiments/' %}">How experiments are declared →</a>
@@ -26,10 +26,8 @@
     Reports without the block are simply absent.</p>
 </header>
 
-{% if storage_unavailable %}
-<div class="ui-flash warning" role="alert" style="margin:12px 0">
-  Report storage is unreachable right now — rows below may be missing their built numbers until it recovers.
-</div>
+{% if coverage.uncovered %}
+<p class="subtle" role="status">Some reports are not indexed yet, so this list may be incomplete.</p>
 {% endif %}
 
 <div class="ui-stat-row">
@@ -76,6 +74,7 @@
       {% endfor %}
     </div>
   </div>
+  {% if timeline_truncated %}<p class="subtle" style="margin:8px 0 0">Showing the first {{ timeline.lanes|length }} lanes.</p>{% endif %}
   <p class="subtle" style="margin:8px 0 0">Overlapping bars = concurrent tests on the same audience — a validity risk made visible.</p>
 </div>
 {% endif %}
@@ -104,8 +103,8 @@
             {% if row.status == 'past_end' %}<span class="exp-meta">ended {{ row.ended_days_ago }} day{{ row.ended_days_ago|pluralize }} ago</span>{% endif %}
           </td>
           <td class="days" data-label="Days">{% if row.days is not None %}{{ row.days }}{% else %}—{% endif %}</td>
-          {% if row.storage_unavailable %}
-          <td class="subtle" data-label="Primary metric">Storage unavailable</td>
+          {% if row.pending %}
+          <td class="subtle" data-label="Primary metric">—</td>
           <td class="subtle" data-label="Lift">—</td>
           <td class="subtle" data-label="Significance">—</td>
           {% elif not row.built %}
@@ -117,7 +116,7 @@
           <td class="subtle" data-label="Lift">—</td>
           <td class="subtle" data-label="Significance">—</td>
           {% elif not row.primary %}
-          <td class="subtle" data-label="Primary metric">No KPI rows in the payload</td>
+          <td class="subtle" data-label="Primary metric">{{ row.result_state }}</td>
           <td class="subtle" data-label="Lift">—</td>
           <td class="subtle" data-label="Significance">—</td>
           {% else %}
@@ -146,6 +145,8 @@
     </table>
   </div>
 </div>
+
+{% include "_pagination.html" with page=page %}
 
 <div class="design-note">Lift only turns green/red when the statistics support calling a winner — see
   <a href="{% docs_url 'portal/experiments/' %}">how experiments are read →</a>.</div>

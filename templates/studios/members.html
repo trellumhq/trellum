@@ -48,6 +48,7 @@
 </table>
 </div>
 </div>
+{% if rows_truncated %}<p class="muted">Showing the first {{ member_list_cap }} direct members.</p>{% endif %}
 {% if org_users %}
 <form class="ui-form-section" method="post" action="/s/{{ org.slug }}/{{ studio.slug }}/settings/members/set">
   {% csrf_token %}
@@ -55,7 +56,7 @@
   <div class="ui-form-row">
   <div class="ui-field" data-choice-picker>
   <label for="studioMemberAddUser">Person</label>
-  <select id="studioMemberAddUser" name="user_id" class="ui-input" required>
+  <select id="studioMemberAddUser" name="user_id" class="ui-input"{% if choices_truncated %} data-choice-source="/s/{{ org.slug }}/{{ studio.slug }}/api/member-choices" data-unavailable-label="Selected person is unavailable"{% endif %} required>
     {% for m in org_users %}<option value="{{ m.user_id }}">{{ m.user.email }}</option>{% endfor %}
   </select>
   </div>

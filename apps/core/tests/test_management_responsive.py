@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 from django.template.loader import render_to_string
+from django.test import RequestFactory
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -50,6 +51,9 @@ def test_mobile_css_keeps_rows_in_viewport():
 def test_delivery_template_renders_empty_state_without_table():
     # This is a real Django template render; no model or database is needed for
     # the empty branch and it protects the explicit table/empty-state contract.
-    html = render_to_string("reports/my_deliveries.html", {"schedule_rows": []})
+    html = render_to_string(
+        "reports/my_deliveries.html", {"schedule_rows": []},
+        request=RequestFactory().get("/deliveries"),
+    )
     assert "No scheduled deliveries match these filters." in html
     assert 'id="deliveryTable"' not in html

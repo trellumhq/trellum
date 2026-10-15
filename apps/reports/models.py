@@ -178,6 +178,8 @@ class MetricDefinition(models.Model):
     #: the identity a built report's _meta.json/`_metrics` claim is compared
     #: against to decide "current" vs. "built against an older version".
     definition_hash = models.CharField(max_length=64, blank=True, default="")
+    # NULL distinguishes historical rows from a scanned unbound/snapshot metric.
+    binding = models.JSONField(null=True, blank=True, default=None)
     present_in_scan = models.BooleanField(default=True)
     first_seen_at = models.DateTimeField(default=timezone.now)
     last_scanned_at = models.DateTimeField(default=timezone.now)
@@ -213,6 +215,9 @@ class MetricDefinition(models.Model):
             dimensions=tuple(self.dimensions or ()),
             tags=tuple(self.tags or ()),
             definition_hash=self.definition_hash,
+            dataset=(self.binding or {}).get("dataset"),
+            time_agg=(self.binding or {}).get("time_agg"),
+            date_col=(self.binding or {}).get("time_column"),
         )
 
     def spec_text(self) -> str:
@@ -829,3 +834,116 @@ def record_view(report, *, user=None, share_link=None, request=None) -> None:
             )
     except Exception:  # noqa: BLE001 - capture must never break report serving
         logger.exception("record_view failed for report=%s", getattr(report, "pk", None))
+
+
+class MetricCatalogState(models.Model):
+    """Cross-process generations; artifacts are projected by workers, never GET."""
+
+    studio = models.OneToOneField("studios.Studio", on_delete=models.CASCADE, related_name="metric_catalog_state")
+    definition_revision = models.PositiveBigIntegerField(default=0)
+    summary_revision = models.PositiveBigIntegerField(default=0)
+
+
+class ReportSourceSummary(models.Model):
+    """Observed serving source, kept distinct from mutable last-attempt metadata."""
+
+    report = models.OneToOneField(Report, on_delete=models.CASCADE, related_name="source_summary")
+    schema_version = models.PositiveIntegerField(default=2)
+    backend = models.CharField(max_length=16, blank=True)
+    source_identity = models.CharField(max_length=300, blank=True)
+    claim_digest = models.CharField(max_length=64, blank=True)
+    state = models.CharField(max_length=24, default="pending")
+    quality = models.CharField(max_length=16, default="unknown")
+    served_at = models.DateTimeField(null=True, blank=True)
+    observed_at = models.DateTimeField(null=True, blank=True)
+    attempt_at = models.DateTimeField(null=True, blank=True)
+    attempt_status = models.CharField(max_length=32, blank=True)
+    operation = models.CharField(max_length=64, blank=True)
+    generation = models.PositiveBigIntegerField(default=0)
+    # Leasing is a short DB transaction; source I/O happens after it commits.
+    lease_token = models.CharField(max_length=64, blank=True)
+    lease_until = models.DateTimeField(null=True, blank=True)
+    next_check_at = models.DateTimeField(default=timezone.now, db_index=True)
+    failures = models.PositiveIntegerField(default=0)
+    # Consecutive reconciliations that observed nothing new; backs off rechecks.
+    idle_checks = models.PositiveSmallIntegerField(default=0)
+    # Digest of the generation, config and artifact stamp behind the last full
+    # inspection, plus when it was taken. While the stamp still matches, a
+    # recheck only confirms freshness and reads no artifact.
+    change_stamp = models.CharField(max_length=96, null=True, blank=True, default=None)
+    error_code = models.CharField(max_length=64, blank=True)
+    preview_state = models.CharField(max_length=24, default="not-applicable")
+    # The served artifact's marker, not the current generator/config version.
+    workspace_version = models.PositiveSmallIntegerField(null=True, blank=True, default=None)
+
+
+    has_output = models.BooleanField(null=True, default=None)
+    html_entry = models.CharField(max_length=255, blank=True)
+    has_live_queries = models.BooleanField(null=True, default=None)
+    runtime_state = models.CharField(max_length=24, default="pending")
+    runtime = models.JSONField(null=True, default=None, blank=True)
+    attempt_error = models.CharField(max_length=500, blank=True)
+    attempt_blocked_by = models.JSONField(default=list, blank=True)
+    experiment_state = models.CharField(max_length=24, default="pending")
+    declaration_digest = models.CharField(max_length=64, blank=True)
+    output_digest = models.CharField(max_length=64, blank=True)
+
+
+class ReportExperimentSummary(models.Model):
+    """One declared experiment, with bounded worker-observed result facts."""
+
+    summary = models.ForeignKey(ReportSourceSummary, on_delete=models.CASCADE, related_name="experiments")
+    ordinal = models.PositiveIntegerField()
+    declaration_digest = models.CharField(max_length=64)
+    declaration = models.JSONField(default=dict)
+    start_date = models.DateField(null=True, blank=True)
+    end_date = models.DateField(null=True, blank=True)
+    closed = models.BooleanField(default=False)
+    test_name = models.CharField(max_length=200, blank=True)
+    split = models.CharField(max_length=200, blank=True)
+    control_label = models.CharField(max_length=200, blank=True)
+    test_label = models.CharField(max_length=200, blank=True)
+    payload_state = models.CharField(max_length=24, default="pending")
+    mode_label = models.CharField(max_length=200, blank=True)
+    generated_at = models.DateTimeField(null=True, blank=True)
+    framework_version = models.CharField(max_length=200, blank=True)
+    metric = models.CharField(max_length=200, blank=True)
+    control_val = models.CharField(max_length=500, blank=True)
+    test_val = models.CharField(max_length=500, blank=True)
+    delta_pct = models.FloatField(null=True, blank=True)
+    ci_low = models.FloatField(null=True, blank=True)
+    ci_high = models.FloatField(null=True, blank=True)
+    higher_is_better = models.BooleanField(null=True, default=None)
+    significant = models.BooleanField(default=False)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["summary", "ordinal"], name="uniq_source_experiment")]
+        indexes = [models.Index(fields=["start_date", "end_date"], name="source_experiment_dates")]
+
+
+class ReportMetricClaim(models.Model):
+    """Complete claims, including names no longer defined by metrics.yaml."""
+
+    summary = models.ForeignKey(ReportSourceSummary, on_delete=models.CASCADE, related_name="claims")
+    metric_name = models.CharField(max_length=200)
+    definition_hash = models.CharField(max_length=64, null=True, blank=True)
+    version = models.PositiveIntegerField(null=True, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["summary", "metric_name"], name="uniq_source_metric_claim")]
+        indexes = [models.Index(fields=["metric_name", "summary"], name="source_claim_metric_idx")]
+
+
+class ReportMetricPreview(models.Model):
+    summary = models.ForeignKey(ReportSourceSummary, on_delete=models.CASCADE, related_name="previews")
+    metric_name = models.CharField(max_length=200)
+    # Canonical chart polyline: at most60points, not a full dataset.
+    points = models.TextField()
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["summary", "metric_name"], name="uniq_source_metric_preview")]
+
+
+def _annotation_filter_token():
+    # Kept only because migration 0030 names it as a field default.
+    return secrets.token_hex(32)

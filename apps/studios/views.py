@@ -5,10 +5,10 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from django.contrib import messages
-from django.http import Http404
+from django.http import Http404, JsonResponse
 from django.shortcuts import redirect, render
 from django.utils import timezone
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_http_methods
 
 from apps.core import roles
 from apps.core.audit import audit
@@ -30,30 +30,76 @@ def settings_home(request, org_slug, studio_slug):  # noqa: ARG001
     return redirect(f"/s/{org_slug}/{studio_slug}/settings/repo")
 
 
+#: Invisible upper bound on the rows of the studio members screen and on the
+#: people listed in its "Add a member" picker. Past it the table shows a note
+#: and the picker searches on the server as you type.
+MEMBER_LIST_CAP = 500
+
+
 @require_studio_role(roles.ADMIN)
 def members(request, org_slug, studio_slug):  # noqa: ARG001
-    rows = (
+    rows = list(
         StudioMembership.objects.filter(studio=request.studio)
         .select_related("user")
-        .order_by("user__email")
+        .order_by("user__email")[: MEMBER_LIST_CAP + 1]
     )
-    org_users = (
-        OrgMembership.objects.filter(org=request.org)
-        .exclude(user__studio_memberships__studio=request.studio)
-        .select_related("user")
-        .order_by("user__email")
-    )
+    rows_truncated = len(rows) > MEMBER_LIST_CAP
+    org_users = list(_eligible_member_choices(request)[: MEMBER_LIST_CAP + 1])
+    choices_truncated = len(org_users) > MEMBER_LIST_CAP
     return render(
         request,
         "studios/members.html",
         {
             "org": request.org,
             "studio": request.studio,
-            "rows": rows,
-            "org_users": org_users,
+            "rows": rows[:MEMBER_LIST_CAP],
+            "rows_truncated": rows_truncated,
+            "org_users": org_users[:MEMBER_LIST_CAP],
+            "choices_truncated": choices_truncated,
+            "member_list_cap": MEMBER_LIST_CAP,
             "studio_role_choices": roles.STUDIO_ROLE_CHOICES,
         },
     )
+
+
+def _eligible_member_choices(request):
+    return OrgMembership.objects.filter(org=request.org).exclude(
+        user__studio_memberships__studio=request.studio).select_related("user").order_by("user__email")
+
+
+def _member_choice_page(request, *, data=None):
+    from django.core.paginator import Paginator
+    from django.db.models import Q
+
+    data = request.GET if data is None else data
+    qs = _eligible_member_choices(request)
+    q = (data.get("q") or "").strip()
+    if q:
+        qs = qs.filter(Q(user__email__icontains=q) | Q(user__name__icontains=q))
+    return Paginator(qs, 25).get_page(data.get("page"))
+
+
+def _selected_member_choice(request, key, data=None):
+    data = request.GET if data is None else data
+    value = data.get(key) or ""
+    if not value.isdecimal() or len(value) > 19 or int(value) > 9223372036854775807:
+        return None
+    return _eligible_member_choices(request).filter(user_id=value).first()
+
+
+@require_studio_role(roles.ADMIN)
+@require_http_methods(["GET"])
+def api_member_choices(request, org_slug, studio_slug):  # noqa: ARG001
+    page = _member_choice_page(request)
+    selected = _selected_member_choice(request, "selected")
+    def item(member):
+        return {"value": str(member.user_id), "label": member.user.email, "hint": ""}
+    response = JsonResponse({"results": [item(member) for member in page.object_list],
+        "selected": item(selected) if selected else None,
+        "pagination": {"page": page.number, "pages": page.paginator.num_pages,
+                       "total": page.paginator.count, "has_next": page.has_next(), "has_previous": page.has_previous()}})
+    response["Cache-Control"] = "private, no-store"
+    return response
 
 
 @require_studio_role(roles.ADMIN)
@@ -321,8 +367,11 @@ def appearance_settings(request, org_slug, studio_slug):  # noqa: ARG001
 @require_studio_role(roles.ADMIN)
 @require_POST
 def member_set(request, org_slug, studio_slug):  # noqa: ARG001
+    value = request.POST.get("user_id", "")
+    if not value.isdecimal() or len(value) > 19 or int(value) > 9223372036854775807:
+        raise Http404
     m = OrgMembership.objects.filter(
-        org=request.org, user_id=request.POST.get("user_id")
+        org=request.org, user_id=value
     ).first()
     if m is None:
         raise Http404

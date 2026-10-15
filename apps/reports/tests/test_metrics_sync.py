@@ -162,3 +162,34 @@ class TestSyncedFromRegistryPass:
 
         n = sync_studio_registry(studio_tree)
         assert n == 1  # the report still synced despite the metrics sync blowing up
+
+
+def test_scanned_bindings_distinguish_historical_snapshot_default_and_last(studio_tree, write_metrics_yaml):
+    import yaml
+    from apps.reports.models import MetricCatalogState
+    historical = MetricDefinition.objects.create(studio=studio_tree, name='historical')
+    assert historical.binding is None
+    path = studio_tree.project_root / 'metrics.yaml'
+    studio_tree.project_root.mkdir(parents=True, exist_ok=True)
+    doc = {'version': 1, 'datasets': {
+        'daily': {'provider': 'fixture:daily', 'dimensions': ['platform'], 'time': {'column': 'event_date', 'grain': 'day'}},
+        'snapshot': {'provider': 'fixture:snapshot', 'dimensions': ['platform'], 'time': 'none'}},
+        'metrics': [{**GROSS_REVENUE, 'name': 'daily', 'dataset': 'daily'},
+                    {**GROSS_REVENUE, 'name': 'balance', 'dataset': 'daily', 'time_agg': 'last'},
+                    {**GROSS_REVENUE, 'name': 'inventory', 'dataset': 'snapshot'}]}
+    path.write_text(yaml.safe_dump(doc)); sync_studio_metrics(studio_tree)
+    daily = MetricDefinition.objects.get(studio=studio_tree, name='daily')
+    balance = MetricDefinition.objects.get(studio=studio_tree, name='balance')
+    snapshot = MetricDefinition.objects.get(studio=studio_tree, name='inventory')
+    assert daily.binding == {'dataset': 'daily', 'time_column': 'event_date', 'grain': 'day', 'time_agg': None}
+    assert balance.to_metric().date_col == 'event_date' and balance.to_metric().time_agg == 'last'
+    assert snapshot.binding == {'dataset': 'snapshot', 'time_column': None, 'grain': None, 'time_agg': None}
+    revision = MetricCatalogState.objects.get(studio=studio_tree).definition_revision
+    canonical_hash = balance.definition_hash
+    doc['datasets']['daily']['time']['grain'] = 'week'; doc['metrics'][1]['time_agg'] = 'avg'
+    path.write_text(yaml.safe_dump(doc)); sync_studio_metrics(studio_tree)
+    balance.refresh_from_db()
+    assert balance.binding['grain'] == 'week' and balance.binding['time_agg'] == 'avg'
+    assert balance.definition_hash == canonical_hash  # Canonical hash deliberately excludes binding facts.
+    assert MetricCatalogState.objects.get(studio=studio_tree).definition_revision == revision + 1
+    historical.refresh_from_db(); assert historical.binding is None and not historical.present_in_scan
