@@ -26,9 +26,12 @@ once nobody has looked at it for a configurable number of days.
   need fresh data.
 - **Resume is manual only.** Viewing a suspended report still records the
   view, but does not resume it. Someone with the developer role has to press
-  **Resume auto-refresh**, which clears the suspension, sets
+  **Resume**, which clears the suspension, sets
   `refresh_resumed_at = now` (which restarts the clock), queues an immediate
-  rebuild, and writes an audit entry (`report.refresh_resume`).
+  rebuild, and writes an audit entry (`report.refresh_resume`). Saving an org
+  threshold of `0` clears every suspension in the org the same way, without
+  the immediate rebuilds; the `refresh_policy.update` audit entry records how
+  many reports it resumed.
 - A plain "Run now" builds once and leaves the report suspended.
 
 ## Data model (`apps.reports`)

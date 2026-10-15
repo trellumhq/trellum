@@ -48,8 +48,6 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Document required portal performance patterns in `docs/performance-patterns.md`
   with a new-feature checklist,
   and track a tool-neutral `AGENTS.md` agent guide.
-- Add focused local and parallel portal test commands, CI timing reports,
-  and a portal check that also reports for documentation-only changes.
 
 ### Fixed
 
@@ -58,8 +56,6 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   the first paint, so the health warning, search box and Docs link stop shifting
   when the assistant finishes loading. The assistant button, its unavailable
   entry and the organization picker now share one look.
-- Use the report theme font for chart labels, matching report headers and
-  metadata, including after theme changes and font loading.
 - Metrics charts and sparklines no longer disappear when the worker has not
   re-observed a report for five minutes. The idle re-check interval is capped
   inside that window, chart availability no longer waits on observation
@@ -90,6 +86,56 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - The Operations page lists every report in one capped read with no pager, the
   Uptime tile and the earlier state chips and filters; Reload Registry keeps its
   Scheduled and result feedback. The no-JavaScript Operations page is removed.
+- Keep the nightly retention cleanup and the daily release check scheduled on
+  the coordinator. The schedule sync removed both right after start, so
+  cleanup never ran and `manage.py doctor` failed its retention check.
+
+## [0.7.0] — 2026-10-15
+
+### Added
+
+- Pause the scheduled refresh of reports nobody has viewed for an
+  organization-configurable number of days, set under **Org settings →
+  Auto-refresh** (60 by default, up to 3650; `0` never pauses and resumes
+  paused reports). Portal and share-link views count as activity; reports
+  with an enabled email delivery or schedule-triggered alert are exempt.
+  Paused reports show an **Auto-refresh paused** badge in card and list views
+  and restart through **Resume** in Operations, which also queues a rebuild.
+  Pauses and resumes are audited.
+
+### Changed
+
+- Show the analysis and its source reports on separate full-width **Analysis**
+  and **Reports** workspace pages, with the shared queue in an overlay drawer
+  and **Report only** and **Analysis only** views without workspace controls.
+  Switching pages or source reports keeps filters, selection drafts and scroll
+  positions.
+- Add focused local and parallel portal test commands, CI timing reports,
+  and a portal check that also reports for documentation-only changes.
+
+### Fixed
+
+- Build analyses in the Docker report sandbox, where staging beside the
+  writable output mount failed on its read-only parent. A failed build keeps
+  the previous artifacts; a successful rebuild removes obsolete ones.
+- Use the report theme font for chart labels, matching report headers and
+  metadata, including after theme changes and font loading.
+- Reject live-query rate limits too large to store instead of failing with a
+  server error.
+- Make `scripts/demo.sh`, `scripts/upgrade.sh`, `scripts/rollback.sh` and
+  `scripts/check-docker.sh` executable, so the documented `./scripts/demo.sh`
+  and `scripts/upgrade.sh` commands run on macOS and Linux.
+
+### Upgrade notes
+
+Apply the additive `reports.0026_report_idle_refresh` migration before starting
+the new portal. Update the portal, every worker and the matched report-runner
+image to v0.7.0 together; older workers do not pause idle reports, and analysis
+builds need the new runner image. The migration starts every existing report's
+idle clock at upgrade time, so no report is paused until the organization's
+threshold (60 days by default) has passed after the upgrade. Organizations that
+want every schedule to keep running regardless of views should set
+**Auto-refresh** to `0`. Rebuild reports to apply the chart label font.
 
 ## [0.6.0] — 2026-10-13
 

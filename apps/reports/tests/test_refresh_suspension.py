@@ -12,6 +12,7 @@ from apps.core import roles
 from apps.core.models import AuditLog
 from apps.reports.models import (
     DEFAULT_REFRESH_SUSPEND_DAYS,
+    MAX_REFRESH_SUSPEND_DAYS,
     EmailSchedule,
     OrgRefreshPolicy,
     Report,
@@ -19,7 +20,10 @@ from apps.reports.models import (
     refresh_suspend_days,
     should_suspend_refresh,
 )
-from apps.runner.management.commands.runworker import _enqueue_scheduled, _SchedulerManager
+from apps.runner.management.commands.runworker import (
+    _enqueue_scheduled,
+    _SchedulerManager,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -167,7 +171,7 @@ class TestScheduler:
             assert f"report-{report_row.pk}" in {j.id for j in mgr._scheduler.get_jobs()}
             Report.objects.filter(pk=report_row.pk).update(refresh_suspended_at=timezone.now())
             mgr.refresh()
-            assert not [job for job in mgr._scheduler.get_jobs() if job.id.startswith("report-")]
+            assert mgr._scheduler.get_job(f"report-{report_row.pk}") is None
         finally:
             mgr.shutdown()
 
@@ -186,6 +190,14 @@ class TestResumeApi:
         assert report_row.refresh_suspended_at is None
         assert report_row.refresh_resumed_at is not None
         assert AuditLog.objects.filter(action="report.refresh_resume").exists()
+
+    def test_operations_shows_no_next_run_while_suspended(self, login, developer, report_row, studio_tree, org):
+        Report.objects.filter(pk=report_row.pk).update(schedule_cron="0 7 * * *")
+        client = login(developer)
+        url = f"/s/{org.slug}/{studio_tree.slug}/api/system/status"
+        assert [j["slug"] for j in client.get(url).json()["scheduled_jobs"]] == [report_row.slug]
+        Report.objects.filter(pk=report_row.pk).update(refresh_suspended_at=_ago(1))
+        assert client.get(url).json()["scheduled_jobs"] == []
 
     def test_viewer_forbidden(self, login, viewer, report_row, studio_tree, org):
         Report.objects.filter(pk=report_row.pk).update(refresh_suspended_at=_ago(2))
@@ -208,7 +220,9 @@ class TestApiRefreshPolicy:
         client = login(org_admin)
         resp = self._post(client, org, {"suspend_after_days": 0})
         assert resp.status_code == 200
-        assert resp.json() == {"ok": True, "suspend_after_days": 0, "effective_suspend_after_days": 0}
+        assert resp.json() == {
+            "ok": True, "suspend_after_days": 0, "effective_suspend_after_days": 0, "resumed_reports": 0,
+        }
         assert AuditLog.objects.filter(action="refresh_policy.update").exists()
         resp = self._post(client, org, {"suspend_after_days": None})
         assert resp.json()["effective_suspend_after_days"] == 60
@@ -219,11 +233,44 @@ class TestApiRefreshPolicy:
         assert resp.status_code == 200
         assert OrgRefreshPolicy.objects.get(org=org).updated_by == org_admin
 
-    @pytest.mark.parametrize("body", [{"suspend_after_days": -1}, {"suspend_after_days": "x"}, {"nope": 1}])
+    @pytest.mark.parametrize("body", [
+        {"suspend_after_days": -1},
+        {"suspend_after_days": "x"},
+        {"nope": 1},
+        {"suspend_after_days": MAX_REFRESH_SUSPEND_DAYS + 1},
+        # Larger than the integer column, and than the scheduler's date arithmetic.
+        {"suspend_after_days": 2_147_483_648},
+    ])
     def test_rejects_invalid_without_row(self, login, org_admin, org, body):
         resp = self._post(login(org_admin), org, body)
         assert resp.status_code == 400
         assert not OrgRefreshPolicy.objects.filter(org=org).exists()
+
+    def test_accepts_maximum(self, login, org_admin, org):
+        resp = self._post(login(org_admin), org, {"suspend_after_days": MAX_REFRESH_SUSPEND_DAYS})
+        assert resp.status_code == 200
+        assert OrgRefreshPolicy.objects.get(org=org).suspend_after_days == MAX_REFRESH_SUSPEND_DAYS
+
+    def test_zero_resumes_suspended_reports_in_this_org(self, login, org_admin, org, report_row, other_studio):
+        foreign = Report.objects.create(studio=other_studio, slug="elsewhere", refresh_suspended_at=_ago(3))
+        Report.objects.filter(pk=report_row.pk).update(refresh_suspended_at=_ago(3))
+        client = login(org_admin)
+
+        resp = self._post(client, org, {"suspend_after_days": 30})
+        assert resp.json()["resumed_reports"] == 0
+        report_row.refresh_from_db()
+        assert report_row.refresh_suspended_at is not None
+
+        resp = self._post(client, org, {"suspend_after_days": 0})
+        assert resp.json()["resumed_reports"] == 1
+        report_row.refresh_from_db()
+        assert report_row.refresh_suspended_at is None
+        assert report_row.refresh_resumed_at > _ago(1)
+        foreign.refresh_from_db()
+        assert foreign.refresh_suspended_at is not None
+        assert AuditLog.objects.filter(
+            action="refresh_policy.update", metadata__resumed_reports=1
+        ).exists()
 
     def test_non_admin_forbidden(self, login, member, org):
         resp = self._post(login(member), org, {"suspend_after_days": 5})

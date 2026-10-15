@@ -527,8 +527,8 @@ function refreshPausedBadgeHtml(r) {
     var d = new Date(r.refresh_suspended_at);
     var when = isNaN(d.getTime()) ? r.refresh_suspended_at : d.toLocaleDateString();
     return '<span class="ui-badge info" title="'
-        + escAttr('Not viewed for a while, so scheduled refreshes are paused since ' + when
-            + '. Resume to rebuild and restart the schedule.')
+        + escAttr('Scheduled refreshes paused on ' + when
+            + ' because nobody viewed this report. A developer can resume them in Operations.')
         + '">Auto-refresh paused</span>';
 }
 
@@ -705,7 +705,8 @@ function listTableHtml(groups) {
         html += '<td data-label="Category">' + esc(r.category || '') + '</td>';
         html += '<td data-label="Studio">' + (r.studio ? '<span class="studio-badge">' + r.studio.toUpperCase() + '</span>' : '—') + '</td>';
         html += '<td data-label="Status"><span class="list-status ' + dot.cls + '"' + (dot.title ? ' title="' + escAttr(dot.title) + '"' : '') + '></span><span class="list-status-label">' + esc(dot.label) + '</span></td>';
-        if (!IS_ANALYSES_PAGE) html += '<td data-label="Schedule">' + cronLabel(r.schedule) + '</td>';
+        if (!IS_ANALYSES_PAGE) html += '<td data-label="Schedule">' + cronLabel(r.schedule)
+            + (r.refresh_suspended_at ? ' ' + refreshPausedBadgeHtml(r) : '') + '</td>';
         html += '<td data-label="Last updated">' + (r.last_run ? relativeTime(r.last_run) : '<span style="color:var(--text3)">Never</span>') + '</td>';
         html += '</tr>';
         });
@@ -2210,7 +2211,7 @@ function _opsCronCell(r, status) {
     var cron = r.schedule || '';
     if (!cron) return '<span class="ops-cron">\u2014</span>';
     var label = cronLabel(cron);
-    var next = '';
+    var next = r.refresh_suspended_at ? 'Auto-refresh paused' : '';
     (status.scheduled_jobs || []).forEach(function(j) {
         if (j.slug === r.slug && j.next_run) {
             var mins = Math.round((new Date(j.next_run) - new Date()) / 60000);

@@ -57,6 +57,7 @@ from apps.reports.recipient_choices import CHOICE_LIMIT
 from apps.reports.models import (
     DEFAULT_LIVE_QUERY_RATE_LIMIT,
     DEFAULT_REFRESH_SUSPEND_DAYS,
+    MAX_REFRESH_SUSPEND_DAYS,
     EmailSchedule,
     MetricDefinition,
     OrgLiveQueryPolicy,
@@ -451,7 +452,8 @@ def api_system_status(request, org_slug, studio_slug):  # noqa: ARG001
 
     scheduled = []
     scheduled_reports = Report.objects.filter(
-        studio=studio, present_in_scan=True, disabled=False, kind=Report.KIND_REPORT
+        studio=studio, present_in_scan=True, disabled=False, kind=Report.KIND_REPORT,
+        refresh_suspended_at__isnull=True,
     ).exclude(schedule_cron="")
     for report in scheduled_reports:
         scheduled.append(
@@ -3257,8 +3259,9 @@ def api_live_query_policy(request, org_slug):  # noqa: ARG001
             return invalid("invalid rate_limit_per_minute", "rate_limit_per_minute")
         # 0 is the org's "off" switch: live_query_rate_limit(org) returns 0,
         # which blocks every live execution and drops the "Live" marker
-        # (apps/reports/scan.py). Negatives are still nonsense.
-        if value < 0:
+        # (apps/reports/scan.py). Negatives are still nonsense, and the column
+        # is a Postgres integer.
+        if value < 0 or value > 2_147_483_647:
             return invalid("invalid rate_limit_per_minute", "rate_limit_per_minute")
 
     policy, _created = OrgLiveQueryPolicy.objects.get_or_create(org=request.org)
@@ -3324,31 +3327,44 @@ def api_refresh_policy(request, org_slug):  # noqa: ARG001
     if raw is None or raw == "":
         value = None
     else:
+        out_of_range = f"Enter a whole number of days from 0 to {MAX_REFRESH_SUSPEND_DAYS}."
         try:
             value = int(raw)
         except (TypeError, ValueError):
-            return invalid("invalid suspend_after_days", "suspend_after_days")
+            return invalid(out_of_range, "suspend_after_days")
         # 0 is the org's "never suspend" switch; negatives are nonsense.
-        if value < 0:
-            return invalid("invalid suspend_after_days", "suspend_after_days")
+        if value < 0 or value > MAX_REFRESH_SUSPEND_DAYS:
+            return invalid(out_of_range, "suspend_after_days")
 
     policy, _created = OrgRefreshPolicy.objects.get_or_create(org=request.org)
     policy.suspend_after_days = value
     policy.updated_by = request.user
     policy.save(update_fields=["suspend_after_days", "updated_by", "updated_at"])
 
-    audit(request, "refresh_policy.update", org=request.org, suspend_after_days=value)
+    # Turning suspension off also lifts the suspensions it already made. The
+    # reports rebuild at their next scheduled time rather than all at once.
+    resumed = 0
+    if value == 0:
+        resumed = Report.objects.filter(studio__org=request.org, refresh_suspended_at__isnull=False).update(
+            refresh_suspended_at=None, refresh_resumed_at=timezone.now()
+        )
 
+    audit(request, "refresh_policy.update", org=request.org, suspend_after_days=value, resumed_reports=resumed)
+
+    saved = "Saved."
+    if resumed:
+        saved = f"Saved. Resumed {resumed} paused report{'s' if resumed != 1 else ''}."
     if is_settings_request(request):
-        return settings_success(request, "Saved.")
+        return settings_success(request, saved)
     if form_post:
-        messages.success(request, "Saved.")
+        messages.success(request, saved)
         return redirect(f"/orgs/{request.org.slug}/settings/auto-refresh")
 
     return JsonResponse({
         "ok": True,
         "suspend_after_days": policy.suspend_after_days,
         "effective_suspend_after_days": refresh_suspend_days(request.org),
+        "resumed_reports": resumed,
     })
 
 
@@ -3363,6 +3379,7 @@ def org_refresh_settings(request, org_slug):  # noqa: ARG001
             "org": request.org,
             "suspend_after_days": policy.suspend_after_days if policy else None,
             "default_suspend_after_days": DEFAULT_REFRESH_SUSPEND_DAYS,
+            "max_suspend_after_days": MAX_REFRESH_SUSPEND_DAYS,
         },
     )
 
