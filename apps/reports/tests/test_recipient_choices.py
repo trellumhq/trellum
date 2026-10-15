@@ -1,5 +1,5 @@
 import pytest
-from apps.reports.recipient_choices import recipient_snapshot, page_snapshot
+from apps.reports.recipient_choices import inline_snapshot, recipient_snapshot, page_snapshot
 from apps.orgs.models import PermissionGroup, PermissionGroupMembership
 
 pytestmark = pytest.mark.django_db
@@ -28,7 +28,26 @@ def test_selected_foreign_and_invalid_ids_never_resolve(studio, org, make_user, 
     assert page['selected']['members'] == []
 
 
-def test_native_delivery_browse_preserves_off_page_choices_and_draft(org_admin, studio_tree, report_row, org, make_user, grant_studio, login):
+def test_inline_snapshot_lists_everyone_until_the_limit(studio, org, make_user, grant_studio):
+    people = [make_user(f'inline-{i:03}@example.test', org=org) for i in range(60)]
+    for person in people:
+        grant_studio(person, studio, 'viewer')
+    snapshot = recipient_snapshot(studio)
+    page = inline_snapshot(snapshot)
+    assert len(page['members']) == 60 and not page['searchable']
+
+
+def test_inline_snapshot_previews_and_searches_beyond_the_limit(monkeypatch):
+    import apps.reports.recipient_choices as module
+    monkeypatch.setattr(module, 'INLINE_CHOICE_LIMIT', 30)
+    snapshot = {'roles': {}, 'studio_name': 'S', 'active_people_count': 40,
+                'members': [{'id': i, 'email': f'p{i}@example.test', 'name': f'P{i}'} for i in range(1, 41)], 'groups': []}
+    page = inline_snapshot(snapshot)
+    assert page['searchable'] and len(page['members']) == 25
+    assert page['pagination']['members']['has_next']
+
+
+def test_delivery_form_lists_every_recipient_with_no_paging_controls(org_admin, studio_tree, report_row, org, make_user, grant_studio, login):
     from apps.reports.models import EmailSchedule
     people = [make_user(f'browse-{i:03}@example.test', org=org) for i in range(60)]
     for person in people:
@@ -42,27 +61,22 @@ def test_native_delivery_browse_preserves_off_page_choices_and_draft(org_admin, 
     url = f'/s/{org.slug}/{studio_tree.slug}/api/reports/{report_row.slug}/schedules/{schedule.pk}'
     from html.parser import HTMLParser
     class Checked(HTMLParser):
-        def __init__(self): super().__init__(); self.values = set()
+        def __init__(self): super().__init__(); self.values = set(); self.names = []
         def handle_starttag(self, tag, attrs):
             values = dict(attrs)
+            if tag == 'input' and values.get('name') in ('recipient_ids', 'recipient_group_ids'): self.names.append(values.get('name'))
             if tag == 'input' and 'checked' in values: self.values.add((values.get('name'), values.get('value')))
     rendered = login(org_admin).get(f'/s/{org.slug}/{studio_tree.slug}/deliveries/{schedule.pk}/edit')
-    checked = Checked(); checked.feed(rendered.content.decode())
+    html = rendered.content.decode()
+    checked = Checked(); checked.feed(html)
     assert ('recipient_ids', str(people[-1].pk)) in checked.values
     assert ('recipient_group_ids', str(groups[-1].pk)) in checked.values
-    body = {'action': 'browse_choices', 'people_page': '2', 'group_page': '2',
-            'recipient_ids': [str(people[-1].pk)], 'recipient_group_ids': [str(groups[-1].pk)],
+    assert checked.names.count('recipient_ids') >= 60 and checked.names.count('recipient_group_ids') == 60
+    assert 'data-recipient-source' not in html
+    assert 'Previous people' not in html and 'Next people' not in html and 'Browse choices' not in html
+    body = {'recipient_ids': [str(people[-1].pk)], 'recipient_group_ids': [str(groups[-1].pk)],
             'freq': 'weekly', 'send_time': '16:47', 'timezone': 'Europe/Amsterdam',
             'weekday': '3', 'month_day': '1', 'enabled': 'on'}
-    response = login(org_admin).post(url, body)
-    assert response.status_code == 200
-    form = response.context['form']
-    assert form.data['send_time'] == '16:47' and form.data['timezone'] == 'Europe/Amsterdam'
-    assert len(form.fields['recipient_ids'].choices) <= 26
-    assert str(people[-1].pk) in {str(value) for value, label in form.fields['recipient_ids'].choices}
-    assert str(groups[-1].pk) in {str(value) for value, label in form.fields['recipient_group_ids'].choices}
-    schedule.refresh_from_db(); assert schedule.freq == 'daily'
-    body['action'] = 'save'  # Paging state cannot turn an explicit Save into browse.
     response = login(org_admin).post(url, body)
     assert response.status_code == 302
     schedule.refresh_from_db(); assert schedule.send_hour == 16 and schedule.send_minute == 47

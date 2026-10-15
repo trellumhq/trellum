@@ -45,23 +45,6 @@ def test_compact_http_save_exact_sets_and_bounded_queries(count, enhanced, login
     assert AuditLog.objects.filter(action="group.grant", target_id=str(group.pk)).count() == 1
 
 
-def test_native_browse_remove_and_uncheck_are_draft_only(login, org_admin, org, studio, make_group):
-    reports = Report.objects.bulk_create([Report(studio=studio, slug=f"draft-{i:03}", name=f"Report {i:03}") for i in range(100)])
-    group = make_group("Draft")
-    client = login(org_admin)
-    selected = [r.pk for r in reports]
-    draft = payload(studio, selected, selected[:25], selected[1:25], action="browse_access")
-    before = AuditLog.objects.count()
-    response = client.post(path(org, group) + f"&report_page=2&remove_report={reports[-1].pk}", draft)
-    assert response.status_code == 200
-    form = response.context["access_rows"][0]["form"]
-    assert set(form["reports"].value()) == {str(r.pk) for r in reports[1:-1]}
-    assert len(form.fields["reports"].widget.page_values) == 25
-    assert not group.grants.exists() and AuditLog.objects.count() == before
-    assert b"Remove Report 098" in response.content
-    assert response.content.count(b'type="checkbox"') == 25
-
-
 @pytest.mark.parametrize("packet", ["{", "null", '{"version":1,"selected":["bad"],"editable":[]}'])
 def test_malformed_packet_bound_render_never_clears(packet, login, org_admin, org, studio, make_group):
     group = make_group("Malformed")
@@ -71,14 +54,12 @@ def test_malformed_packet_bound_render_never_clears(packet, login, org_admin, or
     data = payload(studio, [])
     data["reports__selection"] = packet
     client = login(org_admin)
-    for action in ("browse_access", "studio_access"):
-        data["action"] = action
-        response = client.post(path(org, group), data)
-        form = response.context["access_rows"][0]["form"]
-        assert "reports" in form.errors
-        assert form["reports"].value().packet == packet
-        assert b"data-compact-invalid" in response.content
-        assert list(grant.report_grants.values_list("report_id", flat=True)) == [report.pk]
+    response = client.post(path(org, group), data)
+    form = response.context["access_rows"][0]["form"]
+    assert "reports" in form.errors
+    assert form["reports"].value().packet == packet
+    assert b"data-compact-invalid" in response.content
+    assert list(grant.report_grants.values_list("report_id", flat=True)) == [report.pk]
 
 
 def test_packet_does_not_authorize_foreign_or_deleted_identity(login, org_admin, org, studio, other_studio, make_group):

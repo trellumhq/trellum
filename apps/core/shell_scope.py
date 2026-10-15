@@ -102,8 +102,10 @@ def can_manage_any_org(request, rows, *, has_more=True):
 
 
 def initial_choices(rows):
-    sentinel = list(rows[:PAGE_SIZE + 1])
-    return sentinel[:PAGE_SIZE], len(sentinel) > PAGE_SIZE
+    """Every choice up to the inline limit, else a short preview with search."""
+    from apps.core.choice_requests import inline_choices
+
+    return inline_choices(rows, preview=PAGE_SIZE)
 
 
 def selected_choice(rows, choices, *, pk=None, slug=None):

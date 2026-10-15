@@ -23,16 +23,34 @@ def test_remote_full_search_and_selected_offpage(login, org_admin, report_row):
     assert searched['pagination']['total'] == 1
 
 
-def test_native_chooser_is_bounded_and_searchable(login, org_admin, report_row):
+def test_report_filter_lists_every_report_inline(login, org_admin, report_row):
     Report.objects.bulk_create([Report(studio=report_row.studio, slug=f'choice-{i:03}', name=f'Choice {i:03}') for i in range(60)])
     client = login(org_admin)
-    path = f'/s/{report_row.studio.org.slug}/{report_row.studio.slug}/deliveries'
-    response = client.get(path, {'choose_report': 1})
-    assert len(response.context['choice_page']) == 25
-    assert b'choice_page=2' in response.content
-    assert b'report=id%3A' in response.content
-    searched = client.get(path, {'choose_report': 1, 'choice_q': 'Choice 059'})
-    assert len(searched.context['choice_page']) == 1
+    html = client.get(f'/s/{report_row.studio.org.slug}/{report_row.studio.slug}/deliveries').content.decode()
+    assert html.count('<option value="id:') >= 61
+    assert 'data-choice-source' not in html
+    assert 'Browse reports' not in html and 'Previous' not in html and 'Next' not in html
+    assert '>Filter</button>' not in html
+
+
+def test_add_delivery_picker_lists_every_report_inline(login, org_admin, report_row):
+    Report.objects.bulk_create([Report(studio=report_row.studio, slug=f'pick-{i:03}', name=f'Pick {i:03}') for i in range(60)])
+    client = login(org_admin)
+    html = client.get(f'/s/{report_row.studio.org.slug}/{report_row.studio.slug}/deliveries/new').content.decode()
+    assert html.count('<option value="') >= 62
+    assert 'data-choice-source' not in html and 'name="choice_q"' not in html and '>Continue<' not in html
+
+
+def test_very_long_report_lists_preview_and_search_without_pages(login, org_admin, report_row, monkeypatch):
+    import apps.core.choice_requests as module
+    monkeypatch.setattr(module, 'INLINE_CHOICE_LIMIT', 30)
+    Report.objects.bulk_create([Report(studio=report_row.studio, slug=f'long-{i:03}', name=f'Long {i:03}') for i in range(60)])
+    client = login(org_admin)
+    base = f'/s/{report_row.studio.org.slug}/{report_row.studio.slug}'
+    html = client.get(f'{base}/deliveries').content.decode()
+    assert f'data-choice-source="{base}/api/delivery-reports"' in html
+    assert html.count('<option value="id:') <= 26
+    assert 'Browse reports' not in html and 'choice_page' not in html
 
 
 def test_viewer_private_choices_and_selected_labels_are_hidden(login, make_user, grant_studio, org, report_row, settings):

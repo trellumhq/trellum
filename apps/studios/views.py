@@ -40,10 +40,12 @@ def members(request, org_slug, studio_slug):  # noqa: ARG001
     if q:
         rows = rows.filter(Q(user__email__icontains=q) | Q(user__name__icontains=q))
     page = paginate(request, rows)
-    choices = _member_choice_page(request, browse=True)
+    from apps.core.choice_requests import inline_choices
+
+    choices, searchable = inline_choices(_eligible_member_choices(request))
     return render(request, "studios/members.html", {"org": request.org, "studio": request.studio,
         "rows": page.object_list, "page": page, "q": q, "total": page.paginator.count,
-        "org_users": choices.object_list, "choice_total": choices.paginator.count,
+        "org_users": choices, "choice_searchable": searchable,
         "studio_role_choices": roles.STUDIO_ROLE_CHOICES})
 
 
@@ -52,16 +54,16 @@ def _eligible_member_choices(request):
         user__studio_memberships__studio=request.studio).select_related("user").order_by("user__email")
 
 
-def _member_choice_page(request, *, browse=False, data=None):
+def _member_choice_page(request, *, data=None):
     from django.core.paginator import Paginator
     from django.db.models import Q
 
     data = request.GET if data is None else data
     qs = _eligible_member_choices(request)
-    q = "" if browse else (data.get("q") or "").strip()
+    q = (data.get("q") or "").strip()
     if q:
         qs = qs.filter(Q(user__email__icontains=q) | Q(user__name__icontains=q))
-    return Paginator(qs, 25).get_page(1 if browse else data.get("page"))
+    return Paginator(qs, 25).get_page(data.get("page"))
 
 
 def _selected_member_choice(request, key, data=None):
@@ -78,28 +80,11 @@ def api_member_choices(request, org_slug, studio_slug):  # noqa: ARG001
     page = _member_choice_page(request)
     selected = _selected_member_choice(request, "selected")
     def item(member):
-        return {"value": str(member.user_id), "label": member.user.display_name, "hint": member.user.email}
+        return {"value": str(member.user_id), "label": member.user.email, "hint": ""}
     response = JsonResponse({"results": [item(member) for member in page.object_list],
         "selected": item(selected) if selected else None,
         "pagination": {"page": page.number, "pages": page.paginator.num_pages,
                        "total": page.paginator.count, "has_next": page.has_next(), "has_previous": page.has_previous()}})
-    response["Cache-Control"] = "private, no-store"
-    return response
-
-
-@require_studio_role(roles.ADMIN)
-@require_http_methods(["GET", "POST"])
-def member_choices(request, org_slug, studio_slug):  # noqa: ARG001
-    # POST only browses choices; saving always uses member_set.
-    data = request.POST if request.method == "POST" else request.GET
-    role = data.get("role", roles.VIEWER)
-    role_error = role not in dict(roles.STUDIO_ROLE_CHOICES)
-    page = _member_choice_page(request, data=data)
-    selected = _selected_member_choice(request, "user_id", data)
-    response = render(request, "studios/member_choices.html", {"org": request.org, "studio": request.studio,
-        "page": page, "q": (data.get("q") or "").strip(), "total": page.paginator.count,
-        "selected": selected, "selected_id": data.get("user_id", ""), "role": role,
-        "studio_role_choices": roles.STUDIO_ROLE_CHOICES, "role_error": role_error}, status=400 if role_error else 200)
     response["Cache-Control"] = "private, no-store"
     return response
 

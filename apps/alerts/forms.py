@@ -91,7 +91,7 @@ class AlertRuleForm(forms.ModelForm):
         ).order_by("name", "slug")
         self.fields["report"].empty_label = None
         self.fields["report"].label_from_instance = lambda report: report.name or report.slug
-        from apps.reports.recipient_choices import recipient_snapshot, page_snapshot, selected_ids
+        from apps.reports.recipient_choices import inline_snapshot, recipient_snapshot, selected_ids
         presentation = presentation or {}
         snapshot = recipient_snapshot(studio, include_inactive=True)
         eligible_ids = [user['id'] for user in snapshot['members']]
@@ -113,37 +113,32 @@ class AlertRuleForm(forms.ModelForm):
             return list(value) if isinstance(value, (list, tuple)) else [str(value)]
         selected_people = submitted('recipients') if self.is_bound else [str(u.pk) for u in self.instance.recipients.all()] if self.instance.pk else []
         selected_groups = submitted('recipient_groups') if self.is_bound else [str(g.pk) for g in self.instance.recipient_groups.all()] if self.instance.pk else []
-        self.recipient_page = page_snapshot(snapshot, query=presentation.get('recipient_q', ''),
-            people_page=presentation.get('people_page', 1), group_page=presentation.get('group_page', 1),
-            selected_people=selected_people, selected_groups=selected_groups)
+        self.recipient_page = inline_snapshot(snapshot, selected_people=selected_people, selected_groups=selected_groups)
         for field, key in [('recipients', 'members'), ('recipient_groups', 'groups')]:
             rows = {row['id']: row for row in self.recipient_page['selected'][key] + self.recipient_page[key]}
             choices = [(row['id'], (f"{row['name']} ({row['email']})" if key == 'members' and row['name'] != row['email'] else row['name'])) for row in rows.values()]
             for value in selected_ids(selected_people if key == 'members' else selected_groups) - rows.keys():
                 choices.append((value, 'Selected person is unavailable' if key == 'members' else 'Selected group is unavailable'))
             self.fields[field].choices = choices
+        if not snapshot['groups'] and not selected_ids(selected_groups):
+            del self.fields['recipient_groups']
+        from apps.core.choice_requests import inline_choices
         from apps.core.report_access import visible_reports
-        from django.core.paginator import Paginator
         reports = visible_reports(presentation.get('actor'), self.fields['report'].queryset) if presentation.get('actor') is not None else self.fields['report'].queryset
         self.fields['report'].queryset = reports
-        query = str(presentation.get('report_q', ''))[:200]
-        if query:
-            from django.db.models import Q
-            filtered = reports.filter(Q(name__icontains=query) | Q(slug__icontains=query))
-        else:
-            filtered = reports
-        self.report_page = Paginator(filtered.order_by('name', 'slug', 'pk'), 25).get_page(presentation.get('report_page'))
+        report_rows, report_searchable = inline_choices(reports.order_by('name', 'slug', 'pk'))
         selected_report = self.data.get(self.add_prefix('report')) if self.is_bound else self.instance.report_id
         selected = None
         if str(selected_report or '').isascii() and str(selected_report or '').isdigit() and len(str(selected_report)) < 19:
             selected = reports.filter(pk=selected_report).first()
-        rows = {row.pk: row for row in ([selected] if selected else []) + list(self.report_page)}
+        rows = {row.pk: row for row in report_rows + ([selected] if selected else [])}
         choices = [(row.pk, row.name or row.slug) for row in rows.values()]
         if selected_report and selected is None:
             choices.append((str(selected_report), 'Selected report is unavailable'))
         self.fields['report'].choices = choices
-        self.fields['report'].widget.attrs['data-choice-source'] = f'/s/{studio.org.slug}/{studio.slug}/alerts/report-choices'
-        self.recipient_source = f'/s/{studio.org.slug}/{studio.slug}/alerts/recipient-choices'
+        if report_searchable:
+            self.fields['report'].widget.attrs['data-choice-source'] = f'/s/{studio.org.slug}/{studio.slug}/alerts/report-choices'
+        self.recipient_source = f'/s/{studio.org.slug}/{studio.slug}/alerts/recipient-choices' if self.recipient_page['searchable'] else ''
         self.presentation = presentation
 
     def clean(self):

@@ -9,7 +9,6 @@
     (effective role is the highest of all sources).</p>
 </header>
 
-{% include "_list_toolbar.html" with q=q placeholder="Search direct members by name or email…" total=total %}
 <div class="panel">
 <div class="ui-table-scroll">
 <table class="ui-table" data-mobile-cards>
@@ -52,15 +51,15 @@
 </div>
 </div>
 {% include "_pagination.html" with page=page %}
-{% if choice_total %}
-<form id="studio-member-add" class="ui-form-section" method="post" action="/s/{{ org.slug }}/{{ studio.slug }}/settings/members/set" data-settings-form>
+{% if org_users %}
+<form class="ui-form-section" method="post" action="/s/{{ org.slug }}/{{ studio.slug }}/settings/members/set">
   {% csrf_token %}
   <h2>Add a member</h2>
   <div class="ui-form-row">
   <div class="ui-field" data-choice-picker>
   <label for="studioMemberAddUser">Person</label>
-  <select id="studioMemberAddUser" name="user_id" class="ui-input" data-choice-source="/s/{{ org.slug }}/{{ studio.slug }}/api/member-choices" data-unavailable-label="Selected person is unavailable" required>
-    <option value="">Choose a person</option>
+  <select id="studioMemberAddUser" name="user_id" class="ui-input"{% if choice_searchable %} data-choice-source="/s/{{ org.slug }}/{{ studio.slug }}/api/member-choices"{% endif %} required>
+    {% if choice_searchable %}<option value="">Choose a person</option>{% endif %}
     {% for m in org_users %}<option value="{{ m.user_id }}">{{ m.user.email }}</option>{% endfor %}
   </select>
   </div>
@@ -71,8 +70,7 @@
   </select>
   </div>
   </div>
-  <div class="ui-form-actions"><button class="ui-btn primary" type="submit">Add member</button>
-  <button class="ui-btn ghost" type="submit" formmethod="post" formaction="/s/{{ org.slug }}/{{ studio.slug }}/settings/members/choices" formnovalidate>Browse all {{ choice_total }} people</button></div>
+  <div class="ui-form-actions"><button class="ui-btn primary" type="submit">Add</button></div>
 </form>
 {% else %}
 <p class="muted" style="margin-top:12px">Everyone in {{ org.name }} already has a direct

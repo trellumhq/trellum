@@ -1,8 +1,7 @@
-"""Real HTTP group pages, native draft browse and shared enhanced saves."""
+"""Real HTTP group pages and shared enhanced saves."""
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import os
-import json
 from urllib.parse import urlparse
 
 import pytest
@@ -16,7 +15,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 
 @pytest.mark.parametrize("engine,width", [("chromium", 1440), ("chromium", 390), ("webkit", 1440), ("webkit", 390), ("chromium", 720), ("chromium", 195), ("webkit", 720), ("webkit", 195)])
-def test_group_draft_browse_save_and_native_discovery(engine, width, live_server, login, org_admin, org, studio, make_group, settings, tmp_path):
+def test_group_report_picker_lists_everything_searches_and_saves(engine, width, live_server, login, org_admin, org, studio, make_group, settings, tmp_path):
     settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = True
     settings.DATA_DIR = tmp_path / "data"
     reports = Report.objects.bulk_create([Report(studio=studio, name=f"Report {i:03}", slug=f"browser{i:03}", present_in_scan=True) for i in range(60)])
@@ -47,15 +46,17 @@ def test_group_draft_browse_save_and_native_discovery(engine, width, live_server
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
         picker = form.locator("[data-recipient-picker]")
         picker.locator(".ui-picker-trigger").click()
+        # Every report is already in the list; the browser filters instantly.
+        expect(picker.locator(".recipient-picker-option:visible")).to_have_count(60)
+        assert picker.get_by_role("button", name="Next", exact=True).count() == 0
+        assert picker.locator(".ui-picker-pager").count() == 0
+        picker.locator(".ui-picker-search").fill("Report 000")
+        expect(picker.locator(".recipient-picker-option:visible")).to_have_count(1)
         picker.get_by_role("checkbox", name="Report 000", exact=False).check()
         page.keyboard.press("Escape")
         assert page.locator("[name=reports]:checked").count() == 2
-        picker.locator(".ui-picker-trigger").click()
-        picker.get_by_role("button", name="Next", exact=True).click()
-        expect(picker.locator(".ui-picker-pager")).to_contain_text("Page 2")
-        page.keyboard.press("Escape")
         expect(page).to_have_url(host + path)
-        expect(form.get_by_role("button", name="Next reports")).not_to_be_visible()
+        expect(form.get_by_role("button", name="Next reports")).to_have_count(0)
         form = page.locator("[data-studio-access]")
         assert page.locator("[name=reports]:checked").count() == 2
         assert assignments() == {reports[-1].pk}
@@ -80,21 +81,6 @@ def test_group_draft_browse_save_and_native_discovery(engine, width, live_server
             target = Path(artifacts); target.mkdir(parents=True, exist_ok=True)
             page.screenshot(path=str(target / f"group-access-{engine}-{width}.png"), full_page=True)
         context.close()
-        native = browser.new_context(java_script_enabled=False, viewport={"width": width, "height": 900})
-        native.add_cookies([{"name": "sessionid", "value": client.cookies["sessionid"].value, "url": host}])
-        page = native.new_page()
-        page.route("**/static/**", static)
-        page.goto(host + path)
-        page.locator('[name="report_q"]').fill("059")
-        page.get_by_role("button", name="Search reports", exact=True).click()
-        expect(page.get_by_role("checkbox", name="Report 059", exact=False)).to_be_checked()
-        assert page.locator("[name=reports]:checked").count() == 1
-        packet = json.loads(page.locator('[name="reports__selection"]').input_value())
-        assert set(packet["selected"]) == {str(reports[0].pk), str(reports[-1].pk)}
-        assert packet["editable"] == [str(reports[-1].pk)]
-        expect(page.get_by_role("button", name="Remove Report 000", exact=False)).to_be_visible()
-        assert assignments() == {reports[0].pk, reports[-1].pk}
-        native.close()
         browser.close()
 
 

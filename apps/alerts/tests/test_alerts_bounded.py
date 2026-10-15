@@ -3,7 +3,7 @@ import pytest
 from django.core.cache import cache
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
-from apps.alerts.models import AlertRule, AlertRun
+from apps.alerts.models import AlertRule
 from apps.alerts.tests.test_views import _form
 from apps.reports.models import Report
 from apps.orgs.models import PermissionGroup, PermissionGroupMembership
@@ -26,34 +26,42 @@ def test_rule_list_pages_searches_and_keeps_latest_live_result(rule, login):
     assert result.context['rows'][0]['rule'].name == 'Rule 049'
 
 
-def test_form_browse_retains_off_page_draft_without_save_or_preview(rule, login, make_user, grant_studio, monkeypatch):
+def test_form_lists_every_report_and_person_inline_and_saves_a_late_one(rule, login, make_user, grant_studio):
     Report.objects.bulk_create([Report(studio=rule.studio, slug=f'late-{i:03}', name=f'Late {i:03}') for i in range(50)])
     people = [make_user(f'late-{i:03}@example.test', org=rule.org) for i in range(50)]
     for person in people:
         grant_studio(person, rule.studio, 'viewer')
     report = Report.objects.filter(studio=rule.studio).order_by('-pk').first()
-    def no_evaluation(*args, **kwargs):
-        raise AssertionError('Browsing must not evaluate')
-    monkeypatch.setattr('apps.alerts.evaluator.evaluate_snapshot', no_evaluation)
     url = f'/s/{rule.org.slug}/{rule.studio.slug}/alerts/{rule.pk}/edit'
-    body = _form(rule, name='Unsaved draft', instructions='Retain this draft', report=str(report.pk),
-                 recipients=[str(people[-1].pk)], timezone='Europe/Amsterdam', action='browse_choices', people_page='2', report_page='2')
-    response = login(rule.created_by).post(url, body)
-    assert response.status_code == 200
-    form = response.context['form']
-    assert form.data['instructions'] == 'Retain this draft'
-    assert len(form.fields['report'].choices) <= 26
-    assert any(str(value) == str(report.pk) for value, label in form.fields['report'].choices)
-    assert any(str(value) == str(people[-1].pk) for value, label in form.fields['recipients'].choices)
-    rule.refresh_from_db()
-    assert rule.name != 'Unsaved draft'
-    assert not AlertRun.objects.exists()
-    body['action'] = 'save'  # Real Save submitter wins even with retained page state.
+    page = login(rule.created_by).get(url)
+    form = page.context['form']
+    html = page.content.decode()
+    assert len(form.fields['report'].choices) >= 51
+    assert len(form.fields['recipients'].choices) >= 50
+    assert 'data-choice-source' not in html and 'data-recipient-source' not in html
+    assert 'Previous reports' not in html and 'Next people' not in html and 'Browse choices' not in html
+    body = _form(rule, name='Edited', report=str(report.pk), recipients=[str(people[-1].pk)], timezone='Europe/Amsterdam')
     response = login(rule.created_by).post(url, body)
     assert response.status_code == 302
     rule.refresh_from_db()
     assert rule.report_id == report.pk and rule.timezone == 'Europe/Amsterdam'
     assert list(rule.recipients.values_list('pk', flat=True)) == [people[-1].pk]
+
+
+def test_very_long_lists_add_search_sources_without_paging(rule, login, make_user, grant_studio, monkeypatch):
+    import apps.core.choice_requests as module
+    import apps.reports.recipient_choices as recipients
+    monkeypatch.setattr(module, 'INLINE_CHOICE_LIMIT', 30)
+    monkeypatch.setattr(recipients, 'INLINE_CHOICE_LIMIT', 30)
+    Report.objects.bulk_create([Report(studio=rule.studio, slug=f'long-{i:03}', name=f'Long {i:03}') for i in range(40)])
+    for i in range(40):
+        grant_studio(make_user(f'long-{i:03}@example.test', org=rule.org), rule.studio, 'viewer')
+    page = login(rule.created_by).get(f'/s/{rule.org.slug}/{rule.studio.slug}/alerts/{rule.pk}/edit')
+    html = page.content.decode()
+    assert f'data-choice-source="/s/{rule.org.slug}/{rule.studio.slug}/alerts/report-choices"' in html
+    assert f'data-recipient-source="/s/{rule.org.slug}/{rule.studio.slug}/alerts/recipient-choices"' in html
+    assert len(page.context['form'].fields['report'].choices) <= 26
+    assert 'Previous' not in html and 'Browse choices' not in html
 
 
 def test_report_choices_are_bounded_and_selected_is_independent(rule, login):

@@ -160,8 +160,7 @@ def test_local_page_links_and_get_filters_show_recoverable_feedback(analytics_se
             assert not any(row['pending'] for row in boundaries), boundaries
             ordinary = page.evaluate("""() => {
                 const urls=['/me/api-keys/new','/system/email-connections/new',
-                    '/system/email-connections/12','/s/org/studio/r/report/access',
-                    '/scopes/','/scopes/open/?kind=org&selected=org'];
+                    '/system/email-connections/12','/s/org/studio/r/report/access'];
                 return urls.map(href => {
                     const link=document.createElement('a'); link.href=href; link.textContent='Open page';
                     document.querySelector('main').append(link);

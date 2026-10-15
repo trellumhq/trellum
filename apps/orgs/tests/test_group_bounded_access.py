@@ -28,22 +28,19 @@ def test_access_pages_studios_and_opens_offpage_editor(login, org_admin, org, ma
     assert [r["studio"].pk for r in response.context["studio_rows"]] == [studios[-1].pk]
 
 
-def test_native_browse_and_failed_save_retain_offpage_selection(login, org_admin, org, studio, make_group, settings):
+def test_report_picker_lists_every_report_and_failed_save_retains_selection(login, org_admin, org, studio, make_group, settings):
     settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = True
     reports = Report.objects.bulk_create([Report(studio=studio, slug=f"bounded{i:03}", name=f"Report {i:03}") for i in range(100)])
     group = make_group("Bounded")
     grant = PermissionGroupGrant.objects.create(group=group, studio=studio, role="viewer", viewer_scope="selected")
     ReportPermissionGrant.objects.create(grant=grant, report=reports[-1])
     client = login(org_admin)
-    payload = {"report_page": "2", "action": "browse_access", "studio": studio.pk, "role": "viewer", "viewer_scope": "selected", "reports": [reports[-1].pk, reports[0].pk]}
-    response = client.post(url(org, group, "access") + "&report_page=1", payload)
-    assert response.status_code == 200
-    assert response.context["report_page"].number == 2
-    assert list(grant.report_grants.values_list("report_id", flat=True)) == [reports[-1].pk]
-    form = response.context["access_rows"][0]["form"]
-    assert set(map(str, form["reports"].value())) == {str(reports[0].pk), str(reports[-1].pk)}
-    assert len(form.fields["reports"].choices) == 27
-    payload.update(action="studio_access", role="wrong")
+    page = client.get(url(org, group, "access"))
+    html = page.content.decode()
+    assert len(page.context["access_rows"][0]["form"].fields["reports"].choices) == 100
+    assert "data-recipient-source" not in html
+    assert "Previous reports" not in html and "Find report" not in html
+    payload = {"action": "studio_access", "studio": studio.pk, "role": "wrong", "viewer_scope": "selected", "reports": [reports[-1].pk, reports[0].pk]}
     response = client.post(url(org, group, "access") + "&studio_page=20", payload)
     assert response.status_code == 200
     assert response.context["access_rows"][0]["studio"].pk == studio.pk
@@ -145,13 +142,14 @@ def test_new_choices_require_org_admin_and_next_request_revocation(login, org_ad
         assert admin.get(endpoint).status_code == 403
 
 
-def test_native_browse_member_preserves_offpage_selection_without_add(login, org_admin, org, make_group, make_user):
+def test_add_member_picker_lists_every_addable_member_inline(login, org_admin, org, make_group, make_user):
     group = make_group("Bounded")
     people = [make_user(f"native{i:03}@example.test", org=org) for i in range(60)]
-    response = login(org_admin).post(url(org, group, "members") + "&member_page=1", {"action": "browse_member", "member_page": "2", "member_q": "native", "user_id": people[-1].pk})
-    assert response.context["addable_page"].number == 2
-    assert len(response.context["addable_members"]) == 26
-    assert response.context["selected_addable"].user_id == people[-1].pk
+    response = login(org_admin).get(url(org, group, "members"))
+    html = response.content.decode()
+    assert len(response.context["addable_members"]) >= 60 and not response.context["addable_searchable"]
+    assert all(f">{person.email}</option>" in html for person in people)
+    assert "data-choice-source" not in html and "Find member" not in html and "Next members" not in html
     assert not group.memberships.exists()
 
 

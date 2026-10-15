@@ -9,6 +9,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- Pickers list every choice with instant search again, with no pages inside a
+  dropdown. Only lists over 500 choices use search-as-you-type with a "keep
+  typing" hint. The sidebar organization and studio switchers and the AI
+  assistant picker are plain lists of links again, and delivery, metric and
+  alert pickers apply as soon as you choose, without Go, Search or Update
+  buttons.
 - The studio Annotations tab opens the new annotations browser; the legacy
   `/annotations` URL keeps working for one more release.
 - Phone layout of console-hosted reports: the report header is one compact row

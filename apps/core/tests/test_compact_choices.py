@@ -60,7 +60,7 @@ def test_nested_json_and_oversize_packet_are_visible_errors():
         result = decode_compact_selection(bound, "reports")
         assert result.error
         assert result.packet == raw if len(raw) <= 1024 * 1024 else result.packet == "Invalid oversized selection packet"
-    assert decode_compact_selection(data({"version": 1, "selected": [], "editable": [str(i) for i in range(1, 27)]}), "reports").error
+    assert decode_compact_selection(data({"version": 1, "selected": [], "editable": [str(i) for i in range(1, 502)]}), "reports").error
 
 
 def test_field_iteration_keeps_stock_option_rendering():

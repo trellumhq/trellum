@@ -4,6 +4,7 @@ from django.db.models import Count, IntegerField, OuterRef, Q, Subquery
 from django.db.models.functions import Coalesce
 
 from apps.core import roles
+from apps.core.choice_requests import inline_choices
 from apps.core.permissions import effective_roles
 from apps.core.report_access import visible_reports
 from apps.orgs.models import OrgMembership, PermissionGroup, PermissionGroupGrant, PermissionGroupMembership
@@ -76,18 +77,15 @@ def pagination(page):
 
 
 def effective_context(request, group):
-    members = member_choices(request.org, group, "effective", text(request, "member_q"))
-    member_page = window(request, members, "member_page")
+    choices, searchable = inline_choices(member_choices(request.org, group, "effective"))
     raw = request.GET.get("member")
     selected = member_choices(request.org, group, "effective").filter(user_id=raw).first() if str(raw or "").isdecimal() else None
     if selected is None:
         selected = member_choices(request.org, group, "effective").first()
-    choices = list(member_page.object_list)
     if selected and all(m.user_id != selected.user_id for m in choices):
         choices.append(selected)
-    result = {"effective_members": choices, "selected_member": selected,
-              "effective_member_page": member_page, "effective_member_pager": pager(request, member_page, "member_page"),
-              "member_q": text(request, "member_q"), "effective_rows": []}
+    result = {"effective_members": choices, "effective_searchable": searchable, "selected_member": selected,
+              "effective_rows": []}
     if not selected:
         return result
     er = effective_roles(selected.user, request.org)

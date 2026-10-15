@@ -126,6 +126,57 @@
         }
     }
 
+
+    /* Long lists render a short preview; typing searches every choice on the
+       server. One request is in flight at a time and the visitor never has to
+       ask for a retry or turn a page. */
+    function searchScopes(menu, input, empty, localShown) {
+        clearTimeout(menu._scopeTimer);
+        if (menu._scopeController) menu._scopeController.abort();
+        menu.querySelectorAll('a[data-scope-result]').forEach(function (link) { link.remove(); });
+        var hint = menu.querySelector('[data-scope-hint]');
+        var defaultHint = menu._scopeHint || (hint && hint.textContent) || '';
+        menu._scopeHint = defaultHint;
+        var query = input.value.trim();
+        if (!query) { if (hint) { hint.textContent = defaultHint; hint.hidden = false; } return; }
+        var token = (menu._scopeToken || 0) + 1;
+        menu._scopeToken = token;
+        function attempt(count) {
+            var controller = new AbortController();
+            menu._scopeController = controller;
+            var url = new URL(menu.dataset.scopeSource, location.href);
+            url.searchParams.set('q', query); url.searchParams.set('page', '1');
+            var timeout = window.setTimeout(function () { controller.abort(); }, 10000);
+            fetch(url, {credentials: 'same-origin', signal: controller.signal, headers: {Accept: 'application/json'}}).then(function (response) {
+                if (!response.ok) throw new Error('scope search failed');
+                return response.json();
+            }).then(function (data) {
+                if (token !== menu._scopeToken || !Array.isArray(data.results)) return;
+                var known = {};
+                menu.querySelectorAll('a').forEach(function (link) { known[link.getAttribute('href')] = link; });
+                var anchor = hint || null, added = 0;
+                data.results.forEach(function (item) {
+                    var href = menu.dataset.scopeLink.replace('{}', encodeURIComponent(item.value));
+                    if (known[href]) { known[href].hidden = false; added++; return; }
+                    var link = document.createElement('a');
+                    link.href = href; link.dataset.scopeResult = ''; link.textContent = item.label;
+                    if (menu.dataset.scopeDetail) {
+                        var detail = document.createElement('span'); detail.textContent = menu.dataset.scopeDetail; link.appendChild(detail);
+                    }
+                    menu.insertBefore(link, anchor); added++;
+                });
+                if (empty) empty.hidden = localShown + added > 0 || data.results.length > 0;
+                if (hint) { hint.textContent = defaultHint; hint.hidden = !(data.pagination && data.pagination.has_next); }
+            }).catch(function () {
+                if (token !== menu._scopeToken) return;
+                if (count < 1) { menu._scopeTimer = window.setTimeout(function () { attempt(count + 1); }, 1200); return; }
+                if (hint) { hint.textContent = 'Could not search right now. Keep typing to try again.'; hint.hidden = false; }
+            }).finally(function () { window.clearTimeout(timeout); });
+        }
+        if (hint) hint.hidden = true;
+        menu._scopeTimer = window.setTimeout(function () { attempt(0); }, 250);
+    }
+
     function init(root) {
         if (!root || root.dataset.consoleInitialized) return;
         prepare(root);
@@ -279,12 +330,14 @@
             if (!input) return;
             var query = input.value.trim().toLocaleLowerCase();
             var shown = 0;
-            input.parentElement.querySelectorAll('a').forEach(function (link) {
+            var menu = input.parentElement;
+            menu.querySelectorAll('a:not([data-scope-result])').forEach(function (link) {
                 link.hidden = query && link.textContent.trim().toLocaleLowerCase().indexOf(query) === -1;
                 if (!link.hidden) shown++;
             });
-            var empty = input.parentElement.querySelector('.tl-console-scope-empty');
+            var empty = menu.querySelector('.tl-console-scope-empty');
             if (empty) empty.hidden = shown > 0;
+            if (menu.dataset.scopeSource) searchScopes(menu, input, empty, shown);
         });
         root.addEventListener('toggle', function (event) {
             if (event.target.open) {
@@ -400,7 +453,7 @@
             /^\/(?:api\/|s\/[^/]+\/[^/]+\/api\/|orgs\/[^/]+\/api\/)/.test(path) ||
             /\/(?:export|download|choices)\/?$/.test(path) ||
             url.searchParams.has('download') || url.searchParams.has('export')) return false;
-        return path === '/' || /^\/scopes(?:\/open)?\/?$/.test(path) ||
+        return path === '/' ||
             /^\/system\/email-connections\/(?:new|[0-9]+)\/?$/.test(path) ||
             /^\/s\/[^/]+\/[^/]+\/r\/[^/]+\/access\/?$/.test(path) || /^\/(?:account(?:\/security\/mfa\/(?:setup|recovery-codes))?|system|instance\/settings)\/?$/.test(path) ||
             /^\/(?:me\/(?:deliveries|api-keys(?:\/new)?)|deliveries(?:\/[0-9]+\/edit)?|operator(?:\/(?:orgs(?:\/[^/]+)?|logs(?:\/runs\/[0-9a-f-]+)?))?)\/?$/.test(path) ||

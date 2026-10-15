@@ -1,6 +1,7 @@
 """Current recipient audiences with bounded presentation, shared by editors."""
 from django.core.paginator import Paginator
 from apps.core import roles
+from apps.core.choice_requests import INLINE_CHOICE_LIMIT, SEARCH_PREVIEW
 from apps.core.permissions import bulk_role_for_studio
 from apps.core.report_access import ReportAccessBatch
 from apps.orgs.models import OrgMembership, PermissionGroup, PermissionGroupMembership
@@ -56,7 +57,7 @@ def selected_ids(values):
 
 
 def page_snapshot(snapshot, *, query='', page=1, people_page=None, group_page=None,
-                  selected_people=(), selected_groups=()):
+                  selected_people=(), selected_groups=(), size=PAGE_SIZE):
     query = str(query or '')[:200].casefold()
     result = {key: snapshot[key] for key in ('roles', 'studio_name')}
     result['pagination'] = {}
@@ -65,21 +66,38 @@ def page_snapshot(snapshot, *, query='', page=1, people_page=None, group_page=No
                              ('groups', group_page or page, selected_groups)]:
         all_rows = snapshot[key]
         matches = [row for row in all_rows if query in (row['name'] + ' ' + row.get('email', '')).casefold()]
-        current = Paginator(matches, PAGE_SIZE).get_page(number)
+        current = Paginator(matches, size).get_page(number)
         result[key] = list(current.object_list)
         chosen = selected_ids(ids)
         result['selected'][key] = [row for row in all_rows if row['id'] in chosen]
-        result['pagination'][key] = {'page': current.number, 'per_page': PAGE_SIZE,
+        result['pagination'][key] = {'page': current.number, 'per_page': size,
             'total': current.paginator.count, 'choice_total': len(all_rows),
             'audience_total': snapshot['active_people_count'] if key == 'members' else len(all_rows),
             'has_previous': current.has_previous(), 'has_next': current.has_next()}
     return result
 
 
+def inline_snapshot(snapshot, *, selected_people=(), selected_groups=()):
+    """Every person and group for the picker, or a short preview plus search.
+
+    The pickers filter instantly in the browser; only a studio with more than
+    INLINE_CHOICE_LIMIT people or groups adds server search-as-you-type."""
+    searchable = max(len(snapshot['members']), len(snapshot['groups'])) > INLINE_CHOICE_LIMIT
+    result = page_snapshot(snapshot, selected_people=selected_people, selected_groups=selected_groups,
+                           size=SEARCH_PREVIEW if searchable else INLINE_CHOICE_LIMIT)
+    result['searchable'] = searchable
+    return result
+
+
 def recipient_payload(request, report=None):
     from apps.core.choice_requests import choice_request_params
     parameters = choice_request_params(request)
-    return page_snapshot(recipient_snapshot(request.studio, report),
-        query=parameters.get('q', ''), page=parameters.get('page', 1),
-        selected_people=parameters.get('selected_people', ''),
-        selected_groups=parameters.get('selected_groups', ''))
+    snapshot = recipient_snapshot(request.studio, report)
+    selected = dict(selected_people=parameters.get('selected_people', ''),
+                    selected_groups=parameters.get('selected_groups', ''))
+    query = parameters.get('q', '')
+    if not str(query or '').strip():
+        return inline_snapshot(snapshot, **selected)
+    result = page_snapshot(snapshot, query=query, page=1, **selected)
+    result['searchable'] = True
+    return result

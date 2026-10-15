@@ -2,5 +2,4 @@
 <input type="hidden" name="{{ widget.selection_name }}" value="{{ widget.selection_packet }}" data-compact-packet{% if widget.attrs.disabled %} disabled{% endif %}>
 {{ widget.selected_rows|json_script }}
 <div data-compact-page>{{ widget.checkbox_fragment }}</div>
-<div data-picker-fallback>{% for row in widget.selected_offpage %}<div><span>{{ row.label }}</span> <button class="ui-btn ghost" type="submit" name="action" value="browse_access" formaction="{{ row.remove_url }}" formnovalidate>Remove {{ row.label }}</button></div>{% endfor %}</div>
 </div>

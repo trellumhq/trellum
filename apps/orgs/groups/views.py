@@ -13,8 +13,7 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 
 from apps.core import roles
 from apps.core.audit import audit, audit_many
-from apps.core.choice_requests import choice_request_params
-from apps.core.compact_choices import decode_compact_selection
+from apps.core.choice_requests import choice_request_params, inline_choices
 from apps.core.form_responses import is_settings_request, settings_error, settings_success
 from apps.core.permissions import require_org_role, require_studio_role
 from apps.core.report_access import selected_report_access_block_reason
@@ -230,20 +229,7 @@ def group_detail(request, org_slug, group_id):  # noqa: ARG001
     access_form = None
     if request.method == "POST":
         action = request.POST.get("action")
-        if action in {"browse_access", "browse_member"}:
-            if action == "browse_access":
-                draft = request.POST.copy()
-                selection = decode_compact_selection(draft, "reports")
-                removed = request.GET.get("remove_report")
-                if removed and not selection.error:
-                    draft.pop("reports__selection", None)
-                    draft.setlist("reports", [value for value in selection if value != removed])
-                access_form = StudioAccessForm(draft, org=request.org)
-                access_form.is_valid()
-                tab = "access"
-            else:
-                tab = "members"
-        elif action == "edit":
+        if action == "edit":
             with transaction.atomic():
                 group = _group_or_404(request.org, group_id, lock=True)
                 form = GroupForm(request.POST, instance=group, org=request.org)
@@ -355,16 +341,9 @@ def group_detail(request, org_slug, group_id):  # noqa: ARG001
         if context["q"]:
             members = members.filter(Q(user__email__icontains=context["q"]) | Q(user__name__icontains=context["q"]))
         member_page = paginate(request, members, PAGE_SIZE)
-        add_q = present.text(request, "member_q")
-        add_page = present.window(request, present.member_choices(request.org, group, "addable", add_q), "member_page")
-        choices = list(add_page.object_list)
-        selected_id = request.POST.get("user_id", request.GET.get("user_id"))
-        selected = present.member_choices(request.org, group, "addable").filter(user_id=selected_id).first() if str(selected_id or "").isdecimal() else None
-        if selected and all(m.user_id != selected.user_id for m in choices):
-            choices.append(selected)
+        choices, searchable = inline_choices(present.member_choices(request.org, group, "addable"))
         context.update(member_page=member_page, member_total=member_page.paginator.count,
-                       addable_members=choices, addable_page=add_page, selected_addable=selected,
-                       member_q=add_q, addable_pager=present.pager(request, add_page, "member_page"))
+                       addable_members=choices, addable_searchable=searchable)
     elif tab == "access":
         studio_q = present.text(request, "studio_q")
         studios = Studio.objects.filter(org=request.org).order_by("slug", "pk")
@@ -389,24 +368,16 @@ def group_detail(request, org_slug, group_id):  # noqa: ARG001
             if access_form:
                 selected_ids = access_form["reports"].value()
             valid_selected = Report.objects.filter(studio=selected_studio, pk__in=present.report_ids(selected_ids)).only(*present.REPORT_FIELDS).order_by("name", "slug")
-            report_q = present.text(request, "report_q")
-            report_page = present.window(request, present.report_choices(selected_studio, report_q), "report_page")
-            catalog = {r.pk: r for r in report_page.object_list}
+            report_rows, report_searchable = inline_choices(present.report_choices(selected_studio))
+            catalog = {r.pk: r for r in report_rows}
             catalog.update({r.pk: r for r in valid_selected})
             catalog_ids = {str(pk) for pk in catalog}
-            row_form.present_reports(catalog.values(), [value for value in selected_ids if str(value) not in catalog_ids], page_values=[report.pk for report in report_page.object_list])
-            removal_urls = {}
-            for identity in selected_ids:
-                parameters = request.GET.copy()
-                parameters["tab"] = "access"
-                parameters["remove_report"] = str(identity)
-                removal_urls[str(identity)] = request.path + "?" + parameters.urlencode()
-            row_form.fields["reports"].widget.removal_urls = removal_urls
+            row_form.present_reports(catalog.values(), [value for value in selected_ids if str(value) not in catalog_ids], page_values=[report.pk for report in report_rows])
             private = Report.objects.only(*present.REPORT_FIELDS).filter(studio=selected_studio, audience=Report.AUDIENCE_PRIVATE,
                 permission_group_grants__grant=grant).distinct().order_by("name", "slug") if grant else Report.objects.none()
             private_page = present.window(request, private, "private_page")
             context.update(access_rows=[{"studio": selected_studio, "grant": grant, "form": row_form, "private_reports": private_page.object_list}],
-                report_page=report_page, report_q=report_q, selected_report_count=len(selected_ids),
+                report_searchable=report_searchable,
                 private_page=private_page, private_pager=present.pager(request, private_page, "private_page"))
     elif tab == "effective":
         context.update(present.effective_context(request, group))
@@ -645,7 +616,7 @@ def group_member_choices(request, org_slug, group_id):
     raw = request.GET.get("selected")
     selected = present.member_choices(request.org, group, kind).filter(user_id=raw).first() if str(raw or "").isdecimal() else None
     def record(member):
-        return {"value": member.user_id, "label": member.user.display_name, "hint": member.user.email}
+        return {"value": member.user_id, "label": member.user.email, "hint": ""}
     response = JsonResponse({"results": [record(m) for m in page.object_list], "selected": record(selected) if selected else None, "pagination": present.pagination(page)})
     response["Cache-Control"] = "private, no-store"
     return response

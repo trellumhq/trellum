@@ -449,14 +449,11 @@ def test_org_assistant_picker_coexists_with_docs_on_narrow_screens(
                 assert picker_box["x"] + picker_box["width"] <= docs_box["x"]
                 assert docs_box["x"] + docs_box["width"] <= width
             picker.locator("summary").click()
-            # Studios are a bounded native form (with an enhanced picker), not
-            # an unbounded list of links.
-            form = picker.locator("form.tl-console-scope-form")
-            assert form.locator("select#shellAssistantChoice").count() == 1
-            assert form.get_by_role("button", name="Open assistant").is_visible()
-            browse = form.get_by_role("link", name="Browse all studios")
-            assert browse.is_visible()
-            assert f"/scopes/?kind=studio&org={org.slug}&intent=assistant" in browse.get_attribute("href")
+            studio_link = picker.locator(
+                f'a[href="/s/{org.slug}/{studio_tree.slug}/?assistant=open"]'
+            )
+            assert studio_link.is_visible()
+            assert "Open or resume chat" in studio_link.inner_text()
             popover = picker.locator(".tl-console-assistant-popover")
             popover.evaluate(
                 """el => {

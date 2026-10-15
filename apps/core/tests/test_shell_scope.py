@@ -16,7 +16,7 @@ from apps.core.shell_scope import (
     can_manage_any_org, organization_choices,
     studio_choices, studio_facts,
 )
-from apps.core.shell_scope_views import api_choices, browse, open_scope
+from apps.core.shell_scope_views import api_choices
 from apps.orgs.models import Organization, OrgMembership
 from apps.reports.models import Report, ReportPermissionGrant
 from apps.studios.models import Studio
@@ -143,8 +143,15 @@ def test_cold_shell_never_populates_broad_role_cache(member, org, studio, grant_
     assert not getattr(request, '_bi_effective_roles', {})
 
 
-def test_initial_choices_and_selected_are_bounded_without_count(org_admin, org, studio):
-    Studio.objects.bulk_create([Studio(org=org, slug=f'bounded-{i:03}', name=f'Bounded {i:03}') for i in range(250)])
+def test_every_choice_is_inline_up_to_the_limit(org_admin, org, studio):
+    Studio.objects.bulk_create([Studio(org=org, slug=f'inline-{i:03}', name=f'Inline {i:03}') for i in range(250)])
+    ctx = shell(request_for(org_admin, org=org, studio=studio))
+    assert len(ctx['shell_studios']) == 251
+    assert not ctx['shell_studios_more']
+
+
+def test_huge_lists_get_a_short_preview_and_search_without_counting(org_admin, org, studio):
+    Studio.objects.bulk_create([Studio(org=org, slug=f'bounded-{i:03}', name=f'Bounded {i:03}') for i in range(520)])
     request = request_for(org_admin, org=org, studio=studio)
     with CaptureQueriesContext(connection) as captured:
         ctx = shell(request)
@@ -152,16 +159,16 @@ def test_initial_choices_and_selected_are_bounded_without_count(org_admin, org, 
     assert studio in ctx['shell_studios']
     assert ctx['shell_studios_more']
     assert not any('COUNT(' in item['sql'].upper() for item in captured)
-    assert any('LIMIT 26' in item['sql'].upper() for item in captured)
+    assert any('LIMIT 501' in item['sql'].upper() for item in captured)
     assert not any(' FROM "reports_report"' in item['sql'] and 'EXISTS(' not in item['sql'].upper() for item in captured)
 
 
 def test_offpage_remembered_org_and_studio_survive_and_revoke(org_admin, org):
-    organizations = [Organization(slug=f'org-{i:03}', name=f'Org {i:03}') for i in range(30)]
+    organizations = [Organization(slug=f'org-{i:03}', name=f'Org {i:03}') for i in range(510)]
     Organization.objects.bulk_create(organizations)
     OrgMembership.objects.bulk_create([OrgMembership(org=row, user=org_admin, role=roles.ORG_ADMIN) for row in organizations])
     last = organizations[-1]
-    studios = [Studio(org=last, slug=f'studio-{i:03}', name=f'Studio {i:03}') for i in range(30)]
+    studios = [Studio(org=last, slug=f'studio-{i:03}', name=f'Studio {i:03}') for i in range(510)]
     Studio.objects.bulk_create(studios)
     request = request_for(org_admin)
     request.session = {'active_org': last.slug, 'active_studio_by_org': {last.slug: studios[-1].pk}}
@@ -194,12 +201,10 @@ def test_malformed_remembered_map_does_not_break_shell(member, org, remembered):
     {'kind': 'org', 'next': 'https://example.test'}, {'kind': ['org', 'studio']},
 ])
 def test_invalid_choice_inputs_return_400(org_admin, params):
-    request = request_for(org_admin, params)
-    assert api_choices(request).status_code == 400
-    assert browse(request).status_code == 400
+    assert api_choices(request_for(org_admin, params)).status_code == 400
 
 
-def test_choice_paging_search_and_selected_revalidation(org_admin, org, studio):
+def test_choice_search_and_selected_revalidation(org_admin, org, studio):
     Studio.objects.bulk_create([Studio(org=org, slug=f'page-{i:03}', name=f'Page {i:03}') for i in range(30)])
     params = {'kind': 'studio', 'org': org.slug, 'page': '2', 'selected': studio.slug}
     payload = json.loads(api_choices(request_for(org_admin, params)).content)
@@ -214,32 +219,11 @@ def test_choice_paging_search_and_selected_revalidation(org_admin, org, studio):
     assert unavailable['selected'] is None
 
 
-def test_native_browse_reaches_all_studios_and_keeps_assistant_intent(org_admin, org):
-    Studio.objects.bulk_create([Studio(org=org, slug=f'native-{i:03}', name=f'Native {i:03}') for i in range(30)])
-    params = {'kind': 'studio', 'org': org.slug, 'intent': 'assistant'}
-    first = browse(request_for(org_admin, params)).content.decode()
-    second = browse(request_for(org_admin, {**params, 'page': '2'})).content.decode()
-    for i in range(30):
-        assert f'/s/{org.slug}/native-{i:03}/?assistant=open' in first + second
-    assert 'intent=assistant' in first
-    assert 'private, no-store' == browse(request_for(org_admin, params))['Cache-Control']
-
-
-def test_fixed_redirects_revalidate_selection(org_admin, member, org, studio):
-    assert open_scope(request_for(org_admin, {'kind': 'org', 'selected': org.slug}))['Location'] == f'/?org={org.slug}'
-    studio_params = {'kind': 'studio', 'org': org.slug, 'selected': studio.slug, 'intent': 'assistant'}
-    assert open_scope(request_for(org_admin, studio_params))['Location'] == f'/s/{org.slug}/{studio.slug}/?assistant=open'
-    assert open_scope(request_for(member, studio_params)).status_code == 404
-    assert open_scope(request_for(org_admin, {'kind': 'org'})).status_code == 400
-    assert open_scope(request_for(org_admin, {**studio_params, 'next': '//evil.test'})).status_code == 400
-
-
 def test_authentication_and_methods():
     request = request_for(AnonymousUser(), {'kind': 'org'})
     assert api_choices(request).status_code == 401
-    assert browse(request).status_code == 302
     request.method = 'POST'
-    assert open_scope(request).status_code == 405
+    assert api_choices(request).status_code == 405
 
 
 @pytest.mark.parametrize('source', ['direct', 'grant', 'default'])
@@ -274,7 +258,6 @@ def test_all_endpoint_responses_are_private(org_admin, member, org, studio):
     for response in (
         api_choices(request_for(AnonymousUser(), {'kind': 'org'})),
         api_choices(request_for(org_admin, {'kind': 'bad'})),
-        open_scope(request_for(org_admin, {'kind': 'org', 'selected': org.slug})),
-        open_scope(request_for(member, {'kind': 'studio', 'org': org.slug, 'selected': studio.slug})),
+        api_choices(request_for(member, {'kind': 'studio', 'org': org.slug})),
     ):
         assert response['Cache-Control'] == 'private, no-store'

@@ -30,12 +30,6 @@
         <div class="ui-field" data-choice-picker>
           <label for="id_report">Report</label>
           {{ form.report }}{{ form.report.errors }}
-          <div data-report-native-choices>
-            <label for="reportSearch">Search reports</label><input id="reportSearch" name="report_q" value="{{ form.presentation.report_q }}" data-settings-ignore>
-            <span>Page {{ form.report_page.number }} · {{ form.report_page.paginator.count }} reports</span>
-            {% if form.report_page.has_previous %}<button class="ui-btn ghost" type="submit" name="report_page" value="{{ form.report_page.previous_page_number }}" data-browse-choices formnovalidate>Previous reports</button>{% endif %}
-            {% if form.report_page.has_next %}<button class="ui-btn ghost" type="submit" name="report_page" value="{{ form.report_page.next_page_number }}" data-browse-choices formnovalidate>Next reports</button>{% endif %}
-          </div>
         </div>
       </div>
       <div class="ui-field ui-field-wide">
@@ -84,7 +78,7 @@
 
     <section class="ui-form-section">
       <h2>Recipients</h2>
-      <div class="ui-field ui-field-wide" data-recipient-picker data-recipient-source="{{ form.recipient_source }}"
+      <div class="ui-field ui-field-wide" data-recipient-picker{% if form.recipient_source %} data-recipient-source="{{ form.recipient_source }}"{% endif %}
            data-recipient-people-name="recipients" data-recipient-group-name="recipient_groups">
         <label>People, roles and groups</label>
         <div data-recipient-type="people" class="al-checks">{{ form.recipients }}{{ form.recipients.errors }}</div>
@@ -92,16 +86,6 @@
         {% if form.recipient_groups %}<div data-recipient-type="groups" class="al-checks">{{ form.recipient_groups }}{{ form.recipient_groups.errors }}</div>
         {% else %}<p class="ui-help">No permission groups are available.</p>{% endif %}
         <span class="ui-help">People are limited to members who can see this studio.</span>
-        <div data-picker-fallback>
-          <label for="recipientSearch">Search recipients</label><input id="recipientSearch" name="recipient_q" value="{{ form.presentation.recipient_q }}" data-settings-ignore>
-          <span>People page {{ form.recipient_page.pagination.members.page }} · {{ form.recipient_page.pagination.members.total }} choices</span>
-          {% if form.recipient_page.pagination.members.has_previous %}<button class="ui-btn ghost" type="submit" name="people_page" value="{{ form.recipient_page.pagination.members.page|add:'-1' }}" data-browse-choices formnovalidate>Previous people</button>{% endif %}
-          {% if form.recipient_page.pagination.members.has_next %}<button class="ui-btn ghost" type="submit" name="people_page" value="{{ form.recipient_page.pagination.members.page|add:'1' }}" data-browse-choices formnovalidate>Next people</button>{% endif %}
-          <span>Groups page {{ form.recipient_page.pagination.groups.page }} · {{ form.recipient_page.pagination.groups.total }} choices</span>
-          {% if form.recipient_page.pagination.groups.has_previous %}<button class="ui-btn ghost" type="submit" name="group_page" value="{{ form.recipient_page.pagination.groups.page|add:'-1' }}" data-browse-choices formnovalidate>Previous groups</button>{% endif %}
-          {% if form.recipient_page.pagination.groups.has_next %}<button class="ui-btn ghost" type="submit" name="group_page" value="{{ form.recipient_page.pagination.groups.page|add:'1' }}" data-browse-choices formnovalidate>Next groups</button>{% endif %}
-          <button class="ui-btn ghost" type="submit" name="action" value="browse_choices" formnovalidate>Browse choices</button>
-        </div>
       </div>
     </section>
 
@@ -126,7 +110,7 @@
     </section>
 
     <div class="ui-form-actions">
-      <button class="ui-btn primary" type="submit" name="action" value="save">{% if rule.pk %}Save alert{% else %}Create alert{% endif %}</button>
+      <button class="ui-btn primary" type="submit">{% if rule.pk %}Save alert{% else %}Create alert{% endif %}</button>
       <button class="ui-btn ghost" type="submit" name="action" value="preview" data-alert-preview>Test draft</button>
       <a class="ui-btn ghost" data-settings-leave href="{{ prefix }}">Cancel</a>
       <span class="ui-help">Draft tests are billed to you. Saving keeps the rule’s current owner. Preview history is isolated from live history; no mail or budget warning is sent.</span>

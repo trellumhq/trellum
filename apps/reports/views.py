@@ -1287,13 +1287,12 @@ def _delivery_return_url(request):
 
 
 def _delivery_form_page(request, schedule, *, errors=None, status=200):
-    from apps.reports.recipient_choices import recipient_snapshot, page_snapshot, selected_ids
+    from apps.reports.recipient_choices import inline_snapshot, recipient_snapshot, selected_ids
     choices = request.POST if request.method == 'POST' else request.GET
     people = choices.getlist('recipient_ids') if request.method == 'POST' else [str(pk) for pk in schedule.recipients.values_list('pk', flat=True)] if schedule.pk else []
     groups = choices.getlist('recipient_group_ids') if request.method == 'POST' else [str(pk) for pk in schedule.recipient_groups.values_list('pk', flat=True)] if schedule.pk else []
-    chips = page_snapshot(recipient_snapshot(request.studio, schedule.report),
-        query=choices.get('recipient_q', ''), people_page=choices.get('people_page', 1),
-        group_page=choices.get('group_page', 1), selected_people=people, selected_groups=groups)
+    chips = inline_snapshot(recipient_snapshot(request.studio, schedule.report),
+        selected_people=people, selected_groups=groups)
     for key in ('members', 'groups'):
         rows = {row['id']: row for row in chips[key] + chips['selected'][key]}
         for value in selected_ids(people if key == 'members' else groups) - rows.keys():
@@ -1321,8 +1320,7 @@ def _delivery_form_page(request, schedule, *, errors=None, status=200):
                 form.add_error(field if field in form.fields else None, item)
     return render(request, "reports/delivery_form.html", {
         "form": form, "schedule": schedule, "report": schedule.report,
-        "recipient_page": chips, "recipient_query": choices.get('recipient_q', ''),
-        "recipient_source": f'/s/{request.org.slug}/{request.studio.slug}/api/reports/{schedule.report.slug}/recipients',
+        "recipient_source": f'/s/{request.org.slug}/{request.studio.slug}/api/reports/{schedule.report.slug}/recipients' if chips['searchable'] else '',
         "return_to": _delivery_return_url(request),
         "send_time": send_time if send_time is not None else f"{schedule.send_hour:02d}:{schedule.send_minute:02d}",
         "send_time_invalid": bool(form.errors.get("send_time")),
@@ -1406,8 +1404,6 @@ def api_email_schedules(request, org_slug, studio_slug, slug):  # noqa: ARG001
         raise Http404
     is_form = request.content_type != "application/json"
     schedule = EmailSchedule(report=report, created_by=request.user, **deliveries.schedule_defaults(request.org))
-    if is_form and (request.POST.get('action') == 'browse_choices' or (not request.POST.get('action') and any(key in request.POST for key in ('people_page', 'group_page')))):
-        return _delivery_form_page(request, schedule)
     def respond_error(message, errors=None):
         if is_settings_request(request):
             return settings_error(request, message, errors=errors)
@@ -1458,8 +1454,6 @@ def api_email_schedule_detail(request, org_slug, studio_slug, slug, schedule_id)
         raise Http404
     before = deliveries.schedule_snapshot(schedule)
     is_form = request.content_type != "application/json" and request.method == "POST"
-    if is_form and (request.POST.get('action') == 'browse_choices' or (not request.POST.get('action') and any(key in request.POST for key in ('people_page', 'group_page')))):
-        return _delivery_form_page(request, schedule)
     def respond_error(message, errors=None):
         if is_settings_request(request):
             return settings_error(request, message, errors=errors)
@@ -1733,8 +1727,11 @@ def _delivery_choices(request, *, studio=None, org_id=None):
                            Q(studio__name__icontains=query) | Q(studio__org__name__icontains=query))
     page = Paginator(rows.order_by("name", "slug", "pk"), 25).get_page(request.GET.get("page"))
     def item(report):
-        return {"value": str(report.pk), "label": report.name or report.slug,
-                "hint": f"{report.studio.org.name} / {report.studio.name}"}
+        # Same captions as the inline choices: the kind for the add-delivery
+        # picker, organization / studio only where the list spans studios.
+        hint = report.get_kind_display() if request.GET.get("hint") == "kind" else (
+            f"{report.studio.org.name} / {report.studio.name}" if studio is None else "")
+        return {"value": str(report.pk), "label": report.name or report.slug, "hint": hint}
     selected_id = request.GET.get("selected", "").removeprefix("id:")
     selected = None
     if selected_id.isascii() and selected_id.isdigit() and len(selected_id) < 19:
@@ -1763,35 +1760,19 @@ def delivery_report_choices_global(request):
 
 
 def _delivery_choice_context(request, *, studio=None, org_id=None):
+    from apps.core.choice_requests import inline_choices
+
     rows = _delivery_filter_reports(request.user, studio=studio, org_id=org_id)
     selected_id = _delivery_report_filter_id(request)
     selected = rows.filter(pk=selected_id).first() if selected_id else None
-    context = {"report_choice_source": f"/s/{studio.org.slug}/{studio.slug}/api/delivery-reports" if studio else "/api/delivery-reports"}
-    if request.GET.get("choose_report") == "1":
-        query = request.GET.get("choice_q", "")
-        if query:
-            rows = rows.filter(Q(name__icontains=query) | Q(slug__icontains=query) |
-                               Q(studio__name__icontains=query) | Q(studio__org__name__icontains=query))
-        page = Paginator(rows.order_by("name", "slug", "pk"), 25).get_page(request.GET.get("choice_page"))
-        initial = list(page.object_list)
-        context.update(_native_choice_context(request, page))
-    else:
-        initial = list(rows[:25])
+    initial, searchable = inline_choices(rows)
+    context = {}
+    if searchable:
+        context["report_choice_source"] = f"/s/{studio.org.slug}/{studio.slug}/api/delivery-reports" if studio else "/api/delivery-reports"
     if selected and selected.pk not in {report.pk for report in initial}:
         initial.append(selected)
     context["report_filter_options"] = initial
     return context
-
-
-def _native_choice_context(request, page):
-    def url(**changes):
-        params = request.GET.copy()
-        for key, value in changes.items():
-            params[key] = value
-        return "?" + params.urlencode()
-    return {"choice_page": page,
-            "choice_previous_url": url(choice_page=page.previous_page_number()) if page.has_previous() else "",
-            "choice_next_url": url(choice_page=page.next_page_number()) if page.has_next() else ""}
 
 
 def _delivery_report_filter_value(value):
@@ -1935,14 +1916,13 @@ def studio_delivery_new(request, org_slug, studio_slug):
     if not report_id:
         if request.method == "POST":
             raise Http404
-        query = request.GET.get("choice_q", "")
-        if query:
-            reports = reports.filter(Q(name__icontains=query) | Q(slug__icontains=query))
-        page = Paginator(reports.order_by("name", "slug", "pk"), 25).get_page(request.GET.get("choice_page"))
-        return render(request, "reports/delivery_report_picker.html", {
-            **_native_choice_context(request, page), "reports": page.object_list,
-            "report_choice_source": f"/s/{org_slug}/{studio_slug}/api/delivery-reports",
-            "return_to": f"/s/{org_slug}/{studio_slug}/deliveries"})
+        from apps.core.choice_requests import inline_choices
+
+        choices, searchable = inline_choices(reports)
+        context = {"reports": choices, "return_to": f"/s/{org_slug}/{studio_slug}/deliveries"}
+        if searchable:
+            context["report_choice_source"] = f"/s/{org_slug}/{studio_slug}/api/delivery-reports?hint=kind"
+        return render(request, "reports/delivery_report_picker.html", context)
     report = reports.filter(pk=report_id).first() if report_id.isdigit() and len(report_id) < 19 else None
     if report is None:
         raise Http404

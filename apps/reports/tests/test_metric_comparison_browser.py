@@ -231,15 +231,15 @@ def test_replace_remove_preserves_peer_and_delayed_ready_dates(open_comparison):
     ready(page)
     frame(page, "b").get_by_role("button", name="Region", exact=True).click()
     page.wait_for_timeout(100)
-    page.locator('#mc-a').select_option("balance")
+    # Choosing a metric applies at once; there is no Update button.
+    assert page.get_by_role("button", name="Update comparison").count() == 0
     with page.expect_navigation():
-        page.get_by_role("button", name="Update comparison").click()
+        page.locator('#mc-a').select_option("balance")
     ready(page)
     assert frame(page, "b").locator('[data-stack-toggle] .active:visible').inner_text() == "Region"
     assert page.locator('#mcFrom').input_value() == "2026-09-13"
-    page.locator('#mc-a').select_option("")
     with page.expect_navigation():
-        page.get_by_role("button", name="Update comparison").click()
+        page.locator('#mc-a').select_option("")
     page.locator('#mc-a').wait_for()
     assert page.locator('[data-slot="a"] iframe').count() == 0
     assert "split_b=Region" in page.url

@@ -41,11 +41,13 @@
     var api = helper.popup(root, label), filter = 'all';
     var source = field.dataset.recipientSource, generation = 0, controller = null, timeout = null, debounce = null;
     var remoteState = '', remoteData = null, visible = new Set();
-    var pager = helper.element('div', 'ui-picker-pager');
-    Object.assign(pager.style, {display: 'flex', flexWrap: 'wrap', gap: '8px', flex: 'none'});
-    if (source) api.popup.appendChild(pager);
+    // Every choice is rendered inline and filtered in the browser. Only a very
+    // long list has a source: typing then asks the server for one bounded set
+    // of matches. There are no pages to turn.
+    function searching() { return !!source && api.search.value.trim() !== ''; }
     function cancelRemote() { generation++; clearTimeout(timeout); clearTimeout(debounce); if (controller) controller.abort(); controller = null; }
-    function loadRemote(page) {
+    function loadRemote(attempt) {
+      var page = 1;
       cancelRemote(); var token = generation; controller = new AbortController();
       remoteState = 'loading'; remoteData = null; visible.clear(); api.refresh();
       var url = new URL(source, location.href);
@@ -58,7 +60,7 @@
       url.searchParams.set('selected_people', records.filter(function (r) { return r.type === 'people' && r.input.checked; }).map(function (r) { return r.input.value; }).join(','));
       url.searchParams.set('selected_groups', records.filter(function (r) { return r.type === 'groups' && r.input.checked; }).map(function (r) { return r.input.value; }).join(','));
       }
-      timeout = setTimeout(function () { if (token !== generation) return; controller.abort(); generation++; remoteState = 'error'; api.refresh(); }, 15000);
+      timeout = setTimeout(function () { if (token === generation) controller.abort(); }, 15000);
       var options = {signal: controller.signal, credentials: 'same-origin', headers: {Accept: 'application/json'}};
       // Keep large selections in a read-only body below the server request-line limit.
       if (new TextEncoder().encode(url.pathname + url.search).length > 3000) {
@@ -96,7 +98,7 @@
               var row = helper.element('label'), input = document.createElement('input'); input.type = 'checkbox';
               input.name = generic ? (field.dataset.recipientName || 'choices') : pair[0] === 'people' ? (field.dataset.recipientPeopleName || 'recipients') : (field.dataset.recipientGroupName || 'recipient_groups');
               input.value = id; row.appendChild(input);
-              record = {input: input, row: row, type: pair[0], name: name, identity: generic ? '' : value.email || ''}; records.push(record); byKey.set(key, record); decorate(record);
+              record = {input: input, row: row, type: pair[0], name: name, remote: true, identity: generic ? '' : value.email || ''}; records.push(record); byKey.set(key, record); decorate(record);
             } else {
               record.name = name; record.identity = generic ? '' : value.email || '';
               var caption = record.row.querySelector('.recipient-picker-option-caption');
@@ -114,16 +116,24 @@
             }
             return true;
           }
+          // Search results are dropped again once unchecked and out of the latest
+          // answer; the inline choices always stay.
+          if (!r.remote) return true;
           r.row.remove(); return false;
         });
         if (window.TrellumSettingsForms && field.closest('form')) TrellumSettingsForms.trackControls(field.closest('form'), records.map(function (record) { return record.input; }));
         remoteState = 'ready'; remoteData = data; api.refresh();
-      }).catch(function (error) { if (token !== generation || error.name === 'AbortError') return; clearTimeout(timeout); remoteState = 'error'; api.refresh(); });
+      }).catch(function () {
+        if (token !== generation) return;
+        clearTimeout(timeout);
+        // One quiet retry; nobody has to ask for it.
+        if ((attempt || 0) < 1 && !api.popup.hidden) { debounce = setTimeout(function () { loadRemote(1); }, 1200); return; }
+        remoteState = 'error'; remoteData = null; api.refresh();
+      });
     }
     if (source) {
-      var open = api.open, close = api.close;
-      api.open = function () { open(); if (!api.popup.hidden) loadRemote(1); };
-      api.close = function (focus) { cancelRemote(); close(focus); };
+      var close = api.close;
+      api.close = function (focus) { cancelRemote(); remoteState = ''; visible.clear(); close(focus); };
     }
     field._trellumRecipients = api;
     var selected = helper.element('div', 'recipient-picker-selected');
@@ -144,7 +154,7 @@
         button.addEventListener('click', function () {
           filter = entry[0];
           filters.querySelectorAll('button').forEach(function (node) { node.setAttribute('aria-pressed', String(node === button)); });
-          if (source && !api.popup.hidden) loadRemote(1); else api.refresh();
+          api.refresh();
         });
         filters.appendChild(button);
       });
@@ -170,13 +180,7 @@
       node.classList.add('recipient-picker-fallback');
       node.hidden = true;
     });
-    field.querySelectorAll('[data-picker-fallback]').forEach(function (node) {
-      node.hidden = true; node.querySelectorAll('button[type="submit"]').forEach(function (button) { button.type = 'button'; });
-    });
     var form = field.closest('form');
-    if (source && form) form.querySelectorAll('[data-report-native-choices]').forEach(function (node) {
-      node.hidden = true; node.querySelectorAll('button[type="submit"]').forEach(function (button) { button.type = 'button'; });
-    });
 
     if (compact && form && packetInput) {
       form.addEventListener('formdata', function (event) {
@@ -237,37 +241,39 @@
       });
       var query = api.search.value.trim().toLocaleLowerCase(), count = 0;
       records.forEach(function (record) {
-        var matches = (filter === 'all' || record.type === filter) && (record.name + ' ' + record.identity).toLocaleLowerCase().indexOf(query) >= 0 && (!source || record.type === 'roles' || visible.has(record.type + ':' + record.input.value));
+        var matches = (filter === 'all' || record.type === filter) && (record.name + ' ' + record.identity).toLocaleLowerCase().indexOf(query) >= 0 && (!searching() || record.type === 'roles' || visible.has(record.type + ':' + record.input.value));
         record.row.hidden = !matches;
         if (matches) count++;
       });
       api.message.textContent = count ? '' : query ? 'No matches.' : filter !== 'all' ? 'No ' + TYPES[filter].toLowerCase() + ' are available.' : (field.dataset.pickerEmptyState || 'No recipients are available.');
       if (source) {
-        if (remoteState === 'loading') api.message.textContent = generic ? 'Loading choices…' : 'Loading recipients…';
-        if (remoteState === 'error') api.message.textContent = generic ? 'Could not load choices. Your selections are retained.' : 'Could not load recipients. Your selections are retained.';
-        pager.replaceChildren();
-        if (remoteState === 'error') {
-          var retry = helper.button('ui-picker-filter', 'Retry'); retry.addEventListener('click', function () { loadRemote(1); }); pager.appendChild(retry);
-        } else if (remoteData) {
-          var parts = generic ? [remoteData.pagination] : filter === 'people' ? [remoteData.pagination.members] : filter === 'groups' ? [remoteData.pagination.groups] : [remoteData.pagination.members, remoteData.pagination.groups];
-          if (filter !== 'roles') {
-            var number = Math.max.apply(null, parts.map(function (p) { return p.page; }));
-            var previous = helper.button('ui-picker-filter', 'Previous'), next = helper.button('ui-picker-filter', 'Next');
-            previous.disabled = !parts.some(function (p) { return p.has_previous; }); next.disabled = !parts.some(function (p) { return p.has_next; });
-            previous.addEventListener('click', function () { api.search.focus({preventScroll: true}); loadRemote(number - 1); });
-            next.addEventListener('click', function () { api.search.focus({preventScroll: true}); loadRemote(number + 1); });
-            var countLabel = helper.element('span', '', 'Page ' + number + ' · ' + parts.reduce(function (n, p) { return n + p.total; }, 0) + ' choices');
-            countLabel.style.flexBasis = '100%'; previous.style.flex = next.style.flex = '1';
-            pager.append(countLabel, previous, next);
-          }
+        if (!searching()) api.message.textContent = 'Showing the first choices. Keep typing to search them all.';
+        else if (remoteState === 'loading') api.message.textContent = 'Searching\u2026';
+        else if (remoteState === 'error') api.message.textContent = 'Could not search right now. Keep typing to try again.';
+        else if (remoteState === 'ready' && remoteData && remoteData.pagination) {
+          var paging = generic ? [remoteData.pagination] : [remoteData.pagination.members, remoteData.pagination.groups];
+          if (paging.some(function (p) { return p && p.has_next; })) api.message.textContent = 'Keep typing to narrow the list.';
         }
       }
-      api.message.hidden = !!count && (!source || remoteState === 'ready');
+      api.message.hidden = !api.message.textContent;
       selected.hidden = !chosen.length;
       if (api.trigger.disabled && !api.popup.hidden) api.close(false);
       api.reposition();
     };
-    api.search.addEventListener('input', function () { if (!source) { api.refresh(); return; } cancelRemote(); remoteState = 'loading'; api.refresh(); debounce = setTimeout(function () { loadRemote(1); }, 200); });
+    api.search.addEventListener('input', function () {
+      if (!source) { api.refresh(); return; }
+      cancelRemote();
+      if (!searching()) {
+        remoteState = ''; remoteData = null; visible.clear();
+        // Back to the inline choices: drop what an earlier search added.
+        records = records.filter(function (r) {
+          if (!r.remote || r.input.checked || r.input.defaultChecked) return true;
+          r.row.remove(); return false;
+        });
+        api.refresh(); return;
+      }
+      remoteState = 'loading'; api.refresh(); debounce = setTimeout(function () { loadRemote(0); }, 200);
+    });
     field.addEventListener('input', function (event) { if (event.target.matches('input[type="checkbox"]')) api.refresh(); });
     field.addEventListener('change', function (event) {
       if (event.target.matches('input[type="checkbox"]')) {

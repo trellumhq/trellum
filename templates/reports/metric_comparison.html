@@ -28,18 +28,12 @@
   {% if workspace_requested_legacy %}<input type="hidden" name="legacy" value="1">{% endif %}
   {% for card in cards %}
   <label for="mc-{{ card.slot }}">Metric {{ forloop.counter }}
-    <select id="mc-{{ card.slot }}" name="{{ card.slot }}" class="ui-input" data-choice-picker data-choice-source="{{ choice_url }}" data-unavailable-label="Selected metric is unavailable" data-picker-label="Metric {{ forloop.counter }}" data-picker-search-placeholder="Search metrics" data-picker-empty-state="No metrics match.">
+    <select id="mc-{{ card.slot }}" name="{{ card.slot }}" class="ui-input" data-choice-picker{% if choice_url %} data-choice-source="{{ choice_url }}"{% endif %} data-picker-label="Metric {{ forloop.counter }}" data-picker-search-placeholder="Search metrics" data-picker-empty-state="No metrics match.">
       <option value="">Remove metric / choose a metric</option>
       {% for m in metrics %}<option value="{{ m.row.name }}" {% if card.row.name == m.row.name %}selected{% endif %}>{{ m.row.label|default:m.row.name }}</option>{% endfor %}
     </select>
   </label>
   {% endfor %}
-  <button class="ui-btn">Update comparison</button>
-  <div data-browse-choices><label>Search all metrics <input name="q" maxlength="200" value="{{ choice_query }}"></label>
-  <button type="submit" name="page" value="1">Search choices</button>
-  {% if choice_page.has_previous %}<button type="submit" name="page" value="{{ choice_page.previous_page_number }}">Previous choices</button>{% endif %}
-  {% if choice_page.has_next %}<button type="submit" name="page" value="{{ choice_page.next_page_number }}">Next choices</button>{% endif %}
-  <span>Page {{ choice_page.number }} · {{ choice_page.paginator.count }} choices</span></div>
 </form>
 {% if not metrics_report_built %}<p class="ui-flash warning">{% if workspace_legacy %}This is a legacy artifact. Rebuild for bounded metric pages, or <a href="?a={{ state.a|urlencode }}&amp;b={{ state.b|urlencode }}&amp;legacy=1">view the legacy comparison explicitly</a>.{% else %}Workspace format unknown, stale or unavailable. Refresh after source reconciliation.{% endif %}</p>{% endif %}
 <form class="mc-dates" id="mcDates" action="{{ comparison_url }}" method="get">

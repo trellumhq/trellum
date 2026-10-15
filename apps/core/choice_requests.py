@@ -34,3 +34,22 @@ def choice_request_params(request):
         elif not isinstance(value, str):
             raise ValueError("Choice parameters must be strings.")
     return ChoiceParameters(values)
+
+
+# Pickers render every choice inline up to this many, so the dropdown filters
+# instantly in the browser exactly like a plain select. Only a longer list gets
+# a short preview plus server search-as-you-type; it never gets pages.
+INLINE_CHOICE_LIMIT = 500
+SEARCH_PREVIEW = 25
+
+
+def inline_choices(rows, *, limit=None, preview=SEARCH_PREVIEW):
+    """Return ``(choices, searchable)`` for an ordered queryset or sequence.
+
+    ``searchable`` is true only when more than ``limit`` choices exist; the
+    caller then wires the server search endpoint and renders ``preview`` rows."""
+    limit = INLINE_CHOICE_LIMIT if limit is None else limit
+    sample = list(rows[:limit + 1])
+    if len(sample) <= limit:
+        return sample, False
+    return sample[:preview], True

@@ -21,7 +21,9 @@ def test_remote_choices_keep_selected_nodes_search_and_failures(engine, width):
         def do_GET(self):
             query = parse_qs(urlsplit(self.path).query)
             if self.path == '/':
-                body = b'<form><div data-recipient-picker data-picker-label="Recipients" data-recipient-source="/choices"><label>Recipients</label><div data-recipient-type="people"><label><input type="checkbox" name="recipients" value="99" checked>Person 099</label></div><div data-recipient-type="roles"><label><input type="checkbox" name="recipient_roles" value="everyone">Everyone</label></div><div data-recipient-type="groups"></div></div></form>'
+                people = ''.join(f'<label><input type="checkbox" name="recipients" value="{i}">Person {i:03}</label>' for i in range(1, 26))
+                body = ('<form><div data-recipient-picker data-picker-label="Recipients" data-recipient-source="/choices"><label>Recipients</label><div data-recipient-type="people">' + people
+                    + '<label><input type="checkbox" name="recipients" value="99" checked>Person 099</label></div><div data-recipient-type="roles"><label><input type="checkbox" name="recipient_roles" value="everyone">Everyone</label></div><div data-recipient-type="groups"></div></div></form>').encode()
             else:
                 if state['fail']:
                     self.send_response(503); self.end_headers(); return
@@ -58,37 +60,40 @@ def test_remote_choices_keep_selected_nodes_search_and_failures(engine, width):
             assert field.locator('.ui-picker-trigger').count() == 1, errors
             page.evaluate("document.body.style.paddingTop='200px';document.body.style.zoom='2'")
             field.locator('.ui-picker-trigger').click()
-            expect(field.locator('.ui-picker-pager')).to_contain_text('100 choices')
-            assert field.locator('.recipient-picker-option').count() <= 27
+            # The first choices are already inline: no request, no pager.
+            expect(field.locator('.recipient-picker-option:visible')).to_have_count(27)
+            assert field.locator('.ui-picker-pager').count() == 0
+            assert field.get_by_role('button', name='Next', exact=True).count() == 0
             assert field.locator('.ui-picker-options').evaluate('el=>el.clientHeight') > 20
             bounds = field.locator('.ui-picker-popup').bounding_box()
             assert bounds['x'] >= -1 and bounds['x']+bounds['width'] <= width+2
             page.evaluate("document.body.style.zoom='';document.body.style.paddingTop=''")
-            field.get_by_role('button', name='Next', exact=True).click()
-            expect(field.locator('.ui-picker-pager')).to_contain_text('Page 2')
-            field.locator('input[value="26"]').check()
+            field.locator('input[value="5"]').check()
             field.locator('.ui-picker-search').fill('slow')
             page.wait_for_timeout(230)
             field.locator('.ui-picker-search').fill('person100')
             expect(field.locator('input[value="100"]')).to_be_visible()
             field.locator('input[value="100"]').check()
             expect(field.locator('.recipient-picker-selected')).to_contain_text('Person 099')
-            assert set(page.locator('form').evaluate("f => new FormData(f).getAll('recipients')")) == {'99', '26', '100'}
+            assert set(page.locator('form').evaluate("f => new FormData(f).getAll('recipients')")) == {'99', '5', '100'}
             state['fail'] = True
             field.locator('.ui-picker-search').fill('another')
-            expect(field.locator('.ui-picker-message')).to_contain_text('Could not load recipients')
-            assert set(page.locator('form').evaluate("f => new FormData(f).getAll('recipients')")) == {'99', '26', '100'}
+            # One quiet retry, then a plain message: never a Retry button.
+            expect(field.locator('.ui-picker-message')).to_contain_text('Could not search right now', timeout=8000)
+            assert field.get_by_role('button', name='Retry', exact=True).count() == 0
+            assert set(page.locator('form').evaluate("f => new FormData(f).getAll('recipients')")) == {'99', '5', '100'}
             state['fail'] = False
-            field.locator('.ui-picker-search').fill('person001')
-            expect(field.locator('input[value="1"]')).to_be_visible()
+            field.locator('.ui-picker-search').fill('person003')
+            expect(field.locator('input[value="3"]')).to_be_visible()
             field.get_by_role('button', name='Done', exact=True).click()
             expect(field.locator('.ui-picker-trigger')).to_be_focused()
             page.evaluate('TrellumRecipients.init(document); TrellumRecipients.init(document)')
             assert field.locator('.ui-picker-trigger').count() == 1
-            field.get_by_role('button', name='Remove Person 026', exact=True).click()
+            field.get_by_role('button', name='Remove Person 005', exact=True).click()
             assert set(page.locator('form').evaluate("f => new FormData(f).getAll('recipients')")) == {'99', '100'}
             state['revoked'] = True
             field.locator('.ui-picker-trigger').click()
+            field.locator('.ui-picker-search').fill('person0')
             expect(field.locator('.recipient-picker-selected')).to_contain_text('Selected person is unavailable')
             assert 'Person 099' not in field.inner_text() and 'person099@example.test' not in field.inner_html()
             field.get_by_role('button', name='Done', exact=True).click()

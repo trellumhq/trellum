@@ -484,13 +484,17 @@
 
     function loadMembersFor(reportApiBase, selected) {
         var url = new URL(reportApiBase + '/recipients', location.href);
-        if (selected) { url.searchParams.set('selected_people', selected.recipients.map(function (row) { return row.id; }).join(',')); url.searchParams.set('selected_groups', selected.recipient_groups.map(function (row) { return row.id; }).join(',')); }
+        if (selected) {
+            var people = selected.recipients.map(function (row) { return row.id; }).join(','), groups = selected.recipient_groups.map(function (row) { return row.id; }).join(',');
+            if (people) url.searchParams.set('selected_people', people);
+            if (groups) url.searchParams.set('selected_groups', groups);
+        }
         return apiFetch(url.href).then(function (response) {
             if (!response.ok) throw new Error('Could not load recipients.');
             return response.json();
         }).then(function (result) {
-            if (!Array.isArray(result.members) || result.members.length > 25 || !Array.isArray(result.groups) || result.groups.length > 25 || !result.pagination || !result.selected) throw new Error('Invalid recipient choices.');
-            return { ok: true, data: { members: result.members || [], roles: result.roles || {}, groups: result.groups || [], studio_name: result.studio_name || '', source: reportApiBase + '/recipients', pagination: result.pagination, selected: result.selected } };
+            if (!Array.isArray(result.members) || result.members.length > 500 || !Array.isArray(result.groups) || result.groups.length > 500) throw new Error('Invalid recipient choices.');
+            return { ok: true, data: { members: result.members || [], roles: result.roles || {}, groups: result.groups || [], studio_name: result.studio_name || '', source: result.searchable ? reportApiBase + '/recipients' : '', pagination: result.pagination || null, selected: result.selected || { members: [], groups: [] } } };
         }).catch(function () { return { ok: false }; });
     }
     function currentSession(session) { return state === session && session.active; }

@@ -1,4 +1,4 @@
-"""Real browser formdata and native bounded checkbox submission."""
+"""Real browser formdata and the packed bounded report selection."""
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import parse_qs, urlparse
 
@@ -13,8 +13,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 @pytest.mark.parametrize("engine", ["chromium", "webkit"])
 @pytest.mark.parametrize("count", [25, 100, 1000])
-@pytest.mark.parametrize("enhanced", [False, True])
-def test_browser_complete_save_native_browse_and_enhanced_reset(engine, count, enhanced, live_server, login, org_admin, org, studio, make_group, settings, tmp_path):
+def test_browser_complete_save_and_reset(engine, count, live_server, login, org_admin, org, studio, make_group, settings, tmp_path):
     settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = True
     settings.TRELLUM_REPORT_ACCESS_MODEL = "proxy"
     settings.DATA_DIR = tmp_path / "data"
@@ -31,7 +30,7 @@ def test_browser_complete_save_native_browse_and_enhanced_reset(engine, count, e
     requests = []
     with sync_playwright() as pw:
         browser = getattr(pw, engine).launch(headless=True)
-        context = browser.new_context(java_script_enabled=enhanced, viewport={"width": 390, "height": 900})
+        context = browser.new_context(viewport={"width": 390, "height": 900})
         context.add_cookies([{"name": "sessionid", "value": client.cookies["sessionid"].value, "url": host}])
         page = context.new_page()
         def static(route):
@@ -42,49 +41,38 @@ def test_browser_complete_save_native_browse_and_enhanced_reset(engine, count, e
         page.goto(host + path)
         form = page.locator("[data-studio-access]")
         expect(form).to_be_visible()
-        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth") if enhanced else True
-        if enhanced:
-            assert form.locator('[name="reports"]:checked').count() == count
-            # Reset must retain every offpage initial selection, and disabled
-            # controls must be omitted from the packed successful values.
-            packed = form.evaluate("""f => {
-              const checks = [...f.querySelectorAll('[name="reports"]')];
-              checks[0].checked = false;
-              checks[0].dispatchEvent(new Event('input', {bubbles:true}));
-              f.reset();
-              checks[0].disabled = true;
-              const data = new FormData(f);
-              checks[0].disabled = false;
-              return {ordinary: data.getAll('reports'), packet: JSON.parse(data.get('reports__selection')), count: checks.filter(c=>c.checked).length};
-            }""")
-            assert packed["ordinary"] == []
-            assert packed["count"] == count
-            assert set(packed["packet"]["selected"]) == {str(r.pk) for r in reports[1:]}
-            form.evaluate("f => { const c=f.querySelector('[name=reports]'); c.checked=false; c.dispatchEvent(new Event('input',{bubbles:true})); }")
-            save = form.get_by_role("button", name="Save changes", exact=True)
-            save.scroll_into_view_if_needed()
-            before_y = page.evaluate("scrollY")
-            save.click()
-            expect(form.locator("[data-settings-dirty-status]")).to_contain_text("Studio access updated.")
-            expect(save).to_be_focused()
-            assert abs(page.evaluate("scrollY") - before_y) <= 2
-            expect(page).to_have_url(host + path)
-        else:
-            assert form.locator('[name="reports"]').count() == min(count, 25)
-            form.locator('[name="reports"]').first.uncheck()
-            if count > 25:
-                form.get_by_role("button", name=f"Remove Report {count-1:04}", exact=False).click()
-                form = page.locator("[data-studio-access]")
-                assert assignments() == {r.pk for r in reports}
-                assert form.locator('[name="reports"]').count() == 25
-            form.get_by_role("button", name="Save changes", exact=True).click()
-            expect(page.get_by_text("Studio access updated.", exact=True)).to_be_visible()
+        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        # Up to the inline limit every report is a checkbox; beyond it a short
+        # preview plus search. There is never a pager or Search button.
+        assert form.get_by_role("button", name="Next reports").count() == 0 and form.get_by_role("button", name="Search reports").count() == 0
+        assert form.locator('[name="reports"]:checked').count() == count
+        # Reset must retain every initial selection, and disabled controls must
+        # be omitted from the packed successful values.
+        packed = form.evaluate("""f => {
+          const checks = [...f.querySelectorAll('[name="reports"]')];
+          checks[0].checked = false;
+          checks[0].dispatchEvent(new Event('input', {bubbles:true}));
+          f.reset();
+          checks[0].disabled = true;
+          const data = new FormData(f);
+          checks[0].disabled = false;
+          return {ordinary: data.getAll('reports'), packet: JSON.parse(data.get('reports__selection')), count: checks.filter(c=>c.checked).length};
+        }""")
+        assert packed["ordinary"] == []
+        assert packed["count"] == count
+        assert set(packed["packet"]["selected"]) == {str(r.pk) for r in reports[1:]}
+        form.evaluate("f => { const c=f.querySelector('[name=reports]'); c.checked=false; c.dispatchEvent(new Event('input',{bubbles:true})); }")
+        save = form.get_by_role("button", name="Save changes", exact=True)
+        save.scroll_into_view_if_needed()
+        before_y = page.evaluate("scrollY")
+        save.click()
+        expect(form.locator("[data-settings-dirty-status]")).to_contain_text("Studio access updated.")
+        expect(save).to_be_focused()
+        assert abs(page.evaluate("scrollY") - before_y) <= 2
+        expect(page).to_have_url(host + path)
         expected = {r.pk for r in reports[1:]}
-        if not enhanced and count > 25:
-            expected.remove(reports[-1].pk)
         assert assignments() == expected
         assert requests
-        # Count multipart parts rather than byte substrings in packed JSON.
         body = requests[-1].post_data_buffer
         assert body and len(body) < 32768
         if 'multipart/form-data' in requests[-1].headers.get('content-type', ''):
@@ -92,14 +80,13 @@ def test_browser_complete_save_native_browse_and_enhanced_reset(engine, count, e
         else:
             fields = sum(len(values) for values in parse_qs(body.decode(), keep_blank_values=True).values())
         assert fields <= 64
-        if enhanced:
-            # An injected unavailable identity must remain rejected, retained
-            # and visible instead of being lost when the packet is built.
-            form.evaluate("f => { const c=document.createElement('input'); c.type='checkbox'; c.name='reports'; c.value='999999999'; c.checked=true; f.append(c); TrellumSettingsForms.trackControls(f,[c]); c.dispatchEvent(new Event('input',{bubbles:true})); }")
-            form.get_by_role("button", name="Save changes", exact=True).click()
-            expect(form.locator("[data-settings-error]")).to_contain_text("Select a valid choice")
-            assert assignments() == expected
-            assert form.locator('[name="reports"][value="999999999"]').is_checked()
+        # An injected unavailable identity must remain rejected, retained and
+        # visible instead of being lost when the packet is built.
+        form.evaluate("f => { const c=document.createElement('input'); c.type='checkbox'; c.name='reports'; c.value='999999999'; c.checked=true; f.append(c); TrellumSettingsForms.trackControls(f,[c]); c.dispatchEvent(new Event('input',{bubbles:true})); }")
+        form.get_by_role("button", name="Save changes", exact=True).click()
+        expect(form.locator("[data-settings-error]")).to_contain_text("Select a valid choice")
+        assert assignments() == expected
+        assert form.locator('[name="reports"][value="999999999"]').is_checked()
         context.close()
         browser.close()
 

@@ -475,7 +475,7 @@ def metric_comparison(request, org_slug, studio_slug):
     """Two current studio identities; report access is checked again by each frame."""
     from datetime import date
 
-    from .metric_workspace import definition_choices, workspace_projection
+    from .metric_workspace import inline_definition_choices, workspace_projection
     from .models import ReportMetricClaim
 
     ids = [request.GET.get(key, "") for key in ("a", "b")]
@@ -498,10 +498,7 @@ def metric_comparison(request, org_slug, studio_slug):
     available = {row.name for row in selected_rows}
     if any(value and value not in available for value in ids):
         return HttpResponseBadRequest("Choose two different available metrics.")
-    query = request.GET.get('q', '').strip()
-    if len(query) > 200:
-        return HttpResponseBadRequest('Choose a metric search of at most 200 characters.')
-    choices, page = definition_choices(request.studio, query, request.GET.get('page', 1), ids)
+    choices, searchable = inline_definition_choices(request.studio, ids)
     data = workspace_projection(request.studio, legacy=request.GET.get('legacy') == '1')
     summary = data['_workspace_summary']
     claims = {claim.metric_name: claim for claim in ReportMetricClaim.objects.filter(
@@ -522,8 +519,8 @@ def metric_comparison(request, org_slug, studio_slug):
                       'embed_url': f'{data["metrics_report_url"]}?only=metric-{metric_id}' if claim and data['metrics_report_built'] else ''})
     return render(request, "reports/metric_comparison.html", {
         "org": request.org, "studio": request.studio, "cards": cards,
-        'metrics': [{'row': row} for row in choices], 'choice_page': page, 'choice_query': query,
-        'choice_url': reverse('studio-metric-choices', args=[org_slug, studio_slug]),
+        'metrics': [{'row': row} for row in choices],
+        'choice_url': reverse('studio-metric-choices', args=[org_slug, studio_slug]) if searchable else '',
         **data,
         "comparison_url": reverse("metric-comparison", args=[org_slug, studio_slug]),
         "catalog_url": reverse("studio-metrics", args=[org_slug, studio_slug]),

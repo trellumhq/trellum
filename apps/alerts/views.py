@@ -123,7 +123,7 @@ def recipient_choices(request, org_slug, studio_slug):
     except ValueError as exc:
         return JsonResponse({"error": str(exc)}, status=400)
     response = JsonResponse(page_snapshot(recipient_snapshot(request.studio, include_inactive=True),
-        query=parameters.get('q', ''), page=parameters.get('page', 1),
+        query=parameters.get('q', ''), page=1,
         selected_people=parameters.get('selected_people', ''), selected_groups=parameters.get('selected_groups', '')))
     response['Cache-Control'] = 'private, no-store'
     return response
@@ -138,7 +138,7 @@ def report_choices(request, org_slug, studio_slug):
     matches = reports.filter(Q(name__icontains=query) | Q(slug__icontains=query)) if query else reports
     page = Paginator(matches, 25).get_page(request.GET.get('page'))
     def item(report):
-        return {'value': str(report.pk), 'label': report.name or report.slug, 'hint': request.studio.name}
+        return {'value': str(report.pk), 'label': report.name or report.slug, 'hint': ''}
     selected_id = request.GET.get('selected', '')
     selected = reports.filter(pk=selected_id).first() if selected_id.isascii() and selected_id.isdigit() and len(selected_id) < 19 else None
     response = JsonResponse({'results': [item(report) for report in page],
@@ -154,12 +154,8 @@ def rule_form(request, org_slug, studio_slug, rule_id=None):  # noqa: ARG001
     rule = _rule(request, rule_id) if rule_id else AlertRule(
         org=request.org, studio=request.studio, created_by=request.user
     )
-    choices = request.POST if request.method == 'POST' else request.GET
-    presentation = {key: choices.get(key, '') for key in ('report_q', 'recipient_q', 'report_page', 'people_page', 'group_page')}
-    presentation['actor'] = request.user
+    presentation = {'actor': request.user}
     form = AlertRuleForm(request.POST or None, instance=rule, studio=request.studio, presentation=presentation)
-    if request.method == 'POST' and (request.POST.get('action') == 'browse_choices' or (not request.POST.get('action') and any(key in request.POST for key in ('report_page', 'people_page', 'group_page')))):
-        return render(request, 'alerts/alert_form.html', _context(request, form=form, rule=rule, result=None))
     preview = request.method == "POST" and request.POST.get("action") == "preview"
     result = None
     if preview and form.is_valid():
