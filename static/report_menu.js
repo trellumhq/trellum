@@ -486,7 +486,7 @@
         + 'body.tl-report-console .fw-report-chrome,body.tl-report-focus .fw-report-chrome{grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto;align-items:center;padding:4px 12px}'
         + 'body.tl-report-console .fw-report-chrome>.fw-report-metadata,body.tl-report-focus .fw-report-chrome>.fw-report-metadata{grid-area:1/1}'
         + 'body.tl-report-console .fw-report-chrome .fw-header-right,body.tl-report-focus .fw-report-chrome .fw-header-right{grid-area:1/2;flex:none;width:auto;min-width:0;margin-left:0}'
-        + '#fwOptionsWrap{flex:0 0 auto}.fw-header-right .rmw-mobile-options{width:auto;min-width:96px}'
+        + '#fwOptionsWrap{flex:0 0 auto}.fw-header-right .rmw-mobile-options{width:auto;min-width:96px;max-width:120px}'
         // Annotation chips stay on one row and scroll sideways instead of wrapping.
         + 'body.tl-report-console .fw-anno-bar,body.tl-report-focus .fw-anno-bar{flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none}'
         + 'body.tl-report-console .fw-anno-bar>*,body.tl-report-focus .fw-anno-bar>*{flex:none;white-space:nowrap}}'
