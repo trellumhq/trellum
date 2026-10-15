@@ -42,7 +42,10 @@ def _page() -> str:
 <script>{_read(STATIC / "report_menu.js")}</script></body></html>"""
 
 
-def test_phone_header_is_compact_and_consistent():
+@pytest.mark.parametrize("display", ["console", "focus"])
+def test_phone_header_is_compact_and_consistent(display):
+    """``console`` is a report opened in the shell; ``focus`` is what the shell's
+    host frame loads when a report is opened from the catalog."""
     try:
         from playwright.sync_api import Error, sync_playwright
     except ImportError:
@@ -58,7 +61,7 @@ def test_phone_header_is_compact_and_consistent():
                 "http://console.test/**",
                 lambda route: route.fulfill(content_type="text/html", body=_page()),
             )
-            page.goto("http://console.test/s/demo/casino/r/player-overview/index.html?display=console")
+            page.goto(f"http://console.test/s/demo/casino/r/player-overview/index.html?display={display}")
             page.evaluate(
                 "window.__reportMenu.register({id:'share',label:'Share',onSelect(){}})"
             )
