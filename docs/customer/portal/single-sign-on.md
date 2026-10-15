@@ -347,8 +347,13 @@ blocked, since it applies to existing members whatever their email domain.
 
 The login page asks for the work email first and nothing else. If the
 address routes to single sign-on (or belongs to a member of an organization
-that enforces it), the person is sent straight to the identity provider. If it
-does not route, the next page shows the email read-only, with a **Use a
+that enforces it), the person is sent straight to the identity provider.
+**Sign in with a password instead**, shown to everyone, skips that redirect
+where the organization still allows password login (**`allow_password_login`**
+on, and the person is not a member of an organization that enforces SSO);
+instance operators are exempt from enforcement, so they can always reach the
+password step if single sign-on breaks. If the address does not route, or the
+person chose a password, the next page shows the email read-only, with a **Use a
 different email** link, and asks for the password (labelled **Directory
 password** when the address routes to a directory). That page looks the same
 whether or not an account exists, and the routing is checked again when the

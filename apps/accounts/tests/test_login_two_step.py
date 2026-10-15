@@ -211,7 +211,9 @@ class TestStepTwoReRoutes:
         resp = client.post("/login/password", {"password": PW})
         assert resp.status_code == 302 and resp.url == "/"
 
-    def test_stale_step_two_for_a_now_routable_domain_redirects(self, client, sso_cfg):
+    def test_stale_step_two_for_a_domain_that_now_refuses_passwords_redirects(self, client, sso_cfg):
+        sso_cfg.allow_password_login = False
+        sso_cfg.save()
         session = client.session
         session["login_email"] = "a@demo.example"
         session.save()
@@ -229,3 +231,73 @@ class TestCombinedPost:
         make_user("real@nowhere.example")
         resp = client.post("/login", {"email": "real@nowhere.example", "password": "no"})
         assert resp.status_code == 200 and b"Invalid email or password" in resp.content
+
+
+def _password_link(client, email, query=""):
+    return client.post(f"/login{query}", {"email": email, "method": "password"})
+
+
+class TestPasswordInsteadLink:
+    def test_link_is_always_shown_on_step_one(self, client):
+        html = client.get("/login").content.decode()
+        assert "Sign in with a password instead" in html and 'name="method"' in html
+
+    def test_member_of_enforcing_org_is_still_redirected(self, client, sso_cfg, make_user, org):
+        sso_cfg.enforce_sso = True
+        sso_cfg.save()
+        make_user("cons@demo.example", org=org)
+        resp = _password_link(client, "cons@demo.example")
+        assert resp.status_code == 302 and "oidc-demo/login" in resp.url
+
+    def test_non_member_on_routable_domain_can_use_a_password_when_allowed(
+        self, client, sso_cfg, make_user
+    ):
+        make_user("loner@demo.example")
+        assert sso_cfg.allow_password_login
+        assert "oidc-demo/login" in _step1(client, "loner@demo.example").url
+        resp = _password_link(client, "loner@demo.example")
+        assert resp.url == "/login/password"
+        assert client.post("/login/password", {"password": PW}).url == "/"
+        assert "_auth_user_id" in client.session
+
+    def test_domain_without_password_login_redirects_even_via_the_link(self, client, sso_cfg):
+        sso_cfg.allow_password_login = False
+        sso_cfg.save()
+        resp = _password_link(client, "anyone@demo.example")
+        assert "oidc-demo/login" in resp.url
+
+    def test_operator_on_an_enforcing_sso_domain_can_still_log_in(self, client, sso_cfg):
+        """Lockout safety: operators are exempt from enforce_sso, so with
+        password login allowed they reach the password step on their own SSO
+        domain even if the IdP is down."""
+        from apps.accounts.models import User
+
+        sso_cfg.enforce_sso = True
+        sso_cfg.save()
+        User.objects.create_superuser(email="root@demo.example", password=PW)
+        assert _password_link(client, "root@demo.example").url == "/login/password"
+        assert client.get("/login/password").status_code == 200
+        assert client.post("/login/password", {"password": PW}).url == "/"
+        assert "_auth_user_id" in client.session
+
+    def test_operator_on_a_domain_with_passwords_off_is_still_redirected(self, client, sso_cfg):
+        # Pre-existing behavior: the operator exemption covers enforce_sso
+        # only; a domain whose org disabled password login always goes to the IdP.
+        from apps.accounts.models import User
+
+        sso_cfg.allow_password_login = False
+        sso_cfg.save()
+        User.objects.create_superuser(email="root@demo.example", password=PW)
+        assert "oidc-demo/login" in _password_link(client, "root@demo.example").url
+
+    def test_crafted_step_two_still_reroutes_enforced_users(self, client, sso_cfg, make_user, org):
+        sso_cfg.enforce_sso = True
+        sso_cfg.save()
+        make_user("cons@demo.example", org=org)
+        _password_link(client, "loner@demo.example")
+        session = client.session
+        session["login_email"] = "cons@demo.example"
+        session.save()
+        for resp in (client.get("/login/password"), client.post("/login/password", {"password": PW})):
+            assert resp.status_code == 302 and "oidc-demo/login" in resp.url
+        assert "_auth_user_id" not in client.session

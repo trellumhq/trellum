@@ -307,7 +307,7 @@ class TestSsoUsersAreNeverPrompted:
         # The step-up only fires after authenticate() succeeds on the
         # PASSWORD branch; the SSO branches return before reaching it.
         assert "has_mfa" in source
-        assert source.index("provider_login_url(request, cfg)") < source.index("has_mfa")
+        assert source.index("_password_refused_redirect(request, email)") < source.index("has_mfa")
 
 
 class TestOrgPolicyEnforcement:

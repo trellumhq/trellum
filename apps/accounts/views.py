@@ -108,7 +108,13 @@ def login_view(request):
             request, form, email, password,
             rerender=lambda: _render_email_step(request, form),
         )
-    redirection = _sso_redirect(request, email)
+    # "Sign in with a password instead" skips the automatic IdP redirect, but
+    # never the refusal: enforcing orgs and password-less domains still go
+    # to the IdP.
+    if request.POST.get("method") == "password":
+        redirection = _password_refused_redirect(request, email)
+    else:
+        redirection = _sso_redirect(request, email)
     if redirection is not None:
         return redirection
     request.session[LOGIN_EMAIL_SESSION_KEY] = email
@@ -119,7 +125,7 @@ def login_view(request):
 def login_password_view(request):
     """Identifier-first login, step 2: the password for the email from step 1.
 
-    The email comes from the session, and routing runs again on every request,
+    The email comes from the session, and the password refusal is re-checked on every request,
     so a member of an enforcing org cannot password-login with a crafted POST.
     """
     from apps.accounts import sso
@@ -130,7 +136,7 @@ def login_password_view(request):
     if not email:
         return redirect(_login_url(request))
 
-    redirection = _sso_redirect(request, email)
+    redirection = _password_refused_redirect(request, email)
     if redirection is not None:
         return redirection
 
@@ -166,6 +172,23 @@ def _sso_redirect(request, email: str):
     return redirect(sso.provider_login_url(request, cfg))
 
 
+def _password_refused_redirect(request, email: str):
+    """The redirect to the IdP when this email may not sign in with a
+    password, else None: a member of an enforcing org (operators exempt --
+    lockout safety), or a routable domain whose org turned password login off.
+    Shared by the password step and _attempt_login so they cannot drift. A
+    directory (LDAP) org checks the password against the directory instead."""
+    from apps.accounts import sso
+
+    enforced = sso.enforced_config_for_user(email)
+    cfg = enforced or sso.config_for_email_domain(email)
+    if cfg is None or cfg.is_ldap:
+        return None
+    if enforced is not None or not cfg.allow_password_login:
+        return redirect(sso.provider_login_url(request, cfg))
+    return None
+
+
 def _attempt_login(request, form, email: str, password: str, *, rerender):
     """A typed password: SSO routing first (an enforcing org never gets a
     password login), then the password / directory check, throttle and MFA
@@ -175,11 +198,9 @@ def _attempt_login(request, form, email: str, password: str, *, rerender):
     enforced = sso.enforced_config_for_user(email)
     cfg = enforced or sso.config_for_email_domain(email)
     directory = cfg is not None and cfg.is_ldap
-    if not directory:
-        if enforced is not None:
-            return redirect(sso.provider_login_url(request, enforced))
-        if cfg is not None and not cfg.allow_password_login:
-            return redirect(sso.provider_login_url(request, cfg))
+    redirection = _password_refused_redirect(request, email)
+    if redirection is not None:
+        return redirection
 
     # Checked after the SSO redirects, so throttling can never strand a
     # member of an enforcing org: their route out is the IdP, not a
