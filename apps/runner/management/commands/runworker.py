@@ -506,6 +506,10 @@ class _SchedulerManager:
     """
 
     REFRESH_SECONDS = 60
+    # Job ids refresh() owns and may remove. Fixed jobs registered once at
+    # start (retention-cleanup, update-check) sit outside these prefixes, so
+    # the diff never drops them.
+    SYNCED_PREFIXES = ("report-", "email-", "alert-")
 
     def __init__(self):
         self._scheduler = None
@@ -636,10 +640,9 @@ class _SchedulerManager:
             if a.report.present_in_scan and not a.report.disabled:
                 desired[f"alert-{a.pk}"] = (a.pk, a, a.timezone)
 
-        current = {job.id: job for job in self._scheduler.get_jobs()}
-        for job_id in current:
-            if job_id not in desired:
-                self._scheduler.remove_job(job_id)
+        for job in self._scheduler.get_jobs():
+            if job.id.startswith(self.SYNCED_PREFIXES) and job.id not in desired:
+                self._scheduler.remove_job(job.id)
         for job_id, (obj_id, cron_or_schedule, tz_name) in desired.items():
             try:
                 tz = ZoneInfo(tz_name or "UTC")
