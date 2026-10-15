@@ -83,7 +83,7 @@ def sso_settings(request, org_slug):  # noqa: ARG001
                 enabled=form.instance.enabled, auth_method=form.instance.auth_method,
             )
             if is_settings_request(request):
-                return settings_success(request, "SSO settings saved.", values={"client_secret": "", "ldap_bind_password": ""}, refresh=["sso-directory-test", "sso-unclaimed-domains"])
+                return settings_success(request, "SSO settings saved.", values={"client_secret": "", "ldap_bind_password": ""}, refresh=["sso-directory-test", "sso-unclaimed-domains", "sso-routing-warning"])
             doc = form.discovery
             messages.success(
                 request,
@@ -106,6 +106,8 @@ def sso_settings(request, org_slug):  # noqa: ARG001
         {domain_service.normalise(d) for d in ((cfg.email_domains if cfg else []) or [])}
         - {r.domain for r in claimed}
     )
+    verification_required = domain_service.enforcement_enabled()
+    routing_warning = cfg is not None and cfg.enabled
     return render(
         request,
         "orgs/sso.html",
@@ -118,5 +120,10 @@ def sso_settings(request, org_slug):  # noqa: ARG001
             "claimed_domains": claimed,
             "routable_domains": sorted(routable),
             "unclaimed_domains": unclaimed,
+            "unroutable_domains": (
+                domain_service.unroutable_domains(cfg)
+                if routing_warning and verification_required else []
+            ),
+            "no_routable_domains": routing_warning and not routable,
         },
     )

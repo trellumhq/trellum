@@ -36,6 +36,12 @@ MFA_STASH_TTL_SECONDS = 5 * 60
 _MFA_STASH_KEYS = ("mfa_user_id", "mfa_started", "mfa_next", "mfa_login_method")
 
 
+NO_SSO_ROUTE_MESSAGE = (
+    "Enter your password. Single sign-on isn't set up for this email address "
+    "\u2014 if your organization uses it, contact your administrator."
+)
+
+
 def login_view(request):
     """Email-first login.
 
@@ -70,6 +76,13 @@ def login_view(request):
                 return redirect(sso.provider_login_url(request, enforced))
             if cfg is not None and (not cfg.allow_password_login or not password):
                 return redirect(sso.provider_login_url(request, cfg))
+            if not password:
+                # No route and nothing typed: the person is probably expecting
+                # single sign-on. Same text whether or not the account exists,
+                # and not a throttle failure -- nothing was guessed.
+                sso.log_unroutable_domain(email)
+                form.add_error("password", NO_SSO_ROUTE_MESSAGE)
+                return render(request, "accounts/login.html", {"form": form})
         elif not password:
             form.add_error("password", "Enter your directory password.")
             return render(request, "accounts/login.html", {"form": form})

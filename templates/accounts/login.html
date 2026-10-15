@@ -24,10 +24,10 @@ screen of empty space under it.{% endcomment %}
         <label for="id_password">Password</label>
         {{ form.password }}{{ form.password.errors }}
       </div>
-      <p class="ui-help">If your organization uses single sign-on,
-        you'll be redirected automatically after entering your email.
-        If it signs you in against a directory, the password above is your
-        directory password.</p>
+      <p class="ui-help">Using single sign-on? Enter your work email and leave
+        the password empty &mdash; we'll send you to your organization's sign-in
+        page. If your organization signs you in against a directory, the
+        password above is your directory password.</p>
       <div class="ui-form-actions">
         <button class="ui-btn primary" type="submit">Continue</button>
         <a href="/password-reset/" class="auth-alt-link">Forgot password?</a>

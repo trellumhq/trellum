@@ -7,6 +7,16 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Changed
+
+- Make single sign-on routing failures visible. The SSO settings page warns
+  about listed email domains that are not yet verified (and when no domain
+  routes at all), and refuses to turn off password login while no domain
+  routes. Submitting an email with an empty password when no sign-in route
+  exists now asks for the password instead of reporting an invalid login, and
+  no longer counts toward login throttling. The login page explains how to
+  use single sign-on.
+
 ## [0.7.0] — 2026-10-15
 
 ### Added

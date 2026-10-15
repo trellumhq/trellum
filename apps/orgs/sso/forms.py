@@ -1,6 +1,7 @@
 from django import forms
 
 from apps.accounts import sso
+from apps.orgs import domains
 from apps.orgs.models import Organization, OrgSSOConfig, PermissionGroup
 
 
@@ -110,6 +111,36 @@ class SSOConfigForm(forms.ModelForm):
 
     def clean(self):
         data = super().clean()
+        data = self._clean_source(data)
+        if not self.errors:
+            self._clean_routing(data)
+        return data
+
+    def _clean_routing(self, data):
+        """Refuse to save a config that would leave people with no way in.
+
+        Turning password login off sends the config's domains to single
+        sign-on; if none of them routes, nobody is sent anywhere and nobody
+        can type a password either. ``enforce_sso`` is not blocked here: it
+        applies to existing members whatever their domain, and the settings
+        page warns instead.
+        """
+        if not data.get("enabled") or data.get("allow_password_login"):
+            return
+        listed = data.get("email_domains_text") or []
+        if domains.enforcement_enabled():
+            verified = domains.verified_domains(self.org)
+            listed = [d for d in listed if d in verified]
+        if not listed:
+            self.add_error(
+                "email_domains_text",
+                "Password login can only be turned off once at least one email "
+                "domain routes to single sign-on. Verify a domain below"
+                + ("" if domains.enforcement_enabled() else " or list one above")
+                + ", or keep password login on.",
+            )
+
+    def _clean_source(self, data):
         if data.get("auth_method") == OrgSSOConfig.AUTH_LDAP:
             return self._clean_ldap(data)
         if self.errors.get("issuer_url"):
