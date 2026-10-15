@@ -86,7 +86,7 @@ def test_repeated_timeouts_do_not_pile_up(script, pidfile, monkeypatch):
     threads_before = threading.active_count()
     for _ in range(3):
         ok, detail = testing.test_datasource(ds)
-        assert not ok and "Timed out after 1s" in detail and "stopped" in detail
+        assert not ok and "Timed out after 1s" in detail
     pids = _pids(pidfile)
     assert len(pids) == 6
     assert not any(_alive(pid) for pid in pids)

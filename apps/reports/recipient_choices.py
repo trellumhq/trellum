@@ -7,6 +7,35 @@ from apps.orgs.models import OrgMembership, PermissionGroup, PermissionGroupMemb
 from apps.studios.models import StudioMembership
 
 PAGE_SIZE = 25
+#: Choice lists up to this size render whole with client-side search, exactly as before the
+#: bounded-presentation work. Only a list that exceeds it switches the shared pickers to
+#: server-side search (``data-choice-source`` / ``data-recipient-source``).
+CHOICE_LIMIT = 500
+
+
+def cap_model_choices(field, selected=(), limit=None):
+    """Materialise a model choice field's options, at most ``limit`` of them.
+
+    Validation keeps using the field's full queryset; only rendering is bounded. Currently
+    selected values (``selected`` may be a callable, evaluated only when needed) always stay
+    in the rendered options. Returns True when the list was cut.
+    """
+    from django.forms.models import ModelChoiceIteratorValue
+
+    limit = limit or CHOICE_LIMIT
+    rows = list(field.queryset[:limit + 1])
+    large = len(rows) > limit
+    if large:
+        rows = rows[:limit]
+        wanted = selected() if callable(selected) else selected
+        if isinstance(wanted, (str, int)):
+            wanted = [wanted]
+        present = {row.pk for row in rows}
+        extra = selected_ids([str(value) for value in wanted or ()]) - present
+        if extra:
+            rows += list(field.queryset.filter(pk__in=extra))
+    field.widget.choices = [(ModelChoiceIteratorValue(row.pk, row), field.label_from_instance(row)) for row in rows]
+    return large
 
 
 def recipient_snapshot(studio, report=None, *, include_inactive=False):
@@ -48,6 +77,20 @@ def recipient_snapshot(studio, report=None, *, include_inactive=False):
             'active_people_count': sum(user.is_active for uid, user in eligible.items() if uid in org_ids)}
 
 
+def cap_choices(field, selected=(), limit=None):
+    """Bound an already-built plain choice field's rendered options (validation keeps the full set).
+
+    Selected values always stay rendered. Returns True when the list was cut.
+    """
+    limit = limit or CHOICE_LIMIT
+    choices = list(field.choices)
+    if len(choices) <= limit:
+        return False
+    chosen = {str(value) for value in selected or ()}
+    field.choices = choices[:limit] + [choice for choice in choices[limit:] if str(choice[0]) in chosen]
+    return True
+
+
 def selected_ids(values):
     if isinstance(values, str):
         values = values.split(',')
@@ -76,10 +119,36 @@ def page_snapshot(snapshot, *, query='', page=1, people_page=None, group_page=No
     return result
 
 
+def full_snapshot(snapshot, *, limit=None):
+    """Every eligible person and group, as the editors always listed them.
+
+    Only an audience beyond ``limit`` is cut (``truncated``); the shared recipient picker then
+    searches server-side through the paged form of the same endpoint.
+    """
+    limit = limit or CHOICE_LIMIT
+    result = {key: snapshot[key] for key in ('roles', 'studio_name')}
+    result['truncated'] = len(snapshot['members']) > limit or len(snapshot['groups']) > limit
+    result['members'] = snapshot['members'][:limit]
+    result['groups'] = snapshot['groups'][:limit]
+    return result
+
+
+def with_selected(rows, snapshot_rows, selected):
+    """``rows`` plus any selected rows the cap cut (never an id outside the eligible set)."""
+    present = {row['id'] for row in rows}
+    chosen = selected_ids(selected) - present
+    return rows + [row for row in snapshot_rows if row['id'] in chosen]
+
+
 def recipient_payload(request, report=None):
+    """Whole audience by default (what the delivery drawer loads); the picker's server-side
+    search sends ``q``/``page``/``selected_*`` and gets one bounded page."""
     from apps.core.choice_requests import choice_request_params
     parameters = choice_request_params(request)
-    return page_snapshot(recipient_snapshot(request.studio, report),
+    snapshot = recipient_snapshot(request.studio, report)
+    if all(parameters.get(key) is None for key in ('q', 'page', 'selected_people', 'selected_groups')):
+        return full_snapshot(snapshot)
+    return page_snapshot(snapshot,
         query=parameters.get('q', ''), page=parameters.get('page', 1),
         selected_people=parameters.get('selected_people', ''),
         selected_groups=parameters.get('selected_groups', ''))

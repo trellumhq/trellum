@@ -369,7 +369,7 @@ function dsTest(row, url, revision, form, btn, draftBody) {
   var deadline = new Promise(function (resolve, reject) {
     timeout = setTimeout(function () {
       controller.abort();
-      reject(new Error('Stopped waiting for the test result.'));
+      reject(new Error('Connection test timed out. Try Test again.'));
     }, 30000);
   });
   var response = fetch(url, {
@@ -394,7 +394,7 @@ function dsTest(row, url, revision, form, btn, draftBody) {
     })
     .catch(function (e) {
       if (!current()) return;
-      var detail = controller.signal.aborted ? 'Stopped waiting for the test result. The server may still be finishing the check, so the connection is not confirmed. Check the status again shortly, or Test again.' : 'Connection test unavailable. The connection is not confirmed. Try Test again.';
+      var detail = controller.signal.aborted ? 'Connection test timed out. Try Test again.' : 'Connection test unavailable. Try Test again.';
       out.textContent = detail;
       out.style.color = 'var(--red)';
       dsBadge(row, 'warn', 'Not confirmed');

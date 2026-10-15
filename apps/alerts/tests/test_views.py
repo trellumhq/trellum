@@ -63,7 +63,7 @@ class TestGating:
         assert page.status_code == 200
         html = _main(page)
         assert rule.name in html and "Run log" in html
-        assert "New alert" not in html and "/edit" not in html and 'method="post"' not in html
+        assert "New alert" not in html and "/edit" not in html and "<form" not in html
         assert f'href="{prefix}"' in page.content.decode()  # the studio navigation carries the tab
         detail = _main(c.get(f"{prefix}/{rule.pk}"))
         assert "Test now" not in detail and "data-test-now" not in detail

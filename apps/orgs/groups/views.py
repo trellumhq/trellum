@@ -5,19 +5,17 @@ from __future__ import annotations
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import BooleanField, Case, Prefetch, Q, Value, When
+from django.db.models import Count, Prefetch, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from apps.core import roles
 from apps.core.audit import audit, audit_many
 from apps.core.choice_requests import choice_request_params
-from apps.core.compact_choices import decode_compact_selection
 from apps.core.form_responses import is_settings_request, settings_error, settings_success
-from apps.core.permissions import require_org_role, require_studio_role
-from apps.core.report_access import selected_report_access_block_reason
+from apps.core.permissions import effective_roles, require_org_role, require_studio_role
+from apps.core.report_access import selected_report_access_block_reason, visible_reports
 from apps.orgs.models import (
     OrgMembership,
     PermissionGroup,
@@ -25,8 +23,8 @@ from apps.orgs.models import (
     PermissionGroupMembership,
 )
 from apps.orgs.views import PAGE_SIZE, paginate
-from apps.reports.models import OrgSharePolicy, Report, ReportPermissionGrant, ShareLink
-from apps.studios.models import Studio
+from apps.reports.models import Report, ReportPermissionGrant, ShareLink
+from apps.studios.models import Studio, StudioMembership
 
 from .forms import GroupForm, ReportChoiceField, StudioAccessForm
 from . import presentation as present
@@ -162,6 +160,109 @@ def _save_group_access(request, group, form):
     return True
 
 
+def _effective_member(request, group):
+    raw_id = request.GET.get("member")
+    membership = (
+        OrgMembership.objects.filter(
+            org=request.org,
+            user_id=raw_id,
+            user__permission_group_memberships__group=group,
+        )
+        .select_related("user")
+        .first()
+        if str(raw_id or "").isdecimal()
+        else None
+    )
+    if membership is None:
+        membership = (
+            OrgMembership.objects.filter(
+                org=request.org, user__permission_group_memberships__group=group
+            )
+            .select_related("user")
+            .order_by("user__email")
+            .first()
+        )
+    if membership is None:
+        return None, []
+
+    user = membership.user
+    er = effective_roles(user, request.org)
+    studios = Studio.objects.filter(org=request.org)
+    if not er.is_org_admin and not er.default_studio_role:
+        # Only studios with an explicit grant can carry a role.
+        studios = studios.filter(pk__in=er.studio_roles)
+    studios = [s for s in studios.order_by("slug", "pk")[: present.STUDIO_LIMIT] if er.role_for(s)]
+    studio_ids = [studio.pk for studio in studios]
+    direct_roles = dict(
+        StudioMembership.objects.filter(user=user, studio__org=request.org).values_list(
+            "studio_id", "role"
+        )
+    )
+    member_groups = list(
+        PermissionGroup.objects.filter(org=request.org, memberships__user=user).order_by("name", "pk")[: present.CHOICE_LIMIT]
+    )
+    grants = {
+        (grant.group_id, grant.studio_id): grant
+        for grant in PermissionGroupGrant.objects.filter(
+            group__in=member_groups, studio_id__in=studio_ids
+        ).annotate(report_count=Count("report_grants"))
+    }
+    rows = []
+    for studio in studios:
+        role = er.role_for(studio)
+        full = roles.at_least(role, roles.DEVELOPER)
+        sources = []
+        if membership.role == roles.ORG_ADMIN:
+            sources.append("Direct organization admin: Admin with all reports")
+        if direct_roles.get(studio.pk):
+            access_label = (
+                "Studio audience" if direct_roles[studio.pk] == roles.VIEWER else "all reports"
+            )
+            sources.append(
+                "Direct studio role: "
+                f"{direct_roles[studio.pk].title()} with {access_label}"
+            )
+        for source_group in member_groups:
+            if source_group.org_role == roles.ORG_ADMIN:
+                sources.append(
+                    f"{source_group.name}: organization admin with all reports"
+                )
+            if source_group.default_studio_role:
+                sources.append(
+                    f"{source_group.name}: default "
+                    f"{source_group.default_studio_role.title()} on every studio"
+                )
+            grant = grants.get((source_group.pk, studio.pk))
+            if grant:
+                label = grant.role.title()
+                if grant.role == roles.VIEWER and grant.viewer_scope == "selected":
+                    count = grant.report_count
+                    label += f" for {count} selected report{'s' if count != 1 else ''}"
+                else:
+                    label += " with Studio audience" if grant.role == roles.VIEWER else " with all reports"
+                    if grant.role == roles.VIEWER and grant.report_count:
+                        label += f" plus {grant.report_count} explicit Private assignments"
+                sources.append(f"{source_group.name}: {label}")
+        reports, reports_count = [], 0
+        if not full:
+            visible = visible_reports(user, Report.objects.filter(studio=studio)).only(
+                "pk", "studio_id", "name", "slug", "kind"
+            ).order_by("name", "slug")
+            reports, more = present.limited(visible)
+            reports_count = visible.count() if more else len(reports)
+        rows.append(
+            {
+                "studio": studio,
+                "role": role,
+                "full": full,
+                "reports": reports,
+                "reports_count": reports_count,
+                "sources": sources,
+            }
+        )
+    return membership, rows
+
+
 @require_org_role(roles.ORG_ADMIN)
 def groups(request, org_slug):  # noqa: ARG001
     form = GroupForm(request.POST or None, org=request.org)
@@ -230,20 +331,7 @@ def group_detail(request, org_slug, group_id):  # noqa: ARG001
     access_form = None
     if request.method == "POST":
         action = request.POST.get("action")
-        if action in {"browse_access", "browse_member"}:
-            if action == "browse_access":
-                draft = request.POST.copy()
-                selection = decode_compact_selection(draft, "reports")
-                removed = request.GET.get("remove_report")
-                if removed and not selection.error:
-                    draft.pop("reports__selection", None)
-                    draft.setlist("reports", [value for value in selection if value != removed])
-                access_form = StudioAccessForm(draft, org=request.org)
-                access_form.is_valid()
-                tab = "access"
-            else:
-                tab = "members"
-        elif action == "edit":
+        if action == "edit":
             with transaction.atomic():
                 group = _group_or_404(request.org, group_id, lock=True)
                 form = GroupForm(request.POST, instance=group, org=request.org)
@@ -262,7 +350,7 @@ def group_detail(request, org_slug, group_id):  # noqa: ARG001
                 if is_settings_request(request):
                     return settings_success(request, "Studio access updated.", updates={f"group-grant-{access_form.cleaned_data['studio'].pk}": "explicit grant" if access_form.cleaned_data["role"] else "no explicit grant"})
                 messages.success(request, "Studio access updated.")
-                return redirect(_group_url(request.org, group, "access") + f"&studio={access_form.cleaned_data['studio'].pk}")
+                return redirect(_group_url(request.org, group, "access"))
             if is_settings_request(request):
                 return settings_error(request, form=access_form)
             tab = "access"
@@ -339,77 +427,33 @@ def group_detail(request, org_slug, group_id):  # noqa: ARG001
         "org": request.org, "group": group, "console_page_title": group.name,
         "form": form, "tabs": TABS, "tab": tab, "can_manage": True,
         "q": present.text(request, "q"), "selected_block_reason": selected_report_access_block_reason(),
-        "access_rows": [], "grants": [], "access_form": access_form,
+        "access_rows": [], "grants": [],
     }
     if tab == "overview":
-        grant_q = present.text(request, "grant_q")
-        grants = group.grants.select_related("studio").order_by("studio__slug", "pk")
-        grant_total = grants.count()
-        if grant_q:
-            grants = grants.filter(Q(studio__name__icontains=grant_q) | Q(studio__slug__icontains=grant_q))
-        page = present.window(request, grants, "grant_page")
-        context.update(grants=page.object_list, grant_total=grant_total, grant_q=grant_q,
-                       grant_pager=present.pager(request, page, "grant_page"))
+        context["grants"] = list(group.grants.select_related("studio").order_by("studio__slug", "pk")[: present.CHOICE_LIMIT])
     elif tab == "members":
         members = group.memberships.select_related("user").order_by("user__email", "pk")
         if context["q"]:
             members = members.filter(Q(user__email__icontains=context["q"]) | Q(user__name__icontains=context["q"]))
         member_page = paginate(request, members, PAGE_SIZE)
-        add_q = present.text(request, "member_q")
-        add_page = present.window(request, present.member_choices(request.org, group, "addable", add_q), "member_page")
-        choices = list(add_page.object_list)
-        selected_id = request.POST.get("user_id", request.GET.get("user_id"))
-        selected = present.member_choices(request.org, group, "addable").filter(user_id=selected_id).first() if str(selected_id or "").isdecimal() else None
-        if selected and all(m.user_id != selected.user_id for m in choices):
-            choices.append(selected)
+        addable, addable_remote = present.limited(present.member_choices(request.org, group, "addable"))
         context.update(member_page=member_page, member_total=member_page.paginator.count,
-                       addable_members=choices, addable_page=add_page, selected_addable=selected,
-                       member_q=add_q, addable_pager=present.pager(request, add_page, "member_page"))
+                       addable_members=addable, addable_remote=addable_remote)
     elif tab == "access":
-        studio_q = present.text(request, "studio_q")
-        studios = Studio.objects.filter(org=request.org).order_by("slug", "pk")
-        if studio_q:
-            studios = studios.filter(Q(name__icontains=studio_q) | Q(slug__icontains=studio_q))
-        page = present.window(request, studios, "studio_page")
-        page_studios = list(page.object_list)
-        raw = access_form.data.get("studio") if access_form else request.GET.get("studio")
-        selected_studio = Studio.objects.filter(org=request.org, pk=raw).first() if str(raw or "").isdecimal() else (page_studios[0] if page_studios else None)
-        ids = [s.pk for s in page_studios]
-        if selected_studio:
-            ids.append(selected_studio.pk)
-        grants = {g.studio_id: g for g in group.grants.filter(studio_id__in=ids)}
-        context.update(studio_page=page, studio_pager=present.pager(request, page, "studio_page"), studio_q=studio_q,
-                       studio_rows=[{"studio": studio, "grant": grants.get(studio.pk)} for studio in page_studios])
-        if selected_studio:
-            grant = grants.get(selected_studio.pk)
-            selected_ids = list(ReportPermissionGrant.objects.filter(grant=grant).values_list("report_id", flat=True)) if grant else []
-            row_form = access_form or StudioAccessForm(org=request.org, studio=selected_studio, initial={
-                "studio": selected_studio, "role": grant.role if grant else "",
-                "viewer_scope": grant.viewer_scope if grant else "all", "reports": selected_ids})
-            if access_form:
-                selected_ids = access_form["reports"].value()
-            valid_selected = Report.objects.filter(studio=selected_studio, pk__in=present.report_ids(selected_ids)).only(*present.REPORT_FIELDS).order_by("name", "slug")
-            report_q = present.text(request, "report_q")
-            report_page = present.window(request, present.report_choices(selected_studio, report_q), "report_page")
-            catalog = {r.pk: r for r in report_page.object_list}
-            catalog.update({r.pk: r for r in valid_selected})
-            catalog_ids = {str(pk) for pk in catalog}
-            row_form.present_reports(catalog.values(), [value for value in selected_ids if str(value) not in catalog_ids], page_values=[report.pk for report in report_page.object_list])
-            removal_urls = {}
-            for identity in selected_ids:
-                parameters = request.GET.copy()
-                parameters["tab"] = "access"
-                parameters["remove_report"] = str(identity)
-                removal_urls[str(identity)] = request.path + "?" + parameters.urlencode()
-            row_form.fields["reports"].widget.removal_urls = removal_urls
-            private = Report.objects.only(*present.REPORT_FIELDS).filter(studio=selected_studio, audience=Report.AUDIENCE_PRIVATE,
-                permission_group_grants__grant=grant).distinct().order_by("name", "slug") if grant else Report.objects.none()
-            private_page = present.window(request, private, "private_page")
-            context.update(access_rows=[{"studio": selected_studio, "grant": grant, "form": row_form, "private_reports": private_page.object_list}],
-                report_page=report_page, report_q=report_q, selected_report_count=len(selected_ids),
-                private_page=private_page, private_pager=present.pager(request, private_page, "private_page"))
+        rows, studios_more = present.access_rows(
+            request.org, group,
+            lambda studio, initial: StudioAccessForm(org=request.org, studio=studio, initial=initial),
+            access_form,
+        )
+        context.update(access_rows=rows, studios_more=studios_more, studio_limit=present.STUDIO_LIMIT)
     elif tab == "effective":
-        context.update(present.effective_context(request, group))
+        selected_member, effective_rows = _effective_member(request, group)
+        members, members_remote = present.limited(group.memberships.select_related("user").order_by("user__email", "pk"))
+        if selected_member and all(m.user_id != selected_member.user_id for m in members):
+            members.append(selected_member)
+        context.update(selected_member=selected_member, effective_rows=effective_rows,
+                       effective_members=members, effective_members_remote=members_remote,
+                       report_limit=present.CHOICE_LIMIT)
     return render(request, "orgs/group_detail.html", context)
 
 
@@ -591,28 +635,6 @@ def report_access(request, org_slug, studio_slug, slug):  # noqa: ARG001
                 "selected": selected,
             }
         )
-    public_links = ShareLink.objects.filter(report=report).select_related("created_by").defer("token", "password_hash").annotate(
-        has_password=Case(When(password_hash="", then=Value(False)), default=Value(True), output_field=BooleanField())
-    ).order_by("-created_at", "-pk")
-    link_total = public_links.count()
-    link_q = present.text(request, "link_q")
-    if link_q:
-        public_links = public_links.filter(Q(created_by__email__icontains=link_q) | Q(created_by__name__icontains=link_q))
-    link_page = present.window(request, public_links, "link_page")
-    policy = OrgSharePolicy.objects.filter(org=request.org).first()
-    link_rows = list(link_page.object_list)
-    now = timezone.now()
-    for link in link_rows:
-        link.preview_expiry = link.effective_expires_at(policy)
-        link.preview_state = "Active"
-        if link.revoked_at:
-            link.preview_state = "Revoked"
-        elif link.preview_expiry and link.preview_expiry <= now:
-            link.preview_state = "Expired"
-        elif not policy or not policy.share_links_enabled or (link.embed and not policy.embed_links_enabled) or (
-            not link.embed and policy and policy.require_password and not link.has_password
-        ):
-            link.preview_state = "Blocked by organization policy"
     return render(
         request,
         "orgs/report_access.html",
@@ -626,8 +648,7 @@ def report_access(request, org_slug, studio_slug, slug):  # noqa: ARG001
             "q": q,
             "total": total,
             "page": page,
-            "public_links": link_rows,
-            "link_total": link_total, "link_page": link_page, "link_q": link_q, "link_pager": present.pager(request, link_page, "link_page"),
+            "link_total": ShareLink.objects.filter(report=report).count(),
             "can_manage": True,
             "selected_block_reason": selected_report_access_block_reason(),
         },

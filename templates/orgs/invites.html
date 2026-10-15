@@ -23,7 +23,7 @@ them a role — pick studio access below, attach permission groups, or do it lat
 <a href="/orgs/{{ org.slug }}/settings/members">Members</a>. Org <em>admins</em> automatically
 have admin access to every studio.</p>
 <div class="ui-form-section">
-  <form method="post" data-settings-form>
+  <form method="post">
     {% csrf_token %}
     <div class="ui-form-row">
       <div class="ui-field"><label for="{{ form.email.id_for_label }}">Email</label>{{ form.email }}{{ form.email.errors }}</div>

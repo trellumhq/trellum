@@ -1,4 +1,4 @@
-"""Whole-catalog discovery and off-page draft safety for group access."""
+"""Complete group screens, bounded choice endpoints and safe off-page identities."""
 import pytest
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
@@ -15,54 +15,59 @@ def url(org, group, tab):
     return f"/orgs/{org.slug}/settings/groups/{group.pk}?tab={tab}"
 
 
-def test_access_pages_studios_and_opens_offpage_editor(login, org_admin, org, make_group):
+def test_access_lists_every_studio_and_caps_far_above_realistic_sizes(login, org_admin, org, make_group, monkeypatch):
     studios = Studio.objects.bulk_create([Studio(org=org, name=f"Studio {i:02}", slug=f"bounded{i:02}") for i in range(50)])
     group = make_group("Bounded")
     client = login(org_admin)
     response = client.get(url(org, group, "access"))
-    assert len(response.context["studio_rows"]) == 25
-    assert len(response.context["access_rows"]) == 1
-    response = client.get(url(org, group, "access"), {"tab": "access", "studio": studios[-1].pk, "studio_page": 2})
-    assert response.context["access_rows"][0]["studio"].pk == studios[-1].pk
-    response = client.get(url(org, group, "access"), {"tab": "access", "studio_q": "49"})
-    assert [r["studio"].pk for r in response.context["studio_rows"]] == [studios[-1].pk]
+    assert [row["studio"].pk for row in response.context["access_rows"]][-1] == studios[-1].pk
+    assert len(response.context["access_rows"]) >= 50
+    assert response.content.decode().count("data-studio-access") >= 50
+    assert b"Showing the first" not in response.content
+    monkeypatch.setattr("apps.orgs.groups.presentation.STUDIO_LIMIT", 10)
+    response = client.get(url(org, group, "access"))
+    assert len(response.context["access_rows"]) == 10
+    assert b"Showing the first 10 studios." in response.content
 
 
-def test_native_browse_and_failed_save_retain_offpage_selection(login, org_admin, org, studio, make_group, settings):
+def test_failed_save_keeps_posted_selection_and_large_studios_stay_complete(login, org_admin, org, studio, make_group, settings, monkeypatch):
     settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = True
     reports = Report.objects.bulk_create([Report(studio=studio, slug=f"bounded{i:03}", name=f"Report {i:03}") for i in range(100)])
     group = make_group("Bounded")
     grant = PermissionGroupGrant.objects.create(group=group, studio=studio, role="viewer", viewer_scope="selected")
     ReportPermissionGrant.objects.create(grant=grant, report=reports[-1])
     client = login(org_admin)
-    payload = {"report_page": "2", "action": "browse_access", "studio": studio.pk, "role": "viewer", "viewer_scope": "selected", "reports": [reports[-1].pk, reports[0].pk]}
-    response = client.post(url(org, group, "access") + "&report_page=1", payload)
+    html = client.get(url(org, group, "access")).content.decode()
+    assert html.count('type="checkbox" name="reports"') == 100
+    assert "data-recipient-source" not in html
+    monkeypatch.setattr("apps.orgs.groups.presentation.CHOICE_LIMIT", 10)
+    response = client.get(url(org, group, "access"))
+    html = response.content.decode()
+    # The first reports plus every selected one are rendered; search is server-side beyond the cap.
+    assert html.count('type="checkbox" name="reports"') == 11
+    assert f'value="{reports[-1].pk}" checked' in html or 'checked' in html
+    assert f"/studios/{studio.pk}/report-choices" in html
+    assert response.context["access_rows"][0]["remote_reports"]
+    monkeypatch.undo()
+    payload = {"action": "studio_access", "studio": studio.pk, "role": "wrong", "viewer_scope": "selected", "reports": [reports[-1].pk, reports[0].pk]}
+    response = client.post(url(org, group, "access"), payload)
     assert response.status_code == 200
-    assert response.context["report_page"].number == 2
-    assert list(grant.report_grants.values_list("report_id", flat=True)) == [reports[-1].pk]
-    form = response.context["access_rows"][0]["form"]
-    assert set(map(str, form["reports"].value())) == {str(reports[0].pk), str(reports[-1].pk)}
-    assert len(form.fields["reports"].choices) == 27
-    payload.update(action="studio_access", role="wrong")
-    response = client.post(url(org, group, "access") + "&studio_page=20", payload)
-    assert response.status_code == 200
-    assert response.context["access_rows"][0]["studio"].pk == studio.pk
     assert b"Select a valid choice" in response.content
     assert set(map(str, response.context["access_rows"][0]["form"]["reports"].value())) == {str(reports[0].pk), str(reports[-1].pk)}
+    assert list(grant.report_grants.values_list("report_id", flat=True)) == [reports[-1].pk]
     payload.update(role="viewer")
     assert client.post(url(org, group, "access"), payload).status_code == 302
     assert set(grant.report_grants.values_list("report_id", flat=True)) == {reports[-1].pk, reports[0].pk}
 
 
-def test_foreign_selected_draft_retained_without_foreign_label(login, org_admin, org, studio, other_studio, make_group, settings):
+def test_foreign_selected_draft_is_rejected_without_foreign_label(login, org_admin, org, studio, other_studio, make_group, settings):
     settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = True
     foreign = Report.objects.create(studio=other_studio, slug="secret", name="Secret foreign report")
     group = make_group("Bounded")
     response = login(org_admin).post(url(org, group, "access"), {"action": "studio_access", "studio": studio.pk, "role": "viewer", "viewer_scope": "selected", "reports": [foreign.pk]})
     assert response.status_code == 200
     assert foreign.name.encode() not in response.content
-    assert str(foreign.pk) in response.context["access_rows"][0]["form"]["reports"].value()
-    assert "Selected report is unavailable" in response.content.decode()
+    assert b"Select a valid choice" in response.content
     assert not group.grants.exists()
 
 
@@ -96,7 +101,7 @@ def test_report_choices_validate_org_and_preserve_missing_labels(login, org_admi
     assert client.get(foreign_endpoint).status_code == 404
 
 
-def test_effective_sources_and_reports_are_complete_paged_search(login, org_admin, org, studio, member, make_group, attach_group, settings):
+def test_effective_sources_and_reports_are_listed_in_full(login, org_admin, org, studio, member, make_group, attach_group, settings, monkeypatch):
     settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = True
     groups = [make_group(f"Source {i:03}", default_studio_role=roles.VIEWER) for i in range(60)]
     for group in groups:
@@ -104,17 +109,20 @@ def test_effective_sources_and_reports_are_complete_paged_search(login, org_admi
     reports = Report.objects.bulk_create([Report(studio=studio, name=f"Report {i:03}", slug=f"effective{i:03}", audience="studio") for i in range(60)])
     private = Report.objects.create(studio=studio, slug="private", name="Private secret", audience="private")
     client = login(org_admin)
-    response = client.get(url(org, groups[0], "effective"), {"tab": "effective", "member": member.pk, "studio": studio.pk})
-    assert len(response.context["source_page"].object_list) == 25
-    assert response.context["source_total"] == 60
-    assert response.context["effective_report_page"].paginator.count == 60
+    response = client.get(url(org, groups[0], "effective"), {"tab": "effective", "member": member.pk})
+    row = next(r for r in response.context["effective_rows"] if r["studio"].pk == studio.pk)
+    assert len(row["sources"]) == 60 and row["sources"][-1] == "Source 059: default Viewer on every studio"
+    assert row["reports"] == reports and row["reports_count"] == 60
     assert private.name.encode() not in response.content
-    response = client.get(url(org, groups[0], "effective"), {"tab": "effective", "member": member.pk, "studio": studio.pk, "source_q": "059", "report_q": "059"})
-    assert response.context["source_page"].object_list == ["Source 059: default Viewer on every studio"]
-    assert list(response.context["effective_report_page"].object_list) == [reports[-1]]
+    assert "member-choices" not in response.content.decode()
+    monkeypatch.setattr("apps.orgs.groups.presentation.CHOICE_LIMIT", 5)
+    response = client.get(url(org, groups[0], "effective"), {"tab": "effective", "member": member.pk})
+    row = next(r for r in response.context["effective_rows"] if r["studio"].pk == studio.pk)
+    assert len(row["reports"]) == 5 and row["reports_count"] == 60
+    assert b"Showing the first 5 reports." in response.content
 
 
-def test_report_assignments_batch_and_links_page_without_tokens(login, org_admin, org, studio, report_row, make_group, settings):
+def test_report_assignments_batch_and_link_count_without_tokens(login, org_admin, org, studio, report_row, make_group, settings):
     settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = True
     for i in range(50):
         group = make_group(f"Assigned {i:03}")
@@ -124,7 +132,8 @@ def test_report_assignments_batch_and_links_page_without_tokens(login, org_admin
     with CaptureQueriesContext(connection) as queries:
         response = login(org_admin).get(f"/s/{org.slug}/{studio.slug}/r/{report_row.slug}/access")
     assert all(row["selected"] for row in response.context["rows"])
-    assert len(response.context["public_links"]) == 25 and response.context["link_total"] == 60
+    assert response.context["link_total"] == 60 and "60</strong> saved links" in response.content.decode()
+    assert b"Find link creator" not in response.content
     assert all(link.token.encode() not in response.content for link in links)
     selected_exists = [q for q in queries if 'SELECT 1 AS "a" FROM "reports_reportpermissiongrant"' in q["sql"]]
     assert not selected_exists
@@ -145,18 +154,23 @@ def test_new_choices_require_org_admin_and_next_request_revocation(login, org_ad
         assert admin.get(endpoint).status_code == 403
 
 
-def test_native_browse_member_preserves_offpage_selection_without_add(login, org_admin, org, make_group, make_user):
+def test_addable_members_are_all_listed_and_remote_only_beyond_the_cap(login, org_admin, org, make_group, make_user, monkeypatch):
     group = make_group("Bounded")
     people = [make_user(f"native{i:03}@example.test", org=org) for i in range(60)]
-    response = login(org_admin).post(url(org, group, "members") + "&member_page=1", {"action": "browse_member", "member_page": "2", "member_q": "native", "user_id": people[-1].pk})
-    assert response.context["addable_page"].number == 2
-    assert len(response.context["addable_members"]) == 26
-    assert response.context["selected_addable"].user_id == people[-1].pk
+    client = login(org_admin)
+    response = client.get(url(org, group, "members"))
+    html = response.content.decode()
+    assert all(f'value="{person.pk}"' in html for person in people)
+    assert "member-choices" not in html and '<option value="">' not in html
+    monkeypatch.setattr("apps.orgs.groups.presentation.CHOICE_LIMIT", 10)
+    response = client.get(url(org, group, "members"))
+    assert f"/settings/groups/{group.pk}/member-choices?kind=addable" in response.content.decode()
+    assert len(response.context["addable_members"]) == 10
     assert not group.memberships.exists()
 
 
 @pytest.mark.parametrize("identity,group_status,report_status", [("org-admin", 200, 200), ("group-admin", 200, 200), ("studio-admin", 403, 200), ("developer", 403, 403), ("viewer", 403, 403), ("member", 403, 404), ("outsider", 404, 404), ("superuser", 200, 200)])
-def test_group_roles_all_native_paths(identity, group_status, report_status, login, org_admin, member, superuser, make_user, org, studio, report_row, make_group, attach_group, grant_studio):
+def test_group_roles_all_paths(identity, group_status, report_status, login, org_admin, member, superuser, make_user, org, studio, report_row, make_group, attach_group, grant_studio):
     target = make_group("Target")
     user = member
     if identity == "org-admin":

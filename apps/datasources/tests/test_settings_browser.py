@@ -374,7 +374,7 @@ def test_connection_test_deadline_covers_request_and_json_and_allows_retry(phase
           var row = document.querySelector('tr[data-source-name]');
           window.testPromise = dsTest(row, '/test', 'revision-1', null, row.querySelector('[data-ds-test]'));
         }""", phase)
-        page.wait_for_function("document.querySelector('[data-ds-result]').textContent.includes('Stopped waiting')", timeout=2000)
+        page.wait_for_function("document.querySelector('[data-ds-result]').textContent.includes('timed out')", timeout=2000)
         assert page.locator('[data-ds-test]').is_enabled()
         assert page.locator('[data-ds-badge]').text_content() == "Not confirmed"
         page.evaluate("""() => {

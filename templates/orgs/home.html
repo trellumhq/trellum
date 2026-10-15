@@ -5,7 +5,7 @@
 {% comment %}The org overview IS the org surface's first category ("Studios"),
 sharing the one org sidebar with the settings pages — no separate hub layout.
 Organization switching lives in the user menu (top right).{% endcomment %}
-<div class="settings-wrap scope-org org-studios-home">
+<div class="settings-wrap scope-org">
   <div class="settings-content">
 <header class="page-head-row">
   <div>
@@ -21,7 +21,6 @@ Organization switching lives in the user menu (top right).{% endcomment %}
 
 {% if getting_started %}{% include "orgs/_getting_started.html" %}{% endif %}
 
-{% include "_list_toolbar.html" with q=q placeholder="Search studios by name or slug…" total=total %}
 {% if cards %}
 <div class="grid" style="margin-top:14px">
   {% for c in cards %}
@@ -45,8 +44,7 @@ Organization switching lives in the user menu (top right).{% endcomment %}
 {% include "_pagination.html" with page=page %}
 {% else %}
 <div class="ui-panel"><div class="ui-empty">
-  {% if q %}No studios match “{{ q }}”. <a href="{% querystring q=None page=None %}">Clear search</a>
-  {% elif is_org_admin %}
+  {% if is_org_admin %}
     No studios yet — a studio is where reports live.
     {% comment %}The checklist above already carries this call to action; two
     primary buttons for the same step is one too many.{% endcomment %}

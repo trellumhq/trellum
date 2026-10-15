@@ -30,21 +30,36 @@ def settings_home(request, org_slug, studio_slug):  # noqa: ARG001
     return redirect(f"/s/{org_slug}/{studio_slug}/settings/repo")
 
 
+#: Invisible upper bound on the rows of the studio members screen and on the
+#: people listed in its "Add a member" picker. Past it the table shows a note
+#: and the picker searches on the server as you type.
+MEMBER_LIST_CAP = 500
+
+
 @require_studio_role(roles.ADMIN)
 def members(request, org_slug, studio_slug):  # noqa: ARG001
-    from django.db.models import Q
-    from apps.orgs.views import paginate
-
-    q = (request.GET.get("q") or "").strip()
-    rows = StudioMembership.objects.filter(studio=request.studio).select_related("user").order_by("user__email")
-    if q:
-        rows = rows.filter(Q(user__email__icontains=q) | Q(user__name__icontains=q))
-    page = paginate(request, rows)
-    choices = _member_choice_page(request, browse=True)
-    return render(request, "studios/members.html", {"org": request.org, "studio": request.studio,
-        "rows": page.object_list, "page": page, "q": q, "total": page.paginator.count,
-        "org_users": choices.object_list, "choice_total": choices.paginator.count,
-        "studio_role_choices": roles.STUDIO_ROLE_CHOICES})
+    rows = list(
+        StudioMembership.objects.filter(studio=request.studio)
+        .select_related("user")
+        .order_by("user__email")[: MEMBER_LIST_CAP + 1]
+    )
+    rows_truncated = len(rows) > MEMBER_LIST_CAP
+    org_users = list(_eligible_member_choices(request)[: MEMBER_LIST_CAP + 1])
+    choices_truncated = len(org_users) > MEMBER_LIST_CAP
+    return render(
+        request,
+        "studios/members.html",
+        {
+            "org": request.org,
+            "studio": request.studio,
+            "rows": rows[:MEMBER_LIST_CAP],
+            "rows_truncated": rows_truncated,
+            "org_users": org_users[:MEMBER_LIST_CAP],
+            "choices_truncated": choices_truncated,
+            "member_list_cap": MEMBER_LIST_CAP,
+            "studio_role_choices": roles.STUDIO_ROLE_CHOICES,
+        },
+    )
 
 
 def _eligible_member_choices(request):
@@ -52,16 +67,16 @@ def _eligible_member_choices(request):
         user__studio_memberships__studio=request.studio).select_related("user").order_by("user__email")
 
 
-def _member_choice_page(request, *, browse=False, data=None):
+def _member_choice_page(request, *, data=None):
     from django.core.paginator import Paginator
     from django.db.models import Q
 
     data = request.GET if data is None else data
     qs = _eligible_member_choices(request)
-    q = "" if browse else (data.get("q") or "").strip()
+    q = (data.get("q") or "").strip()
     if q:
         qs = qs.filter(Q(user__email__icontains=q) | Q(user__name__icontains=q))
-    return Paginator(qs, 25).get_page(1 if browse else data.get("page"))
+    return Paginator(qs, 25).get_page(data.get("page"))
 
 
 def _selected_member_choice(request, key, data=None):
@@ -398,7 +413,4 @@ def member_set(request, org_slug, studio_slug):  # noqa: ARG001
         messages.error(request, "Invalid role.")
     if is_settings_request(request):
         return settings_success(request, "Studio member role saved.")
-    from urllib.parse import urlencode
-    keep = {key: request.POST[key] for key in ("q", "page") if request.POST.get(key)}
-    base = f"/s/{request.org.slug}/{request.studio.slug}/settings/members"
-    return redirect(base + ("?" + urlencode(keep) if keep else ""))
+    return redirect(f"/s/{request.org.slug}/{request.studio.slug}/settings/members")

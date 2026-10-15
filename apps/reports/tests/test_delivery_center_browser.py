@@ -1,6 +1,6 @@
 """Dedicated delivery CRUD navigation and shared form handling in both engines."""
 from pathlib import Path
-from urllib.parse import urlsplit, parse_qs
+from urllib.parse import urlsplit
 
 import pytest
 from playwright.sync_api import expect, sync_playwright
@@ -154,16 +154,18 @@ def test_delivery_recipient_picker_supports_multiple_search_chips_and_keyboard(d
     page.add_style_tag(content=(ROOT / 'static/ui.css').read_text(encoding='utf-8'))
     page.add_style_tag(content=(ROOT / 'static/choice-picker.css').read_text(encoding='utf-8'))
     page.add_style_tag(content=(ROOT / 'static/recipient-picker.css').read_text(encoding='utf-8'))
-    def recipient_page(route):
-        query = parse_qs(urlsplit(route.request.url).query)
-        rows = [{'id': 900000+i, 'name': f'Person {i}', 'email': f'person{i}@example.test'} for i in range(100)]
-        matches = [row for row in rows if query.get('q', [''])[0].lower() in row['name'].lower()]
-        selected = set(query.get('selected_people', [''])[0].split(','))
-        route.fulfill(json={'members': matches[:25], 'groups': [],
-            'selected': {'members': [row for row in rows if str(row['id']) in selected], 'groups': []},
-            'pagination': {'members': {'page': 1, 'total': len(matches), 'has_previous': False, 'has_next': len(matches)>25},
-                           'groups': {'page': 1, 'total': 0, 'has_previous': False, 'has_next': False}}})
-    page.route('**/recipients*', recipient_page)
+    # People the form already lists server-side (the picker shows these too).
+    listed = page.locator('[data-recipient-picker] [data-recipient-type="people"] label').count()
+    page.evaluate('''() => {
+      const field = document.querySelector('[data-recipient-picker]');
+      const list = field.querySelector('[data-recipient-type="people"]');
+      for (let i = 0; i < 100; i++) {
+        const label = document.createElement('label');
+        const input = document.createElement('input');
+        input.type = 'checkbox'; input.name = 'recipient_ids'; input.value = 'picker-test-' + i;
+        label.append(input, 'Person ' + i); list.append(label);
+      }
+    }''')
     page.add_script_tag(content=(ROOT / 'static/choice-picker.js').read_text(encoding='utf-8'))
     page.add_script_tag(content=(ROOT / 'static/recipient-picker.js').read_text(encoding='utf-8'))
     field = page.locator('[data-recipient-picker]')
@@ -175,17 +177,17 @@ def test_delivery_recipient_picker_supports_multiple_search_chips_and_keyboard(d
     field.locator('.ui-picker-trigger').click()
     search.focus()
     expect(popup).to_be_visible()
-    expect(results.locator('label:visible')).to_have_count(28)
+    assert len(results.locator('label:visible').all()) == 103 + listed
     assert results.evaluate('(el) => el.scrollHeight > el.clientHeight')
     search.fill('Person 99')
-    expect(results.locator('label:visible')).to_have_count(1)
+    assert len(results.locator('label:visible').all()) == 1
     search.press('ArrowDown')
     page.keyboard.press('Space')
     expect(field.locator('.recipient-picker-selected')).to_contain_text('Person 99')
     assert page.locator('#delivery-schedule-form').evaluate(
-        "form => new FormData(form).getAll('recipient_ids')").count('900099') == 1
+        "form => new FormData(form).getAll('recipient_ids')").count('picker-test-99') == 1
     search.fill('Person 98')
-    second_choice = results.locator('label:visible input[value="900098"]')
+    second_choice = results.locator('label:visible input')
     second_choice.click()
     expect(second_choice).to_be_checked()
     expect(field.locator('.recipient-picker-selected .recipient-picker-chip')).to_have_count(2)
@@ -194,7 +196,7 @@ def test_delivery_recipient_picker_supports_multiple_search_chips_and_keyboard(d
     field.locator('.recipient-picker-selected button[aria-label="Remove Person 99"]').click()
     expect(field.locator('.recipient-picker-selected button').first).to_be_focused()
     assert page.locator('#delivery-schedule-form').evaluate(
-        "form => new FormData(form).getAll('recipient_ids')").count('900099') == 0
+        "form => new FormData(form).getAll('recipient_ids')").count('picker-test-99') == 0
     field.locator('[data-recipient-filter=groups]').click()
     search.fill('')
     expect(field.locator('.ui-picker-message')).to_have_text('No groups are available.')
