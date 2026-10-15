@@ -112,6 +112,21 @@ def config_for_email_domain(email: str):
     return None
 
 
+def log_unroutable_domain(email: str) -> None:
+    """Warn operators when an enabled config lists this email's domain but the
+    domain does not route because it is unverified. Never shown to the user."""
+    from apps.orgs import domains
+
+    domain = domains.normalise(email)
+    for cfg in enabled_configs():
+        if domain in domains.unroutable_domains(cfg):
+            log.warning(
+                "SSO login for %s was not routed: %s lists the domain but it is "
+                "not verified (TRELLUM_SSO_DOMAIN_VERIFICATION is on)",
+                domain, cfg.org.slug,
+            )
+
+
 def enforced_config_for_user(email: str):
     """The SSO config of an org that MANDATES SSO for this user, or None.
 

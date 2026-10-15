@@ -338,6 +338,20 @@ _trellum-verification.example.com   TXT   trellum-verification=<token>
 The token is per claim, so publishing someone else's proves nothing, and a
 domain can be held by only one organization at a time.
 
+While verification is required, a listed email domain that is not verified
+does not route logins to single sign-on. The settings page lists those
+domains in a warning, and also warns when no listed domain routes at all.
+**Still allow password login** cannot be turned off while no domain routes,
+because people would then have no way to sign in. **Enforce SSO** is not
+blocked, since it applies to existing members whatever their email domain.
+
+People sign in to single sign-on by entering their work email on the login
+page and leaving the password empty. If the address does not route to single
+sign-on, the login page asks for a password and says that single sign-on isn't
+set up for the address, whether or not an account exists. The portal logs a
+warning when the address's domain is listed by an enabled configuration but
+is unverified.
+
 New installations using the supplied `.env.example`, and newly generated demo
 environments, set `TRELLUM_SSO_DOMAIN_VERIFICATION=false`. This suits an instance
 run by one trusted organization: configure the email domains and identity

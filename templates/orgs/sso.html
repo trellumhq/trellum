@@ -19,6 +19,34 @@
   {% include "_copy_field.html" with value=redirect_uri %}
 </div>
 
+<div data-settings-refresh="sso-routing-warning">
+{% if unroutable_domains %}
+<div class="ui-flash warning" role="status" style="margin:0 0 14px">
+  {# One block child: .ui-flash is a flex row and would split inline text into columns. #}
+  <div>
+    <strong>Not yet sending logins to single sign-on:</strong>
+    {% for d in unroutable_domains %}<code>{{ d }}</code>{% if not forloop.last %}, {% endif %}{% endfor %}.
+    {% if unroutable_domains|length == 1 %}This domain isn't{% else %}These domains aren't{% endif %}
+    verified yet, so people signing in with {% if unroutable_domains|length == 1 %}it{% else %}them{% endif %}
+    are asked for a password instead.
+    <a href="#domain-ownership">Verify under Domain ownership</a>, or, on an instance used by a single
+    organization, have the operator set <code>TRELLUM_SSO_DOMAIN_VERIFICATION=false</code>.
+  </div>
+</div>
+{% endif %}
+{% if no_routable_domains %}
+<div class="ui-flash warning" role="status" style="margin:0 0 14px">
+  <div>
+    <strong>No email domain routes to single sign-on.</strong>
+    People can't start single sign-on from the login page{% if domain_verification_required %} until at least
+    one listed domain is verified (see <a href="#domain-ownership">Domain ownership</a>){% else %} until you list
+    at least one email domain below{% endif %}. Members of an organization that enforces single sign-on are
+    still redirected.
+  </div>
+</div>
+{% endif %}
+</div>
+
 <fieldset style="border:0;padding:0;margin:0;min-width:0">
   <form id="orgSsoForm" method="post" data-settings-form data-settings-save>
     {% csrf_token %}
@@ -93,7 +121,7 @@
 </fieldset>
 </div>
 
-<h2>Domain ownership</h2>
+<h2 id="domain-ownership">Domain ownership</h2>
 <div class="panel">
 {% if not domain_verification_required %}
 <details>
