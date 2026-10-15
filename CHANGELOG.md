@@ -56,6 +56,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   metadata, so an idle catalog costs almost nothing and charts stay current.
 - The Metrics comparison workspace retries a failed load by itself and shows no
   pager when all metrics fit on one page.
+- List search boxes (members, groups, studios, invitations, data sources) and
+  the Server logs filters apply by themselves: selects at once, typing after a
+  short pause. The Search and Apply filters buttons are gone.
 - Operators get an "Operator console" entry in the shell sidebar.
 - The System health page and an organization's uploaded-file usage measure on
   the coordinator by themselves, only while the page is open: the page asks for

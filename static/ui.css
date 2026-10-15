@@ -911,8 +911,6 @@ body.mgmt form.ui-list-toolbar input.ui-input[name="q"] {
 .ui-pager-status { color: var(--text2); font-size: var(--fs-md); }
 .ui-pager [aria-disabled="true"] { opacity: .45; pointer-events: none; }
 
-/* Likewise the Search button once typing filters on its own. */
-.js-search-ready button[type="submit"] { display: none; }
 /* One action control per row, in the same place on every row. */
 .ui-row-actions { white-space: nowrap; text-align: right; }
 /* Numeric table columns: right-aligned, and digits that line up column to

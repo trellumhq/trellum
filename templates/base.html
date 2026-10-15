@@ -162,43 +162,6 @@ function setMgmtTheme(pref) {
   });
 })();
 
-/* Search-as-you-type on the list screens. The results come from the server
-   (the lists are paginated), so this reloads — the caret is put back at the
-   end of what you typed so it does not feel like the page fought you. */
-(function () {
-  var forms = document.querySelectorAll('form.ui-list-toolbar');
-  for (var i = 0; i < forms.length; i++) {
-    (function (form) {
-      var input = form.querySelector('input[name="q"]');
-      if (!input) return;
-      form.classList.add('js-search-ready');
-      var timer = null;
-      input.addEventListener('input', function () {
-        clearTimeout(timer);
-        timer = setTimeout(function () { form.submit(); }, 400);
-      });
-      /* Landed here from a search submit: resume where the typing left off.
-         The test is "was a q parameter submitted", NOT "is the box non-empty" —
-         backspacing to empty still submits, and keying off the value dropped
-         focus at exactly the moment the user cleared the last character. */
-      var params = new URLSearchParams(window.location.search);
-      if (params.has('q')) {
-        input.focus();
-        var end = input.value.length;
-        try { input.setSelectionRange(end, end); } catch (e) { /* type=search quirk */ }
-        /* An empty q filters nothing, so do not leave it in the address bar
-           for the user to copy — but only tidy it AFTER it has done its job
-           of telling us the box was being typed in. */
-        if (!input.value && window.history.replaceState) {
-          params.delete('q');
-          var rest = params.toString();
-          window.history.replaceState({}, '', window.location.pathname + (rest ? '?' + rest : ''));
-        }
-      }
-    })(forms[i]);
-  }
-})();
-
 /* Studio tab bar: on narrow screens the rail scrolls horizontally, so bring
    the active tab into view on load (a no-op when everything already fits). */
 (function () {
