@@ -31,6 +31,27 @@ People should start with [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Rules for every feature
 
+**User experience comes first.** Performance work is invisible: it must not
+change layouts, controls or interactions that users already know. Any visible
+change needs explicit product approval. Before review, compare the changed pages
+with `main` on desktop and mobile. Specifically:
+
+- Changing a dropdown, select, tab or toggle applies immediately; there is no
+  Apply or Go button. Typing in a search box applies automatically after a short
+  pause (about 400 ms); there is no Search button.
+- Dropdowns and pickers never paginate. Show every choice, with instant search.
+  For a genuinely huge set, switch to search-as-you-type; never show
+  Previous/Next pages.
+- Pages for realistic studio sizes (tens to low hundreds of items) look and
+  behave exactly as on `main`. Server-side bounds stay out of sight until well
+  above that.
+- Never make the user press Retry, Refresh or Apply for something the system can
+  resolve or apply by itself. Poll and retry quietly.
+- Keep navigation reachable. A new page needs a visible entry for the roles that
+  use it.
+
+Then:
+
 1. **Bounded cost.** Page and API work stays flat as data grows. Paginate in
    SQL with 25 rows by default, never make per-row queries, and byte-bound
    payloads. Load primary content first and secondary sections independently.
@@ -40,8 +61,10 @@ People should start with [CONTRIBUTING.md](CONTRIBUTING.md).
    URL that the UI polls, a worker lease, and no silent re-run. Never
    automatically retry a write with an unknown outcome; show it as
    unconfirmed.
-3. **Native first.** Pages work without JavaScript. Enhanced fetches are
-   abortable, keep one request in flight per region, and reject stale
+3. **JavaScript-first.** The portal is a JavaScript application; don't build
+   or test a separate no-JavaScript mode for pages, filters, search, pickers or
+   switchers. Settings saves keep their existing real HTML forms enhanced by the
+   shared save handler. Fetches are abortable, keep one request in flight per region, and reject stale
    responses. Polling stops when the tab is hidden or the view unmounts.
 4. **Reuse shared UI.** Use the shared controls and the settings save
    contract. Don't write another per-page submit pattern or reload the

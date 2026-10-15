@@ -26,6 +26,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   headers and no Search or Apply buttons. Only a studio far beyond a realistic
   size (200 experiments or reports) pages, with the shared pager, and searches
   on the server after a short pause.
+- Agent guide: the portal is JavaScript-first; pages, filters and pickers no
+  longer need a separate no-JavaScript mode.
+- Agent guide: performance work must keep the existing user experience
+  (no paginated dropdowns, no manual retry/apply steps, reachable navigation).
 - Phone layout of console-hosted reports: the report header is one compact row
   (freshness left, labelled Options and Monitor right), annotation chips scroll
   on one row, and the shell header buttons share one neutral bordered style.
