@@ -18,7 +18,7 @@ from apps.core.models import OpsState
 from apps.core.workspace import cached_workspace_identity
 
 SLOT = "operator.probe"
-KINDS = {"full-health": (30, 35), "upload-usage": (60, 65), "maintenance": (10, 15)}
+KINDS = {"full-health": (30, 35), "upload-usage": (60, 65)}
 EXPLICIT = frozenset({"full-health", "upload-usage"})
 TERMINAL = frozenset({"succeeded", "failed", "unconfirmed"})
 NONCE_SALT = "operator-probe-v1"
@@ -99,6 +99,19 @@ def _coordinator():
     return (WorkerHeartbeat.alive()
             .filter(role__in=(WorkerHeartbeat.ROLE_ALL, WorkerHeartbeat.ROLE_COORDINATOR))
             .order_by("-last_beat_at", "pk").values_list("worker_id", flat=True).first())
+
+
+def available():
+    """Can a measurement be admitted at all: a live Linux coordinator exists."""
+    return sys.platform == "linux" and bool(_coordinator())
+
+
+def has_work():
+    """Cheap unlocked read: is a measurement waiting, running or blocking?"""
+    row = OpsState.objects.filter(key=SLOT).values("payload").first()
+    payload = row["payload"] if row else {}
+    active = payload.get("active")
+    return bool(payload.get("blocked") or (active and active["state"] not in TERMINAL))
 
 
 def admit(actor_id, kind, key, *, org_id=None):
@@ -196,7 +209,7 @@ def refusal(exc, actor_id, kind, status_url, *, org_id=None):
 def snapshot_key(kind, org_id=None):
     if kind == "upload-usage":
         return f"operator.usage.{int(org_id)}"
-    return "operator.health" if kind == "full-health" else "operator.maintenance"
+    return "operator.health"
 
 
 def snapshot(kind, org_id=None):
@@ -205,7 +218,7 @@ def snapshot(kind, org_id=None):
         return {"state": "unknown", "message": "No completed observation."}
     result = row["payload"].copy()
     completed = stamp(result.get("completed_at"))
-    fresh = completed and timezone.now() - completed <= timedelta(seconds=90 if kind == "maintenance" else 300)
+    fresh = completed and timezone.now() - completed <= timedelta(seconds=300)
     if kind == "upload-usage" and (not cached_workspace_identity() or result.get("workspace_id") != cached_workspace_identity()):
         return {"state": "unknown", "message": "Observation belongs to another or unavailable workspace."}
     result["state"] = "observed" if fresh else "stale"
@@ -239,32 +252,22 @@ def _remember(payload, entry):
         payload["recent"] = [compact if item["id"] == entry["id"] else item for item in payload.get("recent", [])][:16]
 
 
-def claim(node, epoch, *, allow_maintenance=True):
+def claim(node, epoch):
+    """Start the measurement an operator asked for. Nothing is ever measured unprompted."""
     now = timezone.now()
     with transaction.atomic():
         row = _slot()
         payload = row.payload
         entry = payload.get("active")
-        if payload.get("blocked"):
+        if payload.get("blocked") or not entry or entry["state"] in TERMINAL:
             return None
-        if entry and entry["state"] not in TERMINAL:
-            if entry["producer_node"] != node or entry["state"] == "running":
-                return None
-            if stamp(entry["lease_until"]) <= now:
-                entry.update(state="unconfirmed", message="Measurement was not started before its deadline.")
-                _remember(payload, entry)
-                _write(row, payload)
-                return None
-        else:
-            if not allow_maintenance:
-                return None
-            last = stamp(payload.get("maintenance_at"))
-            if last and now - last < timedelta(seconds=30):
-                return None
-            entry = {"id": str(uuid4()), "kind": "maintenance", "org_id": None,
-                     "requested_at": now.isoformat(), "workspace_id": cached_workspace_identity(),
-                     "request_fingerprint": fingerprint("maintenance"), "producer_node": node}
-            payload["maintenance_at"] = now.isoformat()
+        if entry["producer_node"] != node or entry["state"] == "running":
+            return None
+        if stamp(entry["lease_until"]) <= now:
+            entry.update(state="unconfirmed", message="Measurement was not started before its deadline.")
+            _remember(payload, entry)
+            _write(row, payload)
+            return None
         kind = entry["kind"]
         if kind == "upload-usage" and entry["workspace_id"] != cached_workspace_identity():
             entry.update(state="failed", message="Coordinator has a different or unavailable workspace.")

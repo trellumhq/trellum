@@ -87,18 +87,49 @@ def test_expired_lease_never_publishes(operator_probe):
     assert observations.snapshot("full-health")["state"] == "unknown"
 
 
-def test_reads_never_execute_checks_or_local_io(operator_probe, monkeypatch):
+def test_system_page_prefers_a_fresh_measurement_over_local_checks(operator_probe, monkeypatch):
     actor, client, node = operator_probe
     def forbidden(*args, **kwargs):
-        raise AssertionError("request triggered a diagnostic")
+        raise AssertionError("request ran checks despite a fresh coordinator measurement")
+    OpsState.record("operator.health", completed_at=timezone.now().isoformat(),
+                    checks=[{"label": "coordinator-check", "ok": True, "detail": "measured"}], producer_node=node)
     monkeypatch.setattr(health, "run_checks", forbidden)
-    monkeypatch.setattr(health, "_cached_schema_state", forbidden)
-    monkeypatch.setattr(health.shutil, "disk_usage", forbidden)
     response = client.get("/system")
     assert response.status_code == 200
-    assert b"Running the first check" in response.content
-    assert client.get("/api/system/health").json()["status"] == "unknown"
+    assert b"coordinator-check" in response.content and b"data-operator-observation" in response.content
+
+
+def test_system_page_runs_local_checks_when_the_coordinator_has_nothing_usable(operator_probe, monkeypatch):
+    actor, client, node = operator_probe
+    monkeypatch.setattr(health, "run_checks", lambda **kw: [{"label": "local-check", "ok": True, "detail": "ran here"}])
+    # Never measured, coordinator alive: the table is never empty and the page asks the coordinator itself.
+    first = client.get("/system").content
+    assert b"local-check" in first and b"Running the first check" not in first
+    assert b"data-operator-observation" in first and b"Checking" in first
+    # An old measurement and no live coordinator: do not present it as current.
+    OpsState.record("operator.health", completed_at=(timezone.now() - timedelta(hours=3)).isoformat(),
+                    checks=[{"label": "old-check", "ok": True, "detail": "old"}], producer_node=node)
+    WorkerHeartbeat.objects.all().delete()
+    stale = client.get("/system").content
+    assert b"local-check" in stale and b"old-check" not in stale
+    assert b"data-operator-observation" not in stale and b"unavailable" not in stale
+
+
+def test_header_summary_never_depends_on_the_coordinator(operator_probe):
+    actor, client, node = operator_probe
     assert not OpsState.objects.filter(key=observations.SLOT).exists()
+    summary = client.get("/api/system/health").json()
+    assert summary["message"] != "System health unavailable"
+    assert not OpsState.objects.filter(key=observations.SLOT).exists()
+
+
+def test_nothing_is_measured_unless_a_page_asks(operator_probe):
+    actor, client, node = operator_probe
+    assert not observations.has_work()
+    assert observations.claim(node, "epoch") is None
+    observations.admit(actor.pk, "full-health", observations.nonce(actor.pk, "full-health"))
+    assert observations.has_work()
+    assert observations.claim(node, "epoch")["kind"] == "full-health"
 
 
 def test_current_workers_and_sandbox_mismatch_are_full_aggregate(operator_probe):
@@ -112,7 +143,6 @@ def test_current_workers_and_sandbox_mismatch_are_full_aggregate(operator_probe)
     assert len(queries) == 2
     assert facts["runners"] == 1001 and facts["sandbox_mismatches"] == 1000
     assert len(facts["mismatched_ids"]) == 5
-    assert client.get("/api/system/health").json()["status"] == "error"
 
 
 def test_admission_audit_once_and_read_access_revocation(operator_probe, settings):

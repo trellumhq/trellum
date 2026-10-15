@@ -5,7 +5,7 @@ import signal
 import sys
 import threading
 
-BUDGETS = {"full-health": 30, "upload-usage": 60, "maintenance": 10}
+BUDGETS = {"full-health": 30, "upload-usage": 60}
 
 
 def main():

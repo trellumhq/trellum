@@ -42,11 +42,15 @@ def _complete_diagnostics(checks):
 
 
 class TestSystemPage:
-    def test_page_load_never_runs_checks(self, login, superuser):
-        """C16: a page load shows the last measurement; the page asks for new ones itself."""
+    def test_without_a_measurement_the_checks_run_in_the_request(self, login, superuser, monkeypatch):
+        """Nothing from the coordinator yet: show the in-process checks, never an empty table."""
+        from apps.core import health
+
+        monkeypatch.setattr(health, "run_checks", lambda **kw: [{"label": "local-probe", "ok": True, "detail": "ran here"}])
         html = login(superuser).get("/system").content.decode()
-        assert "Running the first check" in html
-        assert "SECRET_ENCRYPTION_KEY" not in html
+        assert "local-probe" in html and "ran here" in html
+        assert "Running the first check" not in html
+        assert "data-operator-observation" not in html  # no live coordinator to ask
 
     def test_health_shows_without_buttons_and_in_plain_time(self, login, superuser):
         _complete_diagnostics([{"label": "database", "ok": True, "detail": "PostgreSQL 16"}])

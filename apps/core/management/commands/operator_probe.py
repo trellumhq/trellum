@@ -50,7 +50,7 @@ class Command(BaseCommand):
             self.stdout.write(json.dumps(result, separators=(",", ":")))
             return
         from apps.core.health import run_checks
-        checks = run_checks(quick=entry["kind"] == "maintenance")
+        checks = run_checks()
         # The detail is the operator-only text the page always showed; it is
         # reduced to one bounded line with URL credentials and queries removed.
         result = {

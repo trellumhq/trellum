@@ -38,7 +38,7 @@ def probe_process_env(settings, tmp_path, monkeypatch):
         "from trellum_portal.settings.test import *\nfrom pathlib import Path\nimport sys,time\n"
         f"DATA_DIR=Path({str(settings.DATA_DIR)!r})\nBACKUP_DIR={str(settings.BACKUP_DIR)!r}\n"
         "DEBUG=True\nTRELLUM_SANDBOX='off'\nCLEANUP_ENABLED=False\nTRELLUM_STORAGE_BACKEND='local'\nTRELLUM_REPORT_ACCESS_MODEL='proxy'\n"
-        "if __import__('os').environ.get('OPERATOR_TEST_CHILD_DELAY') and len(sys.argv)>1 and sys.argv[1]=='maintenance': time.sleep(60)\n"
+        "if __import__('os').environ.get('OPERATOR_TEST_CHILD_DELAY') and len(sys.argv)>1 and sys.argv[1]=='full-health': time.sleep(60)\n"
     )
     monkeypatch.setenv("DATABASE_URL", url)
     monkeypatch.setenv("DJANGO_SETTINGS_MODULE", "operator_child_settings")
@@ -48,10 +48,16 @@ def probe_process_env(settings, tmp_path, monkeypatch):
     return node
 
 
+def request_health():
+    """What the System health page does: ask for one measurement."""
+    return observations.admit(1, "full-health", observations.nonce(1, "full-health"))[0]
+
+
 def test_real_child_measurement_publishes_only_after_reap(probe_process_env):
+    request_health()
     supervisor = ProbeSupervisor(probe_process_env)
     supervisor.tick()
-    result = observations.snapshot("maintenance")
+    result = observations.snapshot("full-health")
     assert result["scope"] == "coordinator-local"
     assert result["checks"] and result["id"]
     assert supervisor.process is None
@@ -60,17 +66,19 @@ def test_real_child_measurement_publishes_only_after_reap(probe_process_env):
 
 def test_watchdog_covers_blocked_settings_before_django(probe_process_env, monkeypatch):
     monkeypatch.setenv("OPERATOR_TEST_CHILD_DELAY", "1")
+    request_health()
     supervisor = ProbeSupervisor(probe_process_env)
     started = time.monotonic()
     supervisor.tick()
-    assert 8 <= time.monotonic() - started <= 15
+    assert 28 <= time.monotonic() - started <= 40
     assert supervisor.process is None
-    assert observations.snapshot("maintenance")["state"] == "unknown"
+    assert observations.snapshot("full-health")["state"] == "unknown"
     assert OpsState.objects.get(key=observations.SLOT).payload["active"]["state"] in ("failed", "unconfirmed")
 
 
 def test_supervisor_sigkill_never_publishes_or_replays(probe_process_env, monkeypatch):
     monkeypatch.setenv("OPERATOR_TEST_CHILD_DELAY", "1")
+    request_health()
     parent = subprocess.Popen([
         sys.executable, "-c",
         "import django;django.setup();from apps.core.workspace import initialize_workspace_identity;initialize_workspace_identity();"
@@ -92,7 +100,7 @@ def test_supervisor_sigkill_never_publishes_or_replays(probe_process_env, monkey
         # cannot execute; if its namespace cannot prove reaping, admission must
         # remain blocked rather than claiming physical cancellation.
         time.sleep(1)
-        assert observations.snapshot("maintenance")["state"] == "unknown"
+        assert observations.snapshot("full-health")["state"] == "unknown"
         row.refresh_from_db()
         operation_id = row.payload["active"]["id"]
         assert row.payload["active"]["state"] == "running"
@@ -110,8 +118,9 @@ def test_real_pipe_output_limit_kills_child(probe_process_env, monkeypatch):
     def flood(argv, **kwargs):
         return original([sys.executable, "-c", "import os,time;os.write(1,b'x'*200000);time.sleep(60)"], **kwargs)
     monkeypatch.setattr("apps.core.operator_probe_worker.subprocess.Popen", flood)
+    request_health()
     supervisor = ProbeSupervisor(probe_process_env)
     supervisor.tick()
     assert supervisor.process is None
-    assert observations.snapshot("maintenance")["state"] == "unknown"
+    assert observations.snapshot("full-health")["state"] == "unknown"
     assert OpsState.objects.get(key=observations.SLOT).payload["active"]["state"] == "failed"

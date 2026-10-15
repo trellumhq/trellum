@@ -92,6 +92,8 @@ class ProbeSupervisor:
         try:
             if sys.platform != "linux":
                 return
+            if not observations.has_work():
+                return  # measurements happen only on request
             observations.recover(self.node, termination_known)
             entry = observations.claim(self.node, self.epoch)
             if entry:

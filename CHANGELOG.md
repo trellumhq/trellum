@@ -55,9 +55,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   pager when all metrics fit on one page.
 - Operators get an "Operator console" entry in the shell sidebar.
 - The System health page and an organization's uploaded-file usage measure on
-  the coordinator by themselves: the page asks for a fresh measurement about
-  every minute (five for uploads), shows "Checked 2 minutes ago", and has no
-  refresh buttons. The operator Fleet, Organizations and organization pages
+  the coordinator by themselves, only while the page is open: the page asks for
+  a fresh measurement about every minute (five for uploads), shows "Checked 2
+  minutes ago", and has no refresh buttons. Without a usable coordinator
+  measurement, System health runs its checks in the request as before. The
+  header health alert is unchanged: quick local checks, no sandbox check. The operator Fleet, Organizations and organization pages
   match their earlier layout again.
 - The Operations page lists every report in one capped read with no pager, the
   Uptime tile and the earlier state chips and filters; Reload Registry keeps its

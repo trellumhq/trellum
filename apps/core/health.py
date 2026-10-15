@@ -529,27 +529,9 @@ def health_summary(checks: list[dict]) -> dict:
 
 
 def quick_health_summary() -> dict:
-    """Current worker facts and scoped last-known maintenance; no local probes."""
+    """Quick shell status that degrades safely if the checker itself fails."""
     try:
-        from apps.core.operator_observations import snapshot
-
-        facts = worker_facts()
-        if not facts["total"]:
-            return health_summary([{"label": "worker", "ok": False, "detail": "no live worker heartbeat"}])
-        if not facts["runners"]:
-            return health_summary([{"label": "worker", "ok": False, "detail": "no live runner"}])
-        if not facts["coordinators"]:
-            return health_summary([{"label": "worker", "ok": False, "detail": "no live coordinator"}])
-        if (settings.TRELLUM_SANDBOX == "docker" and facts["sandbox_mismatches"]) or (settings.TRELLUM_SANDBOX != "docker" and not settings.DEBUG):
-            return {"status": "error", "message": "Runner sandbox needs attention", "detail": "Open Fleet and System health for details", "failure_count": max(1, facts["sandbox_mismatches"])}
-        maintenance = snapshot("maintenance")
-        failures = sum(not check["ok"] for check in maintenance.get("checks", []))
-        if failures:
-            return {"status": "error", "message": f"System needs attention ({failures})", "detail": "Open System health for details", "failure_count": failures}
-        if maintenance.get("state") == "observed":
-            return health_summary([])
-        # No recent coordinator measurement: not healthy, and not known to be broken.
-        return {"status": "unknown", "message": "System health unavailable", "detail": "Open System health for details", "failure_count": 0}
+        return health_summary(run_checks(quick=True))
     except Exception:  # noqa: BLE001 — status UI must never break its host page
         return {
             "status": "unknown",

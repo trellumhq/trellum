@@ -143,13 +143,21 @@ def system_page(request):
     from apps.core import operator_observations as observations
     from apps.core.version import framework_tag, meta_schema_version, schema_state, source_url
 
-    # The page never runs checks. It shows the last coordinator measurement and
-    # static/operator-observations.js keeps it current.
+    # The coordinator measures and static/operator-observations.js keeps the page
+    # current. When there is nothing usable from the coordinator (never measured,
+    # or stale with no live coordinator), the checks run here, as they always did.
     diagnostic = observations.snapshot("full-health")
+    live = observations.available()
+    if not diagnostic.get("checks") or (diagnostic["state"] != "observed" and not live):
+        from apps.core.health import run_checks
+
+        # No age: with a live coordinator the page asks for its measurement at once.
+        diagnostic = {"checks": run_checks(), "state": "unmeasured"}
     return render(request, "core/system.html", {
         "checks": diagnostic.get("checks", []),
         "diagnostic": diagnostic,
         "diagnostic_age": observations.age_text(diagnostic.get("age_seconds")),
+        "probe_live": live,
         "probe_nonce": observations.nonce(request.user.pk, "full-health"),
         "probe_operation": observations.current_operation("full-health"),
         "releases": releases.current(),
