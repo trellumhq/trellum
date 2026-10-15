@@ -117,12 +117,10 @@ class Journey:
 
 def login(page, origin, principal):
     from playwright.sync_api import expect
+    from apps.core.tests.browser_login import sign_in
     from .identities import ROLES
     from .seed import PASSWORD
-    page.goto(origin + '/login')
-    page.locator('input[type=email]').fill(ROLES[principal])
-    page.locator('input[type=password]').fill(PASSWORD)
-    page.locator('button[type=submit]').click()
+    sign_in(page, origin, ROLES[principal], PASSWORD)
     page.wait_for_url(lambda url: '/login' not in url)
     page.goto(origin + '/account')
     expect(page.locator('.account-grid')).to_be_visible()

@@ -3,6 +3,7 @@ import re
 
 import pytest
 
+from apps.core.tests.browser_login import sign_in
 from .key_journeys import VARIANTS, bind, browser_session, record_metrics
 
 pytestmark = pytest.mark.portal_e2e
@@ -20,10 +21,7 @@ def test_login_lands_on_dashboard(journey, variant):
     spec = VARIANTS[variant]
     origin = journey.unit.origin
     with browser_session(journey, 'org-admin', spec, condition='key-login-dashboard', login_first=False) as (page, context):
-        page.goto(origin + '/login')
-        page.locator('input[type=email]').fill(ROLES['org-admin'])
-        page.locator('input[type=password]').fill(PASSWORD)
-        page.locator('button[type=submit]').click()
+        sign_in(page, origin, ROLES['org-admin'], PASSWORD)
         page.wait_for_url(origin + '/')
         journey.assert_actor(context, 'org-admin')
         expect(page.get_by_role('heading', name='Studios')).to_be_visible()

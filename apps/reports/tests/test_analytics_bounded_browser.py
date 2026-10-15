@@ -16,6 +16,8 @@ from urllib.request import urlopen
 import pytest
 from django.conf import settings
 
+from apps.core.tests.browser_login import reach_password_step, sign_in
+
 pytestmark = pytest.mark.django_db
 
 
@@ -84,11 +86,10 @@ def analytics_server(request, django_db_setup, django_db_blocker, tmp_path_facto
 
 def _login(page, server, role):
     from playwright.sync_api import expect
-    page.goto(server["origin"]+"/login?next="+server["path"])
-    page.get_by_label("Email", exact=True).fill(server["users"][role])
+    reach_password_step(page, server["origin"], server["users"][role], server["path"])
     page.get_by_label("Password", exact=True).fill("Analytics-test-42")
     started = time.perf_counter()
-    page.get_by_role("button", name="Continue", exact=True).click()
+    page.get_by_role("button", name="Log in", exact=True).click()
     page.wait_for_url("**"+server["path"])
     expect(page.locator("#analyticsTable tbody tr[data-name]")).to_have_count(200)
     expect(page.locator("#analyticsTable tbody tr[data-name]").first).to_be_visible()
@@ -150,10 +151,7 @@ def test_analytics_gunicorn_server_side_mode_devices_roles(analytics_server, eng
                 context = browser.new_context(); page = context.new_page()
                 if role == "viewer":
                     # Login succeeds and the authoritative route denies the destination.
-                    page.goto(server["origin"]+"/login?next="+server["path"])
-                    page.get_by_label("Email", exact=True).fill(server["users"][role])
-                    page.get_by_label("Password", exact=True).fill("Analytics-test-42")
-                    page.get_by_role("button", name="Continue", exact=True).click()
+                    sign_in(page, server["origin"], server["users"][role], "Analytics-test-42", server["path"])
                     page.wait_for_url("**"+server["path"])
                 else:
                     _login(page, server, role)

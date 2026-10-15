@@ -16,6 +16,7 @@ from playwright.sync_api import expect, sync_playwright
 
 from apps.core import operator_observations as observations
 from apps.core.models import AuditLog, OpsState
+from apps.core.tests.browser_login import sign_in
 from apps.core.operator_probe_worker import ProbeSupervisor
 from apps.core.tests.test_operator_probe_process import probe_process_env
 from apps.datasources.models import DataSource
@@ -112,10 +113,7 @@ def test_operator_pages_keep_their_layout_and_measure_uploads_by_themselves(
                 route.continue_()
         page.route("**/static/**", static)
 
-        page.goto(host + "/login?next=/operator/orgs/")
-        page.get_by_label("Email", exact=True).fill(operator.email)
-        page.get_by_label("Password", exact=True).fill("Operator-browser-42")
-        page.get_by_role("button", name="Continue", exact=True).click()
+        sign_in(page, host, operator.email, "Operator-browser-42", next_path="/operator/orgs/")
         page.wait_for_url("**/operator/orgs/")
 
         # Organizations: every row, as before.

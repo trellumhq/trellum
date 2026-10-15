@@ -12,6 +12,7 @@ pytestmark = [pytest.mark.portal_e2e, pytest.mark.skipif(not os.environ.get('POR
 @pytest.mark.parametrize('viewport', [{'width': 1440, 'height': 900}, {'width': 390, 'height': 844}], ids=['desktop', 'mobile'])
 def test_login_save_reload(viewport):
     from playwright.sync_api import sync_playwright, expect
+    from apps.core.tests.browser_login import sign_in
     from apps.core.tests.portal_e2e.seed import PASSWORD
     from django.contrib.auth import get_user_model
     from django.db import connection
@@ -24,10 +25,7 @@ def test_login_save_reload(viewport):
         page = context.new_page()
         context.tracing.start(screenshots=True, snapshots=True)
         try:
-            page.goto(origin + '/login')
-            page.locator('input[type=email]').fill('alpha-admin@example.invalid')
-            page.locator('input[type=password]').fill(PASSWORD)
-            page.locator('button[type=submit]').click()
+            sign_in(page, origin, 'alpha-admin@example.invalid', PASSWORD)
             page.wait_for_url(lambda url: '/login' not in url)
             page.goto(origin + '/account')
             field = page.locator('input[name=name]')

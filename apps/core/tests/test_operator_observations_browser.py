@@ -21,6 +21,7 @@ from apps.core import operator_observations as observations
 from apps.core.models import OpsState
 from apps.core.operator_probe_worker import ProbeSupervisor
 
+from .browser_login import sign_in
 from .test_operator_probe_process import probe_process_env
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -83,10 +84,7 @@ def test_system_page_measures_and_updates_without_a_click(probe_process_env, liv
             else:
                 route.continue_()
         page.route("**/static/**", static)
-        page.goto(live_server.url + "/login?next=/system")
-        page.get_by_label("Email", exact=True).fill(actor.email)
-        page.get_by_label("Password", exact=True).fill("Operator-browser-42")
-        page.get_by_role("button", name="Continue", exact=True).click()
+        sign_in(page, live_server.url, actor.email, "Operator-browser-42", next_path="/system")
         page.wait_for_url("**/system")
         expect(page.get_by_role("heading", name="System health", exact=True)).to_be_visible()
 
