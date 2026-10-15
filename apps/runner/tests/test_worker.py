@@ -447,8 +447,6 @@ class TestRoles:
         monkeypatch.setattr("apps.runner.gitsync.GitSyncThread", StubGitSyncThread)
         monkeypatch.setattr("apps.reports.source_reconciliation.start_for_worker", lambda **kwargs: None)
         monkeypatch.setattr("apps.runner.maintenance_actions.start_for_worker", lambda **kwargs: None)
-        monkeypatch.setattr("apps.reports.annotation_reconciliation.start_for_worker", lambda **kwargs: None)
-        monkeypatch.setattr("apps.reports.annotation_filter_cleanup.CleanupWorker.start", lambda self: self)
         monkeypatch.setattr("apps.datasources.unblock.process_next", lambda *args, **kwargs: None)
         run = make_run()
         Command().handle(once=False, role="runner")

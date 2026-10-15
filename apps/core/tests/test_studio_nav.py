@@ -179,8 +179,3 @@ class TestFeatureTabs:
         assert f"{prefix}/experiments" in tabs
         assert f"{prefix}/annotations" in tabs
         assert "◆" not in tabs
-
-    def test_annotations_tab_opens_browse_and_legacy_url_still_works(self, login, viewer, prefix, report_row):
-        html = login(viewer).get(f"{prefix}/").content.decode()
-        assert f'href="{prefix}/annotations/browse"' in _tab_bar(html)
-        assert login(viewer).get(f"{prefix}/annotations").status_code == 200

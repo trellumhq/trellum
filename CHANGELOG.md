@@ -9,8 +9,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
-- The studio Annotations tab opens the new annotations browser; the legacy
-  `/annotations` URL keeps working for one more release.
+- The annotations calendar reads a large `events.yaml` several times faster.
 - Phone layout of console-hosted reports: the report header is one compact row
   (freshness left, labelled Options and Monitor right), annotation chips scroll
   on one row, and the shell header buttons share one neutral bordered style.

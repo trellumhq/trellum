@@ -468,3 +468,29 @@ class TestAnnotationColorsStayInSync:
 
 def test_the_calendar_is_a_product_feature():
     assert annotations.calendar_page.__module__ == "apps.reports.overviews.annotations"
+
+
+@pytest.mark.heavy
+def test_events_yaml_with_thousands_of_events_parses_quickly(studio_tree):
+    """The soft cap is 5000 events; reading them must stay well under a second
+    (the pure-Python loader needs about 1.3 s for them)."""
+    import time
+
+    import yaml
+
+    if not getattr(yaml, "__with_libyaml__", False):
+        pytest.skip("libyaml is not installed")
+    types = ["campaign", "release", "incident", "event", "ab_test"]
+    lines = ["events:"]
+    for i in range(annotations.TOO_MANY_EVENTS):
+        lines += [
+            f"  - date: 2026-{i % 12 + 1:02d}-{i % 27 + 1:02d}",
+            f"    label: Event number {i}",
+            f"    type: {types[i % 5]}",
+        ]
+    _write_events(studio_tree, "\n".join(lines))
+    started = time.perf_counter()
+    events, _, parse_error = load_studio_events(studio_tree)
+    elapsed = time.perf_counter() - started
+    assert parse_error == "" and len(events) == annotations.TOO_MANY_EVENTS
+    assert elapsed < 0.8, f"{elapsed:.2f}s"
