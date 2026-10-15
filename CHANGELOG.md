@@ -9,6 +9,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- Show a clearer page when single sign-on fails after the identity provider
+  answers. "We couldn't sign you in" gives a plain-language cause for each
+  refusal (and for cancelled, expired or provider-reported errors), a Try again
+  button, and a short reference. The reference is recorded on the
+  `auth.sso_denied` audit row, so an administrator can search for it in the
+  audit log.
+
 - Make single sign-on routing failures visible. The SSO settings page warns
   about listed email domains that are not yet verified (and when no domain
   routes at all), and refuses to turn off password login while no domain

@@ -1,9 +1,19 @@
 {% extends "base.html" %}
-{% block title %}Sign-in problem — trellum{% endblock %}
+{% block title %}We couldn't sign you in — trellum{% endblock %}
 {% block content %}
-<div class="panel formrow auth-card" style="margin:10vh auto 0">
-  <h1>Single sign-on problem</h1>
-  <p>{{ problem }}</p>
-  <p><a href="/login">Back to login</a></p>
+{% comment %}Shared by the gate's 403 (accounts/adapters.denied) and, via
+socialaccount/authentication_error.html, by identity-provider errors.
+Only a plain-language cause and a reference: never claims, tokens or tracebacks.{% endcomment %}
+<div class="auth-shell">
+  <div class="panel auth-card">
+    <h1>We couldn't sign you in</h1>
+    <p>{{ failure.lead }}</p>
+    <div class="ui-form-actions">
+      <a class="ui-btn primary" href="{{ failure.retry_url }}">Try again</a>
+      <a class="auth-alt-link" href="/login">Back to sign-in</a>
+    </div>
+    <p class="ui-help">Still stuck? Contact your administrator and mention
+      reference <strong class="mono" data-sso-reference>{{ failure.reference }}</strong>.</p>
+  </div>
 </div>
 {% endblock %}

@@ -24,11 +24,17 @@ from __future__ import annotations
 from allauth.account.adapter import DefaultAccountAdapter
 from allauth.core.exceptions import ImmediateHttpResponse
 from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
+import base64
+import logging
+import secrets
+
 from django.contrib.auth import get_user_model
 from django.shortcuts import render
 
 from apps.accounts import sso
 from apps.core.audit import audit
+
+logger = logging.getLogger(__name__)
 
 #: auth.sso_denied reason codes -- one per refusal path in pre_social_login,
 #: in the order they can fire. internal planning#76's whole point was that
@@ -46,16 +52,98 @@ REASON_AUTO_PROVISION_OFF = "auto_provision_disabled"
 REASON_DIRECTORY_ERROR = "directory_error"
 
 
+#: Failures that happen at (or on the way back from) the identity provider,
+#: raised through allauth's ``on_authentication_error`` rather than our gate.
+REASON_IDP_CANCELLED = "idp_cancelled"
+REASON_IDP_DENIED = "idp_denied"
+REASON_IDP_STATE = "idp_state_invalid"
+REASON_IDP_ERROR = "idp_error"
+
+#: Reasons where starting over at the org's identity provider can plausibly
+#: work -- a cancelled prompt, a lost or reused session. Everything else is a
+#: policy refusal that retrying cannot change, so "Try again" goes to /login.
+RETRYABLE_REASONS = frozenset(
+    {REASON_IDP_CANCELLED, REASON_IDP_STATE, REASON_IDP_ERROR, REASON_DIRECTORY_ERROR}
+)
+
+_GENERIC_LEAD = "Something went wrong while signing you in."
+
+
+def _lead(reason_code: str, *, org_name: str, email: str, fallback: str = "") -> str:
+    """Plain-language cause for ``reason_code``. Names only the org and the
+    user's own asserted email -- never claims, tokens or other accounts."""
+    org_name = org_name or "this organization"
+    invite = "Ask an organization admin to invite you."
+    leads = {
+        REASON_NOT_ENABLED: f"Single sign-on isn't turned on for {org_name}.",
+        REASON_NO_EMAIL: "Your identity provider didn't send an email address.",
+        REASON_UNVERIFIED_EMAIL: "Your identity provider didn't confirm your email address.",
+        REASON_OUTSIDE_DOMAINS: (
+            f"{email} isn't in an email domain {org_name} uses for single sign-on."
+            if email else
+            f"Your email isn't in a domain {org_name} uses for single sign-on."
+        ),
+        REASON_EXISTING_NON_MEMBER: f"Your account isn't a member of {org_name} yet. {invite}",
+        REASON_AUTO_PROVISION_OFF: f"{org_name} doesn't create accounts automatically. {invite}",
+        REASON_DIRECTORY_ERROR: "We couldn't reach your organization's directory.",
+        REASON_IDP_CANCELLED: "Sign-in was cancelled.",
+        REASON_IDP_DENIED: "Your identity provider declined the sign-in.",
+        REASON_IDP_STATE: "Your sign-in session expired or was already used.",
+        REASON_IDP_ERROR: "Your identity provider reported a problem.",
+    }
+    return leads.get(reason_code) or fallback or _GENERIC_LEAD
+
+
+def new_reference() -> str:
+    """Short id (8 uppercase base32 chars) shown to the user and stored on the
+    audit row, so an admin can match a screenshot to the trail."""
+    return base64.b32encode(secrets.token_bytes(5)).decode()
+
+
+def _retry_url(org, reason_code: str) -> str:
+    if org is not None and reason_code in RETRYABLE_REASONS:
+        cfg = sso.config_for_provider(sso.provider_id_for_org(org))
+        if cfg is not None:
+            return sso.provider_login_url(None, cfg)
+    return "/login"
+
+
+def failure_context(
+    reason_code: str, *, org=None, asserted_email: str = "", fallback: str = "",
+) -> dict:
+    """Template context for the sign-in failure page, plus a fresh reference."""
+    return {
+        "failure": {
+            "lead": _lead(
+                reason_code, org_name=org.name if org is not None else "",
+                email=asserted_email, fallback=fallback,
+            ),
+            "reference": new_reference(),
+            "retry_url": _retry_url(org, reason_code),
+        }
+    }
+
+
 def denied(
     request, message: str, *, reason_code: str,
     provider: str = "", asserted_email: str = "", org=None,
 ):
-    """Audit ``auth.sso_denied`` and render the 403 page."""
+    """Audit ``auth.sso_denied`` and render the 403 page.
+
+    ``message`` is only the fallback lead for a reason code without its own
+    copy; the page text is chosen by ``reason_code``.
+    """
+    ctx = failure_context(
+        reason_code, org=org, asserted_email=asserted_email, fallback=message,
+    )
+    reference = ctx["failure"]["reference"]
     audit(
         request, "auth.sso_denied", outcome="denied", org=org,
         reason_code=reason_code, provider=provider, asserted_email=asserted_email,
+        reference=reference,
     )
-    return render(request, "accounts/sso_denied.html", {"problem": message}, status=403)
+    logger.warning("sso denied reference=%s reason=%s provider=%s", reference, reason_code, provider)
+    return render(request, "accounts/sso_denied.html", ctx, status=403)
 
 
 def admission(cfg, email: str):
@@ -136,6 +224,50 @@ class OrgSSOAdapter(DefaultSocialAccountAdapter):
                 continue
             apps.append(app)
         return apps
+
+    # ── identity-provider errors ─────────────────────────────────────────
+    def on_authentication_error(
+        self, request, provider, error=None, exception=None, extra_context=None,
+    ):
+        """Errors from the IdP round trip (cancelled, bad/expired state, a
+        provider error such as AADSTS...). Audited like a denial, with a
+        reference; allauth renders ``socialaccount/authentication_error.html``
+        with the ``failure`` context added here. A cancel would otherwise be
+        redirected to allauth's own page, so it is rendered here too."""
+        from allauth.socialaccount.providers.base import AuthError
+
+        from apps.orgs.models import Organization
+
+        extra_context = extra_context if extra_context is not None else {}
+        if error == AuthError.CANCELLED:
+            reason = REASON_IDP_CANCELLED
+        elif "state_id" in extra_context:
+            reason = REASON_IDP_STATE
+        elif error == AuthError.DENIED:
+            reason = REASON_IDP_DENIED
+        else:
+            reason = REASON_IDP_ERROR
+        provider_id = getattr(provider, "sub_id", None) or getattr(provider, "id", "") or ""
+        slug = sso.org_slug_from_provider(provider_id)
+        org = Organization.objects.filter(slug=slug).first() if slug else None
+        ctx = failure_context(reason, org=org)
+        reference = ctx["failure"]["reference"]
+        audit(
+            request, "auth.sso_denied", outcome="failure", org=org,
+            reason_code=reason, provider=provider_id, reference=reference,
+        )
+        # Server log only: the exception text can carry provider detail that
+        # the user page and the audit row deliberately leave out.
+        logger.warning(
+            "sso authentication error reference=%s reason=%s provider=%s error=%s exc=%s",
+            reference, reason, provider_id, error,
+            f"{type(exception).__name__}: {str(exception)[:300]}" if exception else "-",
+        )
+        extra_context.update(ctx)
+        if error == AuthError.CANCELLED:
+            raise ImmediateHttpResponse(
+                render(request, "accounts/sso_denied.html", ctx, status=401)
+            )
 
     # ── signup policy ────────────────────────────────────────────────────
     def is_open_for_signup(self, request, sociallogin):  # noqa: ARG002

@@ -228,7 +228,7 @@ class TestDirectoryLogin:
     def test_existing_non_member_denied(self, client, ldap_cfg, make_user):
         make_user("alice@corp.example")  # a portal account, no membership
         resp = self._post(client)
-        assert resp.status_code == 403 and b"not a member" in resp.content
+        assert resp.status_code == 403 and b"member of Demo" in resp.content
         row = AuditLog.objects.get(action="auth.sso_denied")
         assert row.outcome == "denied" and row.org_id == ldap_cfg.org_id
         assert row.metadata["reason_code"] == REASON_EXISTING_NON_MEMBER

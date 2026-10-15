@@ -307,6 +307,32 @@ failed login. A directory that cannot be reached during a login shows a
 generic "sign-in is unavailable" message and records the error in the audit
 trail. Passwords are never logged or recorded.
 
+## When sign-in fails
+
+If single sign-on fails after the identity provider has answered, the person
+sees **We couldn't sign you in**, a one-line cause, a **Try again** button
+(back to your identity provider when starting over can help, otherwise the
+login page), a **Back to sign-in** link, and a reference such as `K3M7Q2XA`.
+
+| Message | Meaning |
+|---|---|
+| Your account isn't a member of *Org* yet. Ask an organization admin to invite you. | A portal account exists for that email but isn't in the organization. |
+| *Org* doesn't create accounts automatically. Ask an organization admin to invite you. | No account yet and auto-provisioning is off. |
+| *email* isn't in an email domain *Org* uses for single sign-on. | The email's domain isn't one of the organization's routed domains. |
+| Your identity provider didn't confirm your email address. | The provider didn't mark the email as verified. |
+| Your identity provider didn't send an email address. | The token carries no email claim. |
+| Single sign-on isn't turned on for *Org*. | SSO was switched off, for example after the link was bookmarked. |
+| Sign-in was cancelled. | The person declined at the provider. |
+| Your sign-in session expired or was already used. | The sign-in started in another tab, took too long, or was reloaded. |
+| Your identity provider reported a problem. / declined the sign-in. | The provider returned an error (for example an Entra `AADSTS` code, a wrong client secret or issuer). Details are in the server log, never on the page. |
+
+**Finding a reference.** Open **Organization settings → Audit log** and
+search the reference. The matching `auth.sso_denied` row carries the reference
+and a `reason_code` (for example `existing_non_member_account` or
+`idp_state_invalid`) in its details; the same reference is written to the
+server log next to the reason, along with the provider's error text for
+identity-provider failures.
+
 ## Security model
 
 Instance operators are exempt from SSO enforcement, so a misconfiguration
