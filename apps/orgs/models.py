@@ -382,7 +382,9 @@ class OrgSSOConfig(models.Model):
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
     )
     last_test_ok = models.BooleanField(null=True, blank=True)
-    last_test_summary = models.JSONField(default=dict, blank=True)
+    # Nullable so the previous release, which never writes it, can still insert
+    # rows during a rolling upgrade.
+    last_test_summary = models.JSONField(default=dict, blank=True, null=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self) -> str:

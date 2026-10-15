@@ -31,6 +31,6 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='orgssoconfig',
             name='last_test_summary',
-            field=models.JSONField(blank=True, default=dict),
+            field=models.JSONField(blank=True, default=dict, null=True),
         ),
     ]
