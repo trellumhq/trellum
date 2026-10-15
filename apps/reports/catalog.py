@@ -82,7 +82,7 @@ def recent_slugs(params):
     return list(dict.fromkeys(values))
 
 
-def catalog_relation(request, *, kind="report", now=None):
+def catalog_relation(request, *, kind="report", now=None, fresh_seconds=FRESH_SECONDS):
     check_catalog_context(request)
     if kind not in (Report.KIND_REPORT, Report.KIND_ANALYSIS):
         raise ValueError("Invalid catalog kind")
@@ -91,11 +91,11 @@ def catalog_relation(request, *, kind="report", now=None):
     if not request.user.is_active:
         relation = relation.none()
     relation = relation.exclude(slug="metrics", tags__contains=["metrics"])
-    fresh = Q(source_summary__schema_version=2, source_summary__observed_at__gte=now-timedelta(seconds=FRESH_SECONDS), source_summary__observed_at__lte=now)
+    fresh = Q(source_summary__schema_version=2, source_summary__observed_at__gte=now-timedelta(seconds=fresh_seconds), source_summary__observed_at__lte=now)
     output_known = fresh & Q(source_summary__quality__in=("observed", "verified")) & Q(source_summary__state__in=("ready", "missing"))
     # Worker attempt timestamps remain authoritative while local output is
     # uncertain; fresh observation also renews older terminal attempt evidence.
-    recent_attempt = Q(source_summary__schema_version=2, source_summary__attempt_at__gte=now-timedelta(seconds=FRESH_SECONDS), source_summary__attempt_at__lte=now) & ~Q(source_summary__attempt_status="")
+    recent_attempt = Q(source_summary__schema_version=2, source_summary__attempt_at__gte=now-timedelta(seconds=fresh_seconds), source_summary__attempt_at__lte=now) & ~Q(source_summary__attempt_status="")
     observed_attempt = fresh & (Q(source_summary__state__in=("ready", "missing")) | (Q(source_summary__state="uncertain") & ~Q(source_summary__attempt_status=""))) & (Q(source_summary__attempt_at__lte=now) | Q(source_summary__attempt_at__isnull=True))
     known = recent_attempt | observed_attempt
     return relation.annotate(
@@ -152,7 +152,7 @@ def _order(params, recent):
 FIELDS = ("id", "slug", "kind", "display_name", "display_category", "studio__slug", "schedule_cron", "priority", "disabled", "description_preview", "description_length", "tags_preview", "tags_count", "is_favorite", "observation_known", "output_observation_known", "name_key", "category_key", "studio_key", "schedule_key", "status_rank", "source_summary__schema_version", "source_summary__state", "source_summary__runtime_state", "source_summary__quality", "source_summary__observed_at", "source_summary__attempt_at", "source_summary__attempt_status", "source_summary__has_output", "source_summary__html_entry", "source_summary__has_live_queries")
 
 
-def _rows(relation, params, recent, page, *, grouped):
+def _rows(relation, params, recent, page, *, grouped, limit=PAGE_SIZE):
     relation = relation.annotate(description_preview=Substr("description", 1, 600), description_length=Length("description"), tags_preview=TagPreview("tags"), tags_count=TagCount("tags"), recent_key=Case(*[When(slug=slug, then=Value(i)) for i, slug in enumerate(recent)], default=Value(8), output_field=IntegerField()))
     order, _, _ = _order(params, recent)
     query = relation.order_by().values(*FIELDS, "recent_key")
@@ -169,7 +169,7 @@ def _rows(relation, params, recent, page, *, grouped):
     else:
         sql = ranked + 'SELECT * FROM ranked ORDER BY catalog_rank LIMIT %s OFFSET %s'
     with connection.cursor() as cursor:
-        cursor.execute(sql, (*arguments, PAGE_SIZE, (page-1)*PAGE_SIZE))
+        cursor.execute(sql, (*arguments, limit, (page-1)*limit))
         columns = [c[0] for c in cursor.description]
         return [_presentation(dict(zip(columns, row))) for row in cursor.fetchall()]
 
@@ -242,3 +242,85 @@ def catalog_personal_payload(request, params, *, kind="report", now=None):
     favorite_params["tab"] = "_favorites"
     recent_params = {"tab": "_recent", "view": "cards", "csort": "priority"}
     return bounded_payload(dict(version=1, favorites=_rows(favorites, favorite_params, recent, favorite_page, grouped=False), pagination=pagination(favorite_page, total), recent=_rows(relation.filter(slug__in=recent), recent_params, recent, 1, grouped=False), recent_limit=8), 160*1024)
+
+
+# ── Dashboard slices ────────────────────────────────────────────────────────
+# The Reports/Analyses dashboard renders every card client-side from the legacy
+# registry row shape. This reads that shape from the database in bounded
+# slices, so a studio of any size costs the same per request while a normal
+# studio (one slice) looks exactly like the full registry.
+
+CARDS_PAGE = 50
+# The worker keeps summaries current; the dashboard shows the last observation
+# for up to a week instead of blanking every card five minutes after it.
+CARDS_FRESH_SECONDS = 7 * 24 * 3600
+CARDS_BYTES = 256 * 1024
+_CARD_STATUSES = ("success", "error", "not_run")
+
+
+def _cards_params(params):
+    for key, limit in (("q", 1000), ("tab", 200)):
+        value = params.get(key)
+        if value is not None and (not isinstance(value, str) or len(value) > limit or "\x00" in value):
+            raise ValueError("Invalid catalog state")
+    if params.get("tab", "all") not in ("all", "_favorites", "_recent"):
+        raise ValueError("Invalid catalog state")
+    recent_slugs(params)
+    page = page_number(params.get("page"))
+    try:
+        limit = int(params.get("limit") or CARDS_PAGE)
+    except (TypeError, ValueError):
+        raise ValueError("Invalid page size") from None
+    if not 5 <= limit <= CARDS_PAGE:
+        raise ValueError("Invalid page size")
+    return page, limit
+
+
+def _registry_row(row, indicator, live_enabled):
+    status = row["last_status"] if row["last_status"] in _CARD_STATUSES else ("error" if row["last_status"] not in (None, "running") else "not_run")
+    last_error = indicator.get("last_error")
+    return dict(
+        id=row["id"], kind=row["kind"], slug=row["slug"], name=row["name"], description=row["description"] or "",
+        category=row["category"], studio=row["studio"], tags=row["tags"], schedule=row["schedule"],
+        last_run=row["last_run"], last_status=status, build_status=indicator.get("build_status") or status,
+        last_error=last_error or None, blocked_by=indicator.get("blocked_by") or [], waiting=bool(indicator.get("waiting")),
+        failing_source=indicator.get("failing_source"),
+        # An output that has not been observed yet is shown as openable, with
+        # the default entry the dashboard falls back to (``index.html``), so the
+        # console report host still opens it.
+        has_output=True if row["has_output"] is None else bool(row["has_output"]),
+        html_entry=row["html_entry"] or "",
+        views_30d=indicator.get("views_30d") or 0, last_viewed=indicator.get("last_viewed"),
+        stale=bool(indicator.get("stale")), live=bool(live_enabled and indicator.get("live")),
+        metrics_report=False,
+    )
+
+
+def catalog_cards_payload(request, params, *, kind="report", now=None):
+    """One bounded slice of the dashboard's registry-shaped rows.
+
+    ``q`` narrows by the catalog's search text; ``tab`` of ``_favorites`` or
+    ``_recent`` (with ``recent`` slugs) returns just those rows. Rows follow
+    the registry order (priority, then slug) so the client can page through
+    them and sort locally.
+    """
+    from django.utils import timezone as tz
+    from .catalog_indicators import catalog_indicators_payload
+    from .models import live_query_rate_limit
+
+    page, limit = _cards_params(params)
+    now = now or tz.now()
+    relation = catalog_relation(request, kind=kind, now=now, fresh_seconds=CARDS_FRESH_SECONDS)
+    recent = recent_slugs(params)
+    selected, _, _ = _filtered(relation, {"q": params.get("q", ""), "tab": params.get("tab", "all")}, recent)
+    total = selected.values("pk").count()
+    rows = _rows(selected, {"view": "cards", "csort": "priority"}, recent, page, grouped=False, limit=limit)
+    indicators = catalog_indicators_payload(request, [row["id"] for row in rows], now=now, fresh_seconds=CARDS_FRESH_SECONDS) if rows else {}
+    by_id = indicators.get("reports", {}) if indicators.get("state") != "oversized" else {}
+    live_enabled = live_query_rate_limit(request.org) > 0
+    payload = dict(
+        version=1, reports=[_registry_row(row, by_id.get(row["id"], {}), live_enabled) for row in rows],
+        pagination=dict(page=page, per_page=limit, total=total, has_next=page * limit < total),
+        generated_at=now.isoformat(),
+    )
+    return bounded_payload(payload, CARDS_BYTES)

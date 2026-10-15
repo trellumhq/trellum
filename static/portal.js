@@ -57,6 +57,11 @@ function apiFetch(url, options) {
 function boundedFetch(url, options, timeoutMs) {
     var controller = new AbortController();
     var timer = setTimeout(function() { controller.abort(); }, timeoutMs || 8000);
+    var outer = options && options.signal;
+    if (outer) {
+        if (outer.aborted) controller.abort();
+        else outer.addEventListener('abort', function() { controller.abort(); });
+    }
     options = Object.assign({}, options || {}, { signal: controller.signal });
     function finish() { clearTimeout(timer); }
     return apiFetch(url, options).then(function(response) {
@@ -304,7 +309,7 @@ function folderCounts() {
     }
     var favCount = dashboardReports().filter(function(r) { return isFav(r.slug); }).length;
     var recentCount = getRecent().filter(function(s) { return dashboardReports().some(function(r) { return r.slug === s; }); }).length;
-    return { all: dashboardReports().length, fav: favCount, recent: recentCount };
+    return { all: _catalogPartial() ? _catalogTotal : dashboardReports().length, fav: favCount, recent: recentCount };
 }
 
 function getCategories() {
@@ -1051,7 +1056,7 @@ function render(preservePickerState) {
     let html = isSearching ? renderSearchFeedback(pool.length, q) : '';
 
     if (!pool.length) {
-        html += emptyStateHtml(isSearching);
+        html += emptyStateHtml(isSearching) + catalogMoreHtml(isSearching);
         container.innerHTML = html;
         signalCatalogReady(container);
         syncToUrl();
@@ -1059,7 +1064,7 @@ function render(preservePickerState) {
     }
 
     if (viewMode === 'list') {
-        html += listTableHtml(catalogGroups(sortReports(pool), isSearching));
+        html += listTableHtml(catalogGroups(sortReports(pool), isSearching)) + catalogMoreHtml(isSearching);
         container.innerHTML = html;
         signalCatalogReady(container);
         syncToUrl();
@@ -1074,6 +1079,7 @@ function render(preservePickerState) {
         group.items.forEach(function(r) { html += cardHtml(r); });
         html += '</div>';
     });
+    html += catalogMoreHtml(isSearching);
 
     container.innerHTML = html;
     signalCatalogReady(container);
@@ -1109,6 +1115,10 @@ document.getElementById('searchInput').addEventListener('input', function(e) {
         return;
     }
     render();
+    if (_catalogPartial()) {
+        clearTimeout(_catalogSearchTimer);
+        _catalogSearchTimer = setTimeout(function() { _catalogServerSearch(searchQuery); }, 400);
+    }
 });
 
 document.getElementById('folderTabs').addEventListener('click', function(e) {
@@ -3228,6 +3238,240 @@ window.addEventListener('pageshow', function(event) {
     }
 });
 
+/* ── Registry loading ──
+   The dashboard reads the registry in bounded slices (GET /api/registry with
+   ?page=): each request touches one slice of rows and every row has the
+   registry shape. A normal studio fits in the first slices and is held
+   completely, so tabs, search and sorting work on the whole set instantly.
+   Only a studio beyond CATALOG_AUTOLOAD rows leaves the remainder on the
+   server: "Show more" loads further slices and search asks the server. */
+var CATALOG_SLICE = 50;
+var CATALOG_AUTOLOAD = 500;
+var CATALOG_RETRY_MS = [1000, 3000, 8000];
+var _catalogTotal = 0;
+var _catalogSlices = 0;            /* slices of CATALOG_SLICE rows already held */
+var _catalogRun = 0;               /* a newer load supersedes older ones */
+var _catalogController = null;
+var _catalogInterrupted = false;
+var _catalogSearchTimer = null;
+var _catalogSearchController = null;
+var _catalogMoreBusy = false;
+
+function _catalogPartial() { return _catalogSlices * CATALOG_SLICE < _catalogTotal; }
+
+function _catalogKey(r) { return r.id != null ? 'id:' + r.id : 'slug:' + r.slug; }
+
+function _catalogMerge(base, extra) {
+    var seen = Object.create(null);
+    base.forEach(function(r) { seen[_catalogKey(r)] = true; });
+    return base.concat(extra.filter(function(r) {
+        var key = _catalogKey(r);
+        if (seen[key]) return false;
+        seen[key] = true;
+        return true;
+    }));
+}
+
+function _catalogUrl(page, limit, extra) {
+    var qs = new URLSearchParams();
+    qs.set('kind', IS_ANALYSES_PAGE ? 'analysis' : 'report');
+    qs.set('page', page);
+    qs.set('limit', limit);
+    Object.keys(extra || {}).forEach(function(key) {
+        [].concat(extra[key]).forEach(function(value) { qs.append(key, value); });
+    });
+    return apiUrl('/api/registry') + '?' + qs.toString();
+}
+
+/* One slice (CATALOG_SLICE rows). A response over the server's byte ceiling is
+   asked again as smaller pages covering the same rows. */
+function _catalogSlice(k, extra, signal, limit) {
+    limit = limit || CATALOG_SLICE;
+    var per = CATALOG_SLICE / limit, first = (k - 1) * per + 1;
+    var result = { reports: [], total: 0 };
+    function next(j) {
+        if (j >= per) return Promise.resolve(result);
+        return boundedFetch(_catalogUrl(first + j, limit, extra), { cache: 'no-store', signal: signal }, 15000)
+            .then(function(r) { if (!r.ok) throw new Error('Registry request failed'); return r.json(); })
+            .then(function(body) {
+                if (body.state === 'oversized' && limit > 5) {
+                    return _catalogSlice(k, extra, signal, limit === CATALOG_SLICE ? 25 : 5);
+                }
+                if (!body.reports) throw new Error('Registry slice unavailable');
+                result.total = body.pagination ? body.pagination.total : body.reports.length;
+                result.reports = result.reports.concat(body.reports);
+                return next(j + 1);
+            });
+    }
+    return next(0);
+}
+
+/* Slices first..last of one query, fetched together, merged in registry order. */
+function _catalogRange(extra, signal, first, last, known) {
+    var calls = [];
+    for (var k = first; k <= last; k++) calls.push(_catalogSlice(k, extra, signal));
+    return Promise.all(calls).then(function(parts) {
+        var rows = known || [];
+        parts.forEach(function(part) { rows = _catalogMerge(rows, part.reports); });
+        return rows;
+    });
+}
+
+function _catalogLoadAll(signal) {
+    return _catalogSlice(1, null, signal).then(function(head) {
+        var slices = Math.max(1, Math.ceil(head.total / CATALOG_SLICE));
+        var held = Math.min(slices, CATALOG_AUTOLOAD / CATALOG_SLICE);
+        return _catalogRange(null, signal, 2, held, head.reports).then(function(rows) {
+            _catalogTotal = head.total;
+            _catalogSlices = held;
+            return rows;
+        });
+    }).then(function(rows) {
+        if (!_catalogPartial()) return rows;
+        /* Favorites and recently viewed reports must be there even when they
+           sit beyond the preloaded rows. */
+        var extras = [_catalogSlice(1, { tab: '_favorites' }, signal).then(function(f) {
+            return _catalogRange({ tab: '_favorites' }, signal, 2, Math.min(4, Math.ceil(f.total / CATALOG_SLICE)), f.reports);
+        })];
+        var recent = getRecent();
+        if (recent.length) extras.push(_catalogSlice(1, { tab: '_recent', recent: recent }, signal).then(function(r) { return r.reports; }));
+        return Promise.all(extras).then(function(parts) {
+            parts.forEach(function(part) { rows = _catalogMerge(rows, part); });
+            return rows;
+        });
+    });
+}
+
+function _catalogDelay(ms, signal) {
+    return new Promise(function(resolve, reject) {
+        var timer = setTimeout(resolve, ms);
+        signal.addEventListener('abort', function() { clearTimeout(timer); reject(new DOMException('aborted', 'AbortError')); });
+    });
+}
+
+/* A failed read is retried quietly a few times before giving up. */
+function _catalogLoadRetrying(signal, attempt) {
+    return _catalogLoadAll(signal).catch(function(error) {
+        if (error && error.name === 'AbortError' && signal.aborted) throw error;
+        if (attempt >= CATALOG_RETRY_MS.length) throw error;
+        return _catalogDelay(CATALOG_RETRY_MS[attempt], signal).then(function() {
+            return _catalogLoadRetrying(signal, attempt + 1);
+        });
+    });
+}
+
+function _catalogAnnounceLoading() {
+    var container = document.getElementById('content');
+    if (container) container.dataset.catalogReady = 'false';
+    window.dispatchEvent(new Event('trellum:catalog-loading'));
+}
+
+/* Starts (or restarts) the load; resolves with the rows, rejects when it was
+   cancelled or kept failing. */
+function _catalogFetch() {
+    var run = ++_catalogRun;
+    if (_catalogController) _catalogController.abort();
+    var controller = _catalogController = new AbortController();
+    return _catalogLoadRetrying(controller.signal, 0).then(function(rows) {
+        if (run !== _catalogRun) throw new DOMException('superseded', 'AbortError');
+        _catalogController = null;
+        return rows;
+    }, function(error) {
+        if (run === _catalogRun) _catalogController = null;
+        throw error;
+    });
+}
+
+/* Reload after the page was restored or the catalog came back from a report:
+   same rows in the same place, only fresher. */
+function _catalogRefresh() {
+    _catalogAnnounceLoading();
+    return _catalogFetch().then(function(rows) {
+        reports = rows;
+        _seedErrorLog();
+        render();
+        updateErrorBadge();
+        if (searchQuery && _catalogPartial()) _catalogServerSearch(searchQuery);
+    }).catch(function(error) {
+        if (error && error.name === 'AbortError') return;
+        /* Keep what is on screen; the next visit or return tries again. */
+        var container = document.getElementById('content');
+        if (container) signalCatalogReady(container);
+    });
+}
+
+function _catalogServerSearch(q) {
+    if (_catalogSearchController) _catalogSearchController.abort();
+    _catalogSearchController = null;
+    if (!q || !_catalogPartial()) return;
+    var controller = _catalogSearchController = new AbortController();
+    var extra = { q: q };
+    _catalogSlice(1, extra, controller.signal).then(function(head) {
+        var held = Math.min(Math.max(1, Math.ceil(head.total / CATALOG_SLICE)), CATALOG_AUTOLOAD / CATALOG_SLICE);
+        return _catalogRange(extra, controller.signal, 2, held, head.reports);
+    }).then(function(rows) {
+        if (controller !== _catalogSearchController || searchQuery !== q) return;
+        _catalogSearchController = null;
+        /* Matches beyond the preloaded rows join the held set; the same local
+           filter then shows them. */
+        reports = _catalogMerge(reports, rows);
+        render();
+    }).catch(function() {});
+}
+
+function catalogMoreHtml(isSearching) {
+    if (IS_OPS_PAGE || isSearching || !_catalogPartial()) return '';
+    return '<div class="catalog-more"><span>Showing ' + Math.min(_catalogSlices * CATALOG_SLICE, _catalogTotal)
+        + ' of ' + _catalogTotal + (IS_ANALYSES_PAGE ? ' analyses' : ' reports') + '</span>'
+        + '<button class="ui-btn ghost" type="button" data-catalog-more' + (_catalogMoreBusy ? ' disabled' : '') + '>'
+        + (_catalogMoreBusy ? 'Loading…' : 'Show more') + '</button></div>';
+}
+
+function _catalogShowMore() {
+    if (_catalogMoreBusy || !_catalogPartial()) return;
+    _catalogMoreBusy = true;
+    render();
+    var first = _catalogSlices + 1;
+    var last = Math.min(Math.ceil(_catalogTotal / CATALOG_SLICE), _catalogSlices + CATALOG_AUTOLOAD / CATALOG_SLICE);
+    var controller = new AbortController();
+    _catalogRange(null, controller.signal, first, last, []).then(function(rows) {
+        reports = _catalogMerge(reports, rows);
+        _catalogSlices = last;
+    }).catch(function() {
+        showToast('Could not load more reports', 'error');
+    }).then(function() {
+        _catalogMoreBusy = false;
+        render();
+    });
+}
+
+document.addEventListener('click', function(e) {
+    if (e.target.closest && e.target.closest('[data-catalog-more]')) _catalogShowMore();
+});
+
+/* The console report host hides the catalog while a report is open. Work still
+   in flight is dropped (nothing is painted into a hidden page) and repeated
+   once when the catalog returns. */
+document.addEventListener('trellum:catalog-hide', function() {
+    if (IS_OPS_PAGE) return;
+    clearTimeout(_catalogSearchTimer);
+    if (_catalogSearchController) { _catalogSearchController.abort(); _catalogSearchController = null; }
+    if (_catalogController) {
+        _catalogRun++;
+        _catalogController.abort();
+        _catalogController = null;
+        _catalogInterrupted = true;
+    }
+});
+document.addEventListener('trellum:catalog-return', function() {
+    if (IS_OPS_PAGE || !_catalogInterrupted) return;
+    _catalogInterrupted = false;
+    _catalogRefresh();
+});
+window.addEventListener('pageshow', function(event) {
+    if (event.persisted && !IS_OPS_PAGE) _catalogRefresh();
+});
+
 /* ── Boot ──
    The registry is no longer inlined into this file: fetch it (plus the
    user's server-side favorites) first, then do the legacy init sequence. */
@@ -3248,10 +3492,12 @@ function boot() {
 
     var registryLoaded = IS_OPS_PAGE
         ? (readFromUrl(), _opsFetchCatalog().catch(function() { reports = []; }))
-        : boundedFetch(apiUrl('/api/registry'), { cache: 'no-store' })
-            .then(function(r) { return r.ok ? r.json() : { reports: [] }; })
-            .then(function(reg) { reports = reg.reports || []; })
-            .catch(function() { reports = []; });
+        : _catalogFetch()
+            .then(function(rows) { reports = rows; })
+            .catch(function(error) {
+                /* Hidden mid-load: the rows arrive when the catalog returns. */
+                reports = [];
+            });
     registryLoaded.then(function() {
         _seedErrorLog();
         _initStudios();
@@ -3263,6 +3509,7 @@ function boot() {
         // exist before updateErrorBadge() looks it up.
         render();
         updateErrorBadge();
+        if (!IS_OPS_PAGE && searchQuery && _catalogPartial()) _catalogServerSearch(searchQuery);
         migrateLegacyFavorites().then(loadFavorites).then(function() {
             if (viewMode !== 'ops' || activeFolder === '_favorites') render();
         }).catch(function() {});

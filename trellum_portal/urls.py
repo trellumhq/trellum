@@ -67,7 +67,6 @@ studio_patterns = [
     path("api/catalog/personal", report_views.api_catalog_personal, name="api-catalog-personal"),
     path("api/catalog/indicators", report_views.api_catalog_indicators, name="api-catalog-indicators"),
     path("api/catalog/details/<int:report_id>", report_views.api_catalog_details, name="api-catalog-details"),
-    path("catalog/details/<int:report_id>", report_views.catalog_details, name="catalog-details"),
     path("api/system/status", report_views.api_system_status),
     path("api/system/run-stats", report_views.api_run_stats),
     path("api/system/log", report_views.api_system_log),

@@ -107,7 +107,7 @@ def _sources(request, names):
     return states, bad
 
 
-def catalog_indicators_payload(request, report_ids, *, now=None):
+def catalog_indicators_payload(request, report_ids, *, now=None, fresh_seconds=FRESH_SECONDS):
     now = now or timezone.now()
     relation = authorized_ids(request, report_ids)
     rows, names = _references(relation)
@@ -130,8 +130,8 @@ def catalog_indicators_payload(request, report_ids, *, now=None):
     live_enabled = live_query_rate_limit(request.org) > 0
     for report_id, row in rows.items():
         summary = summaries.get(report_id)
-        observed_attempt = bool(summary and summary["observed_at"] and now-timedelta(seconds=FRESH_SECONDS) <= summary["observed_at"] <= now and (summary["state"] in ("ready", "missing") or (summary["state"] == "uncertain" and summary["attempt_status"])) and (summary["attempt_at"] is None or summary["attempt_at"] <= now))
-        worker_attempt = bool(summary and summary["attempt_at"] and now-timedelta(seconds=FRESH_SECONDS) <= summary["attempt_at"] <= now and summary["attempt_status"])
+        observed_attempt = bool(summary and summary["observed_at"] and now-timedelta(seconds=fresh_seconds) <= summary["observed_at"] <= now and (summary["state"] in ("ready", "missing") or (summary["state"] == "uncertain" and summary["attempt_status"])) and (summary["attempt_at"] is None or summary["attempt_at"] <= now))
+        worker_attempt = bool(summary and summary["attempt_at"] and now-timedelta(seconds=fresh_seconds) <= summary["attempt_at"] <= now and summary["attempt_status"])
         fresh = bool(summary and summary["schema_version"] == 2 and (observed_attempt or worker_attempt))
         output_observed = bool(summary and observed_attempt and summary["schema_version"] == 2 and summary["quality"] in ("observed", "verified") and summary["state"] in ("ready", "missing"))
         output_known = bool(output_observed and summary["runtime_state"] == "ready" and summary["has_output"] is not None)

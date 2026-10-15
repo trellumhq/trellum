@@ -8,50 +8,6 @@ body {
     min-height: 100vh;
 }
 
-/* Bounded catalog; report documents do not mount data-c14-catalog. */
-[data-c14-catalog] { padding: 0 var(--page-gutter) 32px; min-width: 0; }
-[data-c14-catalog] .c14-categories,
-[data-c14-catalog] .c14-tools,
-[data-c14-catalog] .c14-pages { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 12px 0; }
-[data-c14-catalog] .c14-categories a,
-[data-c14-catalog] .c14-tools a,
-[data-c14-catalog] .c14-pages a { min-height: 44px; display: inline-flex; align-items: center; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; color: var(--text); text-decoration: none; }
-[data-c14-catalog] [aria-current="page"] { border-color: var(--accent) !important; color: var(--accent-ink) !important; }
-[data-c14-catalog] .c14-category-more { position: relative; }
-[data-c14-catalog] .c14-category-more summary { min-height: 44px; padding: 10px; cursor: pointer; }
-[data-c14-catalog] .c14-category-more[open] { display: flex; flex-direction: column; gap: 6px; max-height: min(60vh, 520px); overflow: auto; padding: 8px; border: 1px solid var(--border); background: var(--bg-card); border-radius: 8px; }
-[data-c14-catalog] .c14-search { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 14px 0; }
-[data-c14-catalog] .c14-search input { min-width: min(300px, 100%); flex: 1 1 240px; }
-[data-c14-catalog] input, [data-c14-catalog] select { min-height: 44px; font-size: 16px; color: var(--text); background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
-[data-c14-catalog] button { min-height: 44px; min-width: 44px; padding: 8px 12px; cursor: pointer; background: var(--bg-card); color: var(--text); border: 1px solid var(--border); border-radius: 8px; }
-[data-c14-catalog] button:hover, [data-c14-catalog] a:hover { border-color: var(--accent); }
-[data-c14-catalog] :focus-visible, .c14-detail-page :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-[data-c14-catalog] .c14-tools form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-[data-c14-catalog] section { margin: 20px 0; }
-[data-c14-catalog] section h2 { font-size: 1.1rem; margin-bottom: 10px; }
-[data-c14-catalog] .c14-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 12px; }
-[data-c14-catalog] .c14-items.is-list { grid-template-columns: 1fr; }
-[data-c14-catalog] .c14-item { min-width: 0; padding: 16px; border: 1px solid var(--border); background: var(--bg-card); border-radius: 10px; display: flex; flex-direction: column; justify-content: space-between; gap: 12px; }
-[data-c14-catalog] .is-list .c14-item { flex-direction: row; align-items: center; }
-[data-c14-catalog] .c14-item-heading { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-[data-c14-catalog] .c14-report-link { font-weight: 600; overflow-wrap: anywhere; }
-[data-c14-catalog] .c14-state, [data-c14-catalog] .c14-meta, [data-c14-catalog] [data-catalog-indicator] { font-size: 0.8rem; color: var(--text2); }
-[data-c14-catalog] .c14-description { margin: 10px 0; color: var(--text2); overflow-wrap: anywhere; }
-[data-c14-catalog] .c14-tags, [data-c14-catalog] .c14-meta, [data-c14-catalog] .c14-item-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-[data-c14-catalog] .c14-tags a { overflow-wrap: anywhere; }
-[data-c14-catalog] .c14-item-actions a { min-height: 44px; display: inline-flex; align-items: center; }
-[data-c14-catalog] .c14-empty, [data-c14-catalog] .c14-message { color: var(--text2); padding: 14px; border: 1px dashed var(--border); border-radius: 8px; }
-[data-c14-catalog] .c14-status[data-error] { color: var(--red); }
-[data-c14-catalog] [data-catalog-personal][data-state="loading"]::before { content: 'Loading favorites and recent reports…'; display: block; color: var(--text2); }
-[data-c14-catalog] [data-catalog-personal][data-state="error"]::before { content: 'Favorites and recent reports unavailable. Retry.'; display: block; color: var(--red); }
-.c14-detail-page { max-width: 960px; padding: 24px var(--page-gutter); }
-.c14-detail-page section { margin: 20px 0; overflow-wrap: anywhere; }
-.c14-detail-page a { min-height: 44px; display: inline-flex; align-items: center; margin-right: 12px; }
-@media (max-width: 600px) {
-  [data-c14-catalog] .is-list .c14-item { flex-direction: column; align-items: stretch; }
-  [data-c14-catalog] .c14-search input { min-width: 100%; }
-}
-
 /* WebKit paints native select internals from color-scheme even when the
    authored foreground/background tokens are correct. Keep those internals
    aligned with the console theme so dark-mode option text stays legible. */
@@ -1350,3 +1306,6 @@ html[data-theme="dark"] .console-dashboard select { color-scheme: dark; }
 .ops-native-pager .ops-action-btn { min-height: 44px; display: inline-flex; align-items: center; }
 .ops-native-heading { margin: 24px 0 8px; font-size: 16px; }
 .ops-terminal-body[data-unavailable] { color: var(--warn); }
+
+/* Only a studio beyond the preloaded rows ever shows this footer. */
+.catalog-more { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px; padding: 20px 0; color: var(--text2); font-size: var(--fs-sm, 13px); }

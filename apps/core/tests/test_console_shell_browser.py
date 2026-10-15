@@ -30,13 +30,11 @@ def _inline_shell_assets(html: str) -> str:
 
 
 def _inline_portal_js(html: str) -> str:
-    # Studio catalog pages boot portal-catalog.js; portal.js is only loaded for
-    # views without a bounded catalog (Operations).
-    portal = (settings.BASE_DIR / "static" / "portal-catalog.js").read_text(
+    portal = (settings.BASE_DIR / "static" / "portal.js").read_text(
         encoding="utf-8"
     )
     return re.sub(
-        r'<script src="[^\"]*portal-catalog\.js"></script>',
+        r'<script src="[^\"]*portal\.js"></script>',
         lambda _: f"<script>{portal}</script>",
         html,
     )
@@ -398,7 +396,7 @@ def test_dashboard_portal_boot_keeps_placeholder_and_search_shortcut(
       window.__portalRegistryRequested = false;
       const originalFetch = window.fetch.bind(window);
       window.fetch = (...args) => {{
-        if (String(args[0]).includes('/api/catalog')) {{
+        if (String(args[0]).includes('/api/registry')) {{
           window.__portalRegistryRequested = true;
         }}
         return originalFetch(...args);
