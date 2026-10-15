@@ -545,8 +545,11 @@ def quick_health_summary() -> dict:
         maintenance = snapshot("maintenance")
         failures = sum(not check["ok"] for check in maintenance.get("checks", []))
         if failures:
-            return {"status": "error", "message": f"Coordinator needs attention ({failures})", "detail": "Last observed on coordinator; web-local facts remain unverified", "failure_count": failures}
-        return {"status": "unknown", "message": "Web-local diagnostics unverified", "detail": "Open System health for scoped last-known diagnostics", "failure_count": 0}
+            return {"status": "error", "message": f"System needs attention ({failures})", "detail": "Open System health for details", "failure_count": failures}
+        if maintenance.get("state") == "observed":
+            return health_summary([])
+        # No recent coordinator measurement: not healthy, and not known to be broken.
+        return {"status": "unknown", "message": "System health unavailable", "detail": "Open System health for details", "failure_count": 0}
     except Exception:  # noqa: BLE001 — status UI must never break its host page
         return {
             "status": "unknown",

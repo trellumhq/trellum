@@ -141,35 +141,36 @@ def system_page(request):
     from apps.core import releases
     import trellum_portal
     from apps.core import operator_observations as observations
-    from apps.core.version import framework_tag, meta_schema_version, source_url
+    from apps.core.version import framework_tag, meta_schema_version, schema_state, source_url
 
+    # The page never runs checks. It shows the last coordinator measurement and
+    # static/operator-observations.js keeps it current.
     diagnostic = observations.snapshot("full-health")
-    current = None
-    if request.GET.get("observation"):
-        try:
-            current = observations.observation(request.GET["observation"], kind="full-health")
-        except observations.ObservationError:
-            pass
-
     return render(request, "core/system.html", {
         "checks": diagnostic.get("checks", []),
         "diagnostic": diagnostic,
+        "diagnostic_age": observations.age_text(diagnostic.get("age_seconds")),
         "probe_nonce": observations.nonce(request.user.pk, "full-health"),
-        "probe_operation": current,
+        "probe_operation": observations.current_operation("full-health"),
         "releases": releases.current(),
         "version": {
             "version": trellum_portal.__version__, "sha": settings.TRELLUM_VERSION_SHA,
             "build_time": settings.TRELLUM_VERSION_BUILD_TIME, "source_url": source_url(),
             "framework": {"tag": framework_tag(), "meta_schema": meta_schema_version()},
+            "unapplied_migrations": schema_state()[1],
         },
     })
 
 
-def operator_diagnostics_refresh(request):
-    """Explicit admission only; native refresh never executes the probe."""
-    from django.http import HttpResponseNotAllowed
-    from django.shortcuts import redirect
+def _diagnostics_status_url(operation_id):
     from django.urls import reverse
+
+    return reverse("system-diagnostics-status", args=[operation_id])
+
+
+def operator_diagnostics_refresh(request):
+    """Admit one coordinator measurement; the system page posts this by itself."""
+    from django.http import HttpResponseNotAllowed
     from django.db import transaction
     from apps.core import operator_observations as observations
     from apps.core.audit import audit
@@ -179,28 +180,22 @@ def operator_diagnostics_refresh(request):
         return gate
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
-    json_request = "application/json" in request.headers.get("Accept", "")
     try:
         with transaction.atomic():
             entry, created = observations.admit(request.user.pk, "full-health", request.POST.get("request_key", ""))
             if created:
                 audit(request, "operator.diagnostics.refresh", operation_id=entry["id"])
     except observations.ObservationError as exc:
-        if json_request:
-            return JsonResponse({"ok": False, "message": exc.message, "busy": exc.busy}, status=exc.status)
-        from django.contrib import messages
-        messages.error(request, exc.message)
-        return redirect("system")
-    if json_request:
-        response = JsonResponse({"ok": True, **observations.envelope(entry, reverse("system-diagnostics-status", args=[entry["id"]]))}, status=202 if created else 200)
+        response = JsonResponse(observations.refusal(exc, request.user.pk, "full-health", _diagnostics_status_url), status=exc.status)
         response["Cache-Control"] = "no-store"
         return response
-    return redirect(reverse("system") + "?observation=" + entry["id"])
+    response = JsonResponse({"ok": True, **observations.envelope(entry, _diagnostics_status_url(entry["id"]))}, status=202 if created else 200)
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 def operator_diagnostics_status(request, operation_id):
     from django.http import Http404, HttpResponseNotAllowed
-    from django.urls import reverse
     from apps.core import operator_observations as observations
 
     if not request.user.is_authenticated:
@@ -212,8 +207,10 @@ def operator_diagnostics_status(request, operation_id):
     try:
         entry = observations.observation(operation_id, kind="full-health")
     except observations.ObservationError as exc:
-        return JsonResponse({"message": exc.message}, status=exc.status)
-    response = JsonResponse({**observations.envelope(entry, reverse("system-diagnostics-status", args=[operation_id])), "snapshot": observations.snapshot("full-health"),
+        response = JsonResponse(observations.refusal(exc, request.user.pk, "full-health", _diagnostics_status_url), status=exc.status)
+        response["Cache-Control"] = "no-store"
+        return response
+    response = JsonResponse({**observations.envelope(entry, _diagnostics_status_url(operation_id)), "snapshot": observations.snapshot("full-health"),
                              "next_nonce": observations.nonce(request.user.pk, "full-health") if entry["state"] in observations.TERMINAL else None})
     response["Cache-Control"] = "no-store"
     return response

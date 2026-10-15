@@ -34,6 +34,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   Metrics overview is one grid with a browser-side filter, as before.
 - The Metrics comparison workspace retries a failed load by itself.
 - Operators get an "Operator console" entry in the shell sidebar.
+- The System health page and an organization's uploaded-file usage measure on
+  the coordinator by themselves: the page asks for a fresh measurement about
+  every minute (five for uploads), shows "Checked 2 minutes ago", and has no
+  refresh buttons. The operator Fleet, Organizations and organization pages
+  match their earlier layout again.
+- The Operations page lists every report in one capped read with no pager, the
+  Uptime tile and the earlier state chips and filters; Reload Registry keeps its
+  Scheduled and result feedback. The no-JavaScript Operations page is removed.
 
 ## [0.6.0] — 2026-10-13
 

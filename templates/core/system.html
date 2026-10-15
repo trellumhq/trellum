@@ -12,8 +12,8 @@
   <a class="ui-btn ghost" href="{% url 'instance-settings' %}">Instance settings</a>
   {% if user.is_superuser %}<a class="ui-btn ghost" href="/orgs/new">+ New organization</a>{% endif %}
 </header>
-<p class="muted">Last-known coordinator diagnostics. Web-local mounts, permissions
-and configuration remain unverified; run <code>manage.py doctor</code> in the web service to check them.
+<p class="muted">Instance-level view for the operator. Same checks as
+<code>manage.py doctor</code>.
 {% comment %}A dev checkout has no build metadata, and printing
 "unknown@unknown · built unknown" reads like a fault rather than an absence.{% endcomment %}
 Version: <code>{{ version.version }}</code>
@@ -36,13 +36,10 @@ them.{% endcomment %}
 </p>
 {% endif %}
 
-<section class="panel" data-operator-observation data-observation-kind="full-health"{% if probe_operation %} data-observation-url="{% url 'system-diagnostics-status' probe_operation.id %}" data-observation-id="{{ probe_operation.id }}"{% endif %}>
-<p data-observation-status role="status" aria-live="polite">{% if probe_operation %}{{ probe_operation.message }}{% else %}{{ diagnostic.message }}{% endif %}</p>
-<p class="muted" data-observation-age>{% if diagnostic.completed_at %}Observed {{ diagnostic.completed_at }} on coordinator {{ diagnostic.producer_node }} · {{ diagnostic.state }}{% endif %}</p>
-<form method="post" action="{% url 'system-diagnostics-refresh' %}" data-observation-refresh data-settings-form>
-  {% csrf_token %}<input type="hidden" name="request_key" value="{{ probe_nonce }}">
-  <div class="ui-form-actions"><button type="submit" class="ui-btn ghost">Refresh coordinator diagnostics</button><a class="ui-btn ghost" href="{% url 'system' %}">Read latest observation</a></div>
-</form>
+{% comment %}The page never runs the checks itself. It shows the last
+coordinator measurement and static/operator-observations.js asks for a new one
+whenever that is about a minute old, so the table stays current on its own.{% endcomment %}
+<div class="panel" data-operator-observation data-observation-kind="full-health" data-observation-refresh="60" data-observation-done="Checked" data-observation-busy="Checking…"{% if diagnostic.completed_at %} data-observation-at="{{ diagnostic.completed_at }}" data-observation-age="{{ diagnostic.age_seconds }}" data-observation-node="{{ diagnostic.producer_node }}"{% endif %}{% if probe_operation %} data-observation-url="{% url 'system-diagnostics-status' probe_operation.id %}" data-observation-id="{{ probe_operation.id }}"{% endif %}>
 <table class="ui-table" data-mobile-cards>
   <thead><tr><th>Check</th><th>Status</th><th>Detail</th></tr></thead>
   <tbody data-observation-checks>
@@ -52,11 +49,15 @@ them.{% endcomment %}
     <td data-label="Status">{% if c.ok %}<span class="ui-badge ok">ok</span>{% else %}<span class="ui-badge fail">FAIL</span>{% endif %}</td>
     <td data-label="Detail" class="muted">{{ c.detail }}</td>
   </tr>
-  {% empty %}<tr><td colspan="3">Diagnostics are unknown until a coordinator measurement completes.</td></tr>
+  {% empty %}<tr><td colspan="3" class="muted">Running the first check…</td></tr>
   {% endfor %}
   </tbody>
 </table>
-</section>
+<p class="subtle" style="margin:10px 0 0" data-observation-status>{% if diagnostic_age %}Checked {{ diagnostic_age }}{% else %}Checking…{% endif %}</p>
+<form method="post" action="{% url 'system-diagnostics-refresh' %}" data-observation-admission hidden>
+  {% csrf_token %}<input type="hidden" name="request_key" value="{{ probe_nonce }}">
+</form>
+</div>
 
 {% comment %}Present only when the opt-in check has ever succeeded. Off, or a
 feed that never answered, means no section at all -- not an empty one.{% endcomment %}

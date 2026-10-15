@@ -7,32 +7,27 @@
 </header>
 {% include "operator/_nav.html" %}
 
-<form method="get" class="ui-form-row" aria-label="Search organizations">
-  <div class="ui-field"><label for="org-search">Search organizations</label><input class="ui-input" id="org-search" type="search" name="q" maxlength="200" value="{{ q }}"></div>
-  <div class="ui-field"><label for="org-state">Status</label><select class="ui-input" id="org-state" name="state"><option value="">All</option><option value="active"{% if state == 'active' %} selected{% endif %}>Active</option><option value="suspended"{% if state == 'suspended' %} selected{% endif %}>Suspended</option></select></div>
-  <div class="ui-form-actions"><button type="submit" class="ui-btn ghost">Search organizations</button></div>
-</form>
-{% include "operator/_pagination.html" with listing=org_page label="Organizations" %}
 <div class="panel">
-<table class="ui-table" data-mobile-cards>
+<table class="ui-table">
   <thead><tr><th>Slug</th><th>Name</th><th>Studios</th><th>Members</th><th>Building</th><th>Status</th></tr></thead>
   <tbody>
   {% for org in orgs %}
   <tr>
-    <td data-label="Slug"><a href="{% url 'operator-org-detail' org.slug %}"><strong>{{ org.slug }}</strong></a></td>
-    <td data-label="Name">{{ org.name }}</td>
-    <td data-label="Studios">{{ org.studio_count }}</td>
-    <td data-label="Members">{{ org.member_count }}</td>
-    <td data-label="Building">{{ org.active_runs }}</td>
-    <td data-label="Status">
+    <td><a href="{% url 'operator-org-detail' org.slug %}"><strong>{{ org.slug }}</strong></a></td>
+    <td>{{ org.name }}</td>
+    <td>{{ org.studio_count }}</td>
+    <td>{{ org.member_count }}</td>
+    <td>{{ org.active_runs }}</td>
+    <td>
       {% if org.is_active %}<span class="ui-badge ok">active</span>
       {% else %}<span class="ui-badge fail">suspended</span>{% endif %}
     </td>
   </tr>
   {% empty %}
-  <tr><td colspan="6"><div class="ui-empty">{% if org_page.total %}No matching organizations.{% else %}No organizations yet.{% endif %}</div></td></tr>
+  <tr><td colspan="6"><div class="ui-empty">No organizations yet.</div></td></tr>
   {% endfor %}
   </tbody>
 </table>
+{% if orgs_more %}<p class="muted" style="margin:8px 0 0">Showing the first {{ orgs_more.shown }} of {{ orgs_more.total }} organizations.</p>{% endif %}
 </div>
 {% endblock %}

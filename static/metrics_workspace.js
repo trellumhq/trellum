@@ -5,10 +5,17 @@ window.TrellumMetricsWorkspace = { mount: function (root, signal) {
     var status = root.querySelector('[data-workspace-status]');
     var observer = null, pending = null, reader = null, timer = null, epoch = 0, failed = false;
     var resolveReady;
+    // Progress and success are announced to assistive technology only; a
+    // problem is shown on the page.
+    function say(text, quiet) {
+        if (!status) return;
+        status.textContent = text;
+        status.classList.toggle('sr-only', !!quiet);
+    }
     function retry() {
         if (signal.aborted) return;
         failed = false; discardDocument();
-        if (status) status.textContent = 'Loading metrics…';
+        say('Loading metrics…', true);
         var destination = new URL(frame.src, location.href);
         destination.pathname = destination.pathname.replace(/_metrics-workspace-[0-9a-f]{32}-page-[1-9][0-9]*\.html$/, 'index.html');
         destination.searchParams.delete('only'); destination.hash = '';
@@ -25,9 +32,7 @@ window.TrellumMetricsWorkspace = { mount: function (root, signal) {
         if (state === 'failed') { failed = true; discardDocument(); frame.hidden = true; }
         var again = state === 'failed' && retries < RETRY_DELAYS.length && !signal.aborted;
         if (state === 'ready') retries = 0;
-        if (status) {
-            status.textContent = state === 'ready' ? 'Metrics ready.' : state === 'unconfirmed' ? (external ? 'Metrics opened on another origin; chart readiness cannot be confirmed.' : 'Metrics opened; chart readiness cannot be confirmed.') : again ? 'Metrics unavailable; retrying…' : 'Metrics unavailable.';
-        }
+        say(state === 'ready' ? 'Metrics ready.' : state === 'unconfirmed' ? (external ? 'Metrics opened on another origin; chart readiness cannot be confirmed.' : 'Metrics opened; chart readiness cannot be confirmed.') : again ? 'Metrics unavailable; retrying…' : 'Metrics unavailable.', state === 'ready');
         if (again) { clearTimeout(retryTimer); retryTimer = setTimeout(retry, RETRY_DELAYS[retries++]); }
         resolveReady();
     }
@@ -78,7 +83,7 @@ window.TrellumMetricsWorkspace = { mount: function (root, signal) {
         child.addEventListener('pagehide', function() {
             if (current !== epoch || signal.aborted) return;
             discardDocument();
-            if (status) status.textContent = 'Loading metrics…';
+            say('Loading metrics…', true);
             var waiting = epoch;
             timer = setTimeout(function() { if (waiting === epoch && !signal.aborted) finish('failed'); }, 12000);
         }, { signal: reader.signal });
@@ -86,7 +91,7 @@ window.TrellumMetricsWorkspace = { mount: function (root, signal) {
         doc.addEventListener('click', schedule, { signal: reader.signal });
         observer = new ResizeObserver(schedule); observer.observe(doc.body);
         fit();
-        if (status) status.textContent = 'Loading metrics…';
+        say('Loading metrics…', true);
         var deadline = performance.now() + 12000;
         function check() {
             if (signal.aborted || current !== epoch || frame.contentDocument !== doc) return;

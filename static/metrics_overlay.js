@@ -68,9 +68,7 @@ function mountOverlay(root, signal) {
         if (embed) {
             /* Not loading="lazy": the frame is created only when the overlay
                opens, already on screen, and fitFrame waits on its load. */
-            var quality = row.dataset.workspaceQuality;
-            var qualifier = ['verified', 'observed'].includes(quality) ? '<p class="met-modal-note">Indexed source identity: ' + esc(quality) + '.</p>' : '';
-            return qualifier + '<iframe data-workspace-version="' + esc(row.dataset.workspaceVersion || '') + '" src="' + esc(embed) + '" title="'
+            return '<iframe data-workspace-version="' + esc(row.dataset.workspaceVersion || '') + '" src="' + esc(embed) + '" title="'
                 + esc(row.dataset.label) + ' — chart"></iframe>';
         }
         if (!built && !state) {

@@ -32,7 +32,10 @@
 instance. Values below are recorded but not applied — set
 <code>TRELLUM_QUOTAS_ENABLED=true</code> to enforce them.</p>
 {% endif %}
-<div class="panel" data-settings-refresh="quota-usage" data-operator-observation data-observation-kind="upload-usage"{% if usage_operation %} data-observation-url="{% url 'operator-org-usage-status' org.slug usage_operation.id %}" data-observation-id="{{ usage_operation.id }}"{% endif %}>
+{% comment %}Uploaded files are measured on the coordinator, never while this page
+renders. The page asks for a fresh measurement whenever the last one is five
+minutes old and updates the figure itself.{% endcomment %}
+<div class="panel" data-settings-refresh="quota-usage" data-operator-observation data-observation-kind="upload-usage" data-observation-refresh="300" data-observation-done="· measured" data-observation-busy="· measuring…"{% if usage.storage_observation.completed_at %} data-observation-at="{{ usage.storage_observation.completed_at }}" data-observation-age="{{ usage.storage_observation.age_seconds }}"{% endif %}{% if usage_operation %} data-observation-url="{% url 'operator-org-usage-status' org.slug usage_operation.id %}" data-observation-id="{{ usage_operation.id }}"{% endif %}>
 <table class="ui-table dense">
   <thead><tr><th>Resource</th><th>Used</th><th>Limit</th></tr></thead>
   <tbody>
@@ -44,15 +47,12 @@ instance. Values below are recorded but not applied — set
         <td>{% if usage.max_studios %}{{ usage.max_studios }}{% else %}unlimited{% endif %}</td></tr>
     <tr><td>Reports</td><td>{{ usage.reports }}</td>
         <td>{% if usage.max_reports %}{{ usage.max_reports }}{% else %}unlimited{% endif %}</td></tr>
-    <tr><td>Uploaded files</td><td data-observation-value>{% if usage.storage_observation.quality == 'complete' %}{{ usage.storage_observation.bytes|filesizeformat }} (last observed · {{ usage.storage_observation.state }}){% else %}<span class="ui-badge">Unknown</span> <span class="muted">Storage has not been measured.</span>{% endif %}</td>
+    <tr><td>Uploaded files</td><td><span data-observation-value>{% if usage.storage_mb is not None %}{{ usage.storage_mb }} MB{% else %}—{% endif %}</span> <span class="muted" data-observation-status>{% if usage.storage_age %}· measured {{ usage.storage_age }}{% else %}· measuring…{% endif %}</span></td>
         <td>{% if usage.max_storage_mb %}{{ usage.max_storage_mb }} MB{% else %}unlimited{% endif %}</td></tr>
   </tbody>
 </table>
-<p data-observation-status role="status" aria-live="polite">{% if usage_operation %}{{ usage_operation.message }}{% else %}{{ usage.storage_observation.message }}{% endif %}</p>
-<p class="muted" data-observation-age>{% if usage.storage_observation.completed_at %}Observed {{ usage.storage_observation.completed_at }} · shared workspace · reference accounting; files can change after observation.{% endif %}</p>
-<form method="post" action="{% url 'operator-org-usage-refresh' org.slug %}" data-observation-refresh data-settings-form>
+<form method="post" action="{% url 'operator-org-usage-refresh' org.slug %}" data-observation-admission hidden>
   {% csrf_token %}<input type="hidden" name="request_key" value="{{ usage_nonce }}">
-  <div class="ui-form-actions"><button type="submit" class="ui-btn ghost">Measure uploaded files</button><a class="ui-btn ghost" href="{% url 'operator-org-detail' org.slug %}">Read latest observation</a></div>
 </form>
 </div>
 
@@ -102,19 +102,13 @@ instance. Values below are recorded but not applied — set
 </section>
 
 <h2>Studios</h2>
-<form method="get" class="ui-form-row" aria-label="Search studios">
-  {% for name, value in studio_preserved %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
-  <div class="ui-field"><label for="studio-search">Search studios</label><input class="ui-input" id="studio-search" type="search" name="studio_q" maxlength="200" value="{{ studio_q }}"></div>
-  <div class="ui-form-actions"><button type="submit" class="ui-btn ghost">Search studios</button></div>
-</form>
-{% include "operator/_pagination.html" with listing=studio_page label="Studios" %}
 <div class="panel">
-<table class="ui-table dense" data-mobile-cards>
+<table class="ui-table dense">
   <thead><tr><th>Slug</th><th>Name</th><th>Pool</th><th>Reports</th></tr></thead>
   <tbody>
   {% for s in studios %}
-  <tr><td data-label="Slug">{{ s.slug }}</td><td data-label="Name">{{ s.name }}</td>
-      <td data-label="Pool">
+  <tr><td>{{ s.slug }}</td><td>{{ s.name }}</td>
+      <td>
         <form method="post" action="{% url 'operator-studio-pool' org.slug s.slug %}" class="inline">
           {% csrf_token %}
           <select name="pool">
@@ -125,30 +119,25 @@ instance. Values below are recorded but not applied — set
           <button type="submit" class="ui-btn ghost">Move</button>
         </form>
       </td>
-      <td data-label="Reports">{{ s.report_count }}</td></tr>
+      <td>{{ s.report_count }}</td></tr>
   {% empty %}
-  <tr><td colspan="4"><div class="ui-empty">{% if studio_page.total %}No matching studios.{% else %}No studios.{% endif %}</div></td></tr>
+  <tr><td colspan="4"><div class="ui-empty">No studios.</div></td></tr>
   {% endfor %}
   </tbody>
 </table>
+{% if studios_more %}<p class="muted" style="margin:8px 0 0">Showing the first {{ studios_more.shown }} of {{ studios_more.total }} studios.</p>{% endif %}
 </div>
 
 <h2>Members</h2>
-<form method="get" class="ui-form-row" aria-label="Search members">
-  {% for name, value in member_preserved %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
-  <div class="ui-field"><label for="member-search">Search members</label><input class="ui-input" id="member-search" type="search" name="member_q" maxlength="200" value="{{ member_q }}"></div>
-  <div class="ui-form-actions"><button type="submit" class="ui-btn ghost">Search members</button></div>
-</form>
-{% include "operator/_pagination.html" with listing=member_page label="Members" %}
 <div class="panel">
-<table class="ui-table dense" data-mobile-cards>
+<table class="ui-table dense">
   <thead><tr><th>Email</th><th>Role</th><th></th></tr></thead>
   <tbody>
   {% for m in members %}
   <tr>
-    <td data-label="Email">{{ m.user.email }}</td>
-    <td data-label="Role">{{ m.role }}</td>
-    <td data-label="Actions">
+    <td>{{ m.user.email }}</td>
+    <td>{{ m.role }}</td>
+    <td>
       {% if can_impersonate and not m.user.is_operator %}
       <form method="post" action="{% url 'operator-impersonate' org.slug m.user.pk %}" class="inline">
         {% csrf_token %}<button type="submit" class="ui-btn ghost">Act as</button>
@@ -157,23 +146,24 @@ instance. Values below are recorded but not applied — set
     </td>
   </tr>
   {% empty %}
-  <tr><td colspan="3"><div class="ui-empty">{% if member_page.total %}No matching members.{% else %}No members.{% endif %}</div></td></tr>
+  <tr><td colspan="3"><div class="ui-empty">No members.</div></td></tr>
   {% endfor %}
   </tbody>
 </table>
+{% if members_more %}<p class="muted" style="margin:8px 0 0">Showing the first {{ members_more.shown }} of {{ members_more.total }} members.</p>{% endif %}
 </div>
 
 <h2>Recent runs</h2>
 <div class="panel">
-<table class="ui-table dense" data-mobile-cards>
+<table class="ui-table dense">
   <thead><tr><th>When</th><th>Report</th><th>Status</th><th>Peak</th></tr></thead>
   <tbody>
   {% for r in recent_runs %}
   <tr>
-    <td data-label="When" class="muted" style="white-space:nowrap">{{ r.created_at|date:"m-d H:i" }}</td>
-    <td data-label="Report">{{ r.studio.slug }}/{{ r.slug }}</td>
-    <td data-label="Status"><span class="ui-badge {% if r.status == 'success' %}ok{% elif r.status == 'queued' or r.status == 'running' %}info{% else %}fail{% endif %}">{{ r.status }}</span></td>
-    <td data-label="Peak" class="muted">{% if r.peak_memory_mb %}{{ r.peak_memory_mb }} MB{% else %}—{% endif %}</td>
+    <td class="muted" style="white-space:nowrap">{{ r.created_at|date:"m-d H:i" }}</td>
+    <td>{{ r.studio.slug }}/{{ r.slug }}</td>
+    <td><span class="ui-badge {% if r.status == 'success' %}ok{% elif r.status == 'queued' or r.status == 'running' %}info{% else %}fail{% endif %}">{{ r.status }}</span></td>
+    <td class="muted">{% if r.peak_memory_mb %}{{ r.peak_memory_mb }} MB{% else %}—{% endif %}</td>
   </tr>
   {% empty %}
   <tr><td colspan="4"><div class="ui-empty">No runs yet.</div></td></tr>

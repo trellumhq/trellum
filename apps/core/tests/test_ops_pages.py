@@ -42,11 +42,21 @@ def _complete_diagnostics(checks):
 
 
 class TestSystemPage:
-    def test_no_checks_until_a_measurement_completes(self, login, superuser):
-        """C16: a page load never runs checks; it reports the unknown state."""
+    def test_page_load_never_runs_checks(self, login, superuser):
+        """C16: a page load shows the last measurement; the page asks for new ones itself."""
         html = login(superuser).get("/system").content.decode()
-        assert "Diagnostics are unknown until a coordinator measurement completes." in html
+        assert "Running the first check" in html
         assert "SECRET_ENCRYPTION_KEY" not in html
+
+    def test_health_shows_without_buttons_and_in_plain_time(self, login, superuser):
+        _complete_diagnostics([{"label": "database", "ok": True, "detail": "PostgreSQL 16"}])
+        html = login(superuser).get("/system").content.decode()
+        assert "PostgreSQL 16" in html
+        assert "Checked just now" in html
+        assert "Refresh coordinator diagnostics" not in html
+        assert "Read latest observation" not in html
+        # The raw timestamp is data for the page's script, never text to read.
+        assert "Observed" not in html
 
     def test_operator_sees_checks(self, login, superuser):
         _complete_diagnostics([

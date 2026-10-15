@@ -16,30 +16,24 @@
 </div>
 
 <h2>Workers</h2>
-<p class="muted">{{ worker_totals.total }} live workers · {{ worker_totals.runners }} runners · {{ worker_totals.coordinators }} coordinators · {{ worker_totals.running }}/{{ worker_totals.capacity }} builds running · {{ worker_totals.reserved_memory }}/{{ worker_totals.memory_budget }} MB reserved/budgeted</p>
-<form method="get" class="ui-form-row" aria-label="Search workers">
-  <div class="ui-field"><label for="worker-search">Search workers</label><input class="ui-input" id="worker-search" type="search" name="worker_q" maxlength="200" value="{{ worker_q }}"></div>
-  <div class="ui-field"><label for="worker-role">Role</label><select class="ui-input" id="worker-role" name="worker_role"><option value="">All</option>{% for value, label in worker_roles %}<option value="{{ value }}"{% if worker_role == value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
-  <div class="ui-form-actions"><button type="submit" class="ui-btn ghost">Search workers</button></div>
-</form>
-{% include "operator/_pagination.html" with listing=worker_page label="Workers" %}
 <div class="panel">
-<table class="ui-table dense" data-mobile-cards>
+<table class="ui-table dense">
   <thead><tr><th>Worker</th><th>Role</th><th>Running</th><th>Memory</th><th>Last heartbeat</th></tr></thead>
   <tbody>
   {% for w in workers %}
   <tr>
-    <td data-label="Worker">{{ w.worker_id }}</td>
-    <td data-label="Role"><span class="ui-badge">{{ w.get_role_display }}</span></td>
-    <td data-label="Running">{% if w.max_concurrent %}{{ w.running_count }}/{{ w.max_concurrent }}{% else %}—{% endif %}</td>
-    <td data-label="Memory" class="muted">{% if w.memory_budget_mb %}{{ w.reserved_memory_mb }}/{{ w.memory_budget_mb }} MB{% else %}unbounded{% endif %}</td>
-    <td data-label="Last heartbeat" class="muted">{{ w.last_beat_at|date:"Y-m-d H:i:s" }}</td>
+    <td>{{ w.worker_id }}</td>
+    <td><span class="ui-badge">{{ w.get_role_display }}</span></td>
+    <td>{% if w.max_concurrent %}{{ w.running_count }}/{{ w.max_concurrent }}{% else %}—{% endif %}</td>
+    <td class="muted">{% if w.memory_budget_mb %}{{ w.reserved_memory_mb }}/{{ w.memory_budget_mb }} MB{% else %}unbounded{% endif %}</td>
+    <td class="muted">{{ w.last_beat_at|date:"Y-m-d H:i:s" }}</td>
   </tr>
   {% empty %}
-  <tr><td colspan="5"><div class="ui-empty">{% if worker_page.total %}No matching workers.{% else %}No live workers — builds will queue until one starts.{% endif %}</div></td></tr>
+  <tr><td colspan="5"><div class="ui-empty">No live workers — builds will queue until one starts.</div></td></tr>
   {% endfor %}
   </tbody>
 </table>
+{% if workers_more %}<p class="muted" style="margin:8px 0 0">Showing the first {{ workers_more.shown }} of {{ workers_more.total }} live workers.</p>{% endif %}
 </div>
 
 <h2>Last 24 hours</h2>

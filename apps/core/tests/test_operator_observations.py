@@ -96,7 +96,7 @@ def test_reads_never_execute_checks_or_local_io(operator_probe, monkeypatch):
     monkeypatch.setattr(health.shutil, "disk_usage", forbidden)
     response = client.get("/system")
     assert response.status_code == 200
-    assert b"coordinator" in response.content and b"unverified" in response.content
+    assert b"Running the first check" in response.content
     assert client.get("/api/system/health").json()["status"] == "unknown"
     assert not OpsState.objects.filter(key=observations.SLOT).exists()
 
@@ -161,3 +161,67 @@ def test_csrf_and_borrowed_sessions_cannot_admit_or_read(operator_probe):
     session.save()
     assert client.post("/api/system/diagnostics/refresh", {"request_key": key}).status_code == 404
     assert client.get(f"/api/system/diagnostics/{entry['id']}").status_code == 404
+
+
+def _post(client, actor, kind="full-health", key=None):
+    return client.post("/api/system/diagnostics/refresh",
+                       {"request_key": key or observations.nonce(actor.pk, kind)}, HTTP_ACCEPT="application/json")
+
+
+def test_refusals_let_the_page_carry_on_by_itself(operator_probe, settings):
+    """Another measurement or the 30 s gap is a wait, never an error needing a click."""
+    settings.DEBUG = True
+    actor, client, node = operator_probe
+    accepted = _post(client, actor)
+    assert accepted.status_code == 202
+    operation_id = accepted.json()["action"]["id"]
+    # One in flight: the refusal names the measurement to watch.
+    busy = _post(client, actor)
+    assert busy.status_code == 409
+    assert busy.json()["busy"]["status_url"] == accepted.json()["action"]["status_url"]
+    assert busy.json()["next_nonce"]
+    claimed = observations.claim(node, "epoch")
+    assert observations.finish(claimed, result=completed(claimed))
+    # Thirty seconds between admissions: how long to wait, what is known, and a fresh key.
+    gap = _post(client, actor)
+    assert gap.status_code == 429
+    body = gap.json()
+    assert 1 <= body["retry_after"] <= 31
+    assert body["snapshot"]["id"] == operation_id and body["snapshot"]["age_seconds"] < 30
+    row = OpsState.objects.get(key=observations.SLOT)
+    row.payload["last_admitted"] = (timezone.now() - timedelta(seconds=40)).isoformat()
+    row.save(update_fields=["payload"])
+    assert _post(client, actor, key=body["next_nonce"]).status_code == 202
+    # An invalid or expired key still hands back a usable one.
+    bad = _post(client, actor, key="expired")
+    assert bad.status_code == 400 and bad.json()["next_nonce"]
+
+
+def test_status_of_a_retired_measurement_still_returns_a_key(operator_probe):
+    actor, client, node = operator_probe
+    gone = client.get("/api/system/diagnostics/00000000-0000-4000-8000-000000000000")
+    assert gone.status_code == 404
+    assert gone.json()["next_nonce"]
+
+
+def test_snapshot_age_and_relative_text(operator_probe):
+    actor, client, node = operator_probe
+    OpsState.record("operator.health", completed_at=(timezone.now() - timedelta(seconds=130)).isoformat(),
+                    checks=[], producer_node="coordinator-1")
+    assert 129 <= observations.snapshot("full-health")["age_seconds"] <= 135
+    assert observations.age_text(3) == "just now"
+    assert observations.age_text(42) == "42 seconds ago"
+    assert observations.age_text(60) == "1 minute ago"
+    assert observations.age_text(130) == "2 minutes ago"
+    assert observations.age_text(7300) == "2 hours ago"
+    assert observations.age_text(None) == ""
+
+
+def test_check_detail_keeps_the_explanation_without_url_secrets():
+    from apps.core.management.commands.operator_probe import _detail
+    assert _detail("PostgreSQL 16.15 on x86_64") == "PostgreSQL 16.15 on x86_64"
+    assert _detail("no live worker heartbeat (is the worker container running?)").endswith("running?)")
+    assert _detail("cannot reach https://user:secret@bucket.example/path?X-Amz-Signature=abc now") == \
+        "cannot reach https://bucket.example/path now"
+    assert _detail("first\nsecond\x00third") == "first second third"
+    assert len(_detail("x" * 5000)) == 400
