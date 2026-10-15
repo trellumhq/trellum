@@ -51,7 +51,7 @@ function mountOverlay(root, signal) {
         }
         if (row.dataset.chartState && !['ready', 'not-monitored'].includes(row.dataset.chartState)) {
             return '<p class="met-modal-note">Chart availability is ' + esc(row.dataset.chartState)
-                + '. Definitions remain available; retry report usage from the catalog.</p>';
+                + '. The definition stays available.</p>';
         }
         var embed = row.dataset.embed;
         if (embed) {
@@ -313,12 +313,11 @@ function mountOverlay(root, signal) {
  * Its own IIFE, not part of the overlay's: a page that somehow had no modal
  * would still have cards worth filtering, and the overlay bails early.
  *
- * ponytail: filters the cards already rendered, which is right at the ~13 a
- * studio has today and stays right into the low hundreds -- it is one string
- * compare per card per keystroke over markup the server already sent. Past a
- * few hundred, stop shipping every card: take `?q=` in metrics_page, filter
- * the MetricDefinition queryset there and paginate, and this becomes a form
- * submit with the same box.
+ * Filters the cards already rendered: one string compare per card per
+ * keystroke over markup the server already sent, instant at the ~13 a studio
+ * has today and at the several hundred the page renders in one go. Only a
+ * studio with more definitions than one page holds (data-server-search) also
+ * asks the server, after a pause in typing, for the matching definitions.
  */
 function mountFilter(root, signal) {
     'use strict';
@@ -327,12 +326,7 @@ function mountFilter(root, signal) {
     var count = root.querySelector("#" + 'metCount');
     var empty = root.querySelector("#" + 'metEmpty');
     if (!input || !count || !empty) return;
-    if (input.form && input.form.hasAttribute('data-metric-search')) {
-        listen(input, 'keydown', function (ev) {
-            if (ev.key === 'Escape') { ev.stopPropagation(); input.value = ''; }
-        });
-        return; // Global search and pagination use the native GET contract.
-    }
+    var serverSearch = input.hasAttribute('data-server-search'), pause = null;
 
     var cards = Array.prototype.slice.call(
         root.querySelectorAll('.met-card[data-search]')
@@ -360,6 +354,25 @@ function mountFilter(root, signal) {
         /* Silent until there is something to say: announcing "13 of 13" on an
            empty box is noise, and the page header already carries the total. */
         count.textContent = q ? shown + ' of ' + cards.length : '';
+        if (serverSearch) askServer(input.value.trim());
+    }
+
+    /* Past one page of definitions the cards on screen are not all of them:
+       after a ~400 ms pause the page is reloaded with `?q=`, with the box
+       focused and the caret kept at the end of what was typed. */
+    function askServer(query) {
+        window.clearTimeout(pause);
+        var url = new URL(location.href);
+        if (query === (url.searchParams.get('q') || '')) return;
+        pause = window.setTimeout(function () {
+            if (query) url.searchParams.set('q', query); else url.searchParams.delete('q');
+            url.searchParams.delete('page');
+            location.assign(url.href);
+        }, 400);
+    }
+    if (serverSearch) {
+        signal.addEventListener('abort', function () { window.clearTimeout(pause); }, { once: true });
+        if (input.value) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
     }
 
     listen(input, 'input', apply);

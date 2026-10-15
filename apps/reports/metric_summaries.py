@@ -21,6 +21,9 @@ from .models import MetricCatalogState, MetricDefinition, Report, ReportMetricCl
 # window, not a worker convergence guarantee: large or slow catalogs may be
 # partial while reconciliation progresses. GET requests never backfill.
 SOURCE_FRESH_SECONDS = 300
+# Claiming reports listed per metric in one summary; the true total is always
+# returned beside them and the rest are on the metric's claims page.
+MAX_CLAIM_PREVIEWS = 6
 MAX_DATABASE_ID = 2**63 - 1
 
 
@@ -99,14 +102,14 @@ def metrics_summary(request, org_slug, studio_slug):
                  "source_summary__workspace_version", "spark_rows").first()
         claims = _claims(studio).filter(metric_name__in=names)
         # Compute full counts before rank filtering, while returning at most
-        # three rows per metric, including when a metric has thousands of claims.
+        # MAX_CLAIM_PREVIEWS rows per metric, including when a metric has thousands of claims.
         previews = list(claims.select_related("summary__report__studio__org").annotate(
             claim_total=Window(Count("pk"), partition_by=[F("metric_name")]),
             generated_total=Window(Count("pk", filter=Q(summary__report_id=generated["pk"] if generated else None)),
                                    partition_by=[F("metric_name")]),
             preview_rank=Window(RowNumber(), partition_by=[F("metric_name")],
                                 order_by=[F("summary__report__name").asc(), F("summary__report_id").asc()])
-                        ).filter(preview_rank__lte=3).order_by("metric_name", "preview_rank"))
+                        ).filter(preview_rank__lte=MAX_CLAIM_PREVIEWS).order_by("metric_name", "preview_rank"))
         grouped, counts, generated_claims = {}, {}, set()
         for claim in previews:
             grouped.setdefault(claim.metric_name, []).append(_claim_json(claim, names[claim.metric_name]))

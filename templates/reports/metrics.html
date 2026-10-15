@@ -19,10 +19,6 @@
 /* Filter. One row above the grid: the box, and what it left standing. The
    count is a live region rather than a heading, so a screen reader hears the
    result of typing without the input losing focus. */
-[data-metric-summary] { display:grid; grid-template-rows:64px 52px; gap:8px; margin-bottom:12px; }
-[data-summary-status] { margin:0; overflow:auto; }
-.met-summary-actions { overflow:auto; }
-[data-metric-summary] [hidden] { display:none; }
 .met-filter { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:0 0 14px; }
 /* By id, for the same reason .met-open is: ui.css gives every input in
    body.mgmt `width:100%` at a specificity no page-local class selector can
@@ -40,8 +36,6 @@
   background:var(--bg-card); border:1px solid var(--border); border-radius:var(--r-lg);
   cursor:pointer; transition:border-color var(--speed), background-color var(--speed);
 }
-.met-card .ui-mono-pill { white-space:normal; overflow-wrap:anywhere; }
-@media (max-width:767px) { body.mgmt main .met-card .met-open { display:inline-block; min-height:44px; } }
 .met-card:hover { border-color:var(--accent); background:var(--bg-hover); }
 .met-card:has(.met-open:focus-visible) { border-color:var(--accent); }
 
@@ -51,12 +45,12 @@
    The `body.mgmt main` prefix is only there to outweigh ui.css's neutral
    <button> treatment, which would otherwise draw the name as a small boxed
    control -- the opposite of the one thing on the card that is not a box. */
-.met-name { overflow-wrap:anywhere; margin:0; font-size:var(--fs-lg); font-weight:650; line-height:1.3; color:var(--text); }
+.met-name { margin:0; font-size:var(--fs-lg); font-weight:650; line-height:1.3; color:var(--text); }
 body.mgmt main .met-card .met-open {
   all:unset; cursor:pointer; font:inherit; color:inherit; display:inline;
 }
 body.mgmt main .met-card .met-open:focus-visible { outline:2px solid var(--accent); outline-offset:3px; border-radius:var(--r-sm); }
-.met-id { overflow-wrap:anywhere; margin-top:3px; font-family:var(--mono); font-size:var(--fs-sm); color:var(--text3); }
+.met-id { margin-top:3px; font-family:var(--mono); font-size:var(--fs-sm); color:var(--text3); }
 /* The trend, at a glance. Under the identifier rather than beside the name:
    a 320px card has no width to spare next to a label plus a mono id line, and
    the sparkline reads as part of who this metric is, not as a third fact.
@@ -64,9 +58,7 @@ body.mgmt main .met-card .met-open:focus-visible { outline:2px solid var(--accen
    real chart is one click away in the overlay. aria-hidden for the same
    reason: there is no value here a screen reader could usefully read out.
    Accent-coloured through currentColor, so it follows every theme. */
-.met-spark-slot { display:flow-root; height:45px; }
-.met-card [data-metric-usage] { height:150px; overflow:auto; overflow-wrap:anywhere; }
-.met-card [data-metric-usage]:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+.met-spark-slot { display:flow-root; }
 .met-spark { display:block; margin-top:9px; max-width:100%; color:var(--accent); }
 
 /* What it means. */
@@ -171,7 +163,7 @@ body.mgmt main .met-modal.met-compact .met-modal-head h2 { font-size:13px; }
     {% if defined_count %}
     <p class="muted page-sub">
       Defined in <code>metrics.yaml</code>{% if synced_at %} · synced {{ synced_at|timesince }} ago{% endif %} ·
-      <b>{{ defined_count }} defined{% if metrics_section == "comparison" %}, {{ claimed_count }} claimed by report{{ claimed_count|pluralize }}{% endif %}</b>
+      <b>{{ defined_count }} defined, {{ claimed_count }} claimed by report{{ claimed_count|pluralize }}</b>
     </p>
     {% endif %}
   </div>
@@ -222,24 +214,15 @@ data-search is built from exactly the fields worth matching -- name,
 identifier, description, tags, owner -- rather than the card's own
 textContent, which would also match the claims zone and make "current" a
 query that hits everything.{% endcomment %}
-<form class="met-filter" method="get" data-metric-search>
-  <label class="sr-only" for="metSearch">Search all metrics</label>
-  <input type="search" id="metSearch" name="q" value="{{ metric_query }}" class="ui-input" autocomplete="off" spellcheck="false"
-         placeholder="Search all metrics…">
-  <button type="submit" class="ui-btn ghost">Search metrics</button>
-  <p class="met-count" id="metCount" role="status" aria-live="polite">{{ matching_count }} matching definitions</p>
-</form>
-<div data-metric-summary data-url="{{ summary_url }}" data-revision="{{ definition_revision }}">
-  <p role="status" aria-live="polite" tabindex="0" data-summary-status>{% if definition_changed %}Definitions changed during loading. Reload this page.{% else %}Report usage is loading. Definitions are ready.{% endif %}</p>
-  <div class="met-summary-actions" role="group" aria-label="Report usage actions">
-  <button type="button" class="ui-btn ghost" data-summary-retry hidden>Retry report usage</button>
-  <a class="ui-btn ghost" data-summary-reload href="{% url 'studio-metrics' org.slug studio.slug %}?q={{ metric_query|urlencode }}&amp;page={{ metric_page.number }}"{% if not definition_changed %} hidden{% endif %}>Reload definitions</a>
-  </div>
+<div class="met-filter">
+  <label class="sr-only" for="metSearch">Filter metrics</label>
+  <input type="search" id="metSearch" class="ui-input" autocomplete="off" spellcheck="false"
+         placeholder="Filter metrics…" value="{{ metric_query }}"{% if server_search %} data-server-search{% endif %}>
+  <p class="met-count" id="metCount" role="status" aria-live="polite"></p>
 </div>
-<noscript><p>Definitions are ready. Open Indexed claims to read report usage without JavaScript.</p></noscript>
-<div class="met-grid">
+<div class="met-grid" data-summary-url="{{ summary_url }}" data-revision="{{ definition_revision }}">
   {% for m in metrics %}
-  <div class="met-card" data-metric="{{ m.row.name }}" data-definition-id="{{ m.row.pk }}" data-chart-state="unknown"
+  <div class="met-card" data-metric="{{ m.row.name }}" data-definition-id="{{ m.row.pk }}" data-version="{{ m.row.version }}" data-chart-state="unknown"
        data-search="{{ m.row.label|default:m.row.name }} {{ m.row.name }} {{ m.row.description }} {{ m.row.tags|join:" " }} {{ m.row.owner }}"
        data-label="{{ m.row.label|default:m.row.name }}"
        data-embed="{{ m.embed_url }}" data-chart="{{ m.chart_url }}" data-overview="{{ m.overview_url }}"
@@ -272,16 +255,13 @@ query that hits everything.{% endcomment %}
       {% endif %}
       {% if m.row.owner %}<div class="met-owner"><b>Owner</b><span>{{ m.row.owner }}</span></div>{% endif %}
     </div>
-    <div class="met-usage met-fact" data-metric-usage tabindex="0" role="group" aria-label="Report usage for {{ m.row.label|default:m.row.name }}">Report usage pending. <a href="{{ m.details_url }}">Indexed claims →</a></div>
+    {% comment %}Filled in by console-metrics-controller.js from the bounded usage read, in the same words and shapes this block has always used.{% endcomment %}
+    <div class="met-usage met-fact" data-metric-usage data-claims-url="{{ m.details_url }}"></div>
   </div>
   {% endfor %}
 </div>
-<div class="ui-empty" id="metEmpty"{% if matching_count %} hidden{% endif %}>No metric matches that search.</div>
-<nav aria-label="Metric definition pages" class="met-filter">
-  {% if metric_page.has_previous %}<a class="ui-btn ghost" href="?q={{ metric_query|urlencode }}&amp;page={{ metric_page.previous_page_number }}">Previous</a>{% endif %}
-  <span>Page {{ metric_page.number }} of {{ metric_page.paginator.num_pages }}</span>
-  {% if metric_page.has_next %}<a class="ui-btn ghost" href="?q={{ metric_query|urlencode }}&amp;page={{ metric_page.next_page_number }}">Next</a>{% endif %}
-</nav>
+<div class="ui-empty" id="metEmpty"{% if matching_count %} hidden{% endif %}>No metric matches that filter.</div>
+{% include "_pagination.html" with page=metric_page %}
 <div class="met-foot">Read-only — the source of truth is <code>metrics.yaml</code> in this studio's repository; changes arrive on the next sync.
   {% if repo_url %}<a href="{{ repo_url }}" rel="noopener">Edit via pull request ↗</a>{% else %}Edit via pull request.{% endif %}</div>
 </section>

@@ -4,7 +4,8 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from apps.core import roles
-from apps.reports.metrics_catalog import metric_definition_page
+from apps.reports.metric_summaries import MAX_CLAIM_PREVIEWS
+from apps.reports.metrics_catalog import METRIC_PAGE_SIZE, metric_definition_page
 from apps.reports.models import MetricCatalogState, MetricDefinition, Report, ReportSourceSummary, ReportMetricClaim, ReportMetricPreview
 
 pytestmark = pytest.mark.django_db
@@ -42,19 +43,39 @@ def test_primary_global_search_and_bound(catalog):
     studio, client, rows = catalog
     with CaptureQueriesContext(connection) as captured:
         page = metric_definition_page(studio)
-        assert len(page["metrics"]) == 50 and page["defined_count"] == 2000
-    assert len(captured) == 4
+        assert len(page["metrics"]) == METRIC_PAGE_SIZE == 500 and page["defined_count"] == 2000
+        assert page["claimed_count"] == 0 and page["server_search"]
+    assert len(captured) == 5
     for query in ("metric_1999", "Metric 1999", "last-description", "last-owner", "last-tag"):
         result = metric_definition_page(studio, query)
         assert result["matching_count"] == 1 and result["metrics"][0]["row"].pk == rows[-1].pk
     response = client.get(_url(studio) + "/metrics", {"page": 40})
     assert response.status_code == 200
     html = response.content.decode()
-    assert html.count('class="met-card"') == 50
+    assert html.count('class="met-card"') == 500
     assert "metric_1999" in html and "unused" not in html and "no reports claim" not in html
-    assert '<iframe' not in html and 'method="get" data-metric-search' in html
+    # Past one page: main's pager, and a search the server answers. No search button, no count line.
+    assert '<iframe' not in html and 'data-server-search' in html and 'class="ui-pager"' in html
+    assert "1501–2000 of 2000" in html
+    assert "Search metrics" not in html and "matching definitions" not in html
     fragment = client.get(_url(studio) + "/metrics", {"q": "last-owner"}, HTTP_X_TRELLUM_NAVIGATION="1")
     assert fragment.json()["html"].count('class="met-card"') == 1
+
+
+def test_one_page_catalog_is_all_client_side(studio, member, grant_studio, login):
+    """Up to a page of definitions: every card, the claimed count, no pager and no server search."""
+    grant_studio(member, studio, roles.VIEWER)
+    MetricCatalogState.objects.create(studio=studio, definition_revision=1)
+    names = ["alpha", "beta", "gamma"]
+    MetricDefinition.objects.bulk_create([MetricDefinition(studio=studio, name=n, label=n.title()) for n in names])
+    source = _source(studio)
+    ReportMetricClaim.objects.bulk_create([ReportMetricClaim(summary=source, metric_name=n) for n in names[:2]])
+    html = login(member).get(_url(studio) + "/metrics").content.decode()
+    assert html.count('class="met-card"') == 3
+    assert "3 defined, 2 claimed by reports" in " ".join(html.split())
+    assert 'placeholder="Filter metrics…"' in html and "data-server-search" not in html
+    for gone in ("ui-pager", "Search metrics", "matching definitions", "Retry", "partial", "data-metric-summary"):
+        assert gone not in html
 
 
 def test_complete_counts_bounded_previews_and_points(catalog):
@@ -69,7 +90,7 @@ def test_complete_counts_bounded_previews_and_points(catalog):
     assert response.status_code == 200, response.content
     data = response.json()
     assert data["state"] == "ready" and len(data["metrics"]) == 50
-    assert all(item["claim_count"] == 201 and len(item["claims"]) == 3 and len(item["spark"].split()) == 60 for item in data["metrics"])
+    assert all(item["claim_count"] == 201 and len(item["claims"]) == MAX_CLAIM_PREVIEWS and len(item["spark"].split()) == 60 for item in data["metrics"])
     assert len(response.content) <= 128 * 1024
     details = client.get(data["metrics"][0]["details_url"], {"definition_revision": 7, "page": 5})
     assert details.status_code == 200 and b"report-0199" in details.content

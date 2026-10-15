@@ -277,7 +277,9 @@ class TestMetricsPageView:
         grant_studio(member, studio_tree, roles.VIEWER)
         client = login(member)
         resp = client.get(self._url(studio_tree))
-        assert "Report usage pending" in resp.content.decode()
+        # The page ships the definition; the bounded usage read fills the block in
+        # (test_metrics_overview_browser.py asserts what that reads like).
+        assert "Gross Revenue" in resp.content.decode()
         data = _indexed_summary(client, studio_tree)
         assert data["state"] == "ready"
         assert data["metrics"][0]["claim_count"] == 0 and data["metrics"][0]["count_complete"]
@@ -306,8 +308,7 @@ class TestMetricsPageView:
 
         client = login(member)
         resp = client.get(self._url(studio_tree))
-        body = resp.content.decode()
-        assert "Report usage pending" in body
+        assert "Gross Revenue" in resp.content.decode()
         data = _indexed_summary(client, studio_tree)
         claim = data["metrics"][0]["claims"][0]
         assert claim["current"] is False and claim["claimed_version"] == 1

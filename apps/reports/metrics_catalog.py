@@ -1,10 +1,12 @@
-"""Paged Metrics definitions and the existing comparison projection.
+"""Bounded Metrics definitions and the existing comparison projection.
 
-Overview renders at most 50 definitions from SQL. Report usage and generated
-sparkline projections load through ``metric_summaries`` from worker-produced
-indexes; neither Overview request reads artifacts. The legacy comparison
-projection below retains its own build-read behavior. Pure sparkline routines
-also support worker publication of bounded previews.
+Overview renders up to ``METRIC_PAGE_SIZE`` definitions from SQL (every card of
+a realistic studio, filtered in the browser; a larger studio pages and searches
+on the server). Report usage and generated sparkline projections load through
+``metric_summaries`` from worker-produced indexes; neither Overview request
+reads artifacts. The legacy comparison projection below retains its own
+build-read behavior. Pure sparkline routines also support worker publication of
+bounded previews.
 """
 from __future__ import annotations
 
@@ -394,27 +396,38 @@ def studio_metrics_overview(studio) -> dict:
     return payload
 
 
+#: Definitions rendered per page. A studio up to this size shows every card at
+#: once and filters them in the browser; only a larger one pages and searches
+#: on the server.
+METRIC_PAGE_SIZE = 500
+
+
 def metric_definition_page(studio, query="", page=1):
     """Bounded primary catalog. Definitions never require artifact reads."""
     from django.core.paginator import Paginator
     from django.db.models import Q, TextField, Count
     from django.db.models.functions import Cast
+    from apps.reports.metric_summaries import _claims
     from apps.reports.models import MetricCatalogState
 
     revision = MetricCatalogState.objects.filter(studio=studio).values_list(
         "definition_revision", flat=True).first() or 0
-    definitions = MetricDefinition.objects.filter(studio=studio, present_in_scan=True)
+    everything = MetricDefinition.objects.filter(studio=studio)
+    present = Q(present_in_scan=True)
     match = Q()
     if query:
-        definitions = definitions.annotate(search_tags=Cast("tags", TextField()))
+        everything = everything.annotate(search_tags=Cast("tags", TextField()))
         match = (Q(name__icontains=query) | Q(label__icontains=query) |
                  Q(description__icontains=query) | Q(owner__icontains=query) |
                  Q(search_tags__icontains=query))
-    statistics = definitions.aggregate(
-        defined_count=Count("pk"), matching_count=Count("pk", filter=match),
+    # "synced" is the studio's last scan, whether or not a retired definition
+    # was still on file, like the catalog has always said it.
+    statistics = everything.aggregate(
+        defined_count=Count("pk", filter=present), matching_count=Count("pk", filter=present & match),
         synced_at=Max("last_scanned_at"), repo_url=Max("studio__repo__repo_url"))
     defined_count = statistics["defined_count"]
-    pager = Paginator(definitions.filter(match).order_by("name", "pk"), 50)
+    definitions = everything.filter(present)
+    pager = Paginator(definitions.filter(match).order_by("name", "pk"), METRIC_PAGE_SIZE)
     pager.count = statistics["matching_count"]  # Reuse the exact filtered count already read.
     selected = pager.get_page(page)
     metrics = [{"row": row, "spec": row.spec_text(),
@@ -422,9 +435,13 @@ def metric_definition_page(studio, query="", page=1):
                                          "not present in the latest indexed Metrics build"), "details_url":
                 reverse("studio-metric-claims", args=[studio.org.slug, studio.slug, row.pk]) +
                 f"?definition_revision={revision}"} for row in selected]
+    # How many definitions some report claims: one DISTINCT over the claim index.
+    claimed_count = _claims(studio).filter(metric_name__in=MetricDefinition.objects.filter(
+        studio=studio, present_in_scan=True).values("name")).values("metric_name").distinct().count()
     current_revision = MetricCatalogState.objects.filter(studio=studio).values_list(
         "definition_revision", flat=True).first() or 0
-    return {"metrics": metrics, "defined_count": defined_count,
+    return {"metrics": metrics, "defined_count": defined_count, "claimed_count": claimed_count,
+            "server_search": defined_count > METRIC_PAGE_SIZE,
             "matching_count": pager.count, "metric_page": selected, "synced_at": statistics["synced_at"], "repo_url": statistics["repo_url"] or "",
             "definition_revision": revision, "definition_changed": revision != current_revision,
             "metric_query": query}
