@@ -129,6 +129,18 @@ def test_unavailable_files_never_become_quiet_or_follow_symlinks(live_files, des
     assert descriptors[2] == []
 
 
+def test_symlinked_data_directory_is_resolved_once(live_files, descriptors, settings, tmp_path):
+    run, directory = live_files
+    (directory / 'stdout.log').write_bytes(b'out')
+    link = tmp_path / 'data-link'
+    link.symlink_to(settings.DATA_DIR, target_is_directory=True)
+    settings.DATA_DIR = link
+    run['log_dir'] = str(link / 'tmp' / 'runs' / directory.name)
+    texts, originals, truncated = logs._live_tails(run)
+    assert texts == ['out', ''] and originals == [3, 0]
+    assert not descriptors[0] and descriptors[1][0] <= 2
+
+
 def test_replacement_between_stat_and_open_is_rejected_without_read(live_files, descriptors, monkeypatch):
     run, directory = live_files
     original = os.open

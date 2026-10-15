@@ -175,9 +175,15 @@ def _file_identity(info):
 def _open_directory(run):
     # executor.live_log_dir(run.id) is DATA_DIR/tmp/runs/<UUID>. Derive its
     # exact layout without calling executor._tmp_root(), which mkdirs on read.
-    anchor = Path(os.path.abspath(settings.DATA_DIR))
-    expected = Path(settings.DATA_DIR) / 'tmp' / 'runs' / str(run['id'])
-    if run['log_dir'] != str(expected):
+    # A data directory that is itself a symlink (a mounted volume) is part of
+    # the deployment, so the anchor is resolved once. Every component below it
+    # is still opened without following symlinks.
+    layout = ('tmp', 'runs', str(run['id']))
+    anchor = Path(os.path.realpath(settings.DATA_DIR))
+    expected = {str(Path(settings.DATA_DIR).joinpath(*layout)),
+                str(Path(os.path.abspath(settings.DATA_DIR)).joinpath(*layout)),
+                str(anchor.joinpath(*layout))}
+    if run['log_dir'] not in expected:
         raise _Unavailable
     if not all(hasattr(os, flag) for flag in ('O_NOFOLLOW', 'O_DIRECTORY', 'O_NONBLOCK')) or os.open not in os.supports_dir_fd:
         raise _Unavailable
@@ -187,7 +193,7 @@ def _open_directory(run):
     try:
         descriptor = os.open(anchor, flags)
         identities.append(_file_identity(os.fstat(descriptor)))
-        for part in ('tmp', 'runs', str(run['id'])):
+        for part in layout:
             child = os.open(part, flags, dir_fd=descriptor)
             os.close(descriptor)
             descriptor = child
