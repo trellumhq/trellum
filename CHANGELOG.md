@@ -59,6 +59,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - List search boxes (members, groups, studios, invitations, data sources) and
   the Server logs filters apply by themselves: selects at once, typing after a
   short pause. The Search and Apply filters buttons are gone.
+- Opening the live log of a build that has just been requested shows an empty
+  "waiting" state instead of a 404.
 - Operators get an "Operator console" entry in the shell sidebar.
 - The System health page and an organization's uploaded-file usage measure on
   the coordinator by themselves, only while the page is open: the page asks for

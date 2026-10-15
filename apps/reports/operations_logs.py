@@ -59,6 +59,10 @@ class _Unavailable(Exception):
     pass
 
 
+class _Waiting(Exception):
+    """No live run yet for a build that is starting."""
+
+
 def _uuid(value):
     if isinstance(value, UUID):
         return value
@@ -90,6 +94,10 @@ def _select(request, slug, mode, run_id):
         runs = runs.filter(pk=identity)
     run = runs.order_by('-created_at', '-pk').values(*RUN_FIELDS).first()
     if run is None:
+        if mode == 'live' and identity is None:
+            # A build that was just requested is not running yet: that is a
+            # state to wait in, not a missing log.
+            raise _Waiting
         raise Http404('Log unavailable')
     return run
 
@@ -272,7 +280,12 @@ def _persisted_tails(run):
 
 def operations_log_payload(request, slug, *, mode='last', run_id=None):
     """Bound one explicitly requested authorized live or persisted terminal."""
-    run = _select(request, slug, mode, run_id)
+    try:
+        run = _select(request, slug, mode, run_id)
+    except _Waiting:
+        return dict(version=1, state='waiting', mode='live', run=None, observed_at=timezone.now(),
+                    authority='live-local-tail', availability='waiting', message='Waiting for the build to start.',
+                    stdout='', stderr='', streams=None)
     payload = dict(version=1, state='ready', mode=mode, run=_public_run(run),
                    observed_at=timezone.now(), authority='live-local-tail' if mode == 'live' else 'persisted-db-tail')
     try:

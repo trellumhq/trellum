@@ -76,6 +76,8 @@ function mapSource(row) {
 }
 
 function logText(payload) {
+    // A build that is starting has no live output yet: not an error, not finished.
+    if (payload && payload.state === 'waiting') return { text: '(waiting for output...)', quiet: true };
     if (!payload || payload.state !== 'ready') {
         return { text: (payload && payload.message) || 'No log available.', unavailable: true };
     }

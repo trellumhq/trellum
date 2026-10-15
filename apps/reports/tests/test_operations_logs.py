@@ -389,6 +389,26 @@ def test_live_quiet_differs_from_unavailable_and_persisted_fallback(org_admin, o
 
 
 @pytest.mark.django_db
+def test_live_log_of_a_build_that_is_starting_is_a_waiting_state_not_a_404(org_admin, org, studio, client, login):
+    postgres()
+    report = Report.objects.create(studio=studio, slug='starting')
+    request = request_for(org_admin, org, studio)
+    run_for(report, status=Run.QUEUED)  # requested, not yet picked up
+    waiting = logs.operations_log_payload(request, report.slug, mode='live')
+    assert waiting['state'] == 'waiting' and waiting['stdout'] == waiting['stderr'] == '' and waiting['run'] is None
+    # Over HTTP it is an ordinary 200, so nothing reaches the browser console.
+    response = login(org_admin).get(f'/s/{org.slug}/{studio.slug}/api/operations/reports/{report.slug}/log?mode=live')
+    assert response.status_code == 200 and response.json()['state'] == 'waiting'
+    # Anything else stays a 404: an unknown run, a finished-only history in last mode, an absent report.
+    with pytest.raises(Http404):
+        logs.operations_log_payload(request, report.slug, mode='live', run_id=str(uuid4()))
+    with pytest.raises(Http404):
+        logs.operations_log_payload(request, report.slug, mode='last')
+    with pytest.raises(Http404):
+        logs.operations_log_payload(request, 'no-such-report', mode='live')
+
+
+@pytest.mark.django_db
 def test_complete_persisted_stream_is_exact_bounded_single_pass_and_has_no_disk_authority(org_admin, org, studio, monkeypatch):
     postgres()
     report = Report.objects.create(studio=studio, slug='download')
