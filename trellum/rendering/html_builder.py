@@ -161,6 +161,28 @@ def _integrate_default_chrome(ctx, header_html, metadata_html):
     )
 
 
+def _render_custom_html(ctx, out, data, name, extensions, live_registry, validation, details):
+    """Write a report that supplies its own HTML page and data file."""
+    custom = inject_source_notice(
+        _inject_nav(ctx.custom_html, extensions["nav_html"])
+    )
+    html_path = os.path.join(out, ctx.custom_html_filename)
+    with open(html_path, "w", encoding="utf-8") as f:
+        f.write(custom)
+
+    data_json = ctx.custom_data or data or {}
+    json_path = os.path.join(out, ctx.custom_data_filename)
+    with open(json_path, "wb") as f:
+        f.write(orjson.dumps(
+            data_json,
+            option=orjson.OPT_SERIALIZE_NUMPY | orjson.OPT_NON_STR_KEYS,
+        ))
+
+    _write_meta(out, ctx.slug, name, ctx.config, validation=validation, details=details)
+    _write_live_queries(out, live_registry)
+    return html_path, json_path
+
+
 def render_report(
     ctx,
     output_dir: str | None = None,
@@ -210,24 +232,9 @@ def render_report(
 
     # ── Custom HTML mode (for complex dashboards like Pulse) ──
     if ctx.custom_html is not None:
-        custom = inject_source_notice(
-            _inject_nav(ctx.custom_html, extensions["nav_html"])
+        return _render_custom_html(
+            ctx, out, data, name, extensions, live_registry, validation, details
         )
-        html_path = os.path.join(out, ctx.custom_html_filename)
-        with open(html_path, "w", encoding="utf-8") as f:
-            f.write(custom)
-
-        data_json = ctx.custom_data or data or {}
-        json_path = os.path.join(out, ctx.custom_data_filename)
-        with open(json_path, "wb") as f:
-            f.write(orjson.dumps(
-                data_json,
-                option=orjson.OPT_SERIALIZE_NUMPY | orjson.OPT_NON_STR_KEYS,
-            ))
-
-        _write_meta(out, slug, name, config, validation=validation, details=details)
-        _write_live_queries(out, live_registry)
-        return html_path, json_path
 
     # ── Standard component rendering ──
     refresh_seconds = (
