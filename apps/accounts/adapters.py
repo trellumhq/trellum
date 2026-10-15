@@ -205,6 +205,22 @@ def _trusted_entra_upn(cfg, sociallogin, email: str) -> bool:
     )
 
 
+def email_is_verified(cfg, sociallogin, email: str) -> bool:
+    """Did the identity provider vouch for ``email``? The rule a first-time
+    SSO login must pass before an account is linked or created."""
+    identity_claims = sso.claims(sociallogin)
+    verified = (
+        (
+            identity_claims.get("email_verified") is True
+            and identity_claims.get("email", "").lower() == email.lower()
+        )
+        or any(a.email.lower() == email.lower() and a.verified is True for a in sociallogin.email_addresses)
+    )
+    if "email_verified" in identity_claims and identity_claims["email_verified"] is not True:
+        return False
+    return bool(verified or _trusted_entra_upn(cfg, sociallogin, email))
+
+
 class NoSignupAccountAdapter(DefaultAccountAdapter):
     def is_open_for_signup(self, request):  # noqa: ARG002
         return False  # portal accounts come from /setup, invites, or SSO
@@ -293,6 +309,13 @@ class OrgSSOAdapter(DefaultSocialAccountAdapter):
                     reason_code=REASON_NOT_ENABLED, provider=provider, org=org,
                 )
             )
+        from apps.accounts import sso_test
+
+        if sso_test.consume(request, cfg):
+            # An admin's "Test sign-in" run: report what would happen and
+            # stop. Nothing below -- login, linking, provisioning, group
+            # sync -- may run, and the admin's own session stays untouched.
+            raise ImmediateHttpResponse(sso_test.finish_oidc(request, cfg, sociallogin))
         # The rest of this method only runs for a live, enabled config, so
         # every login that gets this far is unambiguously SSO -- stamp the
         # request now so auth_events._logged_in can tell auth.login apart from
@@ -332,17 +355,7 @@ class OrgSSOAdapter(DefaultSocialAccountAdapter):
             )
             return
 
-        identity_claims = sso.claims(sociallogin)
-        verified = (
-            (
-                identity_claims.get("email_verified") is True
-                and identity_claims.get("email", "").lower() == email.lower()
-            )
-            or any(a.email.lower() == email.lower() and a.verified is True for a in sociallogin.email_addresses)
-        )
-        if ("email_verified" in identity_claims and identity_claims["email_verified"] is not True) or not (
-            verified or _trusted_entra_upn(cfg, sociallogin, email)
-        ):
+        if not email_is_verified(cfg, sociallogin, email):
             raise ImmediateHttpResponse(
                 denied(
                     request, "Your identity provider must verify your email before linking an account.",

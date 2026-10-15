@@ -5,6 +5,15 @@ from apps.orgs import domains
 from apps.orgs.models import Organization, OrgSSOConfig, PermissionGroup
 
 
+#: Settings a recorded Test sign-in result depends on; changing any of them
+#: clears the pass so the "not tested yet" warning returns.
+TEST_RELEVANT_FIELDS = (
+    "auth_method", "issuer_url", "client_id", "client_secret", "email_domains",
+    "ldap_server_uri", "ldap_user_search_base", "ldap_bind_dn", "ldap_bind_password",
+    "ldap_email_attr",
+)
+
+
 class SSOConfigForm(forms.ModelForm):
     client_secret = forms.CharField(
         required=False, widget=forms.PasswordInput(render_value=False),
@@ -188,7 +197,21 @@ class SSOConfigForm(forms.ModelForm):
                 obj.client_secret = stored.client_secret
             if not self.cleaned_data.get("ldap_bind_password"):
                 obj.ldap_bind_password = stored.ldap_bind_password
+            # A pass recorded against another identity source or other
+            # domains proves nothing about this one: ask for a new test.
+            if any(getattr(obj, f) != getattr(stored, f) for f in TEST_RELEVANT_FIELDS):
+                obj.last_test_ok = None
         if commit:
             obj.save()
             self.save_m2m()
         return obj
+
+
+class DirectoryTestForm(forms.Form):
+    """The settings page's directory "Test sign-in": a login to check, never
+    stored, never re-rendered."""
+
+    email = forms.CharField(max_length=254, label="Directory login")
+    password = forms.CharField(
+        max_length=1024, widget=forms.PasswordInput(render_value=False), label="Password",
+    )
