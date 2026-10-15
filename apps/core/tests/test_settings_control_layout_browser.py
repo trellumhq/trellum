@@ -170,18 +170,16 @@ def test_member_manage_popup_stays_inside_viewport(browser, width, theme):
         assert box["x"] + box["width"] <= width
         assert box["y"] >= 0
         assert box["y"] + box["height"] <= 900
-        # Studio-role forms moved to the member's own access page; the menu now
-        # links there. Every remaining control must be reachable and unclipped.
-        assert page.locator(".shell-menu a[href$='/studios']").is_visible()
-        controls = page.locator(".shell-menu a, .shell-menu button")
-        assert controls.count() >= 3
-        for index in range(controls.count()):
-            control = controls.nth(index)
-            control.scroll_into_view_if_needed()
-            control_box = control.bounding_box()
-            assert control_box["x"] >= box["x"] - 1
-            assert control_box["x"] + control_box["width"] <= box["x"] + box["width"] + 1
-            assert control_box["x"] + control_box["width"] <= width
+        select = page.locator('.shell-menu form[style*="display:flex"] select').bounding_box()
+        save = page.locator('.shell-menu form[style*="display:flex"] button').bounding_box()
+        assert select["x"] + select["width"] <= width
+        assert save["x"] + save["width"] <= width
+        assert abs(select["y"] - save["y"]) <= 1
+        assert abs(select["height"] - save["height"]) <= 1
+        assert (
+            select["x"] + select["width"] <= save["x"]
+            or save["x"] + save["width"] <= select["x"]
+        )
     finally:
         context.close()
 
