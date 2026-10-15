@@ -180,16 +180,21 @@ def _usage_status_url(org):
 
 
 @require_operator
-@require_POST
 def org_usage_refresh(request, org_slug):
-    """Admit one uploaded-files measurement; the org page posts this by itself."""
+    """Admit one uploaded-files measurement; the org page asks (GET) and posts by itself."""
     from django.db import transaction
-    from django.http import Http404, JsonResponse
+    from django.http import Http404, HttpResponseNotAllowed, JsonResponse
     from apps.core import operator_observations as observations
     if impersonation.is_impersonating(request):
         raise Http404
+    if request.method not in ("GET", "POST"):
+        return HttpResponseNotAllowed(["GET", "POST"])
     org = get_object_or_404(Organization, slug=org_slug)
     status_url = _usage_status_url(org)
+    if request.method == "GET":
+        response = JsonResponse(observations.preflight(request.user.pk, "upload-usage", status_url, org_id=org.pk))
+        response["Cache-Control"] = "no-store"
+        return response
     try:
         with transaction.atomic():
             entry, created = observations.admit(request.user.pk, "upload-usage", request.POST.get("request_key", ""), org_id=org.pk)

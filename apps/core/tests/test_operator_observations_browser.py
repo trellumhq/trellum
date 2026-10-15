@@ -55,7 +55,7 @@ def test_system_page_measures_and_updates_without_a_click(probe_process_env, liv
         health.payload["completed_at"] = (timezone.now() - timedelta(seconds=70)).isoformat()
         health.save(update_fields=["payload"])
         slot = OpsState.objects.get(key=observations.SLOT)
-        slot.payload["last_admitted"] = (timezone.now() - timedelta(seconds=28)).isoformat()
+        slot.payload["admitted"] = {"full-health": (timezone.now() - timedelta(seconds=28)).isoformat()}
         slot.save(update_fields=["payload"])
 
     def admitted(page):
@@ -71,6 +71,9 @@ def test_system_page_measures_and_updates_without_a_click(probe_process_env, liv
         page = context.new_page()
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
+        # Waiting for a running measurement or the 30 s gap is not an error: no
+        # refused request may reach the console.
+        page.on("console", lambda message: errors.append(message.text) if message.type == "error" else None)
 
         def static(route):
             root = (settings.BASE_DIR / "static").resolve()

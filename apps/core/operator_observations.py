@@ -22,7 +22,7 @@ KINDS = {"full-health": (30, 35), "upload-usage": (60, 65)}
 EXPLICIT = frozenset({"full-health", "upload-usage"})
 TERMINAL = frozenset({"succeeded", "failed", "unconfirmed"})
 NONCE_SALT = "operator-probe-v1"
-MIN_GAP = 30  # seconds between admissions
+MIN_GAP = 30  # seconds between admissions of the same kind
 
 
 class ObservationError(Exception):
@@ -114,6 +114,25 @@ def has_work():
     return bool(payload.get("blocked") or (active and active["state"] not in TERMINAL))
 
 
+def _refusal(payload, kind, now):
+    """Why admitting ``kind`` would be refused right now, or None. Pure; admits nothing."""
+    active = payload.get("active")
+    if active and active["state"] not in TERMINAL:
+        return ObservationError("Another diagnostic measurement is in progress.", 409,
+                                busy={name: active.get(name) for name in ("id", "kind", "org_id", "state")})
+    if payload.get("blocked"):
+        return ObservationError("Previous measurement termination is unconfirmed. Check the coordinator.", 503)
+    # The gap is per kind: a System health visit must not hold back the
+    # uploaded-files measurement of an organization page, or the reverse.
+    last = stamp((payload.get("admitted") or {}).get(kind))
+    if last and now - last < timedelta(seconds=MIN_GAP):
+        return ObservationError("Wait thirty seconds between diagnostic measurements.", 429,
+                                retry_after=max(1, int(MIN_GAP - (now - last).total_seconds()) + 1))
+    if not available():
+        return ObservationError("A supported live coordinator is required.", 503)
+    return None
+
+
 def admit(actor_id, kind, key, *, org_id=None):
     if kind not in EXPLICIT:
         raise ObservationError("Invalid diagnostic operation")
@@ -133,19 +152,10 @@ def admit(actor_id, kind, key, *, org_id=None):
         for entry in payload.get("recent", []):
             if entry["id"] == operation_id:
                 return entry, False
-        active = payload.get("active")
-        if active and active["state"] not in TERMINAL:
-            raise ObservationError("Another diagnostic measurement is in progress.", 409,
-                                   busy={name: active.get(name) for name in ("id", "kind", "org_id", "state")})
-        if payload.get("blocked"):
-            raise ObservationError("Previous measurement termination is unconfirmed. Check the coordinator.", 503)
-        last = stamp(payload.get("last_admitted"))
-        if last and now - last < timedelta(seconds=MIN_GAP):
-            raise ObservationError("Wait thirty seconds between diagnostic measurements.", 429,
-                                   retry_after=max(1, int(MIN_GAP - (now - last).total_seconds()) + 1))
+        refused = _refusal(payload, kind, now)
+        if refused:
+            raise refused
         node = _coordinator()
-        if not node or sys.platform != "linux":
-            raise ObservationError("A supported live coordinator is required.", 503)
         workspace = cached_workspace_identity()
         if kind == "upload-usage" and not workspace:
             raise ObservationError("Shared workspace identity is unavailable.", 503)
@@ -156,9 +166,23 @@ def admit(actor_id, kind, key, *, org_id=None):
             "request_fingerprint": fingerprint(kind), "producer_node": node,
             "lease_until": (now + timedelta(seconds=KINDS[kind][1] + 10)).isoformat(),
         }
-        payload.update(active=entry, recent=([entry.copy()] + payload.get("recent", []))[:16], last_admitted=now.isoformat())
+        payload.update(active=entry, recent=([entry.copy()] + payload.get("recent", []))[:16],
+                       admitted={**(payload.get("admitted") or {}), kind: now.isoformat()})
         _write(row, payload)
         return entry.copy(), True
+
+
+def preflight(actor_id, kind, status_url, *, org_id=None):
+    """What an admission would do right now, answered as an ordinary 200.
+
+    The page asks before it posts, so a measurement that is running or just
+    finished is a quiet wait rather than a refused request in the console.
+    """
+    row = OpsState.objects.filter(key=SLOT).values("payload").first()
+    refused = _refusal(row["payload"] if row else {}, kind, timezone.now())
+    if refused is None:
+        return {"ok": True, "ready": True, "snapshot": snapshot(kind, org_id), "next_nonce": nonce(actor_id, kind, org_id)}
+    return {**refusal(refused, actor_id, kind, status_url, org_id=org_id), "ok": True, "ready": False, "status": refused.status}
 
 
 def observation(operation_id, *, kind, org_id=None):
@@ -221,6 +245,10 @@ def snapshot(kind, org_id=None):
     fresh = completed and timezone.now() - completed <= timedelta(seconds=300)
     if kind == "upload-usage" and (not cached_workspace_identity() or result.get("workspace_id") != cached_workspace_identity()):
         return {"state": "unknown", "message": "Observation belongs to another or unavailable workspace."}
+    if result.get("quality", "complete") != "complete":
+        # Nothing to show yet: a partial measurement is neither a figure nor an age.
+        return {"state": "partial", "quality": result["quality"], "reason": result.get("reason", ""),
+                "message": "Measurement incomplete; still measuring."}
     result["state"] = "observed" if fresh else "stale"
     result["message"] = "Last observed" if fresh else "Last observation is stale"
     if completed:
@@ -301,6 +329,7 @@ def child_started(entry, proof):
 
 def finish(entry, *, result=None, state="unconfirmed", message="Measurement outcome is unconfirmed.", terminated=True):
     now = timezone.now()
+    partial = False
     with transaction.atomic():
         row = _slot()
         active = row.payload.get("active")
@@ -331,15 +360,31 @@ def finish(entry, *, result=None, state="unconfirmed", message="Measurement outc
                     state, message = "failed", "Storage measurement returned invalid progress."
                 else:
                     active["progress"] = progress
-                    if (result.get("workspace_id") != entry["workspace_id"] or result.get("quality") != "complete"
-                            or type(result.get("bytes")) is not int or result["bytes"] < 0):
+                    scoped = result.get("workspace_id") == entry["workspace_id"]
+                    if scoped and result.get("quality") == "complete" and type(result.get("bytes")) is int and result["bytes"] >= 0:
+                        pass
+                    elif scoped and result.get("quality") in ("incomplete", "partial"):
+                        # Remembered as partial, never as a total: the page shows it as
+                        # still measuring, and a complete earlier total is left alone.
+                        partial = True
+                        result = {name: result.get(name) for name in (
+                            "version", "kind", "scope", "workspace_id", "producer_fingerprint", "reason",
+                            "inspected", "total_candidates", "metadata_calls", "missing")}
+                        result["quality"] = "partial"
+                    else:
                         result = None
                         state, message = "failed", "Storage measurement is incomplete; the previous total is retained."
         if result is not None:
             result.update(id=entry["id"], completed_at=now.isoformat(), producer_node=entry["producer_node"], request_fingerprint=entry["request_fingerprint"])
-            OpsState.objects.update_or_create(key=snapshot_key(entry["kind"], entry.get("org_id")),
-                defaults={"ran_at": now, "ok": True, "payload": result})
-            state, message = "succeeded", "Measurement completed."
+            key = snapshot_key(entry["kind"], entry.get("org_id"))
+            if partial:
+                earlier = OpsState.objects.filter(key=key).values("payload").first()
+                if not earlier or earlier["payload"].get("quality") != "complete":
+                    OpsState.objects.update_or_create(key=key, defaults={"ran_at": now, "ok": False, "payload": result})
+                state, message = "failed", "Storage measurement is incomplete; the previous total is retained."
+            else:
+                OpsState.objects.update_or_create(key=key, defaults={"ran_at": now, "ok": True, "payload": result})
+                state, message = "succeeded", "Measurement completed."
         active.update(state=state, message=message)
         if not terminated:
             row.payload["blocked"] = active.get("child") or {"unknown": True}

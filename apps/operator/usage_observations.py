@@ -156,7 +156,7 @@ def scan(org_id, desired_workspace):
         safe_path=Case(When(path_size__lte=4098, then=F("config__path")), default=Value(None), output_field=JSONField()),
         safe_upload=Case(When(upload_size__lte=32, then=F("config__upload")), default=Value(None), output_field=JSONField()),
     )
-    cursor, total = 0, 0
+    cursor, total, uploads = 0, 0, 0
     try:
         while True:
             batch = list(rows.filter(pk__gt=cursor).order_by("pk").values(
@@ -174,6 +174,7 @@ def scan(org_id, desired_workspace):
                     if row["upload_size"] and row["upload_size"] > 32:
                         raise Incomplete("invalid_upload_flag")
                     if row["safe_upload"]:
+                        uploads += 1
                         relative = row["safe_path"]
                         if row["path_size"] and row["path_size"] > 4098:
                             raise Incomplete("path_limit")
@@ -208,6 +209,11 @@ def scan(org_id, desired_workspace):
             raise Incomplete("workspace_changed")
     except (Incomplete, OSError) as exc:
         result["reason"] = str(exc) if isinstance(exc, Incomplete) else "unreadable"
+        return result
+    if uploads and result["missing"] >= uploads and not total:
+        # Uploads are on record but none was found: more likely a measurement
+        # that cannot see the files than an organization with nothing stored.
+        result.update(quality="partial", reason="no_files_found")
         return result
     result.update(quality="complete", bytes=total)
     return result

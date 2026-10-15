@@ -37,10 +37,63 @@ def test_full_reference_total_and_narrow_source_fields(storage_workspace, org, s
     assert "credentials" not in repr(result)
 
 
+def test_measurement_walks_the_files_the_quota_and_data_source_views_use(storage_workspace, org, studio):
+    from apps.orgs import quotas
+    org.datasources_dir.mkdir(parents=True)
+    (org.datasources_dir / "files").mkdir()
+    (org.datasources_dir / "files" / "shared.csv").write_bytes(b"s" * 1000)
+    (studio.project_root / "data-sources" / "uploads").mkdir(parents=True)
+    (studio.project_root / "data-sources" / "demo.sqlite").write_bytes(b"d" * 5000)
+    (studio.project_root / "data-sources" / "uploads" / "budget.csv").write_bytes(b"b" * 70)
+    DataSource.objects.create(org=org, name="shared", type="file", config={"upload": True, "path": "files/shared.csv"})
+    DataSource.objects.create(studio=studio, name="demo_db", type="sqlite", config={"upload": True, "path": "data-sources/demo.sqlite"})
+    DataSource.objects.create(studio=studio, name="budget", type="file", config={"upload": True, "path": "data-sources/uploads/budget.csv"})
+    # Not portal-owned (no upload flag): neither measurement counts it.
+    DataSource.objects.create(studio=studio, name="repo", type="file", config={"path": "data-sources/demo.sqlite"})
+    result = usage.scan(org.pk, storage_workspace)
+    assert result["quality"] == "complete" and result["bytes"] == 6070
+    assert result["bytes"] == quotas.storage_bytes_used(org)
+
+
+def test_all_uploads_missing_is_remembered_as_partial_and_shown_as_measuring(storage_workspace, org):
+    from django.contrib.auth import get_user_model
+    from apps.operator import bounded
+    from apps.runner.models import WorkerHeartbeat
+    actor = get_user_model().objects.create_user(email="partial@portal.local", is_operator_flag=True)
+    WorkerHeartbeat.objects.create(worker_id="partial-node")
+    DataSource.objects.create(org=org, name="gone", type="file", config={"upload": True, "path": "gone.csv"})
+    observations.admit(actor.pk, "upload-usage", observations.nonce(actor.pk, "upload-usage", org.pk), org_id=org.pk)
+    entry = observations.claim("partial-node", "epoch")
+    result = {**usage.scan(org.pk, storage_workspace), "version": 1, "kind": "upload-usage", "workspace_id": storage_workspace,
+              "producer_fingerprint": entry["producer_fingerprint"]}
+    assert result["quality"] == "partial"
+    observations.finish(entry, result=result)
+    stored = observations.snapshot("upload-usage", org.pk)
+    assert stored["state"] == "partial" and "bytes" not in stored and "completed_at" not in stored
+    shown = bounded.usage(org)
+    assert shown["storage_mb"] is None and shown["storage_age"] == ""
+    assert observations.observation(entry["id"], kind="upload-usage", org_id=org.pk)["state"] == "failed"
+
+
+def test_partial_never_replaces_an_earlier_complete_total(storage_workspace, org):
+    from django.contrib.auth import get_user_model
+    from apps.runner.models import WorkerHeartbeat
+    actor = get_user_model().objects.create_user(email="partial2@portal.local", is_operator_flag=True)
+    WorkerHeartbeat.objects.create(worker_id="partial-node-2")
+    OpsState.record(observations.snapshot_key("upload-usage", org.pk), workspace_id=storage_workspace,
+                    completed_at=timezone.now().isoformat(), quality="complete", bytes=42)
+    observations.admit(actor.pk, "upload-usage", observations.nonce(actor.pk, "upload-usage", org.pk), org_id=org.pk)
+    entry = observations.claim("partial-node-2", "epoch")
+    observations.finish(entry, result={"version": 1, "kind": "upload-usage", "workspace_id": storage_workspace,
+                                       "producer_fingerprint": entry["producer_fingerprint"], "quality": "partial", "inspected": 1})
+    assert observations.snapshot("upload-usage", org.pk)["bytes"] == 42
+
+
 def test_missing_is_disclosed_and_nonregular_never_becomes_zero(storage_workspace, org):
     source = DataSource.objects.create(org=org, name="missing", type="file", config={"upload": True, "path": "missing.csv"})
     missing = usage.scan(org.pk, storage_workspace)
-    assert missing["bytes"] == 0 and missing["missing"] == 1
+    # Uploads on record but none found: not a total, a partial measurement.
+    assert missing["quality"] == "partial" and "bytes" not in missing and missing["missing"] == 1
     org.datasources_dir.mkdir(parents=True)
     (org.datasources_dir / "folder").mkdir()
     source.config["path"] = "folder"
@@ -135,3 +188,19 @@ def test_org_identity_status_and_live_operator_boundary(storage_workspace, org, 
     assert client.get(response.json()["action"]["status_url"]).status_code == 200
     get_user_model().objects.filter(pk=actor.pk).update(is_operator_flag=False)
     assert client.get(response.json()["action"]["status_url"]).status_code == 404
+
+
+def test_usage_refresh_can_be_asked_before_it_is_posted(storage_workspace, org, client, settings):
+    from django.contrib.auth import get_user_model
+    from apps.runner.models import WorkerHeartbeat
+    actor = get_user_model().objects.create_user(email="ask-usage@portal.local", is_operator_flag=True)
+    WorkerHeartbeat.objects.create(worker_id="ask-usage-node")
+    client.force_login(actor)
+    url = f"/operator/orgs/{org.slug}/usage/refresh"
+    ready = client.get(url)
+    assert ready.status_code == 200 and ready.json()["ready"] is True and ready["Cache-Control"] == "no-store"
+    posted = client.post(url, {"request_key": ready.json()["next_nonce"]}, HTTP_ACCEPT="application/json")
+    assert posted.status_code == 202
+    busy = client.get(url)
+    assert busy.status_code == 200 and busy.json()["ready"] is False and busy.json()["status"] == 409
+    assert client.put(url).status_code == 405

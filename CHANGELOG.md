@@ -62,7 +62,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   a fresh measurement about every minute (five for uploads), shows "Checked 2
   minutes ago", and has no refresh buttons. Without a usable coordinator
   measurement, System health runs its checks in the request as before. The
-  header health alert is unchanged: quick local checks, no sandbox check. The operator Fleet, Organizations and organization pages
+  header health alert is unchanged: quick local checks, no sandbox check. The
+  thirty-second gap between measurements applies per kind, the pages check
+  before posting so waiting never logs an error, and an incomplete uploaded-files
+  measurement shows as "measuring…" instead of a total. The operator Fleet, Organizations and organization pages
   match their earlier layout again.
 - The Operations page lists every report in one capped read with no pager, the
   Uptime tile and the earlier state chips and filters; Reload Registry keeps its

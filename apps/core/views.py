@@ -177,7 +177,7 @@ def _diagnostics_status_url(operation_id):
 
 
 def operator_diagnostics_refresh(request):
-    """Admit one coordinator measurement; the system page posts this by itself."""
+    """Admit one coordinator measurement; the system page asks (GET) and posts by itself."""
     from django.http import HttpResponseNotAllowed
     from django.db import transaction
     from apps.core import operator_observations as observations
@@ -186,8 +186,12 @@ def operator_diagnostics_refresh(request):
     gate = _require_email_operator(request)
     if gate is not None:
         return gate
+    if request.method == "GET":
+        response = JsonResponse(observations.preflight(request.user.pk, "full-health", _diagnostics_status_url))
+        response["Cache-Control"] = "no-store"
+        return response
     if request.method != "POST":
-        return HttpResponseNotAllowed(["POST"])
+        return HttpResponseNotAllowed(["GET", "POST"])
     try:
         with transaction.atomic():
             entry, created = observations.admit(request.user.pk, "full-health", request.POST.get("request_key", ""))

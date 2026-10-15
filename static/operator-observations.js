@@ -5,7 +5,8 @@
    the result. Nobody presses anything. The server's own rules still apply: one
    measurement in flight, thirty seconds between admissions, and an admission key
    that expires. Every refusal says what to wait for and carries a fresh key, so
-   the page simply waits and tries again. */
+   the page simply waits and tries again. It asks (GET) before it posts, so waiting
+   for a running measurement or the thirty seconds shows up as nothing at all. */
 (function () {
   'use strict';
   var controllers = new Set();
@@ -172,12 +173,22 @@
       var controller = new AbortController();
       flight = controller;
       var abort = setTimeout(function () { controller.abort(); }, 10000);
-      fetch(form.action, {method: 'POST', body: new FormData(form), credentials: 'same-origin', signal: controller.signal, headers: {Accept: 'application/json'}})
-        .then(function (response) {
-          return response.json().then(function (body) { return {status: response.status, ok: response.ok, body: body}; });
+      function json(response) {
+        return response.json().then(function (body) { return {status: response.status, ok: response.ok, body: body}; });
+      }
+      // Ask first. A measurement that is running, or that just finished, is a
+      // plain wait; posting into it would only log a refused request.
+      fetch(form.action, {credentials: 'same-origin', cache: 'no-store', signal: controller.signal, headers: {Accept: 'application/json'}})
+        .then(json)
+        .then(function (asked) {
+          if (flight !== controller || !current()) return null;
+          var body = asked.body || {};
+          if (asked.ok && body.ready === false) { refused({status: body.status || 429, body: body}); return null; }
+          if (asked.ok) keyFrom(body);
+          return fetch(form.action, {method: 'POST', body: new FormData(form), credentials: 'same-origin', signal: controller.signal, headers: {Accept: 'application/json'}}).then(json);
         })
         .then(function (result) {
-          if (flight !== controller || !current()) return;
+          if (!result || flight !== controller || !current()) return;
           if (result.ok && result.body && result.body.action) watch(result.body.action.status_url, result.body.action.id);
           else refused(result);
         })

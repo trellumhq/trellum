@@ -219,7 +219,7 @@ def test_refusals_let_the_page_carry_on_by_itself(operator_probe, settings):
     assert 1 <= body["retry_after"] <= 31
     assert body["snapshot"]["id"] == operation_id and body["snapshot"]["age_seconds"] < 30
     row = OpsState.objects.get(key=observations.SLOT)
-    row.payload["last_admitted"] = (timezone.now() - timedelta(seconds=40)).isoformat()
+    row.payload["admitted"] = {"full-health": (timezone.now() - timedelta(seconds=40)).isoformat()}
     row.save(update_fields=["payload"])
     assert _post(client, actor, key=body["next_nonce"]).status_code == 202
     # An invalid or expired key still hands back a usable one.
@@ -255,3 +255,37 @@ def test_check_detail_keeps_the_explanation_without_url_secrets():
         "cannot reach https://bucket.example/path now"
     assert _detail("first\nsecond\x00third") == "first second third"
     assert len(_detail("x" * 5000)) == 400
+
+
+def test_the_thirty_second_gap_is_per_kind(operator_probe, settings):
+    """A System health visit must not hold back an organization's uploaded-files refresh."""
+    settings.DEBUG = True
+    from apps.orgs.models import Organization
+    actor, client, node = operator_probe
+    org = Organization.objects.create(slug="gap-org", name="Gap")
+    _post(client, actor)
+    claimed = observations.claim(node, "epoch")
+    assert observations.finish(claimed, result=completed(claimed))
+    # full-health is now inside its gap; upload-usage is a different kind and is admitted at once.
+    assert _post(client, actor).status_code == 429
+    usage = observations.admit(actor.pk, "upload-usage", observations.nonce(actor.pk, "upload-usage", org.pk), org_id=org.pk)
+    assert usage[1] and usage[0]["kind"] == "upload-usage"
+
+
+def test_a_page_can_ask_before_posting_and_gets_a_plain_200(operator_probe, settings):
+    settings.DEBUG = True
+    actor, client, node = operator_probe
+    ready = client.get("/api/system/diagnostics/refresh")
+    assert ready.status_code == 200 and ready.json()["ready"] is True and ready.json()["next_nonce"]
+    assert not OpsState.objects.filter(key=observations.SLOT).exists()  # asking admits nothing
+    accepted = _post(client, actor, key=ready.json()["next_nonce"])
+    assert accepted.status_code == 202
+    busy = client.get("/api/system/diagnostics/refresh")
+    assert busy.status_code == 200
+    body = busy.json()
+    assert body["ready"] is False and body["status"] == 409 and body["busy"]["status_url"] == accepted.json()["action"]["status_url"]
+    claimed = observations.claim(node, "epoch")
+    observations.finish(claimed, result=completed(claimed))
+    waiting = client.get("/api/system/diagnostics/refresh").json()
+    assert waiting["ready"] is False and waiting["status"] == 429 and 1 <= waiting["retry_after"] <= 31
+    assert waiting["snapshot"]["id"] == accepted.json()["action"]["id"]
