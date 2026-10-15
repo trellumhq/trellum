@@ -1,7 +1,6 @@
 """Large service writes preserve validation, assignments and audit rows.
 
-These deliberately bypass the HTTP parser; compact selection transport remains
-separate and no 1,000-field HTTP success is implied.
+These deliberately bypass the HTTP parser; no 1,000-field HTTP success is implied.
 """
 from collections import Counter
 import pytest

@@ -31,7 +31,7 @@ def _assert_layout(page, page_name, html, width, theme):
         assert page.locator(".recipient-picker").count() == 1
         assert page.locator("[data-recipient-picker] input[type=checkbox]").count() == 1
         assert page.locator(".recipient-picker .ui-picker-trigger").is_enabled()
-        # The picker and the compact-choices editor each keep a hidden no-JS fallback.
+        # The picker keeps its original checkboxes, hidden.
         assert all(not fallback.is_visible() for fallback in page.locator(".recipient-picker-fallback").all())
     if page_name in {"sso", "invites", "group-access"}:
         assert page.locator(".recipient-picker").count() == 1, page_name

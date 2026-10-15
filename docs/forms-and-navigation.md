@@ -266,22 +266,3 @@ changes.
 Forms and filters that mark `data-auto-filter` (`static/auto-filter.js`) apply
 immediately: selects and pickers on change, text boxes after a 400 ms pause or
 Enter. They carry no Apply, Go or Search button.
-
-## Compact report selection transport
-
-Group studio access opts into `CompactCheckboxSelectMultiple` and
-`data-recipient-compact`. It renders up to 500 editable checkboxes and seeds
-selected labels beyond them. One hidden `<field>__selection` JSON packet contains `version: 1`,
-`selected` string identities and `editable` string identities. The decoder
-combines `(selected - editable)` with checked submitted values. Unchecking a
-choice removes it. Ordinary repeated fields remain accepted for existing callers.
-
-Packets are untrusted form data. Malformed packets produce a visible field
-error and retain the raw packet on rerender; identities still pass the complete
-authorized model choice validation. No global request-field limit is changed.
-The opted-in picker seeds off-page checkbox records from escaped selected-row
-JSON, keeping names, checked/defaultChecked state and shared draft tracking.
-The form's `formdata` event replaces successful checkbox entries with one
-complete packet, respecting disabled controls and fieldsets. Shared Save,
-submitted snapshots, reset and unconfirmed outcomes retain their existing
-contracts; this transport adds no submit handler or write retry.

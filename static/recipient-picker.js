@@ -16,20 +16,6 @@
       return { input: input, row: row, type: !generic && TYPES[type] ? type : null,
         name: input.dataset.recipientName || row.textContent.trim(), identity: input.dataset.recipientIdentity || '' };
     }).filter(Boolean);
-    var compact = field.hasAttribute('data-recipient-compact') && field.querySelector('[data-compact-choices]');
-    var packetInput = compact && compact.querySelector('[data-compact-packet]');
-    if (compact && !compact.hasAttribute('data-compact-invalid')) {
-      var seed = compact.querySelector('script[type="application/json"]');
-      var known = new Set(records.map(function (record) { return record.input.value; }));
-      JSON.parse(seed.textContent).forEach(function (choice) {
-        if (known.has(choice.value)) return;
-        known.add(choice.value);
-        var row = helper.element('label'), input = document.createElement('input');
-        input.type = 'checkbox'; input.name = field.dataset.recipientName; input.value = choice.value;
-        input.checked = input.defaultChecked = true; row.appendChild(input);
-        records.push({input: input, row: row, type: null, name: choice.label, identity: ''});
-      });
-    }
     var fallback = Array.prototype.filter.call(field.children, function (node) {
       return node.matches('[data-recipient-type]') || node.querySelector('input[type="checkbox"]');
     });
@@ -180,20 +166,6 @@
       node.classList.add('recipient-picker-fallback');
       node.hidden = true;
     });
-    var form = field.closest('form');
-
-    if (compact && form && packetInput) {
-      form.addEventListener('formdata', function (event) {
-        // Disabled fieldsets and controls follow the browser's successful-control rules.
-        if (packetInput.matches(':disabled')) return;
-        if (compact.hasAttribute('data-compact-invalid')) return;
-        var selectedValues = Array.from(new Set(event.formData.getAll(field.dataset.recipientName)));
-        event.formData.delete(field.dataset.recipientName);
-        event.formData.set(packetInput.name, JSON.stringify({version: 1, selected: selectedValues, editable: []}));
-      });
-      if (window.TrellumSettingsForms) TrellumSettingsForms.trackControls(form, records.map(function (record) { return record.input; }));
-    }
-
     function changed(record) {
       record.input.dispatchEvent(new Event('input', { bubbles: true }));
       record.input.dispatchEvent(new Event('change', { bubbles: true }));
