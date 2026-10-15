@@ -53,6 +53,7 @@ from apps.reports import notify
 from apps.reports import deliveries
 from apps.reports.operations_logs import OperationsLogChanged
 from apps.reports.recipient_access import DeliveryPresentationBatch
+from apps.reports.recipient_choices import CHOICE_LIMIT
 from apps.reports.models import (
     DEFAULT_LIVE_QUERY_RATE_LIMIT,
     EmailSchedule,
@@ -1287,18 +1288,8 @@ def _delivery_return_url(request):
 
 
 def _delivery_form_page(request, schedule, *, errors=None, status=200):
-    from apps.reports.recipient_choices import recipient_snapshot, page_snapshot, selected_ids
-    choices = request.POST if request.method == 'POST' else request.GET
-    people = choices.getlist('recipient_ids') if request.method == 'POST' else [str(pk) for pk in schedule.recipients.values_list('pk', flat=True)] if schedule.pk else []
-    groups = choices.getlist('recipient_group_ids') if request.method == 'POST' else [str(pk) for pk in schedule.recipient_groups.values_list('pk', flat=True)] if schedule.pk else []
-    chips = page_snapshot(recipient_snapshot(request.studio, schedule.report),
-        query=choices.get('recipient_q', ''), people_page=choices.get('people_page', 1),
-        group_page=choices.get('group_page', 1), selected_people=people, selected_groups=groups)
-    for key in ('members', 'groups'):
-        rows = {row['id']: row for row in chips[key] + chips['selected'][key]}
-        for value in selected_ids(people if key == 'members' else groups) - rows.keys():
-            rows[value] = {'id': value, 'name': 'Selected person is unavailable' if key == 'members' else 'Selected group is unavailable', 'email': ''}
-        chips[key] = list(rows.values())
+    from apps.reports.recipient_choices import cap_choices, recipient_snapshot
+    chips = recipient_snapshot(request.studio, schedule.report)
     form = deliveries.ScheduleSettingsForm(request.POST if request.method == "POST" else None,
         instance=schedule, members=chips["members"], groups=chips["groups"])
     submitted_zone = request.POST.get("timezone") if request.method == "POST" else None
@@ -1319,10 +1310,16 @@ def _delivery_form_page(request, schedule, *, errors=None, status=200):
         for field, items in (errors or {}).items():
             for item in items:
                 form.add_error(field if field in form.fields else None, item)
+    # The editor lists every eligible person and group; only a huge audience is cut (after
+    # validation, which keeps the full set) and then searched server-side by the shared picker.
+    def chosen(name):
+        return form.data.getlist(name) if form.is_bound else form.fields[name].initial
+    large = cap_choices(form.fields["recipient_ids"], chosen("recipient_ids"))
+    large = cap_choices(form.fields["recipient_group_ids"], chosen("recipient_group_ids")) or large
     return render(request, "reports/delivery_form.html", {
         "form": form, "schedule": schedule, "report": schedule.report,
-        "recipient_page": chips, "recipient_query": choices.get('recipient_q', ''),
-        "recipient_source": f'/s/{request.org.slug}/{request.studio.slug}/api/reports/{schedule.report.slug}/recipients',
+        "recipient_source": (f"/s/{request.org.slug}/{request.studio.slug}/api/reports/{schedule.report.slug}/recipients"
+                             if large else ""),
         "return_to": _delivery_return_url(request),
         "send_time": send_time if send_time is not None else f"{schedule.send_hour:02d}:{schedule.send_minute:02d}",
         "send_time_invalid": bool(form.errors.get("send_time")),
@@ -1374,12 +1371,9 @@ def api_email_schedules(request, org_slug, studio_slug, slug):  # noqa: ARG001
         elif user_role == roles.DEVELOPER:
             audience |= Q(recipient_roles__contains=["developers"])
         subscribed_count = rows.filter(audience, enabled=True).distinct().count()
-        if request.GET.get("q"):
-            rows = rows.filter(Q(created_by__email__icontains=request.GET["q"]) |
-                               Q(recipients__email__icontains=request.GET["q"])).distinct()
-        page = Paginator(rows.select_related("created_by", "report__studio__org")
-                         .prefetch_related("recipients", "recipient_groups").order_by("pk"), 50).get_page(request.GET.get("page"))
-        batch = DeliveryPresentationBatch(page.object_list)
+        # The drawer lists every schedule of the report; the SQL cap is far above realistic sizes.
+        batch = DeliveryPresentationBatch(rows.select_related("created_by", "report__studio__org")
+                                          .prefetch_related("recipients", "recipient_groups").order_by("pk")[:DELIVERY_ROWS_LIMIT])
         visible = [_schedule_dict(schedule, viewer=request.user, request=request, batch=batch)
                    for schedule in batch.schedules]
         defaults = deliveries.schedule_defaults(request.org)
@@ -1392,7 +1386,6 @@ def api_email_schedules(request, org_slug, studio_slug, slug):  # noqa: ARG001
                 "default_timezone": defaults["timezone"],
                 "default_enabled": defaults["enabled"],
                 "subscribed_count": subscribed_count,
-                "pagination": _page_metadata(page),
                 "picker_assets": {
                     "choice_css": staticfiles_storage.url("choice-picker.css"),
                     "choice_js": staticfiles_storage.url("choice-picker.js"),
@@ -1406,8 +1399,6 @@ def api_email_schedules(request, org_slug, studio_slug, slug):  # noqa: ARG001
         raise Http404
     is_form = request.content_type != "application/json"
     schedule = EmailSchedule(report=report, created_by=request.user, **deliveries.schedule_defaults(request.org))
-    if is_form and (request.POST.get('action') == 'browse_choices' or (not request.POST.get('action') and any(key in request.POST for key in ('people_page', 'group_page')))):
-        return _delivery_form_page(request, schedule)
     def respond_error(message, errors=None):
         if is_settings_request(request):
             return settings_error(request, message, errors=errors)
@@ -1458,8 +1449,6 @@ def api_email_schedule_detail(request, org_slug, studio_slug, slug, schedule_id)
         raise Http404
     before = deliveries.schedule_snapshot(schedule)
     is_form = request.content_type != "application/json" and request.method == "POST"
-    if is_form and (request.POST.get('action') == 'browse_choices' or (not request.POST.get('action') and any(key in request.POST for key in ('people_page', 'group_page')))):
-        return _delivery_form_page(request, schedule)
     def respond_error(message, errors=None):
         if is_settings_request(request):
             return settings_error(request, message, errors=errors)
@@ -1763,35 +1752,21 @@ def delivery_report_choices_global(request):
 
 
 def _delivery_choice_context(request, *, studio=None, org_id=None):
+    """The Report filter's options: every report the viewer can filter by. Only a list beyond
+    ``CHOICE_LIMIT`` is cut, and only then does the shared picker search server-side."""
     rows = _delivery_filter_reports(request.user, studio=studio, org_id=org_id)
-    selected_id = _delivery_report_filter_id(request)
-    selected = rows.filter(pk=selected_id).first() if selected_id else None
-    context = {"report_choice_source": f"/s/{studio.org.slug}/{studio.slug}/api/delivery-reports" if studio else "/api/delivery-reports"}
-    if request.GET.get("choose_report") == "1":
-        query = request.GET.get("choice_q", "")
-        if query:
-            rows = rows.filter(Q(name__icontains=query) | Q(slug__icontains=query) |
-                               Q(studio__name__icontains=query) | Q(studio__org__name__icontains=query))
-        page = Paginator(rows.order_by("name", "slug", "pk"), 25).get_page(request.GET.get("choice_page"))
-        initial = list(page.object_list)
-        context.update(_native_choice_context(request, page))
-    else:
-        initial = list(rows[:25])
-    if selected and selected.pk not in {report.pk for report in initial}:
-        initial.append(selected)
-    context["report_filter_options"] = initial
+    options = list(rows[:CHOICE_LIMIT + 1])
+    context = {}
+    if len(options) > CHOICE_LIMIT:
+        options = options[:CHOICE_LIMIT]
+        selected_id = _delivery_report_filter_id(request)
+        selected = rows.filter(pk=selected_id).first() if selected_id else None
+        if selected and selected.pk not in {report.pk for report in options}:
+            options.append(selected)
+        context["report_choice_source"] = (f"/s/{studio.org.slug}/{studio.slug}/api/delivery-reports"
+                                           if studio else "/api/delivery-reports")
+    context["report_filter_options"] = options
     return context
-
-
-def _native_choice_context(request, page):
-    def url(**changes):
-        params = request.GET.copy()
-        for key, value in changes.items():
-            params[key] = value
-        return "?" + params.urlencode()
-    return {"choice_page": page,
-            "choice_previous_url": url(choice_page=page.previous_page_number()) if page.has_previous() else "",
-            "choice_next_url": url(choice_page=page.next_page_number()) if page.has_next() else ""}
 
 
 def _delivery_report_filter_value(value):
@@ -1841,6 +1816,9 @@ def _schedule_json_for_script(schedule, viewer=None, request=None) -> str:
     return json.dumps(_schedule_dict(schedule, viewer=viewer, request=request)).translate(_JSON_SCRIPT_ESCAPES)
 
 
+DELIVERY_ROWS_LIMIT = 500
+
+
 def _my_schedule_rows(user, *, org_id=None, request=None, studio=None) -> list[dict]:
     """Visible schedules for the Studio or legacy accessible list."""
     reports = visible_reports(user, Report.objects.filter(present_in_scan=True))
@@ -1880,10 +1858,12 @@ def _my_schedule_rows(user, *, org_id=None, request=None, studio=None) -> list[d
         .prefetch_related("recipients", "recipient_groups")
         .order_by("report__studio__org__name", "report__studio__name", "report__name", "pk")
     )
-    page = Paginator(rows, 50).get_page(request.GET.get("page") if request else 1)
+    # No pager (the list was never paginated): a silent SQL cap far above realistic sizes, with a
+    # one-line muted note in the page only when it actually cut the list.
+    schedules = list(rows[:DELIVERY_ROWS_LIMIT + 1])
     if request is not None:
-        request.delivery_page = page
-    batch = DeliveryPresentationBatch(page.object_list)
+        request.delivery_truncated = len(schedules) > DELIVERY_ROWS_LIMIT
+    batch = DeliveryPresentationBatch(schedules[:DELIVERY_ROWS_LIMIT])
     out = []
     for schedule in batch.schedules:
         report = schedule.report
@@ -1935,14 +1915,11 @@ def studio_delivery_new(request, org_slug, studio_slug):
     if not report_id:
         if request.method == "POST":
             raise Http404
-        query = request.GET.get("choice_q", "")
-        if query:
-            reports = reports.filter(Q(name__icontains=query) | Q(slug__icontains=query))
-        page = Paginator(reports.order_by("name", "slug", "pk"), 25).get_page(request.GET.get("choice_page"))
-        return render(request, "reports/delivery_report_picker.html", {
-            **_native_choice_context(request, page), "reports": page.object_list,
-            "report_choice_source": f"/s/{org_slug}/{studio_slug}/api/delivery-reports",
-            "return_to": f"/s/{org_slug}/{studio_slug}/deliveries"})
+        choices = list(reports.order_by("name", "slug", "pk")[:CHOICE_LIMIT + 1])
+        context = {"reports": choices[:CHOICE_LIMIT], "return_to": f"/s/{org_slug}/{studio_slug}/deliveries"}
+        if len(choices) > CHOICE_LIMIT:  # only a huge studio searches server-side
+            context["report_choice_source"] = f"/s/{org_slug}/{studio_slug}/api/delivery-reports"
+        return render(request, "reports/delivery_report_picker.html", context)
     report = reports.filter(pk=report_id).first() if report_id.isdigit() and len(report_id) < 19 else None
     if report is None:
         raise Http404

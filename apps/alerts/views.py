@@ -32,6 +32,7 @@ from apps.reports.models import Report
 from apps.reports.recipient_access import DeliveryPresentationBatch
 
 RUNS_PER_PAGE = 25
+RULES_LIMIT = 500
 _STATUS_LABELS = dict(AlertRun.STATUS_CHOICES)
 
 
@@ -94,11 +95,9 @@ def alerts_page(request, org_slug, studio_slug):  # noqa: ARG001
         )
         .order_by("name")
     )
-    query = request.GET.get('q', '')[:200]
-    if query:
-        rules = rules.filter(Q(name__icontains=query) | Q(report__name__icontains=query) | Q(report__slug__icontains=query))
-    page = Paginator(rules.order_by('name', 'pk'), 25).get_page(request.GET.get('page'))
-    batch = DeliveryPresentationBatch(page.object_list)
+    # Far above a realistic rule count; the cap only protects the page, nothing is shown about it.
+    rules = list(rules.order_by("name", "pk")[:RULES_LIMIT])
+    batch = DeliveryPresentationBatch(rules)
     rows = [
         {
             "rule": rule,
@@ -108,9 +107,9 @@ def alerts_page(request, org_slug, studio_slug):  # noqa: ARG001
                     or ("Not evaluated" if rule.last_disposition == "not_evaluated" else
                         rule.last_decision or _STATUS_LABELS.get(rule.last_status, "")),
         }
-        for rule in page.object_list
+        for rule in rules
     ]
-    return render(request, "alerts/alerts.html", _context(request, rows=rows, page=page, query=query))
+    return render(request, "alerts/alerts.html", _context(request, rows=rows))
 
 
 @require_studio_role(roles.DEVELOPER)
@@ -154,12 +153,7 @@ def rule_form(request, org_slug, studio_slug, rule_id=None):  # noqa: ARG001
     rule = _rule(request, rule_id) if rule_id else AlertRule(
         org=request.org, studio=request.studio, created_by=request.user
     )
-    choices = request.POST if request.method == 'POST' else request.GET
-    presentation = {key: choices.get(key, '') for key in ('report_q', 'recipient_q', 'report_page', 'people_page', 'group_page')}
-    presentation['actor'] = request.user
-    form = AlertRuleForm(request.POST or None, instance=rule, studio=request.studio, presentation=presentation)
-    if request.method == 'POST' and (request.POST.get('action') == 'browse_choices' or (not request.POST.get('action') and any(key in request.POST for key in ('report_page', 'people_page', 'group_page')))):
-        return render(request, 'alerts/alert_form.html', _context(request, form=form, rule=rule, result=None))
+    form = AlertRuleForm(request.POST or None, instance=rule, studio=request.studio, actor=request.user)
     preview = request.method == "POST" and request.POST.get("action") == "preview"
     result = None
     if preview and form.is_valid():

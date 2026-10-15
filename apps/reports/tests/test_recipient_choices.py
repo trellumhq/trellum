@@ -28,45 +28,55 @@ def test_selected_foreign_and_invalid_ids_never_resolve(studio, org, make_user, 
     assert page['selected']['members'] == []
 
 
-def test_native_delivery_browse_preserves_off_page_choices_and_draft(org_admin, studio_tree, report_row, org, make_user, grant_studio, login):
-    from apps.reports.models import EmailSchedule
-    people = [make_user(f'browse-{i:03}@example.test', org=org) for i in range(60)]
+def _people_and_groups(org, studio_tree, make_user, grant_studio, count):
+    people = [make_user(f'browse-{i:03}@example.test', org=org) for i in range(count)]
     for person in people:
         grant_studio(person, studio_tree, 'viewer')
     groups = []
     for i, person in enumerate(people):
         group = PermissionGroup.objects.create(org=org, name=f'Browse {i:03}'); groups.append(group)
         PermissionGroupMembership.objects.create(group=group, user=person)
+    return people, groups
+
+
+def test_recipients_endpoint_lists_the_whole_audience_unless_asked_to_search(
+        org_admin, studio_tree, report_row, org, make_user, grant_studio, login):
+    _people_and_groups(org, studio_tree, make_user, grant_studio, 60)
+    url = f'/s/{org.slug}/{studio_tree.slug}/api/reports/{report_row.slug}/recipients'
+    whole = login(org_admin).get(url).json()
+    assert len(whole['members']) >= 60 and len(whole['groups']) == 60
+    assert whole['truncated'] is False and 'pagination' not in whole
+    assert whole['roles']['everyone'] >= 60 and whole['studio_name'] == studio_tree.name
+    searched = login(org_admin).get(url, {'q': 'browse-059', 'page': 1}).json()
+    assert [row['email'] for row in searched['members']] == ['browse-059@example.test']
+    assert searched['pagination']['members']['total'] == 1
+
+
+def test_edit_form_lists_everyone_and_only_a_huge_audience_searches_remotely(
+        org_admin, studio_tree, report_row, org, make_user, grant_studio, login, monkeypatch):
+    from apps.reports.models import EmailSchedule
+    people, groups = _people_and_groups(org, studio_tree, make_user, grant_studio, 12)
     schedule = EmailSchedule.objects.create(report=report_row, created_by=org_admin)
     schedule.recipients.add(people[-1]); schedule.recipient_groups.add(groups[-1])
+    client = login(org_admin)
+    edit = f'/s/{org.slug}/{studio_tree.slug}/deliveries/{schedule.pk}/edit'
+    html = client.get(edit).content.decode().split('<main', 1)[1]
+    assert html.count('type="checkbox" name="recipient_ids"') >= 12 and html.count('type="checkbox" name="recipient_group_ids"') == 12
+    for marker in ('data-recipient-source', 'data-picker-fallback', 'Browse choices', 'Search recipients', 'name="action"'):
+        assert marker not in html
+    monkeypatch.setattr('apps.reports.recipient_choices.CHOICE_LIMIT', 5)
+    html = client.get(edit).content.decode().split('<main', 1)[1]
+    source = f'/s/{org.slug}/{studio_tree.slug}/api/reports/{report_row.slug}/recipients'
+    assert f'data-recipient-source="{source}"' in html
+    assert html.count('type="checkbox" name="recipient_ids"') == 6 and html.count('type="checkbox" name="recipient_group_ids"') == 6
+    assert 'checked' in html.split(f'value="{people[-1].pk}"', 1)[1][:80]  # the saved selection stays rendered
+    # Validation still knows the whole audience, so a person found by remote search can be saved.
     url = f'/s/{org.slug}/{studio_tree.slug}/api/reports/{report_row.slug}/schedules/{schedule.pk}'
-    from html.parser import HTMLParser
-    class Checked(HTMLParser):
-        def __init__(self): super().__init__(); self.values = set()
-        def handle_starttag(self, tag, attrs):
-            values = dict(attrs)
-            if tag == 'input' and 'checked' in values: self.values.add((values.get('name'), values.get('value')))
-    rendered = login(org_admin).get(f'/s/{org.slug}/{studio_tree.slug}/deliveries/{schedule.pk}/edit')
-    checked = Checked(); checked.feed(rendered.content.decode())
-    assert ('recipient_ids', str(people[-1].pk)) in checked.values
-    assert ('recipient_group_ids', str(groups[-1].pk)) in checked.values
-    body = {'action': 'browse_choices', 'people_page': '2', 'group_page': '2',
-            'recipient_ids': [str(people[-1].pk)], 'recipient_group_ids': [str(groups[-1].pk)],
-            'freq': 'weekly', 'send_time': '16:47', 'timezone': 'Europe/Amsterdam',
-            'weekday': '3', 'month_day': '1', 'enabled': 'on'}
-    response = login(org_admin).post(url, body)
-    assert response.status_code == 200
-    form = response.context['form']
-    assert form.data['send_time'] == '16:47' and form.data['timezone'] == 'Europe/Amsterdam'
-    assert len(form.fields['recipient_ids'].choices) <= 26
-    assert str(people[-1].pk) in {str(value) for value, label in form.fields['recipient_ids'].choices}
-    assert str(groups[-1].pk) in {str(value) for value, label in form.fields['recipient_group_ids'].choices}
-    schedule.refresh_from_db(); assert schedule.freq == 'daily'
-    body['action'] = 'save'  # Paging state cannot turn an explicit Save into browse.
-    response = login(org_admin).post(url, body)
+    body = {'freq': 'weekly', 'send_time': '16:47', 'timezone': 'Europe/Amsterdam', 'weekday': '3', 'month_day': '1',
+            'enabled': 'on', 'recipient_ids': [str(people[0].pk)]}
+    response = client.post(url, body)
     assert response.status_code == 302
-    schedule.refresh_from_db(); assert schedule.send_hour == 16 and schedule.send_minute == 47
-    assert list(schedule.recipients.values_list('pk', flat=True)) == [people[-1].pk]
+    assert list(schedule.recipients.values_list('pk', flat=True)) == [people[0].pk]
 
 
 def test_inactive_choices_do_not_inflate_delivery_audience_and_superuser_group_parity(studio, org, make_user, grant_studio):

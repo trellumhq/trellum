@@ -25,7 +25,7 @@
     var CSS = ''
         + '#rdwOverlay{position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:9200;opacity:0;visibility:hidden}'
         + '#rdwOverlay.open{opacity:1;visibility:visible}'
-        + '#rdwDrawer{position:fixed;inset:0 0 0 auto;width:560px;max-width:100%;z-index:9201;'
+        + '#rdwDrawer{position:fixed;inset:0 0 0 auto;width:560px;max-width:100vw;z-index:9201;'
         + 'background:var(--bg-card,var(--bg-main,#fff));color:var(--text,var(--text-main,#172126));'
         + 'border-left:1px solid var(--border,var(--border-color,#e2e6ea));box-shadow:-4px 0 24px rgba(0,0,0,.16);'
         + 'visibility:hidden;transform:translateX(100%);transition:transform .18s ease-out,visibility .18s;'
@@ -33,11 +33,9 @@
         + '#rdwDrawer.open{visibility:visible;transform:translateX(0)}'
         + '#rdwDrawer *,.rdw-form *{box-sizing:border-box}'
         + '.rdw-header{display:flex;align-items:start;justify-content:space-between;gap:16px;padding:24px;border-bottom:1px solid var(--border,var(--border-color,#e2e6ea))}'
-        + '.rdw-header>div{min-width:0;flex:1}'
-        + '#rdwDrawer .rdw-title{overflow-wrap:anywhere;font-size:24px;font-weight:600;margin:0}.rdw-subtitle{font-size:12px;color:var(--text2,var(--text-secondary,#475569));margin-top:4px;overflow-wrap:anywhere}'
+        + '#rdwDrawer .rdw-title{font-size:24px;font-weight:600;margin:0}.rdw-subtitle{font-size:12px;color:var(--text2,var(--text-secondary,#475569));margin-top:4px;overflow-wrap:anywhere}'
         + '.rdw-close{background:none;border:0;color:inherit;min-width:36px;min-height:36px;font-size:24px;cursor:pointer}'
         + '.rdw-body{flex:1;min-height:0;overflow:auto;padding:24px}'
-        + '.rdw-pagination,.rdw-search{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 16px}.rdw-search{align-items:flex-end}.rdw-search label{flex:1;min-width:min(100%,180px)}'
         + '.rdw-section{margin-bottom:24px}.rdw-section-title{font-size:16px;font-weight:600;margin:0 0 16px}'
         + '.rdw-note,.rdw-help{display:block;color:var(--text2,var(--text-secondary,#475569));font-size:12px;line-height:1.5;margin:6px 0 0}'
         + '.rdw-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:8px;padding:7px 10px;min-height:38px;'
@@ -259,9 +257,7 @@
     function recipientPickerHtml(schedule, chips, id, ready) {
         schedule = schedule || {};
         chips = chips || EMPTY_CHIP_DATA;
-        var members = (chips.members || []).concat(chips.selected && chips.selected.members || []), groups = (chips.groups || []).concat(chips.selected && chips.selected.groups || []);
-        members = members.filter(function (row, index, rows) { return rows.findIndex(function (other) { return other.id === row.id; }) === index; });
-        groups = groups.filter(function (row, index, rows) { return rows.findIndex(function (other) { return other.id === row.id; }) === index; });
+        var members = (chips.members || []).slice(), groups = (chips.groups || []).slice();
         (schedule.recipients || []).forEach(function (person) {
             if (!members.some(function (row) { return String(row.id) === String(person.id); })) members.push(person);
         });
@@ -276,7 +272,8 @@
                 + '" data-recipient-name="' + esc(text) + '" data-recipient-identity="' + esc(identity || '') + '"'
                 + (selected ? ' checked' : '') + (ready ? '' : ' disabled') + '>' + esc(text) + '</label>';
         }
-        return '<div class="rdw-field rdw-wide" data-f="recipients" data-recipient-picker data-picker-label="Recipients" data-recipient-people-name="recipient_ids" data-recipient-group-name="recipient_group_ids"' + (chips.source ? ' data-recipient-source="' + esc(chips.source) + '"' : '') + '>'
+        return '<div class="rdw-field rdw-wide" data-f="recipients" data-recipient-picker data-picker-label="Recipients"'
+            + (chips.source ? ' data-recipient-people-name="recipient_ids" data-recipient-group-name="recipient_group_ids" data-recipient-source="' + esc(chips.source) + '"' : '') + '>'
             + '<label class="rdw-label">Recipients</label><div data-recipient-type="people">'
             + members.map(function (row) { return checkbox('recipient_ids', row.id, row.name || row.email, row.email, people.indexOf(String(row.id)) >= 0); }).join('')
             + '</div><div data-recipient-type="roles">'
@@ -400,7 +397,7 @@
             ctx.ready = false; submit.disabled = true; retry.hidden = true;
             loadStatus.textContent = 'Loading recipient choices…';
             var attempt = ctx.loadAttempt = (ctx.loadAttempt || 0) + 1;
-            var choices = loadMembersFor(ctx.apiBase, selection(root));
+            var choices = loadMembersFor(ctx.apiBase);
             ensurePickerAssets(ctx.assets).then(function () {
                 if (!currentForm(root, ctx) || attempt !== ctx.loadAttempt) return null;
                 TrellumChoices.init(root); TrellumRecipients.init(root);
@@ -472,7 +469,6 @@
     var state = null;         // { prefix, slug, name, triggerEl }
     var pageGeneration = 0;
     var data = null;          // last GET /schedules payload
-    var scheduleRead = null, scheduleGeneration = 0;
     // Report API URL -> eligible recipients. Refresh on each open/edit because
     // group access can change while the page remains open.
     var editingId = null;     // schedule pk being edited, or null for "new"
@@ -482,15 +478,13 @@
 
     var EMPTY_CHIP_DATA = { members: [], roles: {}, groups: [], studio_name: '' };
 
-    function loadMembersFor(reportApiBase, selected) {
-        var url = new URL(reportApiBase + '/recipients', location.href);
-        if (selected) { url.searchParams.set('selected_people', selected.recipients.map(function (row) { return row.id; }).join(',')); url.searchParams.set('selected_groups', selected.recipient_groups.map(function (row) { return row.id; }).join(',')); }
-        return apiFetch(url.href).then(function (response) {
+    function loadMembersFor(reportApiBase) {
+        return apiFetch(reportApiBase + '/recipients').then(function (response) {
             if (!response.ok) throw new Error('Could not load recipients.');
             return response.json();
         }).then(function (result) {
-            if (!Array.isArray(result.members) || result.members.length > 25 || !Array.isArray(result.groups) || result.groups.length > 25 || !result.pagination || !result.selected) throw new Error('Invalid recipient choices.');
-            return { ok: true, data: { members: result.members || [], roles: result.roles || {}, groups: result.groups || [], studio_name: result.studio_name || '', source: reportApiBase + '/recipients', pagination: result.pagination, selected: result.selected } };
+            // The whole audience is listed; only a huge one ("truncated") is searched server-side.
+            return { ok: true, data: { members: result.members || [], roles: result.roles || {}, groups: result.groups || [], studio_name: result.studio_name || '', source: result.truncated ? reportApiBase + '/recipients' : '' } };
         }).catch(function () { return { ok: false }; });
     }
     function currentSession(session) { return state === session && session.active; }
@@ -590,7 +584,7 @@
         if (state && state.active && oldForm && oldForm.querySelector('form') && !canDiscard(oldForm._rdwContext)) return;
         ensureDom();
         if (state) state.active = false;
-        state = { prefix: prefix, slug: slug, name: name, triggerEl: triggerEl || document.activeElement, active: true, schedulePage: 1, scheduleQuery: '' };
+        state = { prefix: prefix, slug: slug, name: name, triggerEl: triggerEl || document.activeElement, active: true };
         data = null;
         editingId = null;
         document.getElementById('rdwSubtitle').textContent = name || slug;
@@ -608,7 +602,6 @@
         var wrap = document.getElementById('rdwFormWrap');
         if (skipConfirmation !== true && wrap && wrap.querySelector('form') && !canDiscard(wrap._rdwContext)) return;
         state.active = false;
-        scheduleGeneration++; if (scheduleRead) scheduleRead.abort();
         drawer.querySelectorAll('[data-recipient-picker],select[data-choice-picker]').forEach(function (node) {
             var picker = node._trellumRecipients || node._trellumChoice;
             if (picker) picker.close(false);
@@ -622,29 +615,19 @@
 
     // ── data loading ─────────────────────────────────────────────────────
     function loadAndRender() {
-        var session = state, endpoint = apiBase(), generation = ++scheduleGeneration;
-        if (scheduleRead) scheduleRead.abort();
-        scheduleRead = new AbortController();
-        var params = new URLSearchParams({ page: session.schedulePage || 1, q: session.scheduleQuery || '' });
-        apiFetch(endpoint + '/schedules' + (session.schedulePage > 1 || session.scheduleQuery ? '?' + params.toString() : ''), { signal: scheduleRead.signal }).then(function (response) {
+        var session = state, endpoint = apiBase();
+        apiFetch(endpoint + '/schedules').then(function (response) {
             if (!response.ok) throw new Error('Could not load schedules.');
             return response.json();
         }).then(function (result) {
             if (!currentSession(session)) return;
-            if (generation !== scheduleGeneration) return;
             data = result;
             render();
-            if (session.focusAfterRead) {
-                session.focusAfterRead = false;
-                document.querySelector('#rdwScheduleSearch input').focus({ preventScroll: true });
-            }
-        }).catch(function (error) {
-            if (!currentSession(session) || generation !== scheduleGeneration || error.name === 'AbortError') return;
+        }).catch(function () {
+            if (!currentSession(session)) return;
             var body = document.getElementById('rdwBody');
             body.innerHTML = '<p class="rdw-flash error" role="alert">Could not load deliveries.</p><button type="button" class="ui-btn rdw-btn" data-retry-schedules>Retry</button>';
-            var retry = body.querySelector('[data-retry-schedules]');
-            retry.addEventListener('click', loadAndRender);
-            if (session.focusAfterRead) retry.focus({ preventScroll: true });
+            body.querySelector('[data-retry-schedules]').addEventListener('click', loadAndRender);
         });
     }
 
@@ -730,16 +713,9 @@
         var body = document.getElementById('rdwBody');
 
         var html = '';
-        html += '<div class="rdw-section"><h3 class="rdw-section-title">Scheduled delivery</h3>'
-            + '<form id="rdwScheduleSearch" class="rdw-form rdw-search"><label><span class="rdw-label">Search creator or recipient</span><input class="rdw-input" type="search" name="q" value="' + esc(state.scheduleQuery || '') + '"></label><button class="ui-btn rdw-btn" type="submit">Search</button></form><div id="rdwScheduleList">';
+        html += '<div class="rdw-section"><h3 class="rdw-section-title">Scheduled delivery</h3><div id="rdwScheduleList">';
         html += scheduleRowsHtml();
-        html += '</div>';
-        if (data.pagination && data.pagination.total > data.pagination.per_page) {
-            html += '<div class="rdw-pagination"><button type="button" class="ui-btn rdw-btn" data-schedule-page="' + (data.pagination.page - 1) + '"' + (data.pagination.has_previous ? '' : ' disabled') + '>Previous</button>'
-                + '<span>Page ' + data.pagination.page + ' · ' + data.pagination.total + ' deliveries</span>'
-                + '<button type="button" class="ui-btn rdw-btn" data-schedule-page="' + (data.pagination.page + 1) + '"' + (data.pagination.has_next ? '' : ' disabled') + '>Next</button></div>';
-        }
-        html += ''
+        html += '</div>'
             + (data.can_manage ? '<button type="button" class="ui-btn rdw-btn" id="rdwNewSchedule">+ New schedule</button>' : '<p class="rdw-note">Read only. Developers and admins manage shared schedules.</p>')
             + '<div id="rdwFormWrap"></div>'
             + '</div>';
@@ -752,19 +728,6 @@
     }
 
     function wireStaticControls() {
-        function navigateSchedules(page, query) {
-            var wrap = document.getElementById('rdwFormWrap');
-            if (wrap && wrap.querySelector('form') && !canDiscard(wrap._rdwContext)) return;
-            state.schedulePage = page; state.scheduleQuery = query; state.focusAfterRead = true;
-            document.getElementById('rdwBody').innerHTML = '<p role="status">Loading deliveries…</p>';
-            loadAndRender();
-        }
-        document.getElementById('rdwScheduleSearch').addEventListener('submit', function (event) {
-            event.preventDefault(); navigateSchedules(1, event.currentTarget.elements.q.value);
-        });
-        document.querySelectorAll('[data-schedule-page]').forEach(function (button) {
-            button.addEventListener('click', function () { navigateSchedules(Number(button.dataset.schedulePage), state.scheduleQuery || ''); });
-        });
         var newButton = document.getElementById('rdwNewSchedule');
         if (newButton) newButton.addEventListener('click', function () {
             editingId = null;

@@ -108,30 +108,3 @@ def test_remote_picker_stays_inside_scaled_viewport(remote_picker):
     bounds = page.locator('.ui-picker-popup').bounding_box()
     assert bounds['x'] >= 0 and bounds['x'] + bounds['width'] <= 391
     assert bounds['y'] >= 0 and bounds['y'] + bounds['height'] <= 845
-
-
-def test_drawer_pager_fits_200_percent_mobile_layout_and_returns_focus(remote_picker):
-    page, behavior = remote_picker
-    page.set_viewport_size({'width': 195, 'height': 450})
-    page.add_style_tag(content='body {min-height:3000px}')
-    def schedules(route):
-        number = int(parse_qs(urlsplit(route.request.url).query).get('page', ['1'])[0])
-        rows = [{'id': i, 'freq': 'daily', 'send_hour': 8, 'send_minute': 0, 'timezone': 'UTC',
-                 'enabled': True, 'editable': False, 'recipient_summary': 'Everyone in Studio'}
-                for i in (range(50) if number == 1 else range(50, 57))]
-        route.fulfill(json={'schedules': rows, 'can_manage': False, 'subscribed_count': 57,
-            'pagination': {'page': number, 'total': 57, 'per_page': 50,
-                           'has_previous': number == 2, 'has_next': number == 1}})
-    page.route('**/s/example/studio/api/reports/shared/schedules*', schedules)
-    page.add_script_tag(content=(ROOT / 'static/report_delivery.js').read_text())
-    page.evaluate("ReportDelivery.open('/s/example/studio','shared','Shared report')")
-    expect(page.locator('#rdwScheduleList .rdw-schedule-row')).to_have_count(50)
-    page.locator('[data-schedule-page="2"]').click()
-    expect(page.locator('#rdwScheduleList .rdw-schedule-row')).to_have_count(7)
-    expect(page.locator('#rdwScheduleSearch input')).to_be_focused()
-    assert page.locator('#rdwDrawer').evaluate('(el)=>el.scrollWidth<=el.clientWidth')
-    bounds = page.locator('#rdwDrawer').bounding_box()
-    assert bounds['x'] >= -1 and bounds['x'] + bounds['width'] <= 196
-    page.locator('[data-schedule-page="1"]').click()
-    expect(page.locator('#rdwScheduleList .rdw-schedule-row')).to_have_count(50)
-    expect(page.locator('#rdwScheduleSearch input')).to_be_focused()

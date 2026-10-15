@@ -17,21 +17,12 @@
 </div>
 <div class="ui-form-row"><div class="ui-field"><label class="ui-check-row" for="{{ form.enabled.id_for_label }}">{{ form.enabled }} Enabled</label>{{ form.enabled.errors }}</div><div class="ui-field"><label class="ui-check-row" for="{{ form.attach_pdf.id_for_label }}">{{ form.attach_pdf }} Attach a PDF copy</label>{{ form.attach_pdf.errors }}</div></div>
 </section>
-<section class="ui-form-section"><h2>Recipients</h2><div data-recipient-picker data-picker-label="Recipients" data-recipient-source="{{ recipient_source }}" data-recipient-people-name="recipient_ids" data-recipient-group-name="recipient_group_ids">
+<section class="ui-form-section"><h2>Recipients</h2><div data-recipient-picker data-picker-label="Recipients"{% if recipient_source %} data-recipient-source="{{ recipient_source }}" data-recipient-people-name="recipient_ids" data-recipient-group-name="recipient_group_ids"{% endif %}>
 <div data-recipient-type="people" class="ui-field"><h3>People</h3>{{ form.recipient_ids }}{{ form.recipient_ids.errors }}</div>
 <div data-recipient-type="roles" class="ui-field"><h3>Studio roles</h3>{{ form.recipient_roles }}{{ form.recipient_roles.errors }}</div>
 <div data-recipient-type="groups" class="ui-field"><h3>Permission groups</h3>{{ form.recipient_group_ids }}{% if form.recipient_group_ids.help_text %}<span class="ui-help">{{ form.recipient_group_ids.help_text }}</span>{% endif %}{{ form.recipient_group_ids.errors }}</div>
-<div data-picker-fallback>
-<label for="recipientSearch">Search recipients</label><input id="recipientSearch" name="recipient_q" value="{{ recipient_query }}" data-settings-ignore>
-<span>People page {{ recipient_page.pagination.members.page }} · {{ recipient_page.pagination.members.total }} choices</span>
-{% if recipient_page.pagination.members.has_previous %}<button class="ui-btn ghost" type="submit" name="people_page" value="{{ recipient_page.pagination.members.page|add:'-1' }}" formnovalidate>Previous people</button>{% endif %}
-{% if recipient_page.pagination.members.has_next %}<button class="ui-btn ghost" type="submit" name="people_page" value="{{ recipient_page.pagination.members.page|add:'1' }}" formnovalidate>Next people</button>{% endif %}
-<span>Groups page {{ recipient_page.pagination.groups.page }} · {{ recipient_page.pagination.groups.total }} choices</span>
-{% if recipient_page.pagination.groups.has_previous %}<button class="ui-btn ghost" type="submit" name="group_page" value="{{ recipient_page.pagination.groups.page|add:'-1' }}" formnovalidate>Previous groups</button>{% endif %}
-{% if recipient_page.pagination.groups.has_next %}<button class="ui-btn ghost" type="submit" name="group_page" value="{{ recipient_page.pagination.groups.page|add:'1' }}" formnovalidate>Next groups</button>{% endif %}
-<button class="ui-btn ghost" type="submit" name="action" value="browse_choices" formnovalidate>Browse choices</button>
-</div></div></section>
-<div class="ui-form-actions"><button type="submit" class="ui-btn primary" name="action" value="save">{% if schedule.pk %}Save delivery{% else %}Create delivery{% endif %}</button><a class="ui-btn ghost" href="{{ return_to }}" data-settings-leave>Cancel</a></div>
+</div></section>
+<div class="ui-form-actions"><button type="submit" class="ui-btn primary">{% if schedule.pk %}Save delivery{% else %}Create delivery{% endif %}</button><a class="ui-btn ghost" href="{{ return_to }}" data-settings-leave>Cancel</a></div>
 </form>
 <script>document.addEventListener('DOMContentLoaded',function(){var form=document.getElementById('delivery-schedule-form');if(!form)return;var frequency=form.elements.freq;function sync(){form.querySelectorAll('[data-frequency-field]').forEach(function(field){field.hidden=field.dataset.frequencyField!==frequency.value;});}frequency.addEventListener('change',sync);sync();});</script>
 {% if browser_timezone_default %}<script>(function(){var select=document.querySelector('#delivery-schedule-form [name="timezone"]');if(!select)return;try{var zone=Intl.DateTimeFormat().resolvedOptions().timeZone;if(zone&&Array.prototype.some.call(select.options,function(o){return o.value===zone})){select.value=zone;if(select._trellumChoice)select._trellumChoice.refresh();}}catch(_){}})();</script>{% endif %}
