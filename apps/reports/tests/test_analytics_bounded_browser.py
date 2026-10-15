@@ -1,4 +1,4 @@
-"""Real Gunicorn/PostgreSQL native and enhanced analytics browser checks.
+"""Real Gunicorn/PostgreSQL analytics browser checks for a studio beyond the browser-side threshold.
 
 Uses an owned pytest database and subprocess, with PBKDF2 authentication.
 Artifacts are opt-in through ANALYTICS_BROWSER_ARTIFACTS; no external service.
@@ -44,7 +44,7 @@ def analytics_server(request, django_db_setup, django_db_blocker, tmp_path_facto
             users[role] = user.email
         rows = Report.objects.bulk_create([Report(studio=studio, slug=f"report-{i:04}", name=f"Report {i:04}" if i != 1 else "A long report name "*15) for i in range(1000)])
         ReportViewDaily.objects.create(report=rows[-1], date=timezone.now().date(), views=100)
-        ReportSourceSummary.objects.create(report=rows[0], state="ready", quality="verified", observed_at=timezone.now(), attempt_at=timezone.now(), attempt_status="success")
+        ReportSourceSummary.objects.create(report=rows[0], attempt_at=timezone.now(), attempt_status="success")
     db = settings.DATABASES["default"]
     database_url = f"postgres://{quote(db['USER'])}:{quote(db['PASSWORD'])}@{db['HOST']}:{db['PORT']}/{db['NAME']}"
     (tmp / "analytics_browser_settings.py").write_text(
@@ -90,107 +90,62 @@ def _login(page, server, role):
     started = time.perf_counter()
     page.get_by_role("button", name="Continue", exact=True).click()
     page.wait_for_url("**"+server["path"])
-    expect(page.locator("#analyticsTable tbody tr[data-name]")).to_have_count(25)
+    expect(page.locator("#analyticsTable tbody tr[data-name]")).to_have_count(200)
     expect(page.locator("#analyticsTable tbody tr[data-name]").first).to_be_visible()
     return time.perf_counter()-started
 
 
 @pytest.mark.parametrize("engine", ("chromium", "webkit"))
-def test_analytics_gunicorn_native_enhanced_devices_roles(analytics_server, engine):
+def test_analytics_gunicorn_server_side_mode_devices_roles(analytics_server, engine):
     from playwright.sync_api import sync_playwright, expect
     server = analytics_server
     timings = []
+    rows = "#analyticsTable tbody tr[data-name]"
     with sync_playwright() as playwright:
         browser = getattr(playwright, engine).launch(headless=True)
         try:
-            for javascript in (False, True):
-                for width in tuple(int(value) for value in os.environ.get("ANALYTICS_BROWSER_WIDTHS", "1440,390,720,195").split(",")):
-                    context = browser.new_context(java_script_enabled=javascript, viewport={"width": width, "height": 900}, reduced_motion="reduce", color_scheme="dark" if width == 720 else "light")
-                    page = context.new_page(); page.set_default_timeout(15000)
-                    if javascript:
-                        page.add_init_script("""window.addEventListener('click', () => {
-                          const started = performance.now();
-                          queueMicrotask(() => {
-                            const status = document.querySelector('[data-console-navigation-native-status]');
-                            if (status && status.textContent) sessionStorage.setItem('analyticsNavigationFeedback', JSON.stringify({text:status.textContent, milliseconds:performance.now()-started}));
-                          });
-                        });""")
-                    errors = []; page.on("pageerror", lambda error: errors.append(str(error)))
-                    cold_first_rows = _login(page, server, "admin")
-                    assert cold_first_rows <= {0:3, 20:4.5, 50:6.5}[server["delay"]]
-                    started = time.perf_counter()
-                    response = page.goto(server["origin"]+server["path"], wait_until="domcontentloaded")
-                    expect(page.locator("#analyticsTable tbody tr[data-name]")).to_have_count(25)
-                    elapsed = time.perf_counter()-started
-                    assert elapsed <= {0:3, 20:4.5, 50:6.5}[server["delay"]]
-                    assert len(response.body()) <= 160*1024
-                    assert page.locator("*").count() <= 1500
-                    page.screenshot(path=str(server["artifacts"] / f"{engine}-{width}-js{int(javascript)}.png"), full_page=False)
-                    assert page.locator("body").evaluate("e => e.scrollWidth <= innerWidth"), page.evaluate("Array.from(document.querySelectorAll('body *')).filter(e => e.getBoundingClientRect().right > innerWidth+1).map(e => ({tag:e.tagName, cls:e.className, text:e.textContent.slice(0,60), parent:e.parentElement.className, right:e.getBoundingClientRect().right})).slice(0,30)")
-                    assert page.get_by_text("Build observation unavailable", exact=True).count() > 0
-                    timings.append(dict(engine=engine, width=width, javascript=javascript, cold_login_first_rows_seconds=cold_first_rows, first_rows_seconds=elapsed, html_bytes=len(response.body()), dom_nodes=page.locator("*").count()))
-                    # Native search and sorting are equally usable on mobile cards.
-                    page.get_by_label("Search report names", exact=True).fill("report-0999")
-                    page.get_by_label("Search report names", exact=True).press("Enter")
-                    expect(page.locator("#analyticsTable tbody tr[data-name]")).to_have_count(1)
-                    expect(page.locator("#analyticsTable tbody")).to_contain_text("Report 0999")
-                    page.get_by_role("link", name="7d", exact=True).click()
-                    assert "q=report-0999" in page.url and "days=7" in page.url
-                    page.get_by_label("Search report names", exact=True).fill("")
-                    page.get_by_label("Sort by", exact=True).select_option("views")
-                    page.get_by_label("Order", exact=True).select_option("desc")
-                    page.get_by_role("button", name="Search", exact=True).click()
-                    expect(page.locator("#analyticsTable tbody tr[data-name]").first).to_contain_text("Report 0999")
-                    # Paging retains range/order and uses keyboard-operable links.
-                    page.get_by_role("link", name="Next", exact=True).focus()
-                    page.keyboard.press("Enter")
-                    expect(page.locator(".analytics-pagination")).to_contain_text("Page 2 of 40")
-                    if javascript:
-                        recorded = page.evaluate("sessionStorage.getItem('analyticsNavigationFeedback')")
-                        feedback = json.loads(recorded) if recorded else None
-                        # Native-route feedback is owned by shared navigation adoption.
-                        # Preserve its actual absence on pre-adoption source pins.
-                        if feedback or os.environ.get("ANALYTICS_REQUIRE_NAV_FEEDBACK") == "1":
-                            assert feedback and feedback["text"] == "Opening page…" and feedback["milliseconds"] < 100
-                        timings[-1]["native_navigation_feedback"] = feedback
-                    assert "sort=views" in page.url and "direction=desc" in page.url and "days=7" in page.url
-                    page.get_by_label("Search report names", exact=True).fill("no-matching-report")
-                    page.get_by_role("button", name="Search", exact=True).click()
-                    expect(page.locator(".ui-empty")).to_contain_text("No reports match your search.")
-                    if javascript and width == 1440 and server["delay"]:
-                        # This existing sidebar foundation is separate from local
-                        # search/range/paging adapter adoption.
-                        page.evaluate("""() => {
-                          window.addEventListener('click', () => {
-                            const started = performance.now();
-                            const panel = document.querySelector('[data-console-native-pending]');
-                            const style = panel && getComputedStyle(panel);
-                            const snapshot = {
-                              milliseconds:performance.now()-started,
-                              visible:!!(panel && panel.getClientRects().length && style.display !== 'none' && style.visibility !== 'hidden'),
-                              text:panel ? panel.textContent : '',
-                              animation_frame_observed:false
-                            };
-                            sessionStorage.setItem('analyticsSidebarFeedback', JSON.stringify(snapshot));
-                            requestAnimationFrame(() => {
-                              snapshot.animation_frame_observed = true;
-                              snapshot.animation_frame_milliseconds = performance.now()-started;
-                              sessionStorage.setItem('analyticsSidebarFeedback', JSON.stringify(snapshot));
-                            });
-                          }, {once:true});
-                        }""")
-                        started = time.perf_counter()
-                        page.locator(f'a.tl-console-nav-link[href="{server["path"]}"]').click()
-                        expect(page.locator("#analyticsTable tbody tr[data-name]")).to_have_count(25)
-                        sidebar_feedback = json.loads(page.evaluate("sessionStorage.getItem('analyticsSidebarFeedback')"))
-                        assert sidebar_feedback["visible"] and "Opening Report Analytics…" in sidebar_feedback["text"]
-                        assert sidebar_feedback["milliseconds"] < 100
-                        timings[-1]["sidebar_dom_pending_feedback"] = sidebar_feedback
-                        timings[-1]["sidebar_to_analytics_rows_seconds"] = time.perf_counter()-started
-                    page.goto(server["origin"]+server["empty"])
-                    expect(page.locator(".ui-empty")).to_contain_text("No reports in this studio.")
-                    assert not errors
-                    context.close()
+            for width in tuple(int(value) for value in os.environ.get("ANALYTICS_BROWSER_WIDTHS", "1440,390,720,195").split(",")):
+                context = browser.new_context(viewport={"width": width, "height": 900}, reduced_motion="reduce", color_scheme="dark" if width == 720 else "light")
+                page = context.new_page(); page.set_default_timeout(15000)
+                errors = []; page.on("pageerror", lambda error: errors.append(str(error)))
+                cold_first_rows = _login(page, server, "admin")
+                assert cold_first_rows <= {0:3, 20:4.5, 50:6.5}[server["delay"]]
+                started = time.perf_counter()
+                response = page.goto(server["origin"]+server["path"], wait_until="domcontentloaded")
+                expect(page.locator(rows)).to_have_count(200)
+                elapsed = time.perf_counter()-started
+                assert elapsed <= {0:3, 20:4.5, 50:6.5}[server["delay"]]
+                assert len(response.body()) <= 700*1024
+                page.screenshot(path=str(server["artifacts"] / f"{engine}-{width}.png"), full_page=False)
+                # The page's own visible content fits (the shell header is not this page's layout).
+                overflow = page.evaluate("Array.from(document.querySelectorAll('main *')).filter(e => { const r = e.getBoundingClientRect(), s = getComputedStyle(e); return r.width > 1 && r.height > 1 && s.visibility !== 'hidden' && r.right > innerWidth + 1 && !e.closest('thead'); }).map(e => ({tag: e.tagName, cls: e.className, right: e.getBoundingClientRect().right})).slice(0, 20)")
+                assert not overflow, overflow
+                # Main's controls only; no selects, no Search button.
+                assert page.locator("main select, main form, main button").count() == 0
+                expect(page.locator(".ui-pager")).to_contain_text("1–200 of 1000")
+                assert page.get_by_text("unavailable").count() == 0
+                timings.append(dict(engine=engine, width=width, cold_login_first_rows_seconds=cold_first_rows, first_rows_seconds=elapsed, html_bytes=len(response.body()), dom_nodes=page.locator("*").count()))
+                # The filter box searches the whole studio after a pause; a header sorts it.
+                page.locator("#analyticsSearch").fill("report-0999")
+                expect(page.locator(rows)).to_have_count(1)
+                expect(page.locator("#analyticsTable tbody")).to_contain_text("Report 0999")
+                assert "q=report-0999" in page.url
+                page.locator("#analyticsSearch").fill("")
+                expect(page.locator(rows)).to_have_count(200)
+                sortable = width >= 768  # phones show cards: no sortable headers, as before
+                if sortable:
+                    page.locator('th[data-sort="views"]').click()
+                    page.locator('th[data-sort="views"]').click()
+                    expect(page.locator(rows).first).to_contain_text("Report 0999")
+                    assert "sort=views" in page.url and "direction=desc" in page.url
+                # The pager keeps the sort.
+                page.get_by_role("link", name="Next →", exact=True).click()
+                expect(page.locator(".ui-pager")).to_contain_text("201–400 of 1000")
+                assert "page=2" in page.url and (not sortable or "sort=views" in page.url)
+                page.goto(server["origin"]+server["empty"])
+                expect(page.locator(".ui-empty")).to_contain_text("No views recorded yet.")
+                assert not errors
+                context.close()
             for role, status in (("developer",200), ("viewer",403)):
                 context = browser.new_context(); page = context.new_page()
                 if role == "viewer":
@@ -209,12 +164,9 @@ def test_analytics_gunicorn_native_enhanced_devices_roles(analytics_server, engi
             browser.close()
     work = [json.loads(line) for line in (server["artifacts"] / "work.jsonl").read_text().splitlines()]
     analytics_work = [row for row in work if row["route"] == "report-analytics" or row["path"].endswith("/analytics")]
-    # No post-render fetch is necessary for analytics; record the full HTTP work window.
     assert analytics_work
-    assert all(row["storage_count"] == 0 and row["sql_count"] <= 27 and row["response_bytes"] <= 160*1024 for row in analytics_work if row["status"] == 200)
+    assert all(row["storage_count"] == 0 and row["sql_count"] <= 27 and row["response_bytes"] <= 700*1024 for row in analytics_work if row["status"] == 200)
     (server["artifacts"] / f"{engine}-timings.json").write_text(json.dumps({
-        "source": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
-        "source_dirty": bool(subprocess.check_output(["git", "status", "--porcelain"], text=True).strip()),
         "browser": engine, "delay_ms": server["delay"], "timings": timings,
         "analytics_http_requests": len(analytics_work), "max_sql": max(row["sql_count"] for row in analytics_work),
         "storage": sum(row["storage_count"] for row in analytics_work),

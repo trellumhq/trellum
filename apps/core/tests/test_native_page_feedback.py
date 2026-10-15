@@ -2,6 +2,7 @@
 
 The shared analytics fixture starts owned Gunicorn/PostgreSQL and authenticates
 with PBKDF2. Held navigation responses test client recovery, not server timing.
+The 1,000-report analytics page supplies a real shared pager link.
 """
 import json
 
@@ -14,7 +15,7 @@ pytestmark = pytest.mark.django_db
 
 @pytest.mark.parametrize("engine", ["chromium", "webkit"])
 @pytest.mark.parametrize("width", [1440, 390])
-def test_local_page_links_and_get_filters_show_recoverable_feedback(analytics_server, engine, width):
+def test_local_page_links_show_recoverable_feedback(analytics_server, engine, width):
     from playwright.sync_api import sync_playwright, expect
 
     server = analytics_server
@@ -59,14 +60,14 @@ def test_local_page_links_and_get_filters_show_recoverable_feedback(analytics_se
             page.route(server["origin"]+server["path"]+"?**", lambda route: held.append(route))
             page.locator('#neighbor input').fill('keep this draft')
             page.once('dialog', lambda dialog: dialog.dismiss())
-            page.get_by_role('link', name='Next', exact=True).click()
+            page.get_by_role('link', name='Next →', exact=True).click()
             assert not held
             expect(page.locator('[data-console-native-pending]')).to_have_count(0)
             expect(page.locator('#neighbor input')).to_have_value('keep this draft')
             page.once('dialog', lambda dialog: dialog.accept())
             state = page.evaluate("""() => {
                 const started = performance.now();
-                document.querySelector('.analytics-pagination a:last-child').click();
+                document.querySelector('.ui-pager a:last-child').click();
                 const panel = document.querySelector('[data-console-native-pending]');
                 const r = panel.querySelector('button').getBoundingClientRect();
                 return {ms:performance.now()-started,text:panel.textContent,x:r.x+r.width/2,y:r.y+r.height/2,
@@ -97,51 +98,17 @@ def test_local_page_links_and_get_filters_show_recoverable_feedback(analytics_se
             assert rendered and rendered[-1]['pending'] and rendered[-1]['display']['tableRects'] == 0, rendered
             assert rendered[-1]['milliseconds'] < 100, rendered
 
-            # A GET search also guards neighboring drafts and retains its inputs.
-            # Match native browse forms registered with the shared draft guard.
-            page.evaluate("""() => {
-                document.querySelector('.analytics-search-form').setAttribute('data-settings-form', '');
-                TrellumSettingsForms.init(document);
-            }""")
-            page.locator('#analyticsSearch').fill('report-0999')
-            page.once('dialog', lambda dialog: dialog.dismiss())
-            page.locator('.analytics-search-form button[type=submit]').click()
-            assert not held
-            expect(page.locator('#analyticsSearch')).to_have_value('report-0999')
-            dialog_count = len(dialogs)
-            page.once('dialog', lambda dialog: dialog.accept())
-            state = page.evaluate("""() => {
-                const started=performance.now();
-                document.querySelector('.analytics-search-form').requestSubmit();
-                const panel=document.querySelector('[data-console-native-pending]');
-                return {ms:performance.now()-started,text:panel.textContent,
-                    oldVisibility:getComputedStyle(document.querySelector('#analyticsTable')).visibility};
-            }""")
-            assert state['ms'] < 100 and 'Opening Report Analytics' in state['text']
-            assert len(dialogs) == dialog_count + 1
-            page.wait_for_timeout(50)
-            assert len(held) == 1
-            page.wait_for_timeout(100)
-            page.keyboard.press('Escape')
-            held.pop().abort()
-            expect(page.locator('#analyticsSearch')).to_have_value('report-0999')
-            expect(page.locator('#neighbor input')).to_have_value('keep this draft')
-            expect(page.locator('[data-console-native-pending]')).to_have_count(0)
-            rendered = page.evaluate('pendingVisibility')
-            (server['artifacts'] / f'pending-form-{engine}-{width}.json').write_text(json.dumps(rendered, indent=2))
-            assert len(rendered) == 2 and rendered[-1]['pending'] and rendered[-1]['display']['tableRects'] == 0, rendered
-            assert rendered[-1]['milliseconds'] < 100, rendered
             # Resolve an actual authorized response; no synthetic result body.
             page.evaluate("document.querySelector('#neighbor').remove()")
             previous_scroll = page.evaluate("window.scrollTo(0,500); scrollY")
-            page.evaluate("document.querySelector('.analytics-search-form').requestSubmit()")
+            # A held navigation never commits, so click from the page instead of waiting on it.
+            page.evaluate("document.querySelector('.ui-pager a:last-child').click()")
             page.wait_for_timeout(50)
             route = held.pop()
             response = route.fetch()
             assert response.status == 200
             route.fulfill(response=response)
-            expect(page.locator('#analyticsTable tbody tr[data-name]')).to_have_count(1)
-            expect(page.locator('#analyticsSearch')).to_have_value('report-0999')
+            expect(page.locator('.ui-pager')).to_contain_text('201–400 of 1000')
             expect(page.locator('[data-console-native-pending]')).to_have_count(0)
             boundaries = page.evaluate("""() => {
                 const urls = ['/login', '/api/me', '/s/org/studio/r/report/', '/s/org/studio/r/report/index.html',
@@ -174,7 +141,7 @@ def test_local_page_links_and_get_filters_show_recoverable_feedback(analytics_se
             }""")
             assert all(row['pending'] for row in ordinary), ordinary
             page.go_back()
-            expect(page.locator('#analyticsTable tbody tr[data-name]')).to_have_count(25)
+            expect(page.locator('#analyticsTable tbody tr[data-name]')).to_have_count(200)
             expect(page).to_have_url(server['origin'] + server['path'])
             page.wait_for_function('expected => Math.abs(scrollY-expected)<3', arg=previous_scroll)
             assert not errors
