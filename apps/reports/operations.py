@@ -9,6 +9,7 @@ from datetime import timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import json
 import re
+import time
 from urllib.parse import urlencode
 
 from django.conf import settings
@@ -32,7 +33,13 @@ from apps.runner.models import Run, WorkerHeartbeat
 from apps.runner.stats import studio_run_stats
 
 PAGE_SIZE = 25
+#: The Operations page lists every report up to this many rows with no pager,
+#: like the page always did; the API still pages at PAGE_SIZE unless asked.
+ROW_CAP = 500
 DEPENDENCY_LIMIT = 25
+#: Distinct data sources whose state one capped page may resolve.
+DEPENDENCY_CAP = 200
+BYTES_PER_ROW = 4096
 REFERENCE_PREVIEW = 8
 RESPONSE_BYTES = 128 * 1024
 FRESH_SECONDS = 300
@@ -51,6 +58,7 @@ class OperationsParams:
     folder: str = 'all'
     state: str = 'all'
     page: int = 1
+    page_size: int = PAGE_SIZE
     source_page: int = 1
     sort: str = 'priority'
     ascending: bool = True
@@ -82,6 +90,12 @@ def _page(value):
     return int(value)
 
 
+def _page_size(value):
+    if not re.fullmatch(r'[0-9]{1,3}', value) or not 1 <= int(value) <= ROW_CAP:
+        raise ValueError('Invalid Operations page size')
+    return int(value)
+
+
 def validate_slugs(slugs, *, maximum=PAGE_SIZE):
     if not isinstance(slugs, (list, tuple)) or len(slugs) > maximum:
         raise ValueError('Invalid Operations selection')
@@ -109,7 +123,7 @@ def validate_operations_params(params):
     return OperationsParams(
         q=_scalar(params, 'q', '', 1000), source_q=_scalar(params, 'source_q', '', 1000),
         category=_scalar(params, 'category', '', 200), folder=folder, state=state,
-        page=_page(_scalar(params, 'page', '1', 7)),
+        page=_page(_scalar(params, 'page', '1', 7)), page_size=_page_size(_scalar(params, 'page_size', str(PAGE_SIZE), 3)),
         source_page=_page(_scalar(params, 'source_page', '1', 7)),
         sort=sort, ascending=asc == '1', recent=validate_slugs(_values(params, 'recent'), maximum=8),
     )
@@ -135,8 +149,13 @@ def operations_relation(request):
     return Report.objects.filter(studio_id=request.studio.pk, present_in_scan=True)
 
 
-def _bounded(payload):
-    if len(json.dumps(payload, cls=DjangoJSONEncoder).encode('utf-8')) <= RESPONSE_BYTES:
+def _row_bytes(page_size):
+    """Byte ceiling for a page: the default page keeps its fixed ceiling."""
+    return RESPONSE_BYTES if page_size <= PAGE_SIZE else page_size * BYTES_PER_ROW
+
+
+def _bounded(payload, limit=RESPONSE_BYTES):
+    if len(json.dumps(payload, cls=DjangoJSONEncoder).encode('utf-8')) <= limit:
         return payload
     result = dict(version=1, state='oversized', message='This observation exceeds its presentation limit. Narrow the selection.')
     for key in ('pagination', 'coverage', 'counts', 'applied'):
@@ -145,8 +164,8 @@ def _bounded(payload):
     return result
 
 
-def _pagination(page, total):
-    return dict(page=page, page_size=PAGE_SIZE, total=total, pages=(total + PAGE_SIZE - 1) // PAGE_SIZE)
+def _pagination(page, total, size=PAGE_SIZE):
+    return dict(page=page, page_size=size, total=total, pages=(total + size - 1) // size)
 
 
 class ReferenceNames(Func):
@@ -211,9 +230,13 @@ def _observations(relation, now):
     latest = Run.objects.filter(studio_id=OuterRef('studio_id'), slug=OuterRef('slug')).order_by('-created_at', '-pk')
     fresh = Q(source_summary__schema_version=2, source_summary__observed_at__gte=now-timedelta(seconds=FRESH_SECONDS), source_summary__observed_at__lte=now)
     compatible = Q(source_summary__schema_version=2, source_summary__observed_at__lte=now, source_summary__quality__in=('observed', 'verified'), source_summary__state__in=('ready','missing','uncertain'))
-    # Runtime validation is output evidence, not proof from a recent failed
-    # attempt. Stale/uncertain serving observations must retain unknown state.
-    runtime_known = fresh & Q(source_summary__quality__in=('observed', 'verified'), source_summary__runtime_state='ready', source_summary__state__in=('ready', 'missing'))
+    # The last compatible observation stays the page's last-known fact about
+    # the build's output (live queries, validation, framework): the worker
+    # re-inspects on its own schedule and updates the projection when a build
+    # changes it, so the age of the check never blanks what the page shows.
+    # Uncertain, expired or future observations still read as unknown.
+    observed = Q(source_summary__schema_version=2, source_summary__observed_at__lte=now, source_summary__quality__in=('observed', 'verified'))
+    runtime_known = observed & Q(source_summary__runtime_state='ready', source_summary__state__in=('ready', 'missing'))
     attempt_known = Q(source_summary__schema_version=2, source_summary__attempt_at__lte=now) & ~Q(source_summary__attempt_status='')
     relation = relation.annotate(
         display_name=Coalesce(Func(F('name'), Value(''), function='NULLIF'), F('slug')),
@@ -222,7 +245,7 @@ def _observations(relation, now):
         latest_status=Subquery(latest.values('status')[:1]),
         latest_at=Subquery(latest.values('created_at')[:1]),
         latest_error=Subquery(latest.annotate(short_error=Substr('stderr_tail', 1, 500)).values('short_error')[:1]),
-        observation_known=Case(When(fresh & Q(source_summary__quality__in=('observed', 'verified'), source_summary__state__in=('ready', 'missing')), then=Value(True)), default=Value(False), output_field=BooleanField()),
+        observation_known=Case(When(observed & Q(source_summary__state__in=('ready', 'missing')), then=Value(True)), default=Value(False), output_field=BooleanField()),
         waiting_known=Case(When(compatible & attempt_known, then=Value(True)), default=Value(False), output_field=BooleanField()),
         waiting_stale=Case(When(compatible & ~fresh & attempt_known, then=Value(True)), default=Value(False), output_field=BooleanField()),
         runtime_known=Case(When(runtime_known, then=Value(True)), default=Value(False), output_field=BooleanField()),
@@ -304,10 +327,10 @@ def _relation(request, now):
     return _observations(operations_relation(request).annotate(favorite_actor=Value(request.user.pk, output_field=IntegerField())), now)
 
 
-def _source_states(request, names):
+def _source_states(request, names, limit=DEPENDENCY_LIMIT):
     """Only selected identities may cause encrypted bindings to be decoded."""
     names = tuple(names)
-    if len(names) > DEPENDENCY_LIMIT:
+    if len(names) > limit:
         raise ValueError('Operations source dependency limit exceeded')
     if not names:
         return {}
@@ -377,9 +400,10 @@ def operations_page_payload(request, params, *, now=None):
         'blocked_preview', 'blocked_count', 'waiting_compatible', 'validation_preview', 'framework_preview', 'source_summary__attempt_at', 'source_summary__attempt_error',
         'source_summary__observed_at', 'source_summary__served_at', 'source_summary__quality', 'source_summary__state',
         'source_summary__has_output', 'source_summary__html_entry', 'source_summary__has_live_queries',
-    )[(state.page-1)*PAGE_SIZE:state.page*PAGE_SIZE])
-    names = sorted({name for row in rows for name in row['reference_dependencies']})[:DEPENDENCY_LIMIT]
-    sources = _source_states(request, names)
+    )[(state.page-1)*state.page_size:state.page*state.page_size])
+    dependency_limit = DEPENDENCY_LIMIT if state.page_size <= PAGE_SIZE else DEPENDENCY_CAP
+    names = sorted({name for row in rows for name in row['reference_dependencies']})[:dependency_limit]
+    sources = _source_states(request, names, dependency_limit)
     live_enabled = live_query_rate_limit(request.org) > 0
     presentation = []
     for row in rows:
@@ -412,29 +436,46 @@ def operations_page_payload(request, params, *, now=None):
             observed_at=row['source_summary__observed_at'], served_at=row['source_summary__served_at'],
             quality=row['source_summary__quality'] or 'unknown', observation_known=known,
         ))
-    return _bounded(dict(version=1, state='ready', rows=presentation, pagination=_pagination(state.page, total), counts=counts, folders=_folders(request), coverage=coverage,
-                         applied=dict(q=state.q, category=state.category, folder=state.folder, state=state.state, sort=state.sort, ascending=state.ascending), observed_at=now))
+    return _bounded(dict(version=1, state='ready', rows=presentation, pagination=_pagination(state.page, total, state.page_size), counts=counts, folders=_folders(request), coverage=coverage,
+                         applied=dict(q=state.q, category=state.category, folder=state.folder, state=state.state, sort=state.sort, ascending=state.ascending), observed_at=now),
+                    _row_bytes(state.page_size))
 
 
-def operations_status_payload(request, page_slugs, *, now=None):
+def _server_uptime():
+    from apps.reports.views import _SERVER_START
+    return round(time.time() - _SERVER_START, 1)
+
+
+def operations_status_payload(request, page_slugs, *, now=None, studio_wide=False):
+    """Active runs of the selected slugs, or of every authorized report of the
+    studio (up to ROW_CAP rows) for the page that lists them all."""
     slugs = validate_slugs(page_slugs)
     now = now or timezone.now()
     relation = operations_relation(request)
-    authorized = tuple(relation.filter(slug__in=slugs).values_list('slug', flat=True)) if slugs else ()
+    if studio_wide:
+        authorized, limit, byte_limit = relation.order_by().values('slug'), ROW_CAP, RESPONSE_BYTES * 4
+    else:
+        authorized = tuple(relation.filter(slug__in=slugs).values_list('slug', flat=True)) if slugs else ()
+        limit, byte_limit = PAGE_SIZE, RESPONSE_BYTES
     runs = Run.objects.filter(studio=request.studio, status__in=Run.ACTIVE_STATUSES)
     totals = runs.aggregate(total=Count('pk'), selected=Count('pk', filter=Q(slug__in=authorized)), running=Count('pk', filter=Q(status__in=(Run.STARTING, Run.RUNNING))), queued=Count('pk', filter=Q(status=Run.QUEUED)))
-    page = list(runs.filter(slug__in=authorized).order_by('priority', 'created_at', 'pk').values('id', 'slug', 'status', 'created_at', 'started_at', 'priority', 'cache_mode')[:PAGE_SIZE]) if authorized else []
+    page = list(runs.filter(slug__in=authorized).order_by('priority', 'created_at', 'pk').values('id', 'slug', 'status', 'created_at', 'started_at', 'priority', 'cache_mode')[:limit]) if studio_wide or authorized else []
     beat = WorkerHeartbeat.alive().order_by('-last_beat_at').values('max_concurrent').first()
     return _bounded(dict(version=1, state='ready', active_jobs_total=totals, rows=page,
-                         coverage=dict(selected_slugs=len(authorized), page_limit=PAGE_SIZE, active_rows_total=totals['selected'], active_rows_complete=totals['selected'] <= PAGE_SIZE),
-                         worker_alive=beat is not None, max_concurrent=beat['max_concurrent'] if beat else settings.WORKER_MAX_CONCURRENT, observed_at=now))
+                         coverage=dict(selected_slugs=None if studio_wide else len(authorized), page_limit=limit, active_rows_total=totals['selected'], active_rows_complete=totals['selected'] <= limit),
+                         worker_alive=beat is not None, max_concurrent=beat['max_concurrent'] if beat else settings.WORKER_MAX_CONCURRENT,
+                         server_uptime_seconds=_server_uptime(), observed_at=now), byte_limit)
 
 
-def operations_stats_payload(request, page_slugs, *, now=None):
+def operations_stats_payload(request, page_slugs, *, now=None, studio_wide=False):
     slugs = validate_slugs(page_slugs)
     relation = operations_relation(request)
-    authorized = tuple(relation.filter(slug__in=slugs).values_list('slug', flat=True)) if slugs else ()
-    return _bounded(dict(version=1, state='ready', stats=studio_run_stats(request.studio, slugs=authorized), window_days=30, observed_at=now or timezone.now()))
+    if studio_wide:
+        authorized = tuple(relation.order_by().values_list('slug', flat=True)[:ROW_CAP])
+    else:
+        authorized = tuple(relation.filter(slug__in=slugs).values_list('slug', flat=True)) if slugs else ()
+    return _bounded(dict(version=1, state='ready', stats=studio_run_stats(request.studio, slugs=authorized), window_days=30, observed_at=now or timezone.now()),
+                    RESPONSE_BYTES * 4 if studio_wide else RESPONSE_BYTES)
 
 
 def _source_cte(request, now):
@@ -485,13 +526,13 @@ def operations_sources_payload(request, params, *, now=None):
     with connection.cursor() as cursor:
         cursor.execute(cte + f' SELECT count(*) FROM sources {condition}', (*arguments, *search_args))
         total = cursor.fetchone()[0]
-        cursor.execute(cte + f' SELECT left(name,200),length(name),md5(name),type FROM sources {condition} ORDER BY lower(name),name LIMIT %s OFFSET %s', (*arguments, *search_args, PAGE_SIZE, (state.source_page-1)*PAGE_SIZE))
+        cursor.execute(cte + f' SELECT left(name,200),length(name),md5(name),type FROM sources {condition} ORDER BY lower(name),name LIMIT %s OFFSET %s', (*arguments, *search_args, state.page_size, (state.source_page-1)*state.page_size))
         identities = cursor.fetchall()
         names = [name for name, length, digest, type_ in identities if length <= 64]
     # Malformed imported reference identities are visible but cannot trigger
     # credential/name operations or be represented as configured sources.
     valid_names = [name for name in names if re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}', name)]
-    source_states = _source_states(request, valid_names)
+    source_states = _source_states(request, valid_names, max(DEPENDENCY_LIMIT, state.page_size))
     usage = {}
     blocks = {}
     digests = [digest for name, length, digest, type_ in identities]
@@ -519,8 +560,9 @@ def operations_sources_payload(request, params, *, now=None):
             upload_allowed=upload and source.binding_scope != 'org',
             download_available=None, quality='configured' if source and source.state != 'unknown' else 'unknown',
         ))
-    return _bounded(dict(version=1, state='ready', rows=rows, pagination=_pagination(state.source_page, total),
-                         coverage=dict(readiness='page-only', global_current_readiness='unknown'), applied=dict(source_q=state.source_q), observed_at=now))
+    return _bounded(dict(version=1, state='ready', rows=rows, pagination=_pagination(state.source_page, total, state.page_size),
+                         coverage=dict(readiness='page-only', global_current_readiness='unknown'), applied=dict(source_q=state.source_q), observed_at=now),
+                    _row_bytes(state.page_size))
 
 
 def operations_source_reports_payload(request, name, params, *, observed_blocks=False, now=None):

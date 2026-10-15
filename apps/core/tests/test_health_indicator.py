@@ -137,9 +137,23 @@ def test_health_endpoint_recovers_when_worker_returns(
 
     settings.TRELLUM_SANDBOX = "docker"
     WorkerHeartbeat.objects.create(worker_id="combined", role=WorkerHeartbeat.ROLE_ALL, sandbox_mode="docker")
+    # A live worker alone does not make the system healthy: nothing has been
+    # measured on the coordinator yet.
+    unmeasured = client.get("/api/system/health")
+    assert unmeasured.json()["status"] == "unknown"
+    assert unmeasured.json()["message"] == "System health unavailable"
+
+    def measured(*checks):
+        OpsState.record("operator.maintenance", completed_at=timezone.now().isoformat(), checks=list(checks))
+
+    measured({"label": "database", "ok": True, "detail": "reachable"})
     recovered = client.get("/api/system/health")
-    assert recovered.json()["status"] == "unknown"
-    assert recovered.json()["message"] == "Web-local diagnostics unverified"
+    assert recovered.json()["status"] == "ok"
+
+    measured({"label": "backups", "ok": False, "detail": "stale"}, {"label": "retention", "ok": False, "detail": "never ran"})
+    failing = client.get("/api/system/health").json()
+    assert failing["status"] == "error"
+    assert failing["message"] == "System needs attention (2)"
 
 
 @pytest.mark.parametrize("fixture_name", ["org_admin", "member"])

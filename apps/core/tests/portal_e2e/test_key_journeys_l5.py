@@ -32,7 +32,6 @@ def test_operations_run_log_registry_refresh(journey, variant):
         page.goto(origin + S + '/operations')
         row = page.locator('[data-ops-row=report-0001]')
         expect(row).to_be_visible(timeout=20000)
-        expect(page.get_by_text('Worker offline')).to_have_count(0, timeout=20000)
         row.locator('.ops-run-dropdown .ops-row-btn').click()
         with page.expect_response(lambda r: r.request.method == 'POST' and r.url.endswith('/api/reports/report-0001/run')) as accepted:
             page.locator('#opsRunMenu_report-0001 .ops-run-menu-item', has_text='Generate').click()

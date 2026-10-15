@@ -275,7 +275,7 @@ def operations_log_payload(request, slug, *, mode='last', run_id=None):
             raise _Unavailable
     except (OSError, ValueError, _Unavailable):
         return {**payload, 'state': 'unavailable', 'availability': 'unavailable',
-                'message': 'This log observation is unavailable. Refresh to check the current run.',
+                'message': 'This log observation is unavailable.',
                 'stdout': None, 'stderr': None, 'streams': None}
     payload['availability'] = 'available' if any(texts) else 'quiet'
     payload['label'] = 'Live local log tail' if mode == 'live' else 'Persisted stdout/stderr tails'

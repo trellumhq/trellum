@@ -25,6 +25,23 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - Use the report theme font for chart labels, matching report headers and
   metadata, including after theme changes and font loading.
+- Metrics charts and sparklines no longer disappear when the worker has not
+  re-observed a report for five minutes. The idle re-check interval is capped
+  inside that window, chart availability no longer waits on observation
+  freshness, and the Metrics page fills in usage and charts by itself (with
+  quiet retries) instead of offering a "Retry report usage" button. The
+  Metrics overview is one grid with a browser-side filter, as before.
+- The Metrics comparison workspace retries a failed load by itself and shows no
+  pager when all metrics fit on one page.
+- Operators get an "Operator console" entry in the shell sidebar.
+- The System health page and an organization's uploaded-file usage measure on
+  the coordinator by themselves: the page asks for a fresh measurement about
+  every minute (five for uploads), shows "Checked 2 minutes ago", and has no
+  refresh buttons. The operator Fleet, Organizations and organization pages
+  match their earlier layout again.
+- The Operations page lists every report in one capped read with no pager, the
+  Uptime tile and the earlier state chips and filters; Reload Registry keeps its
+  Scheduled and result feedback. The no-JavaScript Operations page is removed.
 
 ## [0.6.0] — 2026-10-13
 

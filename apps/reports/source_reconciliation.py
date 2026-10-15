@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from datetime import timedelta
 
 from django.db import close_old_connections
 from django.db.models import Exists, F, OuterRef, Q
@@ -11,7 +12,7 @@ from django.utils import timezone
 
 from apps.core import storage
 from .models import Report, ReportSourceSummary
-from .source_summary import INSPECTION_BYTES, reconcile
+from .source_summary import INSPECTION_BYTES, MAX_IDLE_SECONDS, reconcile
 
 logger = logging.getLogger(__name__)
 MAX_INSPECTIONS = 25
@@ -30,8 +31,13 @@ def eligible_reports(*, pools=None):
     ).filter(Q(active_source_run=False) | Q(source_summary__operation__startswith="expiry:"))
     if pools:
         rows = rows.filter(studio__pool__in=pools)
+    now = timezone.now()
+    # A healthy schedule never runs further ahead than the idle cap; a longer
+    # one was written under an older, longer cap and would age the observation
+    # into "unknown", so it is due now.
+    overlong = Q(source_summary__failures=0, source_summary__next_check_at__gt=now + timedelta(seconds=MAX_IDLE_SECONDS))
     return rows.filter(
-        Q(source_summary__isnull=True) | Q(source_summary__next_check_at__lte=timezone.now())
+        Q(source_summary__isnull=True) | Q(source_summary__next_check_at__lte=now) | overlong
     ).filter(
         Q(source_summary__lease_until__isnull=True) | Q(source_summary__lease_until__lte=timezone.now())
     ).order_by(F("source_summary__next_check_at").asc(nulls_first=True), "pk")

@@ -294,59 +294,7 @@ def catalog_details(request, org_slug, studio_slug, report_id):  # noqa: ARG001
 def operations(request, org_slug, studio_slug):  # noqa: ARG001
     """The Operations tab: run/queue state, system actions, data sources.
     Operational details and controls belong to developers and admins."""
-    from apps.reports import operations as ops
-
-    native = None
-    try:
-        # The no-JS surface: the same bounded reads the enhanced page uses.
-        native = {
-            "page": ops.operations_page_payload(request, request.GET),
-            "sources": ops.operations_sources_payload(request, request.GET),
-        }
-        native["links"] = _ops_native_links(request, native["page"])
-    except ValueError as exc:
-        native = {"invalid": str(exc)}
-    response = _dashboard_page(request, initial_view="ops", extra={"ops_native": native})
-    if native.get("invalid"):
-        response.status_code = 400
-    return response
-
-
-_OPS_PILLS = (
-    ("all", "All"), ("running", "Running"), ("queued", "Queued"), ("waiting", "Last observed waiting"),
-    ("error", "Failed"), ("oom", "Out of memory"), ("timeout", "Timed out"), ("stopped", "Stopped"),
-    ("ok", "Success"), ("not_run", "Not run"), ("unknown", "Unknown"),
-    ("v_fail", "Validation fails"), ("v_warn", "Warnings"), ("healthy", "No issues"),
-)
-
-
-def _ops_native_links(request, page):
-    """Plain GET links for the no-JavaScript surface; all filters preserved."""
-    from urllib.parse import urlencode
-
-    base = f"/s/{request.org.slug}/{request.studio.slug}/operations"
-    applied = page.get("applied", {})
-    keep = {k: applied[k] for k in ("q", "category", "folder") if applied.get(k) and applied[k] != "all"}
-
-    def link(**changes):
-        query = {**keep, **({"state": applied["state"]} if applied.get("state") not in (None, "all") else {}), **changes}
-        query = {k: v for k, v in query.items() if v not in (None, "", "all", 1)}
-        return base + ("?" + urlencode(query) if query else "")
-
-    counts = page.get("counts", {})
-    pills = [
-        {"state": key, "label": label, "count": counts.get("total" if key == "all" else key),
-         "active": applied.get("state") == key, "href": link(state=key, page=None)}
-        for key, label in _OPS_PILLS
-    ]
-    pagination = page.get("pagination", {})
-    current = pagination.get("page", 1)
-    return {
-        "pills": pills,
-        "prev": link(page=current - 1) if current > 1 else None,
-        "next": link(page=current + 1) if current < pagination.get("pages", 1) else None,
-        "reset": base,
-    }
+    return _dashboard_page(request, initial_view="ops")
 
 
 def _ops_json(build):
@@ -357,6 +305,14 @@ def _ops_json(build):
         return JsonResponse({"version": 1, "state": "invalid", "message": str(exc)}, status=400)
     except OperationsLogChanged as exc:
         return JsonResponse({"version": 1, "state": "changed", "message": str(exc)}, status=409)
+
+
+def _ops_studio_wide(request):
+    """``?scope=studio``: every authorized report of the studio, not named slugs."""
+    scope = request.GET.get("scope")
+    if scope not in (None, "", "studio"):
+        raise ValueError("Invalid Operations scope")
+    return scope == "studio"
 
 
 def _ops_get(view):
@@ -379,14 +335,16 @@ def api_operations_catalog(request, org_slug, studio_slug):  # noqa: ARG001
 def api_operations_status(request, org_slug, studio_slug):  # noqa: ARG001
     from apps.reports.operations import operations_status_payload
 
-    return _no_store(_ops_json(lambda: operations_status_payload(request, request.GET.getlist("slug"))))
+    return _no_store(_ops_json(lambda: operations_status_payload(
+        request, request.GET.getlist("slug"), studio_wide=_ops_studio_wide(request))))
 
 
 @_ops_get
 def api_operations_stats(request, org_slug, studio_slug):  # noqa: ARG001
     from apps.reports.operations import operations_stats_payload
 
-    return _no_store(_ops_json(lambda: operations_stats_payload(request, request.GET.getlist("slug"))))
+    return _no_store(_ops_json(lambda: operations_stats_payload(
+        request, request.GET.getlist("slug"), studio_wide=_ops_studio_wide(request))))
 
 
 @_ops_get
@@ -408,24 +366,6 @@ def api_operations_report_log(request, org_slug, studio_slug, slug):  # noqa: AR
 
     mode, run = _log_args(request)
     return _no_store(_ops_json(lambda: operations_log_payload(request, slug, mode=mode, run_id=run)))
-
-
-@_ops_get
-def operations_report_log(request, org_slug, studio_slug, slug):  # noqa: ARG001
-    """No-JS reading view of the same bounded payload (never raw JSON)."""
-    from apps.reports.operations_logs import operations_log_payload
-
-    mode, run = _log_args(request)
-    try:
-        payload = operations_log_payload(request, slug, mode=mode, run_id=run)
-        status = 200
-    except ValueError as exc:
-        payload, status = {"state": "invalid", "message": str(exc)}, 400
-    response = render(request, "portal/operations_log.html", {
-        "org": request.org, "studio": request.studio, "slug": slug, "log": payload,
-        "console_page_title": "Operations log",
-    }, status=status)
-    return _no_store(response)
 
 
 @_ops_get

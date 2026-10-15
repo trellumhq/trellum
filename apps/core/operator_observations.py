@@ -22,12 +22,14 @@ KINDS = {"full-health": (30, 35), "upload-usage": (60, 65), "maintenance": (10, 
 EXPLICIT = frozenset({"full-health", "upload-usage"})
 TERMINAL = frozenset({"succeeded", "failed", "unconfirmed"})
 NONCE_SALT = "operator-probe-v1"
+MIN_GAP = 30  # seconds between admissions
 
 
 class ObservationError(Exception):
-    def __init__(self, message, status=400, *, busy=None):
+    def __init__(self, message, status=400, *, busy=None, retry_after=None):
         self.message, self.status = message, status
         self.busy = busy
+        self.retry_after = retry_after
         super().__init__(message)
 
 
@@ -125,8 +127,9 @@ def admit(actor_id, kind, key, *, org_id=None):
         if payload.get("blocked"):
             raise ObservationError("Previous measurement termination is unconfirmed. Check the coordinator.", 503)
         last = stamp(payload.get("last_admitted"))
-        if last and now - last < timedelta(seconds=30):
-            raise ObservationError("Wait thirty seconds between diagnostic measurements.", 429)
+        if last and now - last < timedelta(seconds=MIN_GAP):
+            raise ObservationError("Wait thirty seconds between diagnostic measurements.", 429,
+                                   retry_after=max(1, int(MIN_GAP - (now - last).total_seconds()) + 1))
         node = _coordinator()
         if not node or sys.platform != "linux":
             raise ObservationError("A supported live coordinator is required.", 503)
@@ -173,6 +176,23 @@ def envelope(entry, status_url):
     return action_payload(action_id=entry["id"], state=entry["state"], message=entry["message"], status_url=status_url)
 
 
+def refusal(exc, actor_id, kind, status_url, *, org_id=None):
+    """JSON body for a refused admission or lookup.
+
+    Carries everything the page needs to carry on by itself: the latest
+    snapshot, a fresh admission key, how long to wait, and, when another
+    measurement is running, where to watch it.
+    """
+    busy = None
+    if exc.busy:
+        busy = dict(exc.busy)
+        # Only a measurement of this page's own kind can be watched from it.
+        if busy.get("id") and busy.get("kind") == kind and busy.get("org_id") == org_id:
+            busy["status_url"] = status_url(busy["id"])
+    return {"ok": False, "message": exc.message, "busy": busy, "retry_after": exc.retry_after,
+            "snapshot": snapshot(kind, org_id), "next_nonce": nonce(actor_id, kind, org_id)}
+
+
 def snapshot_key(kind, org_id=None):
     if kind == "upload-usage":
         return f"operator.usage.{int(org_id)}"
@@ -190,7 +210,25 @@ def snapshot(kind, org_id=None):
         return {"state": "unknown", "message": "Observation belongs to another or unavailable workspace."}
     result["state"] = "observed" if fresh else "stale"
     result["message"] = "Last observed" if fresh else "Last observation is stale"
+    if completed:
+        # Seconds, so the page can show "2 minutes ago" without trusting the
+        # browser clock to agree with the server's.
+        result["age_seconds"] = max(0, int((timezone.now() - completed).total_seconds()))
     return result
+
+
+def age_text(seconds):
+    """Relative age for the first paint; static/operator-observations.js keeps it current."""
+    if seconds is None:
+        return ""
+    if seconds < 10:
+        return "just now"
+    if seconds < 60:
+        return f"{seconds} seconds ago"
+    for size, unit in ((86400, "day"), (3600, "hour"), (60, "minute")):
+        if seconds >= size:
+            count = seconds // size
+            return f"{count} {unit}{'' if count == 1 else 's'} ago"
 
 
 def _remember(payload, entry):

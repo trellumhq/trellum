@@ -21,6 +21,9 @@ from .models import MetricCatalogState, MetricDefinition, Report, ReportMetricCl
 # window, not a worker convergence guarantee: large or slow catalogs may be
 # partial while reconciliation progresses. GET requests never backfill.
 SOURCE_FRESH_SECONDS = 300
+# Claims listed inline per metric, more than any realistic catalog has; beyond
+# it the card links to the paged list of all indexed claims.
+CLAIM_PREVIEW = 25
 MAX_DATABASE_ID = 2**63 - 1
 
 
@@ -47,6 +50,12 @@ def _reports(studio):
 def _claims(studio):
     return ReportMetricClaim.objects.filter(summary__report__in=_reports(studio)).exclude(
         summary__state__in=["expired", "removed", "expiring"])
+
+
+def claimed_count(studio):
+    """Definitions at least one live report claims."""
+    return _claims(studio).filter(metric_name__in=MetricDefinition.objects.filter(
+        studio=studio, present_in_scan=True).values("name")).values("metric_name").distinct().count()
 
 
 def _claim_json(claim, definition):
@@ -99,26 +108,30 @@ def metrics_summary(request, org_slug, studio_slug):
                  "source_summary__workspace_version", "spark_rows").first()
         claims = _claims(studio).filter(metric_name__in=names)
         # Compute full counts before rank filtering, while returning at most
-        # three rows per metric, including when a metric has thousands of claims.
+        # CLAIM_PREVIEW rows per metric, including when a metric has thousands of claims.
         previews = list(claims.select_related("summary__report__studio__org").annotate(
             claim_total=Window(Count("pk"), partition_by=[F("metric_name")]),
             generated_total=Window(Count("pk", filter=Q(summary__report_id=generated["pk"] if generated else None)),
                                    partition_by=[F("metric_name")]),
             preview_rank=Window(RowNumber(), partition_by=[F("metric_name")],
                                 order_by=[F("summary__report__name").asc(), F("summary__report_id").asc()])
-                        ).filter(preview_rank__lte=3).order_by("metric_name", "preview_rank"))
+                        ).filter(preview_rank__lte=CLAIM_PREVIEW).order_by("metric_name", "preview_rank"))
         grouped, counts, generated_claims = {}, {}, set()
         for claim in previews:
             grouped.setdefault(claim.metric_name, []).append(_claim_json(claim, names[claim.metric_name]))
             counts[claim.metric_name] = claim.claim_total
             if claim.generated_total:
                 generated_claims.add(claim.metric_name)
+        # Whether a chart can be drawn is not a question about worker timing:
+        # the frame loads the live report, and a missing metric is reported by
+        # the frame itself. Only the indexed state and format decide it; the
+        # five-minute freshness window applies to usage coverage, not charts.
         generated_source_ready = bool(generated and generated["source_summary__state"] == "ready" and
-                               generated["source_summary__quality"] in ('verified', 'observed') and
-                               generated["source_summary__observed_at"] and generated["source_summary__observed_at"] >=
-                               timezone.now() - timedelta(seconds=SOURCE_FRESH_SECONDS))
+                               generated["source_summary__quality"] in ('verified', 'observed'))
         workspace_version = generated['source_summary__workspace_version'] if generated else None
         generated_ready = generated_source_ready and workspace_version == 1
+        # No Metrics report, or one that has never produced output.
+        unbuilt = generated is None or generated["source_summary__state"] == "missing"
         # Existing indexed previews remain useful even when an old artifact
         # needs explicit loading. Format gating controls frame creation only.
         sparks = {item["name"]: item["points"] for item in generated["spark_rows"]} if generated_source_ready and generated['source_summary__quality'] == 'verified' else {}
@@ -132,7 +145,8 @@ def metrics_summary(request, org_slug, studio_slug):
                                f"?definition_revision={revision}",
                 "spark": " ".join(sparks.get(definition.name, "").split()[:60]),
                 "chart_state": "ready" if monitored else "not-monitored" if generated_ready else
-                               "legacy" if generated_source_ready and workspace_version == 0 else "unknown",
+                               "legacy" if generated_source_ready and workspace_version == 0 else
+                               "unbuilt" if unbuilt else "unknown",
                 'workspace_version': workspace_version,
                 'workspace_quality': generated['source_summary__quality'] if generated else 'unknown',
                 'legacy_url': f'{base}?only=metric-{definition.name}' if generated_source_ready and workspace_version == 0 else '',

@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "first_party_expected": 221,
+  "first_party_expected": 220,
   "routes": [
     {
       "id": "route-000",
@@ -8569,9 +8569,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "6e0105a8300b8ac0c02cbbf1c4ebfeaf0885fd831366d3ef05ad831efab5be5e",
+      "source_sha256": "bd1571eda476d720243d0e842614abe3843baec7922755e9ad741510357b64b7",
       "request_conditions": [],
-      "adapter_sha256": "238a4f5ab13601ba248bf414286e522ab48aa171bb85f6a0838a6b14054c158e",
+      "adapter_sha256": "9622527d13147b0c05bfbf642fbbda3307d6c87154b754d0889efa05d54f0989",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -8711,12 +8711,12 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "4632e351dbbb009604b7bb9ce9831f1a4e3f79c4043de458f8a61c52428c5b54",
+      "source_sha256": "331a4ff45c878349b7995e57abeda2f1bd1853839c5ddbba50ed4e46b772cd8c",
       "request_conditions": [
         "require_full_studio_visibility: plain alpha viewer/group-member/selected denied by seeded private audience; viewer-full samples explicitly granted public-only beta studio0",
         "alpha private-viewer explicitly granted private report remains finite-scope and is denied full-studio overviews under current semantics"
       ],
-      "adapter_sha256": "4632e351dbbb009604b7bb9ce9831f1a4e3f79c4043de458f8a61c52428c5b54",
+      "adapter_sha256": "331a4ff45c878349b7995e57abeda2f1bd1853839c5ddbba50ed4e46b772cd8c",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -8776,12 +8776,12 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "4632e351dbbb009604b7bb9ce9831f1a4e3f79c4043de458f8a61c52428c5b54",
+      "source_sha256": "331a4ff45c878349b7995e57abeda2f1bd1853839c5ddbba50ed4e46b772cd8c",
       "request_conditions": [
         "require_full_studio_visibility: plain alpha viewer/group-member/selected denied by seeded private audience; viewer-full samples explicitly granted public-only beta studio0",
         "alpha private-viewer explicitly granted private report remains finite-scope and is denied full-studio overviews under current semantics"
       ],
-      "adapter_sha256": "4632e351dbbb009604b7bb9ce9831f1a4e3f79c4043de458f8a61c52428c5b54",
+      "adapter_sha256": "331a4ff45c878349b7995e57abeda2f1bd1853839c5ddbba50ed4e46b772cd8c",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -17024,9 +17024,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "c5d817d9d4e94f8617e0741fb6609754b5f61ad77af0b089ab3d5a24c791dedd",
+      "source_sha256": "93838495c86467e09310c2c3302423909c2dbef98714fa223f695b8cb2daf4ed",
       "request_conditions": [],
-      "adapter_sha256": "694bc8986a5307996d9f7be23892cb3bebda469705fdcdfb4c46069cab8476c5",
+      "adapter_sha256": "25469de20f02d2c50763321fae2798a145435948a0104e51024cd044dbfb1583",
       "conditional_roles": {
         "revoked": {
           "condition": "Active authenticated alpha-revoked identity has no organization membership; own-account/global entry differs from tenant-target access. Policy context: current-nonimpersonated-operator",
@@ -18027,9 +18027,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "396977a95e033131610457c192ba47c1d0b8e26598bb12552bb36ba856d8cf43",
+      "source_sha256": "7e3dabdc69fbdd36f5b4d4cad27f08a310acf0fee6ffd71bcb62f38fd9724673",
       "request_conditions": [],
-      "adapter_sha256": "2bc81079e9b58d5ab8077d5ce18e6fb8272bd5e77647941f19510428577e64eb",
+      "adapter_sha256": "cd2eeb67583683b61d1ba5f631ff24417a9fb62fcd257226713129728c753201",
       "conditional_roles": {
         "revoked": {
           "condition": "Active authenticated alpha-revoked identity has no organization membership; own-account/global entry differs from tenant-target access. Policy context: operator-or-special-branch",
@@ -18105,9 +18105,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "072adfa5d87023ecdd01f3f3be050732974db568e17f3277df1f34c460518ab8",
+      "source_sha256": "ef34b3c522078b577f5e77c59feb44e21876ff9ca576a21e569faec38444ec9a",
       "request_conditions": [],
-      "adapter_sha256": "6b4da81df89a3cf1c21a7fad4003680dcd7501eb49203aaca7298a33e9d26ad7",
+      "adapter_sha256": "9eabdec0a3607b152a3396bab5cf3759e547bf9ded1c85f7823aef52f98c1590",
       "conditional_roles": {
         "revoked": {
           "condition": "Active authenticated alpha-revoked identity has no organization membership; own-account/global entry differs from tenant-target access. Policy context: operator-or-special-branch",
@@ -18187,9 +18187,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "2faf50ef2b0f4479ed8b74832fe0fb494e0688da3c730bba8c5e458be8401dce",
+      "source_sha256": "a87937867a6fb5da5baf74cf7ec092472c95f4e637033bd4574ec7d48b035288",
       "request_conditions": [],
-      "adapter_sha256": "3342f529233dd8a25a6831b359c03b256a928ecfda4c48a3578576de8b8cbdfa",
+      "adapter_sha256": "d2f95fa680245cba64dd71fdc392e02a4b1fd471c95fe7cd2a4d7bbc1b8b61ab",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -21801,13 +21801,13 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "af30590c0efe560d8a9f6f57c0dcc2c6c9c97de88b72cc32b1d6f77a85b5ff9d",
+      "source_sha256": "95ac49643ab5a20442dcdf5c0e8f18898f6ca0ad40ba998b7e2ac71baac20f6c",
       "request_conditions": [
         "require_full_studio_visibility: plain alpha viewer/group-member/selected denied by seeded private audience; viewer-full samples explicitly granted public-only beta studio0",
         "alpha private-viewer explicitly granted private report remains finite-scope and is denied full-studio overviews under current semantics",
         "GET only,1\u201350 distinct authorized definition IDs with current revision; required query fixtures follow actor-specific studio parameters. No storage reads; changed revision409 and malformed400."
       ],
-      "adapter_sha256": "d063e36ef9507fe0133200a1bb4d28e3281d58695d159a92864267b76293d5d4",
+      "adapter_sha256": "5b1731555226182d2c4526351487f3081748842c7d6e296897634a6e3943d4f0",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -22823,9 +22823,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "4e0f826895ea661067a119ebca9426feb94e0b0c049c12f0eb6676af0108bd58",
+      "source_sha256": "c5513ffe6f30ebce5646b04a5ca513703e3fe71dce1e0d2da6aeb03aa2d261ba",
       "request_conditions": [],
-      "adapter_sha256": "4e0f826895ea661067a119ebca9426feb94e0b0c049c12f0eb6676af0108bd58",
+      "adapter_sha256": "345058f920146a5aa8316237b6285cf2b992cca44a3ef526f2f7cc06dd4c64f0",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -22913,9 +22913,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "58a0b898a26f77451148e9d5701a0df89f0b6a9509c66e69ff3b067e6d5209cc",
+      "source_sha256": "acd701f649f3ddc7604ce1abe51f7151800687134827eee44dd02a81e34738b3",
       "request_conditions": [],
-      "adapter_sha256": "58a0b898a26f77451148e9d5701a0df89f0b6a9509c66e69ff3b067e6d5209cc",
+      "adapter_sha256": "e6411762316630ab654d23dd52c1fe42335c3a12a1a01516624dd802b1349891",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -23003,9 +23003,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "cdc5cea1a508a59aff17d2530c1e9e641e09f0d6f1447ec2c5c5badb580077ae",
+      "source_sha256": "373a6fc37e7c3ad6f5b5a2a160f46e064c18fcb328de79250d8036715b143cef",
       "request_conditions": [],
-      "adapter_sha256": "32c3a10fb939da685ea53696aa6a21ad6ca9fe3b66007cb2e72f7589d29aacac",
+      "adapter_sha256": "7e99831c15a4208c8c48f242e6a1a7bbc2591902444ecb26b7efdc9012338915",
       "conditional_roles": {
         "revoked": {
           "condition": "Active authenticated alpha-revoked identity has no organization membership; own-account/global entry differs from tenant-target access. Policy context: current-nonimpersonated-operator",
@@ -23081,9 +23081,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "a3d83dc8f9058af36e1d1337b82a427ba2846e5cc6253f78cfa232f029b7288b",
+      "source_sha256": "bb37073591fe9b2e405fb8b18d105e9c7fefc5d29e5299c2e78beb4af4ce27ab",
       "request_conditions": [],
-      "adapter_sha256": "1ae9a72cf6a4771803ab2cbfaeb8bf3f1f83e74fa643cb9991474fe887e534d0",
+      "adapter_sha256": "8f2550e77622d9cd7db650c654a65a51436cc297eaf173971e0406c324d24c96",
       "conditional_roles": {
         "revoked": {
           "condition": "Active authenticated alpha-revoked identity has no organization membership; own-account/global entry differs from tenant-target access. Policy context: current-nonimpersonated-operator",
@@ -23372,9 +23372,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "1af935e17fe8b94aadef8b7aff039e434bbb647f2e98ad4b1d1c1ff0d2badf50",
+      "source_sha256": "b73e3bda464934b917fd225dd9f0b9adc8c81d50afb43aedb72a783b2d4d2aa0",
       "request_conditions": [],
-      "adapter_sha256": "ced8d226a13e04719563f3f346afb1f099091d169d77bcce600651248aa47b42",
+      "adapter_sha256": "d935387e60fa2df53b15654afa63e0a3ae68b854b7d7e2fbe2e092847eeba282",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -23442,9 +23442,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "6ec3b5dc16e40acb45a5a0276c7b5f06a02ee702cafdd4465a50857bfcd3acda",
+      "source_sha256": "c5e9aeafe15ab38dd22b74bf2c89cd5c2ab90434972c26d16364829344c8d3ee",
       "request_conditions": [],
-      "adapter_sha256": "f5be3a5a329df56126d9c258c5678802e9e78f2713fc5838b2390e29460eebab",
+      "adapter_sha256": "6afc1a54eb2d82dbface4364562fbd542703941cfe96a199f5d610bf81175673",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -23680,79 +23680,6 @@
         "impersonated": {
           "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: studio-developer",
           "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[350-GET]",
-          "verification": "pending"
-        }
-      }
-    },
-    {
-      "id": "route-351",
-      "pattern": "s/<slug:org_slug>/<slug:studio_slug>/operations/reports/<str:slug>/log",
-      "name": null,
-      "view": "apps.reports.views.operations_report_log",
-      "first_party": true,
-      "case": "C15",
-      "shard": "L2",
-      "allowed_roles": [
-        "developer",
-        "group-admin",
-        "operator",
-        "org-admin",
-        "studio-admin"
-      ],
-      "denied_roles": [
-        "anonymous",
-        "group-selected",
-        "inactive",
-        "private-viewer",
-        "revoked",
-        "viewer",
-        "viewer-full"
-      ],
-      "role_policy": "studio-developer",
-      "seeded_parameters": {
-        "org_slug": {
-          "value": "alpha"
-        },
-        "studio_slug": {
-          "value": "studio-0"
-        },
-        "slug": {
-          "value": "report-0000"
-        }
-      },
-      "disposition": "native with feedback",
-      "scenarios": [
-        {
-          "method": "GET",
-          "action": null,
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[351-GET]",
-          "verification": "pending"
-        }
-      ],
-      "verification": "pending",
-      "verified_node_ids": [],
-      "source_sha256": "5b6e009f558efe6b94af11abd9972573dce3c66845d87c4c2ae7cc7e6eded574",
-      "request_conditions": [],
-      "adapter_sha256": "f8bc94a6d2414521ea5cbf251ccefbfda00f4f3b6361056dcb9351991c6747ed",
-      "principal_parameter_overrides": {
-        "viewer-full": {
-          "org_slug": "beta"
-        }
-      },
-      "conditional_roles": {
-        "group-member": {
-          "condition": "Active alpha member with group-derived all-public-reports viewer access; private report is unassigned. Policy context: studio-developer",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[351-GET]",
-          "verification": "pending"
-        },
-        "cross-org": {
-          "condition": "Active beta viewer requests primary alpha objects without alpha membership; global own-account/public entry and unconditional redirects differ from tenant data. Policy context: studio-developer",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[351-GET]",
-          "verification": "pending"
-        },
-        "impersonated": {
-          "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: studio-developer",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[351-GET]",
           "verification": "pending"
         }
       }

@@ -3,7 +3,9 @@
    owns fetching, lifecycle and DOM so stale responses stay cancellable. */
 (function() {
 'use strict';
-var PAGE_SIZE = 25;
+/* The page lists every report up to this many, with no pager. Past it the page
+   says so and search (server-side) reaches the rest. */
+var ROW_CAP = 500;
 var MAX_LIVE_TERMINALS = 4;
 
 function mapRow(row) {
@@ -13,7 +15,9 @@ function mapRow(row) {
         name: row.name, category: row.category, description: row.description,
         description_truncated: row.description_truncated,
         schedule: row.schedule, schedule_timezone: row.schedule_timezone, next_run: row.next_run,
-        disabled: row.disabled, build_status: row.build_status || 'unknown',
+        disabled: row.disabled,
+        /* Never observed reads "Not run", as it always has. */
+        build_status: !row.build_status || row.build_status === 'unknown' ? 'not_run' : row.build_status,
         last_run: row.last_attempt_at, last_error: row.last_error,
         waiting: row.state === 'waiting', waiting_current: row.waiting_current,
         blocked_by: row.blocked_by || [], failing_source: row.failing_source,
@@ -24,22 +28,17 @@ function mapRow(row) {
     };
 }
 
-function catalogQuery(s) {
+function rowsQuery(q) {
     var p = new URLSearchParams();
-    if (s.q) p.set('q', s.q);
-    if (s.category) p.set('category', s.category);
-    if (s.folder && s.folder !== 'all') p.set('folder', s.folder);
-    if (s.folder === 'recent') (s.recent || []).slice(0, 8).forEach(function(v) { p.append('recent', v); });
-    if (s.state && s.state !== 'all') p.set('state', s.state);
-    if (s.page > 1) p.set('page', String(s.page));
-    if (s.sourceQ) p.set('source_q', s.sourceQ);
-    if (s.sourcePage > 1) p.set('source_page', String(s.sourcePage));
+    p.set('page_size', String(ROW_CAP));
+    if (q) p.set('q', q);
     return p;
 }
 
-function slugQuery(slugs) {
+function sourcesQuery(q) {
     var p = new URLSearchParams();
-    (slugs || []).slice(0, PAGE_SIZE).forEach(function(slug) { p.append('slug', slug); });
+    p.set('page_size', String(ROW_CAP));
+    if (q) p.set('source_q', q);
     return p;
 }
 
@@ -59,6 +58,7 @@ function statusToLegacy(payload, rows, now) {
     });
     return { running: running, queue: queue, scheduled_jobs: scheduled,
         max_concurrent: payload.max_concurrent, worker_alive: payload.worker_alive,
+        server_uptime_seconds: payload.server_uptime_seconds,
         active_jobs_total: payload.active_jobs_total, coverage: payload.coverage };
 }
 
@@ -91,8 +91,8 @@ function logText(payload) {
 }
 
 window.TrellumOperations = {
-    PAGE_SIZE: PAGE_SIZE, MAX_LIVE_TERMINALS: MAX_LIVE_TERMINALS,
-    mapRow: mapRow, mapSource: mapSource, catalogQuery: catalogQuery, slugQuery: slugQuery,
+    ROW_CAP: ROW_CAP, MAX_LIVE_TERMINALS: MAX_LIVE_TERMINALS,
+    mapRow: mapRow, mapSource: mapSource, rowsQuery: rowsQuery, sourcesQuery: sourcesQuery,
     statusToLegacy: statusToLegacy, logText: logText
 };
 })();

@@ -1,72 +1,53 @@
-"""Database-backed presentation for the operator's native lists."""
-from django.core.exceptions import BadRequest
-from django.core.paginator import Paginator
+"""Bounded reads behind the operator console's tables.
 
+The tables look as they always did: every row, no pager and no filter. Reads
+stay flat by selecting only the columns a table shows and by counting related
+rows for the rows on the page alone. Far above any realistic size a table stops
+growing and says how many rows it left out.
+"""
 from apps.orgs import quotas
 
-PAGE_SIZE = 25
+LIST_CAP = 500
 
 
-def search(params, name="q"):
-    value = params.get(name, "")
-    if len(value) > 200 or any(ord(char) < 32 for char in value):
-        raise BadRequest("Invalid search")
-    return value.strip()
+def capped(query, cap=LIST_CAP):
+    """``(rows, more)``: up to ``cap`` rows, and ``None`` unless rows were left out.
 
-
-def choice(params, name, choices):
-    value = params.get(name, "")
-    if value not in ("", *choices):
-        raise BadRequest("Invalid filter")
-    return value
-
-
-def paginate(query, params, *, name="page", total=None):
-    raw = params.get(name, "1")
-    if not raw.isascii() or not raw.isdecimal() or len(raw) > 10:
-        raise BadRequest("Invalid page")
-    number = int(raw)
-    if not 1 <= number <= 2**31 - 1:
-        raise BadRequest("Invalid page")
-    paginator = Paginator(query, PAGE_SIZE)
-    page = paginator.get_page(number)
-    # Evaluate only the selected page; templates never evaluate the base list.
-    page.object_list = list(page.object_list)
-
-    def url(number):
-        values = params.copy()
-        values[name] = str(number)
-        return "?" + values.urlencode()
-
-    return {
-        "page": page,
-        "total": paginator.count if total is None else total,
-        "matching": paginator.count,
-        "previous": url(page.previous_page_number()) if page.has_previous() else None,
-        "next": url(page.next_page_number()) if page.has_next() else None,
-    }
-
-
-def preserved(params, names):
-    """Successful controls for the neighboring independently paged section."""
-    return [(name, params[name]) for name in names if name in params]
-
-
-def usage(org, quota):
-    """Live DB usage; storage remains unknown until separately observed.
-
-    Keep this presentation separate from quota admission and tenant usage,
-    which retain their authoritative file measurements.
+    ``more`` is ``{"shown": cap, "total": N}``; the total is only counted in
+    that case.
     """
-    values = {
+    rows = list(query[:cap + 1])
+    if len(rows) <= cap:
+        return rows, None
+    return rows[:cap], {"shown": cap, "total": query.count()}
+
+
+def usage(org):
+    """Live DB usage; uploaded files come from the last coordinator measurement.
+
+    Limits follow ``quotas.usage_state``: they are the enforced ones, so they
+    read "unlimited" while quotas are off. Measuring uploaded files walks
+    storage, so it never happens while a page renders.
+    """
+    from apps.core.operator_observations import age_text, snapshot
+
+    caps = quotas.limits_for(org)
+    observation = snapshot("upload-usage", org.pk)
+    complete = observation.get("quality") == "complete" and type(observation.get("bytes")) is int
+    return {
+        "enforced": bool(caps),
         "active_runs": quotas.active_runs(org),
+        "max_concurrent_runs": int(caps.get("max_concurrent_runs") or 0),
         "build_minutes": quotas.build_minutes_this_month(org),
+        "monthly_build_minutes": int(caps.get("monthly_build_minutes") or 0),
         "studios": quotas.studio_count(org),
+        "max_studios": int(caps.get("max_studios") or 0),
         "reports": quotas.report_count(org),
+        "max_reports": int(caps.get("max_reports") or 0),
+        "max_memory_mb": int(caps.get("max_memory_mb") or 0),
+        "storage_mb": round(observation["bytes"] / (1024 * 1024), 1) if complete else None,
+        "storage_observation": observation,
+        "storage_age": age_text(observation.get("age_seconds")),
+        "max_storage_mb": int(caps.get("max_storage_mb") or 0),
         "month": quotas.month_start().date().isoformat(),
     }
-    # Display recorded limits even when enforcement is off.
-    values.update({name: getattr(quota, name, 0) for name in quotas.LIMIT_FIELDS})
-    from apps.core.operator_observations import snapshot
-    values["storage_observation"] = snapshot("upload-usage", org.pk)
-    return values

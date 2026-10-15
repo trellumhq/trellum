@@ -77,7 +77,9 @@ def controls(catalog, page, pages, build):
         '<div class="fw-metric-actions"><button type="button" id="fwMetricsShowAll">Show all</button>'
         '<button type="button" id="fwMetricsHideAll">Hide all</button>'
         '<span id="fwMetricsCount" role="status" aria-live="polite"></span></div>'
-        f'<nav aria-label="Metric pages">{links}</nav><p>Page {page} of {pages}</p></div>'
+        # One page of metrics is the common case: nothing to page through.
+        + (f'<nav aria-label="Metric pages">{links}</nav><p>Page {page} of {pages}</p>' if pages > 1 else '')
+        + '</div>'
         '<p id="fwMetricsEmpty" hidden>No metrics selected. Use Show all to restore them.</p>')
 
 

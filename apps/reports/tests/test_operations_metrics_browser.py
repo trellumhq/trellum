@@ -140,9 +140,7 @@ def test_polling_updates_summary_with_two_expanded_histories(mobile_browser, wid
         assert summary.first.inner_text() == "2"
         assert summary.nth(1).inner_text() == "1"
         assert summary.nth(2).inner_text() == "1"
-        # Uptime is not part of the bounded status contract; the Worker tile
-        # reports the capacity the status read does carry.
-        assert summary.last.inner_text() == "Capacity 10"
+        assert summary.last.inner_text() == "1h 1m"
         assert page.evaluate("""window.__metricHistoryOwners.every((el, i) =>
             el === document.querySelectorAll('.ops-history-stats')[i])""")
         assert page.evaluate("Object.keys(_opsExpandedSlugs).length") == 2

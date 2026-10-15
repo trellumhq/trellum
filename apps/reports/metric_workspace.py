@@ -13,7 +13,7 @@ from apps.core import roles
 from apps.core.permissions import require_studio_role
 from apps.core.report_access import require_full_studio_visibility
 from .models import MetricDefinition, Report, ReportMetricClaim, ReportSourceSummary
-from .metric_summaries import SOURCE_FRESH_SECONDS
+from .metric_summaries import SOURCE_FRESH_SECONDS, claimed_count
 
 
 def definition_choices(studio, query='', page=1, selected=()):
@@ -39,18 +39,15 @@ def workspace_projection(studio, *, legacy=False):
     except ReportSourceSummary.DoesNotExist:
         summary = None
     fresh = bool(summary and summary.observed_at and summary.observed_at >= timezone.now() - timedelta(seconds=SOURCE_FRESH_SECONDS))
-    ready = bool(fresh and summary.state == 'ready' and summary.quality in ('observed', 'verified'))
+    # Freshness is reported, not required: the frame loads the live report.
+    ready = bool(summary and summary.state == 'ready' and summary.quality in ('observed', 'verified'))
     version = summary.workspace_version if summary else None
     known_legacy = bool(report and version == 0 and summary.state not in ('removed', 'expired', 'expiring'))
     usable = ready and version == 1 or legacy and known_legacy
     report_url = f'/s/{studio.org.slug}/{studio.slug}/r/metrics/' if report else ''
     statistics = MetricDefinition.objects.filter(studio=studio, present_in_scan=True).aggregate(
         defined_count=Count('pk'), synced_at=Max('last_scanned_at'))
-    claimed = ReportMetricClaim.objects.filter(summary__report__studio=studio,
-        summary__report__present_in_scan=True, summary__report__kind=Report.KIND_REPORT,
-        summary__report__data_expired_at__isnull=True).exclude(summary__state__in=['expired', 'removed', 'expiring'])
-    count = claimed.filter(metric_name__in=MetricDefinition.objects.filter(studio=studio,
-        present_in_scan=True).values('name')).values('metric_name').distinct().count()
+    count = claimed_count(studio)
     return {**statistics, 'claimed_count': count, 'metrics_report_url': report_url,
         'metrics_report_built': usable, 'workspace_version': version,
         'workspace_quality': summary.quality if summary else 'unknown',

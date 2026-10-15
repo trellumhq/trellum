@@ -1,6 +1,4 @@
-"""Whole-request native lists, full totals and DB-only quota presentation."""
-from urllib.parse import parse_qs, urlsplit
-
+"""Operator tables list every row, plainly, with flat queries and DB-only usage."""
 import pytest
 from django.contrib.auth import get_user_model
 from django.db import connection
@@ -26,8 +24,15 @@ def console(client):
     return client
 
 
-@pytest.mark.parametrize("size", [20, 200, 1000])
-def test_org_growth_and_complete_search(console, size):
+def no_controls(content):
+    """The tables carry no filter, search box, pager or apply button."""
+    html = content.decode()
+    for fragment in ('type="search"', "<select name=\"state\"", "Next ", "Previous ", " matching", "Page 1 of"):
+        assert fragment not in html, fragment
+
+
+@pytest.mark.parametrize("size", [20, 200])
+def test_org_list_shows_every_organization(console, size):
     Organization.objects.bulk_create([
         Organization(slug=f"bounded-{i:04}", name=f"Organization {i:04}", is_active=i % 2 == 0)
         for i in range(size)
@@ -35,17 +40,28 @@ def test_org_growth_and_complete_search(console, size):
     with CaptureQueriesContext(connection) as queries:
         response = console.get("/operator/orgs/")
     assert response.status_code == 200
-    assert len(response.context["orgs"]) == min(25, size)
-    assert response.context["org_page"]["total"] == size
-    assert len(response.content) <= 160 * 1024
+    assert len(response.context["orgs"]) == size
+    assert response.context["orgs_more"] is None
+    assert b"Showing the first" not in response.content
     assert len(queries) <= 24
-    searched = console.get("/operator/orgs/", {"q": f"Organization {size - 1:04}", "state": "suspended"})
-    assert searched.context["org_page"]["total"] == size
-    assert searched.context["org_page"]["matching"] == 1
-    assert [row.slug for row in searched.context["orgs"]] == [f"bounded-{size - 1:04}"]
-    missing = console.get("/operator/orgs/", {"q": "absent identity"})
-    assert b"No matching organizations." in missing.content
-    assert missing.context["org_page"]["matching"] == 0
+    no_controls(response.content)
+    # Query strings from the old filter UI are ignored, not errors.
+    assert len(console.get("/operator/orgs/", {"q": "x" * 300, "page": "-1"}).context["orgs"]) == size
+
+
+@pytest.mark.heavy
+def test_org_list_stops_growing_far_above_realistic_sizes(console):
+    from apps.operator.bounded import LIST_CAP
+    Organization.objects.bulk_create([
+        Organization(slug=f"capped-{i:04}", name=f"Organization {i:04}") for i in range(LIST_CAP + 100)
+    ])
+    with CaptureQueriesContext(connection) as queries:
+        response = console.get("/operator/orgs/")
+    assert len(response.context["orgs"]) == LIST_CAP
+    assert response.context["orgs_more"] == {"shown": LIST_CAP, "total": LIST_CAP + 100}
+    assert f"Showing the first {LIST_CAP} of {LIST_CAP + 100} organizations." in response.content.decode()
+    assert len(queries) <= 24
+    assert [row.slug for row in response.context["orgs"]][:2] == ["capped-0000", "capped-0001"]
 
 
 def test_org_counts_without_join_crossproduct(console, org, studio, member):
@@ -58,8 +74,8 @@ def test_org_counts_without_join_crossproduct(console, org, studio, member):
     OrgMembership.objects.bulk_create([OrgMembership(org=org, user=user) for user in users])
     report = Report.objects.create(studio=extra[-1], slug="building", name="Building")
     Run.objects.create(studio=extra[-1], report=report, slug="building", status=Run.RUNNING)
-    response = console.get("/operator/orgs/", {"q": org.slug})
-    row = list(response.context["orgs"])[0]
+    response = console.get("/operator/orgs/")
+    row = next(row for row in response.context["orgs"] if row.pk == org.pk)
     assert row.studio_count == Studio.objects.filter(org=org).count()
     assert row.member_count == OrgMembership.objects.filter(org=org).count()
     assert row.active_runs == 1
@@ -67,20 +83,7 @@ def test_org_counts_without_join_crossproduct(console, org, studio, member):
     assert "quota" not in getattr(row, "_prefetched_objects_cache", {})
 
 
-def test_paging_complete_and_stable(console):
-    Organization.objects.bulk_create([
-        Organization(slug=f"page-{i:03}", name="Same name") for i in range(61)
-    ])
-    seen = []
-    for page in (1, 2, 3):
-        response = console.get("/operator/orgs/", {"q": "Same name", "page": page})
-        seen.extend(row.pk for row in response.context["orgs"])
-    assert len(seen) == len(set(seen)) == 61
-    final = console.get("/operator/orgs/", {"page": 999})
-    assert final.context["org_page"]["page"].number == 3
-
-
-def test_detail_independent_pages_search_totals_and_narrow_fields(console, org):
+def test_detail_lists_every_studio_and_member_with_narrow_fields(console, org):
     studios = Studio.objects.bulk_create([
         Studio(org=org, slug=f"detail-{i:03}", name=f"Studio {i:03}") for i in range(50)
     ])
@@ -92,30 +95,21 @@ def test_detail_independent_pages_search_totals_and_narrow_fields(console, org):
     Report.objects.create(studio=studios[-1], slug="absent", name="Absent", present_in_scan=False)
     path = f"/operator/orgs/{org.slug}/"
     with CaptureQueriesContext(connection) as queries:
-        response = console.get(path, {"studio_page": 2, "member_page": 3})
+        response = console.get(path)
     assert response.status_code == 200
-    assert len(response.context["studios"]) == len(response.context["members"]) == 25
-    assert response.context["studio_page"]["total"] == response.context["usage"]["studios"] == 50
-    assert response.context["member_page"]["total"] == 100
+    assert len(response.context["studios"]) == 50
+    assert len(response.context["members"]) == 100
+    assert response.context["studios_more"] is None and response.context["members_more"] is None
+    assert response.context["usage"]["studios"] == 50
     assert response.context["usage"]["reports"] == 1
     assert len(queries) <= 28
-    assert len(response.content) <= 160 * 1024
     assert list(response.context["studios"])[-1].report_count == 1
     assert "password" in list(response.context["members"])[0].user.get_deferred_fields()
-    previous = parse_qs(urlsplit(response.context["studio_page"]["previous"]).query)
-    assert previous["member_page"] == ["3"]
-    assert previous["studio_page"] == ["1"]
-    matched = console.get(path, {"member_q": "Person 099", "studio_q": "Studio 049"})
-    assert matched.context["member_page"]["matching"] == matched.context["studio_page"]["matching"] == 1
-    assert matched.context["member_page"]["total"] == 100
-    assert matched.context["studio_page"]["total"] == 50
-    assert ("member_q", "Person 099") in matched.context["studio_preserved"]
-    missing = console.get(path, {"studio_q": "absent", "member_q": "absent"})
-    assert b"No matching studios." in missing.content
-    assert b"No matching members." in missing.content
+    assert "detail-099@portal.local" in response.content.decode()
+    no_controls(response.content)
 
 
-def test_fleet_full_aggregates_and_bounded_existing_sections(console, org, studio):
+def test_fleet_lists_every_live_worker_and_bounds_the_other_sections(console, org, studio):
     WorkerHeartbeat.objects.bulk_create([
         WorkerHeartbeat(worker_id=f"bounded-worker-{i:03}", role="runner",
                         max_concurrent=4, running_count=1, memory_budget_mb=100, reserved_memory_mb=25)
@@ -130,55 +124,39 @@ def test_fleet_full_aggregates_and_bounded_existing_sections(console, org, studi
             stdout_tail="large output" * 100, stderr_tail="large error" * 100)
         for i in range(30)
     ])
-    response = console.get("/operator/", {"worker_role": "runner", "worker_page": 4})
-    assert len(response.context["workers"]) == 25
-    assert response.context["worker_page"]["total"] == 101
-    assert response.context["worker_page"]["matching"] == 100
-    assert response.context["worker_totals"]["runners"] == 100
-    assert response.context["worker_totals"]["coordinators"] == 1
-    assert response.context["worker_totals"]["running"] == 100
-    assert response.context["worker_totals"]["capacity"] == 400
-    assert response.context["worker_totals"]["reserved_memory"] == 2500
+    response = console.get("/operator/")
+    assert len(response.context["workers"]) == 101
+    assert response.context["workers_more"] is None
+    assert [w.worker_id for w in response.context["workers"]][-2:] == ["bounded-worker-098", "bounded-worker-099"]
+    assert "stale" not in [w.worker_id for w in response.context["workers"]]
     assert len(response.context["recent_failures"]) == 20
     assert len(response.context["heaviest"]) == 10
     assert "stdout_tail" in list(response.context["recent_failures"])[0].get_deferred_fields()
-    found = console.get("/operator/", {"worker_q": "bounded-worker-099"})
-    assert found.context["worker_page"]["matching"] == 1
-    assert found.context["worker_totals"]["total"] == 101
-    assert b"No matching workers." in console.get("/operator/", {"worker_q": "absent"}).content
+    html = response.content.decode()
+    assert "bounded-worker-099" in html and "Search workers" not in html
+    no_controls(response.content)
 
 
-@pytest.mark.parametrize("path,params", [
-    ("/operator/orgs/", {"page": "-1"}),
-    ("/operator/orgs/", {"page": "0"}),
-    ("/operator/orgs/", {"page": "1.5"}),
-    ("/operator/orgs/", {"q": "x" * 201}),
-    ("/operator/orgs/", {"state": "unknown"}),
-    ("/operator/", {"worker_role": "unknown"}),
-    ("/operator/", {"worker_page": "９"}),
-])
-def test_invalid_browse_parameters(console, path, params):
-    assert console.get(path, params).status_code == 400
-
-
-def test_database_usage_and_native_error_never_measure_storage(console, org, monkeypatch):
+def test_database_usage_and_failed_save_never_measure_storage(console, org, monkeypatch, settings):
     def forbidden(*args):
         raise AssertionError("primary render measured uploaded files")
     monkeypatch.setattr(quotas, "storage_bytes_used", forbidden)
+    settings.TRELLUM_QUOTAS_ENABLED = True
     path = f"/operator/orgs/{org.slug}/"
     OrgQuota.objects.create(org=org, max_storage_mb=4096, max_reports=77)
     response = console.get(path)
-    assert b"Storage has not been measured." in response.content
+    assert b"measuring" in response.content
     assert b"4096 MB" in response.content
+    assert response.context["usage"]["storage_mb"] is None
     failed = console.post(path + "quota", {"max_concurrent_runs": "draft", "max_reports": "12"})
     assert failed.status_code == 400
     assert b'value="draft"' in failed.content
-    assert b"Storage has not been measured." in failed.content
+    assert b"measuring" in failed.content
     assert OrgQuota.objects.get(org=org).max_reports == 77
     assert not AuditLog.objects.filter(action="operator.org.quota").exists()
 
 
-def test_offpage_mutations_remain_authoritative_and_audited(console, org):
+def test_pool_and_quota_mutations_remain_authoritative_and_audited(console, org):
     studios = Studio.objects.bulk_create([
         Studio(org=org, slug=f"pool-{i:03}", name="Pool") for i in range(30)
     ])

@@ -19,10 +19,6 @@
 /* Filter. One row above the grid: the box, and what it left standing. The
    count is a live region rather than a heading, so a screen reader hears the
    result of typing without the input losing focus. */
-[data-metric-summary] { display:grid; grid-template-rows:64px 52px; gap:8px; margin-bottom:12px; }
-[data-summary-status] { margin:0; overflow:auto; }
-.met-summary-actions { overflow:auto; }
-[data-metric-summary] [hidden] { display:none; }
 .met-filter { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:0 0 14px; }
 /* By id, for the same reason .met-open is: ui.css gives every input in
    body.mgmt `width:100%` at a specificity no page-local class selector can
@@ -65,8 +61,7 @@ body.mgmt main .met-card .met-open:focus-visible { outline:2px solid var(--accen
    reason: there is no value here a screen reader could usefully read out.
    Accent-coloured through currentColor, so it follows every theme. */
 .met-spark-slot { display:flow-root; height:45px; }
-.met-card [data-metric-usage] { height:150px; overflow:auto; overflow-wrap:anywhere; }
-.met-card [data-metric-usage]:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+.met-card [data-metric-usage] { min-height:62px; overflow-wrap:anywhere; }
 .met-spark { display:block; margin-top:9px; max-width:100%; color:var(--accent); }
 
 /* What it means. */
@@ -95,6 +90,7 @@ body.mgmt main .met-card .met-open:focus-visible { outline:2px solid var(--accen
 .met-expand-table th { text-align:left; color:var(--text3); font-weight:600; font-family:var(--mono); font-size:9.5px; text-transform:uppercase; letter-spacing:.07em; padding:4px 6px; border-bottom:1px solid var(--border); }
 .met-expand-table td { padding:5px 6px; color:var(--text2); border-bottom:1px solid var(--border); }
 .met-expand-table tr:last-child td { border-bottom:0; }
+.met-expand-more { margin:8px 0 0; font-size:var(--fs-sm); }
 .met-foot { font-size:var(--fs-sm); color:var(--text3); margin-top:16px; }
 .met-overlay { position:fixed; inset:0; background:rgba(0,0,0,.38); z-index:var(--z-overlay); }
 /* The panel is as big as what it holds and no bigger: content height with
@@ -171,7 +167,7 @@ body.mgmt main .met-modal.met-compact .met-modal-head h2 { font-size:13px; }
     {% if defined_count %}
     <p class="muted page-sub">
       Defined in <code>metrics.yaml</code>{% if synced_at %} · synced {{ synced_at|timesince }} ago{% endif %} ·
-      <b>{{ defined_count }} defined{% if metrics_section == "comparison" %}, {{ claimed_count }} claimed by report{{ claimed_count|pluralize }}{% endif %}</b>
+      <b>{{ defined_count }} defined, {{ claimed_count }} claimed by report{{ claimed_count|pluralize }}</b>
     </p>
     {% endif %}
   </div>
@@ -192,15 +188,14 @@ body.mgmt main .met-modal.met-compact .met-modal-head h2 { font-size:13px; }
 {% if metrics_section == "comparison" %}
   {% if metrics_report_built %}
   {% if workspace_requested_legacy %}<p class="ui-flash warning">Legacy artifact loaded explicitly. Rebuild to use bounded metric pages. Last indexed state: {{ workspace_state }}{% if not workspace_fresh %} · stale observation{% endif %}; current artifact may differ.</p>{% endif %}
-  <p class="muted">Indexed artifact · {{ workspace_quality }}{% if workspace_quality == 'observed' %}; build identity is observed{% endif %}</p>
   <iframe id="metWorkspace" src="{{ metrics_report_url }}?workspace=1" data-workspace-version="{{ workspace_version }}" title="Metrics chart workspace"></iframe>
-  <p data-workspace-status role="status" aria-live="polite">Loading metrics…</p>
+  <p data-workspace-status role="status" aria-live="polite" class="sr-only">Loading metrics…</p>
   {% else %}
   <div class="panel"><div class="ui-empty">
     {% if workspace_legacy %}This artifact uses the legacy workspace. Rebuild the Metrics report to use bounded pages.
     <a href="?legacy=1">View legacy workspace explicitly</a>
     {% elif workspace_unsupported %}This workspace format is unsupported. Rebuild with a compatible framework.
-    {% else %}The workspace's served format is unknown or its source index is stale or unavailable. Refresh after source reconciliation; rebuild if needed.{% endif %}
+    {% else %}The comparison workspace appears once the generated Metrics report is built.{% endif %}
     {% if metrics_report_url %}<a href="{{ metrics_report_url }}">Open report explicitly</a>{% endif %}
   </div></div>
   {% endif %}
@@ -222,28 +217,19 @@ data-search is built from exactly the fields worth matching -- name,
 identifier, description, tags, owner -- rather than the card's own
 textContent, which would also match the claims zone and make "current" a
 query that hits everything.{% endcomment %}
-<form class="met-filter" method="get" data-metric-search>
-  <label class="sr-only" for="metSearch">Search all metrics</label>
-  <input type="search" id="metSearch" name="q" value="{{ metric_query }}" class="ui-input" autocomplete="off" spellcheck="false"
-         placeholder="Search all metrics…">
-  <button type="submit" class="ui-btn ghost">Search metrics</button>
-  <p class="met-count" id="metCount" role="status" aria-live="polite">{{ matching_count }} matching definitions</p>
-</form>
-<div data-metric-summary data-url="{{ summary_url }}" data-revision="{{ definition_revision }}">
-  <p role="status" aria-live="polite" tabindex="0" data-summary-status>{% if definition_changed %}Definitions changed during loading. Reload this page.{% else %}Report usage is loading. Definitions are ready.{% endif %}</p>
-  <div class="met-summary-actions" role="group" aria-label="Report usage actions">
-  <button type="button" class="ui-btn ghost" data-summary-retry hidden>Retry report usage</button>
-  <a class="ui-btn ghost" data-summary-reload href="{% url 'studio-metrics' org.slug studio.slug %}?q={{ metric_query|urlencode }}&amp;page={{ metric_page.number }}"{% if not definition_changed %} hidden{% endif %}>Reload definitions</a>
-  </div>
+<div class="met-filter">
+  <label class="sr-only" for="metSearch">Filter metrics</label>
+  <input type="search" id="metSearch" class="ui-input" autocomplete="off" spellcheck="false"
+         placeholder="Filter metrics…" value="{{ metric_query }}"{% if truncated or metric_query %} data-server-filter="{% url 'studio-metrics' org.slug studio.slug %}"{% endif %}>
+  <p class="met-count" id="metCount" role="status" aria-live="polite">{% if truncated %}Showing the first {{ shown_count }} of {{ matching_count }} matching metrics. Keep typing to narrow.{% endif %}</p>
 </div>
-<noscript><p>Definitions are ready. Open Indexed claims to read report usage without JavaScript.</p></noscript>
-<div class="met-grid">
+<div class="met-grid" data-metric-summary data-url="{{ summary_url }}" data-revision="{{ definition_revision }}">
   {% for m in metrics %}
-  <div class="met-card" data-metric="{{ m.row.name }}" data-definition-id="{{ m.row.pk }}" data-chart-state="unknown"
+  <div class="met-card" data-metric="{{ m.row.name }}" data-definition-id="{{ m.row.pk }}" data-chart-state="loading" data-version="{{ m.row.version }}"
        data-search="{{ m.row.label|default:m.row.name }} {{ m.row.name }} {{ m.row.description }} {{ m.row.tags|join:" " }} {{ m.row.owner }}"
        data-label="{{ m.row.label|default:m.row.name }}"
-       data-embed="{{ m.embed_url }}" data-chart="{{ m.chart_url }}" data-overview="{{ m.overview_url }}"
-       data-reason="{{ m.not_monitored_reason }}">
+       data-embed="" data-chart="" data-overview=""
+       data-reason="{{ m.not_monitored_reason }}" data-details-url="{{ m.details_url }}">
     <div>
       <h3 class="met-name">
         <button type="button" class="met-open" aria-haspopup="dialog">{{ m.row.label|default:m.row.name }}</button>
@@ -252,36 +238,23 @@ query that hits everything.{% endcomment %}
       type, so it belongs with the name rather than competing with the
       tags.{% endcomment %}
       <div class="met-id">{{ m.row.name }} · v{{ m.row.version }} · {{ m.row.format }}</div>
-      <div class="met-spark-slot" data-metric-spark>
-      {% if m.spark %}
-      <svg class="met-spark" width="{{ spark_w }}" height="{{ spark_h }}"
-           viewBox="0 0 {{ spark_w }} {{ spark_h }}" aria-hidden="true" focusable="false">
-        <polyline points="{{ m.spark }}" fill="none" stroke="currentColor" stroke-width="1.5"
-                  stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
-      </svg>
-      {% endif %}
-      </div>
+      <div class="met-spark-slot" data-metric-spark></div>
     </div>
     <div class="met-fact">
       <span class="ui-mono-pill">{{ m.spec }}</span>
       {% if m.row.description %}<div class="ui-desc-clamp met-desc">{{ m.row.description }}</div>{% endif %}
       {% if m.row.tags %}
-      <div class="met-tags">
+      <div class="met-tags" data-metric-tags>
         {% for t in m.row.tags %}<span class="ui-chip">{{ t }}</span>{% endfor %}
       </div>
       {% endif %}
       {% if m.row.owner %}<div class="met-owner"><b>Owner</b><span>{{ m.row.owner }}</span></div>{% endif %}
     </div>
-    <div class="met-usage met-fact" data-metric-usage tabindex="0" role="group" aria-label="Report usage for {{ m.row.label|default:m.row.name }}">Report usage pending. <a href="{{ m.details_url }}">Indexed claims →</a></div>
+    <div class="met-usage met-fact" data-metric-usage></div>
   </div>
   {% endfor %}
 </div>
-<div class="ui-empty" id="metEmpty"{% if matching_count %} hidden{% endif %}>No metric matches that search.</div>
-<nav aria-label="Metric definition pages" class="met-filter">
-  {% if metric_page.has_previous %}<a class="ui-btn ghost" href="?q={{ metric_query|urlencode }}&amp;page={{ metric_page.previous_page_number }}">Previous</a>{% endif %}
-  <span>Page {{ metric_page.number }} of {{ metric_page.paginator.num_pages }}</span>
-  {% if metric_page.has_next %}<a class="ui-btn ghost" href="?q={{ metric_query|urlencode }}&amp;page={{ metric_page.next_page_number }}">Next</a>{% endif %}
-</nav>
+<div class="ui-empty" id="metEmpty"{% if matching_count %} hidden{% endif %}>No metric matches that filter.</div>
 <div class="met-foot">Read-only — the source of truth is <code>metrics.yaml</code> in this studio's repository; changes arrive on the next sync.
   {% if repo_url %}<a href="{{ repo_url }}" rel="noopener">Edit via pull request ↗</a>{% else %}Edit via pull request.{% endif %}</div>
 </section>

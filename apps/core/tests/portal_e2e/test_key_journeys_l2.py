@@ -74,13 +74,10 @@ def test_metrics_detail_comparison(journey, variant):
         page.goto(origin + S + '/metrics')
         cards = page.locator('.met-card')
         expect(cards).to_have_count(20)
-        # Definitions are usable immediately; report usage is a secondary read that settles on its own.
-        status = page.locator('[data-summary-status]')
-        expect(status).not_to_contain_text('is loading', timeout=20000)
+        # Definitions are usable immediately; report usage fills in by itself.
+        expect(page.locator('[data-metric-usage]').first).to_contain_text('report', timeout=20000)
         page.locator('#metSearch').fill('Metric 1')
-        page.get_by_role('button', name='Search metrics').click()
-        page.wait_for_url(lambda url: 'q=Metric' in url)
-        expect(page.locator('#metCount')).to_have_text('11 matching definitions')
+        expect(page.locator('#metCount')).to_have_text('11 of 20')
         expect(page.locator('.met-card:not([hidden])')).to_have_count(11)
         journey.checkpoint('definitions')
         journey.checkpoint('search')
@@ -92,7 +89,7 @@ def test_metrics_detail_comparison(journey, variant):
         expect(page.locator('#metModalTitle')).to_have_text('Metric 10')
         page.locator('#metModalClose').click()
         expect(modal).to_be_hidden()
-        card.get_by_role('link', name='All indexed claims').click()
+        page.goto(origin + card.get_attribute('data-details-url'))
         page.wait_for_url(lambda url: '/claims' in url)
         expect(page.get_by_role('heading', name='Metric 10 usage')).to_be_visible()
         journey.checkpoint('metric-detail')
@@ -153,7 +150,8 @@ def test_operations_filter(journey, variant):
     origin = journey.unit.origin
     with browser_session(journey, 'org-admin', spec, condition='key-operations-filter') as (page, context):
         page.goto(origin + S + '/operations')
-        rows = page.locator('[data-ops-row]')
+        # Filters hide rows in place; only the visible ones count.
+        rows = page.locator('[data-ops-row]:visible')
         expect(rows).to_have_count(20, timeout=20000)
         failed = page.locator('[data-ops-filter=error]')
         failed.scroll_into_view_if_needed()
