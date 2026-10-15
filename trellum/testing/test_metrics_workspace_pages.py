@@ -8,9 +8,9 @@ import yaml
 
 from trellum.metrics import invalidate_metrics_cache
 from trellum.metrics_report import MetricsReport
-from trellum.report import ReportContext
-from trellum.rendering.html_builder import render_report
 from trellum.metrics_workspace import owned_name
+from trellum.rendering.html_builder import render_report
+from trellum.report import ReportContext
 
 
 def build(project, count, monkeypatch, unbound=0, unique_columns=False):
@@ -104,9 +104,11 @@ def test_failed_replacement_retains_last_good_roots_and_deep_pages(tmp_path, mon
 
 def test_untrusted_manifest_cannot_delete_paths_or_symlink_targets(tmp_path):
     from trellum.metrics_workspace import collect_old_pages, gc_old_pages
-    out = tmp_path / 'output'; out.mkdir()
+    out = tmp_path / 'output'
+    out.mkdir()
     safe = '_metrics-workspace-' + 'a' * 32 + '-page-99.html'
-    target = tmp_path / 'outside'; target.write_text('untouched')
+    target = tmp_path / 'outside'
+    target.write_text('untouched')
     (out / safe).symlink_to(target)
     (out / '_meta.json').write_text(json.dumps({'metrics_workspace': {'files': [safe, '../outside', '/outside', 'authored.html']}}))
     assert collect_old_pages(out) == {safe}
@@ -134,6 +136,7 @@ def test_early_routing_precedes_bootstrap_and_encodes_untrusted_anchors(tmp_path
 def test_staged_render_only_writes_inside_its_own_output_dir(tmp_path):
     """The build sandbox mounts only output/<slug> writable, never its parent."""
     import os
+
     from trellum.metrics_workspace import staged_render
 
     parent = tmp_path / 'output'

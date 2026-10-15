@@ -18,6 +18,7 @@ import os
 import time
 from datetime import datetime, timezone
 from typing import Any
+from uuid import uuid4
 
 import orjson
 
@@ -576,7 +577,6 @@ setTimeout(function(){
     _write_live_queries(out, live_registry)
     if hasattr(ctx, '_metric_workspace_catalog'):
         from trellum.metrics_workspace import write_pages
-        from uuid import uuid4
         workspace_ctx = all_render_ctxs[0]
         if not hasattr(workspace_ctx, '_metric_workspace_blocks'):
             workspace_ctx._metric_workspace_blocks = []

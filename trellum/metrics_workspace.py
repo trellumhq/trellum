@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import os
 import re
-import tempfile
 import shutil
-from pathlib import Path
+import tempfile
 from html import escape
+from pathlib import Path
 
 import orjson
 
@@ -65,9 +65,10 @@ def controls(catalog, page, pages, build):
         f'<label><input type="checkbox" value="{escape(row["anchor"], quote=True)}" '
         f'data-category="{escape(row["category"], quote=True)}" checked> '
         f'{escape(row["category"])} · {escape(row["label"])}</label>' for row in rows)
+    current = 'aria-current="page"'
     links = "".join(
         f'<a href="{PREFIX}{build}-page-{number}.html" '
-        f'{"aria-current=\"page\"" if number == page else ""}>Page {number}</a>'
+        f'{current if number == page else ""}>Page {number}</a>'
         for number in range(max(1, page - 2), min(pages, page + 2) + 1))
     return (
         '<div id="fwMetricsWorkspace"><details><summary>Show / hide metrics</summary>'

@@ -118,7 +118,7 @@ class MetricsReport(BaseReport):
 
         bound.sort(key=lambda m: ((m.tags[0] if m.tags else "Other").casefold(),
                                   (m.label or m.name).casefold(), m.name))
-        from trellum.metrics_workspace import BLOCKS, CONTROLS, DEFINITIONS, PAGE_SIZE
+        from trellum.metrics_workspace import BLOCKS, CONTROLS, PAGE_SIZE
         ctx._metric_workspace_catalog = [
             {'name': m.name, 'anchor': f'metric-{m.name}', 'label': m.label or m.name,
              'category': m.tags[0] if m.tags else 'Other', 'page': index // PAGE_SIZE + 1,
