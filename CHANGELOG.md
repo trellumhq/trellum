@@ -12,10 +12,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Make single sign-on routing failures visible. The SSO settings page warns
   about listed email domains that are not yet verified (and when no domain
   routes at all), and refuses to turn off password login while no domain
-  routes. Submitting an email with an empty password when no sign-in route
-  exists now asks for the password instead of reporting an invalid login, and
-  no longer counts toward login throttling. The login page explains how to
-  use single sign-on.
+  routes. The portal logs a warning when a listed domain is unverified.
+- Sign in in two steps. The login page asks for the email first and sends
+  single sign-on users straight to their identity provider; everyone else
+  continues to a password page (**Directory password** for directory logins)
+  at `/login/password` that shows the email read-only with a **Use a
+  different email** link. SSO enforcement is re-checked on the password step,
+  and a POST to `/login` that already carries an email and password still
+  signs in in one request.
 
 ## [0.7.0] — 2026-10-15
 

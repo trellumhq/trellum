@@ -624,7 +624,6 @@ body.mgmt select:not([multiple]):not([size]) {
 }
 .ui-field-error { color: var(--red); font-size: var(--fs-md); margin: 4px 0 0; }
 .ui-help { color: var(--text3); font-size: var(--fs-md); margin-top: 2px; display: block; }
-.ui-label-hint { color: var(--text3); font-weight: 400; }
 /* Help that explains an organization-wide effect reads in that layer's colour. */
 .ui-help.org { color: var(--scope-org); }
 .ui-help.warn { color: var(--warn); }
