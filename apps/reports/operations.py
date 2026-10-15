@@ -395,7 +395,7 @@ def operations_page_payload(request, params, *, now=None):
         framework_preview=Substr(KeyTextTransform('framework_version', 'source_summary__runtime'), 1, 100),
     ).order_by(order, 'slug', 'pk').values(
         'id', 'slug', 'kind', 'metrics_report', 'display_name', 'display_category', 'description_preview', 'description_length',
-        'schedule_cron', 'schedule_timezone', 'disabled', 'data_expired_at', 'outcome', 'attempt', 'latest_at', 'latest_error',
+        'schedule_cron', 'schedule_timezone', 'disabled', 'refresh_suspended_at', 'data_expired_at', 'outcome', 'attempt', 'latest_at', 'latest_error',
         'observation_known', 'validation_known', 'waiting_known', 'waiting_stale', 'references', 'reference_dependencies', 'referenced_count',
         'blocked_preview', 'blocked_count', 'waiting_compatible', 'validation_preview', 'framework_preview', 'source_summary__attempt_at', 'source_summary__attempt_error',
         'source_summary__observed_at', 'source_summary__served_at', 'source_summary__quality', 'source_summary__state',
@@ -421,7 +421,10 @@ def operations_page_payload(request, params, *, now=None):
         presentation.append(dict(
             id=row['id'], slug=row['slug'], kind=row['kind'], metrics_report=row['metrics_report'], name=row['display_name'], category=row['display_category'],
             description=row['description_preview'], description_truncated=row['description_length'] > 500,
-            schedule=row['schedule_cron'], schedule_timezone=row['schedule_timezone'], next_run=_next_run(row['schedule_cron'], row['schedule_timezone'], now) if not row['disabled'] else None, disabled=row['disabled'],
+            schedule=row['schedule_cron'], schedule_timezone=row['schedule_timezone'],
+            # A paused report has no next run: the scheduler no longer fires it.
+            next_run=_next_run(row['schedule_cron'], row['schedule_timezone'], now) if not (row['disabled'] or row['refresh_suspended_at']) else None,
+            disabled=row['disabled'], refresh_suspended_at=row['refresh_suspended_at'],
             state=row['outcome'], build_status=row['attempt'], last_attempt_at=row['latest_at'] or row['source_summary__attempt_at'],
             last_error=(row['latest_error'] or row['source_summary__attempt_error']) if row['attempt'] == Run.ERROR else None,
             waiting_observed=row['outcome'] == 'waiting', waiting_current=waiting_current,

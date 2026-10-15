@@ -383,6 +383,18 @@ def test_expired_output_and_disabled_waiting_never_claim_current_availability(or
 
 
 @pytest.mark.django_db
+def test_paused_report_has_pause_and_no_next_run(org_admin, org, studio, forbid_io):
+    postgres()
+    now = timezone.now()
+    kwargs = dict(studio=studio, schedule_cron='0 6 * * *', schedule_timezone='UTC')
+    Report.objects.create(slug='paused', refresh_suspended_at=now - timedelta(days=3), **kwargs)
+    Report.objects.create(slug='active', **kwargs)
+    rows = {r['slug']: r for r in operations.operations_page_payload(request_for(org_admin, org, studio), {}, now=now)['rows']}
+    assert rows['paused']['refresh_suspended_at'] == now - timedelta(days=3) and rows['paused']['next_run'] is None
+    assert rows['active']['refresh_suspended_at'] is None and rows['active']['next_run'] > now
+
+
+@pytest.mark.django_db
 def test_future_and_incompatible_summary_never_claim_known_validation_or_output(org_admin, org, studio, forbid_io):
     postgres()
     now = timezone.now()

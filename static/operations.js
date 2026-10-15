@@ -15,7 +15,7 @@ function mapRow(row) {
         name: row.name, category: row.category, description: row.description,
         description_truncated: row.description_truncated,
         schedule: row.schedule, schedule_timezone: row.schedule_timezone, next_run: row.next_run,
-        disabled: row.disabled,
+        disabled: row.disabled, refresh_suspended_at: row.refresh_suspended_at,
         /* Never observed reads "Not run", as it always has. */
         build_status: !row.build_status || row.build_status === 'unknown' ? 'not_run' : row.build_status,
         last_run: row.last_attempt_at, last_error: row.last_error,
