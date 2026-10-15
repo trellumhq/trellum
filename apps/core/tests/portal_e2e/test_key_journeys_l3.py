@@ -63,8 +63,9 @@ def test_schedules_list_create_edit(journey, variant):
         bind(journey, 'route-141', 'GET', None, 'org-admin', spec, ())
         # Create: choose a report, then the schedule form.
         page.get_by_role('link', name='Add delivery').click()
-        page.locator('select[name=report]').select_option(label='Report 1 \u00b7 Report')
-        page.get_by_role('button', name='Continue').click()
+        # Choosing the report opens its form at once; the picker has no Continue button.
+        with page.expect_navigation():
+            page.locator('select[name=report]').select_option(label='Report 1 \u00b7 Report')
         expect(page.get_by_role('heading', name='Add delivery')).to_be_visible()
         page.locator('#id_send_time').fill('07:30')
         check_picker_option(page, 'recipient_roles', 'admins')
@@ -89,7 +90,7 @@ def test_schedules_list_create_edit(journey, variant):
         assert (edited['hour'], edited['minute'], edited['count']) == (9, 15, 2)
         page.goto(origin + S + '/deliveries')
         expect(rows.filter(has=page.get_by_role('link', name='Report 1', exact=True))).to_contain_text('09:15')
-        bind(journey, 'route-178', 'POST', 'action=save', 'org-admin', spec, ())
+        bind(journey, 'route-178', 'POST', None, 'org-admin', spec, ())
         record_metrics(journey, page)
 
 
@@ -123,5 +124,5 @@ def test_alerts_list_edit_save(journey, variant):
         expect(page.get_by_role('link', name='Rule 0 renamed', exact=True)).to_be_visible()
         expect(page.locator('table tbody tr')).to_contain_text('12 h')
         journey.checkpoint('reload-persistence')
-        bind(journey, 'route-199', 'POST', 'action=save', 'org-admin', spec, ())
+        bind(journey, 'route-199', 'POST', None, 'org-admin', spec, ())
         record_metrics(journey, page)

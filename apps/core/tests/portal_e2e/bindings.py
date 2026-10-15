@@ -87,10 +87,10 @@ KEY_BINDINGS: tuple[Binding, ...] = tuple([
     *_journey('test_key_journeys_l3', 'test_schedules_list_create_edit', 'key-schedules', 'org-admin', DESKTOP,
         [('route-141', 'GET', None, ('list',)),
          ('route-142', 'POST', None, ('db-persistence', 'reload-persistence', 'visible-feedback')),
-         ('route-178', 'POST', 'action=save', ('db-persistence', 'reload-persistence', 'visible-feedback'))]),
+         ('route-178', 'POST', None, ('db-persistence', 'reload-persistence', 'visible-feedback'))]),
     *_journey('test_key_journeys_l3', 'test_alerts_list_edit_save', 'key-alerts', 'org-admin', DESKTOP,
         [('route-196', 'GET', None, ('list',)),
-         ('route-199', 'POST', 'action=save', ('db-persistence', 'reload-persistence', 'visible-feedback'))]),
+         ('route-199', 'POST', None, ('db-persistence', 'reload-persistence', 'visible-feedback'))]),
     # L4 forms / mutations
     *_journey('test_key_journeys_l4', 'test_invite_member_and_change_access', 'key-invite-access', 'org-admin', DESKTOP,
         [('route-306', 'POST', None, ('db-persistence', 'reload-persistence', 'no-mail')),

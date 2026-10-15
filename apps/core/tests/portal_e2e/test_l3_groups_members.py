@@ -43,8 +43,11 @@ def overview(page,journey,data,capture):
     capture.record('group-counts',capture.event('route-295','GET'),('counts','search','scope','no-write'))
     path=f'/orgs/alpha/settings/groups/{data["summary_group"]}?tab=overview&grant_q='+data['variables']['studio_search']
     page.goto(journey.unit.origin+path)
-    expect(page.locator('main')).to_contain_text('3 explicit studio grants.')
-    expect(page.locator('main')).to_contain_text(data['variables']['studio_search'])
+    # The Overview lists every explicit studio grant in its access summary, with no paging or search box.
+    summary=page.locator('[data-settings-refresh=group-summary]')
+    expect(summary.locator('.ui-badge')).to_have_count(3)
+    expect(summary).to_contain_text(data['variables']['studio_search'])
+    assert page.get_by_role('button',name='Search').count()==0 and page.locator('.ui-pager').count()==0
     no_beta(page.content());assert journey.database(business_state)==before
     capture.record('overview-discovery',capture.event('route-297','GET'),('counts','search','scope','no-write'))
 
@@ -54,7 +57,9 @@ def access(page,context,journey,data,capture,mode):
     origin=journey.unit.origin
     path=f'/orgs/alpha/settings/groups/{data["group"]}?tab=access&studio={data["studio"]}'
     page.goto(origin+path)
-    form=page.locator('[data-studio-access]')
+    # Access shows one card per studio; this studio's card carries the report picker.
+    card=f'#group-studio-access-{data["studio"]}'
+    form=page.locator(card)
     expect(form).to_be_visible()
     before=journey.database(business_state);audit_before=journey.database(audit_rows)
     expect(form.locator(f'[name=reports][value="{data["reports"]["29"]}"]')).to_be_checked()
@@ -79,7 +84,7 @@ def access(page,context,journey,data,capture,mode):
     with page.expect_response(lambda r:r.request.method=='POST' and '/settings/groups/' in r.url) as invalid:
         save.click()
     assert invalid.value.status==400
-    form=page.locator('[data-studio-access]')
+    form=page.locator(card)
     error=form.locator('[data-settings-error],.errorlist').first
     visible_geometry(error)
     assert selected_reports(form,mode)==data['variables']['invalid_reports']
@@ -101,7 +106,7 @@ def access(page,context,journey,data,capture,mode):
     saved_event=capture.event('route-297','POST')
     assert sum(row['method']=='POST' and row['action']=='action=studio_access' and row['status'] in (200,302) for row in journey.events())==1
     page.reload()
-    assert selected_reports(page.locator('[data-studio-access]'),mode)==data['variables']['saved_reports']
+    assert selected_reports(page.locator(card),mode)==data['variables']['saved_reports']
     checkpoints=('db-persistence','reload-persistence','visible-feedback','audit-delta','single-save','scope')
     capture.record('access-save',saved_event,checkpoints)
     after=journey.database(business_state)
@@ -178,10 +183,8 @@ def test_operator_bounded_access_save(cohort_case):
     assert journey.database(assignments,data)==set(data['saved'])
     journey.database(assert_audit_delta,before,data)
     response=session.get(journey.unit.origin+path,timeout=20)
-    packet=json.loads(next(row['value'] for row in InputParser(response.text).inputs if row.get('name')=='reports__selection'))
-    assert sorted(packet['selected'])==data['variables']['saved_reports']
-    assert html_checked_reports(response.text)==sorted(set(packet['selected'])&set(packet['editable']))
-    assert set(packet['selected'])-set(packet['editable'])<set(packet['selected'])
+    # Every report is an inline checkbox; the saved selection comes back checked.
+    assert html_checked_reports(response.text)==data['variables']['saved_reports']
     no_beta(response.text)
     assert sum(row['method']=='POST' and row['route']=='route-297' for row in journey.events())==1
     capture.record('operator-save',capture.event('route-297','POST'),('db-persistence','reload-persistence','audit-delta','single-save','scope'))
