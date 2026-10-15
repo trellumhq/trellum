@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-10-15
+
 ### Added
 
 - Pause the scheduled refresh of reports nobody has viewed for an
@@ -20,11 +22,19 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- Show the analysis and its source reports on separate full-width **Analysis**
+  and **Reports** workspace pages, with the shared queue in an overlay drawer
+  and **Report only** and **Analysis only** views without workspace controls.
+  Switching pages or source reports keeps filters, selection drafts and scroll
+  positions.
 - Add focused local and parallel portal test commands, CI timing reports,
   and a portal check that also reports for documentation-only changes.
 
 ### Fixed
 
+- Build analyses in the Docker report sandbox, where staging beside the
+  writable output mount failed on its read-only parent. A failed build keeps
+  the previous artifacts; a successful rebuild removes obsolete ones.
 - Use the report theme font for chart labels, matching report headers and
   metadata, including after theme changes and font loading.
 - Reject live-query rate limits too large to store instead of failing with a
@@ -32,6 +42,17 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Make `scripts/demo.sh`, `scripts/upgrade.sh`, `scripts/rollback.sh` and
   `scripts/check-docker.sh` executable, so the documented `./scripts/demo.sh`
   and `scripts/upgrade.sh` commands run on macOS and Linux.
+
+### Upgrade notes
+
+Apply the additive `reports.0026_report_idle_refresh` migration before starting
+the new portal. Update the portal, every worker and the matched report-runner
+image to v0.7.0 together; older workers do not pause idle reports, and analysis
+builds need the new runner image. The migration starts every existing report's
+idle clock at upgrade time, so no report is paused until the organization's
+threshold (60 days by default) has passed after the upgrade. Organizations that
+want every schedule to keep running regardless of views should set
+**Auto-refresh** to `0`. Rebuild reports to apply the chart label font.
 
 ## [0.6.0] — 2026-10-13
 
