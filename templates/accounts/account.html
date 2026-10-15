@@ -107,8 +107,7 @@
   {% endfor %}
   </tbody>
 </table>
-{% include "_pagination.html" with page=page %}
-{% if page.paginator.count > 1 %}
+{% if sessions|length > 1 %}
 <form method="post" style="margin-top:10px">{% csrf_token %}
   <input type="hidden" name="action" value="sign_out_others">
   <button class="ui-btn ghost" type="submit">Sign out every other session</button>

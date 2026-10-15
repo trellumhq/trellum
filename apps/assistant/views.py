@@ -231,7 +231,9 @@ def _session_only(view):
     return wrapper
 
 
-SESSION_PAGE = 25
+#: Invisible safety bound on the history list: the 200 most recently updated
+#: conversations. The popover shows everything the endpoint returns.
+SESSION_LIST_CAP = 200
 
 
 def _session_rows(request):
@@ -288,19 +290,8 @@ def caller_role(request) -> str:
 @_session_only
 def sessions(request, org_slug, studio_slug):  # noqa: ARG001
     if request.method == "GET":
-        rows = _session_rows(request)
-        slug = request.GET.get("report", "")
-        if "report" in request.GET:  # the panel shows full-scope chats plus this report's own
-            rows = rows.filter(~Q(scope=AssistantSession.SCOPE_REPORT) | Q(report__slug=slug))
-        try:
-            offset = max(0, int(request.GET.get("offset", "0")))
-        except ValueError:
-            offset = 0
-        chunk = list(rows.order_by("-updated_at", "-pk")[offset:offset + SESSION_PAGE + 1])
-        return JsonResponse({
-            "sessions": [s.to_summary() for s in chunk[:SESSION_PAGE]],
-            "next_offset": offset + SESSION_PAGE if len(chunk) > SESSION_PAGE else None,
-        })
+        rows = _session_rows(request).order_by("-updated_at", "-pk")[:SESSION_LIST_CAP]
+        return JsonResponse({"sessions": [s.to_summary() for s in rows]})
 
     body = json_body(request)
     report_slug = (body.get("report") or "").strip()

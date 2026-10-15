@@ -78,7 +78,7 @@ def test_datasource(ds) -> tuple[bool, str]:
     if result.timed_out:
         return False, (
             f"Timed out after {TIMEOUT_SECONDS}s — host unreachable, port blocked, "
-            f"or the database is not accepting connections. The test was stopped."
+            f"or the database is not accepting connections."
         )
     # Never echo credential values back.
     return bool(result.ok), ds.scrub(str(result.detail))

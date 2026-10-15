@@ -324,17 +324,21 @@ class TestReportBoundSessions:
 
 
 class TestBoundedHistory:
-    def test_listing_is_paged_and_report_filtered(self, login, viewer, org, studio_tree, prefix, report_row):
+    def test_listing_returns_everything_in_main_shape(self, login, viewer, org, studio_tree, prefix, report_row):
         for i in range(27):
             AssistantSession.objects.create(user=viewer, org=org, studio=studio_tree, title=f"s{i}")
         AssistantSession.objects.create(
             user=viewer, org=org, studio=studio_tree, title="r", scope=AssistantSession.SCOPE_REPORT, report=report_row
         )
-        client = login(viewer)
-        first = client.get(f"{prefix}/sessions?report=&offset=0").json()
-        assert len(first["sessions"]) == 25 and first["next_offset"] == 25
-        second = client.get(f"{prefix}/sessions?report=&offset=25").json()
-        assert len(second["sessions"]) == 2 and second["next_offset"] is None
-        own = client.get(f"{prefix}/sessions?report={report_row.slug}").json()
-        assert "r" in {s["title"] for s in own["sessions"]}
-        assert client.get(f"{prefix}/sessions?offset=junk").status_code == 200
+        data = login(viewer).get(f"{prefix}/sessions").json()
+        assert set(data) == {"sessions"}  # no paging fields: nothing for the panel to page through
+        assert len(data["sessions"]) == 28
+        scopes = {s["title"]: (s["scope"], s["report"]) for s in data["sessions"]}
+        assert scopes["r"] == (AssistantSession.SCOPE_REPORT, report_row.slug)  # the panel filters on these
+
+    def test_invisible_cap_keeps_the_most_recent(self, login, viewer, org, studio_tree, prefix, monkeypatch):
+        monkeypatch.setattr("apps.assistant.views.SESSION_LIST_CAP", 3)
+        for i in range(5):
+            AssistantSession.objects.create(user=viewer, org=org, studio=studio_tree, title=f"s{i}")
+        titles = [s["title"] for s in login(viewer).get(f"{prefix}/sessions").json()["sessions"]]
+        assert titles == ["s4", "s3", "s2"]

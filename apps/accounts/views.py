@@ -35,6 +35,10 @@ from .models import Invitation, User
 MFA_STASH_TTL_SECONDS = 5 * 60
 _MFA_STASH_KEYS = ("mfa_user_id", "mfa_started", "mfa_next", "mfa_login_method")
 
+#: Safety bound on the unpaginated account/API-key tables: far above realistic
+#: sizes and silent (the page shows every row up to it).
+_LIST_CAP = 500
+
 
 def login_view(request):
     """Email-first login.
@@ -632,17 +636,15 @@ def account_view(request):
                 messages.success(request, "Session signed out.")
             return redirect("account")
 
-    from apps.orgs.views import paginate
-
-    session_page = paginate(request, UserSession.objects.filter(user=request.user).order_by("-last_seen", "pk"), 25)
-    sessions = list(session_page.object_list)
+    # Every session, newest first. The cap is an invisible safety bound far above
+    # what a person accumulates, not a pager.
+    sessions = list(UserSession.objects.filter(user=request.user).order_by("-last_seen", "pk")[:_LIST_CAP])
     return render(
         request,
         "accounts/account.html",
         {
             "password_form": password_form,
             "sessions": sessions,
-            "page": session_page,
             "current_session_key": request.session.session_key,
             "has_mfa": request.user.has_mfa,
             "recovery_codes_remaining": (
@@ -899,11 +901,7 @@ def api_keys_view(request):
             "form": form, "can_create": form.fields["org"].queryset.exists(),
         })
 
-    from apps.orgs.views import paginate
-
-    key_page = paginate(
-        request, ApiKey.objects.filter(user=request.user).select_related("org").order_by("-created_at", "-pk"), 25
-    )
+    keys = list(ApiKey.objects.filter(user=request.user).select_related("org").order_by("-created_at", "-pk")[:_LIST_CAP])
     fresh = request.session.pop("new_api_key", None)
     new_key = ApiKey.objects.filter(pk=fresh["id"], user=request.user).first() if fresh else None
     return render(
@@ -912,8 +910,7 @@ def api_keys_view(request):
         {
             "form": form,
             "can_create": form.fields["org"].queryset.exists(),
-            "keys": key_page.object_list,
-            "page": key_page,
+            "keys": keys,
             "new_key": new_key,
             "new_secret": fresh["secret"] if new_key else None,
             # The `setup portal` one-liner, once, for every studio the key can
@@ -984,13 +981,11 @@ def org_api_keys_view(request, org_slug):  # noqa: ARG001
             )
         return redirect(request.path)
 
-    from apps.orgs.views import paginate
-
-    key_page = paginate(
-        request, ApiKey.objects.filter(org=org).select_related("user").order_by("-created_at", "-pk"), 25
-    )
     return render(
         request,
         "accounts/org_api_keys.html",
-        {"org": org, "keys": key_page.object_list, "page": key_page},
+        {
+            "org": org,
+            "keys": list(ApiKey.objects.filter(org=org).select_related("user").order_by("-created_at", "-pk")[:_LIST_CAP]),
+        },
     )
