@@ -149,12 +149,12 @@ class TestPreSocialLoginGate:
         login_obj = _sociallogin()
         with pytest.raises(ImmediateHttpResponse) as exc:
             self._gate(rf_request, login_obj)
-        assert b"not a member" in exc.value.response.content
+        assert b"member of Demo" in exc.value.response.content
 
     def test_new_user_denied_without_auto_provision(self, sso_cfg, rf_request):
         with pytest.raises(ImmediateHttpResponse) as exc:
             self._gate(rf_request, _sociallogin())
-        assert b"invitation" in exc.value.response.content
+        assert b"invite you" in exc.value.response.content
 
     def test_new_user_passes_with_auto_provision(self, sso_cfg, rf_request, settings):
         sso_cfg.auto_provision = True
