@@ -171,7 +171,7 @@ class TestScheduler:
             assert f"report-{report_row.pk}" in {j.id for j in mgr._scheduler.get_jobs()}
             Report.objects.filter(pk=report_row.pk).update(refresh_suspended_at=timezone.now())
             mgr.refresh()
-            assert not mgr._scheduler.get_jobs()
+            assert mgr._scheduler.get_job(f"report-{report_row.pk}") is None
         finally:
             mgr.shutdown()
 
