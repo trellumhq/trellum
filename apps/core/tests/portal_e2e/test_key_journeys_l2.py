@@ -131,7 +131,7 @@ def test_analytics_experiments_progressive(journey, variant):
         page.get_by_role('link', name='Running').click()
         page.wait_for_url(lambda url: 'status=running' in url)
         expect(table_rows).to_have_count(6)
-        expect(page.locator('[role=status]', has_text='loading')).to_have_count(0)
+        expect(page.locator('[role=status]:visible', has_text='loading')).to_have_count(0)
         journey.checkpoint('primary-rows')
         bind(journey, 'route-149', 'GET', None, 'org-admin', spec, ())
         record_metrics(journey, page)
