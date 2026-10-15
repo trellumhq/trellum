@@ -188,7 +188,7 @@ def test_page_has_main_controls_in_both_modes(studio, member, grant_studio, logi
         return client.get(url).content.decode().split("<main", 1)[1].split("</main>", 1)[0]
 
     body = content(base)
-    for present in ('placeholder="Filter reports…"', 'data-sort="report"', 'data-sort="last_viewed"', 'href="?days=7"', 'href="?days=90"', "report_analytics.js"):
+    for present in ('placeholder="Search reports…"', 'data-sort="report"', 'data-sort="last_viewed"', 'href="?days=7"', 'href="?days=90"', "report_analytics.js"):
         assert present in body, present
     for absent in ("<button", "Search report names", "Sort by", "Order</label", "Previous", "Next", "ui-pager", "data-server-side", "unavailable"):
         assert absent not in body, absent

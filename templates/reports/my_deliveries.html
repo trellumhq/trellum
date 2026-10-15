@@ -10,7 +10,7 @@
 </header>
 {% if legacy_deliveries %}<p>Open <strong>Deliveries</strong> in your Studio navigation to add or manage schedules for that studio.</p>{% for studio in shell_studios %}<a class="ui-btn ghost" href="/s/{{ studio.org.slug }}/{{ studio.slug }}/deliveries">{{ studio.name }} · Deliveries</a>{% endfor %}{% endif %}
 <form method="get" class="panel delivery-filters {% if legacy_deliveries %}global-filters{% else %}studio-filters{% endif %}" aria-label="Filter deliveries" data-auto-filter>
-<label>Search <input type="search" name="q" value="{{ request.GET.q }}"></label>
+<label>Search <input type="search" name="q" data-page-search value="{{ request.GET.q }}"></label>
 {% if legacy_deliveries %}<label>Organization <input name="org" value="{{ request.GET.org }}"></label>
 <label>Studio <input name="studio" value="{{ request.GET.studio }}"></label>{% endif %}
 <label>Report <select name="report" data-choice-picker data-picker-label="Report"{% if report_choice_source %} data-choice-source="{{ report_choice_source }}"{% endif %} data-choice-value-prefix="id:"><option value="">All reports</option>{% if selected_report_filter|slice:":5" == "slug:" %}<option value="{{ selected_report_filter }}" selected>Current report filter</option>{% endif %}{% for report in report_filter_options %}<option value="id:{{ report.pk }}"{% if selected_report_id == report.pk %} selected{% endif %}>{{ report.name|default:report.slug }}{% if legacy_deliveries %} · {{ report.studio.org.name }} / {{ report.studio.name }}{% endif %}</option>{% endfor %}</select></label>

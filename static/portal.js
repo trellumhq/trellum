@@ -855,8 +855,8 @@ function renderTabs(preservePickerState) {
             + '<summary class="folder-tab folder-more-summary" aria-label="More categories">'
             + 'More <span class="count">' + split.overflow.length + '</span></summary>'
             + '<div class="folder-more-menu" role="menu">'
-            + '<input type="text" class="folder-more-filter" placeholder="Filter categories…"'
-            + ' aria-label="Filter categories" value="' + escAttr(filterText) + '">'
+            + '<input type="text" class="folder-more-filter" placeholder="Search categories…"'
+            + ' aria-label="Search categories" value="' + escAttr(filterText) + '">'
             + '<div class="folder-more-list">'
             + split.overflow.map(function(i) {
                 return '<button class="folder-menu-item" role="menuitem" data-folder="' + escAttr(cats[i][0]) + '">'
@@ -957,9 +957,23 @@ function emptyStateHtml(isSearching) {
         }
         return html + '</div>';
     }
+    if (isSearching) {
+        return '<div class="empty-state">' + SEARCH_SVG
+            + '<p>No ' + contentLabel + ' match \u201c' + esc(searchQuery) + '\u201d.</p>'
+            + '<p class="muted" style="font-size:13px;margin:0">Search looks at the name, description, tags and category.</p>'
+            + '<button type="button" class="ui-btn ghost" data-clear-search>Clear search</button></div>';
+    }
     return '<div class="empty-state">' + SEARCH_SVG
-        + '<p>No ' + contentLabel + (isSearching ? ' match your search' : ' in this category') + '</p>'
+        + '<p>No ' + contentLabel + ' in this category</p>'
         + '</div>';
+}
+
+/* "3 of 9" beside the catalog field while a query is active. */
+function updateSearchCount(matches, total) {
+    var el = document.getElementById('catalogSearchCount');
+    if (!el) return;
+    el.hidden = !searchQuery;
+    el.textContent = searchQuery ? matches + ' of ' + total : '';
 }
 
 function signalCatalogReady(container) {
@@ -1021,7 +1035,8 @@ function render(preservePickerState) {
     document.getElementById('catalogToolbar').innerHTML = renderSummary();
     renderTabs(preservePickerState);
 
-    let html = isSearching ? renderSearchFeedback(pool.length, q) : '';
+    updateSearchCount(pool.length, _catalogPartial() ? _catalogTotal : shown.length);
+    let html = isSearching && pool.length ? renderSearchFeedback(pool.length, q) : '';
 
     if (!pool.length) {
         html += emptyStateHtml(isSearching) + catalogMoreHtml(isSearching);
@@ -1069,8 +1084,14 @@ function render(preservePickerState) {
 function clearSearch() {
     document.getElementById('searchInput').value = '';
     searchQuery = '';
+    clearTimeout(_opsSearchTimer);
     render();
 }
+document.addEventListener('click', function(e) {
+    if (!e.target.closest || !e.target.closest('[data-clear-search]')) return;
+    clearSearch();
+    document.getElementById('searchInput').focus();
+});
 
 /* ── Event delegation ── */
 document.getElementById('searchInput').addEventListener('input', function(e) {
@@ -1754,12 +1775,7 @@ document.addEventListener('keydown', function(e) {
         return;
     }
     if (activeDrawer && e.key !== 'Escape') return;
-    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        var inp = document.getElementById('searchInput');
-        inp.focus();
-        inp.select();
-    }
+    /* Ctrl/Cmd+K is bound once, in console-shell.js. */
     if (e.key === 'Escape') {
         /* Close one layer per Esc, most-recently-layered first. The category
            menu sits above the drawers. */
@@ -2029,7 +2045,8 @@ function _buildOpsHTML(status, reportList) {
         reportList = reportList.filter(function(r) { return (r.category || 'Uncategorized') === activeFolder; });
     }
 
-    /* Apply top search bar filter */
+    /* Apply the catalog search field */
+    var totalBeforeSearch = reportList.length;
     if (searchQuery) {
         var q = searchQuery.toLowerCase();
         reportList = reportList.filter(function(r) {
@@ -2039,6 +2056,7 @@ function _buildOpsHTML(status, reportList) {
         });
     }
 
+    updateSearchCount(reportList.length, totalBeforeSearch);
     var running = status.running || {};
     var queue = status.queue || [];
     var queueSlugs = queue.map(function(q) { return q.slug || q; });
@@ -2145,7 +2163,9 @@ function _buildOpsHTML(status, reportList) {
                 + '</td></tr>';
         }
     });
-    html += '<tr data-ops-empty hidden><td colspan="8" style="text-align:center;color:var(--text3);padding:24px">No reports match this filter.</td></tr>';
+    html += '<tr data-ops-empty hidden><td colspan="8" style="text-align:center;color:var(--text3);padding:24px">No reports match this filter.'
+        + (searchQuery ? '<div style="margin-top:12px"><button type="button" class="ui-btn ghost" data-clear-search>Clear search</button></div>' : '')
+        + '</td></tr>';
     html += '</tbody></table></div>';
     if (_opsTruncated && _opsCatalog && _opsCatalog.pagination) {
         html += '<p class="ops-status-detail" style="padding:12px 0">Showing the first ' + reportList.length + ' of '
@@ -2988,7 +3008,7 @@ function renderDsTable() {
         });
     }
 
-    var html = '<input class="ds-search" type="text" placeholder="Search data sources..." value="' + esc(_dsSearch) + '" id="dsSearchInput">';
+    var html = '<input class="ds-search" type="text" placeholder="Search data sources…" value="' + esc(_dsSearch) + '" id="dsSearchInput">';
     html += '<table class="ds-table"><thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Used By</th><th>Actions</th></tr></thead><tbody>';
     filtered.forEach(function(s) {
         var badge = _DS_BADGES[s.state] || ['ds-warn', s.state];

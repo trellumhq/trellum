@@ -87,8 +87,7 @@ def test_operations_page(engine, width, live_server, login, org_admin, org, stud
             Path(artifacts).mkdir(parents=True, exist_ok=True)
             page.screenshot(path=str(Path(artifacts) / f"ops-{engine}-{width}.png"), full_page=True)
         # Search applies after a typing pause, with no button.
-        if width < 768:
-            page.locator("[data-console-search-toggle]").click()
+        expect(page.locator(".folder-rail #searchInput")).to_be_visible()
         page.locator("#searchInput").fill("browser059")
         expect(page.locator("tr[data-ops-row]:visible")).to_have_count(1)
         assert errors == []

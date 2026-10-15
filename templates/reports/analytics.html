@@ -45,8 +45,8 @@ buttons, tabular-nums numbers, mono last-viewed, .ui-empty.{% endcomment %}
       <a class="ui-pill{% if range.days == days %} active{% endif %}" href="{{ range.url }}">{{ range.days }}d</a>
       {% endfor %}
     </div>
-    <input type="search" id="analyticsSearch" class="ui-input analytics-search"
-           placeholder="Filter reports…" aria-label="Filter reports by name"{% if server_side %} value="{{ q }}" maxlength="200"{% endif %}>
+    <input type="search" id="analyticsSearch" class="ui-input analytics-search" data-page-search
+           placeholder="Search reports…" aria-label="Search reports by name"{% if server_side %} value="{{ q }}" maxlength="200"{% endif %}>
   </div>
 
   <div id="analyticsRegion">

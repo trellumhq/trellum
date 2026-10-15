@@ -216,9 +216,9 @@ identifier, description, tags, owner -- rather than the card's own
 textContent, which would also match the claims zone and make "current" a
 query that hits everything.{% endcomment %}
 <div class="met-filter">
-  <label class="sr-only" for="metSearch">Filter metrics</label>
-  <input type="search" id="metSearch" class="ui-input" autocomplete="off" spellcheck="false"
-         placeholder="Filter metrics…" value="{{ metric_query }}"{% if truncated or metric_query %} data-server-filter="{% url 'studio-metrics' org.slug studio.slug %}"{% endif %}>
+  <label class="sr-only" for="metSearch">Search metrics</label>
+  <input type="search" id="metSearch" class="ui-input" data-page-search autocomplete="off" spellcheck="false"
+         placeholder="Search metrics…" value="{{ metric_query }}"{% if truncated or metric_query %} data-server-filter="{% url 'studio-metrics' org.slug studio.slug %}"{% endif %}>
   <p class="met-count" id="metCount" role="status" aria-live="polite">{% if truncated %}Showing the first {{ shown_count }} of {{ matching_count }} matching metrics. Keep typing to narrow.{% endif %}</p>
 </div>
 <div class="met-grid" data-metric-summary data-url="{{ summary_url }}" data-revision="{{ definition_revision }}">

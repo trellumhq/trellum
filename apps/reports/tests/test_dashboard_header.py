@@ -38,8 +38,9 @@ def test_dashboard_uses_shared_page_heading(client, login, org_admin, org, studi
 def test_dashboard_controls_live_in_the_shell(client, login, org_admin, org, studio):
     html = _dashboard_html(client, login, org_admin, org, studio)
     shell = html.split('<header class="tl-console-header"', 1)[1].split("</header>", 1)[0]
-    # portal.js looks this up by id and several call sites are unguarded, so
-    # it must exist and must be inside the one bar. #portalThemeSelect and
+    # portal.js looks #searchInput up by id and several call sites are unguarded,
+    # so it must exist. Search belongs to the page it searches: the field sits in
+    # the catalog's folder bar, not in the one header. #portalThemeSelect and
     # #errorLogBtn moved out (ui-consistency-punchlist.md item 3,
     # studio-theming-design.md §8): the report-theme picker is superseded by
     # the per-viewer Appearance select (also in the shell, but unconditional
@@ -47,7 +48,13 @@ def test_dashboard_controls_live_in_the_shell(client, login, org_admin, org, stu
     # "portalThemeSelect"); the error log moved into the dashboard's own
     # summary bar (static/portal.js renderSummary), beside the other
     # surface-specific controls.
-    assert 'id="searchInput"' in shell
+    assert 'id="searchInput"' not in shell
+    assert "tl-console-search" not in shell and "data-console-search" not in html
+    rail = html.split('<div class="folder-rail">', 1)[1].split("</label>", 1)[0]
+    assert rail.index('id="folderTabs"') < rail.index('id="searchInput"')
+    assert 'type="search"' in rail and "data-page-search" in rail
+    assert 'placeholder="Search reports…"' in rail
+    assert html.index('id="searchInput"') < html.index('id="catalogToolbar"')
     assert "portalThemeSelect" not in shell
     assert "errorLogBtn" not in shell
 
@@ -94,12 +101,43 @@ def test_exactly_one_logout_affordance(client, login, org_admin, org, studio):
     assert "portalLogout" not in html
 
 
-def test_management_pages_have_no_dashboard_tools(client, login, org_admin, org):
-    # The tool cluster is dashboard-only; the hub must not sprout a search box.
+@pytest.mark.parametrize("remembered", (False, True))
+def test_management_pages_have_no_dashboard_tools(client, login, org_admin, org, studio, remembered):
+    # The tool cluster is dashboard-only; no other page sprouts a search box in
+    # the header, with or without a remembered studio (which used to add a
+    # "Search reports" box that only navigated to the catalog).
     login(org_admin)
-    html = client.get("/", {"org": org.slug}).content.decode()
-    assert 'id="searchInput"' not in html
-    assert "tl-console-search" not in html
+    if remembered:
+        client.get(f"/s/{org.slug}/{studio.slug}/")
+    for path in ("/", f"/orgs/{org.slug}/settings/invites", f"/orgs/{org.slug}/settings/members",
+                 f"/s/{org.slug}/{studio.slug}/settings/members"):
+        html = client.get(path, {"org": org.slug} if path == "/" else {}).content.decode()
+        header = html.split('<header class="tl-console-header"', 1)[1].split("</header>", 1)[0]
+        assert 'id="searchInput"' not in html, path
+        assert "tl-console-search" not in html, path
+        assert "data-console-search" not in header, path
+        assert "\u2315" not in header and "⌕" not in header, path
+        # Only the jump control, and only where a studio is in view.
+        assert ("data-console-jump" in header) is (remembered or "/s/" in path), path
+
+
+def test_own_search_fields_are_marked_for_the_shortcut(client, login, org_admin, org, studio):
+    # Ctrl+K focuses the field carrying this marker; pages with none open the jump list.
+    login(org_admin)
+    base = f"/s/{org.slug}/{studio.slug}"
+    for path in (f"/orgs/{org.slug}/settings/invites", f"/orgs/{org.slug}/settings/members"):
+        assert "data-page-search" in client.get(path).content.decode(), path
+    assert "data-page-search" not in client.get(f"{base}/settings/members").content.decode()
+    # Fields that render only with data are marked in their templates, and read "Search ...".
+    for template, marker in (
+        ("reports/metrics.html", 'id="metSearch" class="ui-input" data-page-search'),
+        ("reports/analytics.html", 'id="analyticsSearch" class="ui-input analytics-search" data-page-search'),
+        ("reports/my_deliveries.html", 'name="q" data-page-search'),
+        ("operator/logs.html", 'name="q" type="search" data-page-search'),
+    ):
+        source = (settings.BASE_DIR / "templates" / template).read_text(encoding="utf-8")
+        assert marker in source, template
+        assert "Filter metrics" not in source and "Filter reports" not in source, template
 
 
 def test_category_row_does_not_hide_its_own_scrollbar():

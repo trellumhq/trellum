@@ -50,18 +50,6 @@ portal.css.{% endcomment %}
   <a href="{{ trellum_source_url }}" target="_blank" rel="noopener">Trellum source code</a>
 </footer>
 <script>
-/* Ctrl/Cmd+K focuses the studio search box (_shell.html), mirroring the
-   dashboard's own shortcut (static/portal.js, which this page never loads).
-   The search box now renders identically on every studio tab
-   (ui-consistency-punchlist.md item 3), so the shortcut does too; guarded
-   because org/account/operator pages carry no search box at all. */
-document.addEventListener('keydown', function (ev) {
-  if ((ev.metaKey || ev.ctrlKey) && ev.key === 'k') {
-    var input = document.getElementById('searchInput');
-    if (input) { ev.preventDefault(); input.focus(); input.select(); }
-  }
-});
-
 /* Hover prefetch: the server answers in ~5ms, so warming the next page on
    pointerover makes navigation feel instant. GET-only, same-origin plain
    paths; query-string links (e.g. /?org=) are skipped because they mutate

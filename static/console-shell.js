@@ -127,6 +127,37 @@
     }
 
 
+    var jumpSerial = 0;
+
+    function scopeLink(menu, item, href) {
+        var link = document.createElement('a');
+        link.href = href; link.textContent = item.label;
+        var caption = item.hint && menu.hasAttribute('data-console-jump-menu') ? item.hint : menu.dataset.scopeDetail;
+        if (caption) {
+            var detail = document.createElement('span'); detail.textContent = caption; link.appendChild(detail);
+        }
+        if (menu.hasAttribute('data-console-jump-menu')) {
+            /* The report host reads this for the title it shows while a report opens. */
+            link.dataset.consoleReportTitle = item.label;
+            link.id = 'consoleJump' + (++jumpSerial);
+        }
+        return link;
+    }
+
+    /* Instant client-side filtering of the links a menu already holds. */
+    function filterScopeMenu(menu, input) {
+        var query = input.value.trim().toLocaleLowerCase();
+        var shown = 0;
+        menu.querySelectorAll('a:not([data-scope-result])').forEach(function (link) {
+            link.hidden = query && link.textContent.trim().toLocaleLowerCase().indexOf(query) === -1;
+            if (!link.hidden) shown++;
+        });
+        var empty = menu.querySelector('.tl-console-scope-empty');
+        if (empty) empty.hidden = shown > 0 || !!(menu.querySelector('[data-jump-loading]:not([hidden])'));
+        if (menu.dataset.scopeSource) searchScopes(menu, input, empty, shown);
+        return shown;
+    }
+
     /* Long lists render a short preview; typing searches every choice on the
        server. One request is in flight at a time and the visitor never has to
        ask for a retry or turn a page. */
@@ -156,17 +187,15 @@
                 menu.querySelectorAll('a').forEach(function (link) { known[link.getAttribute('href')] = link; });
                 var anchor = hint || null, added = 0;
                 data.results.forEach(function (item) {
-                    var href = menu.dataset.scopeLink.replace('{}', encodeURIComponent(item.value));
+                    var href = item.href || menu.dataset.scopeLink.replace('{}', encodeURIComponent(item.value));
                     if (known[href]) { known[href].hidden = false; added++; return; }
-                    var link = document.createElement('a');
-                    link.href = href; link.dataset.scopeResult = ''; link.textContent = item.label;
-                    if (menu.dataset.scopeDetail) {
-                        var detail = document.createElement('span'); detail.textContent = menu.dataset.scopeDetail; link.appendChild(detail);
-                    }
+                    var link = scopeLink(menu, item, href);
+                    link.dataset.scopeResult = '';
                     menu.insertBefore(link, anchor); added++;
                 });
                 if (empty) empty.hidden = localShown + added > 0 || data.results.length > 0;
                 if (hint) { hint.textContent = defaultHint; hint.hidden = !(data.pagination && data.pagination.has_next); }
+                menu.dispatchEvent(new CustomEvent('tl-scope-updated'));
             }).catch(function () {
                 if (token !== menu._scopeToken) return;
                 if (count < 1) { menu._scopeTimer = window.setTimeout(function () { attempt(count + 1); }, 1200); return; }
@@ -190,14 +219,14 @@
         var collapse = root.querySelector('[data-console-collapse]');
         var backdrop = root.querySelector('[data-console-backdrop]');
         var close = root.querySelector('[data-console-close]');
-        var searchToggle = root.querySelector('[data-console-search-toggle]');
-        var search = root.querySelector('[data-console-search]');
-        var searchShortcut = search && search.querySelector('kbd');
+        var jump = root.querySelector('[data-console-jump]');
+        var jumpMenu = jump && jump.querySelector('[data-console-jump-menu]');
+        var jumpInput = jumpMenu && jumpMenu.querySelector('.tl-console-scope-filter');
         var inertTargets = document.querySelectorAll('[data-console-inert]');
         var returnFocus = null;
 
-        if (searchShortcut && /Mac|iPhone|iPad/.test(navigator.platform || '')) {
-            searchShortcut.textContent = '⌘K';
+        if (/Mac|iPhone|iPad/.test(navigator.platform || '')) {
+            root.querySelectorAll('[data-console-shortcut]').forEach(function (key) { key.textContent = '⌘K'; });
         }
 
         if (scrollKeyPrefix) {
@@ -240,11 +269,6 @@
             sidebar.setAttribute('aria-hidden', hidden ? 'true' : 'false');
         }
 
-        function closeSearch() {
-            root.classList.remove('is-search-open');
-            if (searchToggle) searchToggle.setAttribute('aria-expanded', 'false');
-        }
-
         function closeDrawer(restore) {
             var wasOpen = root.classList.contains('is-open');
             root.classList.remove('is-open');
@@ -261,7 +285,6 @@
         function openDrawer() {
             if (desktop.matches) return;
             closeMenus();
-            closeSearch();
             returnFocus = document.activeElement;
             root.classList.add('is-open');
             body.classList.add('tl-console-drawer-open');
@@ -288,17 +311,153 @@
             }));
         }
 
-        function openSearch() {
-            if (!search || !searchToggle) return;
-            closeMenus();
-            closeDrawer(false);
-            root.classList.add('is-search-open');
-            searchToggle.setAttribute('aria-expanded', 'true');
-            var input = search.querySelector('input');
-            if (input) {
-                try { input.focus({ preventScroll: true }); } catch (e) { input.focus(); }
-                if (input.select) input.select();
+        /* ── Jump to a report: the studio switcher's searchable list, filled with this studio's reports and
+           analyses. Up to 500 arrive at once and filter instantly in the browser; a larger set shows a short
+           preview and typing searches every report on the server (searchScopes). ── */
+        function jumpLinks() {
+            return Array.prototype.filter.call(jumpMenu.querySelectorAll('a'), function (link) { return !link.hidden; });
+        }
+
+        function highlightJump(link) {
+            jumpMenu.querySelectorAll('a.is-highlighted').forEach(function (item) {
+                item.classList.remove('is-highlighted'); item.removeAttribute('aria-selected');
+            });
+            if (link) {
+                link.classList.add('is-highlighted'); link.setAttribute('aria-selected', 'true');
+                jumpInput.setAttribute('aria-activedescendant', link.id);
+                if (link.scrollIntoView) link.scrollIntoView({ block: 'nearest' });
+            } else jumpInput.removeAttribute('aria-activedescendant');
+        }
+
+        function settleJump() {
+            var empty = jumpMenu.querySelector('[data-jump-empty]');
+            if (empty) empty.textContent = jumpMenu._jumpNone ? 'No reports or analyses to open yet.' : 'No reports match.';
+            highlightJump(jumpLinks()[0] || null);
+        }
+
+        function renderJump(data) {
+            jumpMenu.querySelectorAll('a').forEach(function (link) { link.remove(); });
+            var anchor = jumpMenu.querySelector('[data-scope-hint]');
+            data.results.forEach(function (item) {
+                jumpMenu.insertBefore(scopeLink(jumpMenu, item, item.href), anchor);
+            });
+            var more = !!(data.pagination && data.pagination.has_next);
+            if (more) jumpMenu.dataset.scopeSource = jumpMenu.dataset.jumpSource; else delete jumpMenu.dataset.scopeSource;
+            anchor.textContent = jumpMenu._scopeHint = jumpMenu._hintDefault;
+            jumpMenu._jumpNone = !more && !data.results.length;
+            jumpMenu.querySelector('[data-jump-loading]').hidden = true;
+            anchor.hidden = !more || !!jumpInput.value.trim();
+            filterScopeMenu(jumpMenu, jumpInput);
+            settleJump();
+            /* Enter pressed before the list arrived opens the first match as soon as it does. */
+            if (jumpMenu._jumpEnter) {
+                jumpMenu._jumpEnter = false;
+                var first = jump.open && jumpLinks()[0];
+                if (first) first.click();
             }
+        }
+
+        function loadJump(force) {
+            if (jumpMenu._jumpBusy) return;
+            if (!force && jumpMenu._jumpAt && Date.now() - jumpMenu._jumpAt < 60000) return;
+            var controller = new AbortController();
+            jumpMenu._jumpBusy = controller;
+            var timeout = window.setTimeout(function () { controller.abort(); }, 10000);
+            var hint = jumpMenu.querySelector('[data-scope-hint]');
+            function attempt(count) {
+                return fetch(jumpMenu.dataset.jumpSource, {
+                    credentials: 'same-origin', cache: 'no-store', signal: controller.signal, headers: { Accept: 'application/json' }
+                }).then(function (response) {
+                    if (!response.ok) throw new Error('jump list failed');
+                    return response.json();
+                }).then(function (data) {
+                    if (!Array.isArray(data.results)) throw new Error('jump list malformed');
+                    jumpMenu._jumpAt = Date.now(); jumpMenu._jumpFailed = false;
+                    renderJump(data);
+                }).catch(function (error) {
+                    if (controller.signal.aborted) throw error;
+                    if (count < 1) return new Promise(function (resolve) { window.setTimeout(resolve, 1200); }).then(function () { return attempt(count + 1); });
+                    throw error;
+                });
+            }
+            attempt(0).catch(function () {
+                jumpMenu._jumpFailed = true;
+                jumpMenu.querySelector('[data-jump-loading]').hidden = true;
+                if (hint) { hint.textContent = 'Could not load reports. Keep typing to try again.'; hint.hidden = false; }
+            }).then(function () {
+                window.clearTimeout(timeout);
+                jumpMenu._jumpBusy = null;
+            });
+        }
+
+        /* Closing forgets the query: the next visit starts from the whole list. */
+        function resetJump() {
+            jumpMenu._jumpEnter = false;
+            if (jumpInput.value) { jumpInput.value = ''; filterScopeMenu(jumpMenu, jumpInput); settleJump(); }
+        }
+
+        function openJump() {
+            // Nothing to open while the bar is not shown (presenting a report, say).
+            if (!jump || !jump.getClientRects().length) return false;
+            closeMenus(jump);
+            closeDrawer(false);
+            if (!jump.open) resetJump();
+            jump.open = true;
+            try { jumpInput.focus({ preventScroll: true }); } catch (e) { jumpInput.focus(); }
+            jumpInput.select();
+            loadJump(false);
+            return true;
+        }
+
+        function closeJump(restoreFocus) {
+            jump.open = false;
+            resetJump();
+            if (restoreFocus) { var summary = jump.querySelector('summary'); if (summary) summary.focus({ preventScroll: true }); }
+        }
+
+        window.TrellumConsoleShell.openJump = openJump;
+        if (jump) {
+            jumpMenu._hintDefault = jumpMenu.querySelector('[data-scope-hint]').textContent;
+            jump.addEventListener('toggle', function () {
+                if (!jump.open) { resetJump(); return; }
+                loadJump(false);
+                try { jumpInput.focus({ preventScroll: true }); } catch (e) { jumpInput.focus(); }
+            });
+            jumpMenu.addEventListener('tl-scope-updated', settleJump);
+            jumpInput.addEventListener('input', function () {
+                /* The generic scope-menu handler filters; this keeps the highlight on the first match and quietly
+                   retries a failed load. */
+                if (jumpMenu._jumpFailed) loadJump(true);
+                window.requestAnimationFrame(settleJump);
+            });
+            jumpInput.addEventListener('keydown', function (event) {
+                var links = jumpLinks();
+                if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    if (!links.length) return;
+                    var at = links.indexOf(jumpMenu.querySelector('a.is-highlighted'));
+                    var step = event.key === 'ArrowDown' ? 1 : -1;
+                    highlightJump(links[(at + step + links.length) % links.length]);
+                } else if (event.key === 'Enter') {
+                    event.preventDefault();
+                    var chosen = jumpMenu.querySelector('a.is-highlighted:not([hidden])') || links[0];
+                    if (chosen) chosen.click();
+                    else if (!jumpMenu.querySelector('[data-jump-loading]').hidden) jumpMenu._jumpEnter = true;
+                } else if (event.key === 'Escape') {
+                    event.preventDefault();
+                    closeJump(true);
+                }
+            });
+            jumpMenu.addEventListener('mousemove', function (event) {
+                var link = event.target.closest && event.target.closest('a');
+                if (link && !link.classList.contains('is-highlighted')) highlightJump(link);
+            });
+            jumpMenu.addEventListener('click', function (event) {
+                if (event.target.closest('a')) closeJump(false);
+            });
+            jump.addEventListener('focusout', function (event) {
+                if (event.relatedTarget && !jump.contains(event.relatedTarget)) jump.open = false;
+            });
         }
 
         // A widget that never arrives must not leave a dead-looking button behind.
@@ -316,9 +475,6 @@
         });
         if (backdrop) backdrop.addEventListener('click', function () { closeDrawer(); });
         if (close) close.addEventListener('click', function () { closeDrawer(); });
-        if (searchToggle) searchToggle.addEventListener('click', function () {
-            if (root.classList.contains('is-search-open')) closeSearch(); else openSearch();
-        });
         if (collapse) collapse.addEventListener('click', function () {
             var collapsed = !root.classList.contains('is-collapsed');
             try { localStorage.setItem('tl-console-collapsed', collapsed ? '1' : '0'); } catch (e) {}
@@ -331,23 +487,10 @@
         });
         root.addEventListener('input', function (event) {
             var input = event.target.closest('[data-scope-menu] .tl-console-scope-filter');
-            if (!input) return;
-            var query = input.value.trim().toLocaleLowerCase();
-            var shown = 0;
-            var menu = input.parentElement;
-            menu.querySelectorAll('a:not([data-scope-result])').forEach(function (link) {
-                link.hidden = query && link.textContent.trim().toLocaleLowerCase().indexOf(query) === -1;
-                if (!link.hidden) shown++;
-            });
-            var empty = menu.querySelector('.tl-console-scope-empty');
-            if (empty) empty.hidden = shown > 0;
-            if (menu.dataset.scopeSource) searchScopes(menu, input, empty, shown);
+            if (input) filterScopeMenu(input.parentElement, input);
         });
         root.addEventListener('toggle', function (event) {
-            if (event.target.open) {
-                closeMenus(event.target);
-                closeSearch();
-            }
+            if (event.target.open) closeMenus(event.target);
         }, true);
         document.addEventListener('click', function (event) {
             /* Choice pickers re-render (and detach) the clicked option before
@@ -361,14 +504,8 @@
             if (!details || !root.contains(details)) closeMenus();
         });
         document.addEventListener('keydown', function (event) {
-            if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k' && search) {
-                event.preventDefault();
-                openSearch();
-                return;
-            }
             if (event.key === 'Escape') {
                 if (root.classList.contains('is-open')) { event.preventDefault(); closeDrawer(); return; }
-                if (root.classList.contains('is-search-open')) { event.preventDefault(); closeSearch(); return; }
                 if (root.querySelector('details[open]')) { event.preventDefault(); closeMenus(); }
             }
             if (!root.classList.contains('is-open') || event.key !== 'Tab') return;
@@ -380,7 +517,6 @@
         });
         desktop.addEventListener('change', function () {
             closeDrawer(false);
-            closeSearch();
             setCollapsed(stored('tl-console-collapsed') === '1');
             syncSidebarState();
         });
@@ -390,6 +526,37 @@
             document.documentElement.dataset.consoleReady = 'true';
         });
     }
+
+    /* Ctrl/Cmd+K is bound here, once for the whole document: it focuses the page's own search field (marked
+       data-page-search) when the page has one in view, and otherwise opens the jump list. A page with neither leaves
+       the browser's shortcut alone. */
+    function visiblePageSearch() {
+        var fields = document.querySelectorAll('[data-page-search]');
+        for (var i = 0; i < fields.length; i += 1) {
+            var field = fields[i];
+            if (!field.disabled && !field.closest('[inert]') && field.getClientRects().length
+                    && getComputedStyle(field).visibility !== 'hidden') return field;
+        }
+        return null;
+    }
+    document.addEventListener('keydown', function (event) {
+        if ((event.key || '').toLowerCase() === 'escape' && event.target && event.target.matches
+                && event.target.matches('[data-page-search]') && !event.target.value) {
+            event.target.blur();
+            return;
+        }
+        if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey || (event.key || '').toLowerCase() !== 'k') return;
+        if (document.querySelector('.error-log-drawer.open, .validation-drawer.open, .server-log-drawer.open')) return;
+        var field = visiblePageSearch();
+        if (field) {
+            event.preventDefault();
+            document.querySelectorAll('[data-console-shell] details[open]').forEach(function (menu) { menu.open = false; });
+            field.focus();
+            if (field.select) field.select();
+        } else if (window.TrellumConsoleShell.openJump && window.TrellumConsoleShell.openJump()) {
+            event.preventDefault();
+        }
+    });
 
     window.TrellumConsoleShell = {
         init: init, prepare: prepare, setPageTitle: setPageTitle, setTheme: setTheme,

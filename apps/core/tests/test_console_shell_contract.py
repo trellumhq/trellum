@@ -1,3 +1,5 @@
+import re
+
 from django.conf import settings
 
 
@@ -59,10 +61,16 @@ def test_mobile_utility_bar_and_known_title_contract():
 
     assert "tl-console-title-known" in base
     assert "data-console-page-title" in shell
-    assert "data-console-search-toggle" in shell
-    assert "data-console-search" in shell
+    # Search lives in each page; the bar has no search box or phone search pane, only the jump control.
+    assert "data-console-search" not in shell and "tl-console-search" not in shell
+    assert "data-console-jump" in shell
+    assert "is-search-open" not in css and "is-search-open" not in js
     assert "@media (max-width: 767px)" in css
-    assert "height: 44px" in css and "font-size: 16px" in css
+    assert "height: 44px" in css
+    # The shortcut is bound once, by the shell script.
+    shortcut = re.compile(r"toLowerCase\(\) [!=]== 'k'|key [!=]== 'k'")
+    assert len(shortcut.findall(js)) == 1
+    assert not shortcut.search(_read("static/portal.js")) and not shortcut.search(base)
     assert "setPageTitle" in js and "prepare" in js and "setTheme" in js
     assert "document.title" not in js
     assert '/api/assistant/widget.js' in base

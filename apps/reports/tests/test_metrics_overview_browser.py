@@ -68,7 +68,7 @@ def test_overview_list_reads_like_the_catalog_always_did(overview):
             expect(cards).to_have_count(3)
             # The filter box, and nothing else around it.
             search = page.locator("#metSearch")
-            expect(search).to_have_attribute("placeholder", "Filter metrics…")
+            expect(search).to_have_attribute("placeholder", "Search metrics…")
             expect(page.get_by_role("button", name="Search metrics")).to_have_count(0)
             expect(page.locator("#metCount")).to_have_text("")
             expect(page.locator(".page-sub")).to_contain_text("3 defined, 2 claimed by reports")

@@ -9,6 +9,16 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- Search now lives in the page it searches. The top bar no longer carries a
+  "Search reports" box on every page, and the phone search button is gone.
+  Reports, Analyses and Operations have their own search field in the folder bar
+  before Sort (the first row on phones), with an "N of M" count and a "Clear
+  search" button when nothing matches. A new search icon in the top bar, with a
+  Ctrl+K badge, opens "Jump to a report": your studio's reports and analyses,
+  filtered as you type, with the arrow keys, Enter to open and Esc to close.
+  Ctrl+K focuses the page's own search field where there is one and opens the
+  jump list everywhere else. Metrics, Report Analytics and category filters now
+  read "Search ...".
 - The annotations calendar reads a large `events.yaml` several times faster.
 - Pickers list every choice with instant search again, with no pages inside a
   dropdown. Only lists over 500 choices use search-as-you-type with a "keep

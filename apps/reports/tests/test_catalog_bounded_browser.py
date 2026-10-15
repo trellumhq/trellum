@@ -58,9 +58,8 @@ def test_dashboard_shows_every_report_with_instant_controls(
             page.select_option('#listSortSelect', 'name')
             first = page.locator('#content tr[data-slug]').first.get_attribute('data-slug')
             assert first == 'r-000'
-            # Search filters at once, over the whole studio.
-            if width < 768:
-                page.locator('[data-console-search-toggle]').click()
+            # Search filters at once, over the whole studio: the field is always in the folder bar.
+            expect(page.locator('.folder-rail #searchInput')).to_be_visible()
             page.fill('#searchInput', 'Report 060')
             expect(page.locator('#content tr[data-slug]')).to_have_count(1)
             page.fill('#searchInput', '')

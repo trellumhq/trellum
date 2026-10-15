@@ -29,7 +29,7 @@ def _page() -> str:
  <button class="tl-console-drawer-button" aria-label="Open navigation">M</button>
  <span class="tl-console-page-title">Player Overview</span><span class="tl-console-header-spacer"></span>
  <a class="tl-console-health-alert" href="/system" aria-label="Degraded"><svg viewBox="0 0 20 20"><path d="M10 2.5l8 14H2z"/></svg><span class="tl-console-health-text">Degraded</span></a>
- <button class="tl-console-search-button" data-console-search-toggle aria-label="Search">S</button>
+ <details class="tl-console-jump" data-console-jump><summary aria-label="Jump to a report">S</summary></details>
  <a class="tl-console-docs-link" href="/docs" aria-label="Documentation"><svg viewBox="0 0 20 20"><path d="M4 3.5h8"/></svg><span class="tl-console-docs-label">Docs</span></a>
  <details class="tl-console-assistant-picker"><summary aria-label="AI assistant"><svg viewBox="0 0 16 16" width="16" height="16"><path d="M8 0l8 8-8 8z"/></svg><span class="tl-console-assistant-label">AI assistant</span></summary></details>
 </header></div>
@@ -82,7 +82,7 @@ def test_phone_header_is_compact_and_consistent(display):
             # Header icon buttons use one neutral bordered 44px treatment.
             styles = page.evaluate(
                 """() => ['.tl-console-drawer-button','.tl-console-health-alert',
-                '.tl-console-search-button','.tl-console-docs-link',
+                '.tl-console-jump > summary','.tl-console-docs-link',
                 '.tl-console-assistant-picker > summary'].map(s => {
                   const e = document.querySelector(s), c = getComputedStyle(e), b = e.getBoundingClientRect();
                   return [c.borderTopWidth, c.borderTopColor, c.backgroundColor, Math.round(b.width), Math.round(b.height)];

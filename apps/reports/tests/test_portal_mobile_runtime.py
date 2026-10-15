@@ -225,7 +225,6 @@ PORTAL_HTML = """<!doctype html>
     </aside>
     <header class="tl-console-header">
       <button type="button" data-console-toggle aria-controls="consoleSidebar">Menu</button>
-      <div class="tl-console-search"><input id="searchInput" aria-label="Search reports"></div>
     </header>
     <button type="button" data-console-backdrop>Close navigation</button>
   </div>
@@ -234,7 +233,7 @@ PORTAL_HTML = """<!doctype html>
       <div class="ui-label page-kicker scope-studio">Studio · Analytics</div>
       <h1>Reports</h1>
     </header>
-    <div class="folder-bar"><div class="folder-rail"><div class="folder-inner" id="folderTabs"></div><div class="catalog-toolbar" id="catalogToolbar"></div></div></div>
+    <div class="folder-bar"><div class="folder-rail"><div class="folder-inner" id="folderTabs"></div><label class="catalog-search"><input type="search" class="ui-input catalog-search-input" id="searchInput" data-page-search aria-label="Search reports"><span class="catalog-search-count" id="catalogSearchCount" hidden></span></label><div class="catalog-toolbar" id="catalogToolbar"></div></div></div>
     <div class="studio-bar" id="studioBar"><div class="studio-inner" id="studioFilters"></div></div>
     <div class="portal-body"><div class="portal-body-inner" id="content"></div></div>
   </div>
@@ -947,11 +946,16 @@ def test_mobile_category_and_saved_list_mode_are_reachable(mobile_browser, width
               el.dispatchEvent(new Event('input', {bubbles:true}));
             }"""
         )
-        clear = page.locator(".search-clear")
+        # No match: the empty state quotes the long query without overflowing, and offers Clear search.
+        clear = page.locator("[data-clear-search]")
         clear.wait_for()
         assert clear.bounding_box()["x"] + clear.bounding_box()["width"] <= width
+        assert page.locator(".empty-state").evaluate("el => el.scrollWidth <= el.clientWidth")
+        assert page.locator("#catalogSearchCount").inner_text() == "0 of 11"
         assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
         clear.click()
+        assert page.locator("#searchInput").input_value() == ""
+        assert page.locator("#catalogSearchCount").is_hidden()
 
     page.locator("#cardSortSelect").select_option("name")
     assert page.evaluate("localStorage.getItem('trellum_portal_card_sort')") == "name"

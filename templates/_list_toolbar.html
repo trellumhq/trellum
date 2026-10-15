@@ -11,7 +11,7 @@ of it).
   {% for key, value in request.GET.items %}
     {% if key != "q" and key != "page" %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endif %}
   {% endfor %}
-  <input class="ui-input" type="search" name="q" value="{{ q|default:'' }}"
+  <input class="ui-input" type="search" name="q" data-page-search value="{{ q|default:'' }}"
          placeholder="{{ placeholder|default:'Search…' }}" aria-label="{{ placeholder|default:'Search' }}">
   {% if q %}
     <a class="ui-btn ghost" href="{% querystring q=None page=None %}">Clear</a>

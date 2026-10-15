@@ -46,8 +46,6 @@
 }
 
 body.tl-console-report-hosting [data-console-catalog],
-body.tl-console-report-hosting [data-console-search],
-body.tl-console-report-hosting [data-console-search-toggle],
 body.tl-console-report-hosting #assistantLauncher {
     display: none !important;
 }

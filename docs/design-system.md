@@ -23,8 +23,8 @@ default state. Drawer motion takes 200ms; reduced-motion users get an
 effectively immediate transition.
 
 At 767px and below, the header is one 56px bar: menu, known page title, the
-studio search button when present, and the account button at the right edge.
-Search opens in a separate pane on demand. The server supplies the shared
+jump button when a studio is in view, and the account button at the right edge.
+The jump list opens as a pane under the bar on demand. The server supplies the shared
 title through `console_page_title`; routes without known metadata keep their
 existing in-page heading.
 
@@ -52,9 +52,20 @@ reporting and Organization groups. The Organization group remains last and uses
 the existing role checks. There is one navigation rail.
 
 Organization and studio selectors sit at the top of the sidebar. Breadcrumbs,
-studio report search and the account menu sit in the utility header. Category,
-studio filter, sorting, view and error-log controls remain local to the report
-catalog. Their existing event IDs are stable.
+the jump control and the account menu sit in the utility header; search is
+local to each list. The jump control, a search icon with a Ctrl+K badge,
+opens a "Jump to a report" list of the studio's reports and analyses in the same
+searchable popover as the switchers (instant filter, arrow keys, Enter to open,
+Esc to close). It has one fixed slot in the bar on every studio page, so the bar
+never moves between pages. The Reports, Analyses and Operations catalog has its
+own search field (`#searchInput`) in the folder bar before Sort; on phones it is
+the first, full-width row. Category, studio filter, sorting, view and error-log
+controls remain local to the report catalog. Their existing event IDs are
+stable.
+
+Ctrl+K (Cmd+K on macOS) is bound once, in `console-shell.js`. A page marks its
+own search field `data-page-search`, and the shortcut focuses it; a page with
+no such field opens the jump list. Placeholders read "Search ..." everywhere.
 
 ## Console theme
 

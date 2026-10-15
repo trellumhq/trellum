@@ -82,7 +82,7 @@ def _box(page, selector):
 
 
 @pytest.mark.parametrize("engine", ("chromium", "webkit"))
-def test_mobile_bar_search_drawer_and_account_menu(
+def test_mobile_bar_jump_drawer_and_account_menu(
     engine, login, org_admin, org, studio_tree
 ):
     org_admin.email = "account-with-an-extraordinarily-long-address@a-very-long-example-domain.test"
@@ -101,21 +101,24 @@ def test_mobile_bar_search_drawer_and_account_menu(
             assert header["height"] == 56
             menu = _box(page, "[data-console-toggle]")
             title = _box(page, "[data-console-page-title]")
-            search_button = _box(page, "[data-console-search-toggle]")
+            jump_button = _box(page, ".tl-console-jump > summary")
             account = _box(page, ".tl-console-account > summary")
-            assert menu["x"] < title["x"] < search_button["x"] < account["x"]
+            assert menu["x"] < title["x"] < jump_button["x"] < account["x"]
             assert account["x"] + account["width"] <= width - 12 + 0.5
+            # No search box or search pane in the bar; the jump button is a plain 44px control.
+            assert page.locator("#searchInput, [data-console-search], [data-console-search-toggle]").count() == 0
+            assert jump_button["width"] == jump_button["height"] == 44
 
-            page.locator("[data-console-search-toggle]").click()
-            search = page.locator("[data-console-search]")
-            assert search.is_visible()
-            assert _box(page, "#searchInput")["height"] == 44
-            font_size = page.locator("#searchInput").evaluate(
-                "e => getComputedStyle(e).fontSize"
-            )
-            assert font_size == "16px"
+            page.locator(".tl-console-jump > summary").click()
+            popover = page.locator("[data-console-jump-menu]")
+            assert popover.is_visible()
+            popover_box = _box(page, "[data-console-jump-menu]")
+            assert popover_box["x"] >= 12 - 0.5 and popover_box["x"] + popover_box["width"] <= width - 12 + 0.5
+            field = page.locator("[data-console-jump-menu] .tl-console-scope-filter")
+            assert _box(page, "[data-console-jump-menu] .tl-console-scope-filter")["height"] >= 44
+            assert field.evaluate("e => getComputedStyle(e).fontSize") == "16px"
             page.keyboard.press("Escape")
-            assert not search.is_visible()
+            assert not popover.is_visible()
 
             page.locator("[data-console-toggle]").click()
             assert page.locator("[data-console-shell]").evaluate(
@@ -306,9 +309,10 @@ def test_operator_health_warning_polls_and_clears(login, superuser, monkeypatch)
     "platform,modifier,label",
     (("Win32", "Control", "Ctrl+K"), ("MacIntel", "Meta", "⌘K")),
 )
-def test_search_shortcut_layout_and_platform_label(
+def test_jump_shortcut_layout_and_platform_label(
     engine, platform, modifier, label, login, org_admin, org, studio_tree
 ):
+    # A studio page with nothing searchable: Ctrl+K opens the jump list.
     html = _inline_shell_assets(
         login(org_admin)
         .get(f"/s/{org.slug}/{studio_tree.slug}/settings/members")
@@ -325,56 +329,32 @@ def test_search_shortcut_layout_and_platform_label(
         # 125%, 150%, and 200% browser zoom. Browser zoom itself is not set.
         for width in (1536, 1229, 1024, 768, 390):
             context, page = _page(instance, html, width=width, init_script=init)
-            search = page.locator("[data-console-search]")
-            input_box = page.locator("#searchInput")
-            badge = search.locator("kbd")
-            assert page.locator("#searchInput").get_attribute("aria-label")
-            assert badge.inner_text() == label
-
-            if width < 768:
-                page.locator("[data-console-search-toggle]").click()
-                assert search.is_visible()
-
-            # Long placeholders and user queries remain in the input's own
-            # track; the adjacent badge has its own measured width.
-            input_box.evaluate(
-                "el => el.setAttribute('placeholder', 'Search ' + "
-                "'localized report names '.repeat(8))"
-            )
-            input_box.fill("evidence query " + "x" * 160)
-            assert input_box.input_value().endswith("x" * 160)
-            assert input_box.get_attribute("type") == "search"
-            input_box.focus()
-            assert search.evaluate("el => getComputedStyle(el).outlineStyle === 'solid'")
-            assert search.evaluate("el => getComputedStyle(el).outlineWidth === '2px'")
-            assert input_box.evaluate("el => getComputedStyle(el).boxShadow === 'none'")
-            assert input_box.evaluate("el => getComputedStyle(el).outlineStyle === 'none'")
-
+            summary = page.locator(".tl-console-jump > summary")
+            badge = summary.locator("kbd")
+            popover = page.locator("[data-console-jump-menu]")
+            field = popover.locator(".tl-console-scope-filter")
+            assert page.locator("#searchInput, [data-page-search]").count() == 0
+            assert summary.get_attribute("aria-label") == "Jump to a report"
             if width >= 768:
-                entry = input_box.bounding_box()
-                shortcut = badge.bounding_box()
-                assert entry["x"] + entry["width"] <= shortcut["x"]
-                assert search.evaluate("el => el.scrollWidth <= el.clientWidth")
-            page.keyboard.press(f"{modifier}+k")
-            assert input_box.evaluate("el => el === document.activeElement")
-            assert input_box.evaluate(
-                "el => el.selectionStart === 0 && el.selectionEnd === el.value.length"
-            )
-            if width < 768:
-                page.keyboard.press("Escape")
-                assert not search.is_visible()
+                assert badge.inner_text() == label
+                # One fixed-width badge for both labels, so the slot never changes size.
+                assert round(badge.bounding_box()["width"]) == 46
+            else:
+                assert not badge.is_visible()
+            assert not popover.is_visible()
 
-            if engine == "chromium" and width == 1536 and platform == "Win32":
-                artifacts = (
-                    settings.BASE_DIR.parents[1]
-                    / ".artifacts"
-                    / "portal-third-batch"
-                    / "search"
-                )
-                artifacts.mkdir(parents=True, exist_ok=True)
-                page.screenshot(
-                    path=artifacts / "studio-search-1536.png", full_page=True
-                )
+            page.keyboard.press(f"{modifier}+k")
+            assert popover.is_visible()
+            assert field.evaluate("el => el === document.activeElement")
+            box = popover.bounding_box()
+            assert box["x"] >= 0 and box["x"] + box["width"] <= width
+            # Long queries stay inside the field.
+            field.fill("evidence query " + "x" * 160)
+            assert field.evaluate("el => el.scrollWidth >= el.clientWidth")
+            assert popover.evaluate("el => el.scrollWidth <= el.clientWidth")
+            page.keyboard.press("Escape")
+            assert not popover.is_visible()
+            assert summary.evaluate("el => el === document.activeElement")
             context.close()
         instance.close()
 
@@ -382,7 +362,7 @@ def test_search_shortcut_layout_and_platform_label(
 @pytest.mark.parametrize(
     "platform,label", (("Win32", "Ctrl+K"), ("MacIntel", "⌘K"))
 )
-def test_dashboard_portal_boot_keeps_placeholder_and_search_shortcut(
+def test_dashboard_boot_keeps_placeholder_and_shortcut_focuses_its_own_search(
     platform, label, login, org_admin, org, studio_tree
 ):
     html = _inline_portal_js(
@@ -410,7 +390,8 @@ def test_dashboard_portal_boot_keeps_placeholder_and_search_shortcut(
         input_box = page.locator("#searchInput")
         page.wait_for_function("window.__portalRegistryRequested")
         assert input_box.get_attribute("placeholder") == "Search reports…"
-        assert page.locator(".tl-console-search kbd").inner_text() == label
+        assert page.locator(".tl-console-jump > summary kbd").inner_text() == label
+        assert input_box.evaluate("el => !!el.closest('.folder-rail') && !el.closest('.tl-console-header')")
         input_box.fill("report title")
         page.keyboard.press("Meta+k" if platform == "MacIntel" else "Control+k")
         assert input_box.evaluate("el => el === document.activeElement")
@@ -536,7 +517,7 @@ def test_unavailable_assistant_reason_popover_keeps_docs_and_account_reachable(
 
 
 @pytest.mark.parametrize("engine", ("chromium", "webkit"))
-def test_mobile_org_header_keeps_search_health_assistant_docs_and_account_reachable(
+def test_mobile_org_header_keeps_jump_health_assistant_docs_and_account_reachable(
     engine, login, org_admin, org, studio_tree, report_row, monkeypatch
 ):
     from apps.core import health
@@ -557,14 +538,14 @@ def test_mobile_org_header_keeps_search_health_assistant_docs_and_account_reacha
         for width in (320, 390):
             context, page = _page(instance, html, width=width)
             header = page.locator(".tl-console-header")
-            assert page.locator("[data-console-search-toggle]").is_visible()
+            assert page.locator(".tl-console-jump > summary").is_visible()
             assert page.locator("[data-console-health-alert]").is_visible()
             assert page.locator(".tl-console-assistant-picker > summary").is_visible()
             assert page.locator(".tl-console-account > summary").is_visible()
             assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
             selectors = [
                 "[data-console-toggle]", ".tl-console-assistant-picker > summary",
-                "[data-console-health-alert]", "[data-console-search-toggle]",
+                "[data-console-health-alert]", ".tl-console-jump > summary",
                 ".tl-console-docs-link", ".tl-console-account > summary",
             ]
             if width < 360:
@@ -631,7 +612,7 @@ def test_header_items_hold_one_layout_across_pages_and_navigation(
         f"/orgs/{org.slug}/settings/invites", "/system",
     ]
     client = login(org_admin)
-    client.get(f"{studio}/")  # remembers the studio, so org pages carry the search box too
+    client.get(f"{studio}/")  # remembers the studio, so org pages carry the jump control too
     pages = {}
     for path in paths:
         response = client.get(path)
@@ -690,7 +671,7 @@ def test_header_items_hold_one_layout_across_pages_and_navigation(
     reference = layouts[paths[0]]
     names = [item[0] for item in reference]
     assert names == [
-        "tl-console-assistant-slot", "tl-console-health-alert", "tl-console-search",
+        "tl-console-assistant-slot", "tl-console-health-alert", "tl-console-jump",
         "tl-console-docs-link", "tl-console-account",
     ]
     for path, layout in layouts.items():

@@ -31,8 +31,7 @@ def test_catalog_search_open_back(journey, variant):
         total = rows.count()
         assert total > 40  # the whole catalog is one scrolling page
         search = page.locator('#searchInput')
-        if not search.is_visible():  # phones keep the search behind the header button
-            page.locator('[data-console-search-toggle]').click()
+        expect(search).to_be_visible()  # the catalog's own field, on phones too
         search.fill('report')
         expect(page.locator('#content tr[data-slug]').first).to_be_visible()
         assert page.locator('#content tr[data-slug]').count() <= total
@@ -157,8 +156,7 @@ def test_operations_filter(journey, variant):
         page.locator('[data-ops-filter=all]').click()
         expect(rows).to_have_count(20)
         search = page.locator('#searchInput')
-        if not search.is_visible():  # compact shells keep search behind a toggle
-            page.locator('[data-console-search-toggle]').first.click()
+        expect(search).to_be_visible()
         search.fill('report-0003')
         expect(rows).to_have_count(1)
         expect(rows.first).to_contain_text('Controlled fixture failure')
