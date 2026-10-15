@@ -523,7 +523,7 @@ class TestSchedulerDiff:
             report_row.disabled = True
             report_row.save(update_fields=["disabled"])
             mgr.refresh()
-            assert not mgr._scheduler.get_jobs()
+            assert mgr._scheduler.get_job(f"report-{report_row.pk}") is None
         finally:
             mgr.shutdown()
 
@@ -533,7 +533,25 @@ class TestSchedulerDiff:
         mgr = _SchedulerManager()
         mgr.start()
         try:
-            assert not mgr._scheduler.get_jobs()
+            assert mgr._scheduler.get_job(f"report-{report_row.pk}") is None
+        finally:
+            mgr.shutdown()
+
+    def test_refresh_keeps_fixed_jobs(self, settings, monkeypatch, report_row):
+        """Retention cleanup and the release check are registered once at
+        start; the diff against Report rows must not remove them."""
+        from apps.runner.management.commands import runworker
+
+        settings.CLEANUP_ENABLED = True
+        settings.TRELLUM_UPDATE_CHECK = True
+        # The release check fires at start; keep it off the network.
+        monkeypatch.setattr(runworker, "_run_update_check", lambda: None)
+        mgr = _SchedulerManager()
+        mgr.start()
+        try:
+            mgr.refresh()
+            jobs = {j.id for j in mgr._scheduler.get_jobs()}
+            assert {"retention-cleanup", "update-check"} <= jobs
         finally:
             mgr.shutdown()
 

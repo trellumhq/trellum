@@ -30,6 +30,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   no longer counts toward login throttling. The login page explains how to
   use single sign-on.
 
+### Fixed
+
+- Keep the nightly retention cleanup and the daily release check scheduled on
+  the coordinator. The schedule sync removed both right after start, so
+  cleanup never ran and `manage.py doctor` failed its retention check.
+
 ## [0.7.0] — 2026-10-15
 
 ### Added
