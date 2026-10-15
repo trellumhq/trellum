@@ -15314,9 +15314,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "77b551fcd485961f9c681e99efbab54ec63934ed9be04e5141577e4ce5a50ff3",
+      "source_sha256": "43974430e8c2a898baaaa762fab62b84233340be1478dcc4ef07354b95b5c33d",
       "request_conditions": [],
-      "adapter_sha256": "5c37cebfd6a5d813c35df575f9f873e675c60e43cbf740b3bdd512533b1d220c"
+      "adapter_sha256": "ae4b1ef86a5f6bb73a444cf0d6b569e176de6da315a20e669cedbc61b70cc2a7"
     },
     {
       "id": "route-245",
@@ -17078,9 +17078,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "93838495c86467e09310c2c3302423909c2dbef98714fa223f695b8cb2daf4ed",
+      "source_sha256": "98ea224f52eb49f4de7fee4055522c08a957a983578e3039538a314c70e07ebe",
       "request_conditions": [],
-      "adapter_sha256": "25469de20f02d2c50763321fae2798a145435948a0104e51024cd044dbfb1583",
+      "adapter_sha256": "54a1ff078cc830e48068f3edf5454a960ebf98c4b0ee1539c995117af212d056",
       "conditional_roles": {
         "revoked": {
           "condition": "Active authenticated alpha-revoked identity has no organization membership; own-account/global entry differs from tenant-target access. Policy context: current-nonimpersonated-operator",
@@ -22687,6 +22687,12 @@
       "disposition": "native with feedback",
       "scenarios": [
         {
+          "method": "GET",
+          "action": null,
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[339-GET]",
+          "verification": "pending"
+        },
+        {
           "method": "POST",
           "action": null,
           "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[339-POST]",
@@ -22695,9 +22701,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "c5513ffe6f30ebce5646b04a5ca513703e3fe71dce1e0d2da6aeb03aa2d261ba",
+      "source_sha256": "1016daf74ef159bc33e77eca896fdd34269956f65f1ff3334455ccd0502ebdb3",
       "request_conditions": [],
-      "adapter_sha256": "345058f920146a5aa8316237b6285cf2b992cca44a3ef526f2f7cc06dd4c64f0",
+      "adapter_sha256": "1f82e2331a7b24d3da5700f8cd6a778de0138104ca777bd6174a48b028b48459",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -22875,9 +22881,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "373a6fc37e7c3ad6f5b5a2a160f46e064c18fcb328de79250d8036715b143cef",
+      "source_sha256": "240295ef4beab1552a8c151ac03fc9a2fb4c1db7741f267d6f3ae64ab7037920",
       "request_conditions": [],
-      "adapter_sha256": "7e99831c15a4208c8c48f242e6a1a7bbc2591902444ecb26b7efdc9012338915",
+      "adapter_sha256": "302c77ddaf063cc18c226437b2f63cceede1ffaa1147f029b61721c87627adbb",
       "conditional_roles": {
         "revoked": {
           "condition": "Active authenticated alpha-revoked identity has no organization membership; own-account/global entry differs from tenant-target access. Policy context: current-nonimpersonated-operator",
