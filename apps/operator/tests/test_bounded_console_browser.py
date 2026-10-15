@@ -94,6 +94,8 @@ def test_operator_pages_keep_their_layout_and_measure_uploads_by_themselves(
                         page.get_by_role("link", name="Next", exact=False), page.get_by_role("link", name="Previous", exact=False)):
             expect(locator).to_have_count(0)
 
+    # Other tests on the same database may add organizations; every one is listed.
+    expected_orgs = Organization.objects.count()
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         context = browser.new_context(viewport={"width": 1440, "height": 900}, reduced_motion="reduce")
@@ -118,7 +120,7 @@ def test_operator_pages_keep_their_layout_and_measure_uploads_by_themselves(
 
         # Organizations: every row, as before.
         expect(page.get_by_role("heading", name="Organizations", exact=True)).to_be_visible()
-        expect(page.locator(".ui-table tbody tr")).to_have_count(60)
+        expect(page.locator(".ui-table tbody tr")).to_have_count(expected_orgs)
         no_controls(page)
         page.screenshot(path=str(artifacts / "sys-operator-orgs-1440.png"), full_page=True)
 

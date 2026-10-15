@@ -174,6 +174,11 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Trust the runner checkout for Git
+        # Tests read the checkout with git; inside the container it is owned
+        # by the runner user, so git refuses it as dubious ownership.
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Install dependencies
         run: |
           python -c "import sys; assert sys.version_info[:2] == (3, 12), sys.version"
