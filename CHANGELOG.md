@@ -32,7 +32,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   freshness, and the Metrics page fills in usage and charts by itself (with
   quiet retries) instead of offering a "Retry report usage" button. The
   Metrics overview is one grid with a browser-side filter, as before.
-- The Metrics comparison workspace retries a failed load by itself.
+- The Metrics comparison workspace retries a failed load by itself and shows no
+  pager when all metrics fit on one page.
 - Operators get an "Operator console" entry in the shell sidebar.
 - The System health page and an organization's uploaded-file usage measure on
   the coordinator by themselves: the page asks for a fresh measurement about
