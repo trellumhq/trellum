@@ -233,10 +233,20 @@ def execute(action: Action, *, renew_every: float | None = None) -> str | None:
     interval = renew_every if renew_every is not None else max(lease_seconds() / 3, 1)
 
     def renewer():
+        # Only a lost fence (the row is no longer ours) ends the loop. A
+        # transient database error must not silently stop renewing, or a scan
+        # that finishes fine would be recovered as ``unconfirmed``.
         try:
             while not stop.wait(interval):
-                if not _renew(action):
-                    return
+                try:
+                    if not _renew(action):
+                        return
+                except Exception:  # noqa: BLE001 - retry on the next interval
+                    logger.warning(
+                        "maintenance lease renewal failed; retrying",
+                        exc_info=True, extra={"action_id": str(action.pk)},
+                    )
+                    connection.close()  # a broken connection reconnects next time
         finally:
             connection.close()
 

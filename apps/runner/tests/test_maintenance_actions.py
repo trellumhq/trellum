@@ -279,6 +279,31 @@ class TestWorker:
         assert Action.objects.get(pk=a.pk).lease_expires_at >= before
         assert maint.recover_expired() == 0
 
+    def test_renewer_survives_transient_database_errors(self, developer, studio_tree, monkeypatch):
+        from apps.reports import scan
+
+        real_renew = maint._renew
+        attempts = {"n": 0}
+
+        def flaky(action):
+            attempts["n"] += 1
+            if attempts["n"] in (2, 3):  # first call is the pre-scan renewal
+                raise RuntimeError("connection reset")
+            return real_renew(action)
+
+        def slow_scan(studio):
+            threading.Event().wait(0.6)
+            return 0
+
+        monkeypatch.setattr(maint, "_renew", flaky)
+        monkeypatch.setattr(scan, "sync_studio_registry", slow_scan)
+        a = self.admit(studio_tree, developer)
+        claimed = maint.claim_one("w1")
+        assert maint.execute(claimed, renew_every=0.05) == "succeeded"
+        a.refresh_from_db()
+        assert a.state == "succeeded"
+        assert attempts["n"] > 3  # kept renewing after both failures
+
     def test_unclaimed_action_survives_and_pool_filter(self, developer, studio_tree):
         a = self.admit(studio_tree, developer)
         assert maint.claim_one("w", pools=["large"]) is None
