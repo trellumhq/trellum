@@ -55,7 +55,8 @@ def test_primary_global_search_and_bound(catalog):
     # One grid with a browser-side filter: no pager, no search button.
     assert html.count('class="met-card"') == 500
     assert "Showing the first 500 of 2000 matching metrics" in html and "Previous" not in html and "Next" not in html
-    assert '<iframe' not in html and 'data-metric-search' not in html and 'Search metrics' not in html
+    assert '<iframe' not in html and 'data-metric-search' not in html and '>Search</button>' not in html
+    assert html.count('placeholder="Search metrics…"') == 1  # the one in-page field, applied as you type
     assert 'data-server-filter' in html
     filtered = client.get(_url(studio) + "/metrics", {"q": "last-owner"}).content.decode()
     assert filtered.count('class="met-card"') == 1 and "metric_1999" in filtered

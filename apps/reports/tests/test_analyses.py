@@ -165,8 +165,9 @@ def test_article_and_png_access_do_not_grant_source_access(
     shell = client.get(f"{prefix}/api/report-shell?report={analysis.slug}")
     assert shell.status_code == 200
     assert shell.context["console_active"] == "analysis"
-    assert b"Search analyses" in shell.content
-    assert f'action="{prefix}/analyses"' in shell.content.decode()
+    # Search lives in each page; the bar only offers the jump list for this studio.
+    assert b"Search analyses" not in shell.content and b'id="searchInput"' not in shell.content
+    assert f'data-jump-source="{prefix}/api/jump"' in shell.content.decode()
 
 
 def test_grant_revocation_hides_article_and_evidence(login, article_reader, analysis):
