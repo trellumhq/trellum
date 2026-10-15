@@ -67,17 +67,22 @@ class TestGroupScreens:
         Report.objects.create(studio=studio2, slug="second", name="Second")
         group = make_group("Analysts")
 
-        client = login(org_admin)
-        for selected in (studio, studio2):
-            html = client.get(_group_url(org, group, "access") + f"&studio={selected.pk}").content.decode()
-            expected_ids = {f"id_studio_{selected.pk}_role", f"id_studio_{selected.pk}_reports_0"}
-            rendered_ids = re.findall(r'id="(id_studio_[^\"]+)"', html)
-            assert len(rendered_ids) == len(set(rendered_ids))
-            assert expected_ids <= set(rendered_ids)
-            for control_id in expected_ids:
-                assert html.count(f'id="{control_id}"') == 1
-            assert f'for="id_studio_{selected.pk}_reports_0"' in html
-            assert 'data-recipient-picker data-picker-label="Reports"' in html
+        html = login(org_admin).get(_group_url(org, group, "access")).content.decode()
+
+        expected_ids = {
+            f"id_studio_{studio.pk}_role",
+            f"id_studio_{studio.pk}_reports_0",
+            f"id_studio_{studio2.pk}_role",
+            f"id_studio_{studio2.pk}_reports_0",
+        }
+        rendered_ids = re.findall(r'id="(id_studio_[^"]+)"', html)
+        assert len(rendered_ids) == len(set(rendered_ids))
+        assert expected_ids <= set(rendered_ids)
+        for control_id in expected_ids:
+            assert html.count(f'id="{control_id}"') == 1
+        assert f'for="id_studio_{studio.pk}_reports_0"' in html
+        assert f'for="id_studio_{studio2.pk}_reports_0"' in html
+        assert 'data-recipient-picker data-picker-label="Reports"' in html
 
     def test_members_are_searchable_and_add_choices_exclude_existing(
         self, login, org_admin, org, member, make_user, make_group, attach_group

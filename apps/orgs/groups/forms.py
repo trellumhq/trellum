@@ -1,7 +1,6 @@
 from django import forms
 
 from apps.core import roles
-from apps.core.compact_choices import CompactCheckboxSelectMultiple, CompactSelection
 from apps.orgs.models import Organization, PermissionGroup
 from apps.reports.models import Report
 from apps.studios.models import Studio
@@ -27,16 +26,6 @@ class GroupForm(forms.ModelForm):
 
 
 class ReportChoiceField(forms.ModelMultipleChoiceField):
-    def prepare_value(self, value):
-        if isinstance(value, CompactSelection):
-            return value
-        return super().prepare_value(value)
-
-    def clean(self, value):
-        if isinstance(value, CompactSelection) and value.error:
-            raise forms.ValidationError(value.error)
-        return super().clean(value)
-
     def label_from_instance(self, report):
         label = f"{report.name or report.slug} · {report.get_kind_display()}"
         if not report.present_in_scan:
@@ -58,7 +47,7 @@ class StudioAccessForm(forms.Form):
     reports = ReportChoiceField(
         queryset=Report.objects.none(),
         required=False,
-        widget=CompactCheckboxSelectMultiple,
+        widget=forms.CheckboxSelectMultiple,
     )
 
     def __init__(
@@ -91,8 +80,7 @@ class StudioAccessForm(forms.Form):
             cleaned["viewer_scope"] = "all"
         return cleaned
 
-    def present_reports(self, reports, unavailable=(), *, page_values=None):
-        """Limit rendered choices without narrowing authoritative validation."""
+    def present_reports(self, reports):
+        """Render only these choices; validation still uses the whole studio."""
         field = self.fields["reports"]
-        field.widget.page_values = page_values
-        field.choices = [(report.pk, field.label_from_instance(report)) for report in reports] + [(value, "Selected report is unavailable") for value in unavailable]
+        field.choices = [(report.pk, field.label_from_instance(report)) for report in reports]

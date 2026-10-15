@@ -186,7 +186,7 @@ def test_private_effective_preview_lists_explicit_assignment(
     url = f"/orgs/{org.slug}/settings/groups/{group.pk}"
     response = client.get(url + f"?tab=effective&member={member.pk}")
     assert not response.context["effective_rows"][0]["full"]
-    assert list(response.context["effective_report_page"].object_list) == [report_row]
+    assert response.context["effective_rows"][0]["reports"] == [report_row]
     assert b"explicit Private assignments" in response.content
     html = client.get(url + "?tab=access").content.decode()
     assert _url(org, studio, report_row) in html
