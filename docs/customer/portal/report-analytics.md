@@ -41,5 +41,7 @@ The default is 60 days, and `0` means reports are never paused.
 - A paused report shows an **Auto-refresh paused** badge. Its schedule in
   `report.yaml` is unchanged, but it no longer fires.
 - Opening a paused report does not restart it, and neither does **Run now**,
-  which builds the report once. Only a developer pressing **Resume** restarts
-  the schedule. Resume also queues an immediate rebuild.
+  which builds the report once. A developer restarts the schedule with
+  **Resume** in Operations, which also queues an immediate rebuild. Setting
+  the threshold to `0` restarts every paused report in the organization; they
+  rebuild at their next scheduled time.
