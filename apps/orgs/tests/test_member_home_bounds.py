@@ -102,7 +102,8 @@ def test_home_lists_every_studio_and_joins_actual_report_studio(login, org_admin
     first = next(c for c in response.context["cards"] if c["studio"].pk == studios[0].pk)
     assert first["last_run"].pk == terminal.pk and first["report_count"] == 2
     html = response.content.decode()
-    assert "Search studios" not in html and "ui-pager" not in html
+    content = html.split("<main", 1)[1]  # the shell's switchers carry their own filter box
+    assert "Search studios" not in content and "ui-pager" not in content
 
 
 def test_home_pages_only_beyond_the_studio_cap(login, org_admin, org, monkeypatch):

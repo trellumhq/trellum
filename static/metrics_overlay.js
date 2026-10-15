@@ -386,8 +386,8 @@ function mountFilter(root, signal) {
         var url = new URL(serverUrl, location.href);
         if (q) url.searchParams.set('q', q);
         try { sessionStorage.setItem('metSearchFocus', '1'); } catch (e) { /* storage blocked */ }
-        if (window.TrellumNavigation) window.TrellumNavigation.navigate(url.href);
-        else location.assign(url.href);
+        // A query string is not a console route, so this is an ordinary page load.
+        location.assign(url.href);
     }
     if (serverUrl) {
         try {

@@ -2,6 +2,7 @@
 usage block per card, no banners or manual controls. Real Django, PostgreSQL
 and static assets behind a live server; Chromium desktop."""
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -121,20 +122,20 @@ def test_overview_list_reads_like_the_catalog_always_did(overview):
             browser.close()
 
 
-def test_a_catalog_larger_than_one_page_searches_on_the_server(overview, monkeypatch):
-    """Past one page the cards on screen are not all of them: a pause in typing asks the server."""
-    monkeypatch.setattr("apps.reports.metrics_catalog.METRIC_PAGE_SIZE", 2)
+def test_a_catalog_beyond_the_rendered_limit_narrows_on_the_server(overview, monkeypatch):
+    """Past the rendered limit the cards on screen are not all of them: a pause in typing asks the server."""
+    monkeypatch.setattr("apps.reports.metrics_catalog.CATALOG_LIMIT", 2)
     with sync_playwright() as playwright:
         browser, page = _open(playwright, overview)
         try:
             expect(page.locator(".met-card")).to_have_count(2)
-            expect(page.locator(".ui-pager")).to_contain_text("1–2 of 3")
+            expect(page.locator("#metCount")).to_have_text("Showing the first 2 of 3 matching metrics. Keep typing to narrow.")
+            expect(page.locator(".ui-pager")).to_have_count(0)
             expect(page.get_by_role("button", name="Search metrics")).to_have_count(0)
             page.locator("#metSearch").fill("dau")
-            page.wait_for_url(lambda url: "q=dau" in url)
+            expect(page).to_have_url(re.compile(r"q=dau"))
             expect(page.locator(".met-card")).to_have_count(1)
             expect(page.locator(".met-card .met-name")).to_have_text("DAU")
-            expect(page.locator(".ui-pager")).to_have_count(0)
             expect(page.locator("#metSearch")).to_be_focused()
         finally:
             browser.close()

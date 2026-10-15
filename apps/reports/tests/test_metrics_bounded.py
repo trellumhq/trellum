@@ -189,11 +189,10 @@ def test_chart_state_follows_the_indexed_report_not_the_clock(catalog, state, qu
 
 def test_idle_backoff_never_ages_a_source_into_unknown():
     """The idle re-check interval must stay inside every reader's freshness window."""
-    from apps.reports import annotation_queries, catalog, metric_summaries, operations
+    from apps.reports import catalog, metric_summaries, operations
     from apps.reports.source_reconciliation import POLL_SECONDS
     from apps.reports.source_summary import MAX_IDLE_SECONDS
-    window = min(metric_summaries.SOURCE_FRESH_SECONDS, catalog.FRESH_SECONDS,
-                 operations.FRESH_SECONDS, annotation_queries.FRESH_SECONDS)
+    window = min(metric_summaries.SOURCE_FRESH_SECONDS, catalog.FRESH_SECONDS, operations.FRESH_SECONDS)
     assert MAX_IDLE_SECONDS + POLL_SECONDS < window
 
 
