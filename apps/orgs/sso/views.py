@@ -158,6 +158,7 @@ def sso_settings(request, org_slug):  # noqa: ARG001
             "no_routable_domains": routing_warning and not routable,
             "test_result": test_result,
             "sso_untested": untested,
+            "sso_last_test_failed": cfg is not None and cfg.last_test_ok is False,
             "directory_test_form": DirectoryTestForm(),
         },
     )

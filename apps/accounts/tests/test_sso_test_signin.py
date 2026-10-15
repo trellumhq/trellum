@@ -32,6 +32,10 @@ pytestmark = pytest.mark.django_db
 ISSUER = "https://keycloak.internal/realms/acme"
 PAGE = "/orgs/demo/settings/sso"
 NUDGE = "Single sign-on hasn't been tested yet. Use Test sign-in before enforcing it."
+FAILED_NUDGE = (
+    "The last Test sign-in didn't pass. Fix what it reported below and test again "
+    "before enforcing single sign-on."
+)
 
 
 @pytest.fixture(autouse=True)
@@ -375,7 +379,9 @@ class TestNudge:
         cfg.enforce_sso = True
         cfg.last_test_ok = False
         cfg.save()
-        assert NUDGE in admin_client.get(PAGE).content.decode()
+        body = admin_client.get(PAGE).content.decode()
+        assert FAILED_NUDGE in body
+        assert NUDGE not in body
 
     def test_quiet_when_not_enforcing(self, admin_client, cfg):
         assert NUDGE not in admin_client.get(PAGE).content.decode()

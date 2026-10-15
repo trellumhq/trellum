@@ -42,7 +42,11 @@
 {% endif %}
 {% if sso_untested %}
 <div class="ui-flash warning" role="status" style="margin:0 0 14px">
+  {% if sso_last_test_failed %}
+  The last Test sign-in didn't pass. Fix what it reported below and test again before enforcing single sign-on.
+  {% else %}
   Single sign-on hasn't been tested yet. Use Test sign-in before enforcing it.
+  {% endif %}
 </div>
 {% endif %}
 </div>
