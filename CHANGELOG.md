@@ -51,6 +51,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   freshness, and the Metrics page fills in usage and charts by itself (with
   quiet retries) instead of offering a "Retry report usage" button. The
   Metrics overview is one grid with a browser-side filter, as before.
+- Background reconciliation of report sources confirms an unchanged report from
+  a file stamp (or the object ETag on remote storage) instead of re-reading its
+  metadata, so an idle catalog costs almost nothing and charts stay current.
 - The Metrics comparison workspace retries a failed load by itself and shows no
   pager when all metrics fit on one page.
 - Operators get an "Operator console" entry in the shell sidebar.

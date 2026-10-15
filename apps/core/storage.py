@@ -819,6 +819,49 @@ def summary_build_identity(studio, slug: str) -> str:
     return build
 
 
+def summary_change_stamp(studio, slug: str):
+    """Cheap change indicator for what a source summary reads: ``(stamp, newest_mtime)``.
+
+    Local storage: inode, size and mtime of the metadata and data files and of
+    the output directory (which changes when output files appear or go).
+    Remote storage: the ETags of the serving pointer and of the mutable status
+    metadata; everything under a build prefix is immutable. ``newest_mtime`` is
+    the latest local mtime, or None for remote storage. Returns None when no
+    stamp can be taken, and the caller then inspects in full.
+    """
+    if not is_remote():
+        root = studio.output_dir / slug
+        if root.is_symlink():
+            return None
+        parts, newest = [], 0.0
+        for path in (root / "_meta.json", root / "data.json", root):
+            try:
+                info = path.stat()
+            except FileNotFoundError:
+                parts.append(None)
+                continue
+            parts.append([info.st_ino, info.st_size, info.st_mtime_ns])
+            newest = max(newest, info.st_mtime)
+        return json.dumps(parts), newest
+    from apps.core.s3 import s3_client
+
+    client = s3_client(read_timeout=2)
+    base = _remote_prefix(studio, slug)
+    etags = []
+    for key in (_pointer_key(base), f"{base}/_meta.json"):
+        try:
+            response = client.head_object(Bucket=_bucket(), Key=key)
+        except Exception as exc:
+            if _is_missing(exc):
+                etags.append(None)
+                continue
+            raise
+        if not response.get("ETag"):
+            return None
+        etags.append(response["ETag"])
+    return json.dumps(etags), None
+
+
 def read_summary_artifact(studio, slug: str, name: str, *, build: str = "", max_bytes: int, mutable_status: bool = False, scope: bool = False, budget=None) -> bytes | None:
     """Bounded worker-only artifact read; remote metadata is tied to immutable build.
 

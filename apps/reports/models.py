@@ -863,6 +863,10 @@ class ReportSourceSummary(models.Model):
     failures = models.PositiveIntegerField(default=0)
     # Consecutive reconciliations that observed nothing new; backs off rechecks.
     idle_checks = models.PositiveSmallIntegerField(default=0)
+    # Digest of the generation, config and artifact stamp behind the last full
+    # inspection, plus when it was taken. While the stamp still matches, a
+    # recheck only confirms freshness and reads no artifact.
+    change_stamp = models.CharField(max_length=96, null=True, blank=True, default=None)
     error_code = models.CharField(max_length=64, blank=True)
     preview_state = models.CharField(max_length=24, default="not-applicable")
     # The served artifact's marker, not the current generator/config version.

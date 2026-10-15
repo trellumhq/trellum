@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 import uuid
 from datetime import timedelta
 
@@ -30,6 +31,9 @@ MAX_BACKOFF_SECONDS = 3600
 # re-observed at least this often, so it never ages into "unknown" while the
 # worker is running.
 MAX_IDLE_SECONDS = 180
+# A file written within this many seconds of the stamp may still be rewritten
+# inside the same timestamp tick, so a matching stamp proves nothing yet.
+STAMP_RACY_SECONDS = 2.0
 INSPECTION_BYTES = 62 * 1024 * 1024 + 128 * 1024
 
 
@@ -285,12 +289,76 @@ def _public_identity(row):
             row.experiment_state, row.declaration_digest)
 
 
+def _change_stamp(report, summary):
+    """``(digest, taken, newest_mtime, declaration)`` for an unchanged-source check, or None.
+
+    Everything an inspection reads is identified cheaply (stat, or ETag on remote
+    storage) together with what else decides its outcome: the generation, the
+    backend, the report's tags and A/B declarations. Local A/B results read scope
+    files whose names only the payload knows, so those are always read in full.
+    """
+    from .report_experiment_projection import declaration_identity, has_declarations
+
+    if not storage.is_remote() and has_declarations(report.config):
+        return None
+    taken = time.time()
+    try:
+        stamp = storage.summary_change_stamp(report.studio, report.slug)
+    except Exception:  # noqa: BLE001 - a failing probe just means a full inspection
+        return None
+    if stamp is None:
+        return None
+    declaration = declaration_identity(report.config)
+    digest = hashlib.sha256(json.dumps(
+        [storage.backend_name(), report.slug, sorted(report.tags or []), declaration,
+         summary.generation, stamp[0]]).encode()).hexdigest()
+    return digest, taken, stamp[1], declaration
+
+
+def _unchanged(summary, stamp):
+    digest, taken, newest, _ = stamp
+    stored, _, when = (summary.change_stamp or "").partition(":")
+    try:
+        stored_taken = float(when)
+    except ValueError:
+        return False
+    return (summary.state in ("ready", "missing") and stored == digest
+            and (newest is None or newest < stored_taken - STAMP_RACY_SECONDS))
+
+
+def _confirm_unchanged(report_id, report, generation, token, declaration):
+    """Nothing the summary reads has changed: renew its freshness without reading it."""
+    with transaction.atomic():
+        row = ReportSourceSummary.objects.select_for_update().get(report_id=report_id)
+        report.refresh_from_db(fields=["present_in_scan", "data_expired_at", "config"])
+        from .report_experiment_projection import declaration_identity
+
+        if (row.generation != generation or row.lease_token != token or not report.present_in_scan
+                or report.data_expired_at or declaration_identity(report.config) != declaration):
+            return {"status": "superseded", "bytes": 0}
+        now = timezone.now()
+        row.observed_at = now
+        row.failures = 0
+        row.error_code = ""
+        row.lease_token = ""
+        row.lease_until = None
+        row.idle_checks = min(row.idle_checks + 1, 12)
+        row.next_check_at = now + timedelta(seconds=min(MAX_IDLE_SECONDS, RECHECK_SECONDS * 2 ** row.idle_checks))
+        row.save(update_fields=["observed_at", "failures", "error_code", "lease_token", "lease_until",
+                                "idle_checks", "next_check_at"])
+        return {"status": row.state, "bytes": 0, "encoded_bytes": 0, "decoded_bytes": 0,
+                "projection_unavailable": False, "unchanged": True}
+
+
 def reconcile(report_id):
     lease = acquire(report_id)
     if lease is None:
         return {"status": "ineligible", "bytes": 0}
     report, generation, token = lease
     summary = ReportSourceSummary.objects.get(report_id=report_id)
+    stamp = _change_stamp(report, summary)
+    if stamp is not None and _unchanged(summary, stamp):
+        return _confirm_unchanged(report_id, report, generation, token, stamp[3])
     try:
         result = inspect_source(report, summary)
     except Exception as exc:
@@ -387,6 +455,11 @@ def reconcile(report_id):
         row.error_code = ""
         row.lease_token = ""
         row.lease_until = None
+        # Only a settled, fully readable observation can later be confirmed by
+        # its stamp alone; anything else is read in full again.
+        settled = (result["state"] in ("ready", "missing") and result["preview_state"] in ("ready", "not-applicable")
+                   and "unavailable" not in (extension["runtime_state"], extension["experiment_state"]))
+        row.change_stamp = f"{stamp[0]}:{stamp[1]:.3f}" if stamp is not None and settled else None
         changed = _public_identity(row) != previous_identity or preview_changed
         # Nothing new: back off (60 s, 120 s, ... capped) so an idle catalog
         # stops re-reading every artifact; any change or run resets to 0.

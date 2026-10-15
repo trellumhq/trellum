@@ -33,6 +33,9 @@ def isolated_mocked_remote_output_facts(monkeypatch):
         return original(studio, slug, **kwargs)
 
     monkeypatch.setattr(storage, 'summary_output_facts', facts)
+    original_stamp = storage.summary_change_stamp
+    monkeypatch.setattr(storage, 'summary_change_stamp',
+                        lambda *args: None if storage.is_remote() else original_stamp(*args))
 
 
 def report(studio_tree, slug="one", meta=None):
@@ -499,3 +502,134 @@ def test_unchanged_source_backs_off_and_change_resets(studio_tree):
     assert ReportSourceSummary.objects.get(report=row).idle_checks == 2
     begin_attempt(row.pk, "op-1")
     assert ReportSourceSummary.objects.get(report=row).idle_checks == 0
+
+
+def settle_mtimes(studio_tree, slug, age=3600):
+    """Make the report's files old enough that a stamp is trusted (not racily clean)."""
+    import os
+    root = studio_tree.output_dir / slug
+    stamp = timezone.now().timestamp() - age
+    for path in [*root.iterdir(), root]:
+        os.utime(path, (stamp, stamp))
+
+
+@pytest.fixture
+def inspections(monkeypatch):
+    """Count full artifact inspections."""
+    from apps.reports import source_summary
+    calls = []
+    original = source_summary.inspect_source
+    monkeypatch.setattr(source_summary, "inspect_source", lambda *args: calls.append(args[0].pk) or original(*args))
+    return calls
+
+
+def test_unchanged_local_source_is_confirmed_without_reading_it(studio_tree, inspections):
+    row = report(studio_tree, meta=metadata("m"))
+    settle_mtimes(studio_tree, row.slug)
+    assert reconcile(row.pk)["status"] == "ready"
+    first = ReportSourceSummary.objects.get(report=row)
+    revision = MetricCatalogState.objects.get(studio=studio_tree).summary_revision
+    assert inspections == [row.pk] and first.change_stamp
+    ReportSourceSummary.objects.filter(report=row).update(next_check_at=timezone.now() - timedelta(seconds=1),
+                                                         observed_at=timezone.now() - timedelta(seconds=170))
+    result = reconcile(row.pk)
+    assert result["status"] == "ready" and result["bytes"] == 0 and result["unchanged"]
+    assert inspections == [row.pk]  # nothing was read again
+    again = ReportSourceSummary.objects.get(report=row)
+    # Still fresh for every reader's five-minute window, still the same claims and schedule rules.
+    assert again.observed_at > timezone.now() - timedelta(seconds=5)
+    assert again.state == "ready" and again.idle_checks == 1 and again.failures == 0
+    assert again.lease_token == "" and again.lease_until is None
+    assert 0 < (again.next_check_at - timezone.now()).total_seconds() <= MAX_IDLE_SECONDS
+    assert list(again.claims.values_list("metric_name", flat=True)) == ["m"]
+    assert MetricCatalogState.objects.get(studio=studio_tree).summary_revision == revision
+
+
+def test_recently_written_source_is_read_in_full_until_it_settles(studio_tree, inspections):
+    row = report(studio_tree, meta=metadata("m"))  # written just now: inside the racy window
+    reconcile(row.pk)
+    due(row)
+    reconcile(row.pk)
+    assert inspections == [row.pk, row.pk]
+
+
+def test_changed_source_invalidates_the_stamp(studio_tree, inspections):
+    row = report(studio_tree, meta=metadata("old"))
+    settle_mtimes(studio_tree, row.slug)
+    reconcile(row.pk)
+    (studio_tree.output_dir / row.slug / "_meta.json").write_text(json.dumps(metadata("new", "another")))
+    settle_mtimes(studio_tree, row.slug, age=1800)
+    due(row)
+    reconcile(row.pk)
+    assert inspections == [row.pk, row.pk]
+    assert sorted(row.source_summary.claims.values_list("metric_name", flat=True)) == ["another", "new"]
+    # A new output file changes the directory's stamp as well.
+    settle_mtimes(studio_tree, row.slug)
+    due(row)
+    reconcile(row.pk)
+    assert len(inspections) == 3
+    due(row)
+    reconcile(row.pk)
+    assert len(inspections) == 3
+    (studio_tree.output_dir / row.slug / "index.html").write_text("<html></html>")
+    due(row)
+    reconcile(row.pk)
+    assert len(inspections) == 4 and ReportSourceSummary.objects.get(report=row).has_output
+
+
+def test_new_attempt_or_changed_declaration_forces_a_full_read(studio_tree, inspections):
+    row = report(studio_tree, meta=metadata("m"))
+    settle_mtimes(studio_tree, row.slug)
+    reconcile(row.pk)
+    due(row)
+    reconcile(row.pk)
+    assert len(inspections) == 1
+    begin_attempt(row.pk, "op-1")
+    finish_attempt(row.pk, "op-1", "success")
+    reconcile(row.pk)
+    assert len(inspections) == 2
+    settle_mtimes(studio_tree, row.slug, age=1800)
+    due(row)
+    reconcile(row.pk)  # re-stamped after the racy pass
+    due(row)
+    reconcile(row.pk)
+    count = len(inspections)
+    row.config = {"ab_test": [{"test_name": "t", "start_date": "2026-01-01"}]}
+    row.save()
+    due(row)
+    reconcile(row.pk)
+    assert len(inspections) == count + 1
+
+
+def test_failed_or_unsettled_inspections_are_never_confirmed_by_stamp(studio_tree, inspections):
+    row = report(studio_tree, meta=metadata("m"))
+    (studio_tree.output_dir / row.slug / "_meta.json").write_text("{not json")
+    settle_mtimes(studio_tree, row.slug)
+    assert reconcile(row.pk)["status"] == "unavailable"
+    assert ReportSourceSummary.objects.get(report=row).change_stamp is None
+    due(row)
+    reconcile(row.pk)
+    assert len(inspections) == 2
+
+
+def test_unchanged_remote_build_is_confirmed_from_etags(studio_tree, monkeypatch):
+    from apps.core import storage
+    row = report(studio_tree)
+    reads = []
+    etags = {"value": '["\\"a\\"", "\\"b\\""]'}
+    monkeypatch.setattr(storage, "is_remote", lambda: True)
+    monkeypatch.setattr(storage, "summary_change_stamp", lambda *args: (etags["value"], None))
+    monkeypatch.setattr(storage, "summary_build_identity", lambda *args: reads.append("pointer") or "published")
+    monkeypatch.setattr(storage, "read_summary_artifact",
+                        lambda *args, **kwargs: reads.append(args[2]) or json.dumps(metadata("m")).encode())
+    assert reconcile(row.pk)["status"] == "ready"
+    full = list(reads)
+    assert "pointer" in full and "_meta.json" in full
+    for _ in range(3):
+        due(row)
+        assert reconcile(row.pk)["unchanged"]
+    assert reads == full  # no pointer or artifact read at all
+    etags["value"] = '["\\"c\\"", "\\"b\\""]'  # the serving pointer moved
+    due(row)
+    result = reconcile(row.pk)
+    assert result["status"] == "ready" and "unchanged" not in result and len(reads) > len(full)
