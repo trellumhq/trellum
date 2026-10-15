@@ -2,7 +2,7 @@
 {% block title %}Add delivery — trellum{% endblock %}
 {% block content %}
 <header class="page-head ui-form-rail"><div class="ui-label page-kicker">Studio · Deliveries</div><h1>Add delivery</h1><p>Choose a report or analysis to schedule.</p></header>
-<form method="get" class="ui-form-rail" aria-label="Choose a report">
+<form method="get" class="ui-form-rail" aria-label="Choose a report" data-auto-filter>
 <section class="ui-form-section"><div class="ui-field"><label for="delivery-report">Report or analysis</label><select name="report" id="delivery-report" data-choice-picker{% if report_choice_source %} data-choice-source="{{ report_choice_source }}"{% endif %} data-picker-label="Report or analysis" required><option value="">Choose a report or analysis</option>{% for report in reports %}<option value="{{ report.pk }}">{{ report.name|default:report.slug }} · {{ report.get_kind_display }}</option>{% endfor %}</select></div>
-<div class="ui-form-actions"><button class="ui-btn primary" type="submit">Continue</button><a class="ui-btn ghost" href="{{ return_to }}">Cancel</a></div></section></form>
+<div class="ui-form-actions"><a class="ui-btn ghost" href="{{ return_to }}">Cancel</a></div></section></form>
 {% endblock %}

@@ -48,7 +48,7 @@ def test_valid_namespaced_cohort(executor):
     assert validate_cohort(**valid_case(executor))['status']=='pass'
 
 
-@pytest.mark.parametrize('mutation',['wrong-engine','uncollected','skipped','stale-source','stale-binding','stale-manifest','wrong-fixture','wrong-variant','wrong-actor','missing-impersonator','wrong-action','wrong-method','wrong-query','wrong-body','missing-checkpoint','no-prior','late-prior','unrelated-reuse','duplicate-node'])
+@pytest.mark.parametrize('mutation',['wrong-engine','uncollected','skipped','stale-source','stale-binding','stale-manifest','wrong-fixture','wrong-variant','wrong-actor','missing-impersonator','wrong-action','wrong-method','wrong-query','wrong-body','missing-checkpoint','unrelated-reuse','duplicate-node'])
 def test_mutations_block(mutation):
     case=valid_case();row=case['assertions'][0];event=case['events'][0]
     if mutation=='wrong-engine':event['executor']='webkit'
@@ -68,10 +68,6 @@ def test_mutations_block(mutation):
     elif mutation=='wrong-body':
         event=next(row for row in case['events'] if row['method']=='POST');event['parameters']['body']['action']='wrong-body'
     elif mutation=='missing-checkpoint':row['checkpoints']=[]
-    elif mutation in ('no-prior','late-prior'):
-        row=next(row for row in case['assertions'] if row['key'][4]=='access-save-after-browse')
-        if mutation=='no-prior':row['prior_events']=[]
-        else:next(event for event in case['events'] if event['event_id']==row['prior_events'][0])['finished_ns']=10**9
     elif mutation=='unrelated-reuse':case['assertions'][1]['events']=row['events']
     elif mutation=='duplicate-node':case['collected']*=2
     assert validate_cohort(**case)['status']=='blocked'

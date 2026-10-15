@@ -237,44 +237,44 @@ explicit invalidation through pause/resume or replacing the poller, together
 with the current identity predicate; `refresh` alone coalesces reads. Lifecycle
 callback exceptions stop polling safely; read failures retain bounded backoff.
 
-## Remote report choices
+## Long choice lists
 
-The shared checkbox picker also accepts a single collection of report choices.
-Use `data-recipient-picker data-recipient-mode="choices"`, set
-`data-recipient-name` to the existing checkbox field name, and provide a
-same-origin `data-recipient-source`. Native checkboxes remain the submitted
-values. The GET sends `q`, `page`, and repeated `selected` string values.
-The response contains `results` (at most 25 `{value, label}` objects),
-`selected` (every authorized selected object), and `pagination` with `page`,
-`per_page`, `total`, `has_previous` and `has_next`. Values are nonempty strings.
-This mode has no recipient type filters; the existing People/Roles/Groups
-contract is unchanged.
+Pickers never show pages. Render every choice inline, up to
+`INLINE_CHOICE_LIMIT` (500, `apps/core/choice_requests.py`), and the browser
+filters them instantly. Use `inline_choices(rows)`: it returns the rows and a
+`searchable` flag. Only when more than 500 choices exist does the page render a
+short preview and set a same-origin source (`data-choice-source` on a single
+select, `data-recipient-source` on the checkbox picker, `data-scope-source` on
+the shell switchers). Typing then asks that source for one bounded set of
+matches; the popup says "Keep typing to narrow the list" when more exist. A
+failed search retries once without a button, then shows a plain message; it
+never clears a selection.
 
-Preserve unavailable selections with an explicit `data-unavailable-label`;
-searching, paging and failed reads never clear a draft. Keep native browse-only
-submit controls inside a `recipient-picker-fallback` element marked
-`data-picker-fallback`. The enhancer hides them; without JavaScript they submit
-the complete draft to an authorized browse handler that performs no mutation.
+For the checkbox picker, `data-recipient-mode="choices"` accepts one collection
+with `data-recipient-name` set to the checkbox field name. The GET sends `q`,
+`page=1` and repeated `selected` values and returns `results` (at most 25
+`{value, label}` objects), `selected` (every authorized selected object) and
+`pagination`; only `has_next` is read, to show the hint. Preserve unavailable
+selections with `data-unavailable-label`.
 
 When the encoded choice URL exceeds 3,000 bytes, the shared picker uses a
 read-only JSON POST to the same endpoint, with `X-CSRFToken` from its native
-form. Generic `selected` values become a JSON array; recipient people/group
-fields retain their existing string format. Endpoints accept only known
-parameters and enforce their usual permissions, CSRF and body limits. This
-keeps large selections below the web server's request-line limit. Choice
-reads do not save, send or audit changes; failures retain the draft and Retry
-remains an explicit action.
+form. Endpoints accept only known parameters and enforce their usual
+permissions, CSRF and body limits. Choice reads do not save, send or audit
+changes.
+
+Forms and filters that mark `data-auto-filter` (`static/auto-filter.js`) apply
+immediately: selects and pickers on change, text boxes after a 400 ms pause or
+Enter. They carry no Apply, Go or Search button.
 
 ## Compact report selection transport
 
 Group studio access opts into `CompactCheckboxSelectMultiple` and
-`data-recipient-compact`. Its native presentation renders at most 25 editable
-checkboxes, selected labels, and browse-only removal controls for off-page
-selections. One hidden `<field>__selection` JSON packet contains `version: 1`,
+`data-recipient-compact`. It renders up to 500 editable checkboxes and seeds
+selected labels beyond them. One hidden `<field>__selection` JSON packet contains `version: 1`,
 `selected` string identities and `editable` string identities. The decoder
 combines `(selected - editable)` with checked submitted values. Unchecking a
-page choice removes it; browsing retains the complete draft and writes no grants
-or audits. Ordinary repeated fields remain accepted for existing callers.
+choice removes it. Ordinary repeated fields remain accepted for existing callers.
 
 Packets are untrusted form data. Malformed packets produce a visible field
 error and retain the raw packet on rerender; identities still pass the complete

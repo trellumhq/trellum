@@ -130,26 +130,18 @@ ORG_STATUS = dict(zip(COHORT_PRINCIPALS, (302,302,200,200,200,403,403,403,404,40
 STUDIO_JSON_STATUS = dict(zip(COHORT_PRINCIPALS, (401,401,200,200,200,200,403,403,404,403,403,403,404,404,404)))
 COHORT_VARIANTS = (
     ('overview-chromium-desktop', 'overview', 'chromium',1440,900,'org-admin','js-enabled'),
-    ('overview-webkit-mobile', 'overview', 'webkit',390,844,'group-admin','native'),
-    *tuple((f'access-{engine}-{width}-{mode}', 'access', engine,width,900 if width==1440 else 844,principal,mode)
-        for mode in ('native','enhanced')
+    ('overview-webkit-mobile', 'overview', 'webkit',390,844,'group-admin','js-enabled'),
+    *tuple((f'access-{engine}-{width}-enhanced', 'access', engine,width,900 if width==1440 else 844,principal,'enhanced')
         for engine,width,principal in (('chromium',1440,'org-admin'),('chromium',390,'group-admin'),('webkit',1440,'group-admin'),('webkit',390,'org-admin'))),
-    ('access-chromium-195-native','access','chromium',195,422,'org-admin','native'),
+    ('access-chromium-195-enhanced','access','chromium',195,422,'org-admin','enhanced'),
     ('access-webkit-720-enhanced','access','webkit',720,450,'group-admin','enhanced'),
-    ('native-members-webkit-desktop','members','webkit',1440,900,'studio-admin','native'),
-    ('native-members-chromium-mobile','members','chromium',390,844,'org-admin','native'),
 )
 COHORT_CONDITIONS = {
     'group-counts': 'Owned group list exact counts and complete off-page name search.',
     'overview-discovery': 'Owned group grant total and matching studio discovery.',
-    'access-browse': 'Native POST browse preserves a bounded draft, page and search without a grant write.',
-    'access-search': 'Enhanced live report choice search retains selected missing/inactive reports and tenant scope.',
     'access-invalid': 'Foreign report validation fails without changing grants or losing the draft.',
-    'access-save': 'One bounded explicit Save after browse persists the exact grant delta and audit multiset.',
-    'access-save-after-browse': 'Reviewed semantic alias: actual studio_access Save plus prior observed browse chain and persisted delta.',
+    'access-save': 'One bounded explicit Save persists the exact grant delta and audit multiset.',
     'access-csrf': 'Missing-CSRF POST rejects without a business write.',
-    'members-browse': 'Native candidate search is complete and retains off-page selection/direct role without membership writes.',
-    'members-invalid-role': 'Native invalid role/page browse returns errors and retains the draft without saving.',
     'auth-org': 'Alpha group access requires actual effective organization administrator rights.',
     'auth-studio': 'Alpha candidate API requires actual effective studio administrator rights.',
     'auth-write-denied': 'Genuine valid bounded grant draft is rejected for a principal without organization administrator rights.',
@@ -171,26 +163,12 @@ def cohort_bindings(executor):
         if family == 'overview':
             add('route-295','GET',None,principal,'group-counts',node,('counts','search','scope','no-write'),query={'q':'$group_search'},**common)
             add('route-297','GET','overview-paging',principal,'overview-discovery',node,('counts','search','scope','no-write'),observed='tab=overview',query={'tab':'overview','grant_q':'$studio_search'},**common)
-        elif family == 'access':
-            if mode == 'native':
-                add('route-297','POST','action=browse_access',principal,'access-browse',node,('draft','page-precedence','search','no-write'),
-                    body={'action':'browse_access','report_page':'2','report_q':'Report'},query={'report_page':'1'},**common)
-            else:
-                add('route-328','GET','search-and-pagination',principal,'access-search',node,('draft','search','scope','missing-inactive-labels','no-write'),observed=None,query={'q':'$report_search'},**common)
-                # None is the actual GET transport selector on this endpoint.
-                result[-1].transport['action'] = None
+        else:
             add('route-297','POST','action=studio_access',principal,'access-invalid',node,('draft','visible-error','scope','no-write'),
                 body={'action':'studio_access','reports':'$invalid_reports'},**common)
             obligations=('db-persistence','reload-persistence','visible-feedback','audit-delta','single-save','scope')
             add('route-297','POST','action=studio_access',principal,'access-save',node,obligations,body={'action':'studio_access','reports':'$saved_reports'},**common)
-            add('route-297','POST','explicit-save-after-browse',principal,'access-save-after-browse',node,(*obligations,'prior-browse'),
-                observed='action=studio_access',body={'action':'studio_access','reports':'$saved_reports'},prior=('access-browse' if mode=='native' else 'access-search',),**common)
             add('route-297','POST','action=studio_access',principal,'access-csrf',node,('csrf-no-write','no-write'),body={'action':'studio_access'},status=403,**common)
-        else:
-            add('route-322','POST',None,principal,'members-browse',node,('search','draft','scope','counts','no-write'),
-                body={'q':'$member_search','page':'1','role':'viewer','user_id':'$candidate'},**common)
-            add('route-322','POST',None,principal,'members-invalid-role',node,('visible-error','draft','page-preserved','search','no-write'),
-                body={'q':'Cohort person','page':'2','role':'not-a-role','user_id':'$candidate'},status=400,**common)
     if executor == 'http':
         for principal in COHORT_PRINCIPALS:
             node=COHORT_MODULE+f'::test_authorization_boundaries[{principal}]'

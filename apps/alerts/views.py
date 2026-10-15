@@ -122,7 +122,7 @@ def recipient_choices(request, org_slug, studio_slug):
     except ValueError as exc:
         return JsonResponse({"error": str(exc)}, status=400)
     response = JsonResponse(page_snapshot(recipient_snapshot(request.studio, include_inactive=True),
-        query=parameters.get('q', ''), page=parameters.get('page', 1),
+        query=parameters.get('q', ''), page=1,
         selected_people=parameters.get('selected_people', ''), selected_groups=parameters.get('selected_groups', '')))
     response['Cache-Control'] = 'private, no-store'
     return response
@@ -137,7 +137,7 @@ def report_choices(request, org_slug, studio_slug):
     matches = reports.filter(Q(name__icontains=query) | Q(slug__icontains=query)) if query else reports
     page = Paginator(matches, 25).get_page(request.GET.get('page'))
     def item(report):
-        return {'value': str(report.pk), 'label': report.name or report.slug, 'hint': request.studio.name}
+        return {'value': str(report.pk), 'label': report.name or report.slug, 'hint': ''}
     selected_id = request.GET.get('selected', '')
     selected = reports.filter(pk=selected_id).first() if selected_id.isascii() and selected_id.isdigit() and len(selected_id) < 19 else None
     response = JsonResponse({'results': [item(report) for report in page],

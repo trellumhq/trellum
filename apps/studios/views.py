@@ -93,28 +93,11 @@ def api_member_choices(request, org_slug, studio_slug):  # noqa: ARG001
     page = _member_choice_page(request)
     selected = _selected_member_choice(request, "selected")
     def item(member):
-        return {"value": str(member.user_id), "label": member.user.display_name, "hint": member.user.email}
+        return {"value": str(member.user_id), "label": member.user.email, "hint": ""}
     response = JsonResponse({"results": [item(member) for member in page.object_list],
         "selected": item(selected) if selected else None,
         "pagination": {"page": page.number, "pages": page.paginator.num_pages,
                        "total": page.paginator.count, "has_next": page.has_next(), "has_previous": page.has_previous()}})
-    response["Cache-Control"] = "private, no-store"
-    return response
-
-
-@require_studio_role(roles.ADMIN)
-@require_http_methods(["GET", "POST"])
-def member_choices(request, org_slug, studio_slug):  # noqa: ARG001
-    # POST only browses choices; saving always uses member_set.
-    data = request.POST if request.method == "POST" else request.GET
-    role = data.get("role", roles.VIEWER)
-    role_error = role not in dict(roles.STUDIO_ROLE_CHOICES)
-    page = _member_choice_page(request, data=data)
-    selected = _selected_member_choice(request, "user_id", data)
-    response = render(request, "studios/member_choices.html", {"org": request.org, "studio": request.studio,
-        "page": page, "q": (data.get("q") or "").strip(), "total": page.paginator.count,
-        "selected": selected, "selected_id": data.get("user_id", ""), "role": role,
-        "studio_role_choices": roles.STUDIO_ROLE_CHOICES, "role_error": role_error}, status=400 if role_error else 200)
     response["Cache-Control"] = "private, no-store"
     return response
 

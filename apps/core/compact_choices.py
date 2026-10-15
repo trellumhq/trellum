@@ -6,6 +6,8 @@ from django.forms.renderers import get_default_renderer
 from django.template.loader import get_template
 from django.utils.safestring import mark_safe
 
+from apps.core.choice_requests import INLINE_CHOICE_LIMIT
+
 
 class CompactSelection(list):
     def __init__(self, values=(), *, error=None, packet=None):
@@ -34,7 +36,7 @@ def decode_compact_selection(data, name):
         for values in (packet["selected"], packet["editable"], submitted):
             if not isinstance(values, list) or any(not isinstance(value, str) or not value.isascii() or not value.isdecimal() or len(value) > 19 or int(value) < 1 or int(value) > 9223372036854775807 for value in values):
                 raise ValueError
-        if len(packet["editable"]) > 25:
+        if len(packet["editable"]) > INLINE_CHOICE_LIMIT:
             raise ValueError
         editable = set(packet["editable"])
         values = dict.fromkeys(value for value in packet["selected"] if value not in editable)
@@ -64,15 +66,15 @@ class CompactCheckboxSelectMultiple(forms.CheckboxSelectMultiple):
     def get_context(self, name, value, attrs):
         selected = list(dict.fromkeys(str(item) for item in (value or [])))
         choices = list(self.choices)
-        editable = {str(item) for item in self.page_values} if self.page_values is not None else {str(item[0]) for item in choices[:25]}
+        editable = {str(item) for item in self.page_values} if self.page_values is not None else {str(item[0]) for item in choices[:INLINE_CHOICE_LIMIT]}
         original = self.choices
         try:
-            self.choices = [(identity, label) for identity, label in choices if str(identity) in editable][:25]
+            self.choices = [(identity, label) for identity, label in choices if str(identity) in editable][:INLINE_CHOICE_LIMIT]
             context = super().get_context(name, selected, attrs)
         finally:
             self.choices = original
         widget = context["widget"]
-        editable = [str(item[0]) for item in choices if str(item[0]) in editable][:25]
+        editable = [str(item[0]) for item in choices if str(item[0]) in editable][:INLINE_CHOICE_LIMIT]
         labels = {str(identity): str(label) for identity, label in choices}
         widget["selection_name"] = name + "__selection"
         widget["selection_packet"] = value.packet if isinstance(value, CompactSelection) and value.error else json.dumps({"version": 1, "selected": selected, "editable": editable}, separators=(",", ":"))

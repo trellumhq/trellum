@@ -204,7 +204,6 @@
         applyAll(); remember();
     });
     document.getElementById('mcSelection').addEventListener('submit', function (event) {
-        if (event.submitter && event.submitter.closest('[data-browse-choices]')) return;
         event.preventDefault();
         var a = document.getElementById('mc-a').value, b = document.getElementById('mc-b').value;
         if (a && a === b) { status.textContent = 'Choose two different metrics.'; return; }
@@ -212,6 +211,10 @@
         if (a !== state.a) next.split_a = '';
         if (b !== state.b) next.split_b = '';
         location.assign(urlFor(next).href);
+    });
+    // Choosing a metric applies at once; there is no separate Update button.
+    document.getElementById('mcSelection').addEventListener('change', function (event) {
+        if (event.target.matches('select')) this.requestSubmit();
     });
     window.addEventListener('popstate', function () {
         var params = new URL(location.href).searchParams;

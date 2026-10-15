@@ -666,7 +666,7 @@ def group_member_choices(request, org_slug, group_id):
     raw = request.GET.get("selected")
     selected = present.member_choices(request.org, group, kind).filter(user_id=raw).first() if str(raw or "").isdecimal() else None
     def record(member):
-        return {"value": member.user_id, "label": member.user.display_name, "hint": member.user.email}
+        return {"value": member.user_id, "label": member.user.email, "hint": ""}
     response = JsonResponse({"results": [record(m) for m in page.object_list], "selected": record(selected) if selected else None, "pagination": present.pagination(page)})
     response["Cache-Control"] = "private, no-store"
     return response

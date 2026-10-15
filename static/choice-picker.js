@@ -158,48 +158,43 @@
     var label = root.dataset.pickerLabel || labelFor(select, 'Option');
     var api = popup(root, label), invalid = false;
     var source = select.dataset.choiceSource, prefix = select.dataset.choiceValuePrefix || '';
-    var remoteRows = [], remotePage = null, remoteState = '', generation = 0, controller = null, debounce = null, timeout = null;
-    var pager = element('div', 'ui-picker-pager');
-    Object.assign(pager.style, { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', flex: 'none' });
-    if (source) api.popup.appendChild(pager);
+    var remoteRows = [], remoteMore = false, remoteState = '', generation = 0, controller = null, debounce = null, timeout = null;
+    function searching() { return !!source && api.search.value.trim() !== ''; }
     function cancelRemote() {
       generation++; clearTimeout(debounce); clearTimeout(timeout);
       if (controller) controller.abort();
       controller = null;
     }
-    function loadRemote(page) {
+    // Only sets too large to render inline reach this: the popup lists the
+    // server-rendered choices until the visitor types, then one bounded search
+    // answers. There is never a page to turn.
+    function loadRemote(attempt) {
       cancelRemote();
       var current = generation;
-      var restoreSearchFocus = pager.contains(document.activeElement);
-      if (restoreSearchFocus) api.search.focus({ preventScroll: true });
       controller = new AbortController();
-      remoteState = 'loading'; remoteRows = []; remotePage = null; api.refresh();
+      remoteState = 'loading'; remoteRows = []; remoteMore = false; api.refresh();
       var url = new URL(source, window.location.href);
       if (url.origin !== window.location.origin) { remoteState = 'error'; api.refresh(); return; }
       url.searchParams.set('q', api.search.value.trim());
-      url.searchParams.set('page', page || 1);
-      var selectedValue = select.value;
-      url.searchParams.set('selected', selectedValue);
-      timeout = setTimeout(function () {
+      url.searchParams.set('page', 1);
+      function failed() {
         if (current !== generation) return;
-        controller.abort(); generation++; remoteState = 'error'; remoteRows = []; remotePage = null; api.refresh();
-      }, 15000);
+        clearTimeout(timeout); remoteRows = []; remoteMore = false;
+        // One quiet retry; the visitor never has to ask for it.
+        if ((attempt || 0) < 1 && !api.popup.hidden) { debounce = setTimeout(function () { loadRemote(1); }, 1200); return; }
+        remoteState = 'error'; api.refresh();
+      }
+      timeout = setTimeout(function () { if (current === generation) controller.abort(); }, 15000);
       fetch(url, { signal: controller.signal, credentials: 'same-origin', headers: { Accept: 'application/json' } }).then(function (response) {
         if (!response.ok) throw new Error('Choices unavailable');
         return response.json();
       }).then(function (result) {
         if (current !== generation || !root.isConnected || api.popup.hidden) return;
-        if (!Array.isArray(result.results) || !result.pagination) throw new Error('Invalid choices');
+        if (!Array.isArray(result.results)) throw new Error('Invalid choices');
         clearTimeout(timeout);
-        var chosen = select.options[select.selectedIndex];
-        if (chosen && chosen.value && select.value === selectedValue && select.value.indexOf('slug:') !== 0) {
-          chosen.textContent = result.selected && prefix + String(result.selected.value) === select.value ? result.selected.label + (result.selected.hint ? ' · ' + result.selected.hint : '') : (select.dataset.unavailableLabel || root.dataset.unavailableLabel || 'Selected report is unavailable');
-        }
-        remoteRows = result.results; remotePage = result.pagination; remoteState = 'ready'; api.refresh();
-        if (restoreSearchFocus) api.search.focus({ preventScroll: true });
+        remoteRows = result.results; remoteMore = !!(result.pagination && result.pagination.has_next); remoteState = 'ready'; api.refresh();
       }).catch(function (error) {
-        if (current !== generation || error.name === 'AbortError') return;
-        clearTimeout(timeout); remoteRows = []; remotePage = null; remoteState = 'error'; api.refresh();
+        failed();
       });
     }
     var errorMessage = element('p', 'ui-picker-error');
@@ -230,38 +225,24 @@
       description = description.trim();
       if (description) api.trigger.setAttribute('aria-describedby', description); else api.trigger.removeAttribute('aria-describedby');
       api.options.replaceChildren();
-      if (source) {
-        var rows = [];
-        Array.prototype.forEach.call(select.options, function (option) {
-          if (!option.value && !option.hidden) rows.push({value: '', label: option.textContent, disabled: option.disabled});
-        });
-        rows = rows.concat(remoteRows);
-        rows.forEach(function (item) {
-          var value = item.value ? prefix + item.value : '';
-          var row = button('ui-picker-option', item.label + (item.hint ? ' · ' + item.hint : ''));
+      if (searching()) {
+        remoteRows.forEach(function (item) {
+          var value = prefix + item.value;
+          var text = item.label + (item.hint && item.hint !== item.label ? ' \u00b7 ' + item.hint : '');
+          var row = button('ui-picker-option', text);
           row.disabled = !!item.disabled;
           row.setAttribute('aria-pressed', String(select.value === value));
           row.addEventListener('click', function () {
             var option = Array.prototype.find.call(select.options, function (candidate) { return candidate.value === value; });
-            if (!option) { option = new Option(item.label + (item.hint ? ' · ' + item.hint : ''), value); select.add(option); }
+            if (!option) { option = new Option(text, value); select.add(option); }
             select.value = value; invalid = false;
             select.dispatchEvent(new Event('input', { bubbles: true }));
             select.dispatchEvent(new Event('change', { bubbles: true })); api.close(true);
           });
           api.options.appendChild(row);
         });
-        api.message.textContent = remoteState === 'loading' ? 'Loading choices…' : remoteState === 'error' ? 'Could not load choices. Your selection is retained.' : !remoteRows.length ? (api.search.value ? 'No matches.' : 'No choices are available.') : '';
+        api.message.textContent = remoteState === 'loading' ? 'Searching\u2026' : remoteState === 'error' ? 'Could not search right now. Keep typing to try again.' : !remoteRows.length ? 'No matches.' : remoteMore ? 'Keep typing to narrow the list.' : '';
         api.message.hidden = !api.message.textContent;
-        pager.replaceChildren();
-        if (remoteState === 'error') {
-          var retry = button('ui-picker-filter', 'Retry'); retry.addEventListener('click', function (event) { event.preventDefault(); loadRemote(1); }); pager.appendChild(retry);
-        } else if (remotePage) {
-          var previous = button('ui-picker-filter', 'Previous'), next = button('ui-picker-filter', 'Next');
-          previous.disabled = !remotePage.has_previous; next.disabled = !remotePage.has_next;
-          previous.addEventListener('click', function (event) { event.preventDefault(); loadRemote(remotePage.page - 1); });
-          next.addEventListener('click', function (event) { event.preventDefault(); loadRemote(remotePage.page + 1); });
-          pager.append(previous, element('span', '', 'Page ' + remotePage.page + ' · ' + remotePage.total + ' choices'), next);
-        }
         if (api.trigger.disabled && !api.popup.hidden) api.close(false);
         if (!api.popup.hidden) position(api);
         return;
@@ -283,19 +264,20 @@
         api.options.appendChild(row);
         count++;
       });
-      api.message.textContent = count ? '' : query ? 'No matches.' : (root.dataset.pickerEmptyState || 'No choices are available.');
+      api.message.textContent = count ? (source ? 'Showing the first choices. Keep typing to search them all.' : '') : query ? 'No matches.' : (root.dataset.pickerEmptyState || 'No choices are available.');
       api.message.hidden = !api.message.textContent;
       if (api.trigger.disabled && !api.popup.hidden) api.close(false);
       if (!api.popup.hidden) position(api);
     };
     if (source) {
-      var localOpen = api.open, localClose = api.close;
-      api.open = function () { localOpen(); if (!api.popup.hidden) loadRemote(1); };
-      api.close = function (focus) { cancelRemote(); localClose(focus); };
-      remotes.add({ root: root, stop: function () { cancelRemote(); if (remoteState === 'loading') { remoteState = ''; } api.close(false); } });
+      var localClose = api.close;
+      api.close = function (focus) { cancelRemote(); remoteState = ''; localClose(focus); };
+      remotes.add({ root: root, stop: function () { cancelRemote(); remoteState = ''; api.close(false); } });
       api.search.addEventListener('input', function () {
-        cancelRemote(); remoteState = 'loading'; remoteRows = []; remotePage = null; api.refresh();
-        debounce = setTimeout(function () { loadRemote(1); }, 180);
+        cancelRemote();
+        if (!searching()) { remoteState = ''; remoteRows = []; api.refresh(); return; }
+        remoteState = 'loading'; remoteRows = []; api.refresh();
+        debounce = setTimeout(function () { loadRemote(0); }, 180);
       });
     } else api.search.addEventListener('input', api.refresh);
     select.addEventListener('input', function () { invalid = false; api.refresh(); });

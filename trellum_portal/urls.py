@@ -324,8 +324,6 @@ urlpatterns = [
     # Org switcher / management
     path("", org_views.home, name="home"),
     path("api/shell/scopes/", shell_scope_views.api_choices, name="shell-scope-choices"),
-    path("scopes/", shell_scope_views.browse, name="shell-scope-browse"),
-    path("scopes/open/", shell_scope_views.open_scope, name="shell-scope-open"),
     path("orgs/new", org_views.org_new, name="org-new"),
     path("orgs/create", org_views.org_create, name="org-create"),
     path("orgs/<slug:org_slug>/", org_views.org_home, name="org-home"),
@@ -519,11 +517,6 @@ urlpatterns = [
         "s/<slug:org_slug>/<slug:studio_slug>/settings/members",
         studio_views.members,
         name="studio-members",
-    ),
-    path(
-        "s/<slug:org_slug>/<slug:studio_slug>/settings/members/choices",
-        studio_views.member_choices,
-        name="studio-member-choices",
     ),
     path(
         "s/<slug:org_slug>/<slug:studio_slug>/settings/members/set",

@@ -66,8 +66,10 @@ def test_list_add_edit_and_cancel_use_dedicated_pages(delivery_browser):
     assert page.locator('[data-schedule-editor]').count() == 0
     page.get_by_role('link', name='Add delivery', exact=True).click()
     expect(page.locator('#delivery-report')).to_be_visible()
+    # Choosing the report goes straight to its form: no Continue button.
+    assert page.get_by_role('button', name='Continue', exact=True).count() == 0
+    page.add_script_tag(content=(ROOT / 'static/auto-filter.js').read_text(encoding='utf-8'))
     page.locator('#delivery-report').select_option(index=1)
-    page.get_by_role('button', name='Continue', exact=True).click()
     expect(page.locator('#delivery-schedule-form')).to_be_visible()
     page.get_by_role('link', name='Cancel', exact=True).click()
     expect(page).to_have_url('https://example.test' + listing)

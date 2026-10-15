@@ -99,7 +99,7 @@ def selected_ids(values):
 
 
 def page_snapshot(snapshot, *, query='', page=1, people_page=None, group_page=None,
-                  selected_people=(), selected_groups=()):
+                  selected_people=(), selected_groups=(), size=PAGE_SIZE):
     query = str(query or '')[:200].casefold()
     result = {key: snapshot[key] for key in ('roles', 'studio_name')}
     result['pagination'] = {}
@@ -108,11 +108,11 @@ def page_snapshot(snapshot, *, query='', page=1, people_page=None, group_page=No
                              ('groups', group_page or page, selected_groups)]:
         all_rows = snapshot[key]
         matches = [row for row in all_rows if query in (row['name'] + ' ' + row.get('email', '')).casefold()]
-        current = Paginator(matches, PAGE_SIZE).get_page(number)
+        current = Paginator(matches, size).get_page(number)
         result[key] = list(current.object_list)
         chosen = selected_ids(ids)
         result['selected'][key] = [row for row in all_rows if row['id'] in chosen]
-        result['pagination'][key] = {'page': current.number, 'per_page': PAGE_SIZE,
+        result['pagination'][key] = {'page': current.number, 'per_page': size,
             'total': current.paginator.count, 'choice_total': len(all_rows),
             'audience_total': snapshot['active_people_count'] if key == 'members' else len(all_rows),
             'has_previous': current.has_previous(), 'has_next': current.has_next()}

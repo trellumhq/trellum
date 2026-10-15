@@ -1,11 +1,11 @@
-"""Authenticated native and enhanced scope browsing with fixed destinations."""
-from functools import wraps
-from urllib.parse import urlencode
+"""Authenticated search over the organizations and studios a user may switch to.
 
-from django.contrib.auth.views import redirect_to_login
+The shell lists every choice inline; only a list longer than the inline limit
+uses this endpoint, as search-as-you-type."""
+from functools import wraps
+
 from django.core.exceptions import ValidationError
-from django.http import Http404, HttpResponseBadRequest, HttpResponseNotFound, JsonResponse
-from django.shortcuts import redirect, render
+from django.http import Http404, HttpResponseNotFound, JsonResponse
 from django.views.decorators.http import require_GET
 
 from apps.core.shell_scope import choice_page, organization_choices, studio_choices
@@ -25,16 +25,16 @@ def _private_response(view):
     return wrapped
 
 
-def _parameters(request, *, opening=False):
+def _parameters(request):
     data = request.GET
-    if set(data) - {'kind', 'intent', 'org', 'q', 'page', 'selected'}:
+    if set(data) - {'kind', 'org', 'q', 'page', 'selected'}:
         raise ValueError('Unknown scope parameter.')
-    for name in ('kind', 'intent', 'org', 'q', 'page', 'selected'):
+    for name in ('kind', 'org', 'q', 'page', 'selected'):
         if len(data.getlist(name)) > 1:
             raise ValueError('Duplicate scope parameter.')
-    kind, intent = data.get('kind'), data.get('intent', 'navigate')
-    if kind not in ('org', 'studio') or intent not in ('navigate', 'assistant') or (kind == 'org' and intent != 'navigate'):
-        raise ValueError('Invalid scope kind or intent.')
+    kind = data.get('kind')
+    if kind not in ('org', 'studio'):
+        raise ValueError('Invalid scope kind.')
     q = data.get('q', '')
     if '\x00' in q:
         raise ValueError('Search contains an invalid character.')
@@ -53,9 +53,9 @@ def _parameters(request, *, opening=False):
                 field.run_validators(value)
             except ValidationError as exc:
                 raise ValueError('Invalid scope slug.') from exc
-    if (kind == 'studio' and not org) or (opening and not selected):
+    if kind == 'studio' and not org:
         raise ValueError('A scope selection is required.')
-    return {'kind': kind, 'intent': intent, 'org': org, 'q': q.strip(), 'page': int(raw_page), 'selected': selected}
+    return {'kind': kind, 'org': org, 'q': q.strip(), 'page': int(raw_page), 'selected': selected}
 
 
 def _rows(request, params):
@@ -68,16 +68,10 @@ def _rows(request, params):
     return studio_choices(request, org), org
 
 
-def _destination(row, org, intent):
-    if org is None:
-        return '/?' + urlencode({'org': row.slug})
-    return f'/s/{org.slug}/{row.slug}/' + ('?assistant=open' if intent == 'assistant' else '')
-
-
-def _auth(request, *, json=False):
+def _auth(request):
     if request.user.is_authenticated:
         return None
-    return JsonResponse({'error': 'authentication required'}, status=401) if json else redirect_to_login(request.get_full_path())
+    return JsonResponse({'error': 'authentication required'}, status=401)
 
 
 def _item(row):
@@ -87,7 +81,7 @@ def _item(row):
 @_private_response
 @require_GET
 def api_choices(request):
-    denied = _auth(request, json=True)
+    denied = _auth(request)
     if denied is not None:
         return denied
     try:
@@ -103,47 +97,3 @@ def api_choices(request):
                        'has_next': page.has_next(), 'has_previous': page.has_previous()}})
     response['Cache-Control'] = 'private, no-store'
     return response
-
-
-@_private_response
-@require_GET
-def browse(request):
-    denied = _auth(request)
-    if denied is not None:
-        return denied
-    try:
-        params = _parameters(request)
-    except ValueError as exc:
-        return HttpResponseBadRequest(str(exc))
-    rows, org = _rows(request, params)
-    if org is not None:
-        # The native browse page has an authorized org scope, never a studio scope.
-        request.org = org
-    result = choice_page(rows, q=params['q'], page=params['page'], selected=params['selected'])
-    items = [{'row': row, 'url': _destination(row, org, params['intent'])} for row in result.page.object_list]
-    def page_url(number):
-        return '/scopes/?' + urlencode({**params, 'page': number})
-    response = render(request, 'core/shell_scope_choices.html', {
-        'scope_params': params, 'scope_org': org, 'scope_items': items, 'scope_page': result.page,
-        'scope_selected': result.selected, 'scope_selected_url': _destination(result.selected, org, params['intent']) if result.selected else '',
-        'scope_previous': page_url(result.page.number - 1), 'scope_next': page_url(result.page.number + 1),
-    })
-    response['Cache-Control'] = 'private, no-store'
-    return response
-
-
-@_private_response
-@require_GET
-def open_scope(request):
-    denied = _auth(request)
-    if denied is not None:
-        return denied
-    try:
-        params = _parameters(request, opening=True)
-    except ValueError as exc:
-        return HttpResponseBadRequest(str(exc))
-    rows, org = _rows(request, params)
-    row = rows.filter(slug=params['selected']).first()
-    if row is None:
-        raise Http404
-    return redirect(_destination(row, org, params['intent']))

@@ -1662,8 +1662,11 @@ def _delivery_choices(request, *, studio=None, org_id=None):
                            Q(studio__name__icontains=query) | Q(studio__org__name__icontains=query))
     page = Paginator(rows.order_by("name", "slug", "pk"), 25).get_page(request.GET.get("page"))
     def item(report):
-        return {"value": str(report.pk), "label": report.name or report.slug,
-                "hint": f"{report.studio.org.name} / {report.studio.name}"}
+        # Same captions as the inline choices: the kind for the add-delivery
+        # picker, organization / studio only where the list spans studios.
+        hint = report.get_kind_display() if request.GET.get("hint") == "kind" else (
+            f"{report.studio.org.name} / {report.studio.name}" if studio is None else "")
+        return {"value": str(report.pk), "label": report.name or report.slug, "hint": hint}
     selected_id = request.GET.get("selected", "").removeprefix("id:")
     selected = None
     if selected_id.isascii() and selected_id.isdigit() and len(selected_id) < 19:

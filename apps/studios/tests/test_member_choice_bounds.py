@@ -19,17 +19,7 @@ def test_choices_api_search_offpage_selection_and_browse_route(login, org_admin,
     assert response.headers["Cache-Control"] == "private, no-store"
     filtered = client.get(api, {"q": "choice29"}).json()
     assert [item["value"] for item in filtered["results"]] == [str(users[-1].pk)]
-    native = reverse("studio-member-choices", args=[org.slug, studio.slug])
-    response = client.post(native, {"user_id": users[-1].pk, "role": "developer", "page": "2", "q": "choice"})
-    assert response.status_code == 200
-    assert response.context["selected"].user_id == users[-1].pk
-    assert response.context["role"] == "developer" and response.context["page"].number == 2
-    assert not StudioMembership.objects.filter(user__in=users, studio=studio).exists()
-    invalid = client.post(native, {"user_id": users[-1].pk, "role": "bad"})
-    assert invalid.status_code == 400 and invalid.context["role"] == "bad"
-    # Even an unknown browse action never enters the setter.
-    assert client.post(native, {"user_id": users[-1].pk, "role": "admin", "action": "save"}).status_code == 200
-    assert not StudioMembership.objects.filter(user=users[-1], studio=studio).exists()
+    assert filtered["results"][0]["label"] == users[-1].email and not filtered["results"][0]["hint"]
     StudioMembership.objects.create(user=users[-1], studio=studio, role="viewer")
     data = client.get(api, {"selected": users[-1].pk, "q": "choice29"}).json()
     assert data["selected"] is None and data["results"] == []

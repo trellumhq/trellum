@@ -16,16 +16,24 @@ from .models import MetricDefinition, Report, ReportMetricClaim, ReportSourceSum
 from .metric_summaries import SOURCE_FRESH_SECONDS, claimed_count
 
 
-def definition_choices(studio, query='', page=1, selected=()):
+def definition_choices(studio, query='', page=1):
+    """One bounded page of matching metrics for the search endpoint."""
     rows = MetricDefinition.objects.filter(studio=studio, present_in_scan=True).only('pk', 'name', 'label')
     matched = rows.filter(Q(name__icontains=query) | Q(label__icontains=query)) if query else rows
-    pager = Paginator(matched.order_by('name', 'pk'), 25)
-    current = pager.get_page(page)
-    choices = list(current.object_list)
-    displayed = {row.name for row in choices}
-    if selected:
-        choices.extend(rows.filter(name__in=set(selected) - displayed).order_by('name', 'pk'))
-    return choices, current
+    current = Paginator(matched.order_by('name', 'pk'), 25).get_page(page)
+    return list(current.object_list), current
+
+
+def inline_definition_choices(studio, selected=()):
+    """Every metric for the pickers, or a preview plus search for a huge studio."""
+    from apps.core.choice_requests import inline_choices
+
+    rows = MetricDefinition.objects.filter(studio=studio, present_in_scan=True).only('pk', 'name', 'label').order_by('name', 'pk')
+    choices, searchable = inline_choices(rows)
+    missing = {value for value in selected if value} - {row.name for row in choices}
+    if missing:
+        choices.extend(rows.filter(name__in=missing))
+    return choices, searchable
 
 
 def workspace_projection(studio, *, legacy=False):

@@ -83,8 +83,7 @@
     status.setAttribute('aria-live', 'polite');
     if (!status.parentNode) {
       var submits = Array.prototype.filter.call(form.querySelectorAll('[type="submit"], button:not([type])'), function (field) {
-        return !field.closest('[data-picker-fallback], [data-report-native-choices], [data-browse-choices]') &&
-          !field.hasAttribute('data-alert-preview') && !(field.name === 'action' && field.value === 'browse_choices');
+        return !field.hasAttribute('data-alert-preview');
       });
       var submit = submits.find(function (field) { return field.closest('.ui-form-actions'); }) || submits[0];
       if (submit) submit.insertAdjacentElement('afterend', status);

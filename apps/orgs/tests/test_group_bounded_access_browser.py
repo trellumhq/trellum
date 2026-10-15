@@ -49,6 +49,12 @@ def test_group_access_card_picks_searches_and_saves(engine, width, live_server, 
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
         picker = form.locator("[data-recipient-picker]")
         picker.locator(".ui-picker-trigger").click()
+        # Every report is already in the list; the browser filters instantly.
+        expect(picker.locator(".recipient-picker-option:visible")).to_have_count(60)
+        assert picker.get_by_role("button", name="Next", exact=True).count() == 0
+        assert picker.locator(".ui-picker-pager").count() == 0
+        picker.locator(".ui-picker-search").fill("Report 000")
+        expect(picker.locator(".recipient-picker-option:visible")).to_have_count(1)
         picker.get_by_role("checkbox", name="Report 000", exact=False).check()
         picker.locator(".ui-picker-search").fill("059")
         expect(picker.get_by_role("checkbox", name="Report 059", exact=False)).to_be_visible()
