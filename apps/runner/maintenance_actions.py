@@ -14,7 +14,12 @@ Lease rules
   may have finished, half-finished, or still be running elsewhere. A user may
   start a fresh refresh, which is a new, visible action. Registry refresh is an
   idempotent upsert, so unconfirmed does not block new admission.
-* A never-claimed (``accepted``) action stays claimable across restarts.
+* A never-claimed (``accepted``) action stays claimable across restarts, but
+  only for ``ACCEPTED_TTL``. Claiming is per pool, so a studio whose pool no
+  runner serves would otherwise keep one ``accepted`` row forever: admission
+  would keep answering with it and it would count toward the pending limits.
+  Past the TTL it ends as ``failed`` with ``MSG_EXPIRED`` (it never ran, so
+  nothing is unconfirmed). Admission, recovery and a status read expire it.
 * Lock conflict with Git sync is a terminal ``failed`` with a stable message;
   the user can retry. We never scan while Git is copying.
 
@@ -39,6 +44,10 @@ logger = logging.getLogger("trellum.worker")
 ADMISSION_LOCK_NAMESPACE = 0x4D41494E  # one short global lock; admission is tiny
 KEY_RETENTION = timedelta(hours=24)
 MAX_KEY_LENGTH = 80
+# How long an admitted action may wait for a runner before it is given up on.
+# Long enough to cover a worker restart or an upgrade rollout; short enough that
+# an unserved pool does not hold a studio's single active slot for long.
+ACCEPTED_TTL = timedelta(minutes=10)
 
 # Public, fixed messages: never paths or exception text.
 MSG_ACCEPTED = "Registry refresh scheduled"
@@ -46,6 +55,10 @@ MSG_SUCCESS = "Registry refreshed"
 MSG_WARNING = "Registry refreshed with a warning"
 MSG_FAILED = "Registry refresh failed"
 MSG_LOCK = "A repository sync is in progress; try the refresh again when it finishes."
+MSG_EXPIRED = (
+    "No worker picked up the registry refresh in time. Check that a worker is "
+    "running for this studio, then refresh again."
+)
 MSG_UNCONFIRMED = (
     "The worker stopped before confirming the result. Check the registry and "
     "refresh again if needed."
@@ -83,6 +96,9 @@ def admit(*, studio, user, kind=Action.REGISTRY_REFRESH, idempotency_key: str = 
     """
     actor = user if getattr(user, "is_authenticated", False) else None
     now = timezone.now()
+    # Before the lookups, so a stuck row neither answers this request nor
+    # counts toward the pending limits.
+    expire_unclaimed(now)
     try:
         with transaction.atomic():
             if connection.vendor == "postgresql":
@@ -147,8 +163,34 @@ def _audit_outcome(action: Action, state: str, **extra) -> None:
     )
 
 
+def expire_unclaimed(now=None, *, pk=None) -> int:
+    """End ``accepted`` actions no runner claimed within ``ACCEPTED_TTL``.
+
+    ``pk`` limits it to one action (a status read). Rows another transaction is
+    claiming are skipped, and a claim never takes an expired row.
+    """
+    now = now or timezone.now()
+    done = []
+    with transaction.atomic():
+        rows = Action.objects.select_for_update(skip_locked=True, of=("self",)).filter(
+            state=Action.ACCEPTED, accepted_at__lt=now - ACCEPTED_TTL
+        )
+        if pk is not None:
+            rows = rows.filter(pk=pk)
+        for action in rows.select_related("studio", "org"):
+            action.state = Action.FAILED
+            action.message = MSG_EXPIRED
+            action.finished_at = now
+            action.save(update_fields=["state", "message", "finished_at"])
+            done.append(action)
+    for action in done:
+        _audit_outcome(action, Action.FAILED, reason="unclaimed")
+    return len(done)
+
+
 def recover_expired(now=None) -> int:
-    """Mark running actions whose lease lapsed as ``unconfirmed`` (never re-run)."""
+    """Mark running actions whose lease lapsed as ``unconfirmed`` (never re-run),
+    and end unclaimed ones that outlived ``ACCEPTED_TTL``. Returns the total."""
     now = now or timezone.now()
     done = []
     with transaction.atomic():
@@ -169,21 +211,22 @@ def recover_expired(now=None) -> int:
             done.append(action)
     for action in done:
         _audit_outcome(action, Action.UNCONFIRMED)
-    return len(done)
+    return len(done) + expire_unclaimed(now)
 
 
 def claim_one(worker_id: str, pools=None):
     """Claim at most one accepted action; ``SKIP LOCKED`` keeps runners apart."""
     with transaction.atomic():
+        now = timezone.now()
         qs = Action.objects.select_for_update(skip_locked=True, of=("self",)).filter(
-            state=Action.ACCEPTED, kind=Action.REGISTRY_REFRESH
+            state=Action.ACCEPTED, kind=Action.REGISTRY_REFRESH,
+            accepted_at__gte=now - ACCEPTED_TTL,
         )
         if pools:
             qs = qs.filter(studio__pool__in=pools)
         action = qs.select_related("studio", "org").order_by("accepted_at", "pk").first()
         if action is None:
             return None
-        now = timezone.now()
         action.state = Action.RUNNING
         action.started_at = now
         action.worker_id = worker_id[:100]
