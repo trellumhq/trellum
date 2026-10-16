@@ -110,6 +110,10 @@ def test_local_page_links_show_recoverable_feedback(analytics_server, engine, wi
             route.fulfill(response=response)
             expect(page.locator('.ui-pager')).to_contain_text('201–400 of 1000')
             expect(page.locator('[data-console-native-pending]')).to_have_count(0)
+            # The new document's text is visible while its deferred scripts are
+            # still loading, and the shell's link handlers do not exist until
+            # those scripts have run, so wait for the load before using them.
+            page.wait_for_load_state('load')
             boundaries = page.evaluate("""() => {
                 const urls = ['/login', '/api/me', '/s/org/studio/r/report/', '/s/org/studio/r/report/index.html',
                     '/orgs/org/settings/audit/export.csv', 'https://outside.example/',

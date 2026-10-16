@@ -15,6 +15,8 @@ from urllib.request import urlopen
 
 import pytest
 from django.conf import settings
+from django.core.cache import cache
+from django.core.management import call_command
 
 from apps.core.tests.browser_login import reach_password_step, sign_in
 
@@ -63,7 +65,13 @@ def analytics_server(request, django_db_setup, django_db_blocker, tmp_path_facto
            "PYTHONPATH": str(tmp)+os.pathsep+str(settings.BASE_DIR), "PORTAL_E2E_WORK_LOG": str(artifacts / "work.jsonl"),
            "PORTAL_E2E_SQL_DELAY_MS": str(request.param), "PORTAL_E2E_SOURCE_DIGEST": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()}
     log = open(artifacts / "gunicorn.log", "w")
-    process = subprocess.Popen([sys.executable, "-m", "gunicorn", "analytics_browser_wsgi:application", "--bind", f"127.0.0.1:{port}", "--workers", "1", "--threads", "2"], env=env, stdout=log, stderr=log)
+    # Gunicorn's default 2 s keep-alive closes idle connections right where
+    # these tests' own pacing sends the next request. Playwright's WebKit (WPE
+    # build, libsoup 3.0.7) then crashes its network process in
+    # soup_session_send_async, which fails in-flight requests with "WebKit
+    # encountered an internal error" and drops the browser's cookies. 30 s
+    # keeps one connection open for the whole run.
+    process = subprocess.Popen([sys.executable, "-m", "gunicorn", "analytics_browser_wsgi:application", "--bind", f"127.0.0.1:{port}", "--workers", "1", "--threads", "2", "--keep-alive", "30"], env=env, stdout=log, stderr=log)
     origin = f"http://127.0.0.1:{port}"
     try:
         for _ in range(100):
@@ -80,8 +88,18 @@ def analytics_server(request, django_db_setup, django_db_blocker, tmp_path_facto
     finally:
         process.terminate(); process.wait(timeout=15); log.close()
         with django_db_blocker.unblock():
-            org.delete()
-            User.objects.filter(email__in=users.values()).delete()
+            # Gunicorn commits to this worker's shared test database from
+            # another process, so no test rollback covers what it wrote: the
+            # login's auth.login AuditLog row (append-only, so deleting the org
+            # and users only sets its FKs to NULL), a session, the InstanceConfig
+            # singleton and cache rows. Left behind, they leak into whichever
+            # test the worker runs next (test_old_audit_rows_go counts
+            # AuditLog). Restore the database the way TransactionTestCase does
+            # after a live-server test; flush also removes the fixture's own
+            # org, users and reports. Flush covers model tables only, so the
+            # cache table is cleared separately.
+            call_command("flush", verbosity=0, interactive=False, reset_sequences=False)
+            cache.clear()
 
 
 def _login(page, server, role):

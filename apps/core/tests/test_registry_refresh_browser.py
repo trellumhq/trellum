@@ -1,6 +1,7 @@
 """Real Django + PostgreSQL + Chromium: Operations 'Reload Registry' shows
 Scheduled, then a terminal outcome once a worker runs the durable action."""
 import threading
+from pathlib import Path
 
 import pytest
 from playwright.sync_api import sync_playwright
@@ -8,6 +9,8 @@ from playwright.sync_api import sync_playwright
 from apps.core import roles
 from apps.runner import maintenance_actions as maint
 from apps.runner.models import StudioMaintenanceAction as Action
+
+ROOT = Path(__file__).resolve().parents[3]
 
 
 @pytest.mark.django_db(transaction=True)
@@ -55,7 +58,9 @@ def test_refresh_button_scheduled_then_terminal(
         )
         page.locator(".toast.success").first.wait_for(timeout=5000)
         assert "Registry refreshed" in page.locator(".toast.success").first.inner_text()
-        page.screenshot(path="/home/haarbal/projects/task-artifacts/portal-resume-c17-refresh/operations-terminal.png")
+        output = ROOT / ".artifacts" / "registry-refresh"
+        output.mkdir(parents=True, exist_ok=True)
+        page.screenshot(path=output / "operations-terminal.png")
         browser.close()
     action.refresh_from_db()
     assert action.state == "succeeded" and action.reports == 1

@@ -11,6 +11,19 @@ pytestmark = pytest.mark.django_db
 ROOT = Path(__file__).resolve().parents[3]
 
 
+def _screenshot_after_first_frame(page, path):
+    """Capture a review screenshot once the page has presented a frame.
+
+    ``domcontentloaded`` resolves before Chromium has produced the page's first
+    frame, and ``Page.captureScreenshot`` fails with "Unable to capture
+    screenshot" when asked for one that early (even a static page does this a
+    few percent of the time). Two animation frames means the current layout was
+    committed and painted, so the capture is deterministic.
+    """
+    page.evaluate("() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r())))")
+    page.screenshot(path=path, full_page=True)
+
+
 @pytest.mark.parametrize("engine", ["chromium", "webkit"])
 @pytest.mark.parametrize("width", [390, 1280])
 def test_moved_forms_keep_drafts_focus_scroll_and_newer_edits(engine, width, login, superuser):
@@ -58,7 +71,7 @@ def test_moved_forms_keep_drafts_focus_scroll_and_newer_edits(engine, width, log
         if engine == "chromium":
             output = ROOT / ".artifacts" / "instance-settings"
             output.mkdir(parents=True, exist_ok=True)
-            page.screenshot(path=output / f"settings-{width}.png", full_page=True)
+            _screenshot_after_first_frame(page, output / f"settings-{width}.png")
         page.evaluate("window.documentIdentity = document")
         page.locator("#id_instance_name").fill("Browser saved")
         # A malformed, unsaved limits draft must neither block nor join Identity save.
@@ -126,7 +139,7 @@ def test_moved_forms_keep_drafts_focus_scroll_and_newer_edits(engine, width, log
         assert page.locator("#instance-settings-form").count() == 0
         assert page.get_by_role("link", name="Open Fleet").is_visible()
         if engine == "chromium":
-            page.screenshot(path=output / f"health-{width}.png", full_page=True)
+            _screenshot_after_first_frame(page, output / f"health-{width}.png")
         browser.close()
 
     # Replay the browser's actual multipart submissions through the same authorized view.
