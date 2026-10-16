@@ -286,7 +286,7 @@ def inspect_source(report, summary):
 
 def _public_identity(row):
     return (row.state, row.quality, row.source_identity, row.claim_digest,
-            row.served_at, row.attempt_at, row.attempt_status, row.preview_state, row.backend,
+            row.served_at, row.attempt_at, row.attempt_status, row.preview_state,
             row.workspace_version, row.runtime_state, row.runtime, row.has_output, row.html_entry,
             row.has_live_queries, row.output_digest, row.attempt_error, row.attempt_blocked_by,
             row.experiment_state, row.declaration_digest)
@@ -342,12 +342,11 @@ def _confirm_unchanged(report_id, report, generation, token, declaration):
         now = timezone.now()
         row.observed_at = now
         row.failures = 0
-        row.error_code = ""
         row.lease_token = ""
         row.lease_until = None
         row.idle_checks = min(row.idle_checks + 1, 12)
         row.next_check_at = now + timedelta(seconds=min(MAX_IDLE_SECONDS, RECHECK_SECONDS * 2 ** row.idle_checks))
-        row.save(update_fields=["observed_at", "failures", "error_code", "lease_token", "lease_until",
+        row.save(update_fields=["observed_at", "failures", "lease_token", "lease_until",
                                 "idle_checks", "next_check_at"])
         return {"status": row.state, "bytes": 0, "encoded_bytes": 0, "decoded_bytes": 0,
                 "projection_unavailable": False, "unchanged": True}
@@ -373,7 +372,6 @@ def _reconcile_leased(report_id, report, generation, token):
             row = ReportSourceSummary.objects.select_for_update().get(report_id=report_id)
             if row.generation == generation and row.lease_token == token:
                 row.failures += 1
-                row.error_code = type(exc).__name__
                 row.state = "unavailable"
                 row.lease_token = ""
                 row.lease_until = None
@@ -448,7 +446,6 @@ def _reconcile_leased(report_id, report, generation, token):
         row.attempt_error = extension['attempt_error']
         row.attempt_blocked_by = extension['attempt_blocked_by']
         row.schema_version = 2
-        row.backend = storage.backend_name()
         row.state = result["state"]
         row.observed_at = timezone.now()
         if result["attempt_stamp"] and (not row.attempt_at or result["attempt_stamp"] > row.attempt_at):
@@ -458,7 +455,6 @@ def _reconcile_leased(report_id, report, generation, token):
             Report.objects.filter(pk=report_id).update(data_expired_at=timezone.now())
             row.quality = "unknown"
         row.failures = 0
-        row.error_code = ""
         row.lease_token = ""
         row.lease_until = None
         # Only a settled, fully readable observation can later be confirmed by

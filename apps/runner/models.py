@@ -161,15 +161,12 @@ class StudioMaintenanceAction(models.Model):
     the public result is a bounded summary, and at most one action per
     (studio, kind) is active. The web process only *admits* a row; a runner
     executes it under a lease. Lease expiry never re-runs a possibly running
-    mutation: it records the outcome as ``unconfirmed``.
+    mutation: it records the outcome as ``unconfirmed``. An action no runner
+    claims ends as ``failed`` after ``maintenance_actions.ACCEPTED_TTL``.
     """
 
     REGISTRY_REFRESH = "registry_refresh"
-    QUERY_CACHE_CLEAR = "query_cache_clear"  # reserved; not wired to a worker yet
-    KIND_CHOICES = [
-        (REGISTRY_REFRESH, "Registry refresh"),
-        (QUERY_CACHE_CLEAR, "Query cache clear"),
-    ]
+    KIND_CHOICES = [(REGISTRY_REFRESH, "Registry refresh")]
 
     ACCEPTED = "accepted"
     RUNNING = "running"
@@ -186,13 +183,16 @@ class StudioMaintenanceAction(models.Model):
     studio = models.ForeignKey(
         "studios.Studio", on_delete=models.CASCADE, related_name="maintenance_actions"
     )
+    # No separate FK indexes on org and requested_by: org leads
+    # maint_org_state_idx, and requested_by leads the idempotency constraint's
+    # index, which are the only lookups; a user deletion scans a small table.
     org = models.ForeignKey(
-        "orgs.Organization", on_delete=models.CASCADE, related_name="+"
+        "orgs.Organization", on_delete=models.CASCADE, related_name="+", db_index=False
     )
     kind = models.CharField(max_length=24, choices=KIND_CHOICES)
     requested_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
-        related_name="+",
+        related_name="+", db_index=False,
     )
     #: Client-supplied retry key ("" = none). Unique per actor+studio+kind.
     idempotency_key = models.CharField(max_length=80, blank=True, default="")
