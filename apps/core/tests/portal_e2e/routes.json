@@ -21889,13 +21889,13 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "95ac49643ab5a20442dcdf5c0e8f18898f6ca0ad40ba998b7e2ac71baac20f6c",
+      "source_sha256": "732319625461a2491d81102268f9aaafeb581fb961d635a25fc36840aad24da2",
       "request_conditions": [
         "require_full_studio_visibility: plain alpha viewer/group-member/selected denied by seeded private audience; viewer-full samples explicitly granted public-only beta studio0",
         "alpha private-viewer explicitly granted private report remains finite-scope and is denied full-studio overviews under current semantics",
         "GET only,1\u201350 distinct authorized definition IDs with current revision; required query fixtures follow actor-specific studio parameters. No storage reads; changed revision409 and malformed400."
       ],
-      "adapter_sha256": "5b1731555226182d2c4526351487f3081748842c7d6e296897634a6e3943d4f0",
+      "adapter_sha256": "5a7c2f75cc4bd70e51fd9fc97d66715e5f921ce3ff33c30feaf26b7fba6c6a13",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -21970,13 +21970,13 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "338b3b36875f1b010c6d943f5fa1716d79185b98c68deea981d0babeeaa337e1",
+      "source_sha256": "3eb6d003d9a29cb6eb3086517de10450cf1300f26a49b4fedd7531563c930887",
       "request_conditions": [
         "require_full_studio_visibility: plain alpha viewer/group-member/selected denied by seeded private audience; viewer-full samples explicitly granted public-only beta studio0",
         "alpha private-viewer explicitly granted private report remains finite-scope and is denied full-studio overviews under current semantics",
-        "GET only native50claims/page; require definition revision, changed snapshot409 with accessible retry; disclose incomplete/stale source coverage."
+        "GET only; first 500 matching claims with server search by q, no pager; require definition revision, a changed snapshot redirects to the current revision (or Metrics) without a button; disclose incomplete/stale source coverage."
       ],
-      "adapter_sha256": "eb9b6d9f346c76176b178a6eae46acb506189fe091961bdc842aa039af2cab2a",
+      "adapter_sha256": "585dbb25d7c3a494967264e6f4481fee546836d8387e1b4fe163a6ec14dbd2a8",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
