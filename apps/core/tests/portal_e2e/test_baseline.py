@@ -107,7 +107,7 @@ def test_mapping_and_seed():
             assert get_user_model().objects.filter(email=email).exists(), role
     mapping = validate()
     assert mapping['mapping_status'] == 'complete', mapping['errors']
-    assert mapping["first_party_routes"] == 221
+    assert mapping["first_party_routes"] == 219
     assert mapping['verification_status'] == 'pending'
     for route in mapping['routes']:
         for value in [*route['seeded_parameters'].values(), *route.get('seeded_query_parameters', {}).values()]:

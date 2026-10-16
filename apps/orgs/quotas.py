@@ -149,7 +149,12 @@ def storage_bytes_used(org) -> int:
 
 
 def usage_state(org) -> dict:
-    """Snapshot for the operator console and the org's own settings page."""
+    """Database-backed usage for the studios page and the operator console.
+
+    Uploaded files are left out on purpose: they cost a stat per file. Callers
+    that show them use :func:`storage_bytes_used` or the coordinator's
+    measurement (``apps.operator.bounded.usage``).
+    """
     caps = limits_for(org)
     return {
         "enforced": bool(caps),
@@ -162,9 +167,6 @@ def usage_state(org) -> dict:
         "reports": report_count(org),
         "max_reports": int(caps.get("max_reports") or 0),
         "max_memory_mb": int(caps.get("max_memory_mb") or 0),
-        # Measured unconditionally, like studios and reports above: the console
-        # shows real usage even where quotas are recorded but not enforced.
-        "storage_mb": round(storage_bytes_used(org) / (1024 * 1024), 1),
         "max_storage_mb": int(caps.get("max_storage_mb") or 0),
         "month": month_start().date().isoformat(),
     }
@@ -242,9 +244,9 @@ def check_upload_allowed(org, incoming_bytes: int, replacing_bytes: int = 0) -> 
     if not cap_mb:
         return ALLOWED
     cap = cap_mb * 1024 * 1024
-    projected = storage_bytes_used(org) - max(0, replacing_bytes) + incoming_bytes
-    if projected > cap:
-        used_mb = (storage_bytes_used(org) - max(0, replacing_bytes)) / (1024 * 1024)
+    used = storage_bytes_used(org) - max(0, replacing_bytes)
+    if used + incoming_bytes > cap:
+        used_mb = used / (1024 * 1024)
         return Decision(
             False,
             f"This organization is limited to {cap_mb} MB of uploaded files and "

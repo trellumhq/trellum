@@ -141,6 +141,7 @@ def test_database_usage_and_failed_save_never_measure_storage(console, org, monk
     def forbidden(*args):
         raise AssertionError("primary render measured uploaded files")
     monkeypatch.setattr(quotas, "storage_bytes_used", forbidden)
+    WorkerHeartbeat.objects.create(worker_id="bounded-coordinator")  # the coordinator measures
     settings.TRELLUM_QUOTAS_ENABLED = True
     path = f"/operator/orgs/{org.slug}/"
     OrgQuota.objects.create(org=org, max_storage_mb=4096, max_reports=77)
