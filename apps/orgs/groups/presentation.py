@@ -9,6 +9,7 @@ from django.core.paginator import Paginator
 from django.db.models import Count, IntegerField, OuterRef, Q, Subquery
 from django.db.models.functions import Coalesce
 
+from apps.core.pagination import paginator_metadata
 from apps.orgs.models import OrgMembership, PermissionGroupGrant, PermissionGroupMembership
 from apps.reports.models import Report, ReportPermissionGrant
 from apps.studios.models import Studio
@@ -63,9 +64,7 @@ def report_choices(studio, query=""):
     return rows.order_by("name", "slug", "pk")
 
 
-def pagination(page):
-    return {"page": page.number, "per_page": page.paginator.per_page,
-            "total": page.paginator.count, "has_previous": page.has_previous(), "has_next": page.has_next()}
+pagination = paginator_metadata
 
 
 def limited(queryset, limit=None):
