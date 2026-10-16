@@ -420,6 +420,19 @@ def test_operations_state_filters_follow_live_state_and_scope(mobile_browser):
     respond = _ops_respond(lambda: ops_reports, lambda: ops_status, css={"ui.css": UI_CSS, "portal.css": PORTAL_CSS, "console-shell.css": CONSOLE_CSS})
 
     page.route("**/*", respond)
+
+    def apply_status(running, queue):
+        # The page polls status every two seconds, so a state applied by hand
+        # is overwritten by whatever the endpoint says next. Serve the state
+        # from the endpoint and drive the real poll until it has been applied.
+        ops_status.clear()
+        ops_status.update({"running": running, "queue": queue})
+        page.evaluate("window.__opsCycle = _opsStatusCycle; _opsScheduleStatusPoll(0)")
+        page.wait_for_function("""expected => _opsStatusCycle > window.__opsCycle && !_opsStatusInFlight
+            && JSON.stringify(Object.keys(window._opsLatestStatus.running || {}).sort()) === JSON.stringify(expected.running)
+            && JSON.stringify((window._opsLatestStatus.queue || []).map(q => q.slug || q)) === JSON.stringify(expected.queue)""",
+            arg={"running": sorted(running), "queue": queue})
+
     try:
         page.goto("http://portal.test/s/acme/analytics/operations", wait_until="load")
         page.locator('[data-ops-row="failed"]').wait_for()
@@ -442,7 +455,7 @@ def test_operations_state_filters_follow_live_state_and_scope(mobile_browser):
         # A hidden previous row must not steal focus from its visible neighbour.
         visible_button = page.locator('[data-ops-row="oom"] .ops-run-dropdown > .ops-row-btn')
         visible_button.focus()
-        page.evaluate("_opsApplyStatus({running:{running:{elapsed_seconds:4}},queue:['queued']},_opsStatusRevision,_opsStatusCycle)")
+        apply_status({"running": {"elapsed_seconds": 4}}, ["queued"])
         assert visible_button.evaluate("el => el === document.activeElement")
 
         page.locator('[data-ops-filter="all"]').click()
@@ -467,21 +480,25 @@ def test_operations_state_filters_follow_live_state_and_scope(mobile_browser):
         failed_row = page.locator('[data-ops-row="failed"]')
         failed_row.evaluate("row => row.nextElementSibling.querySelector('.ops-terminal-body').setAttribute('tabindex','-1')")
         page.locator('[data-ops-row="failed"] + .ops-expand-row .ops-terminal-body').focus()
-        page.evaluate("_opsApplyStatus({running:{failed:{elapsed_seconds:8},running:{elapsed_seconds:4}},queue:['queued']},_opsStatusRevision,_opsStatusCycle)")
+        apply_status({"failed": {"elapsed_seconds": 8}, "running": {"elapsed_seconds": 4}}, ["queued"])
         assert failed_row.is_hidden()
         assert failed_row.evaluate("row => row.nextElementSibling.hidden")
         assert page.locator('[data-ops-filter="error"]').evaluate("el => el === document.activeElement")
         assert count("error") == 2
 
         ops_reports[-1]["build_status"] = "error"
-        page.evaluate("_opsApplyStatus({running:{failed:{elapsed_seconds:8},running:{elapsed_seconds:4}},queue:[]},_opsStatusRevision,_opsStatusCycle)")
+        apply_status({"failed": {"elapsed_seconds": 8}, "running": {"elapsed_seconds": 4}}, [])
         page.wait_for_function("document.querySelector('[data-ops-row=queued] .ops-status-text')?.textContent === 'Failed'")
         assert count("error") == 3
         assert not page.locator('[data-ops-row="queued"]').is_hidden()
 
+        # The failed report finishes successfully. It already left the error
+        # count while running, so errors stay oom, timeout and queued.
         ops_reports[0]["build_status"] = "success"
-        page.evaluate("_opsApplyStatus({running:{running:{elapsed_seconds:4}},queue:[]},_opsStatusRevision,_opsStatusCycle)")
-        page.wait_for_function("document.querySelector('[data-ops-filter=error] .ops-filter-count')?.textContent === '2'")
+        apply_status({"running": {"elapsed_seconds": 4}}, [])
+        page.wait_for_function("document.querySelector('[data-ops-row=failed] .ops-status-text')?.textContent === 'Success'")
+        assert count("error") == 3
+        assert count("ok") == 2
         assert page.locator('[data-ops-row="failed"]').is_hidden()
         assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
     finally:
