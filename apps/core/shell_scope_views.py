@@ -8,6 +8,7 @@ from django.core.exceptions import ValidationError
 from django.http import Http404, HttpResponseNotFound, JsonResponse
 from django.views.decorators.http import require_GET
 
+from apps.core.choice_requests import choice_response
 from apps.core.shell_scope import choice_page, organization_choices, studio_choices
 from apps.orgs.models import Organization
 from apps.studios.models import Studio
@@ -91,9 +92,6 @@ def api_choices(request):
     rows, _ = _rows(request, params)
     result = choice_page(rows, q=params['q'], page=params['page'], selected=params['selected'])
     page = result.page
-    response = JsonResponse({'results': [_item(row) for row in page.object_list],
-        'selected': _item(result.selected) if result.selected else None,
-        'pagination': {'page': page.number, 'pages': page.paginator.num_pages, 'total': page.paginator.count,
-                       'has_next': page.has_next(), 'has_previous': page.has_previous()}})
-    response['Cache-Control'] = 'private, no-store'
-    return response
+    return choice_response(page, _item, selected=result.selected,
+        pagination={'page': page.number, 'pages': page.paginator.num_pages, 'total': page.paginator.count,
+                    'has_next': page.has_next(), 'has_previous': page.has_previous()})

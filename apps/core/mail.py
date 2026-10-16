@@ -340,7 +340,7 @@ def send_report_test_email(recipient: str, *, connection) -> int:
 # and a worker that exits mid-send loses it; the person asks again.
 _BACKGROUND_SLOTS = 8
 _background_slots = threading.BoundedSemaphore(_BACKGROUND_SLOTS)
-_background_threads: "weakref.WeakSet[threading.Thread]" = weakref.WeakSet()
+_background_threads: weakref.WeakSet[threading.Thread] = weakref.WeakSet()
 logger = logging.getLogger(__name__)
 
 

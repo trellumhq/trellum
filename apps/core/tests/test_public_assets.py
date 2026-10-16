@@ -257,13 +257,12 @@ def test_views_that_choose_their_own_cache_policy_keep_it():
         response["Cache-Control"] = "no-store"
         return response
 
-    class Conf:
-        urlpatterns = [path("mine.js", mine, name="mine")]
+    from types import SimpleNamespace
 
     from django.test import RequestFactory
 
     request = RequestFactory().get("/mine.js")
-    request.urlconf = Conf
+    request.urlconf = SimpleNamespace(urlpatterns=[path("mine.js", mine, name="mine")])
     response = PublicAssetMiddleware(lambda r: HttpResponse("normal"))(request)
     assert response.content == b"x" and response["Cache-Control"] == "no-store"
 

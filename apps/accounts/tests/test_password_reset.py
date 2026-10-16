@@ -3,6 +3,7 @@ and never waiting on the mail route."""
 import logging
 import threading
 import time
+from types import SimpleNamespace
 
 import pytest
 from django.core import mail
@@ -23,8 +24,7 @@ def _request(client, email):
     return resp
 
 
-class _FakeRequest:
-    META = {"REMOTE_ADDR": "127.0.0.1"}
+_FakeRequest = SimpleNamespace(META={"REMOTE_ADDR": "127.0.0.1"})
 
 
 class TestThrottle:
@@ -39,8 +39,8 @@ class TestThrottle:
         # The claim is made before any account lookup, so a cooldown never
         # tells an address with an account from one without.
         _request(client, "ghost@nowhere.io")
-        assert throttle.password_reset_allowed("ghost@nowhere.io", _FakeRequest()) is False
-        assert throttle.password_reset_allowed(member.email, _FakeRequest()) is True
+        assert throttle.password_reset_allowed("ghost@nowhere.io", _FakeRequest) is False
+        assert throttle.password_reset_allowed(member.email, _FakeRequest) is True
 
     def test_other_addresses_are_not_held_up(self, client, member, make_user):
         other = make_user("other@demo.example")
@@ -68,9 +68,9 @@ class TestThrottle:
     def test_a_request_over_the_ip_cap_does_not_claim_the_address(self, client, member, settings):
         settings.PASSWORD_RESET_IP_MAX_REQUESTS = 1
         _request(client, "first@nowhere.io")
-        assert throttle.password_reset_allowed(member.email, _FakeRequest()) is False
+        assert throttle.password_reset_allowed(member.email, _FakeRequest) is False
         settings.PASSWORD_RESET_IP_MAX_REQUESTS = 0
-        assert throttle.password_reset_allowed(member.email, _FakeRequest()) is True
+        assert throttle.password_reset_allowed(member.email, _FakeRequest) is True
 
 
 class TestOffTheRequest:

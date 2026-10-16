@@ -22,6 +22,7 @@ from apps.alerts.forms import AlertRuleForm
 from apps.alerts.models import AlertRule, AlertRun
 from apps.core import roles
 from apps.core.audit import audit
+from apps.core.choice_requests import choice_response, search_page, selected_by_id
 from apps.core.form_responses import is_settings_request, settings_success, settings_error
 from apps.core.permissions import require_studio_role
 from apps.core.report_access import visible_reports
@@ -115,13 +116,13 @@ def alerts_page(request, org_slug, studio_slug):  # noqa: ARG001
 @require_studio_role(roles.DEVELOPER)
 @require_http_methods(["GET", "POST"])
 def recipient_choices(request, org_slug, studio_slug):
-    from apps.reports.recipient_choices import recipient_snapshot, page_snapshot
+    from apps.reports.recipient_choices import recipient_page
     from apps.core.choice_requests import choice_request_params
     try:
         parameters = choice_request_params(request)
     except ValueError as exc:
         return JsonResponse({"error": str(exc)}, status=400)
-    response = JsonResponse(page_snapshot(recipient_snapshot(request.studio, include_inactive=True),
+    response = JsonResponse(recipient_page(request.studio, include_inactive=True,
         query=parameters.get('q', ''), page=1,
         selected_people=parameters.get('selected_people', ''), selected_groups=parameters.get('selected_groups', '')))
     response['Cache-Control'] = 'private, no-store'
@@ -133,19 +134,13 @@ def recipient_choices(request, org_slug, studio_slug):
 def report_choices(request, org_slug, studio_slug):
     reports = visible_reports(request.user, Report.objects.filter(studio=request.studio,
         present_in_scan=True, kind=Report.KIND_REPORT)).order_by('name', 'slug', 'pk')
-    query = request.GET.get('q', '')[:200]
-    matches = reports.filter(Q(name__icontains=query) | Q(slug__icontains=query)) if query else reports
-    page = Paginator(matches, 25).get_page(request.GET.get('page'))
+    page = search_page(reports, request.GET.get('q', '')[:200], fields=('name', 'slug'), page=request.GET.get('page'))
+
     def item(report):
         return {'value': str(report.pk), 'label': report.name or report.slug, 'hint': ''}
-    selected_id = request.GET.get('selected', '')
-    selected = reports.filter(pk=selected_id).first() if selected_id.isascii() and selected_id.isdigit() and len(selected_id) < 19 else None
-    response = JsonResponse({'results': [item(report) for report in page],
-        'selected': item(selected) if selected else None,
-        'pagination': {'page': page.number, 'per_page': 25, 'total': page.paginator.count,
-                       'has_previous': page.has_previous(), 'has_next': page.has_next()}})
-    response['Cache-Control'] = 'private, no-store'
-    return response
+    return choice_response(page, item, selected=selected_by_id(reports, request.GET.get('selected', '')),
+        pagination={'page': page.number, 'per_page': 25, 'total': page.paginator.count,
+                    'has_previous': page.has_previous(), 'has_next': page.has_next()})
 
 
 @require_studio_role(roles.DEVELOPER)
