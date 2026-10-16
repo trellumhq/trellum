@@ -87,6 +87,43 @@ class TestListApi:
         body = client.get(f"{prefix}/api/datasources?limit=25").json()
         assert len(body["sources"]) == 25 and body["has_next"]
 
+    def test_a_page_past_the_end_is_empty_not_the_last_page(self, login, viewer, prefix, studio_tree):
+        DataSource.objects.bulk_create(
+            DataSource(studio=studio_tree, name=f"src{i:02d}", type="postgres", config={"host": "h"})
+            for i in range(60)
+        )
+        client = login(viewer)
+        body = client.get(f"{prefix}/api/datasources?page=3").json()
+        assert body == {"sources": [], "total": 60, "page": 3, "has_next": False}
+        body = client.get(f"{prefix}/api/datasources?page=2&limit=30").json()
+        assert len(body["sources"]) == 30 and not body["has_next"]
+        assert client.get(f"{prefix}/api/datasources?page=3&limit=30").json()["sources"] == []
+        assert client.get(f"{prefix}/api/datasources?page=1000000").json()["sources"] == []
+
+    def test_an_empty_studio_has_an_empty_first_page(self, login, viewer, prefix, studio_tree):
+        body = login(viewer).get(f"{prefix}/api/datasources?page=1").json()
+        assert body == {"sources": [], "total": 0, "page": 1, "has_next": False}
+
+    @pytest.mark.parametrize("query", [
+        "page=0", "page=-1", "page=abc", "page=1.5", "page=1000001", "page=99999999999999999999",
+        "page=%D9%A1", "limit=0", "limit=-5", "limit=abc", "limit=201", "limit=1e2", "limit=1&page=x",
+    ])
+    def test_invalid_page_or_limit_is_a_400_like_the_registry(self, query, login, viewer, prefix, studio_tree):
+        response = login(viewer).get(f"{prefix}/api/datasources?{query}")
+        assert response.status_code == 400
+        body = response.json()
+        assert body["ok"] is False and body["error"].startswith("Invalid ") and "sources" not in body
+
+    def test_blank_values_mean_the_defaults_and_the_edges_are_valid(self, login, viewer, prefix, studio_tree):
+        DataSource.objects.bulk_create(
+            DataSource(studio=studio_tree, name=f"src{i:02d}", type="postgres", config={"host": "h"})
+            for i in range(60)
+        )
+        client = login(viewer)
+        assert len(client.get(f"{prefix}/api/datasources?page=&limit=").json()["sources"]) == 50
+        assert len(client.get(f"{prefix}/api/datasources?limit=200").json()["sources"]) == 60
+        assert len(client.get(f"{prefix}/api/datasources?limit=1").json()["sources"]) == 1
+
 
 class TestUpload:
     def test_upload_writes_file(self, login, developer, prefix, file_source, studio_tree):
