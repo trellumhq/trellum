@@ -1,261 +1,84 @@
-"""Closed operator diagnostic observations; never a general job queue."""
+"""Operator figures that keep themselves current, measured only while someone looks.
+
+System health and an organization's uploaded-file usage are too slow to compute
+while a page renders. One ``OpsState`` row per figure (``operator.health``,
+``operator.usage.<org id>``) holds the last result and when somebody last asked
+for it. A page view, or the page's quiet poll, only notes the request. The
+coordinator's ``tick`` re-measures a figure that was asked for in the last two
+minutes and has gone stale, in a child process that is killed at its deadline.
+
+Nothing else is stored: no leases, fences or "in flight" state. A hung check is
+killed, a coordinator restart or ``kill -9`` leaves nothing to recover, and the
+next tick simply measures again. Without a live coordinator the pages compute the
+figures in the request, as they always did.
+"""
 from datetime import timedelta
-import hashlib
 import json
-import secrets
+import logging
+import os
+import signal
+import subprocess
 import sys
-from urllib.parse import urlsplit
-from uuid import UUID, uuid4
 
 from django.conf import settings
-from django.core import signing
 from django.db import transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
-from apps.core.actions import action_payload
 from apps.core.models import OpsState
-from apps.core.workspace import cached_workspace_identity
 
-SLOT = "operator.probe"
-KINDS = {"full-health": (30, 35), "upload-usage": (60, 65)}
-EXPLICIT = frozenset({"full-health", "upload-usage"})
-TERMINAL = frozenset({"succeeded", "failed", "unconfirmed"})
-NONCE_SALT = "operator-probe-v1"
-MIN_GAP = 30  # seconds between admissions of the same kind
+logger = logging.getLogger(__name__)
+
+HEALTH = "operator.health"
+PREFIX = "operator."
+#: Seconds before a figure counts as stale and is measured again.
+REFRESH_AFTER = {"health": 60, "usage": 300}
+#: Seconds a measurement may run before its whole process group is killed.
+TIMEOUT = {"health": 30, "usage": 60}
+#: A request keeps its figure measured for this many seconds.
+LOOKING_FOR = 120
+#: Pages note a request at most this often, so an open page writes rarely.
+NOTE_EVERY = 30
 
 
-class ObservationError(Exception):
-    def __init__(self, message, status=400, *, busy=None, retry_after=None):
-        self.message, self.status = message, status
-        self.busy = busy
-        self.retry_after = retry_after
-        super().__init__(message)
+def usage_key(org_id):
+    return f"{PREFIX}usage.{int(org_id)}"
+
+
+def _kind(key):
+    return key.split(".")[1]
 
 
 def stamp(value):
     try:
         parsed = parse_datetime(value) if isinstance(value, str) else None
-        return parsed if parsed and timezone.is_aware(parsed) else None
     except ValueError:
         return None
-
-
-def _endpoint(value):
-    """A URL fingerprint never includes credentials, query strings or tokens."""
-    try:
-        parsed = urlsplit(str(value or ""))
-        return (parsed.scheme, parsed.hostname)
-    except ValueError:
-        return ("invalid", None)
-
-
-def fingerprint(kind, *, producer=False, workspace=None):
-    import trellum_portal
-
-    values = {
-        "protocol": 1, "kind": kind, "version": trellum_portal.__version__,
-        "sha": settings.TRELLUM_VERSION_SHA,
-        "workspace": cached_workspace_identity() if workspace is None else workspace,
-        "debug": settings.DEBUG, "sandbox": settings.TRELLUM_SANDBOX,
-        "egress": settings.TRELLUM_SANDBOX_EGRESS,
-        "cleanup": settings.CLEANUP_ENABLED,
-    }
-    if producer:
-        values.update({
-            "backend": settings.TRELLUM_STORAGE_BACKEND,
-            "bucket": getattr(settings, "TRELLUM_REPORTS_BUCKET", ""),
-            "endpoint": _endpoint(getattr(settings, "TRELLUM_STORAGE_ENDPOINT_URL", "")),
-            "access_model": getattr(settings, "TRELLUM_REPORT_ACCESS_MODEL", "proxy"),
-            "cdn_endpoint": _endpoint(getattr(settings, "TRELLUM_CDN_BASE_URL", "")),
-            "sandbox_network": settings.TRELLUM_SANDBOX_NETWORK,
-            "backup_path": str(settings.BACKUP_DIR),
-            "backup_age": settings.BACKUP_MAX_AGE_HOURS,
-            "cleanup_age": settings.CLEANUP_MAX_AGE_HOURS,
-        })
-    return hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest()
-
-
-def nonce(actor_id, kind, org_id=None):
-    if kind not in EXPLICIT:
-        raise ValueError("Invalid operator operation")
-    return signing.dumps({"id": str(uuid4()), "actor": actor_id, "kind": kind, "org": org_id}, salt=NONCE_SALT)
-
-
-def _slot():
-    OpsState.objects.get_or_create(key=SLOT, defaults={"ran_at": timezone.now(), "payload": {"version": 1, "active": None, "recent": [], "blocked": None}})
-    return OpsState.objects.select_for_update().get(key=SLOT)
-
-
-def _write(row, payload):
-    if len(json.dumps(payload).encode()) > 32768:
-        raise ObservationError("Diagnostic state exceeds its limit", 503)
-    row.payload, row.ran_at = payload, timezone.now()
-    row.save(update_fields=["payload", "ran_at"])
-
-
-def _coordinator():
-    from apps.runner.models import WorkerHeartbeat
-    return (WorkerHeartbeat.alive()
-            .filter(role__in=(WorkerHeartbeat.ROLE_ALL, WorkerHeartbeat.ROLE_COORDINATOR))
-            .order_by("-last_beat_at", "pk").values_list("worker_id", flat=True).first())
+    return parsed if parsed and timezone.is_aware(parsed) else None
 
 
 def available():
-    """Can a measurement be admitted at all: a live Linux coordinator exists."""
-    return sys.platform == "linux" and bool(_coordinator())
+    """Is a live coordinator there to measure? Otherwise pages compute in the request."""
+    from apps.runner.models import WorkerHeartbeat
+
+    return WorkerHeartbeat.alive().filter(
+        role__in=(WorkerHeartbeat.ROLE_ALL, WorkerHeartbeat.ROLE_COORDINATOR)).exists()
 
 
-def has_work():
-    """Cheap unlocked read: is a measurement waiting, running or blocking?"""
-    row = OpsState.objects.filter(key=SLOT).values("payload").first()
-    payload = row["payload"] if row else {}
-    active = payload.get("active")
-    return bool(payload.get("blocked") or (active and active["state"] not in TERMINAL))
+def snapshot(payload, now=None):
+    """The last result with its age, as pages show it; ``{}`` before any attempt.
 
-
-def _refusal(payload, kind, now):
-    """Why admitting ``kind`` would be refused right now, or None. Pure; admits nothing."""
-    active = payload.get("active")
-    if active and active["state"] not in TERMINAL:
-        return ObservationError("Another diagnostic measurement is in progress.", 409,
-                                busy={name: active.get(name) for name in ("id", "kind", "org_id", "state")})
-    if payload.get("blocked"):
-        return ObservationError("Previous measurement termination is unconfirmed. Check the coordinator.", 503)
-    # The gap is per kind: a System health visit must not hold back the
-    # uploaded-files measurement of an organization page, or the reverse.
-    last = stamp((payload.get("admitted") or {}).get(kind))
-    if last and now - last < timedelta(seconds=MIN_GAP):
-        return ObservationError("Wait thirty seconds between diagnostic measurements.", 429,
-                                retry_after=max(1, int(MIN_GAP - (now - last).total_seconds()) + 1))
-    if not available():
-        return ObservationError("A supported live coordinator is required.", 503)
-    return None
-
-
-def admit(actor_id, kind, key, *, org_id=None):
-    if kind not in EXPLICIT:
-        raise ObservationError("Invalid diagnostic operation")
-    if not isinstance(key, str) or len(key) > 1024:
-        raise ObservationError("Invalid refresh request")
-    try:
-        signed = signing.loads(key, salt=NONCE_SALT, max_age=300)
-        operation_id = str(UUID(signed["id"]))
-    except (signing.BadSignature, TypeError, ValueError, KeyError):
-        raise ObservationError("Refresh request expired or is invalid. Reload before refreshing.") from None
-    if signed != {"id": operation_id, "actor": actor_id, "kind": kind, "org": org_id}:
-        raise ObservationError("Invalid diagnostic scope")
-    now = timezone.now()
-    with transaction.atomic():
-        row = _slot()
-        payload = row.payload
-        for entry in payload.get("recent", []):
-            if entry["id"] == operation_id:
-                return entry, False
-        refused = _refusal(payload, kind, now)
-        if refused:
-            raise refused
-        node = _coordinator()
-        workspace = cached_workspace_identity()
-        if kind == "upload-usage" and not workspace:
-            raise ObservationError("Shared workspace identity is unavailable.", 503)
-        entry = {
-            "id": operation_id, "kind": kind, "org_id": org_id, "actor_id": actor_id,
-            "state": "accepted", "message": "Measurement accepted.",
-            "requested_at": now.isoformat(), "workspace_id": workspace,
-            "request_fingerprint": fingerprint(kind), "producer_node": node,
-            "lease_until": (now + timedelta(seconds=KINDS[kind][1] + 10)).isoformat(),
-        }
-        payload.update(active=entry, recent=([entry.copy()] + payload.get("recent", []))[:16],
-                       admitted={**(payload.get("admitted") or {}), kind: now.isoformat()})
-        _write(row, payload)
-        return entry.copy(), True
-
-
-def preflight(actor_id, kind, status_url, *, org_id=None):
-    """What an admission would do right now, answered as an ordinary 200.
-
-    The page asks before it posts, so a measurement that is running or just
-    finished is a quiet wait rather than a refused request in the console.
+    ``failed`` says the latest attempt did not produce a result, so what is
+    shown (possibly nothing) is older than the coordinator wanted.
     """
-    row = OpsState.objects.filter(key=SLOT).values("payload").first()
-    refused = _refusal(row["payload"] if row else {}, kind, timezone.now())
-    if refused is None:
-        return {"ok": True, "ready": True, "snapshot": snapshot(kind, org_id), "next_nonce": nonce(actor_id, kind, org_id)}
-    return {**refusal(refused, actor_id, kind, status_url, org_id=org_id), "ok": True, "ready": False, "status": refused.status}
-
-
-def observation(operation_id, *, kind, org_id=None):
-    row = OpsState.objects.filter(key=SLOT).values("payload").first()
-    if row:
-        candidates = [row["payload"].get("active"), *row["payload"].get("recent", [])]
-        for entry in candidates:
-            if entry and entry["id"] == str(operation_id) and entry["kind"] == kind and entry.get("org_id") == org_id:
-                result = entry.copy()
-                expiry = stamp(result.get("lease_until"))
-                if result["state"] not in TERMINAL and expiry and expiry <= timezone.now():
-                    result.update(state="unconfirmed", message="Measurement deadline passed; its outcome is unconfirmed.")
-                if result.get("request_fingerprint") != fingerprint(kind):
-                    result.update(state="unconfirmed", message="Request context changed. This observation is historical.")
-                return result
-    raise ObservationError("Diagnostic observation has retired or is unavailable.", 404)
-
-
-def current_operation(kind, org_id=None):
-    row = OpsState.objects.filter(key=SLOT).values("payload").first()
-    entry = row and row["payload"].get("active")
-    if entry and entry["kind"] == kind and entry.get("org_id") == org_id and entry["state"] not in TERMINAL:
-        return observation(entry["id"], kind=kind, org_id=org_id)
-    return None
-
-
-def envelope(entry, status_url):
-    return action_payload(action_id=entry["id"], state=entry["state"], message=entry["message"], status_url=status_url)
-
-
-def refusal(exc, actor_id, kind, status_url, *, org_id=None):
-    """JSON body for a refused admission or lookup.
-
-    Carries everything the page needs to carry on by itself: the latest
-    snapshot, a fresh admission key, how long to wait, and, when another
-    measurement is running, where to watch it.
-    """
-    busy = None
-    if exc.busy:
-        busy = dict(exc.busy)
-        # Only a measurement of this page's own kind can be watched from it.
-        if busy.get("id") and busy.get("kind") == kind and busy.get("org_id") == org_id:
-            busy["status_url"] = status_url(busy["id"])
-    return {"ok": False, "message": exc.message, "busy": busy, "retry_after": exc.retry_after,
-            "snapshot": snapshot(kind, org_id), "next_nonce": nonce(actor_id, kind, org_id)}
-
-
-def snapshot_key(kind, org_id=None):
-    if kind == "upload-usage":
-        return f"operator.usage.{int(org_id)}"
-    return "operator.health"
-
-
-def snapshot(kind, org_id=None):
-    row = OpsState.objects.filter(key=snapshot_key(kind, org_id)).values("payload").first()
-    if not row:
-        return {"state": "unknown", "message": "No completed observation."}
-    result = row["payload"].copy()
-    completed = stamp(result.get("completed_at"))
-    fresh = completed and timezone.now() - completed <= timedelta(seconds=300)
-    if kind == "upload-usage" and (not cached_workspace_identity() or result.get("workspace_id") != cached_workspace_identity()):
-        return {"state": "unknown", "message": "Observation belongs to another or unavailable workspace."}
-    if result.get("quality", "complete") != "complete":
-        # Nothing to show yet: a partial measurement is neither a figure nor an age.
-        return {"state": "partial", "quality": result["quality"], "reason": result.get("reason", ""),
-                "message": "Measurement incomplete; still measuring."}
-    result["state"] = "observed" if fresh else "stale"
-    result["message"] = "Last observed" if fresh else "Last observation is stale"
-    if completed:
-        # Seconds, so the page can show "2 minutes ago" without trusting the
-        # browser clock to agree with the server's.
-        result["age_seconds"] = max(0, int((timezone.now() - completed).total_seconds()))
-    return result
+    now = now or timezone.now()
+    done, tried = stamp(payload.get("completed_at")), stamp(payload.get("attempted_at"))
+    failed = bool(tried and (not done or tried > done))
+    result = payload.get("result")
+    if not done or not isinstance(result, dict):
+        return {"failed": failed}
+    return {**result, "completed_at": done.isoformat(), "failed": failed,
+            "age_seconds": max(0, int((now - done).total_seconds()))}
 
 
 def age_text(seconds):
@@ -272,150 +95,120 @@ def age_text(seconds):
             return f"{count} {unit}{'' if count == 1 else 's'} ago"
 
 
-def _remember(payload, entry):
-    if entry["kind"] in EXPLICIT:
-        compact = {key: entry.get(key) for key in (
-            "id", "kind", "org_id", "actor_id", "state", "message", "requested_at", "request_fingerprint",
-        )}
-        payload["recent"] = [compact if item["id"] == entry["id"] else item for item in payload.get("recent", [])][:16]
+def note(key):
+    """Record that someone is looking at ``key``; returns the row's payload.
+
+    Writes at most once per ``NOTE_EVERY`` seconds. The row is locked while it
+    is updated so a result stored at the same moment is never overwritten.
+    """
+    now = timezone.now()
+    row = OpsState.objects.filter(key=key).only("payload").first()
+    payload = row.payload if row else {}
+    seen = stamp(payload.get("requested_at"))
+    if seen and now - seen < timedelta(seconds=NOTE_EVERY):
+        return payload
+    with transaction.atomic():
+        row, _ = OpsState.objects.select_for_update().get_or_create(key=key, defaults={"ran_at": now})
+        row.payload = payload = {**row.payload, "requested_at": now.isoformat()}
+        row.ran_at = now
+        row.save(update_fields=["payload", "ran_at"])
+    return payload
 
 
-def claim(node, epoch):
-    """Start the measurement an operator asked for. Nothing is ever measured unprompted."""
+def poll(key):
+    """What a page shows for ``key``, noting that someone is looking."""
+    return snapshot(note(key))
+
+
+def due(key, payload, now):
+    refresh = REFRESH_AFTER.get(_kind(key))
+    asked, tried = stamp(payload.get("requested_at")), stamp(payload.get("attempted_at"))
+    if not refresh or not asked or now - asked > timedelta(seconds=LOOKING_FOR):
+        return False
+    return tried is None or now - tried >= timedelta(seconds=refresh)
+
+
+def run_bounded(argv, timeout):
+    """Standard output of ``argv`` if it exits 0 within ``timeout`` seconds, else ``None``.
+
+    The child leads its own session, so on timeout the whole process group
+    (docker, git and the like included) is killed. Nothing waits on a process
+    that will not die, e.g. one stuck in uninterruptible I/O.
+    """
+    process = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True)
+    try:
+        output, _ = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        try:
+            process.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            logger.error("Operator measurement ignored SIGKILL; leaving it behind")
+        return None
+    return output if process.returncode == 0 else None
+
+
+def _clean(kind, output):
+    """The child's one JSON line reduced to the figures a page shows, or ``None``."""
+    try:
+        data = json.loads(output.decode().strip().splitlines()[-1])
+    except (AttributeError, IndexError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    if kind == "usage":
+        used = data.get("bytes")
+        return {"bytes": used} if type(used) is int and used >= 0 else None
+    checks = data.get("checks")
+    if not isinstance(checks, list) or len(checks) > 32:
+        return None
+    for check in checks:
+        if (not isinstance(check, dict) or type(check.get("ok")) is not bool
+                or not isinstance(check.get("label"), str) or len(check["label"]) > 80
+                or not isinstance(check.get("detail"), str) or len(check["detail"]) > 1024):
+            return None
+    return {"checks": [{name: check[name] for name in ("label", "ok", "detail")} for check in checks]}
+
+
+def measure(key):
+    """Measure ``key`` once in a child process and store the outcome."""
+    kind = _kind(key)
+    argv = [sys.executable, str(settings.BASE_DIR / "manage.py"), "operator_measure", *key.split(".")[1:]]
+    output = run_bounded(argv, TIMEOUT[kind])
+    result = _clean(kind, output) if output is not None else None
+    if result is None:
+        logger.warning("Operator measurement %s did not complete", key)
     now = timezone.now()
     with transaction.atomic():
-        row = _slot()
-        payload = row.payload
-        entry = payload.get("active")
-        if payload.get("blocked") or not entry or entry["state"] in TERMINAL:
-            return None
-        if entry["producer_node"] != node or entry["state"] == "running":
-            return None
-        if stamp(entry["lease_until"]) <= now:
-            entry.update(state="unconfirmed", message="Measurement was not started before its deadline.")
-            _remember(payload, entry)
-            _write(row, payload)
-            return None
-        kind = entry["kind"]
-        if kind == "upload-usage" and entry["workspace_id"] != cached_workspace_identity():
-            entry.update(state="failed", message="Coordinator has a different or unavailable workspace.")
-            payload["active"] = entry
-            _remember(payload, entry)
-            _write(row, payload)
-            return None
-        entry.update(state="running", message="Measurement running.", lease_token=secrets.token_hex(16),
-                     producer_epoch=epoch, producer_fingerprint=fingerprint(kind, producer=True),
-                     producer_workspace_id=cached_workspace_identity(),
-                     started_at=now.isoformat(), deadline_at=(now + timedelta(seconds=KINDS[kind][0])).isoformat(),
-                     lease_until=(now + timedelta(seconds=KINDS[kind][1])).isoformat())
-        payload["active"] = entry
-        _remember(payload, entry)
-        _write(row, payload)
-        return entry.copy()
-
-
-def fence(entry):
-    return tuple(entry.get(key) for key in ("id", "lease_token", "producer_epoch", "workspace_id", "producer_workspace_id", "producer_fingerprint"))
-
-
-def child_started(entry, proof):
-    with transaction.atomic():
-        row = _slot()
-        active = row.payload.get("active")
-        if active and fence(active) == fence(entry) and active["state"] == "running":
-            active["child"] = proof
-            _write(row, row.payload)
-
-
-def finish(entry, *, result=None, state="unconfirmed", message="Measurement outcome is unconfirmed.", terminated=True):
-    now = timezone.now()
-    partial = False
-    with transaction.atomic():
-        row = _slot()
-        active = row.payload.get("active")
-        if not active or fence(active) != fence(entry) or active["state"] != "running":
-            return False
+        row = OpsState.objects.select_for_update().filter(key=key).first()
+        if row is None:
+            return
+        row.payload = {**row.payload, "attempted_at": now.isoformat()}
         if result is not None:
-            limit = 8192 if entry["kind"] == "upload-usage" else 65536
-            if (stamp(active["lease_until"]) <= now or result.get("producer_fingerprint") != entry["producer_fingerprint"]
-                    or fingerprint(entry["kind"], producer=True) != entry["producer_fingerprint"]
-                    or len(json.dumps(result).encode()) > limit or not terminated):
-                result = None
-            elif (result.get("version") != 1 or result.get("kind") != entry["kind"]
-                  or result.get("workspace_id") != entry["producer_workspace_id"]):
-                result = None
-                state, message = "failed", "Measurement returned an invalid scope."
-            elif entry["kind"] != "upload-usage" and (
-                    not isinstance(result.get("checks"), list) or len(result["checks"]) > 32
-                    or any(not isinstance(check, dict) or not isinstance(check.get("ok"), bool)
-                           or not isinstance(check.get("label"), str) or len(check["label"]) > 80
-                           or not isinstance(check.get("detail"), str) or len(check["detail"]) > 1024
-                           for check in result["checks"])):
-                result = None
-                state, message = "failed", "Measurement returned invalid check data."
-            elif entry["kind"] == "upload-usage":
-                progress = {name: result.get(name, 0) for name in ("inspected", "total_candidates", "metadata_calls", "missing")}
-                if any(type(value) is not int or value < 0 for value in progress.values()):
-                    result = None
-                    state, message = "failed", "Storage measurement returned invalid progress."
-                else:
-                    active["progress"] = progress
-                    scoped = result.get("workspace_id") == entry["workspace_id"]
-                    if scoped and result.get("quality") == "complete" and type(result.get("bytes")) is int and result["bytes"] >= 0:
-                        pass
-                    elif scoped and result.get("quality") in ("incomplete", "partial"):
-                        # Remembered as partial, never as a total: the page shows it as
-                        # still measuring, and a complete earlier total is left alone.
-                        partial = True
-                        result = {name: result.get(name) for name in (
-                            "version", "kind", "scope", "workspace_id", "producer_fingerprint", "reason",
-                            "inspected", "total_candidates", "metadata_calls", "missing")}
-                        result["quality"] = "partial"
-                    else:
-                        result = None
-                        state, message = "failed", "Storage measurement is incomplete; the previous total is retained."
-        if result is not None:
-            result.update(id=entry["id"], completed_at=now.isoformat(), producer_node=entry["producer_node"], request_fingerprint=entry["request_fingerprint"])
-            key = snapshot_key(entry["kind"], entry.get("org_id"))
-            if partial:
-                earlier = OpsState.objects.filter(key=key).values("payload").first()
-                if not earlier or earlier["payload"].get("quality") != "complete":
-                    OpsState.objects.update_or_create(key=key, defaults={"ran_at": now, "ok": False, "payload": result})
-                state, message = "failed", "Storage measurement is incomplete; the previous total is retained."
-            else:
-                OpsState.objects.update_or_create(key=key, defaults={"ran_at": now, "ok": True, "payload": result})
-                state, message = "succeeded", "Measurement completed."
-        active.update(state=state, message=message)
-        if not terminated:
-            row.payload["blocked"] = active.get("child") or {"unknown": True}
-        _remember(row.payload, active)
-        _write(row, row.payload)
-        return True
+            row.payload.update(completed_at=now.isoformat(), result=result)
+        row.ok, row.ran_at = result is not None, now
+        row.save(update_fields=["payload", "ok", "ran_at"])
 
 
-def recover(node, termination_known):
-    """Background-only recovery. Expired leases cannot prove OS termination."""
-    with transaction.atomic():
-        row = _slot()
-        payload = row.payload
-        blocked = payload.get("blocked")
-        if blocked:
-            if termination_known(blocked):
-                payload["blocked"] = None
-                _write(row, payload)
-            return
-        active = payload.get("active")
-        if not active or active["state"] in TERMINAL:
-            return
-        if active["producer_node"] == node and active["state"] == "accepted":
-            return
-        if stamp(active["lease_until"]) > timezone.now():
-            return
-        was_running = active["state"] == "running"
-        active.update(state="unconfirmed", message="Coordinator changed or measurement expired. It will not be replayed.")
-        if active.get("child") and not termination_known(active["child"]):
-            payload["blocked"] = active["child"]
-        elif was_running and not active.get("child"):
-            payload["blocked"] = {"unknown": True}
-        _remember(payload, active)
-        _write(row, payload)
+def tick():
+    """Coordinator job: measure the one figure that is due. Idle, it is a single SELECT.
+
+    Only rows touched in the last two minutes are looked at, and one
+    measurement runs per tick; the next tick takes the next due figure. Returns
+    the key it measured. Never raises: a broken measurement must not take the
+    coordinator's other jobs down with it.
+    """
+    try:
+        now = timezone.now()
+        rows = list(OpsState.objects.filter(
+            key__startswith=PREFIX, ran_at__gte=now - timedelta(seconds=LOOKING_FOR),
+        ).order_by("key").values_list("key", "payload"))
+        for key, payload in rows:
+            if due(key, payload, now):
+                measure(key)
+                return key
+    except Exception:
+        logger.exception("Operator measurements unavailable")

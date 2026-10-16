@@ -15,10 +15,8 @@ from django.db import connection, connections
 from playwright.sync_api import expect, sync_playwright
 
 from apps.core import operator_observations as observations
-from apps.core.models import AuditLog, OpsState
+from apps.core.models import AuditLog
 from apps.core.tests.browser_login import sign_in
-from apps.core.operator_probe_worker import ProbeSupervisor
-from apps.core.tests.test_operator_probe_process import probe_process_env
 from apps.datasources.models import DataSource
 from apps.orgs.models import Organization, OrgMembership, OrgQuota
 from apps.runner.models import WorkerHeartbeat
@@ -39,7 +37,7 @@ def in_thread(function):
 
 
 @pytest.fixture
-def console_data(probe_process_env, settings):
+def console_data(operator_child, settings):
     assert connection.vendor == "postgresql", "operator browser gate requires disposable PostgreSQL"
     settings.TRELLUM_IMPERSONATION_ENABLED = True
     operator = get_user_model().objects.create_user(
@@ -60,6 +58,7 @@ def console_data(probe_process_env, settings):
     WorkerHeartbeat.objects.bulk_create([
         WorkerHeartbeat(worker_id=f"browser-worker-{i:03}", role="runner") for i in range(100)
     ])
+    WorkerHeartbeat.objects.create(worker_id="browser-coordinator", role="coordinator")  # measures uploads
     target.datasources_dir.mkdir(parents=True)
     (target.datasources_dir / "file.csv").write_bytes(b"x" * 2 * 1048576)
     DataSource.objects.create(org=target, name="file", type="file", config={"upload": True, "path": "file.csv"})
@@ -67,26 +66,15 @@ def console_data(probe_process_env, settings):
 
 
 def test_operator_pages_keep_their_layout_and_measure_uploads_by_themselves(
-    console_data, probe_process_env, live_server, settings, tmp_path,
+    console_data, live_server, settings, tmp_path,
 ):
     operator, org = console_data
     host = live_server.url
     artifacts = Path(os.environ.get("OPERATOR_BROWSER_ARTIFACTS", tmp_path))
 
     def measure():
-        ProbeSupervisor(probe_process_env).tick()
-
-    def waiting_for_the_coordinator():
-        row = OpsState.objects.filter(key=observations.SLOT).first()
-        active = row and row.payload.get("active")
-        return bool(active and active["kind"] == "upload-usage" and active["state"] == "accepted")
-
-    def admitted(page):
-        for _ in range(150):
-            if in_thread(waiting_for_the_coordinator):
-                return
-            page.wait_for_timeout(100)
-        raise AssertionError("the page did not ask for a measurement by itself")
+        """The coordinator's tick, driven by the test: no worker process runs beside the live server."""
+        return observations.tick()
 
     def no_controls(page):
         # The tables carry no search box, filter, pager or apply button.
@@ -131,11 +119,11 @@ def test_operator_pages_keep_their_layout_and_measure_uploads_by_themselves(
         expect(page.get_by_text("browser-person-099@portal.local", exact=True)).to_be_visible()
         no_controls(page)
         usage = page.locator("[data-settings-refresh=quota-usage]")
-        expect(page.get_by_role("button", name="Measure uploaded files")).to_have_count(0)
-        expect(page.get_by_role("link", name="Read latest observation")).to_have_count(0)
+        expect(usage.get_by_role("button")).to_have_count(0)
+        expect(usage.locator("[data-observation-value]")).to_have_text("—")
         expect(usage.locator("[data-observation-status]")).to_have_text("· measuring…")
-        admitted(page)
-        in_thread(measure)
+        # The page asked by being open; the coordinator's tick measures, the page picks it up.
+        assert in_thread(measure) == observations.usage_key(org.pk)
         expect(usage.locator("[data-observation-value]")).to_have_text("2.0 MB", timeout=15000)
         expect(usage.locator("[data-observation-status]")).to_have_text("· measured just now")
         assert "Storage has not been measured" not in page.content()
@@ -150,7 +138,7 @@ def test_operator_pages_keep_their_layout_and_measure_uploads_by_themselves(
         expect(usage.locator("[data-observation-value]")).to_have_text("2.0 MB")
         page.wait_for_timeout(1500)
         assert in_thread(lambda: OrgQuota.objects.get(org_id=org.pk).max_concurrent_runs) == 7
-        assert in_thread(lambda: AuditLog.objects.filter(action="operator.usage.refresh", org_id=org.pk).count()) == 1
+        assert in_thread(lambda: AuditLog.objects.filter(action__startswith="operator.usage").count()) == 0
         assert in_thread(lambda: AuditLog.objects.filter(action="operator.org.quota", org_id=org.pk).count()) == 1
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
         page.screenshot(path=str(artifacts / "sys-operator-org-detail-1440.png"), full_page=True)

@@ -30,14 +30,17 @@ class TestAuditViewer:
 
 
 def _complete_diagnostics(checks):
-    """Store the completed coordinator measurement that /system displays."""
+    """A live coordinator and the completed measurement that /system displays."""
     from django.utils import timezone
 
     from apps.core.models import OpsState
+    from apps.runner.models import WorkerHeartbeat
 
+    WorkerHeartbeat.objects.get_or_create(worker_id="coord-test")
+    now = timezone.now().isoformat()
     OpsState.objects.update_or_create(key="operator.health", defaults={
         "ran_at": timezone.now(), "ok": True,
-        "payload": {"checks": checks, "completed_at": timezone.now().isoformat(), "producer_node": "coord-test"},
+        "payload": {"result": {"checks": checks}, "completed_at": now, "attempted_at": now},
     })
 
 
@@ -50,15 +53,14 @@ class TestSystemPage:
         html = login(superuser).get("/system").content.decode()
         assert "local-probe" in html and "ran here" in html
         assert "Running the first check" not in html
-        assert "data-operator-observation" not in html  # no live coordinator to ask
+        assert "data-operator-observation" not in html  # no live coordinator to poll
 
     def test_health_shows_without_buttons_and_in_plain_time(self, login, superuser):
         _complete_diagnostics([{"label": "database", "ok": True, "detail": "PostgreSQL 16"}])
         html = login(superuser).get("/system").content.decode()
         assert "PostgreSQL 16" in html
         assert "Checked just now" in html
-        assert "Refresh coordinator diagnostics" not in html
-        assert "Read latest observation" not in html
+        assert "request_key" not in html and "Refresh" not in html and "Retry" not in html
         # The raw timestamp is data for the page's script, never text to read.
         assert "Observed" not in html
 
