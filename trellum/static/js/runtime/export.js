@@ -7,15 +7,19 @@
     var _exportGlobals = {html2canvas: function() { return typeof html2canvas === 'function'; },
         jspdf: function() { return typeof jspdf !== 'undefined' && !!jspdf.jsPDF; }};
     var _exportLoads = {};
+    // What the person is told when a library cannot load (offline, `_vendor` missing).
+    var _exportLibErrors = {
+        html2canvas: 'Image capture is unavailable because the capture library did not load.',
+        jspdf: 'PDF export is unavailable because the PDF library did not load.'};
     function _fwLoadExportLib(name) {
         if (_exportGlobals[name]()) return Promise.resolve();
         var url = (window._fwVendor || {})[name];
-        if (!url) return Promise.reject(new Error('Image capture is unavailable because the capture library did not load.'));
+        if (!url) return Promise.reject(new Error(_exportLibErrors[name]));
         if (!_exportLoads[name]) _exportLoads[name] = new Promise(function(resolve, reject) {
             var tag = document.createElement('script');
             tag.src = url;
             tag.onload = resolve;
-            tag.onerror = function() { delete _exportLoads[name]; tag.remove(); reject(new Error('Image capture is unavailable because the capture library did not load.')); };
+            tag.onerror = function() { delete _exportLoads[name]; tag.remove(); reject(new Error(_exportLibErrors[name])); };
             document.head.appendChild(tag);
         });
         return _exportLoads[name];
@@ -31,6 +35,7 @@
         }).catch(function(err) {
             if (btnLoad) btnLoad.classList.remove('running');
             console.error('Export failed:', err);
+            _analysisMessage(err && err.message ? err.message : 'Export failed.', true);
         });
     }
 
@@ -65,6 +70,7 @@
             hidden.forEach(function(h) { h.el.style.display = h.prev; });
             if (btn) btn.classList.remove('running');
             console.error('Export failed:', err);
+            _analysisMessage('The report could not be captured.', true);
         });
     }
 

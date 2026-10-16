@@ -1809,6 +1809,28 @@ class TestAnalysisCapture:
         assert result == {"ok": False, "message": "render broke", "target": True,
                           "selectable": None, "controls": None, "tabIndex": None}
 
+    @pytest.mark.parametrize("fmt,vendor,message", [
+        ("png", "{}", "Image capture is unavailable because the capture library did not load."),
+        ("pdf", "{html2canvas: 'x', jspdf: 'http://127.0.0.1:9/jspdf.js'}",
+         "PDF export is unavailable because the PDF library did not load."),
+    ])
+    def test_missing_export_library_is_a_visible_message(self, capture_page, fmt, vendor, message):
+        """Offline or without `_vendor`, the person is told instead of seeing nothing happen."""
+        result = capture_page.evaluate("""async ([fmt, vendor]) => {
+            document.body.innerHTML = '<div class="fw-container"><p>Report</p></div><button id="fwExportBtn"></button>';
+            window._fwVendor = eval('(' + vendor + ')');
+            // The capture library is present for a PDF; only the PDF library is missing.
+            if (fmt === 'pdf') window.html2canvas = () => Promise.reject(new Error('must not capture'));
+            else delete window.html2canvas;
+            delete window.jspdf;
+            fw[fmt === 'png' ? 'exportPNG' : 'exportPDF']();
+            for (var i = 0; i < 100 && !document.querySelector('.fw-analysis-error span'); i++)
+                await new Promise(resolve => setTimeout(resolve, 50));
+            return {message: document.querySelector('.fw-analysis-error span')?.textContent || '',
+                    running: document.getElementById('fwExportBtn').classList.contains('running')};
+        }""", [fmt, vendor])
+        assert result == {"message": message, "running": False}
+
     def test_header_exposes_capture_action_only_for_reports(self, capture_page):
         capture_page.evaluate("""() => {
             document.body.setAttribute('data-content-kind', 'analysis');
