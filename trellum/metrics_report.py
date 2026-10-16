@@ -118,7 +118,7 @@ class MetricsReport(BaseReport):
 
         bound.sort(key=lambda m: ((m.tags[0] if m.tags else "Other").casefold(),
                                   (m.label or m.name).casefold(), m.name))
-        from trellum.metrics_workspace import BLOCKS, CONTROLS, PAGE_SIZE
+        from trellum.metrics_workspace import BLOCKS, CONTROLS, PAGE_SIZE, page_count
         ctx._metric_workspace_catalog = [
             {'name': m.name, 'anchor': f'metric-{m.name}', 'label': m.label or m.name,
              'category': m.tags[0] if m.tags else 'Other', 'page': index // PAGE_SIZE + 1,
@@ -135,17 +135,17 @@ class MetricsReport(BaseReport):
 
         bound_names = {metric.name for metric in bound}
         rest = [m for m in reg.metrics.values() if m.name not in bound_names]
-        ctx._metric_workspace_definitions = []
         if rest:
             unmonitored = _not_monitored(rest)
-            ctx._metric_workspace_definitions = unmonitored.to_dict('records')
             ctx.add_section('', [_MetricsDefinitions(unmonitored,
                 title='Bind these to a dataset in metrics.yaml to monitor them here',
                 max_rows=len(unmonitored), static=True, sortable=True)])
+            # The definitions table lives once, on the last page.
+            last_page = page_count(len(bound))
             ctx._metric_workspace_catalog.extend(
                 {'name': m.name, 'anchor': f'definition-{m.name}', 'label': m.label or m.name,
-                 'category': m.tags[0] if m.tags else 'Other', 'page': index // PAGE_SIZE + 1,
-                 'monitored': False} for index, m in enumerate(rest))
+                 'category': m.tags[0] if m.tags else 'Other', 'page': last_page,
+                 'monitored': False} for m in rest)
 
     def _date_range(self, ctx, datasets, by_ds, frames) -> None:
         """One untitled section: every DataSource, and the page's single

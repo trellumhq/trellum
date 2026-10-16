@@ -77,3 +77,52 @@ def test_usage_sparks_and_charts_show_without_any_button(live_server, login, stu
             assert not errors
         finally:
             browser.close()
+
+
+def test_every_claiming_report_is_inline_and_only_a_huge_list_gets_server_search(live_server, login, studio, org_admin, monkeypatch):
+    from playwright.sync_api import expect, sync_playwright
+
+    # The inline limit is 500; shrink it so a handful of claims crosses it.
+    monkeypatch.setattr("apps.reports.metric_summaries.INLINE_LIMIT", 3)
+    MetricCatalogState.objects.create(studio=studio, definition_revision=3)
+    busy, quiet = [MetricDefinition.objects.create(
+        studio=studio, name=name, label=name.title(), definition_hash="h", version=1, agg="sum", column="x",
+        binding={"dataset": "daily"}, description="Synthetic metric.") for name in ("busy", "quiet")]
+    for index, name in enumerate(("alpha", "bravo", "charlie", "delta", "echo")):
+        summary = _indexed(studio, name)
+        ReportMetricClaim.objects.create(summary=summary, metric_name=busy.name, definition_hash="h", version=1)
+        if index < 2:
+            ReportMetricClaim.objects.create(summary=summary, metric_name=quiet.name, definition_hash="h", version=1)
+
+    client = login(org_admin)
+    base = f"/s/{studio.org.slug}/{studio.slug}"
+    client.get(base + "/")
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        try:
+            context = browser.new_context(viewport={"width": 1440, "height": 900})
+            context.add_cookies([{"name": name, "value": cookie.value, "url": live_server.url}
+                                 for name, cookie in client.cookies.items()])
+            page = context.new_page()
+            page.goto(live_server.url + base + "/metrics", wait_until="domcontentloaded")
+            quiet_card = page.locator('.met-card[data-metric="quiet"]')
+            expect(quiet_card.locator("[data-metric-usage] > b")).to_have_text("2 reports")
+            # Within the limit: every claiming report inline, no link to anywhere else.
+            expect(quiet_card.locator("details.met-expand tr").filter(has_text="open report")).to_have_count(2)
+            assert quiet_card.get_by_role("link", name="indexed claims").count() == 0
+            busy_card = page.locator('.met-card[data-metric="busy"]')
+            expect(busy_card.locator("[data-metric-usage] > b")).to_have_text("5 reports")
+            expect(busy_card.locator("details.met-expand tr").filter(has_text="open report")).to_have_count(3)
+            busy_card.locator("details.met-expand summary").click()
+            busy_card.get_by_role("link", name="All 5 indexed claims →").click()
+            page.wait_for_url("**/claims?*")
+            expect(page.locator("tbody tr")).to_have_count(3)
+            for name in ("Previous", "Next", "Search", "Reload Metrics definitions"):
+                assert page.get_by_role("button", name=name).count() == 0 and page.get_by_role("link", name=name).count() == 0
+            # Search as you type narrows on the server; no button to press.
+            page.get_by_role("searchbox").fill("echo")
+            expect(page.locator("tbody tr")).to_have_count(1)
+            expect(page.locator("tbody")).to_contain_text("Echo")
+            assert "q=echo" in page.url
+        finally:
+            browser.close()
