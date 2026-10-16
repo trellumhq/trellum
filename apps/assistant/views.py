@@ -40,6 +40,7 @@ from apps.core import roles
 from apps.core.audit import audit
 from apps.core.http import json_body
 from apps.core.permissions import require_studio_role
+from apps.core.public_assets import public_asset
 from apps.core.report_access import can_view_report, raw_scope_reports, selected_report_access_block_reason
 from apps.core.request_access import request_org_access
 
@@ -68,6 +69,7 @@ def _widget_bundle() -> str:
         return _WIDGET_CACHE
 
 
+@public_asset
 def widget_js(request):  # noqa: ARG001
     # No auth: static code; every API call it makes is auth-gated.
     return HttpResponse(_widget_bundle(), content_type="application/javascript")

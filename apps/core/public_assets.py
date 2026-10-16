@@ -3,31 +3,39 @@
 Built reports retain these stable URLs across portal upgrades. Like ordinary
 static files, reading their public bytes must not renew a login or consult the
 database. Protected API calls made by those scripts use the normal middleware.
+
+A view opts in with ``@public_asset``. That one marker is the whole list: this
+middleware serves marked views without the session chain, and the
+Content-Security-Policy middleware leaves their responses alone. Nothing is
+looked up by URL name, so a route cannot be made public by naming it like one,
+and adding an asset is a decorator on its view rather than an edit in three
+files. Mark only a view that reads no request identity, no database and no
+cookie: it will run with none of that machinery.
 """
 from django.middleware.clickjacking import XFrameOptionsMiddleware
 from django.middleware.common import CommonMiddleware
 from django.urls import Resolver404, resolve
 
+#: Applied to a successful public read whose view did not choose its own.
+#: Without ``Vary: Cookie`` (the session middleware used to add it) an
+#: unmarked response was heuristically cacheable at best, so every built report
+#: page re-fetched every widget. Five minutes keeps an upgrade visible quickly.
+PUBLIC_ASSET_CACHE_CONTROL = "public, max-age=300, must-revalidate"
+
+
+def public_asset(view):
+    """Mark ``view`` as identity-independent static bytes (see module docstring)."""
+    view.is_public_asset = True
+    return view
+
+
+def is_public_asset(view) -> bool:
+    return getattr(view, "is_public_asset", False) is True
+
 
 class PublicAssetMiddleware:
     def __init__(self, get_response):
-        from apps.assistant.views import widget_js
-        from apps.reports import views
-        from apps.reports.vendor import vendor_asset
-
         self.get_response = get_response
-        self.views = {
-            "vendor-asset": vendor_asset,
-            "assistant-widget": widget_js,
-            "reports-menu-widget": views.menu_widget_js,
-            "reports-delivery-widget": views.delivery_widget_js,
-            "reports-theme-widget": views.theme_widget_js,
-            "reports-share-widget": views.share_widget_js,
-            "reports-embed-widget": views.embed_widget_js,
-            "reports-embed-element": views.embed_element_js,
-            "reports-views-widget": views.views_widget_js,
-            "reports-metrics-widget": views.metrics_widget_js,
-        }
         # Preserve the existing host, response length and frame protections.
         # Request ID, CSP and SecurityMiddleware already wrap this middleware.
         self.serve = CommonMiddleware(XFrameOptionsMiddleware(self._dispatch))
@@ -44,7 +52,12 @@ class PublicAssetMiddleware:
             except Resolver404:
                 pass
             else:
-                if not match.namespace and self.views.get(match.url_name) is match.func:
+                if not match.namespace and is_public_asset(match.func):
                     request.resolver_match = match
-                    return self.serve(request)
+                    response = self.serve(request)
+                    if response.status_code == 200:
+                        # A view that sets its own policy (the vendored files do)
+                        # keeps it; a missing file is never cached.
+                        response.setdefault("Cache-Control", PUBLIC_ASSET_CACHE_CONTROL)
+                    return response
         return self.get_response(request)

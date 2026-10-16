@@ -41,6 +41,7 @@ from apps.core.permissions import (
     require_org_role,
     require_studio_role,
 )
+from apps.core.public_assets import public_asset
 from apps.core.report_access import (
     bulk_can_view_report,
     can_view_report,
@@ -942,6 +943,7 @@ _MENU_WIDGET_LOCK = threading.Lock()
 _MENU_WIDGET_CACHE: str | None = None
 
 
+@public_asset
 def menu_widget_js(request):  # noqa: ARG001
     global _MENU_WIDGET_CACHE
     with _MENU_WIDGET_LOCK:
@@ -975,6 +977,7 @@ _DELIVERY_WIDGET_LOCK = threading.Lock()
 _DELIVERY_WIDGET_CACHE: str | None = None
 
 
+@public_asset
 def delivery_widget_js(request):  # noqa: ARG001
     # No auth: static code: every API call it makes is auth-gated same as
     # the dashboard's own portal.js.
@@ -1002,6 +1005,7 @@ _THEME_WIDGET_LOCK = threading.Lock()
 _THEME_WIDGET_CACHE: str | None = None
 
 
+@public_asset
 def theme_widget_js(request):  # noqa: ARG001
     # No auth: static code, same as delivery_widget_js -- the POST it makes
     # is auth-gated by the studio-membership decorator on the setter itself.
@@ -3397,6 +3401,7 @@ _SHARE_WIDGET_LOCK = threading.Lock()
 _SHARE_WIDGET_CACHE: str | None = None
 
 
+@public_asset
 def share_widget_js(request):  # noqa: ARG001
     global _SHARE_WIDGET_CACHE
     with _SHARE_WIDGET_LOCK:
@@ -3413,6 +3418,7 @@ _EMBED_WIDGET_LOCK = threading.Lock()
 _EMBED_WIDGET_CACHE: str | None = None
 
 
+@public_asset
 def embed_widget_js(request):  # noqa: ARG001
     global _EMBED_WIDGET_CACHE
     with _EMBED_WIDGET_LOCK:
@@ -3436,6 +3442,7 @@ _EMBED_ELEMENT_LOCK = threading.Lock()
 _EMBED_ELEMENT_CACHE: str | None = None
 
 
+@public_asset
 def embed_element_js(request):  # noqa: ARG001
     global _EMBED_ELEMENT_CACHE
     with _EMBED_ELEMENT_LOCK:
@@ -3458,6 +3465,7 @@ _VIEWS_WIDGET_LOCK = threading.Lock()
 _VIEWS_WIDGET_CACHE: str | None = None
 
 
+@public_asset
 def views_widget_js(request):  # noqa: ARG001
     global _VIEWS_WIDGET_CACHE
     with _VIEWS_WIDGET_LOCK:
@@ -3480,6 +3488,7 @@ _METRICS_WIDGET_LOCK = threading.Lock()
 _METRICS_WIDGET_CACHE: str | None = None
 
 
+@public_asset
 def metrics_widget_js(request):  # noqa: ARG001
     global _METRICS_WIDGET_CACHE
     with _METRICS_WIDGET_LOCK:
