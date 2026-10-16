@@ -15,6 +15,8 @@ from urllib.request import urlopen
 
 import pytest
 from django.conf import settings
+from django.core.cache import cache
+from django.core.management import call_command
 
 from apps.core.tests.browser_login import reach_password_step, sign_in
 
@@ -80,8 +82,18 @@ def analytics_server(request, django_db_setup, django_db_blocker, tmp_path_facto
     finally:
         process.terminate(); process.wait(timeout=15); log.close()
         with django_db_blocker.unblock():
-            org.delete()
-            User.objects.filter(email__in=users.values()).delete()
+            # Gunicorn commits to this worker's shared test database from
+            # another process, so no test rollback covers what it wrote: the
+            # login's auth.login AuditLog row (append-only, so deleting the org
+            # and users only sets its FKs to NULL), a session, the InstanceConfig
+            # singleton and cache rows. Left behind, they leak into whichever
+            # test the worker runs next (test_old_audit_rows_go counts
+            # AuditLog). Restore the database the way TransactionTestCase does
+            # after a live-server test; flush also removes the fixture's own
+            # org, users and reports. Flush covers model tables only, so the
+            # cache table is cleared separately.
+            call_command("flush", verbosity=0, interactive=False, reset_sequences=False)
+            cache.clear()
 
 
 def _login(page, server, role):
