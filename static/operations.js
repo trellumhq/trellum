@@ -1,32 +1,12 @@
-/* Operations data adapter: maps the bounded /api/operations/* contracts to the
-   row shape the Operations table already renders. Pure functions only; portal.js
+/* Operations data adapter: reads the bounded /api/operations/* contracts for
+   the Operations table (its report rows are the registry rows). Pure functions only; portal.js
    owns fetching, lifecycle and DOM so stale responses stay cancellable. */
 (function() {
 'use strict';
-/* The page lists every report up to this many, with no pager. Past it the page
-   says so and search (server-side) reaches the rest. */
-var ROW_CAP = 500;
-var MAX_LIVE_TERMINALS = 4;
-
-function mapRow(row) {
-    var validation = row.validation && row.validation.summary ? { summary: row.validation.summary } : null;
-    return {
-        id: row.id, slug: row.slug, kind: row.kind, metrics_report: row.metrics_report,
-        name: row.name, category: row.category, description: row.description,
-        description_truncated: row.description_truncated,
-        schedule: row.schedule, schedule_timezone: row.schedule_timezone, next_run: row.next_run,
-        disabled: row.disabled, refresh_suspended_at: row.refresh_suspended_at,
-        /* Never observed reads "Not run", as it always has. */
-        build_status: !row.build_status || row.build_status === 'unknown' ? 'not_run' : row.build_status,
-        last_run: row.last_attempt_at, last_error: row.last_error,
-        waiting: row.state === 'waiting', waiting_current: row.waiting_current,
-        blocked_by: row.blocked_by || [], failing_source: row.failing_source,
-        has_output: !!row.has_output, html_entry: row.html_entry, live: row.live,
-        framework_version: row.framework_version, validation: validation,
-        observation_known: row.observation_known, quality: row.quality,
-        ops_state: row.state
-    };
-}
+/* The page lists every report up to this many, with no pager (the server's
+   apps.core.limits.INLINE_LIMIT, handed over by the page; 500 when absent).
+   Past it the page says so and search (server-side) reaches the rest. */
+var ROW_CAP = (window.PORTAL_CTX && window.PORTAL_CTX.inline_limit) || 500;
 
 function rowsQuery(q) {
     var p = new URLSearchParams();
@@ -63,12 +43,11 @@ function statusToLegacy(payload, rows, now) {
 }
 
 function mapSource(row) {
-    var fileTypes = ['sqlite', 'duckdb', 'file', 'image'];
     return {
         name: row.name, type: row.type, state: row.state, detail: row.detail,
         upload: !!row.upload_allowed, binding_scope: row.binding_scope,
-        /* Availability is unverified on this read; the endpoint answers 404. */
-        file: fileTypes.indexOf(row.type) >= 0 && row.binding_id != null,
+        /* A portal-held file backs the source (stored metadata, no file read). */
+        file: !!row.download_available,
         used_by: new Array(row.used_by_total || 0),
         used_by_total: row.used_by_total || 0,
         blocks: row.blocks_observed || [], blocks_total: row.blocks_observed_total || 0
@@ -93,8 +72,7 @@ function logText(payload) {
 }
 
 window.TrellumOperations = {
-    ROW_CAP: ROW_CAP, MAX_LIVE_TERMINALS: MAX_LIVE_TERMINALS,
-    mapRow: mapRow, mapSource: mapSource, rowsQuery: rowsQuery, sourcesQuery: sourcesQuery,
+    ROW_CAP: ROW_CAP, mapSource: mapSource, rowsQuery: rowsQuery, sourcesQuery: sourcesQuery,
     statusToLegacy: statusToLegacy, logText: logText
 };
 })();

@@ -308,11 +308,17 @@ function getCategories() {
     return cats;
 }
 
+/* The one local search, for the catalog and Operations alike: name,
+   description, tags, category, studio and slug, as the server's search covers. */
 function matchesSearch(r, q) {
     if (!q) return true;
-    return (r.name + ' ' + r.description + ' ' + (r.tags || []).join(' ') + ' ' + r.category + ' ' + r.studio)
-        .toLowerCase().includes(q);
+    return [r.name, r.description, (r.tags || []).join(' '), r.category, r.studio, r.slug]
+        .map(function(part) { return part || ''; }).join(' ').toLowerCase().includes(q);
 }
+
+/* A row whose output is not known yet (no worker observation) is still
+   offered for opening: the report page answers for itself. */
+function canOpen(r) { return r.has_output !== false; }
 
 /* ── Recent reports (localStorage) ── */
 function getRecent() {
@@ -544,7 +550,7 @@ function liveChipHtml(r) {
 
 /* ── Card HTML ── */
 function cardHtml(r) {
-    const disabled = !r.has_output;
+    const disabled = !canOpen(r);
     const entry = r.html_entry || 'index.html';
     const href = disabled ? '#' : consoleReportUrl(apiUrl('/r/' + r.slug + '/' + entry));
     const cls = disabled ? ' disabled' : '';
@@ -683,7 +689,7 @@ function listTableHtml(groups) {
                 + catalogGroupHeaderHtml(group) + '</td></tr>';
         }
         group.items.forEach(function(r) {
-        var disabled = !r.has_output;
+        var disabled = !canOpen(r);
         var entry = r.html_entry || 'index.html';
         var href = disabled ? '' : consoleReportUrl(apiUrl('/r/' + r.slug + '/' + entry));
         var cls = disabled ? ' class="disabled"' : '';
@@ -1824,7 +1830,7 @@ var _opsCatalog = null;
    TrellumOperations.ROW_CAP) and filters the way it always has. Only past the
    cap does search go to the server, so the rest stays reachable. */
 var _opsTruncated = false;
-var _OPS_STATUS_FIELDS = ['build_status', 'last_run', 'last_error', 'blocked_by', 'waiting', 'waiting_current', 'failing_source', 'ops_state'];
+var _OPS_STATUS_FIELDS = ['build_status', 'last_status', 'last_run', 'last_error', 'blocked_by', 'waiting', 'failing_source'];
 /* A status observation newer than the request wins over the catalog's copy. */
 function _opsMergeCatalogRows(rows, previous, startRevision) {
     var old = {};
@@ -1857,7 +1863,7 @@ function _opsFetchCatalog() {
             _opsCatalogController = null;
             _opsCatalog = data;
             var total = data.pagination ? data.pagination.total : 0;
-            reports = _opsMergeCatalogRows((data.rows || []).map(TrellumOperations.mapRow), reports, startRevision);
+            reports = _opsMergeCatalogRows((data.rows || []), reports, startRevision);
             if (total > TrellumOperations.ROW_CAP && !_opsTruncated) {
                 _opsTruncated = true;
                 if (searchQuery) return _opsFetchCatalog();
@@ -2004,7 +2010,7 @@ function _opsFetchSystemStatus() {
     var controller = new AbortController();
     _opsSystemStatusController = controller;
     var timer = setTimeout(function() { controller.abort(); }, 8000);
-    var request = studioFetch('/api/operations/status?scope=studio', { signal: controller.signal, cache: 'no-store' })
+    var request = studioFetch('/api/operations/status', { signal: controller.signal, cache: 'no-store' })
         .then(function(r) {
             if (!r.ok) throw new Error('Status request failed');
             return r.json();
@@ -2025,7 +2031,7 @@ function _opsFetchSystemStatus() {
 }
 
 function _opsFetchRunStats(isCurrent) {
-    return boundedFetch(apiUrl('/api/operations/stats?scope=studio'), { cache: 'no-store' })
+    return boundedFetch(apiUrl('/api/operations/stats'), { cache: 'no-store' })
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (isCurrent && !isCurrent()) return false;
@@ -2050,11 +2056,7 @@ function _buildOpsHTML(status, reportList) {
     var totalBeforeSearch = reportList.length;
     if (searchQuery) {
         var q = searchQuery.toLowerCase();
-        reportList = reportList.filter(function(r) {
-            return (r.name || '').toLowerCase().indexOf(q) >= 0
-                || (r.slug || '').toLowerCase().indexOf(q) >= 0
-                || (r.description || '').toLowerCase().indexOf(q) >= 0;
-        });
+        reportList = reportList.filter(function(r) { return matchesSearch(r, q); });
     }
 
     updateSearchCount(reportList.length, totalBeforeSearch);
@@ -2319,7 +2321,7 @@ function _opsActionsCell(r, isRunning, isQueued) {
     }
     h += '<details class="ops-secondary" onclick="event.stopPropagation()">'
         + '<summary class="ops-row-btn">More</summary><div class="ops-secondary-menu">';
-    if (r.has_output) {
+    if (canOpen(r)) {
         var entry = r.html_entry || 'index.html';
         var href = consoleReportUrl(apiUrl('/r/' + r.slug + '/' + entry));
         h += '<a class="ops-row-btn" href="' + escAttr(href) + '" data-console-report-title="'
@@ -2871,14 +2873,6 @@ function _opsStartLivePollers(status) {
 }
 function _opsStartLivePoll(slug) {
     if (_opsLivePollers[slug]) return;
-    /* At most four live terminals read worker files at once. */
-    if (Object.keys(_opsLivePollers).length >= TrellumOperations.MAX_LIVE_TERMINALS) {
-        var body = document.getElementById('opsTermBody_' + slug);
-        if (body && (body.textContent === 'Loading...' || body.textContent === '(waiting for output...)')) {
-            body.textContent = 'Live output is limited to ' + TrellumOperations.MAX_LIVE_TERMINALS + ' open terminals. Close another to follow this one.';
-        }
-        return;
-    }
     _opsFetchLive(slug);
     _opsLivePollers[slug] = setInterval(function() { _opsFetchLive(slug); }, 2000);
 }
@@ -3331,7 +3325,8 @@ window.addEventListener('pageshow', function(event) {
    Only a studio beyond CATALOG_AUTOLOAD rows leaves the remainder on the
    server: "Show more" loads further slices and search asks the server. */
 var CATALOG_SLICE = 50;
-var CATALOG_AUTOLOAD = 500;
+/* apps.core.limits.INLINE_LIMIT, handed over by the page; 500 when absent. */
+var CATALOG_AUTOLOAD = (P && P.inline_limit) || 500;
 var CATALOG_RETRY_MS = [1000, 3000, 8000];
 var _catalogTotal = 0;
 var _catalogSlices = 0;            /* slices of CATALOG_SLICE rows already held */

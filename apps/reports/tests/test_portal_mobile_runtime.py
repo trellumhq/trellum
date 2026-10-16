@@ -76,41 +76,28 @@ def _ops_html():
     )
 
 
-def _ops_outcome(report, status):
-    slug = report["slug"]
-    if slug in (status.get("running") or {}):
-        return "running"
-    if slug in [item.get("slug") if isinstance(item, dict) else item for item in status.get("queue") or []]:
-        return "queued"
-    if report.get("waiting"):
-        return "waiting"
-    attempt = report.get("build_status") or report.get("last_status") or "not_run"
-    return {"success": "ok", "oom_killed": "oom", "timeout": "timeout", "stopped": "stopped", "error": "error"}.get(
-        attempt, "unknown" if attempt == "unknown" else "not_run"
-    )
-
-
 def _ops_catalog_payload(reports, status, query):
-    """The bounded /api/operations/catalog contract: one read lists every report."""
+    """The bounded /api/operations/catalog contract: one read lists every report as registry rows."""
     rows = [
         {
-            "id": report["id"], "slug": report["slug"], "kind": report.get("kind", "report"), "metrics_report": None,
-            "name": report["name"], "category": report.get("category"),
-            "description": report.get("description", ""), "description_truncated": False,
-            "schedule": None, "schedule_timezone": None, "next_run": None, "disabled": False,
-            "state": _ops_outcome(report, status),
+            "id": report["id"], "slug": report["slug"], "kind": report.get("kind", "report"), "metrics_report": False,
+            "name": report["name"], "category": report.get("category"), "studio": report.get("studio"),
+            "description": report.get("description", ""), "tags": report.get("tags", []),
+            "schedule": None, "schedule_timezone": "UTC", "next_run": None, "disabled": False,
+            "refresh_suspended_at": report.get("refresh_suspended_at"),
+            "last_status": report.get("last_status") or "not_run",
             "build_status": report.get("build_status") or report.get("last_status") or "not_run",
-            "last_attempt_at": report.get("last_run"), "last_error": report.get("last_error"),
-            "waiting_current": bool(report.get("waiting")), "blocked_by": [], "failing_source": None,
+            "last_run": report.get("last_run"), "last_error": report.get("last_error"),
+            "waiting": bool(report.get("waiting")), "blocked_by": report.get("blocked_by", []), "failing_source": None,
             "has_output": report.get("has_output"), "html_entry": report.get("html_entry"), "live": False,
-            "validation": report.get("validation"), "framework_version": None,
-            "observation_known": True, "quality": "current",
+            "validation": report.get("validation"), "details": None, "framework_version": None,
+            "views_30d": 0, "last_viewed": None, "last_built_at": None, "stale": False,
         }
         for report in reports
     ]
     return {
         "version": 1, "state": "ready", "rows": rows,
-        "pagination": {"page": 1, "page_size": 500, "total": len(rows), "pages": 1 if rows else 0},
+        "pagination": {"page": 1, "per_page": 500, "total": len(rows), "has_previous": False, "has_next": False},
     }
 
 
