@@ -15,11 +15,18 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 
 def alive(pid):
+    """Running, not merely unreaped. In a container whose init does not reap
+    orphans (CI runs tests that way), a killed grandchild lingers as a zombie,
+    which ``kill(pid, 0)`` still reports as present."""
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
         return False
-    return True
+    try:
+        with open(f"/proc/{pid}/stat") as stat:
+            return stat.read().rsplit(")", 1)[1].split()[0] != "Z"
+    except FileNotFoundError:
+        return False
 
 
 def test_run_bounded_returns_output_of_a_good_child():
