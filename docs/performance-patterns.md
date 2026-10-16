@@ -73,7 +73,9 @@ with `main` on desktop and mobile. Specifically:
   one request in flight per region and use a generation or currency guard so a
   stale response never overwrites newer state.
 - Show navigation feedback immediately, and support Cancel and Back
-  restoration. Stop polling when the tab is hidden or the view unmounts.
+  restoration. Mark links to console pages with `data-console-nav` (see
+  [forms-and-navigation.md](forms-and-navigation.md#console-navigation)); a slow
+  page keeps loading and is never stopped for the person. Stop polling when the tab is hidden or the view unmounts.
 - Use the lifecycle events instead of resetting other controllers:
   `trellum:catalog-hide`, `trellum:catalog-return`, `trellum:catalog-loading`,
   `trellum:catalog-ready`.

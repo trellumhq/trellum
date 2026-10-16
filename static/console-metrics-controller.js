@@ -198,19 +198,137 @@
         run(cards);
         return dispose;
     }
-    function mount(context) {
-        var overlay = window.TrellumMetricsOverlay.mount(context.root, context.signal);
-        var workspace = window.TrellumMetricsWorkspace.mount(context.root, context.signal);
-        var summary = mountSummary(context);
-        return { unmount: function () { summary(); overlay(); if (workspace) workspace(); },
-                 ready: workspace && workspace.ready || Promise.resolve() };
+
+    /* Metrics Overview and Comparison of one studio swap in place, with Back and Forward. Every other link and
+       page is an ordinary page load. The flag below tells the Metrics scripts loaded after this one not to mount
+       themselves, so the first mount waits for them. */
+    var main = document.querySelector('main[data-console-page]');
+    var lifecycle = null, unmountPage = null, request = null, generation = 0, ready = Promise.resolve();
+    var here = location.href, pending = false, restoring = false;
+    var index = (history.state && history.state.trellumNavigation && history.state.trellumNavigation.index) || 0;
+    window.TrellumNavigation = { navigate: function (href) { var url = new URL(href, location.href); if (inPair(url)) navigate(url); } };
+
+    // Same studio as the page being left; a query or hash keeps filters and anchors an ordinary page load.
+    function inPair(url) {
+        var studio = /^(\/s\/[^/]+\/[^/]+)\/metrics(?:\/comparison)?\/?$/.exec(url.pathname);
+        return !!studio && url.origin === location.origin && !url.search && !url.hash &&
+            new URL(here).pathname.indexOf(studio[1] + '/') === 0;
     }
-    if (window.TrellumNavigation) window.TrellumNavigation.register('metrics', { mount: mount });
-    else {
-        var controller = new AbortController(), summary = mountSummary({root: document, signal: controller.signal});
-        window.addEventListener('pagehide', function () { controller.abort(); summary(); });
-        window.addEventListener('pageshow', function (event) {
-            if (event.persisted) { controller = new AbortController(); summary = mountSummary({root: document, signal: controller.signal}); }
+    function entry(position) {
+        return Object.assign({}, history.state || {}, { trellumNavigation: { url: here, index: index, position: position || [scrollX, scrollY] } });
+    }
+    function savePosition() { if (!pending && !restoring) history.replaceState(entry(), '', location.href); }
+    function leave() { return !window.TrellumSettingsForms || window.TrellumSettingsForms.confirmLeave(document); }
+    function mark(title, url) {
+        document.title = title + ' — trellum';
+        if (window.TrellumConsoleShell) window.TrellumConsoleShell.setPageTitle(title);
+        document.querySelectorAll('.tl-console-nav-link').forEach(function (link) {
+            var path = new URL(link.href).pathname;
+            var active = path === url.pathname || (/\/metrics\/?$/.test(path) && /\/metrics\/comparison\/?$/.test(url.pathname));
+            link.classList.toggle('active', active);
+            if (active) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
         });
+        var close = document.querySelector('[data-console-close]');
+        if (close) close.click();
     }
+    function unmount() {
+        if (lifecycle) lifecycle.abort();
+        if (unmountPage) unmountPage();
+        lifecycle = unmountPage = null;
+        if (window.TrellumSettingsForms) window.TrellumSettingsForms.unmount();
+    }
+    function mount() {
+        lifecycle = new AbortController();
+        var signal = lifecycle.signal, overlay = window.TrellumMetricsOverlay.mount(main, signal);
+        var workspace = window.TrellumMetricsWorkspace.mount(main, signal), summary = mountSummary({ root: main, signal: signal });
+        unmountPage = function () { summary(); overlay(); if (workspace) workspace(); };
+        ready = Promise.resolve(workspace && workspace.ready);
+        if (window.TrellumSettingsForms) window.TrellumSettingsForms.init(main);
+        if (window.TrellumChoices) window.TrellumChoices.init(main);
+        if (window.TrellumRecipients) window.TrellumRecipients.init(main);
+    }
+    function focusHeading() {
+        var heading = main.querySelector('h1');
+        if (!heading || !heading.getClientRects().length) heading = document.querySelector('[data-console-page-title]');
+        if (heading) { heading.tabIndex = -1; heading.focus({ preventScroll: true }); }
+    }
+    // Static, server-authored markup only: scripts, inline handlers and javascript: URLs are never kept.
+    function clean(html) {
+        var template = document.createElement('template'); template.innerHTML = html;
+        template.content.querySelectorAll('script').forEach(function (node) { node.remove(); });
+        template.content.querySelectorAll('*').forEach(function (node) {
+            Array.from(node.attributes).forEach(function (attribute) {
+                if (/^on/i.test(attribute.name) || (/^(href|src|action)$/i.test(attribute.name) && /^\s*javascript:/i.test(attribute.value))) node.removeAttribute(attribute.name);
+            });
+        });
+        return template.content;
+    }
+    function navigate(url, options) {
+        options = options || {};
+        if (!options.guarded && !leave()) return;
+        if (!options.pop) savePosition();
+        if (request) request.abort();
+        var id = ++generation; request = new AbortController();
+        unmount(); pending = true; here = url.href;
+        if (!options.pop) { ++index; history.pushState(entry([0, 0]), '', url.href); }
+        mark('Metrics', url);
+        main.innerHTML = '<h1>Metrics</h1><p class="tl-console-navigation-status" role="status">Loading Metrics…</p>';
+        main.setAttribute('aria-busy', 'true'); focusHeading(); window.scrollTo(0, 0);
+        var timeout = setTimeout(function () { if (id === generation) request.abort(); }, 30000);
+        fetch(url.href, { credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: request.signal,
+            headers: { 'X-Trellum-Navigation': '1', Accept: 'application/json' }
+        }).then(function (response) {
+            if (!response.ok || !(response.headers.get('Content-Type') || '').includes('application/json')) throw new Error('Navigation failed');
+            return response.json();
+        }).then(function (data) {
+            if (id !== generation) return;
+            if (new URL(data.url, location.origin).href !== url.href || typeof data.html !== 'string') throw new Error('Invalid fragment');
+            main.replaceChildren(clean(data.html)); main.removeAttribute('aria-busy'); mark(data.title, url);
+            mount();
+            return ready.then(function () {
+                if (id !== generation) return;
+                pending = false;
+                requestAnimationFrame(function () {
+                    if (id !== generation) return;
+                    if (options.position) window.scrollTo(options.position[0], options.position[1]); else focusHeading();
+                    document.dispatchEvent(new CustomEvent('console:navigated', {detail: {url: url.href}}));
+                });
+            });
+        }).catch(function () {
+            if (id !== generation) return;
+            pending = false; main.removeAttribute('aria-busy');
+            var waiting = main.querySelector('.tl-console-navigation-status'); if (waiting) waiting.remove();
+            main.insertAdjacentHTML('beforeend', '<p role="alert">This page could not load. Open it directly to retry or sign in again.</p>');
+            var link = document.createElement('a'); link.href = url.href; link.dataset.consoleNative = '1';
+            link.textContent = 'Open page directly'; main.append(link);
+        }).finally(function () { clearTimeout(timeout); });
+    }
+
+    // The shared leave guard in settings-forms.js has already run for this click.
+    document.addEventListener('click', function (event) {
+        var link = event.target.closest('a[href]');
+        if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey ||
+            link.hasAttribute('download') || link.hasAttribute('data-console-native') || (link.target && link.target !== '_self')) return;
+        var url = new URL(link.href);
+        if (inPair(url)) { event.preventDefault(); navigate(url, { guarded: true }); }
+    });
+    window.addEventListener('popstate', function (event) {
+        if (restoring) { restoring = false; return; }
+        var saved = event.state && event.state.trellumNavigation;
+        if (!saved || saved.url !== location.href) return; // another history owner
+        var url = new URL(saved.url);
+        if (!inPair(url)) { location.reload(); return; }
+        if (!leave()) { restoring = true; history.go(index - saved.index); return; }
+        index = saved.index;
+        navigate(url, { pop: true, guarded: true, position: saved.position });
+    });
+    window.addEventListener('scroll', savePosition, { passive: true });
+    window.addEventListener('pagehide', function () { savePosition(); ++generation; if (request) request.abort(); unmount(); });
+    window.addEventListener('pageshow', function (event) {
+        if (!event.persisted) return;
+        if (pending) navigate(new URL(here), { pop: true, guarded: true }); else mount();
+    });
+    // A click that beat the first mount has already started a navigation; that one owns the page.
+    function start() { if (generation) return; mount(); history.replaceState(entry(), '', here); }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 }());
