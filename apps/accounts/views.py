@@ -57,9 +57,16 @@ def _login_url(request, name: str = "login") -> str:
 
 
 def _render_email_step(request, form):
+    from apps.accounts import sso
+
     return render(
         request, "accounts/login.html",
-        {"form": form, "step": "email", "reason": request.GET.get("reason", "")},
+        {
+            "form": form, "step": "email", "reason": request.GET.get("reason", ""),
+            # "Sign in with a password instead" only differs from "Continue"
+            # where an OpenID Connect provider could send the email away.
+            "offer_password_instead": sso.oidc_login_available(),
+        },
     )
 
 
@@ -337,6 +344,9 @@ def _start_mfa_stepup(request, user, *, next_url: str):
     is cycled first against fixation (the pre-auth session and the
     post-verify session must not be the same key)."""
     request.session.cycle_key()
+    # The password step is done; its email must not outlive it in the session
+    # that now only carries the pending second factor.
+    request.session.pop(LOGIN_EMAIL_SESSION_KEY, None)
     request.session["mfa_user_id"] = user.pk
     request.session["mfa_started"] = timezone.now().timestamp()
     request.session["mfa_next"] = _safe_next(next_url)

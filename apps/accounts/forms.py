@@ -1,14 +1,19 @@
+import logging
 from datetime import datetime, time
 
 from django import forms
 from django.contrib.auth.forms import PasswordResetForm
 from django.contrib.auth.password_validation import validate_password
+from django.core.mail import EmailMultiAlternatives
+from django.template import loader
 from django.utils import timezone
 
 from apps.orgs.models import Organization, slug_validator
 from apps.orgs.provisioning import UserExistsError
 
 from .models import ApiKey, User
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "ApiKeyCreateForm",
@@ -168,14 +173,43 @@ class ApiKeyCreateForm(forms.Form):
 
 
 class BoundedPasswordResetForm(PasswordResetForm):
-    """A slow or failing mail route must not 500 the reset page or reveal
-    which addresses have accounts: the reply is always the neutral
-    "if an account exists, mail was sent". Mail is never retried automatically."""
+    """The reset request never waits on mail and never says whether an account
+    exists: every answer is the same neutral "if an account exists, mail was
+    sent" redirect.
 
-    def send_mail(self, *args, **kwargs):
-        try:
-            super().send_mail(*args, **kwargs)
-        except Exception:  # noqa: BLE001 - SMTP/provider errors carry secrets
-            import logging
+    * **Throttled.** One mail per address per cooldown and a cap per client
+      address (``throttle.password_reset_allowed``). A request over a limit is
+      answered the same way and sends nothing.
+    * **Off the request.** The SMTP/provider round trip, the only slow part
+      and the only one paid by existing accounts alone, runs on a bounded
+      background thread (``apps.core.mail.send_in_background``), so the
+      response time does not tell the two cases apart. What stays in the
+      request is one indexed lookup and rendering the message.
+    * **Not retried.** A failed or dropped send is logged by exception class
+      (never the message, which can carry credentials) and the person asks
+      again once the cooldown ends.
+    """
 
-            logging.getLogger(__name__).warning("password reset mail was not accepted", exc_info=False)
+    def save(self, *args, request=None, **kwargs):
+        from apps.accounts import throttle
+
+        if not throttle.password_reset_allowed(self.cleaned_data["email"], request):
+            logger.info("password reset request was throttled and sent no mail")
+            return
+        super().save(*args, request=request, **kwargs)
+
+    def send_mail(
+        self, subject_template_name, email_template_name, context, from_email, to_email,
+        html_email_template_name=None,
+    ):
+        from apps.core.mail import send_in_background
+
+        # Django's own send_mail does this inline, then logs any failure with
+        # its traceback; here only the network send moves off the request.
+        subject = "".join(loader.render_to_string(subject_template_name, context).splitlines())
+        message = EmailMultiAlternatives(
+            subject, loader.render_to_string(email_template_name, context), from_email, [to_email],
+        )
+        if html_email_template_name is not None:
+            message.attach_alternative(loader.render_to_string(html_email_template_name, context), "text/html")
+        send_in_background(message, what="password reset")

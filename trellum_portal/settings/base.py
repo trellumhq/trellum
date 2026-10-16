@@ -8,6 +8,7 @@ encrypted in the database — see ``apps/core/crypto.py``.
 from pathlib import Path
 
 import environ
+from django.core.exceptions import ImproperlyConfigured
 
 # Repo root: trellum_portal/settings/base.py -> trellum_portal/settings -> trellum_portal -> root
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -381,7 +382,20 @@ EMAIL_URL_CONFIGURED = bool(env("EMAIL_URL", default=""))
 if EMAIL_URL_CONFIGURED:
     vars().update(env.email_url("EMAIL_URL"))
 # Socket timeout for every SMTP connect/read; Django defaults to none (hangs forever).
+# smtplib treats 0 as a non-blocking socket and fails every send, and a negative
+# value is rejected by the socket layer, so neither is a way to say "no timeout".
 EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT", default=10)
+if EMAIL_TIMEOUT <= 0:
+    raise ImproperlyConfigured(
+        f"EMAIL_TIMEOUT must be a positive number of seconds (got {EMAIL_TIMEOUT}); "
+        "an unbounded or zero SMTP timeout would hang or break every mail send."
+    )
+# Password-reset requests: at most one mail per address per cooldown, and at
+# most this many requests per client address per window. The answer to the
+# person asking is the same neutral page either way. See apps/accounts/forms.py.
+PASSWORD_RESET_EMAIL_COOLDOWN_SECONDS = env.int("PASSWORD_RESET_EMAIL_COOLDOWN_SECONDS", default=120)
+PASSWORD_RESET_IP_MAX_REQUESTS = env.int("PASSWORD_RESET_IP_MAX_REQUESTS", default=10)
+PASSWORD_RESET_IP_WINDOW_SECONDS = env.int("PASSWORD_RESET_IP_WINDOW_SECONDS", default=900)
 EMAIL_BACKEND = "apps.core.mail.InstanceEmailBackend"
 
 # Build metadata (baked in by the Docker build).

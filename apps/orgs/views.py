@@ -1,9 +1,12 @@
 """Org-level pages: home/switcher, studios list, members, invites."""
 from __future__ import annotations
 
+import logging
+
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.db import models, transaction
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -25,6 +28,7 @@ from .forms import InviteForm, StudioCreateForm
 from .models import Organization, OrgMembership, PermissionGroupMembership
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
 #: Rows per page on the management list screens. These tables were unbounded —
 #: an org with hundreds of members rendered every one of them, with a nested
@@ -1221,8 +1225,15 @@ def invite_resend(request, org_slug, invite_id):  # noqa: ARG001
     invite = get_object_or_404(Invitation, org=request.org, pk=invite_id, accepted_at__isnull=True)
     if invite.is_expired:
         outcome = "expired"
+    elif not cache.add(_resend_cooldown_key(invite), 1, INVITE_RESEND_COOLDOWN_SECONDS):
+        # A held-open double click, a script or a bored admin: each send is an
+        # SMTP round trip on this thread and a mail in the invitee's inbox.
+        outcome = "cooldown"
     else:
         outcome = _try_send_invite_mail(invite)
+        if outcome == "unconfigured":
+            # Nothing was sent, so there is nothing to wait out once mail is set up.
+            cache.delete(_resend_cooldown_key(invite))
     audit(
         request, "member.invite_resend", target=invite, email=invite.email,
         outcome=("success" if outcome == "accepted" else
@@ -1238,11 +1249,20 @@ def invite_resend(request, org_slug, invite_id):  # noqa: ARG001
     return redirect("org-invites", org_slug=request.org.slug)
 
 
+#: Seconds before the same invitation's email can be sent again.
+INVITE_RESEND_COOLDOWN_SECONDS = 60
+
+
+def _resend_cooldown_key(invite: Invitation) -> str:
+    return f"invite-resend:{invite.pk}"
+
+
 _INVITE_MAIL_MESSAGES = {
     "accepted": "Invitation email submitted to the email provider. Inbox delivery is not confirmed.",
     "failed": "Invitation email could not be confirmed by the email provider. Copy and share the link, or check email settings before trying again.",
     "unconfigured": "Email delivery is not configured. Copy and share the invitation link instead.",
     "expired": "This invitation has expired. Revoke it and create a new invitation.",
+    "cooldown": "This invitation's email was sent a moment ago. Wait a minute before resending it.",
 }
 
 
@@ -1270,7 +1290,10 @@ def _try_send_invite_mail(invite: Invitation) -> str:
             recipient_list=[invite.email],
             fail_silently=False,
         )
-    except Exception:
-        # Provider errors may contain credentials or signed URLs. Do not expose them.
+    except Exception as exc:
+        # Provider errors may contain credentials or signed URLs, so the
+        # message is neither shown nor logged. The class name is enough to
+        # tell a timeout from a refused login in the server log.
+        logger.warning("invitation email for org %s was not accepted: %s", invite.org_id, type(exc).__name__)
         return "failed"
     return "accepted" if count == 1 else "failed"

@@ -238,9 +238,35 @@ def _password_link(client, email, query=""):
 
 
 class TestPasswordInsteadLink:
-    def test_link_is_always_shown_on_step_one(self, client):
+    def test_link_is_shown_when_an_openid_connect_provider_is_enabled(self, client, sso_cfg):
         html = client.get("/login").content.decode()
         assert "Sign in with a password instead" in html and 'name="method"' in html
+
+    def test_link_is_hidden_without_any_sso_configuration(self, client):
+        html = client.get("/login").content.decode()
+        assert "Sign in with a password instead" not in html and 'name="method"' not in html
+        assert "Continue" in html
+
+    def test_link_is_hidden_for_a_directory_only_instance(self, client, ldap_cfg):
+        # Continue already lands on the password step for a directory domain.
+        assert "Sign in with a password instead" not in client.get("/login").content.decode()
+
+    def test_link_is_hidden_when_the_provider_is_disabled_or_incomplete(self, client, sso_cfg):
+        sso_cfg.enabled = False
+        sso_cfg.save()
+        assert "Sign in with a password instead" not in client.get("/login").content.decode()
+        sso_cfg.enabled = True
+        sso_cfg.client_id = ""
+        sso_cfg.save()
+        assert "Sign in with a password instead" not in client.get("/login").content.decode()
+
+    def test_link_is_shown_next_to_a_directory_when_a_provider_also_exists(self, client, sso_cfg, other_org):
+        OrgSSOConfig.objects.create(
+            org=other_org, enabled=True, auth_method=OrgSSOConfig.AUTH_LDAP,
+            ldap_server_uri="ldaps://dc.corp.example:636", ldap_user_search_base="dc=corp",
+            ldap_bind_dn="cn=svc", ldap_bind_password="x", email_domains=["corp.example"],
+        )
+        assert "Sign in with a password instead" in client.get("/login").content.decode()
 
     def test_member_of_enforcing_org_is_still_redirected(self, client, sso_cfg, make_user, org):
         sso_cfg.enforce_sso = True
@@ -301,3 +327,19 @@ class TestPasswordInsteadLink:
         for resp in (client.get("/login/password"), client.post("/login/password", {"password": PW})):
             assert resp.status_code == 302 and "oidc-demo/login" in resp.url
         assert "_auth_user_id" not in client.session
+
+
+class TestLoginEmailSessionKey:
+    def test_the_stashed_email_does_not_survive_the_mfa_step_up(self, client, make_user):
+        import pyotp
+
+        from apps.accounts import mfa
+
+        user = make_user("mfa@demo.example")
+        device = mfa.begin_enrollment(user)
+        mfa.confirm_enrollment(device, pyotp.TOTP(device.secret).now())
+        assert client.post("/login", {"email": user.email}).url == "/login/password"
+        assert client.session["login_email"] == user.email
+        resp = client.post("/login/password", {"password": PW})
+        assert resp.url == "/login/verify"
+        assert "login_email" not in client.session
