@@ -316,10 +316,10 @@ def test_schema_upgrade_preserves_reports_and_is_reversible(studio_tree):
     from django.db.migrations.executor import MigrationExecutor
     row = report(studio_tree)
     try:
-        MigrationExecutor(connection).migrate([("reports", "0025_emailschedule_delivery_accepted_to_and_more")])
+        MigrationExecutor(connection).migrate([("reports", "0026_report_idle_refresh")])
         assert "reports_reportsourcesummary" not in connection.introspection.table_names()
         assert Report.objects.filter(pk=row.pk).exists()
-        MigrationExecutor(connection).migrate([("reports", "0026_source_summaries")])
+        MigrationExecutor(connection).migrate([("reports", "0027_source_summaries")])
         assert "reports_reportsourcesummary" in connection.introspection.table_names()
     finally:
         executor = MigrationExecutor(connection)

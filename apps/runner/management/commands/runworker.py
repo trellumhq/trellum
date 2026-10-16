@@ -572,6 +572,9 @@ class _SchedulerManager:
         )
         self._schedule_cleanup()
         self._schedule_update_check()
+        from apps.reports import metrics_workspace_rebuild
+
+        metrics_workspace_rebuild.run_once()
         self.refresh()
 
     def _schedule_cleanup(self) -> None:
