@@ -103,3 +103,8 @@ when updating the browser environment. Real-daemon `docker_sandbox` tests run in
 the dedicated host jobs; container jobs cannot supply the host daemon with their
 temporary filesystem paths for bind mounts. Diagnose environment or existing test
 failures separately before classifying a failed job as a schema incompatibility.
+A release's tests are frozen with its tag, so a timing flake fixed on `main` keeps
+failing here until the next release. List such a test under its tag in
+`FROZEN_RELEASE_FLAKES` in `.github/workflows/previous_schema.py`; the entry
+stops applying once a newer release becomes the previous one. Never list a
+failure that could be a schema incompatibility.

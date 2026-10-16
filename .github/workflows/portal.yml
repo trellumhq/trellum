@@ -537,6 +537,8 @@ jobs:
           # point is the schema this upgrade produced, not a clean install.
           PYTEST_ADDOPTS: "--reuse-db"
           TRELLUM_PREVIOUS_SCHEMA_TEST_DB: test_trellum_portal
+          # Selects that release's known timing flakes in previous_schema.py.
+          TRELLUM_PREVIOUS_RELEASE: ${{ steps.prev.outputs.tag }}
         run: |
           set -e
           # Only this harness loads cascading cleanup for new FK tables that

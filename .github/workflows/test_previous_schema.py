@@ -56,3 +56,31 @@ def test_cleanup_cascades_only_on_configured_database_and_restores(flush_connect
         connection.ops.sql_flush(None, ["accounts_user"])
     cleanup.close()
     assert connection.ops.sql_flush is original
+
+
+def _collection(nodeids):
+    deselected = []
+    config = SimpleNamespace(
+        hook=SimpleNamespace(pytest_deselected=lambda items: deselected.extend(items)),
+        pluginmanager=SimpleNamespace(get_plugin=lambda name: None),
+    )
+    items = [SimpleNamespace(nodeid=nodeid) for nodeid in nodeids]
+    return config, items, deselected
+
+
+def test_frozen_flakes_are_deselected_only_for_their_release(monkeypatch):
+    monkeypatch.setitem(previous_schema.FROZEN_RELEASE_FLAKES, "v9.9.9", {"apps/test_x.py::test_flaky[webkit]": "timing"})
+    nodeids = ["apps/test_x.py::test_flaky[webkit]", "apps/test_x.py::test_flaky[chromium]"]
+
+    monkeypatch.setenv("TRELLUM_PREVIOUS_RELEASE", "v9.9.9")
+    config, items, deselected = _collection(nodeids)
+    previous_schema.pytest_collection_modifyitems(config, items)
+    assert [item.nodeid for item in items] == ["apps/test_x.py::test_flaky[chromium]"]
+    assert [item.nodeid for item in deselected] == ["apps/test_x.py::test_flaky[webkit]"]
+
+    for release in ("v9.9.8", ""):
+        monkeypatch.setenv("TRELLUM_PREVIOUS_RELEASE", release)
+        config, items, deselected = _collection(nodeids)
+        previous_schema.pytest_collection_modifyitems(config, items)
+        assert [item.nodeid for item in items] == nodeids
+        assert deselected == []

@@ -210,13 +210,25 @@ def _geometry(page):
 def _wait_for_metric_fit(page, *, chart_height=None):
     # Fitting runs through animation frames and ResizeObserver callbacks.
     # Wait for their visible result rather than a fixed delay under CI load.
+    # Chart.js resizes its canvas after the overlay sizes the chart box, and
+    # until it does WebKit can lay the block out from the stale canvas, so the
+    # overlay refits once more. Settled means the canvas has caught up with
+    # its box and the same layout holds for several frames.
+    page.evaluate("window.__metricFit = {key: null, frames: 0}")
     page.wait_for_function("""expectedHeight => {
         const frame = document.querySelector('#metModal iframe');
         const doc = frame && frame.contentDocument;
         const chart = doc && doc.querySelector('#metric-gross_revenue .fw-chart-container');
-        return chart && doc.fonts.status === 'loaded'
+        const canvas = chart && chart.querySelector('canvas');
+        const height = chart && chart.getBoundingClientRect().height;
+        const fitted = canvas && doc.fonts.status === 'loaded'
             && doc.documentElement.scrollHeight - frame.clientHeight <= 2
-            && (expectedHeight === null || Math.abs(chart.getBoundingClientRect().height - expectedHeight) <= 1);
+            && Math.abs(canvas.getBoundingClientRect().height - height) <= 1
+            && (expectedHeight === null || Math.abs(height - expectedHeight) <= 1);
+        const key = fitted ? `${Math.round(height)}:${frame.clientHeight}` : null;
+        const state = window.__metricFit;
+        if (key === null || key !== state.key) { state.key = key; state.frames = 0; return false; }
+        return ++state.frames >= 3;
     }""", arg=chart_height, timeout=5000)
 
 
