@@ -388,7 +388,7 @@ EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT", default=10)
 if EMAIL_TIMEOUT <= 0:
     raise ImproperlyConfigured(
         f"EMAIL_TIMEOUT must be a positive number of seconds (got {EMAIL_TIMEOUT}); "
-        "an unbounded or zero SMTP timeout would hang or break every mail send."
+        "zero or a negative timeout makes every SMTP send fail."
     )
 # Password-reset requests: at most one mail per address per cooldown, and at
 # most this many requests per client address per window. The answer to the
