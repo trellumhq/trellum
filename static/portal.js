@@ -1274,7 +1274,7 @@ function _toastStack() {
     return stack;
 }
 
-function showToast(msg, type) {
+function showToast(msg, type, ms) {
     var stack = _toastStack();
     while (stack.children.length >= TOAST_MAX) stack.removeChild(stack.firstChild);
     var div = document.createElement('div');
@@ -1287,7 +1287,7 @@ function showToast(msg, type) {
         setTimeout(function() { div.remove(); }, 6000);
     } else {
         div.textContent = msg;
-        setTimeout(function() { div.remove(); }, 4000);
+        setTimeout(function() { div.remove(); }, ms || 4000);
     }
     stack.appendChild(div);
 }
@@ -2704,9 +2704,14 @@ function _opsDoAction(action) {
    One request in flight, a generation guard against stale responses, paused
    while the tab is hidden or the page is unmounted, never re-POSTs. */
 var _opsActionStatusLabel = '';
-var _opsTracked = null;   /* {action, url, gen, timer, ctrl, inFlight, failures} */
+var _opsTracked = null;   /* {action, url, gen, timer, ctrl, inFlight, failures, polls, since, patient} */
 var _opsTrackGen = 0;
 var _OPS_TRACK_KEY = 'trellum.opsAction';
+/* An action no worker has claimed after this long is reported once and the
+   button handed back. The server keeps it and runs it when a current worker
+   appears, so it is then watched slowly and quietly: a late result still shows. */
+var _OPS_TRACK_PATIENCE_MS = 60000;
+var _OPS_TRACK_LATE_MS = 15000;
 function _opsRefreshLabel() {
     return _opsSystemActions.refresh && _opsActionStatusLabel ? _opsActionStatusLabel : '&#8635; Reload Registry';
 }
@@ -2721,7 +2726,7 @@ function _opsSetActionLabel(text) {
 }
 function _opsTrackAction(action, url) {
     _opsStopTracking();
-    _opsTracked = {action: action, url: url, gen: ++_opsTrackGen, timer: null, ctrl: null, inFlight: false, failures: 0, polls: 0};
+    _opsTracked = {action: action, url: url, gen: ++_opsTrackGen, timer: null, ctrl: null, inFlight: false, failures: 0, polls: 0, since: Date.now(), patient: false};
     try { sessionStorage.setItem(_OPS_TRACK_KEY, JSON.stringify({action: action, url: url})); } catch (e) {}
     _opsScheduleTrack(800);
 }
@@ -2766,6 +2771,8 @@ function _opsPollTracked(gen) {
             t.inFlight = false;
             t.failures = 0;
             if (data.terminal) { _opsFinishTracked(data); return; }
+            if (t.patient) { _opsScheduleTrack(_OPS_TRACK_LATE_MS); return; }
+            if (data.state === 'accepted' && Date.now() - t.since >= _OPS_TRACK_PATIENCE_MS) { _opsStopWaiting(t); return; }
             _opsSetActionLabel(data.state === 'running' ? 'Running\u2026' : 'Scheduled\u2026');
             _opsScheduleTrack(t.polls < 5 ? 1000 : 3000);
         })
@@ -2774,12 +2781,30 @@ function _opsPollTracked(gen) {
             if (!_opsTracked || _opsTracked.gen !== gen) return;
             t.inFlight = false;
             t.failures++;
+            if (t.patient) {
+                /* The late watch fails quietly: the user was already told. */
+                if ((e && e.terminal) || t.failures >= 5) _opsStopTracking(); else _opsScheduleTrack(_OPS_TRACK_LATE_MS);
+                return;
+            }
             if ((e && e.terminal) || t.failures >= 5) {
                 _opsFinishTracked({state: 'unconfirmed', terminal: true, message: 'Status could not be confirmed \u2014 check Operations before trying again.'});
                 return;
             }
             _opsScheduleTrack(Math.min(1000 * Math.pow(2, t.failures), 8000));
         });
+}
+/* Nobody has claimed the action (for instance a worker still on an older
+   version). Say so once, enable the button again, and keep watching slowly.
+   The saved id is dropped so coming back to the page does not disable the
+   button for another wait. */
+function _opsStopWaiting(t) {
+    t.patient = true;
+    try { sessionStorage.removeItem(_OPS_TRACK_KEY); } catch (e) {}
+    _opsSystemActions[t.action] = false;
+    _opsActionStatusLabel = '';
+    showToast('Still waiting for a worker. Check that every worker runs this version.', 'warning', 10000);
+    renderOperations();
+    _opsScheduleTrack(_OPS_TRACK_LATE_MS);
 }
 function _opsFinishTracked(data) {
     var action = _opsTracked ? _opsTracked.action : 'refresh';

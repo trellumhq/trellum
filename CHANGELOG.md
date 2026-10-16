@@ -88,6 +88,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   the status and time of its latest finished build, the same ones Operations
   and the full registry show; once the summary is ready nothing changes. It
   costs one extra bounded query per page of 50 reports and reads no storage.
+- **Reload Registry** no longer stays on "Scheduled..." forever when no current
+  worker claims the action (for example a worker left on an older version
+  during an upgrade). After a minute the page says "Still waiting for a worker.
+  Check that every worker runs this version." and the button works again. The
+  action stays scheduled on the server, so the page keeps checking quietly and
+  still reports the result if a worker runs it later.
 - The console top bar no longer jumps while a page loads. The AI assistant has
   one slot, in the same place on every page, and its space is reserved from
   the first paint, so the health warning, search box and Docs link stop shifting
