@@ -223,6 +223,7 @@ ACTIONS: dict[str, ActionSpec] = {
     "run.enqueue": _m(CATEGORY_SYSTEM, "Report run queued"),
     "run.stop": _m(CATEGORY_SYSTEM, "Report run stopped"),
     "run.enqueue_all": _m(CATEGORY_SYSTEM, "All reports queued"),
+    "run.auto_enqueue": _m(CATEGORY_SYSTEM, "Report run queued automatically"),
     "run.stop_all": _m(CATEGORY_SYSTEM, "All runs stopped"),
     "cache.clear": _m(CATEGORY_SYSTEM, "Cache cleared"),
     "operator.diagnostics.refresh": _m(CATEGORY_SYSTEM, "Coordinator diagnostics requested"),

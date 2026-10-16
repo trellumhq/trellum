@@ -120,6 +120,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Keep the nightly retention cleanup and the daily release check scheduled on
   the coordinator. The schedule sync removed both right after start, so
   cleanup never ran and `manage.py doctor` failed its retention check.
+- A Metrics report built before the paged comparison workspace (0.7.0 or
+  earlier) is rebuilt once by itself after an upgrade, so sparklines and charts
+  come back without anyone choosing Run. The worker queues the build (trigger
+  `catchup`, audited as `run.auto_enqueue`) when it sees the legacy artifact,
+  at most once until a current artifact is published; a failing rebuild or a
+  runner still producing legacy output is not retried.
 
 ## [0.7.0] — 2026-10-15
 

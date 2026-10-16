@@ -875,6 +875,11 @@ class ReportSourceSummary(models.Model):
     preview_state = models.CharField(max_length=24, default="not-applicable")
     # The served artifact's marker, not the current generator/config version.
     workspace_version = models.PositiveSmallIntegerField(null=True, blank=True, default=None)
+    # Identity of the legacy (version 0) Metrics artifact for which the portal
+    # already queued its one automatic rebuild; NULL when none is outstanding.
+    # Cleared only when a non-legacy artifact is published, so a rebuild that
+    # still yields a legacy artifact can never trigger another one.
+    legacy_rebuild_queued_for = models.CharField(max_length=300, null=True, blank=True)
 
 
     has_output = models.BooleanField(null=True, default=None)

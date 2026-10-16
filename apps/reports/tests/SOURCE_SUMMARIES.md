@@ -21,6 +21,17 @@ Deletion failure retains the expiry uncertainty fence until rebuild or observed
 absence. Definition and summary generations are persisted per studio for
 cross-process consumers; no process-local cache is authoritative.
 
+A generated Metrics report whose served artifact is a legacy workspace
+(`workspace_version` 0, the layout before 0.8) draws no sparklines or charts
+until it is built again. When reconciliation publishes or confirms a `ready`
+legacy observation for a present, enabled Metrics report with no queued or
+running build, it queues one build (`trigger="catchup"`, audit action
+`run.auto_enqueue`) in the same transaction that records
+`legacy_rebuild_queued_for`, the artifact identity it acted on. While that mark
+is set nothing more is queued, so a failed rebuild, a runner that still emits
+legacy output, restarts and repeated passes cannot loop. Only publishing a
+non-legacy workspace clears it, so a later regression gets one new attempt.
+
 The background service starts automatically in `runworker` (not `--once`). A
 remote coordinator inspects shared storage; local runners inspect their pools.
 Its separate thread never blocks build ticks/heartbeats and holds no DB locks
