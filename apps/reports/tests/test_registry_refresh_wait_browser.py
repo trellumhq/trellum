@@ -2,9 +2,11 @@
 current worker does (for instance one still on an older version during an
 upgrade), Operations says so and hands the button back instead of waiting on
 "Scheduled..." forever, and still reports the result if a worker claims it
-later. Time is Playwright's clock, so the minute of waiting costs nothing."""
+later. Asking again meanwhile returns the action the server already holds: if
+that has already waited out the minute, Operations says so at once and keeps the
+button busy until the server settles the action (a worker runs it, or the server
+gives up on it as unclaimed). Time is Playwright's clock, so waiting costs nothing."""
 import re
-from itertools import pairwise
 
 from django.conf import settings
 from playwright.sync_api import expect
@@ -26,6 +28,7 @@ MESSAGES = {
     "accepted": "Registry refresh scheduled",
     "running": "Registry refresh running",
     "succeeded": "Registry refreshed",
+    "failed": "No worker picked up the registry refresh in time. Check that a worker is running for this studio, then refresh again.",
 }
 WAITING = "Still waiting for a worker. Check that every worker runs this version."
 
@@ -37,12 +40,14 @@ class RefreshApi:
         self.state = "accepted"
         self.posts = 0
         self.polls = 0
+        self.age = 0  # seconds the server says the action has existed
 
     def payload(self):
+        terminal = self.state in ("succeeded", "failed")
         body = {
-            "ok": True, "operation_id": ACTION_ID, "status_url": STATUS_URL, "kind": "registry_refresh",
-            "state": self.state, "terminal": self.state == "succeeded", "message": MESSAGES[self.state],
-            "accepted_at": START, "finished_at": START if self.state == "succeeded" else None,
+            "ok": self.state != "failed", "operation_id": ACTION_ID, "status_url": STATUS_URL, "kind": "registry_refresh",
+            "state": self.state, "terminal": terminal, "message": MESSAGES[self.state],
+            "accepted_at": START, "age_seconds": self.age, "finished_at": START if terminal else None,
         }
         if self.state == "succeeded":
             body.update(reports=3, warning="")
@@ -158,30 +163,111 @@ def test_unclaimed_refresh_says_so_hands_the_button_back_and_still_reports_late(
         context.close()
 
 
-def test_reloading_again_after_the_wait_does_not_stack_pollers(mobile_browser):  # noqa: F811
+def test_asking_again_for_an_action_that_already_waited_says_so_at_once_and_stays_busy(mobile_browser):  # noqa: F811
     api = RefreshApi()
     context, page = _operations(mobile_browser, api)
     try:
         button = _until_waiting_is_reported(page, api)
         expect(page.locator(".toast.warning")).to_have_text(WAITING)
+        _step(page, 11000)  # the first notice has gone
+        assert page.locator(".toast.warning").count() == 0
 
+        # The server answers with the action it already holds, 75 s old.
+        api.age = 75
+        button.click()
+        assert api.posts == 2
+        expect(page.locator(".toast.warning")).to_have_text(WAITING)
+        expect(button).to_have_text("Waiting for a worker…")
+        assert "running" in button.get_attribute("class").split()
+        assert page.locator(".toast.info, .toast.success, .toast.error").count() == 0  # no new wait began
+
+        # It does not restart the minute's wait or poll faster: one slow watcher.
+        polls = api.polls
+        _step(page, 14000)
+        assert api.polls == polls
+        _step(page, 1000)
+        assert api.polls == polls + 1
+        for _ in range(8):
+            _step(page, 15000)
+        assert api.polls == polls + 9
+        assert page.locator(".toast.warning").count() == 0  # said once
+        expect(button).to_have_text("Waiting for a worker…")
+
+        # A click on the busy button asks the server nothing.
+        button.dispatch_event("click")
+        page.wait_for_timeout(80)
+        assert api.posts == 2
+    finally:
+        context.close()
+
+
+def test_the_server_giving_up_on_an_unclaimed_refresh_says_so_and_hands_the_button_back(mobile_browser):  # noqa: F811
+    api = RefreshApi()
+    context, page = _operations(mobile_browser, api)
+    try:
+        button = _until_waiting_is_reported(page, api)
+        _step(page, 11000)
+        api.age = 75
+        button.click()
+        expect(button).to_have_text("Waiting for a worker…")
+        _step(page, 11000)
+
+        api.state = "failed"  # the server expires an action no worker claimed
+        api.age = 601
+        _step(page, 4000)  # the slow watch asks 15 s after the click, and the answer is the outcome
+        expect(page.locator(".toast.error")).to_contain_text(MESSAGES["failed"])
+        expect(button).to_contain_text("Reload Registry")
+        assert "running" not in button.get_attribute("class").split()
+        assert page.locator(".toast.success, .toast.warning").count() == 0
+        done = api.polls
+        _step(page, 60000)
+        assert api.polls == done  # the watch ended with the outcome
+
+        # The next request is a fresh action with the usual wait.
+        api.state, api.age = "accepted", 0
         button.click()
         expect(button).to_have_text("Scheduled…")
-        assert api.posts == 2  # the server answers with the action it already holds
-        counts = [api.polls]
-        for _ in range(17):
-            _step(page, 1000)
-            counts.append(api.polls)
-        steps = [after - before for before, after in pairwise(counts)]
-        assert max(steps) == 1, steps  # one poller: never two requests in a step
-        assert sum(steps) >= 4, steps  # and it keeps going
-        # It waits another full minute before saying so again.
-        assert page.locator(".toast.warning").count() == 0
+        assert api.posts == 3
+    finally:
+        context.close()
+
+
+def test_asking_again_for_a_recent_action_still_waits_the_usual_minute(mobile_browser):  # noqa: F811
+    api = RefreshApi()
+    context, page = _operations(mobile_browser, api)
+    try:
+        button = _until_waiting_is_reported(page, api)
+        _step(page, 11000)
+        api.age = 20  # the server's own count: it was only just admitted
+        button.click()
+        assert api.posts == 2
         expect(button).to_have_text("Scheduled…")
+        assert page.locator(".toast.warning").count() == 0
         page.clock.fast_forward(60000)
         page.wait_for_timeout(150)
         expect(page.locator(".toast.warning")).to_have_text(WAITING)
         expect(button).to_contain_text("Reload Registry")
+    finally:
+        context.close()
+
+
+def test_a_worker_claiming_the_held_action_shows_its_result(mobile_browser):  # noqa: F811
+    api = RefreshApi()
+    context, page = _operations(mobile_browser, api)
+    try:
+        button = _until_waiting_is_reported(page, api)
+        _step(page, 11000)
+        api.age = 90
+        button.click()
+        expect(button).to_have_text("Waiting for a worker…")
+        api.state = "running"
+        _step(page, 15000)
+        expect(button).to_have_text("Running…")
+        api.state = "succeeded"
+        _step(page, 15000)
+        expect(page.locator(".toast.success")).to_have_text("Registry refreshed (3 reports)")
+        expect(button).to_contain_text("Reload Registry")
+        assert "running" not in button.get_attribute("class").split()
     finally:
         context.close()
 
