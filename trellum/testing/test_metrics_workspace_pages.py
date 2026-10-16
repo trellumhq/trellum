@@ -189,3 +189,64 @@ def test_staged_render_only_writes_inside_its_own_output_dir(tmp_path):
     assert (out / 'index.html').exists()
     assert sorted(p.name for p in out.iterdir() if p.name.startswith('.metrics-stage-')) == []
     assert sorted(p.name for p in parent.iterdir()) == ['metrics']
+
+
+def _stub_render(chunks=()):
+    """Stand-in for render_report: stage a root, a page and the chunks it wrote."""
+    page = f'_metrics-workspace-{"b" * 32}-page-1.html'
+
+    def render(ctx, output_dir):
+        out = Path(output_dir)
+        (out / 'index.html').write_text('<html></html>')
+        (out / page).write_text('page')
+        for name in chunks:
+            (out / name).write_text('{}')
+        (out / '_meta.json').write_text(json.dumps({'metrics_workspace': {'files': [page]}}))
+        # render_report garbage-collects its own (staging) directory like this.
+        from trellum.rendering.artifacts import _gc_stale_chunks
+        _gc_stale_chunks(output_dir, set(chunks), ctx)
+    return render
+
+
+def test_staged_build_collects_stale_chunks_from_the_published_directory(tmp_path):
+    from trellum.metrics_workspace import staged_render
+    out = tmp_path / 'output'
+    out.mkdir()
+    (out / 'data_chunk_old_2024-01.json').write_text('{}')
+    (out / 'data_chunk_ds_2026-01.json').write_text('{}')
+    (out / 'authored.json').write_text('{}')
+    staged_render(type('Ctx', (), {})(), out, _stub_render(['data_chunk_ds_2026-01.json']))
+    assert sorted(p.name for p in out.glob('data_chunk_*')) == ['data_chunk_ds_2026-01.json']
+    assert (out / 'authored.json').exists()
+
+
+def test_failed_staged_build_keeps_the_last_good_chunks(tmp_path):
+    from trellum.metrics_workspace import staged_render
+    out = tmp_path / 'output'
+    out.mkdir()
+    (out / 'data_chunk_old_2024-01.json').write_text('{}')
+
+    def render(ctx, output_dir):
+        raise RuntimeError('render failure')
+
+    with pytest.raises(RuntimeError):
+        staged_render(type('Ctx', (), {})(), out, render)
+    assert (out / 'data_chunk_old_2024-01.json').exists()
+
+
+def test_next_build_clears_what_a_killed_build_left_behind(tmp_path):
+    """A kill mid-publish strands a stage dir, publish temporaries and unlisted pages."""
+    from trellum.metrics_workspace import staged_render
+    out = tmp_path / 'output'
+    (out / '.metrics-stage-dead').mkdir(parents=True)
+    (out / '.metrics-stage-dead' / 'index.html').write_text('partial')
+    (out / '.metrics-publish-dead').write_text('partial')
+    orphan = f'_metrics-workspace-{"c" * 32}-page-1.html'
+    (out / orphan).write_text('published by the killed build, never listed in _meta.json')
+    (out / '_meta.json').write_text(json.dumps({'last_status': 'uncertain', 'metrics_workspace': {'files': []}}))
+    (out / 'authored.html').write_text('Keep authored view')
+    staged_render(type('Ctx', (), {})(), out, _stub_render())
+    left = sorted(p.name for p in out.iterdir())
+    assert left == ['_meta.json', f'_metrics-workspace-{"b" * 32}-page-1.html', 'authored.html', 'index.html']
+    assert (out / 'authored.html').read_text() == 'Keep authored view'
+    assert 'last_status' not in json.loads((out / '_meta.json').read_bytes())

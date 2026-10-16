@@ -554,7 +554,7 @@ setTimeout(function(){
     # from prior runs should still be GC'd against the empty canonical
     # set.
     if gc_stale_chunks and (all_chunk_manifests or all_pending_chunks):
-        _gc_stale_chunks(out, set(all_pending_chunks.keys()))
+        _gc_stale_chunks(out, set(all_pending_chunks.keys()), ctx)
 
     if production:
         import gzip as _gzip

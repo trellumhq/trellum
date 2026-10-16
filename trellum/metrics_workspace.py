@@ -203,6 +203,14 @@ def collect_old_pages(out):
         return set()
 
 
+def owned_files(out):
+    """Owned page files actually present, however a killed build left them."""
+    try:
+        return {name for name in os.listdir(out) if owned_name(name)}
+    except OSError:
+        return set()
+
+
 def gc_old_pages(out, previous, current):
     for name in previous - set(current):
         path = Path(out, name)
@@ -222,15 +230,23 @@ def staged_render(ctx, out, render, **kwargs):
     """
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
-    previous = collect_old_pages(out)
+    # The manifest lists the last published build; a build killed mid-publish
+    # can also leave owned pages the manifest never learned about. Both are
+    # removed once this build has published.
+    previous = collect_old_pages(out) | owned_files(out)
     # Stage inside `out`: the build sandbox mounts only this report's output
     # directory writable, so a sibling of it (out.parent) is read-only there.
-    # Dot-prefixed and removed on exit; collect_old_pages ran before it exists.
+    # Dot-prefixed and removed on exit. A killed build leaves its stage
+    # directory and publish temporaries behind; clear them before staging.
     for leftover in out.glob('.metrics-stage-*'):
         if leftover.is_dir() and not leftover.is_symlink():
             shutil.rmtree(leftover, ignore_errors=True)
+    for leftover in out.glob('.metrics-publish-*'):
+        if leftover.is_file() or leftover.is_symlink():
+            leftover.unlink(missing_ok=True)
     with tempfile.TemporaryDirectory(prefix='.metrics-stage-', dir=out) as stage:
         ctx._metric_workspace_staging = True
+        ctx._metric_workspace_chunks = None
         try:
             render(ctx, output_dir=stage, **kwargs)
         finally:
@@ -272,6 +288,12 @@ def staged_render(ctx, out, render, **kwargs):
                 (out / name).unlink(missing_ok=True)
             raise
         gc_old_pages(out, previous, current)
+        # The stage render collected stale chunks from the (empty) stage
+        # directory; collect them from the published directory instead.
+        chunks = getattr(ctx, '_metric_workspace_chunks', None)
+        if chunks is not None:
+            from trellum.rendering.artifacts import _gc_stale_chunks
+            _gc_stale_chunks(str(out), chunks)
     return str(out / 'index.html'), str(out / 'data.json')
 
 
