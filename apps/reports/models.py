@@ -849,7 +849,6 @@ class ReportSourceSummary(models.Model):
 
     report = models.OneToOneField(Report, on_delete=models.CASCADE, related_name="source_summary")
     schema_version = models.PositiveIntegerField(default=2)
-    backend = models.CharField(max_length=16, blank=True)
     source_identity = models.CharField(max_length=300, blank=True)
     claim_digest = models.CharField(max_length=64, blank=True)
     state = models.CharField(max_length=24, default="pending")
@@ -871,17 +870,9 @@ class ReportSourceSummary(models.Model):
     # inspection, plus when it was taken. While the stamp still matches, a
     # recheck only confirms freshness and reads no artifact.
     change_stamp = models.CharField(max_length=96, null=True, blank=True, default=None)
-    error_code = models.CharField(max_length=64, blank=True)
     preview_state = models.CharField(max_length=24, default="not-applicable")
     # The served artifact's marker, not the current generator/config version.
     workspace_version = models.PositiveSmallIntegerField(null=True, blank=True, default=None)
-    # Identity of the legacy (version 0) Metrics artifact for which the portal
-    # already queued its one automatic rebuild; NULL when none is outstanding.
-    # Cleared only when a non-legacy artifact is published, so a rebuild that
-    # still yields a legacy artifact can never trigger another one.
-    legacy_rebuild_queued_for = models.CharField(max_length=300, null=True, blank=True)
-
-
     has_output = models.BooleanField(null=True, default=None)
     html_entry = models.CharField(max_length=255, blank=True)
     has_live_queries = models.BooleanField(null=True, default=None)
@@ -947,8 +938,3 @@ class ReportMetricPreview(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["summary", "metric_name"], name="uniq_source_metric_preview")]
-
-
-def _annotation_filter_token():
-    # Kept only because migration 0030 names it as a field default.
-    return secrets.token_hex(32)

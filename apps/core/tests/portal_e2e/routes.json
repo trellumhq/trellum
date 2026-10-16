@@ -9453,7 +9453,7 @@
       "verified_node_ids": [],
       "source_sha256": "1e2b8a096f60f47bb78fd1172829bfd71245eac65825ae3c602570c3ab3bbd5c",
       "request_conditions": [],
-      "adapter_sha256": "0f21e52b5699a1d5ae18bcd166fc0bb48197c589900265a15089beba140bb34e",
+      "adapter_sha256": "686c0e94602ef069825fd5891dd3a63a660bc2c95211b941cab6ada2f0ade924",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -22650,11 +22650,11 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "9471e90d25c0e95eecb8e0a812fd6180496b44b7f799c84732d7ab6a5a163f9a",
+      "source_sha256": "8c108a39e6d8f55d278e274116ccf0fd6c40b59baab03d969d38c3ba62187c04",
       "request_conditions": [
         "GET only; status readable only inside the action studio; the scenario must create its own action via registry refresh, the fixed UUID is the nonexistent-action 404 control"
       ],
-      "adapter_sha256": "0b3571e6909f36900eb3567a4d1a674dda628cb1a051ba791867997dc9480d9a",
+      "adapter_sha256": "3772c9c3c064271f1061e104a2046337e3037bba3fc74bc94178453d572e9e4b",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"

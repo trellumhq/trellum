@@ -60,6 +60,10 @@ with `main` on desktop and mobile. Specifically:
     and never says "done" on 202.
   - The worker runs the action under a lease. A crashed or expired lease
     becomes `unconfirmed` or `failed`. Never silently re-run it.
+  - An action no worker claims must not hold its scope forever: give admitted
+    rows a time to live and end them as `failed` with a clear message (see
+    `ACCEPTED_TTL`). Expire at admission and in recovery, so a stuck row neither
+    answers new requests nor counts toward the pending limits.
 - Persist "work to do later" in the same transaction as the data that caused
   it, not only in `on_commit`. See `UnblockRequest` in `apps/datasources`.
 - Every external call has an explicit timeout: SMTP (`EMAIL_TIMEOUT`), HTTP

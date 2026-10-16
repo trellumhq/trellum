@@ -695,6 +695,9 @@ def _action_payload(request, action) -> dict:
         "terminal": action.is_terminal,
         "message": action.message,
         "accepted_at": action.accepted_at.isoformat(),
+        # Server-measured, so the page need not trust its own clock: how long an
+        # unclaimed action has already been waiting when it is handed back.
+        "age_seconds": max(0, int((timezone.now() - action.accepted_at).total_seconds())),
         "finished_at": action.finished_at.isoformat() if action.finished_at else None,
     }
     if action.state == "succeeded":
@@ -743,9 +746,14 @@ def api_registry_refresh(request, org_slug, studio_slug):  # noqa: ARG001
 @require_GET
 def api_maintenance_action(request, org_slug, studio_slug, action_id):  # noqa: ARG001
     """Status of one action, readable only inside its own studio."""
+    from apps.runner import maintenance_actions as maint
     from apps.runner.models import StudioMaintenanceAction
 
     action = get_object_or_404(StudioMaintenanceAction, pk=action_id, studio=request.studio)
+    # An action nobody claimed ends here too, so a page waiting on it is told
+    # even when no runner is alive to expire it.
+    if action.state == StudioMaintenanceAction.ACCEPTED and maint.expire_unclaimed(pk=action.pk):
+        action.refresh_from_db()
     resp = JsonResponse(_action_payload(request, action))
     resp["Cache-Control"] = "no-store"
     return resp

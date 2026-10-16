@@ -62,8 +62,10 @@ metadata-only `ADD COLUMN`. `AuditLog.impersonator` is the worked example.
 whole table under an `ACCESS EXCLUSIVE` lock. On a big table, add it `NOT VALID`
 via `RunSQL` and `VALIDATE` in a later migration.
 
-**Data migrations.** There are none in this repository yet, which is worth
-keeping in mind — the first one sets the pattern. When you write one:
+**Data migrations.** There are a few already; the latest is the
+`last_viewed_at` backfill in `reports.0026_report_idle_refresh`, which runs in
+the same migration as its schema changes and in one pass. Don't copy that shape
+for a table that can be large. When you write one:
 
 - Batch it. A single `UPDATE` over millions of rows holds locks and bloats WAL.
 - Make it idempotent and resumable; it will be interrupted somewhere.
@@ -75,6 +77,84 @@ keeping in mind — the first one sets the pattern. When you write one:
 drop the old one next release. `RenameField` breaks the old code instantly.
 
 **Deleting.** Contract phase only, and only after a release where nothing read it.
+
+## Rebasing unreleased migrations
+
+Migrations added since the last release tag have been applied by nobody outside
+this repository's own databases, so they may be rewritten before the next
+release. Collapse them so that customers upgrade from the last release through
+one migration per app, instead of replaying every intermediate step of
+development (a model added, reshaped and dropped again; a merge migration; a
+data migration for rows that no release ever wrote).
+
+1. Settle the models first: remove fields and tables nothing uses, and move
+   one-off data work out of migrations (a coordinator job recorded in
+   `OpsState` is one example). Generated migrations then already have their
+   final shape.
+2. Delete only the migration files that are absent from the previous tag. A
+   file that exists in the tag has been applied by customers and must never be
+   edited, renamed or removed.
+3. Regenerate one migration per affected app with
+   `python manage.py makemigrations <app> -n <name>`. Each one must depend
+   linearly on the previous release's last migration for that app: no merge
+   migration, no `RunPython`, no create-then-drop.
+4. Check the result: `git diff --stat <last-tag> -- '*/migrations/*'` lists
+   only added files; `makemigrations --check --dry-run` is clean; `sqlmigrate`
+   reads as new tables, indexes and nullable columns; and the real upgrade
+   works. In a worktree of the last tag run `manage.py migrate` against an
+   empty database, then run `manage.py migrate` from the branch against the
+   same database.
+
+A database that already applied the old, unreleased migrations (a development
+or preview instance) now disagrees with the migration files: `django_migrations`
+names migrations that no longer exist, and some of the new files reuse a name
+whose old row says "applied". With the application stopped, either restore the
+dump taken before it was upgraded, or put the schema back by hand and let
+`migrate` build it again:
+
+1. Take a dump.
+2. Drop every table and column that the removed migrations created.
+3. Delete their rows from `django_migrations`, including the rows for files
+   that were regenerated under the same name.
+4. Run `python manage.py migrate`.
+
+Rebasing the 0.8.0 development migrations looked like this. The annotation
+tables exist only on a database that stopped before the migration that dropped
+them; `IF EXISTS` covers both.
+
+```sql
+BEGIN;
+DROP TABLE IF EXISTS
+    reports_reportexperimentsummary, reports_reportmetricclaim, reports_reportmetricpreview,
+    reports_reportsourcesummary, reports_metriccatalogstate,
+    reports_annotationevent, reports_annotationfiltermembership, reports_annotationfilterreceipt,
+    reports_annotationfilterstate, reports_annotationsourcestate, reports_annotationcatalogstate,
+    runner_studiomaintenanceaction, datasources_unblockrequest CASCADE;
+ALTER TABLE reports_metricdefinition DROP COLUMN IF EXISTS binding;
+ALTER TABLE orgs_orgssoconfig
+    DROP COLUMN IF EXISTS last_test_at, DROP COLUMN IF EXISTS last_test_by_id,
+    DROP COLUMN IF EXISTS last_test_ok, DROP COLUMN IF EXISTS last_test_summary;
+DELETE FROM django_migrations WHERE
+    (app = 'reports' AND name IN (
+        '0026_source_summaries', '0027_metric_binding_workspace_layout',
+        '0028_report_runtime_experiment_projection', '0029_annotation_projection',
+        '0030_annotation_filter_state', '0031_source_summary_idle_checks',
+        '0032_merge_idle_refresh_and_source_summaries', '0033_source_summary_change_stamp',
+        '0034_drop_unused_annotation_tables', '0035_source_summary_legacy_rebuild_queued_for'))
+    OR (app = 'datasources' AND name IN ('0007_unblockrequest', '0008_unblockrequest_cursor_report'))
+    OR (app = 'orgs' AND name = '0025_orgssoconfig_test_signin')
+    OR (app = 'runner' AND name = '0007_studiomaintenanceaction');
+COMMIT;
+```
+
+What this removes is only what those migrations added: worker-built source
+summaries (the workers build them again), maintenance and unblock requests
+(short-lived), and the last SSO test sign-in result.
+
+Do not use `migrate reports 0026_report_idle_refresh` to get back. Django can
+only reverse migrations it finds on disk, so it skips the ones that were
+removed and leaves their tables and columns in place; the next `migrate` then
+fails on "already exists".
 
 ## Before you commit
 

@@ -286,7 +286,7 @@ def inspect_source(report, summary):
 
 def _public_identity(row):
     return (row.state, row.quality, row.source_identity, row.claim_digest,
-            row.served_at, row.attempt_at, row.attempt_status, row.preview_state, row.backend,
+            row.served_at, row.attempt_at, row.attempt_status, row.preview_state,
             row.workspace_version, row.runtime_state, row.runtime, row.has_output, row.html_entry,
             row.has_live_queries, row.output_digest, row.attempt_error, row.attempt_blocked_by,
             row.experiment_state, row.declaration_digest)
@@ -342,12 +342,11 @@ def _confirm_unchanged(report_id, report, generation, token, declaration):
         now = timezone.now()
         row.observed_at = now
         row.failures = 0
-        row.error_code = ""
         row.lease_token = ""
         row.lease_until = None
         row.idle_checks = min(row.idle_checks + 1, 12)
         row.next_check_at = now + timedelta(seconds=min(MAX_IDLE_SECONDS, RECHECK_SECONDS * 2 ** row.idle_checks))
-        row.save(update_fields=["observed_at", "failures", "error_code", "lease_token", "lease_until",
+        row.save(update_fields=["observed_at", "failures", "lease_token", "lease_until",
                                 "idle_checks", "next_check_at"])
         return {"status": row.state, "bytes": 0, "encoded_bytes": 0, "decoded_bytes": 0,
                 "projection_unavailable": False, "unchanged": True}
@@ -357,60 +356,7 @@ def reconcile(report_id):
     lease = acquire(report_id)
     if lease is None:
         return {"status": "ineligible", "bytes": 0}
-    report = lease[0]
-    result = _reconcile_leased(report_id, *lease)
-    if result["status"] == "ready" and report.slug == "metrics" and "metrics" in (report.tags or []):
-        # Runs after publication, outside its transaction, and never fails it.
-        try:
-            if queue_legacy_metrics_rebuild(report_id):
-                result["legacy_rebuild"] = "queued"
-        except Exception:  # the summary is already published; never fail it
-            logger.exception("automatic legacy metrics rebuild failed for report %s", report_id)
-    return result
-
-
-def queue_legacy_metrics_rebuild(report_id):
-    """Queue the one automatic rebuild of a legacy (version 0) Metrics artifact.
-
-    An artifact built before the paged comparison workspace shows no sparklines
-    or charts until the Metrics report is built again, and a report without a
-    schedule would never be. This is called only by the background reconciler,
-    never by a request. It runs when the report is present, enabled and its
-    summary is a settled ``ready`` observation of a legacy artifact, and nothing
-    is queued or running for it.
-
-    The attempt is recorded durably in the same transaction as the run, against
-    the identity of the artifact it was made for. While that mark stands, nothing
-    more is queued, whatever the artifact becomes: a failed rebuild, a runner
-    that still produces legacy output and a worker restart all stop here
-    instead of looping. Only publishing a non-legacy artifact clears the mark,
-    so a later regression gets one new attempt. Returns True if a run was queued.
-    """
-    from apps.core.audit import audit_system
-    from apps.runner.models import Run
-    from apps.runner.services import enqueue
-
-    with transaction.atomic():
-        # Locks only the summary row, and only when it is a candidate; the
-        # steady state (non-legacy or already attempted) matches nothing.
-        row = (ReportSourceSummary.objects.select_for_update(of=("self",))
-               .filter(report_id=report_id, state="ready", quality__in=("observed", "verified"),
-                       workspace_version=0, legacy_rebuild_queued_for__isnull=True,
-                       report__present_in_scan=True, report__disabled=False,
-                       report__data_expired_at__isnull=True, report__kind=Report.KIND_REPORT,
-                       report__slug="metrics", report__tags__contains=["metrics"])
-               .select_related("report__studio__org").first())
-        if row is None or Run.objects.filter(report_id=report_id, status__in=Run.ACTIVE_STATUSES).exists():
-            return False
-        report = row.report
-        # "catchup" is the existing trigger for work the system queues itself.
-        enqueue(report, trigger="catchup")
-        row.legacy_rebuild_queued_for = row.source_identity or f"generation:{row.generation}"
-        row.save(update_fields=["legacy_rebuild_queued_for"])
-    audit_system("run.auto_enqueue", org=report.studio.org, report_id=report.pk, slug=report.slug,
-                 studio=report.studio.slug, trigger="catchup", reason="legacy_metrics_workspace",
-                 artifact=row.legacy_rebuild_queued_for)
-    return True
+    return _reconcile_leased(report_id, *lease)
 
 
 def _reconcile_leased(report_id, report, generation, token):
@@ -426,7 +372,6 @@ def _reconcile_leased(report_id, report, generation, token):
             row = ReportSourceSummary.objects.select_for_update().get(report_id=report_id)
             if row.generation == generation and row.lease_token == token:
                 row.failures += 1
-                row.error_code = type(exc).__name__
                 row.state = "unavailable"
                 row.lease_token = ""
                 row.lease_until = None
@@ -463,10 +408,6 @@ def _reconcile_leased(report_id, report, generation, token):
             row.quality = result["quality"]
             row.preview_state = result["preview_state"]
             row.workspace_version = result["workspace_version"]
-            if result["workspace_version"] not in (None, 0):
-                # A current workspace ends the legacy episode: a regression
-                # to legacy output later is owed its own single attempt.
-                row.legacy_rebuild_queued_for = None
         extension = result['extension']
         if result['state'] in ('uncertain', 'expired'):
             # Declarations are current DB authority even when artifact results
@@ -505,7 +446,6 @@ def _reconcile_leased(report_id, report, generation, token):
         row.attempt_error = extension['attempt_error']
         row.attempt_blocked_by = extension['attempt_blocked_by']
         row.schema_version = 2
-        row.backend = storage.backend_name()
         row.state = result["state"]
         row.observed_at = timezone.now()
         if result["attempt_stamp"] and (not row.attempt_at or result["attempt_stamp"] > row.attempt_at):
@@ -515,7 +455,6 @@ def _reconcile_leased(report_id, report, generation, token):
             Report.objects.filter(pk=report_id).update(data_expired_at=timezone.now())
             row.quality = "unknown"
         row.failures = 0
-        row.error_code = ""
         row.lease_token = ""
         row.lease_until = None
         # Only a settled, fully readable observation can later be confirmed by
