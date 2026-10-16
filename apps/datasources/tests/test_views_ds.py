@@ -70,6 +70,23 @@ class TestListApi:
         raw = login(viewer).get(f"{prefix}/api/datasources").content.decode()
         assert "password" not in raw.lower() or '"p"' not in raw
 
+    def test_whole_list_unless_a_page_is_asked_for(self, login, viewer, prefix, studio_tree):
+        # API-key scripts written before paging read the whole list.
+        DataSource.objects.bulk_create(
+            DataSource(studio=studio_tree, name=f"src{i:02d}", type="postgres", config={"host": "h"})
+            for i in range(60)
+        )
+        client = login(viewer)
+        body = client.get(f"{prefix}/api/datasources").json()
+        assert len(body["sources"]) == body["total"] == 60 and body["page"] == 1 and not body["has_next"]
+        assert [s["name"] for s in body["sources"]] == sorted(s["name"] for s in body["sources"])
+        body = client.get(f"{prefix}/api/datasources?page=1").json()
+        assert len(body["sources"]) == 50 and body["total"] == 60 and body["has_next"]
+        body = client.get(f"{prefix}/api/datasources?page=2").json()
+        assert len(body["sources"]) == 10 and not body["has_next"]
+        body = client.get(f"{prefix}/api/datasources?limit=25").json()
+        assert len(body["sources"]) == 25 and body["has_next"]
+
 
 class TestUpload:
     def test_upload_writes_file(self, login, developer, prefix, file_source, studio_tree):
