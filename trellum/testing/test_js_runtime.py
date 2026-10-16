@@ -36,7 +36,7 @@ def test_workspace_table_global_metadata_and_bounded_optin_leave_defaults_unchan
         eval(js);
         var rows = Array.from({length: 80}, (_, i) => ['metric_' + String(i).padStart(4,'0'), 'owner_' + i]);
         window._fwRenderers.table('paged', {columns:['Metric','Owner'], rows:rows, totalRows:80,
-            maxRows:25, sortable:true, workspacePageSize:25, workspacePage:1});
+            maxRows:25, sortable:true, workspacePageSize:25});
         window._fwRenderers.table('ordinary', {columns:['Metric','Owner'], rows:rows, totalRows:80, maxRows:25});
         var before = document.querySelectorAll('#paged tbody tr').length;
         document.querySelector('#paged th').click();
@@ -54,6 +54,28 @@ def test_workspace_table_global_metadata_and_bounded_optin_leave_defaults_unchan
     }""", load_js('components/data_table.js'))
     assert result == {'before': 25, 'first': 'metric_0079owner_79', 'next': 'metric_0054owner_54', 'ordinary': 80,
                       'lastFocus': True, 'firstFocus': True}
+
+def test_workspace_definition_deep_link_opens_the_table_page_holding_the_row(capture_page):
+    result = capture_page.evaluate("""js => {
+        document.body.innerHTML = '<div id="defs"></div>';
+        window._fwRenderers = window._fwRenderers || {};
+        window._fwMetricsWorkspace = {definitionId: 'defs'};
+        window._fwMetricsCatalog = Array.from({length: 80}, (_, i) => ({monitored: false,
+            name: 'metric_' + String(i).padStart(4,'0'), anchor: 'definition-metric_' + String(i).padStart(4,'0')}));
+        history.replaceState(null, '', '#definition-metric_0060');
+        eval(js);
+        var rows = window._fwMetricsCatalog.map(r => [r.name, 'owner']);
+        window._fwRenderers.table('defs', {columns:['Metric','Owner'], rows:rows, totalRows:80, maxRows:25,
+            sortable:true, workspacePageSize:25});
+        var out = {first: document.querySelector('#defs tbody tr').textContent,
+                   linked: !!document.getElementById('definition-metric_0060'),
+                   status: document.querySelector('#defs [data-workspace-table-status]').textContent};
+        delete window._fwMetricsWorkspace; delete window._fwMetricsCatalog;
+        history.replaceState(null, '', location.pathname);
+        return out;
+    }""", load_js('components/data_table.js'))
+    assert result == {'first': 'metric_0050owner', 'linked': True, 'status': '80 of 80 rows · Page 3 of 4'}
+
 
 def test_metric_draw_queue_coalesces_latest_filter_disposes_and_restores(capture_page):
     """Synthetic consumer callbacks verify lifecycle, not live chart timings."""

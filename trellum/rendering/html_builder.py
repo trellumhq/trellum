@@ -581,8 +581,7 @@ setTimeout(function(){
         if not hasattr(workspace_ctx, '_metric_workspace_blocks'):
             workspace_ctx._metric_workspace_blocks = []
         write_pages(out, html, report_data, workspace_ctx,
-                    ctx._metric_workspace_catalog, uuid4().hex,
-                    ctx._metric_workspace_definitions)
+                    ctx._metric_workspace_catalog, uuid4().hex)
     return html_path, json_path
 
 

@@ -114,14 +114,16 @@ def _check_metrics(
     from trellum.metrics_report import _MetricBlock
     catalog = getattr(ctx, '_metric_workspace_catalog', None)
     if catalog is not None:
-        from trellum.metrics_workspace import PAGE_SIZE
+        from trellum.metrics_workspace import PAGE_SIZE, page_count
         anchors = [row.get('anchor') for row in catalog]
         if len(set(anchors)) != len(anchors) or any(not isinstance(anchor, str) or not anchor for anchor in anchors):
             result.fail('metric-workspace-pages', 'Workspace catalog anchors must be distinct nonempty identities.')
-        for monitored in (True, False):
-            entries = [row for row in catalog if row.get('monitored', True) is monitored]
-            if any(row.get('page') != index // PAGE_SIZE + 1 for index, row in enumerate(entries)):
-                result.fail('metric-workspace-pages', 'Workspace catalog must route every metric to its bounded native page.')
+        entries = [row for row in catalog if row.get('monitored', True)]
+        # Definitions render once, on the last page, from the complete catalog.
+        last_page = page_count(len(entries))
+        if (any(row.get('page') != index // PAGE_SIZE + 1 for index, row in enumerate(entries))
+                or any(row.get('page') != last_page for row in catalog if not row.get('monitored', True))):
+            result.fail('metric-workspace-pages', 'Workspace catalog must route every metric to its bounded native page.')
         blocks = [comp for comp, _ in comps if isinstance(comp, _MetricBlock)]
         if len(blocks) != sum(row.get('monitored', True) for row in catalog):
             result.fail('metric-workspace-claims', 'Every monitored catalog metric must retain its complete build-time block and claim.')

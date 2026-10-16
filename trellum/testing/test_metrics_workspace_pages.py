@@ -46,18 +46,48 @@ def test_bounded_pages_keep_complete_root_data_and_claims(tmp_path, monkeypatch)
     assert len(next(value for value in root['components'].values() if value['type'] == 'table')['rows']) == 70
     catalog = json.loads(next(out.glob('*catalog.json')).read_bytes())['metrics']
     assert len(catalog) == 126 and catalog[-1]['name'] == 'unbound_0069'
+    assert {row['page'] for row in catalog if not row['monitored']} == {3}
     for number in range(1, 4):
         name = f'_metrics-workspace-{marker["build"]}-page-{number}'
         html = (out / (name + '.html')).read_text()
         payload = json.loads((out / (name + '.json')).read_bytes())
         assert html.count('fw-section fw-metric-block') <= 25
-        assert html.count('<tr id="definition-') <= 25
+        assert '<tr id="definition-' not in html  # no server-rendered definition rows
         assert len(payload['_metrics']) <= 25
         assert len([c for c in payload['components'].values() if c['type'] == 'chart']) <= 25
-        assert all(len(c['rows']) <= 25 and c['workspacePageSize'] == 25
-                   for c in payload['components'].values() if c['type'] == 'table')
+        tables = [c for c in payload['components'].values() if c['type'] == 'table']
+        # The definitions table appears once, on the last page, filled from the catalog.
+        assert len(tables) == (number == 3)
+        assert all(c['rows'] == [] and c['workspacePageSize'] == 25 for c in tables)
+        assert ('Defined but not monitored' in html) == (number == 3)
         assert payload['_metrics_workspace']['build'] == marker['build']
     assert 'metric_0055' not in json.loads((out / f'_metrics-workspace-{marker["build"]}-page-1.json').read_bytes())['_metrics']
+
+
+def test_definitions_never_add_pages_or_bytes_per_page(tmp_path, monkeypatch):
+    """Pages follow monitored metrics only; definitions live in the catalog."""
+    for name in ('small', 'many'):
+        (tmp_path / name).mkdir()
+    small = build(tmp_path / 'small', 20, monkeypatch, unbound=1)
+    many = build(tmp_path / 'many', 20, monkeypatch, unbound=1000)
+    marker = json.loads((many / '_meta.json').read_bytes())['metrics_workspace']
+    assert marker['pages'] == 1
+    # Past the first definition (which brings the table's own code), 1000 more add
+    # no per-page files and no page bytes beyond the catalog.
+    names = lambda out: sorted(p.name.split('-', 3)[-1] for p in out.glob('_metrics-workspace-*'))  # noqa: E731
+    assert names(small) == names(many) == ['catalog.json', 'page-1.html', 'page-1.json']
+    page = lambda out, ext: next(out.glob(f'_metrics-workspace-*-page-1.{ext}')).stat().st_size  # noqa: E731
+    assert page(many, 'json') - page(small, 'json') < 2_000
+    assert page(many, 'html') - page(small, 'html') < 2_000
+    catalog = json.loads(next(many.glob('*catalog.json')).read_bytes())['metrics']
+    assert sum(not row['monitored'] for row in catalog) == 1000
+
+
+def test_many_definitions_leave_the_page_count_to_monitored_metrics(tmp_path, monkeypatch):
+    out = build(tmp_path, 26, monkeypatch, unbound=600)
+    marker = json.loads((out / '_meta.json').read_bytes())['metrics_workspace']
+    assert marker['pages'] == 2
+    assert len([name for name in marker['files'] if name.endswith('.html')]) == 2
 
 
 def test_rebuild_removes_only_previous_owned_pages(tmp_path, monkeypatch):

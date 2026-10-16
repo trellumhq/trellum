@@ -26,7 +26,7 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
         });
         try { _definitionHash = decodeURIComponent(location.hash.slice(1)); } catch (error) {}
     }
-    var _page = _pageSize && Number.isInteger(cfg.workspacePage) && cfg.workspacePage > 0 ? cfg.workspacePage : 1;
+    var _page = 1;
     if (_pageSize && el._fwWorkspaceTableState) {
         var saved = el._fwWorkspaceTableState;
         _page = saved.page; _searchTerm = saved.term; _sortCol = saved.sortCol; _sortDir = saved.sortDir;
@@ -294,6 +294,11 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
     } else {
         /* ── Static mode ── */
         _lastRows = cfg.rows; _lastCols = cfg.columns; _lastTotal = cfg.totalRows;
+        // A definition deep link opens the table page that holds its row.
+        if (_definitionAnchors && _definitionHash && !el._fwWorkspaceTableState) {
+            var _linked = cfg.rows.findIndex(function(row) { return _definitionAnchors[row[0]] === _definitionHash; });
+            if (_linked >= 0) _page = Math.floor(_linked / _pageSize) + 1;
+        }
         _renderRows(cfg.columns, cfg.rows, cfg.totalRows);
     }
 
