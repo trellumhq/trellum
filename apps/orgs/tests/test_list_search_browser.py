@@ -50,3 +50,43 @@ def test_org_members_search_applies_after_a_pause_without_a_button(live_server, 
         expect(rows("someone-else@demo.example")).to_have_count(1)
         assert "q=" not in page.url  # an emptied box leaves nothing in the address bar
         browser.close()
+
+
+def test_member_access_tabs_search_by_themselves_without_a_button(live_server, login, org_admin, org, member, make_group, attach_group, settings):
+    from apps.studios.models import Studio
+
+    Studio.objects.create(org=org, slug="alpha-room", name="Alpha Room")
+    Studio.objects.create(org=org, slug="beta-room", name="Beta Room")
+    for name in ("Finders", "Keepers"):
+        attach_group(member, make_group(name))
+    client = login(org_admin)
+    host = live_server.url
+    base = f"{host}/orgs/{org.slug}/settings/members/{member.pk}/studios"
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True)
+        context = browser.new_context(viewport={"width": 1440, "height": 900})
+        context.add_cookies([{"name": "sessionid", "value": client.cookies["sessionid"].value, "url": host}])
+        page = context.new_page()
+        page.route("**/static/**", _static(settings))
+
+        page.goto(f"{base}?tab=groups")
+        assert page.locator("form[role=search]").count() == 1
+        assert page.locator("form[role=search] button[type=submit]").count() == 0
+        assert page.locator("form[role=search][data-auto-filter]").count() == 1
+        rows = lambda text: page.locator("main tbody tr", has_text=text)  # noqa: E731
+        expect(rows("Keepers")).to_have_count(1)
+        search = page.get_by_role("searchbox", name="Search memberships by group name")
+        search.fill("Finders")
+        page.wait_for_url("**group_q=Finders**", timeout=5000)
+        assert "tab=groups" in page.url  # the tab survives the search
+        expect(rows("Finders")).to_have_count(1)
+        expect(rows("Keepers")).to_have_count(0)
+
+        page.goto(base)
+        assert page.locator("form[role=search] button[type=submit]").count() == 0
+        search = page.get_by_role("searchbox", name="Search studios by name or slug…")
+        search.fill("beta")
+        page.wait_for_url("**q=beta**", timeout=5000)
+        expect(rows("Beta Room")).to_have_count(1)
+        expect(rows("Alpha Room")).to_have_count(0)
+        browser.close()
