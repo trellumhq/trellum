@@ -15,6 +15,7 @@ from django.views.decorators.http import require_POST
 from apps.core import roles
 from apps.core.audit import audit
 from apps.core.form_responses import is_settings_request, settings_success
+from apps.core.limits import INLINE_LIMIT
 from apps.core.permissions import require_org_role, visible_studios
 from apps.orgs.models import OrgMembership, PermissionGroupMembership
 from apps.studios.models import Studio, StudioMembership
@@ -39,7 +40,7 @@ _MFA_STASH_KEYS = ("mfa_user_id", "mfa_started", "mfa_next", "mfa_login_method")
 
 #: Safety bound on the unpaginated account/API-key tables: far above realistic
 #: sizes and silent (the page shows every row up to it).
-_LIST_CAP = 500
+_LIST_CAP = INLINE_LIMIT
 
 
 #: Session key carrying the email from the login page's first step to its

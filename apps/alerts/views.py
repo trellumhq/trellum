@@ -24,6 +24,7 @@ from apps.core import roles
 from apps.core.audit import audit
 from apps.core.choice_requests import choice_response, search_page, selected_by_id
 from apps.core.form_responses import is_settings_request, settings_success, settings_error
+from apps.core.limits import INLINE_LIMIT
 from apps.core.permissions import require_studio_role
 from apps.core.report_access import visible_reports
 from apps.reports.models import Report
@@ -33,7 +34,7 @@ from apps.reports.models import Report
 from apps.reports.recipient_access import DeliveryPresentationBatch
 
 RUNS_PER_PAGE = 25
-RULES_LIMIT = 500
+RULES_LIMIT = INLINE_LIMIT
 _STATUS_LABELS = dict(AlertRun.STATUS_CHOICES)
 
 

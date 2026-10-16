@@ -73,7 +73,7 @@ def test_member_access_tabs_search_by_themselves_without_a_button(live_server, l
         assert page.locator("form[role=search]").count() == 1
         assert page.locator("form[role=search] button[type=submit]").count() == 0
         assert page.locator("form[role=search][data-auto-filter]").count() == 1
-        rows = lambda text: page.locator("main tbody tr", has_text=text)  # noqa: E731
+        rows = lambda text: page.locator("main tbody tr", has_text=text)
         expect(rows("Keepers")).to_have_count(1)
         search = page.get_by_role("searchbox", name="Search memberships by group name")
         search.fill("Finders")

@@ -37,6 +37,7 @@ from apps.core.audit import audit
 from apps.core.choice_requests import choice_response, search_page, selected_by_id
 from apps.core.form_responses import is_settings_request, settings_error, settings_success
 from apps.core.http import int_param, json_body
+from apps.core.limits import INLINE_LIMIT
 from apps.core.permissions import (
     require_org_role,
     require_studio_role,
@@ -1729,7 +1730,7 @@ def _schedule_json_for_script(schedule, viewer=None, request=None) -> str:
     return json.dumps(_schedule_dict(schedule, viewer=viewer, request=request)).translate(_JSON_SCRIPT_ESCAPES)
 
 
-DELIVERY_ROWS_LIMIT = 500
+DELIVERY_ROWS_LIMIT = INLINE_LIMIT
 
 
 def _my_schedule_rows(user, *, org_id=None, request=None, studio=None) -> list[dict]:
