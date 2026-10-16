@@ -296,6 +296,35 @@ def _registry_row(row, indicator, live_enabled):
     )
 
 
+def _latest_finished_runs(request, rows):
+    """The newest finished build per report, for the rows whose summary does
+    not say yet (no summary row, still pending, unsupported or expired).
+
+    A summary exists only once a worker has reconciled the report, and that
+    can lag far behind the builds themselves: right after an upgrade, or on a
+    studio with a lot of output. Until then a card reads the same Run rows
+    Operations reads, instead of claiming the report never ran. One query for
+    the page's ids, and none when every summary is known; no storage reads.
+    A build that is still queued or running does not replace the last
+    outcome, as the artifact's own last status does not.
+    """
+    from apps.runner.models import Run
+
+    unknown = [row for row in rows if row["last_status"] is None]
+    if not unknown:
+        return {}
+    finished = (Run.SUCCESS, Run.ERROR, Run.STOPPED, Run.TIMEOUT, Run.OOM_KILLED)
+    latest = (
+        Run.objects.filter(
+            studio=request.studio, status__in=finished,
+            report_id__in=[row["id"] for row in unknown], slug__in=[row["slug"] for row in unknown],
+        )
+        .order_by("report_id", "-created_at", "-pk").distinct("report_id")
+        .values("report_id", "status", "created_at", "finished_at")
+    )
+    return {run["report_id"]: run for run in latest}
+
+
 def catalog_cards_payload(request, params, *, kind="report", now=None):
     """One bounded slice of the dashboard's registry-shaped rows.
 
@@ -315,6 +344,12 @@ def catalog_cards_payload(request, params, *, kind="report", now=None):
     selected, _, _ = _filtered(relation, {"q": params.get("q", ""), "tab": params.get("tab", "all")}, recent)
     total = selected.values("pk").count()
     rows = _rows(selected, {"view": "cards", "csort": "priority"}, recent, page, grouped=False, limit=limit)
+    finished = _latest_finished_runs(request, rows)
+    for row in rows:
+        run = finished.get(row["id"])
+        if run is not None:
+            row["last_status"] = run["status"]
+            row["last_run"] = (run["finished_at"] or run["created_at"]).isoformat()
     indicators = catalog_indicators_payload(request, [row["id"] for row in rows], now=now, fresh_seconds=CARDS_FRESH_SECONDS) if rows else {}
     by_id = indicators.get("reports", {}) if indicators.get("state") != "oversized" else {}
     live_enabled = live_query_rate_limit(request.org) > 0

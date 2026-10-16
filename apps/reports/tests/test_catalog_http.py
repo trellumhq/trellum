@@ -1,7 +1,7 @@
 """The dashboard reads the registry in bounded slices; the JSON catalog stays bounded."""
 import pytest
 
-from apps.reports.models import Report, ReportFavorite
+from apps.reports.models import Report, ReportFavorite, ReportSourceSummary
 
 pytestmark = pytest.mark.django_db
 
@@ -109,3 +109,85 @@ def test_detail_endpoint_is_authorized_and_bad_input_is_rejected(login, studio, 
     assert owner.get(base + f"/api/catalog/details/{report.pk}?metadata=0").json()["report_id"] == report.pk
     assert owner.get(base + "/api/catalog/indicators?id=not-an-id").status_code == 400
     assert owner.get(base + "/api/catalog?kind=invalid").status_code == 400
+
+
+class TestCardsBeforeSummaries:
+    """Until a worker has reconciled a report there is no summary to read; the
+    cards then show what Operations shows, from the Run rows, and agree with
+    the whole registry."""
+
+    @pytest.fixture
+    def built(self, studio_tree, report_row, write_meta):
+        from django.utils import timezone
+
+        from apps.reports.scan import invalidate_registry_cache
+        from apps.runner.models import Run
+
+        finished = timezone.now() - timezone.timedelta(minutes=17)
+        write_meta(report_row.slug, last_status="success", last_run=finished.isoformat())
+        Run.objects.create(
+            studio=studio_tree, report=report_row, slug=report_row.slug, status=Run.SUCCESS,
+            created_at=finished - timezone.timedelta(seconds=40), finished_at=finished,
+        )
+        invalidate_registry_cache(studio_tree)
+        return report_row
+
+    @staticmethod
+    def rows(client, studio):
+        base = f"/s/{studio.org.slug}/{studio.slug}/api/registry"
+        paged = client.get(base + "?kind=report&page=1").json()["reports"][0]
+        whole = client.get(base).json()["reports"][0]
+        return paged, whole
+
+    @pytest.mark.parametrize("summary", ["missing", "pending"])
+    def test_paged_registry_matches_the_whole_registry(self, login, studio_tree, org_admin, built, summary):
+        # The registry sync leaves a pending row; a studio from before the
+        # summaries has none at all.
+        if summary == "missing":
+            ReportSourceSummary.objects.filter(report=built).delete()
+        else:
+            assert ReportSourceSummary.objects.get(report=built).state == "pending"
+        paged, whole = self.rows(login(org_admin), studio_tree)
+        assert paged["last_status"] == whole["last_status"] == "success"
+        assert paged["last_run"] == whole["last_run"]
+        assert paged["build_status"] == whole["build_status"] == "success"
+
+    def test_a_failed_build_reads_as_an_error(self, login, studio_tree, org_admin, built, write_meta):
+        from django.utils import timezone
+
+        from apps.reports.scan import invalidate_registry_cache
+        from apps.runner.models import Run
+
+        failed = timezone.now() - timezone.timedelta(minutes=2)
+        write_meta(built.slug, last_status="error", last_run=failed.isoformat())
+        Run.objects.create(studio=studio_tree, report=built, slug=built.slug, status=Run.OOM_KILLED,
+                           created_at=failed - timezone.timedelta(seconds=9), finished_at=failed)
+        invalidate_registry_cache(studio_tree)
+        paged, whole = self.rows(login(org_admin), studio_tree)
+        assert paged["last_status"] == whole["last_status"] == "error"
+        assert paged["last_run"] == whole["last_run"]
+
+    def test_a_build_in_progress_does_not_replace_the_last_outcome(self, login, studio_tree, org_admin, built):
+        from apps.runner.models import Run
+
+        Run.objects.create(studio=studio_tree, report=built, slug=built.slug, status=Run.RUNNING)
+        paged, whole = self.rows(login(org_admin), studio_tree)
+        assert paged["last_status"] == whole["last_status"] == "success"
+        assert paged["last_run"] == whole["last_run"]
+        assert paged["build_status"] == whole["build_status"] == "running"
+
+    def test_a_report_that_never_ran_is_still_not_run(self, login, studio_tree, org_admin, report_row):
+        paged, _ = self.rows(login(org_admin), studio_tree)
+        assert paged["last_status"] == "not_run" and paged["last_run"] is None
+
+    def test_a_known_summary_is_not_overridden_by_runs(self, login, studio_tree, org_admin, built):
+        from django.utils import timezone
+
+        seen = timezone.now() - timezone.timedelta(hours=2)
+        ReportSourceSummary.objects.update_or_create(report=built, defaults={
+            "state": "ready", "runtime_state": "ready", "quality": "observed",
+            "observed_at": seen, "attempt_at": seen, "attempt_status": "error",
+        })
+        paged, _ = self.rows(login(org_admin), studio_tree)
+        assert paged["last_status"] == "error"
+        assert paged["last_run"] == seen.isoformat()

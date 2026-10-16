@@ -82,6 +82,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- The Reports and Analyses catalog no longer shows every report as "Not run"
+  and "Never" right after an upgrade, or while a report's source summary is
+  still being built. Until the worker has summarized a report, its card shows
+  the status and time of its latest finished build, the same ones Operations
+  and the full registry show; once the summary is ready nothing changes. It
+  costs one extra bounded query per page of 50 reports and reads no storage.
 - The console top bar no longer jumps while a page loads. The AI assistant has
   one slot, in the same place on every page, and its space is reserved from
   the first paint, so the health warning, search box and Docs link stop shifting
