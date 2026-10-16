@@ -138,6 +138,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   `catchup`, audited as `run.auto_enqueue`) when it sees the legacy artifact,
   at most once until a current artifact is published; a failing rebuild or a
   runner still producing legacy output is not retried.
+- `GET api/datasources` returns every source again when no `?page=` or
+  `?limit=` is given, so API-key scripts that read the whole list are not cut
+  off at 50 sources. With either parameter it returns one page.
 
 ## [0.7.0] — 2026-10-15
 
