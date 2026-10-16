@@ -61,10 +61,11 @@ this working.
    times. With three runners the work lands on different ones; every result
    must be readable. Confirm from the run history which worker took each build.
 
-3. **The registry does not stall.** A studio dashboard lists every report with
-   its status and entry point. That path resolves the whole studio from one
-   listing — if it were a round trip per report, a studio with thirty reports
-   would visibly crawl.
+3. **The registry does not wait on the bucket.** A studio dashboard lists every
+   report with its status and entry point. That list reads the worker's
+   observations from the database and never the bucket, so it must load just as
+   fast with the bucket stopped (step 5) — if it were a round trip per report,
+   a studio with thirty reports would visibly crawl.
 
 4. **A rebuild replaces what readers see.** Change a report, rebuild, reload.
    The cache is keyed on the build's `last_run`, so a new build must land in a

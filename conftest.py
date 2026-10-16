@@ -161,6 +161,43 @@ def write_meta(studio_tree):
 
 
 @pytest.fixture
+def observe_meta(studio_tree, write_meta):
+    """``write_meta`` plus the summary row a worker projects from it.
+
+    The registry reads that row (never ``_meta.json``). ``observed`` is the
+    ``has_output`` the worker saw: ``None`` leaves it unknown.
+    """
+    from datetime import datetime
+    from datetime import timezone as _tz
+
+    from django.utils import timezone
+
+    from apps.reports.models import Report, ReportSourceSummary
+
+    def _observe(slug: str, *, observed=None, **meta):
+        out = write_meta(slug, **meta)
+        report = Report.objects.get(studio=studio_tree, slug=slug)
+        now = timezone.now()
+        last_run = meta.get("last_run")
+        at = datetime.fromisoformat(last_run.replace("Z", "+00:00")) if last_run else now
+        runtime = {}
+        if isinstance(meta.get("validation"), dict) and isinstance(meta["validation"].get("summary"), dict):
+            runtime["validation"] = {"summary": meta["validation"]["summary"]}
+        if meta.get("framework_version"):
+            runtime["framework_version"] = meta["framework_version"]
+        ReportSourceSummary.objects.update_or_create(report=report, defaults={
+            "schema_version": 2, "state": "ready", "quality": "observed", "runtime_state": "ready",
+            "observed_at": now, "attempt_at": at if at.tzinfo else at.replace(tzinfo=_tz.utc),
+            "attempt_status": meta.get("last_status", "not_run"), "attempt_error": (meta.get("last_error") or "")[:500],
+            "attempt_blocked_by": meta.get("blocked_by") or [], "runtime": runtime,
+            "has_output": observed, "html_entry": "index.html" if observed else "",
+        })
+        return out
+
+    return _observe
+
+
+@pytest.fixture
 def write_metrics_yaml(studio_tree):
     """Write <project_root>/metrics.yaml (semantic-layer Phase 2).
 

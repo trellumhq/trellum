@@ -5,6 +5,9 @@ import pytest
 from django.db import connection
 
 from apps.core import roles
+from apps.core.limits import INLINE_LIMIT
+from apps.core.pagination import page_metadata
+from apps.reports import operations
 from apps.reports.models import Report
 from apps.runner.models import Run
 
@@ -23,13 +26,17 @@ def seeded(org_admin, org, studio, login):
 
 
 @pytest.mark.django_db
-def test_catalog_pages_filters_and_folders(client, studio, seeded):
+def test_catalog_pages_and_search(client, studio, seeded):
     data = client.get(url(studio, 'api/operations/catalog')).json()
-    assert data['state'] == 'ready' and len(data['rows']) == 25 and data['pagination']['total'] == 30
-    assert data['folders']['all'] == 30 and {c['name'] for c in data['folders']['categories']} == {'A', 'B'}
-    page2 = client.get(url(studio, 'api/operations/catalog?page=2&category=A')).json()
-    assert page2['pagination']['total'] == 15 and page2['pagination']['pages'] == 1 and page2['rows'] == []
-    bad = client.get(url(studio, 'api/operations/catalog?state=nonsense'))
+    assert data['state'] == 'ready' and len(data['rows']) == 25
+    assert data['pagination'] == page_metadata(1, 25, 30)
+    # Only what the page reads is sent.
+    assert set(data) == {'version', 'state', 'rows', 'pagination', 'observed_at'}
+    page2 = client.get(url(studio, 'api/operations/catalog?page=2')).json()
+    assert page2['pagination'] == page_metadata(2, 25, 30) and len(page2['rows']) == 5
+    found = client.get(url(studio, 'api/operations/catalog?q=report%2012')).json()
+    assert [row['slug'] for row in found['rows']] == ['r12']
+    bad = client.get(url(studio, 'api/operations/catalog?page=0'))
     assert bad.status_code == 400 and bad.json()['state'] == 'invalid'
     assert client.post(url(studio, 'api/operations/catalog')).status_code == 405
     assert 'no-store' in client.get(url(studio, 'api/operations/catalog'))['Cache-Control']
@@ -37,12 +44,10 @@ def test_catalog_pages_filters_and_folders(client, studio, seeded):
 
 @pytest.mark.django_db
 def test_status_stats_sources_bounded(client, studio, seeded):
-    status = client.get(url(studio, 'api/operations/status?slug=r00&slug=r01')).json()
-    assert status['state'] == 'ready' and status['coverage']['selected_slugs'] == 2
-    stats = client.get(url(studio, 'api/operations/stats?slug=r00')).json()
-    assert stats['state'] == 'ready' and stats['window_days'] == 30
-    too_many = '&'.join(f'slug=r{i:02d}' for i in range(26))
-    assert client.get(url(studio, f'api/operations/status?{too_many}')).status_code == 400
+    status = client.get(url(studio, 'api/operations/status')).json()
+    assert status['state'] == 'ready' and status['coverage']['active_rows_complete'] is True
+    stats = client.get(url(studio, 'api/operations/stats')).json()
+    assert stats['state'] == 'ready' and stats['window_days'] == 30 and 'r00' in stats['stats']
     assert client.get(url(studio, 'api/operations/sources')).json()['state'] == 'ready'
 
 
@@ -50,29 +55,20 @@ def test_status_stats_sources_bounded(client, studio, seeded):
 def test_page_lists_every_report_without_a_pager_up_to_the_cap(client, studio, seeded):
     """The page reads all reports (and sources, active runs, stats) in one bounded request each."""
     data = client.get(url(studio, 'api/operations/catalog?page_size=500')).json()
-    assert len(data['rows']) == 30 and data['pagination'] == {'page': 1, 'page_size': 500, 'total': 30, 'pages': 1}
+    assert len(data['rows']) == 30 and data['pagination'] == page_metadata(1, 500, 30)
+    assert operations.ROW_CAP == INLINE_LIMIT
     assert client.get(url(studio, 'api/operations/catalog?page_size=501')).status_code == 400
     assert client.get(url(studio, 'api/operations/catalog?page_size=0')).status_code == 400
     assert len(client.get(url(studio, 'api/operations/sources?page_size=500')).json()['rows']) == 0
-    status = client.get(url(studio, 'api/operations/status?scope=studio')).json()
-    assert status['state'] == 'ready' and status['server_uptime_seconds'] >= 0 and status['coverage']['selected_slugs'] is None
-    assert client.get(url(studio, 'api/operations/status?scope=nonsense')).status_code == 400
-    stats = client.get(url(studio, 'api/operations/stats?scope=studio')).json()
-    assert stats['state'] == 'ready' and 'r00' in stats['stats']
 
 
 @pytest.mark.django_db
-def test_log_json_html_and_persisted_download(client, studio, seeded):
-    _, run = seeded
+def test_log_json_has_no_download_route(client, studio, seeded):
     base = url(studio, 'api/operations/reports/r00/log')
     data = client.get(base).json()
     assert data['stdout'] == 'hello out' and data['authority'] == 'persisted-db-tail'
     assert client.get(base + '?run=not-a-uuid').status_code == 400
-    download = client.get(base + f'/download?run={run.pk}')
-    body = b''.join(download.streaming_content).decode()
-    assert download.status_code == 200 and 'attachment' in download['Content-Disposition']
-    assert 'hello out' in body and 'complete persisted tail' in body and 'no-store' in download['Cache-Control']
-    assert client.get(base + '/download').status_code == 400
+    assert client.get(base + '/download').status_code == 404
     assert client.get(url(studio, 'api/operations/reports/missing/log')).status_code == 404
 
 
@@ -81,6 +77,8 @@ def test_page_is_the_javascript_shell_without_server_rendered_rows(client, studi
     response = client.get(url(studio, 'operations'))
     html = response.content.decode()
     assert response.status_code == 200 and 'data-ops-row=' not in html and 'data-ops-native' not in html
+    # The page hands the shared inline limit to the script instead of repeating it.
+    assert f'"inline_limit": {INLINE_LIMIT}' in html
     assert client.get(url(studio, 'operations/reports/r00/log')).status_code == 404
 
 
@@ -101,11 +99,11 @@ def test_whole_request_sql_and_bytes_stay_bounded_as_reports_grow(client, org_ad
 
     assert connection.vendor == 'postgresql'
     login(org_admin)
-    paths = ['api/operations/catalog', 'api/operations/status?slug=r0000', 'api/operations/stats?slug=r0000',
+    paths = ['api/operations/catalog', 'api/operations/status', 'api/operations/stats',
              'api/operations/sources', 'operations']
     # What the page itself reads: every report up to the cap, in one request each.
-    page = ['api/operations/catalog?page_size=500', 'api/operations/status?scope=studio',
-            'api/operations/stats?scope=studio', 'api/operations/sources?page_size=500']
+    page = ['api/operations/catalog?page_size=500', 'api/operations/status',
+            'api/operations/stats', 'api/operations/sources?page_size=500']
     legacy = ['api/registry', 'api/system/status', 'api/system/run-stats', 'operations']
     rows = []
     for total in (20, 200, 1000):

@@ -19,12 +19,13 @@ from apps.core import roles
 from apps.core.models import AuditLog
 from apps.reports.models import (
     OrgSharePolicy,
+    Report,
     ReportViewDaily,
     ReportViewEvent,
     ShareLink,
     record_view,
 )
-from apps.reports.scan import build_registry_payload, invalidate_registry_cache
+from apps.reports.registry_rows import all_rows
 
 pytestmark = pytest.mark.django_db
 
@@ -327,42 +328,41 @@ class TestExportDownloadAudit:
         assert not AuditLog.objects.filter(action="share_link.export_download").exists()
 
 
+def _first_row(studio):
+    return all_rows(Report.objects.filter(studio=studio, present_in_scan=True), studio, studio.org, now=timezone.now())[0]
+
+
 class TestDashboardMetaAndBadge:
-    def test_zero_views_and_recent_success_is_stale(self, studio_tree, report_row, write_meta):
-        write_meta(report_row.slug, last_status="success", last_run=timezone.now().isoformat())
-        invalidate_registry_cache(studio_tree)
-        row = build_registry_payload(studio_tree)["reports"][0]
+    def test_zero_views_and_recent_success_is_stale(self, studio_tree, report_row, observe_meta):
+        observe_meta(report_row.slug, last_status="success", last_run=timezone.now().isoformat())
+        row = _first_row(studio_tree)
         assert row["views_30d"] == 0
         assert row["last_viewed"] is None
         assert row["stale"] is True
 
-    def test_a_view_clears_the_stale_badge(self, studio_tree, report_row, developer, write_meta):
-        write_meta(report_row.slug, last_status="success", last_run=timezone.now().isoformat())
+    def test_a_view_clears_the_stale_badge(self, studio_tree, report_row, developer, observe_meta):
+        observe_meta(report_row.slug, last_status="success", last_run=timezone.now().isoformat())
         record_view(report_row, user=developer)
-        invalidate_registry_cache(studio_tree)
-        row = build_registry_payload(studio_tree)["reports"][0]
+        row = _first_row(studio_tree)
         assert row["views_30d"] == 1
         assert row["last_viewed"] is not None
         assert row["stale"] is False
 
-    def test_old_build_is_never_stale_even_with_zero_views(self, studio_tree, report_row, write_meta):
+    def test_old_build_is_never_stale_even_with_zero_views(self, studio_tree, report_row, observe_meta):
         old = (timezone.now() - timedelta(days=30)).isoformat()
-        write_meta(report_row.slug, last_status="success", last_run=old)
-        invalidate_registry_cache(studio_tree)
-        row = build_registry_payload(studio_tree)["reports"][0]
+        observe_meta(report_row.slug, last_status="success", last_run=old)
+        row = _first_row(studio_tree)
         assert row["stale"] is False
 
-    def test_failed_build_is_never_stale(self, studio_tree, report_row, write_meta):
-        write_meta(report_row.slug, last_status="error", last_run=timezone.now().isoformat())
-        invalidate_registry_cache(studio_tree)
-        row = build_registry_payload(studio_tree)["reports"][0]
+    def test_failed_build_is_never_stale(self, studio_tree, report_row, observe_meta):
+        observe_meta(report_row.slug, last_status="error", last_run=timezone.now().isoformat())
+        row = _first_row(studio_tree)
         assert row["stale"] is False
 
     def test_views_older_than_30d_do_not_count(self, studio_tree, report_row):
         old_day = (timezone.now() - timedelta(days=45)).date()
         ReportViewDaily.objects.create(report=report_row, date=old_day, views=7)
-        invalidate_registry_cache(studio_tree)
-        row = build_registry_payload(studio_tree)["reports"][0]
+        row = _first_row(studio_tree)
         assert row["views_30d"] == 0
 
     def test_meta_line_and_stale_badge_markup_in_portal_js(self):
@@ -382,16 +382,14 @@ class TestDashboardMetaAndBadge:
     def test_registry_query_count_does_not_scale_with_report_count(
         self, login, developer, prefix, studio_tree, write_report
     ):
-        """No N+1: build_registry_payload's view-stats stitching is two
-        aggregate queries for the WHOLE studio (see apps.reports.scan.
-        _view_stats_for), not one pair per report -- so the query count for
-        this endpoint must be identical whether the studio has one report or
-        several."""
+        """No N+1: the view-stats stitching is two aggregate queries for a
+        whole page of rows (apps.reports.registry_rows), not one pair per
+        report -- so the query count for this endpoint must be identical
+        whether the studio has one report or several."""
         from apps.reports.scan import sync_studio_registry
 
         write_report("solo")
         sync_studio_registry(studio_tree)
-        invalidate_registry_cache(studio_tree)
         client = login(developer)
         with CaptureQueriesContext(connection) as few:
             resp = client.get(f"{prefix}/api/registry")
@@ -400,7 +398,6 @@ class TestDashboardMetaAndBadge:
         for i in range(8):
             write_report(f"many-{i}")
         sync_studio_registry(studio_tree)
-        invalidate_registry_cache(studio_tree)
         with CaptureQueriesContext(connection) as many:
             resp = client.get(f"{prefix}/api/registry")
         assert resp.status_code == 200

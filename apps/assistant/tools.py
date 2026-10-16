@@ -770,9 +770,14 @@ class AssistantToolbox:
         if self._access_error():
             return []
         if self._reports is None:
-            from apps.reports.scan import build_registry_payload
+            from django.utils import timezone
 
-            reports = build_registry_payload(self.studio).get("reports", [])
+            from apps.reports.models import Report
+            from apps.reports.registry_rows import all_rows
+
+            reports = all_rows(
+                Report.objects.filter(studio=self.studio, present_in_scan=True), self.studio, self.studio.org, now=timezone.now()
+            )
             self._reports = (
                 [report for report in reports if report.get("slug") == self.report_slug]
                 if self.is_report_bound else reports

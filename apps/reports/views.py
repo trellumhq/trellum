@@ -16,7 +16,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
-from django.db.models import Count, F, Q, Sum
+from django.db.models import F, Q, Sum
 from django.db import transaction
 from django.core.serializers.json import DjangoJSONEncoder
 from django.http import (
@@ -24,7 +24,6 @@ from django.http import (
     Http404,
     HttpResponse,
     JsonResponse,
-    StreamingHttpResponse,
 )
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -37,6 +36,8 @@ from apps.core.docs import docs_url
 from apps.core.audit import audit
 from apps.core.form_responses import is_settings_request, settings_error, settings_success
 from apps.core.http import int_param, json_body
+from apps.core.limits import INLINE_LIMIT
+from apps.core.pagination import paginator_metadata
 from apps.core.permissions import (
     require_org_role,
     require_studio_role,
@@ -51,7 +52,6 @@ from apps.core.report_access import (
 )
 from apps.reports import notify
 from apps.reports import deliveries
-from apps.reports.operations_logs import OperationsLogChanged
 from apps.reports.recipient_access import DeliveryPresentationBatch
 from apps.reports.recipient_choices import CHOICE_LIMIT
 from apps.reports.models import (
@@ -74,10 +74,7 @@ from apps.reports.models import (
     refresh_suspend_days,
 )
 from apps.reports.scan import (
-    _built_recently,
     _get_html_entry,
-    _view_stats_for,
-    build_registry_payload,
     sync_studio_registry,
 )
 from apps.runner import stats as run_stats
@@ -112,22 +109,6 @@ def _selected_content_block(request, report):
     )
 
 
-def _visible_registry_payload(request) -> dict:
-    payload = build_registry_payload(request.studio)
-    if request.org_roles.has_full_studio_visibility(request.studio):
-        return payload
-    ids = [row.get("id") for row in payload.get("reports", []) if row.get("id") is not None]
-    allowed = set(raw_scope_reports(
-        request.user, Report.objects.filter(studio=request.studio, pk__in=ids), request=request
-    ).values_list("pk", flat=True))
-    return {
-        **payload,
-        "reports": [row for row in payload.get("reports", []) if row.get("id") in allowed],
-        # Source inventory belongs to the studio-wide Operations surface.
-        "source_states": [],
-    }
-
-
 # ── Dashboard shell ─────────────────────────────────────────────────────────
 
 def _dashboard_page(request, *, initial_view: str, extra: dict | None = None):
@@ -150,6 +131,9 @@ def _dashboard_page(request, *, initial_view: str, extra: dict | None = None):
         },
         "production": not settings.DEBUG,
         "initial_view": initial_view,
+        # Up to this many rows the dashboard and Operations hold every row and
+        # filter instantly; past it they page or search on the server.
+        "inline_limit": INLINE_LIMIT,
     }
     page_title = {"ops": "Operations", "analyses": "Analyses"}.get(initial_view, "Reports")
     return render(
@@ -188,8 +172,9 @@ def analyses(request, org_slug, studio_slug):  # noqa: ARG001
 
 
 def _catalog_kind(request):
-    kind = request.GET.get("kind", "report")
-    if kind not in (Report.KIND_REPORT, Report.KIND_ANALYSIS):
+    """The requested kind, or ``None`` (both) when ``kind`` is absent."""
+    kind = request.GET.get("kind")
+    if kind is not None and kind not in (Report.KIND_REPORT, Report.KIND_ANALYSIS):
         raise ValueError("Invalid catalog kind")
     return kind
 
@@ -199,46 +184,6 @@ def _catalog_json(call):
         return JsonResponse(call())
     except ValueError:
         return JsonResponse({"version": 1, "state": "invalid", "message": "Invalid catalog state."}, status=400)
-
-
-@require_studio_role(roles.VIEWER)
-@require_http_methods(["GET"])
-def api_catalog(request, org_slug, studio_slug):  # noqa: ARG001
-    from apps.reports.catalog import catalog_payload
-    return _catalog_json(lambda: catalog_payload(request, request.GET, kind=_catalog_kind(request)))
-
-
-@require_studio_role(roles.VIEWER)
-@require_http_methods(["GET"])
-def api_catalog_categories(request, org_slug, studio_slug):  # noqa: ARG001
-    from apps.reports.catalog import catalog_categories_payload
-    return _catalog_json(lambda: catalog_categories_payload(request, request.GET, kind=_catalog_kind(request)))
-
-
-@require_studio_role(roles.VIEWER)
-@require_http_methods(["GET"])
-def api_catalog_personal(request, org_slug, studio_slug):  # noqa: ARG001
-    from apps.reports.catalog import catalog_personal_payload
-    return _catalog_json(lambda: catalog_personal_payload(request, request.GET, kind=_catalog_kind(request)))
-
-
-@require_studio_role(roles.VIEWER)
-@require_http_methods(["GET"])
-def api_catalog_indicators(request, org_slug, studio_slug):  # noqa: ARG001
-    from apps.reports.catalog_indicators import catalog_indicators_payload
-    def read():
-        raw = request.GET.getlist("id")
-        if len(raw) > 64 or any(not value.isascii() or not value.isdecimal() or len(value) > 10 for value in raw):
-            raise ValueError("Invalid report identities")
-        return catalog_indicators_payload(request, [int(value) for value in raw])
-    return _catalog_json(read)
-
-
-@require_studio_role(roles.VIEWER)
-@require_http_methods(["GET"])
-def api_catalog_details(request, org_slug, studio_slug, report_id):  # noqa: ARG001
-    from apps.reports.catalog_details import catalog_details_payload
-    return _catalog_json(lambda: catalog_details_payload(request, report_id, request.GET))
 
 
 @require_studio_role(roles.DEVELOPER)
@@ -255,16 +200,6 @@ def _ops_json(build):
         return JsonResponse(build(), encoder=DjangoJSONEncoder)
     except ValueError as exc:
         return JsonResponse({"version": 1, "state": "invalid", "message": str(exc)}, status=400)
-    except OperationsLogChanged as exc:
-        return JsonResponse({"version": 1, "state": "changed", "message": str(exc)}, status=409)
-
-
-def _ops_studio_wide(request):
-    """``?scope=studio``: every authorized report of the studio, not named slugs."""
-    scope = request.GET.get("scope")
-    if scope not in (None, "", "studio"):
-        raise ValueError("Invalid Operations scope")
-    return scope == "studio"
 
 
 def _ops_get(view):
@@ -287,16 +222,14 @@ def api_operations_catalog(request, org_slug, studio_slug):  # noqa: ARG001
 def api_operations_status(request, org_slug, studio_slug):  # noqa: ARG001
     from apps.reports.operations import operations_status_payload
 
-    return _no_store(_ops_json(lambda: operations_status_payload(
-        request, request.GET.getlist("slug"), studio_wide=_ops_studio_wide(request))))
+    return _no_store(_ops_json(lambda: operations_status_payload(request)))
 
 
 @_ops_get
 def api_operations_stats(request, org_slug, studio_slug):  # noqa: ARG001
     from apps.reports.operations import operations_stats_payload
 
-    return _no_store(_ops_json(lambda: operations_stats_payload(
-        request, request.GET.getlist("slug"), studio_wide=_ops_studio_wide(request))))
+    return _no_store(_ops_json(lambda: operations_stats_payload(request)))
 
 
 @_ops_get
@@ -318,25 +251,6 @@ def api_operations_report_log(request, org_slug, studio_slug, slug):  # noqa: AR
 
     mode, run = _log_args(request)
     return _no_store(_ops_json(lambda: operations_log_payload(request, slug, mode=mode, run_id=run)))
-
-
-@_ops_get
-def api_operations_report_log_download(request, org_slug, studio_slug, slug):  # noqa: ARG001
-    """Complete persisted stdout/stderr tails of one terminal Run.
-
-    Not the original worker disk logs, which no route has ever served."""
-    from apps.reports.operations_logs import operations_persisted_tail_stream
-
-    try:
-        stream = operations_persisted_tail_stream(request, slug, run_id=request.GET.get("run"))
-    except ValueError as exc:
-        return JsonResponse({"version": 1, "state": "invalid", "message": str(exc)}, status=400)
-    except OperationsLogChanged as exc:
-        return JsonResponse({"version": 1, "state": "changed", "message": str(exc)}, status=409)
-    response = StreamingHttpResponse(stream, content_type=stream.content_type)
-    response["Content-Disposition"] = f'attachment; filename="{stream.filename}"'
-    response["X-Content-Type-Options"] = "nosniff"
-    return _no_store(response)
 
 
 # ── Studio analytics (internal planning#4 follow-up) ──────────────────────────────
@@ -383,18 +297,27 @@ def analytics(request, org_slug, studio_slug):  # noqa: ARG001
 
 @require_studio_role(roles.VIEWER)
 def api_registry(request, org_slug, studio_slug):  # noqa: ARG001
-    if "page" in request.GET:
-        # The dashboard asks for the registry one bounded slice at a time
-        # (same row shape, plus ``pagination``); API clients that send no
-        # ``page`` keep receiving the whole registry.
-        from apps.reports.catalog import catalog_cards_payload
+    """Registry rows the viewer may list, both kinds unless ``kind`` is given.
 
-        def read():
-            payload = catalog_cards_payload(request, request.GET, kind=_catalog_kind(request))
-            return _role_safe(payload, request) if "reports" in payload else payload
+    The dashboard asks for one bounded slice at a time (``?page=``, rows plus
+    ``pagination``); API clients that send no ``page`` receive every row. Both
+    read the same relation and build the same rows."""
+    from apps.reports.catalog import registry_page_payload, registry_payload
+    from apps.reports.registry_rows import source_states_payload
 
-        return _catalog_json(read)
-    return JsonResponse(_role_safe(_visible_registry_payload(request), request))
+    def read():
+        kind = _catalog_kind(request)
+        if "page" in request.GET:
+            payload = registry_page_payload(request, request.GET, kind=kind)
+        else:
+            payload = registry_payload(request, kind=kind)
+            # Source inventory belongs to the studio-wide Operations surface.
+            payload["source_states"] = (
+                source_states_payload(request.studio) if roles.at_least(request.studio_role, roles.DEVELOPER) else []
+            )
+        return _role_safe(payload, request) if "reports" in payload else payload
+
+    return _catalog_json(read)
 
 
 def _safe_error(report: dict) -> str | None:
@@ -465,8 +388,10 @@ def api_system_status(request, org_slug, studio_slug):  # noqa: ARG001
         )
 
     beat = WorkerHeartbeat.alive().order_by("-last_beat_at").first()
-    payload = _role_safe(_visible_registry_payload(request), request)
-    reports = payload.get("reports", [])
+    from apps.reports.catalog import registry_payload
+    from apps.reports.registry_rows import source_states_payload
+
+    reports = registry_payload(request)["reports"]
     return JsonResponse(
         {
             "running": running,
@@ -483,7 +408,7 @@ def api_system_status(request, org_slug, studio_slug):  # noqa: ARG001
                 1 for r in reports if r.get("last_status") in (None, "not_run")
             ),
             "reports_waiting": sum(1 for r in reports if r.get("waiting")),
-            "source_states": payload.get("source_states", []),
+            "source_states": source_states_payload(studio),
         }
     )
 
@@ -1632,10 +1557,7 @@ def _delivery_filter_reports(user, *, studio=None, org_id=None):
     )
 
 
-def _page_metadata(page):
-    return {"page": page.number, "per_page": page.paginator.per_page,
-            "total": page.paginator.count, "has_previous": page.has_previous(),
-            "has_next": page.has_next()}
+_page_metadata = paginator_metadata
 
 
 def _delivery_choices(request, *, studio=None, org_id=None):

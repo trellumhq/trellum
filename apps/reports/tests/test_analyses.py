@@ -7,7 +7,9 @@ from django.utils import timezone
 from apps.core import roles
 from apps.orgs.models import PermissionGroupGrant
 from apps.reports.models import OrgSharePolicy, Report, ReportPermissionGrant, ShareLink
-from apps.reports.scan import build_registry_payload, sync_studio_registry
+from apps.reports.models import ReportSourceSummary
+from apps.reports.registry_rows import all_rows
+from apps.reports.scan import sync_studio_registry
 
 pytestmark = pytest.mark.django_db
 
@@ -222,10 +224,16 @@ def test_live_queries_and_alert_rules_reject_analysis(login, org_admin, analysis
         )
 
 
-def test_registry_never_labels_analysis_live(analysis, monkeypatch):
-    from apps.core import storage
-    monkeypatch.setattr(storage, "live_query_index", lambda studio: {analysis.slug})
-    assert build_registry_payload(analysis.studio)["reports"][0]["live"] is False
+def test_registry_never_labels_analysis_live(analysis):
+    from django.utils import timezone
+
+    now = timezone.now()
+    ReportSourceSummary.objects.update_or_create(report=analysis, defaults={
+        "state": "ready", "runtime_state": "ready", "quality": "observed", "observed_at": now,
+        "has_output": True, "has_live_queries": True,
+    })
+    rows = all_rows(type(analysis).objects.filter(pk=analysis.pk), analysis.studio, analysis.studio.org, now=now)
+    assert rows[0]["live"] is False
 
 
 def test_report_to_analysis_stops_existing_alert_rule_endpoints(login, org_admin, report_row):

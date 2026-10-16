@@ -35,28 +35,32 @@ def prefix(org, studio_tree):
 
 class TestRegistryApi:
     @pytest.mark.parametrize("status", [choice[0] for choice in Run.STATUS_CHOICES])
-    def test_build_state_uses_latest_run_without_rewriting_artifact_status(
-        self, login, viewer, prefix, report_row, write_meta, status
+    def test_build_state_uses_the_latest_run(
+        self, login, viewer, prefix, report_row, observe_meta, status
     ):
         from django.utils import timezone
 
-        write_meta(report_row.slug, last_status="error")
+        now = timezone.now()
+        observe_meta(report_row.slug, last_status="error", last_run=(now - timezone.timedelta(minutes=30)).isoformat())
         Run.objects.create(
-            studio=report_row.studio, report=report_row, slug=report_row.slug,
-            status=Run.SUCCESS, created_at=timezone.now() - timezone.timedelta(hours=1),
+            studio=report_row.studio, report=report_row, slug=report_row.slug, status=Run.SUCCESS,
+            created_at=now - timezone.timedelta(hours=1), finished_at=now - timezone.timedelta(minutes=59),
         )
         Run.objects.create(
             studio=report_row.studio, report=report_row, slug=report_row.slug, status=status,
         )
         row = login(viewer).get(f"{prefix}/api/registry").json()["reports"][0]
         assert row["build_status"] == status
-        assert row["last_status"] == "error"
+        # A build still queued or running leaves the last outcome as it was; a
+        # finished one is the newest outcome.
+        expected = "error" if status in Run.ACTIVE_STATUSES else ("success" if status == Run.SUCCESS else "error")
+        assert row["last_status"] == expected
 
     @pytest.mark.parametrize("status", ["success", "not_run"])
-    def test_build_state_falls_back_to_artifact_without_runs(
-        self, login, viewer, prefix, report_row, write_meta, status
+    def test_build_state_falls_back_to_the_summary_without_runs(
+        self, login, viewer, prefix, report_row, observe_meta, status
     ):
-        write_meta(report_row.slug, last_status=status)
+        observe_meta(report_row.slug, last_status=status)
         row = login(viewer).get(f"{prefix}/api/registry").json()["reports"][0]
         assert row["build_status"] == status
 
@@ -1103,7 +1107,6 @@ class TestDataSourceStatusSurfaces:
     @pytest.fixture
     def declared(self, studio_tree, report_row):
         from apps.datasources.models import RepoDataSource
-        from apps.reports.scan import invalidate_registry_cache
 
         RepoDataSource.objects.create(
             studio=studio_tree, name="warehouse", type="postgres",
@@ -1111,7 +1114,6 @@ class TestDataSourceStatusSurfaces:
         )
         report_row.config = {**report_row.config, "data_sources": ["warehouse"]}
         report_row.save(update_fields=["config"])
-        invalidate_registry_cache(studio_tree)
         return report_row
 
     @pytest.fixture
@@ -1121,9 +1123,9 @@ class TestDataSourceStatusSurfaces:
         return user
 
     def test_status_json_lists_source_states_and_what_they_block(
-        self, login, developer, viewer, prefix, declared, write_meta
+        self, login, developer, viewer, prefix, declared, observe_meta
     ):
-        write_meta(
+        observe_meta(
             "player-overview", last_status="error", blocked_by=["warehouse"],
             last_error="Waiting for data source 'warehouse': missing: user, password",
         )
@@ -1138,40 +1140,36 @@ class TestDataSourceStatusSurfaces:
         assert reg["blocked_by"] == ["warehouse"] and reg["waiting"] is True
         assert reg["failing_source"] is None
 
-    def test_a_built_report_names_its_failing_source(self, login, viewer, prefix, declared, write_meta):
+    def test_a_built_report_names_its_failing_source(self, login, viewer, prefix, declared, observe_meta):
         from django.utils import timezone
 
         from apps.datasources.models import DataSource
-        from apps.reports.scan import invalidate_registry_cache
 
         DataSource.objects.create(
             studio=declared.studio, name="warehouse", type="postgres",
             credentials={"user": "u", "password": "p"},
             last_check_at=timezone.now(), last_check_ok=False, last_check_error="refused",
         )
-        write_meta("player-overview", last_status="success", blocked_by=["warehouse"])
-        invalidate_registry_cache(declared.studio)
+        observe_meta("player-overview", last_status="success", blocked_by=["warehouse"])
         reg = login(viewer).get(f"{prefix}/api/registry").json()["reports"][0]
         assert reg["waiting"] is False  # a stale blocked_by after a good build is not waiting
         assert reg["failing_source"]["name"] == "warehouse"
         assert reg["failing_source"]["since"]
 
     def test_the_run_tail_wins_when_only_it_carries_attribution(
-        self, login, developer, prefix, declared, write_meta
+        self, login, developer, prefix, declared, observe_meta
     ):
         """Attribution rewrites the runner's local _meta.json only; a web node
         reading a remote store still has the raw error."""
         from django.utils import timezone
 
-        from apps.reports.scan import invalidate_registry_cache
 
-        write_meta("player-overview", last_status="error", last_error="Traceback ... refused")
+        observe_meta("player-overview", last_status="error", last_error="Traceback ... refused")
         Run.objects.create(
             report=declared, studio=declared.studio, slug=declared.slug, status=Run.ERROR,
             finished_at=timezone.now(),
             stderr_tail="Data source 'warehouse': OperationalError: refused\n\nTraceback ... refused",
         )
-        invalidate_registry_cache(declared.studio)
         reg = login(developer).get(f"{prefix}/api/registry").json()["reports"][0]
         assert reg["last_error"].startswith("Data source 'warehouse': OperationalError: refused")
         assert reg["waiting"] is False
@@ -1181,14 +1179,12 @@ class TestDataSourceStatusSurfaces:
     ):
         from django.utils import timezone
 
-        from apps.reports.scan import invalidate_registry_cache
 
         Run.objects.create(
             report=declared, studio=declared.studio, slug=declared.slug, status=Run.ERROR,
             finished_at=timezone.now(),
             stderr_tail="Waiting for data source 'warehouse': missing: user, password",
         )
-        invalidate_registry_cache(declared.studio)
         reg = login(viewer).get(f"{prefix}/api/registry").json()["reports"][0]
         assert reg["blocked_by"] == ["warehouse"] and reg["waiting"] is True
 
@@ -1243,11 +1239,10 @@ class TestRoleSafeStatusJson:
     developer, the JSON says which source, not what it said."""
 
     @pytest.fixture
-    def failing(self, studio_tree, report_row, write_meta):
+    def failing(self, studio_tree, report_row, observe_meta):
         from django.utils import timezone
 
         from apps.datasources.models import DataSource, RepoDataSource
-        from apps.reports.scan import invalidate_registry_cache
 
         RepoDataSource.objects.create(
             studio=studio_tree, name="warehouse", type="postgres",
@@ -1261,11 +1256,10 @@ class TestRoleSafeStatusJson:
         )
         report_row.config = {**report_row.config, "data_sources": ["warehouse"]}
         report_row.save(update_fields=["config"])
-        write_meta(
+        observe_meta(
             "player-overview", last_status="error",
             last_error="Data source 'warehouse': OperationalError: could not connect to db.internal as svc",
         )
-        invalidate_registry_cache(studio_tree)
         return report_row
 
     def test_viewer_sees_the_source_not_the_message(self, login, viewer, prefix, failing):
@@ -1286,10 +1280,9 @@ class TestRoleSafeStatusJson:
         assert "db.internal" in client.get(f"{prefix}/api/registry").json()["reports"][0]["last_error"]
 
     def test_a_held_report_reads_as_waiting_and_a_plain_failure_as_failed(
-        self, login, viewer, prefix, report_row, write_meta
+        self, login, viewer, prefix, report_row, observe_meta
     ):
         from apps.datasources.models import RepoDataSource
-        from apps.reports.scan import invalidate_registry_cache
 
         RepoDataSource.objects.create(
             studio=report_row.studio, name="warehouse", type="postgres",
@@ -1297,29 +1290,25 @@ class TestRoleSafeStatusJson:
         )
         report_row.config = {**report_row.config, "data_sources": ["warehouse"]}
         report_row.save(update_fields=["config"])
-        write_meta("player-overview", last_status="error", blocked_by=["warehouse"],
+        observe_meta("player-overview", last_status="error", blocked_by=["warehouse"],
                    last_error="Waiting for data source 'warehouse': missing: user, password")
-        invalidate_registry_cache(report_row.studio)
         entry = login(viewer).get(f"{prefix}/api/registry").json()["reports"][0]
         assert entry["last_error"] == "Waiting for data source 'warehouse'"
 
-        write_meta("player-overview", last_status="error", blocked_by=[],
+        observe_meta("player-overview", last_status="error", blocked_by=[],
                    last_error="Traceback: KeyError 'revenue' at db.internal")
-        invalidate_registry_cache(report_row.studio)
         entry = login(viewer).get(f"{prefix}/api/registry").json()["reports"][0]
         assert entry["last_error"] == "Build failed"
 
-    def test_last_error_is_capped_for_everyone(self, login, developer, prefix, report_row, write_meta):
+    def test_last_error_is_capped_for_everyone(self, login, developer, prefix, report_row, observe_meta):
         from django.utils import timezone
 
-        from apps.reports.scan import invalidate_registry_cache
 
-        write_meta("player-overview", last_status="error", last_error="x")
+        observe_meta("player-overview", last_status="error", last_error="x")
         Run.objects.create(
             report=report_row, studio=report_row.studio, slug=report_row.slug, status=Run.ERROR,
             finished_at=timezone.now(), stderr_tail="Data source 'w': boom\n" + "y" * 5000,
         )
-        invalidate_registry_cache(report_row.studio)
         entry = login(developer).get(f"{prefix}/api/registry").json()["reports"][0]
         assert len(entry["last_error"]) == 500
 
@@ -1328,9 +1317,8 @@ class TestWaitingReconciliation:
     """A wait recorded by the last run ends as soon as the reason does."""
 
     @pytest.fixture
-    def held(self, studio_tree, report_row, write_meta):
+    def held(self, studio_tree, report_row, observe_meta):
         from apps.datasources.models import RepoDataSource
-        from apps.reports.scan import invalidate_registry_cache
 
         RepoDataSource.objects.create(
             studio=studio_tree, name="warehouse", type="postgres",
@@ -1338,83 +1326,72 @@ class TestWaitingReconciliation:
         )
         report_row.config = {**report_row.config, "data_sources": ["warehouse"]}
         report_row.save(update_fields=["config"])
-        write_meta("player-overview", last_status="error", blocked_by=["warehouse"])
-        invalidate_registry_cache(studio_tree)
+        observe_meta("player-overview", last_status="error", blocked_by=["warehouse"])
         return report_row
 
     def test_configuring_the_source_clears_the_wait_before_a_build(self, login, viewer, prefix, held):
         from apps.datasources.models import DataSource
-        from apps.reports.scan import invalidate_registry_cache
 
         assert login(viewer).get(f"{prefix}/api/registry").json()["reports"][0]["waiting"] is True
         DataSource.objects.create(
             studio=held.studio, name="warehouse", type="postgres",
             credentials={"user": "u", "password": "p"},
         )
-        invalidate_registry_cache(held.studio)
         entry = login(viewer).get(f"{prefix}/api/registry").json()["reports"][0]
         assert entry["waiting"] is False and entry["blocked_by"] == []
 
     def test_dropping_the_reference_clears_the_wait(self, login, viewer, prefix, held):
-        from apps.reports.scan import invalidate_registry_cache
 
         held.config = {k: v for k, v in held.config.items() if k != "data_sources"}
         held.save(update_fields=["config"])
-        invalidate_registry_cache(held.studio)
         entry = login(viewer).get(f"{prefix}/api/registry").json()["reports"][0]
         assert entry["waiting"] is False and entry["blocked_by"] == []
 
     def test_a_disabled_report_waits_for_nothing(self, login, developer, prefix, held):
-        from apps.reports.scan import invalidate_registry_cache
 
         held.disabled = True
         held.save(update_fields=["disabled"])
-        invalidate_registry_cache(held.studio)
         body = login(developer).get(f"{prefix}/api/system/status").json()
         assert body["reports_waiting"] == 0
         assert body["source_states"][0]["blocks"] == []
 
 
 class TestStatusEndpointCost:
-    def test_source_states_add_no_queries_to_the_status_poll(
+    def test_source_states_do_not_grow_the_status_queries(
         self, login, developer, prefix, studio_tree, report_row, write_report
     ):
-        """The 2-second poll reads source states from the cached registry
-        payload: adding sources and reports must not add queries to it."""
+        """Adding sources and reports must not add queries to the status read."""
         from django.db import connection
         from django.test.utils import CaptureQueriesContext
 
         from apps.datasources.models import DataSource, RepoDataSource
-        from apps.reports.scan import (
-            build_registry_payload,
-            invalidate_registry_cache,
-            sync_studio_registry,
-        )
+        from apps.reports.scan import sync_studio_registry
 
         client = login(developer)
         client.get(f"{prefix}/api/system/status")  # settle session/auth queries
-        build_registry_payload(studio_tree)
-        with CaptureQueriesContext(connection) as few:
-            assert client.get(f"{prefix}/api/system/status").status_code == 200
 
-        for i in range(4):
-            RepoDataSource.objects.create(
-                studio=studio_tree, name=f"src-{i}", type="file",
-                config={"path": f"data-sources/files/{i}.csv", "upload": True},
-                source_file="data-sources/config.yaml",
-            )
-            DataSource.objects.create(
-                studio=studio_tree, name=f"src-{i}", type="file",
-                config={"path": f"data-sources/files/{i}.csv", "upload": True},
-            )
-            write_report(f"many-{i}", data_sources=[f"src-{i}"])
-        sync_studio_registry(studio_tree)
-        invalidate_registry_cache(studio_tree)
-        build_registry_payload(studio_tree)
+        def add(start, stop):
+            for i in range(start, stop):
+                RepoDataSource.objects.create(
+                    studio=studio_tree, name=f"src-{i}", type="file",
+                    config={"path": f"data-sources/files/{i}.csv", "upload": True},
+                    source_file="data-sources/config.yaml",
+                )
+                DataSource.objects.create(
+                    studio=studio_tree, name=f"src-{i}", type="file",
+                    config={"path": f"data-sources/files/{i}.csv", "upload": True},
+                )
+                write_report(f"many-{i}", data_sources=[f"src-{i}"])
+            sync_studio_registry(studio_tree)
+
+        add(0, 2)
+        with CaptureQueriesContext(connection) as few:
+            assert len(client.get(f"{prefix}/api/system/status").json()["source_states"]) == 2
+        add(2, 6)
         with CaptureQueriesContext(connection) as many:
             body = client.get(f"{prefix}/api/system/status").json()
-        assert len(body["source_states"]) == 4
+        assert len(body["source_states"]) == 6 and all(row["file"] for row in body["source_states"])
         assert len(many.captured_queries) == len(few.captured_queries), (
-            f"status poll grew with sources: {len(few.captured_queries)} -> "
+            f"status read grew with sources: {len(few.captured_queries)} -> "
             f"{len(many.captured_queries)}"
         )

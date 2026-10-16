@@ -192,9 +192,8 @@ def test_selected_scope_viewer(journey, variant):
         page.wait_for_url(lambda url: 'q=report' in url)
         expect(page.locator('#content tr[data-slug]')).to_have_count(1)
         journey.checkpoint('scope-hidden')
-        # Direct URLs, the JSON catalog and details for unauthorised reports are denied, and nothing leaks.
-        other_id = journey.database(lambda: __import__('apps.reports.models', fromlist=['Report']).Report.objects.get(slug=other, studio__slug='studio-0', studio__org__slug='alpha').pk)
-        for path in (f'{S}/r/{other}/', f'{S}/r/{other}/index.html', f'{S}/api/catalog/details/{other_id}'):
+        # Direct URLs and the JSON registry for unauthorised reports are denied, and nothing leaks.
+        for path in (f'{S}/r/{other}/', f'{S}/r/{other}/index.html'):
             response = context.request.get(origin + path)
             assert response.status in (403, 404), (path, response.status)
             assert 'Report 3' not in response.text() and 'Baseline report' not in response.text()

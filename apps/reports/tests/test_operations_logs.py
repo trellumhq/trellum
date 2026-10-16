@@ -384,8 +384,7 @@ def test_live_quiet_differs_from_unavailable_and_persisted_fallback(org_admin, o
     (directory / 'stderr.log').unlink()
     unavailable = logs.operations_log_payload(request, report.slug, mode='live')
     assert unavailable['availability'] == 'unavailable' and unavailable['stdout'] is None
-    with pytest.raises(Http404):
-        logs.operations_persisted_tail_stream(request, report.slug, run_id=str(run.pk))
+    assert run.pk
 
 
 @pytest.mark.django_db
@@ -406,64 +405,3 @@ def test_live_log_of_a_build_that_is_starting_is_a_waiting_state_not_a_404(org_a
         logs.operations_log_payload(request, report.slug, mode='last')
     with pytest.raises(Http404):
         logs.operations_log_payload(request, 'no-such-report', mode='live')
-
-
-@pytest.mark.django_db
-def test_complete_persisted_stream_is_exact_bounded_single_pass_and_has_no_disk_authority(org_admin, org, studio, monkeypatch):
-    postgres()
-    report = Report.objects.create(studio=studio, slug='download')
-    stdout, stderr = '😀'*100000 + '\nlast stdout', '界'*100000 + '\nlast stderr'
-    run = run_for(report, stdout_tail=stdout, stderr_tail=stderr, log_dir='/unsupported/disk/logs')
-    monkeypatch.setattr(logs, '_live_tails', lambda *args: pytest.fail('Persisted download accessed disk'))
-    stream = logs.operations_persisted_tail_stream(request_for(org_admin, org, studio), report.slug, run_id=str(run.pk))
-    with CaptureQueriesContext(connection) as queries:
-        chunks = list(stream)
-    text = b''.join(chunks).decode('utf-8')
-    expected = (stream.label + '\n\n--- stdout (complete persisted tail) ---\n' + stdout
-                + '\n--- stderr (complete persisted tail) ---\n' + stderr)
-    assert text == expected
-    assert max(map(len, chunks)) <= logs.TAIL_BYTES
-    assert stream.run['id'] == str(run.pk) and str(run.pk) in stream.filename
-    assert_no_full_tails(queries)
-    assert any('SUBSTRING(' in row['sql'].upper() for row in queries)
-    with pytest.raises(logs.OperationsLogChanged):
-        list(stream)
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize('change', ['status', 'tail_size', 'report_visibility', 'permission'])
-def test_stream_rechecks_selection_before_body_and_between_chunks(member, org, studio, grant_studio, change):
-    postgres()
-    grant = grant_studio(member, studio, roles.DEVELOPER)
-    report = Report.objects.create(studio=studio, slug='stream')
-    run = run_for(report, stdout_tail='first'*20000)
-    stream = logs.operations_persisted_tail_stream(request_for(member, org, studio), report.slug, run_id=str(run.pk))
-    iterator = iter(stream)
-    assert next(iterator).decode().startswith('Complete persisted')
-    assert next(iterator).decode().startswith('\n--- stdout')
-    assert len(next(iterator)) <= logs.TAIL_BYTES
-    if change == 'status':
-        Run.objects.filter(pk=run.pk).update(status=Run.RUNNING)
-    elif change == 'tail_size':
-        Run.objects.filter(pk=run.pk).update(stdout_tail='changed')
-    elif change == 'report_visibility':
-        Report.objects.filter(pk=report.pk).update(present_in_scan=False)
-    else:
-        grant.delete()
-    with pytest.raises((logs.OperationsLogChanged, PermissionDenied)):
-        next(iterator)
-    iterator.close()
-
-
-@pytest.mark.django_db
-def test_download_requires_uuid_and_checks_identity_before_first_body(org_admin, org, studio):
-    postgres()
-    report = Report.objects.create(studio=studio, slug='before-body')
-    run = run_for(report, stdout_tail='original')
-    request = request_for(org_admin, org, studio)
-    with pytest.raises(ValueError):
-        logs.operations_persisted_tail_stream(request, report.slug, run_id=None)
-    stream = logs.operations_persisted_tail_stream(request, report.slug, run_id=str(run.pk))
-    Run.objects.filter(pk=run.pk).update(stdout_tail='replacement')
-    with pytest.raises(logs.OperationsLogChanged):
-        next(iter(stream))
