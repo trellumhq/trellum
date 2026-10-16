@@ -2670,10 +2670,14 @@ function _opsDoAction(action) {
         .then(function(res) {
             var data = res.data;
             if (res.status === 202 && data.status_url && data.operation_id) {
-                /* Accepted, NOT done: keep the action busy and poll its status. */
+                /* Accepted, NOT done: keep the action busy and poll its status.
+                   A duplicate is the action the server already holds. If no
+                   worker has claimed it for longer than the usual wait, say so
+                   at once instead of starting that wait over. */
+                var heldFor = data.duplicate && data.state === 'accepted' ? (Number(data.age_seconds) || 0) * 1000 : 0;
                 _opsActionStatusLabel = data.state === 'running' ? 'Running\u2026' : 'Scheduled\u2026';
-                showToast(data.message || 'Registry refresh scheduled', 'info');
-                _opsTrackAction(action, data.status_url);
+                if (heldFor < _OPS_TRACK_PATIENCE_MS) showToast(data.message || 'Registry refresh scheduled', 'info');
+                _opsTrackAction(action, data.status_url, heldFor);
                 renderOperations();
                 return;
             }
@@ -2704,12 +2708,17 @@ function _opsDoAction(action) {
    One request in flight, a generation guard against stale responses, paused
    while the tab is hidden or the page is unmounted, never re-POSTs. */
 var _opsActionStatusLabel = '';
-var _opsTracked = null;   /* {action, url, gen, timer, ctrl, inFlight, failures, polls, since, patient} */
+var _opsTracked = null;   /* {action, url, gen, timer, ctrl, inFlight, failures, polls, since, patient, hold} */
 var _opsTrackGen = 0;
 var _OPS_TRACK_KEY = 'trellum.opsAction';
 /* An action no worker has claimed after this long is reported once and the
    button handed back. The server keeps it and runs it when a current worker
-   appears, so it is then watched slowly and quietly: a late result still shows. */
+   appears, so it is then watched slowly and quietly: a late result still shows.
+   The server gives up on it after a few minutes and reports that as a failed
+   refresh with its own message (see maintenance_actions.ACCEPTED_TTL).
+   Asking again meanwhile returns the same action; when that action is already
+   older than this, the button stays busy ("Waiting for a worker") until the
+   server settles it rather than starting another wait. */
 var _OPS_TRACK_PATIENCE_MS = 60000;
 var _OPS_TRACK_LATE_MS = 15000;
 function _opsRefreshLabel() {
@@ -2724,9 +2733,11 @@ function _opsSetActionLabel(text) {
     var btn = document.querySelector('[data-ops-action="refresh"]');
     if (btn) btn.textContent = text;
 }
-function _opsTrackAction(action, url) {
+function _opsTrackAction(action, url, waitedMs) {
     _opsStopTracking();
-    _opsTracked = {action: action, url: url, gen: ++_opsTrackGen, timer: null, ctrl: null, inFlight: false, failures: 0, polls: 0, since: Date.now(), patient: false};
+    waitedMs = waitedMs || 0;
+    _opsTracked = {action: action, url: url, gen: ++_opsTrackGen, timer: null, ctrl: null, inFlight: false, failures: 0, polls: 0, since: Date.now() - waitedMs, patient: false, hold: false};
+    if (waitedMs >= _OPS_TRACK_PATIENCE_MS) { _opsStopWaiting(_opsTracked, true); return; }
     try { sessionStorage.setItem(_OPS_TRACK_KEY, JSON.stringify({action: action, url: url})); } catch (e) {}
     _opsScheduleTrack(800);
 }
@@ -2771,7 +2782,11 @@ function _opsPollTracked(gen) {
             t.inFlight = false;
             t.failures = 0;
             if (data.terminal) { _opsFinishTracked(data); return; }
-            if (t.patient) { _opsScheduleTrack(_OPS_TRACK_LATE_MS); return; }
+            if (t.patient) {
+                if (t.hold) _opsSetActionLabel(data.state === 'running' ? 'Running\u2026' : 'Waiting for a worker\u2026');
+                _opsScheduleTrack(_OPS_TRACK_LATE_MS);
+                return;
+            }
             if (data.state === 'accepted' && Date.now() - t.since >= _OPS_TRACK_PATIENCE_MS) { _opsStopWaiting(t); return; }
             _opsSetActionLabel(data.state === 'running' ? 'Running\u2026' : 'Scheduled\u2026');
             _opsScheduleTrack(t.polls < 5 ? 1000 : 3000);
@@ -2782,8 +2797,12 @@ function _opsPollTracked(gen) {
             t.inFlight = false;
             t.failures++;
             if (t.patient) {
-                /* The late watch fails quietly: the user was already told. */
-                if ((e && e.terminal) || t.failures >= 5) _opsStopTracking(); else _opsScheduleTrack(_OPS_TRACK_LATE_MS);
+                /* The late watch fails quietly: the user was already told. A
+                   busy button is handed back, though, with the usual message. */
+                if ((e && e.terminal) || t.failures >= 5) {
+                    if (t.hold) _opsFinishTracked({state: 'unconfirmed', terminal: true, message: 'Status could not be confirmed \u2014 check Operations before trying again.'});
+                    else _opsStopTracking();
+                } else _opsScheduleTrack(_OPS_TRACK_LATE_MS);
                 return;
             }
             if ((e && e.terminal) || t.failures >= 5) {
@@ -2796,12 +2815,15 @@ function _opsPollTracked(gen) {
 /* Nobody has claimed the action (for instance a worker still on an older
    version). Say so once, enable the button again, and keep watching slowly.
    The saved id is dropped so coming back to the page does not disable the
-   button for another wait. */
-function _opsStopWaiting(t) {
+   button for another wait. With hold (a repeated request for an action that
+   has already waited this long) the button stays busy instead, until the
+   server reports the action's outcome. */
+function _opsStopWaiting(t, hold) {
     t.patient = true;
+    t.hold = !!hold;
     try { sessionStorage.removeItem(_OPS_TRACK_KEY); } catch (e) {}
-    _opsSystemActions[t.action] = false;
-    _opsActionStatusLabel = '';
+    _opsSystemActions[t.action] = t.hold;
+    _opsActionStatusLabel = t.hold ? 'Waiting for a worker\u2026' : '';
     showToast('Still waiting for a worker. Check that every worker runs this version.', 'warning', 10000);
     renderOperations();
     _opsScheduleTrack(_OPS_TRACK_LATE_MS);
