@@ -14,7 +14,7 @@
       <div class="ui-field ui-field-wide">
         <span class="ui-field-label">Scope</span>
         <div><span class="scope-chip studio">This studio only</span></div>
-        {% if shell_is_org_admin %}<span class="ui-help">Organization-wide sources are created in <a href="/orgs/{{ org.slug }}/settings/datasources">Organization settings → Data sources</a>.</span>{% endif %}
+        {% if shell_is_org_admin %}<span class="ui-help">Organization-wide sources are created in <a data-console-nav href="/orgs/{{ org.slug }}/settings/datasources">Organization settings → Data sources</a>.</span>{% endif %}
       </div>
       {% endif %}
     </section>
@@ -76,6 +76,6 @@
 
     <div class="ui-form-actions">
       <button class="ui-btn primary" type="submit">{% if editing %}Save changes{% else %}Create source{% endif %}</button>
-      <a class="ui-btn ghost" data-ds-cancel data-settings-leave href="{{ list_url }}">Back to data sources</a>
+      <a class="ui-btn ghost" data-ds-cancel data-settings-leave data-console-nav href="{{ list_url }}">Back to data sources</a>
     </div>
   </form>

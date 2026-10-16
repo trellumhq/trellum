@@ -22,7 +22,7 @@
       <button type="button" class="ui-btn primary" id="reportRebuildNow"
         data-run-url="{{ prefix }}/api/reports/{{ report.slug }}/run">Rebuild now</button>
     {% endif %}
-    <a class="ui-btn ghost" href="{{ prefix }}/">Back to {{ studio_name }}</a>
+    <a class="ui-btn ghost" data-console-nav href="{{ prefix }}/">Back to {{ studio_name }}</a>
   </p>
 </div>
 {% if can_rebuild %}

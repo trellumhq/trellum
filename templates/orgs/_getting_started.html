@@ -18,7 +18,7 @@ touching git should not be blocked.{% endcomment %}
     <li class="ui-checklist-item{% if item.done %} done{% endif %}">
       <span class="ui-checklist-mark" aria-hidden="true">{% if item.done %}✓{% else %}{{ forloop.counter }}{% endif %}</span>
       <span>
-        <a href="{{ item.href }}">{{ item.label }}</a>
+        <a data-console-nav href="{{ item.href }}">{{ item.label }}</a>
         {% if item.done %}<span class="ui-badge ok">done</span>{% endif %}
         <br><span class="ui-help">{{ item.help }}</span>
       </span>

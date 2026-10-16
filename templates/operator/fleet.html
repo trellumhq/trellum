@@ -11,7 +11,7 @@
   <p style="margin:0">
     <strong>{{ running }}</strong> building ·
     <strong>{{ queue_depth }}</strong> queued ·
-    <a href="/system">System health</a>
+    <a data-console-nav href="/system">System health</a>
   </p>
 </div>
 
@@ -58,7 +58,7 @@
   {% for r in recent_failures %}
   <tr>
     <td class="muted" style="white-space:nowrap">{{ r.created_at|date:"m-d H:i" }}</td>
-    <td><a href="{% url 'operator-org-detail' r.studio.org.slug %}">{{ r.studio.org.slug }}</a></td>
+    <td><a data-console-nav href="{% url 'operator-org-detail' r.studio.org.slug %}">{{ r.studio.org.slug }}</a></td>
     <td>{{ r.studio.slug }}/{{ r.slug }}</td>
     <td><span class="ui-badge fail">{{ r.status }}</span></td>
     <td class="muted">{% if r.peak_memory_mb %}{{ r.peak_memory_mb }} MB{% else %}—{% endif %}</td>
@@ -79,7 +79,7 @@ these rather than from guesses.</p>
   <tbody>
   {% for r in heaviest %}
   <tr>
-    <td><a href="{% url 'operator-org-detail' r.studio.org.slug %}">{{ r.studio.org.slug }}</a></td>
+    <td><a data-console-nav href="{% url 'operator-org-detail' r.studio.org.slug %}">{{ r.studio.org.slug }}</a></td>
     <td>{{ r.studio.slug }}/{{ r.slug }}</td>
     <td class="muted">{% if r.memory_limit_mb %}{{ r.memory_limit_mb }} MB{% else %}—{% endif %}</td>
     <td><strong>{{ r.peak_memory_mb }} MB</strong></td>

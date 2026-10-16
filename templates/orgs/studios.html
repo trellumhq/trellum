@@ -10,7 +10,7 @@
     (they key data on disk); display names are free to change.</p>
   </div>
   <span class="spacer"></span>
-  <a class="ui-btn primary" href="/orgs/{{ org.slug }}/studios/new">Add Studio</a>
+  <a class="ui-btn primary" data-console-nav href="/orgs/{{ org.slug }}/studios/new">Add Studio</a>
 </header>
 
 {% if usage.enforced %}
@@ -62,8 +62,8 @@ concurrency limit is reached. Contact your provider to change these.</p>
       <details class="shell-dd">
         <summary aria-label="Manage {{ s.slug }}">Manage</summary>
         <div class="shell-menu shell-menu-right" style="min-width:280px">
-          <a href="/s/{{ org.slug }}/{{ s.slug }}/settings/repo">Studio settings</a>
-          <a href="/s/{{ org.slug }}/{{ s.slug }}/">Open dashboard</a>
+          <a data-console-nav href="/s/{{ org.slug }}/{{ s.slug }}/settings/repo">Studio settings</a>
+          <a data-console-nav href="/s/{{ org.slug }}/{{ s.slug }}/">Open dashboard</a>
           <span class="shell-menu-note">Danger</span>
           <span class="shell-menu-note">Type the slug <code>{{ s.slug }}</code> to confirm.
           Reports and runs are removed from the portal; files on disk are retained.</span>
@@ -80,9 +80,9 @@ concurrency limit is reached. Contact your provider to change these.</p>
   {% empty %}
   <tr><td colspan="5"><div class="ui-empty">
     {% if q %}No studio matches “{{ q }}”.
-      <div class="ui-empty-action"><a class="ui-btn ghost" href="{% querystring q=None page=None %}">Clear search</a></div>
+      <div class="ui-empty-action"><a class="ui-btn ghost" data-console-nav href="{% querystring q=None page=None %}">Clear search</a></div>
     {% else %}No studios yet.
-      <div class="ui-empty-action"><a class="ui-btn ghost" href="/orgs/{{ org.slug }}/studios/new">Add Studio</a></div>
+      <div class="ui-empty-action"><a class="ui-btn ghost" data-console-nav href="/orgs/{{ org.slug }}/studios/new">Add Studio</a></div>
     {% endif %}
   </div></td></tr>
   {% endfor %}

@@ -2,7 +2,7 @@
   <div class="page-head-row">
     <h2 id="email-connections-title">Email delivery</h2>
     <span class="spacer"></span>
-    <a class="ui-btn ghost" href="{% url 'email-connection-new' %}">Add API connection</a>
+    <a class="ui-btn ghost" data-console-nav href="{% url 'email-connection-new' %}">Add API connection</a>
   </div>
   <p class="muted">One route sends all instance mail: invitations, password resets, reports and alerts. A test sends synthetic mail only to your account. Provider acceptance does not guarantee delivery.</p>
   <form method="post" action="{% url 'instance-settings' %}" style="margin-bottom:18px">
@@ -32,9 +32,9 @@
         {% if connection.provider == 'brevo' %}<p class="ui-help">Report screenshots are attached as files; optional report PDFs remain attached.</p>{% endif %}
       </div>
       <span class="spacer"></span>
-      <a class="ui-btn ghost" href="{% url 'email-connection-edit' connection.pk %}">Edit</a>
+      <a class="ui-btn ghost" data-console-nav href="{% url 'email-connection-edit' connection.pk %}">Edit</a>
       {% if connection.provider == 'custom_https' %}
-      <a class="ui-btn ghost" href="{% url 'email-connection-new' %}?copy={{ connection.pk }}">Create inactive copy</a>
+      <a class="ui-btn ghost" data-console-nav href="{% url 'email-connection-new' %}?copy={{ connection.pk }}">Create inactive copy</a>
       {% endif %}
       {% if connection.pk != active_email_connection_id %}
       <form method="post" action="{% url 'email-connection-action' connection.pk 'use' %}" data-settings-form data-settings-save>
