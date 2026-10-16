@@ -353,7 +353,9 @@ def test_unchanged_remote_generated_build_skips_preview_io(studio_tree, monkeypa
     row.tags = ["metrics"]
     row.save()
     calls = []
-    meta = metadata("m")
+    # A current workspace: a legacy one would queue its automatic rebuild, and
+    # reconciliation then waits for that build.
+    meta = {**metadata("m"), "metrics_workspace": {"version": 1}}
     data = {"components": {"c": {"type": "chart", "dataset_id": "d", "x": "date"}},
             "_metrics": {"m": {"agg": "sum", "column": "value", "component_ids": ["c"]}},
             "_ds_d": {"_cols": ["date", "value"], "_data": [["a", 1], ["b", 2]]}}

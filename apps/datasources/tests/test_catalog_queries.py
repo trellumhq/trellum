@@ -86,5 +86,11 @@ def test_lists_stay_bounded_at_1000_bindings_and_reports(login, admin, org, stud
         catalog.banner(studio_tree)
     assert 0 < len(ctx.captured_queries) <= 12  # constant in the number of sources
     print("heavy: catalog queries =", len(ctx.captured_queries))
-    api = client.get(f"/s/{org.slug}/{studio_tree.slug}/api/datasources").json()
+    api = client.get(f"/s/{org.slug}/{studio_tree.slug}/api/datasources?page=1").json()
     assert len(api["sources"]) == 50 and api["total"] == 1000 and api["has_next"]
+    # Without paging parameters the API keeps returning the whole list, as
+    # before paging existed, in a number of queries that does not grow with it.
+    with CaptureQueriesContext(connection) as ctx:
+        api = client.get(f"/s/{org.slug}/{studio_tree.slug}/api/datasources").json()
+    assert len(api["sources"]) == api["total"] == 1000 and not api["has_next"]
+    assert len(ctx.captured_queries) <= 20, len(ctx.captured_queries)

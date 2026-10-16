@@ -82,6 +82,18 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- The Reports and Analyses catalog no longer shows every report as "Not run"
+  and "Never" right after an upgrade, or while a report's source summary is
+  still being built. Until the worker has summarized a report, its card shows
+  the status and time of its latest finished build, the same ones Operations
+  and the full registry show; once the summary is ready nothing changes. It
+  costs one extra bounded query per page of 50 reports and reads no storage.
+- **Reload Registry** no longer stays on "Scheduled..." forever when no current
+  worker claims the action (for example a worker left on an older version
+  during an upgrade). After a minute the page says "Still waiting for a worker.
+  Check that every worker runs this version." and the button works again. The
+  action stays scheduled on the server, so the page keeps checking quietly and
+  still reports the result if a worker runs it later.
 - The console top bar no longer jumps while a page loads. The AI assistant has
   one slot, in the same place on every page, and its space is reserved from
   the first paint, so the health warning, search box and Docs link stop shifting
@@ -120,6 +132,15 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Keep the nightly retention cleanup and the daily release check scheduled on
   the coordinator. The schedule sync removed both right after start, so
   cleanup never ran and `manage.py doctor` failed its retention check.
+- A Metrics report built before the paged comparison workspace (0.7.0 or
+  earlier) is rebuilt once by itself after an upgrade, so sparklines and charts
+  come back without anyone choosing Run. The worker queues the build (trigger
+  `catchup`, audited as `run.auto_enqueue`) when it sees the legacy artifact,
+  at most once until a current artifact is published; a failing rebuild or a
+  runner still producing legacy output is not retried.
+- `GET api/datasources` returns every source again when no `?page=` or
+  `?limit=` is given, so API-key scripts that read the whole list are not cut
+  off at 50 sources. With either parameter it returns one page.
 
 ## [0.7.0] — 2026-10-15
 

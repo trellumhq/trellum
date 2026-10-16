@@ -82,3 +82,48 @@ def test_oversized_slice_is_explicit(studio, org_admin, monkeypatch):
     monkeypatch.setattr("apps.reports.catalog.CARDS_BYTES", 10)
     payload = catalog_cards_payload(request(org_admin, studio), {})
     assert payload["state"] == "oversized" and "reports" not in payload and payload["pagination"]["total"] == 1
+
+
+def test_missing_summaries_cost_one_bounded_query_for_the_page(studio, org_admin, monkeypatch):
+    from apps.runner.models import Run
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("Dashboard slices read the database only")
+
+    monkeypatch.setattr(storage, "read_meta", forbidden)
+    monkeypatch.setattr(storage, "html_index", forbidden)
+    now = timezone.now()
+    counts = []
+    for size in (10, 400):
+        Run.objects.filter(studio=studio).delete()
+        Report.objects.filter(studio=studio).delete()
+        reports = Report.objects.bulk_create([Report(studio=studio, slug=f"r-{i:04}", name=f"R {i}") for i in range(size)])
+        Run.objects.bulk_create([
+            Run(report=r, studio=studio, slug=r.slug, status=Run.SUCCESS, created_at=now - timedelta(minutes=i % 50 + 1))
+            for r in reports for i in range(3)
+        ])
+        with CaptureQueriesContext(connection) as queries:
+            payload = catalog_cards_payload(request(org_admin, studio), {"page": "1"}, now=now)
+        counts.append(len(queries))
+        assert {r["last_status"] for r in payload["reports"]} == {"success"}
+        assert all(r["last_run"] for r in payload["reports"])
+    assert counts[0] == counts[1]
+
+
+def test_known_summaries_add_no_run_query(studio, org_admin):
+    from apps.runner.models import Run
+
+    now = timezone.now()
+    report = Report.objects.create(studio=studio, slug="known", name="Known")
+    ReportSourceSummary.objects.create(report=report, state="ready", runtime_state="ready", quality="observed",
+                                       observed_at=now, attempt_at=now, attempt_status="success")
+    Run.objects.create(report=report, studio=studio, slug="known", status=Run.ERROR)
+
+    def run_queries():
+        with CaptureQueriesContext(connection) as queries:
+            catalog_cards_payload(request(org_admin, studio), {}, now=now)
+        return [q for q in queries.captured_queries if '"finished_at"' in q["sql"] and "DISTINCT ON" in q["sql"]]
+
+    assert run_queries() == []
+    ReportSourceSummary.objects.filter(report=report).delete()
+    assert len(run_queries()) == 1

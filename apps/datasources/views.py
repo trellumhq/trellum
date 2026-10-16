@@ -109,13 +109,24 @@ def _source_info(ds: DataSource, state: SourceState) -> dict:
 @require_studio_role(roles.VIEWER)
 @require_full_studio_visibility
 def api_list(request, org_slug, studio_slug):  # noqa: ARG001
-    """One page (default 50, ``?page=``, ``?limit=`` up to 200) of the studio's
-    effective sources, by name; ``total``/``has_next`` say whether to ask again."""
+    """The studio's effective sources, by name.
+
+    Without ``?page=`` or ``?limit=`` this returns every source, as it did
+    before paging existed, so API-key scripts that read the whole list keep
+    working. With either, it returns one page (default 50, ``?limit=`` up to
+    200); ``total``/``has_next`` say whether to ask again."""
+    bindings = effective_bindings(request.studio).annotate(n=Collate("name", "C")).order_by("n")
+    if "page" not in request.GET and "limit" not in request.GET:
+        items = list(bindings)
+        states = states_for(request.studio, [ds.name for ds in items])
+        return JsonResponse({
+            "sources": [_source_info(ds, states[ds.name]) for ds in items],
+            "total": len(items), "page": 1, "has_next": False,
+        })
     try:
         limit = max(1, min(int(request.GET.get("limit") or 50), 200))
     except ValueError:
         limit = 50
-    bindings = effective_bindings(request.studio).annotate(n=Collate("name", "C")).order_by("n")
     page = paginate(request, bindings, per_page=limit)
     items = list(page.object_list)
     states = states_for(request.studio, [ds.name for ds in items])
