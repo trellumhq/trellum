@@ -607,12 +607,11 @@
             if (quiet !== true) document.dispatchEvent(new CustomEvent('console:native-restored', {detail: {url: location.href}}));
         }
     }
-    function cancel(message) {
+    // The only way a pending page is abandoned: Cancel loading or Escape. A slow page keeps loading.
+    function cancel() {
         if (!nativeSnapshot) return;
         window.stop(); clear();
         if (window.TrellumSettingsForms) window.TrellumSettingsForms.resume();
-        var status = document.querySelector('[data-console-navigation-native-status]');
-        if (status && message) status.textContent = message;
     }
     function pageURL(url) {
         if (url.origin !== location.origin || !/^https?:$/.test(url.protocol)) return false;
@@ -661,7 +660,11 @@
         var sharedStatus = document.querySelector('[data-console-navigation-native-status]');
         if (sharedStatus) sharedStatus.textContent = 'Opening page…';
         window.scrollTo(0,0);
-        nativeTimeout = setTimeout(function () { cancel('The page did not finish loading. Try opening it again when ready.'); }, 15000);
+        // A slow page is not a failed page: say so, and keep waiting.
+        nativeTimeout = setTimeout(function () {
+            status.textContent = 'Still loading ' + label + '…';
+            if (sharedStatus) sharedStatus.textContent = 'Still loading ' + label + '…';
+        }, 15000);
         document.dispatchEvent(new CustomEvent('console:native-start', {detail: {url: url.href}}));
         return true;
     }

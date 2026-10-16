@@ -187,16 +187,28 @@ def test_rendered_navigation_delay_guard_history_and_native_feedback(
         page.keyboard.press('Escape')
         native_pending.pop().abort()
         assert not page.evaluate("document.querySelector('[data-console-native-pending]') !== null")
-        page.clock.install()
-        page.evaluate("window.addEventListener('pointerdown', ()=>window.stop(), {once:true})")
-        target = native_reports()
-        # Simulate browser Stop through an input event, without a pageshow event.
-        page.mouse.click(min(width - 10, target['x'] + 250), target['y'])
+        # The 15 s notice, shortened to 100 ms. The page is not queried while a navigation is held, so a
+        # binding reports what the page showed when the notice appeared.
+        notices = []
+        page.expose_function('noticeSeen', lambda seen: notices.append(seen))
+        page.evaluate("""var setTimeoutNow = window.setTimeout;
+            window.setTimeout = function (fn, ms) { return setTimeoutNow.apply(window, [fn, ms === 15000 ? 100 : ms].concat([].slice.call(arguments, 2))); };
+            new MutationObserver(function () {
+                var panel = document.querySelector('[data-console-native-pending] [role=status]');
+                if (panel && panel.textContent.indexOf('Still loading') === 0) window.noticeSeen([panel.textContent,
+                    document.querySelector('[data-console-navigation-native-status]').textContent, !!document.querySelector('[data-console-native-pending] button')]);
+            }).observe(document.body, {subtree: true, childList: true, characterData: true})""")
+        # A slow page is not a failed page: after 15 s the text says so and the request keeps going.
+        native_reports()
+        page.wait_for_timeout(400)
+        assert notices == [['Still loading Reports…', 'Still loading Reports…', True]]
+        # Escape and Cancel loading remain the explicit abort, even after the notice.
+        page.keyboard.press('Escape')
         native_pending.pop().abort()
-        page.clock.fast_forward(15100)
         assert not page.evaluate("document.querySelector('[data-console-native-pending]') !== null")
-        assert 'did not finish loading' in page.locator('[data-console-navigation-native-status]').inner_text()
+        assert page.locator('[data-console-navigation-native-status]').inner_text() == ''
         assert page.locator('#native-draft').input_value() == 'kept'
+        assert page.evaluate('scrollY') == old_position
         delay_documents = False
         page.evaluate("document.querySelector('#native-draft').remove()")
         page.get_by_role('link', name='Comparison', exact=True).click()
@@ -211,6 +223,9 @@ def test_rendered_navigation_delay_guard_history_and_native_feedback(
         assert result['title'] == 'Reports'
         page.wait_for_timeout(50)
         assert native_pending
+        # Still waiting after the notice: the page is kept pending, not stopped, and then opens by itself.
+        page.wait_for_timeout(400)
+        assert len(notices) == 2
         route = native_pending.pop()
         route.fulfill(body=native_responses[home].content, content_type='text/html')
         page.wait_for_url(lambda url: url.split('?')[0] == 'http://navigation.test' + home)
