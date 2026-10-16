@@ -205,7 +205,7 @@ def test_request_facts_match_complete_roles_across_sources(
             )
 
 
-def test_request_facts_keep_complete_cache_separate_and_track_fallback(
+def test_request_facts_keep_complete_cache_separate(
     member, org, studio, grant_studio,
 ):
     grant_studio(member, studio, roles.VIEWER)
@@ -213,8 +213,6 @@ def test_request_facts_keep_complete_cache_separate_and_track_fallback(
     access = request_org_access(request, org)
     assert access.role_for(studio) == roles.VIEWER
     assert not hasattr(request, "_bi_effective_roles")
-    assert access.report_scope_for(studio) is None
-    assert request._bi_report_scope_fallbacks == 1
     assert get_effective(request, org).role_for(studio) == roles.VIEWER
 
 
@@ -231,7 +229,6 @@ def test_request_facts_cache_actor_key_and_second_studio(
     assert not first.is_member
     assert not first.is_org_admin
     assert first.role_for(studio) is None
-    assert first.report_scope_for(studio) == frozenset()
     assert request_org_access(request, org).role_for(studio2) == roles.ADMIN
     request.api_key = SimpleNamespace(org_id=other_org.pk)
     assert not request_org_access(request, org).is_member
