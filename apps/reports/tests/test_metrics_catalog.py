@@ -18,8 +18,8 @@ from apps.reports.metrics_catalog import (
     invalidate_metrics_overview_cache,
     studio_metrics_overview,
 )
+from apps.reports.registry_rows import all_rows
 from apps.reports.scan import (
-    build_registry_payload,
     sync_studio_metrics,
     sync_studio_registry,
 )
@@ -457,8 +457,10 @@ class TestGeneratedMetricsReportIsNotACard:
         write_report("metrics-ish", tags=["metrics"])
         sync_studio_registry(studio_tree)
 
+        from apps.reports.models import Report
+
         flags = {r["slug"]: r["metrics_report"]
-                 for r in build_registry_payload(studio_tree)["reports"]}
+                 for r in all_rows(Report.objects.filter(studio=studio_tree), studio_tree, studio_tree.org, now=dj_tz.now())}
         assert flags == {"metrics": True, "player-overview": False, "metrics-ish": False}
 
     @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")

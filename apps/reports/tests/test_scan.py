@@ -1,9 +1,11 @@
-"""Registry sync + legacy payload shape, against a real studio tree and the
-bundled framework's scan_report_configs/read_meta."""
+"""Registry sync + the registry rows it feeds, against a real studio tree and the
+bundled framework's scan_report_configs."""
 import pytest
 
 from apps.reports.models import Report
-from apps.reports.scan import build_registry_payload, invalidate_registry_cache, sync_studio_registry
+from apps.reports.models import ReportSourceSummary
+from apps.reports.registry_rows import all_rows
+from apps.reports.scan import sync_studio_registry
 
 pytestmark = pytest.mark.django_db
 
@@ -141,30 +143,34 @@ class TestRepoTheme:
         assert studio_tree.repo_theme == "nord"
 
 
+def registry_rows(studio):
+    from django.utils import timezone
+
+    return all_rows(Report.objects.filter(studio=studio, present_in_scan=True), studio, studio.org, now=timezone.now())
+
+
 class TestPayload:
-    def test_legacy_shape_with_meta_merge(self, studio_tree, write_report, write_meta):
+    def test_row_shape_with_summary_merge(self, studio_tree, write_report, observe_meta):
         write_report("alpha", description="Alpha report", display={"priority": 1})
-        write_meta(
+        sync_studio_registry(studio_tree)
+        observe_meta(
             "alpha",
+            observed=True,
             last_run="2026-08-01T07:00:00+00:00",
             last_status="success",
             framework_version="0.4.1",
-            validation={"status": "ok"},
-            details={"total": 5},
+            validation={"summary": {"pass": 5, "fail": 0}},
         )
-        (studio_tree.output_dir / "alpha" / "index.html").write_text("<html/>", encoding="utf-8")
-        sync_studio_registry(studio_tree)
 
-        payload = build_registry_payload(studio_tree)
-        assert set(payload) == {"reports", "source_states", "generated_at"}
-        entry = payload["reports"][0]
+        entry = registry_rows(studio_tree)[0]
         expected_keys = {
             "id", "slug", "kind", "name", "description", "category", "studio", "tags",
-            "schedule", "last_run", "last_status", "build_status", "last_error",
+            "schedule", "schedule_timezone", "disabled",
+            "last_run", "last_status", "build_status", "last_error",
             "has_output", "html_entry", "validation", "details", "framework_version",
-            # View analytics (internal planning#4): apps.reports.scan._view_stats_for.
+            # View analytics: views over the last 30 days and the last view.
             "views_30d", "last_viewed", "refresh_suspended_at", "stale",
-            # Runs live queries at view time (apps.core.storage.live_query_index).
+            # Runs live queries at view time (and the org allows them).
             "live",
             # Data source state (apps.datasources.status): what holds the
             # report, which source a built one fails on now, when it was built.
@@ -178,45 +184,34 @@ class TestPayload:
         assert entry["studio"] == studio_tree.slug
         assert entry["last_status"] == "success"
         assert entry["build_status"] == "success"
+        assert entry["last_run"] == "2026-08-01T07:00:00+00:00"
         assert entry["has_output"] is True
         assert entry["html_entry"] == "index.html"
-        assert entry["details"] == {"total": 5}
-        # No _live_queries.json beside this build → a static report.
+        assert entry["validation"] == {"summary": {"pass": 5, "fail": 0}}
+        assert entry["framework_version"] == "0.4.1"
+        # No live queries in this build → a static report.
         assert entry["live"] is False
-
-    def test_legacy_health_key_fallback(self, studio_tree, write_report, write_meta):
-        write_report("alpha")
-        write_meta("alpha", last_status="success", health={"total": 2})
-        sync_studio_registry(studio_tree)
-        entry = build_registry_payload(studio_tree)["reports"][0]
-        assert entry["details"] == {"total": 2}
 
 
 class TestLiveFlag:
     """`live` marks a report that runs queries at view time — the overview badge
     and Operations "Data" column read it. It is true only when the build shipped
-    ``_live_queries.json`` AND the org permits live queries."""
+    live queries (the summary's ``has_live_queries``) AND the org permits them."""
 
-    def _entry(self, studio_tree, write_report, write_meta, *, manifest):
+    def _entry(self, studio_tree, write_report, observe_meta, *, live):
         write_report("alpha")
-        write_meta("alpha", last_status="success")
-        out = studio_tree.output_dir / "alpha"
-        (out / "index.html").write_text("<html/>", encoding="utf-8")
-        if manifest:
-            (out / "_live_queries.json").write_text(
-                '{"version": 1, "queries": {}}', encoding="utf-8"
-            )
         sync_studio_registry(studio_tree)
-        invalidate_registry_cache(studio_tree)
-        return build_registry_payload(studio_tree)["reports"][0]
+        observe_meta("alpha", observed=True, last_status="success")
+        ReportSourceSummary.objects.filter(report__slug="alpha").update(has_live_queries=live)
+        return registry_rows(studio_tree)[0]
 
-    def test_live_when_manifest_present(self, studio_tree, write_report, write_meta):
-        assert self._entry(studio_tree, write_report, write_meta, manifest=True)["live"] is True
+    def test_live_when_the_build_shipped_live_queries(self, studio_tree, write_report, observe_meta):
+        assert self._entry(studio_tree, write_report, observe_meta, live=True)["live"] is True
 
-    def test_static_when_no_manifest(self, studio_tree, write_report, write_meta):
-        assert self._entry(studio_tree, write_report, write_meta, manifest=False)["live"] is False
+    def test_static_when_it_did_not(self, studio_tree, write_report, observe_meta):
+        assert self._entry(studio_tree, write_report, observe_meta, live=False)["live"] is False
 
-    def test_suppressed_when_org_disabled_live_queries(self, studio_tree, write_report, write_meta):
+    def test_suppressed_when_org_disabled_live_queries(self, studio_tree, write_report, observe_meta):
         from apps.reports.models import OrgLiveQueryPolicy
 
         # A rate limit of 0 is the org's "off" switch — a live report then can
@@ -224,14 +219,14 @@ class TestLiveFlag:
         OrgLiveQueryPolicy.objects.update_or_create(
             org=studio_tree.org, defaults={"rate_limit_per_minute": 0}
         )
-        assert self._entry(studio_tree, write_report, write_meta, manifest=True)["live"] is False
+        assert self._entry(studio_tree, write_report, observe_meta, live=True)["live"] is False
 
     def test_not_run_defaults(self, studio_tree, write_report):
         write_report("alpha")
         sync_studio_registry(studio_tree)
-        entry = build_registry_payload(studio_tree)["reports"][0]
+        entry = registry_rows(studio_tree)[0]
         assert entry["last_status"] == "not_run"
-        assert entry["has_output"] is False
+        assert entry["has_output"] is None  # nothing observed yet: not claimed either way
 
     def test_priority_sort(self, studio_tree, write_report):
         """display.priority: lower first; a report declaring none is 99, last."""
@@ -240,23 +235,13 @@ class TestLiveFlag:
         write_report("high", display={"priority": 1})
         sync_studio_registry(studio_tree)
         assert Report.objects.get(studio=studio_tree, slug="alpha").priority == 99
-        slugs = [r["slug"] for r in build_registry_payload(studio_tree)["reports"]]
+        slugs = [r["slug"] for r in registry_rows(studio_tree)]
         assert slugs == ["high", "low", "alpha"]
 
-    def test_html_entry_fallback_to_first_html(self, studio_tree, write_report):
-        write_report("alpha")
-        out = studio_tree.output_dir / "alpha"
-        out.mkdir(parents=True, exist_ok=True)
-        (out / "dashboard.html").write_text("<html/>", encoding="utf-8")
-        sync_studio_registry(studio_tree)
-        invalidate_registry_cache(studio_tree)
-        entry = build_registry_payload(studio_tree)["reports"][0]
-        assert entry["html_entry"] == "dashboard.html"
-
-    def test_cache_invalidation(self, studio_tree, write_report):
+    def test_a_synced_report_is_listed_at_once(self, studio_tree, write_report):
         write_report("alpha")
         sync_studio_registry(studio_tree)
-        assert len(build_registry_payload(studio_tree)["reports"]) == 1
+        assert len(registry_rows(studio_tree)) == 1
         write_report("beta")
-        sync_studio_registry(studio_tree)  # invalidates internally
-        assert len(build_registry_payload(studio_tree)["reports"]) == 2
+        sync_studio_registry(studio_tree)
+        assert len(registry_rows(studio_tree)) == 2

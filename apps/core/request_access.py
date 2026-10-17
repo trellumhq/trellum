@@ -51,22 +51,6 @@ class RequestOrgAccess:
     def has_full_studio_visibility(self, studio) -> bool:
         return self.studio_access(studio).full
 
-    def report_scope_for(self, studio) -> frozenset[int] | None:
-        """Compatibility path for callers still requiring complete report IDs.
-
-        This deliberately uses the separate complete cache. The final caller
-        migration must remove this fallback from ordinary request paths.
-        """
-        from apps.core.permissions import get_effective
-
-        if not self._current_actor:
-            return frozenset()
-
-        self.request._bi_report_scope_fallbacks = getattr(
-            self.request, "_bi_report_scope_fallbacks", 0
-        ) + 1
-        return get_effective(self.request, self.org).report_scope_for(studio)
-
 
 def request_org_access(request, org) -> RequestOrgAccess:
     cache = getattr(request, "_bi_request_org_access", None)

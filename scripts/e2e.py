@@ -111,12 +111,13 @@ def build() -> None:
     else:
         fail("run did not finish within 300s")
 
-    # The registry payload is cached server-side for ~5s; retry briefly.
+    # The registry reads the worker's observation of the build, which trails the
+    # run by a few seconds; retry briefly.
     entry = None
-    for _ in range(8):
+    for _ in range(15):
         reg = s.get(f"{PREFIX}/api/registry", timeout=10).json()
         entry = next(e for e in reg["reports"] if e["slug"] == REPORT)
-        if entry["last_status"] == "success":
+        if entry["last_status"] == "success" and entry["has_output"] is True:
             break
         time.sleep(2)
     check(entry["last_status"] == "success", "registry shows last_status=success")

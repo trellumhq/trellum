@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "first_party_expected": 219,
+  "first_party_expected": 213,
   "routes": [
     {
       "id": "route-000",
@@ -8245,7 +8245,7 @@
       "verified_node_ids": [],
       "source_sha256": "6d567406dc7a18024fb6606677adcfffbf455ec71d80c3ad22ef6791d5368e2f",
       "request_conditions": [],
-      "adapter_sha256": "0226348662b5ad6fcd0af4a8e68cd0d185573fc6b1717d10c6a7d408bece82fd",
+      "adapter_sha256": "febd1cf2fbc23c753598be41ea0154b08d4dde2e5c227db4f5aa225fcd996de0",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -8307,7 +8307,7 @@
       "verified_node_ids": [],
       "source_sha256": "ae1c01599eb0de6ae9077239868dc425de9da49578e2fdbebd06d43882a05261",
       "request_conditions": [],
-      "adapter_sha256": "94fb5ae87b41334cfd8980fe61dae342063c6311299595cadb7c88e430e019b4",
+      "adapter_sha256": "e5de75cf4ff395380f5ba352f691f9964472d4d2e4eb5bcb5798e3115a6f2b86",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -8571,7 +8571,7 @@
       "verified_node_ids": [],
       "source_sha256": "bd1571eda476d720243d0e842614abe3843baec7922755e9ad741510357b64b7",
       "request_conditions": [],
-      "adapter_sha256": "146df4f23fe6627e1f9749478ef5a35d5d688ef13ed690da5b71963a9fc6b559",
+      "adapter_sha256": "80a8e076e5ac101694de03db5115774b22d7a9bd53660912ea6e3e6f728168cc",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -8971,9 +8971,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "11be5a281f300eb4fde6ddd3bc5a7ace2ecf80593a024623c470c9db790898d7",
+      "source_sha256": "82ca4bc9f431ed6648fd58996de7ae57d65f9647d3e6a831286a0f1077142ab5",
       "request_conditions": [],
-      "adapter_sha256": "41f142ffcdca192f8cbcc1a24678c93f749907ce6d4c06444414570093c48272",
+      "adapter_sha256": "701fef7e48135d23d02b07430c06282b4055478f041d412d7933cda46fbe7067",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -9031,9 +9031,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "d6e63056114e3099c80e20b659e9a846f99a267c1534c6e451a2ade2aeff0350",
+      "source_sha256": "5ae7eed56eba7c8c491da8f917ca5fcb6decb6ccd36f4427dc38622340019b20",
       "request_conditions": [],
-      "adapter_sha256": "6e718790581f1e1952c9ee33bb1ead38cf3abbf0b104e148163c14d009610a47",
+      "adapter_sha256": "f4ade3d6e991290c66305308d1e7d416ee69687654d31fc72f233f064968315f",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -21624,7 +21624,7 @@
         "GET q/page/selected; permission-filtered count and page; selected lookup never exposes unauthorized labels; full search and next-request revocation",
         "Same-org bearer scope for studio route; global route rejects bearer API keys"
       ],
-      "adapter_sha256": "dc0774a6c3c43af223e81209ac97a4ad8e8f77a2b626c4a313769462f1c32119",
+      "adapter_sha256": "715077fc6e63f2d5dd74a3d3ee1c5026309b508a9e96292f015c7bc14f9fb1f6",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -21683,7 +21683,7 @@
         "GET q/page/selected; permission-filtered count and page; selected lookup never exposes unauthorized labels; full search and next-request revocation",
         "Same-org bearer scope for studio route; global route rejects bearer API keys"
       ],
-      "adapter_sha256": "2f2e6b848e1920623cdc42de76c36441a0d52b8c018927cd47eff70cd2d10dd5"
+      "adapter_sha256": "c37aa0c9cf71fb42cd43c6e80c32daf6299096ddbccc6fe4e181ab825b4f6cf5"
     },
     {
       "id": "route-320",
@@ -22289,321 +22289,6 @@
       }
     },
     {
-      "id": "route-329",
-      "pattern": "s/<slug:org_slug>/<slug:studio_slug>/api/catalog",
-      "name": "api-catalog",
-      "view": "apps.reports.views.api_catalog",
-      "first_party": true,
-      "case": "C14",
-      "shard": "L2",
-      "allowed_roles": [
-        "developer",
-        "group-admin",
-        "group-member",
-        "group-selected",
-        "operator",
-        "org-admin",
-        "private-viewer",
-        "studio-admin",
-        "viewer",
-        "viewer-full"
-      ],
-      "denied_roles": [
-        "anonymous",
-        "cross-org",
-        "inactive",
-        "revoked"
-      ],
-      "role_policy": "studio-viewer",
-      "seeded_parameters": {
-        "org_slug": {
-          "value": "alpha"
-        },
-        "studio_slug": {
-          "value": "studio-0"
-        }
-      },
-      "disposition": "non-UI API/asset",
-      "scenarios": [
-        {
-          "method": "GET",
-          "action": null,
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[329-GET]",
-          "verification": "pending"
-        }
-      ],
-      "verification": "pending",
-      "verified_node_ids": [],
-      "source_sha256": "d173e23ddd9febf9e187b7122675d6325d936b3d76db5bad9d1cb3738296ce4c",
-      "request_conditions": [],
-      "adapter_sha256": "8ec660d0f70313ded250b3d7f17dd9461c750c007fa8b44f9836a36d16d98313",
-      "principal_parameter_overrides": {
-        "viewer-full": {
-          "org_slug": "beta"
-        }
-      },
-      "conditional_roles": {
-        "impersonated": {
-          "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: studio-viewer",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[329-GET]",
-          "verification": "pending"
-        }
-      }
-    },
-    {
-      "id": "route-330",
-      "pattern": "s/<slug:org_slug>/<slug:studio_slug>/api/catalog/categories",
-      "name": "api-catalog-categories",
-      "view": "apps.reports.views.api_catalog_categories",
-      "first_party": true,
-      "case": "C14",
-      "shard": "L2",
-      "allowed_roles": [
-        "developer",
-        "group-admin",
-        "group-member",
-        "group-selected",
-        "operator",
-        "org-admin",
-        "private-viewer",
-        "studio-admin",
-        "viewer",
-        "viewer-full"
-      ],
-      "denied_roles": [
-        "anonymous",
-        "cross-org",
-        "inactive",
-        "revoked"
-      ],
-      "role_policy": "studio-viewer",
-      "seeded_parameters": {
-        "org_slug": {
-          "value": "alpha"
-        },
-        "studio_slug": {
-          "value": "studio-0"
-        }
-      },
-      "disposition": "non-UI API/asset",
-      "scenarios": [
-        {
-          "method": "GET",
-          "action": null,
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[330-GET]",
-          "verification": "pending"
-        }
-      ],
-      "verification": "pending",
-      "verified_node_ids": [],
-      "source_sha256": "606b8e03b7d3c6e4df7606b9893a920c343eeee8140fc2b6f912719802dfe67d",
-      "request_conditions": [],
-      "adapter_sha256": "499b1f022bad77551ca8ca23b652b2b92559f707901bc8d89c8596e2e3baefcb",
-      "principal_parameter_overrides": {
-        "viewer-full": {
-          "org_slug": "beta"
-        }
-      },
-      "conditional_roles": {
-        "impersonated": {
-          "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: studio-viewer",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[330-GET]",
-          "verification": "pending"
-        }
-      }
-    },
-    {
-      "id": "route-331",
-      "pattern": "s/<slug:org_slug>/<slug:studio_slug>/api/catalog/personal",
-      "name": "api-catalog-personal",
-      "view": "apps.reports.views.api_catalog_personal",
-      "first_party": true,
-      "case": "C14",
-      "shard": "L2",
-      "allowed_roles": [
-        "developer",
-        "group-admin",
-        "group-member",
-        "group-selected",
-        "operator",
-        "org-admin",
-        "private-viewer",
-        "studio-admin",
-        "viewer",
-        "viewer-full"
-      ],
-      "denied_roles": [
-        "anonymous",
-        "cross-org",
-        "inactive",
-        "revoked"
-      ],
-      "role_policy": "studio-viewer",
-      "seeded_parameters": {
-        "org_slug": {
-          "value": "alpha"
-        },
-        "studio_slug": {
-          "value": "studio-0"
-        }
-      },
-      "disposition": "non-UI API/asset",
-      "scenarios": [
-        {
-          "method": "GET",
-          "action": null,
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[331-GET]",
-          "verification": "pending"
-        }
-      ],
-      "verification": "pending",
-      "verified_node_ids": [],
-      "source_sha256": "432239237d2ef98a8dccba9441d920dfd0aed53b24d3248eca2b2e0fab3ef996",
-      "request_conditions": [],
-      "adapter_sha256": "2131d1111f4e85601c42291365a2b6b57eca4ca45beb8cb100ff54b91cc95161",
-      "principal_parameter_overrides": {
-        "viewer-full": {
-          "org_slug": "beta"
-        }
-      },
-      "conditional_roles": {
-        "impersonated": {
-          "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: studio-viewer",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[331-GET]",
-          "verification": "pending"
-        }
-      }
-    },
-    {
-      "id": "route-332",
-      "pattern": "s/<slug:org_slug>/<slug:studio_slug>/api/catalog/indicators",
-      "name": "api-catalog-indicators",
-      "view": "apps.reports.views.api_catalog_indicators",
-      "first_party": true,
-      "case": "C14",
-      "shard": "L2",
-      "allowed_roles": [
-        "developer",
-        "group-admin",
-        "group-member",
-        "group-selected",
-        "operator",
-        "org-admin",
-        "private-viewer",
-        "studio-admin",
-        "viewer",
-        "viewer-full"
-      ],
-      "denied_roles": [
-        "anonymous",
-        "cross-org",
-        "inactive",
-        "revoked"
-      ],
-      "role_policy": "studio-viewer",
-      "seeded_parameters": {
-        "org_slug": {
-          "value": "alpha"
-        },
-        "studio_slug": {
-          "value": "studio-0"
-        }
-      },
-      "disposition": "non-UI API/asset",
-      "scenarios": [
-        {
-          "method": "GET",
-          "action": null,
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[332-GET]",
-          "verification": "pending"
-        }
-      ],
-      "verification": "pending",
-      "verified_node_ids": [],
-      "source_sha256": "62d61d5a1370912ec5b0f9a2be17d25786b4c8135fd2c33230ce0e36c122d5f4",
-      "request_conditions": [
-        "GET only; at most 64 decimal report ids via repeated id query parameter; ids outside the actor visible scope are omitted"
-      ],
-      "adapter_sha256": "111b27246ad436c7f87e9afb873e17c28dfb4fde09fb8b6022d337240caf32f4",
-      "principal_parameter_overrides": {
-        "viewer-full": {
-          "org_slug": "beta"
-        }
-      },
-      "conditional_roles": {
-        "impersonated": {
-          "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: studio-viewer",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[332-GET]",
-          "verification": "pending"
-        }
-      }
-    },
-    {
-      "id": "route-333",
-      "pattern": "s/<slug:org_slug>/<slug:studio_slug>/api/catalog/details/<int:report_id>",
-      "name": "api-catalog-details",
-      "view": "apps.reports.views.api_catalog_details",
-      "first_party": true,
-      "case": "C14",
-      "shard": "L2",
-      "allowed_roles": [
-        "developer",
-        "group-admin",
-        "group-member",
-        "group-selected",
-        "operator",
-        "org-admin",
-        "private-viewer",
-        "studio-admin",
-        "viewer",
-        "viewer-full"
-      ],
-      "denied_roles": [
-        "anonymous",
-        "cross-org",
-        "inactive",
-        "revoked"
-      ],
-      "role_policy": "studio-viewer",
-      "seeded_parameters": {
-        "org_slug": {
-          "value": "alpha"
-        },
-        "studio_slug": {
-          "value": "studio-0"
-        },
-        "report_id": {
-          "provider": "seed.report_id"
-        }
-      },
-      "disposition": "non-UI API/asset",
-      "scenarios": [
-        {
-          "method": "GET",
-          "action": null,
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[333-GET]",
-          "verification": "pending"
-        }
-      ],
-      "verification": "pending",
-      "verified_node_ids": [],
-      "source_sha256": "ee1e415cd347e4a934aea5215b0ff7471d0e60535aceecf040681caf48865e76",
-      "request_conditions": [],
-      "adapter_sha256": "a81992442bbe3cebf991f6372280f54575984d886459b3e6e25546c1421cf791",
-      "principal_parameter_overrides": {
-        "viewer-full": {
-          "org_slug": "beta"
-        }
-      },
-      "conditional_roles": {
-        "impersonated": {
-          "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: studio-viewer",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[333-GET]",
-          "verification": "pending"
-        }
-      }
-    },
-    {
       "id": "route-335",
       "pattern": "s/<slug:org_slug>/<slug:studio_slug>/api/system/actions/<uuid:action_id>",
       "name": "api-maintenance-action",
@@ -23065,7 +22750,7 @@
       "verified_node_ids": [],
       "source_sha256": "6ff467e21d7f317e9e7afb5d0fd76fc45dd866e48703f701699970b73efc1588",
       "request_conditions": [],
-      "adapter_sha256": "c0ed2c3eaecc010b5ddbc6d4e21d5ec2f6624577d57e2c9cf07711cfa3bfcfad",
+      "adapter_sha256": "9a714205cfda3917a18a8600504cfe2d786c1f382e25502e9209979af6d9ce95",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -23133,9 +22818,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "b73e3bda464934b917fd225dd9f0b9adc8c81d50afb43aedb72a783b2d4d2aa0",
+      "source_sha256": "9bfbaaea910c6eafb534b06c75c5d09afff5b88ef46861360506d604a8e2f171",
       "request_conditions": [],
-      "adapter_sha256": "d935387e60fa2df53b15654afa63e0a3ae68b854b7d7e2fbe2e092847eeba282",
+      "adapter_sha256": "2886cea935e628ba0a609b3a2dbbd208c39c4943405c6a07ee589277c925e645",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -23203,9 +22888,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "c5e9aeafe15ab38dd22b74bf2c89cd5c2ab90434972c26d16364829344c8d3ee",
+      "source_sha256": "c0240136dab8cc4c0c5f06dfced7e6eb71f58b25d46ce71247555040d3f89b20",
       "request_conditions": [],
-      "adapter_sha256": "6afc1a54eb2d82dbface4364562fbd542703941cfe96a199f5d610bf81175673",
+      "adapter_sha256": "0ff2e56be357692bab1a3cddfb8b48e570b0128f346455e5c3c726cb0e68b975",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -23275,7 +22960,7 @@
       "verified_node_ids": [],
       "source_sha256": "a1917091552309241c34f9facc27f0fe723126cd59730858997387d92fb0a48c",
       "request_conditions": [],
-      "adapter_sha256": "dca387f0570e54b644ecc1d22f4b57a4c01bd9b092b7da0d5025d459722b51b4",
+      "adapter_sha256": "27f1e955cc95a2827317d559f606eed8564ce4d258338ef2a53f00d159805f12",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -23348,7 +23033,7 @@
       "verified_node_ids": [],
       "source_sha256": "7f7ee2382a381a8d2801777b866fc0c2b903a3111055d19caa6b83c092e33253",
       "request_conditions": [],
-      "adapter_sha256": "7c5225a6460145fc5f8ac1dfede22c2c3909ec00faa6cb0cc4b88d33e5c13ced",
+      "adapter_sha256": "fa8a4423a3933f3c6e1315161ec5c8cbc1cd68d09d33b4285a07661146958329",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -23368,79 +23053,6 @@
         "impersonated": {
           "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: studio-developer",
           "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[349-GET]",
-          "verification": "pending"
-        }
-      }
-    },
-    {
-      "id": "route-350",
-      "pattern": "s/<slug:org_slug>/<slug:studio_slug>/api/operations/reports/<str:slug>/log/download",
-      "name": null,
-      "view": "apps.reports.views.api_operations_report_log_download",
-      "first_party": true,
-      "case": "C15",
-      "shard": "L2",
-      "allowed_roles": [
-        "developer",
-        "group-admin",
-        "operator",
-        "org-admin",
-        "studio-admin"
-      ],
-      "denied_roles": [
-        "anonymous",
-        "group-selected",
-        "inactive",
-        "private-viewer",
-        "revoked",
-        "viewer",
-        "viewer-full"
-      ],
-      "role_policy": "studio-developer",
-      "seeded_parameters": {
-        "org_slug": {
-          "value": "alpha"
-        },
-        "studio_slug": {
-          "value": "studio-0"
-        },
-        "slug": {
-          "value": "report-0000"
-        }
-      },
-      "disposition": "non-UI API/asset",
-      "scenarios": [
-        {
-          "method": "GET",
-          "action": null,
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[350-GET]",
-          "verification": "pending"
-        }
-      ],
-      "verification": "pending",
-      "verified_node_ids": [],
-      "source_sha256": "175187ddb924e54b64410f4bff270416a6e9a76259ca1f44f3c879b727be0f44",
-      "request_conditions": [],
-      "adapter_sha256": "86ae69ec5c869a2160e742aa594b306a05f3f1a2c46b0d3298f51a898c26f21f",
-      "principal_parameter_overrides": {
-        "viewer-full": {
-          "org_slug": "beta"
-        }
-      },
-      "conditional_roles": {
-        "group-member": {
-          "condition": "Active alpha member with group-derived all-public-reports viewer access; private report is unassigned. Policy context: studio-developer",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[350-GET]",
-          "verification": "pending"
-        },
-        "cross-org": {
-          "condition": "Active beta viewer requests primary alpha objects without alpha membership; global own-account/public entry and unconditional redirects differ from tenant data. Policy context: studio-developer",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[350-GET]",
-          "verification": "pending"
-        },
-        "impersonated": {
-          "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: studio-developer",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l2_routes.py::test_route[350-GET]",
           "verification": "pending"
         }
       }

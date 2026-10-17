@@ -55,9 +55,6 @@ class MeasureRequests:
 
     def __call__(self, request):
         phase = request.headers.get('X-Portal-E2E-Phase', 'unlabeled')
-        if phase == 'registry-cache-cold' and request.path == request.headers.get('X-Portal-E2E-Cache-Target'):
-            from apps.reports.scan import invalidate_registry_cache
-            invalidate_registry_cache()
         started = time.perf_counter()
         started_ns = time.monotonic_ns()
         counts = {'sql_count': 0, 'sql_ms': 0.0, 'storage_count': 0, 'storage_ms': 0.0, 'storage_operations': {}}

@@ -1,10 +1,9 @@
-"""Opt-in authorized Operations tails and complete persisted-tail streaming.
+"""Opt-in authorized Operations log tails.
 
-Live files are read only on an explicit terminal request. Persisted downloads
+Live files are read only on an explicit terminal request; persisted reads
 contain Run.stdout_tail/stderr_tail, not complete original worker log files.
 No helper creates directories, repairs state, or admits worker operations.
 """
-from dataclasses import dataclass
 from copy import copy
 import json
 import os
@@ -15,7 +14,6 @@ from uuid import UUID
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db.models import BinaryField, Func, IntegerField
-from django.db.models.functions import Length, Substr
 from django.http import Http404
 from django.utils import timezone
 
@@ -24,7 +22,6 @@ from apps.runner.models import Run
 
 TAIL_BYTES = 64 * 1024
 RESPONSE_BYTES = 128 * 1024
-STREAM_CHARACTERS = 16 * 1024
 STREAMS = ('stdout', 'stderr')
 RUN_FIELDS = ('id', 'report_id', 'studio_id', 'slug', 'status', 'created_at',
               'started_at', 'finished_at', 'exit_code', 'log_dir', 'worker_id', 'pid')
@@ -49,10 +46,6 @@ class SharedByteTail(Func):
         limit = f'LEAST({TAIL_BYTES}, {TAIL_BYTES // 2} + GREATEST({TAIL_BYTES // 2} - octet_length({other}), 0))'
         sql = f"substring(convert_to({text},'UTF8') from GREATEST(octet_length({text}) - {limit} + 1, 1) for {limit})"
         return sql, text_params * 2 + other_params * 2
-
-
-class OperationsLogChanged(RuntimeError):
-    """A streamed observation no longer identifies the selected persisted run."""
 
 
 class _Unavailable(Exception):
@@ -299,70 +292,3 @@ def operations_log_payload(request, slug, *, mode='last', run_id=None):
     payload['availability'] = 'available' if any(texts) else 'quiet'
     payload['label'] = 'Live local log tail' if mode == 'live' else 'Persisted stdout/stderr tails'
     return _fit(payload, texts, originals, clipped)
-
-
-@dataclass
-class PersistedTailStream:
-    """Single-pass, fixed-chunk download of complete persisted Run tails."""
-    request: object
-    slug: str
-    identity: dict
-    lengths: dict
-    consumed: bool = False
-
-    label = 'Complete persisted stdout/stderr tails'
-    content_type = 'text/plain; charset=utf-8'
-
-    @property
-    def run(self):
-        return _public_run(self.identity)
-
-    @property
-    def filename(self):
-        return f"run-{self.identity['id']}-persisted-tails.txt"
-
-    def _query(self):
-        # A stream can outlive the request's first role observation. Resolve
-        # grants again before body delivery/chunks without retaining a new cache.
-        request = _fresh_request(self.request)
-        if not operations_relation(request).filter(pk=self.identity['report_id'], slug=self.slug, studio__org__is_active=True).exists():
-            raise OperationsLogChanged('The selected report is no longer available.')
-        query = _run_query(self.identity).annotate(
-            stdout_bytes=ByteLength('stdout_tail'), stderr_bytes=ByteLength('stderr_tail'),
-            stdout_characters=Length('stdout_tail'), stderr_characters=Length('stderr_tail'),
-        ).filter(**self.lengths)
-        return query
-
-    def __iter__(self):
-        if self.consumed:
-            raise OperationsLogChanged('A persisted-tail stream cannot be replayed.')
-        self.consumed = True
-        if not self._query().exists():
-            raise OperationsLogChanged('The selected persisted log changed before download.')
-        yield (self.label + '\n').encode('utf-8')
-        for name in STREAMS:
-            yield ('\n--- ' + name + ' (complete persisted tail) ---\n').encode('utf-8')
-            total = self.lengths[name + '_characters']
-            for start in range(1, total + 1, STREAM_CHARACTERS):
-                row = self._query().annotate(part=Substr(name + '_tail', start, STREAM_CHARACTERS)).values('part').first()
-                if row is None:
-                    raise OperationsLogChanged('The selected persisted log changed during download.')
-                yield row['part'].encode('utf-8')
-        if not self._query().exists():
-            raise OperationsLogChanged('The selected persisted log changed during download.')
-
-
-def operations_persisted_tail_stream(request, slug, *, run_id):
-    """Authorize a stable terminal UUID and stream only its persisted DB tails.
-
-    The caller supplies attachment/no-store headers. No disk download authority
-    is introduced here. Closing/abandoning iteration holds no file or DB cursor.
-    """
-    run = _select(request, slug, 'last', _uuid(run_id))
-    lengths = _run_query(run).annotate(
-        stdout_bytes=ByteLength('stdout_tail'), stderr_bytes=ByteLength('stderr_tail'),
-        stdout_characters=Length('stdout_tail'), stderr_characters=Length('stderr_tail'),
-    ).values('stdout_bytes', 'stderr_bytes', 'stdout_characters', 'stderr_characters').first()
-    if lengths is None:
-        raise OperationsLogChanged('The selected persisted log changed before download.')
-    return PersistedTailStream(request, slug, run, lengths)

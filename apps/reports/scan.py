@@ -1,4 +1,4 @@
-"""Registry sync + the legacy registry JSON payload, per studio.
+"""Registry sync, per studio (the registry JSON itself is ``registry_rows``).
 
 Port of ``portal/registry.py``. The scan uses only explicit-path framework
 contract functions (``scan_report_configs(reports_dir)``, ``read_meta(dir)``)
@@ -10,36 +10,18 @@ from __future__ import annotations
 import json
 import logging
 import os
-import threading
-import time as _time
-from datetime import datetime, timedelta, timezone
 
 from django.core.serializers.json import DjangoJSONEncoder
 from django.core.exceptions import ValidationError
-from django.db.models import Max, Sum
 from django.utils import timezone as dj_tz
 
-from apps.datasources.status import (
-    SourceState,
-    blocked_names,
-    build_error,
-    latest_runs,
-    referenced_names,
-    source_states,
-)
 from apps.reports.models import MetricDefinition, Report
 
-#: A build counts as "recent" for the stale badge (build_registry_payload)
-#: when it succeeded within this many days.
+#: A build counts as "recent" for the stale badge when it succeeded within
+#: this many days (``apps.reports.registry_rows`` and the studio analytics).
 _STALE_BUILD_WINDOW_DAYS = 7
-#: The window build_registry_payload's "views (30d)" meta line sums over.
-_VIEWS_WINDOW_DAYS = 30
 
 logger = logging.getLogger(__name__)
-
-_cache_lock = threading.Lock()
-_registry_cache: dict[int, tuple[float, dict]] = {}
-_REGISTRY_CACHE_TTL = 5.0
 
 
 class ReportQuotaExceeded(Exception):
@@ -169,7 +151,6 @@ def sync_studio_registry(studio) -> int:
         missing_ids = list(missing.values_list("pk", flat=True))
         missing.update(present_in_scan=False, last_scanned_at=now)
         invalidate_reports(missing_ids, "removed")
-    invalidate_registry_cache(studio)
     try:
         sync_studio_metrics(studio)
     except Exception:  # noqa: BLE001 - a metrics.yaml problem must never sink the report scan
@@ -299,14 +280,6 @@ def sync_studio_repo_theme(studio) -> str:
     return theme
 
 
-def invalidate_registry_cache(studio=None) -> None:
-    with _cache_lock:
-        if studio is None:
-            _registry_cache.clear()
-        else:
-            _registry_cache.pop(studio.pk, None)
-
-
 def _get_html_entry(report_output_dir: str) -> str:
     if not os.path.isdir(report_output_dir):
         return "index.html"
@@ -316,233 +289,3 @@ def _get_html_entry(report_output_dir: str) -> str:
         if f.endswith(".html"):
             return f
     return "index.html"
-
-
-def _view_stats_for(rows: list) -> tuple[dict, dict]:
-    """(views_30d_by_report_id, last_viewed_by_report_id) for ``rows``, each
-    ONE query across every report rather than one per report -- see the
-    call site in build_registry_payload for why that matters.
-    """
-    from apps.reports.models import ReportViewDaily, ReportViewEvent
-
-    if not rows:
-        return {}, {}
-    report_ids = [r.pk for r in rows]
-    cutoff_date = (dj_tz.now() - timedelta(days=_VIEWS_WINDOW_DAYS)).date()
-    views_30d = {
-        entry["report"]: entry["total"]
-        for entry in ReportViewDaily.objects.filter(
-            report_id__in=report_ids, date__gte=cutoff_date
-        ).values("report").annotate(total=Sum("views"))
-    }
-    last_viewed = {
-        entry["report"]: entry["latest"]
-        for entry in ReportViewEvent.objects.filter(report_id__in=report_ids)
-        .values("report").annotate(latest=Max("created_at"))
-    }
-    return views_30d, last_viewed
-
-
-def _built_recently(last_status: str, last_run: str | None) -> bool:
-    """Whether the report's last build both succeeded and finished within
-    ``_STALE_BUILD_WINDOW_DAYS`` -- the framework writes ``last_run`` on
-    every attempt (success or error), so both conditions are required (see
-    ``trellum.meta.is_fresh``, the identical check for cache freshness)."""
-    if last_status != "success" or not last_run:
-        return False
-    try:
-        last_dt = datetime.fromisoformat(str(last_run).replace("Z", "+00:00"))
-    except ValueError:
-        return False
-    return (dj_tz.now() - last_dt) <= timedelta(days=_STALE_BUILD_WINDOW_DAYS)
-
-
-def build_registry_payload(studio) -> dict:
-    """The legacy ``/api/registry`` shape, resolved for one studio.
-
-    Config comes from the synced Report rows; run state comes live from
-    ``output/<slug>/_meta.json`` exactly as before (the framework owns it).
-    """
-    from apps.core import storage
-    from apps.reports.metrics_catalog import is_generated_metrics_report
-
-    now = _time.time()
-    with _cache_lock:
-        hit = _registry_cache.get(studio.pk)
-        if hit and (now - hit[0]) < _REGISTRY_CACHE_TTL:
-            return hit[1]
-
-    # One listing for the whole studio, then one small metadata read per
-    # report. Resolving the entry point per report from the filesystem would
-    # be a round trip each on a remote store.
-    #
-    # A store outage degrades the registry rather than 500ing it: rows render
-    # from their config with status "storage_unavailable", and after the first
-    # failure no further reads are attempted — each one would eat its own
-    # timeout against a store we already know is down. The (short-TTL) cache
-    # keeps a dead store from being probed on every page load.
-    storage_down = False
-    try:
-        html_index = storage.html_index(studio)
-    except Exception as exc:  # noqa: BLE001 - driver raises per-operation classes
-        logger.warning(f"report storage unreachable: {type(exc).__name__}: {exc}")
-        html_index = {}
-        storage_down = True
-
-    # Report.Meta.ordering (priority, then slug) is the card order.
-    rows = list(Report.objects.filter(studio=studio, present_in_scan=True))
-
-    # View analytics (internal planning#4): two aggregate queries for the WHOLE
-    # studio, not one per report -- the dashboard cards' "views (30d)" /
-    # "last viewed" meta line and stale badge all stitch onto `rows` from
-    # these two dicts in Python below, so a studio with a hundred reports
-    # still costs exactly two extra queries here, not a hundred.
-    views_30d_by_report, last_viewed_by_report = _view_stats_for(rows)
-
-    # Which reports run live queries at view time (one bulk listing, like
-    # html_index) AND whether this org permits them at all. A report whose
-    # queries could never execute is not advertised as "live" -- a per-org
-    # rate limit of 0 is the "off" switch (apps.reports.models
-    # .live_query_rate_limit), so live_enabled folds the policy in here rather
-    # than every consumer re-checking it.
-    live_slugs: set = set()
-    if not storage_down:
-        try:
-            live_slugs = storage.live_query_index(studio)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(f"live-query index unreachable: {type(exc).__name__}: {exc}")
-    from apps.reports.models import live_query_rate_limit
-    live_enabled = live_query_rate_limit(studio.org) > 0
-
-    # Data source state, once per studio: which reports are waiting for a
-    # source (blocked_by/waiting), which built report reads from a source that
-    # is failing now, and a failure's attribution when only the run carries it.
-    states = {s.name: s for s in source_states(studio)}
-    runs = latest_runs(studio)
-    blocks: dict[str, list[str]] = {}  # source name -> slugs it holds
-
-    reports = []
-    for row in rows:
-        config = row.config or {}
-        html_names = html_index.get(row.slug, [])
-        if row.slug == 'metrics' and 'metrics' in (row.tags or []):
-            # Generated workspace siblings are native pages of one report,
-            # never additional authored views in the registry chooser.
-            from trellum.metrics_workspace import owned_name
-            html_names = [name for name in html_names if not owned_name(name)]
-        runtime_meta: dict = {}
-        if not storage_down:
-            try:
-                runtime_meta = storage.read_meta(studio, row.slug)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning(
-                    f"report storage unreachable: {type(exc).__name__}: {exc}"
-                )
-                storage_down = True
-        last_run = runtime_meta.get("last_run")
-        last_status = (
-            "storage_unavailable" if storage_down else runtime_meta.get("last_status", "not_run")
-        )
-        views_30d = views_30d_by_report.get(row.pk, 0)
-        last_viewed = last_viewed_by_report.get(row.pk)
-        latest = runs.get(row.slug)
-        referenced = [n for n in referenced_names(config) if n in states]
-        # What held the last run only counts while it still would: a source
-        # configured since, or a reference dropped since, clears the wait
-        # before the next build does. A disabled report waits for nothing.
-        holding = [n for n in referenced if states[n].blocking] if not row.disabled else []
-        blocked_by = [n for n in blocked_names(runtime_meta, latest) if n in holding]
-        for n in holding:
-            blocks.setdefault(n, []).append(row.slug)
-        failing = next((states[n] for n in referenced if states[n].state == SourceState.FAILING), None)
-        reports.append(
-            {
-                "id": row.pk,
-                "kind": row.kind,
-                "slug": row.slug,
-                "name": row.name or row.slug,
-                "description": row.description,
-                "category": row.category or "Uncategorized",
-                "studio": studio.slug,
-                "tags": row.tags,
-                "schedule": row.schedule_cron,
-                "last_run": last_run,
-                "last_status": last_status,
-                # Artifact errors collapse OOM/timeouts; Operations needs the run state.
-                "build_status": latest.status if latest is not None else last_status,
-                "last_error": build_error(runtime_meta, latest)[:500] or None,
-                "blocked_by": blocked_by,
-                "waiting": bool(blocked_by),
-                "failing_source": (
-                    {
-                        "name": failing.name,
-                        "since": failing.last_check_at.isoformat() if failing.last_check_at else None,
-                    }
-                    if failing is not None else None
-                ),
-                "last_built_at": row.last_built_at.isoformat() if row.last_built_at else None,
-                "has_output": bool(html_names),
-                "html_entry": storage.entry_for(html_names),
-                "validation": runtime_meta.get("validation"),
-                # Legacy "health" fallback: reports generated before the
-                # details-rename still surface totals without a re-run.
-                "details": runtime_meta.get("details") or runtime_meta.get("health"),
-                "framework_version": runtime_meta.get("framework_version"),
-                "views_30d": views_30d,
-                "last_viewed": last_viewed.isoformat() if last_viewed else None,
-                "refresh_suspended_at": row.refresh_suspended_at.isoformat() if row.refresh_suspended_at else None,
-                # "Nobody has looked at a build that finished recently" --
-                # the signal that a report may need pointing out to whoever
-                # it's for, not that it's broken.
-                "stale": views_30d == 0 and _built_recently(last_status, last_run),
-                # Runs live queries at view time (and the org allows them), so
-                # the overview can mark it "live" rather than a static snapshot.
-                "live": row.kind == Report.KIND_REPORT and live_enabled and (row.slug in live_slugs),
-                # The generated metrics report: the build behind the Metrics
-                # page's charts, not a report anyone wrote. The dashboard
-                # leaves it to that page instead of showing a card for it
-                # (static/portal.js); Operations still lists and runs it.
-                "metrics_report": is_generated_metrics_report(row),
-            }
-        )
-    payload = {
-        "reports": reports,
-        "source_states": _source_states_json(states.values(), blocks),
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-    }
-    if storage_down:
-        payload["storage_unavailable"] = True
-    with _cache_lock:
-        _registry_cache[studio.pk] = (now, payload)
-    return payload
-
-
-def _source_states_json(states, blocks: dict[str, list[str]]) -> list[dict]:
-    """The Operations tab's data source rows: each source's state, the
-    reports it holds, and what its Upload/Download actions need. Built with
-    the payload so the 2-second status poll reads it from the same cache."""
-    from apps.datasources.materialize import stored_file
-    from apps.datasources.models import INLINE_TYPES
-    from apps.datasources.status import effective_fields
-
-    rows = []
-    for s in states:
-        fields = effective_fields(s.declaration, s.binding) if (s.declaration or s.binding) else {}
-        upload = s.type in INLINE_TYPES and bool(fields.get("upload"))
-        # Only a portal-managed file is offered for download; a repository
-        # file is in git, and the stat costs queries per source.
-        stored = stored_file(s.binding) if upload and s.binding is not None else None
-        rows.append(
-            {
-                "name": s.name,
-                "type": s.type,
-                "state": s.state,
-                "detail": s.detail,
-                "used_by": s.used_by,
-                "binding_scope": s.binding_scope,
-                "blocks": sorted(blocks.get(s.name, [])),
-                "upload": upload,
-                "file": bool(stored is not None and stored.is_file()),
-            }
-        )
-    return rows
