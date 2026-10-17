@@ -95,6 +95,18 @@ def enabled_configs():
     )
 
 
+def oidc_login_available() -> bool:
+    """Whether any enabled OpenID Connect row could send an email to an IdP.
+
+    Directory (LDAP) rows check the typed password instead, so with only those
+    (or none) "Continue" and "Sign in with a password instead" do the same
+    thing and the login page offers one button.
+    """
+    from apps.orgs.models import OrgSSOConfig
+
+    return enabled_configs().exclude(auth_method=OrgSSOConfig.AUTH_LDAP).exists()
+
+
 def config_for_email_domain(email: str):
     """The org SSO config that may route this email's domain, or None.
 

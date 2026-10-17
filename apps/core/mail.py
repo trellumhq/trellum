@@ -4,7 +4,10 @@ from __future__ import annotations
 import copy
 import binascii
 import json
+import logging
 import struct
+import threading
+import weakref
 import zlib
 from dataclasses import dataclass, field
 
@@ -322,3 +325,62 @@ def send_report_test_email(recipient: str, *, connection) -> int:
     if count != 1:
         raise EmailDeliveryError("http_unconfirmed", outcome="unconfirmed")
     return count
+
+
+# ── Sends that must not hold a request ──────────────────────────────────────
+# There is no mail outbox in this codebase (reports are delivered by the
+# worker; invitations send inline for an admin who is watching). A
+# password-reset request is anonymous and answers the same neutral page for
+# every address, so the one thing that must not show is the SMTP round trip
+# that only existing accounts pay. The minimal safe answer is a bounded daemon
+# thread, the same shape as the report "send a sample" action: the route is
+# resolved on the request thread (database reads only), the thread does only
+# the network send under EMAIL_TIMEOUT, and a full set of slots drops the mail
+# with a log line instead of queueing without bound. The send is never retried,
+# and a worker that exits mid-send loses it; the person asks again.
+_BACKGROUND_SLOTS = 8
+_background_slots = threading.BoundedSemaphore(_BACKGROUND_SLOTS)
+_background_threads: weakref.WeakSet[threading.Thread] = weakref.WeakSet()
+logger = logging.getLogger(__name__)
+
+
+def send_in_background(message, *, what: str) -> bool:
+    """Send ``message`` on a bounded daemon thread; True when it was handed off.
+
+    Failures are logged by exception class only: provider errors can carry
+    credentials or signed URLs.
+    """
+    try:
+        message.connection = resolve_delivery_connection()
+    except Exception as exc:  # noqa: BLE001 - invalid route configuration
+        logger.warning("%s mail was not sent: %s", what, type(exc).__name__)
+        return False
+    if not _background_slots.acquire(blocking=False):
+        logger.warning("%s mail was dropped: %d background sends are already in flight", what, _BACKGROUND_SLOTS)
+        return False
+    thread = threading.Thread(
+        target=_send_in_background, args=(message, what), name="background-mail", daemon=True,
+    )
+    try:
+        thread.start()
+    except Exception as exc:  # noqa: BLE001 - could not spawn; give the slot back
+        _background_slots.release()
+        logger.warning("%s mail was not sent: %s", what, type(exc).__name__)
+        return False
+    _background_threads.add(thread)
+    return True
+
+
+def _send_in_background(message, what: str) -> None:
+    try:
+        message.send(fail_silently=False)
+    except Exception as exc:  # noqa: BLE001 - SMTP/provider errors carry secrets
+        logger.warning("%s mail was not accepted: %s", what, type(exc).__name__)
+    finally:
+        _background_slots.release()
+
+
+def wait_for_background_sends(timeout: float = 10.0) -> None:
+    """Block until every handed-off send has finished (tests, orderly exit)."""
+    for thread in list(_background_threads):
+        thread.join(timeout)

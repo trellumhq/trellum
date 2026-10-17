@@ -180,11 +180,11 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "c719234c0688e7c8bb20abdcc025c6c3081254fdd51512465cb8bcbccb9ab036",
+      "source_sha256": "0fbbd39cbce74a162ba29a8a7277dd0142ccf1dd5d39b211b0058861407804eb",
       "request_conditions": [
         "public entry; invalid input/token scenarios apply separately"
       ],
-      "adapter_sha256": "c719234c0688e7c8bb20abdcc025c6c3081254fdd51512465cb8bcbccb9ab036"
+      "adapter_sha256": "0fbbd39cbce74a162ba29a8a7277dd0142ccf1dd5d39b211b0058861407804eb"
     },
     {
       "id": "route-004",
@@ -225,11 +225,11 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "b8d7c8dcbf0dd7a5307b0a003c7a7195e32fa8bf309d649226a62ce0d367cb11",
+      "source_sha256": "cc2086ba93db6bfe2ff45054ed1a8e117fcdcf8a15eae3631dbef80dc4106cbd",
       "request_conditions": [
         "public entry; invalid input/token scenarios apply separately"
       ],
-      "adapter_sha256": "57688f1e82e3aa5786ff00470085307f352b33c4f4066860718364b0f2af0044"
+      "adapter_sha256": "b8cc84209d0cd300432d43b06154d58d1db0e3b57687bff75a8eeb7b6ec73503"
     },
     {
       "id": "route-005",
@@ -329,11 +329,11 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "d0bb0b42392e3fa6da6b79b6a5aad2a54fd9518407bffa2d9f3b43d14ad225ef",
+      "source_sha256": "83ee521e0ffd69998ffa3f9219ba15a712ac75046ecb8f861d1864d72a298b80",
       "request_conditions": [
         "public entry; invalid input/token scenarios apply separately"
       ],
-      "adapter_sha256": "d0bb0b42392e3fa6da6b79b6a5aad2a54fd9518407bffa2d9f3b43d14ad225ef"
+      "adapter_sha256": "83ee521e0ffd69998ffa3f9219ba15a712ac75046ecb8f861d1864d72a298b80"
     },
     {
       "id": "route-007",
@@ -374,11 +374,11 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "efe504291553cda19d4f8fcfe4027a43185bf2515f4e6495248a4d846929081c",
+      "source_sha256": "4184c8a5aaf7f557c02928aa22be1d7767d8d95d2168ba2b43540ace85f2cdd1",
       "request_conditions": [
         "public entry; invalid input/token scenarios apply separately"
       ],
-      "adapter_sha256": "efe504291553cda19d4f8fcfe4027a43185bf2515f4e6495248a4d846929081c"
+      "adapter_sha256": "4184c8a5aaf7f557c02928aa22be1d7767d8d95d2168ba2b43540ace85f2cdd1"
     },
     {
       "id": "route-008",
@@ -419,11 +419,11 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "0d32deb557d113eb95800b254c87c4cfae28a204e99dbc25d7326044a8130020",
+      "source_sha256": "79f630da46b87fdc278d326b61f6caefe291810e10ef2f3be022fdba3be05207",
       "request_conditions": [
         "public entry; invalid input/token scenarios apply separately"
       ],
-      "adapter_sha256": "0d32deb557d113eb95800b254c87c4cfae28a204e99dbc25d7326044a8130020"
+      "adapter_sha256": "79f630da46b87fdc278d326b61f6caefe291810e10ef2f3be022fdba3be05207"
     },
     {
       "id": "route-009",
@@ -464,11 +464,11 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "481d891c74c38748ca8f0bb2a3c231f3455d0c0e02a072954df20c05b11cdcaa",
+      "source_sha256": "bc8bb0b8a75893625cd2cf152978c2463727ac6fb1a23d6701db826b8d020bd0",
       "request_conditions": [
         "public entry; invalid input/token scenarios apply separately"
       ],
-      "adapter_sha256": "481d891c74c38748ca8f0bb2a3c231f3455d0c0e02a072954df20c05b11cdcaa"
+      "adapter_sha256": "bc8bb0b8a75893625cd2cf152978c2463727ac6fb1a23d6701db826b8d020bd0"
     },
     {
       "id": "route-010",
@@ -509,11 +509,11 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "1ef5c1e24ec6c5ae7cc079b165b2134a0ef300157e9598fc7ab1fba9b5507143",
+      "source_sha256": "d3006ac491f4480bf4b3d364a2ce7dc981a8fdba55747cd8eef8a2b1967ec5e5",
       "request_conditions": [
         "public entry; invalid input/token scenarios apply separately"
       ],
-      "adapter_sha256": "1ef5c1e24ec6c5ae7cc079b165b2134a0ef300157e9598fc7ab1fba9b5507143"
+      "adapter_sha256": "d3006ac491f4480bf4b3d364a2ce7dc981a8fdba55747cd8eef8a2b1967ec5e5"
     },
     {
       "id": "route-011",
@@ -554,11 +554,11 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "d1b63c46949e95cb481b8bfc603e0befb4877e2c0b7bf1ebd4ed3f13b172713d",
+      "source_sha256": "761fe865fa33d3c18b990ecd91c7aa57a6e3f0eac8c75cb9f3f29663e5e64319",
       "request_conditions": [
         "public entry; invalid input/token scenarios apply separately"
       ],
-      "adapter_sha256": "d1b63c46949e95cb481b8bfc603e0befb4877e2c0b7bf1ebd4ed3f13b172713d"
+      "adapter_sha256": "761fe865fa33d3c18b990ecd91c7aa57a6e3f0eac8c75cb9f3f29663e5e64319"
     },
     {
       "id": "route-012",
@@ -599,11 +599,11 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "43da7cab30f89ae93a3e55efc8d30cb1ecb76f3ff1943f6fd89bfd6959a28267",
+      "source_sha256": "9a82d86b6d6e197a60eb9b5ddead532993a6b6129b2da548d6c75cad766e0955",
       "request_conditions": [
         "public entry; invalid input/token scenarios apply separately"
       ],
-      "adapter_sha256": "43da7cab30f89ae93a3e55efc8d30cb1ecb76f3ff1943f6fd89bfd6959a28267"
+      "adapter_sha256": "9a82d86b6d6e197a60eb9b5ddead532993a6b6129b2da548d6c75cad766e0955"
     },
     {
       "id": "route-013",
@@ -644,11 +644,11 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "fd5e88dee6f61ca7e0a1f5bbbb177521037eb804608b199ce545993e2e988abd",
+      "source_sha256": "8527a0ea0db34d15036a8d82c0f250cd03709450bb733590fefff884e51a1584",
       "request_conditions": [
         "public entry; invalid input/token scenarios apply separately"
       ],
-      "adapter_sha256": "fd5e88dee6f61ca7e0a1f5bbbb177521037eb804608b199ce545993e2e988abd"
+      "adapter_sha256": "8527a0ea0db34d15036a8d82c0f250cd03709450bb733590fefff884e51a1584"
     },
     {
       "id": "route-014",
@@ -10070,12 +10070,12 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "d6511d72c185d6e5f2a1f31360975b119a1253486b77ef0fccd1f915130a0441",
+      "source_sha256": "874887dca5c0c79b50b7ed94ca7f243df5d1ac042e7130d9f5eb8379dfa115a6",
       "request_conditions": [
         "require_full_studio_visibility: plain alpha viewer/group-member/selected denied by seeded private audience; viewer-full samples explicitly granted public-only beta studio0",
         "alpha private-viewer explicitly granted private report remains finite-scope and is denied full-studio overviews under current semantics"
       ],
-      "adapter_sha256": "ee84d0c1f1e156b410949ce4255990b9b149c74c680bd1f11739cb0d4d01b4b5",
+      "adapter_sha256": "5e9ac8de0f70e8a50e9f4227cb2a1287bd95e87118a6bbfa1d27af571932d866",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -13346,7 +13346,7 @@
       "request_conditions": [
         "public entry; invalid input/token scenarios apply separately"
       ],
-      "adapter_sha256": "86cd05cc9360eeb43861cae1956591d9c64e704f191677c5d9c700edaba1a49d"
+      "adapter_sha256": "b3f2ec90f475466582a50d92b088ba3a7c25a6e0bc80bda54d95de556d7756a1"
     },
     {
       "id": "route-359",
@@ -13397,7 +13397,7 @@
       "request_conditions": [
         "public entry; invalid input/token scenarios apply separately"
       ],
-      "adapter_sha256": "5d02609533ed781f3e096cb55ec051cc20d4c1ed55da737c9b0a7f241c5b8c0c"
+      "adapter_sha256": "bc39f8138e509f7b79470952ff156fead6ef821468cccce25ebbed6c455e497e"
     },
     {
       "id": "route-210",
@@ -20648,7 +20648,7 @@
       "verified_node_ids": [],
       "source_sha256": "3ab4b9f5ebd670fb88dc6ee68c94fdcc7dffab45b5159d5017b6d1c75f0740cf",
       "request_conditions": [],
-      "adapter_sha256": "cfda3cfb3de22d5628943c9cad3468bcfd48a893e2c517242382df80a48673b8",
+      "adapter_sha256": "16ae3937e94cea51235230d68c5f0adc36e76e01b55bd4bda4163387cf7a1d93",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -21619,12 +21619,12 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "136f0cb52ec2598b8d4970b03ea9f88c090771cf44453b7480608824e07a0eed",
+      "source_sha256": "88717138f0b423e8afd931540a584717d9acae9d1ab85d1d98e9b42063d9058e",
       "request_conditions": [
         "GET q/page/selected; permission-filtered count and page; selected lookup never exposes unauthorized labels; full search and next-request revocation",
         "Same-org bearer scope for studio route; global route rejects bearer API keys"
       ],
-      "adapter_sha256": "de8057967d38d5c3632df9d04ed3e9fe09a6523796c41c4c32f8758bfc2321f6",
+      "adapter_sha256": "dc0774a6c3c43af223e81209ac97a4ad8e8f77a2b626c4a313769462f1c32119",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -21678,12 +21678,12 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "375ee6c6b8f0d7779b86ac7911e8f708ee73735fb236d5d31728a0556ef9f329",
+      "source_sha256": "6d0d3cb3cf8d9fe81c417c1d0a2e3a9692304d58ba17bc09cac7bae102513acf",
       "request_conditions": [
         "GET q/page/selected; permission-filtered count and page; selected lookup never exposes unauthorized labels; full search and next-request revocation",
         "Same-org bearer scope for studio route; global route rejects bearer API keys"
       ],
-      "adapter_sha256": "f7104e659ab051bf1978cac63355a4f34b24b37156a54894e91bcdf877f07b87"
+      "adapter_sha256": "2f2e6b848e1920623cdc42de76c36441a0d52b8c018927cd47eff70cd2d10dd5"
     },
     {
       "id": "route-320",
@@ -21810,11 +21810,11 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "1c5747f0a5a0ea1543a0910e65de573b521d4494157e90e1367c1a01940d3bfe",
+      "source_sha256": "0f1ef94be7b84593abada65a0e66c0bf3c112f6fdefe523e5b909d0d2d9e48fd",
       "request_conditions": [
         "Studio admin GET only;25 eligible organization-member choices; q/page and independent selected lookup with no foreign labels; private no-store; assigned direct members excluded; next-request revocation."
       ],
-      "adapter_sha256": "8df89afe85c232801387c0df1bcc776abd3ac8104e38b3652fae0f39fd9ad3f0",
+      "adapter_sha256": "01b9295f2e95bee6dfecc92e700ba0c35e371a10b7e601bdd24bf5e75bbb48a4",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -22042,11 +22042,11 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "81dadc40a189068801e424cc87b8d7a3ba52390e5c8486c4ba60faed64de2923",
+      "source_sha256": "1e4566bd119bee2e9eebcfab5017fbbfe663761e053e7f3bc5e5ead7f7b72426",
       "request_conditions": [
         "Developer GET,25 full-search report choices plus independently authorized selected report; scoped present report catalog, no foreign labels; private no-store."
       ],
-      "adapter_sha256": "81dadc40a189068801e424cc87b8d7a3ba52390e5c8486c4ba60faed64de2923",
+      "adapter_sha256": "1e4566bd119bee2e9eebcfab5017fbbfe663761e053e7f3bc5e5ead7f7b72426",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -22120,12 +22120,12 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "ae412e0903d9696843e1c3b31e70aed3062ce34706f3623013f1a279fe17845d",
+      "source_sha256": "9ba4b331cbe5234b6cc7a5207534ed7c2b169b551f0ad39e690c69784d2d7611",
       "request_conditions": [
         "Developer GET,25people and25groups plus selected identities; Alert form preserves inactive eligible choices while delivery recipient endpoints remain active-only; full counts/search and no foreign labels; private no-store.",
         "JSON POST is read-only choice transport with required CSRF; bearer write restrictions remain unchanged."
       ],
-      "adapter_sha256": "ae412e0903d9696843e1c3b31e70aed3062ce34706f3623013f1a279fe17845d",
+      "adapter_sha256": "9ba4b331cbe5234b6cc7a5207534ed7c2b169b551f0ad39e690c69784d2d7611",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -22202,11 +22202,11 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "589e3e089a01e5d7a5d88736fc65c933f15d844c18d19fece35ce062e8417a73",
+      "source_sha256": "ba6304be8b3f3daa4c803dba6426cbd3f652a3653f12bd997a420762eea1e453",
       "request_conditions": [
         "Same-organization group and studio/member scope; read-only choices; invalid shapes and cross-tenant IDs rejected; selected draft preserved."
       ],
-      "adapter_sha256": "5d1cbe98db55e72901d1a16a410f618e8649d855c863873fdb73d566df72b330",
+      "adapter_sha256": "fec8dc019800df47c37b8b26aff03e4f9d577005ac2428dbca053d7c96b142fa",
       "conditional_roles": {
         "impersonated": {
           "condition": "Active impersonation of alpha member without organization admin rights is denied; use actual start/stop impersonation session.",
@@ -22276,11 +22276,11 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "43551cf62b04a1eea467f74acc405d0bd9ef455657b40052483bb410738ae039",
+      "source_sha256": "6f26f44e6a4fc66edafaaaaba1c0f857269725a52bc7101d44d7af0f68f0894f",
       "request_conditions": [
         "Same-organization group and studio/member scope; read-only choices; invalid shapes and cross-tenant IDs rejected; selected draft preserved."
       ],
-      "adapter_sha256": "cb69930d5eb01579b312447c535552a181e39dc850fbb6c4622af68460a2fef9",
+      "adapter_sha256": "0e5d9f4ceeda0dee411b8a309ae6a613b19e1f67cb5a86ff4757a6d20a2453fe",
       "conditional_roles": {
         "impersonated": {
           "condition": "Active impersonation of alpha member without organization admin rights is denied; use actual start/stop impersonation session.",
@@ -22718,9 +22718,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "a201efbc60b0d1e92212ac6a3c0b40be2d16ecffc32ce1762287dd9571bae625",
+      "source_sha256": "aeb38ee885415c3ac3a6baf1f13fed6fdf411e916e97bcb723fe52317cd42bcd",
       "request_conditions": [],
-      "adapter_sha256": "8f5b46e57b0c886ccb0526bc211723e75d0b43ef653b33c862df0bdd55fb20ad"
+      "adapter_sha256": "a171e99f14b5e2a0571cc1cc9ed19e78a04f0583c2cfb265b867b49da0425e59"
     },
     {
       "id": "route-339",
@@ -22929,9 +22929,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "e05e6edd9948b3a8267a6b652df2be38674b5771a2e12958488f7684018d5e77",
+      "source_sha256": "29fa03e53387f6d070cc5ee1dc815d601b5b92adc03e6bc97642996b84405b78",
       "request_conditions": [],
-      "adapter_sha256": "e05e6edd9948b3a8267a6b652df2be38674b5771a2e12958488f7684018d5e77",
+      "adapter_sha256": "29fa03e53387f6d070cc5ee1dc815d601b5b92adc03e6bc97642996b84405b78",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -22988,9 +22988,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "d7046b72c69843cfdece04e2b7be2c42716a4f29eb047ced6e8ffab5a483dda4",
+      "source_sha256": "0e76fcff4467c2814828fcb66aa0f113e6f8c54784ba1ac4413f79cedde424ab",
       "request_conditions": [],
-      "adapter_sha256": "6c95739421a3c76e972ed75c3befb22de3fd3ddbb9b44b8a164f1e18bf9d5f47",
+      "adapter_sha256": "b37f3b5be558da71239be00ded183ae6f5c8554c75d08851529b9fb46e5abf6c",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"

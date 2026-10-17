@@ -37,10 +37,18 @@ def hanging_server():
 
 
 def test_smtp_connection_times_out(hanging_server):
-    from django.core.mail.backends.smtp import EmailBackend
+    """The route a real send uses: InstanceEmailBackend building its SMTP
+    delegate from the instance settings, not Django's stock backend."""
+    from apps.core.mail import InstanceEmailBackend
+    from apps.core.models import InstanceConfig
 
+    cfg = InstanceConfig.load()
+    cfg.email_host, cfg.email_port, cfg.email_use_tls = "127.0.0.1", hanging_server, False
+    cfg.save()
     with override_settings(EMAIL_TIMEOUT=1):
-        backend = EmailBackend(host="127.0.0.1", port=hanging_server, fail_silently=False)
+        backend = InstanceEmailBackend(fail_silently=False)
+        assert backend.snapshot.provider == "smtp"
+        assert backend._delegate.timeout == 1
         start = time.monotonic()
         with pytest.raises(OSError):
             backend.open()
@@ -51,6 +59,33 @@ def test_email_timeout_default_is_bounded():
     from django.conf import settings
 
     assert settings.EMAIL_TIMEOUT and settings.EMAIL_TIMEOUT <= 30
+
+
+def _load_base_settings(monkeypatch, timeout):
+    """Execute a private copy of the base settings module with EMAIL_TIMEOUT
+    in the environment; the live django.conf.settings is untouched."""
+    import importlib.util
+    from pathlib import Path
+
+    import trellum_portal.settings.base as live
+
+    monkeypatch.setenv("EMAIL_TIMEOUT", timeout)
+    spec = importlib.util.spec_from_file_location("_base_settings_probe", Path(live.__file__))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "-30"])
+def test_non_positive_email_timeout_is_refused_at_startup(monkeypatch, value):
+    from django.core.exceptions import ImproperlyConfigured
+
+    with pytest.raises(ImproperlyConfigured, match="EMAIL_TIMEOUT"):
+        _load_base_settings(monkeypatch, value)
+
+
+def test_positive_email_timeout_is_accepted(monkeypatch):
+    assert _load_base_settings(monkeypatch, "7").EMAIL_TIMEOUT == 7
 
 
 def test_ldap_test_connection_times_out(hanging_server, monkeypatch):

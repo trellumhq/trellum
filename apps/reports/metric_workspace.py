@@ -4,12 +4,13 @@ import re
 
 from django.core.paginator import Paginator
 from django.db.models import Count, Max, Q
-from django.http import HttpResponseBadRequest, JsonResponse
+from django.http import HttpResponseBadRequest
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_GET
 
 from apps.core import roles
+from apps.core.choice_requests import choice_response
 from apps.core.permissions import require_studio_role
 from apps.core.report_access import require_full_studio_visibility
 from .models import MetricDefinition, Report, ReportMetricClaim, ReportSourceSummary
@@ -78,13 +79,10 @@ def metric_choices(request, org_slug, studio_slug):
     if (len(query) > 200 or len(selected) > 200 or selected and not re.fullmatch(r'[a-z0-9][a-z0-9_]*', selected)
             or len(raw_page) > 10 or not raw_page.isascii() or not raw_page.isdigit() or not 0 < int(raw_page) <= 2**31 - 1):
         return HttpResponseBadRequest('Choose a valid metric search, page and selected metric.')
-    rows, page = definition_choices(request.studio, query, int(raw_page))
+    _rows, page = definition_choices(request.studio, query, int(raw_page))
     def item(row):
         return {'value': row.name, 'label': row.label or row.name, 'hint': row.name}
     chosen = MetricDefinition.objects.filter(studio=request.studio, present_in_scan=True, name=selected).only('name', 'label').first() if selected else None
-    response = JsonResponse({'results': [item(row) for row in rows],
-        'selected': item(chosen) if chosen else None,
-        'pagination': {'page': page.number, 'pages': page.paginator.num_pages,
-                       'total': page.paginator.count, 'has_next': page.has_next(), 'has_previous': page.has_previous()}})
-    response['Cache-Control'] = 'private, no-store'
-    return response
+    return choice_response(page, item, selected=chosen, pagination={
+        'page': page.number, 'pages': page.paginator.num_pages,
+        'total': page.paginator.count, 'has_next': page.has_next(), 'has_previous': page.has_previous()})

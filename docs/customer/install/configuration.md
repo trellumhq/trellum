@@ -394,6 +394,10 @@ See [Logs & monitoring](/docs/latest/operations/logs-and-monitoring/).
 | `SESSION_COOKIE_AGE` | `43200` | Idle session lifetime in seconds, refreshed on activity |
 | `LOGIN_MAX_ATTEMPTS` | `10` | Failed logins per email and per address before further attempts are ignored. `0` disables |
 | `LOGIN_ATTEMPT_WINDOW_SECONDS` | `900` | How long that window lasts |
+| `PASSWORD_RESET_EMAIL_COOLDOWN_SECONDS` | `120` | One password-reset mail per address per cooldown. Further requests get the same neutral page and no mail. `0` disables |
+| `PASSWORD_RESET_IP_MAX_REQUESTS` | `10` | Password-reset requests per client address per window. `0` disables |
+| `PASSWORD_RESET_IP_WINDOW_SECONDS` | `900` | How long that window lasts |
+| `EMAIL_TIMEOUT` | `10` | Seconds an SMTP connect or read may take. Must be above `0`; the portal refuses to start otherwise |
 | `SECURE_HSTS_SECONDS` | 1 year on https | HSTS max-age; `0` when `PORTAL_BASE_URL` is plain HTTP |
 | `SECURE_HSTS_INCLUDE_SUBDOMAINS` | `false` | Opt-in: this host may share a parent domain with hosts you have not hardened |
 | `SECURE_HSTS_PRELOAD` | `false` | Opt-in, and close to irreversible |

@@ -1,5 +1,5 @@
 import pytest
-from apps.reports.recipient_choices import recipient_snapshot, page_snapshot
+from apps.reports.recipient_choices import recipient_snapshot, recipient_page
 from apps.orgs.models import PermissionGroup, PermissionGroupMembership
 
 pytestmark = pytest.mark.django_db
@@ -12,19 +12,19 @@ def test_full_audiences_are_independent_of_page_and_search(studio, org, make_use
     group = PermissionGroup.objects.create(org=org, name='Audience')
     PermissionGroupMembership.objects.bulk_create([PermissionGroupMembership(group=group, user=person) for person in people])
     snapshot = recipient_snapshot(studio)
-    page = page_snapshot(snapshot, query='person-059', selected_people=[str(people[0].pk)])
+    page = recipient_page(studio, query='person-059', selected_people=[str(people[0].pk)])
     assert [row['id'] for row in page['members']] == [people[-1].pk]
     assert page['selected']['members'][0]['id'] == people[0].pk
     assert page['roles']['everyone'] == 60
     assert snapshot['groups'][0]['count'] == 60
     assert page['pagination']['members']['audience_total'] == 60
-    assert len(page_snapshot(snapshot)['members']) == 25
+    assert len(recipient_page(studio)['members']) == 25
 
 
 def test_selected_foreign_and_invalid_ids_never_resolve(studio, org, make_user, grant_studio):
     user = make_user('eligible@example.test', org=org); grant_studio(user, studio, 'viewer')
     foreign = make_user('foreign@example.test')
-    page = page_snapshot(recipient_snapshot(studio), selected_people=[str(foreign.pk), '-1', '9'*30, 'bad'])
+    page = recipient_page(studio, selected_people=[str(foreign.pk), '-1', '9'*30, 'bad'])
     assert page['selected']['members'] == []
 
 
@@ -91,6 +91,148 @@ def test_inactive_choices_do_not_inflate_delivery_audience_and_superuser_group_p
     assert [row['id'] for row in snapshot['members']] == [person.pk]
     assert snapshot['groups'][0]['count'] == 1  # Active superuser, despite no OrgMembership.
     assert snapshot['roles']['everyone'] == 0
-    page = page_snapshot(snapshot)
+    page = recipient_page(studio, include_inactive=True)
     assert page['pagination']['members']['choice_total'] == 1
     assert page['pagination']['members']['audience_total'] == 0
+
+
+# ── The SQL audience must equal the Python resolvers it replaces ───────────
+
+def _python_audience(studio, report, include_inactive=False):
+    """The pre-SQL answer: the full snapshot, then slicing in memory."""
+    snapshot = recipient_snapshot(studio, report, include_inactive=include_inactive)
+    return ([row['id'] for row in snapshot['members']],
+            [(row['id'], row['count']) for row in snapshot['groups']], snapshot['roles'])
+
+
+def _sql_audience(studio, report, include_inactive=False):
+    full = recipient_page(studio, report, include_inactive=include_inactive, size=1000)
+    return ([row['id'] for row in full['members']],
+            [(row['id'], row['count']) for row in full['groups']], full['roles'])
+
+
+@pytest.fixture
+def audience_matrix(org, other_org, studio, studio2, make_user, make_group, attach_group, grant_studio, settings):
+    """Every way a person can come to have (or not have) a role on ``studio``."""
+    settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = True  # selected-report grants may be created
+    from apps.orgs.models import PermissionGroupGrant
+    from apps.reports.models import Report, ReportPermissionGrant
+
+    shared = Report.objects.create(studio=studio, slug='shared')
+    secret = Report.objects.create(studio=studio, slug='secret', audience=Report.AUDIENCE_PRIVATE)
+    elsewhere = Report.objects.create(studio=studio2, slug='elsewhere', audience=Report.AUDIENCE_PRIVATE)
+    people = {}
+
+    def person(name, **kwargs):
+        people[name] = make_user(f'{name}@matrix.test', org=org, **kwargs)
+        return people[name]
+
+    person('org-admin', org_role='admin')
+    for role in ('viewer', 'developer', 'admin'):
+        grant_studio(person(f'direct-{role}'), studio, role)
+    person('nothing')
+    grant_studio(person('other-studio'), studio2, 'viewer')
+    grant_studio(person('inactive'), studio, 'viewer')
+    people['inactive'].is_active = False
+    people['inactive'].save(update_fields=['is_active'])
+    for role in ('viewer', 'developer'):
+        attach_group(person(f'default-{role}'), make_group(f'Default {role}', default_studio_role=role))
+    attach_group(person('group-admin'), make_group('Org admins', org_role='admin'))
+    grants = {
+        'grant-viewer-all': ('viewer', 'all', None), 'grant-developer': ('developer', 'all', None),
+        'grant-viewer-secret': ('viewer', 'selected', secret), 'grant-viewer-shared': ('viewer', 'selected', shared),
+        'grant-viewer-private-all': ('viewer', 'all', secret),
+    }
+    for name, (role, scope, assigned) in grants.items():
+        group = make_group(name)
+        grant = PermissionGroupGrant.objects.create(group=group, studio=studio, role=role, viewer_scope=scope)
+        if assigned is not None:
+            ReportPermissionGrant.objects.create(grant=grant, report=assigned)
+        attach_group(person(name), group)
+    # A grant on another studio, a member of two groups, and people outside the organization.
+    attach_group(person('grant-elsewhere'), make_group('Elsewhere only', grants=[(studio2, 'developer')]))
+    attach_group(person('two-groups'), make_group('Two A', default_studio_role='viewer'))
+    attach_group(people['two-groups'], make_group('Two B', grants=[(studio, 'developer')]))
+    stranger = make_user('stranger@matrix.test')
+    attach_group(stranger, make_group('Stranger group', default_studio_role='admin'))
+    people['stranger'] = stranger
+    operator = make_user('operator@matrix.test')
+    operator.is_superuser = True
+    operator.save(update_fields=['is_superuser'])
+    attach_group(operator, make_group('Operator group'))
+    people['operator'] = operator
+    people['foreign'] = make_user('foreign@matrix.test', org=other_org)
+    return {'people': people, 'shared': shared, 'secret': secret, 'elsewhere': elsewhere}
+
+
+@pytest.mark.parametrize('blocked', [False, True])
+@pytest.mark.parametrize('include_inactive', [False, True])
+@pytest.mark.parametrize('target', [None, 'shared', 'secret'])
+def test_sql_audience_matches_the_python_resolvers(
+        target, include_inactive, blocked, audience_matrix, studio, monkeypatch):
+    monkeypatch.setattr('apps.core.report_access.selected_report_access_block_reason',
+                        lambda: 'blocked' if blocked else None)
+    report = audience_matrix[target] if target else None
+    members, groups, counts = _python_audience(studio, report, include_inactive)
+    sql_members, sql_groups, sql_counts = _sql_audience(studio, report, include_inactive)
+    assert sql_members == members
+    assert sql_groups == groups
+    assert sql_counts == counts
+
+
+def test_sql_audience_matrix_leaves_both_eligible_and_ineligible_people(audience_matrix, studio):
+    members = {row['email'] for row in recipient_snapshot(studio)['members']}
+    assert 'direct-viewer@matrix.test' in members and 'nothing@matrix.test' not in members
+    assert 'stranger@matrix.test' not in members and 'operator@matrix.test' not in members
+
+
+def test_sql_audience_matches_for_an_inactive_organization(audience_matrix, studio, org):
+    org.is_active = False
+    org.save(update_fields=['is_active'])
+    studio.refresh_from_db()
+    assert _sql_audience(studio, None) == _python_audience(studio, None)
+    assert _sql_audience(studio, audience_matrix['shared']) == _python_audience(studio, audience_matrix['shared'])
+
+
+@pytest.mark.parametrize('blocked', [False, True])
+def test_sql_audience_matches_in_a_studio_without_private_reports(audience_matrix, studio, monkeypatch, blocked):
+    from apps.reports.models import Report
+
+    Report.objects.filter(studio=studio, audience=Report.AUDIENCE_PRIVATE).delete()
+    monkeypatch.setattr('apps.core.report_access.selected_report_access_block_reason',
+                        lambda: 'blocked' if blocked else None)
+    assert _sql_audience(studio, audience_matrix['shared']) == _python_audience(studio, audience_matrix['shared'])
+
+
+def test_search_and_paging_match_the_in_memory_slice(audience_matrix, studio):
+    everyone = recipient_snapshot(studio)
+    emails = [row['email'] for row in everyone['members']]
+    page = recipient_page(studio, query='GRANT-', size=2)
+    expected = [email for email in emails if 'grant-' in email]
+    assert len(expected) > 4
+    assert [row['email'] for row in page['members']] == expected[:2]
+    assert page['pagination']['members']['total'] == len(expected)
+    assert page['pagination']['members']['has_next'] is True
+    second = recipient_page(studio, query='grant-', page=2, size=2)
+    assert [row['email'] for row in second['members']] == expected[2:4]
+    assert recipient_page(studio, query='%')['members'] == []  # wildcards are literal
+    groups = recipient_page(studio, query='default')
+    assert [row['name'] for row in groups['groups']] == ['Default developer', 'Default viewer']
+    assert recipient_page(studio, query='nosuchperson')['pagination']['members']['total'] == 0
+
+
+def test_search_is_a_fixed_number_of_queries_whatever_the_org_size(
+        studio, org, make_user, grant_studio, CaptureQueriesContext=None):
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    for i in range(30):
+        grant_studio(make_user(f'many-{i:03}@example.test', org=org), studio, 'viewer')
+    with CaptureQueriesContext(connection) as small:
+        recipient_page(studio, query='many')
+    for i in range(30, 120):
+        grant_studio(make_user(f'many-{i:03}@example.test', org=org), studio, 'viewer')
+    with CaptureQueriesContext(connection) as large:
+        page = recipient_page(studio, query='many', page=2)
+    assert len(small) == len(large) <= 16
+    assert page['pagination']['members']['total'] == 120 and len(page['members']) == 25

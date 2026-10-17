@@ -12,7 +12,7 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 
 from apps.core import roles
 from apps.core.audit import audit, audit_many
-from apps.core.choice_requests import choice_request_params
+from apps.core.choice_requests import choice_request_params, choice_response, selected_by_id
 from apps.core.form_responses import is_settings_request, settings_error, settings_success
 from apps.core.permissions import effective_roles, require_org_role, require_studio_role
 from apps.core.report_access import selected_report_access_block_reason, visible_reports
@@ -663,13 +663,11 @@ def group_member_choices(request, org_slug, group_id):
     if kind not in {"addable", "effective"}:
         return JsonResponse({"error": "Choose a valid member list."}, status=400)
     page = present.window(request, present.member_choices(request.org, group, kind, present.text(request, "q")), "page")
-    raw = request.GET.get("selected")
-    selected = present.member_choices(request.org, group, kind).filter(user_id=raw).first() if str(raw or "").isdecimal() else None
+    selected = selected_by_id(present.member_choices(request.org, group, kind), request.GET.get("selected"), field="user_id")
+
     def record(member):
         return {"value": member.user_id, "label": member.user.email, "hint": ""}
-    response = JsonResponse({"results": [record(m) for m in page.object_list], "selected": record(selected) if selected else None, "pagination": present.pagination(page)})
-    response["Cache-Control"] = "private, no-store"
-    return response
+    return choice_response(page, record, selected=selected, pagination=present.pagination(page))
 
 
 @require_org_role(roles.ORG_ADMIN)
@@ -687,6 +685,4 @@ def group_report_choices(request, org_slug, group_id, studio_id):
     field = ReportChoiceField(queryset=Report.objects.none())
     def record(report):
         return {"value": str(report.pk), "label": field.label_from_instance(report)}
-    response = JsonResponse({"results": [record(r) for r in page.object_list], "selected": [record(r) for r in selected], "pagination": present.pagination(page)})
-    response["Cache-Control"] = "private, no-store"
-    return response
+    return choice_response(page, record, selected=list(selected), pagination=present.pagination(page))

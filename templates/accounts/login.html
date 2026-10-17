@@ -41,7 +41,7 @@ screen of empty space under it.{% endcomment %}
       </div>
       <div class="ui-form-actions">
         <button class="ui-btn primary" type="submit">Continue</button>
-        <button class="ui-btn" type="submit" name="method" value="password">Sign in with a password instead</button>
+        {% if offer_password_instead %}<button class="ui-btn" type="submit" name="method" value="password">Sign in with a password instead</button>{% endif %}
         <a href="/password-reset/" class="auth-alt-link">Forgot password?</a>
       </div>
     </form>

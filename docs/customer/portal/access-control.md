@@ -129,8 +129,13 @@ described above.
 An invitation (Organization settings → Invites) carries the org role,
 permission groups, and per-studio roles, applied the moment it's accepted.
 Invites always show a copyable link, and are also emailed once mail delivery
-is configured. Password reset works the same way — from the login page, once
-mail is configured; without it, send a fresh invite instead.
+is configured. **Resend email** on a pending invitation can be used once a
+minute. Password reset works the same way — from the login page, once mail is
+configured; without it, send a fresh invite instead. The reset page always
+answers the same way, whether or not the address has an account, and sends at
+most one email per address every two minutes (and a limited number of requests
+per client address); see `PASSWORD_RESET_*` in
+[Configuration](/docs/latest/install/configuration/).
 
 ## Audit log
 

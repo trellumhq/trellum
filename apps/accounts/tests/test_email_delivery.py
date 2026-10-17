@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
+from apps.core.mail import wait_for_background_sends
 from apps.core.models import EmailApiConnection, InstanceConfig
 
 pytestmark = pytest.mark.django_db
@@ -41,6 +42,7 @@ def test_invitation_and_password_reset_use_selected_api_sender(login, org_admin,
         client.logout()
         reset = client.post("/password-reset/", {"email": member.email})
         assert reset.status_code == 302
+        wait_for_background_sends()
     assert builder.call_count >= 2
     assert len(backend.messages) == 2
     assert [message.to for message in backend.messages] == [["new@example.com"], [member.email]]

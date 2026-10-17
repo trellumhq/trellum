@@ -15,6 +15,7 @@ from django.views.decorators.http import require_POST
 from apps.core import roles
 from apps.core.audit import audit
 from apps.core.form_responses import is_settings_request, settings_success
+from apps.core.limits import INLINE_LIMIT
 from apps.core.permissions import require_org_role, visible_studios
 from apps.orgs.models import OrgMembership, PermissionGroupMembership
 from apps.studios.models import Studio, StudioMembership
@@ -39,7 +40,7 @@ _MFA_STASH_KEYS = ("mfa_user_id", "mfa_started", "mfa_next", "mfa_login_method")
 
 #: Safety bound on the unpaginated account/API-key tables: far above realistic
 #: sizes and silent (the page shows every row up to it).
-_LIST_CAP = 500
+_LIST_CAP = INLINE_LIMIT
 
 
 #: Session key carrying the email from the login page's first step to its
@@ -57,9 +58,16 @@ def _login_url(request, name: str = "login") -> str:
 
 
 def _render_email_step(request, form):
+    from apps.accounts import sso
+
     return render(
         request, "accounts/login.html",
-        {"form": form, "step": "email", "reason": request.GET.get("reason", "")},
+        {
+            "form": form, "step": "email", "reason": request.GET.get("reason", ""),
+            # "Sign in with a password instead" only differs from "Continue"
+            # where an OpenID Connect provider could send the email away.
+            "offer_password_instead": sso.oidc_login_available(),
+        },
     )
 
 
@@ -337,6 +345,9 @@ def _start_mfa_stepup(request, user, *, next_url: str):
     is cycled first against fixation (the pre-auth session and the
     post-verify session must not be the same key)."""
     request.session.cycle_key()
+    # The password step is done; its email must not outlive it in the session
+    # that now only carries the pending second factor.
+    request.session.pop(LOGIN_EMAIL_SESSION_KEY, None)
     request.session["mfa_user_id"] = user.pk
     request.session["mfa_started"] = timezone.now().timestamp()
     request.session["mfa_next"] = _safe_next(next_url)

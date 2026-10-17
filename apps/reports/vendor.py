@@ -8,6 +8,7 @@ import io
 
 from django.http import HttpResponse
 
+from apps.core.public_assets import public_asset
 from trellum.rendering.cdn import serve_vendor_request
 
 
@@ -33,6 +34,7 @@ class _HandlerShim:
         pass
 
 
+@public_asset
 def vendor_asset(request, path: str):
     shim = _HandlerShim(f"/_vendor/{path}")
     handled = serve_vendor_request(shim)

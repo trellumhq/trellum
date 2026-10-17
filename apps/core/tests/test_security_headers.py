@@ -147,8 +147,12 @@ class TestContentSecurityPolicy:
         from apps.core.middleware import ContentSecurityPolicyMiddleware
 
         assert ContentSecurityPolicyMiddleware._EXEMPT == {
-            "report-page", "report-asset", "vendor-asset", "share-entry", "share-asset",
+            "report-page", "report-asset", "share-entry", "share-asset",
         }
+        # The public scripts (including vendor-asset) are exempt by their
+        # @public_asset marker; see apps/core/tests/test_public_assets.py.
+        assert client.get("/_vendor/chart.umd.min.js").status_code == 200
+        assert "Content-Security-Policy-Report-Only" not in client.get("/_vendor/chart.umd.min.js")
 
     def test_share_routes_are_exempt(self, client, db):
         """The public share routes serve the same tenant-authored output
