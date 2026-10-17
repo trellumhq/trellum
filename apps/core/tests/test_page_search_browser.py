@@ -162,10 +162,12 @@ def test_jump_list_opens_a_report_in_the_console_host_and_back_returns(live_serv
         # Instant filtering, first match highlighted, arrows move, Enter opens.
         field.fill("product")
         expect(links).to_have_count(2)
-        assert "is-highlighted" in links.nth(0).get_attribute("class")
+        # The highlight is applied by script after each key; let expect() retry.
+        highlighted = re.compile(r"\bis-highlighted\b")
+        expect(links.nth(0)).to_have_class(highlighted)
         page.keyboard.press("ArrowDown")
-        assert "is-highlighted" in links.nth(1).get_attribute("class")
-        assert "is-highlighted" not in links.nth(0).get_attribute("class")
+        expect(links.nth(1)).to_have_class(highlighted)
+        expect(links.nth(0)).not_to_have_class(highlighted)
         page.keyboard.press("Enter")
         expect(page.locator("[data-console-report-host]")).to_be_visible()
         assert page.locator(".tl-console-header").is_visible()
