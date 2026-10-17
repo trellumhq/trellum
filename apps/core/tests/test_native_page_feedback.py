@@ -114,34 +114,36 @@ def test_local_page_links_show_recoverable_feedback(analytics_server, engine, wi
             # still loading, and the shell's link handlers do not exist until
             # those scripts have run, so wait for the load before using them.
             page.wait_for_load_state('load')
-            boundaries = page.evaluate("""() => {
-                const urls = ['/login', '/api/me', '/s/org/studio/r/report/', '/s/org/studio/r/report/index.html',
-                    '/orgs/org/settings/audit/export.csv', 'https://outside.example/',
-                    location.pathname+location.search+'#local'];
-                return urls.map(href => {
-                    const link=document.createElement('a'); link.href=href; link.textContent='Boundary';
-                    document.querySelector('main').append(link);
-                    // Prevent the actual destination after the production window listener.
-                    window.addEventListener('click', event=>event.preventDefault(), {once:true});
-                    link.click();
-                    const pending=!!document.querySelector('[data-console-native-pending]');
-                    link.remove(); return {href,pending};
-                });
-            }""")
-            assert not any(row['pending'] for row in boundaries), boundaries
-            ordinary = page.evaluate("""() => {
-                const urls=['/me/api-keys/new','/system/email-connections/new',
-                    '/system/email-connections/12','/s/org/studio/r/report/access'];
-                return urls.map(href => {
-                    const link=document.createElement('a'); link.href=href; link.textContent='Open page';
-                    document.querySelector('main').append(link);
-                    window.addEventListener('click', event=>event.preventDefault(), {once:true});
-                    link.click();
-                    const pending=!!document.querySelector('[data-console-native-pending]');
-                    document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
-                    link.remove(); return {href,pending};
-                });
-            }""")
+            # Loading feedback is opt-in: only links (and GET forms) marked data-console-nav, or inside a
+            # marked region, take it. Everything else keeps the browser's own navigation.
+            probe = """(cases) => cases.map(([href, attrs, wrap]) => {
+                const link = document.createElement('a'); link.href = href; link.textContent = 'Probe';
+                Object.entries(attrs || {}).forEach(([name, value]) => link.setAttribute(name, value));
+                let host = link;
+                if (wrap) { host = document.createElement('div'); host.setAttribute('data-console-nav', ''); host.append(link); }
+                document.querySelector('main').append(host);
+                // Prevent the actual destination after the production window listener.
+                window.addEventListener('click', event => event.preventDefault(), {once: true});
+                link.click();
+                const pending = !!document.querySelector('[data-console-native-pending]');
+                document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+                host.remove(); return {href, pending};
+            })"""
+            marked = {'data-console-nav': ''}
+            unmarked = page.evaluate(probe, [[href, None, False] for href in (
+                '/me/api-keys/new', '/system/email-connections/12', '/s/org/studio/r/report/access', '/login', '/api/me',
+                '/s/org/studio/r/report/', '/orgs/org/settings/audit/export.csv')])
+            assert not any(row['pending'] for row in unmarked), unmarked
+            excluded = page.evaluate(probe, [
+                ['https://outside.example/', marked, False],
+                [page.evaluate('location.pathname+location.search') + '#local', marked, False],
+                ['/me/api-keys/new', {**marked, 'data-console-no-feedback': ''}, False],
+                ['/me/api-keys/new', {**marked, 'download': ''}, False],
+                ['/me/api-keys/new', {**marked, 'target': '_blank'}, False]])
+            assert not any(row['pending'] for row in excluded), excluded
+            ordinary = page.evaluate(probe, [[href, marked, False] for href in (
+                '/me/api-keys/new', '/system/email-connections/new', '/system/email-connections/12',
+                '/s/org/studio/r/report/access', '/brand-new/route')] + [['/me/api-keys', None, True]])
             assert all(row['pending'] for row in ordinary), ordinary
             page.go_back()
             expect(page.locator('#analyticsTable tbody tr[data-name]')).to_have_count(200)

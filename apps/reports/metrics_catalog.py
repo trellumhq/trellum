@@ -18,9 +18,11 @@ import time as _time
 from datetime import datetime
 
 from django.db.models import Max
-from django.http import HttpResponseBadRequest
+from django.http import HttpResponseBadRequest, JsonResponse
 from django.shortcuts import render
+from django.template.loader import render_to_string
 from django.urls import reverse
+from django.utils.cache import patch_vary_headers
 from django.views.decorators.http import require_GET
 
 from apps.core import roles
@@ -460,24 +462,30 @@ def metrics_page(request, org_slug, studio_slug, section="overview"):
             repo_url = request.studio.repo.repo_url
         except StudioRepo.DoesNotExist:
             repo_url = ""
-    from apps.core.navigation import render_navigation
-
-    return render_navigation(
-        request,
-        "reports/metrics.html",
-        {
-            "org": request.org,
-            "studio": request.studio,
-            "metrics_section": section,
-            **data,
-            "summary_url": reverse("studio-metrics-summary", args=[org_slug, studio_slug]) if section != "comparison" else "",
-            # Footer "edit via pull request" link -- the studio's own repo,
-            # when one is configured. Plain text otherwise (a fresh studio, or
-            # one whose repo hasn't been set up yet); never a dead link.
-            "repo_url": repo_url,
-        },
-        controller="metrics", title="Metrics",
-    )
+    context = {
+        "org": request.org,
+        "studio": request.studio,
+        "metrics_section": section,
+        "metrics_navigation": True,
+        **data,
+        "summary_url": reverse("studio-metrics-summary", args=[org_slug, studio_slug]) if section != "comparison" else "",
+        # Footer "edit via pull request" link -- the studio's own repo,
+        # when one is configured. Plain text otherwise (a fresh studio, or
+        # one whose repo hasn't been set up yet); never a dead link.
+        "repo_url": repo_url,
+    }
+    if request.headers.get("X-Trellum-Navigation") != "1":
+        response = render(request, "reports/metrics.html", context)
+    else:
+        # Overview and Comparison swap in place (static/console-metrics-controller.js): only the page's content
+        # block, as JSON. Authorization has already run; this response grants nothing a normal render would not.
+        response = JsonResponse({
+            "title": "Metrics", "url": request.get_full_path(),
+            "html": render_to_string("reports/metrics.html", {**context, "navigation_fragment": True}, request=request),
+        })
+        response["Cache-Control"] = "private, no-store"
+    patch_vary_headers(response, ["X-Trellum-Navigation"])
+    return response
 
 
 @require_studio_role(roles.VIEWER)

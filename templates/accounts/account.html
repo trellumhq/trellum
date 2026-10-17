@@ -30,7 +30,7 @@
       over your organization's default. A studio's own palette (or your personal override for it) is set
       from that studio's own header, not here.{% if shell_is_org_admin %} Your organization's default mode
       and the per-studio override lock live in
-      <a href="/orgs/{{ shell_org.slug }}/settings/appearance">Org settings → Appearance</a>.{% endif %}</span>
+      <a data-console-nav href="/orgs/{{ shell_org.slug }}/settings/appearance">Org settings → Appearance</a>.{% endif %}</span>
   </section>
 
   <section class="panel formrow account-card">
@@ -76,7 +76,7 @@
     </details>
     {% else %}
     <p style="margin-top:0"><span class="ui-badge">not enabled</span></p>
-    <a class="ui-btn ghost" href="/account/security/mfa/setup">Set up MFA</a>
+    <a class="ui-btn ghost" data-console-nav href="/account/security/mfa/setup">Set up MFA</a>
     {% endif %}
   </section>
 </div>

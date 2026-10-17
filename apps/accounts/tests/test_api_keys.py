@@ -221,7 +221,7 @@ class TestMyKeysPage:
         assert response.status_code == 200
         assert 'id="apiKeyCreateForm"' in page and "data-settings-form" in page
         assert 'data-settings-leave="apiKeyCreateForm"' in page
-        assert '<a class="ui-btn ghost" href="/me/api-keys" data-settings-leave>' in page
+        assert '<a class="ui-btn ghost" data-console-nav href="/me/api-keys" data-settings-leave>' in page
         assert 'name="org"' in page and "data-choice-picker" in page
         assert 'name="expires_at"' in page and 'type="date"' in page
         assert f'<option value="{org.pk}"' in page

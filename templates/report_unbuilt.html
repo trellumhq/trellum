@@ -16,11 +16,11 @@
     <p style="margin-top:16px">
       {% if can_configure %}
         {% for b in blocked %}
-        <a class="ui-btn primary" href="{{ prefix }}/settings/datasources?configure={{ b.name|urlencode }}#configure">Configure {{ b.name }}</a>
+        <a class="ui-btn primary" data-console-nav href="{{ prefix }}/settings/datasources?configure={{ b.name|urlencode }}#configure">Configure {{ b.name }}</a>
         {% endfor %}
       {% endif %}
-      {% if can_operate %}<a class="ui-btn ghost" href="{{ prefix }}/operations">View operations</a>{% endif %}
-      <a class="ui-btn ghost" href="{{ prefix }}/">Back to {{ studio_name }}</a>
+      {% if can_operate %}<a class="ui-btn ghost" data-console-nav href="{{ prefix }}/operations">View operations</a>{% endif %}
+      <a class="ui-btn ghost" data-console-nav href="{{ prefix }}/">Back to {{ studio_name }}</a>
     </p>
   {% elif failure %}
     <h1><code>{{ report.slug }}</code> can't build: data source <code>{{ failure.0 }}</code> is failing</h1>
@@ -33,10 +33,10 @@
     {% endif %}
     <p style="margin-top:16px">
       {% if can_configure %}
-      <a class="ui-btn primary" href="{{ prefix }}/settings/datasources?configure={{ failure.0|urlencode }}#configure">Configure {{ failure.0 }}</a>
+      <a class="ui-btn primary" data-console-nav href="{{ prefix }}/settings/datasources?configure={{ failure.0|urlencode }}#configure">Configure {{ failure.0 }}</a>
       {% endif %}
-      {% if can_operate %}<a class="ui-btn ghost" href="{{ prefix }}/operations">View operations</a>{% endif %}
-      <a class="ui-btn ghost" href="{{ prefix }}/">Back to {{ studio_name }}</a>
+      {% if can_operate %}<a class="ui-btn ghost" data-console-nav href="{{ prefix }}/operations">View operations</a>{% endif %}
+      <a class="ui-btn ghost" data-console-nav href="{{ prefix }}/">Back to {{ studio_name }}</a>
     </p>
   {% else %}
     {% if status == "error" %}
@@ -56,8 +56,8 @@
       </p>
     {% endif %}
     <p style="margin-top:16px">
-      <a class="ui-btn primary" href="{{ prefix }}/">Back to {{ studio_name }}</a>
-      <a class="ui-btn ghost" href="{{ prefix }}/?report={{ report.slug }}">Open in the studio</a>
+      <a class="ui-btn primary" data-console-nav href="{{ prefix }}/">Back to {{ studio_name }}</a>
+      <a class="ui-btn ghost" data-console-nav href="{{ prefix }}/?report={{ report.slug }}">Open in the studio</a>
     </p>
   {% endif %}
 </div>

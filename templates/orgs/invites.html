@@ -20,7 +20,7 @@
 <h2>Invite someone</h2>
 <p class="muted">A plain <em>member</em> sees <strong>no studios</strong> until something grants
 them a role — pick studio access below, attach permission groups, or do it later from
-<a href="/orgs/{{ org.slug }}/settings/members">Members</a>. Org <em>admins</em> automatically
+<a data-console-nav href="/orgs/{{ org.slug }}/settings/members">Members</a>. Org <em>admins</em> automatically
 have admin access to every studio.</p>
 <div class="ui-form-section">
   <form method="post">
@@ -86,7 +86,7 @@ have admin access to every studio.</p>
   {% empty %}
   <tr><td colspan="6"><div class="ui-empty">
     {% if q %}No pending invitation matches “{{ q }}”.
-      <div class="ui-empty-action"><a class="ui-btn ghost" href="{% querystring q=None page=None %}">Clear search</a></div>
+      <div class="ui-empty-action"><a class="ui-btn ghost" data-console-nav href="{% querystring q=None page=None %}">Clear search</a></div>
     {% else %}No pending invitations.{% endif %}
   </div></td></tr>
   {% endfor %}

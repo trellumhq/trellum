@@ -24,7 +24,7 @@
     </div>
     <p><button class="ui-btn primary" type="submit">Save default audiences</button></p>
   </form>
-  <p class="muted">For an existing item, open its <a href="/s/{{ org.slug }}/{{ studio.slug }}/">studio page</a> and choose Access in the Options menu to change its audience or assign groups.</p>
+  <p class="muted">For an existing item, open its <a data-console-nav href="/s/{{ org.slug }}/{{ studio.slug }}/">studio page</a> and choose Access in the Options menu to change its audience or assign groups.</p>
 </section>
 </div>
 
@@ -103,7 +103,7 @@
     {% for name in pending.datasources.added %}
     <div class="ui-flash warning" role="status">Adds data source <code>{{ name }}</code> — not configured yet.
       Reports that use it will wait for it after publishing.
-      <a class="ui-btn ghost" href="/s/{{ org.slug }}/{{ studio.slug }}/settings/datasources?configure={{ name|urlencode }}">Configure now</a></div>
+      <a class="ui-btn ghost" data-console-nav href="/s/{{ org.slug }}/{{ studio.slug }}/settings/datasources?configure={{ name|urlencode }}">Configure now</a></div>
     {% endfor %}
     {% for w in pending.warnings %}<div class="ui-flash warning" role="status">{{ w }}</div>{% endfor %}
     {% for slug in pending.reports.removed %}
@@ -194,7 +194,7 @@
       </tbody>
     </table>
   </div>
-  {% if history_more and history_limit < 200 %}<p class="ui-pager"><a class="ui-btn ghost" href="?history={{ history_limit|add:30 }}">Load more</a></p>{% endif %}
+  {% if history_more and history_limit < 200 %}<p class="ui-pager"><a class="ui-btn ghost" data-console-nav href="?history={{ history_limit|add:30 }}">Load more</a></p>{% endif %}
   {% else %}
   <div class="ui-empty">No publishes yet.</div>
   {% endif %}

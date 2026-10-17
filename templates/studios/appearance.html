@@ -72,11 +72,11 @@ static/themes.generated.css with no duplicated values.{% endcomment %}
 
 {% if org.lock_studio_theme %}
 <p class="theme-lockline"><b>Member overrides: locked.</b> Members cannot pick a different palette for
-  themselves in this studio — change this in <a href="/orgs/{{ org.slug }}/settings/appearance">Org settings → Appearance</a>.</p>
+  themselves in this studio — change this in <a data-console-nav href="/orgs/{{ org.slug }}/settings/appearance">Org settings → Appearance</a>.</p>
 {% else %}
 <p class="theme-lockline"><b>Member overrides: allowed.</b> Your organization lets members pick their own
   palette for this studio, from the studio's own tab bar — controlled in
-  <a href="/orgs/{{ org.slug }}/settings/appearance">Org settings → Appearance</a> ("Lock it").</p>
+  <a data-console-nav href="/orgs/{{ org.slug }}/settings/appearance">Org settings → Appearance</a> ("Lock it").</p>
 {% endif %}
 <script>
 document.querySelectorAll('input[name="theme"]').forEach(function (field) {
