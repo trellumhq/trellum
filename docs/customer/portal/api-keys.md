@@ -71,6 +71,10 @@ for any member. The endpoints that matter most, each relative to
 | `api/datasources` | GET | viewer | read |
 | `api/datasources/<name>/test` | POST | developer | write |
 
+`api/datasources` returns every source unless you ask for a page: pass
+`?page=` or `?limit=` (up to 200) for one page with `total`, `page` and
+`has_next`. Invalid values return `400`, and a page past the end is empty.
+
 A key that is revoked, expired, switched off for its organization, or
 belongs to someone who has left the organization or been deactivated gets
 `401 {"error": "invalid_api_key"}` — and never falls back to a browser
