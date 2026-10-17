@@ -1,7 +1,7 @@
 {% comment %}One ordered, server-gated navigation tree for management pages and
 mounted reports. Both the current studio and its organization stay reachable.{% endcomment %}
 {% with url_name=request.resolver_match.url_name studio=shell_nav_studio %}
-<nav class="tl-console-nav" aria-label="Console">
+<nav class="tl-console-nav" aria-label="Console" data-console-nav>
   {% if studio %}
   <div class="tl-console-nav-section" data-console-nav-group="studio-work">
     <span class="tl-console-nav-heading tl-console-label">Studio work</span>

@@ -18,12 +18,16 @@ def test_metrics_fragment_native_parity_and_access(studio_tree, member, grant_st
     native = authenticated.get(url)
     enhanced = authenticated.get(url, HTTP_X_TRELLUM_NAVIGATION='1')
     data = enhanced.json()
-    assert data['version'] == 1 and data['controller'] == 'metrics'
+    assert data['title'] == 'Metrics' and set(data) == {'title', 'url', 'html'}
     assert data['url'] == url
     assert '<h1>Metrics</h1>' in data['html'] and '<h1>Metrics</h1>' in native.content.decode()
     assert '<html' not in data['html'] and 'data-console-shell' not in data['html']
     assert 'X-Trellum-Navigation' in enhanced['Vary']
     assert enhanced['Cache-Control'] == 'private, no-store'
+    # Only the Metrics route pair carries the in-place navigation scripts.
+    assert 'console-metrics-controller.js' in native.content.decode()
+    assert 'console-metrics-controller.js' not in authenticated.get('/account').content.decode()
+    assert 'console-navigation.js' not in native.content.decode()
     authenticated.logout()
     denied = authenticated.get(url, HTTP_X_TRELLUM_NAVIGATION='1')
     assert denied.status_code == 302 and '/login' in denied.url
@@ -74,7 +78,7 @@ def test_rendered_navigation_delay_guard_history_and_native_feedback(
                 route.fulfill(status=204)
         page.route('http://navigation.test/**', serve)
         page.goto('http://navigation.test' + overview)
-        assert page.locator('main').get_attribute('data-console-controller') == 'metrics'
+        assert page.evaluate('!!window.TrellumNavigation')
         assert not errors
         page.evaluate("""document.addEventListener('click', function () {
             var start = performance.now(); requestAnimationFrame(function () { window.navigationPaint = performance.now() - start; });
@@ -91,11 +95,13 @@ def test_rendered_navigation_delay_guard_history_and_native_feedback(
         route = pending.pop()
         response = fragment_responses[comparison]
         payload = response.json()
-        payload['html'] += '<script>window.untrustedExecuted = true</script><button id=inline-handler onclick="window.untrustedExecuted=true">Unsafe handler</button>'
+        payload['html'] += '<script>window.untrustedExecuted = true</script><button id=inline-handler onclick="window.untrustedExecuted=true">Unsafe handler</button><a id=js-link href="javascript:window.untrustedExecuted=true">Unsafe link</a><input id=kept-value value="javascript:text">'
         route.fulfill(body=json.dumps(payload), content_type='application/json')
         page.wait_for_function("!document.querySelector('main').hasAttribute('aria-busy')")
         assert not page.evaluate('!!window.untrustedExecuted')
         assert page.locator('#inline-handler').get_attribute('onclick') is None
+        assert page.locator('#js-link').get_attribute('href') is None
+        assert page.locator('#kept-value').input_value() == 'javascript:text'
         page.evaluate("document.querySelector('main').insertAdjacentHTML('beforeend', '<form data-settings-form><input name=example value=initial></form>'); TrellumSettingsForms.init(document)")
         page.locator('input[name=example]').fill('draft')
         page.once('dialog', lambda dialog: dialog.dismiss())
@@ -187,16 +193,28 @@ def test_rendered_navigation_delay_guard_history_and_native_feedback(
         page.keyboard.press('Escape')
         native_pending.pop().abort()
         assert not page.evaluate("document.querySelector('[data-console-native-pending]') !== null")
-        page.clock.install()
-        page.evaluate("window.addEventListener('pointerdown', ()=>window.stop(), {once:true})")
-        target = native_reports()
-        # Simulate browser Stop through an input event, without a pageshow event.
-        page.mouse.click(min(width - 10, target['x'] + 250), target['y'])
+        # The 15 s notice, shortened to 100 ms. The page is not queried while a navigation is held, so a
+        # binding reports what the page showed when the notice appeared.
+        notices = []
+        page.expose_function('noticeSeen', lambda seen: notices.append(seen))
+        page.evaluate("""var setTimeoutNow = window.setTimeout;
+            window.setTimeout = function (fn, ms) { return setTimeoutNow.apply(window, [fn, ms === 15000 ? 100 : ms].concat([].slice.call(arguments, 2))); };
+            new MutationObserver(function () {
+                var panel = document.querySelector('[data-console-native-pending] [role=status]');
+                if (panel && panel.textContent.indexOf('Still loading') === 0) window.noticeSeen([panel.textContent,
+                    document.querySelector('[data-console-navigation-native-status]').textContent, !!document.querySelector('[data-console-native-pending] button')]);
+            }).observe(document.body, {subtree: true, childList: true, characterData: true})""")
+        # A slow page is not a failed page: after 15 s the text says so and the request keeps going.
+        native_reports()
+        page.wait_for_timeout(400)
+        assert notices == [['Still loading Reports…', 'Still loading Reports…', True]]
+        # Escape and Cancel loading remain the explicit abort, even after the notice.
+        page.keyboard.press('Escape')
         native_pending.pop().abort()
-        page.clock.fast_forward(15100)
         assert not page.evaluate("document.querySelector('[data-console-native-pending]') !== null")
-        assert 'did not finish loading' in page.locator('[data-console-navigation-native-status]').inner_text()
+        assert page.locator('[data-console-navigation-native-status]').inner_text() == ''
         assert page.locator('#native-draft').input_value() == 'kept'
+        assert page.evaluate('scrollY') == old_position
         delay_documents = False
         page.evaluate("document.querySelector('#native-draft').remove()")
         page.get_by_role('link', name='Comparison', exact=True).click()
@@ -211,6 +229,9 @@ def test_rendered_navigation_delay_guard_history_and_native_feedback(
         assert result['title'] == 'Reports'
         page.wait_for_timeout(50)
         assert native_pending
+        # Still waiting after the notice: the page is kept pending, not stopped, and then opens by itself.
+        page.wait_for_timeout(400)
+        assert len(notices) == 2
         route = native_pending.pop()
         route.fulfill(body=native_responses[home].content, content_type='text/html')
         page.wait_for_url(lambda url: url.split('?')[0] == 'http://navigation.test' + home)

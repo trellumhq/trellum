@@ -607,29 +607,18 @@
             if (quiet !== true) document.dispatchEvent(new CustomEvent('console:native-restored', {detail: {url: location.href}}));
         }
     }
-    function cancel(message) {
+    // The only way a pending page is abandoned: Cancel loading or Escape. A slow page keeps loading.
+    function cancel() {
         if (!nativeSnapshot) return;
         window.stop(); clear();
         if (window.TrellumSettingsForms) window.TrellumSettingsForms.resume();
-        var status = document.querySelector('[data-console-navigation-native-status]');
-        if (status && message) status.textContent = message;
     }
+    /* Only elements inside a data-console-nav region (or carrying it) show loading feedback: templates mark the
+       links and GET forms that open a console page. data-console-no-feedback opts one out. Report hosts, downloads
+       and APIs are never marked, so they keep the browser's own navigation. */
     function pageURL(url) {
-        if (url.origin !== location.origin || !/^https?:$/.test(url.protocol)) return false;
-        if (url.pathname === location.pathname && url.search === location.search && url.hash) return false;
-        // Only console documents. Assets, report hosts, APIs, auth and downloads
-        // keep their own lifecycle; a pending document timeout must not stop them.
-        var path = url.pathname;
-        if (/\.(?:csv|json|zip|pdf|xlsx?|gz|txt|log)\/?$/i.test(path) ||
-            /^\/(?:api\/|s\/[^/]+\/[^/]+\/api\/|orgs\/[^/]+\/api\/)/.test(path) ||
-            /\/(?:export|download|choices)\/?$/.test(path) ||
-            url.searchParams.has('download') || url.searchParams.has('export')) return false;
-        return path === '/' ||
-            /^\/system\/email-connections\/(?:new|[0-9]+)\/?$/.test(path) ||
-            /^\/s\/[^/]+\/[^/]+\/r\/[^/]+\/access\/?$/.test(path) || /^\/(?:account(?:\/security\/mfa\/(?:setup|recovery-codes))?|system|instance\/settings)\/?$/.test(path) ||
-            /^\/(?:me\/(?:deliveries|api-keys(?:\/new)?)|deliveries(?:\/[0-9]+\/edit)?|operator(?:\/(?:orgs(?:\/[^/]+)?|logs(?:\/runs\/[0-9a-f-]+)?))?)\/?$/.test(path) ||
-            /^\/orgs\/(?:new|[^/]+(?:\/settings(?:\/[^/]+)*|\/studios\/new)?)\/?$/.test(path) ||
-            /^\/s\/[^/]+\/[^/]+\/(?:analyses|operations|analytics|metrics(?:\/(?:comparison|compare|[0-9]+\/claims))?|experiments|annotations|alerts(?:\/[^/]+)*|deliveries(?:\/[^/]+)*|settings(?:\/[^/]+)*)?\/?$/.test(path);
+        return url.origin === location.origin && /^https?:$/.test(url.protocol) &&
+            !(url.pathname === location.pathname && url.search === location.search && url.hash);
     }
     function begin(url, label, link) {
         var main = document.querySelector('main,[data-console-catalog]');
@@ -661,7 +650,11 @@
         var sharedStatus = document.querySelector('[data-console-navigation-native-status]');
         if (sharedStatus) sharedStatus.textContent = 'Opening page…';
         window.scrollTo(0,0);
-        nativeTimeout = setTimeout(function () { cancel('The page did not finish loading. Try opening it again when ready.'); }, 15000);
+        // A slow page is not a failed page: say so, and keep waiting.
+        nativeTimeout = setTimeout(function () {
+            status.textContent = 'Still loading ' + label + '…';
+            if (sharedStatus) sharedStatus.textContent = 'Still loading ' + label + '…';
+        }, 15000);
         document.dispatchEvent(new CustomEvent('console:native-start', {detail: {url: url.href}}));
         return true;
     }
@@ -669,7 +662,7 @@
         var link = event.target.closest && event.target.closest('a[href]');
         if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey ||
             link.hasAttribute('download') || link.hasAttribute('data-console-no-feedback') || (link.target && link.target !== '_self')) return;
-        if (!link.closest('[data-console-shell],main[data-console-page],[data-console-catalog]')) return;
+        if (!link.closest('[data-console-nav]')) return;
         var url = new URL(link.href);
         if (!pageURL(url)) return;
         // Runs after delegated dirty guards and enhanced/report-host owners.
@@ -688,7 +681,7 @@
         var method = (submitter && submitter.getAttribute('formmethod')) || form.method;
         var target = (submitter && submitter.getAttribute('formtarget')) || form.target;
         if (method.toLowerCase() !== 'get' || (target && target !== '_self')) return;
-        if (!form.closest('[data-console-shell],main[data-console-page],[data-console-catalog]')) return;
+        if (!form.closest('[data-console-nav]')) return;
         var url = new URL((submitter && submitter.getAttribute('formaction')) || form.action, location.href);
         if (!pageURL(url)) return;
         if (!event.trellumLeaveConfirmed && window.TrellumSettingsForms && !window.TrellumSettingsForms.confirmLeave(document, form)) {
@@ -697,7 +690,6 @@
         event.trellumLeaveConfirmed = true;
         url.search = new URLSearchParams(new FormData(form)).toString();
         if (submitter && submitter.name) url.searchParams.append(submitter.name, submitter.value);
-        if (!pageURL(url)) return;
         if (window.TrellumSettingsForms) window.TrellumSettingsForms.nativeLeave();
         var heading = document.querySelector('main h1,[data-console-page-title]');
         begin(url, heading ? heading.textContent.trim() : 'page');

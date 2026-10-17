@@ -155,10 +155,10 @@ display name over email, one badge carrying its own meaning.{% endcomment %}
   {% else %}
   <p class="muted">Nothing is past its window right now — tonight's sweep would remove nothing.</p>
   {% endif %}
-  <a class="ui-btn ghost" href="?preview=1">Refresh preview</a>
+  <a class="ui-btn ghost" data-console-nav href="?preview=1">Refresh preview</a>
 </div>
 {% else %}
-<a class="ui-btn" href="?preview=1">Preview tonight's sweep</a>
+<a class="ui-btn" data-console-nav href="?preview=1">Preview tonight's sweep</a>
 {% endif %}
 
 </section>
@@ -170,6 +170,6 @@ display name over email, one badge carrying its own meaning.{% endcomment %}
     Cleanup hasn't needed to remove anything for this organization yet.
   {% endif %}
   {% if cleanup_ran_at %}The nightly job itself last ran {{ cleanup_ran_at|timesince }} ago.{% endif %}
-  <a href="/orgs/{{ org.slug }}/settings/audit">See the audit log</a>.
+  <a data-console-nav href="/orgs/{{ org.slug }}/settings/audit">See the audit log</a>.
 </footer>
 {% endblock %}

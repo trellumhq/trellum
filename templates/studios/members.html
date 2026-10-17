@@ -5,7 +5,7 @@
   <div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }}</div>
   <h1>Members</h1>
   <p class="muted page-sub">Direct studio roles. Roles from
-    <a href="/orgs/{{ org.slug }}/settings/groups">permission groups</a> apply on top
+    <a data-console-nav href="/orgs/{{ org.slug }}/settings/groups">permission groups</a> apply on top
     (effective role is the highest of all sources).</p>
 </header>
 
@@ -42,7 +42,7 @@
   {% empty %}
   <tr><td colspan="3"><div class="ui-empty">No direct members yet — add someone below,
     or hand out access through a
-    <a href="/orgs/{{ org.slug }}/settings/groups">permission group</a>.</div></td></tr>
+    <a data-console-nav href="/orgs/{{ org.slug }}/settings/groups">permission group</a>.</div></td></tr>
   {% endfor %}
   </tbody>
 </table>
@@ -71,7 +71,7 @@
 </form>
 {% else %}
 <p class="muted" style="margin-top:12px">Everyone in {{ org.name }} already has a direct
-role here — <a href="/orgs/{{ org.slug }}/settings/invites">invite someone to the
+role here — <a data-console-nav href="/orgs/{{ org.slug }}/settings/invites">invite someone to the
 organization</a> first.</p>
 {% endif %}
 <p class="muted">Legend: <span class="ui-badge accent">admin</span>

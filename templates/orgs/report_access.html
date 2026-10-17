@@ -9,7 +9,7 @@
 {% csrf_token %}<input type="hidden" name="action" value="set_audience"><label for="itemAudience">{{ report.get_kind_display }} audience</label><select id="itemAudience" name="audience"{% if selected_block_reason %} disabled{% endif %}>{% for value,label in audience_choices %}<option value="{{ value }}"{% if report.audience == value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
 <div class="ui-form-actions"><button class="ui-btn primary" type="submit"{% if selected_block_reason %} disabled{% endif %}>Save audience</button></div>
 </form>
-<p class="muted">This setting applies to this {{ report.get_kind_display|lower }} through rebuilds. Set <a href="/s/{{ org.slug }}/{{ studio.slug }}/settings/repo#default-audiences">default audiences for new reports and analyses</a> in studio settings.</p></div>
+<p class="muted">This setting applies to this {{ report.get_kind_display|lower }} through rebuilds. Set <a data-console-nav href="/s/{{ org.slug }}/{{ studio.slug }}/settings/repo#default-audiences">default audiences for new reports and analyses</a> in studio settings.</p></div>
 <h2>Viewer group assignments</h2><p class="muted">Add this {{ report.get_kind_display|lower }} to existing organization groups. Organization admins, studio Admins and Developers have inherited management access.</p>
 {% include "_list_toolbar.html" with q=q placeholder="Search groups…" total=total %}
 <div class="panel" data-settings-refresh="report-audience-assignments"><table class="ui-table" data-mobile-cards><thead><tr><th>Group</th><th>Current access</th><th></th></tr></thead><tbody>

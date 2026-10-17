@@ -8,9 +8,9 @@
     <h1>System health</h1>
   </div>
   <span class="spacer"></span>
-  <a class="ui-btn ghost" href="{% url 'operator-logs' %}">Server logs</a>
-  <a class="ui-btn ghost" href="{% url 'instance-settings' %}">Instance settings</a>
-  {% if user.is_superuser %}<a class="ui-btn ghost" href="/orgs/new">+ New organization</a>{% endif %}
+  <a class="ui-btn ghost" data-console-nav href="{% url 'operator-logs' %}">Server logs</a>
+  <a class="ui-btn ghost" data-console-nav href="{% url 'instance-settings' %}">Instance settings</a>
+  {% if user.is_superuser %}<a class="ui-btn ghost" data-console-nav href="/orgs/new">+ New organization</a>{% endif %}
 </header>
 <p class="muted">Instance-level view for the operator. Same checks as
 <code>manage.py doctor</code>.
@@ -92,7 +92,7 @@ feed that never answered, means no section at all -- not an empty one.{% endcomm
 {% endif %}
 
 <div class="panel">
-  <p style="margin:0">Workers and build execution: <a href="{% url 'operator-fleet' %}">Open Fleet</a>.</p>
+  <p style="margin:0">Workers and build execution: <a data-console-nav href="{% url 'operator-fleet' %}">Open Fleet</a>.</p>
 </div>
 {% if polling %}<script src="{% static 'operator-observations.js' %}" defer></script>{% endif %}
 {% endblock %}

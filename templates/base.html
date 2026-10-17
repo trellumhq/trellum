@@ -38,7 +38,7 @@ portal.css.{% endcomment %}
 </div>
 {% endif %}
 {% if user.is_authenticated %}{% include "_shell.html" %}{% endif %}
-<main data-console-page data-console-controller="{{ navigation_controller|default:'native' }}"{% if user.is_authenticated %} data-console-inert{% endif %}>
+<main data-console-page{% if user.is_authenticated %} data-console-inert{% endif %}>
 {% if messages %}
 <ul class="messages">
   {% for message in messages %}<li class="{{ message.tags }}" role="status">{{ message }}</li>{% endfor %}
@@ -187,7 +187,7 @@ document.addEventListener('click', function (ev) {
 });
 </script>
 {% if user.is_authenticated %}<script src="{% static 'console-shell.js' %}"></script>{% endif %}
-{% if user.is_authenticated %}<script src="{% static 'settings-forms.js' %}"></script><script src="{% static 'console-navigation.js' %}"></script>{% if navigation_controller == "metrics" %}<script src="{% static 'metrics_overlay.js' %}"></script><script src="{% static 'metrics_workspace.js' %}"></script><script src="{% static 'console-metrics-controller.js' %}"></script>{% endif %}{% endif %}
+{% if user.is_authenticated %}<script src="{% static 'settings-forms.js' %}"></script>{% if metrics_navigation %}<script src="{% static 'console-metrics-controller.js' %}"></script><script src="{% static 'metrics_overlay.js' %}"></script><script src="{% static 'metrics_workspace.js' %}"></script>{% endif %}{% endif %}
 {% if user.is_authenticated and shell_studio %}<script src="/api/assistant/widget.js" defer></script>{% endif %}
 </body>
 </html>

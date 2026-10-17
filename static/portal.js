@@ -957,7 +957,7 @@ function emptyStateHtml(isSearching) {
         var html = '<div class="empty-state">' + SEARCH_SVG;
         if (P && P.user && P.user.role === 'admin') {
             html += '<p>No reports yet — connect this studio’s git repository and reports appear here.</p>'
-                + '<p style="margin-top:12px"><a class="ops-action-btn" href="'
+                + '<p style="margin-top:12px"><a class="ops-action-btn" data-console-nav href="'
                 + escAttr(apiUrl('/settings/repo')) + '">Configure repository</a></p>';
         } else {
             html += '<p>No reports yet — ask a studio admin to connect the reports repository.</p>';
@@ -2190,7 +2190,7 @@ function _opsRepoCard(gs) {
         + (manual ? 'Manual' : 'Automatic') + ' publishing</span>'
         + '<span class="ops-status ' + state[0] + '"><span class="ops-status-dot"></span>' + esc(state[1]) + '</span>';
     if (manual && pending && !gs.publishing) {
-        html += '<a class="ops-action-btn" href="' + apiUrl('/settings/repo') + '">Review &amp; publish</a>';
+        html += '<a class="ops-action-btn" data-console-nav href="' + apiUrl('/settings/repo') + '">Review &amp; publish</a>';
     } else if (!manual && gs.last_published) {
         html += '<span class="ops-status-text">Last published ' + esc(_timeAgo(gs.last_published)) + '</span>';
     }
@@ -3066,7 +3066,7 @@ function renderDsTable() {
             : 'used by ' + (s.used_by_total || 0)) + '</td>';
         html += '<td><div class="ds-actions">';
         if (needs && opsHasRole('admin')) {
-            html += '<a class="ds-action-btn" href="' + apiUrl('/settings/datasources?configure=' + encodeURIComponent(s.name)) + '#configure">Configure</a>';
+            html += '<a class="ds-action-btn" data-console-nav href="' + apiUrl('/settings/datasources?configure=' + encodeURIComponent(s.name)) + '#configure">Configure</a>';
         }
         if (s.upload && opsHasRole('admin') && s.binding_scope !== 'org') {
             html += '<label class="ds-action-btn" title="Upload new version">'

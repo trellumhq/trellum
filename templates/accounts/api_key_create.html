@@ -6,7 +6,7 @@
     <div class="ui-label page-kicker">Account · API keys</div>
     <h1>Add API key</h1>
     <p class="muted page-sub">Create a personal bearer token for one organization. It acts as you and follows your roles.</p>
-    <a class="ui-btn ghost" href="{% url 'my-api-keys' %}" data-settings-leave="apiKeyCreateForm">← Back to API keys</a>
+    <a class="ui-btn ghost" data-console-nav href="{% url 'my-api-keys' %}" data-settings-leave="apiKeyCreateForm">← Back to API keys</a>
   </header>
   {% if can_create %}
   <form id="apiKeyCreateForm" method="post" action="{% url 'my-api-keys-create' %}" data-settings-form>
@@ -44,7 +44,7 @@
     </section>
     <div class="ui-form-actions">
       <button class="ui-btn primary" type="submit">Create API key</button>
-      <a class="ui-btn ghost" href="{% url 'my-api-keys' %}" data-settings-leave>Cancel</a>
+      <a class="ui-btn ghost" data-console-nav href="{% url 'my-api-keys' %}" data-settings-leave>Cancel</a>
     </div>
   </form>
   {% else %}

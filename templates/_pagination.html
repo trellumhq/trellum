@@ -9,7 +9,7 @@ never silently drops the filter the user is looking at.
 {% if page.paginator.num_pages > 1 %}
 <nav class="ui-pager" aria-label="Pagination">
   {% if page.has_previous %}
-    <a class="ui-btn ghost" href="{% if previous_url %}{{ previous_url }}{% else %}{% querystring page=page.previous_page_number %}{% endif %}">← Previous</a>
+    <a class="ui-btn ghost" data-console-nav href="{% if previous_url %}{{ previous_url }}{% else %}{% querystring page=page.previous_page_number %}{% endif %}">← Previous</a>
   {% else %}
     <span class="ui-btn ghost" aria-disabled="true">← Previous</span>
   {% endif %}
@@ -17,7 +17,7 @@ never silently drops the filter the user is looking at.
     {{ page.start_index }}–{{ page.end_index }} of {{ page.paginator.count }}
   </span>
   {% if page.has_next %}
-    <a class="ui-btn ghost" href="{% if next_url %}{{ next_url }}{% else %}{% querystring page=page.next_page_number %}{% endif %}">Next →</a>
+    <a class="ui-btn ghost" data-console-nav href="{% if next_url %}{{ next_url }}{% else %}{% querystring page=page.next_page_number %}{% endif %}">Next →</a>
   {% else %}
     <span class="ui-btn ghost" aria-disabled="true">Next →</span>
   {% endif %}

@@ -6,7 +6,7 @@
 <header class="page-head-row">
   <div><div class="ui-label page-kicker">Operator · Email delivery</div>
     <h1>{% if connection %}Edit <span data-settings-text="email-connection-name">{{ connection.name }}</span>{% else %}Add API connection{% endif %}</h1></div>
-  <span class="spacer"></span><a class="ui-btn ghost" data-settings-leave="email-connection-form" href="{% url 'instance-settings' %}#email-delivery">Back to Instance settings</a>
+  <span class="spacer"></span><a class="ui-btn ghost" data-settings-leave="email-connection-form" data-console-nav href="{% url 'instance-settings' %}#email-delivery">Back to Instance settings</a>
 </header>
 <p class="muted">Save a connection before selecting it for instance mail. Secrets are write-only.{% if copy_from %} Enter fresh credentials and header values for this copy.{% elif connection %} Leave a secret blank to keep its current value.{% else %} Enter the credentials required by the provider.{% endif %} Provider tests send synthetic mail only to your own address.</p>
 <form class="ui-form-section" method="post" id="email-connection-form" data-settings-form data-settings-save novalidate onsubmit="this.toggleAttribute('data-settings-save', !event.submitter || event.submitter.value === 'save')">

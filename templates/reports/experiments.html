@@ -52,9 +52,9 @@
 </div>
 
 <div class="filter-row">
-  <a class="ui-pill{% if not status_filter %} active{% endif %}" href="?">All <span class="n">{{ row_count }}</span></a>
-  <a class="ui-pill{% if status_filter == 'running' %} active{% endif %}" href="?status=running">Running <span class="n">{{ tiles.running }}</span></a>
-  <a class="ui-pill{% if status_filter == 'concluded' %} active{% endif %}" href="?status=concluded">Concluded <span class="n">{{ tiles.concluded }}</span></a>
+  <a class="ui-pill{% if not status_filter %} active{% endif %}" data-console-nav href="?">All <span class="n">{{ row_count }}</span></a>
+  <a class="ui-pill{% if status_filter == 'running' %} active{% endif %}" data-console-nav href="?status=running">Running <span class="n">{{ tiles.running }}</span></a>
+  <a class="ui-pill{% if status_filter == 'concluded' %} active{% endif %}" data-console-nav href="?status=concluded">Concluded <span class="n">{{ tiles.concluded }}</span></a>
 </div>
 
 {% if timeline.lanes %}
@@ -138,7 +138,7 @@
         </tr>
         {% empty %}
         <tr><td colspan="7"><div class="ui-empty">No experiments match this filter.
-          <div class="ui-empty-action"><a class="ui-btn ghost" href="?">Clear filter</a></div>
+          <div class="ui-empty-action"><a class="ui-btn ghost" data-console-nav href="?">Clear filter</a></div>
         </div></td></tr>
         {% endfor %}
       </tbody>

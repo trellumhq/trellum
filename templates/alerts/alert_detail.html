@@ -19,12 +19,12 @@
 </style>
 <header class="page-head-row">
   <div>
-    <div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }} · <a href="{{ prefix }}">Alerts</a></div>
+    <div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }} · <a data-console-nav href="{{ prefix }}">Alerts</a></div>
     <h1>{{ rule.name }} {% if not rule.enabled %}<span class="ui-badge warn">Disabled</span>{% endif %}</h1>
   </div>
   <span class="spacer"></span>
   {% if can_edit %}
-  <a class="ui-btn ghost" href="{{ prefix }}/{{ rule.pk }}/edit">Edit</a>
+  <a class="ui-btn ghost" data-console-nav href="{{ prefix }}/{{ rule.pk }}/edit">Edit</a>
   <form class="inline" method="post" action="{{ prefix }}/{{ rule.pk }}/test" data-test-now>{% csrf_token %}
     <button class="ui-btn primary" type="submit">Test now</button></form>
   {% endif %}
@@ -46,7 +46,7 @@
   <p class="al-instructions">{{ rule.instructions|default:"Tell me if anything looks off" }}</p>
   {% if rule.live_state.claim %}
   <div class="ui-notice warn" role="status">
-    Delivery outcome uncertain / review required: <a href="?run={{ rule.live_state.claim.run_id }}#run-{{ rule.live_state.claim.run_id }}">run {{ rule.live_state.claim.run_id }}</a>.
+    Delivery outcome uncertain / review required: <a data-console-nav href="?run={{ rule.live_state.claim.run_id }}#run-{{ rule.live_state.claim.run_id }}">run {{ rule.live_state.claim.run_id }}</a>.
     This delivery may still be running. Automatic delivery is held until its outcome is confirmed; recovery does not release an unresolved claim.
     {% if can_edit %}
     <p>Check the mail provider and evaluation outcome before resolving. These actions send no mail.</p>
