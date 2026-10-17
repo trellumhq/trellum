@@ -121,3 +121,15 @@ def test_export_libraries_load_lazily_and_fonts_ship_woff2():
     assert '"html2canvas": "/_vendor/html2canvas.min.js"' in tags
     css = (cdn._VENDOR_DIR / "inter.css").read_text(encoding="utf-8")
     assert css.count("format('woff2'), url(") == 4 and css.count("format('truetype')") == 4
+
+
+def test_vendor_map_is_safe_inside_a_script_element():
+    """The configured base is text in a <script>: it must not close or open anything."""
+    hostile = "/x</script><script>alert(1)</script><!--&/"
+    cdn.set_vendor_url_base(hostile)
+    tags = cdn.build_cdn_tags(set())
+    line = next(row for row in tags.splitlines() if "window._fwVendor=" in row)
+    assert "</script><script>alert(1)" not in line and "<!--" not in line
+    assert line.count("<") == 2 and line.count(">") == 2  # only this element's own tags
+    encoded = line.split("window._fwVendor=", 1)[1].rsplit(";</script>", 1)[0]
+    assert json.loads(encoded)["html2canvas"] == hostile + "html2canvas.min.js"

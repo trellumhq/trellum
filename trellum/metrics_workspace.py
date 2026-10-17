@@ -53,6 +53,15 @@ def project_series(payload, components):
             '_dict': {name: values for name, values in raw.get('_dict', {}).items() if name in names}}
 
 
+def page_count(monitored):
+    """Native pages for ``monitored`` metric blocks; always at least one.
+
+    Only monitored blocks are paged. The definitions table is complete in the
+    catalog and pages client-side, so it never adds pages of its own.
+    """
+    return max(1, (monitored + PAGE_SIZE - 1) // PAGE_SIZE)
+
+
 def owned_name(name):
     """Never accept paths from a prior artifact's untrusted ownership manifest."""
     return isinstance(name, str) and bool(_OWNED.fullmatch(name))
@@ -88,21 +97,33 @@ def early_route(catalog, build, page, pages):
     """Route focus before bootstrapping an obsolete page's vendors or consumers."""
     if not isinstance(build, str) or not re.fullmatch(r'[0-9a-f]{32}', build) or type(page) is not int or type(pages) is not int or not 1 <= page <= pages:
         raise ValueError('invalid generated workspace routing identity')
-    routes = {row['anchor']: row['page'] for row in catalog}
-    if any(type(number) is not int or not 1 <= number <= pages for number in routes.values()):
+    # Definitions all live on one page, so a prefix rule replaces one entry per
+    # definition: the inline map must not grow with the number of definitions.
+    routes = {row['anchor']: row['page'] for row in catalog if row.get('monitored', True)}
+    definitions = {row['page'] for row in catalog if not row.get('monitored', True)}
+    if len(definitions) > 1:
+        raise ValueError('invalid generated workspace route page')
+    definition_page = definitions.pop() if definitions else 0
+    if any(type(number) is not int or not 1 <= number <= pages for number in (*routes.values(), *([definition_page] if definition_page else []))):
         raise ValueError('invalid generated workspace route page')
     encoded = orjson.dumps(routes).decode().replace('<', '\\u003c').replace('\u2028', '\\u2028').replace('\u2029', '\\u2029')
     return ('<script data-metrics-early-route>(function(){'
         'var url=new URL(location.href),target=url.searchParams.get("only");'
         'if(!target){target=url.hash.slice(1);try{target=decodeURIComponent(target)}catch(e){}}'
         'if(!target)return;var routes=' + encoded + ',page=routes[target];'
+        + (f'if(page===undefined&&target.indexOf("definition-")===0)page={definition_page};' if definition_page else '') +
         f'if(!Number.isInteger(page)||page<1||page>{pages}||page==={page})return;'
         f'url.pathname=url.pathname.replace(/[^/]*$/, "{PREFIX}{build}-page-"+page+".html");'
         'window.stop();location.replace(url.href);})();</script>')
 
 
-def write_pages(out, html, report_data, render_ctx, catalog, build, definitions=()):
-    """Keep root data complete; each immutable page carries only its consumers."""
+def write_pages(out, html, report_data, render_ctx, catalog, build):
+    """Keep root data complete; each immutable page carries only its consumers.
+
+    The "defined but not monitored" table appears once, on the last page, where
+    the catalog routes every definition. Its rows come from the catalog in the
+    browser, so a page carries no definition rows of its own.
+    """
     blocks = render_ctx._metric_workspace_blocks
     metric_ids = {cid for block in blocks for cid in block['ids']}
     common = {cid: value for cid, value in report_data['components'].items() if cid not in metric_ids}
@@ -111,8 +132,7 @@ def write_pages(out, html, report_data, render_ctx, catalog, build, definitions=
         indexed = {row[0]: row[2:] for row in common[definition_id]['rows']}
         catalog = [{**row, 'details': indexed[row['name']]} if not row.get('monitored', True) else row
                    for row in catalog]
-    pages = max(1, (len(blocks) + PAGE_SIZE - 1) // PAGE_SIZE,
-                (len(definitions) + PAGE_SIZE - 1) // PAGE_SIZE)
+    pages = page_count(len(blocks))
     files = []
     catalog_name = f'{PREFIX}{build}-catalog.json'
     Path(out, catalog_name).write_bytes(orjson.dumps({'version': VERSION, 'build': build, 'metrics': catalog}))
@@ -125,11 +145,9 @@ def write_pages(out, html, report_data, render_ctx, catalog, build, definitions=
             components.update({cid: report_data['components'][cid] for cid in block['ids'] if cid in report_data['components']})
         if definition_id:
             original = components.pop(definition_id)
-            definition_rows = original['rows'][(page - 1) * PAGE_SIZE:page * PAGE_SIZE]
-            if definition_rows:
-                components[definition_id] = {**original, 'rows': definition_rows,
-                    'maxRows': PAGE_SIZE, 'totalRows': len(definitions),
-                    'workspacePageSize': PAGE_SIZE, 'workspacePage': page}
+            if page == pages:
+                components[definition_id] = {**original, 'rows': [], 'totalRows': 0,
+                    'maxRows': PAGE_SIZE, 'workspacePageSize': PAGE_SIZE}
         needed = {value['dataset_id'] for cid, value in components.items()
                   if cid not in common and value.get('dataset_id')}
         needed.update(value['dataset_id'] for value in components.values()
@@ -156,19 +174,10 @@ def write_pages(out, html, report_data, render_ctx, catalog, build, definitions=
         # The fixed JSON script contains only validated generated file names.
         boot = (early_route(catalog, build, page, pages) + '<script>window._fwMetricsWorkspace=' + orjson.dumps(config).decode() + ';</script>'
                 '<noscript><style>.fw-loading{display:none!important}</style></noscript>')
-        definition_rows = definitions[(page - 1) * PAGE_SIZE:page * PAGE_SIZE]
-        columns = ('metric', 'label', 'owner', 'spec', 'reason', 'claimed by')
         definition_html = ''
-        if definition_rows:
-            definition_html = '<section class="fw-section"><h2>Defined but not monitored</h2>'
-            definition_html += getattr(render_ctx, '_metric_workspace_definition_html', '')
-            definition_html += '<noscript><table><thead><tr>'
-            definition_html += ''.join('<th>' + escape(column) + '</th>' for column in columns)
-            definition_html += '</tr></thead><tbody>'
-            for row in definition_rows:
-                definition_html += '<tr id="definition-' + escape(row['metric'], quote=True) + '">' + ''.join(
-                    '<td>' + escape(str(row.get(column, ''))) + '</td>' for column in columns) + '</tr>'
-            definition_html += '</tbody></table></noscript></section>'
+        if definition_id and page == pages:
+            definition_html = ('<section class="fw-section"><h2>Defined but not monitored</h2>'
+                + getattr(render_ctx, '_metric_workspace_definition_html', '') + '</section>')
         page_html = html.replace(CONTROLS, controls(catalog, page, pages, build)).replace(
             BLOCKS, '\n'.join(block['html'] for block in visible)).replace(
             DEFINITIONS, definition_html).replace('<head>', '<head>' + boot, 1)
@@ -194,6 +203,14 @@ def collect_old_pages(out):
         return set()
 
 
+def owned_files(out):
+    """Owned page files actually present, however a killed build left them."""
+    try:
+        return {name for name in os.listdir(out) if owned_name(name)}
+    except OSError:
+        return set()
+
+
 def gc_old_pages(out, previous, current):
     for name in previous - set(current):
         path = Path(out, name)
@@ -213,15 +230,23 @@ def staged_render(ctx, out, render, **kwargs):
     """
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
-    previous = collect_old_pages(out)
+    # The manifest lists the last published build; a build killed mid-publish
+    # can also leave owned pages the manifest never learned about. Both are
+    # removed once this build has published.
+    previous = collect_old_pages(out) | owned_files(out)
     # Stage inside `out`: the build sandbox mounts only this report's output
     # directory writable, so a sibling of it (out.parent) is read-only there.
-    # Dot-prefixed and removed on exit; collect_old_pages ran before it exists.
+    # Dot-prefixed and removed on exit. A killed build leaves its stage
+    # directory and publish temporaries behind; clear them before staging.
     for leftover in out.glob('.metrics-stage-*'):
         if leftover.is_dir() and not leftover.is_symlink():
             shutil.rmtree(leftover, ignore_errors=True)
+    for leftover in out.glob('.metrics-publish-*'):
+        if leftover.is_file() or leftover.is_symlink():
+            leftover.unlink(missing_ok=True)
     with tempfile.TemporaryDirectory(prefix='.metrics-stage-', dir=out) as stage:
         ctx._metric_workspace_staging = True
+        ctx._metric_workspace_chunks = None
         try:
             render(ctx, output_dir=stage, **kwargs)
         finally:
@@ -263,6 +288,12 @@ def staged_render(ctx, out, render, **kwargs):
                 (out / name).unlink(missing_ok=True)
             raise
         gc_old_pages(out, previous, current)
+        # The stage render collected stale chunks from the (empty) stage
+        # directory; collect them from the published directory instead.
+        chunks = getattr(ctx, '_metric_workspace_chunks', None)
+        if chunks is not None:
+            from trellum.rendering.artifacts import _gc_stale_chunks
+            _gc_stale_chunks(str(out), chunks)
     return str(out / 'index.html'), str(out / 'data.json')
 
 

@@ -176,6 +176,94 @@ class TestStatusRoute:
         assert c.get(f"/s/{other_org.slug}/{other_studio.slug}/api/system/actions/{action_id}").status_code == 404
 
 
+def age(action, by=maint.ACCEPTED_TTL + timedelta(seconds=1)):
+    """Make an admitted action look older, as if no runner had served its pool."""
+    Action.objects.filter(pk=action.pk).update(accepted_at=timezone.now() - by)
+
+
+class TestUnclaimedExpiry:
+    """An action no runner claims ends instead of holding its studio forever."""
+
+    def admit(self, studio, user):
+        return maint.admit(studio=studio, user=user)[0]
+
+    def test_a_young_action_is_kept_and_answers_a_repeat_request(self, login, developer, prefix):
+        first = post(login(developer), prefix).json()
+        age(Action.objects.get(pk=first["operation_id"]), maint.ACCEPTED_TTL - timedelta(seconds=30))
+        again = post(login(developer), prefix).json()
+        assert again["operation_id"] == first["operation_id"] and again["duplicate"] is True
+        assert again["state"] == "accepted" and again["age_seconds"] >= maint.ACCEPTED_TTL.total_seconds() - 30
+        assert maint.recover_expired() == 0
+
+    def test_admission_expires_a_stuck_action_and_admits_a_new_one(self, login, developer, prefix):
+        first = post(login(developer), prefix).json()
+        age(Action.objects.get(pk=first["operation_id"]))
+        again = post(login(developer), prefix).json()
+        assert again["operation_id"] != first["operation_id"] and again["duplicate"] is False
+        assert again["state"] == "accepted" and again["age_seconds"] < 5
+        old = Action.objects.get(pk=first["operation_id"])
+        assert (old.state, old.message) == ("failed", maint.MSG_EXPIRED) and old.finished_at
+        assert old.is_terminal and old.started_at is None and old.worker_id == ""
+        out = AuditLog.objects.get(action="registry.refresh_finished")
+        assert out.outcome == "failure" and out.metadata["reason"] == "unclaimed"
+        assert out.metadata["action_id"] == first["operation_id"] and out.org_id == old.org_id
+
+    def test_recovery_expires_it_and_it_is_not_claimable(self, developer, studio_tree):
+        a = self.admit(studio_tree, developer)
+        age(a)
+        assert maint.claim_one("w") is None  # even before recovery has run
+        assert maint.recover_expired() == 1
+        a.refresh_from_db()
+        assert (a.state, a.message) == ("failed", maint.MSG_EXPIRED)
+        assert maint.recover_expired() == 0  # once
+        assert AuditLog.objects.filter(action="registry.refresh_finished").count() == 1
+        assert maint.run_once("w") is False
+
+    def test_the_tick_expires_it_when_this_runner_does_not_serve_the_pool(self, developer, studio_tree):
+        a = self.admit(studio_tree, developer)
+        age(a)
+        assert maint.run_once("w", pools=["elsewhere"]) is False
+        a.refresh_from_db()
+        assert a.state == "failed"
+
+    def test_a_running_action_is_never_expired_by_age(self, developer, studio_tree):
+        a = self.admit(studio_tree, developer)
+        claimed = maint.claim_one("w")
+        age(claimed, timedelta(hours=1))
+        assert maint.recover_expired() == 0
+        a.refresh_from_db()
+        assert a.state == "running"
+
+    def test_expired_actions_no_longer_count_toward_the_pending_limits(
+            self, settings, login, org_admin, studio_tree, studio2, org):
+        settings.TRELLUM_MAINT_ORG_PENDING_LIMIT = 1
+        c = login(org_admin)
+        first = post(c, f"/s/{org.slug}/{studio_tree.slug}").json()
+        assert post(c, f"/s/{org.slug}/{studio2.slug}").status_code == 429
+        age(Action.objects.get(pk=first["operation_id"]))
+        assert post(c, f"/s/{org.slug}/{studio2.slug}").status_code == 202
+
+    def test_a_status_read_reports_the_expiry_without_any_runner(self, login, developer, prefix):
+        c = login(developer)
+        first = post(c, prefix).json()
+        age(Action.objects.get(pk=first["operation_id"]))
+        body = c.get(first["status_url"]).json()
+        assert (body["state"], body["terminal"], body["ok"], body["message"]) == (
+            "failed", True, False, maint.MSG_EXPIRED)
+        assert AuditLog.objects.filter(action="registry.refresh_finished").count() == 1
+        assert c.get(first["status_url"]).json()["state"] == "failed"
+        assert AuditLog.objects.filter(action="registry.refresh_finished").count() == 1
+
+    def test_an_expired_action_still_answers_its_idempotency_key(self, login, developer, prefix):
+        c = login(developer)
+        first = post(c, prefix, HTTP_IDEMPOTENCY_KEY="k1").json()
+        age(Action.objects.get(pk=first["operation_id"]))
+        retry = post(c, prefix, HTTP_IDEMPOTENCY_KEY="k1").json()
+        assert retry["operation_id"] == first["operation_id"] and retry["state"] == "failed"
+        fresh = post(c, prefix, HTTP_IDEMPOTENCY_KEY="k2").json()
+        assert fresh["state"] == "accepted" and fresh["operation_id"] != first["operation_id"]
+
+
 class TestWorker:
     def admit(self, studio, user):
         return maint.admit(studio=studio, user=user)[0]

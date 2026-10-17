@@ -69,6 +69,13 @@
     else el.classList.add('fresh');
     _measureSticky();
   }
+  // Auto-refresh calls this after swapping in new data, so the label
+  // doesn't keep showing the old age until its next minute tick.
+  window._fwUpdateFreshness = _updateFreshness;
+  // Timers are throttled in background tabs; correct the age on return.
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible') _updateFreshness();
+  });
   var _poll = setInterval(function() {
     if (window._reportData && document.getElementById('fwFreshness')) {
       clearInterval(_poll);

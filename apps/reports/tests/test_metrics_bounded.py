@@ -4,7 +4,6 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from apps.core import roles
-from apps.reports.metric_summaries import CLAIM_PREVIEW
 from apps.reports.metrics_catalog import metric_definition_page
 from apps.reports.models import MetricCatalogState, MetricDefinition, Report, ReportSourceSummary, ReportMetricClaim, ReportMetricPreview
 
@@ -85,12 +84,32 @@ def test_complete_counts_bounded_previews_and_points(catalog):
     assert response.status_code == 200, response.content
     data = response.json()
     assert data["state"] == "ready" and len(data["metrics"]) == 50
-    assert all(item["claim_count"] == 201 and len(item["claims"]) == CLAIM_PREVIEW and len(item["spark"].split()) == 60 for item in data["metrics"])
-    assert len(response.content) <= 512 * 1024
-    details = client.get(data["metrics"][0]["details_url"], {"definition_revision": 7, "page": 5})
+    # Every claiming report is listed inline (201 < INLINE_LIMIT); nothing is left to page to.
+    assert all(item["claim_count"] == 201 and len(item["claims"]) == 201 and len(item["spark"].split()) == 60 for item in data["metrics"])
+    assert len(response.content) <= 4 * 1024 * 1024
+    details = client.get(data["metrics"][0]["details_url"])
     assert details.status_code == 200 and b"report-0199" in details.content
-    assert b"201 indexed claims" in details.content
     print("summary SQL", len(captured), "bytes", len(response.content))
+
+
+def test_claims_past_the_inline_limit_link_to_a_searchable_list_without_paging(catalog, monkeypatch):
+    studio, client, rows = catalog
+    monkeypatch.setattr("apps.reports.metric_summaries.INLINE_LIMIT", 5)
+    sources = [_source(studio, f"report-{i:04}") for i in range(8)]
+    ReportMetricClaim.objects.bulk_create([ReportMetricClaim(summary=source, metric_name=rows[0].name, definition_hash="current", version=1) for source in sources])
+    item = _summary(catalog).json()["metrics"][0]
+    # The card gets the first INLINE_LIMIT claims and the true total, which is what links it on.
+    assert item["claim_count"] == 8 and [claim["report"] for claim in item["claims"]] == [f"report-{i:04}" for i in range(5)]
+    page = client.get(item["details_url"])
+    html = page.content.decode()
+    assert page.status_code == 200 and "Showing the first 5 of 8 matching reports" in html
+    assert html.count("?display=console") == 5 and "report-0005" not in html
+    assert "Previous" not in html and "Next" not in html and "Page " not in html and "Search</button>" not in html
+    assert "data-auto-filter" in html and 'name="q"' in html  # search as you type, no button
+    found = client.get(item["details_url"] + "&q=report-0006").content.decode()
+    assert "report-0006" in found and "report-0005" not in found and "Showing the first" not in found
+    assert "No claiming report matches" in client.get(item["details_url"] + "&q=nothing-like-it").content.decode()
+    assert client.get(item["details_url"] + "&q=" + "x" * 201).status_code == 400
 
 
 @pytest.mark.parametrize("state,quality", [("pending", "unknown"), ("uncertain", "verified"), ("unavailable", "verified"), ("ready", "observed"), ("missing", "observed")])
@@ -234,9 +253,16 @@ def test_primary_generation_race_is_explicit(catalog, monkeypatch):
     assert metric_definition_page(studio)["definition_changed"] is True
 
 
-def test_native_claim_revision_change_has_accessible_reload(catalog):
+def test_claim_revision_change_refreshes_quietly_without_a_reload_button(catalog):
     studio, client, rows = catalog
-    response = client.get(_url(studio) + f"/metrics/{rows[0].pk}/claims", {"definition_revision": 6})
-    assert response.status_code == 409
-    assert 'text/html' in response.headers['Content-Type']
-    assert b'role="alert"' in response.content and b'Reload Metrics definitions' in response.content
+    path = _url(studio) + f"/metrics/{rows[0].pk}/claims"
+    stale = client.get(path, {"definition_revision": 6, "q": "daily"})
+    assert stale.status_code == 302
+    assert stale["Location"] == path + "?definition_revision=7&q=daily"
+    assert client.get(stale["Location"]).status_code == 200
+    # A metric that left the catalog since the link was built falls back to the Metrics page.
+    gone = _url(studio) + "/metrics/999999999/claims"
+    moved = client.get(gone, {"definition_revision": 6})
+    assert moved.status_code == 302 and moved["Location"] == _url(studio) + "/metrics"
+    assert client.get(gone, {"definition_revision": 7}).status_code == 404
+    assert client.get(path).status_code == 400

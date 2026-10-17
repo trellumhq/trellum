@@ -1,18 +1,16 @@
 {% extends "base.html" %}
 {% block title %}Metric usage — trellum{% endblock %}
 {% block content %}
-{% if changed %}
-<header class="page-head-row"><div><h1>Metric usage changed</h1></div></header>
-<p role="alert">Metrics changed while loading. Reload the definitions before reading report usage.</p>
-<a class="ui-btn ghost" data-console-nav href="{% url 'studio-metrics' org.slug studio.slug %}">Reload Metrics definitions</a>
-{% else %}
 <header class="page-head-row"><div>
   <div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }}</div>
   <h1>{{ definition.label|default:definition.name }} usage</h1>
   <p class="muted page-sub">Indexed claims as of each source observation. Pending or uncertain sources may omit claims.</p>
 </div></header>
 <p role="status">{% if coverage_complete %}Source coverage is complete as of recent observations.{% else %}Source coverage is partial or stale. Counts describe the indexed snapshot; current usage is unknown.{% endif %}</p>
-<a class="ui-btn ghost" data-console-nav href="{% url 'studio-metrics' org.slug studio.slug %}">Back to Metrics</a>
+<a class="ui-btn ghost" href="{% url 'studio-metrics' org.slug studio.slug %}" data-console-nav>Back to Metrics</a>
+{% comment %}Search as you type on the server (static/auto-filter.js); never a pager.{% endcomment %}
+{% include "_list_toolbar.html" with q=q placeholder="Search reports…" total=matching_count %}
+{% if truncated %}<p class="muted" role="status">Showing the first {{ shown_count }} of {{ matching_count }} matching reports. Keep typing to narrow.</p>{% endif %}
 <div class="panel" style="overflow-x:auto">
 <table class="ui-table"><thead><tr><th>Report</th><th>Definition</th><th>Source</th><th>Served</th><th>Observed</th></tr></thead><tbody>
 {% for claim in claims %}<tr>
@@ -21,12 +19,6 @@
   <td>{{ claim.source_state }} · {{ claim.quality }}{% if not claim.fresh %} · stale observation{% endif %}</td>
   <td>{{ claim.built_at|date:"Y-m-d H:i"|default:"unknown" }}</td>
   <td>{{ claim.observed_at|date:"Y-m-d H:i"|default:"unknown" }}</td>
-</tr>{% empty %}<tr><td colspan="5">No indexed claims. Incomplete source coverage may omit report usage.</td></tr>{% endfor %}
+</tr>{% empty %}<tr><td colspan="5">{% if q %}No claiming report matches “{{ q }}”.{% else %}No indexed claims. Incomplete source coverage may omit report usage.{% endif %}</td></tr>{% endfor %}
 </tbody></table></div>
-<nav aria-label="Claims pages" class="page-head-row">
-  {% if claim_page.has_previous %}<a class="ui-btn ghost" data-console-nav href="?definition_revision={{ definition_revision }}&amp;page={{ claim_page.previous_page_number }}">Previous</a>{% endif %}
-  <span>Page {{ claim_page.number }} of {{ claim_page.paginator.num_pages }} · {{ claim_page.paginator.count }} indexed claims</span>
-  {% if claim_page.has_next %}<a class="ui-btn ghost" data-console-nav href="?definition_revision={{ definition_revision }}&amp;page={{ claim_page.next_page_number }}">Next</a>{% endif %}
-</nav>
-{% endif %}
 {% endblock %}

@@ -132,26 +132,25 @@ def test_remote_layout_comes_from_served_pointer_and_pointer_race_retains_it(stu
     assert list(summary.claims.values_list('metric_name', flat=True)) == ['served']
 
 
-def test_binding_and_layout_upgrade_preserves_historical_unknowns(studio_tree):
+def test_binding_and_summary_upgrade_preserves_released_data(studio_tree):
+    """Upgrading from the last release adds the source-summary tables and the nullable binding."""
     from django.db.migrations.executor import MigrationExecutor
-    from apps.reports.models import MetricDefinition
     row = report(studio_tree, 'migration-history')
-    previous = [('reports', '0026_source_summaries')]
+    previous = [('reports', '0026_report_idle_refresh')]
     try:
         executor = MigrationExecutor(connection); executor.migrate(previous)
+        assert 'reports_reportsourcesummary' not in connection.introspection.table_names()
         old = executor.loader.project_state(previous).apps
         old.get_model('reports', 'MetricDefinition').objects.create(studio_id=studio_tree.pk, name='historical')
-        old.get_model('reports', 'ReportSourceSummary').objects.create(report_id=row.pk)
         executor = MigrationExecutor(connection)
-        target = [('reports', '0027_metric_binding_workspace_layout')]
+        target = [('reports', '0027_source_summaries')]
         executor.migrate(target)
         projected = executor.loader.project_state(target).apps
         assert projected.get_model('reports', 'MetricDefinition').objects.get(studio_id=studio_tree.pk, name='historical').binding is None
-        assert projected.get_model('reports', 'ReportSourceSummary').objects.get(report_id=row.pk).workspace_version is None
+        assert projected.get_model('reports', 'ReportSourceSummary').objects.count() == 0
         assert Report.objects.filter(pk=row.pk).exists()
         executor = MigrationExecutor(connection); executor.migrate(previous)
-        columns = {column.name for column in connection.introspection.get_table_description(connection.cursor(), 'reports_reportsourcesummary')}
-        assert 'workspace_version' not in columns
+        assert 'reports_reportsourcesummary' not in connection.introspection.table_names()
         assert old.get_model('reports', 'MetricDefinition').objects.filter(name='historical').exists()
     finally:
         executor = MigrationExecutor(connection); executor.migrate(executor.loader.graph.leaf_nodes('reports'))

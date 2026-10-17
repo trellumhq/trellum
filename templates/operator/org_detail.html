@@ -32,10 +32,10 @@
 instance. Values below are recorded but not applied — set
 <code>TRELLUM_QUOTAS_ENABLED=true</code> to enforce them.</p>
 {% endif %}
-{% comment %}Uploaded files are measured on the coordinator, never while this page
-renders. The page asks for a fresh measurement whenever the last one is five
-minutes old and updates the figure itself.{% endcomment %}
-<div class="panel" data-settings-refresh="quota-usage" data-operator-observation data-observation-kind="upload-usage" data-observation-refresh="300" data-observation-done="· measured" data-observation-busy="· measuring…"{% if usage.storage_observation.completed_at %} data-observation-at="{{ usage.storage_observation.completed_at }}" data-observation-age="{{ usage.storage_observation.age_seconds }}"{% endif %}{% if usage_operation %} data-observation-url="{% url 'operator-org-usage-status' org.slug usage_operation.id %}" data-observation-id="{{ usage_operation.id }}"{% endif %}>
+{% comment %}While a coordinator is alive, uploaded files are measured there, not while
+this page renders: the page shows the last measurement and updates the figure
+itself. Without a coordinator the figure is computed in the request.{% endcomment %}
+<div class="panel" data-settings-refresh="quota-usage"{% if usage.polling %} data-operator-observation data-observation-url="{% url 'operator-org-usage' org.slug %}" data-observation-poll="15" data-observation-done="· measured" data-observation-busy="· measuring…"{% if usage.storage_measured_at %} data-observation-at="{{ usage.storage_measured_at }}" data-observation-age="{{ usage.storage_age_seconds }}"{% endif %}{% endif %}>
 <table class="ui-table dense">
   <thead><tr><th>Resource</th><th>Used</th><th>Limit</th></tr></thead>
   <tbody>
@@ -47,13 +47,10 @@ minutes old and updates the figure itself.{% endcomment %}
         <td>{% if usage.max_studios %}{{ usage.max_studios }}{% else %}unlimited{% endif %}</td></tr>
     <tr><td>Reports</td><td>{{ usage.reports }}</td>
         <td>{% if usage.max_reports %}{{ usage.max_reports }}{% else %}unlimited{% endif %}</td></tr>
-    <tr><td>Uploaded files</td><td><span data-observation-value>{% if usage.storage_mb is not None %}{{ usage.storage_mb }} MB{% else %}—{% endif %}</span> <span class="muted" data-observation-status>{% if usage.storage_age %}· measured {{ usage.storage_age }}{% else %}· measuring…{% endif %}</span></td>
+    <tr><td>Uploaded files</td><td><span data-observation-value>{% if usage.storage_mb is not None %}{{ usage.storage_mb }} MB{% else %}—{% endif %}</span> {% if usage.storage_age %}<span class="muted" data-observation-status>· measured {{ usage.storage_age }}</span>{% elif usage.polling %}<span class="muted" data-observation-status>· measuring…</span>{% endif %}</td>
         <td>{% if usage.max_storage_mb %}{{ usage.max_storage_mb }} MB{% else %}unlimited{% endif %}</td></tr>
   </tbody>
 </table>
-<form method="post" action="{% url 'operator-org-usage-refresh' org.slug %}" data-observation-admission hidden>
-  {% csrf_token %}<input type="hidden" name="request_key" value="{{ usage_nonce }}">
-</form>
 </div>
 
 <form method="post" action="{% url 'operator-org-quota' org.slug %}" class="ui-form-section" data-settings-form data-settings-save>
@@ -171,6 +168,5 @@ minutes old and updates the figure itself.{% endcomment %}
   </tbody>
 </table>
 </div>
-<script src="{% static 'actions.js' %}" defer></script>
-<script src="{% static 'operator-observations.js' %}" defer></script>
+{% if usage.polling %}<script src="{% static 'operator-observations.js' %}" defer></script>{% endif %}
 {% endblock %}

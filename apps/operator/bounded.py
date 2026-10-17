@@ -5,9 +5,10 @@ stay flat by selecting only the columns a table shows and by counting related
 rows for the rows on the page alone. Far above any realistic size a table stops
 growing and says how many rows it left out.
 """
+from apps.core.limits import INLINE_LIMIT
 from apps.orgs import quotas
 
-LIST_CAP = 500
+LIST_CAP = INLINE_LIMIT
 
 
 def capped(query, cap=LIST_CAP):
@@ -23,31 +24,27 @@ def capped(query, cap=LIST_CAP):
 
 
 def usage(org):
-    """Live DB usage; uploaded files come from the last coordinator measurement.
+    """Live DB usage plus the org's uploaded files.
 
-    Limits follow ``quotas.usage_state``: they are the enforced ones, so they
-    read "unlimited" while quotas are off. Measuring uploaded files walks
-    storage, so it never happens while a page renders.
+    Uploaded files are measured by the coordinator while the page is open; the
+    page shows the last measurement and updates itself. Without a live
+    coordinator they are measured here, as they always were. Limits come from
+    ``quotas.usage_state``: they are the enforced ones, so they read "unlimited"
+    while quotas are off.
     """
-    from apps.core.operator_observations import age_text, snapshot
+    from apps.core import operator_observations as observations
 
-    caps = quotas.limits_for(org)
-    observation = snapshot("upload-usage", org.pk)
-    complete = observation.get("quality") == "complete" and type(observation.get("bytes")) is int
+    live = observations.available()
+    measured = observations.poll(observations.usage_key(org.pk)) if live else {}
+    if "bytes" in measured:
+        used = measured["bytes"]
+    else:
+        used = None if live else quotas.storage_bytes_used(org)  # None: the first measurement is on its way
     return {
-        "enforced": bool(caps),
-        "active_runs": quotas.active_runs(org),
-        "max_concurrent_runs": int(caps.get("max_concurrent_runs") or 0),
-        "build_minutes": quotas.build_minutes_this_month(org),
-        "monthly_build_minutes": int(caps.get("monthly_build_minutes") or 0),
-        "studios": quotas.studio_count(org),
-        "max_studios": int(caps.get("max_studios") or 0),
-        "reports": quotas.report_count(org),
-        "max_reports": int(caps.get("max_reports") or 0),
-        "max_memory_mb": int(caps.get("max_memory_mb") or 0),
-        "storage_mb": round(observation["bytes"] / (1024 * 1024), 1) if complete else None,
-        "storage_observation": observation,
-        "storage_age": age_text(observation.get("age_seconds")),
-        "max_storage_mb": int(caps.get("max_storage_mb") or 0),
-        "month": quotas.month_start().date().isoformat(),
+        **quotas.usage_state(org),
+        "storage_mb": None if used is None else round(used / (1024 * 1024), 1),
+        "storage_age": observations.age_text(measured.get("age_seconds")),
+        "storage_age_seconds": measured.get("age_seconds"),
+        "storage_measured_at": measured.get("completed_at"),
+        "polling": live,
     }

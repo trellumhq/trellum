@@ -52,7 +52,7 @@ of these licences asks for and the reason the minified files are not stripped.
 
 | Asset | Source | Licence |
 | --- | --- | --- |
-| Inter (`static/vendor/fonts/inter-*.ttf`, `inter.css`) | Inter 4.001 (`66647c0bb`) | SIL Open Font License 1.1 |
+| Inter (`static/vendor/fonts/inter-*.woff2` and `inter-*.ttf`, `inter.css`) | Inter 4.001 (`66647c0bb`) | SIL Open Font License 1.1 |
 | `static/vendor/countries-110m.json` | TopoJSON world-atlas, derived from Natural Earth | world-atlas: ISC; underlying Natural Earth data: public domain |
 
 The SIL OFL permits redistribution of the font files, bundled with software,
