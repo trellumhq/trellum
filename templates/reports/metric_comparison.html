@@ -18,11 +18,11 @@
 </style>
 <header class="page-head"><div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }}</div><h1>Compare metrics</h1></header>
 <nav class="mc-tabs" aria-label="Metrics sections">
-  <a href="{{ catalog_url }}">Overview</a>
-  <a href="{{ workspace_url }}" aria-current="page">Comparison</a>
+  <a data-console-nav href="{{ catalog_url }}">Overview</a>
+  <a data-console-nav href="{{ workspace_url }}" aria-current="page">Comparison</a>
 </nav>
 <p class="muted">Charts use separate axes and their original units. This view shows trends, without KPI totals. Snapshot metrics show observations at each date, not a filtered balance.</p>
-<form class="mc-selection" id="mcSelection" action="{{ comparison_url }}" method="get">
+<form class="mc-selection" id="mcSelection" action="{{ comparison_url }}" method="get" data-console-nav>
   <input type="hidden" name="from" value="{{ state.from }}"><input type="hidden" name="to" value="{{ state.to }}">
   <input type="hidden" name="split_a" value="{{ state.split_a }}"><input type="hidden" name="split_b" value="{{ state.split_b }}">
   {% if workspace_requested_legacy %}<input type="hidden" name="legacy" value="1">{% endif %}
@@ -35,8 +35,8 @@
   </label>
   {% endfor %}
 </form>
-{% if not metrics_report_built %}<p class="ui-flash warning">{% if workspace_legacy %}This is a legacy artifact. Rebuild for bounded metric pages, or <a href="?a={{ state.a|urlencode }}&amp;b={{ state.b|urlencode }}&amp;legacy=1">view the legacy comparison explicitly</a>.{% else %}Workspace format unknown, stale or unavailable. Refresh after source reconciliation.{% endif %}</p>{% endif %}
-<form class="mc-dates" id="mcDates" action="{{ comparison_url }}" method="get">
+{% if not metrics_report_built %}<p class="ui-flash warning">{% if workspace_legacy %}This is a legacy artifact. Rebuild for bounded metric pages, or <a data-console-nav href="?a={{ state.a|urlencode }}&amp;b={{ state.b|urlencode }}&amp;legacy=1">view the legacy comparison explicitly</a>.{% else %}Workspace format unknown, stale or unavailable. Refresh after source reconciliation.{% endif %}</p>{% endif %}
+<form class="mc-dates" id="mcDates" action="{{ comparison_url }}" method="get" data-console-nav>
   {% if workspace_requested_legacy %}<input type="hidden" name="legacy" value="1">{% endif %}
   <input type="hidden" name="a" value="{{ state.a }}"><input type="hidden" name="b" value="{{ state.b }}">
   <input type="hidden" name="split_a" value="{{ state.split_a }}"><input type="hidden" name="split_b" value="{{ state.split_b }}">

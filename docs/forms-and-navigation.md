@@ -143,44 +143,52 @@ time values. Inline errors remain visible even if dropdown options are closed
 or filtered. Newly suggested browser timezones must not replace stored values
 on edits or submitted values on validation rerenders.
 
-## Console navigation adapters
+## Console navigation
 
-`apps.core.navigation.render_navigation(request, template, context,
-controller=..., title=...)` opts an authorized GET page into the fragment
-contract. Native entry renders its normal document. Requests carrying
-`X-Trellum-Navigation: 1` receive version 1 JSON with `controller`, `title`,
-`url` and `html`; the HTML comes from the same template's content block.
-Responses vary on that header and fragments use private, no-store caching.
-The helper does not authorize a request or bypass middleware.
+Console pages are ordinary documents. The shell gives them loading feedback,
+and one route pair, Metrics Overview and Comparison, also swaps in place.
 
-`TrellumNavigation.register(name, {mount(context)})` registers a known static
-controller. `context` contains the page `root`, an abort `signal` and its `url`.
-`mount` returns a cleanup function or `{unmount, ready}`. Register event
-listeners with the signal; cleanup must disconnect observers, cancel timers,
-stop frames and remove overlays. `ready` resolves when primary layout supports
-history scroll restoration. Do not wait for optional secondary requests.
-Fetched script elements, inline event handlers and JavaScript URLs are removed;
-their code is never evaluated. Load
-controller assets through explicit static template includes or an allowlist.
+**Loading feedback is opt-in.** Mark a link or a GET form that opens another
+console page with `data-console-nav`, or put the attribute on a container that
+holds only such links, like the sidebar, the account menu, a pager or a list
+toolbar. `data-console-no-feedback` opts one element out of a marked container.
+The shell, `_pagination.html`, `_list_toolbar.html` and the operator tabs
+are already marked. Never mark a download, an export, an API call, a report
+page or an external link: their response does not replace the page, so the
+loading state would never end. Unmarked links keep the browser's own navigation,
+and a new route needs no change in `static/console-shell.js`. Modifier clicks,
+new tabs, `download`, same-page hashes and other origins are skipped even when
+marked.
 
-The initial enhanced cohort is Metrics Overview and Comparison within the
-same studio, departing from an adapted Metrics page. It updates the URL,
-heading, sidebar selection and loading state after the shared leave guard,
-then rejects aborted or superseded replies. New destinations focus their
-heading; Back and Forward restore position after the controller is ready.
+A marked link shows the destination heading and a "Loading <page>…" state, with
+**Cancel loading**; the document URL commits with the browser's response.
+Cancel loading or Escape stops the request and restores the old page, focus and
+scroll. A slow page is not a failed page: after 15 seconds the text becomes
+"Still loading <page>…" and the request keeps going. Nothing stops it except
+that explicit cancel, so users never have to retry a page that was about to open.
+
+**Metrics Overview and Comparison** of one studio update the URL, heading,
+sidebar selection and loading state in place, after the shared leave guard, and
+reject aborted or superseded replies. The view in
+`apps/reports/metrics_catalog.py` answers a request that carries
+`X-Trellum-Navigation: 1` with JSON `{title, url, html}`, where `html` is the
+same template's content block. Responses vary on that header and fragments use
+private, no-store caching. The view's own authorization applies; the header
+grants nothing. `static/console-metrics-controller.js` mounts the page's
+scripts, and its lifecycle is the contract for any future page that does the
+same: register listeners with the abort signal and, on departure, disconnect
+observers, cancel timers, stop frames and remove overlays. Primary layout
+decides when history scroll restoration may run; optional secondary requests
+never block it. Fetched script elements, inline event handlers and JavaScript
+URLs are removed, so their code is never evaluated. New destinations focus
+their heading; Back and Forward restore position after the page is ready.
 Canceling a dirty Back traversal reverses that traversal without discarding
-Forward history. Report hosts keep their existing history owner.
+Forward history. Report hosts keep their existing history owner. A failed
+in-place request offers direct entry and does not silently execute a login
+document or claim content is empty.
 
-Other pages remain native until they have explicit lifecycle adapters.
-Sidebar native navigation displays its destination heading and pending state;
-the document URL commits with the browser's response. Cancel loading or Escape
-stops the native request and restores the old page, focus and scroll. After
-15 seconds, an unfinished native request restores the page with retry feedback;
-it does not replay the request. This is a foundation,
-not complete enhancement of the catalog, settings or report hosts. Modifier
-clicks, new tabs, same-page hashes, downloads and authentication retain native
-semantics. A failed enhanced request offers direct entry and does not silently
-execute a login document or claim content is empty.
+Other pages stay native. This is not an enhancement of the catalog, settings or
+report hosts. Authentication retains native semantics.
 
 The shared leave guard inspects every tracked dirty or saving form, including
 sidebar departures. Cancel retains drafts. Accepted departure invalidates

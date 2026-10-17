@@ -6,10 +6,10 @@
 <div class="ui-label page-kicker">Studio</div>
 <h1>Deliveries</h1>
 <p class="muted">{% if legacy_deliveries %}Shared schedules for the reports you can access, with links to each Studio’s Deliveries page.{% else %}Shared scheduled emails for reports and analyses in this studio. Developers and admins can manage schedules; viewers have read-only access.{% endif %}</p>
-{% if studio_deliveries and can_add_delivery %}<a class="ui-btn primary" href="{{ delivery_return_to }}/new">Add delivery</a>{% endif %}
+{% if studio_deliveries and can_add_delivery %}<a class="ui-btn primary" data-console-nav href="{{ delivery_return_to }}/new">Add delivery</a>{% endif %}
 </header>
-{% if legacy_deliveries %}<p>Open <strong>Deliveries</strong> in your Studio navigation to add or manage schedules for that studio.</p>{% for studio in shell_studios %}<a class="ui-btn ghost" href="/s/{{ studio.org.slug }}/{{ studio.slug }}/deliveries">{{ studio.name }} · Deliveries</a>{% endfor %}{% endif %}
-<form method="get" class="panel delivery-filters {% if legacy_deliveries %}global-filters{% else %}studio-filters{% endif %}" aria-label="Filter deliveries" data-auto-filter>
+{% if legacy_deliveries %}<p>Open <strong>Deliveries</strong> in your Studio navigation to add or manage schedules for that studio.</p>{% for studio in shell_studios %}<a class="ui-btn ghost" data-console-nav href="/s/{{ studio.org.slug }}/{{ studio.slug }}/deliveries">{{ studio.name }} · Deliveries</a>{% endfor %}{% endif %}
+<form method="get" class="panel delivery-filters {% if legacy_deliveries %}global-filters{% else %}studio-filters{% endif %}" aria-label="Filter deliveries" data-auto-filter data-console-nav>
 <label>Search <input type="search" name="q" data-page-search value="{{ request.GET.q }}"></label>
 {% if legacy_deliveries %}<label>Organization <input name="org" value="{{ request.GET.org }}"></label>
 <label>Studio <input name="studio" value="{{ request.GET.studio }}"></label>{% endif %}
@@ -28,7 +28,7 @@
 {% if row.paused %}<span class="delivery-pause">{{ row.paused }}</span>{% endif %}<div class="delivery-history"><div>Next <span data-field="next">{{ row.next_at|default:'—' }}</span></div>
 <div>Outcome <span data-field="outcome">{{ row.outcome }}</span></div>{% if row.last_attempt_at %}<div>Last attempt {{ row.last_attempt_at }}</div>{% endif %}{% if row.last_accepted_at %}<div>Last accepted {{ row.last_accepted_at }}</div>{% endif %}
 {% if row.accepted_to %}<div>Accepted for delivery to {{ row.accepted_to|join:', ' }}</div>{% endif %}{% if row.failed_to %}<div>Failed for {{ row.failed_to|join:', ' }}</div>{% endif %}</div></td>
-<td class="ui-row-actions" data-label="Actions">{% if row.editable %}<a class="ui-btn ghost" href="{{ row.edit_url }}">Edit</a>
+<td class="ui-row-actions" data-label="Actions">{% if row.editable %}<a class="ui-btn ghost" data-console-nav href="{{ row.edit_url }}">Edit</a>
 <form method="post" action="/s/{{ row.org.slug }}/{{ row.studio.slug }}/api/reports/{{ row.report.slug }}/schedules/{{ row.schedule.pk }}" data-settings-form data-settings-save>
 {% csrf_token %}<input type="hidden" name="return_to" value="{{ delivery_return_to }}"><input type="hidden" name="action" value="toggle"><input type="hidden" name="enabled" value="{% if row.schedule.enabled %}false{% else %}true{% endif %}"><button type="submit" class="ui-btn ghost" data-toggle-enable>{% if row.schedule.enabled %}Disable{% else %}Enable{% endif %}</button></form>
 <button type="button" class="ui-btn ghost" data-send-sample>Sample</button>

@@ -7,7 +7,7 @@
   <p class="muted page-sub">Personal bearer tokens for the studio JSON endpoints. A script, a CI job or your
     own coding agent acts as you, under your own roles, inside one organization.</p>
   {% if can_create %}
-  <a class="ui-btn primary" href="{% url 'my-api-keys-create' %}">Add API key</a>
+  <a class="ui-btn primary" data-console-nav href="{% url 'my-api-keys-create' %}">Add API key</a>
   {% endif %}
 </header>
 

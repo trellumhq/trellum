@@ -7,7 +7,7 @@
   <p class="muted page-sub">Indexed claims as of each source observation. Pending or uncertain sources may omit claims.</p>
 </div></header>
 <p role="status">{% if coverage_complete %}Source coverage is complete as of recent observations.{% else %}Source coverage is partial or stale. Counts describe the indexed snapshot; current usage is unknown.{% endif %}</p>
-<a class="ui-btn ghost" href="{% url 'studio-metrics' org.slug studio.slug %}">Back to Metrics</a>
+<a class="ui-btn ghost" href="{% url 'studio-metrics' org.slug studio.slug %}" data-console-nav>Back to Metrics</a>
 {% comment %}Search as you type on the server (static/auto-filter.js); never a pager.{% endcomment %}
 {% include "_list_toolbar.html" with q=q placeholder="Search reports…" total=matching_count %}
 {% if truncated %}<p class="muted" role="status">Showing the first {{ shown_count }} of {{ matching_count }} matching reports. Keep typing to narrow.</p>{% endif %}

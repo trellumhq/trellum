@@ -11,7 +11,7 @@
       <a href="{% docs_url 'portal/alerts/' %}">How alerts work →</a></p>
   </div>
   <span class="spacer"></span>
-  {% if can_edit %}<a class="ui-btn primary" href="{{ prefix }}/new">New alert</a>{% endif %}
+  {% if can_edit %}<a class="ui-btn primary" data-console-nav href="{{ prefix }}/new">New alert</a>{% endif %}
 </header>
 
 <div class="panel">
@@ -25,7 +25,7 @@
   <tbody>
   {% for row in rows %}{% with rule=row.rule %}
   <tr>
-    <td data-label="Name"><a href="{{ prefix }}/{{ rule.pk }}"><strong>{{ rule.name }}</strong></a></td>
+    <td data-label="Name"><a data-console-nav href="{{ prefix }}/{{ rule.pk }}"><strong>{{ rule.name }}</strong></a></td>
     <td data-label="Report">{{ rule.report.name|default:rule.report.slug }}</td>
     <td data-label="Trigger">{{ row.trigger }}</td>
     <td data-label="Recipients">{{ row.recipients }}</td>
@@ -37,9 +37,9 @@
       {% else %}<span class="muted">Never</span>{% endif %}</td>
     <td data-label="Last alerted">{% if rule.last_alerted_at %}{{ rule.last_alerted_at|date:"Y-m-d H:i" }}{% else %}<span class="muted">Never</span>{% endif %}</td>
     <td class="ui-row-actions" data-label="Actions">
-      <a class="ui-btn ghost" href="{{ prefix }}/{{ rule.pk }}">Run log</a>
+      <a class="ui-btn ghost" data-console-nav href="{{ prefix }}/{{ rule.pk }}">Run log</a>
       {% if can_edit %}
-      <a class="ui-btn ghost" href="{{ prefix }}/{{ rule.pk }}/edit">Edit</a>
+      <a class="ui-btn ghost" data-console-nav href="{{ prefix }}/{{ rule.pk }}/edit">Edit</a>
       <form class="inline" method="post" action="{{ prefix }}/{{ rule.pk }}/toggle">{% csrf_token %}
         <button class="ui-btn ghost" type="submit">{% if rule.enabled %}Disable{% else %}Enable{% endif %}</button></form>
       <form class="inline" method="post" action="{{ prefix }}/{{ rule.pk }}/delete"
@@ -54,7 +54,7 @@
 </div>
 {% else %}
 <div class="ui-empty">No alert rules yet.
-  {% if can_edit %}<div class="ui-empty-action"><a class="ui-btn primary" href="{{ prefix }}/new">Write the first one</a></div>{% endif %}
+  {% if can_edit %}<div class="ui-empty-action"><a class="ui-btn primary" data-console-nav href="{{ prefix }}/new">Write the first one</a></div>{% endif %}
 </div>
 {% endif %}
 </div>

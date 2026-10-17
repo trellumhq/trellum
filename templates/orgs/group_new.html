@@ -2,7 +2,7 @@
 {% block title %}New permission group — {{ org.name }}{% endblock %}
 {% block settings %}
 <div class="ui-form-rail">
-  <header class="page-head-row"><div><div class="ui-label page-kicker scope-org">Organization · {{ org.name }}</div><h1>New permission group</h1></div><span class="spacer"></span><a class="ui-btn ghost" data-settings-leave="group-create-form" href="/orgs/{{ org.slug }}/settings/groups">← All groups</a></header>
+  <header class="page-head-row"><div><div class="ui-label page-kicker scope-org">Organization · {{ org.name }}</div><h1>New permission group</h1></div><span class="spacer"></span><a class="ui-btn ghost" data-settings-leave="group-create-form" data-console-nav href="/orgs/{{ org.slug }}/settings/groups">← All groups</a></header>
   <form id="group-create-form" data-settings-form class="ui-form-section" method="post">{% csrf_token %}
     {{ form.non_field_errors }}
     <div class="ui-form-row">

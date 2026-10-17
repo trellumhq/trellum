@@ -194,7 +194,7 @@ def test_page_has_main_controls_and_no_search_apply_or_paging_rows(studio, exper
     grant_studio(member, studio, roles.VIEWER)
     page = login(member).get(f'/s/{studio.org.slug}/{studio.slug}/experiments').content.decode()
     body = page.split('<main', 1)[1].split('</main>', 1)[0]  # the shell has its own search box
-    pills = re.findall(r'<a class="ui-pill[^"]*" href="([^"]*)">([A-Za-z ]+) <span class="n">(\d+)</span>', body)
+    pills = re.findall(r'<a class="ui-pill[^"]*"(?: data-console-nav)? href="([^"]*)">([A-Za-z ]+) <span class="n">(\d+)</span>', body)
     assert pills == [('?', 'All', '3'), ('?status=running', 'Running', '1'), ('?status=concluded', 'Concluded', '1')]
     for absent in ('type="search"', '<button', 'Search all experiments', 'matching experiments', 'Page 1 of', 'indexed declarations', 'Declaration coverage', 'ui-pager', 'Observation unavailable'):
         assert absent not in body, absent

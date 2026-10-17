@@ -13,7 +13,7 @@
   <tbody>
   {% for org in orgs %}
   <tr>
-    <td><a href="{% url 'operator-org-detail' org.slug %}"><strong>{{ org.slug }}</strong></a></td>
+    <td><a data-console-nav href="{% url 'operator-org-detail' org.slug %}"><strong>{{ org.slug }}</strong></a></td>
     <td>{{ org.name }}</td>
     <td>{{ org.studio_count }}</td>
     <td>{{ org.member_count }}</td>

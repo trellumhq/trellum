@@ -10,7 +10,7 @@
     A studio-level source with the same name shadows the shared one. Upload a data
     file here and every studio's reports can read it by name — nothing has to be
     committed to a repository.</p>
-  <a class="ui-btn primary" href="/orgs/{{ org.slug }}/settings/datasources/new">Add data source</a>
+  <a class="ui-btn primary" data-console-nav href="/orgs/{{ org.slug }}/settings/datasources/new">Add data source</a>
 </header>
 {% else %}
 <header class="page-head">
@@ -18,12 +18,12 @@
   <h1>Data sources</h1>
   <p class="muted page-sub">{% if has_repo %}Declared by your repository at
     <code>data-sources/config.yaml</code>. Add the credentials here.{% else %}Connect a
-    <a href="/s/{{ org.slug }}/{{ studio.slug }}/settings/repo">repository</a> to declare
+    <a data-console-nav href="/s/{{ org.slug }}/{{ studio.slug }}/settings/repo">repository</a> to declare
     sources from git, or add a portal-only source.{% endif %}
     Sources marked <span class="scope-chip org mini">organization</span> are managed in
-    <a href="/orgs/{{ org.slug }}/settings/datasources">Organization settings</a>.
+    <a data-console-nav href="/orgs/{{ org.slug }}/settings/datasources">Organization settings</a>.
     Credentials are stored encrypted and injected only into report builds.</p>
-  <a class="ui-btn primary" href="/s/{{ org.slug }}/{{ studio.slug }}/settings/datasources/new">Add data source</a>
+  <a class="ui-btn primary" data-console-nav href="/s/{{ org.slug }}/{{ studio.slug }}/settings/datasources/new">Add data source</a>
 </header>
 {% endif %}
 
@@ -39,7 +39,7 @@
         {% if s.state == "needs_upload" %}
         <a class="ui-btn ghost" href="#ds-row-{{ s.name }}">Upload {{ s.name }}</a>
         {% else %}
-        <a class="ui-btn ghost" href="?configure={{ s.name|urlencode }}#configure">Configure {{ s.name }}</a>
+        <a class="ui-btn ghost" data-console-nav href="?configure={{ s.name|urlencode }}#configure">Configure {{ s.name }}</a>
         {% endif %}
       {% endfor %}
     </span>
@@ -57,7 +57,7 @@
   <tbody>
   {% for row in rows %}
   <tr id="ds-row-{{ row.name }}" data-source-id="{{ row.ds.pk|default:'' }}" data-source-name="{{ row.name }}">
-    <td data-label="Source">{% if row.record_url %}<a data-ds-record href="{{ row.record_url }}">{{ row.name }}</a>{% else %}<strong data-ds-name>{{ row.name }}</strong>{% endif %}
+    <td data-label="Source">{% if row.record_url %}<a data-console-nav data-ds-record href="{{ row.record_url }}">{{ row.name }}</a>{% else %}<strong data-ds-name>{{ row.name }}</strong>{% endif %}
       {% if row.state.declared %}
         {% if row.declared_in %}<span class="ui-chip">declared in {{ row.declared_in }}</span>
         {% else %}<span class="ui-chip acc">from repository</span>{% endif %}
@@ -85,7 +85,7 @@
     <td class="ui-row-actions" data-label="Actions">
       {% if row.state.state == "needs_credentials" and row.configurable %}
         {# A link, so ghost: the page's primary action is the form it opens. #}
-        <a class="ui-btn ghost" data-ds-configure href="{{ row.edit_url }}">Configure</a>
+        <a class="ui-btn ghost" data-ds-configure data-console-nav href="{{ row.edit_url }}">Configure</a>
         <button class="ui-btn ghost" type="button" data-ds-test disabled title="Add the credentials first">Test</button>
       {% else %}
         {% if row.upload_url %}
@@ -106,15 +106,15 @@
         {% endif %}
         {% if row.state.declared and not org_page %}
           {% if row.configurable and row.can_manage %}
-          <a class="ui-btn ghost" data-ds-configure href="{{ row.edit_url }}">Edit credentials</a>
+          <a class="ui-btn ghost" data-ds-configure data-console-nav href="{{ row.edit_url }}">Edit credentials</a>
           {% elif row.configurable and not row.ds %}
-          <a class="ui-btn ghost" data-ds-configure href="{{ row.edit_url }}">Configure</a>
+          <a class="ui-btn ghost" data-ds-configure data-console-nav href="{{ row.edit_url }}">Configure</a>
           {% elif row.manage_url %}
           <a class="ui-btn ghost" href="{{ row.manage_url }}"
              title="Shared credentials are managed at organization level.">Manage in organization →</a>
           {% endif %}
         {% elif row.can_manage %}
-        <a class="ui-btn ghost" data-ds-edit href="{{ row.edit_url }}">Edit</a>
+        <a class="ui-btn ghost" data-ds-edit data-console-nav href="{{ row.edit_url }}">Edit</a>
         <form class="inline" method="post"
               onsubmit="return confirm('Delete data source “{{ row.name|escapejs }}”?{% if row.ds.scope == "org" %} It disappears from EVERY studio in the organization.{% endif %} Reports that reference it stop building.')">
           {% csrf_token %}

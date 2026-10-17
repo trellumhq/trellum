@@ -175,8 +175,8 @@ body.mgmt main .met-modal.met-compact .met-modal-head h2 { font-size:13px; }
   {% endif %}
 </header>
 <nav class="met-tabs" aria-label="Metrics sections">
-  <a href="{% url 'studio-metrics' org.slug studio.slug %}"{% if metrics_section != "comparison" %} aria-current="page"{% endif %}>Overview</a>
-  <a href="{% url 'studio-metrics-comparison' org.slug studio.slug %}"{% if metrics_section == "comparison" %} aria-current="page"{% endif %}>Comparison</a>
+  <a data-console-nav href="{% url 'studio-metrics' org.slug studio.slug %}"{% if metrics_section != "comparison" %} aria-current="page"{% endif %}>Overview</a>
+  <a data-console-nav href="{% url 'studio-metrics-comparison' org.slug studio.slug %}"{% if metrics_section == "comparison" %} aria-current="page"{% endif %}>Comparison</a>
 </nav>
 {% if storage_unavailable %}
 <div class="ui-flash warning" role="alert" style="margin:0 0 14px">
@@ -191,7 +191,7 @@ body.mgmt main .met-modal.met-compact .met-modal-head h2 { font-size:13px; }
   {% else %}
   <div class="panel"><div class="ui-empty">
     {% if workspace_legacy %}This artifact uses the legacy workspace. Rebuild the Metrics report to use bounded pages.
-    <a href="?legacy=1">View legacy workspace explicitly</a>
+    <a data-console-nav href="?legacy=1">View legacy workspace explicitly</a>
     {% elif workspace_unsupported %}This workspace format is unsupported. Rebuild with a compatible framework.
     {% else %}The comparison workspace appears once the generated Metrics report is built.{% endif %}
     {% if metrics_report_url %}<a href="{{ metrics_report_url }}">Open report explicitly</a>{% endif %}

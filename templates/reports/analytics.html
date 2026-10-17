@@ -42,7 +42,7 @@ buttons, tabular-nums numbers, mono last-viewed, .ui-empty.{% endcomment %}
   <div class="analytics-toolbar">
     <div class="analytics-range" role="group" aria-label="Time range">
       {% for range in ranges %}
-      <a class="ui-pill{% if range.days == days %} active{% endif %}" href="{{ range.url }}">{{ range.days }}d</a>
+      <a class="ui-pill{% if range.days == days %} active{% endif %}" data-console-nav href="{{ range.url }}">{{ range.days }}d</a>
       {% endfor %}
     </div>
     <input type="search" id="analyticsSearch" class="ui-input analytics-search" data-page-search
@@ -84,7 +84,7 @@ buttons, tabular-nums numbers, mono last-viewed, .ui-empty.{% endcomment %}
       {% empty %}
       <tr><td colspan="6">
         <div class="ui-empty">{% if q %}No reports match your search.{% else %}No views recorded yet.
-          <div class="ui-empty-action"><a class="ui-btn ghost" href="/s/{{ org.slug }}/{{ studio.slug }}/">Share or open a report →</a></div>{% endif %}
+          <div class="ui-empty-action"><a class="ui-btn ghost" data-console-nav href="/s/{{ org.slug }}/{{ studio.slug }}/">Share or open a report →</a></div>{% endif %}
         </div>
       </td></tr>
       {% endfor %}
