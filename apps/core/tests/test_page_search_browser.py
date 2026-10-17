@@ -142,6 +142,44 @@ def test_catalog_field_filters_instantly_and_ctrl_k_focuses_it(live_server, logi
         close()
 
 
+def test_jump_list_keeps_the_arrow_key_choice(live_server, login, org_admin, studio, reports):
+    client = login(org_admin)
+    base = _studio_base(studio)
+    client.get(base + "/")
+    page, errors, close = _browse(live_server, client)
+    try:
+        _open_catalog(page, live_server, base)
+        page.locator(JUMP + " > summary").click()
+        links = page.locator(MENU + " a:visible")
+        expect(links).to_have_count(5)
+        highlighted = re.compile(r"\bis-highlighted\b")
+        # Typing and pressing ArrowDown in the same task, before the pending
+        # re-highlight of the first match has run, must keep the arrow's choice.
+        page.evaluate("""filter => {
+            const field = document.querySelector(filter);
+            field.value = 'product';
+            field.dispatchEvent(new Event('input', {bubbles: true}));
+            field.dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowDown', bubbles: true}));
+        }""", FILTER)
+        expect(links).to_have_count(2)
+        page.evaluate("() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done)))")
+        expect(links.nth(1)).to_have_class(highlighted)
+        expect(links.nth(0)).not_to_have_class(highlighted)
+        # Browsers send a mousemove at the resting pointer after the list
+        # scrolls; only a pointer that actually moved takes the highlight.
+        box = links.nth(0).bounding_box()
+        page.mouse.move(box["x"] + 5, box["y"] + 5)
+        expect(links.nth(0)).to_have_class(highlighted)
+        page.keyboard.press("ArrowDown")
+        expect(links.nth(1)).to_have_class(highlighted)
+        links.nth(0).dispatch_event("mousemove", {"clientX": box["x"] + 5, "clientY": box["y"] + 5, "bubbles": True})
+        expect(links.nth(1)).to_have_class(highlighted)
+        expect(links.nth(0)).not_to_have_class(highlighted)
+        assert not errors
+    finally:
+        close()
+
+
 def test_jump_list_opens_a_report_in_the_console_host_and_back_returns(live_server, login, org_admin, studio, reports):
     client = login(org_admin)
     base = _studio_base(studio)
