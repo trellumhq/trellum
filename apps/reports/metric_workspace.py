@@ -14,7 +14,7 @@ from apps.core.choice_requests import choice_response
 from apps.core.permissions import require_studio_role
 from apps.core.report_access import require_full_studio_visibility
 from .models import MetricDefinition, Report, ReportMetricClaim, ReportSourceSummary
-from .metric_summaries import SOURCE_FRESH_SECONDS, claimed_count
+from .metric_summaries import SOURCE_FRESH_SECONDS, claimed_count, usage_pending
 
 
 def definition_choices(studio, query='', page=1):
@@ -56,8 +56,10 @@ def workspace_projection(studio, *, legacy=False):
     report_url = f'/s/{studio.org.slug}/{studio.slug}/r/metrics/' if report else ''
     statistics = MetricDefinition.objects.filter(studio=studio, present_in_scan=True).aggregate(
         defined_count=Count('pk'), synced_at=Max('last_scanned_at'))
-    count = claimed_count(studio)
-    return {**statistics, 'claimed_count': count, 'metrics_report_url': report_url,
+    # Unknown, not zero, while reports are still being indexed (see the Overview).
+    pending = usage_pending(studio)
+    count = None if pending else claimed_count(studio)
+    return {**statistics, 'claimed_count': count, 'usage_pending': pending, 'metrics_report_url': report_url,
         'metrics_report_built': usable, 'workspace_version': version,
         'workspace_quality': summary.quality if summary else 'unknown',
         'workspace_state': summary.state if summary else 'unknown',

@@ -409,7 +409,7 @@ def metric_definition_page(studio, query=""):
     from django.db.models import Q, TextField, Count
     from django.db.models.functions import Cast
     from apps.reports.models import MetricCatalogState
-    from .metric_summaries import claimed_count
+    from .metric_summaries import claimed_count, usage_pending
 
     revision = MetricCatalogState.objects.filter(studio=studio).values_list(
         "definition_revision", flat=True).first() or 0
@@ -436,9 +436,14 @@ def metric_definition_page(studio, query=""):
                 f"?definition_revision={revision}"} for row in selected]
     current_revision = MetricCatalogState.objects.filter(studio=studio).values_list(
         "definition_revision", flat=True).first() or 0
+    # While reports are still being indexed (right after an upgrade) how many
+    # metrics are claimed is unknown, not zero: the header says it is measuring
+    # and the page fills the number in itself (console-metrics-controller.js).
+    pending = usage_pending(studio)
     return {"metrics": metrics, "defined_count": defined_count,
             "matching_count": statistics["matching_count"], "truncated": statistics["matching_count"] > len(selected),
-            "shown_count": len(selected), "claimed_count": claimed_count(studio),
+            "shown_count": len(selected), "claimed_count": None if pending else claimed_count(studio),
+            "usage_pending": pending,
             "synced_at": statistics["synced_at"], "repo_url": statistics["repo_url"] or "",
             "definition_revision": revision, "definition_changed": revision != current_revision,
             "metric_query": query}

@@ -21889,13 +21889,13 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "732319625461a2491d81102268f9aaafeb581fb961d635a25fc36840aad24da2",
+      "source_sha256": "4420a26c86ac49ed0adbe79605474a8b0efffbe954cb56046fc58da371e695cb",
       "request_conditions": [
         "require_full_studio_visibility: plain alpha viewer/group-member/selected denied by seeded private audience; viewer-full samples explicitly granted public-only beta studio0",
         "alpha private-viewer explicitly granted private report remains finite-scope and is denied full-studio overviews under current semantics",
         "GET only,1\u201350 distinct authorized definition IDs with current revision; required query fixtures follow actor-specific studio parameters. No storage reads; changed revision409 and malformed400."
       ],
-      "adapter_sha256": "5a7c2f75cc4bd70e51fd9fc97d66715e5f921ce3ff33c30feaf26b7fba6c6a13",
+      "adapter_sha256": "ed282d242016bc9dbf1425ac46a0ebb698830d19515ab4821d3bb977084d5af8",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -21976,7 +21976,7 @@
         "alpha private-viewer explicitly granted private report remains finite-scope and is denied full-studio overviews under current semantics",
         "GET only; first 500 matching claims with server search by q, no pager; require definition revision, a changed snapshot redirects to the current revision (or Metrics) without a button; disclose incomplete/stale source coverage."
       ],
-      "adapter_sha256": "585dbb25d7c3a494967264e6f4481fee546836d8387e1b4fe163a6ec14dbd2a8",
+      "adapter_sha256": "832d8d5b94a0697d39d47fccb37bdf8a1a3446b619b10ac2ca2c924b69a1c317",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"

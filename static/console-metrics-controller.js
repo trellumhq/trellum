@@ -12,6 +12,8 @@
         if (!cards.length) return function () {};
         var revision = Number(region.dataset.revision);
         var disposed = false, request = null, timer = null, attempt = 0, waiting = null;
+        // "N defined, M claimed": unknown (not zero) while reports are still being indexed.
+        var claimedLabel = root.querySelector('[data-metric-claimed]');
 
         function el(parent, tag, value, className) {
             var node = document.createElement(tag);
@@ -30,6 +32,13 @@
             usage.title = item.count_complete ? '' : 'Some report sources have not been re-checked yet, so this count can lag.';
             var tags = card.querySelector('[data-metric-tags]');
             var unused = tags && tags.querySelector('[data-unused]');
+            if (!item.claim_count && item.usage_state === 'measuring') {
+                // Nothing indexed claims it yet, but reports are still being indexed: not "unused".
+                usage.title = 'Report usage is still being measured. This fills in by itself.';
+                el(usage, 'span', 'measuring usage…', 'ui-chip mute');
+                if (unused) unused.remove();
+                return;
+            }
             if (!item.claim_count) {
                 el(usage, 'span', 'no reports claim this', 'ui-chip mute');
                 if (!unused) {
@@ -119,6 +128,14 @@
             return true;
         }
 
+        function renderClaimed(data) {
+            if (!claimedLabel || data.usage_pending || typeof data.claimed_count !== 'number') return;
+            var count = data.claimed_count, text = document.createElement('b');
+            text.textContent = claimedLabel.dataset.defined + ' defined, ' + count + ' claimed by report' + (count === 1 ? '' : 's');
+            claimedLabel.replaceChildren(text);
+            delete claimedLabel.dataset.pending;
+        }
+
         async function readChunk(batch, signal) {
             var timedOut = false, flight = new AbortController();
             var stop = function () { flight.abort(); };
@@ -128,6 +145,7 @@
                 var url = new URL(region.dataset.url, location.origin);
                 url.searchParams.set('ids', batch.map(function (card) { return card.dataset.definitionId; }).join(','));
                 url.searchParams.set('definition_revision', revision);
+                if (claimedLabel && claimedLabel.dataset.pending !== undefined) url.searchParams.set('claimed', '1');
                 var response = await fetch(url, { signal: flight.signal, credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } });
                 var data = await response.json();
                 if (signal.aborted || !region.isConnected) return null;
@@ -137,7 +155,10 @@
                 var byId = new Map(data.metrics.map(function (item) { return [String(item.id), item]; }));
                 if (batch.some(function (card) { return !byId.has(card.dataset.definitionId); })) throw new Error('Missing summary');
                 batch.forEach(function (card) { render(byId.get(card.dataset.definitionId), card); });
-                return { again: data.state === 'partial' || data.metrics.some(function (item) { return item.chart_state === 'unknown'; }) };
+                renderClaimed(data);
+                return { again: data.state === 'partial' || data.usage_pending === true ||
+                    data.metrics.some(function (item) { return item.chart_state === 'unknown'; }),
+                    measuring: data.usage_pending === true };
             } catch (error) {
                 if (signal.aborted && !timedOut) return null;
                 return { again: true };
@@ -151,20 +172,23 @@
             if (disposed) return;
             if (request) request.abort();
             request = new AbortController();
-            var signal = request.signal, again = [];
+            var signal = request.signal, again = [], measuring = false;
             for (var i = 0; i < list.length; i += CHUNK) {
                 var batch = list.slice(i, i + CHUNK);
                 var result = await readChunk(batch, signal);
                 if (signal.aborted || disposed) return;
                 if (result && result.changed) { if (reloadOnce()) return; again = []; list.forEach(function (card) { card.dataset.chartState = 'error'; }); return; }
                 if (result && result.again) again = again.concat(batch);
+                if (result && result.measuring) measuring = true;
             }
-            schedule(again);
+            schedule(again, measuring);
         }
 
-        function schedule(pending) {
+        // Usage that is still being measured keeps being asked for, quietly and at the slowest pace,
+        // for as long as the page is open and visible: nobody should have to reload to see it.
+        function schedule(pending, measuring) {
             if (!pending.length) return;
-            if (attempt >= RETRY_DELAYS.length) {
+            if (attempt >= RETRY_DELAYS.length && !measuring) {
                 pending.forEach(function (card) {
                     if (['loading', 'unknown'].includes(card.dataset.chartState)) {
                         card.dataset.chartState = 'error';
@@ -184,7 +208,7 @@
                     run(pending);
                 };
                 document.addEventListener('visibilitychange', waiting);
-            }, RETRY_DELAYS[attempt++]);
+            }, RETRY_DELAYS[Math.min(attempt++, RETRY_DELAYS.length - 1)]);
         }
 
         function dispose() {

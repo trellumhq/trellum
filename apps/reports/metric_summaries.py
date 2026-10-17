@@ -26,11 +26,20 @@ SOURCE_FRESH_SECONDS = 300
 MAX_DATABASE_ID = 2**63 - 1
 
 
+# A report the worker has not reached yet (no summary row, or one still waiting
+# for its first look) says nothing about the metrics it claims. Right after an
+# upgrade that is every report, for a few seconds to minutes. A failed or
+# uncertain first look is a different, settled state and is not "not yet".
+NOT_YET_INDEXED = Q(source_summary__isnull=True) | Q(
+    source_summary__state="pending", source_summary__observed_at__isnull=True)
+
+
 def _coverage(studio):
     cutoff = timezone.now() - timedelta(seconds=SOURCE_FRESH_SECONDS)
     return _reports(studio).aggregate(total=Count("pk"), covered=Count("pk", filter=
         Q(source_summary__state__in=["ready", "missing"], source_summary__quality="verified",
           source_summary__observed_at__gte=cutoff)),
+        unindexed=Count("pk", filter=NOT_YET_INDEXED),
         stale_sources=Count("pk", filter=Q(source_summary__observed_at__lt=cutoff)),
         earliest_observed_at=Min("source_summary__observed_at"),
         latest_observed_at=Max("source_summary__observed_at"))
@@ -49,6 +58,11 @@ def _reports(studio):
 def _claims(studio):
     return ReportMetricClaim.objects.filter(summary__report__in=_reports(studio)).exclude(
         summary__state__in=["expired", "removed", "expiring"])
+
+
+def usage_pending(studio):
+    """Is any live report still waiting to be indexed, so that usage is unknown?"""
+    return _reports(studio).filter(NOT_YET_INDEXED).exists()
 
 
 def claimed_count(studio):
@@ -98,6 +112,10 @@ def metrics_summary(request, org_slug, studio_slug):
         names = {row.name: row for row in definitions}
         coverage = _coverage(studio)
         complete = coverage["total"] == coverage["covered"]
+        # Usage is unknown, not zero, for a metric nothing indexed claims while
+        # some reports are not indexed yet: the card says it is measuring and
+        # the page polls until the worker has been through every report.
+        measuring = coverage["unindexed"] > 0
         generated = _reports(studio).filter(slug="metrics", tags__contains=["metrics"]).annotate(
             spark_rows=ArraySubquery(ReportMetricPreview.objects.filter(
                 summary__report_id=OuterRef("pk"), metric_name__in=names).order_by("metric_name").values(
@@ -140,6 +158,7 @@ def metrics_summary(request, org_slug, studio_slug):
             monitored = generated_ready and definition.name in generated_claims
             base = f"/s/{org_slug}/{studio_slug}/r/metrics/"
             result.append({"id": definition.pk, "claim_count": counts.get(definition.name, 0),
+                "usage_state": "measuring" if measuring and not counts.get(definition.name) else "known",
                 "count_complete": complete, "claims": grouped.get(definition.name, []),
                 "details_url": reverse("studio-metric-claims", args=[org_slug, studio_slug, definition.pk]) +
                                f"?definition_revision={revision}",
@@ -153,10 +172,14 @@ def metrics_summary(request, org_slug, studio_slug):
                 "embed_url": f"{base}?only=metric-{definition.name}" if monitored else "",
                 "chart_url": f"{base}?only=metric-{definition.name}" if monitored else "",
                 "overview_url": f"{base}#metric-{definition.name}" if monitored else ""})
+        # The page header reports how many metrics are claimed. It asks for that
+        # number only while it is still waiting on the worker.
+        claimed = claimed_count(studio) if request.GET.get("claimed") == "1" else None
         if _revisions(studio) != before:
             return _changed()
     response = JsonResponse({"state": "ready" if complete else "partial", "definition_revision": revision,
-        "summary_revision": before[1], "coverage": coverage, "metrics": result})
+        "summary_revision": before[1], "coverage": coverage, "usage_pending": measuring,
+        **({"claimed_count": claimed} if claimed is not None else {}), "metrics": result})
     response["Cache-Control"] = "private, no-store"
     return response
 
