@@ -428,9 +428,17 @@
                 /* The generic scope-menu handler filters; this keeps the highlight on the first match and quietly
                    retries a failed load. */
                 if (jumpMenu._jumpFailed) loadJump(true);
-                window.requestAnimationFrame(settleJump);
+                if (jumpMenu._jumpSettle) window.cancelAnimationFrame(jumpMenu._jumpSettle);
+                jumpMenu._jumpSettle = window.requestAnimationFrame(function () { jumpMenu._jumpSettle = 0; settleJump(); });
             });
             jumpInput.addEventListener('keydown', function (event) {
+                /* A key pressed before the pending re-highlight ran acts on the filtered list, and the late
+                   re-highlight must not move the selection back afterwards. */
+                if (jumpMenu._jumpSettle) {
+                    window.cancelAnimationFrame(jumpMenu._jumpSettle);
+                    jumpMenu._jumpSettle = 0;
+                    settleJump();
+                }
                 var links = jumpLinks();
                 if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
                     event.preventDefault();
@@ -449,6 +457,10 @@
                 }
             });
             jumpMenu.addEventListener('mousemove', function (event) {
+                /* Browsers send a mousemove at the resting pointer after the list scrolls; only a pointer that
+                   actually moved takes the highlight from the arrow keys. */
+                if (event.clientX === jumpMenu._jumpPointerX && event.clientY === jumpMenu._jumpPointerY) return;
+                jumpMenu._jumpPointerX = event.clientX; jumpMenu._jumpPointerY = event.clientY;
                 var link = event.target.closest && event.target.closest('a');
                 if (link && !link.classList.contains('is-highlighted')) highlightJump(link);
             });
