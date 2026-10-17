@@ -13,8 +13,7 @@ urlpatterns = [
     path("orgs/<slug:org_slug>/", views.org_detail, name="operator-org-detail"),
     path("orgs/<slug:org_slug>/active", views.org_set_active, name="operator-org-active"),
     path("orgs/<slug:org_slug>/quota", views.org_set_quota, name="operator-org-quota"),
-    path("orgs/<slug:org_slug>/usage/refresh", views.org_usage_refresh, name="operator-org-usage-refresh"),
-    path("orgs/<slug:org_slug>/usage/<uuid:operation_id>", views.org_usage_status, name="operator-org-usage-status"),
+    path("orgs/<slug:org_slug>/usage", views.org_usage, name="operator-org-usage"),
     path(
         "orgs/<slug:org_slug>/studios/<slug:studio_slug>/pool",
         views.studio_set_pool,

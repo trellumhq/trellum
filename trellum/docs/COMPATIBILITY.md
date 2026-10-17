@@ -128,8 +128,11 @@ Its `build` is a 32-character lowercase hexadecimal identity. The reserved sibli
 files `_metrics-workspace-<build>-page-<positive integer>.html` and `.json`, plus
 `_metrics-workspace-<build>-catalog.json`, are pages of the same report, not authored
 views. Hosts can use `trellum.metrics_workspace.owned_name` to identify them.
-Each page displays at most 25 monitored blocks and 25 unmonitored definitions;
-catalog search and native page links retain access to the complete definition set.
+Each page displays at most 25 monitored blocks, and only monitored blocks add
+pages: with 25 or fewer monitored metrics there is one page, however many
+unmonitored definitions exist. The "defined but not monitored" table appears once,
+on the last page, where the catalog routes every definition; its rows come from
+the catalog and a build writes no definition rows into any page payload.
 Root `data.json`, `_meta.json.metrics_used` and build details remain complete for
 source indexes and exports. Initial chart loading uses the immutable page payload
 and rejects an HTML/catalog/metadata build mismatch with a refreshable failure.
@@ -161,8 +164,7 @@ portal's storage upgrade notes. The host still reads older build manifests.
 
 The workspace-only DataTable `workspacePageSize: 25` opt-in uses the complete
 light catalog metadata for all-column search, sort and CSV, while rendering at
-most 25 matching rows. `workspacePage` chooses the initial native page; ordinary
-tables retain their existing behavior. Chart page payloads project needed series
+most 25 matching rows; ordinary tables retain their existing behavior. Chart page payloads project needed series
 columns without changing the complete root payload. Selection preferences belong
 to the artifact root and survive page navigation. A host unable to inspect a
 legitimate cross-origin served iframe retains a bounded visible viewport and

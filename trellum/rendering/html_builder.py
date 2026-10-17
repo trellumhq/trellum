@@ -554,7 +554,7 @@ setTimeout(function(){
     # from prior runs should still be GC'd against the empty canonical
     # set.
     if gc_stale_chunks and (all_chunk_manifests or all_pending_chunks):
-        _gc_stale_chunks(out, set(all_pending_chunks.keys()))
+        _gc_stale_chunks(out, set(all_pending_chunks.keys()), ctx)
 
     if production:
         import gzip as _gzip
@@ -581,8 +581,7 @@ setTimeout(function(){
         if not hasattr(workspace_ctx, '_metric_workspace_blocks'):
             workspace_ctx._metric_workspace_blocks = []
         write_pages(out, html, report_data, workspace_ctx,
-                    ctx._metric_workspace_catalog, uuid4().hex,
-                    ctx._metric_workspace_definitions)
+                    ctx._metric_workspace_catalog, uuid4().hex)
     return html_path, json_path
 
 

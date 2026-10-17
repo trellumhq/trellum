@@ -1,7 +1,7 @@
 """The system page measures and shows health by itself.
 
-Real login, real HTTP and a real supervised coordinator child; nothing is
-mocked. Only the coordinator's own tick is driven by the test, because no worker
+Real login, real HTTP and a real measurement child process; nothing is mocked.
+Only the coordinator's own tick is driven by the test, because no worker
 process runs beside the live server.
 """
 from concurrent.futures import ThreadPoolExecutor
@@ -18,11 +18,10 @@ from django.utils import timezone
 from playwright.sync_api import expect, sync_playwright
 
 from apps.core import operator_observations as observations
-from apps.core.models import OpsState
-from apps.core.operator_probe_worker import ProbeSupervisor
+from apps.core.models import AuditLog, OpsState
+from apps.runner.models import WorkerHeartbeat
 
 from .browser_login import sign_in
-from .test_operator_probe_process import probe_process_env
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -38,33 +37,20 @@ def in_thread(function):
         return pool.submit(run).result(timeout=30)
 
 
-def test_system_page_measures_and_updates_without_a_click(probe_process_env, live_server, settings, tmp_path):
+def test_system_page_measures_and_updates_without_a_click(operator_child, live_server, settings, tmp_path):
     actor = get_user_model().objects.create_user(
         email="system-browser@portal.local", password="Operator-browser-42", is_operator_flag=True)
+    WorkerHeartbeat.objects.create(worker_id="system-browser-coordinator", role="coordinator")
 
     def measure():
-        ProbeSupervisor(probe_process_env).tick()
-
-    def waiting_for_the_coordinator():
-        row = OpsState.objects.filter(key=observations.SLOT).first()
-        active = row and row.payload.get("active")
-        return bool(active and active["kind"] == "full-health" and active["state"] == "accepted")
+        return observations.tick()
 
     def let_the_last_check_age():
-        """A minute-old check, admitted 28 s ago: the next admission must wait about 3 s."""
-        health = OpsState.objects.get(key="operator.health")
-        health.payload["completed_at"] = (timezone.now() - timedelta(seconds=70)).isoformat()
+        """A check from a minute ago, which the page's own requests keep wanted."""
+        health = OpsState.objects.get(key=observations.HEALTH)
+        old = (timezone.now() - timedelta(seconds=70)).isoformat()
+        health.payload.update(completed_at=old, attempted_at=old)
         health.save(update_fields=["payload"])
-        slot = OpsState.objects.get(key=observations.SLOT)
-        slot.payload["admitted"] = {"full-health": (timezone.now() - timedelta(seconds=28)).isoformat()}
-        slot.save(update_fields=["payload"])
-
-    def admitted(page):
-        for _ in range(150):
-            if in_thread(waiting_for_the_coordinator):
-                return
-            page.wait_for_timeout(100)
-        raise AssertionError("the page did not ask for a measurement by itself")
 
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
@@ -72,8 +58,9 @@ def test_system_page_measures_and_updates_without_a_click(probe_process_env, liv
         page = context.new_page()
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
-        # Waiting for a running measurement or the 30 s gap is not an error: no
-        # refused request may reach the console.
+        requests = []
+        page.on("request", lambda request: requests.append((request.method, urlparse(request.url).path)))
+        # Nothing the page does by itself may be refused or fail.
         page.on("console", lambda message: errors.append(message.text) if message.type == "error" else None)
 
         def static(route):
@@ -87,35 +74,34 @@ def test_system_page_measures_and_updates_without_a_click(probe_process_env, liv
         sign_in(page, live_server.url, actor.email, "Operator-browser-42", next_path="/system")
         page.wait_for_url("**/system")
         expect(page.get_by_role("heading", name="System health", exact=True)).to_be_visible()
+        requests.clear()  # signing in posts; the page itself must not
 
         status = page.locator("[data-observation-status]")
         checks = page.locator("[data-observation-checks]")
-        # Nothing to press: the page measures on its own.
-        expect(page.get_by_role("button", name="Refresh coordinator diagnostics")).to_have_count(0)
-        expect(page.get_by_role("link", name="Read latest observation")).to_have_count(0)
+        # Nothing to press: the page waits for the coordinator and shows what it measured.
+        expect(page.locator("[data-operator-observation]").get_by_role("button")).to_have_count(0)
         expect(status).to_have_text("Checking…")
-        admitted(page)
-        in_thread(measure)
+        assert in_thread(measure) == observations.HEALTH
         expect(checks.locator("tr", has_text="database")).to_be_visible(timeout=15000)
         expect(status).to_have_text("Checked just now")
-        expect(status).to_have_attribute("title", re.compile(r"^Checked .+ on coordinator "))
+        expect(status).to_have_attribute("title", re.compile(r"^Checked "))
         # The checks carry their real detail, shown as the page always showed them.
         expect(checks.locator("tr", has_text="database")).to_contain_text("PostgreSQL")
         expect(checks.locator("tr", has_text="database").locator(".ui-badge.ok")).to_have_text("ok")
-        assert "Passed on coordinator" not in page.content()
         assert "Observed" not in page.inner_text("main")
         page.screenshot(path=str(Path(os.environ.get("OPERATOR_BROWSER_ARTIFACTS", tmp_path)) / "sys-system-1440.png"), full_page=True)
 
-        # A minute later the page asks again. The server's thirty seconds between
-        # measurements is a quiet wait, never an error to click away.
+        # A minute later the figure is stale; the page's own requests make the
+        # coordinator measure again, and the new figure replaces the old one.
         in_thread(let_the_last_check_age)
         page.reload()
         expect(status).to_have_text("Checked 1 minute ago")
-        assert "Wait thirty seconds" not in page.inner_text("main")
-        admitted(page)
-        in_thread(measure)
+        assert in_thread(measure) == observations.HEALTH
         expect(status).to_have_text("Checked just now", timeout=15000)
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        # Only reads: the page never posted anything, and nothing was audited.
+        assert not [method for method, path in requests if method != "GET"]
+        assert in_thread(lambda: AuditLog.objects.filter(action__startswith="operator.diagnostics").count()) == 0
         assert not errors
         context.close()
         browser.close()

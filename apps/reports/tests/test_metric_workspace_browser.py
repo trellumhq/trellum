@@ -197,6 +197,11 @@ def test_definition_search_sort_and_csv_include_offpage_metadata(metrics_browser
         page.get_by_text('Metrics ready.', exact=True).wait_for()
         frame = page.locator('#metWorkspace').element_handle().content_frame()
         table_id = frame.evaluate('window._fwMetricsWorkspace.definitionId')
+        # Only monitored metrics add pages; the definitions table sits on the last one.
+        assert frame.locator('#' + table_id).count() == 0
+        frame.get_by_role('link', name='Page 3', exact=True).click()
+        frame.wait_for_url('**-page-3.html*')
+        frame.wait_for_function('window._fwWorkspaceState === "ready"')
         table = frame.locator('#' + table_id)
         assert table.locator('tbody tr').count() == 25
         assert table.get_by_text('unbound_0029', exact=True).count() == 0
@@ -293,9 +298,8 @@ def test_second_origin_workspace_is_visible_unconfirmed_retry_and_cleanup(metric
 
 
 @pytest.mark.parametrize('failure', ['removed-selection', 'replaced-build'])
-def test_obsolete_workspace_recovers_to_root_without_loading_chart_payload(metrics_browser, workspace_http, failure):
+def test_obsolete_workspace_recovers_to_root_without_rendering_chart_payload(metrics_browser, workspace_http, failure):
     context, page = open_context(metrics_browser, workspace_http)
-    payloads = []
     try:
         if failure == 'replaced-build':
             def changed_meta(route):
@@ -303,7 +307,6 @@ def test_obsolete_workspace_recovers_to_root_without_loading_chart_payload(metri
                 meta = response.json(); meta['metrics_workspace']['build'] = 'f' * 32
                 route.fulfill(response=response, json=meta)
             context.route('**/_meta.json*', changed_meta)
-        page.on('request', lambda request: payloads.append(request.url) if '-page-' in request.url and '.json' in request.url else None)
         page.goto(workspace_http['base'] + workspace_http['prefix'] + '/metrics/comparison')
         frame = page.locator('#metWorkspace').element_handle().content_frame()
         if failure == 'removed-selection':
@@ -315,7 +318,9 @@ def test_obsolete_workspace_recovers_to_root_without_loading_chart_payload(metri
         assert 'only=' not in recovery.get_attribute('href')
         assert frame.evaluate('Object.keys(window._chartInstances || {}).length') == 0
         if failure == 'replaced-build':
-            assert payloads == []
+            # The payload is requested beside _meta.json, but a build mismatch
+            # must stop it before any component renders.
+            assert frame.evaluate('window._reportData === undefined')
             context.unroute('**/_meta.json*')
         assert page.get_by_role('button', name='Retry metrics').count() == 0
         page.get_by_text('Metrics ready.', exact=True).wait_for(timeout=15000)
@@ -389,7 +394,6 @@ def test_lazy_chart_uses_latest_rapid_filter_without_rendering_hidden_selection(
 
 
 def test_offpage_definition_hash_scroll_uses_catalog_anchor_and_preserves_user_position(metrics_browser, workspace_http):
-    import json
     context, page = open_context(metrics_browser, workspace_http)
     try:
         page.goto(workspace_http['base'] + workspace_http['prefix'] + '/metrics/comparison')
@@ -398,7 +402,7 @@ def test_offpage_definition_hash_scroll_uses_catalog_anchor_and_preserves_user_p
         frame.locator('#fwMetricsWorkspace summary').click()
         frame.locator('#fwMetricsSearch').fill('Unbound 0029')
         frame.locator('#fwMetricsSearchResults a').click()
-        frame.wait_for_url('**-page-2.html*#definition-unbound_0029')
+        frame.wait_for_url('**-page-3.html*#definition-unbound_0029')
         frame.wait_for_function('window._fwWorkspaceState === "ready"')
         target = frame.locator('#definition-unbound_0029')
         assert target.is_visible() and 'Unbound 0029' in target.inner_text()
@@ -412,19 +416,9 @@ def test_offpage_definition_hash_scroll_uses_catalog_anchor_and_preserves_user_p
         assert page.evaluate('scrollY') == 0
         page.evaluate('history.back()'); frame.wait_for_url('**/index.html*')
         frame.wait_for_function('window._fwWorkspaceState === "ready"')
-        page.evaluate('history.forward()'); frame.wait_for_url('**-page-2.html*#definition-unbound_0029')
+        page.evaluate('history.forward()'); frame.wait_for_url('**-page-3.html*#definition-unbound_0029')
         frame.wait_for_function('window._fwWorkspaceState === "ready"')
         page.wait_for_timeout(150)
         assert page.evaluate('scrollY') == 0
     finally:
         context.close()
-    native, page = open_context(metrics_browser, workspace_http, native=True)
-    try:
-        marker = json.loads((workspace_http['output'] / '_meta.json').read_text())['metrics_workspace']
-        name = f'_metrics-workspace-{marker["build"]}-page-2.html'
-        page.goto(workspace_http['base'] + workspace_http['prefix'] + '/r/metrics/' + name + '#definition-unbound_0029')
-        row = page.locator('#definition-unbound_0029')
-        assert row.is_visible() and 'Unbound 0029' in row.inner_text()
-        assert page.locator('noscript tbody tr').count() == 5
-    finally:
-        native.close()

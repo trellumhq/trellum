@@ -269,5 +269,9 @@ def build_cdn_tags(keys: set[str]) -> str:
             parts.append(f'    <script src="{url}"></script>')
 
     lazy = {key: f"{_vendor_url_base}{_LIBRARIES[key]}" for key in _LAZY_EXPORT}
-    parts.append(f"    <script>window._fwVendor={json.dumps(lazy)};</script>")
+    # The base is host-configured text going into a script element: keep it
+    # from closing the element or starting an HTML comment.
+    encoded = (json.dumps(lazy).replace("<", "\\u003c").replace(">", "\\u003e")
+               .replace("&", "\\u0026").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029"))
+    parts.append(f"    <script>window._fwVendor={encoded};</script>")
     return "\n".join(parts)

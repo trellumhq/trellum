@@ -61,7 +61,7 @@ def _write_manifest(out: str, slug: str, name: str) -> None:
     with open(manifest_path, "w", encoding="utf-8") as f:
         _json.dump(manifest, f, indent=2)
 
-def _gc_stale_chunks(output_dir: str, canonical_filenames: set[str]) -> None:
+def _gc_stale_chunks(output_dir: str, canonical_filenames: set[str], ctx=None) -> None:
     """Delete ``data_chunk_*.json`` files that the current run did not produce.
 
     The framework writes chunk files per-DataSource per-period at every
@@ -74,7 +74,14 @@ def _gc_stale_chunks(output_dir: str, canonical_filenames: set[str]) -> None:
     this run wrote. Anything else matching the pattern is stale and gets
     removed. Logs a single line summarising the cleanup when something
     was removed; silent at steady state.
+
+    A Metrics workspace renders into a staging directory, where there is
+    nothing stale to find. When ``ctx`` is staging, the canonical set is
+    recorded on it so the publisher can repeat this against the published
+    directory once the build has succeeded.
     """
+    if getattr(ctx, "_metric_workspace_staging", False):
+        ctx._metric_workspace_chunks = set(canonical_filenames)
     if not os.path.isdir(output_dir):
         return
     removed = 0
