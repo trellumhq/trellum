@@ -36,13 +36,20 @@ configuration described above.
   and the page lists the latest releases and marks the one this instance runs.
   It is off by default; on, it is one outbound request a day.
 - **Read the release notes** for every version between yours and the target.
-  Anything needing a manual step is a major release and says so.
+  Anything needing a manual step says so under **Upgrade notes**.
 - **Upgrade one version at a time** unless the notes say a jump is safe.
   Migrations are written to be applied in order.
 - **Be healthy first.** `docker compose exec web python manage.py doctor` should
   pass. The script checks this too and stops otherwise — upgrading an instance
   that is already unwell turns one problem into two, and the upgrade gets the
   blame.
+- **Upgrading from v0.7.0 or earlier: run cleanup once first.** Those releases
+  never ran the scheduled retention cleanup, so `doctor` fails with
+  `cleanup has never run`. Preview with
+  `docker compose exec web python manage.py cleanup --dry-run`, then run it
+  without `--dry-run`. That first run deletes everything past its
+  [retention window](/docs/latest/operations/data-retention/) since
+  installation.
 
 ## What the script does, and why in that order
 

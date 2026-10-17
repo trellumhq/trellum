@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-10-17
+
 ### Added
 
 - Add **Test sign-in** to the organization's single sign-on settings. An org
@@ -19,128 +21,209 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   are kept on the page and audited as `sso.test_signin`. Turning on **Enforce
   SSO** or turning off password login before a successful test now shows a
   non-blocking warning.
+- Send invitations by email from the invitations page, with **Send invitation
+  by email** (disabled while mail is not configured), explicit delivery
+  feedback instead of silent failure, and **Resend email** for pending
+  invitations (once a minute per invitation), audited as `member.invite_resend`.
+- Add a **Manage studio access** page for each organization member. An
+  organization home with more than 200 studios pages its studio list.
+- Show "Loading <page>…" with **Cancel loading** (or Esc) while the console
+  opens a page. After 15 seconds it says the page is still loading and keeps
+  waiting; only Cancel or Esc stops it.
+- Add an **Operator console** entry to the shell sidebar for operators.
+- Add `EMAIL_TIMEOUT` (default 10 seconds, must be positive) to bound every SMTP
+  connect and read, including SMTP configured in instance settings.
+- Add the audit actions `registry.refresh_requested`,
+  `registry.refresh_finished`, `member.invite_resend` and `run.auto_enqueue`.
+- `scripts/demo.sh --dev-login` prints one-click admin, member and viewer
+  login links for local review, and seeds fixtures as the invoking user on
+  Linux. It runs development settings with unauthenticated login links: use
+  it only on a machine nobody else can reach.
 
 ### Changed
 
+- Sign in in two steps. The login page asks for the email first and sends
+  single sign-on users straight to their identity provider; everyone else
+  continues to a password page (**Directory password** for directory logins)
+  at `/login/password` that shows the email read-only with a **Use a
+  different email** link. Where single sign-on is configured, **Sign in with
+  a password instead** skips the redirect. SSO enforcement is re-checked on
+  the password step, and a POST to `/login` that already carries an email and
+  password still signs in in one request.
 - Show a clearer page when single sign-on fails after the identity provider
   answers. "We couldn't sign you in" gives a plain-language cause for each
   refusal (and for cancelled, expired or provider-reported errors), a Try again
   button, and a short reference. The reference is recorded on the
   `auth.sso_denied` audit row, so an administrator can search for it in the
   audit log.
-
 - Make single sign-on routing failures visible. The SSO settings page warns
   about listed email domains that are not yet verified (and when no domain
   routes at all), and refuses to turn off password login while no domain
   routes. The portal logs a warning when a listed domain is unverified.
-- Sign in in two steps. The login page asks for the email first and sends
-  single sign-on users straight to their identity provider; everyone else
-  continues to a password page (**Directory password** for directory logins)
-  at `/login/password` that shows the email read-only with a **Use a
-  different email** link. SSO enforcement is re-checked on the password step,
-  and a POST to `/login` that already carries an email and password still
-  signs in in one request.
 - Search now lives in the page it searches. The top bar no longer carries a
   "Search reports" box on every page, and the phone search button is gone.
-  Reports, Analyses and Operations have their own search field in the folder bar
-  before Sort (the first row on phones), with an "N of M" count and a "Clear
-  search" button when nothing matches. A new search icon in the top bar, with a
-  Ctrl+K badge, opens "Jump to a report": your studio's reports and analyses,
-  filtered as you type, with the arrow keys, Enter to open and Esc to close.
-  Ctrl+K focuses the page's own search field where there is one and opens the
-  jump list everywhere else. Metrics, Report Analytics and category filters now
-  read "Search ...".
+  Reports, Analyses and Operations have their own search field in the folder
+  bar before Sort (the first row on phones), with an "N of M" count and a
+  "Clear search" button when nothing matches. A new search icon in the top
+  bar, with a Ctrl+K badge, opens "Jump to a report": your studio's reports
+  and analyses, filtered as you type, with the arrow keys, Enter to open and
+  Esc to close. Ctrl+K focuses the page's own search field where there is one
+  and opens the jump list everywhere else. Metrics, Report Analytics and
+  category filters now read "Search ...".
+- Keep a summary of each report's build, runtime, experiments and metric
+  usage in the database, refreshed in the background by the workers. An
+  unchanged report is confirmed from a file stamp (or the object ETag on
+  remote storage) instead of re-reading its sources. The catalog,
+  `/api/registry`, Operations, Experiments and Metrics read these summaries and
+  the build history instead of each report's files, so page and API requests
+  no longer read object storage.
+- The Reports and Analyses catalog loads in slices of 50 reports with the same
+  category tabs, instant search, sorting, cards and list; beyond 500 reports it
+  offers "Show more" and searches on the server. Cards show every tag and the
+  full description, and the catalog and Operations search the same fields:
+  name, description, tags, category, studio and slug.
+- `/api/registry` returns the same report row for the paged and unpaged call,
+  Operations and `api/system/status`, built from the report summaries and
+  build history. Without `?page=` it still returns the whole registry, now of
+  both kinds unless `kind` is given; `has_output` is `null` until a worker has
+  observed the report.
+- Operations reads up to 500 reports at once and asks larger studios to search
+  to narrow the list, and offers **Download** only when a stored file exists.
+  **Reload Registry** runs on a worker: the page shows Scheduled and then the
+  result. If no worker has taken it after a minute, the page says it is still
+  waiting for a worker and the button works again; a worker that starts
+  within 10 minutes still runs it, and after that it ends with a clear
+  message.
+  `POST api/system/registry/refresh` answers `202` with an `operation_id` and
+  `status_url` instead of the report count.
+- Experiments and Report Analytics keep every row on one page with instant
+  filtering and sorting; a studio with more than 200 experiments or reports
+  pages them and searches on the server.
+- Pickers keep instant search for up to 500 choices; longer lists search on
+  the server as you type, with a "keep typing" hint. Delivery, metric and
+  alert pickers apply as soon as you choose.
+- List search boxes (members, groups, studios, invitations, data sources,
+  member studio access) and the Server logs filters apply by themselves:
+  selects at once, typing after a short pause. The Search and Apply filters
+  buttons are gone.
+- Data sources list 50 per page in the portal. `GET api/datasources` still
+  returns every source; pass `?page=` or `?limit=` (up to 200) for one page
+  with `total`, `page` and `has_next`. Invalid values return `400`, and a
+  page past the end is empty.
+- Run data-source connection tests in a separate process that can be stopped,
+  at most 2 at a time per source and 4 per studio or organization in each web
+  process; a refused test says "Another connection test for this source is
+  still running." After a passing saved check, a worker queues the reports it
+  unblocked, and the queueing survives a restart.
+- System health and an organization's uploaded-file usage are measured by the
+  coordinator while the page is open -- about every minute, every five for
+  uploads -- in a separate process with a time limit. The page shows "Checked
+  2 minutes ago" and has no refresh buttons; without a usable coordinator it
+  measures in the request as before. An organization with no uploaded files
+  shows 0 MB.
+- The Metrics page fills in usage and charts by itself from the report
+  summaries; while reports are still being indexed, usage reads "measuring
+  usage…" rather than unused. Each metric lists every report that uses it, up
+  to 500, with a searchable list beyond that.
+- Build the generated Metrics report's comparison workspace as pages of 25
+  monitored metrics, with search across all metrics, page links and deep links
+  to the right page; metric definitions are listed once. After upgrading, the
+  coordinator rebuilds the Metrics report once by itself.
+- Report pages load the PNG and PDF export libraries on first export instead
+  of on every page, and say so if they cannot load; the Inter font ships as
+  WOFF2.
+- Serve report widget scripts and vendored assets without a session or
+  database work, cached for five minutes. They set no cookie, no longer send
+  `Vary: Cookie`, and no longer count as session activity; idle and revoked
+  sessions are still enforced on the next request.
+- Cache the AI assistant's availability for 30 seconds per process. Saving the
+  assistant configuration clears the cache on that process; others follow
+  within 30 seconds.
 - The annotations calendar reads a large `events.yaml` several times faster.
-- Pickers list every choice with instant search again, with no pages inside a
-  dropdown. Only lists over 500 choices use search-as-you-type with a "keep
-  typing" hint. The sidebar organization and studio switchers and the AI
-  assistant picker are plain lists of links again, and delivery, metric and
-  alert pickers apply as soon as you choose, without Go, Search or Update
-  buttons.
-- The Reports and Analyses catalog reads the registry from the database in
-  bounded slices (`/api/registry?page=`) and renders it with the same controls
-  as before: category tabs, instant search and sorting, cards and list. A
-  studio of any size costs one bounded request per 50 reports; beyond 500
-  reports the catalog offers "Show more" and searches on the server.
-- Experiments and Report Analytics show every row on one page again, with the
-  same controls as before: status pills, an instant filter box, click-to-sort
-  headers and no Search or Apply buttons. Only a studio far beyond a realistic
-  size (200 experiments or reports) pages, with the shared pager, and searches
-  on the server after a short pause.
-- Agent guide: the portal is JavaScript-first; pages, filters and pickers no
-  longer need a separate no-JavaScript mode.
-- Agent guide: performance work must keep the existing user experience
-  (no paginated dropdowns, no manual retry/apply steps, reachable navigation).
 - Phone layout of console-hosted reports: the report header is one compact row
   (freshness left, labelled Options and Monitor right), annotation chips scroll
   on one row, and the shell header buttons share one neutral bordered style.
-- `scripts/demo.sh --dev-login` prints one-click admin, member and viewer
-  login links for local review, and seeds fixtures as the invoking user on Linux.
-- Document required portal performance patterns in `docs/performance-patterns.md`
-  with a new-feature checklist,
-  and track a tool-neutral `AGENTS.md` agent guide.
+- Document required portal performance patterns in
+  `docs/performance-patterns.md` with a new-feature checklist, and track a
+  tool-neutral `AGENTS.md` agent guide.
 
 ### Fixed
 
-- The Reports and Analyses catalog no longer shows every report as "Not run"
-  and "Never" right after an upgrade, or while a report's source summary is
-  still being built. Until the worker has summarized a report, its card shows
-  the status and time of its latest finished build, the same ones Operations
-  and the full registry show; once the summary is ready nothing changes. It
-  costs one extra bounded query per page of 50 reports and reads no storage.
-- **Reload Registry** no longer stays on "Scheduled..." forever when no current
-  worker claims the action (for example a worker left on an older version
-  during an upgrade). After a minute the page says "Still waiting for a worker.
-  Check that every worker runs this version." and the button works again. The
-  action stays scheduled on the server, so the page keeps checking quietly and
-  still reports the result if a worker runs it later.
+- Run the nightly retention cleanup and the daily release check. Since at
+  least v0.4.6 the coordinator removed both jobs right after it started, so
+  cleanup never ran and `manage.py doctor` failed its retention check.
 - The console top bar no longer jumps while a page loads. The AI assistant has
   one slot, in the same place on every page, and its space is reserved from
-  the first paint, so the health warning, search box and Docs link stop shifting
-  when the assistant finishes loading. The assistant button, its unavailable
-  entry and the organization picker now share one look.
-- Metrics charts and sparklines no longer disappear when the worker has not
-  re-observed a report for five minutes. The idle re-check interval is capped
-  inside that window, chart availability no longer waits on observation
-  freshness, and the Metrics page fills in usage and charts by itself (with
-  quiet retries) instead of offering a "Retry report usage" button. The
-  Metrics overview is one grid with a browser-side filter, as before.
-- Background reconciliation of report sources confirms an unchanged report from
-  a file stamp (or the object ETag on remote storage) instead of re-reading its
-  metadata, so an idle catalog costs almost nothing and charts stay current.
-- The Metrics comparison workspace retries a failed load by itself and shows no
-  pager when all metrics fit on one page.
-- List search boxes (members, groups, studios, invitations, data sources) and
-  the Server logs filters apply by themselves: selects at once, typing after a
-  short pause. The Search and Apply filters buttons are gone.
+  the first paint, so the health warning and Docs link stop shifting when the
+  assistant finishes loading. The assistant button, its unavailable entry and
+  the organization picker now share one look.
 - Opening the live log of a build that has just been requested shows an empty
   "waiting" state instead of a 404.
-- Operators get an "Operator console" entry in the shell sidebar.
-- The System health page and an organization's uploaded-file usage measure on
-  the coordinator by themselves, only while the page is open: the page asks for
-  a fresh measurement about every minute (five for uploads), shows "Checked 2
-  minutes ago", and has no refresh buttons. Without a usable coordinator
-  measurement, System health runs its checks in the request as before. The
-  header health alert is unchanged: quick local checks, no sandbox check. The
-  thirty-second gap between measurements applies per kind, the pages check
-  before posting so waiting never logs an error, and an incomplete uploaded-files
-  measurement shows as "measuring…" instead of a total. The operator Fleet, Organizations and organization pages
-  match their earlier layout again.
-- The Operations page lists every report in one capped read with no pager, the
-  Uptime tile and the earlier state chips and filters; Reload Registry keeps its
-  Scheduled and result feedback. The no-JavaScript Operations page is removed.
-- Keep the nightly retention cleanup and the daily release check scheduled on
-  the coordinator. The schedule sync removed both right after start, so
-  cleanup never ran and `manage.py doctor` failed its retention check.
-- A Metrics report built before the paged comparison workspace (0.7.0 or
-  earlier) is rebuilt once by itself after an upgrade, so sparklines and charts
-  come back without anyone choosing Run. The worker queues the build (trigger
-  `catchup`, audited as `run.auto_enqueue`) when it sees the legacy artifact,
-  at most once until a current artifact is published; a failing rebuild or a
-  runner still producing legacy output is not retried.
-- `GET api/datasources` returns every source again when no `?page=` or
-  `?limit=` is given, so API-key scripts that read the whole list are not cut
-  off at 50 sources. With either parameter it returns one page.
+- Ending an impersonation that is no longer active returns 404 instead of a
+  server error.
+- Use white text in the Classic Dark report header.
+- A report left open in a background tab refreshes as soon as it is shown
+  again when an update is due, instead of waiting for its next interval, and
+  its "Updated … ago" label follows the new data. A hidden tab no longer runs
+  the refresh timer, and a resumed tab no longer reloads twice.
+
+### Security
+
+- The report catalog and `/api/registry` list only reports the viewer can
+  open. While selected-report access is not enabled
+  (`TRELLUM_REPORT_SCOPED_ACCESS_READY`), earlier releases listed private and
+  selected-scope reports, with their names and metadata, to viewers who could
+  not open them.
+- Throttle password reset: one mail per address every two minutes and ten
+  requests per client address every 15 minutes
+  (`PASSWORD_RESET_EMAIL_COOLDOWN_SECONDS`, `PASSWORD_RESET_IP_MAX_REQUESTS`,
+  `PASSWORD_RESET_IP_WINDOW_SECONDS`). The page is always the neutral "if an
+  account exists" page, and the mail is sent outside the request, so neither
+  a delivery failure nor the response time reveals whether an account exists.
+
+### Upgrade notes
+
+**Before upgrading, run retention cleanup once.** Earlier releases never ran
+the scheduled cleanup, so `manage.py doctor` reports `[FAIL] retention:
+cleanup has never run` and `scripts/upgrade.sh` stops at its preflight. On the
+running instance, preview with `docker compose exec web python manage.py
+cleanup --dry-run`, then run `docker compose exec web python manage.py cleanup`.
+This first run deletes everything past its retention window that accumulated
+since installation; review the dry-run counts and the `RETENTION_*` settings
+first. From this release the coordinator runs cleanup nightly. `doctor` must
+pass as a whole: an install whose backup service has not completed a run yet
+also fails its backups check, and `scripts/upgrade.sh` stops on that too.
+
+Apply the additive migrations `datasources.0007`, `orgs.0025`, `reports.0027`
+and `runner.0007`: new tables and nullable columns only. Update the portal,
+the coordinator, every worker and the matched report-runner image to v0.8.0
+together. Older workers do not run **Reload Registry** (after a minute the
+page says it is still waiting for a worker; after 10 minutes the action ends
+with a message), do not queue reports unblocked by a data-source check, do not
+build report summaries and do not build the paged Metrics workspace. Existing
+sessions stay signed in.
+
+Report summaries fill in the background after the upgrade: a few seconds for a
+dozen reports, longer for studios with large report output. Until then the
+catalog shows each report's latest finished build.
+`manage.py reconcile_source_summaries` runs one batch by hand.
+
+When the upgraded coordinator first starts, it queues one rebuild of each
+studio's generated Metrics report that is enabled, present and not
+idle-paused; sparklines and charts return when that build finishes. This
+happens once per installation and is not retried. If the runner image is
+still on an earlier release, or the build fails, run the Metrics report from
+Operations once the image is updated; a paused Metrics report is rebuilt
+when it is resumed.
+
+Rebuild other reports to pick up lazy-loaded export libraries, WOFF2 fonts,
+the Classic Dark header and the background-tab refresh fix.
+
+Scripts calling `POST api/system/registry/refresh` must accept `202` and poll
+`status_url`. `GET api/datasources` rejects invalid `page` or `limit` values
+with `400`. `EMAIL_TIMEOUT` must be a positive number of seconds; the portal
+refuses to start otherwise. Edge caches that allow-list vendored assets must
+also allow `/_vendor/fonts/*.woff2`.
 
 ## [0.7.0] — 2026-10-15
 
