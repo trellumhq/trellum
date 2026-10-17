@@ -13,7 +13,7 @@ import time
 import uuid
 from datetime import timedelta
 
-from django.db import transaction
+from django.db import connection, transaction
 from django.db.models import F
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -40,6 +40,31 @@ STAMP_RACY_SECONDS = 2.0
 INSPECTION_BYTES = 62 * 1024 * 1024 + 128 * 1024
 
 
+def _lock_report(report_id, *, skip_locked=False):
+    """Lock the Report row before its summary row; False if it is busy or gone.
+
+    One lock order everywhere: Report, then ReportSourceSummary, then
+    MetricCatalogState. The registry scan already works that way
+    (``update_or_create`` locks the report ``FOR UPDATE``, then
+    ``sync_declarations`` creates or locks the summary). A summary writer that
+    reached the summary first took the opposite order: its new row is
+    uncommitted when the scan tries to create the same one, while its own
+    foreign key check (``KEY SHARE`` on the report, run at commit) waits for the
+    scan's lock. That cycle is a deadlock PostgreSQL ends by aborting one side.
+
+    ``NO KEY UPDATE`` excludes the scan's ``FOR UPDATE`` and other report
+    writers but not foreign key checks, so it costs nothing else. Call this
+    first inside the transaction; with ``skip_locked`` a report the scan is
+    rewriting right now is simply left for the next pass.
+    """
+    return bool(
+        Report.objects.select_for_update(
+            skip_locked=skip_locked, of=("self",),
+            no_key=connection.features.has_select_for_no_key_update,
+        ).filter(pk=report_id).values_list("pk", flat=True).first()
+    )
+
+
 def _revision(studio_id, *, definitions=False):
     state, _ = MetricCatalogState.objects.get_or_create(studio_id=studio_id)
     field = "definition_revision" if definitions else "summary_revision"
@@ -54,6 +79,7 @@ def definitions_changed(studio_id):
 def begin_attempt(report_id, operation):
     """Fence before subprocess can mutate a local serving directory."""
     with transaction.atomic():
+        _lock_report(report_id)
         summary, _ = ReportSourceSummary.objects.get_or_create(report_id=report_id)
         summary = ReportSourceSummary.objects.select_for_update().get(pk=summary.pk)
         if summary.state == "expiring":
@@ -108,6 +134,8 @@ def acquire(report_id):
     """Short lease transaction. Token and generation must match at publication."""
     now = timezone.now()
     with transaction.atomic():
+        if not _lock_report(report_id, skip_locked=True):
+            return None
         summary, _ = ReportSourceSummary.objects.get_or_create(report_id=report_id, defaults={"next_check_at": now})
         summary = ReportSourceSummary.objects.select_for_update(skip_locked=True).filter(pk=summary.pk).first()
         # Not due yet, unless a healthy schedule was written under an older,
@@ -380,6 +408,9 @@ def _reconcile_leased(report_id, report, generation, token):
                 _revision(report.studio_id)
         return {"status": "unavailable", "bytes": INSPECTION_BYTES, "byte_measurement": "conservative-upper-bound", "error": type(exc).__name__}
     with transaction.atomic():
+        if result["state"] == "expired":
+            # Stamps the report below, so the report is locked first.
+            _lock_report(report_id)
         row = ReportSourceSummary.objects.select_for_update().get(report_id=report_id)
         report.refresh_from_db(fields=["present_in_scan", "data_expired_at", "config"])
         if row.generation != generation or row.lease_token != token or not report.present_in_scan or report.data_expired_at:
@@ -478,6 +509,7 @@ def begin_expiry(report_id):
     from apps.runner.models import Run
 
     with transaction.atomic():
+        _lock_report(report_id)
         row, _ = ReportSourceSummary.objects.get_or_create(report_id=report_id)
         row = ReportSourceSummary.objects.select_for_update().get(pk=row.pk)
         if Run.objects.filter(report_id=report_id, status__in=Run.ACTIVE_STATUSES).exists():
@@ -494,6 +526,9 @@ def begin_expiry(report_id):
 
 def finish_expiry(report_id, operation, *, expired_at=None):
     with transaction.atomic():
+        if expired_at:
+            # Stamps the report below, so the report is locked first.
+            _lock_report(report_id)
         row = ReportSourceSummary.objects.select_for_update().get(report_id=report_id)
         if row.operation != operation:
             return False
