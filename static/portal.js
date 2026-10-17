@@ -696,9 +696,12 @@ function listTableHtml(groups) {
         var rowTarget = disabled ? '' : ' data-console-report-url="' + escAttr(href) + '"'
             + ' data-console-report-title="' + escAttr(r.name) + '"';
         var dot = statusDot(r);
+        // <wbr> lets the tags wrap one by one. Without a break between them the
+        // whole group is a single unbreakable word, which keeps the Report
+        // column as wide as every tag side by side.
         var tagHtml = (r.tags || []).map(function(t) {
             return '<span class="tag" data-tag="' + esc(t) + '" style="margin-left:4px">' + esc(t) + '</span>';
-        }).join('');
+        }).join('<wbr>');
         html += '<tr' + cls + rowTarget + ' data-slug="' + r.slug + '">';
         html += '<td class="list-fav" data-label="Favorite">' + favBtnHtml(r.slug) + '</td>';
         html += '<td class="list-email" data-label="Deliveries">' + emailBtnHtml(r.slug) + '</td>';

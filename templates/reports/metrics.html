@@ -165,7 +165,7 @@ body.mgmt main .met-modal.met-compact .met-modal-head h2 { font-size:13px; }
     {% if defined_count %}
     <p class="muted page-sub">
       Defined in <code>metrics.yaml</code>{% if synced_at %} · synced {{ synced_at|timesince }} ago{% endif %} ·
-      <b>{{ defined_count }} defined, {{ claimed_count }} claimed by report{{ claimed_count|pluralize }}</b>
+      <span data-metric-claimed data-defined="{{ defined_count }}"{% if usage_pending %} data-pending{% endif %}>{% if usage_pending %}<b>{{ defined_count }} defined</b>{% if metrics_section != "comparison" %} · measuring report usage…{% endif %}{% else %}<b>{{ defined_count }} defined, {{ claimed_count }} claimed by report{{ claimed_count|pluralize }}</b>{% endif %}</span>
     </p>
     {% endif %}
   </div>

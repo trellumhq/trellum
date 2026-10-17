@@ -43,7 +43,9 @@ def test_primary_global_search_and_bound(catalog):
     with CaptureQueriesContext(connection) as captured:
         page = metric_definition_page(studio)
         assert len(page["metrics"]) == 500 and page["defined_count"] == 2000 and page["truncated"]
-    assert len(captured) == 5
+    # Five reads for the page plus one that asks whether any report is still
+    # waiting to be indexed; none of them grows with the catalog.
+    assert len(captured) == 6
     for query in ("metric_1999", "Metric 1999", "last-description", "last-owner", "last-tag"):
         result = metric_definition_page(studio, query)
         assert result["matching_count"] == 1 and result["metrics"][0]["row"].pk == rows[-1].pk
