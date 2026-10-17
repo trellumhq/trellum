@@ -2,6 +2,7 @@
 tier above Organization can actually do."""
 import pytest
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 
 from apps.orgs.models import OrgQuota
 
@@ -146,21 +147,17 @@ class TestQuotaEditing:
         assert OrgQuota.objects.get(org=org).max_storage_mb == 4096
         html = login(operator).get(f"/operator/orgs/{org.slug}/").content.decode()
         assert 'name="max_storage_mb"' in html
-        # Uploaded files are never walked while the page renders.
-        assert "2.0 MB" not in html
-        from apps.core import operator_observations as observations
-        from apps.core.workspace import initialize_workspace_identity
-        from apps.operator.usage_observations import scan
-        from apps.runner.models import WorkerHeartbeat
-        workspace = initialize_workspace_identity()
-        WorkerHeartbeat.objects.create(worker_id="quota-observer")
-        observations.admit(operator.pk, "upload-usage", observations.nonce(operator.pk, "upload-usage", org.pk), org_id=org.pk)
-        entry = observations.claim("quota-observer", "quota-observer-epoch")
-        result = scan(org.pk, workspace)
-        result.update(version=1, kind="upload-usage", workspace_id=workspace, producer_fingerprint=entry["producer_fingerprint"])
-        assert observations.finish(entry, result=result)
-        html = login(operator).get(f"/operator/orgs/{org.slug}/").content.decode()
+        # No coordinator to measure: the page computes the figure itself.
         assert "2.0 MB" in html
+        # With one, the page shows its last measurement and walks nothing.
+        from apps.core.models import OpsState
+        from apps.runner.models import WorkerHeartbeat
+        WorkerHeartbeat.objects.create(worker_id="quota-observer")
+        measured = timezone.now().isoformat()
+        OpsState.objects.create(key=f"operator.usage.{org.pk}", ran_at=timezone.now(), payload={
+            "result": {"bytes": 3 * 1024 * 1024}, "completed_at": measured, "attempted_at": measured})
+        html = login(operator).get(f"/operator/orgs/{org.slug}/").content.decode()
+        assert "3.0 MB" in html and "2.0 MB" not in html
 
     def test_non_numeric_is_rejected_without_saving(self, login, operator, org):
         response = login(operator).post(

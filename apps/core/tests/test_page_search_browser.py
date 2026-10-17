@@ -97,7 +97,11 @@ def test_catalog_field_filters_instantly_and_ctrl_k_focuses_it(live_server, logi
         assert page.locator(".tl-console-header #searchInput").count() == 0
         assert field.get_attribute("placeholder") == "Search reports…"
         # In the folder bar, before Sort and after the tabs, about 240px wide.
-        box, sort = field.bounding_box(), page.locator(".catalog-toolbar select").first.bounding_box()
+        # The toolbar is filled in by script after the catalog is ready, so
+        # wait for the Sort select before measuring it.
+        sort_select = page.locator(".catalog-toolbar select").first
+        expect(sort_select).to_be_visible()
+        box, sort = field.bounding_box(), sort_select.bounding_box()
         assert round(box["width"]) == 240 and box["x"] + box["width"] < sort["x"]
         assert page.locator("#folderTabs").bounding_box()["x"] < box["x"]
 

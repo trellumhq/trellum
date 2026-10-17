@@ -1,17 +1,19 @@
 """Bounded DB-only metric usage reads from worker-produced source indexes."""
 from datetime import timedelta
+from urllib.parse import urlencode
+
 from django.utils import timezone
-from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Count, F, Q, Window, Min, Max, OuterRef
 from django.db.models.functions import RowNumber, JSONObject
 from django.contrib.postgres.expressions import ArraySubquery
-from django.http import HttpResponseBadRequest, JsonResponse
-from django.shortcuts import get_object_or_404, render
+from django.http import Http404, HttpResponseBadRequest, JsonResponse
+from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_GET
 
 from apps.core import roles
+from apps.core.limits import INLINE_LIMIT
 from apps.core.permissions import require_studio_role
 from apps.core.report_access import require_full_studio_visibility
 from .models import MetricCatalogState, MetricDefinition, Report, ReportMetricClaim, ReportMetricPreview
@@ -21,9 +23,6 @@ from .models import MetricCatalogState, MetricDefinition, Report, ReportMetricCl
 # window, not a worker convergence guarantee: large or slow catalogs may be
 # partial while reconciliation progresses. GET requests never backfill.
 SOURCE_FRESH_SECONDS = 300
-# Claims listed inline per metric, more than any realistic catalog has; beyond
-# it the card links to the paged list of all indexed claims.
-CLAIM_PREVIEW = 25
 MAX_DATABASE_ID = 2**63 - 1
 
 
@@ -71,7 +70,7 @@ def _claim_json(claim, definition):
 
 
 def _changed():
-    return JsonResponse({"state": "changed", "message": "Metrics changed while loading. Reload definitions and retry."}, status=409)
+    return JsonResponse({"state": "changed", "message": "Metrics changed while loading."}, status=409)
 
 
 @require_studio_role(roles.VIEWER)
@@ -107,15 +106,16 @@ def metrics_summary(request, org_slug, studio_slug):
                  "source_summary__preview_state", "source_summary__observed_at",
                  "source_summary__workspace_version", "spark_rows").first()
         claims = _claims(studio).filter(metric_name__in=names)
-        # Compute full counts before rank filtering, while returning at most
-        # CLAIM_PREVIEW rows per metric, including when a metric has thousands of claims.
+        # Compute full counts before rank filtering. Every claiming report is
+        # listed inline up to INLINE_LIMIT per metric; a metric with thousands
+        # of claims returns that many and links to the searchable list.
         previews = list(claims.select_related("summary__report__studio__org").annotate(
             claim_total=Window(Count("pk"), partition_by=[F("metric_name")]),
             generated_total=Window(Count("pk", filter=Q(summary__report_id=generated["pk"] if generated else None)),
                                    partition_by=[F("metric_name")]),
             preview_rank=Window(RowNumber(), partition_by=[F("metric_name")],
                                 order_by=[F("summary__report__name").asc(), F("summary__report_id").asc()])
-                        ).filter(preview_rank__lte=CLAIM_PREVIEW).order_by("metric_name", "preview_rank"))
+                        ).filter(preview_rank__lte=INLINE_LIMIT).order_by("metric_name", "preview_rank"))
         grouped, counts, generated_claims = {}, {}, set()
         for claim in previews:
             grouped.setdefault(claim.metric_name, []).append(_claim_json(claim, names[claim.metric_name]))
@@ -161,35 +161,54 @@ def metrics_summary(request, org_slug, studio_slug):
     return response
 
 
+def _details_url(studio, definition_id, revision, query=""):
+    params = {"definition_revision": revision, **({"q": query} if query else {})}
+    return reverse("studio-metric-claims", args=[studio.org.slug, studio.slug, definition_id]) + "?" + urlencode(params)
+
+
 @require_studio_role(roles.VIEWER)
 @require_full_studio_visibility
 @require_GET
 def metric_claim_details(request, org_slug, studio_slug, definition_id):
-    """Native on-demand pagination; never part of initial overview fanout."""
+    """Every claim of one metric past the inline list, searched on the server.
+
+    Reached only from a card whose claims exceed INLINE_LIMIT. It shows the
+    first INLINE_LIMIT matching reports and narrows as the person types; it
+    never pages. A definition revision that no longer matches is refreshed by
+    redirecting to the current one, not by asking the person to reload.
+    """
+    query = request.GET.get("q", "").strip()
+    try:
+        revision = int(request.GET["definition_revision"])
+        if not 0 <= revision <= MAX_DATABASE_ID or definition_id > MAX_DATABASE_ID or len(query) > 200:
+            raise ValueError
+    except (KeyError, ValueError):
+        return HttpResponseBadRequest("A definition revision and a search of at most 200 characters are required.")
+    studio = request.studio
     with transaction.atomic():
-        before = _revisions(request.studio)
-        try:
-            revision = int(request.GET["definition_revision"])
-            if not 0 <= revision <= MAX_DATABASE_ID or definition_id > MAX_DATABASE_ID:
-                raise ValueError
-        except (KeyError, ValueError):
-            return HttpResponseBadRequest("A definition revision is required.")
+        before = _revisions(studio)
+        definition = MetricDefinition.objects.filter(pk=definition_id, studio=studio, present_in_scan=True).first()
         if revision != before[0]:
-            return render(request, "reports/metric_claims.html", {
-                "org": request.org, "studio": request.studio, "changed": True,
-            }, status=409)
-        definition = get_object_or_404(MetricDefinition, pk=definition_id, studio=request.studio, present_in_scan=True)
-        page = Paginator(_claims(request.studio).filter(metric_name=definition.name).select_related(
-            "summary__report__studio__org").order_by("summary__report__name", "pk"), 50).get_page(request.GET.get("page", 1))
-        coverage = _coverage(request.studio)
+            # The catalog moved on since this link was built: take the current
+            # one, or the Metrics page when the metric is gone.
+            if definition is None:
+                return redirect("studio-metrics", org_slug=org_slug, studio_slug=studio_slug)
+            return redirect(_details_url(studio, definition.pk, before[0], query))
+        if definition is None:
+            raise Http404("No such metric.")
+        claims = _claims(studio).filter(metric_name=definition.name)
+        total = claims.count()
+        matching = claims.filter(Q(summary__report__name__icontains=query) | Q(summary__report__slug__icontains=query)) if query else claims
+        matched = matching.count() if query else total
+        page = matching.select_related("summary__report__studio__org").order_by("summary__report__name", "pk")[:INLINE_LIMIT]
+        coverage = _coverage(studio)
         rows = [_claim_json(claim, definition) for claim in page]
-        if _revisions(request.studio) != before:
-            return render(request, "reports/metric_claims.html", {
-                "org": request.org, "studio": request.studio, "changed": True,
-            }, status=409)
+        if _revisions(studio) != before:
+            return redirect(_details_url(studio, definition.pk, _revisions(studio)[0], query))
     response = render(request, "reports/metric_claims.html", {
-        "org": request.org, "studio": request.studio, "definition": definition,
-        "claims": rows, "claim_page": page, "definition_revision": revision,
+        "org": request.org, "studio": studio, "definition": definition,
+        "claims": rows, "claim_total": total, "matching_count": matched, "shown_count": len(rows),
+        "truncated": matched > len(rows), "q": query, "definition_revision": revision,
         "coverage": coverage, "coverage_complete": coverage["total"] == coverage["covered"],
     })
     response["Cache-Control"] = "private, no-store"

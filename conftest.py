@@ -14,6 +14,9 @@ from apps.studios.models import Studio, StudioMembership
 
 User = get_user_model()
 
+# `operator_child`: a real child process for the operator measurement tests.
+pytest_plugins = ("apps.core.tests.operator_child",)
+
 
 @pytest.fixture
 def org(db):
@@ -301,7 +304,6 @@ _DESKTOP_WIDTH = 1024
 _HEAVY_TESTS = (
     "test_operations_routes.py::test_whole_request_sql_and_bytes_stay_bounded_as_reports_grow",
     "test_metric_workspace_browser.py::test_large_offpage_focused_workspace_readiness",
-    "test_operator_probe_process.py::",
 )
 # Integer ``size`` values above the smallest are scale cases in these modules.
 _SCALE_SIZE_MODULES = ("test_catalog_bounded.py",)

@@ -48,16 +48,31 @@
     window._fwWorkspaceCatalogReady = prepared;
     /* Cache-busting via ?v=<last_run>: read _meta.json (short cache) to learn
        the current data version, then fetch data.json?v=<version>. data.json
-       can then be cached for 24h+ -- a new run produces a new URL. */
-    prepared.then(function() { return fetch('_meta.json', {cache: 'no-store'}); })
-        .then(function(r) { return r.ok ? r.json() : {}; })
-        .catch(function() { return {}; })
+       can then be cached for 24h+ -- a new run produces a new URL.
+       A workspace page's payload is immutable (its name carries the build), so
+       it needs no version: it is requested beside _meta.json, not behind it.
+       The build check below still runs before anything is rendered. */
+    function _readMeta() {
+        return fetch('_meta.json', {cache: 'no-store'})
+            .then(function(r) { return r.ok ? r.json() : {}; })
+            .catch(function() { return {}; });
+    }
+    var metaRequest = null, dataRequest = null, dataAbort = null;
+    if (workspace) {
+        metaRequest = _readMeta();
+        dataAbort = new AbortController();
+        dataRequest = fetch(workspace.data, {signal: dataAbort.signal});
+        dataRequest.catch(function() {}); // Reported once, through the chain below.
+        prepared.catch(function() { dataAbort.abort(); }); // An obsolete catalog needs no payload.
+    }
+    prepared.then(function() { return metaRequest || _readMeta(); })
         .then(function(meta) {
             window._dataVersion = (meta && meta.last_run) || String(Date.now());
             if (workspace && (!meta.metrics_workspace || meta.metrics_workspace.build !== workspace.build)) {
+                dataAbort.abort();
                 throw new Error('Metrics were rebuilt; refresh this page');
             }
-            return fetch((workspace ? workspace.data : 'data.json') + '?v=' + encodeURIComponent(window._dataVersion));
+            return workspace ? dataRequest : fetch('data.json?v=' + encodeURIComponent(window._dataVersion));
         })
         .then(function(r) {
             window._fwTimings.fetch_ms = Math.round(performance.now() - _t0);

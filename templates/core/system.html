@@ -38,9 +38,10 @@ them.{% endcomment %}
 
 {% comment %}The coordinator's last measurement is shown when there is one;
 otherwise the checks ran in this request. While a coordinator is alive,
-static/operator-observations.js asks for a new measurement whenever the shown one
-is about a minute old, so the table stays current on its own.{% endcomment %}
-<div class="panel"{% if probe_live %} data-operator-observation data-observation-kind="full-health" data-observation-refresh="60" data-observation-done="Checked" data-observation-busy="Checking…"{% endif %}{% if probe_live and diagnostic.completed_at %} data-observation-at="{{ diagnostic.completed_at }}" data-observation-age="{{ diagnostic.age_seconds }}" data-observation-node="{{ diagnostic.producer_node }}"{% endif %}{% if probe_live and probe_operation %} data-observation-url="{% url 'system-diagnostics-status' probe_operation.id %}" data-observation-id="{{ probe_operation.id }}"{% endif %}>
+static/operator-observations.js polls for newer measurements and the coordinator
+re-measures about once a minute while this page is open, so the table stays
+current on its own.{% endcomment %}
+<div class="panel"{% if polling %} data-operator-observation data-observation-url="{% url 'system-diagnostics' %}" data-observation-poll="10" data-observation-done="Checked" data-observation-busy="Checking…"{% if diagnostic.completed_at %} data-observation-at="{{ diagnostic.completed_at }}" data-observation-age="{{ diagnostic.age_seconds }}"{% endif %}{% endif %}>
 <table class="ui-table" data-mobile-cards>
   <thead><tr><th>Check</th><th>Status</th><th>Detail</th></tr></thead>
   <tbody data-observation-checks>
@@ -53,10 +54,7 @@ is about a minute old, so the table stays current on its own.{% endcomment %}
   {% endfor %}
   </tbody>
 </table>
-{% if diagnostic_age or probe_live %}<p class="subtle" style="margin:10px 0 0" data-observation-status>{% if diagnostic_age %}Checked {{ diagnostic_age }}{% else %}Checking…{% endif %}</p>{% endif %}
-{% if probe_live %}<form method="post" action="{% url 'system-diagnostics-refresh' %}" data-observation-admission hidden>
-  {% csrf_token %}<input type="hidden" name="request_key" value="{{ probe_nonce }}">
-</form>{% endif %}
+{% if diagnostic_age or polling %}<p class="subtle" style="margin:10px 0 0" data-observation-status>{% if diagnostic_age %}Checked {{ diagnostic_age }}{% else %}Checking…{% endif %}</p>{% endif %}
 </div>
 
 {% comment %}Present only when the opt-in check has ever succeeded. Off, or a
@@ -96,6 +94,5 @@ feed that never answered, means no section at all -- not an empty one.{% endcomm
 <div class="panel">
   <p style="margin:0">Workers and build execution: <a href="{% url 'operator-fleet' %}">Open Fleet</a>.</p>
 </div>
-{% if probe_live %}<script src="{% static 'actions.js' %}" defer></script>
-<script src="{% static 'operator-observations.js' %}" defer></script>{% endif %}
+{% if polling %}<script src="{% static 'operator-observations.js' %}" defer></script>{% endif %}
 {% endblock %}

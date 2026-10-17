@@ -71,10 +71,6 @@ class Command(BaseCommand):
         is_coordinator = role in (ROLE_ALL, ROLE_COORDINATOR)
         is_runner = role in (ROLE_ALL, ROLE_RUNNER)
 
-        from apps.core.workspace import initialize_workspace_identity
-
-        initialize_workspace_identity()
-
         worker_id = f"{socket.gethostname()}-{os.getpid()}"
         shutdown = threading.Event()
 
@@ -563,11 +559,9 @@ class _SchedulerManager:
 
         self._scheduler.add_listener(_on_event, EVENT_JOB_ERROR | EVENT_JOB_MISSED)
         self._scheduler.start()
-        from apps.core.operator_probe_worker import ProbeSupervisor
-
-        self._operator_probes = ProbeSupervisor(f"{socket.gethostname()}-{os.getpid()}")
+        # Idle, this is one indexed SELECT; it measures only what a page asked for.
         self._scheduler.add_job(
-            self._operator_probes.tick, "interval", seconds=5, id="operator-probe",
+            _run_operator_measurements, "interval", seconds=5, id="operator-probe",
             replace_existing=True, coalesce=True, max_instances=1, misfire_grace_time=5,
         )
         self._schedule_cleanup()
@@ -733,9 +727,6 @@ class _SchedulerManager:
 
     def shutdown(self) -> None:
         if self._scheduler:
-            probes = getattr(self, "_operator_probes", None)
-            if probes is not None:
-                probes.stop()
             self._scheduler.shutdown(wait=False)
             self._scheduler = None
 
@@ -755,6 +746,14 @@ def _run_cleanup() -> None:
         call_command("cleanup")
     except Exception as exc:  # noqa: BLE001
         logger.exception(f"cleanup failed: {exc!r}")
+
+
+def _run_operator_measurements() -> None:
+    """APScheduler job target: measure the System health or upload figure a page asked for."""
+    close_old_connections()
+    from apps.core import operator_observations
+
+    operator_observations.tick()
 
 
 def _run_update_check() -> None:

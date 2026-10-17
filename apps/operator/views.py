@@ -10,10 +10,10 @@ from __future__ import annotations
 from django.conf import settings
 from django.contrib import messages
 from django.db.models import Count, Q
-from django.http import Http404
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 
 from apps.core import impersonation
 from apps.core.audit import audit
@@ -111,7 +111,6 @@ def orgs(request):
 @require_operator
 def org_detail(request, org_slug):
     org = get_object_or_404(Organization, slug=org_slug)
-    from apps.core import operator_observations as observations
     studios, studios_more = bounded.capped(
         Studio.objects.filter(org=org).only("id", "slug", "name", "pool").order_by("slug", "pk")
     )
@@ -160,8 +159,6 @@ def org_detail(request, org_slug):
                 "members_more": members_more,
                 "recent_runs": recent,
                 "usage": bounded.usage(org),
-                "usage_nonce": observations.nonce(request.user.pk, "upload-usage", org.pk),
-                "usage_operation": observations.current_operation("upload-usage", org.pk),
                 "quota": quota,
                 "quota_values": quota_values,
                 "quota_errors": getattr(request, "quota_errors", {}),
@@ -173,61 +170,15 @@ def org_detail(request, org_slug):
     )
 
 
-def _usage_status_url(org):
-    from django.urls import reverse
-
-    return lambda operation_id: reverse("operator-org-usage-status", args=[org.slug, operation_id])
-
-
 @require_operator
-def org_usage_refresh(request, org_slug):
-    """Admit one uploaded-files measurement; the org page asks (GET) and posts by itself."""
-    from django.db import transaction
-    from django.http import Http404, HttpResponseNotAllowed, JsonResponse
+@require_GET
+def org_usage(request, org_slug):
+    """The last uploaded-files measurement; the organization page polls this quietly."""
     from apps.core import operator_observations as observations
     if impersonation.is_impersonating(request):
         raise Http404
-    if request.method not in ("GET", "POST"):
-        return HttpResponseNotAllowed(["GET", "POST"])
     org = get_object_or_404(Organization, slug=org_slug)
-    status_url = _usage_status_url(org)
-    if request.method == "GET":
-        response = JsonResponse(observations.preflight(request.user.pk, "upload-usage", status_url, org_id=org.pk))
-        response["Cache-Control"] = "no-store"
-        return response
-    try:
-        with transaction.atomic():
-            entry, created = observations.admit(request.user.pk, "upload-usage", request.POST.get("request_key", ""), org_id=org.pk)
-            if created:
-                audit(request, "operator.usage.refresh", org=org, operation_id=entry["id"])
-    except observations.ObservationError as exc:
-        response = JsonResponse(observations.refusal(exc, request.user.pk, "upload-usage", status_url, org_id=org.pk), status=exc.status)
-        response["Cache-Control"] = "no-store"
-        return response
-    response = JsonResponse({"ok": True, **observations.envelope(entry, status_url(entry["id"]))}, status=202 if created else 200)
-    response["Cache-Control"] = "no-store"
-    return response
-
-
-@require_operator
-def org_usage_status(request, org_slug, operation_id):
-    from django.http import Http404, HttpResponseNotAllowed, JsonResponse
-    from apps.core import operator_observations as observations
-    if impersonation.is_impersonating(request):
-        raise Http404
-    if request.method != "GET":
-        return HttpResponseNotAllowed(["GET"])
-    org = get_object_or_404(Organization, slug=org_slug)
-    status_url = _usage_status_url(org)
-    try:
-        entry = observations.observation(operation_id, kind="upload-usage", org_id=org.pk)
-    except observations.ObservationError as exc:
-        response = JsonResponse(observations.refusal(exc, request.user.pk, "upload-usage", status_url, org_id=org.pk), status=exc.status)
-        response["Cache-Control"] = "no-store"
-        return response
-    response = JsonResponse({**observations.envelope(entry, status_url(operation_id)),
-                             "snapshot": observations.snapshot("upload-usage", org.pk),
-                             "next_nonce": observations.nonce(request.user.pk, "upload-usage", org.pk) if entry["state"] in observations.TERMINAL else None})
+    response = JsonResponse(observations.poll(observations.usage_key(org.pk)))
     response["Cache-Control"] = "no-store"
     return response
 

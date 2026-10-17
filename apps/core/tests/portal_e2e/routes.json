@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "first_party_expected": 221,
+  "first_party_expected": 219,
   "routes": [
     {
       "id": "route-000",
@@ -17129,9 +17129,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "98ea224f52eb49f4de7fee4055522c08a957a983578e3039538a314c70e07ebe",
+      "source_sha256": "e62b2210e400fd02294b52616d4f7bfb7fbcbf3f6f0022faddbb85940757ca68",
       "request_conditions": [],
-      "adapter_sha256": "54a1ff078cc830e48068f3edf5454a960ebf98c4b0ee1539c995117af212d056",
+      "adapter_sha256": "f6e4fcfddd53cfafd3a7b3fbc07b75a6f73542b989abca883a02e10880b72f1f",
       "conditional_roles": {
         "revoked": {
           "condition": "Active authenticated alpha-revoked identity has no organization membership; own-account/global entry differs from tenant-target access. Policy context: current-nonimpersonated-operator",
@@ -18292,9 +18292,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "a87937867a6fb5da5baf74cf7ec092472c95f4e637033bd4574ec7d48b035288",
+      "source_sha256": "12becfb423de391d689781a15fb7fca80d583003336b8d393a041f5ff343c3b0",
       "request_conditions": [],
-      "adapter_sha256": "d2f95fa680245cba64dd71fdc392e02a4b1fd471c95fe7cd2a4d7bbc1b8b61ab",
+      "adapter_sha256": "f30740c6ca4e05fb632dc178cb20ef5dd4ca8ff38ceb551ec51018ead54324ed",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -21889,13 +21889,13 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "95ac49643ab5a20442dcdf5c0e8f18898f6ca0ad40ba998b7e2ac71baac20f6c",
+      "source_sha256": "732319625461a2491d81102268f9aaafeb581fb961d635a25fc36840aad24da2",
       "request_conditions": [
         "require_full_studio_visibility: plain alpha viewer/group-member/selected denied by seeded private audience; viewer-full samples explicitly granted public-only beta studio0",
         "alpha private-viewer explicitly granted private report remains finite-scope and is denied full-studio overviews under current semantics",
         "GET only,1\u201350 distinct authorized definition IDs with current revision; required query fixtures follow actor-specific studio parameters. No storage reads; changed revision409 and malformed400."
       ],
-      "adapter_sha256": "5b1731555226182d2c4526351487f3081748842c7d6e296897634a6e3943d4f0",
+      "adapter_sha256": "5a7c2f75cc4bd70e51fd9fc97d66715e5f921ce3ff33c30feaf26b7fba6c6a13",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -21970,13 +21970,13 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "338b3b36875f1b010c6d943f5fa1716d79185b98c68deea981d0babeeaa337e1",
+      "source_sha256": "3eb6d003d9a29cb6eb3086517de10450cf1300f26a49b4fedd7531563c930887",
       "request_conditions": [
         "require_full_studio_visibility: plain alpha viewer/group-member/selected denied by seeded private audience; viewer-full samples explicitly granted public-only beta studio0",
         "alpha private-viewer explicitly granted private report remains finite-scope and is denied full-studio overviews under current semantics",
-        "GET only native50claims/page; require definition revision, changed snapshot409 with accessible retry; disclose incomplete/stale source coverage."
+        "GET only; first 500 matching claims with server search by q, no pager; require definition revision, a changed snapshot redirects to the current revision (or Metrics) without a button; disclose incomplete/stale source coverage."
       ],
-      "adapter_sha256": "eb9b6d9f346c76176b178a6eae46acb506189fe091961bdc842aa039af2cab2a",
+      "adapter_sha256": "585dbb25d7c3a494967264e6f4481fee546836d8387e1b4fe163a6ec14dbd2a8",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -22724,9 +22724,9 @@
     },
     {
       "id": "route-339",
-      "pattern": "operator/orgs/<slug:org_slug>/usage/refresh",
+      "pattern": "operator/orgs/<slug:org_slug>/usage",
       "name": null,
-      "view": "apps.operator.views.org_usage_refresh",
+      "view": "apps.operator.views.org_usage",
       "first_party": true,
       "case": "C16",
       "shard": "L5",
@@ -22747,26 +22747,20 @@
           "value": "alpha"
         }
       },
-      "disposition": "native with feedback",
+      "disposition": "non-UI API/asset",
       "scenarios": [
         {
           "method": "GET",
           "action": null,
           "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[339-GET]",
           "verification": "pending"
-        },
-        {
-          "method": "POST",
-          "action": null,
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[339-POST]",
-          "verification": "pending"
         }
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "1016daf74ef159bc33e77eca896fdd34269956f65f1ff3334455ccd0502ebdb3",
+      "source_sha256": "68d8521e6dfc70b550baae3e04427b8888e51fa1725ac4d7871c672e56555e6c",
       "request_conditions": [],
-      "adapter_sha256": "1f82e2331a7b24d3da5700f8cd6a778de0138104ca777bd6174a48b028b48459",
+      "adapter_sha256": "68d8521e6dfc70b550baae3e04427b8888e51fa1725ac4d7871c672e56555e6c",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -22775,141 +22769,51 @@
       "conditional_roles": {
         "revoked": {
           "condition": "Active authenticated alpha-revoked identity has no organization membership; own-account/global entry differs from tenant-target access. Policy context: operator-or-special-branch",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[339-POST]",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[339-GET]",
           "verification": "pending"
         },
         "cross-org": {
           "condition": "Active beta viewer requests primary alpha objects without alpha membership; global own-account/public entry and unconditional redirects differ from tenant data. Policy context: operator-or-special-branch",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[339-POST]",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[339-GET]",
           "verification": "pending"
         },
         "studio-admin": {
           "condition": "Active alpha organization member with direct studio-0 admin role; no organization-admin grant. Scenario must apply its owning-org/target predicate. Policy context: operator-or-special-branch",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[339-POST]",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[339-GET]",
           "verification": "pending"
         },
         "impersonated": {
           "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: operator-or-special-branch",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[339-POST]",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[339-GET]",
           "verification": "pending"
         },
         "group-admin": {
           "condition": "Active alpha member with group-derived organization-admin access; target/operation-specific predicates still apply. Policy context: operator-or-special-branch",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[339-POST]",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[339-GET]",
           "verification": "pending"
         },
         "inactive": {
           "condition": "Inactive identity cannot establish an authenticated session. Execute this route using its anonymous-equivalent session after rejected login; token/form preconditions remain separate. Policy context: operator-or-special-branch",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[339-POST]",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[339-GET]",
           "verification": "pending"
         },
         "group-member": {
           "condition": "Active alpha member with group-derived all-public-reports viewer access; private report is unassigned. Policy context: operator-or-special-branch",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[339-POST]",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[339-GET]",
           "verification": "pending"
         },
         "group-selected": {
           "condition": "Active alpha member assigned only report-0000 through selected-report group grant; other report IDs require denial setup. Policy context: operator-or-special-branch",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[339-POST]",
-          "verification": "pending"
-        }
-      }
-    },
-    {
-      "id": "route-340",
-      "pattern": "operator/orgs/<slug:org_slug>/usage/<uuid:operation_id>",
-      "name": null,
-      "view": "apps.operator.views.org_usage_status",
-      "first_party": true,
-      "case": "C16",
-      "shard": "L5",
-      "allowed_roles": [
-        "operator"
-      ],
-      "denied_roles": [
-        "anonymous",
-        "developer",
-        "org-admin",
-        "private-viewer",
-        "viewer",
-        "viewer-full"
-      ],
-      "role_policy": "operator-or-special-branch",
-      "seeded_parameters": {
-        "org_slug": {
-          "value": "alpha"
-        },
-        "operation_id": {
-          "value": "00000000-0000-4000-8000-000000000000"
-        }
-      },
-      "disposition": "native with feedback",
-      "scenarios": [
-        {
-          "method": "GET",
-          "action": null,
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[340-GET]",
-          "verification": "pending"
-        }
-      ],
-      "verification": "pending",
-      "verified_node_ids": [],
-      "source_sha256": "acd701f649f3ddc7604ce1abe51f7151800687134827eee44dd02a81e34738b3",
-      "request_conditions": [],
-      "adapter_sha256": "e6411762316630ab654d23dd52c1fe42335c3a12a1a01516624dd802b1349891",
-      "principal_parameter_overrides": {
-        "viewer-full": {
-          "org_slug": "beta"
-        }
-      },
-      "conditional_roles": {
-        "revoked": {
-          "condition": "Active authenticated alpha-revoked identity has no organization membership; own-account/global entry differs from tenant-target access. Policy context: operator-or-special-branch",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[340-GET]",
-          "verification": "pending"
-        },
-        "cross-org": {
-          "condition": "Active beta viewer requests primary alpha objects without alpha membership; global own-account/public entry and unconditional redirects differ from tenant data. Policy context: operator-or-special-branch",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[340-GET]",
-          "verification": "pending"
-        },
-        "studio-admin": {
-          "condition": "Active alpha organization member with direct studio-0 admin role; no organization-admin grant. Scenario must apply its owning-org/target predicate. Policy context: operator-or-special-branch",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[340-GET]",
-          "verification": "pending"
-        },
-        "impersonated": {
-          "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: operator-or-special-branch",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[340-GET]",
-          "verification": "pending"
-        },
-        "group-admin": {
-          "condition": "Active alpha member with group-derived organization-admin access; target/operation-specific predicates still apply. Policy context: operator-or-special-branch",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[340-GET]",
-          "verification": "pending"
-        },
-        "inactive": {
-          "condition": "Inactive identity cannot establish an authenticated session. Execute this route using its anonymous-equivalent session after rejected login; token/form preconditions remain separate. Policy context: operator-or-special-branch",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[340-GET]",
-          "verification": "pending"
-        },
-        "group-member": {
-          "condition": "Active alpha member with group-derived all-public-reports viewer access; private report is unassigned. Policy context: operator-or-special-branch",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[340-GET]",
-          "verification": "pending"
-        },
-        "group-selected": {
-          "condition": "Active alpha member assigned only report-0000 through selected-report group grant; other report IDs require denial setup. Policy context: operator-or-special-branch",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[340-GET]",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[339-GET]",
           "verification": "pending"
         }
       }
     },
     {
       "id": "route-341",
-      "pattern": "api/system/diagnostics/refresh",
+      "pattern": "api/system/diagnostics",
       "name": null,
-      "view": "apps.core.views.operator_diagnostics_refresh",
+      "view": "apps.core.views.operator_diagnostics",
       "first_party": true,
       "case": "C16",
       "shard": "L5",
@@ -22927,138 +22831,54 @@
       ],
       "role_policy": "current-nonimpersonated-operator",
       "seeded_parameters": {},
-      "disposition": "native with feedback",
-      "scenarios": [
-        {
-          "method": "GET",
-          "action": null,
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[341-GET]",
-          "verification": "pending"
-        },
-        {
-          "method": "POST",
-          "action": null,
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[341-POST]",
-          "verification": "pending"
-        }
-      ],
-      "verification": "pending",
-      "verified_node_ids": [],
-      "source_sha256": "240295ef4beab1552a8c151ac03fc9a2fb4c1db7741f267d6f3ae64ab7037920",
-      "request_conditions": [],
-      "adapter_sha256": "302c77ddaf063cc18c226437b2f63cceede1ffaa1147f029b61721c87627adbb",
-      "conditional_roles": {
-        "revoked": {
-          "condition": "Active authenticated alpha-revoked identity has no organization membership; own-account/global entry differs from tenant-target access. Policy context: current-nonimpersonated-operator",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[341-GET]",
-          "verification": "pending"
-        },
-        "cross-org": {
-          "condition": "Active beta viewer requests primary alpha objects without alpha membership; global own-account/public entry and unconditional redirects differ from tenant data. Policy context: current-nonimpersonated-operator",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[341-GET]",
-          "verification": "pending"
-        },
-        "studio-admin": {
-          "condition": "Active alpha organization member with direct studio-0 admin role; no organization-admin grant. Scenario must apply its owning-org/target predicate. Policy context: current-nonimpersonated-operator",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[341-GET]",
-          "verification": "pending"
-        },
-        "inactive": {
-          "condition": "Inactive identity cannot establish an authenticated session. Execute this route using its anonymous-equivalent session after rejected login; token/form preconditions remain separate. Policy context: current-nonimpersonated-operator",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[341-GET]",
-          "verification": "pending"
-        },
-        "group-member": {
-          "condition": "Active alpha member with group-derived all-public-reports viewer access; private report is unassigned. Policy context: current-nonimpersonated-operator",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[341-GET]",
-          "verification": "pending"
-        },
-        "group-selected": {
-          "condition": "Active alpha member assigned only report-0000 through selected-report group grant; other report IDs require denial setup. Policy context: current-nonimpersonated-operator",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[341-GET]",
-          "verification": "pending"
-        },
-        "group-admin": {
-          "condition": "Active alpha member with group-derived organization-admin access; target/operation-specific predicates still apply. Policy context: current-nonimpersonated-operator",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[341-GET]",
-          "verification": "pending"
-        }
-      }
-    },
-    {
-      "id": "route-342",
-      "pattern": "api/system/diagnostics/<uuid:operation_id>",
-      "name": null,
-      "view": "apps.core.views.operator_diagnostics_status",
-      "first_party": true,
-      "case": "C16",
-      "shard": "L5",
-      "allowed_roles": [
-        "operator"
-      ],
-      "denied_roles": [
-        "anonymous",
-        "developer",
-        "impersonated",
-        "org-admin",
-        "private-viewer",
-        "viewer",
-        "viewer-full"
-      ],
-      "role_policy": "current-nonimpersonated-operator",
-      "seeded_parameters": {
-        "operation_id": {
-          "value": "00000000-0000-4000-8000-000000000000"
-        }
-      },
       "disposition": "non-UI API/asset",
       "scenarios": [
         {
           "method": "GET",
           "action": null,
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[342-GET]",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[341-GET]",
           "verification": "pending"
         }
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "bb37073591fe9b2e405fb8b18d105e9c7fefc5d29e5299c2e78beb4af4ce27ab",
+      "source_sha256": "befc3ec41b756c79b776e0b927f56cc6822cab694d375a56320b96468a3056a3",
       "request_conditions": [],
-      "adapter_sha256": "8f2550e77622d9cd7db650c654a65a51436cc297eaf173971e0406c324d24c96",
+      "adapter_sha256": "cec3d1d5e43d0bd3db454fae8228ee515744a84a1b4b06386814d5cb7f24269e",
       "conditional_roles": {
         "revoked": {
           "condition": "Active authenticated alpha-revoked identity has no organization membership; own-account/global entry differs from tenant-target access. Policy context: current-nonimpersonated-operator",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[342-GET]",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[341-GET]",
           "verification": "pending"
         },
         "cross-org": {
           "condition": "Active beta viewer requests primary alpha objects without alpha membership; global own-account/public entry and unconditional redirects differ from tenant data. Policy context: current-nonimpersonated-operator",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[342-GET]",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[341-GET]",
           "verification": "pending"
         },
         "studio-admin": {
           "condition": "Active alpha organization member with direct studio-0 admin role; no organization-admin grant. Scenario must apply its owning-org/target predicate. Policy context: current-nonimpersonated-operator",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[342-GET]",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[341-GET]",
           "verification": "pending"
         },
         "inactive": {
           "condition": "Inactive identity cannot establish an authenticated session. Execute this route using its anonymous-equivalent session after rejected login; token/form preconditions remain separate. Policy context: current-nonimpersonated-operator",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[342-GET]",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[341-GET]",
           "verification": "pending"
         },
         "group-member": {
           "condition": "Active alpha member with group-derived all-public-reports viewer access; private report is unassigned. Policy context: current-nonimpersonated-operator",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[342-GET]",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[341-GET]",
           "verification": "pending"
         },
         "group-selected": {
           "condition": "Active alpha member assigned only report-0000 through selected-report group grant; other report IDs require denial setup. Policy context: current-nonimpersonated-operator",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[342-GET]",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[341-GET]",
           "verification": "pending"
         },
         "group-admin": {
           "condition": "Active alpha member with group-derived organization-admin access; target/operation-specific predicates still apply. Policy context: current-nonimpersonated-operator",
-          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[342-GET]",
+          "planned_node_id": "apps/core/tests/portal_e2e/test_l5_routes.py::test_route[341-GET]",
           "verification": "pending"
         }
       }

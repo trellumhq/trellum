@@ -99,6 +99,12 @@ jobs:
             echo "::error::root-absolute vendor references in built output"
             exit 1
           fi
+          # The lazily loaded export libraries are named in a JSON map, not a tag.
+          if grep -rn 'window\._fwVendor=.*"/_vendor/' --include=index.html .; then
+            echo "::error::root-absolute export-library URLs (window._fwVendor) in built output"
+            exit 1
+          fi
+          grep -rq 'window\._fwVendor={' --include=index.html . || { echo "::error::window._fwVendor map missing from built output"; exit 1; }
           if grep -n "url('/_vendor/" _vendor/inter.css; then
             echo "::error::absolute font URLs in inter.css"
             exit 1
