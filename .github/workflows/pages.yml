@@ -104,7 +104,12 @@ jobs:
             echo "::error::root-absolute export-library URLs (window._fwVendor) in built output"
             exit 1
           fi
-          grep -rq 'window\._fwVendor={' --include=index.html . || { echo "::error::window._fwVendor map missing from built output"; exit 1; }
+          # The gallery is built from the latest published release, which may
+          # predate lazily loaded export libraries; require the map only when
+          # the framework being built writes one.
+          if grep -q '_fwVendor' "$GITHUB_WORKSPACE/trellum/rendering/cdn.py"; then
+            grep -rq 'window\._fwVendor={' --include=index.html . || { echo "::error::window._fwVendor map missing from built output"; exit 1; }
+          fi
           if grep -n "url('/_vendor/" _vendor/inter.css; then
             echo "::error::absolute font URLs in inter.css"
             exit 1
