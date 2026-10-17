@@ -97,13 +97,22 @@ def test_catalog_field_filters_instantly_and_ctrl_k_focuses_it(live_server, logi
         assert page.locator(".tl-console-header #searchInput").count() == 0
         assert field.get_attribute("placeholder") == "Search reports…"
         # In the folder bar, before Sort and after the tabs, about 240px wide.
-        # The toolbar is filled in by script after the catalog is ready, so
-        # wait for the Sort select before measuring it.
-        sort_select = page.locator(".catalog-toolbar select").first
-        expect(sort_select).to_be_visible()
-        box, sort = field.bounding_box(), sort_select.bounding_box()
-        assert round(box["width"]) == 240 and box["x"] + box["width"] < sort["x"]
-        assert page.locator("#folderTabs").bounding_box()["x"] < box["x"]
+        # The catalog redraws the folder bar and fills the toolbar by script
+        # after it reports ready, so measure all three in one step once each
+        # is laid out, instead of reading boxes that a redraw can swap out.
+        geometry = page.wait_for_function("""() => {
+            const field = document.querySelector('.folder-rail #searchInput');
+            const sort = document.querySelector('.catalog-toolbar select');
+            const tabs = document.querySelector('#folderTabs');
+            if (!field || !sort || !tabs) return null;
+            const f = field.getBoundingClientRect(), s = sort.getBoundingClientRect(),
+                t = tabs.getBoundingClientRect();
+            if (!f.width || !s.width || !t.width) return null;
+            return {fieldX: f.x, fieldWidth: f.width, sortX: s.x, tabsX: t.x};
+        }""").json_value()
+        assert round(geometry["fieldWidth"]) == 240
+        assert geometry["fieldX"] + geometry["fieldWidth"] < geometry["sortX"]
+        assert geometry["tabsX"] < geometry["fieldX"]
 
         page.keyboard.press("Control+k")
         assert field.evaluate("el => el === document.activeElement")
@@ -153,10 +162,12 @@ def test_jump_list_opens_a_report_in_the_console_host_and_back_returns(live_serv
         # Instant filtering, first match highlighted, arrows move, Enter opens.
         field.fill("product")
         expect(links).to_have_count(2)
-        assert "is-highlighted" in links.nth(0).get_attribute("class")
+        # The highlight is applied by script after each key; let expect() retry.
+        highlighted = re.compile(r"\bis-highlighted\b")
+        expect(links.nth(0)).to_have_class(highlighted)
         page.keyboard.press("ArrowDown")
-        assert "is-highlighted" in links.nth(1).get_attribute("class")
-        assert "is-highlighted" not in links.nth(0).get_attribute("class")
+        expect(links.nth(1)).to_have_class(highlighted)
+        expect(links.nth(0)).not_to_have_class(highlighted)
         page.keyboard.press("Enter")
         expect(page.locator("[data-console-report-host]")).to_be_visible()
         assert page.locator(".tl-console-header").is_visible()
