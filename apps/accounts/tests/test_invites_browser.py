@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
+from django.core.cache import cache
 from playwright.sync_api import expect, sync_playwright
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -39,6 +40,7 @@ def test_invitation_resend_keeps_neighboring_draft(width, mode, login, org_admin
     headers = {"HTTP_X_TRELLUM_FORM": "1", "HTTP_ACCEPT": "application/json"}
     success = client.post(endpoint, **headers)
     send.return_value = 0
+    cache.delete(f"invite-resend:{invite.pk}")  # the resend cooldown is covered in test_invites.py
     failure = client.post(endpoint, **headers)
     responses = [success, failure]
     requests = []

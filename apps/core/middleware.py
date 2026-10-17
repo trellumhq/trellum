@@ -16,6 +16,7 @@ import re
 import uuid
 
 from apps.core.logging import current_request_id
+from apps.core.public_assets import is_public_asset
 
 HEADER = "HTTP_X_REQUEST_ID"
 RESPONSE_HEADER = "X-Request-ID"
@@ -78,7 +79,9 @@ class ContentSecurityPolicyMiddleware:
     #: quietly stops applying. The public share routes serve the same
     #: tenant-authored output (internal planning ticket #92), and an embed link sets its own
     #: ``frame-ancestors`` header there (apps.reports.views._share_response).
-    _EXEMPT = {"report-page", "report-asset", "vendor-asset", "share-entry", "share-asset"}
+    #: The public scripts (``@public_asset``, apps.core.public_assets) are exempt
+    #: too, by that marker on the resolved view rather than by a name listed here.
+    _EXEMPT = {"report-page", "report-asset", "share-entry", "share-asset"}
 
     def __init__(self, get_response):
         self.get_response = get_response
@@ -92,7 +95,7 @@ class ContentSecurityPolicyMiddleware:
         if not policy:
             return response
         match = getattr(request, "resolver_match", None)
-        if match is not None and match.url_name in self._EXEMPT:
+        if match is not None and (match.url_name in self._EXEMPT or is_public_asset(match.func)):
             return response
 
         header = (

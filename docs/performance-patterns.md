@@ -15,9 +15,9 @@ with `main` on desktop and mobile. Specifically:
 - Changing a dropdown, select, tab or toggle applies immediately; there is no
   Apply or Go button. Typing in a search box applies automatically after a short
   pause (about 400 ms); there is no Search button.
-- Dropdowns and pickers never paginate. Show every choice, with instant search.
-  For a genuinely huge set, switch to search-as-you-type; never show
-  Previous/Next pages.
+- Dropdowns and pickers never paginate. Show every choice, with instant search,
+  up to `apps.core.limits.INLINE_LIMIT` (500). For a genuinely huge set, switch
+  to search-as-you-type; never show Previous/Next pages.
 - Pages for realistic studio sizes (tens to low hundreds of items) look and
   behave exactly as on `main`. Server-side bounds stay out of sight until well
   above that.
@@ -32,8 +32,14 @@ with `main` on desktop and mobile. Specifically:
   reports or 1,000. Measure query count, response bytes and DOM size at two
   sizes. If they grow, the page is not done.
 - Paginate in SQL, never in Python after loading every row. Default page size
-  is 25. Use the existing helpers: `apps.operator.bounded.paginate`,
-  `apps.orgs.views.paginate`, and `bounded_payload` in `apps/reports/catalog.py`.
+  is 25. Slice a queryset with Django's `Paginator` (or the list screens' shared
+  pager), search in SQL with `icontains` filters, and count with one `COUNT`,
+  not `len()` of a loaded list. Cap a list that renders whole at
+  `apps.core.limits.INLINE_LIMIT` (500) by reading one extra row to learn it was
+  cut. A picker's server search answers through the shared helpers in
+  `apps/core/choice_requests.py` (`search_page`, `selected_by_id`,
+  `choice_response`) so every endpoint has the same response, header and
+  selection rules. Size-bound JSON payloads the way the catalog does.
 - No per-row queries (N+1). Resolve permissions, counts and related rows with
   `Exists`/`Subquery`, annotations, or one bulk query per page.
 - Byte-bound anything user-sized: log tails, JSON payloads, previews and

@@ -1,6 +1,9 @@
 """Invitation lifecycle: create, accept (new + existing user), expiry, revoke."""
+import logging
+
 import pytest
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.utils import timezone
 
 from apps.accounts.models import Invitation
@@ -199,6 +202,7 @@ class TestInvitationEmail:
         token, expiry, grants = invite.token, invite.expires_at, invite.studio_grants
         assert c.get(url).status_code == 405
         assert c.post(url).status_code == 302
+        cache.delete(f"invite-resend:{invite.pk}")  # the cooldown has its own tests
         response = c.post(url, HTTP_X_TRELLUM_FORM="1", HTTP_ACCEPT="application/json")
         assert response.json()["ok"] is True
         assert "Inbox delivery is not confirmed" in response.json()["message"]
@@ -273,3 +277,43 @@ class TestInvitationEmail:
         assert "private-provider-secret" not in str(row.metadata)
         assert invite.token not in str(row.metadata)
         assert self.send.call_count == int(delivery_status in {"accepted", "failed"})
+
+
+    def test_resend_has_a_cooldown_per_invitation(self, login, org_admin, org, invite):
+        from apps.core.models import AuditLog
+
+        c = login(org_admin)
+        url = f"/orgs/{org.slug}/settings/invites/{invite.pk}/resend"
+        enhanced = {"HTTP_X_TRELLUM_FORM": "1", "HTTP_ACCEPT": "application/json"}
+        assert c.post(url, **enhanced).json()["ok"] is True
+        again = c.post(url, **enhanced)
+        assert again.status_code == 400 and again.json()["ok"] is False
+        assert "Wait a minute" in again.json()["message"]
+        assert self.send.call_count == 1  # the second request sent nothing
+        denied = AuditLog.objects.filter(action="member.invite_resend", target_id=str(invite.pk), outcome="denied")
+        assert denied.get().metadata["delivery_status"] == "cooldown"
+        # The native (non-enhanced) path says the same thing as a flash message.
+        native = c.post(url, follow=True)
+        assert "Wait a minute" in native.content.decode() and self.send.call_count == 1
+        # Another invitation is not held up by it.
+        other = Invitation.objects.create(
+            org=org, email="other@demo.example", org_role=roles.ORG_MEMBER, invited_by=org_admin,
+        )
+        assert c.post(f"/orgs/{org.slug}/settings/invites/{other.pk}/resend", **enhanced).json()["ok"] is True
+        cache.delete(f"invite-resend:{invite.pk}")
+        assert c.post(url, **enhanced).json()["ok"] is True
+
+    def test_unconfigured_resend_does_not_start_a_cooldown(self, login, org_admin, org, invite):
+        c = login(org_admin)
+        url = f"/orgs/{org.slug}/settings/invites/{invite.pk}/resend"
+        self.configured.return_value = False
+        c.post(url)
+        self.configured.return_value = True
+        assert c.post(url, HTTP_X_TRELLUM_FORM="1", HTTP_ACCEPT="application/json").json()["ok"] is True
+
+    def test_send_failure_logs_the_exception_class_not_its_text(self, login, org_admin, org, invite, caplog):
+        self.send.side_effect = TimeoutError("private-provider-secret")
+        with caplog.at_level(logging.WARNING, logger="apps.orgs.views"):
+            login(org_admin).post(f"/orgs/{org.slug}/settings/invites/{invite.pk}/resend")
+        assert "TimeoutError" in caplog.text
+        assert "private-provider-secret" not in caplog.text

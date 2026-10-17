@@ -15,7 +15,6 @@ from pathlib import Path
 from django.conf import settings
 from django.contrib import messages
 from django.core.exceptions import ValidationError
-from django.core.paginator import Paginator
 from django.db.models import F, Q, Sum
 from django.db import transaction
 from django.core.serializers.json import DjangoJSONEncoder
@@ -34,6 +33,7 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 from apps.core import roles, storage
 from apps.core.docs import docs_url
 from apps.core.audit import audit
+from apps.core.choice_requests import choice_response, search_page, selected_by_id
 from apps.core.form_responses import is_settings_request, settings_error, settings_success
 from apps.core.http import int_param, json_body
 from apps.core.limits import INLINE_LIMIT
@@ -42,6 +42,7 @@ from apps.core.permissions import (
     require_org_role,
     require_studio_role,
 )
+from apps.core.public_assets import public_asset
 from apps.core.report_access import (
     bulk_can_view_report,
     can_view_report,
@@ -875,6 +876,7 @@ _MENU_WIDGET_LOCK = threading.Lock()
 _MENU_WIDGET_CACHE: str | None = None
 
 
+@public_asset
 def menu_widget_js(request):  # noqa: ARG001
     global _MENU_WIDGET_CACHE
     with _MENU_WIDGET_LOCK:
@@ -908,6 +910,7 @@ _DELIVERY_WIDGET_LOCK = threading.Lock()
 _DELIVERY_WIDGET_CACHE: str | None = None
 
 
+@public_asset
 def delivery_widget_js(request):  # noqa: ARG001
     # No auth: static code: every API call it makes is auth-gated same as
     # the dashboard's own portal.js.
@@ -935,6 +938,7 @@ _THEME_WIDGET_LOCK = threading.Lock()
 _THEME_WIDGET_CACHE: str | None = None
 
 
+@public_asset
 def theme_widget_js(request):  # noqa: ARG001
     # No auth: static code, same as delivery_widget_js -- the POST it makes
     # is auth-gated by the studio-membership decorator on the setter itself.
@@ -1561,43 +1565,33 @@ _page_metadata = paginator_metadata
 
 
 def _delivery_choices(request, *, studio=None, org_id=None):
-    rows = _delivery_filter_reports(request.user, studio=studio, org_id=org_id)
-    query = request.GET.get("q", "")
-    if query:
-        rows = rows.filter(Q(name__icontains=query) | Q(slug__icontains=query) |
-                           Q(studio__name__icontains=query) | Q(studio__org__name__icontains=query))
-    page = Paginator(rows.order_by("name", "slug", "pk"), 25).get_page(request.GET.get("page"))
+    """The report picker's server search: one page, plus the current selection."""
+    scope = _delivery_filter_reports(request.user, studio=studio, org_id=org_id)
+    page = search_page(
+        scope.order_by("name", "slug", "pk"), request.GET.get("q", ""),
+        fields=("name", "slug", "studio__name", "studio__org__name"), page=request.GET.get("page"))
+
     def item(report):
         # Same captions as the inline choices: the kind for the add-delivery
         # picker, organization / studio only where the list spans studios.
         hint = report.get_kind_display() if request.GET.get("hint") == "kind" else (
             f"{report.studio.org.name} / {report.studio.name}" if studio is None else "")
         return {"value": str(report.pk), "label": report.name or report.slug, "hint": hint}
-    selected_id = request.GET.get("selected", "").removeprefix("id:")
-    selected = None
-    if selected_id.isascii() and selected_id.isdigit() and len(selected_id) < 19:
-        report = _delivery_filter_reports(request.user, studio=studio, org_id=org_id).filter(pk=selected_id).first()
-        if report:
-            selected = item(report)
-    return {"results": [item(report) for report in page], "selected": selected,
-            "pagination": _page_metadata(page)}
+    selected = selected_by_id(scope, request.GET.get("selected", ""), prefix="id:")
+    return choice_response(page, item, selected=selected, pagination=_page_metadata(page))
 
 
 @require_studio_role(roles.VIEWER)
 @require_http_methods(["GET"])
 def api_delivery_report_choices(request, org_slug, studio_slug):
-    response = JsonResponse(_delivery_choices(request, studio=request.studio))
-    response["Cache-Control"] = "private, no-store"
-    return response
+    return _delivery_choices(request, studio=request.studio)
 
 
 @require_http_methods(["GET"])
 def delivery_report_choices_global(request):
     if not request.user.is_authenticated or not request.user.is_active or getattr(request, "api_key", None) is not None:
         raise Http404
-    response = JsonResponse(_delivery_choices(request))
-    response["Cache-Control"] = "private, no-store"
-    return response
+    return _delivery_choices(request)
 
 
 def _delivery_choice_context(request, *, studio=None, org_id=None):
@@ -1665,7 +1659,7 @@ def _schedule_json_for_script(schedule, viewer=None, request=None) -> str:
     return json.dumps(_schedule_dict(schedule, viewer=viewer, request=request)).translate(_JSON_SCRIPT_ESCAPES)
 
 
-DELIVERY_ROWS_LIMIT = 500
+DELIVERY_ROWS_LIMIT = INLINE_LIMIT
 
 
 def _my_schedule_rows(user, *, org_id=None, request=None, studio=None) -> list[dict]:
@@ -3327,6 +3321,7 @@ _SHARE_WIDGET_LOCK = threading.Lock()
 _SHARE_WIDGET_CACHE: str | None = None
 
 
+@public_asset
 def share_widget_js(request):  # noqa: ARG001
     global _SHARE_WIDGET_CACHE
     with _SHARE_WIDGET_LOCK:
@@ -3343,6 +3338,7 @@ _EMBED_WIDGET_LOCK = threading.Lock()
 _EMBED_WIDGET_CACHE: str | None = None
 
 
+@public_asset
 def embed_widget_js(request):  # noqa: ARG001
     global _EMBED_WIDGET_CACHE
     with _EMBED_WIDGET_LOCK:
@@ -3366,6 +3362,7 @@ _EMBED_ELEMENT_LOCK = threading.Lock()
 _EMBED_ELEMENT_CACHE: str | None = None
 
 
+@public_asset
 def embed_element_js(request):  # noqa: ARG001
     global _EMBED_ELEMENT_CACHE
     with _EMBED_ELEMENT_LOCK:
@@ -3388,6 +3385,7 @@ _VIEWS_WIDGET_LOCK = threading.Lock()
 _VIEWS_WIDGET_CACHE: str | None = None
 
 
+@public_asset
 def views_widget_js(request):  # noqa: ARG001
     global _VIEWS_WIDGET_CACHE
     with _VIEWS_WIDGET_LOCK:
@@ -3410,6 +3408,7 @@ _METRICS_WIDGET_LOCK = threading.Lock()
 _METRICS_WIDGET_CACHE: str | None = None
 
 
+@public_asset
 def metrics_widget_js(request):  # noqa: ARG001
     global _METRICS_WIDGET_CACHE
     with _METRICS_WIDGET_LOCK:

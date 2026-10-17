@@ -9,13 +9,14 @@ from django.core.paginator import Paginator
 from django.db.models import Count, IntegerField, OuterRef, Q, Subquery
 from django.db.models.functions import Coalesce
 
+from apps.core.limits import INLINE_LIMIT
 from apps.core.pagination import paginator_metadata
 from apps.orgs.models import OrgMembership, PermissionGroupGrant, PermissionGroupMembership
 from apps.reports.models import Report, ReportPermissionGrant
 from apps.studios.models import Studio
 
 CHOICE_SIZE = 25
-CHOICE_LIMIT = 500  # lists and tables that render unpaginated
+CHOICE_LIMIT = INLINE_LIMIT  # lists and tables that render unpaginated
 STUDIO_LIMIT = 200  # per-studio cards
 REPORT_FIELDS = ("pk", "studio_id", "name", "slug", "kind", "audience", "present_in_scan", "disabled")
 

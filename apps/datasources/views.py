@@ -113,8 +113,10 @@ def api_list(request, org_slug, studio_slug):  # noqa: ARG001
 
     Without ``?page=`` or ``?limit=`` this returns every source, as it did
     before paging existed, so API-key scripts that read the whole list keep
-    working. With either, it returns one page (default 50, ``?limit=`` up to
-    200); ``total``/``has_next`` say whether to ask again."""
+    working. With either, it returns one page (default 50, ``?limit=`` 1 to
+    200); ``total``/``has_next`` say whether to ask again. A page past the end
+    is an empty page, and a value that is not a whole number in range is a 400,
+    as for ``api/registry``."""
     bindings = effective_bindings(request.studio).annotate(n=Collate("name", "C")).order_by("n")
     if "page" not in request.GET and "limit" not in request.GET:
         items = list(bindings)
@@ -124,16 +126,32 @@ def api_list(request, org_slug, studio_slug):  # noqa: ARG001
             "total": len(items), "page": 1, "has_next": False,
         })
     try:
-        limit = max(1, min(int(request.GET.get("limit") or 50), 200))
-    except ValueError:
-        limit = 50
-    page = paginate(request, bindings, per_page=limit)
-    items = list(page.object_list)
+        page = _whole_number(request.GET.get("page"), 1, 1, API_MAX_PAGE, "page")
+        limit = _whole_number(request.GET.get("limit"), 50, 1, API_MAX_LIMIT, "limit")
+    except ValueError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+    total = bindings.count()
+    offset = (page - 1) * limit
+    items = list(bindings[offset:offset + limit]) if offset < total else []
     states = states_for(request.studio, [ds.name for ds in items])
     return JsonResponse({
         "sources": [_source_info(ds, states[ds.name]) for ds in items],
-        "total": page.paginator.count, "page": page.number, "has_next": page.has_next(),
+        "total": total, "page": page, "has_next": offset + len(items) < total,
     })
+
+
+#: Bounds of ``api/datasources?page=&limit=``: the same page ceiling as the registry.
+API_MAX_PAGE = 1_000_000
+API_MAX_LIMIT = 200
+
+
+def _whole_number(raw, default: int, low: int, high: int, name: str) -> int:
+    """A query-string whole number in ``low..high`` (``default`` when blank)."""
+    if raw is None or raw == "":
+        return default
+    if not (raw.isascii() and raw.isdigit() and len(raw) <= 10) or not low <= int(raw) <= high:
+        raise ValueError(f"Invalid {name}: use a whole number from {low} to {high}.")
+    return int(raw)
 
 
 def _store_upload(request, ds: DataSource, name: str) -> JsonResponse:

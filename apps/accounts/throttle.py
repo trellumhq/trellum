@@ -1,4 +1,4 @@
-"""Login throttling and escalating lockout.
+"""Login throttling and escalating lockout (and password-reset request limits, at the end).
 
 The portal had none: a console that reaches every organization on the
 instance accepted unlimited password guesses, and the audit log did not even
@@ -32,8 +32,10 @@ the field defaults a fresh install starts from (see
 """
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 
+from django.conf import settings
 from django.core.cache import cache
 
 from apps.core.net import client_ip
@@ -163,3 +165,46 @@ def unlock(email: str) -> bool:
     existed = any(cache.get(k) is not None for k in keys)
     cache.delete_many(keys)
     return existed
+
+
+# ── Password-reset requests ─────────────────────────────────────────────────
+# Not a lockout: nobody is refused anything they could have used. A request
+# over a limit gets the same neutral page as every other and simply sends no
+# mail, so the limits cannot be used to learn which addresses have accounts,
+# and they stop the form being a free way to mail-bomb an address.
+#
+# Two keys, as for login: the address (one inbox flooded) and the client
+# address (one source walking a list). Env settings rather than InstanceConfig:
+# PASSWORD_RESET_EMAIL_COOLDOWN_SECONDS, PASSWORD_RESET_IP_MAX_REQUESTS and
+# PASSWORD_RESET_IP_WINDOW_SECONDS; 0 disables the matching limit.
+_RESET_PREFIX = "password-reset"
+
+
+def password_reset_allowed(email: str, request) -> bool:
+    """Count one reset request; False when it should send no mail.
+
+    Every request is counted, for known and unknown addresses alike, so the
+    outcome (and the work done) does not depend on whether an account exists.
+    """
+    address = client_ip(request)
+    limit = settings.PASSWORD_RESET_IP_MAX_REQUESTS
+    window = settings.PASSWORD_RESET_IP_WINDOW_SECONDS
+    if address and limit > 0 and window > 0:
+        key = f"{_RESET_PREFIX}:ip:{address}"
+        try:
+            # add() starts the window once; later requests do not extend it.
+            cache.add(key, 0, window)
+            count = cache.incr(key)
+        except ValueError:
+            # Expired between add() and incr(): the next request starts afresh.
+            cache.add(key, 1, window)
+            count = 1
+        if count > limit:
+            return False
+    cooldown = settings.PASSWORD_RESET_EMAIL_COOLDOWN_SECONDS
+    if email and cooldown > 0:
+        digest = hashlib.sha256(email.strip().lower().encode()).hexdigest()[:32]
+        # add() is the claim: only the first request in the cooldown wins.
+        if not cache.add(f"{_RESET_PREFIX}:email:{digest}", 1, cooldown):
+            return False
+    return True

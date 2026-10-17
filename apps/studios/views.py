@@ -5,14 +5,16 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from django.contrib import messages
-from django.http import Http404, JsonResponse
+from django.http import Http404
 from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST, require_http_methods
 
 from apps.core import roles
 from apps.core.audit import audit
+from apps.core.choice_requests import choice_response, search_page, selected_by_id
 from apps.core.form_responses import is_settings_request, settings_error, settings_success
+from apps.core.limits import INLINE_LIMIT
 from apps.core.permissions import require_studio_role
 from apps.core.report_access import selected_report_access_block_reason
 from apps.orgs.models import OrgMembership
@@ -33,7 +35,7 @@ def settings_home(request, org_slug, studio_slug):  # noqa: ARG001
 #: Invisible upper bound on the rows of the studio members screen and on the
 #: people listed in its "Add a member" picker. Past it the table shows a note
 #: and the picker searches on the server as you type.
-MEMBER_LIST_CAP = 500
+MEMBER_LIST_CAP = INLINE_LIMIT
 
 
 @require_studio_role(roles.ADMIN)
@@ -67,39 +69,20 @@ def _eligible_member_choices(request):
         user__studio_memberships__studio=request.studio).select_related("user").order_by("user__email")
 
 
-def _member_choice_page(request, *, data=None):
-    from django.core.paginator import Paginator
-    from django.db.models import Q
-
-    data = request.GET if data is None else data
-    qs = _eligible_member_choices(request)
-    q = (data.get("q") or "").strip()
-    if q:
-        qs = qs.filter(Q(user__email__icontains=q) | Q(user__name__icontains=q))
-    return Paginator(qs, 25).get_page(data.get("page"))
-
-
-def _selected_member_choice(request, key, data=None):
-    data = request.GET if data is None else data
-    value = data.get(key) or ""
-    if not value.isdecimal() or len(value) > 19 or int(value) > 9223372036854775807:
-        return None
-    return _eligible_member_choices(request).filter(user_id=value).first()
-
-
 @require_studio_role(roles.ADMIN)
 @require_http_methods(["GET"])
 def api_member_choices(request, org_slug, studio_slug):  # noqa: ARG001
-    page = _member_choice_page(request)
-    selected = _selected_member_choice(request, "selected")
+    eligible = _eligible_member_choices(request)
+    page = search_page(eligible, (request.GET.get("q") or "").strip(),
+                       fields=("user__email", "user__name"), page=request.GET.get("page"))
+
     def item(member):
         return {"value": str(member.user_id), "label": member.user.email, "hint": ""}
-    response = JsonResponse({"results": [item(member) for member in page.object_list],
-        "selected": item(selected) if selected else None,
-        "pagination": {"page": page.number, "pages": page.paginator.num_pages,
-                       "total": page.paginator.count, "has_next": page.has_next(), "has_previous": page.has_previous()}})
-    response["Cache-Control"] = "private, no-store"
-    return response
+    return choice_response(
+        page, item, selected=selected_by_id(eligible, request.GET.get("selected"), field="user_id"),
+        pagination={"page": page.number, "pages": page.paginator.num_pages,
+                    "total": page.paginator.count, "has_next": page.has_next(),
+                    "has_previous": page.has_previous()})
 
 
 @require_studio_role(roles.ADMIN)

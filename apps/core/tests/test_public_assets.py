@@ -10,6 +10,7 @@ from django.utils import timezone
 from apps.accounts import session_policy
 from apps.accounts.models import UserSession
 from apps.core.models import AuditLog
+from apps.core.public_assets import PUBLIC_ASSET_CACHE_CONTROL
 
 pytestmark = pytest.mark.django_db
 
@@ -89,7 +90,7 @@ def test_public_bytes_need_no_database_or_session_write(
         assert response.status_code == original.status_code == 200
         assert response.content == original.content
         assert response["Content-Type"] == original["Content-Type"]
-        assert response.get("Cache-Control") == original.get("Cache-Control")
+        assert response["Cache-Control"] == (original.get("Cache-Control") or PUBLIC_ASSET_CACHE_CONTROL)
         assert response["X-Request-ID"] == "asset-proof"
         assert response["X-Content-Type-Options"] == "nosniff"
         assert response["X-Frame-Options"] == settings.X_FRAME_OPTIONS
@@ -132,9 +133,12 @@ def test_public_headers_and_bytes_match_normal_chain(settings, django_assert_num
         assert response.content == original.content
         # The normal session middleware adds Vary: Cookie even to anonymous
         # static reads. The public path deliberately has no cookie dependency.
-        assert {k: v for k, v in response.items() if k not in {"X-Request-ID", "Vary"}} == {
-            k: v for k, v in original.items() if k not in {"X-Request-ID", "Vary"}
+        # Cache-Control is compared below: the public path supplies a default.
+        skip = {"X-Request-ID", "Vary", "Cache-Control"}
+        assert {k: v for k, v in response.items() if k not in skip} == {
+            k: v for k, v in original.items() if k not in skip
         }
+        assert response["Cache-Control"] == (original.get("Cache-Control") or PUBLIC_ASSET_CACHE_CONTROL)
         assert original.get("Vary", "") in {"", "Cookie"}
         assert not response.get("Vary")
         assert head.status_code == response.status_code
@@ -196,3 +200,73 @@ def test_route_name_cannot_authorize_another_view(rf):
     request.urlconf = Conf
     response = PublicAssetMiddleware(downstream)(request)
     assert response.content == b"normal chain" and called == ["/collision"]
+
+
+def _marked_routes():
+    """(url name, view) for every route whose view carries @public_asset."""
+    from django.urls import URLPattern, get_resolver
+
+    from apps.core.public_assets import is_public_asset
+
+    found = []
+
+    def walk(patterns):
+        for entry in patterns:
+            if isinstance(entry, URLPattern):
+                if is_public_asset(entry.callback):
+                    found.append(entry.name)
+            else:
+                walk(entry.url_patterns)
+
+    walk(get_resolver().url_patterns)
+    return sorted(found)
+
+
+def test_the_marker_is_the_whole_list_of_public_routes():
+    # Adding or dropping a public script is a decorator on its view; this
+    # fails when a mark is added or lost without a matching ASSETS entry.
+    assert _marked_routes() == sorted([
+        "vendor-asset", "assistant-widget", "reports-menu-widget", "reports-delivery-widget",
+        "reports-theme-widget", "reports-share-widget", "reports-embed-widget",
+        "reports-embed-element", "reports-views-widget", "reports-metrics-widget",
+    ])
+    from django.urls import resolve
+
+    assert sorted(resolve(url).url_name for url in ASSETS) == _marked_routes()
+
+
+@pytest.mark.parametrize("url", ASSETS)
+def test_every_public_script_is_cacheable_and_outside_the_csp(url, settings):
+    settings.CONTENT_SECURITY_POLICY = "default-src 'self'"
+    response = Client().get(url)
+    assert response.status_code == 200
+    assert "max-age=" in response["Cache-Control"] and "public" in response["Cache-Control"]
+    assert "Content-Security-Policy" not in response
+    assert "Content-Security-Policy-Report-Only" not in response
+    assert not response.cookies and not response.get("Vary")
+
+
+def test_views_that_choose_their_own_cache_policy_keep_it():
+    from django.http import HttpResponse
+
+    from apps.core.public_assets import PublicAssetMiddleware, public_asset
+
+    @public_asset
+    def mine(request):
+        response = HttpResponse("x", content_type="application/javascript")
+        response["Cache-Control"] = "no-store"
+        return response
+
+    from django.test import RequestFactory
+
+    conf = type("Conf", (), {"urlpatterns": [path("mine.js", mine, name="mine")]})
+    request = RequestFactory().get("/mine.js")
+    request.urlconf = conf
+    response = PublicAssetMiddleware(lambda r: HttpResponse("normal"))(request)
+    assert response.content == b"x" and response["Cache-Control"] == "no-store"
+
+
+def test_a_missing_vendor_file_is_not_given_a_public_cache_policy():
+    response = Client().get("/_vendor/nope.js")
+    assert response.status_code == 404
+    assert "public" not in response.get("Cache-Control", "")

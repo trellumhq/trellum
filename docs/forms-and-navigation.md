@@ -248,8 +248,9 @@ callback exceptions stop polling safely; read failures retain bounded backoff.
 ## Long choice lists
 
 Pickers never show pages. Render every choice inline, up to
-`INLINE_CHOICE_LIMIT` (500, `apps/core/choice_requests.py`), and the browser
-filters them instantly. Use `inline_choices(rows)`: it returns the rows and a
+`INLINE_LIMIT` (500, `apps/core/limits.py`; `INLINE_CHOICE_LIMIT` in
+`apps/core/choice_requests.py` is the same value), and the browser filters them
+instantly. Use `inline_choices(rows)`: it returns the rows and a
 `searchable` flag. Only when more than 500 choices exist does the page render a
 short preview and set a same-origin source (`data-choice-source` on a single
 select, `data-recipient-source` on the checkbox picker, `data-scope-source` on
@@ -269,7 +270,11 @@ When the encoded choice URL exceeds 3,000 bytes, the shared picker uses a
 read-only JSON POST to the same endpoint, with `X-CSRFToken` from its native
 form. Endpoints accept only known parameters and enforce their usual
 permissions, CSRF and body limits. Choice reads do not save, send or audit
-changes.
+changes. Build every such endpoint's reply with `search_page`, `selected_by_id`
+and `choice_response` from `apps/core/choice_requests.py`, so the response
+(`results`, `selected`, `pagination`), its `Cache-Control: private, no-store`
+header and the rule that a bad `selected` value selects nothing are the same
+everywhere.
 
 Forms and filters that mark `data-auto-filter` (`static/auto-filter.js`) apply
 immediately: selects and pickers on change, text boxes after a 400 ms pause or

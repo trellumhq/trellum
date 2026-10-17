@@ -4,6 +4,8 @@ import re
 import pytest
 from django.core import mail
 
+from apps.core.mail import wait_for_background_sends
+
 pytestmark = pytest.mark.django_db
 
 
@@ -58,6 +60,7 @@ class TestPasswordReset:
         assert client.get("/password-reset/").status_code == 200
         resp = client.post("/password-reset/", {"email": member.email})
         assert resp.status_code == 302
+        wait_for_background_sends()
         assert len(mail.outbox) == 1
         link = re.search(r"http://[^\s]+/password-reset/[^\s]+", mail.outbox[0].body).group(0)
         path = "/" + link.split("/", 3)[3]
@@ -75,6 +78,7 @@ class TestPasswordReset:
     def test_unknown_email_no_leak_no_mail(self, client, member):
         resp = client.post("/password-reset/", {"email": "ghost@nowhere.io"})
         assert resp.status_code == 302  # same response either way
+        wait_for_background_sends()
         assert len(mail.outbox) == 0
 
     def test_login_page_links_reset(self, client, member):
