@@ -1,9 +1,11 @@
 """Recovery evidence uses the existing Operations history, without replay actions."""
 import os
 import re
+from datetime import timedelta
 
 import pytest
 from django.conf import settings
+from django.utils import timezone
 from playwright.sync_api import expect, sync_playwright
 
 from .test_operations_metrics_browser import _operations_fixture_html
@@ -13,9 +15,11 @@ from .test_portal_mobile_runtime import REPORT, _ops_log, _ops_respond
 @pytest.mark.parametrize("width", [1280, pytest.param(390, marks=pytest.mark.heavy)])
 def test_history_explains_recovery_and_unknown_outcomes(width):
     status = {"running": {}, "queue": []}
+    started_at = timezone.now() - timedelta(minutes=2)
+    retry_at = timezone.now() + timedelta(minutes=1)
     run = {
         "status": "error", "trigger": "cron", "duration_seconds": 12,
-        "created_at": "2026-10-19T09:00:00Z", "peak_memory_mb": 128,
+        "created_at": started_at.isoformat(), "peak_memory_mb": 128,
         "diagnostics": {
             "version": 1, "stage": "fetch", "state": "failed", "transient": True,
             "timeout_seconds": 3600, "attempt": 3,
@@ -24,7 +28,7 @@ def test_history_explains_recovery_and_unknown_outcomes(width):
         },
         "recovery": {
             "state": "pending", "reason": "transient_connection", "attempt": 0,
-            "due_at": "2026-10-19T09:01:04Z",
+            "due_at": retry_at.isoformat(),
         },
     }
 
