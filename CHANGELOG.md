@@ -49,6 +49,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   `python -m trellum guide upgrade` lists each fix, and a build that fails on
   one prints a hint pointing there. `query_df(..., compact_text=False)`
   returns plain text.
+- Allow 60 minutes for report builds by default, retaining explicit
+  `TRELLUM_RUN_TIMEOUT` overrides and the five-second termination grace.
+- Contain direct Windows report builds in a Job Object so successful runs can
+  publish and stopped process trees can be confirmed before recovery.
 
 ## [0.8.0] — 2026-10-17
 

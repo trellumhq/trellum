@@ -111,9 +111,13 @@ process/container has stopped. POSIX builds use a dedicated process group;
 remaining group members are killed and checked again before completion.
 Unsandboxed group confirmation cannot detect descendants that deliberately
 leave that group; such reports must not opt into recovery. Docker provides the
-container boundary for untrusted process trees. Windows
-subprocess trees and missing Docker containers cannot provide that confirmation
-here and stay unconfirmed. An operator must investigate a lost worker; do not
+container boundary for untrusted process trees. Direct Windows builds use a
+kill-on-close Job Object and do not start report code until the process is
+assigned to it. The runner checks that no job processes remain before
+publishing output or admitting recovery. Code that deliberately starts work
+outside the process group or job must not opt into automatic recovery. Missing
+Docker containers cannot provide termination confirmation here and stay
+unconfirmed. An operator must investigate a lost worker; do not
 clear its run fence before independently confirming termination. Boot catch-up
 only starts reports with no run history, so coordinator restarts cannot become
 an unbounded replay mechanism.

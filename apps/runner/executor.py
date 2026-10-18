@@ -46,6 +46,7 @@ from apps.runner.safe_copy import safe_copyfile, safe_copytree
 from apps.runner.sandbox import DockerSandbox, sandbox_mode
 
 logger = logging.getLogger("trellum.runner")
+_KILL_SIGNAL = getattr(signal, "SIGKILL", 9)
 
 #: Project-root files the framework reads while a report builds, and that the
 #: portal must both sync into the studio project and stage into each run's
@@ -622,14 +623,13 @@ class Executor:
                     cap_bytes = memory_cap_mb * 1024 * 1024
                     popen_extra["preexec_fn"] = _memory_limit_preexec(cap_bytes)
 
-                proc = subprocess.Popen(
-                    cmd,
-                    cwd=str(settings.BASE_DIR),  # bundled source wins sys.path
-                    env=env,
-                    stdout=stdout_fh,
-                    stderr=stderr_fh,
-                    **popen_extra,
-                )
+                spawn = subprocess.Popen
+                if os.name == "nt":
+                    from apps.runner.windows_job import WindowsJobProcess
+
+                    spawn = WindowsJobProcess
+                proc = spawn(cmd, cwd=str(settings.BASE_DIR), env=env,
+                             stdout=stdout_fh, stderr=stderr_fh, **popen_extra)
                 stdout_fh.close()
                 stderr_fh.close()
                 stdout_fh = stderr_fh = None
@@ -765,7 +765,7 @@ class Executor:
                                    "reason": "timeout" if proc.timed_out else "stop_requested"},
                         )
                         try:
-                            self._signal_process_tree(proc, signal.SIGKILL)
+                            self._signal_process_tree(proc, _KILL_SIGNAL)
                         except OSError:
                             pass
 
@@ -815,9 +815,20 @@ class Executor:
 
     @staticmethod
     def _termination_confirmed(proc: RunningProc) -> bool:
-        confirmation = getattr(proc.process, "termination_confirmed", None)
+        try:
+            confirmation = getattr(proc.process, "termination_confirmed", None)
+        except OSError:
+            confirmation = False
         if confirmation is not None:
-            return bool(confirmation)
+            if confirmation:
+                return True
+            # An exited leader can leave work in its managed tree. Terminate
+            # the tree and check it again on the next monitor pass.
+            try:
+                proc.process.kill()
+            except OSError:
+                pass
+            return False
         if proc.process_group_id is None:
             # A Windows direct child may have spawned surviving descendants.
             return False
@@ -830,7 +841,7 @@ class Executor:
         # Reap descendants even when their parent exited before its deadline.
         # Do not admit replacement work until a later tick confirms exit.
         try:
-            os.killpg(proc.process_group_id, signal.SIGKILL)
+            os.killpg(proc.process_group_id, _KILL_SIGNAL)
         except OSError:
             pass
         return False

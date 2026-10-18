@@ -8,6 +8,8 @@ import os
 import sys
 import signal
 import threading
+from types import SimpleNamespace
+from uuid import uuid4
 from datetime import timedelta
 from pathlib import Path
 
@@ -1481,6 +1483,202 @@ class TestRecoveryIntegration:
         queued_run.refresh_from_db()
         assert queued_run.diagnostics["cause"] == "memory_allocation_failed"
         assert queued_run.diagnostics["transient"] is False
+
+
+@pytest.fixture
+def windows_job_mode(monkeypatch, fake_popen, settings):
+    """Exercise executor's Windows branch on Linux with a controllable Job."""
+    from apps.runner import windows_job
+
+    settings.TRELLUM_SANDBOX = "off"
+    monkeypatch.setattr(executor_mod, "os", SimpleNamespace(**{**vars(os), "name": "nt"}))
+    jobs = []
+
+    class FakeJob(FakeProc):
+        def __init__(self, cmd, **kwargs):
+            super().__init__(cmd, **kwargs)
+            self.tree_active = True
+            self.cleaned = False
+            jobs.append(self)
+
+        @property
+        def termination_confirmed(self):
+            return not self.tree_active
+
+        def cleanup(self):
+            self.cleaned = True
+
+    monkeypatch.setattr(windows_job, "WindowsJobProcess", FakeJob)
+    return jobs
+
+
+class TestWindowsJobCompletion:
+    def test_success_publishes_and_releases_admission(self, queued_run, windows_job_mode):
+        destination = queued_run.studio.output_dir / queued_run.slug
+        destination.mkdir(parents=True)
+        (destination / "index.html").write_text("previous")
+        ex = Executor("windows")
+        assert ex.start_run(queued_run)
+        job = windows_job_mode[0]
+        proc = ex._procs[queued_run.pk]
+        assert proc.process_group_id is None
+        Path(proc.output_dir, "index.html").write_text("replacement")
+        job.finish(0)
+        job.tree_active = False
+        ex.tick()
+        queued_run.refresh_from_db()
+        assert queued_run.status == Run.SUCCESS
+        assert queued_run.termination_confirmed is True
+        assert (destination / "index.html").read_text() == "replacement"
+        assert ex.running_count == 0 and job.cleaned
+        from apps.runner.services import enqueue
+        assert enqueue(queued_run.report, trigger="manual") != "already_running"
+
+    def test_exited_leader_with_descendant_keeps_fence_until_killed(
+        self, queued_run, windows_job_mode
+    ):
+        ex = Executor("windows")
+        assert ex.start_run(queued_run)
+        job = windows_job_mode[0]
+        job.finish(0)
+        ex.tick()
+        queued_run.refresh_from_db()
+        assert job.killed
+        assert queued_run.status == Run.RUNNING
+        assert queued_run.termination_confirmed is False
+        job.tree_active = False
+        ex.tick()
+        queued_run.refresh_from_db()
+        assert queued_run.status == Run.SUCCESS
+
+    def test_unconfirmed_exit_does_not_delay_another_deadline(
+        self, queued_run, windows_job_mode, tmp_path
+    ):
+        ex = Executor("windows")
+        assert ex.start_run(queued_run)
+        first = windows_job_mode[0]
+        first.finish(1)
+        other = FakeProc()
+        other_id = uuid4()
+        ex._procs[other_id] = RunningProc(
+            run_id=other_id, slug="other", studio_id=queued_run.studio_id,
+            process=other, started_at=timezone.now() - timedelta(seconds=3601),
+            stdout_path=str(tmp_path / "other.stdout"),
+            stderr_path=str(tmp_path / "other.stderr"), run_dir="",
+            output_dir=str(tmp_path / "other-output"), timeout_seconds=3600,
+        )
+        ex.tick()
+        queued_run.refresh_from_db()
+        assert queued_run.status == Run.RUNNING
+        assert first.killed
+        assert ex._procs[other_id].timed_out
+        assert other.signals == [signal.SIGTERM]
+        first.tree_active = False
+        ex.tick()
+
+    def test_timeout_and_cancel_are_bounded_without_unsafe_replay(
+        self, queued_run, windows_job_mode
+    ):
+        ex = Executor("windows")
+        assert ex.start_run(queued_run)
+        job = windows_job_mode[0]
+        proc = ex._procs[queued_run.pk]
+        proc.started_at = timezone.now() - timedelta(seconds=3601)
+        ex.tick()
+        assert proc.timed_out and job.signals == [signal.SIGTERM]
+        proc.sigterm_at = timezone.now() - timedelta(seconds=6)
+        ex.tick()
+        assert job.killed
+        job.finish(1)
+        job.tree_active = False
+        ex.tick()
+        queued_run.refresh_from_db()
+        assert queued_run.status == Run.TIMEOUT
+        assert queued_run.termination_confirmed is True
+        assert queued_run.diagnostics["recovery"]["state"] == "ineligible"
+
+        from apps.runner.services import enqueue
+        assert enqueue(queued_run.report, trigger="manual") == "queued"
+        later = Run.objects.get(report=queued_run.report, status=Run.QUEUED)
+        assert ex.start_run(later)
+        other = windows_job_mode[1]
+        Run.objects.filter(pk=later.pk).update(stop_requested=True)
+        ex.tick()
+        assert other.signals == [signal.SIGTERM]
+        ex._procs[later.pk].sigterm_at = timezone.now() - timedelta(seconds=6)
+        ex.tick()
+        assert other.killed
+        other.finish(1)
+        other.tree_active = False
+        ex.tick()
+        later.refresh_from_db()
+        assert later.status == Run.STOPPED
+        assert later.diagnostics["recovery"]["state"] == "cancelled"
+
+
+def test_windows_job_assigns_before_releasing_report_code(monkeypatch):
+    from apps.runner import windows_job
+
+    events = []
+
+    class Pipe:
+        def write(self, value):
+            events.append(("release", value))
+
+        def close(self):
+            events.append(("pipe_closed",))
+
+    class Child:
+        pid = 42
+        _handle = 99
+        stdin = Pipe()
+
+        def poll(self):
+            return 0
+
+        def kill(self):
+            events.append(("child_killed",))
+
+        def wait(self, **_kwargs):
+            return 1
+
+    class Api:
+        active = 1
+
+        def CreateJobObjectW(self, *_args):
+            return 7
+
+        def SetInformationJobObject(self, *_args):
+            return True
+
+        def AssignProcessToJobObject(self, job, child):
+            events.append(("assigned", job, child))
+            return True
+
+        def QueryInformationJobObject(self, _job, _kind, pointer, _size, _return_size):
+            pointer._obj.ActiveProcesses = self.active
+            return True
+
+        def TerminateJobObject(self, *_args):
+            events.append(("tree_killed",))
+            self.active = 0
+            return True
+
+        def CloseHandle(self, *_args):
+            events.append(("job_closed",))
+            return True
+
+    api = Api()
+    monkeypatch.setattr(windows_job, "_api", lambda: api)
+    monkeypatch.setattr(windows_job.subprocess, "CREATE_NEW_PROCESS_GROUP", 512, raising=False)
+    monkeypatch.setattr(windows_job.subprocess, "Popen", lambda *_args, **_kwargs: Child())
+    job = windows_job.WindowsJobProcess([sys.executable, "-m", "trellum.run", "report"], cwd=".")
+    assert events[:3] == [("assigned", 7, 99), ("release", b"1"), ("pipe_closed",)]
+    assert job.termination_confirmed is False
+    job.kill()
+    assert job.termination_confirmed is True
+    job.cleanup()
+    assert events[-1] == ("job_closed",)
 
 
 @pytest.mark.heavy
