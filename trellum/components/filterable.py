@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
+import numpy as np
 import orjson
 import pandas as pd
 
@@ -153,6 +154,30 @@ def _period_key(date_str: str, chunk_by: str) -> str:
     return date_str[:7]
 
 
+def _period_row_positions(df: pd.DataFrame, date_col: str, chunk_by: str) -> dict[str, np.ndarray]:
+    """Map each calendar period to the row positions that fall in it.
+
+    Positions are ascending, so ``df.take(positions[p])`` returns the
+    period's rows in their original order. The period key is a function of
+    the date alone, so it is computed once per distinct date instead of once
+    per row, and the frame itself is never copied: a large DataSource would
+    otherwise briefly need twice its own memory to be split into chunks.
+    """
+    if pd.api.types.is_datetime64_any_dtype(df[date_col].dtype):
+        date_strs = df[date_col].dt.strftime("%Y-%m-%d")
+    else:
+        date_strs = df[date_col].astype(str)
+    codes, dates = pd.factorize(date_strs, sort=False, use_na_sentinel=False)
+    date_periods = [_period_key(d, chunk_by) for d in dates]
+    period_codes, periods = pd.factorize(
+        pd.Index(date_periods, dtype=object), sort=False)
+    row_periods = period_codes[codes]
+    return {
+        period: np.flatnonzero(row_periods == code)
+        for code, period in enumerate(periods)
+    }
+
+
 def _period_range(key: str, chunk_by: str) -> tuple[str, str]:
     """Return (min_date, max_date) strings for a period key."""
     if chunk_by == "month":
@@ -217,29 +242,24 @@ class DataSource(Component):
             ctx.add_raw_data(f"_ds_{self.id}", _serialize_columnar(self.df))
             return
 
-        df = self.df.copy()
-        # Produce a plain string date column for period grouping
-        if pd.api.types.is_datetime64_any_dtype(df[date_col].dtype):
-            date_strs = df[date_col].dt.strftime("%Y-%m-%d")
-        else:
-            date_strs = df[date_col].astype(str)
-
-        period_col = "__fw_period__"
-        df[period_col] = date_strs.apply(lambda v: _period_key(v, self.chunk_by))
+        df = self.df
+        positions = _period_row_positions(df, date_col, self.chunk_by)
 
         # Sort periods newest-first
-        all_periods = sorted(df[period_col].unique(), reverse=True)
+        all_periods = sorted(positions, reverse=True)
         inline_periods = all_periods[: self.default_chunks]
         chunk_periods = all_periods[self.default_chunks :]
 
-        # Inline data: most-recent periods
-        inline_df = df[df[period_col].isin(inline_periods)].drop(columns=[period_col])
+        # Inline data: most-recent periods, in their original row order
+        inline_rows = np.sort(np.concatenate([positions[p] for p in inline_periods]))
+        inline_df = df.take(inline_rows)
         ctx.add_raw_data(f"_ds_{self.id}", _serialize_columnar(inline_df))
+        del inline_df
 
         # Chunk files: older periods
         chunk_manifest: dict[str, dict] = {}
         for period in chunk_periods:
-            period_df = df[df[period_col] == period].drop(columns=[period_col])
+            period_df = df.take(positions[period])
             pmin, pmax = _period_range(period, self.chunk_by)
             fname = f"data_chunk_{self.id}_{period}.json"
             payload = {f"_ds_{self.id}": _serialize_columnar(period_df)}

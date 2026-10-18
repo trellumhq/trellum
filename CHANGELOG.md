@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Changed
+
+- Split a chunked DataSource (`chunk_by="month"` or `"week"`) into its period
+  files without copying the whole frame, both while rendering and while the
+  build measures chunk sizes for its details. A two-million-row report needs
+  about 460 MB less peak memory and builds about 30% faster. The chunk files,
+  their sizes and row order are unchanged.
+
 ## [0.8.0] — 2026-10-17
 
 ### Added
