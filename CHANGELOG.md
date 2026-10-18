@@ -18,6 +18,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   date or NaN when the column holds only text and empty values. A build that
   sends two million rows to the browser finishes about 15% sooner; data.json
   and chunk files are byte-for-byte unchanged.
+- Start the portal's web workers and runworker without loading pandas, numpy
+  and pyarrow. They load on the first request or build that uses them, so an
+  idle process holds about 75 MB less (163 MB to 87 MB per process; about
+  230 MB across the default two web workers and one runworker). Everything
+  `trellum.data` and `trellum.rendering` export is unchanged.
 
 ## [0.8.0] — 2026-10-17
 
