@@ -180,7 +180,9 @@ class StoreHealthReport(BaseReport):
         end = pd.Timestamp(today)
         cur_start = end - pd.Timedelta(days=_PERIOD_DAYS)
         prior_start = cur_start - pd.Timedelta(days=_PERIOD_DAYS)
-        dates = pd.to_datetime(df["event_date"])
+        # astype(str) first: on a large category column pd.to_datetime
+        # returns a category of dates, which cannot be compared with < or >.
+        dates = pd.to_datetime(df["event_date"].astype(str))
         current = df[(dates > cur_start) & (dates <= end)]
         prior = df[(dates > prior_start) & (dates <= cur_start)]
         return current, prior

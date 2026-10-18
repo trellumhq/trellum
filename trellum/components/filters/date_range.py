@@ -47,6 +47,10 @@ class DateRangeFilter(BaseFilter):
 
     def _compute_bounds(self, col: str, f: Dict[str, Any], df: pd.DataFrame, hourly: bool):
         vals = df[col].dropna()
+        if isinstance(vals.dtype, pd.CategoricalDtype):
+            # min/max need an ordered category; the values this frame
+            # actually holds compare the way the plain column did.
+            vals = pd.Series(vals.cat.categories[pd.unique(vals.cat.codes)])
         if hourly:
             min_d = str(vals.min())[:16] if len(vals) else ""
             max_d = str(vals.max())[:16] if len(vals) else ""

@@ -40,9 +40,10 @@ def df_to_json_records(df: pd.DataFrame) -> list[dict[str, Any]]:
             out[col] = out[col].astype(object)
             out.loc[mask, col] = None
         else:
-            if pd.api.types.is_string_dtype(dtype) and dtype != object:
-                # pandas 3 text: plain objects, so a missing value becomes
-                # None below instead of NaN.
+            if isinstance(dtype, pd.CategoricalDtype) or (
+                    pd.api.types.is_string_dtype(dtype) and dtype != object):
+                # pandas 3 text and categories: plain objects, so a missing
+                # value becomes None below instead of NaN.
                 out[col] = out[col].astype(object)
             if out[col].dtype == object:
                 mask = out[col].apply(

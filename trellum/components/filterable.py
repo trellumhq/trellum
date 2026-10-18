@@ -35,6 +35,32 @@ from trellum.components.live_filterable import live_meta_html as _live_meta_html
 _PLAIN_TEXT_TYPES = frozenset({str, type(None)})
 
 
+def _is_text_category(dtype) -> bool:
+    """A category column whose categories are all text (what query_df makes)."""
+    return (isinstance(dtype, pd.CategoricalDtype)
+            and all(type(c) is str for c in dtype.categories))
+
+
+def _serialize_category(series: pd.Series, n_rows: int) -> tuple[list, list | None]:
+    """A text category column's values, dictionary-encoded on the same rule.
+
+    Gives exactly what the text path below gives for the same values -- the
+    vocabulary in first-seen order, missing as None -- but from the codes,
+    without a Python string per row.
+    """
+    codes = series.cat.codes.to_numpy()
+    values = np.empty(len(series.cat.categories) + 1, dtype=object)
+    values[:-1] = list(series.cat.categories)
+    values[-1] = None  # code -1 is a missing value
+    if n_rows:
+        seen = pd.unique(codes)  # first-seen order, -1 included
+        if len(seen) / n_rows < 0.3:
+            position = np.empty(len(values), dtype=np.int64)
+            position[seen] = np.arange(len(seen))
+            return position[codes].tolist(), values[seen].tolist()
+    return values[codes].tolist(), None
+
+
 def _serialize_columnar(df: pd.DataFrame) -> dict:
     """Serialize DataFrame in columnar format with optional dictionary encoding.
 
@@ -57,6 +83,13 @@ def _serialize_columnar(df: pd.DataFrame) -> dict:
         series = df[col]
         dtype = series.dtype
         is_numeric = False
+
+        if _is_text_category(dtype):
+            values, vocab = _serialize_category(series, n_rows)
+            if vocab is not None:
+                dict_maps[col] = vocab
+            col_arrays.append(values)
+            continue
 
         if pd.api.types.is_datetime64_any_dtype(dtype):
             notna = series.dropna()
@@ -177,11 +210,22 @@ def _period_row_positions(df: pd.DataFrame, date_col: str, chunk_by: str) -> dic
     per row, and the frame itself is never copied: a large DataSource would
     otherwise briefly need twice its own memory to be split into chunks.
     """
-    if pd.api.types.is_datetime64_any_dtype(df[date_col].dtype):
-        date_strs = df[date_col].dt.strftime("%Y-%m-%d")
+    series = df[date_col]
+    if _is_text_category(series.dtype) and not series.isna().any():
+        # The categories are the distinct dates already; drop the ones this
+        # frame does not use, so no period comes out empty.
+        codes = series.cat.codes.to_numpy()
+        used = np.flatnonzero(np.bincount(codes, minlength=len(series.cat.categories)))
+        dates = series.cat.categories[used]
+        lookup = np.zeros(len(series.cat.categories), dtype=np.intp)
+        lookup[used] = np.arange(len(used))
+        codes = lookup[codes]
     else:
-        date_strs = df[date_col].astype(str)
-    codes, dates = pd.factorize(date_strs, sort=False, use_na_sentinel=False)
+        if pd.api.types.is_datetime64_any_dtype(series.dtype):
+            date_strs = series.dt.strftime("%Y-%m-%d")
+        else:
+            date_strs = series.astype(str)
+        codes, dates = pd.factorize(date_strs, sort=False, use_na_sentinel=False)
     date_periods = [_period_key(d, chunk_by) for d in dates]
     period_codes, periods = pd.factorize(
         pd.Index(date_periods, dtype=object), sort=False)

@@ -30,6 +30,19 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   which caps pandas below 3; pandas and pyarrow are required directly. Report
   code that relies on pandas 2 behaviour may need changes; see
   `trellum/docs/MIGRATIONS.md`.
+- Return repeated text from `query_df` as pandas `category` columns: a text
+  column whose values are at most half distinct (titles, platforms, dates as
+  text) holds one small code per row instead of one string. For DB-API
+  sources the codes are built while the rows are read, so the two-million-row
+  Economy Firehose demo builds with a 640 MB peak in 15 s, where 0.8.0 needed
+  2.1 GB and 47 s and could not build under the default 1.5 GB cap at all.
+  DataSource serialization and chunk splitting use the codes directly. Output
+  is unchanged, but report code that uses `.map()` then arithmetic,
+  `pd.to_datetime()` then `<`/`>`, `.min()`/`.max()`, `fillna()` with a new
+  value or `+` with a string on such a column must be updated:
+  `python -m trellum guide upgrade` lists each fix, and a build that fails on
+  one prints a hint pointing there. `query_df(..., compact_text=False)`
+  returns plain text.
 
 ## [0.8.0] — 2026-10-17
 

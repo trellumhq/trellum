@@ -135,10 +135,12 @@ class DataTable(Component):
 def _is_dimension(dtype) -> bool:
     """Text and dates are the pivot's dimensions; everything else is a value.
 
-    Text is ``object`` under pandas 2 and ``str`` under pandas 3, so a check
-    for ``object`` alone would turn every text column into a value column.
+    Text is ``object`` under pandas 2, ``str`` under pandas 3 and ``category``
+    from query_df, so a check for ``object`` alone would turn every text
+    column into a value column.
     """
     return (dtype == "object" or pd.api.types.is_string_dtype(dtype)
+            or isinstance(dtype, pd.CategoricalDtype)
             or str(dtype).startswith("datetime"))
 
 
