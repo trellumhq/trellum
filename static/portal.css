@@ -918,6 +918,10 @@ body.mgmt .folder-rail input.catalog-search-input:focus { border-color: var(--ac
 .ops-history-status.success { color: var(--green); }
 .ops-history-status.error, .ops-history-status.oom_killed { color: var(--red); }
 .ops-history-status.timeout, .ops-history-status.stopped { color: var(--warn); }
+.ops-run-diagnosis { margin-top: 4px; max-width: 360px; min-width: 180px; white-space: normal; overflow-wrap: anywhere; font-size: 12px; }
+.ops-run-diagnosis details { margin-top: 4px; }
+.ops-run-diagnosis summary { cursor: pointer; }
+.ops-run-diagnosis summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .ops-details { display: flex; gap: 4px; }
 .ops-details-badge {
@@ -1234,7 +1238,7 @@ body.mgmt .folder-rail input.catalog-search-input:focus { border-color: var(--ac
     .ops-table tr[data-ops-row] td:nth-child(6) { grid-column: 1; grid-row: 4; }
     .ops-table tr[data-ops-row] td:nth-child(7) { grid-column: 2; grid-row: 4; }
     .ops-table tr[data-ops-row] td:nth-child(8) { grid-column: 1 / -1; grid-row: 5; }
-    .ops-expand-row { display: block; margin-top: -12px; }
+    .ops-expand-row { display: block; min-width: 0; margin-top: -12px; }
     .ops-expand-row > td { display: block; width: 100%; }
     .ops-history-scroll { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
     .ops-history-table { min-width: 640px; }

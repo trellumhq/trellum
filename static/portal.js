@@ -2489,7 +2489,7 @@ function _opsHistoryHTML(agg, history) {
         html += '<tr>'
             + '<td>' + (started ? _timeAgo(started) : '—') + '</td>'
             + '<td>' + esc(h.trigger || '') + '</td>'
-            + '<td><span class="ops-history-status ' + esc(h.status || '') + '">' + esc(_opsStatusLabel(h.status)) + '</span></td>'
+            + '<td><span class="ops-history-status ' + esc(h.status || '') + '">' + esc(_opsStatusLabel(h.status)) + '</span>' + _opsRecoveryHTML(h) + '</td>'
             + '<td>' + (h.queue_wait_seconds != null ? _fmtDuration(h.queue_wait_seconds) : '—') + '</td>'
             + '<td>' + (h.duration_seconds != null ? _fmtDuration(h.duration_seconds) : '—') + '</td>'
             + '<td>' + _fmtMB(h.peak_memory_mb) + '</td>'
@@ -2497,6 +2497,67 @@ function _opsHistoryHTML(agg, history) {
     });
     html += '</tbody></table></div>';
     return html;
+}
+function _opsRecoveryHTML(run) {
+    var diagnostics = run.diagnostics || {};
+    var recovery = run.recovery || {};
+    var lines = [];
+    var causes = {
+        build_timeout: 'Overall build timeout', oom: 'Process ran out of memory',
+        memory_allocation_failed: 'Memory allocation failed',
+        process_termination_unconfirmed: 'Previous process termination is unconfirmed',
+        publication_failed: 'Output publication failed', unknown_kill: 'Process killed; cause unknown',
+        source_blocked: 'Data source unavailable', start_failed: 'Build could not start', cancelled: 'Build stopped'
+    };
+    if (diagnostics.cause) lines.push(causes[diagnostics.cause] || String(diagnostics.cause).replace(/_/g, ' '));
+    else if (diagnostics.transient === true) lines.push('Transient connection failure');
+    else if (['error', 'timeout', 'oom_killed'].indexOf(run.status) !== -1) lines.push('Cause unknown');
+    if (diagnostics.stage) lines.push('Last stage: ' + diagnostics.stage + (diagnostics.state ? ' (' + diagnostics.state + ')' : ''));
+    var labels = {
+        pending: 'Automatic retry pending', running: 'Automatic retry running',
+        succeeded: 'Recovered automatically', exhausted: 'Automatic retries exhausted',
+        cancelled: 'Automatic recovery cancelled', expired: 'Automatic recovery expired',
+        superseded: 'Recovery superseded by a newer successful run',
+        ineligible: 'Automatic replay unavailable', unconfirmed: 'Previous outcome unconfirmed; no automatic replay'
+    };
+    if (recovery.state) {
+        var disposition = labels[recovery.state] || String(recovery.state).replace(/_/g, ' ');
+        if (recovery.attempt != null) disposition += ' · ' + recovery.attempt + ' of 2 retries used';
+        lines.push(disposition);
+        if (recovery.state === 'pending' && recovery.due_at) {
+            var due = new Date(recovery.due_at);
+            if (!isNaN(due.getTime())) lines.push('Retry due: ' + due.toLocaleString());
+        }
+        var reasons = {
+            report_replay_not_safe: 'Report has no safe replay contract',
+            publication_outcome_unconfirmed: 'Publication outcome is unconfirmed',
+            operation_outcome_unconfirmed: 'Operation outcome is unconfirmed',
+            permanent_or_unknown_failure: 'Failure is permanent or its cause is unknown',
+            memory_failure: 'Memory failure requires investigation',
+            active_run_deferred: 'Waiting for the active run to finish',
+            recovery_age_exceeded: 'Four-hour recovery window reached',
+            attempt_budget_exhausted: 'Two additional attempts used',
+            report_unavailable_or_unsafe: 'Report is unavailable or no longer safe to replay'
+        };
+        if (recovery.reason) lines.push(reasons[recovery.reason] || String(recovery.reason).replace(/_/g, ' '));
+    }
+    if (!lines.length) return '';
+    var evidence = [];
+    var timeout = diagnostics.timeout_seconds != null ? diagnostics.timeout_seconds : diagnostics.effective_timeout_seconds;
+    if (timeout != null) evidence.push('Build limit: ' + timeout + ' seconds');
+    if (diagnostics.attempt != null) evidence.push('Query attempt: ' + diagnostics.attempt);
+    if (diagnostics.source_type) evidence.push('Source type: ' + diagnostics.source_type);
+    if (diagnostics.source_id) evidence.push('Source reference: ' + diagnostics.source_id);
+    if (diagnostics.query_id) evidence.push('Query reference: ' + diagnostics.query_id);
+    (diagnostics.errors || []).forEach(function(error) {
+        evidence.push([error.class, error.code].filter(Boolean).join(' · '));
+    });
+    (diagnostics.timings || []).forEach(function(timing) {
+        evidence.push(timing.stage + ': ' + timing.elapsed_ms + ' ms');
+    });
+    var html = '<div class="ops-run-diagnosis">' + lines.map(function(line) { return '<div>' + esc(line) + '</div>'; }).join('');
+    if (evidence.length) html += '<details><summary>Diagnostic evidence</summary>' + evidence.map(function(line) { return '<div>' + esc(line) + '</div>'; }).join('') + '</details>';
+    return html + '</div>';
 }
 function _opsStatusLabel(s) {
     if (s === 'success') return 'OK';
