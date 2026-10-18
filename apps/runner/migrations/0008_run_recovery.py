@@ -8,7 +8,8 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('reports', '0034_drop_unused_annotation_tables'),
+        # Recovery references Report.pk, independently of report projections.
+        ('reports', '0001_initial'),
         ('runner', '0007_studiomaintenanceaction'),
     ]
 

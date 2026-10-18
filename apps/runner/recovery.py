@@ -55,6 +55,17 @@ def _disposition(run, evidence, confirmed):
         return "publication_outcome_unconfirmed"
     if evidence.get("unsafe_operation") is True or evidence.get("unknown_write_outcome") is True:
         return "operation_outcome_unconfirmed"
+    # An outer deadline cannot make an already-observed permanent failure safe.
+    errors = evidence.get("errors") or []
+    codes = {str(item.get("code", "")) for item in errors if isinstance(item, dict)}
+    classes = {item.get("class", "") for item in errors if isinstance(item, dict)}
+    if "MemoryError" in classes or any(code.startswith("53") for code in codes):
+        return "memory_failure"
+    if (classes & {"ProgrammingError", "ConfigurationError", "ValueError", "TypeError", "AuthenticationError"}
+            or any(code.startswith(("28", "42", "22", "23")) for code in codes)
+            or codes & {"57014", "1045", "08004", "08007", "08P01"}
+            or (evidence.get("state") == "failed" and errors and evidence.get("transient") is not True)):
+        return "permanent_or_unknown_failure"
     # A managed read must be proven safe separately. No blanket replay of raw APIs.
     if run.status == Run.TIMEOUT:
         if evidence.get("stage") in ("connect", "execute", "fetch") and evidence.get("query_retry_safe") is not True:
@@ -104,7 +115,9 @@ def complete_run(run, *, diagnostics, termination_confirmed):
         return True
     reason = _disposition(run, evidence, termination_confirmed)
     eligible = reason in ("transient_timeout", "transient_connection")
-    if chain is None and eligible:
+    if chain is None:
+        # Every newer terminal attempt consumes/supersedes prior intent. An unsafe
+        # manual failure must never leave an older safe retry eligible to run.
         chain = RunRecovery.objects.filter(report_id=run.report_id, state="pending").first()
         if chain is not None:
             chain.attempt += 1

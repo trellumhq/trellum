@@ -330,3 +330,41 @@ def test_dispatch_query_and_payload_cost_stays_bounded(report_row, django_assert
         # Reset only the fixture admission, never production retry policy.
         RunRecovery.objects.filter(pk=chain.pk).update(state="pending", attempt=0, current_run=root)
     assert counts[0] == counts[1] and counts[0] < 20
+
+
+@pytest.mark.parametrize("evidence", [
+    {"stage": "publish", "unknown_write_outcome": True},
+    {**EVIDENCE, "unsafe_operation": True},
+    {"stage": "execute", "errors": [{"class": "ProgrammingError", "code": "42601"}]},
+])
+def test_newer_unsafe_or_permanent_failure_closes_old_pending_intent(report_row, evidence):
+    safe_report(report_row)
+    enqueue(report_row)
+    root = finish(Run.objects.get(report=report_row))
+    chain = root.recovery
+    enqueue(report_row)
+    manual = finish(Run.objects.get(status=Run.QUEUED), evidence=evidence)
+    assert manual.recovery_id == chain.pk
+    chain.refresh_from_db()
+    assert chain.state == "ineligible"
+    due(chain)
+    dispatch_due()
+    assert Run.objects.count() == 2
+
+
+@pytest.mark.parametrize("error", [
+    {"class": "OperationalError", "code": "28P01"},
+    {"class": "ProgrammingError", "code": "42601"},
+    {"class": "ConfigurationError"},
+    {"class": "OperationalError", "code": "08007"},
+    {"class": "MemoryError"},
+])
+def test_outer_timeout_never_overrides_permanent_failure_evidence(report_row, error):
+    safe_report(report_row)
+    enqueue(report_row)
+    run = finish(Run.objects.get(report=report_row), Run.TIMEOUT, {
+        "stage": "execute", "state": "failed", "cause": "build_timeout",
+        "query_retry_safe": True, "transient": False, "errors": [error],
+    })
+    assert not RunRecovery.objects.exists()
+    assert run.diagnostics["recovery"]["state"] == "ineligible"

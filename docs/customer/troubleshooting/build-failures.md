@@ -85,7 +85,9 @@ the coordinator resumes pending work without resetting the budget. A queued
 retry uses the same tenant quotas, pool fairness and memory admission as any
 other build. Manual or cron work already active defers recovery; its success
 supersedes the pending chain and its eligible failure consumes a remaining
-attempt. Exhaustion never disables future ordinary cron occurrences.
+attempt. A newer permanent or unsafe failure closes the older retry intent;
+an overall deadline never overrides observed permanent-error evidence.
+Exhaustion never disables future ordinary cron occurrences.
 
 Operations run history shows the last known connect, execute, fetch, render or
 publish stage, bounded timings, driver classes/codes, query attempt count,
