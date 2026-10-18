@@ -23,6 +23,7 @@ import numpy as np
 import pandas as pd
 
 from trellum.data.ssh_tunnel import unwrap
+from trellum.diagnostics import stage
 
 #: Rows read per ``fetchmany()`` call.
 _FETCH_BATCH_ROWS = 10_000
@@ -44,19 +45,26 @@ def execute_query(conn: Any, sql: str, compact_text: bool = False) -> pd.DataFra
     compact = compact_text_columns if compact_text else (lambda df: df)
 
     if "google.cloud.bigquery" in type_name:
-        return compact(conn.query(sql).to_dataframe())
+        with stage("execute"):
+            result = conn.query(sql)
+        with stage("fetch"):
+            return compact(result.to_dataframe())
 
     if "clickhouse_connect" in type_name:
-        return compact(conn.query_df(sql))
+        with stage("execute"):
+            return compact(conn.query_df(sql))
 
-    cursor = conn.cursor()
+    with stage("execute"):
+        cursor = conn.cursor()
     try:
-        cursor.execute(sql)
-        if "snowflake.connector" in type_name:
-            return compact(cursor.fetch_pandas_all())
-        if cursor.description is None:
-            return pd.DataFrame()
-        return read_cursor(cursor, [desc[0] for desc in cursor.description], compact_text)
+        with stage("execute"):
+            cursor.execute(sql)
+        with stage("fetch"):
+            if "snowflake.connector" in type_name:
+                return compact(cursor.fetch_pandas_all())
+            if cursor.description is None:
+                return pd.DataFrame()
+            return read_cursor(cursor, [desc[0] for desc in cursor.description], compact_text)
     finally:
         try:
             cursor.close()

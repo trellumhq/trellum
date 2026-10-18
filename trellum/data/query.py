@@ -18,6 +18,7 @@ from trellum.data.fetch import execute_query as _execute_query  # its old name h
 from trellum.data.fetch import is_decimal_column
 from trellum.data.http_source import read_api as read_api  # re-export for compatibility
 from trellum.data.retry import ManagedConnection, run_with_retry
+from trellum.diagnostics import diagnostic_context, fingerprint
 from trellum.data.sql_params import _sql_param_spans as _sql_param_spans
 from trellum.data.ssh_tunnel import unwrap
 
@@ -129,6 +130,7 @@ def query_df(
     """
     if isinstance(conn, ManagedConnection) and conn._new_connection_per_query:
         conn._ensure_open()
+    query_id = fingerprint(sql)
     if params:
         sql = bind_params(sql, params, dialect=_sql_dialect(conn))
 
@@ -175,7 +177,10 @@ def query_df(
 
     start = time.time()
     with _query_semaphore:
-        df = run_with_retry(conn, lambda raw: _execute_query(raw, sql, compact_text), sql=sql)
+        from trellum.data.connections import source_of
+        with diagnostic_context(source_id=fingerprint(source_of(conn)), query_id=query_id,
+                                source_type="", query_retry_safe=False, attempt=1):
+            df = run_with_retry(conn, lambda raw: _execute_query(raw, sql, compact_text), sql=sql)
         dec_cols = [c for c in df.columns if df[c].dtype == object
                     and is_decimal_column(df[c])]
         if dec_cols:

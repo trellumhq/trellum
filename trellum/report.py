@@ -162,7 +162,9 @@ class ReportContext:
             return self._connections[name]
 
         from trellum.data.connections import register_source, resolve_connection
-        conn = resolve_connection(name, self._config.get("data_sources", []))
+        from trellum.diagnostics import fingerprint, stage
+        with stage("connect", source_id=fingerprint(name), query_retry_safe=True):
+            conn = resolve_connection(name, self._config.get("data_sources", []))
         # Registered here rather than at each call site: a generator calling
         # query_df(conn, ...) directly is the documented pattern, so the name
         # has to travel with the connection or the cache key loses it.

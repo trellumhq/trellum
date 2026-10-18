@@ -169,3 +169,40 @@ columns without changing the complete root payload. Selection preferences belong
 to the artifact root and survive page navigation. A host unable to inspect a
 legitimate cross-origin served iframe retains a bounded visible viewport and
 labels chart readiness unconfirmed; iframe load is not chart-ready evidence.
+
+## Build progress and failure evidence (v1)
+
+A host may set `TRELLUM_DIAGNOSTICS_PATH` to a private, per-attempt file outside
+published output. The framework atomically replaces this file before blocking
+connection, execute, fetch and render work. `trellum.diagnostics.read_diagnostics`
+reads at most 16 KiB and allowlists v1 fields; missing, invalid and unknown-version
+files return `{}`. Diagnostics are optional and an unwritable destination never
+changes the build outcome. Hosts own file lifetime, permissions and retention.
+
+The snapshot contains `stage`, `state` (`active`, `completed`, `failed`), source
+type, stage start time (Unix seconds), SHA-256 source/query identifiers, attempt count (at most three), classifier
+`transient`, `query_retry_safe`, sticky `unsafe_operation`, at most five cause
+classes/codes and sixteen bounded stage timings. Query fingerprints use unbound
+SQL; source names are hashed. Each cause includes up to three traceback location
+hashes and line numbers. Exception messages, source paths, SQL, parameters,
+credentials and result rows are excluded. Hashes identify repeated locations;
+they omit SQL and traceback source (known candidate identifiers may still be correlated). Concurrent query threads share
+one last-writer snapshot, so it is last-known evidence, not a complete trace.
+Drivers combining execution and materialization (such as ClickHouse's DataFrame
+API) expose one `execute` stage because they provide no separate fetch boundary.
+Hosts may record publication with the same `stage("publish")` context manager.
+
+A completed stage clears transient failure evidence from a recovered inner query
+retry. `unsafe_operation` remains true for the attempt after unsafe SQL or direct
+managed-driver APIs are entered, even if later safe operations succeed. An active
+snapshot after process death identifies where work was last observed; it does
+not establish why it died or prove the process has stopped.
+
+Neither `transient` nor `query_retry_safe` authorizes whole-report replay. Report
+code is arbitrary Python. Whole-report recovery requires an explicit boolean
+`recovery: {replay_safe: true}` in `report.yaml`, promising that the entire
+generator and its helpers have no external side effects or unknown write
+outcomes. A host must separately enforce admission, retry budgets, process
+termination/fencing and delivery deduplication. The framework only validates the
+configuration shape and emits evidence; it does not schedule retries. Raw driver
+or arbitrary Python activity outside framework APIs cannot be fully observed.

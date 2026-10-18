@@ -112,6 +112,8 @@ def resolve_connection(name: str, data_sources: list[dict]) -> Any:
 
     source = _find_source(name, data_sources)
     db_type = source.get("type", "vertica")
+    from trellum.diagnostics import fingerprint, progress
+    progress("connect", source_id=fingerprint(name), source_type=db_type, query_retry_safe=True)
 
     # SQLite/DuckDB sources may declare their path inline, mirroring how file
     # sources are handled in ReportContext.read_source. There are no

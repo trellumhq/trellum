@@ -13,6 +13,8 @@ types.  Components self-describe via ``render_html()``, ``css()``, and
 
 from __future__ import annotations
 
+from trellum.diagnostics import instrument
+
 import html as html_lib
 import os
 import time
@@ -189,6 +191,7 @@ def _render_custom_html(ctx, out, data, name, extensions, live_registry, validat
     return html_path, json_path
 
 
+@instrument("render")
 def render_report(
     ctx,
     output_dir: str | None = None,

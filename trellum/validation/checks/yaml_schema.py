@@ -53,3 +53,8 @@ def _check_yaml_schema(ctx: Any, result: ValidationResult) -> None:
             "yaml-cron-invalid",
             "No schedule.cron defined. Auto-refresh will not work.",
         )
+
+    recovery = config.get("recovery", {})
+    if (not isinstance(recovery, dict) or ("replay_safe" in recovery
+            and type(recovery["replay_safe"]) is not bool)):
+        result.fail("yaml-recovery-invalid", "recovery must be a mapping with a boolean replay_safe value.")
