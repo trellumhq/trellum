@@ -922,6 +922,9 @@ body.mgmt .folder-rail input.catalog-search-input:focus { border-color: var(--ac
 .ops-run-diagnosis details { margin-top: 4px; }
 .ops-run-diagnosis summary { cursor: pointer; }
 .ops-run-diagnosis summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 767px) {
+    .ops-run-diagnosis summary { min-height: 44px; padding-block: 12px; box-sizing: border-box; }
+}
 
 .ops-details { display: flex; gap: 4px; }
 .ops-details-badge {

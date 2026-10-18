@@ -60,6 +60,8 @@ def test_history_explains_recovery_and_unknown_outcomes(width):
         expect(history).to_contain_text("Transient connection failure")
         expect(history).to_contain_text("Retry due:")
         evidence = history.locator("summary")
+        if width < 768:
+            assert evidence.bounding_box()["height"] >= 44
         evidence.focus()
         page.keyboard.press("Enter")
         expect(history.locator("details")).to_have_attribute("open", "")
