@@ -69,7 +69,8 @@ recovery:
 
 Set this only when the complete generator and its helpers can be run again
 without external side effects: no database writes, payments, messages, file
-uploads or other non-idempotent actions. A read-only SQL query does not establish
+uploads or other non-idempotent actions, and no detached/background work that
+outlives the build. A read-only SQL query does not establish
 that the surrounding Python is safe. The portal snapshots this promise at
 admission and checks the current configuration before admitting a retry.
 Managed connections also record unsafe/session access; that evidence vetoes
@@ -107,7 +108,10 @@ check/unblock flow. Canceling a report also cancels its pending recovery.
 Missing heartbeats never prove termination. The portal keeps an active admission
 fence and shows an unconfirmed outcome until the owning worker can confirm its
 process/container has stopped. POSIX builds use a dedicated process group;
-remaining descendants are killed and checked again before completion. Windows
+remaining group members are killed and checked again before completion.
+Unsandboxed group confirmation cannot detect descendants that deliberately
+leave that group; such reports must not opt into recovery. Docker provides the
+container boundary for untrusted process trees. Windows
 subprocess trees and missing Docker containers cannot provide that confirmation
 here and stay unconfirmed. An operator must investigate a lost worker; do not
 clear its run fence before independently confirming termination. Boot catch-up

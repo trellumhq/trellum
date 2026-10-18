@@ -201,8 +201,8 @@ not establish why it died or prove the process has stopped.
 Neither `transient` nor `query_retry_safe` authorizes whole-report replay. Report
 code is arbitrary Python. Whole-report recovery requires an explicit boolean
 `recovery: {replay_safe: true}` in `report.yaml`, promising that the entire
-generator and its helpers have no external side effects or unknown write
-outcomes. A host must separately enforce admission, retry budgets, process
+generator and its helpers have no external side effects, unknown write
+outcomes or detached/background work that outlives the build. A host must separately enforce admission, retry budgets, process
 termination/fencing and delivery deduplication. The framework only validates the
 configuration shape and emits evidence; it does not schedule retries. Raw driver
 or arbitrary Python activity outside framework APIs cannot be fully observed.
