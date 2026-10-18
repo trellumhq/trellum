@@ -33,7 +33,7 @@ into memory at once, not how many reports exist.
 The starting points above get you running; once you have real traffic, size
 memory from evidence instead. Every build gets the same admission allocation,
 `TRELLUM_DEFAULT_JOB_MEMORY_MB` (1024 by default), and the same wall-clock
-limit, `TRELLUM_RUN_TIMEOUT` (1800 seconds / 30 minutes by default). `report.yaml` carries
+limit, `TRELLUM_RUN_TIMEOUT` (3600 seconds / 60 minutes by default). `report.yaml` carries
 no sandbox limits, so size both for the largest report on the instance. Give
 the runner a budget sized to what's left once the rest of the stack has what
 it needs:
@@ -173,3 +173,8 @@ release over release is the usual early warning.
 `GET /healthz` is a lightweight liveness check — the web process and the
 database — for whatever uptime monitor or load balancer you point at the
 instance.
+
+Explicit `TRELLUM_RUN_TIMEOUT` values, including `1800`, retain their value on upgrade.
+Queue time is separate from execution time. Worker shutdown still drains for
+540 seconds before stopping remaining builds. Connection and statement timeouts
+remain independently configured.

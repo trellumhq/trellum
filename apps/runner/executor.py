@@ -368,7 +368,7 @@ class RunningProc:
     stderr_path: str
     run_dir: str
     output_dir: str
-    timeout_seconds: int = 1800
+    timeout_seconds: int = 3600
     sigterm_at: datetime | None = None
     timed_out: bool = False
     user_stopped: bool = False
@@ -386,7 +386,7 @@ class Executor:
         self,
         worker_id: str,
         max_concurrent: int = 3,
-        default_timeout: int = 1800,
+        default_timeout: int = 3600,
         memory_budget_mb: int = 0,
     ):
         self.worker_id = worker_id
