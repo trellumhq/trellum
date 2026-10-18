@@ -14,6 +14,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   build measures chunk sizes for its details. A two-million-row report needs
   about 460 MB less peak memory and builds about 30% faster. The chunk files,
   their sizes and row order are unchanged.
+- Serialize a DataSource's text columns without checking every value for a
+  date or NaN when the column holds only text and empty values. A build that
+  sends two million rows to the browser finishes about 15% sooner; data.json
+  and chunk files are byte-for-byte unchanged.
 
 ## [0.8.0] — 2026-10-17
 

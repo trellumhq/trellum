@@ -30,6 +30,10 @@ from trellum.components.live_filterable import build_binding as _build_binding
 from trellum.components.live_filterable import derive_enum_options as _derive_enum_options
 from trellum.components.live_filterable import live_meta_html as _live_meta_html
 
+#: Value types whose cells _serialize_columnar passes through unchanged: they
+#: have no ``isoformat`` and cannot be NaN.
+_PLAIN_TEXT_TYPES = frozenset({str, type(None)})
+
 
 def _serialize_columnar(df: pd.DataFrame) -> dict:
     """Serialize DataFrame in columnar format with optional dictionary encoding.
@@ -88,12 +92,21 @@ def _serialize_columnar(df: pd.DataFrame) -> dict:
 
         elif dtype == object or pd.api.types.is_string_dtype(dtype):
             raw = series.to_numpy(dtype=object, na_value=None)
-            has_isoformat = False
-            for v in raw:
-                if v is not None and hasattr(v, "isoformat"):
-                    has_isoformat = True
-                    break
-            if has_isoformat:
+            value_types = set(map(type, raw))
+            if value_types <= _PLAIN_TEXT_TYPES:
+                # Only text and None: nothing to format and no NaN to
+                # replace, so the values pass through unchanged.
+                values = raw.tolist()
+                has_isoformat = None
+            else:
+                has_isoformat = False
+                for v in raw:
+                    if v is not None and hasattr(v, "isoformat"):
+                        has_isoformat = True
+                        break
+            if has_isoformat is None:
+                pass
+            elif has_isoformat:
                 values = [
                     v.isoformat()[:16] if hasattr(v, "isoformat") else (
                         None if v is None or (isinstance(v, float) and v != v)
@@ -115,12 +128,13 @@ def _serialize_columnar(df: pd.DataFrame) -> dict:
             if nunique / n_rows < 0.3:
                 vocab = list(dict.fromkeys(values))
                 lookup = {v: i for i, v in enumerate(vocab)}
-                values = [lookup.get(v, v) for v in values]
+                # Every value is in the vocabulary it was built from.
+                values = list(map(lookup.__getitem__, values))
                 dict_maps[col] = vocab
 
         col_arrays.append(values)
 
-    data = [list(row) for row in zip(*col_arrays)] if col_arrays else []
+    data = list(map(list, zip(*col_arrays))) if col_arrays else []
     result: dict = {"_cols": cols, "_data": data}
     if dict_maps:
         result["_dict"] = dict_maps
