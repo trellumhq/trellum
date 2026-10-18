@@ -1214,7 +1214,6 @@ class TestDataSourcePreflight:
         self._wait_for_attribution()
         run.refresh_from_db()
         assert run.stderr_tail.endswith("Traceback: KeyError\n")
-<<<<<<< HEAD
         assert "Subsequent data source check" not in run.stderr_tail
 
 
@@ -1274,7 +1273,6 @@ class TestMetaWriteIsAtomic:
         meta.chmod(0o664)
         write_meta(str(tmp_path), {"b": 2})
         assert meta.stat().st_mode & 0o777 == 0o664
-=======
 
 
 class TestRecoveryIntegration:
@@ -1542,4 +1540,3 @@ def test_real_timeout_terminates_group_and_confirms_exit(queued_run, tmp_path):
         except ProcessLookupError:
             pass
         child.wait(timeout=5)
->>>>>>> decc101 (Fence report attempts and preserve output through automatic recovery)

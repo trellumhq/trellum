@@ -179,3 +179,20 @@ def test_render_failure_is_not_confused_with_previous_transport_failure(evidence
     assert result['transient'] is False and result['source_type'] == ''
     assert result['errors'][0]['class'] == 'ValueError'
     assert 'secret' not in evidence.read_text()
+
+
+@pytest.mark.skipif(not hasattr(__import__('os'), 'O_NOFOLLOW'), reason='requires no-follow open support')
+def test_reader_rejects_symlink_instead_of_reading_its_target(evidence):
+    with d.stage('fetch'):
+        pass
+    link = evidence.with_name('symlink.json')
+    link.symlink_to(evidence)
+    assert d.read_diagnostics(link) == {}
+
+
+@pytest.mark.skipif(not hasattr(__import__('os'), 'mkfifo'), reason='requires FIFO support')
+def test_reader_rejects_fifo_without_waiting_for_writer(evidence):
+    import os
+    os.mkfifo(evidence)
+    assert d.read_diagnostics(evidence) == {}
+    assert d.read_diagnostics(evidence.parent) == {}

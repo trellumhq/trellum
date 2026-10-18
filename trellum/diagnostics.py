@@ -14,6 +14,7 @@ import math
 import os
 from pathlib import Path
 import re
+import stat
 import tempfile
 import threading
 import time
@@ -87,7 +88,14 @@ def sanitize_diagnostics(value) -> dict:
 def read_diagnostics(path) -> dict:
     """Read at most 16 KiB, tolerating missing, corrupt, or newer evidence."""
     try:
-        with open(path, "rb") as stream:
+        # Report Python owns this path: a FIFO must not block the worker tick,
+        # and a symlink must not redirect evidence reads outside the run area.
+        flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(path, flags)
+        with os.fdopen(descriptor, "rb") as stream:
+            metadata = os.fstat(stream.fileno())
+            if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > MAX_BYTES:
+                return {}
             payload = stream.read(MAX_BYTES + 1)
         if len(payload) > MAX_BYTES:
             return {}
