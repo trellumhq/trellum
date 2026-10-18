@@ -456,7 +456,7 @@ def api_report_status(request, org_slug, studio_slug, slug):  # noqa: ARG001
     history = [
         r.to_history_dict()
         for r in Run.objects.filter(report=report)
-        .exclude(status__in=Run.ACTIVE_STATUSES)
+        .filter(~Q(status__in=Run.ACTIVE_STATUSES) | Q(diagnostics__recovery__state="unconfirmed"))
         .select_related("requested_by")
         .order_by("-created_at")[:20]
     ]

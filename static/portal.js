@@ -1902,6 +1902,7 @@ var _opsSystemStatusController = null;
 var _opsPageActive = true;
 var _opsLiveRequests = {};
 var _opsHistoryRequests = {};
+var _opsHistoryInFlight = {};
 window.matchMedia('(min-width: 768px)').addEventListener('change', function() {
     document.querySelectorAll('.ops-secondary').forEach(function(menu) {
         menu.open = false;
@@ -2451,21 +2452,67 @@ function _opsBindEvents(status, reportList) {
     });
     _opsApplyFilterToRows(status);
 }
+function _opsAbortHistory(slug) {
+    _opsHistoryRequests[slug] = (_opsHistoryRequests[slug] || 0) + 1;
+    if (_opsHistoryInFlight[slug]) _opsHistoryInFlight[slug].controller.abort();
+    delete _opsHistoryInFlight[slug];
+}
+function _opsHistoryVisible(slug, el) {
+    return _opsPageActive && viewMode === 'ops' && !document.hidden && _opsExpandedSlugs[slug]
+        && el && el.isConnected && !el.closest('[hidden]');
+}
 function _opsLoadHistory(slug) {
+    var el = document.getElementById('opsHist_' + slug);
+    if (!_opsHistoryVisible(slug, el)) return Promise.resolve();
+    var pending = _opsHistoryInFlight[slug];
+    if (pending && pending.element === el) return pending.promise;
+    if (pending) _opsAbortHistory(slug);
+    if (!el._historyPayload) el._historyNeedsPoll = true;
     var requestId = (_opsHistoryRequests[slug] || 0) + 1;
     _opsHistoryRequests[slug] = requestId;
-    boundedFetch(apiUrl('/api/reports/' + encodeURIComponent(slug) + '/status'))
-        .then(function(r) { return r.json(); })
+    var entry = {controller: new AbortController(), element: el};
+    _opsHistoryInFlight[slug] = entry;
+    var revision = _opsStatusRevision;
+    function isCurrent() {
+        return _opsHistoryRequests[slug] === requestId && revision === _opsStatusRevision
+            && _opsHistoryVisible(slug, el) && document.getElementById('opsHist_' + slug) === el;
+    }
+    entry.promise = boundedFetch(apiUrl('/api/reports/' + encodeURIComponent(slug) + '/status'),
+        {signal: entry.controller.signal, cache: 'no-store'})
+        .then(function(r) { if (!r.ok) throw new Error('History unavailable'); return r.json(); })
         .then(function(data) {
-            if (_opsHistoryRequests[slug] !== requestId || !_opsExpandedSlugs[slug]) return;
-            var el = document.getElementById('opsHist_' + slug);
-            if (el) el.innerHTML = _opsHistoryHTML(data.aggregates || {}, data.history || []);
+            if (!isCurrent()) return;
+            var payload = JSON.stringify([data.aggregates || {}, data.history || []]);
+            if (el._historyPayload === payload || el.contains(document.activeElement)) return;
+            var open = {};
+            el.querySelectorAll('tr[data-run-created] details[open]').forEach(function(details) {
+                open[details.closest('tr').dataset.runCreated] = true;
+            });
+            var replacement = document.createElement('div');
+            replacement.innerHTML = _opsHistoryHTML(data.aggregates || {}, data.history || []);
+            replacement.querySelectorAll('tr[data-run-created] details').forEach(function(details) {
+                details.open = !!open[details.closest('tr').dataset.runCreated];
+            });
+            var scroller = el.querySelector('.ops-history-scroll');
+            var scrollLeft = scroller ? scroller.scrollLeft : 0;
+            var x = window.scrollX, y = window.scrollY;
+            el.replaceChildren.apply(el, Array.from(replacement.childNodes));
+            scroller = el.querySelector('.ops-history-scroll');
+            if (scroller) scroller.scrollLeft = scrollLeft;
+            window.scrollTo(x, y);
+            el._historyPayload = payload;
+            var latest = (data.history || [])[0] || {};
+            el._historyNeedsPoll = ['pending', 'running', 'unconfirmed'].indexOf((latest.recovery || {}).state) !== -1;
         })
         .catch(function() {
-            if (_opsHistoryRequests[slug] !== requestId || !_opsExpandedSlugs[slug]) return;
-            var el = document.getElementById('opsHist_' + slug);
-            if (el) el.innerHTML = '';
+            if (!isCurrent()) return;
+            el._historyNeedsPoll = true;
+            if (!el._historyPayload && !el.contains(document.activeElement)) el.textContent = 'Run history is temporarily unavailable.';
+        })
+        .finally(function() {
+            if (_opsHistoryInFlight[slug] === entry) delete _opsHistoryInFlight[slug];
         });
+    return entry.promise;
 }
 function _opsHistoryHTML(agg, history) {
     if (!history.length) return '<div class="ops-history-empty">No completed runs yet.</div>';
@@ -2486,7 +2533,7 @@ function _opsHistoryHTML(agg, history) {
         + '</tr></thead><tbody>';
     history.forEach(function(h) {
         var started = h.started_at || h.created_at;
-        html += '<tr>'
+        html += '<tr data-run-created="' + escAttr(h.created_at || h.started_at || '') + '">'
             + '<td>' + (started ? _timeAgo(started) : '—') + '</td>'
             + '<td>' + esc(h.trigger || '') + '</td>'
             + '<td><span class="ops-history-status ' + esc(h.status || '') + '">' + esc(_opsStatusLabel(h.status)) + '</span>' + _opsRecoveryHTML(h) + '</td>'
@@ -2696,7 +2743,7 @@ function opsStop(slug) {
 }
 function opsToggleExpand(slug) {
     _opsLiveRequests[slug] = (_opsLiveRequests[slug] || 0) + 1;
-    _opsHistoryRequests[slug] = (_opsHistoryRequests[slug] || 0) + 1;
+    _opsAbortHistory(slug);
     if (_opsExpandedSlugs[slug]) {
         delete _opsExpandedSlugs[slug];
         if (_opsLivePollers[slug]) { clearInterval(_opsLivePollers[slug]); delete _opsLivePollers[slug]; }
@@ -2925,6 +2972,7 @@ function _opsResumeTracking() {
 }
 document.addEventListener('visibilitychange', function() {
     if (document.hidden) {
+        Object.keys(_opsHistoryInFlight).forEach(_opsAbortHistory);
         if (_opsTracked) { clearTimeout(_opsTracked.timer); if (_opsTracked.ctrl) _opsTracked.ctrl.abort(); _opsTracked.inFlight = false; }
     } else {
         _opsResumeTracking();
@@ -3221,6 +3269,13 @@ function _opsApplyStatus(status, revision, cycle) {
     var queue = status.queue || [];
     var queueSlugs = queue.map(function(q) { return q.slug || q; });
 
+    var historyRefresh = Promise.all(Object.keys(_opsExpandedSlugs).map(function(slug) {
+        var el = document.getElementById('opsHist_' + slug);
+        var row = document.querySelector('[data-ops-row="' + slug + '"]');
+        var wasActive = row && row.querySelector('.ops-status.running, .ops-status.queued, .ops-status.finishing');
+        if (running[slug] || queueSlugs.indexOf(slug) !== -1 || wasActive || (el && el._historyNeedsPoll)) return _opsLoadHistory(slug);
+    }));
+
     /* Update summary stat values in-place */
     var stats = document.querySelectorAll('#content > .ops-summary > .ops-stat > .ops-stat-value');
     if (stats.length >= 7) {
@@ -3294,7 +3349,7 @@ function _opsApplyStatus(status, revision, cycle) {
                 if (_opsLivePollers[slug]) { clearInterval(_opsLivePollers[slug]); delete _opsLivePollers[slug]; }
                 _opsLiveRequests[slug] = (_opsLiveRequests[slug] || 0) + 1;
             });
-            return _opsFetchCatalog()
+            return Promise.all([historyRefresh, _opsFetchCatalog()
                 .then(function() {
                     if (!isCurrent()) return;
                     transitioned.forEach(function(slug) {
@@ -3305,7 +3360,6 @@ function _opsApplyStatus(status, revision, cycle) {
                             if (cells[3]) cells[3].innerHTML = _opsStatusCell(r, {}, false);
                             if (cells[7]) cells[7].innerHTML = _opsActionsCell(r, false, false);
                             if (_opsExpandedSlugs[slug]) {
-                                _opsLoadHistory(slug);
                                 _opsSetTerminalState(slug, _opsIsFailedStatus(r.build_status || r.last_status) ? 'Failed' : 'Last run',
                                     _opsIsFailedStatus(r.build_status || r.last_status), null);
                                 _opsLoadLog(slug);
@@ -3327,10 +3381,10 @@ function _opsApplyStatus(status, revision, cycle) {
                         });
                     });
                 })
-                .catch(function() {});
+                .catch(function() {})]);
     }
     _opsApplyFilterToRows(status, focusedSlug);
-    return Promise.resolve();
+    return historyRefresh;
 }
 
 function _opsScheduleStatusPoll(delay) {
@@ -3368,7 +3422,7 @@ window.addEventListener('pagehide', function() {
     _opsLivePollers = {};
     Object.keys(_opsExpandedSlugs).forEach(function(slug) {
         _opsLiveRequests[slug] = (_opsLiveRequests[slug] || 0) + 1;
-        _opsHistoryRequests[slug] = (_opsHistoryRequests[slug] || 0) + 1;
+        _opsAbortHistory(slug);
     });
 });
 window.addEventListener('pageshow', function(event) {

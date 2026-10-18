@@ -872,7 +872,7 @@ class Executor:
             # Parent exit is insufficient: descendants may still be performing
             # side effects. Keep the active admission fence until stopped.
             diagnostics.update(cause="process_termination_unconfirmed", transient=False,
-                               recovery={"state": "unconfirmed", "reason": "process_termination_unconfirmed", "attempt": 0, "due_at": None})
+                               recovery={"state": "unconfirmed", "reason": "process_termination_unconfirmed", "attempt": (run.recovery_attempt or 0) if run else 0, "due_at": None})
             Run.objects.filter(pk=proc.run_id, status__in=Run.ACTIVE_STATUSES).update(
                 diagnostics=diagnostics, termination_confirmed=False,
             )

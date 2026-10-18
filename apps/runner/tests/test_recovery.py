@@ -368,3 +368,28 @@ def test_outer_timeout_never_overrides_permanent_failure_evidence(report_row, er
     })
     assert not RunRecovery.objects.exists()
     assert run.diagnostics["recovery"]["state"] == "ineligible"
+
+
+def test_unconfirmed_active_fence_is_visible_in_existing_status_history(report_row, org_admin, client):
+    safe_report(report_row)
+    enqueue(report_row)
+    run = Run.objects.get(report=report_row)
+    run.status, run.worker_id = Run.RUNNING, "missing-worker"
+    run.save()
+    Command()._recover_stale_runs()
+    client.force_login(org_admin)
+    url = f"/s/{report_row.studio.org.slug}/{report_row.studio.slug}/api/reports/{report_row.slug}/status"
+    response = client.get(url)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["state"] == "running"
+    assert body["history"][0]["recovery"]["state"] == "unconfirmed"
+    assert body["history"][0]["diagnostics"]["cause"] == "worker_outcome_unconfirmed"
+
+
+def test_ordinary_active_run_keeps_existing_completed_history_shape(report_row, org_admin, client):
+    enqueue(report_row)
+    Run.objects.filter(report=report_row).update(status=Run.RUNNING)
+    client.force_login(org_admin)
+    url = f"/s/{report_row.studio.org.slug}/{report_row.studio.slug}/api/reports/{report_row.slug}/status"
+    assert client.get(url).json()["history"] == []

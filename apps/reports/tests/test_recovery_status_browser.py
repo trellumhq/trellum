@@ -79,7 +79,9 @@ def test_history_explains_recovery_and_unknown_outcomes(width):
             .map(el => [el.tagName, el.className, Math.round(el.getBoundingClientRect().width)]).slice(0, 30)""")
 
         def refresh():
-            page.evaluate("_opsLoadHistory('revenue-overview')")
+            # Reopening also checks the initial history path for terminal states.
+            page.locator('[data-ops-row="revenue-overview"] [data-label="Report"]').click()
+            page.locator('[data-ops-row="revenue-overview"] [data-label="Report"]').click()
 
         run["recovery"] = {"state": "exhausted", "reason": "attempt_budget_exhausted", "attempt": 2}
         refresh()
@@ -106,4 +108,136 @@ def test_history_explains_recovery_and_unknown_outcomes(width):
         expect(history).to_contain_text("Recovered automatically")
         expect(history).not_to_contain_text("Cause unknown")
         assert not errors
+        browser.close()
+
+
+def test_existing_poll_refreshes_recovery_preserving_evidence_and_focus():
+    status = {"running": {}, "queue": []}
+    history_calls = []
+    delayed = []
+    hold = True
+    run = {
+        "created_at": "2026-10-18T09:00:00Z", "status": "error", "trigger": "schedule",
+        "diagnostics": {"stage": "fetch", "state": "failed", "timeout_seconds": 3600},
+        "recovery": {"state": "pending", "attempt": 0},
+    }
+
+    def extra(route, path, query, reply):
+        if path.endswith("/status") and "/api/reports/" in path:
+            history_calls.append(route.request.url)
+            if hold:
+                delayed.append(reply)
+            else:
+                reply({"history": [run]})
+            return True
+        if path.startswith("/static/"):
+            asset = settings.BASE_DIR / path.lstrip("/")
+            if asset.is_file():
+                route.fulfill(path=str(asset))
+                return True
+        if path.startswith("/_vendor/"):
+            asset = settings.BASE_DIR / "trellum/static/vendor" / path.removeprefix("/_vendor/")
+            route.fulfill(path=str(asset))
+            return True
+        return False
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1280, "height": 900})
+        page.route("**/*", _ops_respond(
+            lambda: [{**REPORT, "last_status": "error"}], lambda: status,
+            extra=extra, html=_operations_fixture_html(),
+        ))
+        page.goto("http://portal.test/s/acme/analytics/operations")
+        page.locator('[data-ops-row="revenue-overview"] [data-label="Report"]').click()
+        history = page.locator("#opsHist_revenue-overview")
+        expect(history).to_contain_text("Loading run history")
+        page.evaluate("clearTimeout(_opsStatusTimer); _opsStatusRevision++")
+        # A newer action invalidates this delayed initial read on an idle row.
+        assert len(delayed) == 1
+        delayed.pop()({"history": [run]})
+        page.wait_for_function("!_opsHistoryInFlight['revenue-overview']")
+        expect(history).to_contain_text("Loading run history")
+        hold = False
+        page.evaluate("status => _opsApplyStatus(status, _opsStatusRevision, _opsStatusCycle)", status)
+        expect(history).to_contain_text("Automatic retry pending")
+        assert len(history_calls) == 2
+        # Avoid wall-clock timing in this test; drive the shipped poll's apply path.
+        page.evaluate("clearTimeout(_opsStatusTimer)")
+
+        def poll():
+            page.evaluate("status => _opsApplyStatus(status, _opsStatusRevision, _opsStatusCycle)", status)
+
+        evidence = history.locator("summary")
+        evidence.focus()
+        page.keyboard.press("Enter")
+        page.evaluate("window.__evidenceNode = document.activeElement; window.__historyScroll = scrollY")
+        run["recovery"] = {"state": "running", "attempt": 1}
+        status["running"] = {REPORT["slug"]: {"elapsed_seconds": 1}}
+        poll()
+        # A changed response is deferred while a person is using the evidence.
+        expect(history).to_contain_text("Automatic retry pending")
+        assert page.evaluate("document.activeElement === window.__evidenceNode")
+        page.locator("#searchInput").focus()
+        poll()
+        expect(history).to_contain_text("Automatic retry running")
+        expect(history.locator("details")).to_have_attribute("open", "")
+        page.evaluate("window.__stableDetails = document.querySelector('#opsHist_revenue-overview details')")
+        poll()
+        assert page.evaluate("window.__stableDetails === document.querySelector('#opsHist_revenue-overview details')")
+
+        run["recovery"] = {"state": "unconfirmed", "attempt": 1, "reason": "prior_process_not_confirmed_stopped"}
+        poll()
+        expect(history).to_contain_text("Previous outcome unconfirmed; no automatic replay")
+        expect(history.locator("details")).to_have_attribute("open", "")
+
+        # The existing cycle stops history reads while the document is hidden.
+        before = len(history_calls)
+        page.evaluate("Object.defineProperty(document, 'hidden', {configurable:true, value:true}); document.dispatchEvent(new Event('visibilitychange'))")
+        poll()
+        assert len(history_calls) == before
+        page.evaluate("Object.defineProperty(document, 'hidden', {configurable:true, value:false}); document.dispatchEvent(new Event('visibilitychange'))")
+
+        hold = True
+        page.evaluate("_opsApplyStatus(window._opsLatestStatus, _opsStatusRevision, _opsStatusCycle); undefined")
+        page.wait_for_function("!!_opsHistoryInFlight['revenue-overview']")
+        # A second cycle reuses the one pending read.
+        page.evaluate("_opsApplyStatus(window._opsLatestStatus, _opsStatusRevision, _opsStatusCycle); undefined")
+        assert len(history_calls) == before + 1
+        page.locator('[data-ops-row="revenue-overview"] [data-label="Report"]').click()
+        page.wait_for_function("!_opsHistoryInFlight['revenue-overview']")
+        poll()
+        assert len(history_calls) == before + 1
+
+        hold = False
+        page.locator('[data-ops-row="revenue-overview"] [data-label="Report"]').click()
+        expect(history).to_contain_text("Previous outcome unconfirmed")
+        hold = True
+        page.evaluate("_opsApplyStatus(window._opsLatestStatus, _opsStatusRevision, _opsStatusCycle); undefined")
+        page.wait_for_function("!!_opsHistoryInFlight['revenue-overview']")
+        before = len(history_calls)
+        page.evaluate("Object.defineProperty(document, 'hidden', {configurable:true, value:true}); document.dispatchEvent(new Event('visibilitychange'))")
+        page.wait_for_function("!_opsHistoryInFlight['revenue-overview']")
+        poll()
+        assert len(history_calls) == before
+        page.evaluate("Object.defineProperty(document, 'hidden', {configurable:true, value:false}); document.dispatchEvent(new Event('visibilitychange'))")
+        page.evaluate("_opsApplyStatus(window._opsLatestStatus, _opsStatusRevision, _opsStatusCycle); undefined")
+        page.wait_for_function("!!_opsHistoryInFlight['revenue-overview']")
+        before = len(history_calls)
+        page.evaluate("window.dispatchEvent(new Event('pagehide'))")
+        page.wait_for_function("!_opsHistoryInFlight['revenue-overview']")
+        poll()
+        assert len(history_calls) == before
+
+        # Resuming eventually settles to idle history, which needs no extra reads.
+        hold = False
+        run["status"] = "success"
+        run["recovery"] = {"state": "succeeded", "attempt": 1}
+        status["running"] = {}
+        page.evaluate("window.dispatchEvent(new PageTransitionEvent('pageshow', {persisted:true})); clearTimeout(_opsStatusTimer)")
+        poll()
+        expect(history).to_contain_text("Recovered automatically")
+        before = len(history_calls)
+        poll()
+        assert len(history_calls) == before
         browser.close()
