@@ -211,7 +211,7 @@ class TestSpawn:
         )
         Executor("w1").start_run(run)
         cmd = fake_popen["procs"][-1].cmd
-        flags = [c for c in cmd if c.startswith("--") and c not in ("--no-serve", "--production")]
+        flags = [c for c in cmd if c.startswith("--") and c not in ("--no-serve", "--production", "--output")]
         assert flags == expected
 
     def test_production_flag_follows_debug_setting(self, fake_popen, queued_run, settings):
@@ -697,6 +697,7 @@ class TestMemory:
 
 
 class FakeSandboxProc:
+    termination_confirmed = True
     """Popen-shaped stand-in for a sandbox container (mirrors SandboxProc)."""
 
     pid = None
@@ -798,7 +799,8 @@ class TestSandboxMode:
         assert "--production" in sandbox.started[0]["cmd_flags"]
         options = sandbox.started[0]
         assert options["env"]["BI_STORAGE_BACKEND"] == "local"
-        assert options["output_dir"] == str(queued_run.studio.output_dir / queued_run.slug)
+        assert options["output_dir"] == str(queued_run.studio.output_dir / f".build-{queued_run.pk}")
+        assert options["cmd_flags"][-2:] == ["--output", options["output_dir"]]
         source = queued_run.studio.reports_dir / queued_run.slug
         copied = Path(options["run_report_dir"])
         for path in source.rglob("*"):
@@ -1212,6 +1214,7 @@ class TestDataSourcePreflight:
         self._wait_for_attribution()
         run.refresh_from_db()
         assert run.stderr_tail.endswith("Traceback: KeyError\n")
+<<<<<<< HEAD
         assert "Subsequent data source check" not in run.stderr_tail
 
 
@@ -1271,3 +1274,272 @@ class TestMetaWriteIsAtomic:
         meta.chmod(0o664)
         write_meta(str(tmp_path), {"b": 2})
         assert meta.stat().st_mode & 0o777 == 0o664
+=======
+
+
+class TestRecoveryIntegration:
+    def _start(self, queued_run, fake_popen):
+        ex = Executor("w1")
+        assert ex.start_run(queued_run)
+        return ex, ex._procs[queued_run.pk], fake_popen["procs"][-1]
+
+    def test_sixty_minute_default_and_explicit_override(self, queued_run, fake_popen):
+        ex, proc, child = self._start(queued_run, fake_popen)
+        assert proc.timeout_seconds == 3600
+        assert Executor("custom", default_timeout=1800).default_timeout == 1800
+        assert child.kwargs["start_new_session"] is True
+
+    def test_failed_build_preserves_successful_artifact(self, queued_run, fake_popen):
+        destination = queued_run.studio.output_dir / queued_run.slug
+        destination.mkdir(parents=True)
+        (destination / "index.html").write_text("last success")
+        ex, proc, child = self._start(queued_run, fake_popen)
+        Path(proc.output_dir, "index.html").write_text("partial new build")
+        child.finish(1)
+        ex.tick()
+        assert (destination / "index.html").read_text() == "last success"
+        assert not Path(proc.output_dir).exists()
+
+    def test_success_publishes_complete_replacement(self, queued_run, fake_popen):
+        destination = queued_run.studio.output_dir / queued_run.slug
+        destination.mkdir(parents=True)
+        (destination / "index.html").write_text("last success")
+        (destination / "obsolete.json").write_text("old file")
+        ex, proc, child = self._start(queued_run, fake_popen)
+        Path(proc.output_dir, "index.html").write_text("complete replacement")
+        assert (destination / "index.html").read_text() == "last success"
+        child.finish(0)
+        ex.tick()
+        assert (destination / "index.html").read_text() == "complete replacement"
+        assert not (destination / "obsolete.json").exists()
+        queued_run.refresh_from_db()
+        assert queued_run.diagnostics["timings"][-1]["stage"] == "publish"
+        assert queued_run.diagnostics["timings"][-1]["elapsed_ms"] >= 0
+
+    def test_last_stage_is_sanitized_and_persisted_before_timeout(self, queued_run, fake_popen):
+        ex, proc, child = self._start(queued_run, fake_popen)
+        Path(proc.diagnostics_path).write_text(json.dumps({
+            "version": 1, "stage": "fetch", "state": "active", "attempt": 3,
+            "transient": True, "query_retry_safe": True,
+            "password": "secret", "sql": "select customer_secret", "errors": [],
+        }))
+        proc.started_at = timezone.now() - timedelta(seconds=3601)
+        ex.tick()
+        queued_run.refresh_from_db()
+        assert queued_run.diagnostics["stage"] == "fetch"
+        assert queued_run.diagnostics["attempt"] == 3
+        assert "secret" not in json.dumps(queued_run.diagnostics)
+        assert signal.SIGTERM in child.signals
+        child.finish(-signal.SIGTERM)
+        ex.tick()
+        queued_run.refresh_from_db()
+        assert queued_run.status == Run.TIMEOUT
+        assert queued_run.diagnostics["cause"] == "build_timeout"
+        assert queued_run.termination_confirmed is True
+
+    def test_surviving_group_blocks_finalization_and_replacement(self, queued_run, fake_popen, monkeypatch):
+        ex, proc, child = self._start(queued_run, fake_popen)
+        child.finish(1)
+        signals = []
+        monkeypatch.setattr(os, "killpg", lambda group, sig: signals.append((group, sig)))
+        ex.tick()
+        queued_run.refresh_from_db()
+        assert queued_run.status == Run.RUNNING
+        assert queued_run.termination_confirmed is False
+        assert queued_run.diagnostics["recovery"]["state"] == "unconfirmed"
+        assert (child.pid, signal.SIGKILL) in signals
+        assert ex.running_count == 1
+        from apps.runner.services import enqueue
+        assert enqueue(queued_run.report, trigger="manual") == "already_running"
+        def stopped(group, sig):
+            raise ProcessLookupError
+        monkeypatch.setattr(os, "killpg", stopped)
+        ex.tick()
+        queued_run.refresh_from_db()
+        assert queued_run.status == Run.ERROR
+        assert queued_run.termination_confirmed is True
+        assert ex.running_count == 0
+
+    def test_database_failure_retains_completion_without_republishing(self, queued_run, fake_popen, monkeypatch):
+        from django.db import OperationalError
+        from apps.runner import recovery
+        ex, proc, child = self._start(queued_run, fake_popen)
+        Path(proc.output_dir, "index.html").write_text("complete")
+        child.finish(0)
+        complete = recovery.complete_run
+        calls = []
+        def database_down(*args, **kwargs):
+            calls.append(1)
+            raise OperationalError("controlled finalization outage")
+        monkeypatch.setattr(recovery, "complete_run", database_down)
+        with pytest.raises(OperationalError):
+            ex.tick()
+        queued_run.refresh_from_db()
+        assert queued_run.status == Run.RUNNING
+        assert ex.running_count == 1
+        assert proc.output_published
+        def must_not_publish(*args):
+            raise AssertionError("published twice")
+        monkeypatch.setattr(executor_mod, "_promote_output", must_not_publish)
+        monkeypatch.setattr(recovery, "complete_run", complete)
+        ex.tick()
+        queued_run.refresh_from_db()
+        assert queued_run.status == Run.SUCCESS
+        assert ex.running_count == 0
+        assert len(calls) == 1
+
+    def test_unknown_publication_is_not_retried_after_database_outage(self, queued_run, fake_popen, monkeypatch):
+        from django.db import OperationalError
+        from apps.core import storage
+        from apps.runner import recovery
+        ex, proc, child = self._start(queued_run, fake_popen)
+        child.finish(0)
+        calls = []
+        monkeypatch.setattr(storage, "is_remote", lambda: True)
+        def unknown_write(*args):
+            calls.append(1)
+            raise TimeoutError("unknown write outcome")
+        monkeypatch.setattr(storage, "publish_build", unknown_write)
+        complete = recovery.complete_run
+        def database_down(*args, **kwargs):
+            raise OperationalError("controlled finalization outage")
+        monkeypatch.setattr(recovery, "complete_run", database_down)
+        with pytest.raises(OperationalError):
+            ex.tick()
+        monkeypatch.setattr(recovery, "complete_run", complete)
+        ex.tick()
+        queued_run.refresh_from_db()
+        assert queued_run.status == Run.ERROR
+        assert queued_run.diagnostics["stage"] == "publish"
+        assert queued_run.diagnostics["unknown_write_outcome"] is True
+        assert queued_run.diagnostics["timings"][-1]["stage"] == "publish"
+        assert queued_run.diagnostics["timings"][-1]["elapsed_ms"] >= 0
+        assert len(calls) == 1
+
+    def test_retry_budget_excludes_elapsed_chain_age(self, queued_run, fake_popen):
+        from apps.runner.models import RunRecovery
+        chain = RunRecovery.objects.create(
+            root_run=queued_run, report=queued_run.report,
+            created_at=timezone.now() - timedelta(hours=3, minutes=59),
+            expires_at=timezone.now() + timedelta(seconds=58),
+        )
+        queued_run.recovery = chain
+        queued_run.save(update_fields=["recovery"])
+        ex, proc, child = self._start(queued_run, fake_popen)
+        assert 1 <= proc.timeout_seconds <= 58
+
+    def test_start_recording_outage_retains_live_child_and_active_fence(
+        self, queued_run, fake_popen, monkeypatch
+    ):
+        from django.db import OperationalError
+        queryset_type = type(Run.objects.all())
+        update = queryset_type.update
+        def fail_running_update(queryset, **updates):
+            if queryset.model is Run and updates.get("status") == Run.RUNNING:
+                raise OperationalError("controlled spawn recording outage")
+            return update(queryset, **updates)
+        monkeypatch.setattr(queryset_type, "update", fail_running_update)
+        ex = Executor("w1")
+        assert ex.start_run(queued_run) is True
+        queued_run.refresh_from_db()
+        proc = ex._procs[queued_run.pk]
+        assert queued_run.status == Run.STARTING
+        assert queued_run.finished_at is None
+        assert Path(proc.run_dir).is_dir()
+        assert Path(proc.stdout_path).is_file()
+        assert Path(proc.output_dir).is_dir()
+        from apps.runner.services import enqueue
+        assert enqueue(queued_run.report) == "already_running"
+        monkeypatch.setattr(queryset_type, "update", update)
+        fake_popen["procs"][-1].finish(1)
+        ex.tick()
+        queued_run.refresh_from_db()
+        assert queued_run.status == Run.ERROR
+        assert ex.running_count == 0
+
+    def test_database_outage_does_not_delay_timeout(self, queued_run, fake_popen, monkeypatch):
+        from django.db import OperationalError
+        ex, proc, child = self._start(queued_run, fake_popen)
+        proc.started_at = timezone.now() - timedelta(seconds=3601)
+        def database_down(*args, **kwargs):
+            raise OperationalError("controlled monitoring outage")
+        monkeypatch.setattr(Run.objects, "filter", database_down)
+        ex.tick()
+        assert proc.timed_out
+        assert child.signals == [signal.SIGTERM]
+        proc.sigterm_at = timezone.now() - timedelta(seconds=6)
+        ex.tick()
+        assert child.killed
+
+    def test_memory_error_vetoes_transient_snapshot(self, queued_run, fake_popen):
+        ex, proc, child = self._start(queued_run, fake_popen)
+        Path(proc.stderr_path).write_text("MemoryError: controlled allocation failure")
+        Path(proc.diagnostics_path).write_text(json.dumps({
+            "version": 1, "stage": "fetch", "state": "failed", "attempt": 3,
+            "transient": True, "query_retry_safe": True,
+        }))
+        child.finish(1)
+        ex.tick()
+        queued_run.refresh_from_db()
+        assert queued_run.diagnostics["cause"] == "memory_allocation_failed"
+        assert queued_run.diagnostics["transient"] is False
+
+
+@pytest.mark.heavy
+@pytest.mark.skipif(os.name == "nt", reason="POSIX process-group fencing")
+def test_real_timeout_terminates_group_and_confirms_exit(queued_run, tmp_path):
+    import subprocess
+    import time
+
+    marker = tmp_path / "descendant.pid"
+    script = (
+        "import signal,subprocess,sys,time\n"
+        "child=subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)'])\n"
+        "def stop(sig, frame):\n"
+        " child.wait(timeout=2)\n"
+        "signal.signal(signal.SIGTERM,stop)\n"
+        "open(sys.argv[1],'w').write(str(child.pid))\n"
+        "while True: time.sleep(.02)\n"
+    )
+    stdout = tmp_path / "stdout.log"
+    stderr = tmp_path / "stderr.log"
+    stdout.touch()
+    stderr.touch()
+    child = subprocess.Popen([sys.executable, "-c", script, str(marker)], start_new_session=True)
+    ex = Executor("real-fence")
+    proc = RunningProc(
+        run_id=queued_run.pk, slug=queued_run.slug, studio_id=queued_run.studio_id,
+        process=child, started_at=timezone.now() - timedelta(seconds=2),
+        stdout_path=str(stdout), stderr_path=str(stderr), run_dir="",
+        output_dir=str(tmp_path / "output"), timeout_seconds=1, process_group_id=child.pid,
+    )
+    ex._procs[queued_run.pk] = proc
+    Run.objects.filter(pk=queued_run.pk).update(status=Run.RUNNING, started_at=proc.started_at)
+    try:
+        deadline = time.monotonic() + 5
+        while not marker.exists() and time.monotonic() < deadline:
+            time.sleep(.02)
+        assert marker.exists()
+        descendant = int(marker.read_text())
+        ex.tick()
+        assert proc.timed_out
+        # Child receives group SIGTERM and is reaped by its still-running parent.
+        while Path(f"/proc/{descendant}").exists() and time.monotonic() < deadline:
+            time.sleep(.02)
+        assert not Path(f"/proc/{descendant}").exists()
+        proc.sigterm_at = timezone.now() - timedelta(seconds=6)
+        ex.tick()
+        while ex.running_count and time.monotonic() < deadline:
+            time.sleep(.02)
+            ex.tick()
+        queued_run.refresh_from_db()
+        assert queued_run.status == Run.TIMEOUT
+        assert queued_run.termination_confirmed is True
+        assert not ex.running_count
+    finally:
+        try:
+            os.killpg(child.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        child.wait(timeout=5)
+>>>>>>> decc101 (Fence report attempts and preserve output through automatic recovery)

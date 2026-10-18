@@ -114,6 +114,7 @@ class SandboxProc:
         self._exit: int | None = None
         self._oom = False
         self._inspection_unavailable = False
+        self._termination_confirmed = False
 
     def poll(self) -> int | None:
         if self._exit is not None:
@@ -158,8 +159,9 @@ class SandboxProc:
             )
             self._inspection_unavailable = False
         state = self._c.attrs.get("State", {})
-        if state.get("Running"):
+        if state.get("Running") is not False:
             return None
+        self._termination_confirmed = True
         self._oom = bool(state.get("OOMKilled"))
         try:
             self._exit = int(state.get("ExitCode", 1))
@@ -180,6 +182,11 @@ class SandboxProc:
             self._c.kill()
         except Exception as exc:  # noqa: BLE001
             raise OSError(str(exc)) from exc
+
+    @property
+    def termination_confirmed(self) -> bool:
+        # Missing containers and inspection failures do not prove termination.
+        return self._termination_confirmed
 
     @property
     def oom_killed(self) -> bool:

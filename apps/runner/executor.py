@@ -32,11 +32,13 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone as dt_tz
 from pathlib import Path
 
 from django.conf import settings
+from django.db import DatabaseError, transaction
 from django.utils import timezone as dj_tz
 
 from apps.runner.models import Run
@@ -369,6 +371,13 @@ class RunningProc:
     run_dir: str
     output_dir: str
     timeout_seconds: int = 3600
+    published_output_dir: str = ""
+    diagnostics_path: str = ""
+    output_published: bool = False
+    remote_published: bool = False
+    publication_error: str = ""
+    publication_elapsed_ms: int | None = None
+    process_group_id: int | None = None
     sigterm_at: datetime | None = None
     timed_out: bool = False
     user_stopped: bool = False
@@ -490,10 +499,7 @@ class Executor:
                            "worker_id": self.worker_id, "trigger": run.trigger, "reason": "source_blocked"},
                 )
                 now = dj_tz.now()
-                Run.objects.filter(pk=run.pk).update(
-                    status=Run.ERROR, started_at=now, finished_at=now,
-                    stderr_tail=message, worker_id=self.worker_id,
-                )
+                self._record_start_failure(run, message, cause="source_blocked")
                 self._write_error(output_dir, message, blocked_by=[b.name for b in blockers])
                 return False
 
@@ -529,6 +535,13 @@ class Executor:
                     safe_copyfile(src_file, Path(run_dir_base) / name, root=studio.project_root)
 
             timeout = self.default_timeout
+            if run.recovery_id:
+                import math
+
+                remaining = math.ceil((run.recovery.expires_at - dj_tz.now()).total_seconds())
+                if remaining <= 0:
+                    raise TimeoutError("recovery chain expired before process start")
+                timeout = min(timeout, remaining)
 
             # Materialize the studio's data sources: config.yaml for the
             # framework + decrypted TRELLUM_DS_* credentials for the child env.
@@ -538,7 +551,11 @@ class Executor:
             if extra_env:
                 ds_env.update(extra_env)
 
+            published_output_dir = output_dir
+            output_dir = str(studio.output_dir / f".build-{run.pk}")
+            os.makedirs(output_dir, exist_ok=True)
             flags = build_cmd_flags(run.cache_mode, production=not settings.DEBUG)
+            flags += ["--output", output_dir]
             memory_mb = self.memory_for(run)
             sandbox_kind = sandbox_mode()
             memory_cap_mb = None
@@ -550,6 +567,8 @@ class Executor:
                 memory_cap_mb = int(memory_mb * settings.TRELLUM_JOB_MEMORY_HEADROOM)
                 memory_cap_kind = "address space (RLIMIT_AS)"
             env = child_env(studio, ds_env)
+            diagnostics_path = str(log_dir / "diagnostics.json")
+            env["TRELLUM_DIAGNOSTICS_PATH"] = diagnostics_path
             start_context = {
                 "run_id": str(run.pk), "studio": str(studio), "report_slug": slug,
                 "worker_id": self.worker_id, "trigger": run.trigger,
@@ -597,6 +616,8 @@ class Executor:
                 # preexec_fn is POSIX-only; on Windows dev machines the cap is
                 # simply absent and the timeout ladder remains the only guard.
                 popen_extra = {}
+                if os.name != "nt":
+                    popen_extra["start_new_session"] = True
                 if os.name != "nt" and settings.TRELLUM_JOB_MEMORY_ENFORCE:
                     cap_bytes = memory_cap_mb * 1024 * 1024
                     popen_extra["preexec_fn"] = _memory_limit_preexec(cap_bytes)
@@ -625,6 +646,9 @@ class Executor:
                 run_dir=run_dir_base,
                 output_dir=output_dir,
                 timeout_seconds=timeout,
+                published_output_dir=published_output_dir,
+                diagnostics_path=diagnostics_path,
+                process_group_id=(proc.pid if os.name != "nt" and sandbox_kind != "docker" else None),
                 memory_limit_mb=memory_mb,
                 memory_cap_mb=memory_cap_mb,
                 memory_cap_kind=memory_cap_kind,
@@ -640,6 +664,11 @@ class Executor:
             )
             return True
         except Exception as exc:  # noqa: BLE001
+            if run.pk in self._procs:
+                # A child already exists. Retain ownership when recording its
+                # start failed; the monitor will commit completion after DB recovery.
+                logger.exception("Could not persist subprocess start; retaining process ownership")
+                return True
             logger.exception(
                 f"start failed: {studio}/{slug}: {type(exc).__name__}: {exc}",
                 extra={"run_id": str(run.pk), "studio": str(studio), "report_slug": slug,
@@ -657,15 +686,27 @@ class Executor:
             shutil.rmtree(log_dir, ignore_errors=True)
             if run_dir_base:
                 shutil.rmtree(run_dir_base, ignore_errors=True)
-            Run.objects.filter(pk=run.pk).update(
-                status=Run.ERROR,
-                started_at=dj_tz.now(),
-                finished_at=dj_tz.now(),
-                stderr_tail=f"start_failed: {type(exc).__name__}: {exc}",
-                worker_id=self.worker_id,
-            )
-            self._write_error(output_dir, f"start_failed: {type(exc).__name__}: {exc}")
+            self._record_start_failure(run, f"start_failed: {type(exc).__name__}: {exc}")
+            if output_dir != str(studio.output_dir / slug):
+                shutil.rmtree(output_dir, ignore_errors=True)
+            self._write_error(str(studio.output_dir / slug), f"start_failed: {type(exc).__name__}: {exc}")
             return False
+
+    def _record_start_failure(self, run: Run, message: str, *, cause="start_failed") -> None:
+        from apps.reports.models import Report
+        from apps.runner.recovery import complete_run
+
+        with transaction.atomic():
+            Report.objects.select_for_update().get(pk=run.report_id)
+            current = Run.objects.select_for_update().get(pk=run.pk)
+            if current.status not in Run.ACTIVE_STATUSES:
+                return
+            current.status = Run.ERROR
+            current.started_at = current.finished_at = dj_tz.now()
+            current.stderr_tail = message
+            current.worker_id = self.worker_id
+            current.save(update_fields=["status", "started_at", "finished_at", "stderr_tail", "worker_id"])
+            complete_run(current, diagnostics={"cause": cause, "transient": False}, termination_confirmed=True)
 
     # ── monitor ──────────────────────────────────────────────────────────
     def tick(self) -> None:
@@ -673,14 +714,23 @@ class Executor:
         if not self._procs:
             return
 
-        stop_ids = set(
-            Run.objects.filter(pk__in=self._procs.keys(), stop_requested=True).values_list(
-                "pk", flat=True
+        try:
+            stop_ids = set(
+                Run.objects.filter(pk__in=self._procs.keys(), stop_requested=True).values_list(
+                    "pk", flat=True
+                )
             )
-        )
+        except DatabaseError:
+            # The local execution deadline still applies during a DB outage.
+            logger.exception("Cannot read stop requests; enforcing local build deadlines")
+            stop_ids = set()
         now = datetime.now(dt_tz.utc)
         finished: list[tuple[RunningProc, int]] = []
         for run_id, proc in list(self._procs.items()):
+            try:
+                self._persist_diagnostics(proc)
+            except DatabaseError:
+                logger.exception("Cannot persist progress; enforcing local build deadline")
             ret = proc.process.poll()
             if ret is not None:
                 finished.append((proc, ret))
@@ -715,13 +765,15 @@ class Executor:
                                    "reason": "timeout" if proc.timed_out else "stop_requested"},
                         )
                         try:
-                            proc.process.kill()
+                            self._signal_process_tree(proc, signal.SIGKILL)
                         except OSError:
                             pass
 
         for proc, exit_code in finished:
-            del self._procs[proc.run_id]
-            self._record_completion(proc, exit_code)
+            # Retain the exited process until terminal state and retry intent
+            # commit. A database outage must not strand an active run.
+            if self._record_completion(proc, exit_code) is not False:
+                del self._procs[proc.run_id]
 
     def _send_sigterm(self, proc: RunningProc, now: datetime, reason: str) -> None:
         logger.warning(
@@ -729,12 +781,61 @@ class Executor:
             extra={**self._log_context(proc), "reason": reason, "signal": "SIGTERM"},
         )
         try:
-            proc.process.send_signal(signal.SIGTERM)
+            self._signal_process_tree(proc, signal.SIGTERM)
             proc.sigterm_at = now
         except OSError:
             pass
 
-    def _record_completion(self, proc: RunningProc, exit_code: int) -> None:
+    @staticmethod
+    def _diagnostics(proc: RunningProc) -> dict:
+        from trellum.diagnostics import read_diagnostics
+
+        evidence = read_diagnostics(proc.diagnostics_path) if proc.diagnostics_path else {}
+        return {**evidence, "timeout_seconds": proc.timeout_seconds}
+
+    def _persist_diagnostics(self, proc: RunningProc) -> None:
+        # Persist before polling/signalling: SIGKILL cannot produce a traceback.
+        evidence = self._diagnostics(proc)
+        Run.objects.filter(pk=proc.run_id, status__in=Run.ACTIVE_STATUSES).update(
+            diagnostics=evidence
+        )
+
+    @staticmethod
+    def _signal_process_tree(proc: RunningProc, sig) -> None:
+        if proc.process_group_id is not None:
+            try:
+                os.killpg(proc.process_group_id, sig)
+                return
+            except ProcessLookupError:
+                pass
+        if sig == getattr(signal, "SIGKILL", 9):
+            proc.process.kill()
+        else:
+            proc.process.send_signal(sig)
+
+    @staticmethod
+    def _termination_confirmed(proc: RunningProc) -> bool:
+        confirmation = getattr(proc.process, "termination_confirmed", None)
+        if confirmation is not None:
+            return bool(confirmation)
+        if proc.process_group_id is None:
+            # A Windows direct child may have spawned surviving descendants.
+            return False
+        try:
+            os.killpg(proc.process_group_id, 0)
+        except ProcessLookupError:
+            return True
+        except PermissionError:
+            return False
+        # Reap descendants even when their parent exited before its deadline.
+        # Do not admit replacement work until a later tick confirms exit.
+        try:
+            os.killpg(proc.process_group_id, signal.SIGKILL)
+        except OSError:
+            pass
+        return False
+
+    def _record_completion(self, proc: RunningProc, exit_code: int) -> bool | None:
         now = dj_tz.now()
         stdout = read_tail(proc.stdout_path)
         stderr = read_tail(proc.stderr_path)
@@ -754,28 +855,88 @@ class Executor:
         elif os.name == "nt" and proc.sigterm_at is not None and status == Run.ERROR:
             status = Run.STOPPED
 
+        if getattr(proc.process, "oom_killed", False):
+            status = Run.OOM_KILLED
+
         run = Run.objects.filter(pk=proc.run_id).first()
         duration = (now - _aware(proc.started_at)).total_seconds()
 
+        from apps.reports.models import Report
+
+        diagnostics = self._diagnostics(proc)
+        termination_confirmed = self._termination_confirmed(proc)
+        if run is not None and run.status not in Run.ACTIVE_STATUSES:
+            self._cleanup(proc)
+            return
+        if not termination_confirmed:
+            # Parent exit is insufficient: descendants may still be performing
+            # side effects. Keep the active admission fence until stopped.
+            diagnostics.update(cause="process_termination_unconfirmed", transient=False,
+                               recovery={"state": "unconfirmed", "reason": "process_termination_unconfirmed", "attempt": 0, "due_at": None})
+            Run.objects.filter(pk=proc.run_id, status__in=Run.ACTIVE_STATUSES).update(
+                diagnostics=diagnostics, termination_confirmed=False,
+            )
+            return False
+        if proc.publication_error:
+            status = Run.ERROR
+            stderr += f"\n{proc.publication_error}"
+            diagnostics.update(stage="publish", state="failed", cause="publication_failed",
+                               transient=False, unknown_write_outcome=True)
+        publication_started = None
+        if status == Run.SUCCESS and run is not None and not proc.output_published:
+            publication_started = time.monotonic()
+            # Publication can die after a write reaches storage. Persist that
+            # stage before beginning any write, independent of child progress.
+            diagnostics.update(stage="publish", state="active", transient=False,
+                               unknown_write_outcome=True)
+            Run.objects.filter(pk=run.pk, status__in=Run.ACTIVE_STATUSES).update(
+                diagnostics=diagnostics
+            )
         # With a remote store the build is not finished when the process exits
         # — the output still has to reach the place the web process reads from.
         # A publish failure therefore downgrades the run: output that only
         # exists on this runner's disk is output nobody can open, and calling
         # that "success" produces a green report that 404s.
-        if status == Run.SUCCESS and run is not None:
+        if status == Run.SUCCESS and run is not None and not proc.output_published:
             from apps.core import storage
 
-            if storage.is_remote():
+            if storage.is_remote() and not proc.remote_published:
                 try:
                     storage.publish_build(
                         run.studio, proc.slug, proc.output_dir, run.pk
                     )
+                    proc.remote_published = True
                 except Exception as exc:  # noqa: BLE001 - surfaced as run failure
                     status = Run.ERROR
                     msg = f"publish to object storage failed: {type(exc).__name__}: {exc}"
+                    proc.publication_error = msg
                     logger.error(msg, extra=self._log_context(proc))
                     # Append the publishing failure to the captured build stderr.
                     stderr = f"{stderr}\n{msg}" if stderr else msg
+                    diagnostics.update(stage="publish", state="failed", cause="publication_failed",
+                                       transient=False, unknown_write_outcome=True)
+
+        if status == Run.SUCCESS and proc.published_output_dir and not proc.output_published:
+            try:
+                _promote_output(proc.output_dir, proc.published_output_dir)
+                proc.output_published = True
+                diagnostics.update(stage="publish", state="completed", unknown_write_outcome=False)
+            except Exception as exc:
+                status = Run.ERROR
+                diagnostics.update(stage="publish", state="failed", cause="publication_failed",
+                                   transient=False, unknown_write_outcome=True)
+                proc.publication_error = f"local publication failed: {type(exc).__name__}"
+                stderr += f"\n{proc.publication_error}"
+
+        if publication_started is not None:
+            proc.publication_elapsed_ms = min(14_400_000, int((time.monotonic() - publication_started) * 1000))
+        if proc.publication_elapsed_ms is not None:
+            diagnostics["timings"] = [
+                *diagnostics.get("timings", [])[-15:],
+                {"stage": "publish", "elapsed_ms": proc.publication_elapsed_ms},
+            ]
+        if proc.output_published:
+            diagnostics.update(stage="publish", state="completed", unknown_write_outcome=False)
 
         diagnosis = ""
         if status == Run.OOM_KILLED:
@@ -800,38 +961,45 @@ class Executor:
                 if exit_code == 0 and "publish to object storage failed" in stderr
                 else f"BUILD FAILED: subprocess exited with code {exit_code}."
             )
+        if status == Run.OOM_KILLED:
+            diagnostics.update(cause="oom", transient=False)
+        elif "MemoryError" in stderr:
+            diagnostics.update(cause="memory_allocation_failed", transient=False)
+        elif status == Run.STOPPED:
+            diagnostics.update(cause="cancelled", transient=False)
+        elif proc.timed_out:
+            diagnostics.update(cause="build_timeout")
+        elif exit_code in (-getattr(signal, "SIGKILL", 9), 137):
+            diagnostics.update(cause="unknown_kill", transient=False, unknown_write_outcome=True)
         if diagnosis:
             stderr = f"{diagnosis}\n{stderr}" if stderr else diagnosis
 
-        # The retention clock for built output, stamped here and nowhere else:
-        # this is the one point where output is known to be complete AND
-        # reachable (a publish failure has already downgraded `status` above).
-        # _meta.json's last_run cannot serve — failed runs bump it too, so a
-        # report failing nightly would look freshly built forever and never
-        # expire. See apps.reports.models.Report.last_built_at.
-        if status == Run.SUCCESS and run is not None:
-            from apps.reports.models import Report
-
-            # Clearing data_expired_at here is what makes a rebuild the way
-            # back from an expired report: fresh output, normal state, one
-            # write.
-            Report.objects.filter(pk=run.report_id).update(
-                last_built_at=now, data_expired_at=None
-            )
-
-        if run is not None:
-            run.status = status
-            run.finished_at = now
-            run.exit_code = exit_code
-            run.stdout_tail = stdout
-            run.stderr_tail = stderr
-            run.peak_memory_mb = proc.peak_memory_mb
-            run.save(
-                update_fields=[
+        with transaction.atomic():
+            if run is not None:
+                # All admissions/finalizers lock in report -> run order.
+                Report.objects.select_for_update().get(pk=run.report_id)
+                run = Run.objects.select_for_update().select_related("studio").get(pk=run.pk)
+                if run.status not in Run.ACTIVE_STATUSES:
+                    self._cleanup(proc)
+                    return
+            if run is not None:
+                run.status = status
+                run.finished_at = now
+                run.exit_code = exit_code
+                run.stdout_tail = stdout
+                run.stderr_tail = stderr
+                run.peak_memory_mb = proc.peak_memory_mb
+                run.save(update_fields=[
                     "status", "finished_at", "exit_code", "stdout_tail",
                     "stderr_tail", "peak_memory_mb",
-                ]
-            )
+                ])
+                from apps.runner.recovery import complete_run
+
+                complete_run(run, diagnostics=diagnostics, termination_confirmed=termination_confirmed)
+                if status == Run.SUCCESS:
+                    Report.objects.filter(pk=run.report_id).update(
+                        last_built_at=now, data_expired_at=None
+                    )
 
         if run is not None:
             # Alert-on-transition / scheduled-delivery bookkeeping must never
@@ -868,7 +1036,7 @@ class Executor:
                 if line.strip():
                     logger.error(f"{line.strip()[:120]}", extra=self._log_context(proc))
             msg = stderr or diagnosis or f"exit code {exit_code}"
-            self._write_error(proc.output_dir, msg)
+            self._write_error(proc.published_output_dir or proc.output_dir, msg)
             # The failure has to travel too: with a remote store the registry
             # reads status from the bucket, and an error that stays on this
             # runner's disk leaves every web node showing the previous outcome
@@ -881,7 +1049,7 @@ class Executor:
 
                 if storage.is_remote():
                     try:
-                        storage.publish_meta(run.studio, proc.slug, proc.output_dir)
+                        storage.publish_meta(run.studio, proc.slug, proc.published_output_dir or proc.output_dir)
                     except Exception as exc:  # noqa: BLE001 - never mask the run failure
                         logger.warning(
                             f"publishing failure status for {proc.slug}: "
@@ -909,9 +1077,13 @@ class Executor:
         )
         if status == Run.ERROR and exit_code != 0 and run is not None and not preserve_diagnosis:
             threading.Thread(
-                target=self._attribute_failure, args=(run.pk, proc.output_dir), daemon=True
+                target=self._attribute_failure, args=(run.pk, proc.published_output_dir or proc.output_dir), daemon=True
             ).start()
 
+        self._cleanup(proc)
+
+    @staticmethod
+    def _cleanup(proc: RunningProc) -> None:
         # Remove the finished sandbox container (no-op for in-process runs).
         cleanup = getattr(proc.process, "cleanup", None)
         if cleanup is not None:
@@ -921,6 +1093,9 @@ class Executor:
         shutil.rmtree(os.path.dirname(proc.stdout_path), ignore_errors=True)
         if proc.run_dir:
             shutil.rmtree(proc.run_dir, ignore_errors=True)
+
+        if proc.published_output_dir:
+            shutil.rmtree(proc.output_dir, ignore_errors=True)
 
     @staticmethod
     def _write_error(output_dir: str, message: str, blocked_by=()) -> None:
@@ -990,10 +1165,7 @@ class Executor:
     def stop_all(self) -> None:
         for proc in self._procs.values():
             proc.user_stopped = True
-            try:
-                proc.process.send_signal(signal.SIGTERM)
-            except OSError:
-                pass
+            self._send_sigterm(proc, datetime.now(dt_tz.utc), reason="worker shutdown")
 
     def drain(self, timeout: int = 540) -> None:
         """Let running builds finish; SIGTERM whatever remains at deadline."""
@@ -1052,3 +1224,39 @@ def _aware(dt: datetime) -> datetime:
     if dt.tzinfo is None:
         return dt.replace(tzinfo=dt_tz.utc)
     return dt
+
+
+def _promote_output(staging: str, destination: str) -> None:
+    """Publish complete directories, retaining the previous build on failure.
+
+    Linux atomically exchanges existing directories. Other platforms use a
+    rename/rollback sequence; readers can briefly see no directory during that
+    exchange, but never partially generated output.
+    """
+    source, target = Path(staging), Path(destination)
+    if not target.exists():
+        source.rename(target)
+        return
+    if sys.platform == "linux":
+        import ctypes
+
+        libc = ctypes.CDLL(None, use_errno=True)
+        exchange = getattr(libc, "renameat2", None)
+        if exchange is not None:
+            if exchange(-100, os.fsencode(source), -100, os.fsencode(target), 2) == 0:
+                # Staging now holds the old successful artifact.
+                shutil.rmtree(source, ignore_errors=True)
+                return
+            error = ctypes.get_errno()
+            import errno
+
+            if error not in (errno.ENOSYS, errno.EINVAL, errno.EOPNOTSUPP):
+                raise OSError(error, os.strerror(error))
+    backup = source.with_name(source.name + ".previous")
+    target.rename(backup)
+    try:
+        source.rename(target)
+    except BaseException:
+        backup.rename(target)
+        raise
+    shutil.rmtree(backup, ignore_errors=True)

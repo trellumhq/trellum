@@ -7,6 +7,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- Bounded report-stage failure evidence and durable automatic recovery for
+  explicitly replay-safe reports, with recovery disposition in run history.
+- Preserve successful report artifacts while replacement builds run or fail.
+
 ### Changed
 
 - Split a chunked DataSource (`chunk_by="month"` or `"week"`) into its period

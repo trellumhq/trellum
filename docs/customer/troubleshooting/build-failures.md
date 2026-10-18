@@ -57,3 +57,66 @@ a chart is unexpectedly empty.
 ## Still stuck
 
 Collect a [support bundle](/docs/latest/troubleshooting/support-bundle/).
+
+## Automatic recovery
+
+Reports can opt into bounded whole-report recovery in `report.yaml`:
+
+```yaml
+recovery:
+  replay_safe: true
+```
+
+Set this only when the complete generator and its helpers can be run again
+without external side effects: no database writes, payments, messages, file
+uploads or other non-idempotent actions. A read-only SQL query does not establish
+that the surrounding Python is safe. The portal snapshots this promise at
+admission and checks the current configuration before admitting a retry.
+Managed connections also record unsafe/session access; that evidence vetoes
+recovery even when the report declares itself safe.
+
+For an eligible transient connection failure or overall build timeout, the
+coordinator records up to two further attempts, after one and five minutes
+plus up to ten percent jitter. Queue delays count toward a four-hour chain
+age; retry execution is capped by the remaining age and the ordinary build
+limit. Each attempt has its own history and query retries stay within that
+attempt's deadline. Intent and final status are committed together. Restarting
+the coordinator resumes pending work without resetting the budget. A queued
+retry uses the same tenant quotas, pool fairness and memory admission as any
+other build. Manual or cron work already active defers recovery; its success
+supersedes the pending chain and its eligible failure consumes a remaining
+attempt. Exhaustion never disables future ordinary cron occurrences.
+
+Operations run history shows the last known connect, execute, fetch, render or
+publish stage, bounded timings, driver classes/codes, query attempt count,
+effective timeout and recovery disposition. Identifiers and traceback locations
+are hashed; new structured evidence contains no SQL, parameters, result data,
+connection strings or exception messages. A hard kill retains the last snapshot,
+which is evidence of progress, not proof of the underlying cause. Existing log
+access and retention rules continue to apply. Older framework builds may provide
+no structured stage evidence; the cause remains unknown.
+
+Authentication, invalid SQL/configuration, memory failures, deliberate stops,
+unsafe operations and unknown publication/write outcomes are not automatically
+replayed. A driver-side cancellation that cannot be distinguished from a query
+timeout remains ineligible. Source-readiness blocks use the existing connection
+check/unblock flow. Canceling a report also cancels its pending recovery.
+
+Missing heartbeats never prove termination. The portal keeps an active admission
+fence and shows an unconfirmed outcome until the owning worker can confirm its
+process/container has stopped. POSIX builds use a dedicated process group;
+remaining descendants are killed and checked again before completion. Windows
+subprocess trees and missing Docker containers cannot provide that confirmation
+here and stay unconfirmed. An operator must investigate a lost worker; do not
+clear its run fence before independently confirming termination. Boot catch-up
+only starts reports with no run history, so coordinator restarts cannot become
+an unbounded replay mechanism.
+
+Failed builds retain the previous successful artifact and freshness timestamp.
+New output is staged separately and promoted on success (an atomic directory
+exchange on Linux; a rollback-protected rename on other hosts, which can briefly
+leave the path absent). A storage publication failure has an unknown outcome and
+is not automatically retried. Existing failure/recovery transition notifications
+are retained; failed retry attempts do not invoke success alert evaluation.
+Notification execution remains best effort after the terminal database commit;
+a crash there can omit a notification rather than replay an uncertain delivery.

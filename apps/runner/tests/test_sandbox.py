@@ -326,9 +326,16 @@ class TestSandboxProc:
         c = FakeContainer(state={"Running": True})
         p = SandboxProc(c)
         assert p.poll() is None
+        assert p.termination_confirmed is False
         c.attrs["State"] = {"Running": False, "ExitCode": 0, "OOMKilled": False}
         assert p.poll() == 0
         assert p.oom_killed is False
+        assert p.termination_confirmed is True
+
+    def test_missing_state_is_unconfirmed(self):
+        p = SandboxProc(FakeContainer(state={}))
+        assert p.poll() is None
+        assert p.termination_confirmed is False
 
     def test_poll_oom_latched(self):
         c = FakeContainer(state={"Running": False, "ExitCode": 137, "OOMKilled": True})
@@ -391,6 +398,7 @@ class TestSandboxProc:
         assert p.poll() == 1
         assert caplog.records[-1].run_id == "rid-2"
         assert caplog.records[-1].reason == "container_missing"
+        assert p.termination_confirmed is False
 
     def test_signals_map_to_kill(self):
         c = FakeContainer()
