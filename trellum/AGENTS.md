@@ -35,6 +35,7 @@ it is cheaper than it looks, and far cheaper than guessing.
 | Why is my chart empty / not reacting? | `trellum guide format` — it is almost always wide-vs-long |
 | Where does aggregation belong? | `trellum guide queries` — pandas, not SQL |
 | What goes in report.yaml? | `trellum guide report-yaml` |
+| Upgraded the framework, or a build fails mentioning `Categorical` / `category`? | `trellum guide upgrade` — what changed for report code, how to find it, the fix |
 | What did the portal publish, and did the build there pass? | `trellum guide portal` — the MCP loop, when `.mcp.json` names a `trellum` server |
 | Everything else | `README.md`, read the relevant section only |
 
@@ -214,6 +215,16 @@ Acceptable exceptions (rare):
 - A `GROUP BY` on the union of every filterable dimension. Preserves
   filterability but compresses duplicates. Use only if raw-row
   retrieval genuinely returns too much data.
+
+**Repeated text comes back as `category` columns.** `query_df` returns a
+text column whose values repeat (titles, platforms, countries, dates stored
+as text) as a pandas `category`: one small code per row instead of one
+string, which is what keeps a large report under the build's memory cap.
+`==`, `.isin()`, `.str.*`, `groupby`, filters, charts and `DataSource` work
+as on plain text. `.map()` followed by arithmetic, `pd.to_datetime()`
+followed by `<`/`>`, `.min()`/`.max()`, `fillna("new value")` and
+`+ "text"` do not — the fixes are in `trellum guide upgrade`.
+`query_df(..., compact_text=False)` returns plain text for one query.
 
 Project-specific table names, memory caps, and schema particulars live
 in `project_context/chat_rules/` — the chat feature loads them at
@@ -1211,3 +1222,91 @@ notices retain their own terms.
 - **Bundling is the stricter case than depending.** Code added under
   `static/vendor/` ships inside every copy of this repository, so its notice
   travels with it — record it in `static/vendor/MANIFEST.json`.
+
+<!-- topic: upgrade -->
+## Upgrading reports to a new framework version
+
+Run through this after the framework is upgraded in a reports project, before
+the next scheduled build. Each entry says what changed, how to find the code
+it affects, the fix, and how to check the result. Newest first.
+
+### 0.9.0: pandas 3, and repeated text from `query_df` as `category` columns
+
+**What changed.**
+
+- pandas 3.0 is required. Text built from Python strings is pandas' `str`
+  dtype instead of `object`, and copy-on-write is always on.
+- `query_df` returns a text column whose values repeat (at most half of
+  them distinct: titles, platforms, countries, dates stored as text) as a
+  pandas `category` column, categories sorted. Values, row order and every
+  other column are exactly as before. Mostly-distinct text (ids, emails, free
+  text) stays plain text. The local query cache is keyed on this, so old
+  cached results are not reused.
+
+**What breaks on a `category` column, and the fix.** Each of these raises
+the error shown, so a build that still has one fails loudly, with a `[HINT]`
+line pointing here. None of them changes output silently.
+
+| Code in `generate()` | What happens | Fix |
+|---|---|---|
+| `s.map({...})` then arithmetic | `.map` returns a category when the mapping is one-to-one; `* x` raises *"Object with dtype category cannot perform the numpy op multiply"* or *"unsupported operand type(s) for \*: 'Categorical'"* | `np.where(s == "source", 1, -1)`, or `s.map({...}).astype(float)` |
+| `pd.to_datetime(s)` then `<`, `>`, `between` | on a large column it returns a category of dates; comparing raises *"Unordered Categoricals can only compare equality or not"* | `pd.to_datetime(s.astype(str))` |
+| `s.min()`, `s.max()` | raises *"Categorical is not ordered for operation min"* | `s.astype(str).min()` |
+| `s.fillna("Unknown")`, `df.loc[mask, "col"] = "new value"` | raises *"Cannot setitem on a Categorical with a new category"* | `s.cat.add_categories("Unknown").fillna("Unknown")`, or `s.astype(str).fillna("Unknown")` |
+| `s + "_suffix"`, `a + " " + b` | raises *"unsupported operand type(s) for +: 'Categorical' and 'str'"* | `s.astype(str) + "_suffix"` |
+
+**Different, but not an error.**
+
+- `s.unique()` returns a `Categorical`, not a numpy array. `sorted(...)`,
+  `list(...)`, `.tolist()` and `len(...)` work on it unchanged.
+- `s.value_counts()` lists every category, including ones with no rows left
+  after filtering (count 0). `groupby`, `pivot_table` and charts only show
+  values that occur. If a zero row matters: `s.value_counts()[lambda c: c > 0]`.
+- `s.str.slice(0, 7)` and other `.str` methods return plain text.
+- `pd.concat` or `merge` of frames whose category columns hold different
+  values works; that column comes out as plain text.
+
+**pandas 3 changes that reach report code** (with or without categories):
+
+- Chained assignment never writes: `df["a"][df["b"] > 0] = 0` leaves `df`
+  unchanged (pandas warns `ChainedAssignmentError`). Use
+  `df.loc[df["b"] > 0, "a"] = 0`.
+- `df[col].dtype == object` no longer finds text columns. Use
+  `pd.api.types.is_string_dtype(df[col])`, or check for
+  `isinstance(df[col].dtype, pd.CategoricalDtype)` as well.
+- Parsed datetimes are `datetime64[us]`, not `[ns]`.
+
+**Find the code.** Only lines that work on a text column that came from
+`query_df` matter:
+
+```
+grep -nE '\.map\(|to_datetime\(|\.min\(\)|\.max\(\)|fillna\(|\+ *["'"'"']|\.unique\(\)|value_counts\(|== *object|\]\[' reports/*/generator.py
+```
+
+**Opting out.** Prefer fixing the expression. Where that is not worth it,
+`df["col"] = df["col"].astype(str)` makes one column plain text again, and
+`query_df(conn, sql, compact_text=False)` returns plain text for a whole query
+(at the old memory cost).
+
+**Check the result.** Build every report before and after the fixes and
+compare the data the browser gets; it should be identical apart from
+timestamps:
+
+```
+python -m trellum.run --all --no-serve            # before: then copy output/ to output.before/
+python -m trellum.run --all --no-serve            # after the fixes
+python - <<'PY'
+import json, pathlib
+for new in sorted(pathlib.Path("output").glob("*/data*.json")):
+    old = pathlib.Path("output.before") / new.relative_to("output")
+    a, b = json.loads(old.read_text()), json.loads(new.read_text())
+    for d in (a, b):  # what differs between any two builds
+        d.pop("_freshness", None)
+        d.pop("_framework_version", None)
+    print("same   " if a == b else "CHANGED", new)
+PY
+```
+
+If the framework was already upgraded before a copy was made, build the
+reports once with `compact_text=False` passed to every `query_df` call, copy
+`output/` then, and remove the argument again.

@@ -3,6 +3,32 @@
 Each section documents a breaking or significant change, how to detect affected
 code, and the exact replacement.
 
+## 0.9.0: pandas 3, and repeated text from `query_df` as `category` columns
+
+pandas 3.0 is now required, and `query_df` returns a text column whose values
+repeat (at most half distinct) as a pandas `category` column instead of plain
+text. Values, row order and all other columns are unchanged; the column's
+dtype is what changed, and a few pandas operations behave differently on it:
+`.map()` followed by arithmetic, `pd.to_datetime()` followed by `<`/`>`,
+`.min()`/`.max()`, `fillna()` or assignment with a new value, and `+` with a
+string. Each raises a `TypeError` naming `Categorical` or `category`, and a
+build that hits one prints a `[HINT]` line pointing at the guide.
+
+**Detecting affected code:** in each report's `generator.py`, the lines that
+work on a text column from `query_df`:
+
+```
+grep -nE '\.map\(|to_datetime\(|\.min\(\)|\.max\(\)|fillna\(|\+ *["'"'"']|\.unique\(\)|value_counts\(|== *object|\]\[' reports/*/generator.py
+```
+
+**The fix:** the before/after for each operation, the pandas 3 changes that
+reach report code (chained assignment, `dtype == object`), and how to check
+that a report's output is unchanged are in `python -m trellum guide upgrade`
+(the `upgrade` section of `AGENTS.md`). `query_df(..., compact_text=False)`
+returns plain text where a fix is not worth it.
+
+---
+
 ## 0.2.0: `_meta.json` `metrics_used` entries became objects
 
 `META_SCHEMA_VERSION` moved 1 → 2. A build's claimed metrics still live at
