@@ -28,6 +28,8 @@ def test_history_explains_recovery_and_unknown_outcomes(width):
                               {"attempt": 2, "reason": "transient_connection", "class": "OperationalError"}],
             "errors": [{"class": "OperationalError", "code": "08006"}],
             "timings": [{"stage": "fetch", "elapsed_ms": 12000}],
+            "source_id": "source_" + "a" * 80,
+            "query_id": "query_" + "b" * 80,
         },
         "recovery": {
             "state": "pending", "reason": "transient_connection", "attempt": 0,
@@ -77,7 +79,28 @@ def test_history_explains_recovery_and_unknown_outcomes(width):
         expect(history).to_contain_text("Query attempt: 3")
         expect(history).to_contain_text("Managed read retries: 2")
         expect(history).to_contain_text("Retry after attempt 1: transient connection · OperationalError")
+        expect(history).to_contain_text("source_" + "a" * 80)
+        expect(history).to_contain_text("query_" + "b" * 80)
         assert history.get_by_role("button", name=re.compile("Retry|Refresh|Apply")).count() == 0
+        def assert_recovery_visible():
+            if width >= 768:
+                return
+            assert history.evaluate("""root => {
+                const viewport = root.querySelector('.ops-history-scroll').getBoundingClientRect();
+                const diagnosis = root.querySelector('.ops-run-diagnosis');
+                if (!diagnosis || diagnosis.scrollWidth > diagnosis.clientWidth + 1) return false;
+                const walker = document.createTreeWalker(diagnosis, NodeFilter.SHOW_TEXT);
+                while (walker.nextNode()) {
+                    const range = document.createRange();
+                    range.selectNodeContents(walker.currentNode);
+                    for (const rect of range.getClientRects()) {
+                        if (rect.left < viewport.left - 1 || rect.right > viewport.right + 1) return false;
+                    }
+                }
+                return true;
+            }"""), "Recovery text is clipped inside the mobile history"
+
+        assert_recovery_visible()
         if os.environ.get("TRELLUM_CAPTURE_PORTAL") == "1":
             output = settings.BASE_DIR / ".artifacts/portal"
             output.mkdir(parents=True, exist_ok=True)
@@ -98,6 +121,7 @@ def test_history_explains_recovery_and_unknown_outcomes(width):
         refresh()
         expect(history).to_contain_text("Automatic retries exhausted · 2 of 2 retries used")
         expect(history).not_to_contain_text("Retry due:")
+        assert_recovery_visible()
 
         run["diagnostics"] = {"stage": "execute", "cause": '<img src=x onerror="window.injected=true">'}
         run["recovery"] = {"state": "unconfirmed", "reason": "operation_outcome_unconfirmed", "attempt": 0}
@@ -106,6 +130,7 @@ def test_history_explains_recovery_and_unknown_outcomes(width):
         expect(history).to_contain_text('<img src=x onerror="window.injected=true">')
         assert history.locator("img").count() == 0
         assert page.evaluate("window.injected !== true")
+        assert_recovery_visible()
 
         run["diagnostics"] = {}
         run["recovery"] = {"state": "ineligible", "reason": "report_replay_not_safe", "attempt": 0}

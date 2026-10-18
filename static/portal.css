@@ -1243,12 +1243,29 @@ body.mgmt .folder-rail input.catalog-search-input:focus { border-color: var(--ac
     .ops-table tr[data-ops-row] td:nth-child(8) { grid-column: 1 / -1; grid-row: 5; }
     .ops-expand-row { display: block; min-width: 0; margin-top: -12px; }
     .ops-expand-row > td { display: block; width: 100%; }
-    .ops-history-scroll { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .ops-history-table { min-width: 640px; }
-    .ops-history-table tbody td:nth-child(2)::before,
-    .ops-history-table tbody td:nth-child(3)::before {
-        content: '·'; color: var(--text3); margin-right: 6px;
+    .ops-history-scroll { max-width: 100%; overflow-x: auto; }
+    .ops-history-table, .ops-history-table tbody { display: block; min-width: 0; width: 100%; }
+    .ops-history-table thead { display: none; }
+    .ops-history-table tr {
+        display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+        border-bottom: 1px solid var(--border);
     }
+    .ops-history-table td {
+        display: block; min-width: 0; border: 0; overflow: visible;
+        overflow-wrap: anywhere;
+    }
+    .ops-history-table td::before {
+        display: block; color: var(--text3); font-size: 11px;
+        font-weight: 600; text-transform: uppercase;
+    }
+    .ops-history-table td:nth-child(1)::before { content: 'Started'; }
+    .ops-history-table td:nth-child(2)::before { content: 'Trigger'; }
+    .ops-history-table td:nth-child(3) { grid-column: 1 / -1; }
+    .ops-history-table td:nth-child(3)::before { content: 'Status'; }
+    .ops-history-table td:nth-child(4)::before { content: 'Queue wait'; }
+    .ops-history-table td:nth-child(5)::before { content: 'Duration'; }
+    .ops-history-table td:nth-child(6)::before { content: 'Peak mem'; }
+    .ops-run-diagnosis { min-width: 0; max-width: 100%; }
     .ops-terminal { margin: 0 10px 10px; }
     .ops-terminal-body { max-height: 45vh; overflow: auto; overscroll-behavior: contain; }
     .ops-row-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
