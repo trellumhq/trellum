@@ -93,7 +93,7 @@ openai==3.0.0
 openpyxl==3.1.5
 orjson==3.11.9
 packaging==26.3
-pandas==2.3.3
+pandas==3.0.6
 pillow==12.3.0
 platformdirs==4.11.2
 playwright==1.62.0

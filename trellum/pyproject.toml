@@ -19,7 +19,7 @@ requires-python = ">=3.11"
 # must not have to install every database client to render a chart. They live
 # in the `drivers` extra below.
 dependencies = [
-  "pandas>=2.0.0",
+  "pandas>=3.0.0",
   "numpy>=1.24.0",
   "vertica-python>=1.0.1",
   "openpyxl>=3.0.0",
@@ -50,7 +50,7 @@ drivers = [
   "db-dtypes>=1.0.0",
   "psycopg2-binary>=2.9.0",
   "pymysql>=1.1.0",
-  "snowflake-connector-python[pandas]>=3.0.0",
+  "snowflake-connector-python>=3.0.0",  # no [pandas] extra: see requirements-drivers.txt
   "clickhouse-connect>=0.7.0",
   "duckdb>=1.0.0",
   "pymssql>=2.3.0",

@@ -23,6 +23,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   idle process holds about 75 MB less (163 MB to 87 MB per process; about
   230 MB across the default two web workers and one runworker). Everything
   `trellum.data` and `trellum.rendering` export is unchanged.
+- Require pandas 3.0 (images pin 3.0.6). Text built from Python strings is now
+  pandas' `str` dtype instead of `object`; PivotTable still treats it as a
+  dimension, and `df_to_json_records` still writes a missing text value as
+  null. The Snowflake connector is installed without its `[pandas]` extra,
+  which caps pandas below 3; pandas and pyarrow are required directly. Report
+  code that relies on pandas 2 behaviour may need changes; see
+  `trellum/docs/MIGRATIONS.md`.
 
 ## [0.8.0] — 2026-10-17
 
