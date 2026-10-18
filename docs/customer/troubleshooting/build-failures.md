@@ -91,7 +91,7 @@ an overall deadline never overrides observed permanent-error evidence.
 Exhaustion never disables future ordinary cron occurrences.
 
 Operations run history shows the last known connect, execute, fetch, render or
-publish stage, bounded timings, driver classes/codes, query attempt count,
+publish stage, bounded timings, driver classes/codes, query attempt and managed-read retry counts with bounded reasons,
 effective timeout and recovery disposition. Identifiers and traceback locations
 are hashed; new structured evidence contains no SQL, parameters, result data,
 connection strings or exception messages. A hard kill retains the last snapshot,

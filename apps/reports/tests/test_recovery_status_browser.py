@@ -23,6 +23,9 @@ def test_history_explains_recovery_and_unknown_outcomes(width):
         "diagnostics": {
             "version": 1, "stage": "fetch", "state": "failed", "transient": True,
             "timeout_seconds": 3600, "attempt": 3,
+            "retry_count": 2,
+            "retry_history": [{"attempt": 1, "reason": "transient_connection", "class": "OperationalError"},
+                              {"attempt": 2, "reason": "transient_connection", "class": "OperationalError"}],
             "errors": [{"class": "OperationalError", "code": "08006"}],
             "timings": [{"stage": "fetch", "elapsed_ms": 12000}],
         },
@@ -72,6 +75,8 @@ def test_history_explains_recovery_and_unknown_outcomes(width):
         expect(history).to_contain_text("OperationalError · 08006")
         expect(history).to_contain_text("Build limit: 3600 seconds")
         expect(history).to_contain_text("Query attempt: 3")
+        expect(history).to_contain_text("Managed read retries: 2")
+        expect(history).to_contain_text("Retry after attempt 1: transient connection · OperationalError")
         assert history.get_by_role("button", name=re.compile("Retry|Refresh|Apply")).count() == 0
         if os.environ.get("TRELLUM_CAPTURE_PORTAL") == "1":
             output = settings.BASE_DIR / ".artifacts/portal"

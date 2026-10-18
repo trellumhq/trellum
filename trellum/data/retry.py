@@ -9,7 +9,7 @@ import time
 from typing import Any, Callable
 
 from trellum.data.retry_errors import is_retryable_connection_error
-from trellum.diagnostics import diagnostic_context, progress, record_failure, stage
+from trellum.diagnostics import diagnostic_context, progress, record_failure, record_retry, stage
 
 logger = logging.getLogger(__name__)
 _ATTEMPTS = 3
@@ -160,6 +160,7 @@ class ManagedConnection:
                     )
                     exc.add_note(f"Datasource recovery exhausted after {limit} attempts ({self._source_type}).")
                     raise
+                record_retry(exc, attempt=attempt)
                 logger.warning(
                     "Retrying datasource with fresh connection: driver=%s source=%s attempt=%s/%s error=%s",
                     self._source_type, source_of(self), attempt, limit, type(exc).__name__,

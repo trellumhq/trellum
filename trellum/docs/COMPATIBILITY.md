@@ -180,7 +180,7 @@ files return `{}`. Diagnostics are optional and an unwritable destination never
 changes the build outcome. Hosts own file lifetime, permissions and retention.
 
 The snapshot contains `stage`, `state` (`active`, `completed`, `failed`), source
-type, stage start time (Unix seconds), SHA-256 source/query identifiers, attempt count (at most three), classifier
+type, stage start time (Unix seconds), SHA-256 source/query identifiers, attempt count (at most three), managed-read retry count (capped at 255) and the last eight sanitized retry reasons, classifier
 `transient`, `query_retry_safe`, sticky `unsafe_operation`, at most five cause
 classes/codes and sixteen bounded stage timings. Query fingerprints use unbound
 SQL; source names are hashed. Each cause includes up to three traceback location

@@ -1245,6 +1245,10 @@ body.mgmt .folder-rail input.catalog-search-input:focus { border-color: var(--ac
     .ops-expand-row > td { display: block; width: 100%; }
     .ops-history-scroll { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
     .ops-history-table { min-width: 640px; }
+    .ops-history-table tbody td:nth-child(2)::before,
+    .ops-history-table tbody td:nth-child(3)::before {
+        content: '·'; color: var(--text3); margin-right: 6px;
+    }
     .ops-terminal { margin: 0 10px 10px; }
     .ops-terminal-body { max-height: 45vh; overflow: auto; overscroll-behavior: contain; }
     .ops-row-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }

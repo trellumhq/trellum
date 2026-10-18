@@ -37,6 +37,11 @@ def test_failed_boundary_and_nested_retry_history_are_sanitized(evidence, monkey
     result = d.read_diagnostics(evidence)
     assert result['stage'] == boundary and result['state'] == 'failed'
     assert result['attempt'] == 3 and result['transient'] is True
+    assert result['retry_count'] == 2
+    assert result['retry_history'] == [
+        {'attempt': 1, 'reason': 'transient_connection', 'class': 'ConnectionResetError'},
+        {'attempt': 2, 'reason': 'transient_connection', 'class': 'ConnectionResetError'},
+    ]
     assert result['query_retry_safe'] is True and not result['unsafe_operation']
     assert [item['class'] for item in result['errors']] == ['ConnectionResetError', 'RuntimeError']
     assert len(result['errors'][0]['frames']) <= 3
@@ -54,6 +59,8 @@ def test_query_identifier_is_unbound_and_failure_then_recovery_clears_transient(
     assert result['query_id'] == d.fingerprint('SELECT n FROM t WHERE n=:n')
     assert result['attempt'] == 2 and result['state'] == 'completed'
     assert result['transient'] is False and result['errors'] == []
+    assert result['retry_count'] == 1
+    assert result['retry_history'][0]['class'] == 'ConnectionResetError'
 
 
 def test_active_stage_is_written_before_driver_work(evidence, monkeypatch):
@@ -100,10 +107,13 @@ def test_contract_allowlist_and_bounds(evidence):
     data = {'version': 1, 'stage': 'fetch', 'state': 'failed', 'source_type': ['secret'],
             'attempt': 10**1000, 'timings': [{'stage': 'fetch', 'elapsed_ms': float('nan')}] * 1000,
             'errors': [{'class': 'Invalid secret SQL', 'code': 'password=secret'}] * 100,
+            'retry_count': 1000,
+            'retry_history': [{'attempt': 1000, 'reason': 'transient_connection', 'class': 'Invalid secret SQL'}] * 20,
             'sql': 'secret', 'password': 'secret', 'source_id': 'postgres://secret'}
     result = d.sanitize_diagnostics(data)
     assert result['attempt'] == 3 and len(result['timings']) == 16 and len(result['errors']) == 5
     assert result['source_id'] == result['source_type'] == ''
+    assert result['retry_count'] == 255 and result['retry_history'] == []
     assert 'secret' not in json.dumps(result)
     evidence.write_bytes(b'x' * (d.MAX_BYTES + 1))
     assert d.read_diagnostics(evidence) == {}

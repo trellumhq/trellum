@@ -2593,6 +2593,10 @@ function _opsRecoveryHTML(run) {
     var timeout = diagnostics.timeout_seconds != null ? diagnostics.timeout_seconds : diagnostics.effective_timeout_seconds;
     if (timeout != null) evidence.push('Build limit: ' + timeout + ' seconds');
     if (diagnostics.attempt != null) evidence.push('Query attempt: ' + diagnostics.attempt);
+    if (diagnostics.retry_count) evidence.push('Managed read retries: ' + diagnostics.retry_count + (diagnostics.retry_count >= 255 ? '+' : ''));
+    (diagnostics.retry_history || []).forEach(function(retry) {
+        evidence.push('Retry after attempt ' + retry.attempt + ': ' + retry.reason.replace(/_/g, ' ') + ' · ' + retry.class);
+    });
     if (diagnostics.source_type) evidence.push('Source type: ' + diagnostics.source_type);
     if (diagnostics.source_id) evidence.push('Source reference: ' + diagnostics.source_id);
     if (diagnostics.query_id) evidence.push('Query reference: ' + diagnostics.query_id);

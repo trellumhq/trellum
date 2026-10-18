@@ -29,6 +29,8 @@ _path = None
 _snapshot = {}
 _timings = []
 _failure = None
+_retry_history = []
+_retry_count = 0
 
 
 def fingerprint(value: str) -> str:
@@ -82,6 +84,18 @@ def sanitize_diagnostics(value) -> dict:
     for item in timings[-16:] if isinstance(timings, list) else []:
         if isinstance(item, dict) and isinstance(item.get("stage"), str) and item.get("stage") in STAGES:
             result["timings"].append({"stage": item["stage"], "elapsed_ms": int(_number(item.get("elapsed_ms"), 14_400_000))})
+    result["retry_count"] = int(_number(value.get("retry_count", 0), 255))
+    result["retry_history"] = []
+    retries = value.get("retry_history", [])
+    for item in retries[-8:] if isinstance(retries, list) else []:
+        if not isinstance(item, dict) or item.get("reason") != "transient_connection":
+            continue
+        name = item.get("class")
+        if isinstance(name, str) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", name):
+            result["retry_history"].append({
+                "attempt": int(_number(item.get("attempt", 1), 3)) or 1,
+                "reason": "transient_connection", "class": name,
+            })
     return result
 
 
@@ -105,13 +119,13 @@ def read_diagnostics(path) -> dict:
 
 
 def _write(**updates):
-    global _path, _snapshot, _timings, _failure
+    global _path, _snapshot, _timings, _failure, _retry_history, _retry_count
     path = os.environ.get("TRELLUM_DIAGNOSTICS_PATH")
     if not path:
         return
     with _lock:
         if path != _path:
-            _path, _snapshot, _timings, _failure = path, {}, [], None
+            _path, _snapshot, _timings, _failure, _retry_history, _retry_count = path, {}, [], None, [], 0
         unsafe = _snapshot.get("unsafe_operation", False) or updates.get("unsafe_operation", False)
         _snapshot.update(updates)
         _snapshot["unsafe_operation"] = unsafe
@@ -184,6 +198,17 @@ def record_failure(exc, *, source_type=None, query_retry_safe=None, attempt=None
         except Exception:
             transient = False
         _write(**metadata, state="failed", errors=errors, transient=transient)
+
+
+def record_retry(exc, *, attempt):
+    """Keep the reasons for retries even after the next stage clears its error."""
+    global _retry_count
+    with _lock:
+        _retry_count = min(255, _retry_count + 1)
+        _retry_history.append({"attempt": attempt, "reason": "transient_connection",
+                               "class": type(exc).__name__})
+        del _retry_history[:-8]
+        _write(retry_count=_retry_count, retry_history=_retry_history)
 
 
 def progress(name, **metadata):
