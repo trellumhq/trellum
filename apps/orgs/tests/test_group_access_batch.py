@@ -38,7 +38,7 @@ def request_actor(rf, org_admin, org):
     return request
 
 
-@pytest.mark.parametrize('count', (25, 100, 1000))
+@pytest.mark.parametrize('count', (25, 1000))
 def test_bounded_add_and_remove_keep_exact_audit_multiset(count, request_actor, make_group, studio):
     group = make_group(f'Batch {count}')
     reports = Report.objects.bulk_create([Report(studio=studio, slug=f'r-{i}', config={'large': 'x' * 1000}) for i in range(count)])

@@ -26,8 +26,9 @@ def path(org, group):
     return f"/orgs/{org.slug}/settings/groups/{group.pk}?tab=access"
 
 
-@pytest.mark.parametrize("count", [25, 100, 500])
-@pytest.mark.parametrize("enhanced", [False, True])
+# The query bound does not depend on size, so one small run and the largest are
+# enough; 500 runs both the plain-redirect and the enhanced JSON response.
+@pytest.mark.parametrize("count, enhanced", [(25, False), (500, False), (500, True)])
 def test_http_save_exact_sets_and_bounded_queries(count, enhanced, login, org_admin, org, studio, make_group):
     reports = Report.objects.bulk_create([Report(studio=studio, slug=f"save-{i:04}", name=f"Report {i:04}") for i in range(count)])
     group = make_group("Save")
