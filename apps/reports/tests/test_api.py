@@ -311,6 +311,30 @@ class TestStatusAndLogs:
         assert body["aggregates"]["success_rate"] == 1.0
         assert body["aggregates"]["by_status"] == {"success": 1}
 
+    @pytest.mark.parametrize("status", Run.ACTIVE_STATUSES)
+    def test_history_shows_only_active_runs_with_unconfirmed_outcomes(
+        self, login, developer, viewer, prefix, report_row, status
+    ):
+        Run.objects.create(
+            report=report_row, studio=report_row.studio, slug=report_row.slug,
+            status=status, diagnostics={"recovery": {"state": "unconfirmed"}},
+            stdout_tail="private log tail",
+        )
+        Run.objects.create(
+            report=report_row, studio=report_row.studio, slug=report_row.slug,
+            status=status, diagnostics={"recovery": {"state": "scheduled"}},
+        )
+        Run.objects.create(
+            report=report_row, studio=report_row.studio, slug=report_row.slug,
+            status=Run.ERROR,
+        )
+        url = f"{prefix}/api/reports/player-overview/status"
+        assert login(viewer).get(url).status_code == 403
+        history = login(developer).get(url).json()["history"]
+        assert [row["status"] for row in history] == [Run.ERROR, status]
+        assert history[1]["recovery"]["state"] == "unconfirmed"
+        assert all("stdout" not in row for row in history)
+
     def test_run_stats_endpoint(self, login, developer, member, prefix, report_row):
         from django.utils import timezone
 

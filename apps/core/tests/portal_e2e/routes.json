@@ -10355,9 +10355,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "04a0aee9e87b807b183eb2d87a7f947887d0a851d4f59fec6a6c7f446b64b6e3",
+      "source_sha256": "3f0149cd79eeef9a7ba40f50972e1489a022d26240bee4b095f2e5f6a5ae894f",
       "request_conditions": [],
-      "adapter_sha256": "7711e2744d0e4e2668bad086efff93ed82b8376608c170c4e5a79ff917637024",
+      "adapter_sha256": "4b8db158508f8fac00173863654d5a024e7f27389277db1811727c90ac8b7773",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
