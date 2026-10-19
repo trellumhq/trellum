@@ -93,8 +93,11 @@ def test_local_page_links_show_recoverable_feedback(analytics_server, engine, wi
             expect(page.locator('#neighbor input')).to_have_value('keep this draft')
             assert page.evaluate('nativeEvents.map(e=>e[0])') == ['console:native-start', 'console:native-restored']
             rendered = page.evaluate('pendingVisibility')
-            assert rendered and rendered[-1]['pending'] and rendered[-1]['display']['tableRects'] == 0, rendered
-            assert rendered[-1]['milliseconds'] < 100, rendered
+            # The old table is gone the moment navigation starts, and still gone
+            # a beat later while the request is held. (How late that beat fires
+            # is the runner's timer latency, not page behaviour, so not asserted.)
+            assert rendered and rendered[-1]['immediateDisplay']['tableRects'] == 0, rendered
+            assert rendered[-1]['pending'] and rendered[-1]['display']['tableRects'] == 0, rendered
 
             # Resolve an actual authorized response; no synthetic result body.
             page.evaluate("document.querySelector('#neighbor').remove()")
