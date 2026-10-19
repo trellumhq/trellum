@@ -36,7 +36,7 @@ def test_metrics_fragment_native_parity_and_access(studio_tree, member, grant_st
 @pytest.mark.parametrize('engine', ['chromium', 'webkit'])
 @pytest.mark.parametrize('width', [1440, 390])
 def test_rendered_navigation_delay_guard_history_and_native_feedback(
-    studio_tree, member, grant_studio, login, engine, width, tmp_path
+    studio_tree, member, grant_studio, login, engine, width
 ):
     grant_studio(member, studio_tree, roles.VIEWER)
     client = login(member)
@@ -137,7 +137,6 @@ def test_rendered_navigation_delay_guard_history_and_native_feedback(
         page.wait_for_function("!document.querySelector('main').hasAttribute('aria-busy')")
         assert page.url.endswith(overview)
         assert not errors
-        page.screenshot(path=str(tmp_path / f'c02-{engine}-{width}.png'), full_page=True)
         # A leave lifecycle invalidates a pending save without erasing its draft.
         page.evaluate("document.querySelector('main').insertAdjacentHTML('beforeend', '<form data-settings-form data-settings-save method=post action=/save><input name=savedraft value=initial><button type=submit>Save draft</button></form>'); TrellumSettingsForms.init(document)")
         page.locator('input[name=savedraft]').fill('pending draft')
@@ -248,10 +247,13 @@ def test_rendered_navigation_delay_guard_history_and_native_feedback(
         browser.close()
 
 @pytest.mark.django_db(transaction=True)
-@pytest.mark.parametrize('width', [1440, 390])
-@pytest.mark.parametrize('engine', ['chromium', 'webkit'])
-def test_real_delayed_django_metrics_destination(live_server, studio_tree, member, grant_studio, login, monkeypatch, width, engine, tmp_path):
-    """Real HTTP/PG/static assets: primary response deliberately delayed 1.5s."""
+def test_real_delayed_django_metrics_destination(live_server, studio_tree, member, grant_studio, login, monkeypatch):
+    """Real HTTP/PG/static assets: primary response deliberately delayed 1.5s.
+
+    One engine and width: the route-stubbed test above runs the engine and width
+    matrix; only this one talks to a real Django response.
+    """
+    engine, width = 'chromium', 1440
     import time
     import apps.reports.metrics_catalog as catalog
     grant_studio(member, studio_tree, roles.VIEWER)
@@ -286,13 +288,10 @@ def test_real_delayed_django_metrics_destination(live_server, studio_tree, membe
         assert sample['url'] == overview + '/comparison'
         assert page.evaluate("document.activeElement.matches('h1,[data-console-page-title]')")
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
-        page.screenshot(path=str(tmp_path / f'real-delayed-metrics-{engine}-{width}.png'))
         page.wait_for_function("!document.querySelector('main').hasAttribute('aria-busy')")
         assert page.get_by_role('link', name='Comparison', exact=True).get_attribute('aria-current') == 'page'
         page.wait_for_function("document.activeElement.matches('h1,[data-console-page-title]') && document.activeElement.textContent === 'Metrics' && document.activeElement.getClientRects().length > 0")
-        (tmp_path / f'pending-{engine}-{width}.json').write_text(json.dumps(sample))
         assert not errors
-        print(f'real HTTP pending {engine} {width}px: {sample["ms"]:.1f}ms')
         home = overview.removesuffix('metrics')
         page.goto(live_server.url + home, wait_until='domcontentloaded')
         page.wait_for_function('window.TrellumConsoleShell !== undefined')
@@ -306,7 +305,6 @@ def test_real_delayed_django_metrics_destination(live_server, studio_tree, membe
         assert native['url'] == home
         page.wait_for_url(live_server.url + overview)
         assert page.locator('main h1').inner_text() == 'Metrics'
-        (tmp_path / f'native-pending-{engine}-{width}.json').write_text(json.dumps(native))
         assert not errors
         page.goto(live_server.url + '/account', wait_until='domcontentloaded')
         page.wait_for_function('window.TrellumSettingsForms !== undefined')
