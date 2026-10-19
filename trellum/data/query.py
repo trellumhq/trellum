@@ -14,7 +14,7 @@ from typing import Any
 
 import pandas as pd
 
-from trellum.data.fetch import execute_query as _execute_query  # noqa: F401 - old name, still imported
+from trellum.data.fetch import execute_query as _execute_query  # its old name here
 from trellum.data.fetch import is_decimal_column
 from trellum.data.http_source import read_api as read_api  # re-export for compatibility
 from trellum.data.retry import ManagedConnection, run_with_retry
