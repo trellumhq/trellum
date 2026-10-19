@@ -227,6 +227,26 @@ class TestMyKeysPage:
         assert f'<option value="{org.pk}"' in page
         assert "Create API key" in page
 
+    def test_list_has_one_primary_action_and_its_empty_and_populated_states(self, login, developer, org):
+        import re
+
+        def main(page):
+            return page.split("<main", 1)[1].split("</main>", 1)[0]
+
+        def primary_links(html):
+            return re.findall(r'<a\b[^>]*class="[^"]*\bui-btn\b[^"]*\bprimary\b[^"]*"[^>]*>(.*?)</a>', html, re.S)
+
+        client = login(developer)
+        empty = main(client.get(self.URL).content.decode())
+        assert [text.strip() for text in primary_links(empty)] == ["Add API key"]
+        assert "No API keys yet." in empty
+        ApiKey.mint(user=developer, org=org, name="deployment key")
+        populated = main(client.get(self.URL).content.decode())
+        assert [text.strip() for text in primary_links(populated)] == ["Add API key"]
+        assert "deployment key" in populated and "No API keys yet." not in populated
+        for form in re.findall(r"<form\b.*?</form>", populated, re.S):
+            assert not primary_links(form)
+
     def test_new_create_page_preserves_invalid_draft_and_returns_secret_once(self, login, developer, org):
         c = login(developer)
         invalid = c.post(

@@ -39,6 +39,12 @@ class TestStudioLifecycle:
         assert f'href="{url}"' in listing
         assert "id=\"new-studio\"" not in listing
 
+    def test_create_page_renders_its_form(self, login, org_admin, org):
+        page = login(org_admin).get(f"/orgs/{org.slug}/studios/new").content.decode()
+        assert "<h1>Add Studio</h1>" in page
+        assert 'name="name"' in page and 'name="slug"' in page
+        assert "Create Studio</button>" in page
+
     def test_create_studio(self, login, org_admin, org, settings, tmp_path):
         settings.DATA_DIR = tmp_path
         resp = login(org_admin).post(
