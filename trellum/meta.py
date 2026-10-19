@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from datetime import datetime, timezone
 
 #: Schema version of the ``_meta.json`` artifact. Bump on any breaking change
@@ -44,8 +45,30 @@ def write_meta(output_dir: str, updates: dict) -> None:
     meta.setdefault("schema_version", META_SCHEMA_VERSION)
     meta.update(updates)
     os.makedirs(output_dir, exist_ok=True)
-    with open(meta_path, "w", encoding="utf-8") as f:
-        json.dump(meta, f, indent=2, default=str)
+    # Atomic publish: readers (the portal polls this file while a build or the
+    # runner's attribution thread finishes) must see the old or the new file,
+    # never a truncated or half-written one. Write a sibling temp file, flush
+    # it to disk, then rename over the target.
+    fd, tmp_path = tempfile.mkstemp(dir=output_dir, prefix=".meta-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(meta, f, indent=2, default=str)
+            f.flush()
+            os.fsync(f.fileno())
+        # mkstemp creates 0600; keep the file readable by the portal when it
+        # runs as a different user than the (sandboxed) build that wrote it.
+        try:
+            mode = os.stat(meta_path).st_mode & 0o777
+        except FileNotFoundError:
+            mode = 0o644
+        os.chmod(tmp_path, mode)
+        os.replace(tmp_path, meta_path)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 def write_error(output_dir: str, error_msg: str) -> str:
