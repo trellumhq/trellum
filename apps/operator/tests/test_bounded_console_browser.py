@@ -136,7 +136,7 @@ def test_operator_pages_keep_their_layout_and_measure_uploads_by_themselves(
         field.press("Enter")
         expect(quota).to_have_attribute("data-settings-state", "saved")
         expect(usage.locator("[data-observation-value]")).to_have_text("2.0 MB")
-        page.wait_for_timeout(1500)
+        page.wait_for_load_state("networkidle")  # the refresh fetch has settled
         assert in_thread(lambda: OrgQuota.objects.get(org_id=org.pk).max_concurrent_runs) == 7
         assert in_thread(lambda: AuditLog.objects.filter(action__startswith="operator.usage").count()) == 0
         assert in_thread(lambda: AuditLog.objects.filter(action="operator.org.quota", org_id=org.pk).count()) == 1

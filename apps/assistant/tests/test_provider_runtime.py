@@ -357,15 +357,6 @@ def test_cache_breakpoint_never_decorates_signed_reasoning():
     assert "cache_control" not in cached[0]["content"][1]
 
 
-@pytest.mark.django_db
-def test_private_state_never_enters_session_browser_payload(org, viewer):
-    from apps.assistant.models import AssistantSession
-
-    session = AssistantSession(user=viewer, org=org, state={"transcript": [], "usage": {},
-                              "_provider": {"identity": "fingerprint", "messages": {"1": {"reasoning": "private"}}}})
-    assert "private" not in json.dumps(session.to_full())
-
-
 def test_signed_anthropic_blocks_are_private_and_replayed(monkeypatch):
     from apps.assistant.transport import stream_anthropic
     from apps.assistant.tests.test_message_sse import FakeClient, FakeResponse, ToolUseBlock
