@@ -14,6 +14,39 @@ from apps.studios.models import Studio, StudioMembership
 
 User = get_user_model()
 
+
+def _flush_only_populated_tables():
+    """Make the end-of-test flush of ``transaction=True`` tests cheap.
+
+    Django flushes by truncating every table of every installed app. On this
+    schema that is over a hundred truncates per test (about a second each time,
+    mostly file creation and fsync), although a test touches a handful of
+    tables. Deleting the rows of the tables that hold any leaves the same empty
+    database. Foreign keys are ``DEFERRABLE INITIALLY DEFERRED`` and the flush
+    runs in one transaction, so the delete order does not matter. Sequences are
+    kept, as a flush keeps them; the ``reset_sequences`` path is left untouched.
+    Nothing in the schema has delete triggers or rules (checked by migrations).
+    """
+    from django.db.backends.postgresql.operations import DatabaseOperations
+
+    original = DatabaseOperations.sql_flush
+
+    def sql_flush(self, style, tables, *, reset_sequences=False, allow_cascade=False):
+        if reset_sequences or not tables:
+            return original(self, style, tables, reset_sequences=reset_sequences, allow_cascade=allow_cascade)
+        probe = " UNION ALL ".join(
+            f"SELECT {i} WHERE EXISTS (SELECT 1 FROM {self.quote_name(table)})" for i, table in enumerate(tables)
+        )
+        with self.connection.cursor() as cursor:
+            cursor.execute(probe)
+            populated = [tables[i] for (i,) in cursor.fetchall()]
+        return [f"DELETE FROM {self.quote_name(table)};" for table in populated]
+
+    DatabaseOperations.sql_flush = sql_flush
+
+
+_flush_only_populated_tables()
+
 # `operator_child`: a real child process for the operator measurement tests.
 pytest_plugins = ("apps.core.tests.operator_child",)
 
