@@ -2,7 +2,7 @@
 import pytest
 from apps.reports.models import Report, ReportSourceSummary
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = pytest.mark.django_db
 
 
 def test_new_row_is_pending_schema_two(studio_tree):

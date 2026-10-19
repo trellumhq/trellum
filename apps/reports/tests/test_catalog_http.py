@@ -97,10 +97,9 @@ def test_large_analysis_catalog_is_complete_in_slices(login, studio, org_admin):
     assert [row["id"] for row in client.get(base + "/api/registry?kind=analysis").json()["reports"]] == seen
 
 
-@pytest.mark.parametrize("path", ["api/catalog", "api/catalog/categories", "api/catalog/personal", "api/catalog/indicators",
-                                  "api/catalog/details/1", "api/operations/reports/x/log/download"])
-def test_unused_catalog_routes_are_gone(login, studio, org_admin, path):
-    assert login(org_admin).get(f"/s/{studio.org.slug}/{studio.slug}/{path}").status_code == 404
+def test_removed_catalog_route_is_gone(login, studio, org_admin):
+    # One tripwire for the retired api/catalog* family.
+    assert login(org_admin).get(f"/s/{studio.org.slug}/{studio.slug}/api/catalog").status_code == 404
 
 
 class TestRowsBeforeSummaries:

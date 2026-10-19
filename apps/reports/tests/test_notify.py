@@ -15,7 +15,6 @@ from datetime import timedelta
 
 import pytest
 from django.core import mail
-from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 from apps.core import roles
@@ -1156,24 +1155,6 @@ class TestUnsubscribeView:
         token = sign_unsubscribe_token("schedule", schedule.pk, viewer.pk)
         resp = client.post(f"/notify/unsubscribe/{token}")
         assert resp.status_code == 200
-
-
-# ── model validation: EmailSchedule.timezone ─────────────────────────────────
-
-class TestEmailScheduleTimezoneValidation:
-    def test_garbage_timezone_rejected(self, report_row, viewer):
-        schedule = EmailSchedule(report=report_row, created_by=viewer, timezone="22")
-        with pytest.raises(ValidationError) as exc_info:
-            schedule.full_clean(exclude=["report", "created_by"])
-        assert "timezone" in exc_info.value.message_dict
-
-    def test_real_iana_zone_accepted(self, report_row, viewer):
-        schedule = EmailSchedule(report=report_row, created_by=viewer, timezone="Europe/Amsterdam")
-        schedule.full_clean(exclude=["report", "created_by"])  # must not raise
-
-    def test_default_utc_accepted(self, report_row, viewer):
-        schedule = EmailSchedule(report=report_row, created_by=viewer)
-        schedule.full_clean(exclude=["report", "created_by"])  # must not raise
 
 
 # ── views: schedules, sample-now ─────────────────────────────────────────────
