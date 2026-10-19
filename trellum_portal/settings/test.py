@@ -1,4 +1,6 @@
 """Settings for the automated test suite (pytest-django)."""
+import os
+
 from .base import *  # noqa: F401,F403
 
 DEBUG = False
@@ -24,3 +26,10 @@ DATA_DIR = BASE_DIR / ".data-test"  # noqa: F405
 # in-process spawn path. Docker-mode behaviour is covered with a fake client in
 # test_sandbox.py and by the docker_sandbox-marked integration smoke in CI.
 TRELLUM_SANDBOX = "off"
+
+# Concurrent test runs against one PostgreSQL server (several worktrees, or
+# agents, sharing a container) all create test_<name>_gw0..N, then drop and
+# flush each other's databases: duplicate-slug, "database does not exist" and
+# missing-column errors that look like test bugs. Give each run its own name.
+if os.environ.get("TRELLUM_TEST_DB_NAME"):
+    DATABASES["default"].setdefault("TEST", {})["NAME"] = os.environ["TRELLUM_TEST_DB_NAME"]  # noqa: F405
