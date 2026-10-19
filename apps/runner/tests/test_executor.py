@@ -7,6 +7,7 @@ import json
 import os
 import sys
 import signal
+import threading
 from datetime import timedelta
 from pathlib import Path
 
@@ -1025,15 +1026,6 @@ class TestTimeouts:
         assert ex._procs[queued_run.pk].timeout_seconds == 42
 
 
-def _wait_until(predicate, timeout=5.0):
-    import time
-
-    deadline = time.monotonic() + timeout
-    while not predicate():
-        assert time.monotonic() < deadline, "timed out waiting for the attribution thread"
-        time.sleep(0.05)
-
-
 @pytest.mark.django_db(transaction=True)  # the attribution thread has its own connection
 class TestDataSourcePreflight:
     """A report whose sources cannot connect yet never spawns; a build that
@@ -1089,6 +1081,18 @@ class TestDataSourcePreflight:
         import apps.datasources.testing as testing_mod
 
         monkeypatch.setattr(testing_mod, "test_datasource", check or (lambda ds: outcome))
+        # The attribution thread is fire-and-forget; wrap it so tests can wait
+        # for it to finish instead of polling or sleeping.
+        self.attribution_done = threading.Event()
+        original = Executor._attribute_failure
+
+        def tracked(executor, run_id, output_dir):
+            try:
+                original(executor, run_id, output_dir)
+            finally:
+                self.attribution_done.set()
+
+        monkeypatch.setattr(Executor, "_attribute_failure", tracked)
         ex = Executor("w1")
         ex.start_run(queued_run)
         run = Run.objects.get(pk=queued_run.pk)
@@ -1097,6 +1101,21 @@ class TestDataSourcePreflight:
         ex.tick()
         run.refresh_from_db()
         return run
+
+    def _wait_for_attribution(self):
+        assert self.attribution_done.wait(10), "attribution thread did not finish"
+
+    @staticmethod
+    def _gated_check(outcome):
+        """A data source check that blocks until the test releases it."""
+        entered, release = threading.Event(), threading.Event()
+
+        def check(ds):
+            entered.set()
+            assert release.wait(10), "test never released the check"
+            return outcome
+
+        return check, entered, release
 
     def test_a_stale_failure_is_rechecked_before_blocking(
         self, fake_popen, queued_run, bound_report, monkeypatch
@@ -1133,9 +1152,7 @@ class TestDataSourcePreflight:
 
         run = self._fail_with(fake_popen, queued_run, monkeypatch, (False, "refused"))
         assert run.status == Run.ERROR
-        _wait_until(
-            lambda: "Subsequent data source check" in Run.objects.get(pk=run.pk).stderr_tail
-        )
+        self._wait_for_attribution()
         run.refresh_from_db()
         assert run.stderr_tail.startswith("BUILD FAILED:")
         assert "Traceback: KeyError\n" in run.stderr_tail
@@ -1153,52 +1170,92 @@ class TestDataSourcePreflight:
     def test_passing_check_leaves_the_error_alone(
         self, fake_popen, queued_run, bound_report, monkeypatch
     ):
-        import time
-
-        from apps.datasources.models import DataSource
-
         run = self._fail_with(fake_popen, queued_run, monkeypatch, (True, "Connected."))
-        _wait_until(lambda: DataSource.objects.get(pk=bound_report.pk).last_check_at is not None)
-        time.sleep(0.3)  # the thread's remaining step is deciding NOT to rewrite
+        self._wait_for_attribution()  # the thread's last step is deciding NOT to rewrite
         run.refresh_from_db()
         assert run.stderr_tail.endswith("Traceback: KeyError\n")
+        assert "Subsequent data source check" not in run.stderr_tail
         bound_report.refresh_from_db()
         assert bound_report.last_check_ok is True
 
     def test_the_tick_does_not_wait_on_a_slow_check(
         self, fake_popen, queued_run, bound_report, monkeypatch
     ):
-        import time
-
-        def slow(ds):
-            time.sleep(1.5)
-            return False, "slow refusal"
-
-        started = time.monotonic()
-        run = self._fail_with(fake_popen, queued_run, monkeypatch, None, check=slow)
-        assert time.monotonic() - started < 1.0
-        assert run.status == Run.ERROR and run.stderr_tail.endswith("Traceback: KeyError\n")
-        _wait_until(
-            lambda: "Subsequent data source check for 'warehouse' failed: slow refusal"
+        check, entered, release = self._gated_check((False, "slow refusal"))
+        try:
+            # The check blocks until released, so if the tick waited on it this
+            # would hang to the gate's timeout and the check assertion would fail.
+            run = self._fail_with(fake_popen, queued_run, monkeypatch, None, check=check)
+            assert not self.attribution_done.is_set()
+            assert run.status == Run.ERROR and run.stderr_tail.endswith("Traceback: KeyError\n")
+            assert entered.wait(10), "the check never started in the background"
+        finally:
+            release.set()
+        self._wait_for_attribution()
+        assert (
+            "Subsequent data source check for 'warehouse' failed: slow refusal"
             in Run.objects.get(pk=run.pk).stderr_tail
         )
 
     def test_a_newer_run_keeps_its_own_error(
         self, fake_popen, queued_run, bound_report, monkeypatch
     ):
-        import time
-
-        from apps.datasources.models import DataSource
-
-        def slow(ds):
-            time.sleep(1.0)
-            return False, "slow refusal"
-
-        run = self._fail_with(fake_popen, queued_run, monkeypatch, None, check=slow)
-        Run.objects.create(
-            report=queued_run.report, studio=queued_run.studio, slug=queued_run.slug,
-        )
-        _wait_until(lambda: DataSource.objects.get(pk=bound_report.pk).last_check_at is not None)
-        time.sleep(0.3)
+        check, entered, release = self._gated_check((False, "slow refusal"))
+        try:
+            run = self._fail_with(fake_popen, queued_run, monkeypatch, None, check=check)
+            assert entered.wait(10), "the check never started in the background"
+            Run.objects.create(
+                report=queued_run.report, studio=queued_run.studio, slug=queued_run.slug,
+            )
+        finally:
+            release.set()
+        self._wait_for_attribution()
         run.refresh_from_db()
         assert run.stderr_tail.endswith("Traceback: KeyError\n")
+        assert "Subsequent data source check" not in run.stderr_tail
+
+
+class TestMetaWriteIsAtomic:
+    """The runner's attribution thread rewrites _meta.json while the portal
+    reads it; a reader must never see a truncated or half-written file."""
+
+    def test_a_concurrent_reader_never_sees_a_partial_file(self, tmp_path):
+        from trellum.meta import read_meta, write_meta
+
+        out = str(tmp_path)
+        write_meta(out, {"last_error": "x"})
+        done = threading.Event()
+        failures: list[BaseException] = []
+        reads = 0
+
+        def reader():
+            nonlocal reads
+            try:
+                while not done.is_set():
+                    meta = read_meta(out)  # json.loads raises on a partial file
+                    assert meta["schema_version"] and meta["last_error"]
+                    reads += 1
+            except BaseException as exc:  # noqa: BLE001 - surfaced below
+                failures.append(exc)
+
+        thread = threading.Thread(target=reader)
+        thread.start()
+        try:
+            for i in range(300):
+                # Growing payloads make a truncate-then-write window wide.
+                write_meta(out, {"last_error": "e" * (1 + i * 200), "n": i})
+        finally:
+            done.set()
+            thread.join(30)
+        assert not thread.is_alive()
+        assert failures == []
+        assert reads > 0
+        final = read_meta(out)
+        assert final["n"] == 299 and len(final["last_error"]) == 1 + 299 * 200
+
+    def test_no_temporary_files_are_left_behind(self, tmp_path):
+        from trellum.meta import write_meta
+
+        write_meta(str(tmp_path), {"a": 1})
+        write_meta(str(tmp_path), {"b": 2})
+        assert [p.name for p in tmp_path.iterdir()] == ["_meta.json"]
