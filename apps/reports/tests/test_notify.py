@@ -11,10 +11,14 @@ cadence) still carries an unsubscribe link."""
 import json
 import sys
 import types
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
+from threading import Barrier
 
 import pytest
 from django.core import mail
+from django.core.exceptions import ValidationError
+from django.db import close_old_connections
 from django.utils import timezone
 
 from apps.core import roles
@@ -159,6 +163,29 @@ def _make_run(report_row, status, **kwargs):
     )
 
 
+@pytest.mark.django_db(transaction=True)
+def test_concurrent_first_failure_callbacks_claim_one_pending_row(report_row):
+    from apps.reports.models import BrokenReportPending
+
+    run = _make_run(report_row, Run.ERROR)
+    ready = Barrier(2)
+
+    def complete_again():
+        close_old_connections()
+        try:
+            ready.wait(timeout=10)
+            notify_run_finished(Run.objects.get(pk=run.pk))
+        finally:
+            close_old_connections()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(complete_again) for _ in range(2)]
+        for future in futures:
+            future.result(timeout=15)
+
+    assert BrokenReportPending.objects.filter(run=run).count() == 1
+
+
 class FakeRenderResult:
     def __init__(self, png=None, pdf=None, error=""):
         self.png = png
@@ -295,9 +322,97 @@ class TestRunFinishedTransitions:
         flush_broken_buffers(force=True)
         assert mail.outbox == []
 
-    def test_first_ever_build_has_no_transition_to_report(self, report_row, developer):
-        notify_run_finished(_make_run(report_row, Run.ERROR))
+    @pytest.mark.parametrize("status", [Run.ERROR, Run.TIMEOUT, Run.OOM_KILLED])
+    def test_first_failed_build_sends_broken_after_flush(
+        self, report_row, developer, studio_admin, viewer, status
+    ):
+        failing = _make_run(report_row, status, stderr_tail="first build failed")
+        notify_run_finished(failing)
         assert mail.outbox == []
+        flush_broken_buffers(force=True)
+
+        assert len(mail.outbox) == 2
+        assert {message.to[0] for message in mail.outbox} == {developer.email, studio_admin.email}
+        for message in mail.outbox:
+            assert "Broken" in message.subject
+            assert "first build failed" in message.body
+            assert "View build history:" in message.body
+            assert "Operations" in message.alternatives[0][0]
+
+    @pytest.mark.parametrize("status", [Run.SUCCESS, Run.STOPPED])
+    def test_first_nonfailure_build_is_quiet(self, report_row, developer, status):
+        notify_run_finished(_make_run(report_row, status))
+        flush_broken_buffers(force=True)
+        assert mail.outbox == []
+
+    def test_first_failure_duplicate_callback_and_later_failure_stay_quiet(self, report_row, developer):
+        from apps.reports.models import BrokenReportPending
+
+        first = _make_run(report_row, Run.ERROR, stderr_tail="first")
+        notify_run_finished(first)
+        notify_run_finished(first)
+        assert BrokenReportPending.objects.filter(report=report_row).count() == 1
+        flush_broken_buffers(force=True)
+        notify_run_finished(first)  # the durable claim survives buffer deletion
+        notify_run_finished(_make_run(report_row, Run.ERROR, stderr_tail="retry failed"))
+        flush_broken_buffers(force=True)
+        assert len(mail.outbox) == 1
+        assert not BrokenReportPending.objects.filter(report=report_row).exists()
+
+    @pytest.mark.parametrize("flush_before_recovery", [False, True])
+    def test_first_failure_recovers_before_or_after_flush(
+        self, report_row, developer, flush_before_recovery
+    ):
+        from apps.reports.models import BrokenReportPending
+
+        notify_run_finished(_make_run(report_row, Run.ERROR))
+        if flush_before_recovery:
+            flush_broken_buffers(force=True)
+        success = _make_run(report_row, Run.SUCCESS)
+        notify_run_finished(success)
+        notify_run_finished(success)
+        flush_broken_buffers(force=True)
+        assert ["Broken" in m.subject for m in mail.outbox] == (
+            [True, False] if flush_before_recovery else [False]
+        )
+        assert "Recovered" in mail.outbox[-1].subject
+        assert not BrokenReportPending.objects.filter(report=report_row).exists()
+
+    def test_first_failure_without_eligible_audience(self, report_row, viewer):
+        notify_run_finished(_make_run(report_row, Run.ERROR))
+        flush_broken_buffers(force=True)
+        assert mail.outbox == []
+
+    def test_first_failure_excludes_inactive_and_private_without_access(
+        self, report_row, developer, other_developer, settings
+    ):
+        settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = False
+        report_row.audience = report_row.AUDIENCE_PRIVATE
+        report_row.save(update_fields=["audience"])
+        other_developer.is_active = False
+        other_developer.save(update_fields=["is_active"])
+        notify_run_finished(_make_run(report_row, Run.ERROR))
+        flush_broken_buffers(force=True)
+        assert mail.outbox == []
+
+    def test_first_failure_excludes_inactive_developer(
+        self, report_row, developer, other_developer
+    ):
+        other_developer.is_active = False
+        other_developer.save(update_fields=["is_active"])
+        notify_run_finished(_make_run(report_row, Run.ERROR))
+        flush_broken_buffers(force=True)
+        assert [message.to for message in mail.outbox] == [[developer.email]]
+
+    def test_first_private_failure_reaches_authorized_developer(
+        self, report_row, developer, settings
+    ):
+        settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = True
+        report_row.audience = report_row.AUDIENCE_PRIVATE
+        report_row.save(update_fields=["audience"])
+        notify_run_finished(_make_run(report_row, Run.ERROR))
+        flush_broken_buffers(force=True)
+        assert [message.to for message in mail.outbox] == [[developer.email]]
 
     def test_user_stop_is_not_treated_as_a_failure_transition(self, report_row, developer):
         _make_run(report_row, Run.SUCCESS)
@@ -361,6 +476,42 @@ class TestCoalescing:
         assert "3" in msg.subject
         for report in reports:
             assert (report.name or report.slug) in msg.body
+
+    def test_first_failures_coalesce_with_recovery_disposition(
+        self, studio_tree, write_report, developer
+    ):
+        from apps.reports.models import Report
+        from apps.reports.scan import sync_studio_registry
+
+        for slug in ("first-a", "first-b"):
+            write_report(slug)
+        sync_studio_registry(studio_tree)
+        first, second = [Report.objects.get(studio=studio_tree, slug=slug)
+                         for slug in ("first-a", "first-b")]
+        pending = _make_run(first, Run.TIMEOUT, stderr_tail="timed out", diagnostics={
+            "recovery": {"state": "pending", "due_at": "2026-10-19T10:00:00+00:00"},
+        })
+        exhausted = _make_run(second, Run.ERROR, stderr_tail="failed", diagnostics={
+            "recovery": {"state": "exhausted"},
+        })
+        notify_run_finished(pending)
+        notify_run_finished(exhausted)
+        flush_broken_buffers(force=True)
+
+        assert len(mail.outbox) == 1
+        msg = mail.outbox[0]
+        assert msg.to == [developer.email]
+        assert "2 broken" in msg.subject
+        assert "Automatic retry scheduled for 19 Oct 2026, 10:00 UTC." in msg.body
+        assert "Automatic retries are exhausted" in msg.body
+        assert "View build history:" in msg.body
+
+    def test_single_first_failure_includes_recovery_disposition(self, report_row, developer):
+        notify_run_finished(_make_run(report_row, Run.TIMEOUT, stderr_tail="timed out", diagnostics={
+            "recovery": {"state": "pending", "due_at": "2026-10-19T10:00:00+00:00"},
+        }))
+        flush_broken_buffers(force=True)
+        assert "Automatic retry scheduled for 19 Oct 2026, 10:00 UTC." in mail.outbox[0].body
 
     def test_not_yet_due_is_left_pending(self, report_row, developer):
         _make_run(report_row, Run.SUCCESS)

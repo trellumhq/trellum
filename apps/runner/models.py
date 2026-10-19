@@ -80,6 +80,8 @@ class Run(models.Model):
         related_name="attempts", db_index=False,
     )
     recovery_attempt = models.SmallIntegerField(null=True, blank=True)
+    # Claims a build-status transition once, including after its mail buffer is flushed.
+    alert_processed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         indexes = [

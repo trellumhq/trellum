@@ -2,7 +2,7 @@
 
 Two independent things feed this module (see ``apps.reports.models``):
 
-- Build-status *transition* mail (success -> failure, failure -> success).
+- Build-status mail (first failure, success -> failure, failure -> success).
   Every studio member with role ``developer`` or ``admin`` (see
   ``apps.core.roles``) hears about a report of theirs breaking automatically
   — see :func:`alert_recipients`. There is no per-report subscription, no
@@ -31,6 +31,7 @@ from datetime import timezone as _dt_timezone
 
 from django.core import signing
 from django.core.mail import EmailMultiAlternatives
+from django.db import transaction
 from django.template.loader import render_to_string
 from django.utils import timezone
 from django.utils.safestring import mark_safe
@@ -328,10 +329,10 @@ def _cadence_phrase(schedule) -> str:
 def run_finished(run) -> None:
     """Called after every build completes, whatever its outcome.
 
-    Mails this report's alert audience (see :func:`alert_recipients`) only
-    on a state *transition* — never on a repeated failure or a repeated
-    success — so a report that has been down for a week doesn't re-alert
-    its watchers on every retry.
+    Mails this report's alert audience (see :func:`alert_recipients`) on its
+    first failure or a later state transition — never on a repeated failure
+    or a repeated success — so a report that has been down for a week doesn't
+    re-alert its watchers on every retry.
     """
     try:
         _run_finished(run)
@@ -350,18 +351,17 @@ def _run_finished(run) -> None:
     previous = (
         Run.objects.filter(report=report)
         .exclude(pk=run.pk)
+        .filter(created_at__lt=run.created_at)
         .exclude(status__in=Run.ACTIVE_STATUSES)
         .order_by("-created_at")
         .first()
     )
-    if previous is None:
-        return  # first build this report has ever finished: no transition yet
 
     # STOPPED counts as neither a failure nor a success here: a user
     # deliberately cancelling a build is not a signal anything is broken, and
     # cancelling out of a prior failure is not a "recovery" either — the
     # report still hasn't proven it builds.
-    was_broken = previous.status in FAILURE_STATUSES
+    was_broken = previous is not None and previous.status in FAILURE_STATUSES
     is_broken = run.status in FAILURE_STATUSES
     is_ok = run.status == Run.SUCCESS
     if is_broken == was_broken or (is_ok and not was_broken):
@@ -372,7 +372,14 @@ def _run_finished(run) -> None:
         # the coordinator's periodic scheduler sync calls. This lets several
         # reports in the same studio breaking together coalesce into one
         # summary mail instead of one per report.
-        _buffer_broken(report, run, previous)
+        # The conditional claim and pending row commit together. A repeated
+        # completion callback cannot requeue this run after the buffer flushes.
+        with transaction.atomic():
+            if not Run.objects.filter(pk=run.pk, alert_processed_at__isnull=True).update(
+                alert_processed_at=timezone.now()
+            ):
+                return
+            _buffer_broken(report, run, previous)
     elif is_ok:
         # A recovery inside the coalescing window must drop any of this
         # report's still-pending "broken" rows -- otherwise the next flush
@@ -383,7 +390,12 @@ def _run_finished(run) -> None:
         # before sending it.
         from apps.reports.models import BrokenReportPending
 
-        BrokenReportPending.objects.filter(report=report).delete()
+        with transaction.atomic():
+            if not Run.objects.filter(pk=run.pk, alert_processed_at__isnull=True).update(
+                alert_processed_at=timezone.now()
+            ):
+                return
+            BrokenReportPending.objects.filter(report=report).delete()
         recipients = alert_recipients(report, "failure")
         if recipients:
             _send_recovered(report, recipients)
@@ -393,6 +405,25 @@ def _buffer_broken(report, run, previous) -> None:
     from apps.reports.models import BrokenReportPending
 
     BrokenReportPending.objects.create(report=report, run=run, previous_run=previous)
+
+
+def _recovery_note(run) -> str:
+    """Human disposition from bounded recovery evidence, when present."""
+    evidence = run.diagnostics if isinstance(run.diagnostics, dict) else {}
+    recovery = evidence.get("recovery") or {}
+    if not isinstance(recovery, dict):
+        return ""
+    state = recovery.get("state")
+    if state == "pending":
+        due = _format_dt(_parse_meta_dt(recovery.get("due_at")))
+        return f"Automatic retry scheduled for {due} UTC." if due else "Automatic retry scheduled."
+    if state == "running":
+        return "Automatic retry is in progress."
+    if state == "exhausted":
+        return "Automatic retries are exhausted. Check Operations before another build."
+    if state == "unconfirmed":
+        return "Build outcome needs operator review before another attempt."
+    return ""
 
 
 def _error_excerpt(report, run) -> str:
@@ -407,7 +438,7 @@ def _error_excerpt(report, run) -> str:
         excerpt = (meta.get("last_error") or excerpt).strip()
     except Exception:  # noqa: BLE001 - disk/format issues must not block the mail
         pass
-    return excerpt or "(no error detail captured)"
+    return excerpt[:500] or "(no error detail captured)"
 
 
 def _days_since_last_failure(report, exclude_pks) -> int | None:
@@ -435,8 +466,10 @@ def _send_broken(report, run, recipients, exclude_pks) -> None:
     ctx = {
         "report": report,
         "report_url": _report_url(report),
+        "operations_url": f"{base_url()}/s/{report.studio.org.slug}/{report.studio.slug}/operations",
         "instance_name": instance_name(),
         "error_excerpt": error_excerpt,
+        "recovery_note": _recovery_note(run),
         "days_since_last_failure": _days_since_last_failure(report, exclude_pks),
         "failed_at": _format_dt(run.finished_at or run.created_at),
         "accent": "#dc2626",
@@ -564,6 +597,7 @@ def _send_broken_summary(pending) -> None:
             "report_url": _report_url(item.report),
             "error_excerpt": error_excerpt,
             "error_first_line": error_excerpt.splitlines()[0] if error_excerpt else "",
+            "recovery_note": _recovery_note(item.run),
         }
         recipients_by_report[item.report_id] = alert_recipients(item.report, "failure")
 
@@ -582,6 +616,7 @@ def _send_broken_summary(pending) -> None:
         preview_text = ", ".join(item["report"].name or item["report"].slug for item in items)
         ctx = {
             "studio": studio,
+            "operations_url": f"{base_url()}/s/{studio.org.slug}/{studio.slug}/operations",
             "instance_name": instance_name(),
             "items": items,
             "accent": "#dc2626",

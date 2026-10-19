@@ -49,6 +49,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   `python -m trellum guide upgrade` lists each fix, and a build that fails on
   one prints a hint pointing there. `query_df(..., compact_text=False)`
   returns plain text.
+- Send the ordinary Broken alert for a report's first failed build, with
+  bounded automatic-recovery status and a link to its build history.
 - Allow 60 minutes for report builds by default, retaining explicit
   `TRELLUM_RUN_TIMEOUT` overrides and the five-second termination grace.
 - Contain direct Windows report builds in a Job Object so successful runs can

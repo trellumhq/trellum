@@ -364,8 +364,8 @@ class BrokenReportPending(models.Model):
     run = models.ForeignKey("runner.Run", on_delete=models.CASCADE, related_name="+")
     #: The previously-completed run this transition was measured against —
     #: kept only so the eventual mail can compute the same "days since last
-    #: failure" context ``_send_broken`` always has. Nullable because a
-    #: run's previous run can, in principle, be deleted out from under it.
+    #: failure" context ``_send_broken`` always has. Nullable for the first
+    #: completed run, or when an older run is deleted.
     previous_run = models.ForeignKey(
         "runner.Run", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
     )
