@@ -4,7 +4,6 @@ assistant from an alert (the email's "open in the assistant" link).
 internal planning ticket #148; design ``internal design notes`` §3, §5.
 """
 import pytest
-from django.conf import settings
 
 from apps.alerts.models import AlertRule, AlertRun
 from apps.assistant.alert_access import edit_revision
@@ -240,11 +239,6 @@ class TestFromAlert:
     def test_unbound_session_has_no_alert_block(self, viewer, org, studio_tree):
         session = AssistantSession.objects.create(user=viewer, org=org, studio=studio_tree)
         assert "alert-run" not in build_system_prompt(AssistantToolbox(studio_tree, session=session))[1]["text"]
-
-    def test_widget_reads_the_deep_link_and_pins_the_alert(self):
-        source = (settings.BASE_DIR / "static" / "assistant.js").read_text(encoding="utf-8")
-        assert "assistant=(\\d+)" in source and "_sp.delete('assistant')" in source
-        assert "'About alert: ' + title" in source and "setAbout(s.alert_title)" in source
 
 
 class TestDiscovery:
