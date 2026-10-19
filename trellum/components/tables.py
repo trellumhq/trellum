@@ -132,6 +132,18 @@ class DataTable(Component):
         return load_js("components/data_table.js")
 
 
+def _is_dimension(dtype) -> bool:
+    """Text and dates are the pivot's dimensions; everything else is a value.
+
+    Text is ``object`` under pandas 2, ``str`` under pandas 3 and ``category``
+    from query_df, so a check for ``object`` alone would turn every text
+    column into a value column.
+    """
+    return (dtype == "object" or pd.api.types.is_string_dtype(dtype)
+            or isinstance(dtype, pd.CategoricalDtype)
+            or str(dtype).startswith("datetime"))
+
+
 @dataclass
 class PivotTable(Component):
     """Interactive pivot table with client-side row/column pivoting.
@@ -156,7 +168,7 @@ class PivotTable(Component):
     def render_html(self, ctx: RenderContext) -> str:
         cid = ctx.next_id()
         all_cols = list(self.df.columns)
-        dim_cols = [c for c in all_cols if self.df[c].dtype == "object" or str(self.df[c].dtype).startswith("datetime")]
+        dim_cols = [c for c in all_cols if _is_dimension(self.df[c].dtype)]
         num_cols = [c for c in all_cols if c not in dim_cols]
 
         default_value = self.values or (num_cols[0] if num_cols else "")

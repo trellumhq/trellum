@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import decimal
 import hashlib
 import os
 import re
@@ -15,6 +14,8 @@ from typing import Any
 
 import pandas as pd
 
+from trellum.data.fetch import execute_query as _execute_query  # its old name here
+from trellum.data.fetch import is_decimal_column
 from trellum.data.http_source import read_api as read_api  # re-export for compatibility
 from trellum.data.retry import ManagedConnection, run_with_retry
 from trellum.data.sql_params import _sql_param_spans as _sql_param_spans
@@ -87,40 +88,13 @@ def _query_label(sql: str) -> str:
     return sql.strip()[:30].replace('\n', ' ')
 
 
-def _execute_query(conn: Any, sql: str) -> pd.DataFrame:
-    """Execute SQL and return DataFrame. Dispatches based on connection type."""
-    conn = unwrap(conn)
-    type_name = type(conn).__module__ + "." + type(conn).__qualname__
-
-    if "google.cloud.bigquery" in type_name:
-        return conn.query(sql).to_dataframe()
-
-    if "clickhouse_connect" in type_name:
-        return conn.query_df(sql)
-
-    cursor = conn.cursor()
-    try:
-        cursor.execute(sql)
-        if "snowflake.connector" in type_name:
-            return cursor.fetch_pandas_all()
-        if cursor.description is None:
-            return pd.DataFrame()
-        columns = [desc[0] for desc in cursor.description]
-        data = cursor.fetchall()
-        return pd.DataFrame(data, columns=columns)
-    finally:
-        try:
-            cursor.close()
-        except Exception:
-            pass  # Closing a cursor must not replace execute/fetch failures.
-
-
 def query_df(
     conn: Any,
     sql: str,
     params: dict | None = None,
     cache_ttl: int | None = None,
     label: str | None = None,
+    compact_text: bool = True,
 ) -> pd.DataFrame:
     """Execute a SQL query and return results as a pandas DataFrame.
 
@@ -145,6 +119,10 @@ def query_df(
         label: Optional display label for structured output (e.g.
             ``"HOURLY_REVENUE"``). If not provided, a label is
             auto-extracted from the SQL (first table name after FROM).
+        compact_text: Return text columns whose values repeat (at most half
+            distinct) as pandas ``category`` columns: one small code per row
+            instead of one string, a fraction of the memory. Pass ``False``
+            for plain text columns. See ``trellum guide upgrade``.
 
     Returns:
         pandas DataFrame with query results.
@@ -167,7 +145,7 @@ def query_df(
         # Source first: staging and production can hold the same table under
         # the same SQL (see connections.register_source).
         from trellum.data.connections import source_of
-        keyed = f"{source_of(conn)}\x00{sql}"
+        keyed = f"{source_of(conn)}\x00{sql}\x00compact_text={compact_text}"
         cache_key = hashlib.sha256(keyed.encode()).hexdigest()[:16]
         cache_path = _cache_dir() / f"{cache_key}.pkl"
 
@@ -197,9 +175,9 @@ def query_df(
 
     start = time.time()
     with _query_semaphore:
-        df = run_with_retry(conn, lambda raw: _execute_query(raw, sql), sql=sql)
+        df = run_with_retry(conn, lambda raw: _execute_query(raw, sql, compact_text), sql=sql)
         dec_cols = [c for c in df.columns if df[c].dtype == object
-                    and df[c].dropna().apply(type).eq(decimal.Decimal).all()]
+                    and is_decimal_column(df[c])]
         if dec_cols:
             df[dec_cols] = df[dec_cols].astype(float)
     elapsed = time.time() - start

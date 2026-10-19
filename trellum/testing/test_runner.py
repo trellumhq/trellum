@@ -98,3 +98,27 @@ def test_standard_output_rejects_existing_symlink_escape(tmp_path, monkeypatch):
 
     with pytest.raises(ValueError, match="resolves outside"):
         run_report(str(report_dir))
+
+
+def test_a_category_error_points_at_the_upgrade_guide(tmp_path, monkeypatch, capsys):
+    project_root = tmp_path / "project"
+    report_dir = project_root / "reports" / "kinds"
+    _manifest(report_dir, name="Kinds", slug="kinds")
+    (report_dir / "generator.py").write_text(
+        "import pandas as pd\n"
+        "from trellum import BaseReport\n\n"
+        "class KindsReport(BaseReport):\n"
+        "    def generate(self, ctx):\n"
+        "        kind = pd.Series(['source', 'sink'], dtype='category')\n"
+        "        kind.map({'source': 1, 'sink': -1}) * 2.0\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "trellum.runner.execute.get_project_root", lambda: str(project_root)
+    )
+
+    with pytest.raises(TypeError):
+        run_report(str(report_dir))
+
+    out = capsys.readouterr().out
+    assert "[HINT]" in out and "trellum guide upgrade" in out

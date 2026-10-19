@@ -7,6 +7,43 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Changed
+
+- Split a chunked DataSource (`chunk_by="month"` or `"week"`) into its period
+  files without copying the whole frame, both while rendering and while the
+  build measures chunk sizes for its details. A two-million-row report needs
+  about 460 MB less peak memory and builds about 30% faster. The chunk files,
+  their sizes and row order are unchanged.
+- Serialize a DataSource's text columns without checking every value for a
+  date or NaN when the column holds only text and empty values. A build that
+  sends two million rows to the browser finishes about 15% sooner; data.json
+  and chunk files are byte-for-byte unchanged.
+- Start the portal's web workers and runworker without loading pandas, numpy
+  and pyarrow. They load on the first request or build that uses them, so an
+  idle process holds about 75 MB less (163 MB to 87 MB per process; about
+  230 MB across the default two web workers and one runworker). Everything
+  `trellum.data` and `trellum.rendering` export is unchanged.
+- Require pandas 3.0 (images pin 3.0.6). Text built from Python strings is now
+  pandas' `str` dtype instead of `object`; PivotTable still treats it as a
+  dimension, and `df_to_json_records` still writes a missing text value as
+  null. The Snowflake connector is installed without its `[pandas]` extra,
+  which caps pandas below 3; pandas and pyarrow are required directly. Report
+  code that relies on pandas 2 behaviour may need changes; see
+  `trellum/docs/MIGRATIONS.md`.
+- Return repeated text from `query_df` as pandas `category` columns: a text
+  column whose values are at most half distinct (titles, platforms, dates as
+  text) holds one small code per row instead of one string. For DB-API
+  sources the codes are built while the rows are read, so the two-million-row
+  Economy Firehose demo builds with a 640 MB peak in 15 s, where 0.8.0 needed
+  2.1 GB and 47 s and could not build under the default 1.5 GB cap at all.
+  DataSource serialization and chunk splitting use the codes directly. Output
+  is unchanged, but report code that uses `.map()` then arithmetic,
+  `pd.to_datetime()` then `<`/`>`, `.min()`/`.max()`, `fillna()` with a new
+  value or `+` with a string on such a column must be updated:
+  `python -m trellum guide upgrade` lists each fix, and a build that fails on
+  one prints a hint pointing there. `query_df(..., compact_text=False)`
+  returns plain text.
+
 ## [0.8.0] — 2026-10-17
 
 ### Added

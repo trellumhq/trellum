@@ -52,7 +52,8 @@ def _describe() -> str:
         "  2. Long format, never wide. Dimensions stay in ROWS, one column per",
         "     metric -- `platform` as a column of values, not one column per",
         "     platform. Wide data builds cleanly and filters silently do nothing.",
-        "  Full versions: python -m trellum guide queries format",
+        "  Full versions: python -m trellum guide queries format"
+        " -- and `guide upgrade` after a framework upgrade",
         "",
         # Names only. The selection table and the signatures were moved here in
         # 42b159c on the theory that fetching them was a decision an agent might

@@ -7,7 +7,9 @@ google-cloud-bigquery>=3.0.0
 db-dtypes>=1.0.0
 psycopg2-binary>=2.9.0
 pymysql>=1.1.0
-snowflake-connector-python[pandas]>=3.0.0
+# Without the [pandas] extra: it only adds pandas and pyarrow, which are
+# required directly, and caps pandas below 3 (still so in 5.0.0).
+snowflake-connector-python>=3.0.0
 clickhouse-connect>=0.7.0
 duckdb>=1.0.0
 pymssql>=2.3.0

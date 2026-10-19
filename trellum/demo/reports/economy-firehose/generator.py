@@ -70,7 +70,9 @@ class EconomyFirehoseReport(BaseReport):
         # subtract, and any filtered subset nets correctly client-side. The
         # per-currency variants are zero-filled so both currency charts can
         # share the one DataSource instead of duplicating the payload.
-        sign = df["kind"].map({"source": 1, "sink": -1})
+        # np.where rather than .map: query_df returns "kind" as a category,
+        # and .map on a category returns a category, which cannot multiply.
+        sign = np.where(df["kind"] == "source", 1, -1)
         df["net"] = df["amount"] * sign
         df["net_coins"] = np.where(df["currency"] == "coins", df["net"], 0)
         df["net_gems"] = np.where(df["currency"] == "gems", df["net"], 0)

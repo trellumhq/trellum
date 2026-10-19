@@ -23,7 +23,7 @@ These are the public contracts that reports and custom JS depend on. Changes mus
 | `Component` public methods | `render_html(ctx)`, `client_js()`, `css()`, `cdn_deps()` |
 | `BaseReport` interface | `generate(ctx)`, `load_config(path)` |
 | `ReportContext` public methods | `add_section()`, `set_scope()`, `get_connection()`, `metrics()`, `mark()`, date properties |
-| `query_df()` signature | `query_df(conn, sql, params=None, cache_ttl=None)` |
+| `query_df()` signature | `query_df(conn, sql, params=None, cache_ttl=None, label=None, compact_text=True)`. Since 0.9.0 a repeated text column comes back as a `category` column unless `compact_text=False`; see MIGRATIONS.md. |
 | CLI flags | `--production`, `--test`, `--no-serve`, `--port`, `--fail-on-validation`, `--auto-refresh` |
 | `_meta.json` Python API | `trellum.meta.read_meta`, `write_meta`, `write_error`, `is_fresh`, `META_SCHEMA_VERSION`, `normalize_metrics_used`. |
 

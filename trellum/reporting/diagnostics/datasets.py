@@ -42,7 +42,7 @@ def _chunked_size_bytes(df: pd.DataFrame, chunk_by: str) -> tuple[int, int]:
     each period in memory. For ``chunk_by`` values the framework
     doesn't recognize, return ``(0, 0)``.
     """
-    from trellum.components.filterable import _find_date_col, _period_key
+    from trellum.components.filterable import _find_date_col, _period_row_positions
 
     if chunk_by not in {"month", "week"}:
         return 0, 0
@@ -52,19 +52,11 @@ def _chunked_size_bytes(df: pd.DataFrame, chunk_by: str) -> tuple[int, int]:
     if date_col is None:
         return 0, 0
 
-    work = df.copy()
-    if pd.api.types.is_datetime64_any_dtype(work[date_col].dtype):
-        date_strs = work[date_col].dt.strftime("%Y-%m-%d")
-    else:
-        date_strs = work[date_col].astype(str)
-    work["__fw_period__"] = date_strs.apply(lambda v: _period_key(v, chunk_by))
-    periods = sorted(work["__fw_period__"].unique())
-
+    positions = _period_row_positions(df, date_col, chunk_by)
     total = 0
-    for period in periods:
-        sub = work[work["__fw_period__"] == period].drop(columns=["__fw_period__"])
-        total += _serialize_size_bytes(sub)
-    return total, len(periods)
+    for period in sorted(positions):
+        total += _serialize_size_bytes(df.take(positions[period]))
+    return total, len(positions)
 
 def _collect_datasource_entries(ctx: Any) -> list[tuple[Any, str | None]]:
     """Return (DataSource, scope_or_None) pairs across the report.

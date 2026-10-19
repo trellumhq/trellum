@@ -51,6 +51,7 @@ TOPICS: dict[str, str] = {
     "themes": "Themes and the theme contract",
     "review": "The live review loop: serve, collect element feedback, poll, rebuild",
     "portal": "The portal loop over MCP: check what changed, publish, run, read the build, fix a source, add an alert",
+    "upgrade": "After a framework upgrade: what changed for report code, how to find it, the fix",
 }
 
 _ANCHOR = re.compile(r"^<!--\s*topic:\s*([a-z0-9-]+)\s*-->\s*$", re.MULTILINE)

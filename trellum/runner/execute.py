@@ -390,6 +390,10 @@ def _run_report(
         print(f"[{_ts()}] Done in {elapsed:.1f}s -> {output_dir}", flush=True)
     except Exception as e:
         print(f"[ERROR] Report generation failed: {e}", flush=True)
+        if "ategor" in str(e):  # Categorical / category, in pandas' messages
+            print("[HINT] query_df returns repeated text as pandas category columns. "
+                  "`python -m trellum guide upgrade` lists the fixes; "
+                  "query_df(..., compact_text=False) returns plain text.", flush=True)
         raise
     finally:
         ctx.close_connections()

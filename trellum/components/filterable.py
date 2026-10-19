@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
+import numpy as np
 import orjson
 import pandas as pd
 
@@ -28,6 +29,36 @@ from trellum.components.live_filterable import bake_disabled as _bake_disabled
 from trellum.components.live_filterable import build_binding as _build_binding
 from trellum.components.live_filterable import derive_enum_options as _derive_enum_options
 from trellum.components.live_filterable import live_meta_html as _live_meta_html
+
+#: Value types whose cells _serialize_columnar passes through unchanged: they
+#: have no ``isoformat`` and cannot be NaN.
+_PLAIN_TEXT_TYPES = frozenset({str, type(None)})
+
+
+def _is_text_category(dtype) -> bool:
+    """A category column whose categories are all text (what query_df makes)."""
+    return (isinstance(dtype, pd.CategoricalDtype)
+            and all(type(c) is str for c in dtype.categories))
+
+
+def _serialize_category(series: pd.Series, n_rows: int) -> tuple[list, list | None]:
+    """A text category column's values, dictionary-encoded on the same rule.
+
+    Gives exactly what the text path below gives for the same values -- the
+    vocabulary in first-seen order, missing as None -- but from the codes,
+    without a Python string per row.
+    """
+    codes = series.cat.codes.to_numpy()
+    values = np.empty(len(series.cat.categories) + 1, dtype=object)
+    values[:-1] = list(series.cat.categories)
+    values[-1] = None  # code -1 is a missing value
+    if n_rows:
+        seen = pd.unique(codes)  # first-seen order, -1 included
+        if len(seen) / n_rows < 0.3:
+            position = np.empty(len(values), dtype=np.int64)
+            position[seen] = np.arange(len(seen))
+            return position[codes].tolist(), values[seen].tolist()
+    return values[codes].tolist(), None
 
 
 def _serialize_columnar(df: pd.DataFrame) -> dict:
@@ -52,6 +83,13 @@ def _serialize_columnar(df: pd.DataFrame) -> dict:
         series = df[col]
         dtype = series.dtype
         is_numeric = False
+
+        if _is_text_category(dtype):
+            values, vocab = _serialize_category(series, n_rows)
+            if vocab is not None:
+                dict_maps[col] = vocab
+            col_arrays.append(values)
+            continue
 
         if pd.api.types.is_datetime64_any_dtype(dtype):
             notna = series.dropna()
@@ -87,12 +125,21 @@ def _serialize_columnar(df: pd.DataFrame) -> dict:
 
         elif dtype == object or pd.api.types.is_string_dtype(dtype):
             raw = series.to_numpy(dtype=object, na_value=None)
-            has_isoformat = False
-            for v in raw:
-                if v is not None and hasattr(v, "isoformat"):
-                    has_isoformat = True
-                    break
-            if has_isoformat:
+            value_types = set(map(type, raw))
+            if value_types <= _PLAIN_TEXT_TYPES:
+                # Only text and None: nothing to format and no NaN to
+                # replace, so the values pass through unchanged.
+                values = raw.tolist()
+                has_isoformat = None
+            else:
+                has_isoformat = False
+                for v in raw:
+                    if v is not None and hasattr(v, "isoformat"):
+                        has_isoformat = True
+                        break
+            if has_isoformat is None:
+                pass
+            elif has_isoformat:
                 values = [
                     v.isoformat()[:16] if hasattr(v, "isoformat") else (
                         None if v is None or (isinstance(v, float) and v != v)
@@ -114,12 +161,13 @@ def _serialize_columnar(df: pd.DataFrame) -> dict:
             if nunique / n_rows < 0.3:
                 vocab = list(dict.fromkeys(values))
                 lookup = {v: i for i, v in enumerate(vocab)}
-                values = [lookup.get(v, v) for v in values]
+                # Every value is in the vocabulary it was built from.
+                values = list(map(lookup.__getitem__, values))
                 dict_maps[col] = vocab
 
         col_arrays.append(values)
 
-    data = [list(row) for row in zip(*col_arrays)] if col_arrays else []
+    data = list(map(list, zip(*col_arrays))) if col_arrays else []
     result: dict = {"_cols": cols, "_data": data}
     if dict_maps:
         result["_dict"] = dict_maps
@@ -151,6 +199,41 @@ def _period_key(date_str: str, chunk_by: str) -> str:
         d = datetime.strptime(date_str[:10], "%Y-%m-%d")
         return d.strftime("%G-W%V")  # ISO year + week, e.g. "2026-W17"
     return date_str[:7]
+
+
+def _period_row_positions(df: pd.DataFrame, date_col: str, chunk_by: str) -> dict[str, np.ndarray]:
+    """Map each calendar period to the row positions that fall in it.
+
+    Positions are ascending, so ``df.take(positions[p])`` returns the
+    period's rows in their original order. The period key is a function of
+    the date alone, so it is computed once per distinct date instead of once
+    per row, and the frame itself is never copied: a large DataSource would
+    otherwise briefly need twice its own memory to be split into chunks.
+    """
+    series = df[date_col]
+    if _is_text_category(series.dtype) and not series.isna().any():
+        # The categories are the distinct dates already; drop the ones this
+        # frame does not use, so no period comes out empty.
+        codes = series.cat.codes.to_numpy()
+        used = np.flatnonzero(np.bincount(codes, minlength=len(series.cat.categories)))
+        dates = series.cat.categories[used]
+        lookup = np.zeros(len(series.cat.categories), dtype=np.intp)
+        lookup[used] = np.arange(len(used))
+        codes = lookup[codes]
+    else:
+        if pd.api.types.is_datetime64_any_dtype(series.dtype):
+            date_strs = series.dt.strftime("%Y-%m-%d")
+        else:
+            date_strs = series.astype(str)
+        codes, dates = pd.factorize(date_strs, sort=False, use_na_sentinel=False)
+    date_periods = [_period_key(d, chunk_by) for d in dates]
+    period_codes, periods = pd.factorize(
+        pd.Index(date_periods, dtype=object), sort=False)
+    row_periods = period_codes[codes]
+    return {
+        period: np.flatnonzero(row_periods == code)
+        for code, period in enumerate(periods)
+    }
 
 
 def _period_range(key: str, chunk_by: str) -> tuple[str, str]:
@@ -217,29 +300,24 @@ class DataSource(Component):
             ctx.add_raw_data(f"_ds_{self.id}", _serialize_columnar(self.df))
             return
 
-        df = self.df.copy()
-        # Produce a plain string date column for period grouping
-        if pd.api.types.is_datetime64_any_dtype(df[date_col].dtype):
-            date_strs = df[date_col].dt.strftime("%Y-%m-%d")
-        else:
-            date_strs = df[date_col].astype(str)
-
-        period_col = "__fw_period__"
-        df[period_col] = date_strs.apply(lambda v: _period_key(v, self.chunk_by))
+        df = self.df
+        positions = _period_row_positions(df, date_col, self.chunk_by)
 
         # Sort periods newest-first
-        all_periods = sorted(df[period_col].unique(), reverse=True)
+        all_periods = sorted(positions, reverse=True)
         inline_periods = all_periods[: self.default_chunks]
         chunk_periods = all_periods[self.default_chunks :]
 
-        # Inline data: most-recent periods
-        inline_df = df[df[period_col].isin(inline_periods)].drop(columns=[period_col])
+        # Inline data: most-recent periods, in their original row order
+        inline_rows = np.sort(np.concatenate([positions[p] for p in inline_periods]))
+        inline_df = df.take(inline_rows)
         ctx.add_raw_data(f"_ds_{self.id}", _serialize_columnar(inline_df))
+        del inline_df
 
         # Chunk files: older periods
         chunk_manifest: dict[str, dict] = {}
         for period in chunk_periods:
-            period_df = df[df[period_col] == period].drop(columns=[period_col])
+            period_df = df.take(positions[period])
             pmin, pmax = _period_range(period, self.chunk_by)
             fname = f"data_chunk_{self.id}_{period}.json"
             payload = {f"_ds_{self.id}": _serialize_columnar(period_df)}
