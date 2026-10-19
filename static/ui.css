@@ -291,9 +291,8 @@ body.mgmt main .shell-menu form.inline > select { flex: 1 1 0; }
    got the admin chip moved off this rail in the first place). The dot's
    color is plain --accent, deliberately no per-theme lookup of its own:
    --accent already IS the currently-resolved palette's accent wherever an
-   explicit theme applies (data-studio-theme swaps the whole mgmt overlay,
-   see docs/design-system.md "Theme scoping"), so the dot always shows what
-   this viewer is actually seeing right now, live, for free. */
+   explicit theme applies, so the dot always shows what this viewer is
+   actually seeing right now, live, for free. */
 .studio-tab-theme-dot {
     width: 9px; height: 9px; border-radius: 50%; flex: none;
     background: var(--accent); border: 1px solid var(--border);
