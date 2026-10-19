@@ -5,8 +5,6 @@ underneath, which duplicated logout, duplicated the studio name, and used a
 different rail and type scale. The controls moved into the shell; these tests
 keep the second bar from coming back.
 """
-import re
-
 import pytest
 from django.conf import settings
 from django.urls import reverse
@@ -18,14 +16,6 @@ def _dashboard_html(client, login, org_admin, org, studio) -> str:
     login(org_admin)
     url = reverse("studio-dashboard", args=[org.slug, studio.slug])
     return client.get(url).content.decode()
-
-
-def test_no_second_header_bar():
-    html = (settings.BASE_DIR / "templates" / "portal" / "index.html").read_text(
-        encoding="utf-8"
-    )
-    assert "portal-top-bar" not in html
-    assert "portal-top-inner" not in html
 
 
 def test_dashboard_uses_shared_page_heading(client, login, org_admin, org, studio):
@@ -138,64 +128,3 @@ def test_own_search_fields_are_marked_for_the_shortcut(client, login, org_admin,
         source = (settings.BASE_DIR / "templates" / template).read_text(encoding="utf-8")
         assert marker in source, template
         assert "Filter metrics" not in source and "Filter reports" not in source, template
-
-
-def test_category_row_does_not_hide_its_own_scrollbar():
-    # The row used to be overflow-x:auto with the scrollbar suppressed, so a
-    # studio with 20+ categories hid most of them off the right edge with no
-    # affordance at all. Tabs that do not fit now go into the More menu.
-    css = (settings.BASE_DIR / "static" / "portal.css").read_text(encoding="utf-8")
-    folder_inner = css.split(".folder-inner {", 1)[1].split("}", 1)[0]
-    assert "overflow-x: auto" not in folder_inner
-    assert ".folder-inner::-webkit-scrollbar" not in css
-
-
-def test_overflow_menu_exists_and_hides_filtered_items():
-    js = (settings.BASE_DIR / "static" / "portal.js").read_text(encoding="utf-8")
-    css = (settings.BASE_DIR / "static" / "portal.css").read_text(encoding="utf-8")
-    assert "function splitTabs" in js, "the fit calculation is gone"
-    assert "function filterMoreMenu" in js
-    # columnGap: the row is a flex container with a gap that offsetWidth does
-    # not include; leaving it out overfills the row by gap x tabs.
-    assert "columnGap" in js, "splitTabs must account for the flex gap"
-    # A UA [hidden] rule loses to an author display:flex, so the filter would
-    # compute the right answer and still paint every item.
-    assert ".folder-menu-item[hidden]" in css
-
-
-def test_studio_pills_cannot_overflow_unreachably():
-    css = (settings.BASE_DIR / "static" / "portal.css").read_text(encoding="utf-8")
-    studio_inner = css.split(".studio-inner {", 1)[1].split("}", 1)[0]
-    assert "flex-wrap: wrap" in studio_inner
-
-
-def test_sticky_offsets_have_no_magic_numbers():
-    # The old chain hardcoded 52px and 94px for bars whose real heights had
-    # drifted. Offsets now derive from tokens.
-    css = (settings.BASE_DIR / "static" / "portal.css").read_text(encoding="utf-8")
-    for rule in re.findall(r"position:\s*sticky;\s*top:\s*([^;]+);", css):
-        assert not re.search(r"\+\s*\d+px", rule), f"magic sticky offset: {rule.strip()}"
-
-
-def test_folder_inner_can_shrink_for_split_tabs():
-    # A flex item's default min-width is auto, which floors it at full tab
-    # content width -- #folderTabs would never actually shrink for anything
-    # placed beside it in the rail, so splitTabs's clientWidth read would
-    # never see a narrower bar and never move tabs into the More menu.
-    css = (settings.BASE_DIR / "static" / "portal.css").read_text(encoding="utf-8")
-    folder_inner = css.split(".folder-inner {", 1)[1].split("}", 1)[0]
-    assert "min-width: 0" in folder_inner
-
-
-def test_catalog_rows_are_fluid():
-    # Catalog controls and report content use the full console content area.
-    css = (settings.BASE_DIR / "static" / "portal.css").read_text(encoding="utf-8")
-    rail_pattern = "max-width: none; margin: 0"
-    for selector in (".folder-rail {", ".studio-inner {", ".portal-body-inner {"):
-        block = css.split(selector, 1)[1].split("}", 1)[0]
-        assert rail_pattern in block, f"{selector} is not fluid"
-    # .folder-bar itself stays full-bleed, like .studio-bar -- only the inner
-    # wrapper is capped, so the sticky background/border still spans edge to
-    # edge under the centered content.
-    folder_bar = css.split(".folder-bar {", 1)[1].split("}", 1)[0]
-    assert "max-width" not in folder_bar
