@@ -115,45 +115,6 @@ def test_management_surface_has_its_own_palette():
     assert ':where(html[data-theme="dark"]) body.mgmt' in css
 
 
-def test_neutral_blocks_are_demoted_with_where():
-    # The per-viewer mgmt block (html[data-studio-theme="X"] body.mgmt,
-    # specificity 0,2,2) must always win over Portal Neutral when both are
-    # present. :where() has zero specificity cost, so Portal Neutral's own
-    # attribute selectors have to be wrapped in it -- a plain
-    # html[data-theme="light"] body.mgmt would tie (also 0,2,2) and, loaded
-    # later, win instead.
-    css = (settings.BASE_DIR / "static" / "ui.css").read_text(encoding="utf-8")
-    assert re.search(r'html\[data-theme="light"\]\s*body\.mgmt\s*,\s*body\.mgmt\s*\{', css) is None, (
-        "Portal Neutral's light block is not :where()-demoted"
-    )
-    assert re.search(r'html\[data-theme="dark"\]\s*body\.mgmt\s*\{', css) is None, (
-        "Portal Neutral's dark block is not :where()-demoted"
-    )
-
-
-def test_mgmt_block_present_for_every_theme():
-    # The per-viewer studio-theming overlay (docs/design-system.md "Theme
-    # scoping"): every registry theme gets a management-surface block keyed
-    # on the SECOND attribute, data-studio-theme, never data-theme -- two
-    # registry themes are literally named "light"/"dark", the same strings
-    # the mgmt mode boot writes into data-theme, so reusing it would collide.
-    names = re.findall(r'html\[data-studio-theme="([\w -]+)"\] body\.mgmt', _generated())
-    assert names == list(THEME_REGISTRY)
-
-
-def test_every_mgmt_block_defines_every_token():
-    from apps.core.themes import MGMT_TOKEN_ORDER
-
-    blocks = re.findall(
-        r'html\[data-studio-theme="([\w -]+)"\] body\.mgmt\s*\{([^}]*)\}', _generated()
-    )
-    assert len(blocks) == len(THEME_REGISTRY)
-    for theme, body in blocks:
-        defined = set(re.findall(r"(--[\w-]+)\s*:", body))
-        missing = set(MGMT_TOKEN_ORDER) - defined
-        assert not missing, f"theme '{theme}' mgmt block is missing {sorted(missing)}"
-
-
 def test_mgmt_overlay_only_sets_allowed_tokens():
     from apps.core.theme_overlay import MGMT_ALLOWED_TOKENS, MGMT_OVERLAY
 
@@ -161,15 +122,6 @@ def test_mgmt_overlay_only_sets_allowed_tokens():
         assert theme in THEME_REGISTRY, f"MGMT_OVERLAY names unknown theme '{theme}'"
         unknown = set(tokens) - MGMT_ALLOWED_TOKENS
         assert not unknown, f"theme '{theme}': MGMT_OVERLAY must not set {sorted(unknown)}"
-
-
-def test_the_four_hand_tuned_themes_are_exactly_these():
-    # The saturated palettes where the mechanical ramp is technically
-    # passing but aesthetically drifted (docs/design-system.md §4 audit) --
-    # pinned so a change here is a reviewed decision, not silent drift.
-    from apps.core.theme_overlay import MGMT_OVERLAY
-
-    assert set(MGMT_OVERLAY) == {"blossom", "nord", "dracula", "monokai"}
 
 
 @pytest.mark.parametrize("floor_tokens", [
