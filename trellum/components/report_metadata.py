@@ -19,7 +19,12 @@ class ReportMetadata(Component):
     values: dict[str, Any] = field(default_factory=dict)
     _component_type: str = field(default="report_metadata", init=False, repr=False)
 
-    def render_html(self, ctx: RenderContext) -> str:
+    def display_items(self) -> list[list[str]]:
+        """``[label, display value]`` pairs, in order, for every showable value.
+
+        Also written to data.json as ``_header_meta`` so auto-refresh can
+        update the strip without a page reload.
+        """
         items = []
         for label, value in self.values.items():
             if value is None or (isinstance(value, str) and not value.strip()):
@@ -31,12 +36,17 @@ class ReportMetadata(Component):
             if isinstance(value, float) and not math.isfinite(value):
                 continue
             display_value = value.isoformat() if isinstance(value, date) else str(value)
-            items.append(
-                '<span class="fw-report-metadata-item">'
-                f'<span class="fw-report-metadata-label">{html.escape(label)}</span>'
-                f'<span class="fw-report-metadata-value">{html.escape(display_value)}</span>'
-                '</span>'
-            )
+            items.append([label, display_value])
+        return items
+
+    def render_html(self, ctx: RenderContext) -> str:
+        items = [
+            '<span class="fw-report-metadata-item">'
+            f'<span class="fw-report-metadata-label">{html.escape(label)}</span>'
+            f'<span class="fw-report-metadata-value">{html.escape(display_value)}</span>'
+            '</span>'
+            for label, display_value in self.display_items()
+        ]
         return (
             '<div class="fw-report-metadata" id="fwReportMetadata">'
             '<span class="fw-freshness" id="fwFreshness"></span>'

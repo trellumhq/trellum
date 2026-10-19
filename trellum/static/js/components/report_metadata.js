@@ -69,9 +69,35 @@
     else el.classList.add('fresh');
     _measureSticky();
   }
-  // Auto-refresh calls this after swapping in new data, so the label
-  // doesn't keep showing the old age until its next minute tick.
-  window._fwUpdateFreshness = _updateFreshness;
+  // Re-render the labeled values from data.json. A data.json without
+  // _header_meta (built before it existed) leaves the baked-in values alone.
+  function _updateMetadataItems() {
+    var root = document.getElementById('fwReportMetadata');
+    var items = window._reportData && window._reportData._header_meta;
+    if (!root || !Array.isArray(items)) return;
+    var old = root.querySelectorAll('.fw-report-metadata-item');
+    for (var i = 0; i < old.length; i++) old[i].parentNode.removeChild(old[i]);
+    for (var j = 0; j < items.length; j++) {
+      var item = document.createElement('span');
+      item.className = 'fw-report-metadata-item';
+      var label = document.createElement('span');
+      label.className = 'fw-report-metadata-label';
+      label.textContent = items[j][0];
+      var value = document.createElement('span');
+      value.className = 'fw-report-metadata-value';
+      value.textContent = items[j][1];
+      item.appendChild(label);
+      item.appendChild(value);
+      root.appendChild(item);
+    }
+    _measureSticky();
+  }
+  // Auto-refresh calls this after swapping in new data, so the strip
+  // doesn't keep showing the values (and age) the page was built with.
+  window._fwUpdateFreshness = function() {
+    _updateMetadataItems();
+    _updateFreshness();
+  };
   // Timers are throttled in background tabs; correct the age on return.
   document.addEventListener('visibilitychange', function() {
     if (document.visibilityState === 'visible') _updateFreshness();

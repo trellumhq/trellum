@@ -231,6 +231,41 @@ def test_annotation_bar_follows_metadata_strip(capture_page):
     }""")
 
 
+def test_refresh_rerenders_metadata_values(capture_page):
+    capture_page.evaluate("""() => {
+        document.getElementById('fwReportMetadata').innerHTML =
+            '<span class="fw-freshness" id="fwFreshness"></span>'
+            + '<span class="fw-report-metadata-item">'
+            + '<span class="fw-report-metadata-label">Rows</span>'
+            + '<span class="fw-report-metadata-value">10</span></span>';
+    }""")
+    capture_page.add_script_tag(content=load_js("components/report_metadata.js"))
+    texts = capture_page.evaluate("""() => {
+        window._reportData = {_freshness: {generated_at: new Date().toISOString()},
+                              _header_meta: [['Rows', '12'], ['<b>As of</b>', '09:00']]};
+        window._fwUpdateFreshness();
+        var root = document.getElementById('fwReportMetadata');
+        return [root.firstElementChild.id].concat(Array.prototype.map.call(
+            root.querySelectorAll('.fw-report-metadata-item'),
+            function(el) { return el.textContent; }));
+    }""")
+    assert texts == ["fwFreshness", "Rows12", "<b>As of</b>09:00"]
+
+
+def test_refresh_keeps_baked_metadata_without_header_meta(capture_page):
+    capture_page.evaluate("""() => {
+        document.getElementById('fwReportMetadata').innerHTML =
+            '<span class="fw-freshness" id="fwFreshness"></span>'
+            + '<span class="fw-report-metadata-item">Rows10</span>';
+    }""")
+    capture_page.add_script_tag(content=load_js("components/report_metadata.js"))
+    assert capture_page.evaluate("""() => {
+        window._reportData = {_freshness: {generated_at: new Date().toISOString()}};
+        window._fwUpdateFreshness();
+        return document.querySelector('.fw-report-metadata-item').textContent;
+    }""") == "Rows10"
+
+
 def test_integrated_chrome_is_counted_once_in_sticky_offset(capture_page):
     capture_page.evaluate("""() => {
         var chrome = document.createElement('div');

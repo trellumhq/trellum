@@ -248,6 +248,7 @@ SQL (queries.py)
               ├── components: {fw_c1: {...}, fw_c2: {...}}
               ├── _ds_ds_id: {columns, data}   # DataSource payload
               ├── _events: [...]                # Annotation events
+              ├── _header_meta: [[label, value], ...]  # Metadata strip values
               └── _freshness: {generated_at, refresh_seconds}
                     │
                     └── Browser
