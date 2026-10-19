@@ -442,6 +442,25 @@ def test_stale_form_preserves_accepted_live_state_and_all_timestamps(rule, fake_
     assert (rule.live_state, rule.last_run_at, rule.last_alerted_at, rule.last_test_at) == before
 
 
+def test_requesting_editor_preview_bills_editor_and_simulates_without_live_mutation(
+    rule, fake_llm, make_user, grant_studio
+):
+    from apps.core import roles
+    from apps.assistant.models import LlmUsage
+    editor = make_user("editor-preview@example.test", org=rule.org)
+    grant_studio(editor, rule.studio, roles.DEVELOPER)
+    snapshot = evaluator.RuleSnapshot.from_rule(rule)
+    fake_llm(decide(True))
+    run = evaluator.evaluate_snapshot(snapshot, actor=editor, billing_user=editor,
+        execution_mode="test", history_namespace="draft:editor")
+    assert run.delivery_disposition == "test" and run.simulated_disposition == "would_notify"
+    rule.refresh_from_db()
+    assert rule.live_state is None and rule.last_alerted_at is None and rule.last_run_at is None
+    assert LlmUsage.user_month_total(rule.org, editor) > 0
+    assert LlmUsage.user_month_total(rule.org, rule.created_by) == 0
+    assert mail.outbox == []
+
+
 def test_newer_unknown_observation_prevents_inflight_claim_from_sending(rule, fake_llm, monkeypatch):
     from apps.reports import notify
     transition(rule)
