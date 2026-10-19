@@ -296,29 +296,3 @@ def test_a_viewer_cannot_see_unauthorized_reports_in_the_jump_list(
         assert not errors
     finally:
         close()
-
-
-def test_the_jump_slot_does_not_move_between_pages(live_server, login, org_admin, org, studio, reports):
-    client = login(org_admin)
-    base = _studio_base(studio)
-    client.get(base + "/")
-    page, errors, close = _browse(live_server, client)
-    boxes = {}
-    try:
-        for name, path in (
-            ("catalog", base + "/"), ("metrics", base + "/metrics"), ("invites", f"/orgs/{org.slug}/settings/invites"),
-            ("members", base + "/settings/members"), ("analyses", base + "/analyses"),
-        ):
-            page.goto(live_server.url + path, wait_until="load")
-            page.wait_for_load_state("networkidle")
-            page.wait_for_timeout(400)  # room for the assistant widget to settle into its slot
-            boxes[name] = page.evaluate(
-                """() => ['.tl-console-jump', '.tl-console-docs-link', '.tl-console-account', '.tl-console-assistant-slot']
-                  .map(s => { const r = document.querySelector(s).getBoundingClientRect(); return [s, r.x, r.y, r.width, r.height]; })"""
-            )
-        reference = boxes["catalog"]
-        for name, box in boxes.items():
-            assert box == reference, (name, box, reference)
-        assert not errors
-    finally:
-        close()

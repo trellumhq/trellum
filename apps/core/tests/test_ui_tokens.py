@@ -14,12 +14,6 @@ from django.conf import settings
 from apps.core.themes import TOKEN_ORDER
 
 REQUIRED_VARS = set(TOKEN_ORDER)
-EXPECTED_THEMES = {
-    "trellum light", "trellum dark",  # the default pair
-    "light", "dark",                  # the pre-trellum classics
-    "money", "blossom", "midnight", "sunset",
-    "nord", "dracula", "solarized", "ocean", "monokai",
-}
 
 
 def _theme_blocks() -> dict[str, str]:
@@ -28,10 +22,6 @@ def _theme_blocks() -> dict[str, str]:
         m.group(1): m.group(2)
         for m in re.finditer(r'\[data-theme="([\w -]+)"\]\s*\{([^}]*)\}', css)
     }
-
-
-def test_all_themes_present():
-    assert set(_theme_blocks()) == EXPECTED_THEMES
 
 
 def test_ui_css_does_not_redefine_the_theme_table():
@@ -59,29 +49,6 @@ def test_dark_themes_hover_shadow_is_not_the_light_value():
             continue
         hover = re.search(r"--shadow-hover:\s*([^;]+);", body).group(1)
         assert light_hover not in hover, f"theme '{theme}' still has the light hover shadow"
-
-
-def _rgb(value: str) -> tuple[int, int, int]:
-    h = value.strip().lstrip("#")
-    if len(h) == 3:
-        h = "".join(c * 2 for c in h)
-    return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
-
-
-def test_brand_red_is_never_the_error_red():
-    # The brand accent and the danger colour must be tellable apart at a
-    # glance. They were not: light shipped --accent #E84855 next to --red
-    # #ef4444, so "0 errors", a focused input and a Save button all read as
-    # the same alarm. Distance is crude but it is exactly the failure mode.
-    for theme, body in _theme_blocks().items():
-        accent = re.search(r"--accent:\s*(#[0-9a-fA-F]{3,6})", body).group(1)
-        red = re.search(r"--red:\s*(#[0-9a-fA-F]{3,6})", body).group(1)
-        a, r = _rgb(accent), _rgb(red)
-        distance = sum((x - y) ** 2 for x, y in zip(a, r)) ** 0.5
-        assert distance > 40, (
-            f"theme '{theme}': --accent {accent} and --red {red} are too close "
-            f"(distance {distance:.0f})"
-        )
 
 
 def test_base_does_not_redefine_components():

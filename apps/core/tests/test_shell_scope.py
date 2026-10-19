@@ -34,13 +34,22 @@ def request_for(user, params=None, *, org=None, studio=None):
     return request
 
 
-@pytest.mark.parametrize('source', [
+COLD_FACT_SOURCES = [
     'none', 'direct-viewer', 'direct-developer', 'direct-admin',
     'group-viewer', 'group-developer', 'group-admin', 'selected',
     'default-viewer', 'default-developer', 'default-admin', 'org-admin',
     'direct-org-admin', 'mixed', 'orphan-group',
+]
+# A private report only changes the outcome for viewer-level access
+# (EffectiveRoles.report_scope_for); developers, admins and non-members see the
+# same result either way.
+PRIVATE_SENSITIVE_SOURCES = ('direct-viewer', 'default-viewer', 'group-viewer', 'selected')
+
+
+@pytest.mark.parametrize('source, private', [
+    (source, private) for source in COLD_FACT_SOURCES for private in (False, True)
+    if not private or source in PRIVATE_SENSITIVE_SOURCES
 ])
-@pytest.mark.parametrize('private', [False, True])
 def test_cold_facts_match_existing_roles(source, private, member, org, studio, studio2,
         make_group, attach_group, grant_studio, settings):
     settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = True

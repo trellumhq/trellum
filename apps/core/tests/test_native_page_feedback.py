@@ -4,8 +4,6 @@ The shared analytics fixture starts owned Gunicorn/PostgreSQL and authenticates
 with PBKDF2. Held navigation responses test client recovery, not server timing.
 The 1,000-report analytics page supplies a real shared pager link.
 """
-import json
-
 import pytest
 
 from apps.reports.tests.test_analytics_bounded_browser import analytics_server, _login
@@ -13,8 +11,9 @@ from apps.reports.tests.test_analytics_bounded_browser import analytics_server, 
 pytestmark = pytest.mark.django_db
 
 
-@pytest.mark.parametrize("engine", ["chromium", "webkit"])
-@pytest.mark.parametrize("width", [1440, 390])
+# The behaviour (held navigation, Still-loading notice, cancel, recovery) does not
+# depend on the width, so run each engine at one width: desktop chromium, phone webkit.
+@pytest.mark.parametrize("engine, width", [("chromium", 1440), ("webkit", 390)])
 def test_local_page_links_show_recoverable_feedback(analytics_server, engine, width):
     from playwright.sync_api import sync_playwright, expect
 
@@ -94,7 +93,6 @@ def test_local_page_links_show_recoverable_feedback(analytics_server, engine, wi
             expect(page.locator('#neighbor input')).to_have_value('keep this draft')
             assert page.evaluate('nativeEvents.map(e=>e[0])') == ['console:native-start', 'console:native-restored']
             rendered = page.evaluate('pendingVisibility')
-            (server['artifacts'] / f'pending-link-{engine}-{width}.json').write_text(json.dumps(rendered, indent=2))
             assert rendered and rendered[-1]['pending'] and rendered[-1]['display']['tableRects'] == 0, rendered
             assert rendered[-1]['milliseconds'] < 100, rendered
 

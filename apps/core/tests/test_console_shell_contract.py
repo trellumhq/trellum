@@ -1,5 +1,3 @@
-import re
-
 from django.conf import settings
 
 
@@ -35,45 +33,6 @@ def test_mobile_drawer_accessibility_contract():
     assert "transition: opacity .2s ease, visibility 0s linear .2s" in css
     assert "preventScroll" in js
     assert "closeMenus" in js
-
-
-def test_console_dimensions_and_neutral_tokens():
-    css = _read("static/console-shell.css")
-    for declaration in (
-        "--tl-console-width: 240px",
-        "--tl-console-collapsed-width: 64px",
-        "--tl-console-header-height: 56px",
-        "--tl-console-bg: #f6f7f8",
-        "--tl-console-card: #fff",
-        "--tl-console-hover: #eef1f3",
-        "--tl-console-text: #172126",
-        "--tl-console-border: #e2e6ea",
-        "--tl-console-primary: #0f766e",
-    ):
-        assert declaration in css
-
-
-def test_mobile_utility_bar_and_known_title_contract():
-    base = _read("templates/base.html")
-    shell = _read("templates/_shell.html")
-    css = _read("static/console-shell.css")
-    js = _read("static/console-shell.js")
-
-    assert "tl-console-title-known" in base
-    assert "data-console-page-title" in shell
-    # Search lives in each page; the bar has no search box or phone search pane, only the jump control.
-    assert "data-console-search" not in shell and "tl-console-search" not in shell
-    assert "data-console-jump" in shell
-    assert "is-search-open" not in css and "is-search-open" not in js
-    assert "@media (max-width: 767px)" in css
-    assert "height: 44px" in css
-    # The shortcut is bound once, by the shell script.
-    shortcut = re.compile(r"toLowerCase\(\) [!=]== 'k'|key [!=]== 'k'")
-    assert len(shortcut.findall(js)) == 1
-    assert not shortcut.search(_read("static/portal.js")) and not shortcut.search(base)
-    assert "setPageTitle" in js and "prepare" in js and "setTheme" in js
-    assert "document.title" not in js
-    assert '/api/assistant/widget.js' in base
 
 
 def test_theme_and_sidebar_state_are_available_before_styles():

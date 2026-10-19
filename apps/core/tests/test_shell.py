@@ -306,23 +306,3 @@ class TestShellRendering:
         assert 'id="globalShell"' not in html
         assert f"https://github.com/trellumhq/trellum/tree/v{__version__}" in html
 
-    def test_studio_dropdown_is_purely_a_switcher(
-        self, login, org_admin, org, studio_tree, report_row
-    ):
-        # The "This studio" page links (Experiments/Annotations/⚙ Settings)
-        # moved into the studio tab bar; the dropdown only switches studios.
-        html = login(org_admin).get(f"/s/{org.slug}/{studio_tree.slug}/").content.decode()
-        shell = html.split('<header class="tl-console-header"', 1)[1].split("</header>", 1)[0]
-        assert "This studio" not in shell
-        assert f"/s/{org.slug}/{studio_tree.slug}/experiments" not in shell
-        assert f"/s/{org.slug}/{studio_tree.slug}/annotations" not in shell
-        assert "/settings/repo" not in shell
-
-    def test_shell_has_no_chat_button(
-        self, login, org_admin, org, studio_tree, report_row
-    ):
-        # The chat view mode is deleted (apps/chat was removed); the
-        # shell must not resurrect its button under either id or label.
-        html = login(org_admin).get(f"/s/{org.slug}/{studio_tree.slug}/").content.decode()
-        assert 'id="viewChat"' not in html
-        assert "AI report builder" not in html

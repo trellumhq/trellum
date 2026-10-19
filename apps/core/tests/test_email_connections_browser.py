@@ -131,8 +131,9 @@ def test_saved_connection_edit_uses_in_place_save_and_field_errors(engine, login
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("engine", ("chromium", "webkit"))
-@pytest.mark.parametrize("width", (390, 1280))
+# Provider switching does not depend on width; the overflow check at the end does,
+# so each engine runs at one width: desktop chromium, phone webkit.
+@pytest.mark.parametrize("engine, width", (("chromium", 1280), ("webkit", 390)))
 def test_rendered_editor_keeps_secrets_hidden_and_switches_fields(
     engine, width, login, superuser,
 ):
@@ -176,9 +177,4 @@ def test_rendered_editor_keeps_secrets_hidden_and_switches_fields(
         assert page.get_by_label("Basic password").is_visible()
         assert page.get_by_label("Bearer token").is_hidden()
         assert page.locator("body").evaluate("e => e.scrollWidth <= innerWidth + 1")
-        if engine == "chromium":
-            output = ROOT / "output" / "email-api-verification"
-            output.mkdir(parents=True, exist_ok=True)
-            page.screenshot(path=output / ("editor-mobile.png" if width == 390 else "editor-desktop.png"),
-                            full_page=True)
         browser.close()
