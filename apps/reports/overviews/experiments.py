@@ -3,8 +3,7 @@
 The request consumer reads normalized worker-observed declarations and result
 facts from the database, aggregates the complete studio relation, and shows
 every experiment on one page (the shared pager appears only for a studio far
-larger than a realistic one). The artifact extraction helpers remain available
-for producer normalization and compatibility tests.
+larger than a realistic one).
 
 **Status rule (the one non-obvious piece of business logic here).** An
 experiment's lifecycle is derived from ``ab_test.start_date`` and
@@ -35,19 +34,13 @@ of where its members happen to sit.
 """
 from __future__ import annotations
 
-import json
-import logging
-import threading
-from datetime import date, datetime, timezone
-from pathlib import Path
+from datetime import date
 
 from django.shortcuts import render
 
 from apps.core import roles
 from apps.core.permissions import require_studio_role
 from apps.core.report_access import require_full_studio_visibility
-
-logger = logging.getLogger(__name__)
 
 _MONTH_ABBR = [
     "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -56,15 +49,6 @@ _MONTH_ABBR = [
 
 
 # ── report.yaml / data.json plumbing ────────────────────────────────────────
-
-def is_ab_report(config: dict) -> bool:
-    """Does this report's config declare an ``ab_test:`` block?
-
-    A block is one experiment's dict, or a list of such dicts for a report
-    carrying several experiments on one page.
-    """
-    return bool(_ab_entries(config))
-
 
 def _ab_entries(config: dict) -> list[dict]:
     """The ``ab_test:`` declaration as a list of entry dicts.
@@ -82,84 +66,12 @@ def _ab_entries(config: dict) -> list[dict]:
     return []
 
 
-def _read_json(path: Path) -> dict | None:
-    """Parse ``path`` as JSON. Never raises; ``None`` on any read/parse
-    failure or a top-level value that isn't an object."""
-    try:
-        parsed = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError, UnicodeDecodeError):
-        return None
-    return parsed if isinstance(parsed, dict) else None
-
-
 def _find_ab_components(components: dict | None) -> list[dict]:
     return [
         comp
         for comp in (components or {}).values()
         if isinstance(comp, dict) and comp.get("type") == "ab_compare"
     ]
-
-
-def extract_ab_components(output_dir: Path) -> dict | None:
-    """Every ``ab_compare`` component in ``output_dir/data.json``, in build
-    order.
-
-    Checks the main file's own ``components`` first; if none is found there
-    and the report split its data across scopes (``_scopeFiles``), each
-    sibling ``data_<scope>.json`` is checked in turn -- a scoped report still
-    joins the overview from whichever scope happens to carry the A/B
-    component. Missing/corrupt JSON, or no ``ab_compare`` component anywhere,
-    returns ``None``; this never raises, so one report's broken output never
-    breaks the page for every other report in the studio.
-    """
-    data = _read_json(output_dir / "data.json")
-    if data is None:
-        return None
-
-    components = _find_ab_components(data.get("components"))
-    if not components:
-        try:
-            resolved_root = output_dir.resolve()
-        except OSError:
-            resolved_root = None
-        for fname in (data.get("_scopeFiles") or {}).values():
-            if not isinstance(fname, str):
-                continue
-            candidate = (output_dir / fname).resolve()
-            if resolved_root is None or (
-                candidate != resolved_root
-                and not str(candidate).startswith(str(resolved_root) + "/")
-                and not str(candidate).startswith(str(resolved_root) + "\\")
-            ):
-                continue  # never follow a scope filename outside output_dir
-            scope_data = _read_json(candidate)
-            if scope_data is None:
-                continue
-            components = _find_ab_components(scope_data.get("components"))
-            if components:
-                break
-
-    if not components:
-        return None
-
-    return {
-        "components": components,
-        "generated_at": (data.get("_freshness") or {}).get("generated_at"),
-        "framework_version": data.get("_framework_version"),
-    }
-
-
-def extract_ab_component(output_dir: Path) -> dict | None:
-    """The first ``ab_compare`` component -- :func:`extract_ab_components`
-    narrowed to the single-experiment shape the original callers expect."""
-    extracted = extract_ab_components(output_dir)
-    if extracted is None:
-        return None
-    return {
-        "component": extracted["components"][0],
-        "generated_at": extracted["generated_at"],
-        "framework_version": extracted["framework_version"],
-    }
 
 
 def _component_for_entry(
@@ -189,47 +101,6 @@ def _component_for_entry(
     return components[index] if index < len(components) else None
 
 
-_extract_cache_lock = threading.Lock()
-#: {(studio_pk, slug): (str(data.json path), mtime, extracted-or-None)}.
-#:
-#: One entry per report, not per build: on the remote backend
-#: ``storage.output_root`` returns a fresh cache directory for every new
-#: build, so keying by path (as an earlier version of this cache did) meant
-#: every rebuild left its predecessor's entry behind forever -- a slow, silent
-#: leak in any long-lived worker process. Keying by (studio, slug) instead
-#: means a rebuild's new path simply *replaces* this report's one entry, and
-#: the value held is only the small extracted triple (component + freshness +
-#: version), never the full parsed data.json, which can run to several MB.
-_extract_cache: dict[tuple[int, str], tuple[str, float, dict | None]] = {}
-
-
-def _cached_extract(studio, slug: str, output_dir: Path) -> dict | None:
-    """:func:`extract_ab_components`, memoised per (studio, slug) and
-    invalidated by the data.json path + mtime changing underneath it."""
-    path = output_dir / "data.json"
-    try:
-        mtime = path.stat().st_mtime
-    except OSError:
-        mtime = None
-
-    key = (studio.pk, slug)
-    if mtime is not None:
-        with _extract_cache_lock:
-            hit = _extract_cache.get(key)
-            if hit is not None and hit[0] == str(path) and hit[1] == mtime:
-                return hit[2]
-
-    extracted = extract_ab_components(output_dir)
-    with _extract_cache_lock:
-        if mtime is not None:
-            _extract_cache[key] = (str(path), mtime, extracted)
-        else:
-            # No stat to key a memo on -- don't cache, and drop any stale
-            # entry so a later successful stat doesn't fall through to it.
-            _extract_cache.pop(key, None)
-    return extracted
-
-
 def _active_body(component: dict) -> tuple[dict | None, str]:
     """The component's currently-open view: ``modes[default_mode]`` (falling
     back to the first mode) when the report declares modes, else its plain
@@ -247,56 +118,6 @@ def _active_body(component: dict) -> tuple[dict | None, str]:
         return mode, str(mode.get("label") or "")
     body = component.get("body")
     return (body, "") if isinstance(body, dict) else (None, "")
-
-
-def primary_metric(body: dict | None, ab_cfg: dict) -> dict | None:
-    """The one KPI row this report's overview card leads with.
-
-    ``ab_cfg.primary_metric`` (a portal-only convenience key, matched
-    case-insensitively against a row's ``key`` or its ``metric`` label) picks
-    it explicitly; otherwise the first KPI row in the payload's own order
-    wins. ``None`` when the payload has no KPI rows at all (e.g. a
-    volumes-only report).
-    """
-    if not body:
-        return None
-    kpi_rows = body.get("kpi_rows") or []
-    if not kpi_rows:
-        return None
-
-    wanted = str(ab_cfg.get("primary_metric") or "").strip().lower()
-    row = None
-    if wanted:
-        for candidate in kpi_rows:
-            key = str(candidate.get("key") or "").lower()
-            metric = str(candidate.get("metric") or "").lower()
-            if wanted in (key, metric):
-                row = candidate
-                break
-    if row is None:
-        row = kpi_rows[0]
-
-    ci_pct = None
-    significant = False
-    raw_ci = row.get("ci_pct")
-    if isinstance(raw_ci, (list, tuple)) and len(raw_ci) == 2:
-        try:
-            lo, hi = float(raw_ci[0]), float(raw_ci[1])
-        except (TypeError, ValueError):
-            lo = hi = None
-        if lo is not None:
-            ci_pct = [lo, hi]
-            significant = not (lo <= 0 <= hi)
-
-    return {
-        "metric": row.get("metric", ""),
-        "delta_pct": row.get("delta_pct"),
-        "ci_pct": ci_pct,
-        "higher_is_better": bool(row.get("higher_is_better", True)),
-        "control_val": row.get("control_val", ""),
-        "test_val": row.get("test_val", ""),
-        "significant": significant,
-    }
 
 
 # ── lifecycle ────────────────────────────────────────────────────────────
@@ -458,26 +279,6 @@ def _build_timeline(rows: list[dict], today: date) -> dict:
         "lanes": lanes,
         "today_pct": round(pct(today), 1),
     }
-
-
-# ── compatibility cache invalidation ─────────────────────────────────────────
-
-_studio_cache_lock = threading.Lock()
-_studio_cache: dict[int, tuple[float, dict]] = {}
-
-
-def invalidate_experiments_cache(studio=None) -> None:
-    with _studio_cache_lock:
-        if studio is None:
-            _studio_cache.clear()
-        else:
-            _studio_cache.pop(studio.pk, None)
-    with _extract_cache_lock:
-        if studio is None:
-            _extract_cache.clear()
-        else:
-            for key in [k for k in _extract_cache if k[0] == studio.pk]:
-                _extract_cache.pop(key, None)
 
 
 def _matches_status(row_status: str, wanted: str) -> bool:
