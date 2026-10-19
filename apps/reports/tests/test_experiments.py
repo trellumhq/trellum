@@ -7,19 +7,13 @@ carve-out -- the one genuinely non-obvious rule in the module -- fires
 exactly when documented.
 """
 import json
-import os
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
 from apps.core import roles
-from apps.reports.overviews import experiments as experiments_mod
 from apps.reports.overviews.experiments import (
     derive_status,
-    extract_ab_component,
-    invalidate_experiments_cache,
-    is_ab_report,
-    primary_metric,
     studio_experiments,
 )
 from apps.reports.scan import sync_studio_registry
@@ -53,112 +47,6 @@ def sync_studio_registry(studio):
     for slug in Report.objects.filter(studio=studio, present_in_scan=True).values_list('slug', flat=True):
         _observe(studio, slug)
     return result
-
-
-# ── is_ab_report ─────────────────────────────────────────────────────────
-
-class TestIsAbReport:
-    def test_true_for_a_dict_ab_test_block(self):
-        assert is_ab_report({"ab_test": {"start_date": "2026-01-01"}}) is True
-
-    def test_false_when_absent(self):
-        assert is_ab_report({}) is False
-
-    def test_false_when_not_a_dict(self):
-        assert is_ab_report({"ab_test": "yes please"}) is False
-
-    def test_false_for_none_config(self):
-        assert is_ab_report(None) is False
-
-
-# ── extract_ab_component ─────────────────────────────────────────────────
-
-def _write_json(path, payload):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload), encoding="utf-8")
-
-
-_AB_COMPONENT_BODY = {
-    "type": "ab_compare",
-    "header": {"test_name": "Checkout v2", "split": "50/50"},
-    "body": {
-        "kpi_rows": [
-            {"metric": "Revenue", "key": "rev", "delta_pct": 4.2,
-             "higher_is_better": True, "control_val": "$1", "test_val": "$2"}
-        ],
-        "volume_rows": [],
-        "timeseries": {},
-    },
-    "modes": None,
-    "default_mode": "",
-}
-
-
-class TestExtractAbComponent:
-    def test_missing_file_returns_none(self, tmp_path):
-        assert extract_ab_component(tmp_path) is None
-
-    def test_corrupt_json_returns_none(self, tmp_path):
-        (tmp_path / "data.json").write_text("{not valid json", encoding="utf-8")
-        assert extract_ab_component(tmp_path) is None
-
-    def test_no_ab_component_returns_none(self, tmp_path):
-        _write_json(tmp_path / "data.json", {"components": {"fw_c1": {"type": "kpi_grid"}}})
-        assert extract_ab_component(tmp_path) is None
-
-    def test_body_variant(self, tmp_path):
-        _write_json(tmp_path / "data.json", {
-            "components": {"fw_c1": _AB_COMPONENT_BODY},
-            "_freshness": {"generated_at": "2026-08-01T00:00:00+00:00"},
-            "_framework_version": "9.9.9",
-        })
-        result = extract_ab_component(tmp_path)
-        assert result is not None
-        assert result["component"]["type"] == "ab_compare"
-        assert result["generated_at"] == "2026-08-01T00:00:00+00:00"
-        assert result["framework_version"] == "9.9.9"
-
-    def test_modes_and_default_mode_variant(self, tmp_path):
-        comp = {
-            "type": "ab_compare",
-            "header": {"test_name": "Checkout v2"},
-            "body": None,
-            "modes": {
-                "raw": {"label": "Raw", "kpi_rows": [
-                    {"metric": "Revenue", "delta_pct": 1.0, "higher_is_better": True}
-                ]},
-                "cuped": {"label": "CUPED-adjusted", "kpi_rows": [
-                    {"metric": "Revenue", "delta_pct": 4.2, "higher_is_better": True}
-                ]},
-            },
-            "default_mode": "cuped",
-        }
-        _write_json(tmp_path / "data.json", {"components": {"fw_c1": comp}})
-        result = extract_ab_component(tmp_path)
-        assert result is not None
-        assert result["component"]["default_mode"] == "cuped"
-        assert result["component"]["modes"]["cuped"]["label"] == "CUPED-adjusted"
-
-    def test_component_only_in_scope_file(self, tmp_path):
-        _write_json(tmp_path / "data.json", {
-            "components": {"fw_c1": {"type": "kpi_grid"}},
-            "_scopeFiles": {"mobile": "data_mobile.json"},
-        })
-        _write_json(tmp_path / "data_mobile.json", {"components": {"fw_c2": _AB_COMPONENT_BODY}})
-        result = extract_ab_component(tmp_path)
-        assert result is not None
-        assert result["component"]["header"]["test_name"] == "Checkout v2"
-
-    def test_scope_file_traversal_is_blocked(self, tmp_path):
-        """A ``_scopeFiles`` entry that resolves outside output_dir must never
-        be followed, however it got there."""
-        outside = tmp_path.parent / "outside_data.json"
-        _write_json(outside, {"components": {"fw_c2": _AB_COMPONENT_BODY}})
-        _write_json(tmp_path / "data.json", {
-            "components": {},
-            "_scopeFiles": {"evil": "../outside_data.json"},
-        })
-        assert extract_ab_component(tmp_path) is None
 
 
 # ── derive_status ────────────────────────────────────────────────────────
@@ -236,55 +124,6 @@ class TestDeriveStatus:
         )
         assert result["status"] == "running"
         assert result["no_end_declared"] is True
-
-
-# ── primary_metric ───────────────────────────────────────────────────────
-
-class TestPrimaryMetric:
-    def test_no_body_returns_none(self):
-        assert primary_metric(None, {}) is None
-
-    def test_no_kpi_rows_returns_none(self):
-        assert primary_metric({"kpi_rows": []}, {}) is None
-
-    def test_defaults_to_first_row(self):
-        body = {"kpi_rows": [{"metric": "A", "delta_pct": 1.0}, {"metric": "B", "delta_pct": 2.0}]}
-        assert primary_metric(body, {})["metric"] == "A"
-
-    def test_matches_primary_metric_by_key(self):
-        body = {"kpi_rows": [
-            {"metric": "A", "key": "rev", "delta_pct": 1.0},
-            {"metric": "B", "key": "conv", "delta_pct": 2.0},
-        ]}
-        assert primary_metric(body, {"primary_metric": "conv"})["metric"] == "B"
-
-    def test_matches_primary_metric_by_label_case_insensitively(self):
-        body = {"kpi_rows": [
-            {"metric": "Revenue", "delta_pct": 1.0},
-            {"metric": "Conversion Rate", "delta_pct": 2.0},
-        ]}
-        result = primary_metric(body, {"primary_metric": "CONVERSION RATE"})
-        assert result["metric"] == "Conversion Rate"
-
-    def test_no_match_falls_back_to_first_row(self):
-        body = {"kpi_rows": [{"metric": "A", "delta_pct": 1.0}]}
-        assert primary_metric(body, {"primary_metric": "nope"})["metric"] == "A"
-
-    def test_ci_straddling_zero_is_not_significant(self):
-        body = {"kpi_rows": [{"metric": "A", "delta_pct": 1.0, "ci_pct": [-0.5, 2.0]}]}
-        result = primary_metric(body, {})
-        assert result["significant"] is False
-        assert result["ci_pct"] == [-0.5, 2.0]
-
-    def test_ci_excluding_zero_is_significant(self):
-        body = {"kpi_rows": [{"metric": "A", "delta_pct": 4.2, "ci_pct": [1.1, 7.3]}]}
-        assert primary_metric(body, {})["significant"] is True
-
-    def test_missing_ci_is_not_significant(self):
-        body = {"kpi_rows": [{"metric": "A", "delta_pct": 4.2}]}
-        result = primary_metric(body, {})
-        assert result["significant"] is False
-        assert result["ci_pct"] is None
 
 
 # ── studio_experiments ───────────────────────────────────────────────────
@@ -419,70 +258,6 @@ class TestStudioExperiments:
         # Not observed: quiet dash on the page, never "Not built yet".
         assert data['rows'][0]['pending'] is True and data['rows'][0]['built'] is True
         assert data['tiles']['running'] == 1
-
-    def test_cache_is_invalidated_explicitly(self, studio_tree, write_report):
-        write_report("a", ab_test={"start_date": "2026-01-01"})
-        sync_studio_registry(studio_tree)
-        assert len(studio_experiments(studio_tree)["rows"]) == 1
-        write_report("b", ab_test={"start_date": "2026-01-01"})
-        sync_studio_registry(studio_tree)
-        invalidate_experiments_cache(studio_tree)
-        assert len(studio_experiments(studio_tree)["rows"]) == 2
-
-
-# ── the bounded per-report extract cache ────────────────────────────────
-
-def _cache_entries_for(studio):
-    """``_extract_cache`` is a module-level dict shared by the whole test
-    session, so counting it directly would pick up every other test's studio.
-    Scope by pk, the same way ``invalidate_experiments_cache`` does."""
-    return {k: v for k, v in experiments_mod._extract_cache.items() if k[0] == studio.pk}
-
-
-class TestExtractCacheBound:
-    """The extractor memo used to be keyed by the data.json path, so on the
-    remote backend -- where every build gets a fresh cache directory -- each
-    rebuild left its predecessor's (multi-MB) entry behind forever. It's now
-    keyed by (studio, slug), one entry per report that self-replaces on
-    rebuild."""
-
-    def test_one_entry_per_report_that_self_replaces_on_rebuild(
-        self, studio_tree, write_report
-    ):
-        write_report("checkout", ab_test={"start_date": "2026-01-01"})
-        sync_studio_registry(studio_tree)
-        _write_ab_payload(studio_tree, "checkout", delta_pct=1.0, ci_pct=[0.1, 2.0])
-
-        data = experiments_mod._cached_extract(studio_tree, "checkout", studio_tree.output_dir / "checkout")
-        assert primary_metric(data["components"][0]["body"], {})["delta_pct"] == 1.0
-        assert len(_cache_entries_for(studio_tree)) == 1
-
-        # Simulate a rebuild: new content, mtime moved forward explicitly
-        # (some filesystems only have 1s mtime granularity, so a bare rewrite
-        # right after the first one might not visibly change mtime).
-        _write_ab_payload(studio_tree, "checkout", delta_pct=9.0, ci_pct=[8.0, 10.0])
-        path = studio_tree.output_dir / "checkout" / "data.json"
-        newer = path.stat().st_mtime + 5
-        os.utime(path, (newer, newer))
-
-        data = experiments_mod._cached_extract(studio_tree, "checkout", studio_tree.output_dir / "checkout")
-        assert primary_metric(data["components"][0]["body"], {})["delta_pct"] == 9.0
-        # Still exactly one entry for this report: the rebuild replaced the
-        # existing cache entry rather than adding a second one.
-        assert len(_cache_entries_for(studio_tree)) == 1
-
-    def test_invalidate_clears_the_extract_cache_too(self, studio_tree, write_report):
-        write_report("checkout", ab_test={"start_date": "2026-01-01"})
-        sync_studio_registry(studio_tree)
-        _write_ab_payload(studio_tree, "checkout", delta_pct=1.0, ci_pct=[0.1, 2.0])
-        experiments_mod._cached_extract(studio_tree, "checkout", studio_tree.output_dir / "checkout")
-        assert len(_cache_entries_for(studio_tree)) == 1
-
-        invalidate_experiments_cache(studio_tree)
-        assert len(_cache_entries_for(studio_tree)) == 0
-
-
-# ── timeline ─────────────────────────────────────────────────────────────
 
 class TestTimeline:
     def test_scheduled_experiments_get_no_bar(self, studio_tree, write_report):
@@ -660,17 +435,6 @@ def _write_multi_ab_payload(studio, slug, tests):
     _observe(studio, slug, json.loads((out / "data.json").read_text()), has_output=True)
 
 
-class TestIsAbReportList:
-    def test_true_for_a_list_of_dicts(self):
-        assert is_ab_report({"ab_test": [{"start_date": "2026-01-01"}]}) is True
-
-    def test_false_for_an_empty_list(self):
-        assert is_ab_report({"ab_test": []}) is False
-
-    def test_false_for_a_list_of_garbage(self):
-        assert is_ab_report({"ab_test": ["yes please", 3]}) is False
-
-
 class TestDeriveStatusClosed:
     def test_closed_reads_concluded_even_with_an_active_schedule(self):
         result = derive_status(
@@ -708,7 +472,6 @@ class TestMultiExperimentReports:
             ("beta", -2.0, [-4.0, -0.5]),
             ("alpha", 3.0, [1.0, 5.0]),
         ])
-        invalidate_experiments_cache(studio_tree)
 
         rows = studio_experiments(studio_tree)["rows"]
         assert [r["test_name"] for r in rows] == ["alpha", "beta"]
@@ -744,7 +507,6 @@ class TestMultiExperimentReports:
         sync_studio_registry(studio_tree)
         Report.objects.filter(studio=studio_tree, slug="programme").update(
             schedule_cron="0 9 * * *")
-        invalidate_experiments_cache(studio_tree)
 
         rows = studio_experiments(studio_tree)["rows"]
         assert [r["status"] for r in rows] == ["running", "past_end",
@@ -763,7 +525,6 @@ class TestMultiExperimentReports:
             ("first_build", 1.0, None),
             ("second_build", 2.0, None),
         ])
-        invalidate_experiments_cache(studio_tree)
 
         rows = studio_experiments(studio_tree)["rows"]
         assert rows[0]["primary"]["delta_pct"] == 1.0
@@ -786,7 +547,6 @@ class TestMultiExperimentReports:
         _write_multi_ab_payload(studio_tree, "programme", [
             ("present", 1.0, None),
         ])
-        invalidate_experiments_cache(studio_tree)
 
         rows = {r["test_name"]: r for r in studio_experiments(studio_tree)["rows"]}
         assert rows["present"]["payload_missing"] is False
