@@ -281,12 +281,6 @@ def _build_timeline(rows: list[dict], today: date) -> dict:
     }
 
 
-def _matches_status(row_status: str, wanted: str) -> bool:
-    if wanted == "running":
-        return row_status in ("running", "past_end")
-    return row_status == wanted
-
-
 def studio_experiments(studio, *, params=None) -> dict:
     """Read bounded worker-observed facts, with global database aggregates."""
     from .experiment_queries import overview
