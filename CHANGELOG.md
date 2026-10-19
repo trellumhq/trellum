@@ -7,10 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-10-19
+
 ### Added
 
 - Bounded report-stage failure evidence and durable automatic recovery for
-  explicitly replay-safe reports, with recovery disposition in run history.
+  explicitly replay-safe reports, with recovery disposition in run history. A
+  report opts in with `recovery: replay_safe: true` in `report.yaml`; see
+  *Troubleshooting build failures* for what qualifies.
 - Preserve successful report artifacts while replacement builds run or fail.
 
 ### Changed
@@ -57,6 +61,37 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   `TRELLUM_RUN_TIMEOUT` overrides and the five-second termination grace.
 - Contain direct Windows report builds in a Job Object so successful runs can
   publish and stopped process trees can be confirmed before recovery.
+
+### Fixed
+
+- A monitor's metadata strip (`ctx.set_header(meta=...)`) updates on each
+  auto-refresh, not only after a full page reload.
+- The portal no longer reads an empty or half-written `_meta.json` while a
+  build's attribution step rewrites it; the file is now replaced atomically.
+
+### Upgrade notes
+
+**Report code may need changes for pandas 3 and category text columns.** Run
+`python -m trellum guide upgrade` against your reports before upgrading the
+report-runner image; it lists each pattern to change (`.map()` then
+arithmetic, `pd.to_datetime()` then `<`/`>`, `.min()`/`.max()`, `fillna()`
+with a new value, `+` with a string). A build that fails on one prints a hint
+pointing there. Pass `compact_text=False` to `query_df` to keep plain text
+columns while you migrate. See `trellum/docs/MIGRATIONS.md`.
+
+Apply the migrations `runner.0008`, `runner.0009` and `runner.0010`: a new
+`RunRecovery` table and nullable `Run` columns. `runner.0009` builds two
+indexes concurrently, outside a transaction, so queue writes continue while
+it runs. Update the portal, the coordinator, every worker and the matched
+report-runner image to v0.9.0 together.
+
+Builds now get 60 minutes by default instead of 30. An explicit
+`TRELLUM_RUN_TIMEOUT` keeps its value.
+
+Automatic recovery is off until a report sets `recovery: replay_safe: true`.
+
+Rebuild reports with a metadata strip to pick up the auto-refresh fix.
+
 
 ## [0.8.0] — 2026-10-17
 
@@ -885,7 +920,10 @@ and demos together in one AGPL-licensed project.
 - Owned Trellum code is released under AGPL-3.0-only. Third-party and
   contributor notices retain their own terms.
 
-[Unreleased]: https://github.com/trellumhq/trellum/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/trellumhq/trellum/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/trellumhq/trellum/compare/v0.8.0...v0.9.0
+[0.8.0]: https://github.com/trellumhq/trellum/compare/v0.7.0...v0.8.0
+[0.7.0]: https://github.com/trellumhq/trellum/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/trellumhq/trellum/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/trellumhq/trellum/releases/tag/v0.5.0
 [0.4.3]: https://github.com/trellumhq/trellum/releases/tag/v0.4.3
