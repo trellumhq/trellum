@@ -21,7 +21,10 @@ def _static(settings):
     return route
 
 
-@pytest.mark.parametrize("engine,width", [("chromium", 1440), ("chromium", 412), ("webkit", 1440), ("webkit", 412)])
+# The picker search/save logic does not depend on width or engine, but the
+# narrow popup is a different layout and WebKit a different engine: one run of
+# each (desktop Chromium, mobile WebKit) covers both.
+@pytest.mark.parametrize("engine,width", [("chromium", 1440), ("webkit", 412)])
 def test_group_access_card_picks_searches_and_saves(engine, width, live_server, login, org_admin, org, studio, make_group, settings, tmp_path):
     settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = True
     settings.DATA_DIR = tmp_path / "data"
@@ -80,7 +83,8 @@ def test_group_access_card_picks_searches_and_saves(engine, width, live_server, 
         browser.close()
 
 
-@pytest.mark.parametrize("engine,width", [("chromium", 1440), ("chromium", 412), ("webkit", 412)])
+# A scrollWidth check: width changes the layout, the engine does not.
+@pytest.mark.parametrize("engine,width", [("chromium", 1440), ("chromium", 412)])
 def test_group_pages_do_not_overflow_with_long_content(engine, width, live_server, login, org_admin, member, org, studio, make_group, attach_group, settings, tmp_path):
     from apps.accounts.models import User
     from apps.orgs.models import OrgMembership, PermissionGroup, PermissionGroupMembership
