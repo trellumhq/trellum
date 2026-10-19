@@ -65,6 +65,15 @@ def test_studio_switcher_lists_every_studio_and_goes_there_directly(login, org_a
         assert menu.locator('a[href="/s/%s/enhanced-029/"]' % org.slug).count() == 1
         menu.get_by_role('searchbox').fill('Enhanced 029')
         expect(menu.locator('a:visible')).to_have_count(1)
+        menu.get_by_role('searchbox').fill('no such studio')
+        expect(menu.locator('a:visible')).to_have_count(0)
+        expect(menu.locator('.tl-console-scope-empty')).to_be_visible()
+        if width > 700:  # on a phone, Escape closes the navigation drawer first
+            page.keyboard.press('Escape')
+            expect(switcher).not_to_have_attribute('open', '')
+            switcher.locator('summary').click()
+        menu.get_by_role('searchbox').fill('Enhanced 029')
+        expect(menu.locator('a:visible')).to_have_count(1)
         menu.locator('a:visible').click()
         page.wait_for_url(f'**/s/{org.slug}/enhanced-029/**')
         context.close()
