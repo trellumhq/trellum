@@ -142,14 +142,14 @@ class TestMemoryAdmission:
 
 
 class TestRecovery:
-    def test_stale_active_runs_marked_error(self, make_run):
+    def test_stale_active_runs_remain_fenced_unconfirmed(self, make_run):
         r1 = make_run(status=Run.RUNNING)
         r2 = make_run(status=Run.STARTING)
         done = make_run(status=Run.SUCCESS)
         Command()._recover_stale_runs()
-        assert Run.objects.get(pk=r1.pk).status == Run.ERROR
-        assert "Worker heartbeat missing" in Run.objects.get(pk=r1.pk).stderr_tail
-        assert Run.objects.get(pk=r2.pk).status == Run.ERROR
+        assert Run.objects.get(pk=r1.pk).status == Run.RUNNING
+        assert Run.objects.get(pk=r1.pk).diagnostics["recovery"]["state"] == "unconfirmed"
+        assert Run.objects.get(pk=r2.pk).status == Run.STARTING
         assert Run.objects.get(pk=done.pk).status == Run.SUCCESS
 
     def test_runs_of_a_live_worker_are_left_alone(self, make_run):
@@ -161,7 +161,8 @@ class TestRecovery:
 
         Command()._recover_stale_runs()
 
-        assert Run.objects.get(pk=mine.pk).status == Run.ERROR
+        assert Run.objects.get(pk=mine.pk).status == Run.RUNNING
+        assert Run.objects.get(pk=mine.pk).stop_requested
         assert Run.objects.get(pk=theirs.pk).status == Run.RUNNING
 
     def test_runs_of_a_stale_worker_are_reclaimed(self, make_run):
@@ -173,7 +174,8 @@ class TestRecovery:
 
         Command()._recover_stale_runs()
 
-        assert Run.objects.get(pk=run.pk).status == Run.ERROR
+        assert Run.objects.get(pk=run.pk).status == Run.RUNNING
+        assert Run.objects.get(pk=run.pk).termination_confirmed is False
 
     def test_never_reaps_its_own_runs_even_with_a_stale_heartbeat(self, make_run):
         """A DB stall can let our own heartbeat lapse; we know we are alive, so
@@ -184,27 +186,21 @@ class TestRecovery:
 
         assert Run.objects.get(pk=run.pk).status == Run.RUNNING
 
-    def test_newly_registered_worker_is_visible_to_recovery_update(
-        self, make_run, monkeypatch
-    ):
+    def test_newly_registered_worker_is_rechecked_under_lock(self, make_run, monkeypatch):
         from django.db.models.query import QuerySet
+        run = make_run(status=Run.RUNNING, worker_id="runner-arriving")
+        original_get = QuerySet.get
 
-        new_run = []
-        original_update = QuerySet.update
-
-        def register_worker_before_update(queryset, **kwargs):
-            if queryset.model is Run and not new_run:
+        def register_worker(queryset, *args, **kwargs):
+            if queryset.model is Run and not WorkerHeartbeat.objects.filter(worker_id="runner-arriving").exists():
                 WorkerHeartbeat.objects.create(worker_id="runner-arriving")
-                new_run.append(
-                    make_run(status=Run.RUNNING, worker_id="runner-arriving")
-                )
-            return original_update(queryset, **kwargs)
+            return original_get(queryset, *args, **kwargs)
 
-        monkeypatch.setattr(QuerySet, "update", register_worker_before_update)
-
+        monkeypatch.setattr(QuerySet, "get", register_worker)
         Command()._recover_stale_runs()
-
-        assert Run.objects.get(pk=new_run[0].pk).status == Run.RUNNING
+        run.refresh_from_db()
+        assert run.status == Run.RUNNING
+        assert not run.stop_requested
 
     def test_heartbeat_upsert_and_alive_window(self):
         stub = StubExecutor()
@@ -463,7 +459,8 @@ class TestRoles:
     def test_coordinator_reaps(self, make_run):
         orphan = make_run(status=Run.RUNNING, worker_id="long-dead")
         self._run(role="coordinator")
-        assert Run.objects.get(pk=orphan.pk).status == Run.ERROR
+        assert Run.objects.get(pk=orphan.pk).status == Run.RUNNING
+        assert Run.objects.get(pk=orphan.pk).termination_confirmed is False
 
 
 class TestStudioSyncLock:

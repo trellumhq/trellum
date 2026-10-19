@@ -9,6 +9,7 @@ import time
 from typing import Any, Callable
 
 from trellum.data.retry_errors import is_retryable_connection_error
+from trellum.diagnostics import diagnostic_context, progress, record_failure, record_retry, stage
 
 logger = logging.getLogger(__name__)
 _ATTEMPTS = 3
@@ -96,6 +97,7 @@ class ManagedConnection:
             value = getattr(self._inner, name)
             if callable(value):
                 self._replay_enabled = False
+                progress("execute", source_type=self._source_type, query_retry_safe=False, unsafe_operation=True)
             return value
 
     def __setattr__(self, name: str, value: Any) -> None:
@@ -107,6 +109,7 @@ class ManagedConnection:
                     self._reject_session_access()
                 self._ensure_open()
                 self._replay_enabled = False
+                progress("execute", source_type=self._source_type, query_retry_safe=False, unsafe_operation=True)
                 setattr(self._inner, name, value)
 
     def _ensure_open(self) -> None:
@@ -132,14 +135,19 @@ class ManagedConnection:
     def _run(self, operation: Callable[[Any], Any], *, replay: bool) -> Any:
         if self._closed:
             raise RuntimeError("Connection has been explicitly closed")
+        if not replay:
+            progress("execute", source_type=self._source_type, query_retry_safe=False, unsafe_operation=True)
         limit = _ATTEMPTS if replay else 1
         last_error = None
         for attempt in range(1, limit + 1):
             try:
                 if self._inner is None:
-                    self._inner = self._factory()
-                result = operation(self._inner)
+                    with stage("connect", source_type=self._source_type, attempt=attempt, query_retry_safe=True):
+                        self._inner = self._factory()
+                with diagnostic_context(source_type=self._source_type, attempt=attempt, query_retry_safe=replay):
+                    result = operation(self._inner)
             except Exception as exc:
+                record_failure(exc, source_type=self._source_type, query_retry_safe=replay, attempt=attempt)
                 if not replay or not is_retryable_connection_error(exc, self._source_type):
                     raise
                 self._discard()
@@ -152,6 +160,7 @@ class ManagedConnection:
                     )
                     exc.add_note(f"Datasource recovery exhausted after {limit} attempts ({self._source_type}).")
                     raise
+                record_retry(exc, attempt=attempt)
                 logger.warning(
                     "Retrying datasource with fresh connection: driver=%s source=%s attempt=%s/%s error=%s",
                     self._source_type, source_of(self), attempt, limit, type(exc).__name__,
@@ -185,6 +194,7 @@ class ManagedConnection:
             if self._new_connection_per_query:
                 return self
             self._replay_enabled = False
+            progress("execute", source_type=self._source_type, query_retry_safe=False, unsafe_operation=True)
             self._inner.__enter__()
             return self
 
@@ -215,6 +225,8 @@ def connect_managed(type_name: str, conn_info: dict) -> Any:
 def run_with_retry(conn: Any, operation: Callable[[Any], Any], *, sql: str) -> Any:
     """Retry an entire materialized read; never retry external raw cursors."""
     if not isinstance(conn, ManagedConnection):
+        if not _can_replay(sql):
+            progress("execute", query_retry_safe=False, unsafe_operation=True)
         return operation(conn)
     with conn._lock:
         if conn._new_connection_per_query:

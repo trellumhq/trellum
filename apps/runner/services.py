@@ -20,6 +20,10 @@ def enqueue(report, *, cache_mode: str = "normal", trigger: str = "manual", user
     if cache_mode not in dict(Run.CACHE_MODES):
         cache_mode = "normal"
     with transaction.atomic():
+        from apps.reports.models import Report
+        from apps.runner.recovery import replay_safe
+
+        report = Report.objects.select_for_update().select_related("studio").get(pk=report.pk)
         active = (
             Run.objects.select_for_update()
             .filter(report=report, status__in=Run.ACTIVE_STATUSES)
@@ -42,6 +46,7 @@ def enqueue(report, *, cache_mode: str = "normal", trigger: str = "manual", user
             priority=report.priority,
             trigger=trigger,
             requested_by=user,
+            replay_safe=replay_safe(report),
         )
         transaction.on_commit(lambda: logger.info(
             "Build queued",
@@ -133,19 +138,19 @@ def request_stop(report) -> bool:
         extra={"report_slug": report.slug, "studio": str(report.studio),
                "reason": "stop_requested"},
     )
-    stopped_queued = (
-        Run.objects.filter(report=report, status=Run.QUEUED).update(
+    with transaction.atomic():
+        from apps.reports.models import Report
+        from apps.runner.recovery import cancel_pending
+
+        report = Report.objects.select_for_update().get(pk=report.pk)
+        cancelled = cancel_pending(report)
+        stopped_queued = Run.objects.filter(report=report, status=Run.QUEUED).update(
             status=Run.STOPPED, stop_requested=True
         )
-        > 0
-    )
-    flagged_running = (
-        Run.objects.filter(
+        flagged_running = Run.objects.filter(
             report=report, status__in=(Run.STARTING, Run.RUNNING)
         ).update(stop_requested=True)
-        > 0
-    )
-    return stopped_queued or flagged_running
+    return bool(cancelled or stopped_queued or flagged_running)
 
 
 def report_state(report) -> tuple[str, float | None]:

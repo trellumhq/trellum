@@ -4,8 +4,11 @@ The following reports' most recent builds failed:
 
 {% for item in items %}- {{ item.report.name|default:item.report.slug }}
   {{ item.error_first_line }}
+  {% if item.recovery_note %}{{ item.recovery_note }}
+  {% endif %}
   View the report: {{ item.report_url }}
 
 {% endfor %}
+View build history: {{ operations_url }}
 --
 Sent by {{ instance_name }} to {{ studio.name }}'s developers and admins.

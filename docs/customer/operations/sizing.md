@@ -28,12 +28,18 @@ into memory at once, not how many reports exist.
   [object storage](/docs/latest/install/configuration/#built-report-output-in-object-storage);
   checkouts and uploaded files stay on the volume either way
 
+Explicit `TRELLUM_RUN_TIMEOUT` environment settings, including `1800`, retain their value on upgrade;
+check the worker service environment before expecting the new default. The build
+budget begins at process start, excluding queue time. Driver connect and statement
+timeouts and worker shutdown drain budgets remain independent. Shutdown still
+drains for 540 seconds, then terminates remaining builds.
+
 ## Sizing report-build memory precisely
 
 The starting points above get you running; once you have real traffic, size
 memory from evidence instead. Every build gets the same admission allocation,
 `TRELLUM_DEFAULT_JOB_MEMORY_MB` (1024 by default), and the same wall-clock
-limit, `TRELLUM_RUN_TIMEOUT` (1800 seconds / 30 minutes by default). `report.yaml` carries
+limit, `TRELLUM_RUN_TIMEOUT` (3600 seconds / 60 minutes by default). `report.yaml` carries
 no sandbox limits, so size both for the largest report on the instance. Give
 the runner a budget sized to what's left once the rest of the stack has what
 it needs:
@@ -173,3 +179,16 @@ release over release is the usual early warning.
 `GET /healthz` is a lightweight liveness check — the web process and the
 database — for whatever uptime monitor or load balancer you point at the
 instance.
+
+Completed output replaces the prior directory only after a successful build.
+Linux uses an atomic directory exchange; on other filesystems/platforms a
+rename-and-rollback sequence can briefly make the directory unavailable, while
+keeping partially generated files out of the served report.
+
+Automatic recovery requires confirmed process-tree termination. POSIX workers
+launch each build in a separate process group; Docker workers confirm container
+exit through inspection. A missing container or surviving process group remains
+unconfirmed and holds the report's active-run fence. Unsandboxed Windows workers
+cannot currently prove descendant termination and also retain this fence; use
+Docker for builds requiring automatic recovery. Operator investigation is needed
+when a termination outcome cannot be confirmed.

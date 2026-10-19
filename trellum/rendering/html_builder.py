@@ -25,6 +25,7 @@ import orjson
 import trellum
 from trellum.assets import load_css, load_js
 from trellum.components.base import RenderContext, collect_asset_parts
+from trellum.diagnostics import instrument
 from trellum.licensing import inject_source_notice, source_notice_html
 from trellum.project import load_extensions
 from trellum.rendering.artifacts import (
@@ -189,6 +190,7 @@ def _render_custom_html(ctx, out, data, name, extensions, live_registry, validat
     return html_path, json_path
 
 
+@instrument("render")
 def render_report(
     ctx,
     output_dir: str | None = None,

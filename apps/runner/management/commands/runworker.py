@@ -243,6 +243,10 @@ class Command(BaseCommand):
                         from apps.datasources.unblock import process_next as unblock_step
 
                         unblock_step()
+                    if is_coordinator:
+                        from apps.runner.recovery import dispatch_due, reconcile
+                        reconcile()
+                        dispatch_due()
                     if scheduler is not None:
                         scheduler.refresh_if_due()
                     # Boot-time reaping alone is not enough: a worker killed
@@ -283,12 +287,10 @@ class Command(BaseCommand):
             return bool(cur.fetchone()[0])
 
     def _recover_stale_runs(self, self_worker_id: str | None = None) -> None:
-        """Reclaim in-flight runs whose worker is gone.
+        """Fence in-flight runs whose own worker stopped beating.
 
-        A run is orphaned only when *its own* worker has stopped beating. The
-        naive "everything active at boot is dead" version is correct with a
-        single worker and catastrophic with several: restarting one runner
-        would mark every other runner's live builds as errors.
+        Missing heartbeats alone cannot establish process/container death.
+        Never terminalize another runner's live build on coordinator restart.
 
         ``self_worker_id`` is never reaped: we are the ones calling, so we are
         alive by definition, even if a DB stall let our heartbeat go stale.
@@ -296,21 +298,32 @@ class Command(BaseCommand):
         # Evaluate liveness in the UPDATE so newly registered workers are visible.
         orphaned = (
             Run.objects.filter(status__in=(Run.STARTING, Run.RUNNING))
+            .exclude(termination_confirmed=False)
             .exclude(worker_id__in=WorkerHeartbeat.alive().values("worker_id"))
         )
         if self_worker_id:
             orphaned = orphaned.exclude(worker_id=self_worker_id)
-        n = orphaned.update(
-            status=Run.ERROR,
-            finished_at=timezone.now(),
-            stderr_tail=("Worker heartbeat missing while this run was in flight. "
-                         "The worker may have stopped, restarted or lost database connectivity."),
-        )
-        if n:
-            logger.warning(
-                f"Marked {n} in-flight run(s) as error: their workers have no live heartbeat",
-                extra={"reason": "worker_heartbeat_missing"},
-            )
+        # A lost heartbeat is not proof of process death. Keep the admission
+        # fence active; the original worker may return and finalize normally.
+        # Never signal a PID from another host/namespace or silently replay it.
+        for run in orphaned.order_by("created_at")[:25]:
+            with transaction.atomic():
+                from apps.reports.models import Report
+                Report.objects.select_for_update().get(pk=run.report_id)
+                locked = Run.objects.select_for_update().get(pk=run.pk)
+                if locked.status not in (Run.STARTING, Run.RUNNING):
+                    continue
+                if WorkerHeartbeat.alive().filter(worker_id=locked.worker_id).exists():
+                    continue
+                evidence = dict(locked.diagnostics or {})
+                evidence.update(cause="worker_outcome_unconfirmed", recovery={
+                    "state": "unconfirmed", "reason": "prior_process_not_confirmed_stopped",
+                    "attempt": locked.recovery_attempt or 0, "due_at": None,
+                })
+                locked.diagnostics = evidence
+                locked.termination_confirmed = False
+                locked.stop_requested = True
+                locked.save(update_fields=["diagnostics", "termination_confirmed", "stop_requested"])
 
     def _sweep_orphan_sandboxes(self) -> None:
         import shutil
@@ -353,7 +366,7 @@ class Command(BaseCommand):
                 logger.info(f"orphan sweep skipped: {exc}")
 
     def _enqueue_catchup(self) -> None:
-        """Enqueue reports whose last build didn't succeed (boot catch-up).
+        """Enqueue never-attempted reports at boot; resume retries separately.
 
         Status comes through the storage layer, not this node's disk: on the
         s3 backend a fresh coordinator has an empty local output directory,
@@ -377,6 +390,12 @@ class Command(BaseCommand):
                     f"{type(exc).__name__}: {exc}"
                 )
                 return
+            # Boot catch-up must not reset a failed recovery budget or replay
+            # arbitrary Python simply because the coordinator restarted.
+            if Run.objects.filter(report=report).exists():
+                continue
+            if report.disabled or report.refresh_suspended_at is not None:
+                continue
             if meta.get("last_status") != "success":
                 if enqueue(report, trigger="catchup") == "queued":
                     n += 1
@@ -409,7 +428,13 @@ class Command(BaseCommand):
 
     def _try_claim(self, executor: Executor, run_id, quotas) -> bool:
         """Lock one queued run and start it. False means 'try the next one'."""
+        from apps.reports.models import Report
+        report_id = Run.objects.filter(pk=run_id).values_list("report_id", flat=True).first()
+        if report_id is None:
+            return False
         with transaction.atomic():
+            if not Report.objects.select_for_update(skip_locked=True).filter(pk=report_id).exists():
+                return False
             run = (
                 Run.objects.select_for_update(skip_locked=True)
                 .select_related("report", "studio", "studio__org")
@@ -418,6 +443,23 @@ class Command(BaseCommand):
             )
             if run is None:
                 return False  # a racing runner got there first
+
+            if run.recovery_id:
+                from apps.runner.models import RunRecovery
+                chain = RunRecovery.objects.select_for_update().get(pk=run.recovery_id)
+                now = timezone.now()
+                from apps.runner.recovery import replay_safe, _save_chain
+                if (chain.state != "running" or now >= chain.expires_at
+                        or run.report.disabled or not run.report.present_in_scan
+                        or run.report.refresh_suspended_at is not None or not replay_safe(run.report)):
+                    if chain.state == "running":
+                        chain.state = "expired" if now >= chain.expires_at else "cancelled"
+                        chain.reason = "recovery_age_exceeded" if chain.state == "expired" else "report_unavailable_or_unsafe"
+                        chain.due_at = None
+                        _save_chain(chain)
+                    run.status, run.stop_requested, run.finished_at = Run.STOPPED, True, now
+                    run.save(update_fields=["status", "stop_requested", "finished_at"])
+                    return False
 
             from apps.reports.models import ReportSourceSummary
 

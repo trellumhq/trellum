@@ -7,8 +7,16 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- Bounded report-stage failure evidence and durable automatic recovery for
+  explicitly replay-safe reports, with recovery disposition in run history.
+- Preserve successful report artifacts while replacement builds run or fail.
+
 ### Changed
 
+- Keep query execution, diagnostics and Decimal conversion together within
+  the process-wide query limit.
 - Split a chunked DataSource (`chunk_by="month"` or `"week"`) into its period
   files without copying the whole frame, both while rendering and while the
   build measures chunk sizes for its details. A two-million-row report needs
@@ -43,6 +51,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   `python -m trellum guide upgrade` lists each fix, and a build that fails on
   one prints a hint pointing there. `query_df(..., compact_text=False)`
   returns plain text.
+- Send the ordinary Broken alert for a report's first failed build, with
+  bounded automatic-recovery status and a link to its build history.
+- Allow 60 minutes for report builds by default, retaining explicit
+  `TRELLUM_RUN_TIMEOUT` overrides and the five-second termination grace.
+- Contain direct Windows report builds in a Job Object so successful runs can
+  publish and stopped process trees can be confirmed before recovery.
 
 ## [0.8.0] — 2026-10-17
 

@@ -76,6 +76,16 @@ def managed(monkeypatch, *connections_or_errors, per_query=False):
     return retry.connect_managed("postgres", {"password": "secret", "new_connection_per_query": per_query}), factory
 
 
+def test_query_df_uses_patchable_execute_alias(monkeypatch):
+    raw = Connection()
+    expected = pd.DataFrame({"n": [1]})
+    execute = Mock(return_value=expected)
+    monkeypatch.setattr(query, "_execute_query", execute)
+
+    assert query.query_df(raw, "SELECT n FROM t", cache_ttl=0, compact_text=False) is expected
+    execute.assert_called_once_with(raw, "SELECT n FROM t", False)
+
+
 @pytest.mark.parametrize("stage", ["execute", "fetch"])
 def test_query_retry_replaces_connection_preserves_source_and_caches_complete_frame(monkeypatch, tmp_path, stage):
     error = ConnectionResetError("secret SQL")

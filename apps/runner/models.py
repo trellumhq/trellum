@@ -33,7 +33,7 @@ class Run(models.Model):
     ]
     TRIGGERS = [
         ("manual", "Manual"), ("schedule", "Schedule"),
-        ("git", "Git push"), ("catchup", "Boot catch-up"),
+        ("git", "Git push"), ("catchup", "Boot catch-up"), ("retry", "Automatic recovery"),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -71,6 +71,18 @@ class Run(models.Model):
     #: report it. Feeds capacity planning and right-sizing advice.
     peak_memory_mb = models.PositiveIntegerField(null=True, blank=True)
 
+    # Nullable expand-only fields preserve historical runs without inventing evidence.
+    diagnostics = models.JSONField(null=True, blank=True)
+    termination_confirmed = models.BooleanField(null=True, blank=True)
+    replay_safe = models.BooleanField(null=True, blank=True)
+    recovery = models.ForeignKey(
+        "RunRecovery", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="attempts", db_index=False,
+    )
+    recovery_attempt = models.SmallIntegerField(null=True, blank=True)
+    # Claims a build-status transition once, including after its mail buffer is flushed.
+    alert_processed_at = models.DateTimeField(null=True, blank=True)
+
     class Meta:
         indexes = [
             models.Index(fields=["status", "-priority", "created_at"]),
@@ -79,6 +91,8 @@ class Run(models.Model):
             models.Index(fields=["status", "pool", "created_at"]),
             # Per-report history + aggregates (drawer stats, api_report_status).
             models.Index(fields=["report", "-created_at"], name="run_report_created_idx"),
+            models.Index(fields=["recovery"], name="run_recovery_idx"),
+            models.Index(fields=["report"], condition=models.Q(status__in=["queued", "starting", "running"]), name="run_active_report_idx"),
         ]
         ordering = ["-created_at"]
 
@@ -113,6 +127,8 @@ class Run(models.Model):
             "requested_by": self.requested_by.email if self.requested_by else None,
             "memory_limit_mb": self.memory_limit_mb,
             "peak_memory_mb": self.peak_memory_mb,
+            "diagnostics": self.diagnostics or {},
+            "recovery": (self.diagnostics or {}).get("recovery", {}),
         }
         if include_output:
             d["stdout"] = self.stdout_tail
@@ -232,3 +248,25 @@ class StudioMaintenanceAction(models.Model):
 
     def __str__(self) -> str:
         return f"{self.kind} {self.id} [{self.state}]"
+
+
+class RunRecovery(models.Model):
+    """One bounded replay chain; its current queued Run is the durable dispatch lease.
+
+    Claims and admission happen in one transaction under the Report row lock.
+    There is no expiring execution lease: elapsed time cannot prove termination.
+    """
+
+    root_run = models.OneToOneField(Run, on_delete=models.CASCADE, related_name="recovery_chain")
+    report = models.ForeignKey("reports.Report", on_delete=models.CASCADE, related_name="recoveries")
+    current_run = models.ForeignKey(Run, on_delete=models.SET_NULL, null=True, related_name="+")
+    state = models.CharField(max_length=16, default="pending")
+    reason = models.CharField(max_length=64, default="")
+    attempt = models.PositiveSmallIntegerField(default=0)
+    due_at = models.DateTimeField(null=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    expires_at = models.DateTimeField()
+
+    class Meta:
+        indexes = [models.Index(fields=["state", "due_at"], name="recovery_due_idx")]
+        constraints = [models.UniqueConstraint(fields=["report"], condition=models.Q(state__in=["pending", "running"]), name="recovery_one_open_report")]
