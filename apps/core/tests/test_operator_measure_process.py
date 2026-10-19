@@ -54,15 +54,6 @@ def test_run_bounded_kills_the_whole_process_group_at_the_deadline(tmp_path):
         pytest.fail("a grandchild of the timed-out check survived")
 
 
-def test_real_health_measurement_is_stored(operator_child):
-    observations.note(observations.HEALTH)
-    observations.measure(observations.HEALTH)
-    row = OpsState.objects.get(key=observations.HEALTH)
-    assert row.ok and row.payload["result"]["checks"]
-    assert {"label", "ok", "detail"} == set(row.payload["result"]["checks"][0])
-    assert "completed_at" in row.payload
-
-
 def test_a_hung_check_is_killed_and_the_next_one_runs(operator_child, monkeypatch):
     monkeypatch.setitem(observations.TIMEOUT, "health", 2)
     observations.note(observations.HEALTH)
@@ -80,7 +71,10 @@ def test_a_hung_check_is_killed_and_the_next_one_runs(operator_child, monkeypatc
     row.save(update_fields=["payload"])
     assert observations.tick() == observations.HEALTH
     row.refresh_from_db()
+    # The real child's output, as the command prints it and measure() stores it.
     assert row.ok and row.payload["result"]["checks"]
+    assert {"label", "ok", "detail"} == set(row.payload["result"]["checks"][0])
+    assert "completed_at" in row.payload
 
 
 def test_real_usage_measurement_counts_files_and_zero(operator_child, org):
