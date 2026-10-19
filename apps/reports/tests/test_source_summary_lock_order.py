@@ -50,6 +50,10 @@ def postgres_only():
 def blocked_sessions():
     """Sessions of this database currently parked on a lock."""
     with connection.cursor() as cursor:
+        # PostgreSQL caches pg_stat_activity for the rest of a transaction. The
+        # scan polls from inside its own, so without this the first (empty)
+        # answer is final and every poll burns the whole WAIT.
+        cursor.execute("SELECT pg_stat_clear_snapshot()")
         cursor.execute(
             "SELECT count(*) FROM pg_stat_activity "
             "WHERE datname = current_database() AND wait_event_type = 'Lock'")
