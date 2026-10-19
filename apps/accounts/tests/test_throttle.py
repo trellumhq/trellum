@@ -305,21 +305,39 @@ class TestEscalatingLockout:
 
 class TestMfaFeedsTheSameCounters:
     """apps.accounts.views.mfa_verify_view records against the same throttle
-    keys as a wrong password -- see test_mfa.py for the full login-flow
-    version; this checks the counter/audit shape directly."""
+    keys as a wrong password. Driven through the real /login/verify path."""
 
-    def test_wrong_mfa_code_is_a_recorded_failure(self, make_user, lockout_config):
-        from django.utils import timezone
+    def test_wrong_mfa_code_is_a_recorded_failure(self, client, member, lockout_config):
+        import pyotp
+        from django.test import RequestFactory
 
         from apps.accounts import mfa, throttle
-        from apps.accounts.models import TotpDevice
 
         lockout_config(lockout_account_threshold=2)
-        user = make_user("factored@demo.example")
-        TotpDevice.objects.create(user=user, secret="JBSWY3DPEHPK3PXP", confirmed_at=timezone.now())
-        request = type("R", (), {"META": {"REMOTE_ADDR": "127.0.0.1"}})()
+        device = mfa.begin_enrollment(member)
+        mfa.confirm_enrollment(device, pyotp.TOTP(device.secret).now())
+        device.refresh_from_db()
+        device.last_used_step = 0
+        device.save(update_fields=["last_used_step"])
 
-        assert mfa.verify_login_code(user.totp_device, "000000") is False
-        throttle.record_failure(user.email, request)
-        throttle.record_failure(user.email, request)
-        assert throttle.is_throttled(user.email, request)
+        request = RequestFactory().get("/login", REMOTE_ADDR="127.0.0.1")
+        counter_key = throttle._scopes(member.email, request)[0].counter_key
+        assert client.post("/login", {"email": member.email, "password": PASSWORD}).url == "/login/verify"
+
+        assert client.post("/login/verify", {"code": "000000"}).status_code == 200
+        assert cache.get(counter_key) == 1
+        assert not throttle.is_throttled(member.email, request)
+        assert not AuditLog.objects.filter(action="auth.lockout").exists()
+
+        assert client.post("/login/verify", {"code": "000000"}).status_code == 200
+        assert cache.get(counter_key) == 2
+        assert throttle.is_throttled(member.email, request)
+        assert AuditLog.objects.filter(action="auth.mfa_failed", outcome="denied").count() == 2
+        lockout = AuditLog.objects.get(action="auth.lockout")
+        assert lockout.metadata["scope"] == "email"
+        assert lockout.metadata["attempted"] == member.email
+
+        # Locked out: even a valid code is refused and nothing is logged in.
+        resp = client.post("/login/verify", {"code": pyotp.TOTP(device.secret).now()})
+        assert resp.status_code == 200
+        assert "_auth_user_id" not in client.session

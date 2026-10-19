@@ -71,7 +71,8 @@ class TestGateDenials:
         assert "Demo doesn't create accounts automatically. Ask an organization admin to invite you." in page
 
     def test_outside_domains_names_only_the_asserted_email(self, cfg):
-        _, page = _gate(email="x@rival.example")
+        resp, page = _gate(email="x@rival.example")
+        assert resp.status_code == 403
         assert "x@rival.example isn't in an email domain Demo uses for single sign-on." in page
 
     def test_unverified_email(self, cfg):

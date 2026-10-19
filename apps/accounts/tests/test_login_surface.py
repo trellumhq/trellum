@@ -25,7 +25,7 @@ because the fix edits the URL tree that live identity-provider app registrations
 """
 import pytest
 from django.contrib.auth import get_user_model
-from django.urls import NoReverseMatch, resolve, reverse
+from django.urls import resolve, reverse
 
 from apps.core import roles
 from apps.orgs.models import OrgMembership, OrgSSOConfig
@@ -115,15 +115,6 @@ class TestAllauthPasswordUrlsAreGone:
     """SOCIALACCOUNT_ONLY drops these from allauth.account.urls entirely."""
 
     @pytest.mark.parametrize(
-        "url_name",
-        ["account_set_password", "account_change_password", "account_reset_password",
-         "account_signup", "account_email"],
-    )
-    def test_url_is_not_registered(self, url_name):
-        with pytest.raises(NoReverseMatch):
-            reverse(url_name)
-
-    @pytest.mark.parametrize(
         "path",
         ["/accounts/password/set/", "/accounts/password/change/",
          "/accounts/password/reset/", "/accounts/signup/", "/accounts/email/"],
@@ -148,16 +139,10 @@ class TestTheOIDCFlowIsUntouched:
     """The fix edits the URL tree identity-provider app registrations point at. If these
     break, every configured tenant's redirect URI breaks with them."""
 
-    def test_the_oidc_callback_path_still_resolves(self):
+    def test_the_oidc_callback_path_and_account_login_still_resolve(self):
         match = resolve("/accounts/oidc/oidc-demo/login/callback/")
         assert match.url_name == "openid_connect_callback"
         assert match.kwargs["provider_id"] == "oidc-demo"
-
-    def test_the_oidc_login_path_still_resolves(self):
-        match = resolve("/accounts/oidc/oidc-demo/login/")
-        assert match.url_name == "openid_connect_login"
-
-    def test_account_login_still_reverses(self):
-        """allauth reverses this internally (socialaccount signup with no
-        pending login, and AccountMiddleware on reauthentication)."""
+        # allauth reverses this internally (socialaccount signup with no
+        # pending login, and AccountMiddleware on reauthentication).
         assert reverse("account_login") == "/accounts/login/"

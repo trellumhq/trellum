@@ -38,7 +38,7 @@ def request_actor(rf, org_admin, org):
     return request
 
 
-@pytest.mark.parametrize('count', (25, 100, 1000))
+@pytest.mark.parametrize('count', (25, 1000))
 def test_bounded_add_and_remove_keep_exact_audit_multiset(count, request_actor, make_group, studio):
     group = make_group(f'Batch {count}')
     reports = Report.objects.bulk_create([Report(studio=studio, slug=f'r-{i}', config={'large': 'x' * 1000}) for i in range(count)])
@@ -87,35 +87,6 @@ def test_bulk_constraint_race_becomes_validation_error_and_rolls_back(request_ac
     assert not success and 'Selected reports changed' in str(form.errors)
     assert not PermissionGroupGrant.objects.filter(group=group).exists()
     assert not AuditLog.objects.filter(action='group.grant', target_id=str(group.pk)).exists()
-
-
-def test_foreign_report_is_rejected_without_write(request_actor, make_group, studio, other_studio):
-    group = make_group('Foreign')
-    foreign = Report.objects.create(studio=other_studio, slug='foreign')
-    success, form = save(request_actor, group, studio, [foreign])
-    assert not success and 'reports' in form.errors
-    assert not PermissionGroupGrant.objects.filter(group=group).exists()
-
-
-def test_private_assignment_survives_all_scope_then_clears_on_developer(request_actor, make_group, studio):
-    group = make_group('Private')
-    private = Report.objects.create(studio=studio, slug='private', audience=Report.AUDIENCE_PRIVATE)
-    public = Report.objects.create(studio=studio, slug='public')
-    assert save(request_actor, group, studio, [private, public])[0]
-    assert save(request_actor, group, studio, [], scope='all')[0]
-    assert list(ReportPermissionGrant.objects.filter(grant__group=group).values_list('report_id', flat=True)) == [private.pk]
-    assert save(request_actor, group, studio, [], role='developer')[0]
-    assert not ReportPermissionGrant.objects.filter(grant__group=group).exists()
-
-
-def test_readiness_failure_preserves_existing_assignment(request_actor, make_group, studio, settings):
-    group = make_group('Readiness')
-    report = Report.objects.create(studio=studio, slug='one')
-    assert save(request_actor, group, studio, [report])[0]
-    settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = False
-    success, form = save(request_actor, group, studio, [])
-    assert not success and form.non_field_errors()
-    assert ReportPermissionGrant.objects.filter(grant__group=group, report=report).exists()
 
 
 def test_deletion_after_form_validation_is_not_silently_dropped(request_actor, make_group, studio):

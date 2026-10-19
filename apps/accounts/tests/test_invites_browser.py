@@ -24,8 +24,9 @@ def _inline_assets(html):
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("width", [1440, 390])
-@pytest.mark.parametrize("mode", ["light", "dark"])
+# The resend script does not depend on theme or width independently: one
+# desktop/light run and one phone/dark run cover both.
+@pytest.mark.parametrize("width,mode", [(1440, "light"), (390, "dark")])
 def test_invitation_resend_keeps_neighboring_draft(width, mode, login, org_admin, org, monkeypatch):
     from apps.accounts.models import Invitation
 
@@ -83,5 +84,4 @@ def test_invitation_resend_keeps_neighboring_draft(width, mode, login, org_admin
         expect(page.get_by_label("Email", exact=True)).to_have_value("neighbor-draft@example.test")
         assert len(requests) == 2
         assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
-        page.screenshot(path=f"/tmp/invitation-controls-{width}-{mode}.png", full_page=True)
         browser.close()
