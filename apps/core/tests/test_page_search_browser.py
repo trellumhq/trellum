@@ -262,6 +262,9 @@ def test_ctrl_k_opens_the_jump_list_where_nothing_is_searchable(live_server, log
         page.keyboard.type("cart")
         page.keyboard.press("Enter")
         page.wait_for_url(re.compile(r"/r/cart-funnel/index\.html\?display=console$"), wait_until="commit")
+        # Back needs the report document loaded: under load, going back while its navigation is still
+        # committing made Chromium answer "Not attached to an active page".
+        page.wait_for_load_state("domcontentloaded")
         page.go_back(wait_until="domcontentloaded")
         assert page.url.endswith("/settings/members")
         assert not errors
