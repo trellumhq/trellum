@@ -36,13 +36,11 @@ def test_run_bounded_returns_output_of_a_good_child():
 
 def test_run_bounded_kills_the_whole_process_group_at_the_deadline(tmp_path):
     pidfile = tmp_path / "grandchild.pid"
-    script = (
-        "import subprocess, sys, time\n"
-        f"child = subprocess.Popen(['sleep', '120'])\nopen({str(pidfile)!r}, 'w').write(str(child.pid))\n"
-        "time.sleep(120)\n"
-    )
+    # sh, not a Python child: under load a Python interpreter can take longer
+    # than the deadline just to start, and be killed before it records the pid.
+    script = 'sleep 120 & echo $! > "$1"; wait'
     started = time.monotonic()
-    assert observations.run_bounded([sys.executable, "-c", script], 2) is None
+    assert observations.run_bounded(["sh", "-c", script, "sh", str(pidfile)], 3) is None
     assert time.monotonic() - started < 10
     grandchild = int(pidfile.read_text())
     for _ in range(50):  # init reaps the orphan; give it a moment

@@ -73,6 +73,13 @@ send('https://portal.example.com', frameWin, { type: 'trellum:height', height: 7
 send('https://portal.example.com', frameWin, { type: 'trellum:ready' });
 out.accepted = { events: framed.el.events.slice(), height: framed.el._frame.style.height, posted: framed.posted.slice() };
 
+// No src yet: '' is the origin, so not even the host page's own origin gets in.
+const bare = mount({ theme: 'dark' });
+const bareWin = bare.el._frame.contentWindow;
+bare.send({ origin: 'https://host.example', source: bareWin, data: { type: 'trellum:height', height: 555 } });
+bare.send({ origin: 'https://host.example', source: bareWin, data: { type: 'trellum:ready' } });
+out.no_src = { events: bare.el.events.slice(), height: bare.el._frame.style.height || null, posted: bare.posted.slice() };
+
 console.log(JSON.stringify(out));
 """
 
@@ -121,3 +128,9 @@ def test_outbound_messages_are_addressed_to_the_src_origin(served_source, tmp_pa
     posted = _run(served_source, tmp_path)["accepted"]["posted"]
     assert posted == [{"msg": {"type": "trellum:theme", "theme": "dark"}, "origin": PORTAL}]
 
+
+
+def test_without_src_no_origin_is_trusted(served_source, tmp_path):
+    # A missing src must not resolve against the host page: the host's own
+    # origin is no more trusted than any other.
+    assert _run(served_source, tmp_path)["no_src"] == {"events": [], "height": None, "posted": []}

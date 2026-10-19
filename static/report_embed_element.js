@@ -76,7 +76,9 @@
          *  post to and the only origin we accept messages from. '' when src is
          *  missing or unparseable, which no e.origin ever equals. */
         _origin() {
-            try { return new URL(this.getAttribute('src'), location.href).origin; }
+            var src = this.getAttribute('src');
+            if (!src) return '';
+            try { return new URL(src, location.href).origin; }
             catch (err) { return ''; }
         }
 
