@@ -316,6 +316,7 @@ def test_resize_reopen_disconnects_observer_and_restores_chart(open_metric):
 @pytest.mark.parametrize("size,zoom", [((1440, 900), 2), ((390, 844), 1.25), ((320, 180), 1)])
 def test_zoom_and_tiny_viewport_keep_controls_reachable(open_metric, size, zoom):
     page, errors = open_metric(size, zoom=zoom)
+    _wait_for_metric_fit(page)
     geometry = _geometry(page)
     assert geometry["modal"]["bottom"] <= page.viewport_size["height"] + 1
     assert geometry["innerOverflow"] <= 2
@@ -324,6 +325,7 @@ def test_zoom_and_tiny_viewport_keep_controls_reachable(open_metric, size, zoom)
     frame.locator(".fw-date-trigger").click()
     assert frame.locator(".fw-date-popover").is_visible()
     frame.get_by_role("button", name="7D", exact=True).click()
+    _wait_for_metric_fit(page)
     assert _geometry(page)["innerOverflow"] <= 2
     assert frame.locator(".fw-date-preset.active").inner_text() == "7D"
     assert frame.locator('.fw-date-input[data-edge="min"]').input_value() == "2026-10-03"

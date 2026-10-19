@@ -38,6 +38,8 @@ def analytics_server(request, django_db_setup, django_db_blocker, tmp_path_facto
     tmp = tmp_path_factory.mktemp(f"analytics-{request.param}")
     artifacts = Path(os.environ.get("ANALYTICS_BROWSER_ARTIFACTS", tmp)) / str(request.param)
     artifacts.mkdir(parents=True, exist_ok=True)
+    # Before any committed rows: a failure after them would skip the cleanup below.
+    source_digest = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
     with django_db_blocker.unblock():
         org = Organization.objects.create(slug=f"analytics-{request.param}", name="Analytics browser")
         studio = Studio.objects.create(org=org, slug="reports", name="Reports")
@@ -66,7 +68,7 @@ def analytics_server(request, django_db_setup, django_db_blocker, tmp_path_facto
         sock.bind(("127.0.0.1", 0)); port = sock.getsockname()[1]
     env = {**os.environ, "DJANGO_SETTINGS_MODULE": "analytics_browser_settings", "DATABASE_URL": database_url,
            "PYTHONPATH": str(tmp)+os.pathsep+str(settings.BASE_DIR), "PORTAL_E2E_WORK_LOG": str(artifacts / "work.jsonl"),
-           "PORTAL_E2E_SQL_DELAY_MS": str(request.param), "PORTAL_E2E_SOURCE_DIGEST": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()}
+           "PORTAL_E2E_SQL_DELAY_MS": str(request.param), "PORTAL_E2E_SOURCE_DIGEST": source_digest}
     log = open(artifacts / "gunicorn.log", "w")
     # Gunicorn's default 2 s keep-alive closes idle connections right where
     # these tests' own pacing sends the next request. Playwright's WebKit (WPE
