@@ -247,12 +247,15 @@ class TestMyKeysPage:
         assert f"trellum_pk_{key.prefix}_" in page
         assert f"trellum_pk_{key.prefix}_" not in c.get(self.URL).content.decode()
 
-    def test_new_create_page_rejects_today_as_expiry_and_keeps_fields(self, login, developer, org):
+    @pytest.mark.parametrize("legacy_list_route", [False, True])
+    def test_create_rejects_today_as_expiry_and_keeps_fields(
+        self, login, developer, org, legacy_list_route
+    ):
         today = timezone.localdate().isoformat()
-        response = login(developer).post(
-            self.CREATE_URL,
-            {"name": "today key", "org": org.pk, "scopes": "read", "expires_at": today},
-        )
+        body = {"name": "today key", "org": org.pk, "scopes": "read", "expires_at": today}
+        if legacy_list_route:
+            body["action"] = "create"
+        response = login(developer).post(self.URL if legacy_list_route else self.CREATE_URL, body)
         page = response.content.decode()
         assert response.status_code == 200
         assert "Pick a date after today" in page
@@ -319,16 +322,6 @@ class TestMyKeysPage:
         key = ApiKey.objects.get(user=developer)
         assert key.can_write and key.is_active
         assert timezone.localtime(key.expires_at).date() == tomorrow
-
-    def test_past_expiry_is_rejected(self, login, developer, org):
-        resp = login(developer).post(
-            self.URL,
-            {"action": "create", "name": "x", "org": org.pk, "scopes": "read",
-             "expires_at": timezone.localdate().isoformat()},
-        )
-        assert resp.status_code == 200
-        assert "Pick a date after today" in resp.content.decode()
-        assert not ApiKey.objects.exists()
 
     def test_cannot_mint_for_an_org_you_are_not_in(self, login, developer, other_org):
         resp = login(developer).post(

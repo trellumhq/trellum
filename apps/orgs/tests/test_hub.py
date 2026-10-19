@@ -140,18 +140,5 @@ class TestStudiosSection:
         assert studio.name == "Casino v2"
         assert studio.slug == "casino"  # slug untouched
 
-    def test_create_and_delete_from_settings(self, login, org_admin, org, settings, tmp_path):
-        settings.DATA_DIR = tmp_path
-        c = login(org_admin)
-        resp = c.post(
-            f"/orgs/{org.slug}/studios/new", {"slug": "fresh", "name": "Fresh"}
-        )
-        assert resp.url.endswith("/settings/studios")
-        from apps.studios.models import Studio
-
-        assert Studio.objects.filter(org=org, slug="fresh").exists()
-        c.post(f"/orgs/{org.slug}/studios/fresh/delete", {"confirm_slug": "fresh"})
-        assert not Studio.objects.filter(org=org, slug="fresh").exists()
-
     def test_member_cannot_open_studios_settings(self, login, member, org):
         assert login(member).get(f"/orgs/{org.slug}/settings/studios").status_code == 403

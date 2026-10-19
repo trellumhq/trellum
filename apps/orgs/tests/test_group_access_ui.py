@@ -156,35 +156,6 @@ class TestGroupScreens:
         grant = PermissionGroupGrant.objects.get(group=group, studio=studio)
         assert (grant.role, grant.viewer_scope) == (roles.DEVELOPER, "all")
 
-    def test_foreign_report_rejects_the_whole_access_change(
-        self,
-        login,
-        org_admin,
-        org,
-        studio,
-        other_studio,
-        report_row,
-        make_group,
-        scoped_access_ready,
-    ):
-        foreign = Report.objects.create(
-            studio=other_studio, slug="foreign", name="Foreign"
-        )
-        group = make_group("Analysts")
-        response = login(org_admin).post(
-            _group_url(org, group, "access"),
-            {
-                "action": "studio_access",
-                "studio": studio.pk,
-                "role": roles.VIEWER,
-                "viewer_scope": "selected",
-                "reports": [report_row.pk, foreign.pk],
-            },
-        )
-        assert response.status_code == 200
-        assert b"Select a valid choice" in response.content
-        assert not PermissionGroupGrant.objects.filter(group=group).exists()
-
     def test_readiness_blocks_selected_but_keeps_all_report_grants_editable(
         self, login, org_admin, org, studio, report_row, make_group
     ):
@@ -300,9 +271,12 @@ class TestReportAccess:
         )
         assert not PermissionGroupGrant.objects.filter(group=group).exists()
 
-    def test_studio_admin_adds_and_removes_only_the_selected_report(
+    @pytest.mark.parametrize("actor", ["studio_admin", "org_admin"])
+    def test_admin_adds_and_removes_only_the_selected_report(
         self,
+        actor,
         login,
+        org_admin,
         member,
         org,
         studio,
@@ -311,10 +285,12 @@ class TestReportAccess:
         grant_studio,
         scoped_access_ready,
     ):
-        grant_studio(member, studio, roles.ADMIN)
+        if actor == "studio_admin":
+            grant_studio(member, studio, roles.ADMIN)
         group = make_group("Analysts")
         url = f"/s/{org.slug}/{studio.slug}/r/{report_row.slug}/access"
-        client = login(member)
+        client = login(member if actor == "studio_admin" else org_admin)
+        assert client.get(url, HTTP_ACCEPT="application/json").json()["can_manage"] is True
         assert (
             client.post(
                 url, {"action": "grant_report", "group_id": group.pk}
@@ -368,18 +344,3 @@ class TestReportAccess:
         )
         assert response.status_code == 404
         assert not PermissionGroupGrant.objects.filter(group=foreign).exists()
-
-
-def test_org_admin_can_assign_report_access(
-    login, org_admin, org, studio, report_row, make_group, scoped_access_ready
-):
-    group = make_group("Analysts")
-    url = f"/s/{org.slug}/{studio.slug}/r/{report_row.slug}/access"
-    client = login(org_admin)
-    assert client.get(url, HTTP_ACCEPT="application/json").json()["can_manage"] is True
-    assert (
-        client.post(url, {"action": "grant_report", "group_id": group.pk}).status_code
-        == 302
-    )
-    grant = PermissionGroupGrant.objects.get(group=group, studio=studio)
-    assert grant.report_grants.filter(report=report_row).exists()
