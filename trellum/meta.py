@@ -55,6 +55,13 @@ def write_meta(output_dir: str, updates: dict) -> None:
             json.dump(meta, f, indent=2, default=str)
             f.flush()
             os.fsync(f.fileno())
+        # mkstemp creates 0600; keep the file readable by the portal when it
+        # runs as a different user than the (sandboxed) build that wrote it.
+        try:
+            mode = os.stat(meta_path).st_mode & 0o777
+        except FileNotFoundError:
+            mode = 0o644
+        os.chmod(tmp_path, mode)
         os.replace(tmp_path, meta_path)
     except BaseException:
         try:

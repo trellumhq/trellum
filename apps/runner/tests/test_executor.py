@@ -1259,3 +1259,15 @@ class TestMetaWriteIsAtomic:
         write_meta(str(tmp_path), {"a": 1})
         write_meta(str(tmp_path), {"b": 2})
         assert [p.name for p in tmp_path.iterdir()] == ["_meta.json"]
+
+    def test_the_file_stays_readable_by_other_users(self, tmp_path):
+        # mkstemp creates 0600; the portal may read a sandboxed build's output
+        # as a different user.
+        from trellum.meta import write_meta
+
+        meta = tmp_path / "_meta.json"
+        write_meta(str(tmp_path), {"a": 1})
+        assert meta.stat().st_mode & 0o777 == 0o644
+        meta.chmod(0o664)
+        write_meta(str(tmp_path), {"b": 2})
+        assert meta.stat().st_mode & 0o777 == 0o664
