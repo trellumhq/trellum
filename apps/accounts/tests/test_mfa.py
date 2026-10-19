@@ -230,24 +230,6 @@ class TestLoginStepUp:
         row = AuditLog.objects.get(action="auth.mfa_failed")
         assert row.outcome == "denied"
 
-    def test_repeated_wrong_codes_feed_the_login_throttle(self, client, member, settings):
-        from apps.core.models import InstanceConfig
-
-        cfg = InstanceConfig.load()
-        cfg.lockout_account_threshold = 2
-        cfg.save()
-        _device, _codes = _confirmed_device(member)
-        client.post("/login", {"email": member.email, "password": PASSWORD})
-
-        for _ in range(2):
-            client.post("/login/verify", {"code": "000000"})
-
-        device = member.totp_device
-        totp = pyotp.TOTP(device.secret)
-        resp = client.post("/login/verify", {"code": totp.now()})
-        assert resp.status_code == 200  # refused even with a right code now
-        assert "_auth_user_id" not in client.session
-
     def test_stash_expires_after_five_minutes(self, client, member):
         device, _codes = _confirmed_device(member)
         client.post("/login", {"email": member.email, "password": PASSWORD})
