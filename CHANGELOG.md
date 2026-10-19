@@ -15,6 +15,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- Keep query execution, diagnostics and Decimal conversion together within
+  the process-wide query limit.
 - Split a chunked DataSource (`chunk_by="month"` or `"week"`) into its period
   files without copying the whole frame, both while rendering and while the
   build measures chunk sizes for its details. A two-million-row report needs
