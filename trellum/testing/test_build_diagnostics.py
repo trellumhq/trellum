@@ -6,7 +6,7 @@ import pytest
 
 from trellum import diagnostics as d
 from trellum.data import drivers, query, retry
-from trellum.data.connections import register_source, forget_source
+from trellum.data.connections import forget_source, register_source
 from trellum.testing.test_query_retry import Connection
 
 
@@ -165,6 +165,7 @@ def test_permanent_error_has_no_transient_retry(evidence, monkeypatch, error):
 @pytest.mark.parametrize('recovery', [True, None, 'true', {'replay_safe': 'true'}, {'replay_safe': 1}])
 def test_replay_contract_requires_explicit_boolean(recovery):
     from types import SimpleNamespace
+
     from trellum.validation.checks.yaml_schema import _check_yaml_schema
     from trellum.validation.result import ValidationResult
     ctx = SimpleNamespace(config={'recovery': recovery}, _connections={})

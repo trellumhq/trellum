@@ -13,8 +13,6 @@ types.  Components self-describe via ``render_html()``, ``css()``, and
 
 from __future__ import annotations
 
-from trellum.diagnostics import instrument
-
 import html as html_lib
 import os
 import time
@@ -27,6 +25,7 @@ import orjson
 import trellum
 from trellum.assets import load_css, load_js
 from trellum.components.base import RenderContext, collect_asset_parts
+from trellum.diagnostics import instrument
 from trellum.licensing import inject_source_notice, source_notice_html
 from trellum.project import load_extensions
 from trellum.rendering.artifacts import (

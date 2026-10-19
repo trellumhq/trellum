@@ -5,19 +5,19 @@ permission to replay arbitrary report Python or proof that a process stopped.
 """
 from __future__ import annotations
 
-from contextlib import contextmanager
-from contextvars import ContextVar
-from functools import wraps
 import hashlib
 import json
 import math
 import os
-from pathlib import Path
 import re
 import stat
 import tempfile
 import threading
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
+from functools import wraps
+from pathlib import Path
 
 MAX_BYTES = 16 * 1024
 STAGES = frozenset({"connect", "execute", "fetch", "render", "publish"})

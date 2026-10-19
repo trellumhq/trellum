@@ -18,9 +18,9 @@ from trellum.data.fetch import execute_query as _execute_query  # its old name h
 from trellum.data.fetch import is_decimal_column
 from trellum.data.http_source import read_api as read_api  # re-export for compatibility
 from trellum.data.retry import ManagedConnection, run_with_retry
-from trellum.diagnostics import diagnostic_context, fingerprint
 from trellum.data.sql_params import _sql_param_spans as _sql_param_spans
 from trellum.data.ssh_tunnel import unwrap
+from trellum.diagnostics import diagnostic_context, fingerprint
 
 _query_semaphore: threading.Semaphore = threading.Semaphore(4)
 
