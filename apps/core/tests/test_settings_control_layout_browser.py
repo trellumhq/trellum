@@ -108,10 +108,13 @@ def _members_html():
     )
 
 
-@pytest.mark.parametrize("width", (320, 390, 1024, 1440))
-@pytest.mark.parametrize("theme", ("light", "dark"))
-def test_recovery_codes_fit_the_available_panel_width(browser, width, theme):
-    context, page = _page(browser, _codes_html(), width, theme)
+# Breakpoints that matter: the recovery grid drops to one column at 384px, so 320
+# (one column) and 390 (narrowest two-column layout) are both kept; every
+# other rule on these pages changes at <=900px or <=767px, so 1440 stands for
+# all desktop widths. Theme only swaps colour tokens, so one theme is enough.
+@pytest.mark.parametrize("width", (320, 390, 1440))
+def test_recovery_codes_fit_the_available_panel_width(browser, width):
+    context, page = _page(browser, _codes_html(), width, "light")
     try:
         grid = page.locator(".recovery-code-grid")
         assert grid.evaluate("el => el.scrollWidth <= el.clientWidth")
@@ -120,10 +123,9 @@ def test_recovery_codes_fit_the_available_panel_width(browser, width, theme):
         context.close()
 
 
-@pytest.mark.parametrize("width", (320, 390, 1024, 1440))
-@pytest.mark.parametrize("theme", ("light", "dark"))
-def test_mfa_setup_qr_and_manual_key_stay_inside_the_panel(browser, width, theme):
-    context, page = _page(browser, _setup_html(), width, theme)
+@pytest.mark.parametrize("width", (320, 1440))
+def test_mfa_setup_qr_and_manual_key_stay_inside_the_panel(browser, width):
+    context, page = _page(browser, _setup_html(), width, "light")
     try:
         assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
         panel = page.locator("main .panel")
@@ -136,8 +138,10 @@ def test_mfa_setup_qr_and_manual_key_stay_inside_the_panel(browser, width, theme
         context.close()
 
 
-@pytest.mark.parametrize("width", (320, 390, 1024, 1440))
-@pytest.mark.parametrize("theme", ("light", "dark"))
+# Dark is kept here only because dark switches native date inputs to
+# `color-scheme: dark` (ui.css), which can change the date control height that
+# the alignment assertion compares.
+@pytest.mark.parametrize("width, theme", ((320, "light"), (1440, "light"), (1440, "dark")))
 def test_audit_filters_wrap_without_clipping_and_align_date_controls(browser, width, theme):
     context, page = _page(browser, _audit_html(), width, theme)
     try:
@@ -152,10 +156,9 @@ def test_audit_filters_wrap_without_clipping_and_align_date_controls(browser, wi
         context.close()
 
 
-@pytest.mark.parametrize("width", (320, 390, 1024, 1440))
-@pytest.mark.parametrize("theme", ("light", "dark"))
-def test_member_manage_popup_stays_inside_viewport(browser, width, theme):
-    context, page = _page(browser, _members_html(), width, theme)
+@pytest.mark.parametrize("width", (320, 1440))
+def test_member_manage_popup_stays_inside_viewport(browser, width):
+    context, page = _page(browser, _members_html(), width, "light")
     try:
         page.locator("td.ui-row-actions summary").click()
         page.wait_for_function(

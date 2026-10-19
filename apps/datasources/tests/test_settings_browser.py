@@ -327,7 +327,7 @@ def test_old_test_does_not_overwrite_new_draft_or_new_saved_revision():
         browser.close()
 
 
-@pytest.mark.parametrize("width", [390, 1440])
+@pytest.mark.parametrize("width", [390])  # the overflow only fails on narrow screens
 def test_upload_label_keeps_native_chooser_without_page_overflow(width):
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)

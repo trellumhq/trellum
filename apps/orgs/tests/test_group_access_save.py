@@ -26,8 +26,9 @@ def path(org, group):
     return f"/orgs/{org.slug}/settings/groups/{group.pk}?tab=access"
 
 
-@pytest.mark.parametrize("count", [25, 100, 500])
-@pytest.mark.parametrize("enhanced", [False, True])
+# The query bound does not depend on size, so one small run and the largest are
+# enough; 500 runs both the plain-redirect and the enhanced JSON response.
+@pytest.mark.parametrize("count, enhanced", [(25, False), (500, False), (500, True)])
 def test_http_save_exact_sets_and_bounded_queries(count, enhanced, login, org_admin, org, studio, make_group):
     reports = Report.objects.bulk_create([Report(studio=studio, slug=f"save-{i:04}", name=f"Report {i:04}") for i in range(count)])
     group = make_group("Save")
@@ -58,17 +59,28 @@ def test_unchecking_removes_only_unchecked_assignments(login, org_admin, org, st
     assert {row.target_id for row in removed} == {str(reports[0].pk), str(reports[-1].pk)}
 
 
-def test_foreign_or_deleted_identity_is_rejected_without_leaking(login, org_admin, org, studio, other_studio, make_group):
+@pytest.mark.parametrize("identities", ["foreign", "deleted", "own_and_foreign"])
+def test_foreign_or_deleted_identity_is_rejected_without_leaking(
+    identities, login, org_admin, org, studio, other_studio, make_group
+):
     foreign = Report.objects.create(studio=other_studio, slug="hidden", name="Hidden foreign")
+    own = Report.objects.create(studio=studio, slug="own", name="Own report")
     deleted = Report.objects.create(studio=studio, slug="deleted").pk
     Report.objects.filter(pk=deleted).delete()
+    selected = {
+        "foreign": [foreign.pk],
+        "deleted": [deleted],
+        # One valid report must not let a foreign one through: the whole change is refused.
+        "own_and_foreign": [own.pk, foreign.pk],
+    }[identities]
     group = make_group("Authority")
-    for identity in (foreign.pk, deleted):
-        response = login(org_admin).post(path(org, group), payload(studio, [identity]))
-        assert response.status_code == 200
-        assert "reports" in response.context["access_rows"][0]["form"].errors
-        assert b"Hidden foreign" not in response.content
-        assert not group.grants.exists()
+    response = login(org_admin).post(path(org, group), payload(studio, selected))
+    assert response.status_code == 200
+    assert "reports" in response.context["access_rows"][0]["form"].errors
+    assert b"Select a valid choice" in response.content
+    assert b"Hidden foreign" not in response.content
+    assert not group.grants.exists()
+    assert not ReportPermissionGrant.objects.filter(grant__group=group).exists()
 
 
 def test_csrf_and_role_denial_write_nothing(org_admin, member, org, studio, make_group):

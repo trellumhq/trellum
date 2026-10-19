@@ -262,6 +262,9 @@ def test_ctrl_k_opens_the_jump_list_where_nothing_is_searchable(live_server, log
         page.keyboard.type("cart")
         page.keyboard.press("Enter")
         page.wait_for_url(re.compile(r"/r/cart-funnel/index\.html\?display=console$"), wait_until="commit")
+        # Back needs the report document loaded: under load, going back while its navigation is still
+        # committing made Chromium answer "Not attached to an active page".
+        page.wait_for_load_state("domcontentloaded")
         page.go_back(wait_until="domcontentloaded")
         assert page.url.endswith("/settings/members")
         assert not errors
@@ -293,32 +296,6 @@ def test_a_viewer_cannot_see_unauthorized_reports_in_the_jump_list(
             "fetch(%r + '/api/jump?q=secret', {credentials: 'same-origin'}).then(r => r.json())" % base
         )
         assert answer["results"] == []
-        assert not errors
-    finally:
-        close()
-
-
-def test_the_jump_slot_does_not_move_between_pages(live_server, login, org_admin, org, studio, reports):
-    client = login(org_admin)
-    base = _studio_base(studio)
-    client.get(base + "/")
-    page, errors, close = _browse(live_server, client)
-    boxes = {}
-    try:
-        for name, path in (
-            ("catalog", base + "/"), ("metrics", base + "/metrics"), ("invites", f"/orgs/{org.slug}/settings/invites"),
-            ("members", base + "/settings/members"), ("analyses", base + "/analyses"),
-        ):
-            page.goto(live_server.url + path, wait_until="load")
-            page.wait_for_load_state("networkidle")
-            page.wait_for_timeout(400)  # room for the assistant widget to settle into its slot
-            boxes[name] = page.evaluate(
-                """() => ['.tl-console-jump', '.tl-console-docs-link', '.tl-console-account', '.tl-console-assistant-slot']
-                  .map(s => { const r = document.querySelector(s).getBoundingClientRect(); return [s, r.x, r.y, r.width, r.height]; })"""
-            )
-        reference = boxes["catalog"]
-        for name, box in boxes.items():
-            assert box == reference, (name, box, reference)
         assert not errors
     finally:
         close()

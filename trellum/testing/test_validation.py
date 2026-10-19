@@ -644,6 +644,21 @@ def test_metadata_strip_follows_custom_header(tmp_path):
     assert 'class="fw-report-chrome"' not in html
 
 
+def test_metadata_values_are_written_to_data_json(tmp_path):
+    import json
+
+    # Auto-refresh only re-fetches data.json, so the strip's values must be
+    # in it for the strip to update without a page reload.
+    from trellum.rendering.html_builder import render_report
+
+    ctx = _make_ctx()
+    ctx.set_header(subtitle="Sub", meta={"Last event": "2026-10-10", "Rows": 0, "Blank": " "})
+    render_report(ctx, str(tmp_path), auto_refresh=False)
+
+    data = json.loads((tmp_path / "data.json").read_text(encoding="utf-8"))
+    assert data["_header_meta"] == [["Last event", "2026-10-10"], ["Rows", "0"]]
+
+
 def test_default_header_and_metadata_share_report_chrome(tmp_path):
     from trellum.rendering.html_builder import render_report
 

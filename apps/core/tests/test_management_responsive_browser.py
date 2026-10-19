@@ -14,7 +14,6 @@ CONSOLE_SHELL_CSS = (settings.BASE_DIR / "static" / "console-shell.css").read_te
 SETTINGS_FORMS_JS = (settings.BASE_DIR / "static" / "settings-forms.js").read_text(
     encoding="utf-8"
 )
-ARTIFACTS = settings.BASE_DIR / ".artifacts" / "management"
 
 
 @pytest.fixture(scope="module", params=("chromium", "webkit"))
@@ -151,7 +150,8 @@ def _rendered_management_page(browser, html, width, theme="light"):
     return context, page
 
 
-@pytest.mark.parametrize("width", (320, 390, 430))
+# 767px is the only breakpoint for the mobile cards, so 320 and one larger phone are enough.
+@pytest.mark.parametrize("width", (320, 430))
 def test_delivery_rendered_template_fits_and_links_to_dedicated_editor(mobile_browser, width):
     row = _delivery_row()
     context, page = _page(mobile_browser, _delivery_html([row]), width)
@@ -168,18 +168,6 @@ def test_delivery_rendered_template_fits_and_links_to_dedicated_editor(mobile_br
         assert page.get_by_role("link", name="Add delivery", exact=True).get_attribute("href") == "/s/acme/studio/deliveries/new"
         for label in ("Report", "Studio", "Creator", "Cadence", "Format", "Recipients", "Status", "Actions"):
             assert page.locator(f'[data-delivery-row] td[data-label="{label}"]').is_visible()
-        if width == 390:
-            ARTIFACTS.mkdir(parents=True, exist_ok=True)
-            page.screenshot(path=str(ARTIFACTS / "deliveries-390.png"), full_page=True)
-    finally:
-        context.close()
-
-
-def test_delivery_empty_rendered_template_has_no_table(mobile_browser):
-    context, page = _page(mobile_browser, _delivery_html([]), 390)
-    try:
-        assert page.locator("#deliveryTable").count() == 0
-        assert "No scheduled deliveries match these filters." in page.locator("body").inner_text()
     finally:
         context.close()
 
@@ -254,21 +242,6 @@ def test_account_sessions_rendered_template_has_wrapping_rows(mobile_browser):
         assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
         assert page.locator("table[data-mobile-cards]").count() == 1
         assert page.locator("table[data-mobile-cards] td[data-label='Device']").count() == 1
-        ARTIFACTS.mkdir(parents=True, exist_ok=True)
-        page.screenshot(path=str(ARTIFACTS / "account-sessions-390.png"), full_page=True)
-    finally:
-        context.close()
-
-
-def test_management_templates_render_at_desktop_width(mobile_browser):
-    html = render_to_string(
-        "orgs/sso.html", {"claimed_domains": [], "unclaimed_domains": []}
-    )
-    context, page = _page(mobile_browser, html, 1440)
-    try:
-        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
-        ARTIFACTS.mkdir(parents=True, exist_ok=True)
-        page.screenshot(path=str(ARTIFACTS / "sso-1440.png"), full_page=True)
     finally:
         context.close()
 
@@ -335,10 +308,11 @@ def test_sso_claim_form_fits_and_uses_phone_font_size(mobile_browser):
         context.close()
 
 
-@pytest.mark.parametrize("theme", ("light", "dark"))
-def test_studio_member_role_controls_align_at_desktop(mobile_browser, theme):
+def test_studio_member_role_controls_align_at_desktop(mobile_browser):
+    # Theme only changes colours here (the select arrow is drawn in currentColor),
+    # so one theme covers the alignment.
     context, page = _rendered_management_page(
-        mobile_browser, _studio_members_html(), 1000, theme
+        mobile_browser, _studio_members_html(), 1000
     )
     try:
         form = page.locator("tbody form[data-settings-form]")

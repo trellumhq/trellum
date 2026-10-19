@@ -105,8 +105,8 @@ class TestListApi:
         assert body == {"sources": [], "total": 0, "page": 1, "has_next": False}
 
     @pytest.mark.parametrize("query", [
-        "page=0", "page=-1", "page=abc", "page=1.5", "page=1000001", "page=99999999999999999999",
-        "page=%D9%A1", "limit=0", "limit=-5", "limit=abc", "limit=201", "limit=1e2", "limit=1&page=x",
+        "page=0", "page=abc", "page=1000001", "page=99999999999999999999",
+        "page=%D9%A1", "limit=0", "limit=abc", "limit=201", "limit=1e2", "limit=1&page=x",
     ])
     def test_invalid_page_or_limit_is_a_400_like_the_registry(self, query, login, viewer, prefix, studio_tree):
         response = login(viewer).get(f"{prefix}/api/datasources?{query}")

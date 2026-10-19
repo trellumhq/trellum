@@ -16,15 +16,10 @@ LIST_URLS = ["org-members", "org-groups", "org-studios", "org-invites"]
 
 
 @pytest.mark.parametrize("url_name", LIST_URLS)
-def test_list_screens_offer_search(client, login, org_admin, org, url_name):
-    html = login(org_admin).get(reverse(url_name, args=[org.slug])).content.decode()
-    assert 'name="q"' in html, f"{url_name} has no search box"
-
-
-@pytest.mark.parametrize("url_name", LIST_URLS)
 def test_list_search_applies_by_itself_with_no_search_button(client, login, org_admin, org, url_name):
     """Typing searches after a pause (static/auto-filter.js); the toolbar has no Search button."""
     html = login(org_admin).get(reverse(url_name, args=[org.slug])).content.decode()
+    assert 'name="q"' in html, f"{url_name} has no search box"
     toolbar = html.split('class="ui-list-toolbar"', 1)[1].split("</form>", 1)[0]
     assert "data-auto-filter" in html.split('class="ui-list-toolbar"', 1)[1].split(">", 1)[0]
     assert 'type="submit"' not in toolbar and ">Search</button>" not in toolbar
@@ -80,11 +75,6 @@ def test_search_and_paging_do_not_drop_each_other(client, login, org_admin, org,
 
 
 class TestOperatorOrgCreation:
-    def test_hub_no_longer_carries_the_create_form(self, client, login, superuser, org):
-        html = login(superuser).get("/", {"org": org.slug}).content.decode()
-        assert "Create an organization" not in html
-        assert 'action="/orgs/create"' not in html
-
     def test_operator_page_renders_for_a_superuser(self, client, login, superuser):
         html = login(superuser).get(reverse("org-new")).content.decode()
         assert 'action="/orgs/create"' in html

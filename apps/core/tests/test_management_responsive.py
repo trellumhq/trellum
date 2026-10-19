@@ -32,22 +32,6 @@ def test_management_record_templates_expose_mobile_labels(template_name, labels)
         assert f'data-label="{label}"' in source, (template_name, label)
 
 
-def test_delivery_empty_state_is_outside_the_table():
-    source = (ROOT / "templates/reports/my_deliveries.html").read_text(encoding="utf-8")
-    assert "{% if schedule_rows %}" in source
-    assert "No scheduled deliveries match these filters." in source
-    empty_start = source.index("No scheduled deliveries match these filters.")
-    assert source.index("</table>") < empty_start
-    assert "<table" not in source[empty_start:]
-
-
-def test_mobile_css_keeps_rows_in_viewport():
-    css = (ROOT / "static/ui.css").read_text(encoding="utf-8")
-    assert "body.mgmt .ui-table[data-mobile-cards] tbody tr" in css
-    assert "overflow-wrap: anywhere" in css
-    assert "min-width: 0 !important" in css
-
-
 def test_delivery_template_renders_empty_state_without_table():
     # This is a real Django template render; no model or database is needed for
     # the empty branch and it protects the explicit table/empty-state contract.

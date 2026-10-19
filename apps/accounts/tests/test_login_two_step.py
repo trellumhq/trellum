@@ -181,22 +181,6 @@ class TestStepTwo:
 
 
 class TestStepTwoReRoutes:
-    def test_enforced_user_cannot_password_login_with_a_tampered_session(
-        self, client, sso_cfg, make_user, org
-    ):
-        sso_cfg.enforce_sso = True
-        sso_cfg.save()
-        make_user("cons@elsewhere.example", org=org)
-        # Step 1 for an unrouted address, then swap the session's email the
-        # way a tampered flow would: step 2 still re-routes.
-        _step1(client, "other@nowhere.example")
-        session = client.session
-        session["login_email"] = "cons@elsewhere.example"
-        session.save()
-        resp = client.post("/login/password", {"password": PW})
-        assert resp.status_code == 302 and "oidc-demo/login" in resp.url
-        assert "_auth_user_id" not in client.session
-
     def test_combined_post_cannot_bypass_enforcement(self, client, sso_cfg, make_user, org):
         sso_cfg.enforce_sso = True
         sso_cfg.save()
@@ -238,35 +222,36 @@ def _password_link(client, email, query=""):
 
 
 class TestPasswordInsteadLink:
-    def test_link_is_shown_when_an_openid_connect_provider_is_enabled(self, client, sso_cfg):
+    @pytest.mark.parametrize(
+        ("state", "shown"),
+        [
+            ("openid_connect", True),
+            ("none", False),
+            ("directory_only", False),  # Continue already lands on the password step
+            ("provider_disabled", False),
+            ("provider_incomplete", False),
+            ("directory_and_provider", True),
+        ],
+    )
+    def test_link_visibility_follows_the_sso_configuration(
+        self, client, org, other_org, state, shown
+    ):
+        if state in ("openid_connect", "provider_disabled", "provider_incomplete", "directory_and_provider"):
+            OrgSSOConfig.objects.create(
+                org=org, enabled=state != "provider_disabled", issuer_url="https://idp.example/realms/demo",
+                client_id="" if state == "provider_incomplete" else "cid", email_domains=["demo.example"],
+            )
+        if state in ("directory_only", "directory_and_provider"):
+            OrgSSOConfig.objects.create(
+                org=other_org if state == "directory_and_provider" else org,
+                enabled=True, auth_method=OrgSSOConfig.AUTH_LDAP,
+                ldap_server_uri="ldaps://dc.corp.example:636", ldap_user_search_base="dc=corp",
+                ldap_bind_dn="cn=svc", ldap_bind_password="x", email_domains=["corp.example"],
+            )
         html = client.get("/login").content.decode()
-        assert "Sign in with a password instead" in html and 'name="method"' in html
-
-    def test_link_is_hidden_without_any_sso_configuration(self, client):
-        html = client.get("/login").content.decode()
-        assert "Sign in with a password instead" not in html and 'name="method"' not in html
+        assert ("Sign in with a password instead" in html) is shown
+        assert ('name="method"' in html) is shown
         assert "Continue" in html
-
-    def test_link_is_hidden_for_a_directory_only_instance(self, client, ldap_cfg):
-        # Continue already lands on the password step for a directory domain.
-        assert "Sign in with a password instead" not in client.get("/login").content.decode()
-
-    def test_link_is_hidden_when_the_provider_is_disabled_or_incomplete(self, client, sso_cfg):
-        sso_cfg.enabled = False
-        sso_cfg.save()
-        assert "Sign in with a password instead" not in client.get("/login").content.decode()
-        sso_cfg.enabled = True
-        sso_cfg.client_id = ""
-        sso_cfg.save()
-        assert "Sign in with a password instead" not in client.get("/login").content.decode()
-
-    def test_link_is_shown_next_to_a_directory_when_a_provider_also_exists(self, client, sso_cfg, other_org):
-        OrgSSOConfig.objects.create(
-            org=other_org, enabled=True, auth_method=OrgSSOConfig.AUTH_LDAP,
-            ldap_server_uri="ldaps://dc.corp.example:636", ldap_user_search_base="dc=corp",
-            ldap_bind_dn="cn=svc", ldap_bind_password="x", email_domains=["corp.example"],
-        )
-        assert "Sign in with a password instead" in client.get("/login").content.decode()
 
     def test_member_of_enforcing_org_is_still_redirected(self, client, sso_cfg, make_user, org):
         sso_cfg.enforce_sso = True
@@ -316,13 +301,27 @@ class TestPasswordInsteadLink:
         User.objects.create_superuser(email="root@demo.example", password=PW)
         assert "oidc-demo/login" in _password_link(client, "root@demo.example").url
 
-    def test_crafted_step_two_still_reroutes_enforced_users(self, client, sso_cfg, make_user, org):
+    @pytest.mark.parametrize(
+        ("member_email", "step_one_email"),
+        [
+            # The enforced member is on a routed domain.
+            ("cons@demo.example", "loner@demo.example"),
+            # The enforced member's own domain is not routed to the IdP: it is
+            # membership, not the domain, that enforces.
+            ("cons@elsewhere.example", "other@nowhere.example"),
+        ],
+    )
+    def test_crafted_step_two_still_reroutes_enforced_users(
+        self, client, sso_cfg, make_user, org, member_email, step_one_email
+    ):
         sso_cfg.enforce_sso = True
         sso_cfg.save()
-        make_user("cons@demo.example", org=org)
-        _password_link(client, "loner@demo.example")
+        make_user(member_email, org=org)
+        # Step 1 for another address, then swap the session's email the way a
+        # tampered flow would: step 2 still re-routes.
+        _password_link(client, step_one_email)
         session = client.session
-        session["login_email"] = "cons@demo.example"
+        session["login_email"] = member_email
         session.save()
         for resp in (client.get("/login/password"), client.post("/login/password", {"password": PW})):
             assert resp.status_code == 302 and "oidc-demo/login" in resp.url

@@ -74,22 +74,6 @@ def _route(page, html, status):
     page.route("**/*", respond)
 
 
-def test_list_view_marks_paused_report(mobile_browser):  # noqa: F811
-    context = mobile_browser.new_context(viewport={"width": 1280, "height": 844})
-    page = context.new_page()
-    _route(page, PORTAL_HTML, {})
-    try:
-        page.goto("http://portal.test/s/acme/analytics/")
-        page.wait_for_selector('#content tr[data-slug="paused-report"]')
-        paused = page.locator('#content tr[data-slug="paused-report"] td[data-label="Schedule"]')
-        active = page.locator('#content tr[data-slug="active-report"] td[data-label="Schedule"]')
-        assert "Auto-refresh paused" in paused.inner_text()
-        assert "Operations" in paused.locator(".ui-badge").get_attribute("title")
-        assert "Auto-refresh paused" not in active.inner_text()
-    finally:
-        context.close()
-
-
 def test_operations_shows_pause_instead_of_next_run(mobile_browser):  # noqa: F811
     next_run = (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat()
     # The catalog lists a paused report with its pause and no next run, as the

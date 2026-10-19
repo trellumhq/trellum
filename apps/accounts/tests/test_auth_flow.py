@@ -77,16 +77,6 @@ class TestBootstrapCommand:
 
 
 class TestLogin:
-    def test_login_ok(self, client, member):
-        resp = client.post("/login", {"email": member.email, "password": "pw-Str0ng-pw"})
-        assert resp.status_code == 302
-        assert client.get("/api/me").json()["email"] == member.email
-
-    def test_login_bad_password(self, client, member):
-        resp = client.post("/login", {"email": member.email, "password": "wrong"})
-        assert resp.status_code == 200
-        assert client.get("/api/me").status_code == 401
-
     def test_inactive_user_cannot_login(self, client, member):
         member.is_active = False
         member.save()

@@ -2,9 +2,8 @@
 each write a row with the right reason_code/provider/org/asserted_email, and
 member.provisioned fires when auto-provisioning actually creates an account.
 
-internal planning#76's own acceptance criterion -- the cross-tenant guard
-records the org an attacker tried to reach plus the email they asserted --
-is checked literally in TestCrossTenantAcceptanceCriterion below.
+The cross-tenant guard records the org an attacker tried to reach plus the
+email they asserted; test_outside_verified_domains checks exactly that.
 """
 import pytest
 from allauth.core.exceptions import ImmediateHttpResponse
@@ -106,6 +105,8 @@ class TestDenialPaths:
         assert row.metadata["reason_code"] == REASON_OUTSIDE_DOMAINS
         assert row.org_id == org.pk
         assert row.metadata["asserted_email"] == "attacker@rival.example"
+        assert row.metadata["provider"] == "oidc-demo"
+        assert row.outcome == "denied"
 
     def test_existing_non_member_account(self, sso_cfg, rf_request, make_user, org):
         make_user("sso.user@demo.example")  # exists, no membership in this org
@@ -124,30 +125,6 @@ class TestDenialPaths:
         row = AuditLog.objects.get(action="auth.sso_denied")
         assert row.metadata["reason_code"] == REASON_AUTO_PROVISION_OFF
         assert row.org_id == org.pk
-
-    def test_every_denial_carries_the_provider(self, sso_cfg, rf_request):
-        with pytest.raises(ImmediateHttpResponse):
-            _gate(rf_request, _sociallogin(email="attacker@rival.example"))
-        row = AuditLog.objects.get(action="auth.sso_denied")
-        assert row.metadata["provider"] == "oidc-demo"
-
-
-class TestCrossTenantAcceptanceCriterion:
-    """internal planning#76's own acceptance criterion, checked literally: an
-    IdP asserting an email outside the org's verified domains must be
-    recorded with which org was targeted and which email was asserted."""
-
-    def test_the_denial_names_the_targeted_org_and_the_asserted_email(
-        self, sso_cfg, rf_request, org
-    ):
-        with pytest.raises(ImmediateHttpResponse):
-            _gate(rf_request, _sociallogin(email="eve@rival.example"))
-
-        row = AuditLog.objects.get(action="auth.sso_denied")
-        assert row.org == org
-        assert row.metadata["asserted_email"] == "eve@rival.example"
-        assert row.metadata["reason_code"] == "outside_verified_domains"
-        assert row.outcome == "denied"
 
 
 class TestMemberProvisioned:

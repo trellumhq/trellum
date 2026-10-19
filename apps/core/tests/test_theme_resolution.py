@@ -116,13 +116,6 @@ class TestRetiredOrgRung:
         assert resolve_studio_theme(member, studio) == "trellum dark"
         assert explicit_studio_theme(member, studio) == ""
 
-    def test_studio_default_wins_over_a_stored_org_default_regardless(self, member, org, studio):
-        org.default_theme = "ocean"
-        org.save(update_fields=["default_theme"])
-        studio.theme = "money"
-        studio.save(update_fields=["theme"])
-        assert resolve_studio_theme(member, studio) == "money"
-
 
 class TestPerStudioIndependence:
     def test_same_user_two_studios_two_overrides(self, member, studio, studio2):

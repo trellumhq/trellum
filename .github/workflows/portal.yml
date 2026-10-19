@@ -427,7 +427,10 @@ jobs:
     # See docs/MIGRATIONS.md for the expand/contract rule this enforces.
     name: previous release survives the new schema
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The previous release's whole portal suite runs serially, because it has
+    # to reuse the one database this upgrade migrated (parallel workers would
+    # each build a fresh one). v0.8.0's suite alone takes about 30 minutes.
+    timeout-minutes: 45
     container:
       # Match django-tests: frozen browser fixtures must see the same fonts
       # and system libraries, not the changing GitHub runner's font fallback.

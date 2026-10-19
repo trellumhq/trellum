@@ -11,8 +11,8 @@ from playwright.sync_api import sync_playwright, expect
 ROOT = Path(__file__).resolve().parents[3]
 
 
-@pytest.mark.parametrize('engine', ['chromium', 'webkit'])
-@pytest.mark.parametrize('width', [1440, 390])
+# The picker logic is engine-agnostic JS: webkit runs one width only.
+@pytest.mark.parametrize('engine, width', [('chromium', 1440), ('chromium', 390), ('webkit', 1440)])
 def test_remote_choices_keep_selected_nodes_search_and_failures(engine, width):
     state = {'fail': False, 'revoked': False}
     class Handler(BaseHTTPRequestHandler):

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import os
 
 import pytest
 from django.conf import settings
@@ -11,7 +10,6 @@ from django.conf import settings
 JS = (settings.BASE_DIR / "static" / "server-logs.js").read_text(encoding="utf-8")
 AUTO = (settings.BASE_DIR / "static" / "auto-filter.js").read_text(encoding="utf-8")
 CSS = (settings.BASE_DIR / "static" / "server-logs.css").read_text(encoding="utf-8")
-TEMPLATE = (settings.BASE_DIR / "templates" / "operator" / "logs.html").read_text(encoding="utf-8")
 UI_CSS = (settings.BASE_DIR / "static" / "ui.css").read_text(encoding="utf-8")
 
 
@@ -53,18 +51,6 @@ def open_logs(browser, width=1280, routes=()):
     page.route("**/operator/logs/", lambda route: route.fulfill(status=200, content_type="text/html", body=document))
     page.goto("http://portal.test/operator/logs/")
     return context, page
-
-
-def test_template_keeps_operator_shell_contract_and_coverage_note():
-    assert "data-server-logs" in TEMPLATE
-    assert "{% url 'operator-log-events' %}" in TEMPLATE
-    assert "{% url 'operator-log-export' %}" in TEMPLATE
-    assert "Host, kernel and container runtime logs are managed separately" in TEMPLATE
-    assert "aria-live=\"polite\"" in TEMPLATE
-    assert 'value="INFO" selected' in TEMPLATE
-    # Filters apply by themselves: no Apply button, and the shared auto-filter drives the form.
-    assert "Apply filters" not in TEMPLATE
-    assert 'data-filter-form data-auto-filter="inline"' in TEMPLATE
 
 
 def test_filters_pause_older_catchup_and_untrusted_text(browser):
@@ -263,24 +249,6 @@ def test_live_entry_preserves_expansion_focus_and_scrolled_row(browser):
         page.get_by_role("button", name="Load older").click()
         page.wait_for_timeout(100)
         assert len(calls) == 4 and "before=older-cursor" in calls[-1]
-    finally:
-        context.close()
-
-
-@pytest.mark.parametrize(("width", "filename"), ((1280, "desktop.png"), (390, "mobile-390.png")))
-def test_capture_mocked_ui_screenshots(browser, width, filename):
-    if os.environ.get("TRELLUM_CAPTURE_LOGS") != "1" or browser.browser_type.name != "chromium":
-        pytest.skip("Set TRELLUM_CAPTURE_LOGS=1 to capture Chromium review screenshots")
-    payload = {"entries": [entry(run_id="7ad2481b-c8a4-4d78-99c8-a80deeb7116d")], "has_more": False,
-               "next_before": "e1", "next_after": "e1", "coverage": {"enabled": True, "retention_days": 14, "max_rows": 25000}}
-    def respond(route):
-        route.fulfill(status=200, content_type="application/json", body=json.dumps(payload))
-    context, page = open_logs(browser, width=width, routes=(("**/operator/logs/events/**", respond),))
-    try:
-        page.wait_for_selector("[data-entry-id='e1']")
-        output = settings.BASE_DIR.parent.parent / ".artifacts" / "server-logs"
-        output.mkdir(parents=True, exist_ok=True)
-        page.screenshot(path=output / filename, full_page=True)
     finally:
         context.close()
 

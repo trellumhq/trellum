@@ -60,17 +60,6 @@ def test_failed_save_keeps_posted_selection_and_large_studios_stay_complete(logi
     assert set(grant.report_grants.values_list("report_id", flat=True)) == {reports[-1].pk, reports[0].pk}
 
 
-def test_foreign_selected_draft_is_rejected_without_foreign_label(login, org_admin, org, studio, other_studio, make_group, settings):
-    settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = True
-    foreign = Report.objects.create(studio=other_studio, slug="secret", name="Secret foreign report")
-    group = make_group("Bounded")
-    response = login(org_admin).post(url(org, group, "access"), {"action": "studio_access", "studio": studio.pk, "role": "viewer", "viewer_scope": "selected", "reports": [foreign.pk]})
-    assert response.status_code == 200
-    assert foreign.name.encode() not in response.content
-    assert b"Select a valid choice" in response.content
-    assert not group.grants.exists()
-
-
 def test_member_choices_are_complete_and_scope_safe(login, org_admin, org, other_org, make_group, make_user, attach_group):
     group = make_group("Bounded")
     users = [make_user(f"choice{i:03}@example.test", org=org) for i in range(60)]
