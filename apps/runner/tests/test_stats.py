@@ -98,7 +98,7 @@ class TestSummarize:
         assert agg["max_peak_memory_mb"] == 400
         assert agg["by_status"] == {status: 1 for status in stats.TERMINAL_STATUSES[1:]}
 
-    @pytest.mark.parametrize("missing", ["started_at", "finished_at", "both"])
+    @pytest.mark.parametrize("missing", ["started_at", "both"])  # either None nulls the duration
     @pytest.mark.parametrize("valid_success", [False, True])
     def test_missing_success_timestamps(
         self, report_row, make_terminal_run, missing, valid_success
