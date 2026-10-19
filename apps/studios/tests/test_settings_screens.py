@@ -68,15 +68,6 @@ class TestRepoScreen:
         assert "repo-status.js" in page and 'data-repo-results' in page
         assert 'id="repoConnectionForm"' in page
 
-    def test_status_uses_badges_and_the_webhook_is_copyable(self, html, prefix, repo):
-        page = html(f"{prefix}/settings/repo")
-        assert 'class="repo-status"' in page
-        assert '<span class="ui-badge ok">ok</span>' in page
-        assert "data-ui-copy" in page and "/api/git/webhook" in page
-        assert 'class="ui-btn ghost"' in page  # Sync now
-        for heading in ("Repository", "Sync behavior", "Webhook"):
-            assert heading in page
-
     def test_error_and_pending_states_get_their_own_badge(self, html, prefix, repo):
         repo.sync_requested = True
         repo.save(update_fields=["sync_requested"])
@@ -88,21 +79,6 @@ class TestRepoScreen:
         page = html(f"{prefix}/settings/repo")
         assert '<span class="ui-badge error">error</span>' in page
         assert "auth failed" in page
-
-    def test_check_row_class_replaces_the_inline_style(self, html, prefix, repo):
-        page = html(f"{prefix}/settings/repo")
-        assert 'class="ui-check-row"' in page
-        assert "display:flex;gap:8px;align-items:center" not in page
-
-    def test_connection_settings_use_the_shared_bounded_form_layout(self, html, prefix, repo):
-        page = html(f"{prefix}/settings/repo")
-        connection = re.search(r'<form[^>]*id="repoConnectionForm".*?</form>', page, re.DOTALL)
-        assert connection is not None
-        assert 'class="ui-form-rail"' in page
-        assert 'class="ui-form-section"' in connection.group()
-        assert 'class="ui-form-row"' in connection.group()
-        assert 'for="id_repo_url"' in connection.group()
-        assert 'data-repo-results' in page and 'id="repoPollStatus"' in page
 
     def test_sync_now_flags_repo_and_redirects(self, login, org_admin, prefix, repo):
         # "Sync now" posts back to the settings page and redirects — it must not

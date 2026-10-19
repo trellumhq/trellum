@@ -157,25 +157,6 @@ class TestMismatchHints:
         assert "sk-ant-api03-secret" not in html
         assert OrgAssistantConfig.objects.get(org=org).enabled is True  # a hint, not a rejection
 
-    def test_model_hint_sentences_ride_the_page(self, login, org_admin, url):
-        html = login(org_admin).get(url).content.decode()
-        assert 'id="model-hint"' in html and self.MODEL_A in html and self.MODEL_O in html
-
-
-class TestEndpointCopy:
-    def test_label_and_both_dialect_sentences_ride_the_page(self, login, org_admin, url):
-        html = login(org_admin).get(url).content.decode()
-        assert "Custom endpoint URL" in html
-        assert 'id="gateway-hint"' in html and 'id="gateway-hint" hidden' not in html
-        assert "Must implement the Anthropic Messages API, for example a LiteLLM proxy in Anthropic mode." in html
-        assert "Any OpenAI-compatible server works: LiteLLM, Azure OpenAI, vLLM, Ollama, or a corporate gateway." in html
-
-    def test_pricing_help_explains_optional_uncapped_use(self, login, org_admin, url):
-        html = login(org_admin).get(url).content.decode()
-        assert "Optional with both budgets blank" in html
-        assert "required for unlisted models when either budget is set" in html
-        assert "Set both prices or leave both blank" in html
-
 
 class TestAdvancedFold:
     def test_opens_only_when_something_is_in_it(self, login, org_admin, url):

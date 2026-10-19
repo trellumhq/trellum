@@ -5,9 +5,8 @@ from playwright.sync_api import expect, sync_playwright
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize(
-    "width,theme", [(1440, "light"), (390, "light"), (1440, "dark"), (390, "dark")]
-)
+# Theme changes no assertion here; width drives the 16px/44px mobile check.
+@pytest.mark.parametrize("width,theme", [(1440, "light"), (390, "dark")])
 def test_quota_form_saves_and_retains_failed_draft(login, org, width, theme):
     operator = get_user_model().objects.create_user(
         email="quota-ops@portal.local", password="pw-Str0ng-pw", is_operator_flag=True

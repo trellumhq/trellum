@@ -203,14 +203,11 @@ class TestGlobalRoute:
 
 class TestWidgetBundle:
     def test_bundle_still_served_at_frozen_url(self, client, db):
+        # Anonymous client: report pages load it before any session check; the
+        # APIs it calls are the gated part.
         resp = client.get("/api/assistant/widget.js")
         assert resp.status_code == 200
         assert resp["Content-Type"].startswith("application/javascript")
         # CSS is injected by the bundle prologue, then assistant.js follows.
         assert b"document.head.appendChild" in resp.content
         assert b"assistantPanel" in resp.content
-
-    def test_bundle_needs_no_auth(self, client, db):
-        # Report pages load it before any session check; the APIs it calls
-        # are the gated part.
-        assert client.get("/api/assistant/widget.js").status_code == 200

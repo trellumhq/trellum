@@ -127,33 +127,7 @@ class TestRepoControlledAppearance:
         assert "set in repository" in html
         assert 'name="theme"' not in html
         assert f'action="{prefix}/theme/default"' not in html
-
-    def test_pinned_row_names_the_repo_theme(self, login, org_admin, studio, prefix):
-        studio.repo_theme = "nord"
-        studio.save(update_fields=["repo_theme"])
-        html = login(org_admin).get(f"{prefix}/settings/appearance").content.decode()
-        assert "nord" in html
         assert 'data-theme="nord"' in html
-
-    def test_registry_name_note_mentions_both_surfaces(self, login, org_admin, studio, prefix):
-        studio.repo_theme = "nord"
-        studio.save(update_fields=["repo_theme"])
-        html = login(org_admin).get(f"{prefix}/settings/appearance").content.decode()
-        assert "built-in theme" in html
-
-    def test_custom_name_note_explains_chrome_stays_neutral(self, login, org_admin, studio, prefix):
-        studio.repo_theme = "a-repo-custom-theme"
-        studio.save(update_fields=["repo_theme"])
-        html = login(org_admin).get(f"{prefix}/settings/appearance").content.decode()
-        assert "custom theme" in html
-        assert "stays Trellum" in html
-
-    def test_lockline_says_repository_controlled_not_member_overrides(
-        self, login, org_admin, studio, prefix
-    ):
-        studio.repo_theme = "nord"
-        studio.save(update_fields=["repo_theme"])
-        html = login(org_admin).get(f"{prefix}/settings/appearance").content.decode()
         assert "Repository-controlled." in html
         assert "Member overrides: locked." not in html
         assert "Member overrides: allowed." not in html

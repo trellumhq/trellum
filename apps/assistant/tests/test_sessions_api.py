@@ -265,25 +265,19 @@ class TestReportBoundSessions:
         selected_viewer.selected_report_grant.report_grants.all().delete()
         assert login(selected_viewer).get(f"{prefix}/sessions/{session.pk}").status_code == 404
 
-    def test_deleted_bound_report_makes_session_inaccessible(
-        self, login, viewer, org, studio_tree, prefix, report_row
+    @pytest.mark.parametrize("how", ["deleted", "removed_from_scan"])
+    def test_gone_bound_report_makes_session_inaccessible(
+        self, login, viewer, org, studio_tree, prefix, report_row, how
     ):
         session = AssistantSession.objects.create(
             user=viewer, org=org, studio=studio_tree,
             scope=AssistantSession.SCOPE_REPORT, report=report_row,
         )
-        report_row.delete()
-        assert login(viewer).get(f"{prefix}/sessions/{session.pk}").status_code == 404
-
-    def test_removed_bound_report_makes_session_inaccessible(
-        self, login, viewer, org, studio_tree, prefix, report_row
-    ):
-        session = AssistantSession.objects.create(
-            user=viewer, org=org, studio=studio_tree,
-            scope=AssistantSession.SCOPE_REPORT, report=report_row,
-        )
-        report_row.present_in_scan = False
-        report_row.save(update_fields=["present_in_scan"])
+        if how == "deleted":
+            report_row.delete()
+        else:
+            report_row.present_in_scan = False
+            report_row.save(update_fields=["present_in_scan"])
         assert login(viewer).get(f"{prefix}/sessions/{session.pk}").status_code == 404
 
     def test_cross_studio_bound_report_corruption_is_inaccessible(

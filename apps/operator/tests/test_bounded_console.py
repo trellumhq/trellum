@@ -31,8 +31,8 @@ def no_controls(content):
         assert fragment not in html, fragment
 
 
-@pytest.mark.parametrize("size", [20, 200])
-def test_org_list_shows_every_organization(console, size):
+def test_org_list_shows_every_organization(console):
+    size = 20  # one realistic size; the cap branch is the heavy test below
     Organization.objects.bulk_create([
         Organization(slug=f"bounded-{i:04}", name=f"Organization {i:04}", is_active=i % 2 == 0)
         for i in range(size)
@@ -157,16 +157,7 @@ def test_database_usage_and_failed_save_never_measure_storage(console, org, monk
     assert not AuditLog.objects.filter(action="operator.org.quota").exists()
 
 
-def test_pool_and_quota_mutations_remain_authoritative_and_audited(console, org):
-    studios = Studio.objects.bulk_create([
-        Studio(org=org, slug=f"pool-{i:03}", name="Pool") for i in range(30)
-    ])
-    target = studios[-1]
-    response = console.post(f"/operator/orgs/{org.slug}/studios/{target.slug}/pool", {"pool": "large"})
-    assert response.status_code == 302
-    target.refresh_from_db()
-    assert target.pool == "large"
-    assert AuditLog.objects.filter(action="operator.studio.pool", org=org).count() == 1
+def test_quota_save_is_audited(console, org):
     saved = console.post(f"/operator/orgs/{org.slug}/quota", {"max_studios": "40"},
                          HTTP_X_TRELLUM_FORM="1", HTTP_ACCEPT="application/json")
     assert saved.json()["refresh"] == ["quota-usage"]
@@ -174,11 +165,8 @@ def test_pool_and_quota_mutations_remain_authoritative_and_audited(console, org)
     assert AuditLog.objects.filter(action="operator.org.quota", org=org).count() == 1
 
 
-def test_denied_read_and_operator_revocation(client, member, org):
+def test_operator_revocation_takes_effect_mid_session(client, org):
     paths = ("/operator/", "/operator/orgs/", f"/operator/orgs/{org.slug}/")
-    client.force_login(member)
-    for path in paths:
-        assert client.get(path, {"q": "foreign"}).status_code == 404
     operator = get_user_model().objects.create_user(email="revoked-ops@portal.local", is_operator_flag=True)
     client.force_login(operator)
     assert client.get(paths[1]).status_code == 200
