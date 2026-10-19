@@ -141,6 +141,11 @@ if(v.indexOf(t)>=0)document.documentElement.setAttribute('data-theme',t);}})();
 
 
 def _render_report_metadata(ctx, theme, seen_css, seen_js):
+    """The metadata strip's HTML, its values for data.json, and its assets.
+
+    The values go to data.json as well because auto-refresh only re-fetches
+    data.json; the strip re-renders them from there without a page reload.
+    """
     from trellum.components.report_metadata import ReportMetadata
 
     values = {key: value for key, value in ctx.header_meta.items() if key != "subtitle"}
@@ -150,7 +155,7 @@ def _render_report_metadata(ctx, theme, seen_css, seen_js):
     css_parts, js_parts = collect_asset_parts(
         [type(component)], seen_css, seen_js,
     )
-    return metadata_html, css_parts, js_parts
+    return metadata_html, component.display_items(), css_parts, js_parts
 
 
 def _integrate_default_chrome(ctx, header_html, metadata_html):
@@ -397,7 +402,7 @@ def render_report(
     component_js_parts.extend(header_js_parts)
 
     # Freshness stays after either the default or a custom header.
-    metadata_html, metadata_css_parts, metadata_js_parts = _render_report_metadata(
+    metadata_html, header_meta_items, metadata_css_parts, metadata_js_parts = _render_report_metadata(
         ctx, theme, seen_css, seen_js,
     )
     header_html, metadata_html = _integrate_default_chrome(ctx, header_html, metadata_html)
@@ -503,6 +508,7 @@ setTimeout(function(){
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "refresh_seconds": cron_interval,
     }
+    report_data["_header_meta"] = header_meta_items
     report_data["_framework_version"] = trellum.__version__
     report_data["_content_kind"] = config.get("kind", "report")
 
