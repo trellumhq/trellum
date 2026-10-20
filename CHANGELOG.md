@@ -7,6 +7,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Fixed
+
+- Recognize tenant-bound Microsoft Entra ID-token email domain verification
+  when linking an organization member or provisioning an allowed new account.
+
 ## [0.9.2] — 2026-10-20
 
 ### Fixed
