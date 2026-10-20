@@ -58,11 +58,12 @@ is stored encrypted) and set:
 Group mapping is re-applied on every login, so revoking a group in your
 directory revokes the corresponding access at next sign-in.
 
-New identities must provide a verified email (`email_verified: true`) before
-the portal links an existing member or provisions an account. An explicitly
-unverified email is refused. Returning identities use their existing provider
-subject link. The mailbox-less Entra exception below uses a tenant-managed UPN;
-other providers must issue a verified email for new identities.
+Before linking an existing member or provisioning an account, the portal
+requires email verification evidence: `email_verified: true` for ordinary
+OpenID Connect providers, or the tenant-bound Entra evidence described below.
+An explicitly unverified email is refused. Returning identities use their
+existing provider subject link. The mailbox-less Entra exception below uses
+a tenant-managed UPN.
 
 An internal provider whose certificate comes from a private CA works without
 disabling verification: point `REQUESTS_CA_BUNDLE` at your CA bundle in the
@@ -129,7 +130,35 @@ scopes** stays empty unless a subsection below says otherwise.
   requires the exact tenant-specific Microsoft issuer above and an ID token
   whose `tid` matches its tenant ID. Configure this only for a tenant whose
   administrators control those UPNs; generic username claims are not trusted
-  for linking. If an `email` claim is present, it must be verified.
+  for linking. If an `email` claim is present without `email_verified: true`,
+  configure the ID-token claims below.
+- Email domain confirmation: under **App registrations → your application →
+  Token configuration → Add optional claim**, choose **ID** and add `email`
+  and `xms_edov`. If using the manifest, merge these entries into the existing
+  `optionalClaims.idToken` array, preserving other claims:
+
+  ```json
+  {"name": "email", "essential": false},
+  {"name": "xms_edov", "essential": false}
+  ```
+
+  `xms_edov` is Microsoft's confirmation of the email domain owner, not a
+  general mailbox-verification flag. The portal accepts it only when it is
+  Boolean `true` in the validated ID token, the tenant and issuer match the
+  configured provider, the subject matches the sign-in identity, and the token
+  email matches the email being linked. UserInfo-only confirmation cannot
+  satisfy this check. An explicit negative `email_verified` still blocks it.
+  Configure the organization provider only for a tenant you trust to manage
+  identities for its allowed email domains. See Microsoft's
+  [optional claim reference](https://learn.microsoft.com/en-us/entra/identity-platform/optional-claims-reference).
+
+  Adding an optional claim does not force Microsoft to return `true`. If it is
+  absent or false, ask the tenant administrator to check the account and domain
+  verification; do not map a constant `true` or disable verification. After
+  saving, start a fresh **Test sign-in**. Existing accounts must still belong
+  to this organization, and new accounts still require **Auto-provision**.
+  Keep the registered callback URL unchanged; these are ID-token claims, not
+  additional API permissions or entries for **Extra scopes**.
 - Groups: **Token configuration → Add groups claim**, pick **Security
   groups** (or **Groups assigned to the application** in a large tenant),
   ID token format **Group ID**. Values are group object IDs, so the mapping

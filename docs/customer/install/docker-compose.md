@@ -20,7 +20,7 @@ isolation enabled. Configure that setup before any build-and-start command.
 
 ## Option A: Pull the published images
 
-Use the matching v0.9.2 source tag, which includes
+Use the matching v0.9.3 source tag, which includes
 `docker-compose.release.yml`. The matching source checkout also supplies backup and upgrade
 scripts and the other files needed to operate the installation. This path
 requires Docker Compose v2.24 or newer.
@@ -33,7 +33,7 @@ settings cannot change the selected release.
 ### 1. Get the matching Compose files
 
 ```bash
-TRELLUM_VERSION=v0.9.2
+TRELLUM_VERSION=v0.9.3
 git clone --depth 1 --branch "$TRELLUM_VERSION" https://github.com/trellumhq/trellum.git
 cd trellum
 cp .env.example .env
@@ -56,7 +56,7 @@ knows how to build the image itself; there is no separate Dockerfile step.
 ### Clone and prepare `.env`
 
 ```bash
-TRELLUM_VERSION=v0.9.2
+TRELLUM_VERSION=v0.9.3
 git clone --depth 1 --branch "$TRELLUM_VERSION" https://github.com/trellumhq/trellum.git
 cd trellum
 cp .env.example .env
