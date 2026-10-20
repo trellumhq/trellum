@@ -16,6 +16,12 @@ ID, or an internal provider on a network with no internet access. Register
 - A client secret
 - The redirect URI shown on the portal's SSO settings page
 
+Register that URI exactly, including its scheme and trailing slash. The
+authorization request and token exchange use this same callback, built from
+the instance's **Public URL** (or `PORTAL_BASE_URL` when that field is empty).
+For an HTTPS deployment, set the public URL to `https://` even when a reverse
+proxy forwards HTTP to the portal. No per-provider callback override is needed.
+
 Grant the `openid`, `profile` and `email` scopes. For group mapping, have the
 provider emit a claim listing the user's groups (`groups` at most providers;
 `roles` or a namespaced claim at some) and grant whatever consent your
