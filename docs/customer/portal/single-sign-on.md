@@ -110,8 +110,9 @@ without a passing test on record, the page shows a warning. It does not stop you
 ## Provider setup
 
 The portal requests the `openid`, `profile` and `email` scopes and reads the
-ID token and the userinfo response together, so a claim in either place
-counts. What differs per provider is the issuer URL, where the email comes
+ID token and the userinfo response together. The Entra domain-confirmation
+exception below requires evidence from the ID token itself. What differs
+per provider is the issuer URL, where the email comes
 from, and what it takes to get a groups claim into the token. **Extra
 scopes** stays empty unless a subsection below says otherwise.
 
@@ -391,7 +392,7 @@ login page), a **Back to sign-in** link, and a reference such as `K3M7Q2XA`.
 | Your account isn't a member of *Org* yet. Ask an organization admin to invite you. | A portal account exists for that email but isn't in the organization. |
 | *Org* doesn't create accounts automatically. Ask an organization admin to invite you. | No account yet and auto-provisioning is off. |
 | *email* isn't in an email domain *Org* uses for single sign-on. | The email's domain isn't one of the organization's routed domains. |
-| Your identity provider didn't confirm your email address. | The provider didn't mark the email as verified. |
+| Your identity provider didn't confirm your email address. | The provider didn't supply accepted verification evidence for this email. For Entra, check the optional ID-token claims described above. |
 | Your identity provider didn't send an email address. | The token carries no email claim. |
 | Single sign-on isn't turned on for *Org*. | SSO was switched off, for example after the link was bookmarked. |
 | Sign-in was cancelled. | The person declined at the provider. |
@@ -404,6 +405,13 @@ and a `reason_code` (for example `existing_non_member_account` or
 `idp_state_invalid`) in its details; the same reference is written to the
 server log next to the reason, along with the provider's error text for
 identity-provider failures.
+
+If **Test sign-in** reaches Entra, finds the email and routes its domain, but
+fails **Email verified by the identity provider**, check that you are running
+0.9.3 or later and that the application's ID token includes `email` and Boolean
+`xms_edov: true` as described above. Application consent alone does not supply
+this evidence. Deleting an existing portal account will not fix it: both
+first-time linking and new-account creation require verification.
 
 ## Security model
 
