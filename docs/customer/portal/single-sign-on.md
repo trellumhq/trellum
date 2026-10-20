@@ -76,7 +76,8 @@ when present, an effective `email_verified` value other than Boolean `true`
 is refused. The Entra domain-confirmation path additionally rejects an explicit
 negative in either source. Returning identities use their existing provider
 subject link rather than repeating first-link verification; their email must
-still belong to a routed, verified domain. The mailbox-less Entra exception
+still belong to a routed domain, verified when domain verification is required.
+The mailbox-less Entra exception
 below uses a tenant-managed UPN. Neither Entra exception extends to AD FS or
 other providers.
 
@@ -112,8 +113,9 @@ The test only counts for ten minutes after you press the button and works once.
 
 To check **first linking**, choose a fresh provider identity that has never
 been linked to this organization in the portal. A private browser window alone
-does not make an identity unlinked. Use a verified address in a routed,
-verified domain, and either add that address as a member first or enable
+does not make an identity unlinked. Use a verified address in a routed domain
+(verified when domain verification is required), and either add that address
+as a member first or enable
 **Auto-provision** for the intended test. Require passing email verification
 and the expected admission outcome. Repeat for each connection or account
 type you intend to admit. Test sign-in leaves the identity unlinked, so you
