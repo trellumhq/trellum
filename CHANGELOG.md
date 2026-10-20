@@ -7,7 +7,20 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
-## [0.9.0] — 2026-10-19
+## [0.9.1] — 2026-10-20
+
+The v0.9.0 tag was never published: its images failed the release
+vulnerability scan. 0.9.1 is the first release with the 0.9.0 changes, so
+when upgrading from 0.8.0, also read the 0.9.0 section of `CHANGELOG.md`,
+including its upgrade notes.
+
+### Security
+
+- Update aiohttp to 3.14.4 (and yarl to 1.25.1) for CVE-2026-111064 and
+  GHSA-2g87-pp6c-29x5: the aiohttp server had no initial request or header
+  timeout, and several limits were missing or unbounded.
+
+## [0.9.0] — 2026-10-19 (not published)
 
 ### Added
 
@@ -920,7 +933,8 @@ and demos together in one AGPL-licensed project.
 - Owned Trellum code is released under AGPL-3.0-only. Third-party and
   contributor notices retain their own terms.
 
-[Unreleased]: https://github.com/trellumhq/trellum/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/trellumhq/trellum/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/trellumhq/trellum/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/trellumhq/trellum/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/trellumhq/trellum/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/trellumhq/trellum/compare/v0.6.0...v0.7.0
