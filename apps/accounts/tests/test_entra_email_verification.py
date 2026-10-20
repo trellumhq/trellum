@@ -206,11 +206,12 @@ def signing_key():
 
 
 @pytest.fixture
-def provider_http(monkeypatch, signing_key):
+def provider_http(monkeypatch, signing_key, request):
     """Real callback/state/JWT validation, with every provider request mocked.
 
     allauth permits skipping signature validation for a TLS token exchange.
-    Force it on here, exercising signed JWTs and the mocked JWKS as well.
+    Force it on by default, exercising signed JWTs and the mocked JWKS as
+    well. The production-decoder parameter leaves the decoder unmodified.
     """
     state = SimpleNamespace(token=_token(), userinfo={"sub": SUBJECT}, calls=[], decoded=[])
     verify = jwtkit.verify_and_decode
@@ -224,7 +225,8 @@ def provider_http(monkeypatch, signing_key):
         state.decoded.append(copy.deepcopy(claims))
         return claims
 
-    monkeypatch.setattr(jwtkit, "verify_and_decode", verify_signed)
+    if getattr(request, "param", "signed") == "signed":
+        monkeypatch.setattr(jwtkit, "verify_and_decode", verify_signed)
 
     def send(session, request, **kwargs):
         state.calls.append((request.method, request.url))
@@ -430,3 +432,129 @@ def test_returning_subject_link_keeps_existing_rules(client, cfg, provider_http,
     assert response.status_code == 302
     assert client.session["_auth_user_id"] == str(member.pk)
     assert SocialAccount.objects.get(user=member).uid == SUBJECT
+
+
+def test_returning_subject_test_signin_never_writes_identity(
+    client, cfg, provider_http, make_user, org, org_admin, mailoutbox,
+):
+    member = make_user(EMAIL, org=org)
+    account = SocialAccount.objects.create(
+        user=member, provider=PROVIDER, uid=SUBJECT,
+        extra_data={"id_token": _token(name="Old name", groups=["old-group"])},
+    )
+    old_group = PermissionGroup.objects.create(org=org, name="Old group")
+    new_group = PermissionGroup.objects.create(org=org, name="New group")
+    PermissionGroupMembership.objects.create(user=member, group=old_group)
+    cfg.group_map = {"old-group": old_group.pk, "new-group": new_group.pk}
+    cfg.save()
+    provider_http.token.update(name="Changed name", groups=["new-group"])
+    client.force_login(org_admin)
+    response = client.post("/orgs/demo/settings/sso", {"action": "test-signin"})
+    assert response.status_code == 302
+    session_key = client.session.session_key
+    auth = {key: value for key, value in client.session.items() if key.startswith("_auth_")}
+    before = _identity_rows()
+    auth_events = AuditLog.objects.filter(action__in=["auth.login", "auth.logout"]).count()
+
+    with CaptureQueriesContext(connection) as queries:
+        response = _callback(client)
+
+    assert response.status_code == 302 and response.url == "/orgs/demo/settings/sso"
+    assert _identity_rows() == before
+    assert not _identity_writes(queries)
+    assert client.session.session_key == session_key
+    assert {key: value for key, value in client.session.items() if key.startswith("_auth_")} == auth
+    assert sso_test.SESSION_MARKER not in client.session
+    cfg.refresh_from_db()
+    assert cfg.last_test_ok is True and cfg.last_test_by == org_admin
+    assert cfg.last_test_summary == client.session[sso_test.SESSION_RESULT]
+    checks = {check["label"]: check for check in cfg.last_test_summary["checks"]}
+    assert checks["Admission outcome"]["detail"] == "Would sign in the existing linked account."
+    assert checks["Permission groups that would be granted"]["detail"] == new_group.name
+    assert checks["Permission groups that would be removed"]["detail"] == old_group.name
+    row = AuditLog.objects.get(action="sso.test_signin")
+    assert row.actor == org_admin and row.outcome == "success"
+    assert AuditLog.objects.filter(action__in=["auth.login", "auth.logout"]).count() == auth_events
+    assert not mailoutbox
+
+    # The real OAuth state is also consumed: a replay cannot reach the IdP.
+    calls = len(provider_http.calls)
+    replay = client.get(_route("callback"), response.wsgi_request.GET)
+    assert replay.status_code == 401
+    assert len(provider_http.calls) == calls
+    assert _identity_rows() == before
+    assert client.session["_auth_user_id"] == str(org_admin.pk)
+
+    # A fresh authorization after the one-use test follows the ordinary login
+    # path: refresh the same provider subject's claims and group memberships.
+    response = _callback(client)
+    assert response.status_code == 302 and response.url != "/orgs/demo/settings/sso"
+    account.refresh_from_db()
+    assert account.extra_data["id_token"]["name"] == "Changed name"
+    assert account.extra_data["id_token"]["groups"] == ["new-group"]
+    assert client.session["_auth_user_id"] == str(member.pk)
+    assert PermissionGroupMembership.objects.filter(user=member, group=new_group).exists()
+    assert not PermissionGroupMembership.objects.filter(user=member, group=old_group).exists()
+    assert AuditLog.objects.filter(action="sso.test_signin").count() == 1
+    assert not mailoutbox
+
+
+@pytest.mark.parametrize("provider_http", ["production-decoder"], indirect=True)
+@pytest.mark.parametrize("invalid", ["wrong-audience", "expired"])
+def test_test_signin_rejects_invalid_token_before_dry_run(
+    client, cfg, provider_http, make_user, org, org_admin, invalid, mailoutbox,
+):
+    member = make_user(EMAIL, org=org)
+    SocialAccount.objects.create(user=member, provider=PROVIDER, uid=SUBJECT, extra_data={"old": True})
+    if invalid == "wrong-audience":
+        provider_http.token["aud"] = "another-client"
+    else:
+        provider_http.token["exp"] = int(time.time()) - 300
+    client.force_login(org_admin)
+    assert client.post("/orgs/demo/settings/sso", {"action": "test-signin"}).status_code == 302
+    before = _identity_rows()
+    with CaptureQueriesContext(connection) as queries:
+        response = _callback(client)
+    assert response.status_code == 401
+    assert _identity_rows() == before
+    assert not _identity_writes(queries)
+    assert client.session["_auth_user_id"] == str(org_admin.pk)
+    assert not AuditLog.objects.filter(action="sso.test_signin").exists()
+    assert AuditLog.objects.filter(action="auth.sso_denied", metadata__reason_code="idp_error").exists()
+    cfg.refresh_from_db()
+    assert cfg.last_test_at is None
+    assert not mailoutbox
+
+
+@pytest.mark.parametrize("state", [None, "forged"])
+def test_test_signin_invalid_state_cannot_consume_marker_or_reach_provider(
+    client, cfg, provider_http, org_admin, state, mailoutbox,
+):
+    client.force_login(org_admin)
+    assert client.post("/orgs/demo/settings/sso", {"action": "test-signin"}).status_code == 302
+    start = client.get(_route("login"))
+    assert start.status_code == 302
+    valid_state = parse_qs(urlsplit(start.url).query)["state"][0]
+    marker = client.session[sso_test.SESSION_MARKER]
+    calls = len(provider_http.calls)
+    before = _identity_rows()
+    query = {"code": "mock-code"}
+    if state is not None:
+        query["state"] = state
+    with CaptureQueriesContext(connection) as queries:
+        response = client.get(_route("callback"), query)
+    assert response.status_code == 401
+    assert len(provider_http.calls) == calls
+    assert _identity_rows() == before
+    assert not _identity_writes(queries)
+    assert client.session[sso_test.SESSION_MARKER] == marker
+    assert client.session["_auth_user_id"] == str(org_admin.pk)
+    assert not AuditLog.objects.filter(action="sso.test_signin").exists()
+    cfg.refresh_from_db()
+    assert cfg.last_test_at is None
+
+    # Rejecting the forged callback leaves the legitimate test usable.
+    response = client.get(_route("callback"), {"code": "mock-code", "state": valid_state})
+    assert response.status_code == 302 and response.url == "/orgs/demo/settings/sso"
+    assert AuditLog.objects.filter(action="sso.test_signin").count() == 1
+    assert not mailoutbox

@@ -7,15 +7,17 @@ from unittest import mock
 import ldap3
 import pytest
 from allauth.core import context
+from allauth.core.exceptions import ImmediateHttpResponse
 from allauth.socialaccount.adapter import get_adapter
 from allauth.socialaccount.helpers import complete_social_login
-from allauth.socialaccount.models import SocialAccount
+from allauth.socialaccount.models import SocialAccount, SocialToken
 from django.contrib.auth import get_user_model
 from django.contrib.messages.storage.fallback import FallbackStorage
 from django.core import signing
 from django.test import RequestFactory
 
 from apps.accounts import ldap, sso, sso_test
+from apps.accounts.oidc.views import PublicURLAdapter
 from apps.core import roles
 from apps.core.models import AuditLog
 from apps.orgs import domains
@@ -70,9 +72,15 @@ def _callback(client, admin, *, email="sso.user@demo.example", uid="oid-9", **cl
     request._messages = FallbackStorage(request)
     provider = get_adapter().get_provider(request, "oidc-demo")
     extra = {"sub": uid, "email": email, "email_verified": True, **claims}
-    sociallogin = provider.sociallogin_from_response(request, {"userinfo": extra})
     with context.request_context(request):
-        response = complete_social_login(request, sociallogin)
+        adapter = PublicURLAdapter(request, "oidc-demo")
+        with mock.patch.object(adapter, "_fetch_user_info", return_value=extra):
+            try:
+                sociallogin = adapter.complete_login(request, provider.app, SocialToken(token="mock"), response={})
+            except ImmediateHttpResponse as exc:
+                response = exc.response
+            else:
+                response = complete_social_login(request, sociallogin)
     request.session.save()
     return response, request
 

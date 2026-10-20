@@ -384,13 +384,6 @@ class OrgSSOAdapter(DefaultSocialAccountAdapter):
                     reason_code=REASON_NOT_ENABLED, provider=provider, org=org,
                 )
             )
-        from apps.accounts import sso_test
-
-        if sso_test.consume(request, cfg):
-            # An admin's "Test sign-in" run: report what would happen and
-            # stop. Nothing below -- login, linking, provisioning, group
-            # sync -- may run, and the admin's own session stays untouched.
-            raise ImmediateHttpResponse(sso_test.finish_oidc(request, cfg, sociallogin))
         # The rest of this method only runs for a live, enabled config, so
         # every login that gets this far is unambiguously SSO -- stamp the
         # request now so auth_events._logged_in can tell auth.login apart from
