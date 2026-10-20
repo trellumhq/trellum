@@ -61,9 +61,11 @@ directory revokes the corresponding access at next sign-in.
 Before linking an existing member or provisioning an account, the portal
 requires email verification evidence: `email_verified: true` for ordinary
 OpenID Connect providers, or the tenant-bound Entra evidence described below.
-An explicitly unverified email is refused. Returning identities use their
-existing provider subject link. The mailbox-less Entra exception below uses
-a tenant-managed UPN.
+For ordinary verification, UserInfo claims take precedence over ID-token
+claims; when present, an effective `email_verified` value other than Boolean
+`true` is refused. The Entra domain-confirmation path additionally rejects an explicit
+negative in either source. Returning identities use their existing provider
+subject link. The mailbox-less Entra exception below uses a tenant-managed UPN.
 
 An internal provider whose certificate comes from a private CA works without
 disabling verification: point `REQUESTS_CA_BUNDLE` at your CA bundle in the
