@@ -7,6 +7,19 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.9.2] — 2026-10-20
+
+### Fixed
+
+- Use the configured public URL for OpenID Connect authorization callbacks and
+  token exchange, including deployments behind HTTPS proxies.
+
+### Upgrade notes
+
+- Check that the instance Public URL (or `PORTAL_BASE_URL` when empty) is the
+  externally reachable HTTPS address. Keep the exact callback shown in SSO
+  settings registered at the identity provider, including its trailing slash.
+
 ## [0.9.1] — 2026-10-20
 
 The v0.9.0 tag was never published: its images failed the release
