@@ -4,8 +4,9 @@ enforcing it, without logging anyone in.
 OpenID Connect. The settings page POSTs ``test-signin``; :func:`begin` puts a
 short-lived, signed marker in the *admin's own session* and sends the browser
 into the normal allauth flow. When the callback arrives,
-``OrgSSOAdapter.pre_social_login`` asks :func:`consume` whether this run is a
-test. If so it never gets to log in, link, provision or sync groups:
+``PublicURLAdapter.complete_login`` asks :func:`consume` whether this run is a
+test, before allauth looks up and updates a linked identity. If so it never
+gets to log in, link, provision or sync groups:
 :func:`finish_oidc` evaluates what *would* happen, records the result and
 redirects back to the settings page, and allauth's session handling is never
 reached -- the admin is the same user afterwards as before.
