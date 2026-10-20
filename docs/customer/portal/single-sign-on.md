@@ -58,11 +58,14 @@ is stored encrypted) and set:
 Group mapping is re-applied on every login, so revoking a group in your
 directory revokes the corresponding access at next sign-in.
 
-New identities must provide a verified email (`email_verified: true`) before
-the portal links an existing member or provisions an account. An explicitly
-unverified email is refused. Returning identities use their existing provider
-subject link. The mailbox-less Entra exception below uses a tenant-managed UPN;
-other providers must issue a verified email for new identities.
+Before linking an existing member or provisioning an account, the portal
+requires email verification evidence: `email_verified: true` for ordinary
+OpenID Connect providers, or the tenant-bound Entra evidence described below.
+For ordinary verification, UserInfo claims take precedence over ID-token
+claims; when present, an effective `email_verified` value other than Boolean
+`true` is refused. The Entra domain-confirmation path additionally rejects an explicit
+negative in either source. Returning identities use their existing provider
+subject link. The mailbox-less Entra exception below uses a tenant-managed UPN.
 
 An internal provider whose certificate comes from a private CA works without
 disabling verification: point `REQUESTS_CA_BUNDLE` at your CA bundle in the
@@ -109,8 +112,9 @@ without a passing test on record, the page shows a warning. It does not stop you
 ## Provider setup
 
 The portal requests the `openid`, `profile` and `email` scopes and reads the
-ID token and the userinfo response together, so a claim in either place
-counts. What differs per provider is the issuer URL, where the email comes
+ID token and the userinfo response together. The Entra domain-confirmation
+exception below requires evidence from the ID token itself. What differs
+per provider is the issuer URL, where the email comes
 from, and what it takes to get a groups claim into the token. **Extra
 scopes** stays empty unless a subsection below says otherwise.
 
@@ -129,7 +133,35 @@ scopes** stays empty unless a subsection below says otherwise.
   requires the exact tenant-specific Microsoft issuer above and an ID token
   whose `tid` matches its tenant ID. Configure this only for a tenant whose
   administrators control those UPNs; generic username claims are not trusted
-  for linking. If an `email` claim is present, it must be verified.
+  for linking. If an `email` claim is present without `email_verified: true`,
+  configure the ID-token claims below.
+- Email domain confirmation: under **App registrations → your application →
+  Token configuration → Add optional claim**, choose **ID** and add `email`
+  and `xms_edov`. If using the manifest, merge these entries into the existing
+  `optionalClaims.idToken` array, preserving other claims:
+
+  ```json
+  {"name": "email", "essential": false},
+  {"name": "xms_edov", "essential": false}
+  ```
+
+  `xms_edov` is Microsoft's confirmation of the email domain owner, not a
+  general mailbox-verification flag. The portal accepts it only when it is
+  Boolean `true` in the validated ID token, the tenant and issuer match the
+  configured provider, the subject matches the sign-in identity, and the token
+  email matches the email being linked. UserInfo-only confirmation cannot
+  satisfy this check. An explicit negative `email_verified` still blocks it.
+  Configure the organization provider only for a tenant you trust to manage
+  identities for its allowed email domains. See Microsoft's
+  [optional claim reference](https://learn.microsoft.com/en-us/entra/identity-platform/optional-claims-reference).
+
+  Adding an optional claim does not force Microsoft to return `true`. If it is
+  absent or false, ask the tenant administrator to check the account and domain
+  verification; do not map a constant `true` or disable verification. After
+  saving, start a fresh **Test sign-in**. Existing accounts must still belong
+  to this organization, and new accounts still require **Auto-provision**.
+  Keep the registered callback URL unchanged; these are ID-token claims, not
+  additional API permissions or entries for **Extra scopes**.
 - Groups: **Token configuration → Add groups claim**, pick **Security
   groups** (or **Groups assigned to the application** in a large tenant),
   ID token format **Group ID**. Values are group object IDs, so the mapping
@@ -362,7 +394,7 @@ login page), a **Back to sign-in** link, and a reference such as `K3M7Q2XA`.
 | Your account isn't a member of *Org* yet. Ask an organization admin to invite you. | A portal account exists for that email but isn't in the organization. |
 | *Org* doesn't create accounts automatically. Ask an organization admin to invite you. | No account yet and auto-provisioning is off. |
 | *email* isn't in an email domain *Org* uses for single sign-on. | The email's domain isn't one of the organization's routed domains. |
-| Your identity provider didn't confirm your email address. | The provider didn't mark the email as verified. |
+| Your identity provider didn't confirm your email address. | The provider didn't supply accepted verification evidence for this email. For Entra, check the optional ID-token claims described above. |
 | Your identity provider didn't send an email address. | The token carries no email claim. |
 | Single sign-on isn't turned on for *Org*. | SSO was switched off, for example after the link was bookmarked. |
 | Sign-in was cancelled. | The person declined at the provider. |
@@ -375,6 +407,13 @@ and a `reason_code` (for example `existing_non_member_account` or
 `idp_state_invalid`) in its details; the same reference is written to the
 server log next to the reason, along with the provider's error text for
 identity-provider failures.
+
+If **Test sign-in** reaches Entra, finds the email and routes its domain, but
+fails **Email verified by the identity provider**, check that you are running
+0.9.3 or later and that the application's ID token includes `email` and Boolean
+`xms_edov: true` as described above. Application consent alone does not supply
+this evidence. Deleting an existing portal account will not fix it: both
+first-time linking and new-account creation require verification.
 
 ## Security model
 

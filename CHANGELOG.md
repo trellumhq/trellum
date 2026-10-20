@@ -7,6 +7,25 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.9.3] — 2026-10-20
+
+### Fixed
+
+- Recognize tenant-bound Microsoft Entra ID-token email domain verification
+  when linking an organization member or provisioning an allowed new account.
+- Keep Test sign-in from updating stored identity claims for an already-linked
+  account.
+
+### Upgrade notes
+
+- For Entra accounts whose email lacks `email_verified: true`, add the optional
+  **ID-token** claims `email` and `xms_edov` to the app registration. Trellum
+  requires Boolean `xms_edov: true` with matching tenant, issuer, subject and
+  email. Trust only tenants authorized to manage the organization's identities;
+  domain confirmation is not individual mailbox verification. Keep existing
+  optional claims and the registered callback URI unchanged, then run a fresh
+  **Test sign-in**. Application consent alone does not provide these claims.
+
 ## [0.9.2] — 2026-10-20
 
 ### Fixed
