@@ -489,12 +489,27 @@
     if(pollBusy||invalidSession||document.hidden||pageAway)return;
     pollBusy=true;pollRefresh=false;var g=++stateGeneration;
     pollController=new AbortController();
-    pollDeadline=setTimeout(function(){if(pollController)pollController.abort();},8000);
-    api('state','GET',null,null,pollController.signal).then(function(s){if(g!==stateGeneration)return;applyState(s);}).catch(function(e){if(g===stateGeneration&&e.name!=='AbortError'){if([403,404,409,410].indexOf(e.status)>=0||/session/i.test(e.message))disableForInvalidSession();else statusEl.textContent='Connection issue: '+e.message;}}).finally(function(){
+    var controller=pollController, timedOut=false;
+    pollDeadline=setTimeout(function(){timedOut=true;controller.abort();},8000);
+    api('state','GET',null,null,controller.signal).then(function(s){
+      if(controller.signal.aborted||g!==stateGeneration)return;
+      applyState(s);
+    }).catch(function(e){
+      // A deadline loses observation; lifecycle cancellation and older reads
+      // must not change the current conversation.
+      if(g!==stateGeneration||(controller.signal.aborted&&!timedOut))return;
+      if([403,404,409,410].indexOf(e.status)>=0||/session/i.test(e.message))disableForInvalidSession();
+      else {
+        statusEl.textContent='Connection issue: '+e.message;
+        window._fwReviewActivity.markUnknown(conversation.activities);
+        renderReplies(conversation);
+      }
+    }).finally(function(){
       clearTimeout(pollDeadline);pollDeadline=null;pollBusy=false;pollController=null;
-      if(pageAway||document.hidden||invalidSession||ended)return;
+      if(pageAway||document.hidden||invalidSession)return;
       // Keep one read in flight, including a refresh requested by a newer send.
-      var delay=pollRefresh?0:window._fwReviewActivity.pollInterval(conversation.activities,2500);
+      // Ending disables writes, but the final batch can still receive replies.
+      var delay=pollRefresh?0:ended?2500:window._fwReviewActivity.pollInterval(conversation.activities,2500);
       pollRefresh=false;pollTimer=setTimeout(pollState,delay);
     });
   }

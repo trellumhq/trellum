@@ -41,8 +41,10 @@ negative when a parked poll wins the race with browser acknowledgement; retain
 that signed result, and use `send_to_pickup` alongside it. Submission-to-visible
 and acknowledgement-to-visible metrics distinguish the HTTP cost from display
 lag. Initial builds and optional simple rebuilds are recorded separately, without
-a browser reload measurement or a warehouse query. No millisecond pass/fail
-threshold is used.
+a browser reload measurement or a warehouse query. The diagnostic command
+records timings without a millisecond pass/fail threshold. The separate heavy
+protocol test asserts an 800 ms observation bound for the deterministic local
+fixture; that test bound is not a provider response guarantee.
 
 The protocol smoke test is marked heavy, following the repository timing and
 real-process test policy:
@@ -74,8 +76,11 @@ fresh `picked_up`, `working` or `rebuilding` presence. A stale active activity
 is exposed as `unknown` by the server and returns to the idle interval. Each
 surface schedules one next read after its current read finishes; sends request
 an immediate refresh, and hidden or departed pages clear timers and abort their
-current read. Both status reads have an 8 second abort deadline. These are
-client observation intervals, not provider generation guarantees.
+current read. Both status reads have an 8 second abort deadline. A failed or
+timed-out read marks outstanding activity unknown until observation recovers;
+lifecycle cancellation does not change activity. Ended sessions retain the idle
+cadence to receive replies to their final feedback, with submissions disabled.
+These are client observation intervals, not provider generation guarantees.
 
 In `trellum/cli/commands/review.py`, each CLI request parks for up to 30 seconds
 and immediately reissues on a waiting result; `ReviewState.poll` wakes on queue

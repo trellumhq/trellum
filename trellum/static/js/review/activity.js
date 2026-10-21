@@ -73,6 +73,11 @@
     var result=row?(labels[row.display_state||row.state]||'Activity unknown'):queued?'Queued · awaiting pickup':(s.agent&&s.agent.state==='listening'?'Agent listening':activities.some(function(a){return a.state==='failed';})?'Feedback failed':'Ready · waiting for agent');
     return result+(row&&queued?' · '+queued+' queued follow-up'+(queued===1?'':'s'):'');
   }
+  function markUnknown(activities) {
+    (activities||[]).forEach(function(a){
+      if(['queued','picked_up','working','rebuilding','waiting'].indexOf(a.state)>=0)a.display_state='unknown';
+    });
+  }
   function pollInterval(activities, idleMs, now) {
     now=now===undefined?Date.now()/1000:now;
     activities=Array.isArray(activities)?activities:[];
@@ -83,5 +88,5 @@
     });
     return fast?500:idleMs;
   }
-  window._fwReviewActivity={render:render,summary:summary,pollInterval:pollInterval};
+  window._fwReviewActivity={render:render,summary:summary,markUnknown:markUnknown,pollInterval:pollInterval};
 })();

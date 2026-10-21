@@ -20,25 +20,27 @@
     }
     restoreScroll();
 
-    var statusBusy = false, statusAbort = null, statusTimer = null, statusAway = false;
+    var statusBusy = false, statusAbort = null, statusTimer = null, statusAway = false, statusInvalid = false;
     function scheduleStatus(delay) {
         clearTimeout(statusTimer);
-        if (statusAway || document.hidden || state.ended) return;
+        if (statusAway || document.hidden || statusInvalid) return;
         statusTimer = setTimeout(tickStatus, delay);
     }
     function tickStatus() {
         clearTimeout(statusTimer);
-        if (statusBusy || document.hidden || statusAway || state.ended) return;
+        if (statusBusy || document.hidden || statusAway || statusInvalid) return;
         statusBusy = true;
         var revision = state.statusRevision || 0;
         statusAbort = new AbortController();
-        var deadline = setTimeout(function () { if (statusAbort) statusAbort.abort(); }, 8000);
+        var controller = statusAbort, timedOut = false;
+        var deadline = setTimeout(function () { timedOut=true; controller.abort(); }, 8000);
         api('GET', '/_fw/review/status?slug=' + encodeURIComponent(SLUG) + '&after=' + state.lastReplyN, null, statusAbort.signal)
             .then(function (res) {
-                if (!res.ok) return;
-                if (revision !== (state.statusRevision || 0)) return;
+                if (!res.ok) throw new Error("HTTP " + res.status);
+                if (controller.signal.aborted || revision !== (state.statusRevision || 0)) return;
                 var s = res.json;
                 if (state.session && state.session !== s.session) {
+                    if (state.ended) { statusInvalid=true; return; }
                     state.chatLog=[];state.lastReplyN=0;state.chatRestored=false;
                 }
                 state.session = s.session;
@@ -102,22 +104,23 @@
                 state.firstStatus = false;
             })
             .catch(function (error) {
-                if (!state.ended && error.name !== 'AbortError' && !document.hidden && !statusAway) {
+                if (revision === (state.statusRevision || 0) && (!controller.signal.aborted || timedOut) && !document.hidden && !statusAway) {
                     setAgent('absent');
-                    (state.activities || []).forEach(function (a) { if (['picked_up','working','rebuilding'].indexOf(a.state)>=0) a.display_state='unknown'; });
+                    window._fwReviewActivity.markUnknown(state.activities);
                     renderConversation();
                 }
             }).finally(function () {
                 clearTimeout(deadline); statusBusy=false; statusAbort=null;
-                scheduleStatus(window._fwReviewActivity.pollInterval(state.activities, STATUS_MS));
+                // Keep a low-rate observation for replies to the final batch.
+                scheduleStatus(state.ended ? STATUS_MS : window._fwReviewActivity.pollInterval(state.activities, STATUS_MS));
             });
     }
     tickStatus();
     document.addEventListener('visibilitychange', function () {
-        if (document.hidden) { clearTimeout(statusTimer); if (statusAbort) statusAbort.abort(); }
+        if (document.hidden) { state.statusRevision=(state.statusRevision||0)+1; clearTimeout(statusTimer); if (statusAbort) statusAbort.abort(); }
         else { statusAway=false; tickStatus(); }
     });
-    window.addEventListener('pagehide', function () { statusAway=true; clearTimeout(statusTimer); if (statusAbort) statusAbort.abort(); });
+    window.addEventListener('pagehide', function () { statusAway=true; state.statusRevision=(state.statusRevision||0)+1; clearTimeout(statusTimer); if (statusAbort) statusAbort.abort(); });
     window.addEventListener('pageshow', function () { statusAway=false; tickStatus(); });
 
     setAgent('absent');

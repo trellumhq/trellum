@@ -360,3 +360,170 @@ def test_workspace_send_invalidates_held_state_and_serializes_refresh(workspace_
             assert page.evaluate("window.heldState.max") == 1
         finally:
             browser.close()
+
+
+@pytest.fixture(params=['standalone', 'workspace'])
+def observation_surface(request):
+    if request.param == 'workspace':
+        base, st, _ = request.getfixturevalue('workspace_browser_project')
+        return base+'/_fw/review/workspace', st, 'decision', True
+    server = request.getfixturevalue('review_server')
+    from trellum.review.state import STATE
+    STATE.reset_for_tests()
+    STATE.start()
+    return server['base']+'/alpha/index.html', STATE, 'alpha', False
+
+
+def _surface_composer(page, workspace):
+    if workspace:
+        page.click('#queue-toggle')
+        return page
+    page.click('#fwrvChat')
+    return page
+
+
+@pytest.mark.heavy
+@pytest.mark.parametrize('failure', ['deadline', 'network', 'http'])
+def test_observation_failure_aborts_and_recovers(observation_surface, failure):
+    from playwright.sync_api import sync_playwright
+
+    url, st, slug, workspace = observation_surface
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        try:
+            page = browser.new_page()
+            page.goto(url)
+            composer = _surface_composer(page, workspace)
+            composer.locator('#chat-note' if workspace else '#fwrvNote').fill('Observe this work')
+            composer.locator('#send' if workspace else '#fwrvSend').click()
+            page.locator('[data-activity-state="queued"]').wait_for()
+            _, batches = st.poll(0, slug)
+            feedback = batches[0]['feedback_id']
+            st.activity(st.session, slug, feedback, 'working', 'Checking evidence')
+            _wait_activity(page, feedback, 'working')
+            page.evaluate("""failure => {
+                const original=window.fetch;
+                window.readProbe={mode:failure, aborted:0, inflight:0, max:0};
+                window.fetch=(url, options) => {
+                    const p=window.readProbe;
+                    if(!String(url).includes('/review/status')&&!String(url).includes('/workspace/state'))return original(url, options);
+                    if(p.mode==='ok')return original(url,options);
+                    if(p.mode==='network')return Promise.reject(new TypeError('Offline'));
+                    if(p.mode==='http')return Promise.resolve(new Response('{}',{status:503}));
+                    p.inflight++;p.max=Math.max(p.max,p.inflight);
+                    return new Promise((resolve,reject)=>options.signal.addEventListener('abort',()=>{
+                        p.aborted++;p.inflight--;reject(new DOMException('Aborted','AbortError'));
+                    },{once:true}));
+                };
+            }""", failure)
+            if failure == 'deadline':
+                page.wait_for_function('window.readProbe.inflight===1')
+                # Lifecycle aborts retain the last observation and resume one read.
+                page.evaluate("""() => {
+                    Object.defineProperty(document,'hidden',{configurable:true,value:true});
+                    document.dispatchEvent(new Event('visibilitychange'));
+                }""")
+                page.wait_for_function('window.readProbe.aborted===1')
+                _wait_activity(page, feedback, 'working')
+                page.evaluate("""() => {
+                    Object.defineProperty(document,'hidden',{configurable:true,value:false});
+                    document.dispatchEvent(new Event('visibilitychange'));
+                }""")
+            if failure == 'deadline':
+                page.wait_for_function('window.readProbe.inflight===1')
+                page.evaluate("window.dispatchEvent(new Event('pagehide'))")
+                page.wait_for_function('window.readProbe.aborted===2')
+                _wait_activity(page, feedback, 'working')
+                page.evaluate("window.dispatchEvent(new Event('pageshow'))")
+            _wait_activity(page, feedback, 'unknown')
+            if failure == 'deadline':
+                assert page.evaluate('window.readProbe.aborted') == 3
+                assert page.evaluate('window.readProbe.max') == 1
+            page.evaluate("window.readProbe.mode='ok'")
+            _wait_activity(page, feedback, 'working')
+            st.reply('Recovered observation', slug, feedback)
+            _wait_activity(page, feedback, 'completed')
+        finally:
+            browser.close()
+
+
+def test_send_and_end_observes_late_final_reply(observation_surface):
+    from playwright.sync_api import sync_playwright
+
+    url, st, slug, workspace = observation_surface
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        try:
+            page = browser.new_page()
+            page.goto(url)
+            composer = _surface_composer(page, workspace)
+            if workspace:
+                # The embedded adapter can submit a final note and end together;
+                # its composer is hidden because the parent owns the visible UI.
+                frame = page.frame_locator('#fw-workspace-analysis')
+                frame.locator('#fwrvNote').wait_for(state='attached')
+                frame.locator('#fwrvNote').evaluate("el => el.value='Final feedback before ending'")
+                frame.locator('#fwrvSendEnd').evaluate('el => el.click()')
+                page.wait_for_function("document.getElementById('send-status').textContent==='Session ended.'")
+            else:
+                composer.locator('#fwrvNote').fill('Final feedback before ending')
+                composer.locator('#fwrvSendEnd').click()
+                page.locator('#fwrvEndbar').wait_for()
+            # Let an ended status observation finish before the agent responds.
+            endpoint = '/workspace/state' if workspace else '/review/status'
+            with page.expect_response(lambda r: endpoint in r.url):
+                page.evaluate("window.dispatchEvent(new Event('pageshow'))")
+            status, batches = st.poll(0, slug)
+            assert status == 'feedback'
+            assert 'Final feedback before ending' in str(batches)
+            feedback = batches[0]['feedback_id']
+            st.reply('Final feedback processed after ending', slug, feedback)
+            page.get_by_text('Final feedback processed after ending', exact=True).wait_for(state='attached')
+            _wait_activity(page, feedback, 'completed')
+            # A new session must never replace this ended conversation.
+            st.start_analysis('decision') if workspace else st.start()
+            with page.expect_response(lambda r: endpoint in r.url):
+                page.evaluate("window.dispatchEvent(new Event('pageshow'))")
+            assert page.get_by_text('Final feedback processed after ending', exact=True).count() == 1
+        finally:
+            browser.close()
+
+
+def test_old_read_failure_cannot_mark_new_send_unknown(observation_surface):
+    from playwright.sync_api import sync_playwright
+
+    url, st, slug, workspace = observation_surface
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        try:
+            page = browser.new_page()
+            page.goto(url)
+            composer = _surface_composer(page, workspace)
+            note = composer.locator('#chat-note' if workspace else '#fwrvNote')
+            send = composer.locator('#send' if workspace else '#fwrvSend')
+            note.fill('First request')
+            send.click()
+            page.locator('[data-activity-state="queued"]').wait_for()
+            _, batches = st.poll(0, slug)
+            feedback = batches[0]['feedback_id']
+            _wait_activity(page, feedback, 'picked_up')
+            page.evaluate("""() => {
+                const original=window.fetch;
+                window.fetch=(url,options)=>{
+                    if(!String(url).includes('/review/status')&&!String(url).includes('/workspace/state'))return original(url,options);
+                    window.oldReadCount=(window.oldReadCount||0)+1;
+                    return new Promise((resolve,reject)=>window.rejectOldRead=()=>reject(new TypeError('Old failure')));
+                };
+            }""")
+            page.wait_for_function('!!window.rejectOldRead')
+            note.fill('New acknowledged request')
+            send.click()
+            page.wait_for_function('document.querySelectorAll("[data-feedback-id]").length===2')
+            page.evaluate('window.rejectOldRead()')
+            # Keep the next read held too: recovery cannot hide a stale failure.
+            page.wait_for_function('window.oldReadCount===2')
+            _wait_activity(page, feedback, 'picked_up')
+            assert page.locator('[data-activity-state="unknown"]').count() == 0
+            assert page.locator('[data-activity-state="queued"]').count() == 1
+        finally:
+            browser.close()
