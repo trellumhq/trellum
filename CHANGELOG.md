@@ -11,6 +11,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - Review controls and conversations use consistent typography, softer theme surfaces and compact desktop controls while retaining touch targets on phones.
 
+### Fixed
+
+- Require an explicit Build or Rebuild action before generating a selected
+  source report in the review workspace.
+
 ## [0.9.3] — 2026-10-20
 
 ### Fixed

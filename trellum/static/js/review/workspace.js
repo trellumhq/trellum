@@ -256,12 +256,15 @@
   function updateSourceStatus() {
     var r=selectedReport(), retry=document.getElementById('retry-build'), open=document.getElementById('open-report');
     retry.hidden=!r||r.build_state!=='failed';retry.disabled=ended||invalidSession||captureInFlight();open.hidden=false;
-    open.textContent=r&&r.build_state==='ready'?(sourceFrame.dataset.loadError?'Reload report':'Open report'):'Build report';
+    open.textContent=!r?'Open report':r.build_state==='ready'?(sourceFrame.dataset.loadError?'Reload report':'Open report'):r.build_state==='stale'?'Rebuild report':'Build report';
     if(!r){escText(sourceStatus,reports.length?'Choose a source report.':'No source reports are available in this project.');open.disabled=true;updateControls();return;}
-    var labels={missing:'Report has not been built.',stale:'Report needs a rebuild.',building:'Building report…',failed:'Build failed: '+(r.error||'Try again.'),ready:'Report is ready.'};
+    var hasPreview=sourceFrame.dataset.slug===r.slug&&sourceFrame.dataset.ready==='true';
+    var otherPreview=sourceFrame.dataset.ready==='true'&&sourceFrame.dataset.slug!==r.slug;
+    var previousLabel=otherPreview?' Showing the last opened report: '+(sourceFrame.dataset.name||sourceFrame.dataset.slug)+'.':'';
+    var labels={missing:'Report has not been built locally.'+previousLabel,stale:hasPreview?'Showing the last built report. Rebuild to update it.':'Report is out of date and needs a rebuild.'+previousLabel,building:'Building report…',failed:'Build failed: '+(r.error||'Try again.')+previousLabel,ready:'Report is ready.'};
     escText(sourceStatus,r.build_state==='ready'&&sourceFrame.dataset.slug===r.slug?(sourceFrame.dataset.loadError||''):labels[r.build_state]||'Report status unavailable.');
     open.disabled=ended||invalidSession||r.build_state==='building'||captureInFlight();
-    open.hidden=r.build_state==='ready'&&sourceFrame.dataset.slug===r.slug&&!sourceFrame.dataset.loadError;updateControls();
+    open.hidden=r.build_state==='failed'||(r.build_state==='ready'&&sourceFrame.dataset.slug===r.slug&&!sourceFrame.dataset.loadError);updateControls();
   }
   function openReadyReport(r,generationAtSelection) {
     if(!r||r.build_state!=='ready'||pendingSource!==r.slug||generationAtSelection!==pendingSourceGeneration)return;
@@ -269,28 +272,25 @@
     if(!unchanged&&captureInFlight())return;
     activeSource=r;stateVersion.source=r.version;if(!unchanged)loadFrame(sourceFrame,r);sourceFrame.hidden=false;sourceStatus.textContent=sourceFrame.dataset.loadError||'';if(activeTab()==='reports')contentOrigin=originForFrame(sourceFrame,'report');updateControls();
   }
-  function requestBuild(r,force,generationAtSelection) {
+  function requestBuild(r,generationAtSelection) {
     if(!r||ended||invalidSession)return;
-    if(!force&&r.build_state==='building')return;
-    if(!force&&(openRequests[r.slug]||buildRequested[r.slug]))return;
-    if(force)delete buildRequested[r.slug];
+    if(r.build_state==='building')return;
+    if(openRequests[r.slug]||buildRequested[r.slug])return;
     var req=id('open');openRequests[r.slug]=req;buildRequested[r.slug]=true;sourceStatus.textContent='Starting report build…';
     api('open','POST',{session:cfg.session,analysis_slug:cfg.analysis_slug,slug:r.slug,request_id:req},req).then(function(){if(openRequests[r.slug]===req)delete openRequests[r.slug];pollState();}).catch(function(e){if(openRequests[r.slug]===req)delete openRequests[r.slug];delete buildRequested[r.slug];if(pendingSource===r.slug&&generationAtSelection===pendingSourceGeneration){sourceStatus.textContent='Could not start report build: '+e.message;document.getElementById('open-report').disabled=false;}});
   }
-  function selectSource(slug,forceBuild) {
+  function selectSource(slug) {
     if(!canChangeView()){sourceSelect.value=pendingSource||'';return;}
     pendingSource=slug||null;pendingSourceGeneration++;var thisGeneration=pendingSourceGeneration;
     setSelect(false);updateHistory(false);
     if(!slug){rememberView(sourceFrame);sourceFrame.hidden=true;activeSource=null;updateControls();return;}
     var r=reports.find(function(x){return x.slug===slug;});if(!r)return;
     if(r.build_state==='ready'){openReadyReport(r,thisGeneration);return;}
-    if(r.build_state==='building'){sourceStatus.textContent='Building report…';return;}
-    if(r.build_state==='failed'&&!forceBuild){updateSourceStatus();return;}
-    requestBuild(r,!!forceBuild,thisGeneration);
+    updateSourceStatus();
   }
-  sourceSelect.addEventListener('change',function(){selectSource(sourceSelect.value,false);updateSourceStatus();});
-  document.getElementById('open-report').addEventListener('click',function(){var r=selectedReport();if(!r)return;if(!canChangeView())return;if(r.build_state==='ready'){if(sourceFrame.dataset.loadError)loadFrame(sourceFrame,r);else selectSource(r.slug,false);}else selectSource(r.slug,true);});
-  document.getElementById('retry-build').addEventListener('click',function(){var r=selectedReport();if(r)selectSource(r.slug,true);});
+  sourceSelect.addEventListener('change',function(){selectSource(sourceSelect.value);updateSourceStatus();});
+  document.getElementById('open-report').addEventListener('click',function(){var r=selectedReport();if(!r)return;if(!canChangeView())return;if(r.build_state==='ready'){if(sourceFrame.dataset.loadError)loadFrame(sourceFrame,r);else selectSource(r.slug);}else if(r.build_state==='missing'||r.build_state==='stale')requestBuild(r,pendingSourceGeneration);});
+  document.getElementById('retry-build').addEventListener('click',function(){var r=selectedReport();if(r&&canChangeView())requestBuild(r,pendingSourceGeneration);});
 
   function currentFrameFor(item){return item.origin_kind==='analysis'?analysisFrame:sourceFrame;}
   function requestCapture(item) {
@@ -478,10 +478,10 @@
     if(s.ended||s.active===false){setEnded();}else if(!ended)statusEl.textContent=agentStatus(s);
     renderReplies(s);broadcastStatus(s);
     if(!captureInFlight()&&a.url&&(stateVersion.analysis!==a.version||!analysisFrame.src)){stateVersion.analysis=a.version;loadFrame(analysisFrame,{slug:a.slug,name:a.name||'Analysis',url:a.url});}
-    if(!initialHandled&&initialSource){initialHandled=true;if(reports.some(function(r){return r.slug===initialSource;})){sourceSelect.value=initialSource;restoringHistory=true;selectSource(initialSource,false);restoringHistory=false;updateHistory(true);}}
+    if(!initialHandled&&initialSource){initialHandled=true;if(reports.some(function(r){return r.slug===initialSource;})){sourceSelect.value=initialSource;restoringHistory=true;selectSource(initialSource);restoringHistory=false;updateHistory(true);}}
     var active=activeSource&&reports.find(function(r){return r.slug===activeSource.slug;});
     if(active){activeSource=active;if(!captureInFlight()&&active.build_state==='ready'&&active.version!==stateVersion.source){stateVersion.source=active.version;loadFrame(sourceFrame,active);}}
-    if(pendingSource){var chosen=reports.find(function(r){return r.slug===pendingSource;});if(chosen){if(chosen.build_state==='ready'||chosen.build_state==='failed')delete buildRequested[chosen.slug];updateSourceStatus();if(chosen.build_state==='ready')openReadyReport(chosen,pendingSourceGeneration);else if(chosen.build_state==='failed'){sourceStatus.textContent='Build failed: '+(chosen.error||'Use Retry build to try again.');}else if(chosen.build_state==='missing'||chosen.build_state==='stale'){if(!captureInFlight())requestBuild(chosen,false,pendingSourceGeneration);}else sourceStatus.textContent='Building report…';}}
+    if(pendingSource){var chosen=reports.find(function(r){return r.slug===pendingSource;});if(chosen){if(chosen.build_state==='ready'||chosen.build_state==='failed')delete buildRequested[chosen.slug];updateSourceStatus();if(chosen.build_state==='ready')openReadyReport(chosen,pendingSourceGeneration);else if(chosen.build_state==='failed'){sourceStatus.textContent='Build failed: '+(chosen.error||'Use Retry build to try again.');}else if(chosen.build_state==='building'){sourceStatus.textContent='Building report…';}}}
     updateControls();return true;
   }
   function pollState() {

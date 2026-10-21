@@ -290,6 +290,59 @@ def test_failed_or_obsolete_source_build_keeps_the_last_report(workspace_browser
             browser.close()
 
 
+@pytest.mark.parametrize("build_state", ["missing", "stale"])
+def test_missing_source_build_requires_one_explicit_click(workspace_browser_project, build_state):
+    from playwright.sync_api import sync_playwright
+
+    origin, _, _ = workspace_browser_project
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        try:
+            page = browser.new_page(viewport={"width": 1366, "height": 768})
+            admissions = []
+            state_reads = []
+            built = {"source-two": False}
+
+            def source_state(route):
+                response = route.fetch()
+                state = response.json()
+                state_reads.append(1)
+                for report in state["reports"]:
+                    if report["slug"] == "source-two" and not built["source-two"]:
+                        report["build_state"] = build_state
+                route.fulfill(response=response, json=state)
+
+            def admit(route):
+                admissions.append(route.request.post_data_json)
+                built["source-two"] = True
+                route.fulfill(json={"build_state": "building"})
+
+            page.route("**/_fw/review/workspace/state", source_state)
+            page.route("**/_fw/review/workspace/open", admit)
+            page.goto(origin + "/_fw/review/workspace?source=source-two")
+            _pane(page, "Reports")
+            expected_status = "not been built locally" if build_state == "missing" else "out of date"
+            page.locator("#source-status").get_by_text(expected_status, exact=False).wait_for()
+            page.wait_for_function("document.getElementById('fw-workspace-report').dataset.slug !== 'source-two'")
+            page.wait_for_timeout(5500)  # Include repeated background polls.
+            assert len(state_reads) >= 2
+            assert admissions == []
+            page.locator("#source-select").select_option("")
+            page.go_back()
+            assert page.locator("#source-select").input_value() == "source-two"
+            assert admissions == []
+            page.reload()
+            page.locator("#source-status").get_by_text(expected_status, exact=False).wait_for()
+            assert admissions == []
+
+            # Repeated synchronous activations share the same pending admission.
+            page.locator("#open-report").evaluate("el => { el.click(); el.click(); }")
+            page.wait_for_function("document.getElementById('fw-workspace-report').dataset.slug === 'source-two' && document.getElementById('fw-workspace-report').dataset.ready === 'true'")
+            assert len(admissions) == 1
+        finally:
+            browser.close()
+
+
 def test_history_restores_page_and_selected_source(workspace_browser_project):
     from playwright.sync_api import sync_playwright
 
