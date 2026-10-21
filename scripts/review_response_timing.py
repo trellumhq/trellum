@@ -62,7 +62,7 @@ def run(args):
     from trellum.runner.execute import run_report
     from trellum.rendering.cdn import serve_vendor_request
 
-    samples, builds = [], []
+    samples, builds, polling_checks = [], [], []
     with tempfile.TemporaryDirectory(prefix='trellum-timing-') as directory, ExitStack() as stack:
         root = Path(directory)
         stack.enter_context(patch.dict(os.environ, {'FW_PROJECT_ROOT': directory, 'FW_UPDATE_CHECK': '0'}))
@@ -139,6 +139,12 @@ def run(args):
                 page = browser.new_page(viewport={'width': 1360, 'height': 960})
                 page.set_default_timeout(10000)
                 errors = []
+                status_requests = []
+                def observe_status(request):
+                    path = request.url.split('?', 1)[0]
+                    if path.endswith('/_fw/review/status') or path.endswith('/_fw/review/workspace/state'):
+                        status_requests.append(time.perf_counter())
+                page.on('request', observe_status)
                 page.on('pageerror', lambda error: errors.append(str(error)))
                 # All fixture resources are local; never contact providers or CDNs.
                 # Do not route local requests through Python: a synchronous
@@ -147,6 +153,50 @@ def run(args):
                            lambda route: route.abort())
                 page.goto(url, wait_until='load')
                 page.locator('#fwrvChat' if surface == 'report' else '#queue-toggle').click()
+                cadence = page.evaluate("""() => {
+                    const p = window._fwReviewActivity.pollInterval;
+                    const now = 1000;
+                    return {
+                        recentQueued: p([{state:'queued',submitted_at:999}], 2000, now),
+                        expiredQueued: p([{state:'queued',submitted_at:909}], 2000, now),
+                        active: p([{state:'working',display_state:'working'}], 2500, now),
+                        stale: p([{state:'working',display_state:'unknown'}], 2500, now),
+                        waiting: p([{state:'waiting'}], 2000, now),
+                        completed: p([{state:'completed'}], 2500, now)
+                    };
+                }""")
+                if cadence != {'recentQueued': 500, 'expiredQueued': 2000, 'active': 500,
+                               'stale': 2500, 'waiting': 2000, 'completed': 2500}:
+                    raise AssertionError(f'{surface} cadence state bounds incorrect: {cadence}')
+                expected_idle = 2000 if surface == 'report' else 2500
+                deadline = time.perf_counter() + 5
+                idle_gap_ms = None
+                while idle_gap_ms is None and time.perf_counter() < deadline:
+                    idle_gaps = [(status_requests[i] - status_requests[i-1]) * 1000
+                                 for i in range(1, len(status_requests))]
+                    idle_gap_ms = next((gap for gap in idle_gaps
+                                        if expected_idle - 150 <= gap <= expected_idle + 700), None)
+                    if idle_gap_ms is None:
+                        page.wait_for_timeout(25)
+                if idle_gap_ms is None:
+                    raise AssertionError(f'{surface} idle polling gaps out of bounds: {idle_gaps}')
+                before_hidden = len(status_requests)
+                page.evaluate("window.dispatchEvent(new Event('pagehide'))")
+                page.wait_for_timeout(2700)
+                hidden_suppressed = len(status_requests) == before_hidden
+                if not hidden_suppressed:
+                    raise AssertionError(f'{surface} polled after pagehide')
+                resumed_at = time.perf_counter()
+                page.evaluate("window.dispatchEvent(new Event('pageshow'))")
+                deadline = time.perf_counter() + 1
+                while len(status_requests) == before_hidden and time.perf_counter() < deadline:
+                    page.wait_for_timeout(20)
+                resume_ms = (status_requests[-1] - resumed_at) * 1000 if len(status_requests) > before_hidden else None
+                if resume_ms is None or resume_ms > 800:
+                    raise AssertionError(f'{surface} did not resume status polling promptly: {resume_ms}')
+                polling_checks.append({'surface': surface, 'idle_gap_ms': round(idle_gap_ms, 3),
+                                       'hidden_suppressed': hidden_suppressed,
+                                       'resume_ms': round(resume_ms, 3)})
                 for mode in ('waiting', 'busy'):
                     for index in range(args.samples):
                         marks = {}
@@ -192,6 +242,11 @@ def run(args):
                         assert acknowledged['feedback_id'] == identity['feedback_id']
                         wait_for_chat_state(page, identity['feedback_id'], 'activity', 'Synthetic agent activity')
                         marks['activity_visible'] = time.perf_counter()
+                        next_status = next((stamp for stamp in status_requests
+                                            if stamp >= marks['activity_ack']), None)
+                        fast_status_ms = None if next_status is None else (next_status - marks['activity_ack']) * 1000
+                        if fast_status_ms is None or fast_status_ms > 800:
+                            raise AssertionError(f'{surface} active status cadence exceeded 800 ms: {fast_status_ms}')
                         reply = f'Synthetic completion {surface} {mode} {index}'
                         marks['reply_send'] = time.perf_counter()
                         request('reply', dict(identity, text=reply))
@@ -206,7 +261,9 @@ def run(args):
                                  'reply_to_visible_completion': ('reply_send', 'completion_visible'),
                                  'reply_ack_to_visible_completion': ('reply_ack', 'completion_visible')}
                         samples.append({'surface': surface, 'mode': mode, 'index': index, **identity,
-                                        'ms': {k: round((marks[b]-marks[a])*1000, 3) for k, (a,b) in pairs.items()},
+                                        'ms': {**{k: round((marks[b]-marks[a])*1000, 3)
+                                                   for k, (a,b) in pairs.items()},
+                                               'activity_ack_to_next_status': round(fast_status_ms, 3)},
                                         'milestones_monotonic_s': {k: v for k,v in marks.items() if k != 'identity'}})
                         print(f'{surface}/{mode}/{index}: complete', flush=True)
                 assert not errors, errors
@@ -222,6 +279,7 @@ def run(args):
                 'clock': 'time.perf_counter; real Chromium timers; no page.clock',
                 'busy_delay_ms': args.busy_ms, 'samples_per_surface_per_mode': args.samples,
                 'samples': samples, 'summary': summarize(samples), 'builds_separate': builds,
+                'polling_checks': polling_checks,
                 'limitations': ['No external editor, provider, model, reasoning or tool-dispatch timing.',
                     'ack_to_pickup is signed: a parked agent may receive feedback before the browser sees acknowledgement.',
                     'Visibility measurements include Playwright observation overhead; activity is held visible before reply.',

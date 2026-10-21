@@ -20,9 +20,15 @@
     }
     restoreScroll();
 
-    var statusBusy = false, statusAbort = null;
+    var statusBusy = false, statusAbort = null, statusTimer = null, statusAway = false;
+    function scheduleStatus(delay) {
+        clearTimeout(statusTimer);
+        if (statusAway || document.hidden || state.ended) return;
+        statusTimer = setTimeout(tickStatus, delay);
+    }
     function tickStatus() {
-        if (statusBusy || document.hidden) return;
+        clearTimeout(statusTimer);
+        if (statusBusy || document.hidden || statusAway || state.ended) return;
         statusBusy = true;
         var revision = state.statusRevision || 0;
         statusAbort = new AbortController();
@@ -95,21 +101,24 @@
                 }
                 state.firstStatus = false;
             })
-            .catch(function () {
-                if (!state.ended) {
+            .catch(function (error) {
+                if (!state.ended && error.name !== 'AbortError' && !document.hidden && !statusAway) {
                     setAgent('absent');
                     (state.activities || []).forEach(function (a) { if (['picked_up','working','rebuilding'].indexOf(a.state)>=0) a.display_state='unknown'; });
                     renderConversation();
                 }
-            }).finally(function () { clearTimeout(deadline); statusBusy=false; statusAbort=null; });
+            }).finally(function () {
+                clearTimeout(deadline); statusBusy=false; statusAbort=null;
+                scheduleStatus(window._fwReviewActivity.pollInterval(state.activities, STATUS_MS));
+            });
     }
     tickStatus();
-    setInterval(tickStatus, STATUS_MS);
     document.addEventListener('visibilitychange', function () {
-        if (document.hidden) { if (statusAbort) statusAbort.abort(); }
-        else tickStatus();
+        if (document.hidden) { clearTimeout(statusTimer); if (statusAbort) statusAbort.abort(); }
+        else { statusAway=false; tickStatus(); }
     });
-    window.addEventListener('pagehide', function () { if (statusAbort) statusAbort.abort(); });
+    window.addEventListener('pagehide', function () { statusAway=true; clearTimeout(statusTimer); if (statusAbort) statusAbort.abort(); });
+    window.addEventListener('pageshow', function () { statusAway=false; tickStatus(); });
 
     setAgent('absent');
     if (ssGet(PANELKEY) === '1') setPanel(true);

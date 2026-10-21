@@ -12,7 +12,7 @@
   var captureWaiters = Object.create(null), openRequests = Object.create(null), buildRequested = Object.create(null);
   var viewState = {analysis:Object.create(null), source:Object.create(null)};
   var requestSeq = 0, stateGeneration = 0, pendingSourceGeneration = 0;
-  var pollBusy = false, pollRefresh = false, pollController = null, pageAway = false, sendBusy = false, ended = false, invalidSession = false;
+  var pollBusy = false, pollRefresh = false, pollController = null, pollTimer = null, pollDeadline = null, pageAway = false, sendBusy = false, ended = false, invalidSession = false;
   var stateVersion = {analysis:null, source:null}, initialSource = cfg.initial_source || '';
   var initialHandled = false, conversation = {activities:[],replies:[]}, contentOrigin = {origin_slug:cfg.analysis_slug,origin_name:'Analysis',origin_kind:'analysis',frame_id:''};
   var noteOrigin = null, pendingSend = null, captureFailures = [];
@@ -485,25 +485,29 @@
     updateControls();return true;
   }
   function pollState() {
+    clearTimeout(pollTimer);
     if(pollBusy||invalidSession||document.hidden||pageAway)return;
     pollBusy=true;pollRefresh=false;var g=++stateGeneration;
     pollController=new AbortController();
+    pollDeadline=setTimeout(function(){if(pollController)pollController.abort();},8000);
     api('state','GET',null,null,pollController.signal).then(function(s){if(g!==stateGeneration)return;applyState(s);}).catch(function(e){if(g===stateGeneration&&e.name!=='AbortError'){if([403,404,409,410].indexOf(e.status)>=0||/session/i.test(e.message))disableForInvalidSession();else statusEl.textContent='Connection issue: '+e.message;}}).finally(function(){
-      pollBusy=false;pollController=null;
+      clearTimeout(pollDeadline);pollDeadline=null;pollBusy=false;pollController=null;
+      if(pageAway||document.hidden||invalidSession||ended)return;
       // Keep one read in flight, including a refresh requested by a newer send.
-      if(pollRefresh)pollState();
+      var delay=pollRefresh?0:window._fwReviewActivity.pollInterval(conversation.activities,2500);
+      pollRefresh=false;pollTimer=setTimeout(pollState,delay);
     });
   }
   function pausePolling() {
-    stateGeneration++;pollRefresh=true;
+    clearTimeout(pollTimer);stateGeneration++;pollRefresh=true;
     if(pollController)pollController.abort();
   }
-  document.addEventListener('visibilitychange',function(){if(document.hidden)pausePolling();else pollState();});
+  document.addEventListener('visibilitychange',function(){if(document.hidden)pausePolling();else{pageAway=false;pollState();}});
   window.addEventListener('pagehide',function(){pageAway=true;pausePolling();});
   window.addEventListener('pageshow',function(){pageAway=false;pollState();});
   readDraft();
   if(pendingSend)document.getElementById('send-status').textContent='A previous submission is unconfirmed. Queue & send retries the same request.';
   // Page visibility is shared by desktop and phone; iframe state stays alive.
   activateTab(new URL(location.href).searchParams.get('page')==='reports'?'reports':'analysis');
-  renderQueue();pollState();window.setInterval(pollState,2500);
+  renderQueue();pollState();
 })();

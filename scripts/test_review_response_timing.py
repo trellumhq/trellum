@@ -35,3 +35,10 @@ def test_real_chromium_both_surfaces_and_correlated_completion(tmp_path):
     assert {b['slug'] for b in data['builds_separate'] if b['phase'] == 'simple_rebuild'} == {
         'timing-report', 'timing-analysis'}
     assert 'synthetic' in data['provider']
+    assert {row['surface'] for row in data['polling_checks']} == {'report', 'analysis'}
+    assert all(row['hidden_suppressed'] and row['resume_ms'] <= 800
+               for row in data['polling_checks'])
+    polling = {row['surface']: row for row in data['polling_checks']}
+    assert 1850 <= polling['report']['idle_gap_ms'] <= 2700
+    assert 2350 <= polling['analysis']['idle_gap_ms'] <= 3200
+    assert all(row['ms']['activity_ack_to_next_status'] <= 800 for row in data['samples'])

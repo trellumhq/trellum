@@ -9,6 +9,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- Poll review status every 500 ms during recent queued or active agent work,
+  while retaining each surface's existing idle cadence and pausing hidden pages.
+
 - Align the analysis workspace selection controls, annotation cards, conversation and message composer with report review, and label unsent annotations separately from submitted conversation.
 
 - Animate the in-chat activity indicator while review work is active, with a static indicator for reduced-motion preferences.

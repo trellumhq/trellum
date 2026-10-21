@@ -85,6 +85,7 @@
             }
             renderConversation();
             confirmPendingSend(res.json.feedback_id);
+            clearTimeout(statusTimer);
             tickStatus();
         }).catch(function () {
             if (pendingSend) showToast('Send unconfirmed', 'Your draft is retained. Sending again checks the same submission.');

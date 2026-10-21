@@ -73,5 +73,15 @@
     var result=row?(labels[row.display_state||row.state]||'Activity unknown'):queued?'Queued · awaiting pickup':(s.agent&&s.agent.state==='listening'?'Agent listening':activities.some(function(a){return a.state==='failed';})?'Feedback failed':'Ready · waiting for agent');
     return result+(row&&queued?' · '+queued+' queued follow-up'+(queued===1?'':'s'):'');
   }
-  window._fwReviewActivity={render:render,summary:summary};
+  function pollInterval(activities, idleMs, now) {
+    now=now===undefined?Date.now()/1000:now;
+    activities=Array.isArray(activities)?activities:[];
+    var fast=activities.some(function(a){
+      var state=a.display_state||(a.state==='queued'?'queued':'');
+      if(state==='queued')return Number(a.submitted_at)>0&&now-Number(a.submitted_at)<90;
+      return ['picked_up','working','rebuilding'].indexOf(state)>=0;
+    });
+    return fast?500:idleMs;
+  }
+  window._fwReviewActivity={render:render,summary:summary,pollInterval:pollInterval};
 })();

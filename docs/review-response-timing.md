@@ -66,10 +66,18 @@ identity rather than chat text alone. Keep raw token-bearing workspace URLs,
 headers and credentials out of shared logs. Cross-machine timestamps need clock
 alignment; prefer durations within one clock domain.
 
-The existing wait sources are inspectable in `trellum/static/js/review/state.js`
-(`STATUS_MS = 2000`), `status.js` (periodic status reads), and `workspace.js`
-(`setInterval(pollState,2500)`). Hidden tabs pause those reads. In
-`trellum/cli/commands/review.py`, each CLI request parks for up to 30 seconds
+Browser status reads use an adaptive, bounded cadence. The report overlay keeps
+its 2,000 ms idle interval and the analysis workspace keeps its 2,500 ms idle
+interval. Both poll every 500 ms while feedback is queued within 90 seconds of
+submission, or while an activity's server-provided `display_state` reports
+fresh `picked_up`, `working` or `rebuilding` presence. A stale active activity
+is exposed as `unknown` by the server and returns to the idle interval. Each
+surface schedules one next read after its current read finishes; sends request
+an immediate refresh, and hidden or departed pages clear timers and abort their
+current read. Both status reads have an 8 second abort deadline. These are
+client observation intervals, not provider generation guarantees.
+
+In `trellum/cli/commands/review.py`, each CLI request parks for up to 30 seconds
 and immediately reissues on a waiting result; `ReviewState.poll` wakes on queue
 notification. Thirty seconds is a maximum idle park, not a fixed pickup delay.
 The guide in `trellum/AGENTS.md` requires keeping that poll active and rebuilding
