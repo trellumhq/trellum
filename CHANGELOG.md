@@ -16,6 +16,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Require an explicit Build or Rebuild action before generating a selected
   source report in the review workspace.
 
+- Keep empty datasource placeholders from blocking queries against other
+  configured sources; selecting the empty source still explains how to configure it.
+
 ## [0.9.3] — 2026-10-20
 
 ### Fixed
