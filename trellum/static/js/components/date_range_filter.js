@@ -12,7 +12,7 @@ window._fwFilterTypes['date_range'] = {
             var hours = dr.querySelectorAll('.fw-date-hour');
             var minH = hours[0] ? hours[0].value : '00:00';
             var maxH = hours[1] ? hours[1].value : '23:30';
-            return { min: minD + ' ' + minH, max: maxD + ' ' + maxH };
+            return { min: minD ? minD + ' ' + minH : '', max: maxD ? maxD + ' ' + maxH : '' };
         }
         return { min: minD, max: maxD };
     },
@@ -20,11 +20,15 @@ window._fwFilterTypes['date_range'] = {
     _updateTrigger: function(dr, rangeVal) {
         var trigger = dr.querySelector('.fw-date-trigger-text');
         if (trigger) {
-            trigger.textContent = rangeVal.min + ' \u2013 ' + rangeVal.max;
+            trigger.textContent = rangeVal.min || rangeVal.max
+                ? (rangeVal.min || '') + ' \u2013 ' + (rangeVal.max || '')
+                : 'No date bounds available';
         }
     },
 
     _computePresetMin: function(fc, days, hours) {
+        // Empty/all-null snapshots have no calendar anchor for a preset.
+        if (!fc.min_date || !fc.max_date) return null;
         if (days === 'all') return fc.min_date;
         if (days === 'ytd') {
             var base = fc.max_date.substring(0, 4) + '-01-01';
@@ -136,6 +140,9 @@ window._fwFilterTypes['date_range'] = {
             var fc = h.findFc(dr.dataset.filterId);
             if (!fc) return;
             var hourly = dr.dataset.hourly === 'true';
+            dr.querySelectorAll('.fw-date-preset').forEach(function(btn) {
+                btn.disabled = !fc.min_date || !fc.max_date;
+            });
 
             // Toggle popover on trigger click
             var trigger = dr.querySelector('.fw-date-trigger');
@@ -179,6 +186,7 @@ window._fwFilterTypes['date_range'] = {
                 if (days === '') days = null;
                 if (hours === '') hours = null;
                 var minVal = self._computePresetMin(fc, days, hours);
+                if (minVal === null) return;
                 var rangeVal = { min: minVal, max: fc.max_date };
                 self._setInputs(dr, rangeVal, hourly);
                 h.setFilter(fc.id, fc.column, 'range', rangeVal);

@@ -18,6 +18,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - Keep empty datasource placeholders from blocking queries against other
   configured sources; selecting the empty source still explains how to configure it.
+- Disable date presets when no date bounds are available and keep obsolete
+  live lookup responses from replacing a newer filter selection.
 
 ## [0.9.3] — 2026-10-20
 
