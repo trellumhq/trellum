@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.9.4] — 2026-10-21
+
 ### Changed
 
 - Document scoped source lookup, targeted builds and visual verification for small review styling requests.
@@ -1006,7 +1008,8 @@ and demos together in one AGPL-licensed project.
 - Owned Trellum code is released under AGPL-3.0-only. Third-party and
   contributor notices retain their own terms.
 
-[Unreleased]: https://github.com/trellumhq/trellum/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/trellumhq/trellum/compare/v0.9.4...HEAD
+[0.9.4]: https://github.com/trellumhq/trellum/compare/v0.9.3...v0.9.4
 [0.9.1]: https://github.com/trellumhq/trellum/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/trellumhq/trellum/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/trellumhq/trellum/compare/v0.7.0...v0.8.0
