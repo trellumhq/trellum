@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Changed
+
+- Review controls and conversations use consistent typography, softer theme surfaces and compact desktop controls while retaining touch targets on phones.
+
 ## [0.9.3] — 2026-10-20
 
 ### Fixed
