@@ -20,7 +20,7 @@
         <button id="reports-tab" type="button" data-tab="reports" aria-controls="reports-pane">Reports</button>
       </nav>
       <div class="fw-report-head" id="source-controls" hidden><label for="source-select">Source report</label><select id="source-select"><option value="">Loading reports…</option></select><button type="button" id="open-report" class="fw-button">Open report</button><button type="button" id="retry-build" class="fw-button" hidden>Retry build</button></div>
-      <div class="fw-view-actions"><button id="global-select" type="button" class="fw-button" aria-pressed="false" disabled>Select element</button><button type="button" id="content-only" class="fw-button" disabled>Analysis only</button></div>
+      <div class="fw-view-actions"><button id="global-select" type="button" class="fw-button fwrv-btn" aria-pressed="false" disabled>Select element</button><button type="button" id="content-only" class="fw-button" disabled>Analysis only</button></div>
     </div>
     <p id="workspace-status" class="fw-notice fw-chrome" role="status" hidden></p>
     <section class="fw-layout">
@@ -35,11 +35,11 @@
     <button type="button" id="exit-content-only" class="fw-button fw-clean-exit" hidden>Back to workspace <span aria-hidden="true">· Esc</span></button>
     <p id="content-only-hint" class="fw-clean-hint" role="status" hidden>Press Escape or use Back to workspace to return.</p>
   </main>
-  <dialog id="queue-dialog" class="fw-queue-dialog" aria-labelledby="queue-title">
+  <dialog id="queue-dialog" class="fw-queue-dialog fwrv-root" aria-labelledby="queue-title">
     <div class="fw-queue-shell">
-      <header class="fw-queue-head"><div><h2 id="queue-title">Queue &amp; chat</h2><p id="queue-summary" class="fw-help">No items queued</p></div><button type="button" id="queue-close" class="fw-button" aria-label="Close queue" autofocus>Close</button></header>
-      <div class="fw-queue-scroll"><ul id="queue-list" class="fw-queue-list"></ul><section aria-label="Review conversation"><div id="reply-list" class="fw-replies"></div></section></div>
-      <div class="fw-queue-footer"><label for="chat-note">Message the agent</label><p id="note-context" class="fw-help"></p><textarea id="chat-note" rows="3" placeholder="Describe what should change…"></textarea><div class="fw-row"><button type="button" id="send" class="fw-button fw-primary">Send to agent</button></div><p id="send-status" role="status" class="fw-help"></p></div>
+      <header class="fw-queue-head fwrv-hd"><div><h2 id="queue-title">Queue &amp; chat</h2><p id="queue-summary" class="fw-help">Unsent annotations</p></div><button type="button" id="queue-close" class="fw-button fwrv-x" aria-label="Close queue" autofocus>×</button></header>
+      <div class="fw-queue-scroll"><section aria-label="Unsent annotations"><ul id="queue-list" class="fw-queue-list"></ul></section><section aria-label="Conversation"><h3 class="fw-conversation-label">Conversation</h3><div id="reply-list" class="fw-replies"></div></section></div>
+      <div class="fw-queue-footer fwrv-foot"><label for="chat-note" class="fwrv-note-l">Message the agent</label><p id="note-context" class="fw-help"></p><textarea id="chat-note" rows="3" placeholder="Describe what should change…"></textarea><div class="fw-row"><button type="button" id="send" class="fw-button fwrv-b fwrv-pri">Send to agent</button></div><p id="send-status" role="status" class="fw-help"></p></div>
     </div>
   </dialog>
   <script>window._fwWorkspaceConfig = window._fwWorkspaceConfig || __FW_WORKSPACE_CONFIG__;</script>

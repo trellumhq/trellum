@@ -365,15 +365,16 @@
     var focusId=focused&&focused.dataset&&focused.dataset.fwRequestId, selectionStart=focusId?focused.selectionStart:null, selectionEnd=focusId?focused.selectionEnd:null;
     list.replaceChildren();
     queue.forEach(function(item,index){
-      var li=document.createElement('li');li.className='fw-queue-item';
+      var li=document.createElement('li');li.className='fw-queue-item fwrv-item';
       var strong=document.createElement('strong');strong.id='queued-label-'+index;
+      strong.className='fwrv-who';
       strong.textContent=(item.origin_name||item.origin_slug)+' · '+((item.component&&item.component.kind)||item.tag||'Selection')+((item.component&&item.component.title)?' “'+item.component.title+'”':'');
       var edit=document.createElement('textarea');edit.value=item.prompt;edit.rows=2;edit.dataset.fwRequestId=item.request_id;
       edit.setAttribute('aria-labelledby',strong.id);edit.disabled=sendBusy||!!pendingSend||ended||invalidSession;
       edit.addEventListener('input',function(){item.prompt=edit.value;saveDraft();broadcastQueue();});
-      var row=document.createElement('div');row.className='fw-row';
+      var row=document.createElement('div');row.className='fw-row fwrv-row';
       var context=document.createElement('span');context.className='fw-help';context.textContent=item.capture_id?'Snapshot ready':'Text feedback';
-      var remove=document.createElement('button');remove.type='button';remove.className='fw-button';remove.textContent='Remove';remove.setAttribute('aria-label','Remove queued request '+(index+1));remove.disabled=edit.disabled;
+      var remove=document.createElement('button');remove.type='button';remove.className='fw-button fwrv-b';remove.textContent='Remove';remove.setAttribute('aria-label','Remove queued request '+(index+1));remove.disabled=edit.disabled;
       remove.addEventListener('click',function(){queue.splice(index,1);saveDraft();renderQueue();broadcastQueue();var fallback=list.querySelector('textarea')||note;fallback.focus({preventScroll:true});});
       row.append(context,remove);li.append(strong,edit,row);
       var destination=document.createElement('p');destination.className='fw-help';destination.textContent='Destination: '+document.getElementById('analysis-name').textContent;li.append(destination);
@@ -381,10 +382,10 @@
       list.appendChild(li);
     });
     captureFailures.forEach(function(f){
-      var li=document.createElement('li');li.className='fw-queue-item';
+      var li=document.createElement('li');li.className='fw-queue-item fwrv-item';
       var strong=document.createElement('strong');strong.textContent=f.item.origin_name+' · Snapshot needs attention';
       var desc=document.createElement('p');desc.textContent=f.item.prompt+' — '+f.error;li.append(strong,desc);
-      var retry=document.createElement('button');retry.type='button';retry.className='fw-button';retry.textContent=f.inflight?'Capturing…':'Retry snapshot';retry.disabled=!!f.inflight||ended||invalidSession;
+      var retry=document.createElement('button');retry.type='button';retry.className='fw-button fwrv-b';retry.textContent=f.inflight?'Capturing…':'Retry snapshot';retry.disabled=!!f.inflight||ended||invalidSession;
       retry.addEventListener('click',function(){
         if(f.frame&&f.message&&f.item.frame_id===f.frame.dataset.frameId){
           closeQueue();activateTab('reports',true);
@@ -392,7 +393,7 @@
         }else{desc.textContent='This report view changed. Reopen '+f.item.origin_name+' and select the element again, or queue the saved text without a snapshot.';}
       });li.append(retry);
       if(!f.inflight){
-        var textOnly=document.createElement('button');textOnly.type='button';textOnly.className='fw-button';textOnly.textContent='Queue text without snapshot';textOnly.disabled=ended||invalidSession;
+        var textOnly=document.createElement('button');textOnly.type='button';textOnly.className='fw-button fwrv-b';textOnly.textContent='Queue text without snapshot';textOnly.disabled=ended||invalidSession;
         textOnly.addEventListener('click',function(){
           captureFailures=captureFailures.filter(function(x){return x.item.request_id!==f.item.request_id;});
           var item=persistableItem(f.item);delete item.selection_id;item.capture_id=null;
@@ -400,16 +401,16 @@
           saveDraft();renderQueue();broadcastQueue();
           if(f.frame&&f.frame.dataset.frameId===item.frame_id)postFrame(f.frame,'fw-workspace-queue-result',{request_id:item.request_id,ok:true,items:queue.map(persistableItem)});
         });
-        var discard=document.createElement('button');discard.type='button';discard.className='fw-button';discard.textContent='Discard failed selection';discard.disabled=ended||invalidSession;
+        var discard=document.createElement('button');discard.type='button';discard.className='fw-button fwrv-b';discard.textContent='Discard failed selection';discard.disabled=ended||invalidSession;
         discard.addEventListener('click',function(){captureFailures=captureFailures.filter(function(x){return x.item.request_id!==f.item.request_id;});renderQueue();note.focus();});
         li.append(textOnly,discard);
       }
       list.appendChild(li);
     });
-    if(!queue.length&&!captureFailures.length){var empty=document.createElement('li');empty.className='fw-queue-empty';empty.textContent='Nothing queued yet. Select an element on a report or analysis, or write a message below.';list.appendChild(empty);}
+    if(!queue.length&&!captureFailures.length){var empty=document.createElement('li');empty.className='fw-queue-empty fwrv-empty';empty.textContent='No unsent annotations. Submitted feedback and agent replies appear in Conversation below.';list.appendChild(empty);}
     if(focusId){var restore=Array.prototype.find.call(list.querySelectorAll('textarea'),function(el){return el.dataset.fwRequestId===focusId;});if(restore){restore.focus({preventScroll:true});restore.setSelectionRange(selectionStart,selectionEnd);}}
     document.getElementById('queue-count').textContent=String(queue.length+captureFailures.length);
-    document.getElementById('queue-summary').textContent=captureFailures.length?'Snapshots need attention':queue.length?queue.length+' queued request'+(queue.length===1?'':'s'):'No items queued';
+    document.getElementById('queue-summary').textContent=captureFailures.length?'Snapshots need attention':queue.length?queue.length+' unsent annotation'+(queue.length===1?'':'s'):'Unsent annotations';
     document.getElementById('send').disabled=ended||invalidSession||sendBusy||(!queue.length&&!note.value.trim()&&!pendingSend)||!!captureFailures.length;
     document.getElementById('end-session').disabled=ended||invalidSession||sendBusy||captureInFlight();
     updateControls();

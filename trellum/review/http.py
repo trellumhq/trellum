@@ -259,7 +259,8 @@ def _serve_workspace_get(handler, path: str, active: dict) -> None:
         body = workspace_overlay_js().encode("utf-8")
         content_type = "application/javascript"
     else:
-        body = load_css("analysis-workspace.css").encode()
+        body = (load_css("analysis-workspace.css") + "\n" +
+                load_css("review.css")).encode()
         content_type = "text/css"
     handler.send_response(200)
     handler.send_header("Content-Type", content_type)

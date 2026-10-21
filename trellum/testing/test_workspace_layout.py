@@ -193,6 +193,15 @@ def test_queue_edits_and_removal_update_both_loaded_widgets(workspace_browser_pr
         try:
             page = browser.new_page(viewport={"width": 1366, "height": 768})
             page.goto(origin + "/_fw/review/workspace?source=source-one")
+            page.locator("#global-select").wait_for(state="visible")
+            assert page.locator("#global-select").evaluate("el => getComputedStyle(el).fontSize") == "12px"
+            page.get_by_role("button", name="Chat & queue").click()
+            assert page.locator("#queue-summary").inner_text() == "Unsent annotations"
+            assert "No unsent annotations" in page.locator("#queue-list").inner_text()
+            assert "Nothing queued yet" not in page.locator("#queue-list").inner_text()
+            assert page.get_by_role("heading", name="Conversation").is_visible()
+            assert page.locator("#send").evaluate("el => el.classList.contains('fwrv-pri')")
+            page.locator("#queue-close").click()
             _pane(page, "Reports")
             source = _source(page)
             _queue_in_widget(page, source, "Original source request")
