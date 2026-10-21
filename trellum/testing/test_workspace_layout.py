@@ -262,12 +262,12 @@ def test_failed_or_obsolete_source_build_keeps_the_last_report(workspace_browser
                             report["error"] = "Synthetic build failure"
                 route.fulfill(response=response, json=state)
 
-            page.route("**/_fw/review/workspace/state", source_state)
+            page.route("**/_fw/review/workspace/state?*", source_state)
             page.goto(origin + "/_fw/review/workspace?source=source-one")
             _pane(page, "Reports")
             _source(page)
             mode["source_two"] = "failed"
-            with page.expect_response("**/_fw/review/workspace/state"):
+            with page.expect_response("**/_fw/review/workspace/state?*"):
                 pass
             page.locator("#source-select").select_option("source-two")
             page.locator("#source-status").get_by_text("Synthetic build failure", exact=False).wait_for()
@@ -275,14 +275,14 @@ def test_failed_or_obsolete_source_build_keeps_the_last_report(workspace_browser
             assert page.locator("#retry-build").is_visible()
             assert page.locator("#global-select").is_disabled()
             mode["source_two"] = "building"
-            with page.expect_response("**/_fw/review/workspace/state"):
+            with page.expect_response("**/_fw/review/workspace/state?*"):
                 pass
             page.locator("#source-status").get_by_text("Building report", exact=False).wait_for()
             assert page.locator("#fw-workspace-report").get_attribute("data-slug") == "source-one"
             assert page.locator("#global-select").is_disabled()
             page.locator("#source-select").select_option("source-one")
             mode["source_two"] = "ready"
-            with page.expect_response("**/_fw/review/workspace/state"):
+            with page.expect_response("**/_fw/review/workspace/state?*"):
                 pass
             assert page.locator("#source-select").input_value() == "source-one"
             assert page.locator("#fw-workspace-report").get_attribute("data-slug") == "source-one"
@@ -328,7 +328,7 @@ def test_missing_source_build_requires_one_explicit_click(workspace_browser_proj
                     });
                 };
             })();""")
-            page.route("**/_fw/review/workspace/state", source_state)
+            page.route("**/_fw/review/workspace/state?*", source_state)
             page.route("**/_fw/review/workspace/open", admit)
             page.goto(origin + "/_fw/review/workspace?source=source-two")
             _pane(page, "Reports")
@@ -407,7 +407,7 @@ def test_inactive_analysis_rebuild_preserves_scrolled_source(workspace_browser_p
                     state["analysis"]["version"] = str(state["analysis"]["version"]) + "-rebuilt"
                 route.fulfill(response=response, json=state)
 
-            page.route("**/_fw/review/workspace/state", rebuilt_analysis)
+            page.route("**/_fw/review/workspace/state?*", rebuilt_analysis)
             page.goto(origin + "/_fw/review/workspace?source=source-one")
             _pane(page, "Reports")
             source = _source(page)
@@ -415,7 +415,7 @@ def test_inactive_analysis_rebuild_preserves_scrolled_source(workspace_browser_p
             source.locator("canvas").first.evaluate("() => window.scrollTo(0, 900)")
             page.wait_for_function("Math.abs(document.getElementById('fw-workspace-report').contentWindow.scrollY - 900) <= 2")
             mode["rebuilt"] = True
-            with page.expect_response("**/_fw/review/workspace/state"):
+            with page.expect_response("**/_fw/review/workspace/state?*"):
                 pass
             page.wait_for_function("old => { const frame=document.getElementById('fw-workspace-analysis'); return frame.dataset.frameId !== old && frame.dataset.ready === 'true'; }", arg=old_frame)
             assert abs(source.locator("canvas").first.evaluate("() => window.scrollY") - 900) <= 2
