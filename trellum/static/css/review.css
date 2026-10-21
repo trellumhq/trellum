@@ -91,3 +91,12 @@ body.fwrv-selecting [data-fw-review-ui] textarea{cursor:text!important}
 
 .fwrv-root button:focus-visible{outline:2px solid var(--review-accent);outline-offset:2px}
 @media (prefers-reduced-motion:reduce){.fwrv-root *{animation:none!important;transition:none!important}}
+.fwrv-root .fw-review-request{width:100%;max-width:100%}
+.fwrv-root .fw-review-feedback{white-space:pre-wrap}
+.fwrv-root .fw-review-activity{margin-top:12px;padding-top:10px;border-top:1px solid var(--border-color,#e2e6ea)}
+.fwrv-root .fw-review-activity-state{display:block;font-size:12px;color:var(--color-today,#0f766e)}
+.fwrv-root .fw-review-activity-summary{margin:4px 0;font-size:13px;white-space:pre-wrap}
+.fwrv-root .fw-review-activity-summary:empty{display:none}
+.fwrv-root .fw-review-activity-time{display:block;margin-top:4px;font-size:12px;color:var(--text-secondary,#475569)}
+.fwrv-root [data-activity-state="unknown"] .fw-review-activity-state,.fwrv-root [data-activity-state="ended"] .fw-review-activity-state{color:var(--text-secondary,#475569)}
+.fwrv-root [data-activity-state="failed"] .fw-review-activity-state{color:var(--accent-red,#b91c1c)}

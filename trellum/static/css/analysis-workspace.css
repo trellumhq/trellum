@@ -93,3 +93,19 @@ button:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3p
   .fw-tabs button[aria-current=page] { color: #2dd4bf; }
   .fw-button[aria-pressed=true] { background: #153d38; color: #9ee9df; }
 }
+/* Activity stays with the feedback it describes, inside the conversation. */
+.fw-replies { display: flex; flex-direction: column; gap: 16px; }
+.fw-replies .fw-review-request { margin-top: 16px; padding: 12px 14px; border: 1px solid var(--w-border); border-radius: 10px; background: var(--w-card); overflow-wrap: anywhere; }
+.fw-replies .fwrv-w { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 600; color: var(--w-muted); }
+.fw-review-feedback { white-space: pre-wrap; }
+.fw-review-activity { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--w-border); }
+.fw-review-activity-state { display: block; font-size: 12px; color: var(--w-primary); }
+.fw-review-activity-summary { margin: 4px 0; font-size: 13px; white-space: pre-wrap; }
+.fw-review-activity-summary:empty { display: none; }
+.fw-review-activity-time { display: block; margin-top: 4px; font-size: 12px; color: var(--w-muted); }
+[data-activity-state="unknown"] .fw-review-activity-state, [data-activity-state="ended"] .fw-review-activity-state { color: var(--w-muted); }
+[data-activity-state="failed"] .fw-review-activity-state { color: #b91c1c; }
+@media (prefers-color-scheme: dark) {
+  .fw-review-activity-state { color: #2dd4bf; }
+  [data-activity-state="failed"] .fw-review-activity-state { color: #f87171; }
+}
