@@ -128,3 +128,74 @@ def test_query_deadline_environment_override_is_numeric(monkeypatch):
     with pytest.raises(ValueError, match="must be numeric") as error:
         resolvers.LocalEnvResolver().resolve(source)
     assert "secret" not in str(error.value)
+
+
+@pytest.mark.heavy
+def test_real_vertica_driver_acknowledgement_replays_on_fresh_session(monkeypatch):
+    """Exercise the installed driver's ErrorResponse parser over loopback TCP."""
+    import socket
+    import struct
+    import threading
+    from vertica_python.vertica.connection import Connection as VerticaConnection
+    from trellum.data.drivers.vertica import VerticaDriver
+
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(2)
+    listener.settimeout(3)
+    errors = []
+
+    def receive(sock, count):
+        data = b""
+        while len(data) < count:
+            chunk = sock.recv(count - len(data))
+            if not chunk:
+                raise EOFError()
+            data += chunk
+        return data
+
+    def server():
+        try:
+            session, _ = listener.accept()
+            with session:
+                session.settimeout(3)
+                assert receive(session, 1) == b"Q"
+                size = struct.unpack("!I", receive(session, 4))[0]
+                receive(session, size - 4)
+                cancel, _ = listener.accept()
+                with cancel:
+                    cancel.settimeout(3)
+                    assert receive(cancel, 16) == struct.pack("!4I", 16, 80877102, 123, 456)
+                payload = b"SERROR\x00C57014\x00MQuery cancelled\x00\x00"
+                session.sendall(b"E" + struct.pack("!I", len(payload) + 4) + payload)
+                # Remain connected until the client disposes the cancelled session.
+                assert session.recv(1) == b""
+        except BaseException as error:
+            errors.append(error)
+
+    def startup(raw):
+        raw.socket = socket.create_connection(listener.getsockname(), timeout=3)
+        raw.backend_pid, raw.backend_key = 123, 456
+        raw.transaction_status = b"I"
+
+    monkeypatch.setattr(VerticaConnection, "startup_connection", startup)
+    monkeypatch.setattr(retry.time, "sleep", Mock())
+    worker = threading.Thread(target=server)
+    worker.start()
+    handle = None
+    try:
+        raw = VerticaDriver().connect({"host": "127.0.0.1", "user": "test", "password": "test",
+                                      "query_timeout_seconds": 0.05})
+        factory = Mock(side_effect=[raw, Connection()])
+        monkeypatch.setattr(drivers, "connect", factory)
+        handle = retry.connect_managed("vertica", {})
+        assert query.query_df(handle, "SELECT n FROM t", cache_ttl=0).n.tolist() == [1, 2]
+        assert factory.call_count == 2
+        assert raw.socket is None
+    finally:
+        if handle is not None:
+            handle.close()
+        worker.join(4)
+        listener.close()
+    assert not worker.is_alive()
+    assert not errors
