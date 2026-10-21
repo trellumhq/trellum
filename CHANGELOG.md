@@ -32,6 +32,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Add a bounded, provider-free Chromium timing harness for standalone report
+  review and analysis chat, with correlated JSON samples and separate build costs.
+
 - Show feedback pickup, factual agent activity, elapsed time and stale presence
   beside each request in report review and analysis workspace conversations.
   Agents can report bounded activity updates with `trellum review activity`
