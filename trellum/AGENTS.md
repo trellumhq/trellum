@@ -963,6 +963,18 @@ directory gets its own server on its own port (discovered via
 `/_fw/server.json` identity on ports 8050–8069), with fully independent
 review state.
 
+**Small styling requests:** use the captured report slug, section and component
+title to find the affected source first. Generated component IDs identify rendered
+elements, not source lines. A KPI selection identifies the whole card; use the
+user's wording to distinguish its number from its label, and clarify only when
+the requested target is ambiguous. For a color-only change, edit the affected
+source style or theme token, build only that report with
+`python -m trellum.run reports/<slug> --no-serve`, check build validation, and
+verify the requested appearance while preserving the value and sibling elements.
+Keep investigation proportional to the request: a styling edit does not require
+unrelated data analysis or rebuilding every report. Reply with the original
+feedback identity after verification and continue polling the same report scope.
+
 **Activity during a round:** polling returns a `feedback_id` and `session` for
 each batch. Pickup appears beside that feedback in the conversation. Report
 concise, factual public updates when useful:

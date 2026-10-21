@@ -9,6 +9,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- Document scoped source lookup, targeted builds and visual verification for small review styling requests.
+
 - Poll review status every 500 ms during recent queued or active agent work,
   while retaining each surface's existing idle cadence and pausing hidden pages.
 
