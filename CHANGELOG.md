@@ -7,6 +7,24 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Fixed
+
+- Enable automatic report recovery by default, retaining explicit opt-out,
+  bounded attempts and checks for writes and unconfirmed outcomes.
+- Bound Vertica query execution and fetching to 120 seconds by default,
+  cancel stalled operations and retry eligible reads on a fresh connection
+  only after the original operation is confirmed ended.
+- Preserve read-query recovery through harmless Vertica connection contexts,
+  status checks and supported reporting expressions.
+
+### Upgrade notes
+
+- Reports with external side effects or detached work must set
+  `recovery: {replay_safe: false}` in `report.yaml`. Previously admitted runs
+  retain their recorded recovery policy.
+- Longer Vertica queries can set datasource `query_timeout_seconds` (positive
+  seconds, at most 3600). The overall build timeout remains the final limit.
+
 ## [0.9.3] — 2026-10-20
 
 ### Fixed

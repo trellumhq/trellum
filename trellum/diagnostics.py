@@ -57,6 +57,8 @@ def sanitize_diagnostics(value) -> dict:
               "transient": value.get("transient") is True,
               "query_retry_safe": value.get("query_retry_safe") is True,
               "unsafe_operation": value.get("unsafe_operation") is True,
+              "cancellation_unconfirmed": value.get("cancellation_unconfirmed") is True,
+              "query_timeout": value.get("query_timeout") is True,
               "stage_started_at": _number(value.get("stage_started_at"), 4_102_444_800)}
     result["source_type"] = value.get("source_type") if isinstance(value.get("source_type"), str) and value.get("source_type") in SOURCES else ""
     for key in ("source_id", "query_id"):
@@ -88,13 +90,13 @@ def sanitize_diagnostics(value) -> dict:
     result["retry_history"] = []
     retries = value.get("retry_history", [])
     for item in retries[-8:] if isinstance(retries, list) else []:
-        if not isinstance(item, dict) or item.get("reason") != "transient_connection":
+        if not isinstance(item, dict) or item.get("reason") not in ("transient_connection", "query_timeout"):
             continue
         name = item.get("class")
         if isinstance(name, str) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", name):
             result["retry_history"].append({
                 "attempt": int(_number(item.get("attempt", 1), 3)) or 1,
-                "reason": "transient_connection", "class": name,
+                "reason": item["reason"], "class": name,
             })
     return result
 
@@ -127,8 +129,10 @@ def _write(**updates):
         if path != _path:
             _path, _snapshot, _timings, _failure, _retry_history, _retry_count = path, {}, [], None, [], 0
         unsafe = _snapshot.get("unsafe_operation", False) or updates.get("unsafe_operation", False)
+        unconfirmed = _snapshot.get("cancellation_unconfirmed", False) or updates.get("cancellation_unconfirmed", False)
         _snapshot.update(updates)
         _snapshot["unsafe_operation"] = unsafe
+        _snapshot["cancellation_unconfirmed"] = unconfirmed
         _snapshot.update(version=1, timings=_timings[-16:])
         payload = json.dumps(sanitize_diagnostics(_snapshot), separators=(",", ":")).encode()
         temporary = None
@@ -161,6 +165,7 @@ def record_failure(exc, *, source_type=None, query_retry_safe=None, attempt=None
     """Record classified causes, preserving the innermost failing stage."""
     global _failure
     from trellum.data.retry_errors import _exception_chain, is_retryable_connection_error
+    from trellum.data.vertica_deadline import VerticaQueryTimeout
     with _lock:
         metadata = dict(_context.get())
         if source_type is not None:
@@ -169,8 +174,14 @@ def record_failure(exc, *, source_type=None, query_retry_safe=None, attempt=None
             metadata["query_retry_safe"] = query_retry_safe
         if attempt is not None:
             metadata["attempt"] = attempt
+        deadline = isinstance(exc, VerticaQueryTimeout)
+        metadata["query_timeout"] = deadline
+        if deadline and not exc.cancellation_confirmed:
+            metadata["cancellation_unconfirmed"] = True
         errors = []
-        for current in _exception_chain(exc):
+        # A locally requested, acknowledged cancel is a timeout outcome, not
+        # an unsolicited permanent SQLSTATE 57014 failure in the host policy.
+        for current in ((exc,) if deadline else _exception_chain(exc)):
             item = {"class": type(current).__name__}
             for key in ("sqlstate", "pgcode", "errno", "errorcode", "code"):
                 try:
@@ -203,9 +214,11 @@ def record_failure(exc, *, source_type=None, query_retry_safe=None, attempt=None
 def record_retry(exc, *, attempt):
     """Keep the reasons for retries even after the next stage clears its error."""
     global _retry_count
+    from trellum.data.vertica_deadline import VerticaQueryTimeout
     with _lock:
         _retry_count = min(255, _retry_count + 1)
-        _retry_history.append({"attempt": attempt, "reason": "transient_connection",
+        reason = "query_timeout" if isinstance(exc, VerticaQueryTimeout) else "transient_connection"
+        _retry_history.append({"attempt": attempt, "reason": reason,
                                "class": type(exc).__name__})
         del _retry_history[:-8]
         _write(retry_count=_retry_count, retry_history=_retry_history)
@@ -215,7 +228,7 @@ def progress(name, **metadata):
     """Persist entry for driver APIs whose result is owned by report code."""
     if name not in STAGES:
         raise ValueError("Unknown diagnostic stage")
-    _write(**{**_context.get(), **metadata}, stage=name, state="active", stage_started_at=time.time(), transient=False, errors=[])
+    _write(**{**_context.get(), **metadata}, stage=name, state="active", stage_started_at=time.time(), transient=False, errors=[], query_timeout=False)
 
 
 @contextmanager
@@ -227,7 +240,7 @@ def stage(name, **metadata):
     with diagnostic_context(**metadata):
         started = time.monotonic()
         _failure = None
-        _write(**_context.get(), stage=name, state="active", stage_started_at=time.time(), transient=False, errors=[])
+        _write(**_context.get(), stage=name, state="active", stage_started_at=time.time(), transient=False, errors=[], query_timeout=False)
         try:
             yield
         except BaseException as exc:

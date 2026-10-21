@@ -115,6 +115,22 @@ def test_completed_at_deadline_is_confirmed(monkeypatch):
     no_watchers()
 
 
+@pytest.mark.heavy
+def test_unsolicited_cancel_after_failed_request_is_not_confirmation(monkeypatch):
+    release = threading.Event()
+    def send(*args):
+        release.set()
+        raise TimeoutError()
+    def execute():
+        assert release.wait(1)
+        raise Cancelled("another cancellation")
+    monkeypatch.setattr(vd, "_send_cancel", send)
+    with pytest.raises(vd.VerticaQueryTimeout) as caught:
+        execute_query(Raw(execute=execute), "select 1")
+    assert not caught.value.cancellation_confirmed
+    no_watchers()
+
+
 def test_manual_cancel_and_other_errors_unchanged(monkeypatch):
     cancel = Mock()
     monkeypatch.setattr(vd, "_send_cancel", cancel)

@@ -85,6 +85,7 @@ def query_deadline(raw):
     pid, key = raw.backend_pid, raw.backend_key
     done = threading.Event()
     expired = threading.Event()
+    cancel_sent = threading.Event()
     end = time.monotonic() + budget
 
     def watch():
@@ -95,6 +96,7 @@ def query_deadline(raw):
         stop_by = end + CANCEL_GRACE_SECONDS
         try:
             _send_cancel(family, peer, pid, key, stop_by)
+            cancel_sent.set()
         except Exception:
             # Sending a packet is never evidence that the backend stopped.
             pass
@@ -126,7 +128,7 @@ def query_deadline(raw):
         if expired.is_set():
             # Only a server cancellation response or successful completion is
             # confirmation. EOF/socket failure alone leaves the outcome unknown.
-            confirmed = completed or getattr(error, "sqlstate", None) == "57014"
+            confirmed = completed or (cancel_sent.is_set() and getattr(error, "sqlstate", None) == "57014")
             try:
                 _discard(raw, original_socket)
             finally:
