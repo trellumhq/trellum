@@ -86,7 +86,7 @@ button:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3p
   .fw-queue-scroll { padding: 8px 16px 16px; }
   .fw-queue-footer { padding: 12px 16px; }
 }
-@media (hover: none) { .fw-clean-exit { opacity: .85; } }
+@media (hover: none) { button, select, .fw-button { min-height: 44px; } .fw-clean-exit { opacity: .85; } }
 @media (prefers-reduced-motion: reduce) { .fw-clean-exit { transition: none; } }
 @media (prefers-color-scheme: dark) {
   :root { color-scheme: dark; --w-bg: #181b1f; --w-card: #23272d; --w-ink: #f3f4f6; --w-muted: #a7adb8; --w-border: #3c444e; --w-hover: #30363d; }
