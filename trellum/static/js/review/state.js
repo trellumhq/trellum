@@ -1,6 +1,7 @@
     /* ── session constants and shared state ───────────── */
     var SLUG = (document.body && document.body.getAttribute('data-report-slug')) || 'report';
     var WORKSPACE = window._fwWorkspaceChild || null;
+    var REVIEW_SESSION = window._fwReviewSession || {};
     var WORKSPACE_NS = WORKSPACE ? ':workspace:' + WORKSPACE.session + ':' + WORKSPACE.analysis_slug : '';
     var QKEY = 'fw-review-queue:' + SLUG + WORKSPACE_NS;
     var SENTKEY = 'fw-review-sent:' + SLUG + WORKSPACE_NS;
@@ -19,10 +20,10 @@
         selecting: false,
         items: [],                 // {n, prompt, selector, tag, text, section, component}
         nextN: 1,
-        session: null,
+        session: REVIEW_SESSION.session || null,
         agent: 'absent',
         working: false,
-        ended: false,
+        ended: !!REVIEW_SESSION.ended,
         dataVersion: null,
         lastReplyN: 0,
         firstStatus: true,

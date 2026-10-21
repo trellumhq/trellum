@@ -115,6 +115,7 @@
                 scheduleStatus(state.ended ? STATUS_MS : window._fwReviewActivity.pollInterval(state.activities, STATUS_MS));
             });
     }
+    if (state.ended) showEnded();
     tickStatus();
     document.addEventListener('visibilitychange', function () {
         if (document.hidden) { state.statusRevision=(state.statusRevision||0)+1; clearTimeout(statusTimer); if (statusAbort) statusAbort.abort(); }

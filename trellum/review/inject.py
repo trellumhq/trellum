@@ -64,8 +64,8 @@ def overlay_js() -> str:
         "__FW_REVIEW_CSS__", _js_string(load_css("review.css")),
     )
     return (
-        "/* Review overlay -- injected by the dev server ONLY while review mode\n"
-        " * is active (see trellum.review). The file on disk never contains this\n"
+        "/* Review overlay -- injected by the dev server for active reviews and\n"
+        " * their read-only final observations. The file on disk never contains this\n"
         " * tag. Source: trellum/static/js/review/*.js + static/css/review.css.\n"
         " */\n"
         "(function () {\n"
@@ -105,14 +105,18 @@ def _js_string(text: str) -> str:
     )
     return f"'{escaped}'"
 
-def inject_overlay(body: bytes) -> bytes:
+def inject_overlay(body: bytes, *, session: int | None = None, ended: bool = False) -> bytes:
     """Insert the overlay script tag before the last </body> (or append)."""
+    tag = _OVERLAY_TAG
+    if session is not None:
+        tag = (f'<script>window._fwReviewSession={{"session":{session},'
+               f'"ended":{str(ended).lower()}}};</script>').encode() + tag
     idx = body.rfind(b"</body>")
     if idx == -1:
         idx = body.rfind(b"</BODY>")
     if idx == -1:
-        return body + b"\n" + _OVERLAY_TAG + b"\n"
-    return body[:idx] + _OVERLAY_TAG + body[idx:]
+        return body + b"\n" + tag + b"\n"
+    return body[:idx] + tag + body[idx:]
 
 
 def _inject_workspace_bridge(body: bytes, slug: str, session: dict,
@@ -131,24 +135,31 @@ def _inject_workspace_bridge(body: bytes, slug: str, session: dict,
     return body[:idx] + tag + body[idx:] if idx >= 0 else body + tag
 
 def maybe_serve_injected_html(handler, served_dir: str) -> bool:
-    """Serve report HTML with the overlay injected while review is active.
+    """Serve report HTML with the active or read-only review overlay.
 
-    Off (the common case) this is a single boolean check. On, it takes over
-    only requests that resolve to an existing .html file (directories map to
+    Off (the common case) no files are read. On, it takes over only requests
+    that resolve to an existing .html file (directories map to
     their index.html), served uncompressed so injection stays trivial.
 
-    An ended session stops injection immediately: the page that was open
-    when the session ended shows its own ended banner, but a FRESH page load
-    must get a clean report -- not an overlay whose first act is announcing
-    a session that no longer exists.
+    Fresh visits after ending get a clean report. An observing tab pins its
+    session in the URL when ending, so a final rebuild/reload can restore its
+    read-only conversation even after the agent consumes the ended poll.
     """
     STATE.bind_dir(served_dir)
-    if not STATE.enabled or STATE.ended:
-        return False
     if handler.command != "GET":
         return False
     from urllib.parse import parse_qs, urlsplit
     query = parse_qs(urlsplit(handler.path).query)
+    with STATE._cond:
+        session, ended = STATE.session, STATE.ended
+        observing = query.get("fw_review_session", [""])[0]
+        if observing and (observing != str(session) or STATE.analysis_slug):
+            return False
+        if ended:
+            if not observing:
+                return False
+        elif not STATE.enabled:
+            return False
     workspace_session = STATE.analysis_status()
     workspace_mode = (
         query.get("fw_workspace", [""])[0] == workspace_session.get("slug")
@@ -184,7 +195,8 @@ def maybe_serve_injected_html(handler, served_dir: str) -> bool:
         # Review takes over the HTML response before the live-query handler can
         # run, so compose both dev-only additions into this served copy.
         from trellum.runner.live_query_dev import inject_dev_live_query_flags
-        body = inject_overlay(inject_dev_live_query_flags(body, handler))
+        body = inject_overlay(inject_dev_live_query_flags(body, handler),
+                              session=session, ended=ended)
     handler.send_response(200)
     handler.send_header("Content-Type", "text/html; charset=utf-8")
     handler.send_header("Content-Length", str(len(body)))

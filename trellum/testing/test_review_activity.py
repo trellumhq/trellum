@@ -448,13 +448,14 @@ def test_observation_failure_aborts_and_recovers(observation_surface, failure):
 
 
 def test_send_and_end_observes_late_final_reply(observation_surface):
-    from playwright.sync_api import sync_playwright
+    from playwright.sync_api import expect, sync_playwright
 
     url, st, slug, workspace = observation_surface
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
         try:
             page = browser.new_page()
+            page.clock.install()
             page.goto(url)
             composer = _surface_composer(page, workspace)
             if workspace:
@@ -478,8 +479,24 @@ def test_send_and_end_observes_late_final_reply(observation_surface):
             assert 'Final feedback before ending' in str(batches)
             feedback = batches[0]['feedback_id']
             st.reply('Final feedback processed after ending', slug, feedback)
-            page.get_by_text('Final feedback processed after ending', exact=True).wait_for(state='attached')
+            reply = page.get_by_text('Final feedback processed after ending', exact=True)
+            expect(reply).to_be_visible()
             _wait_activity(page, feedback, 'completed')
+            # The transient notification is not the conversation. Close and
+            # reopen through the visible control after its 4.5-second lifetime.
+            page.clock.fast_forward(4600)
+            if workspace:
+                page.click('#queue-close')
+                page.click('#queue-toggle')
+                expect(page.locator('#chat-note')).to_be_disabled()
+                expect(page.locator('#send')).to_be_disabled()
+            else:
+                expect(page.locator('#fwrvToast')).to_be_hidden()
+                page.click('#fwrvPanelClose')
+                page.get_by_role('button', name='Conversation', exact=True).click()
+                expect(page.locator('#fwrvNote')).to_be_disabled()
+                expect(page.locator('#fwrvSend')).to_be_disabled()
+            expect(reply).to_be_in_viewport()
             # A new session must never replace this ended conversation.
             st.start_analysis('decision') if workspace else st.start()
             with page.expect_response(lambda r: endpoint in r.url):
@@ -487,6 +504,102 @@ def test_send_and_end_observes_late_final_reply(observation_surface):
             assert page.get_by_text('Final feedback processed after ending', exact=True).count() == 1
         finally:
             browser.close()
+
+
+@pytest.mark.parametrize('width', [1366, pytest.param(390, marks=pytest.mark.heavy)])
+def test_ended_conversation_survives_final_build_reload_and_isolates_replacement(review_server, width):
+    from playwright.sync_api import expect, sync_playwright
+
+    st = state_module.STATE
+    st.reset_for_tests()
+    session = st.start()
+    url = review_server['base'] + '/alpha/index.html'
+    report = review_server['out'] / 'alpha' / 'index.html'
+    meta = report.with_name('_meta.json')
+    original_html, original_meta = report.read_bytes(), meta.read_bytes()
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        try:
+            context = browser.new_context(viewport={'width': width, 'height': 844})
+            page = context.new_page()
+            with page.expect_response(lambda r: '/review/status' in r.url):
+                page.goto(url)
+            page.click('#fwrvChat')
+            page.fill('#fwrvNote', 'Final changes before ending')
+            page.click('#fwrvSendEnd')
+            expect(page.locator('#fwrvEndbar')).to_be_visible()
+            assert f'fw_review_session={session}' in page.url
+            _, batches = st.poll(0, 'alpha')
+            feedback = batches[0]['feedback_id']
+            assert st.poll(0, 'alpha') == ('ended', None)
+            # Simulate the final build's output and metadata publication, using
+            # the real server reload watcher rather than page.reload().
+            report.write_bytes(original_html.replace(b'</body>', b'<p id="final-build">Final build</p></body>'))
+            meta.write_text('{"slug":"alpha","last_run":"final-build"}')
+            page.wait_for_event('load')
+            expect(page.locator('#final-build')).to_be_visible()
+            expect(page.locator('#fwrvConversation')).to_be_visible()
+            expect(page.locator('#fwrvNote')).to_be_disabled()
+            expect(page.locator('#fwrvSendEnd')).to_be_disabled()
+            assert st.ended and not st.enabled and st.session == session
+            # Hide the panel before the late reply: it must remain reachable
+            # after the notification expires, on desktop and phone layouts.
+            page.click('#fwrvPanelClose')
+            st.reply('Final build checked and ready', 'alpha', feedback)
+            expect(page.locator('#fwrvToast')).to_be_visible()
+            page.locator('#fwrvToast').wait_for(state='hidden', timeout=8000)
+            page.get_by_role('button', name='Conversation', exact=True).click()
+            reply = page.locator('#fwrvLog').get_by_text('Final build checked and ready', exact=True)
+            expect(reply).to_be_visible()
+            expect(reply).to_be_in_viewport()
+            expect(page.locator('#fwrvPanelClose')).to_be_in_viewport()
+            # Reload again with a stored reply, verifying read-only restoration
+            # and deduplication rather than relying on an in-memory listener.
+            page.reload()
+            expect(reply).to_be_in_viewport()
+            expect(reply).to_have_count(1)
+            assert st.ended and not st.enabled
+            old_url = page.url
+            st.start()
+            st.reply('Replacement session only', 'alpha')
+            with page.expect_response(lambda r: '/review/status' in r.url):
+                page.evaluate("window.dispatchEvent(new Event('pageshow'))")
+            expect(reply).to_be_visible()
+            expect(page.get_by_text('Replacement session only', exact=True)).to_have_count(0)
+            replacement = page.context.new_page()
+            replacement.goto(url)
+            replacement.click('#fwrvChat')
+            expect(replacement.get_by_text('Replacement session only', exact=True)).to_be_visible()
+            expect(replacement.get_by_text('Final build checked and ready', exact=True)).to_have_count(0)
+            replacement.fill('#fwrvNote', 'Replacement feedback')
+            replacement.click('#fwrvSend')
+            expect(replacement.locator('.fw-review-feedback')).to_have_text('Replacement feedback')
+            expect(page.get_by_text('Replacement feedback', exact=True)).to_have_count(0)
+            # Queue edits in another tab must not alter the ended snapshot.
+            replacement.click('#fwrvPanelClose')
+            replacement.click('#fwrvSelect')
+            replacement.click('#fw_c1')
+            replacement.fill('#fwrvPopText', 'Replacement draft selection')
+            replacement.click('#fwrvPopQueue')
+            expect(replacement.locator('#fwrvCount')).to_have_text('1')
+            expect(page.locator('#fwrvList .fwrv-item')).to_have_count(0)
+            replacement.close()
+            # Even an old observer URL reloaded after replacement cannot join
+            # it. A fresh visit sees only the new conversation, including when
+            # this browser still has the old chat persisted in localStorage.
+            page.goto(old_url)
+            expect(page.locator('#fwrvConversation')).to_have_count(0)
+            page.goto(url)
+            # The panel-open preference also survives navigation. On phones
+            # its toolbar is intentionally hidden while the panel is open.
+            expect(page.get_by_text('Replacement session only', exact=True)).to_be_in_viewport()
+            expect(page.get_by_text('Final build checked and ready', exact=True)).to_have_count(0)
+            expect(page.locator('#fwrvNote')).to_be_enabled()
+        finally:
+            browser.close()
+            report.write_bytes(original_html)
+            meta.write_bytes(original_meta)
+            st.reset_for_tests()
 
 
 def test_old_read_failure_cannot_mark_new_send_unknown(observation_surface):

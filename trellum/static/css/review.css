@@ -79,6 +79,11 @@ body.fwrv-selecting [data-fw-review-ui] textarea{cursor:text!important}
 .fwrv-spin{width:14px;height:14px;border:2px solid var(--border-color,#e2e6ea);border-top-color:var(--bg-header,#0d9488);border-radius:50%;animation:fwrv-spin .8s linear infinite}
 @keyframes fwrv-spin{to{transform:rotate(360deg)}}
 .fwrv-endbar{position:fixed;top:0;left:0;right:0;z-index:100004;display:none;background:var(--text-main,#172126);color:var(--bg-main,#f6f7f8);font-size:14px;font-weight:600;padding:8px 16px;text-align:center}
+.fwrv-endbar{align-items:center;justify-content:center;flex-wrap:wrap;gap:8px}
+.fwrv-endbar .fwrv-btn{background:transparent;color:inherit;border:1px solid currentColor}
+.fwrv-endbar .fwrv-btn:hover{background:color-mix(in srgb,currentColor 12%,transparent)}
+.fwrv-ended .fwrv-foot{display:none}
+.fwrv-ended .fwrv-list:empty{display:none}
 .fwrv-empty{font-size:12px;color:var(--text-muted,#64748b);text-align:center;padding:18px 8px}
 @media (max-width:600px){
     .fwrv-bar{left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom,0px));flex-wrap:wrap;justify-content:center;border-radius:12px}

@@ -507,6 +507,25 @@ class TestServerIntegration:
         assert b"review.js" not in body
         assert body == _REPORT_HTML.encode()
 
+    def test_ended_observer_reload_is_scoped_and_never_reopens(self, review_server):
+        base = review_server["base"]
+        st = review_mod.STATE
+        session = st.start()
+        st.end()
+        assert st.poll(0) == ("ended", None)  # agent stops listening
+        url = base + f"/alpha/index.html?fw_review_session={session}"
+        _, body = _http("GET", url)
+        assert b"review.js" in body
+        assert b'"ended":true' in body
+        assert st.ended and not st.enabled
+        code, _ = _http("POST", base + "/_fw/review/feedback", {"note": "No sends"})
+        assert code == 409
+        st.start()
+        _, body = _http("GET", url)
+        assert b"review.js" not in body  # old URL cannot adopt a new session
+        _, body = _http("GET", base + "/alpha/index.html")
+        assert b"review.js" in body
+
     def test_slug_tagged_replies_reach_only_their_report(self, review_server):
         base = review_server["base"]
         _http("POST", base + "/_fw/review/start", {})

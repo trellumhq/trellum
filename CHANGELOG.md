@@ -25,7 +25,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Fixed
 
 - Mark review activity unconfirmed after observation failures and keep observing
-  final feedback replies at the idle cadence after a session ends.
+  final feedback replies at the idle cadence after a session ends, including
+  across the final report rebuild and reload. Keep the ended conversation
+  reachable for reading after reply notifications disappear.
 
 - Preserve acknowledged feedback when an older workspace poll finishes, keep
   ended workspace activity scoped to its analysis, and require the original
