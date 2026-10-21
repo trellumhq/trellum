@@ -317,6 +317,17 @@ def test_missing_source_build_requires_one_explicit_click(workspace_browser_proj
                 built["source-two"] = True
                 route.fulfill(json={"build_state": "building"})
 
+            page.clock.install()
+            page.add_init_script("""(() => {
+                window.reviewStateReads = 0;
+                const fetch = window.fetch;
+                window.fetch = function(url, options) {
+                    return fetch.call(this, url, options).then(response => {
+                        if (String(url).includes('/workspace/state')) window.reviewStateReads++;
+                        return response;
+                    });
+                };
+            })();""")
             page.route("**/_fw/review/workspace/state", source_state)
             page.route("**/_fw/review/workspace/open", admit)
             page.goto(origin + "/_fw/review/workspace?source=source-two")
@@ -324,7 +335,8 @@ def test_missing_source_build_requires_one_explicit_click(workspace_browser_proj
             expected_status = "not been built locally" if build_state == "missing" else "out of date"
             page.locator("#source-status").get_by_text(expected_status, exact=False).wait_for()
             page.wait_for_function("document.getElementById('fw-workspace-report').dataset.slug !== 'source-two'")
-            page.wait_for_timeout(5500)  # Include repeated background polls.
+            page.clock.fast_forward(3000)
+            page.wait_for_function("window.reviewStateReads >= 2")
             assert len(state_reads) >= 2
             assert admissions == []
             page.locator("#source-select").select_option("")
