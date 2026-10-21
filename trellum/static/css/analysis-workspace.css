@@ -2,6 +2,10 @@
   color-scheme: light;
   --w-bg: #f6f7f8; --w-card: #fff; --w-ink: #172126; --w-muted: #475569;
   --w-border: #e2e6ea; --w-primary: #0f766e; --w-hover: #eef1f3;
+  /* Report-review controls inherit the workspace theme through shared tokens. */
+  --bg-main: var(--w-bg); --bg-card: var(--w-card); --bg-card-hover: var(--w-hover);
+  --text-main: var(--w-ink); --text-secondary: var(--w-muted); --text-muted: var(--w-muted);
+  --border-color: var(--w-border); --bg-header: var(--w-primary); --color-today: var(--w-primary);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   color: var(--w-ink); background: var(--w-bg); font-size: 14px; line-height: 1.5;
 }

@@ -185,6 +185,7 @@ def test_standalone_conversation_pickup_followup_stale_completion_and_reconnect(
             STATE.poll(0, "alpha")
             _wait_activity(page, first, "picked_up")
             indicator = page.locator('[data-activity-state="picked_up"] .fw-review-activity-state')
+            page.emulate_media(reduced_motion="no-preference")
             assert indicator.evaluate("el => getComputedStyle(el, '::before').animationName") == "fw-review-working-spin"
             page.emulate_media(reduced_motion="reduce")
             assert indicator.evaluate("el => getComputedStyle(el, '::before').animationName") == "none"
