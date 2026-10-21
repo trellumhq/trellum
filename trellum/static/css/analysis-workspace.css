@@ -109,3 +109,10 @@ button:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3p
   .fw-review-activity-state { color: #2dd4bf; }
   [data-activity-state="failed"] .fw-review-activity-state { color: #f87171; }
 }
+
+/* Motion indicates active agent contact, not a percentage of completion. */
+[data-activity-state="picked_up"] .fw-review-activity-state::before, [data-activity-state="working"] .fw-review-activity-state::before, [data-activity-state="rebuilding"] .fw-review-activity-state::before { content: ""; display: inline-block; width: 12px; height: 12px; margin-right: 8px; vertical-align: -2px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: fw-review-working-spin 900ms linear infinite; }
+@keyframes fw-review-working-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  [data-activity-state="picked_up"] .fw-review-activity-state::before, [data-activity-state="working"] .fw-review-activity-state::before, [data-activity-state="rebuilding"] .fw-review-activity-state::before { animation: none; }
+}

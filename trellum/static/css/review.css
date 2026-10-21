@@ -100,3 +100,10 @@ body.fwrv-selecting [data-fw-review-ui] textarea{cursor:text!important}
 .fwrv-root .fw-review-activity-time{display:block;margin-top:4px;font-size:12px;color:var(--text-secondary,#475569)}
 .fwrv-root [data-activity-state="unknown"] .fw-review-activity-state,.fwrv-root [data-activity-state="ended"] .fw-review-activity-state{color:var(--text-secondary,#475569)}
 .fwrv-root [data-activity-state="failed"] .fw-review-activity-state{color:var(--accent-red,#b91c1c)}
+
+/* Motion indicates active agent contact, not a percentage of completion. */
+.fwrv-root [data-activity-state="picked_up"] .fw-review-activity-state::before, .fwrv-root [data-activity-state="working"] .fw-review-activity-state::before, .fwrv-root [data-activity-state="rebuilding"] .fw-review-activity-state::before { content: ""; display: inline-block; width: 12px; height: 12px; margin-right: 8px; vertical-align: -2px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: fw-review-working-spin 900ms linear infinite; }
+@keyframes fw-review-working-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .fwrv-root [data-activity-state="picked_up"] .fw-review-activity-state::before, .fwrv-root [data-activity-state="working"] .fw-review-activity-state::before, .fwrv-root [data-activity-state="rebuilding"] .fw-review-activity-state::before { animation: none; }
+}

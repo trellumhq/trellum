@@ -9,6 +9,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- Animate the in-chat activity indicator while review work is active, with a static indicator for reduced-motion preferences.
+
 - Review controls and conversations use consistent typography, softer theme surfaces and compact desktop controls while retaining touch targets on phones.
 
 ### Fixed

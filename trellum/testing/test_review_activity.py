@@ -184,6 +184,11 @@ def test_standalone_conversation_pickup_followup_stale_completion_and_reconnect(
             _wait_activity(page, first, "queued")
             STATE.poll(0, "alpha")
             _wait_activity(page, first, "picked_up")
+            indicator = page.locator('[data-activity-state="picked_up"] .fw-review-activity-state')
+            assert indicator.evaluate("el => getComputedStyle(el, '::before').animationName") == "fw-review-working-spin"
+            page.emulate_media(reduced_motion="reduce")
+            assert indicator.evaluate("el => getComputedStyle(el, '::before').animationName") == "none"
+            page.emulate_media(reduced_motion="no-preference")
             STATE.activity(STATE.session, "alpha", first, "working", "Checking the selected date filter")
             page.get_by_text("Checking the selected date filter", exact=True).wait_for()
             page.fill("#fwrvNote", "Also check the totals")
@@ -250,6 +255,8 @@ def test_workspace_activity_preserves_drafts_focus_and_reader_position(workspace
             assert abs(page.locator(".fw-queue-scroll").evaluate("el=>el.scrollTop")-before) < 2
             st.agent_scopes["decision"]["seen"] -= 91
             _wait_activity(page, followup, "unknown")
+            inactive = page.locator('[data-activity-state="unknown"] .fw-review-activity-state')
+            assert inactive.evaluate("el => getComputedStyle(el, '::before').animationName") == "none"
             st.reply("Follow-up checked", "decision", followup)
             _wait_activity(page, followup, "completed")
             assert page.locator(".fw-review-request").count() == 2
