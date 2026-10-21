@@ -216,9 +216,11 @@ def _cmd_review_poll(args: argparse.Namespace) -> int:
 
     if args.reply:
         code, _resp = _review_http(port, "POST", "/_fw/review/reply",
-                                   {"text": args.reply, "slug": slug})
+                                   {"text": args.reply, "slug": slug,
+                                    "session": args.session, "feedback_id": args.feedback or ""})
         if code != 200:
             print(f"reply not delivered: HTTP {code}", file=sys.stderr)
+            return 1
 
     deadline = _time.monotonic() + args.timeout if args.timeout else None
     while True:
@@ -249,7 +251,9 @@ def _cmd_review_poll(args: argparse.Namespace) -> int:
                 print(f"\nNext: edit the source in reports/{slug}/, then rebuild:")
                 print(f"  python -m trellum.run reports/{slug} --no-serve")
                 print("(the browser reloads itself) and acknowledge with:")
-                print("  python -m trellum review poll "
+                scope = f" --report {args.report}" if args.report else ""
+                original_session = (resp.get("batches") or [{}])[0].get("session")
+                print(f"  python -m trellum review poll{scope} --session {original_session} "
                       "--reply \"what you changed\"")
             if resp.get("session_ended"):
                 print("\nThe user ended the session with this batch -- resolve "
@@ -279,7 +283,8 @@ def _cmd_review_reply(args: argparse.Namespace) -> int:
     slug = _slug_of(args.report) if getattr(args, "report", None) else ""
     code, resp = _review_http(port, "POST", "/_fw/review/reply",
                               {"text": args.text, "slug": slug,
-                               "feedback_id": getattr(args, "feedback", None) or ""})
+                               "feedback_id": getattr(args, "feedback", None) or "",
+                               "session": getattr(args, "session", None)})
     if code != 200:
         print(f"reply not delivered: HTTP {code} {resp}", file=sys.stderr)
         return 1
@@ -346,12 +351,12 @@ def _cmd_review_overview(args: argparse.Namespace) -> int:
           "                          (--rebuild --no-browser --port N "
           "--restart-server)\n"
           "  review poll             block until the user sends feedback\n"
-          "                          (--reply TEXT --timeout SECS --json;\n"
+          "                          (--reply TEXT --session N --timeout SECS --json;\n"
           "                           --report SLUG when several agents share\n"
           "                           the project; exit 0 feedback, 2 timeout,\n"
           "                           3 ended)\n"
           "  review reply TEXT       answer into the browser's chat\n"
-          "                          (--report SLUG to reach one report only)\n"
+          "                          (--report SLUG; --session N or --feedback ID to complete work)\n"
           "  review status [--json]  one-line state of the session\n"
           "  review end              end the session from this side\n"
           "\nTargets the whole-output server (trellum serve). See: "

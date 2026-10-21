@@ -83,6 +83,8 @@ def _add_review_commands(sub) -> None:
                     help="only this report's feedback -- lets several agents "
                          "share one project without stealing each other's "
                          "batches (slug or reports/<slug> path)")
+    rp.add_argument("--session", type=int, help="session returned with the feedback being acknowledged")
+    rp.add_argument("--feedback", metavar="ID", help="complete only this picked-up feedback with --reply")
     rp.add_argument("--json", action="store_true")
     rp.set_defaults(fn=_cmd_review_poll)
 
@@ -91,6 +93,7 @@ def _add_review_commands(sub) -> None:
     rr.add_argument("--report", metavar="SLUG",
                     help="show the reply only on this report's pages")
     rr.add_argument("--feedback", metavar="ID", help="complete only this picked-up feedback")
+    rr.add_argument("--session", type=int, help="complete picked-up feedback from this original session")
     rr.set_defaults(fn=_cmd_review_reply)
 
     ra = rvsub.add_parser("activity", help="report a factual update without completing feedback")

@@ -145,8 +145,6 @@ class ReviewState:
             if not self.enabled:
                 return
             self.ended = True
-            self.analysis_slug = ""
-            self.analysis_token = ""
             self._save_locked()
             self._cond.notify_all()
 
@@ -164,8 +162,6 @@ class ReviewState:
             self.queue.append(batch)
             if end_session:
                 self.ended = True
-                self.analysis_slug = ""
-                self.analysis_token = ""
             self._save_locked()
             self._cond.notify_all()
             return len(self.queue)
@@ -409,13 +405,18 @@ class ReviewState:
         with self._cond:
             return self.last_delivered
 
-    def reply(self, text: str, slug: str = "", feedback_id: str = "") -> int:
+    def reply(self, text: str, slug: str = "", feedback_id: str = "",
+              session: int | None = None) -> int:
         """Record an agent reply; shown in the browser's chat.
 
         A slug-tagged reply reaches only that report's pages; an untagged
-        one is global (single-agent sessions never need the tag).
+        one is global (single-agent sessions never need the tag). Completion
+        requires the session returned at pickup or an explicit feedback ID.
+        Legacy replies without either identity remain text-only.
         """
         with self._cond:
+            if session is not None and (type(session) is not int or session != self.session):
+                raise ValueError("Reply does not match this review session")
             if feedback_id and (feedback_id not in self.activities
                     or self.activities[feedback_id]["slug"] != slug):
                 raise ValueError("Reply does not match this report and feedback")
@@ -423,7 +424,8 @@ class ReviewState:
                 raise ValueError("Reply requires picked-up feedback")
             completed = []
             for row in self.activities.values():
-                if ((not slug or row["slug"] == slug)
+                if ((session is not None or feedback_id)
+                        and (not slug or row["slug"] == slug)
                         and (not feedback_id or row["feedback_id"] == feedback_id)
                         and row["state"] not in _TERMINAL_ACTIVITY | {"queued"}):
                     row.update(state="completed", summary="", completed_at=time.time(), updated_at=time.time())
@@ -431,9 +433,10 @@ class ReviewState:
             n = len(self.replies) + 1
             self.replies.append({"n": n, "text": text, "slug": slug, "ts": time.time(),
                                  "feedback_ids": completed})
-            self.agent_working = False
-            self.agent_seen = time.monotonic()
-            self._touch_agent_locked(slug)
+            if session is not None or feedback_id:
+                self.agent_working = False
+                self.agent_seen = time.monotonic()
+                self._touch_agent_locked(slug)
             self._save_locked()
             self._cond.notify_all()
             return n

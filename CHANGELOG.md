@@ -13,12 +13,17 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Preserve acknowledged feedback when an older workspace poll finishes, keep
+  ended workspace activity scoped to its analysis, and require the original
+  session or feedback identity before a reply completes review work.
+
 - Require an explicit Build or Rebuild action before generating a selected
   source report in the review workspace.
 
 - Keep empty datasource placeholders from blocking queries against other
   configured sources; selecting the empty source still explains how to configure it.
-- Disable date presets when no date bounds are available and keep obsolete
+- Disable date presets when date bounds or preset counts are missing or malformed
+  so selected dates cannot become `NaN`, and keep obsolete
   live lookup responses from replacing a newer filter selection.
 
 ### Added

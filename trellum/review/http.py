@@ -189,14 +189,25 @@ def _script_json(value: dict) -> str:
 def _workspace_state(handler, root, output_root) -> None:
     from trellum.review.workspace import WORKSPACE
 
-    active = STATE.analysis_status()
-    scope = active["slug"] or STATE.analysis_slug
-    status = STATE.status(scope)
-    status["replies"] = [reply for reply in status["replies"]
-                          if not reply.get("slug") or reply.get("slug") == scope]
+    # Freeze identity, authentication and scoped observations together: a
+    # replacement session must never be returned to an older authenticated tab.
+    with STATE._cond:
+        active = STATE.analysis_status()
+        scope = STATE.analysis_slug
+        params = _query_params(handler.path)
+        token = handler.headers.get("X-Trellum-Analysis-Token")
+        if ((token is not None and not secrets_compare(token, STATE.analysis_token))
+                or ("session" in params and params["session"] != str(STATE.session))
+                or ("analysis_slug" in params and params["analysis_slug"] != scope)):
+            raise PermissionError("Invalid analysis workspace session")
+        status = STATE.status(scope) if scope else {
+            "session": STATE.session, "queued": 0, "activities": [], "replies": [],
+            "agent": {"state": "absent", "seen_ms_ago": None}}
+        status["replies"] = [reply for reply in status["replies"]
+                             if not reply.get("slug") or reply.get("slug") == scope]
     if not active["active"]:
         _send_json(handler, 200, {**status, "active": False, "ended": True,
-            "session": STATE.session, "token": "", "analysis": None,
+            "session": status["session"], "token": "", "analysis": None,
             "reports": [], "initial_source": _query_params(handler.path).get("source", "")})
         return
     entries = _workspace_catalog(root)
@@ -219,7 +230,7 @@ def _workspace_state(handler, root, output_root) -> None:
     abuild, aversion, abuilt = _workspace_output(output_root, analysis)
     agent = status["agent"]
     _send_json(handler, 200, {**status, "active": True, "ended": False,
-        "session": STATE.session, "token": active["token"],
+        "session": status["session"], "token": active["token"],
         "analysis": {"slug": active["slug"], "name": analysis["name"],
                      "url": f"/{quote(active['slug'])}/index.html",
                      "version": aversion, "build_state": abuild, "source_built_at": abuilt},
@@ -517,59 +528,12 @@ def handle_review_request(handler, served_dir: str) -> bool:
         return True
 
     if path == f"{_REVIEW_PREFIX}/feedback" and method == "POST":
-        body = _read_body(handler)
-        if body is None:
-            return True
-        batch = {
-            "slug": str(body.get("slug") or ""),
-            "page": str(body.get("page") or ""),
-            "session": body.get("session"),
-            "note": str(body.get("note") or ""),
-            "items": body.get("items") or [],
-            "ts": time.time(),
-        }
-        if not isinstance(batch["items"], list):
-            _send_json(handler, 400, {"error": "items must be a list"})
-            return True
-        try:
-            request_id = body.get("request_id")
-            if request_id is not None and (not isinstance(request_id, str)
-                    or not re.fullmatch(r"[a-zA-Z0-9_-]{16,100}", request_id)):
-                raise ValueError("A request ID of 16–100 characters is required")
-            if request_id:
-                queued, duplicate = STATE.submit_once(batch, request_id, bool(body.get("end_session")))
-            else:
-                queued, duplicate = STATE.submit(batch, bool(body.get("end_session"))), False
-        except ReviewInactive:
-            _send_json(handler, 409, {"error": "review not active"})
-            return True
-        except FileExistsError as exc:
-            _send_json(handler, 409, {"error": str(exc)})
-            return True
-        except ValueError as exc:
-            _send_json(handler, 400, {"error": str(exc)})
-            return True
-        _send_json(handler, 200, {"ok": True, "queued": queued,
-                                "feedback_id": batch["feedback_id"], "duplicate": duplicate})
-        return True
+        from trellum.review.http_feedback import submit_feedback
+        return submit_feedback(handler)
 
     if path == f"{_REVIEW_PREFIX}/activity" and method == "POST":
-        if not _analysis_origin_allowed(handler):
-            _send_json(handler, 403, {"error": "activity requires an allowed local origin"})
-            return True
-        body = _read_body(handler, 8192)
-        if body is None:
-            return True
-        try:
-            if any(not isinstance(body.get(key), str) for key in ("slug", "feedback_id", "state", "summary")):
-                raise ValueError("Activity requires slug, feedback_id, state and summary strings")
-            STATE.activity(body.get("session"), body["slug"], body["feedback_id"],
-                           body["state"], body["summary"])
-        except ValueError as exc:
-            _send_json(handler, 409, {"error": str(exc)})
-            return True
-        _send_json(handler, 200, {"ok": True})
-        return True
+        from trellum.review.http_feedback import update_activity
+        return update_activity(handler)
 
     if path == f"{_REVIEW_PREFIX}/poll" and method == "GET":
         params = _query_params(handler.path)
@@ -595,21 +559,8 @@ def handle_review_request(handler, served_dir: str) -> bool:
         return True
 
     if path == f"{_REVIEW_PREFIX}/reply" and method == "POST":
-        body = _read_body(handler)
-        if body is None:
-            return True
-        text = str(body.get("text") or "").strip()
-        if not text:
-            _send_json(handler, 400, {"error": "text required"})
-            return True
-        try:
-            n = STATE.reply(text, slug=str(body.get("slug") or ""),
-                            feedback_id=str(body.get("feedback_id") or ""))
-        except ValueError as exc:
-            _send_json(handler, 409, {"error": str(exc)})
-            return True
-        _send_json(handler, 200, {"ok": True, "n": n})
-        return True
+        from trellum.review.http_feedback import reply
+        return reply(handler)
 
     if path == f"{_REVIEW_PREFIX}/end" and method == "POST":
         if _read_body(handler) is None:

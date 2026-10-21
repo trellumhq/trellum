@@ -943,8 +943,9 @@ The loop, from your seat:
    `python -m trellum.run reports/<slug> --no-serve`. The browser notices
    the rebuild and reloads itself within ~2 seconds — never hand-edit
    `output/` HTML, and never restart the server to "refresh".
-4. `python -m trellum review poll --reply "what you changed"` — the reply
-   appears in the browser's chat and completes picked-up feedback, then
+4. `python -m trellum review poll --session <session> --reply "what you changed"`
+   uses the session returned with the picked-up feedback. The reply appears
+   in the browser's chat and completes that feedback, then
    the command waits for the next round.
 5. Repeat until poll exits `3` (the user pressed End, or Send & End — that
    final batch still arrives first). `python -m trellum review end` ends
@@ -976,9 +977,14 @@ This sends `POST /_fw/review/activity` with `session`, `slug`, `feedback_id`,
 needed) and `failed`. The summary is 1–500 characters. It must describe actual
 observed work, never private reasoning, invented steps, percentages or ETAs.
 Activity does not reply, dequeue follow-ups or complete a round. Use `review
-reply --report <slug> --feedback <feedback_id> "what changed"` after rebuilding
-to complete one request, or omit `--feedback` to complete all picked-up feedback
-in that scope. Queued follow-ups stay queued until polled.
+reply --report <slug> --session <session> --feedback <feedback_id> "what changed"`
+after rebuilding to complete one request. Omit `--feedback` and retain the
+original `--session` to complete all picked-up feedback in that scope. Use the
+identity returned with the work; never look up the current session to acknowledge
+an older batch. A stale session or feedback ID is rejected. Replies without
+either identity remain compatible as chat text and do not complete feedback.
+The HTTP reply endpoint accepts the same optional `session` and `feedback_id`
+fields, with identical completion rules. Queued follow-ups stay queued until polled.
 
 The local protocol retains at most 120 activity records, pruning completed or
 failed records first and refusing additional feedback if all records are still

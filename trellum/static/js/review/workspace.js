@@ -12,7 +12,7 @@
   var captureWaiters = Object.create(null), openRequests = Object.create(null), buildRequested = Object.create(null);
   var viewState = {analysis:Object.create(null), source:Object.create(null)};
   var requestSeq = 0, stateGeneration = 0, pendingSourceGeneration = 0;
-  var pollBusy = false, sendBusy = false, ended = false, invalidSession = false;
+  var pollBusy = false, pollRefresh = false, pollController = null, pageAway = false, sendBusy = false, ended = false, invalidSession = false;
   var stateVersion = {analysis:null, source:null}, initialSource = cfg.initial_source || '';
   var initialHandled = false, conversation = {activities:[],replies:[]}, contentOrigin = {origin_slug:cfg.analysis_slug,origin_name:'Analysis',origin_kind:'analysis',frame_id:''};
   var noteOrigin = null, pendingSend = null, captureFailures = [];
@@ -42,10 +42,11 @@
   function saveDraft() {
     try { sessionStorage.setItem(storageKey,JSON.stringify({queue:queue.map(persistableItem),note:note.value,noteOrigin:noteOrigin,contentOrigin:contentOrigin,pendingSend:pendingSend})); } catch (_) {}
   }
-  function api(path, method, body, requestId) {
+  function api(path, method, body, requestId, signal) {
     var headers={'Accept':'application/json','X-Trellum-Analysis-Token':cfg.token||''};
     if(body)headers['Content-Type']='application/json'; if(requestId)headers['X-Request-ID']=requestId;
-    return fetch('/_fw/review/workspace/'+path,{method:method||'GET',headers:headers,body:body?JSON.stringify(body):undefined,cache:'no-store',credentials:'same-origin'})
+    if(path==='state')path+='?session='+encodeURIComponent(cfg.session)+'&analysis_slug='+encodeURIComponent(cfg.analysis_slug);
+    return fetch('/_fw/review/workspace/'+path,{signal:signal,method:method||'GET',headers:headers,body:body?JSON.stringify(body):undefined,cache:'no-store',credentials:'same-origin'})
       .then(function(r){return r.json().catch(function(){return {};}).then(function(json){if(!r.ok){var e=new Error(json.error||json.message||('HTTP '+r.status));e.status=r.status;throw e;}return json;});});
   }
   function frameRole(frame) { return frame===analysisFrame?'analysis':'source'; }
@@ -432,6 +433,8 @@
     if(!pendingSend){if(!endSession&&!queue.length&&!note.value.trim())return;pendingSend=snapshotSubmission(endSession);if(childFrame&&childRequestId){pendingSend.childFrameId=childFrame.dataset.frameId;pendingSend.childRequestId=childRequestId;pendingSend.childNoteOrigin=childFrame.dataset.slug;pendingSend.childNoteText=childNoteText||'';pendingSend.childNoteRevision=Number(childNoteRevision||0);}saveDraft();}
     var pending=clone(pendingSend);var replyFrame=childFrame||[analysisFrame,sourceFrame].find(function(f){return f.dataset.frameId===pending.childFrameId;});var replyRequestId=childRequestId||pending.childRequestId;sendBusy=true;renderQueue();document.getElementById('send-status').textContent='Sending…';
     api('feedback','POST',pending.body,pending.requestId).then(function(response){
+      // A pre-send observation cannot replace this acknowledged request.
+      stateGeneration++;pollRefresh=true;
       if(response.feedback_id&&!conversation.activities.some(function(a){return a.feedback_id===response.feedback_id;})){
         var now=Date.now()/1000;
         conversation.activities.push({feedback_id:response.feedback_id,state:'queued',text:pending.body.note||pending.body.items.map(function(it){return it.prompt;}).join('\n'),submitted_at:now,updated_at:now});
@@ -481,9 +484,22 @@
     updateControls();return true;
   }
   function pollState() {
-    if(pollBusy||invalidSession)return;pollBusy=true;var g=++stateGeneration;
-    api('state','GET').then(function(s){if(g!==stateGeneration)return;applyState(s);}).catch(function(e){if(g===stateGeneration){if([404,409,410].indexOf(e.status)>=0||/session/i.test(e.message))disableForInvalidSession();else statusEl.textContent='Connection issue: '+e.message;}}).finally(function(){if(g===stateGeneration)pollBusy=false;else pollBusy=false;});
+    if(pollBusy||invalidSession||document.hidden||pageAway)return;
+    pollBusy=true;pollRefresh=false;var g=++stateGeneration;
+    pollController=new AbortController();
+    api('state','GET',null,null,pollController.signal).then(function(s){if(g!==stateGeneration)return;applyState(s);}).catch(function(e){if(g===stateGeneration&&e.name!=='AbortError'){if([403,404,409,410].indexOf(e.status)>=0||/session/i.test(e.message))disableForInvalidSession();else statusEl.textContent='Connection issue: '+e.message;}}).finally(function(){
+      pollBusy=false;pollController=null;
+      // Keep one read in flight, including a refresh requested by a newer send.
+      if(pollRefresh)pollState();
+    });
   }
+  function pausePolling() {
+    stateGeneration++;pollRefresh=true;
+    if(pollController)pollController.abort();
+  }
+  document.addEventListener('visibilitychange',function(){if(document.hidden)pausePolling();else pollState();});
+  window.addEventListener('pagehide',function(){pageAway=true;pausePolling();});
+  window.addEventListener('pageshow',function(){pageAway=false;pollState();});
   readDraft();
   if(pendingSend)document.getElementById('send-status').textContent='A previous submission is unconfirmed. Queue & send retries the same request.';
   // Page visibility is shared by desktop and phone; iframe state stays alive.

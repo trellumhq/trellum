@@ -8,16 +8,15 @@ from types import SimpleNamespace
 
 import pytest
 
+from trellum import project
 from trellum.data.datasource_config import invalidate_datasource_cache
-from trellum.project import get_project_root, set_project_root
 from trellum.report import ReportContext
 from trellum.runner.live_query_dev import handle_live_query_request
 
 
 @pytest.fixture
-def source_project(tmp_path):
-    original = get_project_root()
-    set_project_root(str(tmp_path))
+def source_project(tmp_path, monkeypatch):
+    monkeypatch.setattr(project, "_project_root_override", str(tmp_path))
     (tmp_path / "data-sources").mkdir()
     with sqlite3.connect(tmp_path / "events.sqlite") as conn:
         conn.executescript("""
@@ -28,7 +27,6 @@ def source_project(tmp_path):
     try:
         yield tmp_path
     finally:
-        set_project_root(original)
         invalidate_datasource_cache()
 
 

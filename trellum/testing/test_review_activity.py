@@ -7,11 +7,22 @@ from trellum import cli
 from trellum.cli.commands import review as review_cmd
 from trellum.review import state as state_module
 from trellum.review.state import ReviewState
-from trellum.testing.test_analysis_workspace import (  # noqa: F401
-    workspace_project, workspace_server, start_workspace, workspace_headers, wsbody,
+from trellum.testing.test_analysis_workspace import (
+    start_workspace,
+    workspace_headers,
+    wsbody,
 )
-from trellum.testing.test_review import review_server, _http  # noqa: F401
-from trellum.testing.test_workspace_journey import workspace_browser_project  # noqa: F401
+from trellum.testing.test_analysis_workspace import (  # noqa: F401
+    workspace_project as workspace_project,
+)
+from trellum.testing.test_analysis_workspace import (
+    workspace_server as workspace_server,
+)
+from trellum.testing.test_review import _http
+from trellum.testing.test_review import review_server as review_server
+from trellum.testing.test_workspace_journey import (
+    workspace_browser_project as workspace_browser_project,
+)
 
 
 def batch(slug="alpha", note="Please check this"):
@@ -152,6 +163,7 @@ def _wait_activity(page, feedback, state):
 
 def test_standalone_conversation_pickup_followup_stale_completion_and_reconnect(review_server):
     from playwright.sync_api import sync_playwright
+
     from trellum.review.state import STATE
 
     STATE.reset_for_tests()
@@ -247,6 +259,7 @@ def test_workspace_activity_preserves_drafts_focus_and_reader_position(workspace
 
 def test_unconfirmed_standalone_send_reconciles_without_resubmission(review_server):
     from playwright.sync_api import sync_playwright
+
     from trellum.review.state import STATE
 
     STATE.reset_for_tests()
@@ -277,3 +290,65 @@ def test_unconfirmed_standalone_send_reconciles_without_resubmission(review_serv
         finally:
             browser.close()
             STATE.reset_for_tests()
+
+
+def test_workspace_send_invalidates_held_state_and_serializes_refresh(workspace_browser_project):
+    from playwright.sync_api import sync_playwright
+
+    base, st, _ = workspace_browser_project
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        try:
+            page = browser.new_page(viewport={"width": 1366, "height": 900})
+            page.goto(base + "/_fw/review/workspace")
+            page.wait_for_function("document.getElementById('fw-workspace-analysis').src.includes('/decision/')")
+            # Hold actual response bodies on both sides of the send. The second
+            # hold exposes any transient removal by the obsolete observation.
+            page.evaluate("""() => {
+                const original = window.fetch;
+                const reads = window.heldState = {release: [], inflight: 0, max: 0};
+                window.fetch = function(url, options) {
+                    if (!String(url).includes('/workspace/state')) return original(url, options);
+                    reads.inflight++; reads.max = Math.max(reads.max, reads.inflight);
+                    return original(url, options).then(async response => {
+                        const body = await response.text();
+                        return new Promise(resolve => reads.release.push(() => {
+                            reads.inflight--;
+                            resolve(new Response(body, {status: response.status}));
+                        }));
+                    });
+                };
+            }""")
+            page.wait_for_function("window.heldState.release.length === 1")
+            page.click("#queue-toggle")
+            page.fill("#chat-note", "Keep this acknowledged request visible")
+            page.click("#send")
+            page.wait_for_function("document.getElementById('chat-note').value === ''")
+            feedback = st.queue[0]["feedback_id"]
+            _wait_activity(page, feedback, "queued")
+            assert page.evaluate("window.heldState.release.length") == 1
+            page.evaluate("window.heldState.release[0]()")
+            page.wait_for_function("window.heldState.release.length === 2")
+            _wait_activity(page, feedback, "queued")
+            assert page.evaluate("window.heldState.max") == 1
+            page.evaluate("window.heldState.release[1]()")
+            st.poll(0, "decision")
+            page.wait_for_function("window.heldState.release.length === 3")
+            # A hidden page invalidates the held observation and resumes with
+            # one fresh read when visible, without applying the stale pickup.
+            page.evaluate("""() => {
+                Object.defineProperty(document, 'hidden', {configurable: true, value: true});
+                document.dispatchEvent(new Event('visibilitychange'));
+                window.heldState.release[2]();
+            }""")
+            _wait_activity(page, feedback, "queued")
+            page.evaluate("""() => {
+                Object.defineProperty(document, 'hidden', {configurable: true, value: false});
+                document.dispatchEvent(new Event('visibilitychange'));
+            }""")
+            page.wait_for_function("window.heldState.release.length === 4")
+            page.evaluate("window.heldState.release[3]()")
+            _wait_activity(page, feedback, "picked_up")
+            assert page.evaluate("window.heldState.max") == 1
+        finally:
+            browser.close()

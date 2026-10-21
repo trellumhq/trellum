@@ -1,26 +1,28 @@
 """Deterministic date preset -> local live query -> result coverage."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from functools import partial
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import json
 import sqlite3
 import threading
+from datetime import datetime, timezone
+from functools import partial
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 import pandas as pd
 import pytest
 
+from trellum import project
 from trellum.assets import load_js
 from trellum.components import DataTable, FilterBar, LiveDataSource
 from trellum.components.filters.date_range import DateRangeFilter
 from trellum.data.datasource_config import invalidate_datasource_cache
-from trellum.project import get_project_root, set_project_root
 from trellum.rendering.cdn import copy_vendor_tree
 from trellum.rendering.html_builder import render_report
 from trellum.report import ReportContext
 from trellum.runner.live_query_dev import (
-    handle_auth_me_request, handle_live_query_request, maybe_serve_injected_html,
+    handle_auth_me_request,
+    handle_live_query_request,
+    maybe_serve_injected_html,
 )
 
 
@@ -35,9 +37,8 @@ def browser():
 
 
 @pytest.fixture
-def date_server(tmp_path):
-    original = get_project_root()
-    set_project_root(str(tmp_path))
+def date_server(tmp_path, monkeypatch):
+    monkeypatch.setattr(project, "_project_root_override", str(tmp_path))
     invalidate_datasource_cache()
     (tmp_path / "data-sources").mkdir()
     (tmp_path / "data-sources/config.yaml").write_text(
@@ -88,7 +89,6 @@ def date_server(tmp_path):
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
-        set_project_root(original)
         invalidate_datasource_cache()
 
 
@@ -195,6 +195,98 @@ def test_absent_date_bounds_do_not_produce_a_nan_preset(browser, values):
             return calls;
         }""", config) == []
         assert page.locator(".fw-date-preset:enabled").count() == 0
+    finally:
+        page.close()
+
+
+@pytest.mark.parametrize("change", [
+    {"max_date": ""}, {"min_date": None}, {"max_date": "not-a-date"},
+    {"max_date": "2026-02-30"}, {"min_date": "NaN-NaN-NaN"},
+    {"max_date": "2026-10-21 25:00"}, {"days": "seven"}, {"days": "7oops"},
+    {"days": -7}, {"days": None, "hours": "NaN"},
+    {"days": None, "hours": "1e30"}, {"days": 9007199254740991},
+])
+def test_unavailable_seven_day_selection_retains_truthful_trigger_and_sends_no_params(browser, change):
+    plugin = DateRangeFilter()
+    frame = pd.DataFrame({"day": ["2026-10-01", "2026-10-21"]})
+    config = plugin.build_config("dates", "day", {}, frame)
+    config.update({key: value for key, value in change.items() if key not in {"days", "hours"}})
+    config["presets"][0].update({key: value for key, value in change.items() if key in {"days", "hours"}})
+    page = browser.new_page()
+    try:
+        page.set_content(plugin.render_html("dates", "day", "Date", {}, frame))
+        page.evaluate(load_js("components/date_range_filter.js"))
+        trigger = page.locator(".fw-date-trigger-text")
+        before = trigger.inner_text()
+        page.evaluate("""({fc, change}) => {
+            const button = document.querySelector('.fw-date-preset[data-days="7"]');
+            for (const key of ['days', 'hours']) {
+                if (key in change) button.dataset[key] = change[key] === null ? '' : change[key];
+            }
+            window.dateParams = [];
+            const h = {findFc: () => fc, urlLookup: () => '7D',
+                setFilter: (...args) => window.dateParams.push(args),
+                propagate: (...args) => window.dateParams.push(args), urlWrite: () => {}};
+            // Default and URL initialization cannot forward malformed bounds.
+            window._fwFilterTypes.date_range.init(document.body, fc, 'dates', h);
+            window.dateParams = [];
+            window._fwFilterTypes.date_range.wireControls(document.body, {}, 'dates', h);
+        }""", {"fc": config, "change": change})
+        button = page.get_by_role("button", name="7D", exact=True)
+        assert button.is_disabled()
+        # Also exercise a button enabled before the bounds became unavailable.
+        button.evaluate("button => button.disabled = false")
+        button.click()
+        assert trigger.inner_text() == before
+        assert "NaN" not in trigger.inner_text()
+        assert page.evaluate("window.dateParams") == []
+        assert page.locator('.fw-date-input[data-edge="min"]').input_value() == "2026-10-01"
+        assert page.locator('.fw-date-input[data-edge="max"]').input_value() == "2026-10-21"
+    finally:
+        page.close()
+
+
+def test_hourly_iso_bounds_keep_existing_calendar_semantics(browser):
+    page = browser.new_page(timezone_id="America/Los_Angeles")
+    try:
+        page.evaluate(load_js("components/date_range_filter.js"))
+        config = {"min_date": "2026-10-01T00:00:00+02:00",
+                  "max_date": "2026-10-21T12:30:00+02:00", "hourly": True}
+        assert page.evaluate("fc => window._fwFilterTypes.date_range._computePresetMin(fc, 7, null)", config) == "2026-10-14 00:00"
+        assert page.evaluate("fc => window._fwFilterTypes.date_range._computePresetMin(fc, null, 6)", config) == "2026-10-21 06:30"
+    finally:
+        page.close()
+
+
+@pytest.mark.parametrize("maximum", ["", None, "not-a-date", "2026-02-30"])
+def test_unavailable_live_bounds_preserve_selected_date_trigger_and_send_no_params(browser, date_server, maximum):
+    page = browser.new_page()
+    writes = []
+    try:
+        _open(page, date_server)
+        page.evaluate("""() => {
+            const type = window._fwFilterTypes.date_range;
+            const compute = type._computePresetMin;
+            type._computePresetMin = function(fc, days, hours) {
+                window.liveDateConfig = fc;
+                return compute(fc, days, hours);
+            };
+        }""")
+        with page.expect_response("**/_fw/live-query") as response:
+            _preset(page, "7D")
+        assert response.value.request.post_data_json["params"] == {
+            "since": "2026-10-26", "until": "2026-11-02"}
+        page.wait_for_function("!window._fwLiveQuery.getCaptureStatus().pending")
+        before = page.locator(".fw-date-trigger-text").inner_text()
+        assert before == "2026-10-26 – 2026-11-02"
+        page.on("request", lambda request: writes.append(request.post_data_json)
+                if request.url.endswith("/_fw/live-query") else None)
+        page.evaluate("value => window.liveDateConfig.max_date = value", maximum)
+        page.get_by_role("button", name="7D", exact=True).click()
+        assert page.locator(".fw-date-trigger-text").inner_text() == before
+        assert "NaN" not in page.locator(".fw-date-trigger-text").inner_text()
+        assert writes == []
+        assert not page.evaluate("window._fwLiveQuery.getCaptureStatus().pending")
     finally:
         page.close()
 

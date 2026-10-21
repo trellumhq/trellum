@@ -1,5 +1,20 @@
 window._fwFilterTypes = window._fwFilterTypes || {};
 window._fwFilterTypes['date_range'] = {
+    _validDate: function(value) {
+        // Validate the calendar prefix without shifting timestamp bounds into
+        // the browser's timezone. Date's parser alone accepts rolled-over days.
+        if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}(?:[ T](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|[+-](?:[01]\d|2[0-3]):?[0-5]\d)?)?$/.test(value)) return false;
+        var date = new Date(value.substring(0, 10) + 'T00:00:00Z');
+        return Number.isFinite(date.getTime()) && date.toISOString().substring(0, 10) === value.substring(0, 10);
+    },
+
+    _validRange: function(range) {
+        var self = window._fwFilterTypes['date_range'];
+        return [range.min, range.max].every(function(value) {
+            return value == null || value === '' || self._validDate(value);
+        });
+    },
+
     _fmtDate: function(dateStr) {
         return dateStr || '';
     },
@@ -18,6 +33,7 @@ window._fwFilterTypes['date_range'] = {
     },
 
     _updateTrigger: function(dr, rangeVal) {
+        if (!window._fwFilterTypes['date_range']._validRange(rangeVal)) return;
         var trigger = dr.querySelector('.fw-date-trigger-text');
         if (trigger) {
             trigger.textContent = rangeVal.min || rangeVal.max
@@ -27,29 +43,36 @@ window._fwFilterTypes['date_range'] = {
     },
 
     _computePresetMin: function(fc, days, hours) {
-        // Empty/all-null snapshots have no calendar anchor for a preset.
-        if (!fc.min_date || !fc.max_date) return null;
+        var self = window._fwFilterTypes['date_range'];
+        if (!self._validDate(fc.min_date) || !self._validDate(fc.max_date)) return null;
         if (days === 'all') return fc.min_date;
         if (days === 'ytd') {
             var base = fc.max_date.substring(0, 4) + '-01-01';
             return fc.hourly ? base + ' 00:00' : base;
         }
-        if (hours && !days) {
+        var hourlyPreset = hours !== null && hours !== undefined && hours !== '' && !days;
+        var count = hourlyPreset ? hours : days;
+        if ((typeof count !== 'number' && typeof count !== 'string') || !/^\d+$/.test(String(count)) || !Number.isSafeInteger(Number(count))) return null;
+        if (hourlyPreset) {
             var d = new Date(fc.max_date.substring(0, 10) + 'T' +
                 (fc.max_date.length > 10 ? fc.max_date.substring(11, 16) : '00:00') + ':00');
-            d.setHours(d.getHours() - parseInt(hours, 10));
+            d.setHours(d.getHours() - Number(hours));
+            if (!Number.isFinite(d.getTime())) return null;
             var y = d.getFullYear(), mo = d.getMonth() + 1, da = d.getDate();
             var hh = d.getHours(), mm = d.getMinutes();
-            return y + '-' + (mo<10?'0'+mo:mo) + '-' + (da<10?'0'+da:da) +
+            var computed = y + '-' + (mo<10?'0'+mo:mo) + '-' + (da<10?'0'+da:da) +
                    ' ' + (hh<10?'0'+hh:hh) + ':' + (mm<10?'0'+mm:mm);
+            return self._validDate(computed) ? computed : null;
         }
-        var numDays = parseInt(days, 10);
+        var numDays = Number(days);
         var maxBase = fc.max_date.substring(0, 10);
         var d = new Date(maxBase + 'T00:00:00');
         d.setDate(d.getDate() - numDays);
+        if (!Number.isFinite(d.getTime())) return null;
         var y = d.getFullYear(), mo = d.getMonth() + 1, da = d.getDate();
         var computed = y + '-' + (mo<10?'0'+mo:mo) + '-' + (da<10?'0'+da:da);
         if (fc.hourly) computed += ' 00:00';
+        if (!self._validDate(computed)) return null;
         var minDate = fc.min_date;
         return computed < minDate ? minDate : computed;
     },
@@ -99,7 +122,7 @@ window._fwFilterTypes['date_range'] = {
                 }
             } else {
                 var decoded = window._fwUrlSync ? window._fwUrlSync.decode(urlVal, 'date_range') : {};
-                if (decoded.min && decoded.max) {
+                if (decoded.min && decoded.max && self._validRange(decoded)) {
                     h.setFilter(fc.id, fc.column, 'range', decoded);
                     h.propagate(fc.column, 'range', decoded);
                     var dr = el.querySelector('[data-filter-id="' + fc.id + '"].fw-date-range');
@@ -111,25 +134,29 @@ window._fwFilterTypes['date_range'] = {
                     }
                 } else {
                     var rv = { min: fc.default_min_date || fc.min_date, max: fc.max_date };
+                    if (!self._validRange(rv)) return;
                     h.setFilter(fc.id, fc.column, 'range', rv);
                     h.propagate(fc.column, 'range', rv);
                 }
             }
         } else {
             var rangeVal = { min: fc.default_min_date || fc.min_date, max: fc.max_date };
+            if (!self._validRange(rangeVal)) return;
             h.setFilter(fc.id, fc.column, 'range', rangeVal);
             h.propagate(fc.column, 'range', rangeVal);
         }
     },
 
     _setInputs: function(dr, rangeVal, hourly) {
+        if (!window._fwFilterTypes['date_range']._validRange(rangeVal)) return;
         var inputs = dr.querySelectorAll('.fw-date-input');
-        if (inputs[0]) inputs[0].value = rangeVal.min.substring(0, 10);
-        if (inputs[1]) inputs[1].value = rangeVal.max.substring(0, 10);
+        var min = rangeVal.min || '', max = rangeVal.max || '';
+        if (inputs[0]) inputs[0].value = min.substring(0, 10);
+        if (inputs[1]) inputs[1].value = max.substring(0, 10);
         if (hourly) {
             var hours = dr.querySelectorAll('.fw-date-hour');
-            if (hours[0] && rangeVal.min.length > 10) hours[0].value = rangeVal.min.substring(11, 16);
-            if (hours[1] && rangeVal.max.length > 10) hours[1].value = rangeVal.max.substring(11, 16);
+            if (hours[0] && min.length > 10) hours[0].value = min.substring(11, 16);
+            if (hours[1] && max.length > 10) hours[1].value = max.substring(11, 16);
         }
     },
 
@@ -141,7 +168,7 @@ window._fwFilterTypes['date_range'] = {
             if (!fc) return;
             var hourly = dr.dataset.hourly === 'true';
             dr.querySelectorAll('.fw-date-preset').forEach(function(btn) {
-                btn.disabled = !fc.min_date || !fc.max_date;
+                btn.disabled = self._computePresetMin(fc, btn.dataset.days || null, btn.dataset.hours || null) === null;
             });
 
             // Toggle popover on trigger click
@@ -162,6 +189,7 @@ window._fwFilterTypes['date_range'] = {
             // Apply on date input change
             function applyRange() {
                 var rangeVal = self._readRange(dr, hourly);
+                if (!self._validRange(rangeVal)) return;
                 h.setFilter(fc.id, fc.column, 'range', rangeVal);
                 h.propagate(fc.column, 'range', rangeVal);
                 self._updateTrigger(dr, rangeVal);

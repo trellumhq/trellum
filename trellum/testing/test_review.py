@@ -270,7 +270,7 @@ class TestReviewState:
         st.submit(_batch())
         st.poll(timeout=0)
         assert st.status()["agent"]["state"] == "working"
-        n = st.reply("done, rebuilt")
+        n = st.reply("done, rebuilt", session=st.session)
         assert n == 1
         assert st.status()["agent"]["state"] == "absent"
         assert st.status()["replies"][0]["text"] == "done, rebuilt"
@@ -479,7 +479,7 @@ class TestServerIntegration:
         _, body = _http("GET", base + "/_fw/review/status?slug=alpha")
         assert _json.loads(body)["agent"]["state"] == "working"
 
-        code, body = _http("POST", base + "/_fw/review/reply", {"text": "done - rebuilt"})
+        code, body = _http("POST", base + "/_fw/review/reply", {"text": "done - rebuilt", "session": polled["batches"][0]["session"]})
         assert code == 200
         _, body = _http("GET", base + "/_fw/review/status?slug=alpha")
         status = _json.loads(body)
