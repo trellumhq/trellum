@@ -14,7 +14,7 @@
   var requestSeq = 0, stateGeneration = 0, pendingSourceGeneration = 0;
   var pollBusy = false, sendBusy = false, ended = false, invalidSession = false;
   var stateVersion = {analysis:null, source:null}, initialSource = cfg.initial_source || '';
-  var initialHandled = false, lastReplySignature = '', contentOrigin = {origin_slug:cfg.analysis_slug,origin_name:'Analysis',origin_kind:'analysis',frame_id:''};
+  var initialHandled = false, conversation = {activities:[],replies:[]}, contentOrigin = {origin_slug:cfg.analysis_slug,origin_name:'Analysis',origin_kind:'analysis',frame_id:''};
   var noteOrigin = null, pendingSend = null, captureFailures = [];
   var storageKey = 'fw-workspace:' + cfg.session + ':' + cfg.analysis_slug;
   var tabButtons = Array.prototype.slice.call(document.querySelectorAll('.fw-tabs button'));
@@ -431,7 +431,12 @@
     if(pendingSend&&pendingSend.endSession!==!!endSession){document.getElementById('send-status').textContent='Retry the unconfirmed submission before starting another action.';return;}
     if(!pendingSend){if(!endSession&&!queue.length&&!note.value.trim())return;pendingSend=snapshotSubmission(endSession);if(childFrame&&childRequestId){pendingSend.childFrameId=childFrame.dataset.frameId;pendingSend.childRequestId=childRequestId;pendingSend.childNoteOrigin=childFrame.dataset.slug;pendingSend.childNoteText=childNoteText||'';pendingSend.childNoteRevision=Number(childNoteRevision||0);}saveDraft();}
     var pending=clone(pendingSend);var replyFrame=childFrame||[analysisFrame,sourceFrame].find(function(f){return f.dataset.frameId===pending.childFrameId;});var replyRequestId=childRequestId||pending.childRequestId;sendBusy=true;renderQueue();document.getElementById('send-status').textContent='Sending…';
-    api('feedback','POST',pending.body,pending.requestId).then(function(){
+    api('feedback','POST',pending.body,pending.requestId).then(function(response){
+      if(response.feedback_id&&!conversation.activities.some(function(a){return a.feedback_id===response.feedback_id;})){
+        var now=Date.now()/1000;
+        conversation.activities.push({feedback_id:response.feedback_id,state:'queued',text:pending.body.note||pending.body.items.map(function(it){return it.prompt;}).join('\n'),submitted_at:now,updated_at:now});
+        renderReplies(conversation);
+      }
       var submitted=pending.itemSnapshot||[], submittedById=Object.create(null);submitted.forEach(function(x){submittedById[x.request_id]=JSON.stringify(x);});
       queue=queue.filter(function(x){return !submittedById[x.request_id]||JSON.stringify(persistableItem(x))!==submittedById[x.request_id];});
       if(!pending.endSession&&pending.noteText&&note.value.trim()===pending.noteText){note.value='';noteOrigin=null;}
@@ -452,20 +457,11 @@
   }
   function setEnded(){statusEl.textContent='Session ended';ended=true;[analysisFrame,sourceFrame].forEach(function(f){if(f.dataset.frameId)postFrame(f,'fw-workspace-status',{agent:'absent',replies:[],ended:true});});setSelect(false);sourceSelect.disabled=true;document.getElementById('open-report').disabled=true;document.getElementById('retry-build').disabled=true;document.getElementById('global-select').disabled=true;note.disabled=true;renderQueue();}
   function renderReplies(s) {
-    var replies=Array.isArray(s.replies)?s.replies:[];var signature=JSON.stringify(replies);if(signature===lastReplySignature)return;lastReplySignature=signature;
-    var list=document.getElementById('reply-list');list.replaceChildren();replies.forEach(function(r){var d=document.createElement('div');d.className='fw-reply';var t=document.createElement('time');t.textContent=r.created_at||r.time||'Agent reply';var body=document.createElement('div');body.textContent=r.text||r.message||'';d.append(t,body);list.appendChild(d);});
+    conversation={activities:Array.isArray(s.activities)?s.activities:[],replies:Array.isArray(s.replies)?s.replies:[]};
+    window._fwReviewActivity.render(document.getElementById('reply-list'),conversation.activities,conversation.replies);
   }
   function agentStatus(s) {
-    var agent=s.agent||{}, state=typeof agent==='string'?agent:agent.state||'';
-    var age=Number((typeof agent==='object'&&agent.seen_ms_ago)||s.seen_ms_ago||0);
-    var queued=Array.isArray(s.queued)?s.queued.length:(s.queued&&typeof s.queued==='object'?Object.keys(s.queued).length:Number(s.queued||s.queue_count||0));
-    if(age>90000)return 'Waiting for agent';
-    if(s.applying||state==='applying')return 'Applying';
-    if(s.working||state==='working')return 'Working';
-    if(state==='listening')return 'Listening';
-    if(state==='absent'||!state)return 'Waiting for agent';
-    if(queued)return 'Queued';
-    return 'Session active';
+    return window._fwReviewActivity.summary(s);
   }
   function applyState(s) {
     if(!s)return false;

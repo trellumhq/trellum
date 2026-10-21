@@ -12,6 +12,9 @@ import time
 #: Upper bound on a blocking poll, so a client cannot pin a handler
 #: thread indefinitely.
 _MAX_POLL_SECONDS = 30.0
+_PRESENCE_SECONDS = 90
+_MAX_ACTIVITY = 120
+_TERMINAL_ACTIVITY = {"completed", "failed"}
 
 
 class ReviewState:
@@ -46,6 +49,9 @@ class ReviewState:
         self.workspace_captures: dict[str, dict] = {}
         self.workspace_feedback: dict[str, dict] = {}
         self.workspace_builds: dict[str, dict] = {}
+        self.activities: dict[str, dict] = {}
+        self.feedback_requests: dict[str, dict] = {}
+        self.agent_scopes: dict[str, dict] = {}
 
     def reset_for_tests(self) -> None:
         with self._cond:
@@ -86,6 +92,8 @@ class ReviewState:
             self.workspace_captures = dict(saved.get("workspace_captures") or {})
             self.workspace_feedback = dict(saved.get("workspace_feedback") or {})
             self.workspace_builds = dict(saved.get("workspace_builds") or {})
+            self.activities = dict(saved.get("activities") or {})
+            self.feedback_requests = dict(saved.get("feedback_requests") or {})
             self._cond.notify_all()
 
     def _save_locked(self) -> None:
@@ -105,6 +113,8 @@ class ReviewState:
             "workspace_captures": self.workspace_captures,
             "workspace_feedback": self.workspace_feedback,
             "workspace_builds": self.workspace_builds,
+            "activities": self.activities,
+            "feedback_requests": self.feedback_requests,
         })
         try:
             temporary = self._sidecar() + ".tmp"
@@ -147,6 +157,10 @@ class ReviewState:
         with self._cond:
             if not self.enabled or self.ended:
                 raise ReviewInactive
+            if batch.get("session") not in (None, self.session):
+                raise ValueError("Review session changed")
+            batch["session"] = self.session
+            self._track_locked(batch)
             self.queue.append(batch)
             if end_session:
                 self.ended = True
@@ -155,6 +169,89 @@ class ReviewState:
             self._save_locked()
             self._cond.notify_all()
             return len(self.queue)
+
+    def _track_locked(self, batch: dict) -> None:
+        """Keep one bounded observation per feedback, never discard active work."""
+        feedback_id = batch.setdefault("feedback_id", secrets.token_urlsafe(18))
+        if feedback_id in self.activities:
+            return
+        self._check_activity_capacity_locked()
+        while len(self.activities) >= _MAX_ACTIVITY:
+            oldest = next((key for key, row in self.activities.items()
+                           if row["state"] in _TERMINAL_ACTIVITY), None)
+            del self.activities[oldest]
+        now = time.time()
+        count = len(batch.get("items") or [])
+        text = str(batch.get("note") or "").strip()
+        prompts = [str(item.get("prompt") or "")[:500]
+                   for item in (batch.get("items") or [])[:4] if isinstance(item, dict)]
+        if count > 4:
+            prompts.append(f"… and {count - 4} more change requests.")
+        self.activities[feedback_id] = {
+            "feedback_id": feedback_id, "slug": batch.get("slug", ""),
+            "state": "queued", "summary": "", "submitted_at": now,
+            "updated_at": now, "picked_up_at": None, "completed_at": None,
+            "text": (text + ("\n" if text and prompts else "") + "\n".join(prompts))[:4000]
+                    or f"Sent {count} change request{'s' if count != 1 else ''}.",
+        }
+
+    def _check_activity_capacity_locked(self) -> None:
+        if len(self.activities) >= _MAX_ACTIVITY and not any(
+                row["state"] in _TERMINAL_ACTIVITY for row in self.activities.values()):
+            raise ValueError("Review activity limit reached; finish pending feedback first")
+
+    def submit_once(self, batch: dict, request_id: str, end_session: bool = False) -> tuple[int, bool]:
+        """Idempotent standalone submission; uncertain sends can safely reconnect."""
+        with self._cond:
+            fingerprint = hashlib.sha256(json.dumps(
+                {k: v for k, v in batch.items() if k not in ("ts", "feedback_id")},
+                sort_keys=True).encode()).hexdigest()
+            fingerprint += str(end_session)
+            previous = self.feedback_requests.get(request_id)
+            if previous:
+                if previous["fingerprint"] != fingerprint:
+                    raise FileExistsError("Request ID already used for different feedback")
+                batch["feedback_id"] = previous["feedback_id"]
+                return len(self.queue), True
+            if len(self.feedback_requests) >= 10000:
+                raise ValueError("Feedback limit reached; start a new session")
+            batch["feedback_id"] = request_id
+            queued = self.submit(batch, end_session)
+            self.feedback_requests[request_id] = {
+                "fingerprint": fingerprint, "feedback_id": batch["feedback_id"]}
+            self._save_locked()
+            return queued, False
+
+    def _touch_agent_locked(self, slug: str) -> dict:
+        if slug not in self.agent_scopes:
+            if len(self.agent_scopes) >= _MAX_ACTIVITY:
+                oldest = min(self.agent_scopes, key=lambda k: self.agent_scopes[k]["seen"])
+                del self.agent_scopes[oldest]
+            self.agent_scopes[slug] = {"seen": time.monotonic(), "listening": 0}
+        self.agent_scopes[slug]["seen"] = time.monotonic()
+        return self.agent_scopes[slug]
+
+    def activity(self, session: int, slug: str, feedback_id: str,
+                 state: str, summary: str) -> None:
+        """An explicit observation, never a reply or completion acknowledgement."""
+        if state not in {"working", "rebuilding", "waiting", "failed"}:
+            raise ValueError("Activity state must be working, rebuilding, waiting or failed")
+        if not isinstance(summary, str) or not summary.strip() or len(summary) > 500:
+            raise ValueError("Activity summary must contain 1–500 characters")
+        with self._cond:
+            row = self.activities.get(feedback_id)
+            if type(session) is not int or session != self.session or not row or row["slug"] != slug:
+                raise ValueError("Activity does not match this session, report and feedback")
+            if row["state"] == "queued" or (row["state"] in _TERMINAL_ACTIVITY
+                    and (row["state"] != state or row["summary"] != summary.strip())):
+                raise ValueError("Activity requires picked-up, unfinished feedback")
+            if row["state"] != state or row["summary"] != summary.strip():
+                row.update(state=state, summary=summary.strip(), updated_at=time.time())
+                if state == "failed":
+                    row["completed_at"] = row["updated_at"]
+            self._touch_agent_locked(slug)
+            self._save_locked()
+            self._cond.notify_all()
 
     def start_analysis(self, slug: str) -> dict:
         self.start()
@@ -203,41 +300,59 @@ class ReviewState:
             # Bound session bookkeeping without silently forgetting duplicate requests.
             if len(self.analysis_requests) >= 10000:
                 raise ValueError("Analysis session capture limit reached; start a new session")
+            self._check_activity_capacity_locked()
             analysis_target(project_root, self.analysis_slug)
             capture_id = store_capture(project_root, self.analysis_slug, capture)
             source = capture["source"]
             self.analysis_requests[request_id] = {"capture_id": capture_id,
                                                   "fingerprint": fingerprint}
-            self.queue.append({"slug": self.analysis_slug, "session": self.session,
+            batch = {"slug": self.analysis_slug, "session": self.session,
                 "page": "", "note": note, "ts": time.time(), "items": [{
                     "tag": "analysis-capture", "data": {"type": "analysis-capture",
                     "capture_id": capture_id,
                     "source_slug": (source["report_slug"] or "")[:100],
-                    "component_title": (source["component_title"] or "")[:200]}}]})
+                    "component_title": (source["component_title"] or "")[:200]}}]}
+            self._track_locked(batch)
+            self.queue.append(batch)
             self._save_locked()
             self._cond.notify_all()
             return capture_id, False
 
-    def status(self) -> dict:
+    def status(self, slug: str = "") -> dict:
         with self._cond:
-            if self.listening_count > 0:
+            scopes = [value for key, value in self.agent_scopes.items()
+                      if not slug or key in ("", slug)]
+            seen = max((value["seen"] for value in scopes), default=None)
+            seen_ms = int((time.monotonic() - seen) * 1000) if seen is not None else None
+            rows = [row for row in self.activities.values() if not slug or row["slug"] == slug]
+            activities = []
+            for row in rows:
+                current = dict(row)
+                row_scopes = [self.agent_scopes[key] for key in ("", row["slug"])
+                              if key in self.agent_scopes]
+                row_fresh = any(time.monotonic() - value["seen"] <= _PRESENCE_SECONDS
+                                for value in row_scopes)
+                current["display_state"] = (
+                    "ended" if self.ended and row["state"] not in _TERMINAL_ACTIVITY else
+                    "unknown" if row["state"] in {"picked_up", "working", "rebuilding"} and not row_fresh
+                    else row["state"])
+                activities.append(current)
+            if any(value["listening"] and time.monotonic() - value["seen"] <= _PRESENCE_SECONDS
+                   for value in scopes):
                 agent = "listening"
-            elif self.agent_working:
+            elif any(row["display_state"] in {"picked_up", "working", "rebuilding"}
+                     for row in activities):
                 agent = "working"
             else:
                 agent = "absent"
-            seen_ms = (
-                int((time.monotonic() - self.agent_seen) * 1000)
-                if self.agent_seen is not None
-                else None
-            )
             return {
                 "active": self.enabled and not self.ended,
                 "ended": self.ended,
                 "session": self.session,
                 "agent": {"state": agent, "seen_ms_ago": seen_ms},
-                "queued": len(self.queue),
+                "queued": sum(1 for batch in self.queue if not slug or batch.get("slug") == slug),
                 "replies": list(self.replies),
+                "activities": activities,
             }
 
     # ── agent side ────────────────────────────────────────────
@@ -262,15 +377,22 @@ class ReviewState:
         with self._cond:
             self.agent_seen = time.monotonic()
             self.listening_count += 1
+            scope = self._touch_agent_locked(slug)
+            scope["listening"] += 1
             try:
                 self._cond.wait_for(lambda: _mine() or self.ended, timeout)
             finally:
                 self.listening_count -= 1
                 self.agent_seen = time.monotonic()
+                scope["listening"] -= 1
+                scope["seen"] = time.monotonic()
 
             mine = _mine()
             if mine:
                 for batch in mine:
+                    self._track_locked(batch)
+                    self.activities[batch["feedback_id"]].update(
+                        state="picked_up", picked_up_at=time.time(), updated_at=time.time())
                     self.queue.remove(batch)
                 self.last_delivered = mine
                 self.agent_working = True
@@ -287,17 +409,31 @@ class ReviewState:
         with self._cond:
             return self.last_delivered
 
-    def reply(self, text: str, slug: str = "") -> int:
+    def reply(self, text: str, slug: str = "", feedback_id: str = "") -> int:
         """Record an agent reply; shown in the browser's chat.
 
         A slug-tagged reply reaches only that report's pages; an untagged
         one is global (single-agent sessions never need the tag).
         """
         with self._cond:
+            if feedback_id and (feedback_id not in self.activities
+                    or self.activities[feedback_id]["slug"] != slug):
+                raise ValueError("Reply does not match this report and feedback")
+            if feedback_id and self.activities[feedback_id]["state"] == "queued":
+                raise ValueError("Reply requires picked-up feedback")
+            completed = []
+            for row in self.activities.values():
+                if ((not slug or row["slug"] == slug)
+                        and (not feedback_id or row["feedback_id"] == feedback_id)
+                        and row["state"] not in _TERMINAL_ACTIVITY | {"queued"}):
+                    row.update(state="completed", summary="", completed_at=time.time(), updated_at=time.time())
+                    completed.append(row["feedback_id"])
             n = len(self.replies) + 1
-            self.replies.append({"n": n, "text": text, "slug": slug, "ts": time.time()})
+            self.replies.append({"n": n, "text": text, "slug": slug, "ts": time.time(),
+                                 "feedback_ids": completed})
             self.agent_working = False
             self.agent_seen = time.monotonic()
+            self._touch_agent_locked(slug)
             self._save_locked()
             self._cond.notify_all()
             return n

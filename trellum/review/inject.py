@@ -25,6 +25,7 @@ OVERLAY_MODULES: tuple[str, ...] = (
     "queue",
     "panel",
     "presence",
+    "activity",
     "log",
     "net",
     "end_session",
@@ -37,7 +38,7 @@ OVERLAY_MODULES: tuple[str, ...] = (
 # it must not start the ordinary per-report poll, send, or end-session flows.
 WORKSPACE_OVERLAY_MODULES: tuple[str, ...] = (
     "state", "styles", "dom", "identify", "select", "chart_target",
-    "popover", "queue", "panel", "presence", "log", "keyboard",
+    "popover", "queue", "panel", "presence", "activity", "log", "keyboard",
     "workspace_adapter",
 )
 

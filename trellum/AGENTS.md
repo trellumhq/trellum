@@ -944,7 +944,7 @@ The loop, from your seat:
    the rebuild and reloads itself within ~2 seconds — never hand-edit
    `output/` HTML, and never restart the server to "refresh".
 4. `python -m trellum review poll --reply "what you changed"` — the reply
-   appears in the browser's chat and unlocks the user's Send button, then
+   appears in the browser's chat and completes picked-up feedback, then
    the command waits for the next round.
 5. Repeat until poll exits `3` (the user pressed End, or Send & End — that
    final batch still arrives first). `python -m trellum review end` ends
@@ -961,6 +961,35 @@ only agent. Different projects are automatically separate: each output
 directory gets its own server on its own port (discovered via
 `/_fw/server.json` identity on ports 8050–8069), with fully independent
 review state.
+
+**Activity during a round:** polling returns a `feedback_id` and `session` for
+each batch. Pickup appears beside that feedback in the conversation. Report
+concise, factual public updates when useful:
+
+```
+python -m trellum review activity "Checking the selected chart's date filter" --report <slug> --session <session> --feedback <feedback_id>
+python -m trellum review activity "Building the updated report" --state rebuilding --report <slug> --session <session> --feedback <feedback_id>
+```
+
+This sends `POST /_fw/review/activity` with `session`, `slug`, `feedback_id`,
+`state` and `summary`. States are `working`, `rebuilding`, `waiting` (input
+needed) and `failed`. The summary is 1–500 characters. It must describe actual
+observed work, never private reasoning, invented steps, percentages or ETAs.
+Activity does not reply, dequeue follow-ups or complete a round. Use `review
+reply --report <slug> --feedback <feedback_id> "what changed"` after rebuilding
+to complete one request, or omit `--feedback` to complete all picked-up feedback
+in that scope. Queued follow-ups stay queued until polled.
+
+The local protocol retains at most 120 activity records, pruning completed or
+failed records first and refusing additional feedback if all records are still
+unfinished. Request IDs retain duplicate protection for up to 10,000 sends per
+session. Activity is a latest observation per request, so repeated polling or
+reconnect does not append duplicate events. Repeating the same summary renews
+presence but does not change the meaningful-update time. After 90 seconds with
+no scoped poll or activity, presence becomes unknown; a heartbeat proves contact,
+not progress. Elapsed and last-update times remain visible without fabricated
+detail. Restarted servers retain activity and treat presence as unknown until
+the agent contacts them again.
 
 The user can also send element-free chat messages; they arrive as a batch
 whose `items` list is empty and whose message is the `note`. And on Chart.js

@@ -120,7 +120,7 @@ def test_workspace_bridge_assembles_shared_widget_without_legacy_network(monkeyp
         "review/state.js", "review/styles.js", "review/dom.js",
         "review/identify.js", "review/select.js", "review/chart_target.js",
         "review/popover.js", "review/queue.js", "review/panel.js",
-        "review/presence.js", "review/log.js", "review/keyboard.js",
+        "review/presence.js", "review/activity.js", "review/log.js", "review/keyboard.js",
         "review/workspace_adapter.js",
     ]
     assert "window._fwWorkspaceOverlayInit" in bundle

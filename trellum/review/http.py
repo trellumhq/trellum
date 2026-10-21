@@ -190,12 +190,10 @@ def _workspace_state(handler, root, output_root) -> None:
     from trellum.review.workspace import WORKSPACE
 
     active = STATE.analysis_status()
-    status = STATE.status()
+    scope = active["slug"] or STATE.analysis_slug
+    status = STATE.status(scope)
     status["replies"] = [reply for reply in status["replies"]
-                          if not reply.get("slug") or (active["active"]
-                          and reply.get("slug") == active["slug"])]
-    status["queued"] = sum(1 for batch in STATE.queue
-                           if not active["active"] or batch.get("slug") == active["slug"])
+                          if not reply.get("slug") or reply.get("slug") == scope]
     if not active["active"]:
         _send_json(handler, 200, {**status, "active": False, "ended": True,
             "session": STATE.session, "token": "", "analysis": None,
@@ -219,9 +217,7 @@ def _workspace_state(handler, root, output_root) -> None:
             "url": f"/{quote(row['slug'])}/index.html", "build_state": build,
             "version": version, "source_built_at": built_at, "error": job.get("error")})
     abuild, aversion, abuilt = _workspace_output(output_root, analysis)
-    agent = STATE.status()["agent"]
-    if agent["state"] == "working" and (agent.get("seen_ms_ago") or 0) > 90000:
-        agent = {"state": "absent", "seen_ms_ago": agent.get("seen_ms_ago")}
+    agent = status["agent"]
     _send_json(handler, 200, {**status, "active": True, "ended": False,
         "session": STATE.session, "token": active["token"],
         "analysis": {"slug": active["slug"], "name": analysis["name"],
@@ -245,7 +241,8 @@ def _serve_workspace_get(handler, path: str, active: dict) -> None:
         body = raw.encode()
         content_type = "text/html; charset=utf-8"
     elif path == "/_fw/review/workspace.js":
-        body = load_js(f"review/{WORKSPACE_SCRIPT_MODULE}.js").encode()
+        body = (load_js("review/activity.js") + "\n" +
+                load_js(f"review/{WORKSPACE_SCRIPT_MODULE}.js")).encode()
         content_type = "application/javascript"
     elif path == "/_fw/review/workspace-bridge.js":
         body = workspace_overlay_js().encode("utf-8")
@@ -451,20 +448,23 @@ def _workspace_feedback(handler, body, active, entries, workspace):
         if previous:
             if previous["fingerprint"] != fp:
                 raise FileExistsError("Request ID already used for different feedback")
-            _send_json(handler, 200, {"ok": True, "duplicate": True})
+            _send_json(handler, 200, {"ok": True, "duplicate": True,
+                                    "feedback_id": previous.get("feedback_id")})
             return True
         if not STATE.enabled or STATE.ended:
             raise ReviewInactive
         if len(STATE.workspace_feedback) >= 10000:
             raise ValueError("Workspace feedback limit reached; start a new session")
+        STATE._track_locked(batch)
         STATE.queue.append(batch)
         if body.get("end_session"):
             STATE.ended = True
-        STATE.workspace_feedback[request_id] = {"fingerprint": fp}
+        STATE.workspace_feedback[request_id] = {"fingerprint": fp,
+                                                "feedback_id": batch["feedback_id"]}
         workspace._persist_fields()
         STATE._save_locked()
         STATE._cond.notify_all()
-    _send_json(handler, 200, {"ok": True})
+    _send_json(handler, 200, {"ok": True, "feedback_id": batch["feedback_id"]})
     return True
 
 def handle_review_request(handler, served_dir: str) -> bool:
@@ -497,7 +497,7 @@ def handle_review_request(handler, served_dir: str) -> bool:
 
     if path == f"{_REVIEW_PREFIX}/status" and method == "GET":
         params = _query_params(handler.path)
-        out = STATE.status()
+        out = STATE.status(params.get("slug", ""))
         after = int(params.get("after") or 0)
         slug = params.get("slug", "")
         # Untagged replies are global; tagged ones only reach their report.
@@ -532,11 +532,43 @@ def handle_review_request(handler, served_dir: str) -> bool:
             _send_json(handler, 400, {"error": "items must be a list"})
             return True
         try:
-            queued = STATE.submit(batch, end_session=bool(body.get("end_session")))
+            request_id = body.get("request_id")
+            if request_id is not None and (not isinstance(request_id, str)
+                    or not re.fullmatch(r"[a-zA-Z0-9_-]{16,100}", request_id)):
+                raise ValueError("A request ID of 16–100 characters is required")
+            if request_id:
+                queued, duplicate = STATE.submit_once(batch, request_id, bool(body.get("end_session")))
+            else:
+                queued, duplicate = STATE.submit(batch, bool(body.get("end_session"))), False
         except ReviewInactive:
             _send_json(handler, 409, {"error": "review not active"})
             return True
-        _send_json(handler, 200, {"ok": True, "queued": queued})
+        except FileExistsError as exc:
+            _send_json(handler, 409, {"error": str(exc)})
+            return True
+        except ValueError as exc:
+            _send_json(handler, 400, {"error": str(exc)})
+            return True
+        _send_json(handler, 200, {"ok": True, "queued": queued,
+                                "feedback_id": batch["feedback_id"], "duplicate": duplicate})
+        return True
+
+    if path == f"{_REVIEW_PREFIX}/activity" and method == "POST":
+        if not _analysis_origin_allowed(handler):
+            _send_json(handler, 403, {"error": "activity requires an allowed local origin"})
+            return True
+        body = _read_body(handler, 8192)
+        if body is None:
+            return True
+        try:
+            if any(not isinstance(body.get(key), str) for key in ("slug", "feedback_id", "state", "summary")):
+                raise ValueError("Activity requires slug, feedback_id, state and summary strings")
+            STATE.activity(body.get("session"), body["slug"], body["feedback_id"],
+                           body["state"], body["summary"])
+        except ValueError as exc:
+            _send_json(handler, 409, {"error": str(exc)})
+            return True
+        _send_json(handler, 200, {"ok": True})
         return True
 
     if path == f"{_REVIEW_PREFIX}/poll" and method == "GET":
@@ -570,7 +602,12 @@ def handle_review_request(handler, served_dir: str) -> bool:
         if not text:
             _send_json(handler, 400, {"error": "text required"})
             return True
-        n = STATE.reply(text, slug=str(body.get("slug") or ""))
+        try:
+            n = STATE.reply(text, slug=str(body.get("slug") or ""),
+                            feedback_id=str(body.get("feedback_id") or ""))
+        except ValueError as exc:
+            _send_json(handler, 409, {"error": str(exc)})
+            return True
         _send_json(handler, 200, {"ok": True, "n": n})
         return True
 

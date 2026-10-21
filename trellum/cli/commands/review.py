@@ -122,6 +122,8 @@ def _print_review_batches(batches: list[dict]) -> None:
         if batch.get("workspace"):
             head += " [analysis workspace]"
         print(f"\n── feedback on {head} " + "─" * max(1, 46 - len(head)))
+        if batch.get("feedback_id"):
+            print(f"  Session: {batch.get('session')} · Feedback: {batch['feedback_id']}")
         if batch.get("workspace"):
             print("  Workspace source sets intent: report selections add evidence; "
                   "analysis selections edit the active analysis. Prompts do not "
@@ -276,11 +278,28 @@ def _cmd_review_reply(args: argparse.Namespace) -> int:
         return 1
     slug = _slug_of(args.report) if getattr(args, "report", None) else ""
     code, resp = _review_http(port, "POST", "/_fw/review/reply",
-                              {"text": args.text, "slug": slug})
+                              {"text": args.text, "slug": slug,
+                               "feedback_id": getattr(args, "feedback", None) or ""})
     if code != 200:
         print(f"reply not delivered: HTTP {code} {resp}", file=sys.stderr)
         return 1
     print("delivered -- it appears in the browser's chat")
+    return 0
+
+def _cmd_review_activity(args: argparse.Namespace) -> int:
+    from trellum.project import get_project_root
+
+    output_base = (Path(get_project_root()) / "output").resolve()
+    port = _review_port_or_explain(output_base)
+    if port is None:
+        return 1
+    code, resp = _review_http(port, "POST", "/_fw/review/activity", {
+        "session": args.session, "slug": _slug_of(args.report),
+        "feedback_id": args.feedback, "state": args.state, "summary": args.summary})
+    if code != 200:
+        print(f"activity not delivered: HTTP {code} {resp}", file=sys.stderr)
+        return 1
+    print("activity updated; feedback remains unfinished")
     return 0
 
 def _cmd_review_end(args: argparse.Namespace) -> int:

@@ -21,6 +21,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Disable date presets when no date bounds are available and keep obsolete
   live lookup responses from replacing a newer filter selection.
 
+### Added
+
+- Show feedback pickup, factual agent activity, elapsed time and stale presence
+  beside each request in report review and analysis workspace conversations.
+  Agents can report bounded activity updates with `trellum review activity`
+  without completing work or consuming queued follow-ups.
+
 ## [0.9.3] — 2026-10-20
 
 ### Fixed
