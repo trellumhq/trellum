@@ -23,6 +23,7 @@ import numpy as np
 import pandas as pd
 
 from trellum.data.ssh_tunnel import unwrap
+from trellum.data.vertica_deadline import deadline_expired, query_deadline
 from trellum.diagnostics import stage
 
 #: Rows read per ``fetchmany()`` call.
@@ -57,17 +58,19 @@ def execute_query(conn: Any, sql: str, compact_text: bool = False) -> pd.DataFra
     with stage("execute"):
         cursor = conn.cursor()
     try:
-        with stage("execute"):
-            cursor.execute(sql)
-        with stage("fetch"):
-            if "snowflake.connector" in type_name:
-                return compact(cursor.fetch_pandas_all())
-            if cursor.description is None:
-                return pd.DataFrame()
-            return read_cursor(cursor, [desc[0] for desc in cursor.description], compact_text)
+        with query_deadline(conn):
+            with stage("execute"):
+                cursor.execute(sql)
+            with stage("fetch"):
+                if "snowflake.connector" in type_name:
+                    return compact(cursor.fetch_pandas_all())
+                if cursor.description is None:
+                    return pd.DataFrame()
+                return read_cursor(cursor, [desc[0] for desc in cursor.description], compact_text)
     finally:
         try:
-            cursor.close()
+            if not deadline_expired(conn):
+                cursor.close()
         except Exception:
             pass  # Closing a cursor must not replace execute/fetch failures.
 
