@@ -168,7 +168,7 @@ class ReviewState:
 
     def _track_locked(self, batch: dict) -> None:
         """Keep one bounded observation per feedback, never discard active work."""
-        feedback_id = batch.setdefault("feedback_id", secrets.token_urlsafe(18))
+        feedback_id = batch.setdefault("feedback_id", "fb_" + secrets.token_urlsafe(18))
         if feedback_id in self.activities:
             return
         self._check_activity_capacity_locked()

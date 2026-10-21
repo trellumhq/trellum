@@ -129,3 +129,18 @@ def test_http_and_cli_reply_use_pickup_identity_without_current_session_lookup(w
     output = capsys.readouterr()
     assert "reply not delivered" in output.err
     assert f"--report analysis-one --session {second['session']}" in output.out
+
+
+def test_generated_feedback_identity_is_safe_as_a_cli_argument(workspace_server, monkeypatch):
+    base, request, st = workspace_server
+    session = start_workspace(request)
+    monkeypatch.setattr("trellum.review.state.secrets.token_urlsafe", lambda _: "-abcdefghijklmnopqrstuvw")
+    feedback = _pickup(st)
+    assert feedback == "fb_-abcdefghijklmnopqrstuvw"
+    monkeypatch.setattr(review_cmd, "_find_our_server", lambda *_: int(base.rsplit(":", 1)[1]))
+    identity = ["--report", "analysis-one", "--session", str(session["session"]),
+                "--feedback", feedback]
+    assert cli.main(["review", "activity", "Checking selected style", *identity]) == 0
+    assert st.activities[feedback]["state"] == "working"
+    assert cli.main(["review", "reply", "Style updated", *identity]) == 0
+    assert st.activities[feedback]["state"] == "completed"

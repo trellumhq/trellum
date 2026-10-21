@@ -24,6 +24,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Generate review feedback identities that can be passed directly to CLI activity and reply commands.
+
 - Mark review activity unconfirmed after observation failures and keep observing
   final feedback replies at the idle cadence after a session ends, including
   across the final report rebuild and reload. Keep the ended conversation
