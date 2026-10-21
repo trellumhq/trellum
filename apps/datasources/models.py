@@ -50,6 +50,7 @@ ENV_SUFFIXES = {
     "ssh_password": "SSH_PASSWORD",
     "ssh_host_key": "SSH_HOST_KEY",
     "new_connection_per_query": "NEW_CONNECTION_PER_QUERY",
+    "query_timeout_seconds": "QUERY_TIMEOUT_SECONDS",
 }
 
 
@@ -61,6 +62,7 @@ CONFIG_KEYS = {
     "tenant_id", "client_id", "site_url", "credentials_path",
     "ssh_host", "ssh_port", "ssh_user", "ssh_host_key",
     "new_connection_per_query",
+    "query_timeout_seconds",
 }
 CREDENTIAL_KEYS = {
     "user", "password", "client_secret", "credentials_json", "access_token",

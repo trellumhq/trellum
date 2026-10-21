@@ -477,6 +477,21 @@ class TestMaterializedYaml:
 
 
 class TestResolverContract:
+    def test_vertica_deadline_reaches_worker_without_repository_declaration(self, studio_tree, monkeypatch):
+        from trellum.data.resolvers import LocalEnvResolver
+
+        ds = DataSource.objects.create(
+            studio=studio_tree, name="warehouse", type="vertica",
+            config={"host": "db.example", "query_timeout_seconds": 300},
+            credentials={"user": "reader", "password": "synthetic"},
+        )
+        env = materialize(studio_tree)
+        assert env[f"{ds.env_prefix}_QUERY_TIMEOUT_SECONDS"] == "300"
+        for key, value in env.items():
+            monkeypatch.setenv(key, value)
+        result = LocalEnvResolver().resolve({"local_env": ds.env_prefix})
+        assert result["query_timeout_seconds"] == 300
+
     def test_env_satisfies_local_env_resolver(self, studio_tree, pg_source, monkeypatch):
         """Simulate the child process: inject the returned env and run the
         framework's actual resolver against the materialized source."""
