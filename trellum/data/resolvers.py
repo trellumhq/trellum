@@ -114,7 +114,6 @@ _ENV_SUFFIXES: dict[str, str] = {
     # File sources, and the plain-HTTP transport flag
     "PATH": "path", "SECURE": "secure",
     "NEW_CONNECTION_PER_QUERY": "new_connection_per_query",
-    "QUERY_TIMEOUT_SECONDS": "query_timeout_seconds",
     # SSH tunnel to any host/port source (trellum.data.ssh_tunnel)
     "SSH_HOST": "ssh_host", "SSH_PORT": "ssh_port", "SSH_USER": "ssh_user",
     "SSH_KEY_PATH": "ssh_key_path", "SSH_PRIVATE_KEY": "ssh_private_key",
@@ -190,11 +189,6 @@ class LocalEnvResolver:
         for suffix, key in _ENV_SUFFIXES.items():
             val = os.getenv(f"{prefix}_{suffix}")
             if val is not None:
-                if key == "query_timeout_seconds":
-                    try:
-                        val = float(val)
-                    except ValueError:
-                        raise ValueError("QUERY_TIMEOUT_SECONDS must be numeric seconds") from None
                 result[key] = val
 
         if "secure" in result:
@@ -274,8 +268,6 @@ def resolve_credentials(source: dict) -> dict | None:
                 result[option] = source[option]
             if option in result:
                 result[option] = parse_new_connection_per_query(result[option])
-            if "query_timeout_seconds" not in result and "query_timeout_seconds" in source:
-                result["query_timeout_seconds"] = source["query_timeout_seconds"]
             return result
     return None
 

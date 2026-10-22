@@ -193,11 +193,6 @@ class ManagedConnection:
                     result = operation(self._inner)
             except Exception as exc:
                 record_failure(exc, source_type=self._source_type, query_retry_safe=replay, attempt=attempt)
-                from trellum.data.vertica_deadline import VerticaQueryTimeout
-                if isinstance(exc, VerticaQueryTimeout):
-                    # The watchdog disposed the raw socket; release any tunnel
-                    # and never retain that session, including unsafe reads.
-                    self._discard()
                 if not replay or not is_retryable_connection_error(exc, self._source_type):
                     raise
                 self._discard()

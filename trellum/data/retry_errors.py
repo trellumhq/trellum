@@ -178,12 +178,6 @@ def is_retryable_connection_error(exc: Exception, source_type: str) -> bool:
         return False
 
     chain = tuple(_exception_chain(exc))
-    from trellum.data.vertica_deadline import VerticaQueryTimeout
-
-    if isinstance(exc, VerticaQueryTimeout):
-        # The local deadline owns this cancellation, unlike an unsolicited
-        # server/user 57014. An unacknowledged cancel must never start a copy.
-        return source == "vertica" and exc.cancellation_confirmed
     if _has_permanent_error(chain, source):
         return False
     for current in chain:

@@ -198,14 +198,6 @@ managed-driver APIs are entered, even if later safe operations succeed. An activ
 snapshot after process death identifies where work was last observed; it does
 not establish why it died or prove the process has stopped.
 
-`query_timeout` distinguishes a framework-owned Vertica query deadline from
-unsolicited cancellation; its sanitized error is `VerticaQueryTimeout` and its
-retry-history reason is `query_timeout`. `cancellation_unconfirmed` is sticky
-for the build when the deadline could not confirm the database operation ended.
-Hosts must veto replay on that flag even if the local build process terminated.
-An acknowledged deadline remains eligible for bounded read recovery; ordinary
-SQLSTATE 57014 cancellations remain non-retryable.
-
 Neither `transient` nor `query_retry_safe` authorizes whole-report replay. Report
 code is arbitrary Python. Whole-report recovery is enabled by default for a
 valid report configuration. Authors must opt out with

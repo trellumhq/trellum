@@ -61,8 +61,6 @@ def _disposition(run, evidence, confirmed):
         return "report_replay_not_safe"
     if evidence.get("stage") == "publish":
         return "publication_outcome_unconfirmed"
-    if evidence.get("cancellation_unconfirmed") is True:
-        return "operation_outcome_unconfirmed"
     if evidence.get("unsafe_operation") is True or evidence.get("unknown_write_outcome") is True:
         return "operation_outcome_unconfirmed"
     # An outer deadline cannot make an already-observed permanent failure safe.
@@ -97,9 +95,7 @@ def complete_run(run, *, diagnostics, termination_confirmed):
         errors = evidence.get("errors") or []
         codes = {str(item.get("code", "")) for item in errors if isinstance(item, dict)}
         classes = {item.get("class", "") for item in errors if isinstance(item, dict)}
-        if evidence.get("query_timeout") is True:
-            evidence["cause"] = "query_cancelled_or_timeout"
-        elif evidence.get("transient") is True:
+        if evidence.get("transient") is True:
             evidence["cause"] = "transient_connection_failure"
         elif any(code.startswith("28") for code in codes) or codes & {"1045"}:
             evidence["cause"] = "authentication_failed"

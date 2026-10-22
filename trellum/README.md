@@ -947,24 +947,6 @@ session and may observe newer data; it does not restore a transaction snapshot.
 Vertica's connection context only manages lifetime and remains replayable;
 its `closed()` and `opened()` status checks also preserve read recovery.
 
-### Vertica query deadlines
-
-Vertica framework queries have a 120-second wall-clock limit across execution
-and fetching. At the deadline, the framework requests cancellation of that
-specific backend operation and allows up to five seconds for a response. It
-then closes the original connection. Only a confirmed cancellation or completed
-operation allows an eligible read to retry on a fresh session, using the same
-three-attempt budget. Partial results are discarded. An unacknowledged cancel
-ends the build with an unconfirmed database outcome and prevents automatic
-report replay; closing a client socket alone cannot prove database termination.
-User/database cancellations that precede the deadline remain non-retryable.
-
-Set `query_timeout_seconds` on a Vertica datasource for queries that legitimately
-need longer (a positive number up to 3600). The local credential-prefix override
-is `<PREFIX>_QUERY_TIMEOUT_SECONDS`. Connection setup uses a ten-second socket
-timeout; the overall build timeout still applies. Native driver calls outside
-framework query helpers do not receive the framework wall-clock watchdog.
-
 ### A new connection for every query
 
 For remote sources with unreliable persistent sessions, opt into

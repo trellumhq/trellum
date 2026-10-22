@@ -58,14 +58,3 @@ def _check_yaml_schema(ctx: Any, result: ValidationResult) -> None:
     if (not isinstance(recovery, dict) or ("replay_safe" in recovery
             and type(recovery["replay_safe"]) is not bool)):
         result.fail("yaml-recovery-invalid", "recovery must be a mapping with a boolean replay_safe value.")
-
-    sources = config.get("data_sources", [])
-    for source in sources if isinstance(sources, list) else []:
-        if (not isinstance(source, dict) or source.get("type", "vertica") != "vertica"
-                or "query_timeout_seconds" not in source):
-            continue
-        from trellum.data.vertica_deadline import query_timeout_seconds
-        try:
-            query_timeout_seconds(source["query_timeout_seconds"])
-        except ValueError:
-            result.fail("yaml-query-timeout-invalid", "Vertica query_timeout_seconds must be a number in (0, 3600].")

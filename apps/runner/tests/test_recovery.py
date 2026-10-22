@@ -85,7 +85,6 @@ def test_exhaustion_keeps_next_normal_cron(report_row, monkeypatch):
     (Run.OOM_KILLED, EVIDENCE, True, "memory_failure"),
     (Run.ERROR, {"stage": "execute", "transient": False}, True, "permanent_or_unknown_failure"),
     (Run.ERROR, {**EVIDENCE, "unsafe_operation": True}, True, "operation_outcome_unconfirmed"),
-    (Run.ERROR, {**EVIDENCE, "cancellation_unconfirmed": True}, True, "operation_outcome_unconfirmed"),
     (Run.ERROR, {**EVIDENCE, "stage": "publish"}, True, "publication_outcome_unconfirmed"),
     (Run.TIMEOUT, EVIDENCE, False, "unconfirmed"),
     (Run.STOPPED, EVIDENCE, True, "cancelled"),
@@ -161,16 +160,6 @@ def test_timeout_retries_only_when_confirmed_and_safe(report_row):
     enqueue(report_row)
     root = finish(Run.objects.get(report=report_row), Run.TIMEOUT)
     assert root.recovery.state == "pending"
-
-
-def test_local_query_deadline_can_recover_report_after_query_attempts(report_row):
-    enqueue(report_row)
-    root = finish(Run.objects.get(report=report_row), evidence={
-        **EVIDENCE, "source_type": "vertica", "query_timeout": True,
-        "errors": [{"class": "VerticaQueryTimeout"}],
-    })
-    assert root.recovery.state == "pending"
-    assert root.diagnostics["cause"] == "query_cancelled_or_timeout"
 
 
 def test_cancel_pending_and_active_attempt(report_row):
