@@ -32,36 +32,36 @@ def _can_replay(sql: str, source_type: str = "postgres") -> bool:
     """Recognize one ordinary read; this is not a proof of function purity."""
     tokens = []
     for match in _TOKEN.finditer(sql):
-        token = match.group()
-        if token.isspace():
+        lexeme = match.group()
+        if lexeme.isspace():
             continue
-        if token.startswith("--"):
+        if lexeme.startswith("--"):
             # MySQL requires whitespace after the second dash.
-            if source_type == "mysql" and len(token) > 2 and not token[2].isspace():
+            if source_type == "mysql" and len(lexeme) > 2 and not lexeme[2].isspace():
                 return False
             continue
-        if token.startswith("/*"):
+        if lexeme.startswith("/*"):
             # MySQL/MariaDB can execute SQL inside versioned comments.
-            if token.startswith(("/*!", "/*M!")) or "/*" in token[2:]:
+            if lexeme.startswith(("/*!", "/*M!")) or "/*" in lexeme[2:]:
                 return False
             continue
-        if token == "/" and sql[match.end():].startswith("*"):
+        if lexeme == "/" and sql[match.end():].startswith("*"):
             return False  # Unterminated block comment.
         # Unsupported quoting remains unsafe outside genuine comments.
-        if "\\" in token:
+        if "\\" in lexeme:
             return False
-        if source_type in ("bigquery", "databricks") and token[:3] in ("'" * 3, '"' * 3):
+        if source_type in ("bigquery", "databricks") and lexeme[:3] in ("'" * 3, '"' * 3):
             return False
-        if token[0] in "'\"`[":
-            if token[0] == "'" and tokens and tokens[-1] == "E":
+        if lexeme[0] in "'\"`[":
+            if lexeme[0] == "'" and tokens and tokens[-1] == "E":
                 return False  # Escape-prefixed literals are not parsed here.
-            if len(token) == 1 or (token[0] == "[" and source_type != "sqlserver"):
+            if len(lexeme) == 1 or (lexeme[0] == "[" and source_type != "sqlserver"):
                 return False
             tokens.append("<quoted>")
             continue
-        if token in ("$", "#"):
+        if lexeme in ("$", "#"):
             return False
-        tokens.append(token.upper())
+        tokens.append(lexeme.upper())
     if tokens and tokens[-1] == ";":
         tokens.pop()
     if not tokens or tokens[0] not in ("SELECT", "WITH") or ";" in tokens:
@@ -69,23 +69,23 @@ def _can_replay(sql: str, source_type: str = "postgres") -> bool:
     # Keep the shared denylist; exempt only recognized Vertica expressions.
     # Each frame tracks SUBSTRING, FROM seen, and FOR seen at this depth.
     parentheses = []
-    for index, token in enumerate(tokens):
+    for index, lexeme in enumerate(tokens):
         previous = tokens[index - 1] if index else None
         following = tokens[index + 1] if index + 1 < len(tokens) else None
-        if token == "(":
+        if lexeme == "(":
             parentheses.append([previous == "SUBSTRING", False, False])
-        elif token == ")":
+        elif lexeme == ")":
             if not parentheses:
                 return False
             parentheses.pop()
-        elif token == "FROM" and parentheses and parentheses[-1][0]:
+        elif lexeme == "FROM" and parentheses and parentheses[-1][0]:
             parentheses[-1][1] = True
-        if token not in _STATEFUL:
+        if lexeme not in _STATEFUL:
             continue
         if source_type == "vertica":
-            if token == "REPLACE" and following == "(":
+            if lexeme == "REPLACE" and following == "(":
                 continue
-            if token == "FOR" and parentheses:
+            if lexeme == "FOR" and parentheses:
                 substring = parentheses[-1]
                 if substring[0] and substring[1] and not substring[2]:
                     substring[2] = True
