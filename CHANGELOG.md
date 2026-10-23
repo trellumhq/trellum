@@ -12,6 +12,19 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Clarify provider-specific email verification requirements for first-time SSO
   linking, including OneLogin claim mapping and AD FS setup limitations.
 
+### Fixed
+
+- Enable automatic report recovery by default, retaining explicit opt-out,
+  bounded attempts and checks for writes and unconfirmed outcomes.
+- Preserve read-query recovery through harmless Vertica connection contexts,
+  status checks and supported reporting expressions.
+
+### Upgrade notes
+
+- Reports with external side effects or detached work must set
+  `recovery: {replay_safe: false}` in `report.yaml`. Previously admitted runs
+  retain their recorded recovery policy.
+
 ## [0.9.3] — 2026-10-20
 
 ### Fixed
