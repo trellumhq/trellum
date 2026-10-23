@@ -106,7 +106,7 @@ class DateRangeFilter(BaseFilter):
         default_days = f.get("default_days")
 
         # Build trigger display text
-        trigger_text = f"{default_min_d} \u2013 {max_d}"
+        trigger_text = f"{default_min_d} \u2013 {max_d}" if min_d and max_d else "No date bounds available"
 
         # Build preset buttons
         preset_btns = []
@@ -118,8 +118,9 @@ class DateRangeFilter(BaseFilter):
                 active = " active"
             days_attr = p.get("days", "")
             hours_attr = p.get("hours", "")
+            disabled = " disabled" if not min_d or not max_d else ""
             preset_btns.append(
-                f'<button class="fw-date-preset{active}" '
+                f'<button class="fw-date-preset{active}"{disabled} '
                 f'data-days="{days_attr}" data-hours="{hours_attr}">'
                 f'{p["label"]}</button>'
             )

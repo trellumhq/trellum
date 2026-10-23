@@ -2,7 +2,7 @@
     function persistQueue() { lsSet(QKEY, JSON.stringify(state.items)); }
 
     window.addEventListener('storage', function (e) {
-        if (e.key !== QKEY) return;
+        if (e.key !== QKEY || state.ended) return;
         try { state.items = JSON.parse(e.newValue || '[]'); } catch (err) { return; }
         // Renumber from the synced queue, or two tabs hand out the same n.
         state.items.forEach(function (it) { if (it.n >= state.nextN) state.nextN = it.n + 1; });
@@ -52,6 +52,8 @@
                 '<button type="button" class="fwrv-x" title="Remove">&times;</button></div>';
             var ta = document.createElement('textarea');
             ta.value = it.prompt;
+            ta.disabled = state.ended;
+            d.querySelector('.fwrv-x').disabled = state.ended;
             ta.addEventListener('input', function () { it.prompt = ta.value; persistQueue(); });
             d.appendChild(ta);
             d.querySelector('.fwrv-x').addEventListener('click', function () {
@@ -62,6 +64,7 @@
             list.appendChild(d);
         });
         if (!state.items.length) {
+            if (state.ended) return;
             list.innerHTML = '<div class="fwrv-empty">Nothing queued yet.<br>Toggle <b>Select</b> and click an element —<br>or just type in the chat below.</div>';
             maybeOfferResend();
         }

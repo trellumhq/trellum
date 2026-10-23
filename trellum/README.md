@@ -1351,8 +1351,8 @@ never modified — the overlay is injected into the served copy only.
 | Verb | Description |
 |---|---|
 | `start <report>` | Build if needed, serve, enable review, open the browser (`--rebuild`, `--no-browser`, `--port N`, `--restart-server`) |
-| `poll` | Block until feedback; exit 0 feedback / 2 `--timeout` / 3 ended (`--reply TEXT`, `--report SLUG` to scope to one report when several agents share the project, `--json`) |
-| `reply TEXT` | Answer into the browser's chat (`--report SLUG` to reach one report's pages only) |
+| `poll` | Block until feedback; exit 0 feedback / 2 `--timeout` / 3 ended (`--reply TEXT --session N`, `--feedback ID`, `--report SLUG` to scope to one report when several agents share the project, `--json`) |
+| `reply TEXT` | Answer into the browser's chat (`--report SLUG` to reach one report's pages; `--session N` or `--feedback ID` to complete picked-up work) |
 | `status` | One-line session state (`--json`) |
 | `end` | End the session from the agent's side |
 
@@ -1741,7 +1741,9 @@ and optional note. The agent polls with `python -m trellum review poll --report
 it with `python -m trellum analysis import reports/<slug> --inbox <capture-id>
 [--name <safe-name>]`, edit `content.md` or ordered `slides.yaml`, rebuild with
 `python -m trellum.run reports/<slug> --no-serve`, then reply by polling again
-with `python -m trellum review poll --report <slug> --reply "what changed"`.
+with `python -m trellum review poll --report <slug> --session <session> --reply "what changed"`.
+Use the session returned with the polled batch; a reply without a session or
+feedback ID is chat text only and does not complete feedback.
 Pending captures stay outside the repository and output tree under
 `~/.trellum/analysis-inbox/<project-id>`; list them after restart with
 `python -m trellum analysis inbox reports/<slug>` and explicitly discard one
