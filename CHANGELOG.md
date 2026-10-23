@@ -7,7 +7,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
-## [0.9.4] — 2026-10-21
+## [0.9.4] — 2026-10-23
 
 ### Changed
 
@@ -23,6 +23,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Review controls and conversations use consistent typography, softer theme surfaces and compact desktop controls while retaining touch targets on phones.
 
 ### Fixed
+
+- Enable automatic report recovery by default, retaining explicit opt-out,
+  bounded attempts and checks for writes and unconfirmed outcomes.
+- Preserve read-query recovery through harmless Vertica connection contexts,
+  status checks and supported reporting expressions.
+
 
 - Generate review feedback identities that can be passed directly to CLI activity and reply commands.
 
@@ -53,6 +59,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   beside each request in report review and analysis workspace conversations.
   Agents can report bounded activity updates with `trellum review activity`
   without completing work or consuming queued follow-ups.
+
+### Upgrade notes
+
+- Reports with external side effects or detached work must set
+  `recovery: {replay_safe: false}` in `report.yaml`. Previously admitted runs
+  retain their recorded recovery policy.
 
 ## [0.9.3] — 2026-10-20
 
