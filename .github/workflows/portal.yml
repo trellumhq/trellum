@@ -753,6 +753,14 @@ jobs:
         with:
           node-version: '22'
       - run: python -m pip install -r requirements-test.txt
+      - name: Use the official Ubuntu archive for browser dependencies
+        # Keep the native runner: the live harness publishes Docker PostgreSQL
+        # on loopback. Azure's package mirror can exhaust the job timeout.
+        run: |
+          # Cover legacy sources.list and Ubuntu 24.04's deb822 .sources files.
+          # Change only the mirror URI; preserve suites, components and signing.
+          sudo find /etc/apt -type f \( -name '*.list' -o -name '*.sources' \) \
+            -exec sed -i -E 's@https?://azure\.archive\.ubuntu\.com/ubuntu/?([[:space:]]|$)@https://archive.ubuntu.com/ubuntu\1@g' {} +
       - run: python -m playwright install --with-deps chromium webkit
       - name: Chromium real login and PostgreSQL persistence
         run: python scripts/portal_e2e.py --shard L0 --artifacts "$RUNNER_TEMP/portal-e2e-chromium"

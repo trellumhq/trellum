@@ -22,13 +22,17 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - Review controls and conversations use consistent typography, softer theme surfaces and compact desktop controls while retaining touch targets on phones.
 
+### Documentation
+
+- Clarify provider-specific email verification requirements for first-time SSO
+  linking, including OneLogin claim mapping and AD FS setup limitations.
+
 ### Fixed
 
 - Enable automatic report recovery by default, retaining explicit opt-out,
   bounded attempts and checks for writes and unconfirmed outcomes.
 - Preserve read-query recovery through harmless Vertica connection contexts,
   status checks and supported reporting expressions.
-
 
 - Generate review feedback identities that can be passed directly to CLI activity and reply commands.
 
