@@ -7,6 +7,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Documentation
+
+- Clarify provider-specific email verification requirements for first-time SSO
+  linking, including OneLogin claim mapping and AD FS setup limitations.
+
 ### Fixed
 
 - Enable automatic report recovery by default, retaining explicit opt-out,

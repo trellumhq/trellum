@@ -1,26 +1,23 @@
 """Entra domain evidence stays bound to a tenant, subject and token email."""
-import copy
-import json
 import time
-from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
 
-import jwt
 import pytest
-import requests
 from allauth.account.models import EmailAddress
-from allauth.socialaccount.internal import jwtkit
-from allauth.socialaccount.models import SocialAccount, SocialLogin, SocialToken
-from cryptography.hazmat.primitives.asymmetric import rsa
+from allauth.socialaccount.models import SocialAccount, SocialLogin
 from django.contrib.auth import get_user_model
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
-from django.urls import reverse
 
 from apps.accounts import sso, sso_test
 from apps.accounts.adapters import _trusted_entra_email_domain, email_is_verified
 from apps.core.models import AuditLog
 from apps.orgs.models import OrgMembership, OrgSSOConfig, PermissionGroup, PermissionGroupMembership
+
+from ._oidc_callback import (
+    _callback, _identity_rows, _identity_writes, _route, mock_provider_http,
+    signing_key as signing_key,
+)
 
 pytestmark = pytest.mark.django_db
 User = get_user_model()
@@ -200,93 +197,12 @@ def test_generic_verification_and_mailboxless_upn_keep_their_existing_rules(cfg)
     assert not email_is_verified(cfg, login, EMAIL)
 
 
-@pytest.fixture(scope="module")
-def signing_key():
-    return rsa.generate_private_key(public_exponent=65537, key_size=2048)
-
-
 @pytest.fixture
-def provider_http(monkeypatch, signing_key, request):
-    """Real callback/state/JWT validation, with every provider request mocked.
-
-    allauth permits skipping signature validation for a TLS token exchange.
-    Force it on by default, exercising signed JWTs and the mocked JWKS as
-    well. The production-decoder parameter leaves the decoder unmodified.
-    """
-    state = SimpleNamespace(token=_token(), userinfo={"sub": SUBJECT}, calls=[], decoded=[])
-    verify = jwtkit.verify_and_decode
-
-    def verify_signed(**kwargs):
-        assert kwargs["issuer"] == ISSUER
-        assert kwargs["audience"] == "entra-client"
-        assert kwargs["keys_url"] == ISSUER + "/keys"
-        kwargs["verify_signature"] = True
-        claims = verify(**kwargs)
-        state.decoded.append(copy.deepcopy(claims))
-        return claims
-
-    if getattr(request, "param", "signed") == "signed":
-        monkeypatch.setattr(jwtkit, "verify_and_decode", verify_signed)
-
-    def send(session, request, **kwargs):
-        state.calls.append((request.method, request.url))
-        if (request.method, request.url) == ("GET", ISSUER + "/.well-known/openid-configuration"):
-            payload = {
-                "issuer": ISSUER, "authorization_endpoint": ISSUER + "/authorize",
-                "token_endpoint": ISSUER + "/token", "userinfo_endpoint": ISSUER + "/userinfo",
-                "jwks_uri": ISSUER + "/keys",
-                "token_endpoint_auth_methods_supported": ["client_secret_post"],
-            }
-        elif (request.method, request.url) == ("POST", ISSUER + "/token"):
-            claims = {"aud": "entra-client", "exp": int(time.time()) + 300, **state.token}
-            payload = {
-                "access_token": "mock-access-token", "token_type": "Bearer",
-                "id_token": jwt.encode(claims, signing_key, algorithm="RS256", headers={"kid": "test-key"}),
-            }
-        elif (request.method, request.url) == ("GET", ISSUER + "/userinfo"):
-            assert request.headers["Authorization"] == "Bearer mock-access-token"
-            payload = state.userinfo
-        elif (request.method, request.url) == ("GET", ISSUER + "/keys"):
-            jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(signing_key.public_key()))
-            payload = {"keys": [{**jwk, "kid": "test-key", "alg": "RS256"}]}
-        else:
-            pytest.fail(f"Unexpected HTTP: {request.method} {request.url}")
-        response = requests.Response()
-        response.status_code = 200
-        response.headers["Content-Type"] = "application/json"
-        response._content = json.dumps(payload).encode()
-        response.request = request
-        response.url = request.url
-        return response
-
-    monkeypatch.setattr(requests.Session, "send", send)
-    return state
-
-
-def _route(name):
-    return reverse(f"openid_connect_{name}", kwargs={"provider_id": PROVIDER})
-
-
-def _callback(client):
-    start = client.get(_route("login"))
-    assert start.status_code == 302
-    state = parse_qs(urlsplit(start.url).query)["state"][0]
-    return client.get(_route("callback"), {"state": state, "code": "mock-code"})
-
-
-def _identity_rows():
-    # Compare actual rows, so updates as well as inserts/deletes are detected.
-    return [list(model.objects.order_by("pk").values()) for model in (
-        User, EmailAddress, SocialAccount, SocialToken, OrgMembership, PermissionGroupMembership,
-    )]
-
-
-def _identity_writes(queries):
-    tables = [model._meta.db_table for model in (
-        User, EmailAddress, SocialAccount, SocialToken, OrgMembership, PermissionGroupMembership,
-    )]
-    return [q["sql"] for q in queries if q["sql"].lstrip().split(" ", 1)[0] in {"INSERT", "UPDATE", "DELETE"}
-            and any(f'"{table}"' in q["sql"] for table in tables)]
+def provider_http(monkeypatch, signing_key, request, cfg):
+    return mock_provider_http(
+        monkeypatch, signing_key, cfg, _token(),
+        verify_signature=getattr(request, "param", "signed") == "signed",
+    )
 
 
 @pytest.mark.parametrize("auto_provision", [False, True])
