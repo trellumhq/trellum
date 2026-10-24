@@ -13,7 +13,7 @@ from __future__ import annotations
 import importlib
 import sys
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import Any
 
 import pandas as pd
@@ -154,7 +154,7 @@ def metrics_frame(ctx: Any, ids: list[str], by=None, window=None) -> pd.DataFram
             start, end = str(window[0]), str(window[1])
         else:
             days = int(window or ds.lookback or DEFAULT_LOOKBACK_DAYS)
-            start = (ctx._now_utc - timedelta(days=days)).strftime("%Y-%m-%d")
+            start = (date.fromisoformat(ctx.today) - timedelta(days=days)).isoformat()
             end = ctx.today
 
     cols = frozenset(c for m in metrics for c in (m.column, m.numerator, m.denominator) if c)

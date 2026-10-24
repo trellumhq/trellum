@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import re
-from datetime import timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 import yaml
@@ -79,15 +79,25 @@ class ReportContext:
         # real clock when unset.
         from trellum.project import get_now_utc
 
-        now = get_now_utc()
+        from trellum.reporting_day import load_reporting_settings
+
+        self.reporting_settings = load_reporting_settings()
+        self.reporting_timezone = self.reporting_settings.timezone
+        self.reporting_day_start = self.reporting_settings.day_start
+        now = get_now_utc().astimezone(timezone.utc)
         self._now_utc = now
 
-        # Date strings (UTC)
-        self.today: str = now.strftime("%Y-%m-%d")
-        self.yesterday: str = (now - timedelta(days=1)).strftime("%Y-%m-%d")
-        self.two_days_ago: str = (now - timedelta(days=2)).strftime("%Y-%m-%d")
-        self.week_ago: str = (now - timedelta(days=7)).strftime("%Y-%m-%d")
+        # Reporting labels use local day boundaries; actual instants stay UTC.
+        today = self.reporting_settings.reporting_date(now)
+        self.today: str = today.isoformat()
+        self.yesterday: str = (today - timedelta(days=1)).isoformat()
+        self.two_days_ago: str = (today - timedelta(days=2)).isoformat()
+        self.week_ago: str = (today - timedelta(days=7)).isoformat()
         self.now_utc: str = now.isoformat()
+
+    def reporting_day_bounds(self, day: date | str | None = None) -> tuple[datetime, datetime]:
+        """UTC bounds of a reporting label, defaulting to the current today."""
+        return self.reporting_settings.day_bounds(self.today if day is None else day)
 
     # ── Timing ────────────────────────────────────────────────
 
