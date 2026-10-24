@@ -12,6 +12,7 @@ import argparse
 import json
 import os
 import sys
+from pathlib import Path
 
 
 def _claims_by_metric(root: str) -> dict[str, list[str]] | None:
@@ -166,6 +167,7 @@ _REPORT_YAML = """\
 # metric -- bind it in metrics.yaml and rebuild this report.
 name: "Metrics"
 slug: metrics
+schedule: {{project: metrics}}
 description: "Every business metric defined in metrics.yaml and bound to a dataset, monitored over time: a KPI and a trend per metric at the dataset's grain, sectioned by tag and filterable by the shared dimensions, plus the metrics defined but not yet bound to a dataset."
 version: 0.1.0
 tags:
@@ -183,6 +185,37 @@ display:
 def _scaffold_report(root: str) -> int:
     """Write ``reports/metrics/`` once; existing files are kept, never rewritten."""
     from trellum.data.datasource_config import load_datasource_config
+    from trellum.scaffold.reporting import (
+        ReportingSetupError, collect_reporting, stdin_is_interactive, write_reporting,
+    )
+
+    project_config = Path(root) / "config.yaml"
+    try:
+        import yaml
+        existing_cfg = yaml.safe_load(project_config.read_text(encoding="utf-8")) if project_config.exists() else {}
+    except (OSError, yaml.YAMLError) as exc:
+        print(f"Cannot scaffold Metrics report: malformed project config: {exc}", file=sys.stderr)
+        return 2
+    if not isinstance(existing_cfg or {}, dict):
+        print("Cannot scaffold Metrics report: project config must be a YAML mapping", file=sys.stderr)
+        return 2
+    has_reporting = "reporting" in (existing_cfg or {})
+    settings = None
+    if has_reporting:
+        try:
+            settings = collect_reporting(root, non_interactive=True)
+        except ReportingSetupError as exc:
+            print(f"Cannot scaffold Metrics report: {exc}", file=sys.stderr)
+            return 2
+    if not has_reporting and stdin_is_interactive():
+        try:
+            values = collect_reporting(root, prompt=True)
+            write_reporting(root, values)
+            settings = values
+            has_reporting = True
+        except (ReportingSetupError, EOFError, KeyboardInterrupt) as exc:
+            print(f"Metrics report setup cancelled: {exc or 'input ended'}", file=sys.stderr)
+            return 2
 
     sources = "\n".join(f"  - {n}" for n in load_datasource_config()) or "  []"
     files = {
@@ -201,6 +234,13 @@ def _scaffold_report(root: str) -> int:
             fh.write(text)
         print(f"  wrote    reports/metrics/{name}")
     print("\nBuild it:  python -m trellum.run reports/metrics --no-serve")
+    if settings is None:
+        print("This report inherits the project's Metrics build time when configured; it remains unscheduled until then.")
+    elif settings.get("metrics_build_time") is None:
+        print("The project Metrics schedule is disabled; this report remains unscheduled until configured.")
+    else:
+        print("This report inherits the project's daily Metrics build schedule.")
+    print("Configure it with: python -m trellum setup reporting --dest .")
     return 0
 
 

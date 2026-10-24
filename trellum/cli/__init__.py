@@ -130,10 +130,15 @@ def main(argv: list[str] | None = None) -> int:
 
     s = sub.add_parser("setup", help="write agent pointers / install hooks / "
                                      "connect the portal")
-    s.add_argument("what", choices=["project", "hooks", "portal"])
+    s.add_argument("what", choices=["project", "hooks", "portal", "reporting"])
     s.add_argument("--dest", help="project directory (setup project|portal; default: cwd)")
     s.add_argument("--url", help="setup portal: the studio, <portal>/s/<org>/<studio>")
     s.add_argument("--key", help="setup portal: a personal API key, trellum_pk_...")
+    s.add_argument("--timezone", help="reporting timezone (IANA name)")
+    s.add_argument("--day-start", help="reporting-day start, HH:MM")
+    s.add_argument("--metrics-build-time", help="daily Metrics build time, HH:MM")
+    s.add_argument("--no-metrics-schedule", action="store_true", help="disable the Metrics daily build schedule")
+    s.add_argument("--non-interactive", action="store_true", help="never prompt")
     s.set_defaults(fn=_cmd_setup)
 
     h = sub.add_parser("hook", help="internal: hook handlers")
