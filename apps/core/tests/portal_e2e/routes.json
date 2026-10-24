@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "first_party_expected": 213,
+  "first_party_expected": 215,
   "routes": [
     {
       "id": "route-000",
@@ -15201,10 +15201,10 @@
     },
     {
       "id": "route-242",
-      "pattern": "accounts/oidc/^(?P<provider_id>[^/]+)/login/",
+      "pattern": "accounts/oidc/<str:provider_id>/login/",
       "name": "openid_connect_login",
-      "view": "allauth.socialaccount.providers.openid_connect.views.login",
-      "first_party": false,
+      "view": "apps.accounts.oidc.views.login",
+      "first_party": true,
       "case": "C02",
       "shard": "L1",
       "allowed_roles": [
@@ -15240,7 +15240,7 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": null,
+      "source_sha256": "5822e687ff2f18330e1c151372ed04aa119ef63d26f3eb379677236b34e9a95b",
       "request_conditions": [
         "valid provider state for success; invalid/expired/replayed state denied"
       ],
@@ -15260,14 +15260,15 @@
           "planned_node_id": "apps/core/tests/portal_e2e/test_l1_routes.py::test_route[242-GET]",
           "verification": "pending"
         }
-      }
+      },
+      "adapter_sha256": "5822e687ff2f18330e1c151372ed04aa119ef63d26f3eb379677236b34e9a95b"
     },
     {
       "id": "route-243",
-      "pattern": "accounts/oidc/^(?P<provider_id>[^/]+)/login/callback/",
+      "pattern": "accounts/oidc/<str:provider_id>/login/callback/",
       "name": "openid_connect_callback",
-      "view": "allauth.socialaccount.providers.openid_connect.views.callback",
-      "first_party": false,
+      "view": "apps.accounts.oidc.views.callback",
+      "first_party": true,
       "case": "C02",
       "shard": "L1",
       "allowed_roles": [
@@ -15303,7 +15304,7 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": null,
+      "source_sha256": "26985c037e7d31860aa6172c7e5adc760755cc671b916b25d702151f38153c93",
       "request_conditions": [
         "valid provider state for success; invalid/expired/replayed state denied"
       ],
@@ -15323,7 +15324,8 @@
           "planned_node_id": "apps/core/tests/portal_e2e/test_l1_routes.py::test_route[243-GET]",
           "verification": "pending"
         }
-      }
+      },
+      "adapter_sha256": "26985c037e7d31860aa6172c7e5adc760755cc671b916b25d702151f38153c93"
     },
     {
       "id": "route-244",

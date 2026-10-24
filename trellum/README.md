@@ -1011,11 +1011,13 @@ not silently recreated. Automatic replay is limited to single read statements
 the framework recognizes; unsupported quoting and ambiguous SQL run once.
 Read queries must not call functions with side effects.
 
-With the default connection reuse, calling driver methods directly, entering a driver context manager, setting
+With the default connection reuse, calling driver methods directly, entering a transactional driver context manager, setting
 connection attributes, or executing a statement that cannot be replayed disables
 query replay for that connection. This preserves manually managed transactions,
 temporary tables and session settings. A reconnect starts a new database
 session and may observe newer data; it does not restore a transaction snapshot.
+Vertica's connection context only manages lifetime and remains replayable;
+its `closed()` and `opened()` status checks also preserve read recovery.
 
 ### A new connection for every query
 

@@ -219,10 +219,14 @@ snapshot after process death identifies where work was last observed; it does
 not establish why it died or prove the process has stopped.
 
 Neither `transient` nor `query_retry_safe` authorizes whole-report replay. Report
-code is arbitrary Python. Whole-report recovery requires an explicit boolean
-`recovery: {replay_safe: true}` in `report.yaml`, promising that the entire
-generator and its helpers have no external side effects, unknown write
-outcomes or detached/background work that outlives the build. A host must separately enforce admission, retry budgets, process
+code is arbitrary Python. Whole-report recovery is enabled by default for a
+valid report configuration. Authors must opt out with
+`recovery: {replay_safe: false}` when the generator or its helpers have external
+side effects, unknown write outcomes or detached/background work that outlives
+the build. A missing `recovery` section or `replay_safe` setting keeps recovery
+enabled; malformed settings fail closed. This default is not a blanket override
+for query safety: hosts still veto unknown write outcomes and unsafe operations.
+A host must separately enforce admission, retry budgets, process
 termination/fencing and delivery deduplication. The framework only validates the
 configuration shape and emits evidence; it does not schedule retries. Raw driver
 or arbitrary Python activity outside framework APIs cannot be fully observed.

@@ -5,9 +5,12 @@ configuration. OpenID Connect and LDAP/Active Directory SSO are supported.
 
 ## Identity provider side
 
-Any OpenID Connect provider works — Keycloak, Okta, Google, Microsoft Entra
-ID, or an internal provider on a network with no internet access. Register
-{{BRAND}} as a client (an "app registration") there and collect:
+OpenID Connect providers must supply the email verification evidence needed
+for first linking, as well as support discovery and the authorization code
+flow. The provider setup below describes prerequisites and limitations; a
+successful connection alone does not establish first-link support. Internal
+providers can run on a network with no internet access. Register {{BRAND}} as
+a client (an "app registration") there and collect:
 
 - The **issuer URL** — the base the provider serves
   `/.well-known/openid-configuration` from, e.g.
@@ -15,6 +18,12 @@ ID, or an internal provider on a network with no internet access. Register
 - The client ID
 - A client secret
 - The redirect URI shown on the portal's SSO settings page
+
+Register that URI exactly, including its scheme and trailing slash. The
+authorization request and token exchange use this same callback, built from
+the instance's **Public URL** (or `PORTAL_BASE_URL` when that field is empty).
+For an HTTPS deployment, set the public URL to `https://` even when a reverse
+proxy forwards HTTP to the portal. No per-provider callback override is needed.
 
 Grant the `openid`, `profile` and `email` scopes. For group mapping, have the
 provider emit a claim listing the user's groups (`groups` at most providers;
@@ -52,11 +61,25 @@ is stored encrypted) and set:
 Group mapping is re-applied on every login, so revoking a group in your
 directory revokes the corresponding access at next sign-in.
 
-New identities must provide a verified email (`email_verified: true`) before
-the portal links an existing member or provisions an account. An explicitly
-unverified email is refused. Returning identities use their existing provider
-subject link. The mailbox-less Entra exception below uses a tenant-managed UPN;
-other providers must issue a verified email for new identities.
+Before linking an existing member or provisioning an account, the portal
+requires email verification evidence: `email_verified: true` for ordinary
+OpenID Connect providers, or the tenant-bound Entra evidence described below.
+For the ordinary setup, send `email` with matching `email_verified: true` as
+a JSON boolean. A missing verification claim, `false`, or a string such as
+`"true"` does not establish verification. An existing portal account or an
+invitation does not bypass this requirement. Requesting the `email` scope
+requests claims; the provider must also have verified that user's address.
+
+For ordinary verification, UserInfo claims take precedence over ID-token
+claims. Keep the email and verification state consistent in both responses;
+when present, an effective `email_verified` value other than Boolean `true`
+is refused. The Entra domain-confirmation path additionally rejects an explicit
+negative in either source. Returning identities use their existing provider
+subject link rather than repeating first-link verification; their email must
+still belong to a routed domain, verified when domain verification is required.
+The mailbox-less Entra exception
+below uses a tenant-managed UPN. Neither Entra exception extends to AD FS or
+other providers.
 
 An internal provider whose certificate comes from a private CA works without
 disabling verification: point `REQUESTS_CA_BUNDLE` at your CA bundle in the
@@ -88,6 +111,23 @@ is ideal). You come back to the settings page with a checklist:
 
 The test only counts for ten minutes after you press the button and works once.
 
+To check **first linking**, choose a fresh provider identity that has never
+been linked to this organization in the portal. A private browser window alone
+does not make an identity unlinked. Use a verified address in a routed domain
+(verified when domain verification is required), and either add that address
+as a member first or enable
+**Auto-provision** for the intended test. Require passing email verification
+and the expected admission outcome. Repeat for each connection or account
+type you intend to admit. Test sign-in leaves the identity unlinked, so you
+can repeat it after correcting provider settings.
+
+A successful sign-in by an already-linked user does not prove first-link
+support. For a linked identity, Test sign-in can show passing admission but
+failed email verification, making the overall test fail even when a real
+returning sign-in would succeed. Use a fresh identity to validate onboarding.
+A live test checks the saved configuration and chosen account; sample tokens
+and automated fixtures do not establish live provider compatibility.
+
 **Directory (LDAP / Active Directory).** Enter a directory login and password
 under **Test sign-in** and press the button. The password is checked against
 the directory and is never stored or logged. The checklist is the same, minus
@@ -95,16 +135,18 @@ the provider's email verification.
 
 The page keeps the last result, who ran it and when. Each run is recorded in
 the audit log as `sso.test_signin` with the outcome and the checklist, never
-with tokens or passwords. A failing line (a red cross) means a real sign-in
-would be refused; a warning, such as a missing groups claim, does not fail the
-test but is worth reading. If you enforce SSO or turn off password login
-without a passing test on record, the page shows a warning. It does not stop you.
+with tokens or passwords. For an unlinked identity, a failing line (a red cross)
+means a real first sign-in would be refused; a warning, such as a missing groups
+claim, does not fail the test but is worth reading. If you enforce SSO or turn
+off password login without a passing test on record, the page shows a warning.
+It does not stop you.
 
 ## Provider setup
 
 The portal requests the `openid`, `profile` and `email` scopes and reads the
-ID token and the userinfo response together, so a claim in either place
-counts. What differs per provider is the issuer URL, where the email comes
+ID token and the userinfo response together. The Entra domain-confirmation
+exception below requires evidence from the ID token itself. What differs
+per provider is the issuer URL, where the email comes
 from, and what it takes to get a groups claim into the token. **Extra
 scopes** stays empty unless a subsection below says otherwise.
 
@@ -123,7 +165,35 @@ scopes** stays empty unless a subsection below says otherwise.
   requires the exact tenant-specific Microsoft issuer above and an ID token
   whose `tid` matches its tenant ID. Configure this only for a tenant whose
   administrators control those UPNs; generic username claims are not trusted
-  for linking. If an `email` claim is present, it must be verified.
+  for linking. If an `email` claim is present without `email_verified: true`,
+  configure the ID-token claims below.
+- Email domain confirmation: under **App registrations → your application →
+  Token configuration → Add optional claim**, choose **ID** and add `email`
+  and `xms_edov`. If using the manifest, merge these entries into the existing
+  `optionalClaims.idToken` array, preserving other claims:
+
+  ```json
+  {"name": "email", "essential": false},
+  {"name": "xms_edov", "essential": false}
+  ```
+
+  `xms_edov` is Microsoft's confirmation of the email domain owner, not a
+  general mailbox-verification flag. The portal accepts it only when it is
+  Boolean `true` in the validated ID token, the tenant and issuer match the
+  configured provider, the subject matches the sign-in identity, and the token
+  email matches the email being linked. UserInfo-only confirmation cannot
+  satisfy this check. An explicit negative `email_verified` still blocks it.
+  Configure the organization provider only for a tenant you trust to manage
+  identities for its allowed email domains. See Microsoft's
+  [optional claim reference](https://learn.microsoft.com/en-us/entra/identity-platform/optional-claims-reference).
+
+  Adding an optional claim does not force Microsoft to return `true`. If it is
+  absent or false, ask the tenant administrator to check the account and domain
+  verification; do not map a constant `true` or disable verification. After
+  saving, start a fresh **Test sign-in**. Existing accounts must still belong
+  to this organization, and new accounts still require **Auto-provision**.
+  Keep the registered callback URL unchanged; these are ID-token claims, not
+  additional API permissions or entries for **Extra scopes**.
 - Groups: **Token configuration → Add groups claim**, pick **Security
   groups** (or **Groups assigned to the application** in a large tenant),
   ID token format **Group ID**. Values are group object IDs, so the mapping
@@ -142,8 +212,12 @@ scopes** stays empty unless a subsection below says otherwise.
   portal's redirect URI under **Authorized redirect URIs**. Set the consent
   screen's audience to **Internal** so only accounts in your Workspace can
   sign in.
-- Email: `email` and `email_verified` always come with the `email` scope;
-  `hd` names the Workspace domain.
+- Email: the `email` scope returns `email` and `email_verified`; first linking
+  requires a verified Workspace account with Boolean `email_verified: true`.
+  `hd` identifies the hosted Workspace domain. Use the Internal audience above
+  to restrict accounts; the email suffix alone does not prove Workspace
+  membership. See Google's [OIDC claim reference](https://developers.google.com/identity/openid-connect/reference)
+  and [Workspace identity guidance](https://developers.google.com/identity/gsi/web/guides/verify-google-id-token).
 - Groups: none. Google's OpenID Connect tokens carry no group membership,
   so leave **Group mapping** empty — an empty mapping touches nothing —
   and use **Default groups** or the portal's own group management instead.
@@ -157,8 +231,11 @@ scopes** stays empty unless a subsection below says otherwise.
   Application**, with the portal's redirect URI under **Sign-in redirect
   URIs**. Assign the users or groups that may sign in; copy the client ID
   and secret.
-- Email: `email` (and `preferred_username`, the Okta login) come with the
-  default scopes.
+- Email: the `email` scope requests `email` and `email_verified`. Complete
+  verification of the user's primary email in Okta and confirm your chosen
+  authorization server and flow return Boolean `email_verified: true` for
+  that address. An assigned or active account alone is not proof of email
+  verification. See Okta's [scope-dependent claims](https://developer.okta.com/docs/api/openapi/okta-oauth/guides/overview#scope-dependent-claims-not-always-returned).
 - Groups on the org authorization server: open the app's **Sign On** tab,
   **OpenID Connect ID Token → Edit**, **Groups claim type: Filter**, claim
   name `groups`, **Matches regex** `.*` (or **Starts with** a prefix). The
@@ -178,8 +255,12 @@ scopes** stays empty unless a subsection below says otherwise.
   **Authorization Code** grant, add the portal's redirect URI and set token
   endpoint authentication to **Client Secret Basic**; grant the `openid`,
   `profile` and `email` scopes under **Resources**; enable the app.
-- Email: `email` comes with the `email` scope from the user's email
-  attribute.
+- Email: the [email scope](https://developer.pingidentity.com/pingone-api/foundations/pingone-roles-scopes-and-permissions/access-services-through-scopes-and-roles/openid-connect-oidc-scopes.html)
+  requests `email` and `email_verified`. Complete PingOne's
+  [email verification flow](https://developer.pingidentity.com/pingone-api/platform/users/user-email-verification/verify-email-code.html)
+  so the user's directory `emailVerified` state is true. Check the application's
+  claim mappings return that state as Boolean `email_verified: true` alongside
+  the verified address. Populating the email attribute alone is insufficient.
 - Groups: **Attribute Mappings → + Add**, claim `groups`, PingOne attribute
   **Group Names** (`memberOfGroupNames`; **Group IDs** to map by ID). A
   mapped claim is returned in the ID token regardless of scopes. Values
@@ -192,7 +273,17 @@ scopes** stays empty unless a subsection below says otherwise.
   add the portal's redirect URI; on **SSO** choose application type **Web**
   and token endpoint authentication **Basic**; copy the client ID and
   secret. Give users access through a role.
-- Email: `email` comes with the `email` scope.
+- Email: `email` comes with the `email` scope, but OneLogin omits
+  `email_verified` by default. Follow OneLogin's
+  [verification-claim setup](https://developers.onelogin.com/docs/openid-connect/guides/email-verified/):
+  create a custom attribute holding the user's real email verification state,
+  populate it only through a workflow that verifies the current address, and
+  map an OIDC app parameter named `email_verified` to that attribute
+  (`custom_attribute_email_verified` if its short name is `email_verified`).
+  Confirm the issued claim is JSON Boolean `true`, not the string `"true"`;
+  an unset attribute omits the claim. Never map a constant `true` or mark
+  every user verified merely to enable sign-in. Without real verification
+  state and this mapping, the recipe does not support first linking.
 - Groups: on **Parameters** open **Groups**, set **Default if no value** to
   **User Roles** with **Semicolon Delimited input (Multi-value output)**.
   OneLogin emits the claim only for the `groups` scope, so enter `groups`
@@ -221,7 +312,13 @@ scopes** stays empty unless a subsection below says otherwise.
 - **Applications → Create Application → Regular Web Applications**, with
   the portal's redirect URI under **Allowed Callback URLs**. Enable the
   connections your users sign in with; copy the client ID and secret.
-- Email: `email` and `email_verified` come with the `email` scope.
+- Email: the `email` scope requests `email` and `email_verified`; it does not
+  verify an account. Complete the connection's
+  [email verification workflow](https://auth0.com/docs/manage-users/user-accounts/verify-emails)
+  and confirm Boolean `email_verified: true` is returned for the address.
+  Database users can complete Auth0's verification email; social and enterprise
+  connections depend on their upstream verification workflow and may update
+  the state on later sign-ins. Check each connection you enable.
 - Groups: Auth0 refuses custom claims named `groups` or `roles`; a custom
   claim must be namespaced with a URL you control. Add a **Login / Post
   Login** Action:
@@ -242,7 +339,13 @@ scopes** stays empty unless a subsection below says otherwise.
 - **Clients → Create client**, type OpenID Connect, **Client
   authentication** on, **Standard flow** on, with the portal's redirect URI
   under **Valid redirect URIs**. The secret is on the **Credentials** tab.
-- Email: `email` comes with the `email` scope from the user's email field.
+- Email: retain the built-in `email` client scope and its `email` and
+  `email verified` mappers. The latter emits the user's verification state as
+  Boolean `email_verified`. Have users complete **Verify Email**, with realm
+  email delivery configured; filling in the email field alone is insufficient.
+  Confirm `email_verified: true` reaches the portal. See Keycloak's
+  [client scopes](https://www.keycloak.org/docs/latest/server_admin/index.html#_client_scopes)
+  and [email verification](https://www.keycloak.org/docs/latest/server_admin/index.html#proc-verify-user-email_server_administration_guide).
 - Groups: on the client's **Client scopes** tab open the
   `<client>-dedicated` scope, **Add mapper → By configuration → Group
   Membership**, token claim name `groups`, **Full group path** off, **Add
@@ -252,6 +355,19 @@ scopes** stays empty unless a subsection below says otherwise.
   name.
 
 ### AD FS (Windows Server 2016 and later)
+
+**First-link limitation:** the email, UPN and groups recipe below does not
+supply verified-email evidence. It is insufficient to link an existing member
+or provision a new account. First-link support requires a validated
+configuration emitting Boolean `email_verified: true` based on real
+verification of the supplied email; no such recipe is established here.
+Entra's tenant-specific exceptions do not apply to AD FS. Do not add a constant
+verification claim. Microsoft's [OIDC concepts](https://learn.microsoft.com/en-us/windows-server/identity/ad-fs/development/ad-fs-openid-connect-oauth-concepts)
+describe claim issuance and `allatclaims`, which copies claims without
+establishing email verification.
+
+This limitation does not apply to direct LDAP / Active Directory sign-in,
+which checks directory credentials rather than an OIDC verification claim.
 
 - Issuer: `https://<federation-service-host>/adfs`.
 - **AD FS Management → Application Groups → Add Application Group →
@@ -267,7 +383,7 @@ scopes** stays empty unless a subsection below says otherwise.
   claims into the ID token only for that scope, and its userinfo endpoint
   returns nothing but `sub`.
 - Email: `email` from the rule when the account has a mail attribute;
-  `upn` is always present and is the fallback.
+  a fallback to `upn` does not satisfy first-link email verification.
 - Groups: `groups`, as Active Directory group names. A user in one group
   gets a plain string instead of a list, which the portal accepts. AD FS
   2016 needs update KB4019472 for `allatclaims`.
@@ -356,7 +472,7 @@ login page), a **Back to sign-in** link, and a reference such as `K3M7Q2XA`.
 | Your account isn't a member of *Org* yet. Ask an organization admin to invite you. | A portal account exists for that email but isn't in the organization. |
 | *Org* doesn't create accounts automatically. Ask an organization admin to invite you. | No account yet and auto-provisioning is off. |
 | *email* isn't in an email domain *Org* uses for single sign-on. | The email's domain isn't one of the organization's routed domains. |
-| Your identity provider didn't confirm your email address. | The provider didn't mark the email as verified. |
+| Your identity provider didn't confirm your email address. | The provider didn't supply accepted verification evidence for this email. For Entra, check the optional ID-token claims described above. |
 | Your identity provider didn't send an email address. | The token carries no email claim. |
 | Single sign-on isn't turned on for *Org*. | SSO was switched off, for example after the link was bookmarked. |
 | Sign-in was cancelled. | The person declined at the provider. |
@@ -369,6 +485,13 @@ and a `reason_code` (for example `existing_non_member_account` or
 `idp_state_invalid`) in its details; the same reference is written to the
 server log next to the reason, along with the provider's error text for
 identity-provider failures.
+
+If **Test sign-in** reaches Entra, finds the email and routes its domain, but
+fails **Email verified by the identity provider**, check that you are running
+0.9.3 or later and that the application's ID token includes `email` and Boolean
+`xms_edov: true` as described above. Application consent alone does not supply
+this evidence. Deleting an existing portal account will not fix it: both
+first-time linking and new-account creation require verification.
 
 ## Security model
 

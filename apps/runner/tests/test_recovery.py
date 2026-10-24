@@ -10,7 +10,7 @@ from django.utils import timezone
 from apps.reports.models import Report
 from apps.runner.management.commands.runworker import Command, _enqueue_scheduled
 from apps.runner.models import Run, RunRecovery
-from apps.runner.recovery import complete_run, dispatch_due, reconcile
+from apps.runner.recovery import complete_run, dispatch_due, reconcile, replay_safe
 from apps.runner.services import enqueue, request_stop
 
 pytestmark = pytest.mark.django_db
@@ -99,8 +99,58 @@ def test_distinct_non_replayable_outcomes(report_row, status, evidence, confirme
 
 
 def test_safe_query_is_not_safe_report(report_row):
+    # An explicit opt-out keeps query-level safety from enabling report replay.
+    report_row.config = {"recovery": {"replay_safe": False}}
+    report_row.save(update_fields=["config"])
     enqueue(report_row)
     root = finish(Run.objects.get(report=report_row))
+    assert root.diagnostics["recovery"]["reason"] == "report_replay_not_safe"
+    assert not RunRecovery.objects.exists()
+
+
+@pytest.mark.parametrize("config", [{}, {"recovery": {}}, {"recovery": {"replay_safe": True}}])
+def test_default_recovery_admission_and_dispatch(report_row, config):
+    report_row.config = config
+    report_row.save(update_fields=["config"])
+    enqueue(report_row)
+    root = Run.objects.get(report=report_row)
+    assert root.replay_safe is True
+    root = finish(root)
+    assert root.recovery.state == "pending"
+    due(root.recovery)
+    dispatch_due()
+    retry = Run.objects.get(trigger="retry")
+    assert retry.replay_safe is True
+
+
+@pytest.mark.parametrize("config", [[], {"recovery": None}, {"recovery": []},
+                                     {"recovery": {"replay_safe": None}},
+                                     {"recovery": {"replay_safe": 1}},
+                                     {"recovery": {"replay_safe": "true"}}])
+def test_malformed_recovery_policy_fails_closed(report_row, config):
+    report_row.config = config
+    report_row.save(update_fields=["config"])
+    enqueue(report_row)
+    root = Run.objects.get(report=report_row)
+    assert root.replay_safe is False
+    root = finish(root)
+    assert root.diagnostics["recovery"]["reason"] == "report_replay_not_safe"
+    assert not RunRecovery.objects.exists()
+
+
+def test_null_report_config_fails_closed():
+    from types import SimpleNamespace
+
+    assert replay_safe(SimpleNamespace(config=None)) is False
+
+
+def test_historical_null_run_snapshot_remains_ineligible(report_row):
+    safe_report(report_row)
+    enqueue(report_row)
+    run = Run.objects.get(report=report_row)
+    Run.objects.filter(pk=run.pk).update(replay_safe=None)
+    run.refresh_from_db()
+    root = finish(run)
     assert root.diagnostics["recovery"]["reason"] == "report_replay_not_safe"
     assert not RunRecovery.objects.exists()
 
@@ -135,7 +185,7 @@ def test_admission_rechecks_policy_and_age(report_row, change):
     elif change == "suspended":
         report_row.refresh_suspended_at = timezone.now()
     elif change == "unsafe":
-        report_row.config = {}
+        report_row.config = {"recovery": {"replay_safe": False}}
     else:
         RunRecovery.objects.filter(pk=chain.pk).update(expires_at=timezone.now() - timedelta(seconds=1))
     report_row.save()
@@ -260,7 +310,7 @@ def test_queued_retry_rechecks_before_process_claim(report_row, change):
     elif change == "suspended":
         report_row.refresh_suspended_at = timezone.now()
     else:
-        report_row.config = {}
+        report_row.config = {"recovery": {"replay_safe": False}}
     report_row.save()
     executor = StubExecutor()
     assert Command()._try_claim(executor, queued.pk, quotas) is False
