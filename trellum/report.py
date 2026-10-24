@@ -75,7 +75,6 @@ class ReportContext:
         # Honours FW_NOW so a run can be made reproducible; falls back to the
         # real clock when unset.
         from trellum.project import get_now_utc
-
         from trellum.reporting_day import load_reporting_settings
 
         self.reporting_settings = load_reporting_settings()

@@ -136,8 +136,8 @@ def scan_report_configs(
     if not os.path.isdir(reports_dir):
         return []
 
-    from trellum.reporting_day import load_reporting_settings
     from trellum.report_config import load_content_config, resolve_project_schedule
+    from trellum.reporting_day import load_reporting_settings
 
     reporting_settings = None
     found: list[dict] = []

@@ -1,7 +1,7 @@
 """Project schedules resolve identically for builds and explicit-path scans."""
 
-import yaml
 import pytest
+import yaml
 
 from trellum.report import BaseReport
 from trellum.runner import scan_report_configs
