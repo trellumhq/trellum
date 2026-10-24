@@ -7,9 +7,6 @@ import re
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
-import yaml
-
-from trellum.report_config import validate_content_config
 from trellum.themes import DEFAULT_THEME, Theme
 
 #: Live-query ids travel into ``_live_queries.json``, data.json and the host's
@@ -595,11 +592,21 @@ class BaseReport:
 
     @classmethod
     def load_config(cls, report_dir: str) -> dict:
-        """Load and return the report.yaml from a report directory."""
-        yaml_path = os.path.join(report_dir, "report.yaml")
-        if not os.path.exists(yaml_path):
-            raise FileNotFoundError(f"No report.yaml found in {report_dir}")
-        # UTF-8 explicitly, or Windows decodes non-ASCII names via the ANSI
-        # code page and the header renders mojibake.
-        with open(yaml_path, encoding="utf-8") as f:
-            return validate_content_config(yaml.safe_load(f))
+        """Load report.yaml, resolving opted-in project schedules.
+
+        The project is derived from reports/<slug>, never from process-global
+        state.
+        """
+        from trellum.report_config import load_content_config, resolve_project_schedule
+
+        config = load_content_config(report_dir)
+        schedule = config.get("schedule")
+        if isinstance(schedule, dict) and "project" in schedule:
+            from trellum.reporting_day import load_reporting_settings
+
+            reporting_settings = None
+            if schedule["project"] == "metrics" and "cron" not in schedule:
+                project_root = os.path.dirname(os.path.dirname(os.path.abspath(report_dir)))
+                reporting_settings = load_reporting_settings(project_root)
+            return resolve_project_schedule(config, reporting_settings)
+        return config

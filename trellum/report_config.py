@@ -1,5 +1,34 @@
 """Report and analysis manifest trust boundaries."""
 
+from pathlib import Path
+
+import yaml
+
+
+def load_content_config(report_dir: str) -> dict:
+    """Read a manifest before resolving any project defaults."""
+    path = Path(report_dir) / "report.yaml"
+    if not path.exists():
+        raise FileNotFoundError(f"No report.yaml found in {report_dir}")
+    with path.open(encoding="utf-8") as stream:
+        return validate_content_config(yaml.safe_load(stream))
+
+
+def resolve_project_schedule(config: dict, settings) -> dict:
+    """Expand a project schedule without changing an explicit report cron.
+
+    An explicit (even empty) cron is an override. Only reports that opt in
+    inherit project settings; ordinary reports and analyses are unchanged.
+    """
+    schedule = config.get("schedule")
+    if not isinstance(schedule, dict) or "project" not in schedule:
+        return config
+    if schedule["project"] != "metrics":
+        raise ValueError("schedule.project must be 'metrics'")
+    if "cron" in schedule:
+        return config
+    return {**config, "schedule": {"project": "metrics", **settings.metrics_schedule()}}
+
 
 def validate_content_config(config: object) -> dict:
     """Validate the content discriminator before executing project code."""

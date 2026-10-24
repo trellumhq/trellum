@@ -91,11 +91,17 @@ def test_invalid_config(config):
         validate_reporting_settings(config)
 
 
-@pytest.mark.parametrize("text", ["", "null", "[]", "false", "reporting: [", "reporting: null", "reporting:\n  day_start: nope"])
+@pytest.mark.parametrize("text", ["[]", "false", "reporting: [", "reporting: null", "reporting:\n  day_start: nope"])
 def test_strict_project_reader(tmp_path, text):
     (tmp_path / "config.yaml").write_text(text)
     with pytest.raises(ValueError, match="config.yaml"):
         load_reporting_settings(tmp_path)
+
+
+@pytest.mark.parametrize("text", ["", "# Project settings\n", "null"])
+def test_empty_project_settings_keep_legacy_defaults(tmp_path, text):
+    (tmp_path / "config.yaml").write_text(text)
+    assert load_reporting_settings(tmp_path) == ReportingSettings()
 
 
 def test_project_reader_and_context_load_once(tmp_path, monkeypatch):

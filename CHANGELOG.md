@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- Project setup now configures a reporting timezone, reporting-day start, and
+  separate daily Metrics build time. Report date helpers and Metrics lookback
+  windows use the reporting day; timestamp queries can obtain its UTC bounds.
+  Metrics reports can inherit the project build schedule on repository sync,
+  while explicit report schedules and alert schedules remain independent.
+
 ## [0.9.1] — 2026-10-20
 
 The v0.9.0 tag was never published: its images failed the release

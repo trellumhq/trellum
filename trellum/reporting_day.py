@@ -101,6 +101,8 @@ def load_reporting_settings(project_root: str | Path | None = None) -> Reporting
         raise ValueError(f"Could not read reporting configuration from {path}: {exc}") from exc
     try:
         config = yaml.safe_load(content)
+        if config is None:
+            config = {}
         return validate_reporting_settings(config)
     except (yaml.YAMLError, ValueError) as exc:
         raise ValueError(f"Invalid reporting configuration in {path}: {exc}") from exc
