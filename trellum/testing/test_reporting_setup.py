@@ -3,17 +3,37 @@
 from __future__ import annotations
 
 import importlib
-import os
 import stat
 
 import pytest
 import yaml
 
+from trellum.cli.commands.metrics import _scaffold_report
 from trellum.scaffold import reporting
 from trellum.scaffold.init_project import init_project
-from trellum.cli.commands.metrics import _scaffold_report
 
 init_module = importlib.import_module("trellum.scaffold.init_project")
+
+
+def test_setup_command_uses_project_root_and_flags(tmp_path, monkeypatch):
+    from trellum.cli import main
+
+    monkeypatch.setenv("FW_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.setattr("builtins.input", lambda _: pytest.fail("unattended setup prompted"))
+    assert main(["setup", "reporting", "--non-interactive", "--timezone", "UTC",
+                 "--day-start", "04:00", "--metrics-build-time", "07:00"]) == 0
+    assert yaml.safe_load((tmp_path / "config.yaml").read_text())["reporting"] == {
+        "timezone": "UTC", "day_start": "04:00", "metrics_build_time": "07:00",
+    }
+
+
+@pytest.mark.parametrize("contents", ["[]", "false", "reporting: null"])
+def test_metrics_rejects_invalid_config_without_scaffolding(tmp_path, contents):
+    path = tmp_path / "config.yaml"
+    path.write_text(contents)
+    assert _scaffold_report(str(tmp_path)) == 2
+    assert path.read_text() == contents
+    assert not (tmp_path / "reports").exists()
 
 
 def test_init_prompts_three_questions_and_writes(monkeypatch, tmp_path):
@@ -258,7 +278,7 @@ def test_metrics_scaffold_preserves_existing_files_and_adds_schedule(monkeypatch
     assert (report_dir / "report.yaml").read_text() == "custom report"
     assert (report_dir / "generator.py").read_text() == "custom generator"
     output = capsys.readouterr().out
-    assert "remains unscheduled until configured" in output
+    assert "its schedule was not changed" in output
     assert "python -m trellum setup reporting --dest ." in output
 
 

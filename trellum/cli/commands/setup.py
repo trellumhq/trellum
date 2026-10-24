@@ -11,8 +11,13 @@ from pathlib import Path
 def _cmd_setup(args: argparse.Namespace) -> int:
     from trellum.agent import agentsetup
     if args.what == "reporting":
-        from trellum.scaffold.reporting import ReportingSetupError, configure_reporting, stdin_is_interactive
-        root = Path(args.dest or ".").resolve()
+        from trellum.project import get_project_root
+        from trellum.scaffold.reporting import (
+            ReportingSetupError,
+            configure_reporting,
+            stdin_is_interactive,
+        )
+        root = Path(args.dest or get_project_root()).resolve()
         try:
             values = configure_reporting(
                 root, timezone=args.timezone, day_start=args.day_start,

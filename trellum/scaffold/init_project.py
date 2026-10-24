@@ -12,7 +12,10 @@ import os
 import sys
 
 from trellum.scaffold.reporting import (
-    ReportingSetupError, collect_reporting, stdin_is_interactive, write_reporting,
+    ReportingSetupError,
+    collect_reporting,
+    stdin_is_interactive,
+    write_reporting,
 )
 
 EVENTS_YAML_TEMPLATE = """\
@@ -127,10 +130,7 @@ def init_project(target: str | None = None, *, timezone: str | None = None,
         no_metrics_schedule=no_metrics_schedule,
         non_interactive=non_interactive, prompt=should_prompt,
     )
-    try:
-        write_reporting(root, reporting)
-    except ReportingSetupError:
-        raise
+    write_reporting(root, reporting)
 
     print(f"Initializing project in {root}\n")
 
