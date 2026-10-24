@@ -14,6 +14,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Support alert checks and required decisions with Anthropic models that reject
+  forced tool choice, including Claude Sonnet 5.5. After updating, run Test
+  connection in AI settings to replace any previously failed alert check.
 - Enable automatic report recovery by default, retaining explicit opt-out,
   bounded attempts and checks for writes and unconfirmed outcomes.
 - Preserve read-query recovery through harmless Vertica connection contexts,
