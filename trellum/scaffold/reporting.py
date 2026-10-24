@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import os
+import stat
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -19,9 +22,12 @@ DEFAULTS = {"timezone": "UTC", "day_start": "00:00", "metrics_build_time": "07:0
 
 
 def _read_config(path: Path) -> tuple[str, dict[str, Any]]:
-    if not path.exists():
-        return "", {}
-    raw = path.read_text(encoding="utf-8")
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        raw = ""
+    except (OSError, UnicodeError) as exc:
+        raise ReportingSetupError(f"Could not read project config {path}: {exc}") from exc
     try:
         data = yaml.safe_load(raw)
     except yaml.YAMLError as exc:
@@ -35,46 +41,146 @@ def _read_config(path: Path) -> tuple[str, dict[str, Any]]:
     return raw, data
 
 
-def _reporting_value_span(raw: str) -> tuple[int, int] | None:
-    """Find only the reporting value node, leaving other source text intact."""
-    if not raw.strip():
-        return None
+def _load_rendered(raw: str, path: Path) -> dict[str, Any]:
     try:
-        node = yaml.compose(raw)
+        rendered = yaml.safe_load(raw)
+    except yaml.YAMLError as exc:
+        raise ReportingSetupError(
+            f"Cannot safely preserve YAML structure in {path}; original file was left unchanged: {exc}"
+        ) from exc
+    if rendered is None:
+        rendered = {}
+    if not isinstance(rendered, dict):
+        raise ReportingSetupError(
+            f"Cannot safely preserve YAML structure in {path}; original file was left unchanged"
+        )
+    return rendered
+
+
+def _document_end_index(raw: str) -> int | None:
+    try:
+        for token in yaml.scan(raw):
+            if isinstance(token, yaml.tokens.DocumentEndToken):
+                return token.start_mark.index
     except yaml.YAMLError as exc:
         raise ReportingSetupError(f"Malformed project YAML: {exc}") from exc
-    if not isinstance(node, yaml.MappingNode):
-        return None
-    for key, value in node.value:
-        if isinstance(key, yaml.ScalarNode) and key.value == "reporting":
-            start = value.start_mark.index
-            end = value.end_mark.index
-            # For an empty/null key, replace from its value indentation line.
-            if start == end:
-                start = key.end_mark.index
-            return start, end
     return None
 
 
-def _render_config(raw: str, block: dict[str, Any]) -> str:
-    encoded = yaml.safe_dump({"reporting": block}, sort_keys=False, allow_unicode=True)
-    value = encoded.split("\n", 1)[1].rstrip("\n")
-    span = _reporting_value_span(raw)
-    if span:
-        start, end = span
-        # The compose end mark excludes trailing comments, so these remain intact.
-        value = value[2:] if value.startswith("  ") else value
-        return raw[:start] + value + raw[end:]
-    prefix = raw
-    if prefix and not prefix.endswith("\n"):
-        prefix += "\n"
-    return prefix + "reporting:\n" + value + "\n"
+def _block_mapping_text(block: dict[str, Any]) -> str:
+    return yaml.safe_dump(block, sort_keys=False, allow_unicode=True).rstrip("\n")
+
+
+def _flow_mapping_text(block: dict[str, Any]) -> str:
+    return yaml.safe_dump(
+        block, sort_keys=False, allow_unicode=True, default_flow_style=True,
+    ).strip()
+
+
+def _indent_lines(text: str, indentation: str) -> str:
+    lines = text.splitlines()
+    return "\n".join([lines[0], *(indentation + line for line in lines[1:])])
+
+
+def _last_content_end(node: yaml.Node) -> int:
+    """End of the final value token, excluding trailing comments/blank lines."""
+    if isinstance(node, yaml.MappingNode) and node.value:
+        return _last_content_end(node.value[-1][1])
+    if isinstance(node, yaml.SequenceNode) and node.value:
+        return _last_content_end(node.value[-1])
+    return node.end_mark.index
+
+
+def _render_config(raw: str, candidate: dict[str, Any], path: Path) -> str:
+    """Patch the reporting node while retaining surrounding YAML source text."""
+    try:
+        root = yaml.compose(raw)
+    except yaml.YAMLError as exc:
+        raise ReportingSetupError(f"Malformed project config {path}: {exc}") from exc
+
+    settings = candidate["reporting"]
+    if isinstance(root, yaml.MappingNode):
+        matches = [
+            (key, value) for key, value in root.value
+            if isinstance(key, yaml.ScalarNode) and key.value == "reporting"
+        ]
+        if len(matches) > 1:
+            raise ReportingSetupError(
+                f"Cannot safely update duplicate reporting keys in {path}; original file was left unchanged"
+            )
+        if matches:
+            key, value = matches[0]
+            start, end = value.start_mark.index, value.end_mark.index
+            if root.flow_style or value.flow_style:
+                replacement = _flow_mapping_text(settings)
+            elif isinstance(value, yaml.MappingNode):
+                content_end = _last_content_end(value)
+                trailing = raw[content_end:end]
+                replacement = _indent_lines(
+                    _block_mapping_text(settings), " " * (key.start_mark.column + 2)
+                ) + trailing
+            else:
+                raise ReportingSetupError(
+                    f"Cannot safely update reporting value in {path}; original file was left unchanged"
+                )
+            updated = raw[:start] + replacement + raw[end:]
+        elif root.flow_style:
+            close = raw.rfind("}", root.start_mark.index, root.end_mark.index)
+            if close < 0:
+                raise ReportingSetupError(
+                    f"Cannot safely update flow mapping in {path}; original file was left unchanged"
+                )
+            pair = _flow_mapping_text({"reporting": settings})[1:-1]
+            separator = ", " if root.value else ""
+            updated = raw[:close] + separator + pair + raw[close:]
+        else:
+            snippet = yaml.safe_dump(
+                {"reporting": settings}, sort_keys=False, allow_unicode=True,
+            )
+            end = _document_end_index(raw)
+            if end is None:
+                prefix = raw
+                if prefix and not prefix.endswith("\n"):
+                    prefix += "\n"
+                updated = prefix + snippet
+            else:
+                updated = raw[:end] + snippet + raw[end:]
+    elif root is None:
+        snippet = yaml.safe_dump({"reporting": settings}, sort_keys=False, allow_unicode=True)
+        end = _document_end_index(raw)
+        if end is None:
+            prefix = raw
+            if prefix and not prefix.endswith("\n"):
+                prefix += "\n"
+            updated = prefix + snippet
+        else:
+            updated = raw[:end] + snippet + raw[end:]
+    elif isinstance(root, yaml.ScalarNode) and root.tag.endswith(":null"):
+        snippet = yaml.safe_dump({"reporting": settings}, sort_keys=False, allow_unicode=True).rstrip("\n")
+        updated = raw[:root.start_mark.index] + snippet + raw[root.end_mark.index:]
+    else:
+        raise ReportingSetupError(
+            f"Cannot safely update YAML document in {path}; original file was left unchanged"
+        )
+
+    if _load_rendered(updated, path) != candidate:
+        raise ReportingSetupError(
+            f"Cannot safely preserve unrelated YAML values in {path}; original file was left unchanged"
+        )
+    return updated
 
 
 def _ask(label: str, default: str, input_fn=None) -> str:
     input_fn = input if input_fn is None else input_fn
     answer = input_fn(f"{label} [{default}]: ").strip()
     return answer or default
+
+
+def _validate_candidate(candidate: dict[str, Any]) -> None:
+    try:
+        validate_reporting_settings(candidate)
+    except Exception as exc:
+        raise ReportingSetupError(f"Invalid reporting settings: {exc}") from exc
 
 
 def collect_reporting(root: str | Path, *, timezone: str | None = None,
@@ -84,14 +190,21 @@ def collect_reporting(root: str | Path, *, timezone: str | None = None,
     """Validate complete settings without writing; callers can then scaffold atomically."""
     path = Path(root) / "config.yaml"
     _, config = _read_config(path)
-    current = config.get("reporting") or {}
-    values: dict[str, Any] = {
+    has_reporting = "reporting" in config
+    current = config.get("reporting", {})
+    if no_metrics_schedule and metrics_build_time is not None:
+        raise ReportingSetupError("--metrics-build-time conflicts with --no-metrics-schedule")
+
+    values: dict[str, Any] = dict(current)
+    values.update({
         "timezone": timezone if timezone is not None else current.get("timezone", DEFAULTS["timezone"]),
         "day_start": day_start if day_start is not None else current.get("day_start", DEFAULTS["day_start"]),
-        "metrics_build_time": (None if no_metrics_schedule else
+        "metrics_build_time": (
+            None if no_metrics_schedule else
             metrics_build_time if metrics_build_time is not None else
-            current.get("metrics_build_time", DEFAULTS["metrics_build_time"])),
-    }
+            current.get("metrics_build_time") if has_reporting else DEFAULTS["metrics_build_time"]
+        ),
+    })
     if prompt and not non_interactive:
         values["timezone"] = _ask(
             "Timezone for reporting day (IANA name)", str(values["timezone"]), input_fn
@@ -106,31 +219,48 @@ def collect_reporting(root: str | Path, *, timezone: str | None = None,
             schedule_default, input_fn,
         )
         values["metrics_build_time"] = None if answer.lower() in {"none", "disabled", "off"} else answer
-    # Keep a disabled schedule disabled on reruns unless explicitly enabled.
-    if (current.get("metrics_build_time", DEFAULTS["metrics_build_time"]) is None
-            and metrics_build_time is None and not no_metrics_schedule and not prompt):
+    if no_metrics_schedule:
         values["metrics_build_time"] = None
+
     candidate = dict(config)
     candidate["reporting"] = values
-    try:
-        validate_reporting_settings(candidate)
-    except Exception as exc:
-        raise ReportingSetupError(f"Invalid reporting settings: {exc}") from exc
+    _validate_candidate(candidate)
     return values
 
 
 def write_reporting(root: str | Path, values: dict[str, Any]) -> Path:
     path = Path(root) / "config.yaml"
     raw, config = _read_config(path)
+    merged = dict(config.get("reporting", {}))
+    merged.update(values)
     candidate = dict(config)
-    candidate["reporting"] = values
+    candidate["reporting"] = merged
+    _validate_candidate(candidate)
+    if config.get("reporting") == merged:
+        return path
+    updated = _render_config(raw, candidate, path)
+    temporary_path = None
     try:
-        validate_reporting_settings(candidate)
-    except Exception as exc:
-        raise ReportingSetupError(f"Invalid reporting settings: {exc}") from exc
-    updated = _render_config(raw, values)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(updated, encoding="utf-8")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            mode = stat.S_IMODE(path.stat().st_mode)
+        except FileNotFoundError:
+            mode = None
+        fd, temporary_path = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            stream.write(updated)
+            stream.flush()
+            os.fsync(stream.fileno())
+        if mode is not None:
+            os.chmod(temporary_path, mode)
+        os.replace(temporary_path, path)
+    except (OSError, UnicodeError) as exc:
+        if temporary_path is not None:
+            try:
+                os.unlink(temporary_path)
+            except OSError:
+                pass
+        raise ReportingSetupError(f"Could not write project config {path}: {exc}") from exc
     return path
 
 
