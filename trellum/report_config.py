@@ -14,6 +14,20 @@ def load_content_config(report_dir: str) -> dict:
         return validate_content_config(yaml.safe_load(stream))
 
 
+def load_report_config(report_dir: str) -> dict:
+    """Read a report and resolve schedules from its containing project."""
+    config = load_content_config(report_dir)
+    schedule = config.get("schedule")
+    if isinstance(schedule, dict) and "project" in schedule:
+        from trellum.reporting_day import load_reporting_settings
+
+        reporting_settings = None
+        if schedule["project"] == "metrics" and "cron" not in schedule:
+            reporting_settings = load_reporting_settings(Path(report_dir).absolute().parent.parent)
+        return resolve_project_schedule(config, reporting_settings)
+    return config
+
+
 def resolve_project_schedule(config: dict, settings) -> dict:
     """Expand a project schedule without changing an explicit report cron.
 

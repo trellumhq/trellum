@@ -15,10 +15,15 @@ from trellum.scaffold.init_project import init_project
 init_module = importlib.import_module("trellum.scaffold.init_project")
 
 
-def test_setup_command_uses_project_root_and_flags(tmp_path, monkeypatch):
+@pytest.mark.parametrize("explicit_override", [False, True])
+def test_setup_command_uses_project_root_and_flags(tmp_path, monkeypatch, explicit_override):
     from trellum.cli import main
 
-    monkeypatch.setenv("FW_PROJECT_ROOT", str(tmp_path))
+    # An embedding host's override takes precedence over the environment.
+    # Isolate both inputs from demo fixtures and restore them after this test.
+    monkeypatch.setattr("trellum.project._project_root_override",
+                        str(tmp_path) if explicit_override else None)
+    monkeypatch.setenv("FW_PROJECT_ROOT", str(tmp_path / "unused" if explicit_override else tmp_path))
     monkeypatch.setattr("builtins.input", lambda _: pytest.fail("unattended setup prompted"))
     assert main(["setup", "reporting", "--non-interactive", "--timezone", "UTC",
                  "--day-start", "04:00", "--metrics-build-time", "07:00"]) == 0

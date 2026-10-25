@@ -591,21 +591,7 @@ class BaseReport:
 
     @classmethod
     def load_config(cls, report_dir: str) -> dict:
-        """Load report.yaml, resolving opted-in project schedules.
+        """Load report.yaml, resolving opted-in project schedules."""
+        from trellum.report_config import load_report_config
 
-        The project is derived from reports/<slug>, never from process-global
-        state.
-        """
-        from trellum.report_config import load_content_config, resolve_project_schedule
-
-        config = load_content_config(report_dir)
-        schedule = config.get("schedule")
-        if isinstance(schedule, dict) and "project" in schedule:
-            from trellum.reporting_day import load_reporting_settings
-
-            reporting_settings = None
-            if schedule["project"] == "metrics" and "cron" not in schedule:
-                project_root = os.path.dirname(os.path.dirname(os.path.abspath(report_dir)))
-                reporting_settings = load_reporting_settings(project_root)
-            return resolve_project_schedule(config, reporting_settings)
-        return config
+        return load_report_config(report_dir)
