@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from contextlib import contextmanager
 
 
@@ -187,7 +188,16 @@ def stream_anthropic(config, messages, system_blocks, schemas, *, max_tokens,
         if schemas:
             kwargs["tools"] = schemas
         if force_tool:
-            kwargs["tool_choice"] = {"type": "tool", "name": force_tool}
+            # These model families reject forced tool choice with HTTP 400.
+            # The runtime still validates the required call before executing it.
+            if re.fullmatch(r"claude-(?:(?:sonnet|opus)-5-5|(?:fable|mythos)-5-1)(?:-\d{8})?", config.model):
+                kwargs["tool_choice"] = {"type": "auto"}
+                kwargs["system"] = [*system_blocks, {
+                    "type": "text",
+                    "text": f"You must call the {force_tool} tool in this response. A prose answer alone does not complete this task.",
+                }]
+            else:
+                kwargs["tool_choice"] = {"type": "tool", "name": force_tool}
         if timeout is not None:
             kwargs["timeout"] = timeout
         with client.messages.stream(**kwargs) as stream:

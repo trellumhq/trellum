@@ -949,7 +949,7 @@ def list_models(config: LLMConfig, timeout: float = 10.0) -> list[dict]:
 
 
 def check_connection(config: LLMConfig, timeout: float = 45.0) -> dict:
-    """Synthetic streamed chat/tool roundtrip, forced alert tool and metering."""
+    """Synthetic streamed chat/tool roundtrip, required alert tool and metering."""
     from .transport import TransportError, normalize_error
     started = time.monotonic()
     deadline = started + timeout
@@ -1008,12 +1008,12 @@ def check_connection(config: LLMConfig, timeout: float = 45.0) -> dict:
         checks["chat"] = {"ok": False, "message": str(safe)}
     try:
         probe([{"role": "user", "content": "Call connection_probe with value probe."}], "alert", "connection_probe")
-        checks["alerts"] = {"ok": True, "message": "The forced synthetic alert tool succeeded."}
+        checks["alerts"] = {"ok": True, "message": "The required synthetic alert tool succeeded."}
     except Exception as error:
         safe = normalize_error(error)
         checks["alerts"] = {"ok": False, "message": str(safe)}
     if not checks["chat"]["ok"] and checks["alerts"]["ok"]:
-        checks["alerts"] = {"ok": False, "message": "The forced tool succeeded, but alerts also require streaming and the chat tool roundtrip."}
+        checks["alerts"] = {"ok": False, "message": "The required tool succeeded, but alerts also require streaming and the chat tool roundtrip."}
     usage_ok = bool(metered) and all(metered)
     checks["usage"] = {"ok": usage_ok, "message": "Every probe returned usage." if usage_ok else "One or more probes omitted usage or did not complete. Budgeted inference requires metering."}
     return {"ok": checks["chat"]["ok"], "message": f"{config.model} answered." if checks["chat"]["ok"] else checks["chat"]["message"],
