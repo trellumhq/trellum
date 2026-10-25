@@ -37,7 +37,7 @@ def get_now_utc() -> datetime:
             parsed = datetime.fromisoformat(raw)
             if parsed.tzinfo is None:
                 parsed = parsed.replace(tzinfo=timezone.utc)
-            return parsed
+            return parsed.astimezone(timezone.utc)
         except ValueError:
             print(
                 f"  [warn] {FW_NOW_ENV}={raw!r} is not a valid ISO date/datetime "

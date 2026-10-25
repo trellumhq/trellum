@@ -136,6 +136,10 @@ def scan_report_configs(
     if not os.path.isdir(reports_dir):
         return []
 
+    from trellum.report_config import load_content_config, resolve_project_schedule
+    from trellum.reporting_day import load_reporting_settings
+
+    reporting_settings = None
     found: list[dict] = []
     for entry in sorted(os.listdir(reports_dir)):
         if entry.startswith("_"):
@@ -148,7 +152,12 @@ def scan_report_configs(
         # UTF-8 explicitly: without it Windows falls back to the ANSI code
         # page and a report name like "Insert Coin · Minigame" reaches the
         # gallery as mojibake.
-        config = BaseReport.load_config(os.path.dirname(yaml_path))
+        config = load_content_config(os.path.dirname(yaml_path))
+        schedule = config.get("schedule")
+        if isinstance(schedule, dict) and "project" in schedule:
+            if schedule["project"] == "metrics" and "cron" not in schedule and reporting_settings is None:
+                reporting_settings = load_reporting_settings(Path(reports_dir).resolve().parent)
+            config = resolve_project_schedule(config, reporting_settings)
         content_name = "slides.yaml" if config.get("format") == "presentation" else "content.md"
         content_path = os.path.join(reports_dir, entry, content_name)
         required = content_path if config.get("kind", "report") == "analysis" else gen_path

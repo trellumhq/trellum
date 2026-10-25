@@ -52,6 +52,7 @@ is internal and may change in a patch release without warning.
 | `trellum.metrics.load_metrics` | The project's `metrics.yaml` as `{name: Metric}` — the business-metric registry a host may present or index. `{}` when the file is absent |
 | `trellum.project.get_project_root()` | Project root resolution |
 | `trellum.project.load_project_config()` | The project's `config.yaml` |
+| `trellum.reporting_day.load_reporting_settings(project_root=None)` | Validated project reporting timezone, day boundary and Metrics build time. Pass an explicit root in multi-project hosts. |
 | `trellum.rendering.cdn.serve_vendor_request()` | Serve `/_vendor/*` from your own HTTP server |
 | `trellum.output_backends.backends.resolve_output_backend()` | The configured output backend |
 | The `extensions` block | How an embedding application injects its markup, per the Tier 1 row above |
@@ -68,6 +69,25 @@ Two rules keep this honest, in both directions:
 
 Adding a row here is a deliberate act: it is a promise to a downstream product
 that the framework cannot quietly break.
+
+### Project reporting days and schedules
+
+Project `config.yaml` may declare `reporting.timezone` (IANA name),
+`reporting.day_start` (`HH:MM`), and `reporting.metrics_build_time` (`HH:MM`
+or null). Absent settings mean UTC, midnight, and no inherited build schedule.
+`ReportContext` date properties use the reporting-day label; `now_utc` stays
+an actual UTC instant. `reporting_day_bounds(day)` supplies a half-open UTC
+interval for timestamp queries. Existing daily-grain datasets are not rebucketed.
+
+`schedule: {project: metrics}` in `report.yaml` opts into the project's daily
+Metrics build time. `BaseReport.load_config(path)` and
+`scan_report_configs(reports_dir)` resolve it into the usual `schedule.cron`
+and `schedule.timezone` fields, using the project containing `reports/`.
+An explicit `schedule.cron`, including an empty one, wins over inheritance.
+Unknown project schedule names fail validation. Scans read inherited settings
+once per project, without changing process-global root state or source files.
+Hosts rescan after repository updates and schedule the resulting cron as usual.
+Delivery schedules and idle-build suspension retain their existing semantics.
 
 ### Tier 2: Deprecated (will be removed after 2 minor versions)
 

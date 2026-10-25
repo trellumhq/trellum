@@ -7,7 +7,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
-## [0.9.4] — 2026-10-23
+## [0.9.4] — 2026-10-25
 
 ### Changed
 
@@ -29,6 +29,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Support alert checks and required decisions with Anthropic models that reject
+  forced tool choice, including Claude Sonnet 5.5. After updating, run Test
+  connection in AI settings to replace any previously failed alert check.
 - Enable automatic report recovery by default, retaining explicit opt-out,
   bounded attempts and checks for writes and unconfirmed outcomes.
 - Preserve read-query recovery through harmless Vertica connection contexts,
@@ -56,6 +59,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Project setup now configures a reporting timezone, reporting-day start, and
+  separate daily Metrics build time. Report date helpers and Metrics lookback
+  windows use the reporting day; timestamp queries can obtain its UTC bounds.
+  Metrics reports can inherit the project build schedule on repository sync,
+  while explicit report schedules and alert schedules remain independent.
+
 - Add a bounded, provider-free Chromium timing harness for standalone report
   review and analysis chat, with correlated JSON samples and separate build costs.
 
@@ -65,6 +74,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   without completing work or consuming queued follow-ups.
 
 ### Upgrade notes
+
+- Projects without reporting settings retain UTC/midnight date helpers and
+  receive no automatic build schedule. Configure existing projects with
+  `python -m trellum setup reporting`; existing Metrics reports inherit the
+  daily schedule only when their manifest uses `schedule: {project: metrics}`.
+- After updating, rerun **Test connection** in AI settings if an Anthropic
+  alert check previously failed because forced tool choice was unsupported.
 
 - Reports with external side effects or detached work must set
   `recovery: {replay_safe: false}` in `report.yaml`. Previously admitted runs
