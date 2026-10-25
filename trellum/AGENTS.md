@@ -509,6 +509,20 @@ dataset, then one block per metric (a KPI and a trend), grouped by tag, plus a
 table of the metrics defined but not bound — from a one-line generator. Bind a
 metric and rebuild; nothing else to edit.
 
+Project setup (`python -m trellum.init`, or `python -m trellum setup reporting`
+for an existing project) configures a timezone, reporting-day start and
+separate daily Metrics build time in project `config.yaml`. New Metrics
+manifests inherit that build time with `schedule: {project: metrics}`; an
+explicit report cron wins. Existing report files are never rewritten by the
+scaffold. The portal applies schedule changes on repository sync; alert
+schedules remain separate.
+
+Use `ctx.today` / `ctx.yesterday` for reporting-day labels and
+`ctx.reporting_day_bounds(ctx.yesterday)` for half-open UTC timestamp bounds.
+Daily source rows must already use those labels: these settings cannot
+re-bucket preaggregated daily totals. Without project reporting settings,
+date helpers retain UTC/midnight behavior and no build schedule is added.
+
 The blocks form a continuous chart workspace, sorted by the metric's first tag
 (category) and then label. Each chart retains its per-metric breakdown
 controls. **Show / hide metrics** stores browser-local choices for the current
