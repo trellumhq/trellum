@@ -7,6 +7,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Fixed
+
+- Reconnect after Snowflake SSO session expiry for replayable reads, retaining
+  bounded retries and preventing replay of writes or unconfirmed outcomes.
+
 ## [0.9.5] — 2026-10-26
 
 The v0.9.4 release did not publish any images because its vulnerability scan

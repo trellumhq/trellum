@@ -8,14 +8,14 @@ import json
 import threading
 import warnings
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, Mock
 
 import pandas as pd
 import pytest
 
 snowflake_connector = pytest.importorskip("snowflake.connector")
 
-from trellum.data import fetch  # noqa: E402
+from trellum.data import fetch, query, retry  # noqa: E402
 from trellum.data.drivers import snowflake_driver  # noqa: E402
 from trellum.data.drivers.snowflake_driver import SnowflakeDriver  # noqa: E402
 from trellum.data.retry_errors import is_retryable_connection_error  # noqa: E402
@@ -262,3 +262,112 @@ def test_fetch_failure_is_not_replaced_by_a_cursor_close_failure():
     with pytest.raises(snowflake_connector.OperationalError) as caught:
         fetch.execute_query(_real_connection(cursor), "SELECT 1")
     assert caught.value is original and cursor.closed == 1
+
+
+def _reauthentication_request():
+    # Exercise the installed class, including its ProgrammingError ancestry
+    # and legacy .cause attribute, rather than an optional-driver stand-in.
+    return snowflake_connector.errors.ReauthenticationRequest(
+        "Session expired; open a new connection", errno=390114
+    )
+
+
+@pytest.mark.parametrize("wrapper", [None, "__cause__", "__context__"])
+def test_session_expiry_requests_a_fresh_snowflake_connection(wrapper):
+    error = _reauthentication_request()
+    if wrapper:
+        outer = ConnectionError("query failed")
+        setattr(outer, wrapper, error)
+        error = outer
+    assert is_retryable_connection_error(error, "snowflake")
+    assert not is_retryable_connection_error(error, "postgres")
+
+
+@pytest.mark.parametrize("link", ["__cause__", "__context__"])
+@pytest.mark.parametrize("permanent", [
+    lambda: snowflake_connector.DatabaseError("Invalid credentials", sqlstate="28000"),
+    lambda: snowflake_connector.DatabaseError("invalid peer certificate: Revoked", errno=250001),
+    lambda: snowflake_connector.ProgrammingError("SQL compilation error", sqlstate="42000"),
+])
+@pytest.mark.parametrize("permanent_outer", [False, True])
+def test_session_expiry_does_not_override_wrapped_permanent_failures(link, permanent, permanent_outer):
+    error, other = _reauthentication_request(), permanent()
+    if permanent_outer:
+        error, other = other, error
+    setattr(error, link, other)
+    assert not is_retryable_connection_error(error, "snowflake")
+
+
+@pytest.mark.parametrize("kwargs", [
+    {"sqlstate": "28000"},
+    {"sqlstate": "08007"},  # Transaction outcome is unknown.
+    {"msg": "invalid peer certificate: Revoked"},
+])
+def test_session_expiry_keeps_its_own_permanent_metadata_veto(kwargs):
+    error = snowflake_connector.errors.ReauthenticationRequest(**kwargs)
+    assert not is_retryable_connection_error(error, "snowflake")
+
+
+@pytest.mark.parametrize("sql, attempts", [
+    ("SELECT 1", 2),
+    ("INSERT INTO t VALUES (1)", 1),
+])
+@pytest.mark.parametrize("wrapper", [None, "__cause__", "__context__"])
+def test_managed_session_expiry_replays_only_safe_reads(monkeypatch, sql, attempts, wrapper):
+    error = _reauthentication_request()
+    if wrapper:
+        outer = ConnectionError("query failed")
+        setattr(outer, wrapper, error)
+        error = outer
+    frame = pd.DataFrame({"n": [1]})
+    old_cursor, fresh_cursor = _ConnectorCursor(error=error), _ConnectorCursor(frame=frame)
+    old, fresh = _real_connection(old_cursor), _real_connection(fresh_cursor)
+    old.close, fresh.close = Mock(), Mock()
+    factory, sleep = Mock(side_effect=[old, fresh]), Mock()
+    monkeypatch.setattr(retry.time, "sleep", sleep)
+    handle = retry.ManagedConnection("snowflake", factory)
+    try:
+        if attempts == 2:
+            assert query.query_df(handle, sql, cache_ttl=0).equals(frame)
+            old.close.assert_called_once_with()
+            assert fresh_cursor.executed == [sql] and fresh_cursor.closed == 1
+            sleep.assert_called_once_with(1)
+        else:
+            with pytest.raises(type(error)) as caught:
+                query.query_df(handle, sql, cache_ttl=0)
+            assert caught.value is error
+            assert fresh_cursor.executed == []
+            sleep.assert_not_called()
+        assert factory.call_count == attempts
+        assert old_cursor.executed == [sql] and old_cursor.closed == 1
+    finally:
+        handle.close()
+
+
+def test_managed_session_expiry_exhausts_the_existing_retry_budget(monkeypatch):
+    error = _reauthentication_request()
+    cursors = [_ConnectorCursor(error=error) for _ in range(3)]
+    connections = [_real_connection(cursor) for cursor in cursors]
+    for connection in connections:
+        connection.close = Mock()
+    factory, sleep = Mock(side_effect=connections), Mock()
+    monkeypatch.setattr(retry.time, "sleep", sleep)
+    handle = retry.ManagedConnection("snowflake", factory)
+    try:
+        with pytest.raises(type(error)) as caught:
+            query.query_df(handle, "SELECT 1", cache_ttl=0)
+        assert caught.value is error
+        assert factory.call_count == 3
+        assert [call.args for call in sleep.call_args_list] == [(1,), (2,)]
+        assert "3 attempts" in error.__notes__[-1]
+        for connection, cursor in zip(connections, cursors):
+            connection.close.assert_called_once_with()
+            assert cursor.executed == ["SELECT 1"] and cursor.closed == 1
+    finally:
+        handle.close()
+
+
+def test_unrelated_reauthentication_class_does_not_bypass_programming_veto():
+    lookalike = type("ReauthenticationRequest", (snowflake_connector.ProgrammingError,), {})
+    error = lookalike("connection reset by peer", errno=250001)
+    assert not is_retryable_connection_error(error, "snowflake")
