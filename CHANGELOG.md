@@ -7,13 +7,20 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
-### Added
+## [0.9.4] — 2026-10-25
 
-- Project setup now configures a reporting timezone, reporting-day start, and
-  separate daily Metrics build time. Report date helpers and Metrics lookback
-  windows use the reporting day; timestamp queries can obtain its UTC bounds.
-  Metrics reports can inherit the project build schedule on repository sync,
-  while explicit report schedules and alert schedules remain independent.
+### Changed
+
+- Document scoped source lookup, targeted builds and visual verification for small review styling requests.
+
+- Poll review status every 500 ms during recent queued or active agent work,
+  while retaining each surface's existing idle cadence and pausing hidden pages.
+
+- Align the analysis workspace selection controls, annotation cards, conversation and message composer with report review, and label unsent annotations separately from submitted conversation.
+
+- Animate the in-chat activity indicator while review work is active, with a static indicator for reduced-motion preferences.
+
+- Review controls and conversations use consistent typography, softer theme surfaces and compact desktop controls while retaining touch targets on phones.
 
 ### Documentation
 
@@ -30,7 +37,50 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Preserve read-query recovery through harmless Vertica connection contexts,
   status checks and supported reporting expressions.
 
+- Generate review feedback identities that can be passed directly to CLI activity and reply commands.
+
+- Mark review activity unconfirmed after observation failures and keep observing
+  final feedback replies at the idle cadence after a session ends, including
+  across the final report rebuild and reload. Keep the ended conversation
+  reachable for reading after reply notifications disappear.
+
+- Preserve acknowledged feedback when an older workspace poll finishes, keep
+  ended workspace activity scoped to its analysis, and require the original
+  session or feedback identity before a reply completes review work.
+
+- Require an explicit Build or Rebuild action before generating a selected
+  source report in the review workspace.
+
+- Keep empty datasource placeholders from blocking queries against other
+  configured sources; selecting the empty source still explains how to configure it.
+- Disable date presets when date bounds or preset counts are missing or malformed
+  so selected dates cannot become `NaN`, and keep obsolete
+  live lookup responses from replacing a newer filter selection.
+
+### Added
+
+- Project setup now configures a reporting timezone, reporting-day start, and
+  separate daily Metrics build time. Report date helpers and Metrics lookback
+  windows use the reporting day; timestamp queries can obtain its UTC bounds.
+  Metrics reports can inherit the project build schedule on repository sync,
+  while explicit report schedules and alert schedules remain independent.
+
+- Add a bounded, provider-free Chromium timing harness for standalone report
+  review and analysis chat, with correlated JSON samples and separate build costs.
+
+- Show feedback pickup, factual agent activity, elapsed time and stale presence
+  beside each request in report review and analysis workspace conversations.
+  Agents can report bounded activity updates with `trellum review activity`
+  without completing work or consuming queued follow-ups.
+
 ### Upgrade notes
+
+- Projects without reporting settings retain UTC/midnight date helpers and
+  receive no automatic build schedule. Configure existing projects with
+  `python -m trellum setup reporting`; existing Metrics reports inherit the
+  daily schedule only when their manifest uses `schedule: {project: metrics}`.
+- After updating, rerun **Test connection** in AI settings if an Anthropic
+  alert check previously failed because forced tool choice was unsupported.
 
 - Reports with external side effects or detached work must set
   `recovery: {replay_safe: false}` in `report.yaml`. Previously admitted runs
@@ -994,7 +1044,8 @@ and demos together in one AGPL-licensed project.
 - Owned Trellum code is released under AGPL-3.0-only. Third-party and
   contributor notices retain their own terms.
 
-[Unreleased]: https://github.com/trellumhq/trellum/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/trellumhq/trellum/compare/v0.9.4...HEAD
+[0.9.4]: https://github.com/trellumhq/trellum/compare/v0.9.3...v0.9.4
 [0.9.1]: https://github.com/trellumhq/trellum/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/trellumhq/trellum/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/trellumhq/trellum/compare/v0.7.0...v0.8.0

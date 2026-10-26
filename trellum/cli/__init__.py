@@ -29,6 +29,7 @@ from trellum.cli.commands.doctor import _cmd_doctor
 from trellum.cli.commands.guide import BUNDLES, _cmd_checks, _cmd_guide
 from trellum.cli.commands.metrics import _cmd_metrics
 from trellum.cli.commands.review import (
+    _cmd_review_activity,
     _cmd_review_end,
     _cmd_review_overview,
     _cmd_review_poll,
@@ -82,6 +83,8 @@ def _add_review_commands(sub) -> None:
                     help="only this report's feedback -- lets several agents "
                          "share one project without stealing each other's "
                          "batches (slug or reports/<slug> path)")
+    rp.add_argument("--session", type=int, help="session returned with the feedback being acknowledged")
+    rp.add_argument("--feedback", metavar="ID", help="complete only this picked-up feedback with --reply")
     rp.add_argument("--json", action="store_true")
     rp.set_defaults(fn=_cmd_review_poll)
 
@@ -89,7 +92,17 @@ def _add_review_commands(sub) -> None:
     rr.add_argument("text")
     rr.add_argument("--report", metavar="SLUG",
                     help="show the reply only on this report's pages")
+    rr.add_argument("--feedback", metavar="ID", help="complete only this picked-up feedback")
+    rr.add_argument("--session", type=int, help="complete picked-up feedback from this original session")
     rr.set_defaults(fn=_cmd_review_reply)
+
+    ra = rvsub.add_parser("activity", help="report a factual update without completing feedback")
+    ra.add_argument("summary", help="public activity summary, at most 500 characters")
+    ra.add_argument("--report", required=True, metavar="SLUG")
+    ra.add_argument("--session", required=True, type=int)
+    ra.add_argument("--feedback", required=True, metavar="ID")
+    ra.add_argument("--state", choices=("working", "rebuilding", "waiting", "failed"), default="working")
+    ra.set_defaults(fn=_cmd_review_activity)
 
     rst = rvsub.add_parser("status", help="one-line session state")
     rst.add_argument("--json", action="store_true")
