@@ -30,7 +30,7 @@ RUN apt-get update \
 # Only the framework's own dependencies. constraints.txt still pins the exact
 # resolved versions we tested and shipped an SBOM for. Django, gunicorn, the
 # AI SDKs and git are deliberately absent — this image runs untrusted code.
-COPY trellum/requirements.txt trellum/requirements-drivers.txt ./trellum/
+COPY trellum/requirements.txt trellum/requirements-drivers.txt trellum/requirements-drivers-common.txt ./trellum/
 COPY constraints.txt ./
 RUN pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" \
     -c constraints.txt \
@@ -84,7 +84,7 @@ ARG PIP_INDEX_URL=https://pypi.org/simple
 # resolve to exactly what we tested and published an SBOM for.
 # requirements-test.txt is deliberately NOT installed — a test runner in a
 # shipped image is pure CVE surface.
-COPY trellum/requirements.txt trellum/requirements-drivers.txt ./trellum/
+COPY trellum/requirements.txt trellum/requirements-drivers.txt trellum/requirements-drivers-common.txt ./trellum/
 COPY requirements.txt requirements-django.txt constraints.txt ./
 RUN pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" \
     -c constraints.txt \

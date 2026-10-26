@@ -7,7 +7,119 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
-## [0.9.4] — 2026-10-25
+## [0.9.5] — 2026-10-26
+
+The v0.9.4 release did not publish any images because its vulnerability scan
+failed. Version 0.9.5 includes all 0.9.4 changes and upgrade notes below; the
+v0.9.4 tag is retained unchanged.
+
+### Security
+
+- Update certifi to 2026.10.19 to remove compromised emSign certificate
+  authorities (GHSA-6q48-6c7w-9gw2).
+- Update Pillow to 13.0.0, including its framework minimum, to fix image-decoder,
+  encoder and bundled-library vulnerabilities reported by the release scan.
+- Constrain filelock to patched 4.2.1 for lock-database file overwrite and
+  unlink vulnerabilities (CVE-2026-112940).
+- Update Snowflake Connector to 5.1.0 because the 4.x line requires vulnerable
+  filelock versions. Version 5.1.0 also updates its bundled certificate roots;
+  use protobuf 6.33.6 to satisfy the connector's dependency bounds.
+
+### Changed
+
+- Document scoped source lookup, targeted builds and visual verification for small review styling requests.
+
+- Poll review status every 500 ms during recent queued or active agent work,
+  while retaining each surface's existing idle cadence and pausing hidden pages.
+
+- Align the analysis workspace selection controls, annotation cards, conversation and message composer with report review, and label unsent annotations separately from submitted conversation.
+
+- Animate the in-chat activity indicator while review work is active, with a static indicator for reduced-motion preferences.
+
+- Review controls and conversations use consistent typography, softer theme surfaces and compact desktop controls while retaining touch targets on phones.
+
+### Documentation
+
+- Clarify provider-specific email verification requirements for first-time SSO
+  linking, including OneLogin claim mapping and AD FS setup limitations.
+
+### Fixed
+
+- Support alert checks and required decisions with Anthropic models that reject
+  forced tool choice, including Claude Sonnet 5.5. After updating, run Test
+  connection in AI settings to replace any previously failed alert check.
+- Enable automatic report recovery by default, retaining explicit opt-out,
+  bounded attempts and checks for writes and unconfirmed outcomes.
+- Preserve read-query recovery through harmless Vertica connection contexts,
+  status checks and supported reporting expressions.
+
+- Generate review feedback identities that can be passed directly to CLI activity and reply commands.
+
+- Mark review activity unconfirmed after observation failures and keep observing
+  final feedback replies at the idle cadence after a session ends, including
+  across the final report rebuild and reload. Keep the ended conversation
+  reachable for reading after reply notifications disappear.
+
+- Preserve acknowledged feedback when an older workspace poll finishes, keep
+  ended workspace activity scoped to its analysis, and require the original
+  session or feedback identity before a reply completes review work.
+
+- Require an explicit Build or Rebuild action before generating a selected
+  source report in the review workspace.
+
+- Keep empty datasource placeholders from blocking queries against other
+  configured sources; selecting the empty source still explains how to configure it.
+- Disable date presets when date bounds or preset counts are missing or malformed
+  so selected dates cannot become `NaN`, and keep obsolete
+  live lookup responses from replacing a newer filter selection.
+
+### Added
+
+- Project setup now configures a reporting timezone, reporting-day start, and
+  separate daily Metrics build time. Report date helpers and Metrics lookback
+  windows use the reporting day; timestamp queries can obtain its UTC bounds.
+  Metrics reports can inherit the project build schedule on repository sync,
+  while explicit report schedules and alert schedules remain independent.
+
+- Add a bounded, provider-free Chromium timing harness for standalone report
+  review and analysis chat, with correlated JSON samples and separate build costs.
+
+- Show feedback pickup, factual agent activity, elapsed time and stale presence
+  beside each request in report review and analysis workspace conversations.
+  Agents can report bounded activity updates with `trellum review activity`
+  without completing work or consuming queued follow-ups.
+
+### Upgrade notes
+
+- Upgrade both portal and runner images to v0.9.5. For source installations,
+  reinstall dependencies with `-c constraints.txt`; standalone framework
+  projects must reinstall `trellum/requirements.txt` to obtain Pillow 13.0.0
+  or newer. No new database migrations are introduced by this security update.
+- Snowflake installations now require Connector 5.1.0 or newer. Existing
+  Trellum account, password/browser SSO, warehouse, database and schema settings
+  continue to work. Certificate revocation uses best-effort CRL checks
+  (`ADVISORY`) in place of OCSP fail-open; allow the certificate chain's CRL
+  endpoints through outbound network policy. Linux credential caching remains
+  disabled. macOS and Windows browser SSO users may need to sign in again
+  because cached 4.x tokens are not reused. Custom report code using native
+  Snowflake APIs should review the
+  [Connector 5.x upgrade guide](https://docs.snowflake.com/en/developer-guide/python-connector/python-connector-upgrade),
+  including removed `Connection.connect()`, `region` and `converter_class`
+  interfaces. Validate custom integrations in a separate environment before
+  upgrading; some Snowpark, Snowflake ML and SQLAlchemy packages require 4.x.
+
+- Projects without reporting settings retain UTC/midnight date helpers and
+  receive no automatic build schedule. Configure existing projects with
+  `python -m trellum setup reporting`; existing Metrics reports inherit the
+  daily schedule only when their manifest uses `schedule: {project: metrics}`.
+- After updating, rerun **Test connection** in AI settings if an Anthropic
+  alert check previously failed because forced tool choice was unsupported.
+
+- Reports with external side effects or detached work must set
+  `recovery: {replay_safe: false}` in `report.yaml`. Previously admitted runs
+  retain their recorded recovery policy.
+
+## [0.9.4] — 2026-10-25 (not published)
 
 ### Changed
 
@@ -1044,7 +1156,8 @@ and demos together in one AGPL-licensed project.
 - Owned Trellum code is released under AGPL-3.0-only. Third-party and
   contributor notices retain their own terms.
 
-[Unreleased]: https://github.com/trellumhq/trellum/compare/v0.9.4...HEAD
+[Unreleased]: https://github.com/trellumhq/trellum/compare/v0.9.5...HEAD
+[0.9.5]: https://github.com/trellumhq/trellum/compare/v0.9.3...v0.9.5
 [0.9.4]: https://github.com/trellumhq/trellum/compare/v0.9.3...v0.9.4
 [0.9.1]: https://github.com/trellumhq/trellum/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/trellumhq/trellum/compare/v0.8.0...v0.9.0

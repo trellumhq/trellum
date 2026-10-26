@@ -38,6 +38,7 @@ _PERMANENT_PHRASES = (
     "invalid uri",
     "unsupported authentication method",
     "certificate verify failed",
+    "invalid peer certificate",
     "certificate verification failed",
     "hostname mismatch",
     "self-signed certificate",
@@ -61,6 +62,7 @@ _TRANSPORT_PHRASES = (
     "unexpected end of file",
     "read timed out",
     "operation timed out",
+    "login timed out",
     "connection timed out",
     "connection aborted",
 )

@@ -92,6 +92,7 @@ jobs:
           cache-dependency-path: |
             trellum/requirements.txt
             trellum/requirements-drivers.txt
+            trellum/requirements-drivers-common.txt
 
       - name: Install dependencies
         run: |
