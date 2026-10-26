@@ -136,6 +136,11 @@ class _LoginServer:
 
 def _login(monkeypatch, status, body):
     """Run the driver against a fake login endpoint; return (error, server)."""
+    # The fake endpoint is on loopback; a proxy variable must not divert it.
+    for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
+    monkeypatch.setenv("no_proxy", "127.0.0.1,localhost")
     server = _LoginServer(status, body)
     real_connect = snowflake_connector.connect
     port = server.server.server_address[1]
@@ -171,8 +176,12 @@ def test_real_connector_reaches_login_with_the_drivers_options(monkeypatch):
 
 
 def test_unavailable_backend_is_still_retried(monkeypatch):
-    error, _ = _login(monkeypatch, 503, {"message": "unavailable"})
-    assert error.errno == 250001
+    error, server = _login(monkeypatch, 503, {"message": "unavailable"})
+    assert server.paths, "the connector never sent a login request"
+    # The connector keeps retrying a 503 until it gives up (errno 250001) or
+    # the 20s login deadline passes first (errno 14 / HYT00). Which comes
+    # first depends on backoff jitter and machine speed; both are outages.
+    assert (error.errno, error.sqlstate) in {(250001, "08001"), (14, "HYT00")}, error
     assert is_retryable_connection_error(error, "snowflake")
 
 
