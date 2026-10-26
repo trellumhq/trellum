@@ -21,4 +21,4 @@ requests>=2.28.0
 # image comparison cannot run; the suite now fails loudly rather than
 # reporting green while checking nothing. Playwright is also needed for
 # screenshots: pip install playwright && python -m playwright install chromium
-Pillow>=10.0.0
+Pillow>=13.0.0

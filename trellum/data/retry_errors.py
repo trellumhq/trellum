@@ -38,6 +38,7 @@ _PERMANENT_PHRASES = (
     "invalid uri",
     "unsupported authentication method",
     "certificate verify failed",
+    "invalid peer certificate",
     "certificate verification failed",
     "hostname mismatch",
     "self-signed certificate",
@@ -61,6 +62,7 @@ _TRANSPORT_PHRASES = (
     "unexpected end of file",
     "read timed out",
     "operation timed out",
+    "login timed out",
     "connection timed out",
     "connection aborted",
 )
@@ -125,6 +127,12 @@ def _has_permanent_error(chain: tuple, source: str) -> bool:
     # outer ConnectionError (notably Vertica's connector wrapper).
     for current in chain:
         class_names = {cls.__name__ for cls in type(current).__mro__}
+        # Connector 5 requests a new session after SSO expiry, but this
+        # recoverable exception currently inherits from ProgrammingError.
+        if source == "snowflake" and _is_class(
+            current, "snowflake.connector.errors", "ReauthenticationRequest"
+        ):
+            class_names.discard("ProgrammingError")
         if class_names & {
             "ProgrammingError",
             "ValueError",
@@ -181,6 +189,10 @@ def is_retryable_connection_error(exc: Exception, source_type: str) -> bool:
     if _has_permanent_error(chain, source):
         return False
     for current in chain:
+        if source == "snowflake" and _is_class(
+            current, "snowflake.connector.errors", "ReauthenticationRequest"
+        ):
+            return True
         class_names = {cls.__name__ for cls in type(current).__mro__}
         for value in (*_metadata(current, "errno", "errorcode", "code"), *_numeric_args(current)):
             try:

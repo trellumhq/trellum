@@ -757,6 +757,10 @@ jobs:
         # Keep the native runner: the live harness publishes Docker PostgreSQL
         # on loopback. Azure's package mirror can exhaust the job timeout.
         run: |
+          # Hosted runners can also route sources through a separate mirror list.
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            printf '%s\n' 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          fi
           # Cover legacy sources.list and Ubuntu 24.04's deb822 .sources files.
           # Change only the mirror URI; preserve suites, components and signing.
           sudo find /etc/apt -type f \( -name '*.list' -o -name '*.sources' \) \

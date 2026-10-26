@@ -21,6 +21,10 @@ upstream release notices on **2026-10-07**. This is a direct-dependency
 inventory, not a complete inventory of every installed transitive dependency.
 Native cloud AI dependencies and the coordinated AWS SDK pins were audited
 against the linked upstream licence notices on **2026-10-10**.
+Security dependency metadata was checked on **2026-10-26**: Pillow 13.0.0
+remains MIT-CMU and Snowflake Connector 5.1.0 remains Apache-2.0. The updated
+transitive pins use MPL-2.0 (certifi 2026.10.19), MIT (filelock 4.2.1) and
+BSD-3-Clause (protobuf 6.33.6).
 
 ## Bundled — front-end libraries (`static/vendor/`)
 
@@ -82,7 +86,7 @@ are redistributed in a container image.
 | requests | Apache-2.0 |
 | Pillow | MIT-CMU |
 
-### `requirements-drivers.txt` — database and cloud sources
+### `requirements-drivers.txt` and its common requirements — database and cloud sources
 
 | Package | Licence |
 | --- | --- |

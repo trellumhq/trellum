@@ -3,13 +3,13 @@
 # requirements-drivers.txt (short version: this harness is opt-in and
 # never part of the default suite or its CI job).
 -r ../requirements.txt
--r ../requirements-drivers.txt
+-r ../requirements-drivers-common.txt
 
 pytest
 fakesnow>=0.9
-# fakesnow 0.11.x imports snowflake.connector.converter, which
-# snowflake-connector-python 5.0 removed. Match the product constraint
-# (constraints.txt pins 4.7.3) until fakesnow supports 5.x.
+# fakesnow still imports snowflake.connector.converter, removed in connector 5.
+# This emulator-only environment uses connector 4; product images and the
+# connector compatibility suite use 5.1+. Never apply product constraints here.
 snowflake-connector-python<5
 
 # pymysql's caching_sha2_password auth plugin (MySQL 8's default) needs
