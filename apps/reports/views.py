@@ -2,6 +2,7 @@
 and per-user favorites."""
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import mimetypes
@@ -26,6 +27,7 @@ from django.http import (
 )
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.utils.cache import patch_cache_control
 from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
@@ -2173,7 +2175,33 @@ def _sync_theme_select(raw: bytes, theme: str) -> bytes:
     )
 
 
-def _inject_report_chrome(raw: bytes, org, studio, user=None) -> bytes:
+@functools.lru_cache(maxsize=1)
+def _report_session_source() -> str:
+    return (Path(settings.BASE_DIR) / "static" / "report_session.js").read_text(encoding="utf-8")
+
+
+_REPORT_SESSION_TAG = re.compile(
+    rb"<script data-trellum-report-session>.*?</script>", re.DOTALL
+)
+
+
+def _report_session_script(*, developer: bool) -> bytes:
+    """Early inline runtime for one signed-in report response.
+
+    The capability object is resolved for this request's viewer and lives only
+    in this response; it carries no link or secret and grants nothing -- every
+    API it gates still enforces its own role check. Inline rather than a
+    ``<script src>`` so it runs before the report's scripts without a blocking
+    request (report pages are exempt from the management CSP).
+    """
+    access = json.dumps({"developer": developer, "login": settings.LOGIN_URL}).replace("<", "\\u003c")
+    return (
+        f"<script data-trellum-report-session>window.__trellumReportAccess=Object.freeze({access});\n"
+        f"{_report_session_source()}</script>"
+    ).encode("utf-8")
+
+
+def _inject_report_chrome(raw: bytes, org, studio, user=None, *, developer: bool = False) -> bytes:
     """Serve-time upgrades applied to every report HTML response, so a report
     built before one of these landed doesn't need a rebuild to carry it.
     Shared by every route that serves a report's HTML (``report_asset`` and
@@ -2257,6 +2285,21 @@ def _inject_report_chrome(raw: bytes, org, studio, user=None) -> bytes:
                 raw = raw[: body_open_end + 1] + menu_tag + raw[body_open_end + 1 :]
             else:
                 raw = raw.replace(b"</body>", menu_tag + b"</body>", 1)
+    # Signed-in pages get the portal's session runtime as the first script in
+    # <head> (injected after the menu host so it lands ahead of it): it sees the
+    # report's earliest request, and the menu/share/activity widgets read the
+    # viewer's capabilities from it instead of probing role-gated APIs.  A copy
+    # a saved build carried is replaced, never trusted.  Public share responses
+    # (user=None) receive none of it.
+    raw = _REPORT_SESSION_TAG.sub(b"", raw)
+    if user is not None:
+        session_tag = _report_session_script(developer=developer)
+        head_start = raw.find(b"<head")
+        head_open_end = raw.find(b">", head_start) if head_start >= 0 else -1
+        if head_open_end >= 0:
+            raw = raw[: head_open_end + 1] + session_tag + raw[head_open_end + 1 :]
+        else:
+            raw = session_tag + raw
     # Share-link management was already injected into new builds through
     # portal_extensions(), but legacy builds only received the menu host at
     # serve time.  Without this companion script there is nothing to run the
@@ -2310,7 +2353,8 @@ def _inject_report_chrome(raw: bytes, org, studio, user=None) -> bytes:
 
 
 def _serve_report_file(
-    target: Path, *, org, studio, user=None, extra_head: bytes = b"", kind="report"
+    target: Path, *, org, studio, user=None, extra_head: bytes = b"", kind="report",
+    developer: bool = False,
 ) -> HttpResponse:
     """Content-type + HTML chrome injection for one already-guarded report
     output file. ``extra_head`` (used by the public share routes) is spliced
@@ -2329,13 +2373,18 @@ def _serve_report_file(
         if b"data-content-kind=" not in raw:
             marker = b"analysis" if kind == Report.KIND_ANALYSIS else b"report"
             raw = re.sub(rb"<html\b", b'<html data-content-kind="' + marker + b'"', raw, count=1)
-        raw = _inject_report_chrome(raw, org, studio, user=user)
+        raw = _inject_report_chrome(raw, org, studio, user=user, developer=developer)
         if extra_head:
             if b"</head>" in raw:
                 raw = raw.replace(b"</head>", extra_head + b"</head>", 1)
             else:
                 raw = extra_head + raw
-        return HttpResponse(raw, content_type=ct)
+        response = HttpResponse(raw, content_type=ct)
+        if user is not None:
+            # Theme and capabilities are per viewer; a shared cache must not
+            # hand this page to anyone else.
+            patch_cache_control(response, private=True)
+        return response
     return FileResponse(open(target, "rb"), content_type=ct)
 
 
@@ -2370,7 +2419,8 @@ def report_asset(request, org_slug, studio_slug, slug, asset):  # noqa: ARG001
             asset=asset, ext=Path(asset).suffix.lower(),
         )
     response = _serve_report_file(
-        target, org=request.org, studio=request.studio, user=request.user, kind=report.kind
+        target, org=request.org, studio=request.studio, user=request.user, kind=report.kind,
+        developer=roles.at_least(request.studio_role, roles.DEVELOPER),
     )
     if (
         is_entry
