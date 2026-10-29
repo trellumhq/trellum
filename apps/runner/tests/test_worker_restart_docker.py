@@ -16,12 +16,14 @@ pytestmark = [pytest.mark.django_db, pytest.mark.heavy, pytest.mark.docker_sandb
 def docker_client():
     import docker
 
-    client = docker.from_env(timeout=5)
+    client = None
     try:
+        client = docker.from_env(timeout=5)
         client.ping()
         client.images.get("busybox:latest")
     except docker.errors.DockerException as exc:
-        client.close()
+        if client is not None:
+            client.close()
         pytest.skip(f"Requires a Docker daemon and cached busybox:latest: {exc}")
     yield client
     client.close()
