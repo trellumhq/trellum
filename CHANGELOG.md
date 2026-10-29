@@ -7,6 +7,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Fixed
+
+- Recover abandoned local report sandboxes after a worker restart, including
+  cancelled runs, while retaining the admission fence until termination is
+  confirmed and preventing automatic replay of unknown outcomes.
+
 ## [0.9.5] — 2026-10-26
 
 The v0.9.4 release did not publish any images because its vulnerability scan

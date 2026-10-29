@@ -25,10 +25,12 @@ import signal
 import socket
 import threading
 import time
+from uuid import uuid4
 
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.db import close_old_connections, connections, transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.runner.executor import Executor, _tmp_root
@@ -71,7 +73,7 @@ class Command(BaseCommand):
         is_coordinator = role in (ROLE_ALL, ROLE_COORDINATOR)
         is_runner = role in (ROLE_ALL, ROLE_RUNNER)
 
-        worker_id = f"{socket.gethostname()}-{os.getpid()}"
+        worker_id = f"{socket.gethostname()[:48]}-{os.getpid()}-{uuid4().hex}"
         shutdown = threading.Event()
 
         def _sigterm(_signum, _frame):
@@ -164,9 +166,10 @@ class Command(BaseCommand):
                     "container. Set TRELLUM_SANDBOX=docker."
                 )
 
+        # Every runner can stop abandoned sandboxes on its own Docker daemon.
+        self._recover_stale_runs(self_worker_id=worker_id, recover_sandboxes=is_runner)
         # Database-wide bookkeeping belongs to the single coordinator.
         if is_coordinator:
-            self._recover_stale_runs()
             if settings.WORKER_CATCHUP:
                 self._enqueue_catchup()
         # Sandboxes are this node's local disk, so every runner sweeps its own.
@@ -253,8 +256,10 @@ class Command(BaseCommand):
                     # uncleanly keeps a live-looking heartbeat until it goes
                     # stale, so its runs must be reclaimed on a timer too.
                     now = time.time()
-                    if is_coordinator and now - last_reap >= settings.WORKER_REAP_SECONDS:
-                        self._recover_stale_runs(self_worker_id=worker_id)
+                    if now - last_reap >= settings.WORKER_REAP_SECONDS:
+                        self._recover_stale_runs(
+                            self_worker_id=worker_id, recover_sandboxes=is_runner
+                        )
                         last_reap = now
                 except Exception as exc:  # noqa: BLE001 - the watchdog must live
                     logger.exception(f"{type(exc).__name__}: {exc}", extra={"worker_id": worker_id})
@@ -286,44 +291,73 @@ class Command(BaseCommand):
             cur.execute("SELECT pg_try_advisory_lock(%s)", [ADVISORY_LOCK_KEY])
             return bool(cur.fetchone()[0])
 
-    def _recover_stale_runs(self, self_worker_id: str | None = None) -> None:
-        """Fence in-flight runs whose own worker stopped beating.
+    def _recover_stale_runs(
+        self, self_worker_id: str | None = None, *, recover_sandboxes: bool = True,
+    ) -> None:
+        """Fence lost owners; finalize only positively inspected local sandboxes.
 
-        Missing heartbeats alone cannot establish process/container death.
-        Never terminalize another runner's live build on coordinator restart.
-
-        ``self_worker_id`` is never reaped: we are the ones calling, so we are
-        alive by definition, even if a DB stall let our heartbeat go stale.
+        A rotating bounded page also visits rows already fenced as unconfirmed.
+        Missing containers on this daemon say nothing about another host.
         """
-        # Evaluate liveness in the UPDATE so newly registered workers are visible.
-        orphaned = (
-            Run.objects.filter(status__in=(Run.STARTING, Run.RUNNING))
-            .exclude(termination_confirmed=False)
-            .exclude(worker_id__in=WorkerHeartbeat.alive().values("worker_id"))
+        from apps.reports.models import Report
+        from apps.runner.recovery import complete_run
+        from apps.runner.sandbox import DockerSandbox, sandbox_mode
+
+        orphaned = Run.objects.filter(status__in=(Run.STARTING, Run.RUNNING)).exclude(
+            worker_id__in=WorkerHeartbeat.alive().values("worker_id")
         )
         if self_worker_id:
             orphaned = orphaned.exclude(worker_id=self_worker_id)
-        # A lost heartbeat is not proof of process death. Keep the admission
-        # fence active; the original worker may return and finalize normally.
-        # Never signal a PID from another host/namespace or silently replay it.
-        for run in orphaned.order_by("created_at")[:25]:
+        cursor = getattr(self, "_recovery_cursor", None)
+        if cursor:
+            created_at, pk = cursor
+            orphaned = orphaned.filter(Q(created_at__gt=created_at) | Q(created_at=created_at, pk__gt=pk))
+        candidates = list(orphaned.order_by("created_at", "pk")[:25])
+        if not candidates:
+            self._recovery_cursor = None
+            return
+        sandbox = DockerSandbox() if recover_sandboxes and sandbox_mode() == "docker" else None
+        deadline = time.monotonic() + 5
+        for run in candidates:
+            self._recovery_cursor = (run.created_at, run.pk)
             with transaction.atomic():
-                from apps.reports.models import Report
-                Report.objects.select_for_update().get(pk=run.report_id)
-                locked = Run.objects.select_for_update().get(pk=run.pk)
-                if locked.status not in (Run.STARTING, Run.RUNNING):
+                # Same lock order as admission, cancellation and completion.
+                report = Report.objects.select_for_update(skip_locked=True).filter(pk=run.report_id).first()
+                if report is None:
                     continue
-                if WorkerHeartbeat.alive().filter(worker_id=locked.worker_id).exists():
+                locked = Run.objects.select_for_update(skip_locked=True).filter(pk=run.pk).first()
+                if locked is None:
+                    continue
+                if (locked.status not in (Run.STARTING, Run.RUNNING)
+                        or locked.worker_id != run.worker_id
+                        or (self_worker_id and locked.worker_id == self_worker_id)
+                        or WorkerHeartbeat.alive().filter(worker_id=locked.worker_id).exists()):
                     continue
                 evidence = dict(locked.diagnostics or {})
-                evidence.update(cause="worker_outcome_unconfirmed", recovery={
-                    "state": "unconfirmed", "reason": "prior_process_not_confirmed_stopped",
-                    "attempt": locked.recovery_attempt or 0, "due_at": None,
-                })
-                locked.diagnostics = evidence
-                locked.termination_confirmed = False
-                locked.stop_requested = True
-                locked.save(update_fields=["diagnostics", "termination_confirmed", "stop_requested"])
+                # Stopping the child cannot establish whether its last write
+                # committed. Never turn stale transient evidence into a retry.
+                evidence.update(cause="worker_outcome_unconfirmed", transient=False,
+                                unknown_write_outcome=True)
+                confirmed = sandbox is not None and sandbox.stop_orphan(locked)
+                if confirmed:
+                    locked.status = Run.STOPPED if locked.stop_requested else Run.ERROR
+                    locked.finished_at = timezone.now()
+                    stderr = locked.stderr_tail + "\nWorker lost; abandoned sandbox stopped.\n"
+                    locked.stderr_tail = stderr.encode("utf-8")[-65536:].decode("utf-8", errors="ignore")
+                    locked.save(update_fields=["status", "finished_at", "stderr_tail"])
+                    complete_run(locked, diagnostics=evidence, termination_confirmed=True)
+                else:
+                    evidence["recovery"] = {
+                        "state": "unconfirmed", "reason": "prior_process_not_confirmed_stopped",
+                        "attempt": locked.recovery_attempt or 0, "due_at": None,
+                    }
+                    locked.diagnostics = evidence
+                    locked.termination_confirmed = False
+                    locked.save(update_fields=["diagnostics", "termination_confirmed"])
+            # One slow daemon must not hold up ordinary claims indefinitely.
+            # Each recovery API call has its own short socket timeout too.
+            if time.monotonic() >= deadline:
+                break
 
     def _sweep_orphan_sandboxes(self) -> None:
         import shutil

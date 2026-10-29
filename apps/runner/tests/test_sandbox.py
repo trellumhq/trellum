@@ -847,3 +847,92 @@ class TestRealDaemon:
             if proc is not None:
                 proc.cleanup()
             client.close()
+
+
+class TestStopOrphan:
+    def _setup(self, *, labels=None, container_id="c1", running=True):
+        run = types.SimpleNamespace(pk=uuid4(), container_id=container_id)
+        container = FakeContainer(labels=labels, state={"Running": running})
+        if labels is None:
+            container.labels = {"trellum.sandbox": "1", "trellum.run-id": str(run.pk)}
+        client = FakeClient()
+        client.containers.get = lambda name: container
+        return run, container, DockerSandbox(client=client)
+
+    def test_graceful_stop_then_inspection(self):
+        run, container, sandbox = self._setup()
+        stops = []
+
+        def stop(timeout):
+            stops.append(timeout)
+            container.attrs["State"]["Running"] = False
+
+        container.stop = stop
+        assert sandbox.stop_orphan(run)
+        assert stops == [1]
+        assert not container.killed
+        assert not container.removed  # preserve positive evidence until finalization
+
+    def test_failed_graceful_stop_escalates_and_confirms(self):
+        run, container, sandbox = self._setup()
+        container.stop = lambda **kwargs: None
+
+        def kill():
+            container.killed.append("SIGKILL")
+            container.attrs["State"]["Running"] = False
+
+        container.kill = kill
+        assert sandbox.stop_orphan(run)
+        assert container.killed == ["SIGKILL"]
+
+    def test_kill_without_exit_confirmation_remains_fenced(self):
+        run, container, sandbox = self._setup()
+        container.stop = lambda **kwargs: None
+        assert sandbox.stop_orphan(run) is False
+        assert container.killed == ["SIGKILL"]
+
+    @pytest.mark.parametrize("labels", [{}, {"trellum.sandbox": "1", "trellum.run-id": "other"},
+                                       {"trellum.sandbox": "1", "bi.run-id": "other"}])
+    def test_unidentified_or_other_run_is_never_signalled(self, labels):
+        run, container, sandbox = self._setup(labels=labels)
+        assert sandbox.stop_orphan(run) is False
+        assert not container.killed
+
+    def test_saved_container_id_must_match(self):
+        run, container, sandbox = self._setup(container_id="different")
+        assert sandbox.stop_orphan(run) is False
+        assert not container.killed
+
+    def test_crash_before_container_id_saved_uses_deterministic_name(self):
+        run, container, sandbox = self._setup(container_id="", running=False)
+        names = []
+        sandbox.client.containers.get = lambda name: names.append(name) or container
+        assert sandbox.stop_orphan(run)
+        assert names == [f"trellum-run-{run.pk}"]
+
+    def test_legacy_label_pair_is_recognized(self):
+        run, container, sandbox = self._setup(running=False)
+        container.labels = {"bi.sandbox": "1", "bi.run-id": str(run.pk)}
+        assert sandbox.stop_orphan(run)
+
+    @pytest.mark.parametrize("error", [docker.errors.NotFound("remote"), requests.Timeout("daemon unavailable")])
+    def test_missing_or_unavailable_daemon_is_not_evidence(self, error):
+        run, container, sandbox = self._setup()
+
+        def unavailable(name):
+            raise error
+
+        sandbox.client.containers.get = unavailable
+        assert sandbox.stop_orphan(run) is False
+        assert not container.killed
+
+    def test_recovery_client_has_short_timeout_and_is_closed(self, monkeypatch):
+        run, container, sandbox = self._setup(running=False)
+        client = sandbox.client
+        closed = []
+        client.close = lambda: closed.append(True)
+        timeouts = []
+        monkeypatch.setattr("docker.from_env", lambda **kwargs: timeouts.append(kwargs["timeout"]) or client)
+        assert DockerSandbox().stop_orphan(run)
+        assert timeouts == [2]
+        assert closed == [True]

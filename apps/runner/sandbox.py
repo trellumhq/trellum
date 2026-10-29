@@ -499,6 +499,50 @@ class DockerSandbox:
         return SandboxProc(container, run_id=str(run.id))
 
     # ── housekeeping ─────────────────────────────────────────────────────
+    def stop_orphan(self, run) -> bool:
+        """Stop only this run's positively identified sandbox, then inspect it.
+
+        Never infer death from NotFound: the owner may use another daemon.
+        The short-lived recovery client keeps stop/kill/inspection bounded
+        without altering the normal executor client's timeout.
+        """
+        import docker
+
+        client = self._client
+        owned_client = client is None
+        try:
+            if owned_client:
+                client = docker.from_env(timeout=2)
+            # Docker get() already inspects the exact container.
+            container = client.containers.get(run.container_id or f"trellum-run-{run.pk}")
+            labels = container.labels
+            matches = any(
+                labels.get(sandbox_label) == "1" and labels.get(run_label) == str(run.pk)
+                for sandbox_label, run_label in (
+                    (SANDBOX_LABEL, RUN_ID_LABEL), (LEGACY_SANDBOX_LABEL, LEGACY_RUN_ID_LABEL)
+                )
+            )
+            if not matches or (run.container_id and container.id != run.container_id):
+                return False
+            if container.attrs.get("State", {}).get("Running") is not False:
+                try:
+                    container.stop(timeout=1)
+                except Exception:  # noqa: BLE001 - inspect and escalate below
+                    pass
+                container.reload()
+                if container.attrs.get("State", {}).get("Running") is not False:
+                    container.kill()
+                    container.reload()
+            return container.attrs.get("State", {}).get("Running") is False
+        except Exception:  # noqa: BLE001 - retain admission fence and retry later
+            return False
+        finally:
+            if owned_client and client is not None:
+                try:
+                    client.close()
+                except Exception:  # noqa: BLE001 - cleanup must not lose stop evidence
+                    pass
+
     def sweep_orphans(self) -> int:
         """Remove sandbox containers with no live Run. Several runners share
         one daemon, so an unconditional sweep would kill another runner's
