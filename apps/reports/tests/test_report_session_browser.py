@@ -65,7 +65,7 @@ def _console_report(developer: bool) -> str:
     return html.replace("</body>", RUNTIME_STUBS + "</body>")
 
 
-@pytest.fixture(scope="module", params=("chromium", "webkit"))
+@pytest.fixture(scope="module", params=("chromium", pytest.param("webkit", marks=pytest.mark.heavy)))
 def report_browser(request):
     try:
         from playwright.sync_api import Error, sync_playwright
