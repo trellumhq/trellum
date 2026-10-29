@@ -162,7 +162,7 @@ class TestRecovery:
         Command()._recover_stale_runs()
 
         assert Run.objects.get(pk=mine.pk).status == Run.RUNNING
-        assert Run.objects.get(pk=mine.pk).stop_requested
+        assert not Run.objects.get(pk=mine.pk).stop_requested
         assert Run.objects.get(pk=theirs.pk).status == Run.RUNNING
 
     def test_runs_of_a_stale_worker_are_reclaimed(self, make_run):
@@ -189,14 +189,14 @@ class TestRecovery:
     def test_newly_registered_worker_is_rechecked_under_lock(self, make_run, monkeypatch):
         from django.db.models.query import QuerySet
         run = make_run(status=Run.RUNNING, worker_id="runner-arriving")
-        original_get = QuerySet.get
+        original_first = QuerySet.first
 
-        def register_worker(queryset, *args, **kwargs):
+        def register_worker(queryset):
             if queryset.model is Run and not WorkerHeartbeat.objects.filter(worker_id="runner-arriving").exists():
                 WorkerHeartbeat.objects.create(worker_id="runner-arriving")
-            return original_get(queryset, *args, **kwargs)
+            return original_first(queryset)
 
-        monkeypatch.setattr(QuerySet, "get", register_worker)
+        monkeypatch.setattr(QuerySet, "first", register_worker)
         Command()._recover_stale_runs()
         run.refresh_from_db()
         assert run.status == Run.RUNNING
@@ -780,3 +780,166 @@ class TestDeliveryPauseScheduler:
             assert schedule.enabled
         finally:
             mgr.shutdown()
+
+
+class TestOrphanSandboxRecovery:
+    @pytest.fixture
+    def recoverable(self, settings, monkeypatch):
+        settings.TRELLUM_SANDBOX = "docker"
+        inspected = []
+
+        def stop(sandbox, run):
+            inspected.append(run.pk)
+            return True
+
+        monkeypatch.setattr("apps.runner.sandbox.DockerSandbox.stop_orphan", stop)
+        return inspected
+
+    @pytest.mark.parametrize("cancelled", [False, True])
+    def test_confirmed_local_orphan_completes_without_replay(self, make_run, recoverable, cancelled):
+        from apps.runner.models import RunRecovery
+        from apps.runner.recovery import dispatch_due
+
+        run = make_run(status=Run.RUNNING, worker_id="dead", termination_confirmed=False,
+                       stop_requested=cancelled, replay_safe=True,
+                       diagnostics={"transient": True, "query_retry_safe": True})
+        chain = RunRecovery.objects.create(
+            report=run.report, root_run=run, current_run=run, state="running",
+            expires_at=timezone.now() + timezone.timedelta(hours=1),
+        )
+        run.recovery = chain
+        run.save(update_fields=["recovery"])
+        Command()._recover_stale_runs(self_worker_id="replacement")
+        run.refresh_from_db()
+        chain.refresh_from_db()
+        assert recoverable == [run.pk]
+        assert run.status == (Run.STOPPED if cancelled else Run.ERROR)
+        assert run.finished_at is not None
+        assert run.termination_confirmed is True
+        assert run.diagnostics["unknown_write_outcome"] is True
+        assert chain.state == ("cancelled" if cancelled else "ineligible")
+        assert chain.due_at is None
+        dispatch_due()
+        assert Run.objects.count() == 1
+
+    def test_live_and_current_owners_are_never_inspected(self, make_run, recoverable):
+        WorkerHeartbeat.objects.create(worker_id="alive")
+        alive = make_run(status=Run.RUNNING, worker_id="alive", termination_confirmed=False)
+        current = make_run(status=Run.RUNNING, worker_id="current", termination_confirmed=False)
+        Command()._recover_stale_runs(self_worker_id="current")
+        assert recoverable == []
+        for run in (alive, current):
+            run.refresh_from_db()
+            assert run.status == Run.RUNNING
+
+    def test_unconfirmed_pass_does_not_invent_a_cancellation(self, make_run, recoverable, monkeypatch):
+        run = make_run(status=Run.RUNNING, worker_id="dead")
+        monkeypatch.setattr("apps.runner.sandbox.DockerSandbox.stop_orphan", lambda self, run: False)
+        Command()._recover_stale_runs()
+        run.refresh_from_db()
+        assert run.termination_confirmed is False
+        assert not run.stop_requested
+        Command()._recover_stale_runs()
+        run.refresh_from_db()
+        assert run.status == Run.RUNNING
+        assert not run.stop_requested
+
+    def test_cancel_after_fencing_is_preserved(self, make_run, recoverable, monkeypatch):
+        from apps.runner.services import request_stop
+
+        run = make_run(status=Run.RUNNING, worker_id="dead")
+        Command()._recover_stale_runs(recover_sandboxes=False)
+        assert request_stop(run.report)
+        Command()._recover_stale_runs()
+        run.refresh_from_db()
+        assert run.status == Run.STOPPED
+        assert run.termination_confirmed is True
+
+    @pytest.mark.parametrize("changed", [{"worker_id": "new-owner"}, {"status": Run.SUCCESS}])
+    def test_changed_owner_or_status_is_rechecked_under_lock(self, make_run, recoverable, monkeypatch, changed):
+        from django.db.models.query import QuerySet
+
+        run = make_run(status=Run.RUNNING, worker_id="dead")
+        original_first = QuerySet.first
+
+        def change(queryset):
+            if queryset.model is Run:
+                Run.objects.filter(pk=run.pk).update(**changed)
+            return original_first(queryset)
+
+        monkeypatch.setattr(QuerySet, "first", change)
+        Command()._recover_stale_runs()
+        assert recoverable == []
+
+    def test_coordinator_fences_without_touching_its_daemon(self, make_run, recoverable):
+        run = make_run(status=Run.RUNNING, worker_id="dead")
+        Command()._recover_stale_runs(recover_sandboxes=False)
+        run.refresh_from_db()
+        assert recoverable == []
+        assert run.status == Run.RUNNING
+        assert run.termination_confirmed is False
+
+    @pytest.mark.parametrize("locked_model", ["report", "run"])
+    def test_contended_rows_are_skipped(self, make_run, recoverable, monkeypatch, locked_model):
+        from django.db.models.query import QuerySet
+        from apps.reports.models import Report
+
+        run = make_run(status=Run.RUNNING, worker_id="dead")
+        original_first = QuerySet.first
+        model = Report if locked_model == "report" else Run
+
+        def contended(queryset):
+            if queryset.model is model and queryset.query.select_for_update:
+                assert queryset.query.select_for_update_skip_locked
+                return None
+            return original_first(queryset)
+
+        monkeypatch.setattr(QuerySet, "first", contended)
+        Command()._recover_stale_runs()
+        assert recoverable == []
+        run.refresh_from_db()
+        assert run.termination_confirmed is None
+
+    @pytest.mark.heavy
+    def test_bounded_pages_visit_beyond_unrecoverable_rows(self, make_run, recoverable, monkeypatch):
+        runs = [make_run(status=Run.RUNNING, worker_id="dead", termination_confirmed=False) for _ in range(51)]
+        inspected = []
+
+        def stop(sandbox, run):
+            inspected.append(run.pk)
+            return run.pk == runs[-1].pk
+
+        monkeypatch.setattr("apps.runner.sandbox.DockerSandbox.stop_orphan", stop)
+        command = Command()
+        for expected in (25, 50, 51):
+            command._recover_stale_runs()
+            assert len(inspected) == expected
+        runs[-1].refresh_from_db()
+        assert runs[-1].status == Run.ERROR
+        command._recover_stale_runs()  # wrap the cursor
+        command._recover_stale_runs()
+        assert len(inspected) == 76
+
+    @pytest.mark.parametrize("role", ["runner", "coordinator", "all"])
+    def test_periodic_recovery_runs_in_every_role(self, settings, monkeypatch, role, release_advisory_locks):
+        settings.WORKER_REAP_SECONDS = 0
+        calls = []
+        monkeypatch.setattr(Command, "_recover_stale_runs", lambda self, **kwargs: calls.append(kwargs))
+        monkeypatch.setattr(Command, "_sweep_orphan_sandboxes", lambda self: None)
+        monkeypatch.setattr(_SchedulerManager, "start", lambda self: None)
+        monkeypatch.setattr(_SchedulerManager, "refresh_if_due", lambda self: None)
+        Command().handle(once=True, role=role)
+        assert len(calls) == 2
+        assert all(call["recover_sandboxes"] is (role != "coordinator") for call in calls)
+        assert all(call["self_worker_id"] for call in calls)
+
+    def test_restarting_same_hostname_and_pid_uses_new_identity(self, monkeypatch):
+        ids = []
+        monkeypatch.setattr(Command, "_recover_stale_runs", lambda self, **kwargs: ids.append(kwargs["self_worker_id"]))
+        monkeypatch.setattr(Command, "_sweep_orphan_sandboxes", lambda self: None)
+        monkeypatch.setattr("apps.runner.management.commands.runworker.socket.gethostname", lambda: "stable-host")
+        monkeypatch.setattr("apps.runner.management.commands.runworker.os.getpid", lambda: 1)
+        for _ in range(2):
+            Command().handle(once=True, role="runner")
+        assert len(set(ids)) == 2
+        assert all(worker_id.startswith("stable-host-1-") and len(worker_id) <= 100 for worker_id in ids)
