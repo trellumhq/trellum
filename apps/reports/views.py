@@ -1209,6 +1209,9 @@ def _schedule_form_body(request):
 @transaction.atomic
 def api_email_schedules(request, org_slug, studio_slug, slug):  # noqa: ARG001
     report = _get_report(request, slug)
+    blocked = _selected_content_block(request, report)
+    if blocked:
+        return blocked
     if request.method == "GET":
         # Visibility follows report access; subscription badges follow the audience.
         from apps.orgs.models import PermissionGroupMembership

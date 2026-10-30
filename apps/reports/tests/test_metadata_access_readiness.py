@@ -8,7 +8,7 @@ from apps.reports.models import Report, ReportPermissionGrant
 pytestmark = pytest.mark.django_db
 
 
-@pytest.mark.parametrize("endpoint", ["validation", "metrics", "recipients"])
+@pytest.mark.parametrize("endpoint", ["validation", "metrics", "recipients", "schedules"])
 def test_selected_metadata_fails_closed_before_storage(
     login, member, report_row, studio_tree, make_group, attach_group, settings, monkeypatch, endpoint,
 ):
