@@ -34,7 +34,7 @@ def test_selected_metadata_fails_closed_before_storage(
 def test_existing_private_analysis_does_not_block_studio_report_bytes(
     login, member, grant_studio, report_row, studio_tree, write_meta, settings, present,
 ):
-    from apps.orgs.models import OrgSharePolicy
+    from apps.reports.models import OrgSharePolicy
 
     settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = False
     settings.TRELLUM_REPORT_ACCESS_MODEL = "proxy"
