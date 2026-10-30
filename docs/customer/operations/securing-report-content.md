@@ -62,9 +62,10 @@ TTL is the revocation delay.
 
 The rollout flag defaults to false; it is independent of external share-link and
 embed settings. Disabling external sharing does not disable signed-in Studio
-audience access. When scoped access is unavailable, existing Private items stay
-protected, while ordinary studio Viewers can still open their Studio-audience
-items. A report-level configuration message explains blocked content without
+audience access. In proxy mode, when scoped access is unavailable, existing
+Private items stay protected while ordinary studio Viewers can still open their
+Studio-audience items. Edge deployments retain their exposure checks and may
+refuse content until an unsafe configuration is repaired. A report-level configuration message explains blocked content without
 preventing navigation to other reports. Workspace-wide views that require full
 visibility remain restricted when Private items exist, including retained records.
 
