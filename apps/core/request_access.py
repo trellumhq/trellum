@@ -14,6 +14,7 @@ class StudioAccess:
     role: str | None = None
     full: bool = False
     is_org_admin: bool = False
+    studio_audience: bool = False
 
 
 @dataclass
@@ -50,6 +51,10 @@ class RequestOrgAccess:
 
     def has_full_studio_visibility(self, studio) -> bool:
         return self.studio_access(studio).full
+
+    def has_studio_audience_access(self, studio) -> bool:
+        """Studio-audience grant; never implies visibility of Private metadata."""
+        return self.studio_access(studio).studio_audience
 
 
 def request_org_access(request, org) -> RequestOrgAccess:
@@ -102,7 +107,7 @@ def actor_studio_access(user, studio, *, org=None) -> StudioAccess:
     org = org if org is not None else studio.org
     role, admin = _actor_org_facts(user, org)
     facts = _studio_access_for_user(user, org, studio, is_member=role is not None, is_admin=admin)
-    return StudioAccess(facts.role, facts.full, admin)
+    return StudioAccess(facts.role, facts.full, admin, facts.studio_audience)
 
 
 def _studio_access(access: RequestOrgAccess, studio) -> StudioAccess:
@@ -116,7 +121,7 @@ def _studio_access_for_user(user, org, studio, *, is_member: bool, is_admin: boo
     if not is_member or studio.org_id != org.pk:
         return StudioAccess()
     if is_admin:
-        return StudioAccess(roles.ADMIN, True)
+        return StudioAccess(roles.ADMIN, True, studio_audience=True)
 
     from apps.orgs.models import PermissionGroupGrant, PermissionGroupMembership
     from apps.reports.models import Report
@@ -147,10 +152,19 @@ def _studio_access_for_user(user, org, studio, *, is_member: bool, is_admin: boo
             default=Value(None), output_field=CharField(),
         ),
     ).annotate(
+        access_studio_audience=Case(
+            When(access_role__in=(roles.ADMIN, roles.DEVELOPER), then=Value(True)),
+            When(
+                Q(_direct_viewer=True) | Q(_group_viewer=True)
+                | Exists(grants.filter(role=roles.VIEWER, viewer_scope="all")),
+                then=Value(True),
+            ),
+            default=Value(False), output_field=BooleanField(),
+        ),
         access_full=Case(
             When(access_role__in=(roles.ADMIN, roles.DEVELOPER), then=Value(True)),
             When(access_role=roles.VIEWER, _full_path=True, _private=False, then=Value(True)),
             default=Value(False), output_field=BooleanField(),
         ),
-    ).values_list("access_role", "access_full").first()
-    return StudioAccess(*rows) if rows is not None else StudioAccess()
+    ).values_list("access_role", "access_full", "access_studio_audience").first()
+    return StudioAccess(rows[0], rows[1], studio_audience=rows[2]) if rows is not None else StudioAccess()
