@@ -211,3 +211,59 @@ def test_setting_private_restricts_direct_and_all_studio_viewers(
     assert can_view_report(member, report_row)
     client.post(url, {"action": "ungrant_report", "group_id": group.pk})
     assert not can_view_report(member, report_row)
+
+
+@pytest.mark.parametrize("cause", ["readiness", "edge-external"])
+def test_disabled_private_access_allows_explicit_audience_recovery_and_revocation(
+    login, org_admin, org, studio, report_row, make_group, settings, cause,
+):
+    from apps.reports.models import OrgSharePolicy
+
+    settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = True
+    settings.TRELLUM_REPORT_ACCESS_MODEL = "proxy"
+    report_row.audience = "private"
+    report_row.save(update_fields=["audience"])
+    group = make_group("Assigned viewers", grants=[(studio, roles.VIEWER)])
+    grant = group.grants.get()
+    ReportPermissionGrant.objects.create(grant=grant, report=report_row)
+    policy = OrgSharePolicy.objects.create(org=org, share_links_enabled=False, embed_links_enabled=False)
+    settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = cause != "readiness"
+    settings.TRELLUM_REPORT_ACCESS_MODEL = "edge-external" if cause == "edge-external" else "proxy"
+    client = login(org_admin)
+    url = _url(org, studio, report_row)
+    html = client.get(url).content.decode()
+    assert "explicitly switch to Studio audience" in html
+    assert "make this item available to studio Viewers" in html
+    assert "Private content is unavailable until report-scoped access is configured. When configured," in html
+    report_row.refresh_from_db()
+    assert report_row.audience == "private"
+    assert client.post(url, {"action": "ungrant_report", "group_id": group.pk}).status_code == 302
+    assert not ReportPermissionGrant.objects.filter(grant=grant, report=report_row).exists()
+    assert AuditLog.objects.filter(action="group.report_ungrant").count() == 1
+    assert client.post(url, {"action": "grant_report", "group_id": group.pk}).status_code == 302
+    assert not ReportPermissionGrant.objects.filter(grant=grant, report=report_row).exists()
+    response = client.post(url, {"action": "set_audience", "audience": "studio"}, HTTP_X_TRELLUM_FORM="1")
+    assert response.status_code == 200 and response.json()["audience"] == "studio"
+    report_row.refresh_from_db()
+    assert report_row.audience == "studio"
+    assert AuditLog.objects.get(action="report.audience_set").metadata == {"prior_audience": "private", "audience": "studio"}
+    policy.refresh_from_db()
+    assert not policy.share_links_enabled and not policy.embed_links_enabled
+
+
+def test_selected_grant_models_reject_new_restrictions_while_disabled(
+    make_group, studio, report_row, settings,
+):
+    from django.core.exceptions import ValidationError
+
+    group = make_group("Blocked", grants=[(studio, roles.VIEWER)])
+    grant = group.grants.get()
+    settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = False
+    grant.viewer_scope = "selected"
+    with pytest.raises(ValidationError, match="Selected report access is unavailable"):
+        grant.save()
+    with pytest.raises(ValidationError, match="Selected report access is unavailable"):
+        ReportPermissionGrant.objects.create(grant=grant, report=report_row)
+    grant.refresh_from_db()
+    assert grant.viewer_scope == "all"
+    assert not ReportPermissionGrant.objects.filter(grant=grant).exists()

@@ -16,6 +16,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Explain report access configuration failures within the portal and allow
   administrators to restore Studio audience or revoke assignments explicitly.
 
+
 ## [0.9.1] — 2026-10-20
 
 The v0.9.0 tag was never published: its images failed the release

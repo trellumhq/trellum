@@ -1604,3 +1604,21 @@ class TestDeclaredFileSourcesSafety:
         row = RepoDataSource.objects.get(studio=studio_tree, name="demo_db")
         assert row.shipped_path == "" and row.file_error
         assert "demo_db" in _fresh_repo(studio_repo).last_error
+
+
+def test_private_admission_warning_keeps_valid_sync_and_records_author_feedback(
+    studio_repo, studio_tree, upstream, settings,
+):
+    settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = False
+    upstream["write_file"]("reports/a-private/report.yaml", b"slug: a-private\nname: Private\nkind: analysis\ninitial_audience: private\n")
+    upstream["write_file"]("reports/a-private/content.md", b"# Private analysis\n")
+    upstream["write_report"]("z-valid")
+    upstream["push"]("add private and studio items")
+    result = StudioGitSync(_fresh_repo(studio_repo)).sync()
+    assert result["ok"], result
+    repo = _fresh_repo(studio_repo)
+    assert repo.last_synced_sha == repo.remote_sha
+    assert "a-private" in repo.last_error and "TRELLUM_REPORT_SCOPED_ACCESS_READY" in repo.last_error
+    assert len(repo.last_error.encode()) < 2000
+    assert set(studio_tree.reports.values_list("slug", flat=True)) == {"alpha", "z-valid"}
+    assert studio_tree.publishes.get().status == "ok"

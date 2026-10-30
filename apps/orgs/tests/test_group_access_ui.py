@@ -261,7 +261,7 @@ class TestReportAccess:
         url = f"/s/{org.slug}/{studio.slug}/r/{report_row.slug}/access"
         client = login(org_admin)
         html = client.get(url).content.decode()
-        assert "Selected-report access is read-only" in html
+        assert "New Private audiences and assignments are unavailable" in html
         assert "TRELLUM_REPORT_SCOPED_ACCESS_READY is not enabled" in html
         assert (
             client.post(
