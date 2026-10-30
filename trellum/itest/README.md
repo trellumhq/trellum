@@ -31,8 +31,17 @@ naming the compose command that should have been run first.
 ## Prerequisites
 
 ```
+python -m venv .venv-itest
+# Activate .venv-itest before installing:
 pip install -r itest/requirements-itest.txt
 ```
+
+Use this separate environment for the harness. The fakesnow emulator still
+requires Connector 4's removed `snowflake.connector.converter` module; it cannot
+run with the product's Connector 5.1 dependency or `constraints.txt`. Shared
+drivers come from `requirements-drivers-common.txt`. The installed-connector
+checks in `testing/test_snowflake_compat.py` run in the product environment and
+validate Connector 5.1 separately; fakesnow does not validate that connector.
 
 Docker Desktop, running, for anything beyond the embedded engines
 (sqlite, duckdb, fakesnow, file, api never need it).

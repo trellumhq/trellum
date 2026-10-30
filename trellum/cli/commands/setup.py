@@ -10,6 +10,32 @@ from pathlib import Path
 
 def _cmd_setup(args: argparse.Namespace) -> int:
     from trellum.agent import agentsetup
+    if args.what == "reporting":
+        from trellum.project import get_project_root
+        from trellum.scaffold.reporting import (
+            ReportingSetupError,
+            configure_reporting,
+            stdin_is_interactive,
+        )
+        root = Path(args.dest or get_project_root()).resolve()
+        try:
+            values = configure_reporting(
+                root, timezone=args.timezone, day_start=args.day_start,
+                metrics_build_time=args.metrics_build_time,
+                no_metrics_schedule=args.no_metrics_schedule,
+                non_interactive=args.non_interactive,
+                prompt=stdin_is_interactive() and not args.non_interactive and
+                       not any((args.timezone, args.day_start,
+                                args.metrics_build_time, args.no_metrics_schedule)),
+            )
+        except (ReportingSetupError, EOFError, KeyboardInterrupt) as exc:
+            print(f"Reporting setup cancelled: {exc or 'input ended'}", file=sys.stderr)
+            return 2
+        print(f"Configured reporting settings in {root / 'config.yaml'}")
+        print(f"  timezone: {values['timezone']}")
+        print(f"  day_start: {values['day_start']}")
+        print(f"  metrics_build_time: {values['metrics_build_time'] or 'disabled'}")
+        return 0
     if args.what == "portal":
         return _setup_portal(args)
     if args.what == "project":

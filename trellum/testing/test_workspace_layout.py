@@ -193,6 +193,15 @@ def test_queue_edits_and_removal_update_both_loaded_widgets(workspace_browser_pr
         try:
             page = browser.new_page(viewport={"width": 1366, "height": 768})
             page.goto(origin + "/_fw/review/workspace?source=source-one")
+            page.locator("#global-select").wait_for(state="visible")
+            assert page.locator("#global-select").evaluate("el => getComputedStyle(el).fontSize") == "12px"
+            page.get_by_role("button", name="Chat & queue").click()
+            assert page.locator("#queue-summary").inner_text() == "Unsent annotations"
+            assert "No unsent annotations" in page.locator("#queue-list").inner_text()
+            assert "Nothing queued yet" not in page.locator("#queue-list").inner_text()
+            assert page.get_by_role("heading", name="Conversation").is_visible()
+            assert page.locator("#send").evaluate("el => el.classList.contains('fwrv-pri')")
+            page.locator("#queue-close").click()
             _pane(page, "Reports")
             source = _source(page)
             _queue_in_widget(page, source, "Original source request")
@@ -262,12 +271,12 @@ def test_failed_or_obsolete_source_build_keeps_the_last_report(workspace_browser
                             report["error"] = "Synthetic build failure"
                 route.fulfill(response=response, json=state)
 
-            page.route("**/_fw/review/workspace/state", source_state)
+            page.route("**/_fw/review/workspace/state?*", source_state)
             page.goto(origin + "/_fw/review/workspace?source=source-one")
             _pane(page, "Reports")
             _source(page)
             mode["source_two"] = "failed"
-            with page.expect_response("**/_fw/review/workspace/state"):
+            with page.expect_response("**/_fw/review/workspace/state?*"):
                 pass
             page.locator("#source-select").select_option("source-two")
             page.locator("#source-status").get_by_text("Synthetic build failure", exact=False).wait_for()
@@ -275,17 +284,82 @@ def test_failed_or_obsolete_source_build_keeps_the_last_report(workspace_browser
             assert page.locator("#retry-build").is_visible()
             assert page.locator("#global-select").is_disabled()
             mode["source_two"] = "building"
-            with page.expect_response("**/_fw/review/workspace/state"):
+            with page.expect_response("**/_fw/review/workspace/state?*"):
                 pass
             page.locator("#source-status").get_by_text("Building report", exact=False).wait_for()
             assert page.locator("#fw-workspace-report").get_attribute("data-slug") == "source-one"
             assert page.locator("#global-select").is_disabled()
             page.locator("#source-select").select_option("source-one")
             mode["source_two"] = "ready"
-            with page.expect_response("**/_fw/review/workspace/state"):
+            with page.expect_response("**/_fw/review/workspace/state?*"):
                 pass
             assert page.locator("#source-select").input_value() == "source-one"
             assert page.locator("#fw-workspace-report").get_attribute("data-slug") == "source-one"
+        finally:
+            browser.close()
+
+
+@pytest.mark.parametrize("build_state", ["missing", "stale"])
+def test_missing_source_build_requires_one_explicit_click(workspace_browser_project, build_state):
+    from playwright.sync_api import sync_playwright
+
+    origin, _, _ = workspace_browser_project
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        try:
+            page = browser.new_page(viewport={"width": 1366, "height": 768})
+            admissions = []
+            state_reads = []
+            built = {"source-two": False}
+
+            def source_state(route):
+                response = route.fetch()
+                state = response.json()
+                state_reads.append(1)
+                for report in state["reports"]:
+                    if report["slug"] == "source-two" and not built["source-two"]:
+                        report["build_state"] = build_state
+                route.fulfill(response=response, json=state)
+
+            def admit(route):
+                admissions.append(route.request.post_data_json)
+                built["source-two"] = True
+                route.fulfill(json={"build_state": "building"})
+
+            page.clock.install()
+            page.add_init_script("""(() => {
+                window.reviewStateReads = 0;
+                const fetch = window.fetch;
+                window.fetch = function(url, options) {
+                    return fetch.call(this, url, options).then(response => {
+                        if (String(url).includes('/workspace/state')) window.reviewStateReads++;
+                        return response;
+                    });
+                };
+            })();""")
+            page.route("**/_fw/review/workspace/state?*", source_state)
+            page.route("**/_fw/review/workspace/open", admit)
+            page.goto(origin + "/_fw/review/workspace?source=source-two")
+            _pane(page, "Reports")
+            expected_status = "not been built locally" if build_state == "missing" else "out of date"
+            page.locator("#source-status").get_by_text(expected_status, exact=False).wait_for()
+            page.wait_for_function("document.getElementById('fw-workspace-report').dataset.slug !== 'source-two'")
+            page.clock.fast_forward(3000)
+            page.wait_for_function("window.reviewStateReads >= 2")
+            assert len(state_reads) >= 2
+            assert admissions == []
+            page.locator("#source-select").select_option("")
+            page.go_back()
+            assert page.locator("#source-select").input_value() == "source-two"
+            assert admissions == []
+            page.reload()
+            page.locator("#source-status").get_by_text(expected_status, exact=False).wait_for()
+            assert admissions == []
+
+            # Repeated synchronous activations share the same pending admission.
+            page.locator("#open-report").evaluate("el => { el.click(); el.click(); }")
+            page.wait_for_function("document.getElementById('fw-workspace-report').dataset.slug === 'source-two' && document.getElementById('fw-workspace-report').dataset.ready === 'true'")
+            assert len(admissions) == 1
         finally:
             browser.close()
 
@@ -342,7 +416,7 @@ def test_inactive_analysis_rebuild_preserves_scrolled_source(workspace_browser_p
                     state["analysis"]["version"] = str(state["analysis"]["version"]) + "-rebuilt"
                 route.fulfill(response=response, json=state)
 
-            page.route("**/_fw/review/workspace/state", rebuilt_analysis)
+            page.route("**/_fw/review/workspace/state?*", rebuilt_analysis)
             page.goto(origin + "/_fw/review/workspace?source=source-one")
             _pane(page, "Reports")
             source = _source(page)
@@ -350,7 +424,7 @@ def test_inactive_analysis_rebuild_preserves_scrolled_source(workspace_browser_p
             source.locator("canvas").first.evaluate("() => window.scrollTo(0, 900)")
             page.wait_for_function("Math.abs(document.getElementById('fw-workspace-report').contentWindow.scrollY - 900) <= 2")
             mode["rebuilt"] = True
-            with page.expect_response("**/_fw/review/workspace/state"):
+            with page.expect_response("**/_fw/review/workspace/state?*"):
                 pass
             page.wait_for_function("old => { const frame=document.getElementById('fw-workspace-analysis'); return frame.dataset.frameId !== old && frame.dataset.ready === 'true'; }", arg=old_frame)
             assert abs(source.locator("canvas").first.evaluate("() => window.scrollY") - 900) <= 2

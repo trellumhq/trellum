@@ -25,19 +25,22 @@ Use this prompt with your coding agent:
 
 ### Commands for the coding agent
 
-The agent can run this loop from the repository root:
+The agent can run this loop from the repository root, using the session number
+returned with the polled feedback for `<session>`:
 
 ```bash
 python -m trellum review start reports/store-health
 python -m trellum review poll --report store-health
 # Apply requested edits to reports/store-health source files.
 python -m trellum.run reports/store-health --no-serve
-python -m trellum review poll --report store-health --reply "Updated the report and rebuilt the preview."
+python -m trellum review poll --report store-health --session <session> --reply "Updated the report and rebuilt the preview."
 ```
 
 `poll` waits for feedback, so the agent must keep that process alive (or
 restart it if its timeout expires). Running `start` alone serves the report and
-enables review; it does not create a model, editor, or coding agent. The
+enables review; it does not create a model, editor, or coding agent. A reply
+needs the original `--session` or an explicit `--feedback` ID to mark picked-up
+work complete; replies without either identity only add chat text. The
 `--report` option isolates feedback when several reports share a project.
 When the user presses **End**, `poll` exits with code 3; **Send & end** delivers
 the final batch before that exit. Do not restart a session after it has ended.

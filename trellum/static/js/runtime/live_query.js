@@ -305,7 +305,14 @@
                 return;
             }
             var params = _collect(dsId);
-            if (_sameParams(params, entry.lastApplied)) return;  // no-op suppression
+            if (_sameParams(params, entry.lastApplied)) {
+                // Returning to the displayed slice needs no request, even
+                // after an obsolete response was discarded.
+                entry.failed = false;
+                entry.errorMessage = '';
+                _status(entry, '', false);
+                return;
+            }
             _recordRequest(dsId);
             _send(dsId, params, false);
         }
@@ -343,6 +350,10 @@
                 headers: headers,
                 body: JSON.stringify({query_id: entry.cfg.query_id, params: params})
             }).then(function(r) {
+                if (!_sameParams(params, _collect(dsId))) {
+                    entry.dirty = true;
+                    return null;
+                }
                 if (r.status === 429 && !isRetry) {
                     var ra = parseInt(r.headers.get('Retry-After') || '1', 10);
                     if (isNaN(ra) || ra < 0) ra = 1;
@@ -350,7 +361,8 @@
                     entry.retryTimer = setTimeout(function() {
                         entry.retryTimer = null;
                         entry.inflight = false;
-                        _send(dsId, params, true);
+                        if (_sameParams(params, _collect(dsId))) _send(dsId, params, true);
+                        else _schedule(dsId);
                     }, Math.min(ra, 30) * 1000);
                     return null;
                 }
@@ -366,6 +378,13 @@
                 entry.inflight = false;
                 if (!data) return;  // 429 path already rescheduled its own retry
                 if (mySeq < entry.latestSeq) return;  // stale response for older params
+                // A selection can change while the sole request is in flight
+                // or its JSON body is still arriving. Keep the current rows
+                // until a response for the selected bounds/filters arrives.
+                if (!_sameParams(params, _collect(dsId))) {
+                    entry.dirty = true;
+                    return;
+                }
                 entry.latestSeq = mySeq;
                 entry.lastApplied = params;
                 entry.failed = false;
@@ -377,6 +396,10 @@
                 _status(entry, '', false);
             })['catch'](function(err) {
                 entry.inflight = false;
+                if (!_sameParams(params, _collect(dsId))) {
+                    entry.dirty = true;
+                    return;
+                }
                 entry.failed = true;
                 entry.errorMessage = (err && err.message) || 'Lookup failed';
                 _status(entry, entry.errorMessage, true);

@@ -4,7 +4,7 @@
         ['fwrvDot', 'fwrvDot2'].forEach(function (id) {
             $(id).className = 'fwrv-dot ' + (s === 'listening' ? 'listening' : s === 'working' ? 'working' : '');
         });
-        var lbl = s === 'listening' ? 'agent listening' : s === 'working' ? 'agent working…' : 'agent absent';
+        var lbl = s === 'listening' ? 'agent listening' : s === 'working' ? 'agent working' : 'waiting for agent';
         $('fwrvDotLbl').textContent = lbl;
         $('fwrvDotLbl2').textContent = lbl;
         // Presence is information, not a lock: the user asked to send a

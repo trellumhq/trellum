@@ -166,7 +166,10 @@ SOCIALACCOUNT_STORE_TOKENS = False
 # Always show the IdP's account picker: without this, Microsoft silently
 # reuses whatever session is active in the browser — the wrong-account trap.
 SOCIALACCOUNT_PROVIDERS = {
-    "openid_connect": {"AUTH_PARAMS": {"prompt": "select_account"}},
+    "openid_connect": {
+        "provider_class": "apps.accounts.oidc.provider.PublicURLProvider",
+        "AUTH_PARAMS": {"prompt": "select_account"},
+    },
 }
 
 LANGUAGE_CODE = "en-us"

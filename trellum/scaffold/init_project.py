@@ -9,6 +9,14 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
+
+from trellum.scaffold.reporting import (
+    ReportingSetupError,
+    collect_reporting,
+    stdin_is_interactive,
+    write_reporting,
+)
 
 EVENTS_YAML_TEMPLATE = """\
 # Centralized timeline of notable events (optional).
@@ -104,9 +112,25 @@ def _write_if_missing(path: str, content: str) -> bool:
     return True
 
 
-def init_project(target: str | None = None) -> None:
+def init_project(target: str | None = None, *, timezone: str | None = None,
+                 day_start: str | None = None, metrics_build_time: str | None = None,
+                 no_metrics_schedule: bool = False, non_interactive: bool = False,
+                 prompt: bool = False) -> None:
     root = target or _default_root()
     root = os.path.abspath(root)
+
+    # Gather and validate everything before creating any files. Direct Python
+    # calls retain their historical non-interactive behavior.
+    configured = bool(timezone is not None or day_start is not None or
+                      metrics_build_time is not None or no_metrics_schedule)
+    should_prompt = prompt and not configured and not non_interactive
+    reporting = collect_reporting(
+        root, timezone=timezone, day_start=day_start,
+        metrics_build_time=metrics_build_time,
+        no_metrics_schedule=no_metrics_schedule,
+        non_interactive=non_interactive, prompt=should_prompt,
+    )
+    write_reporting(root, reporting)
 
     print(f"Initializing project in {root}\n")
 
@@ -147,7 +171,8 @@ def init_project(target: str | None = None) -> None:
     print("  1. Copy .env.example to .env and add your database credentials")
     print("  2. Configure data sources in data-sources/config.yaml")
     print("  3. Add events to events.yaml for chart annotations (optional)")
-    print("  4. Create your first report: python -m trellum.new my-report")
+    print("  4. Adjust the reporting day or Metrics schedule: python -m trellum setup reporting --dest .")
+    print("  5. Create your first report: python -m trellum.new my-report")
     print("\nRun `trellum` to see what the framework offers.")
 
 
@@ -161,8 +186,21 @@ def main() -> None:
         default=None,
         help="Target directory (defaults to project root)",
     )
+    parser.add_argument("--timezone", help="IANA timezone for reporting dates")
+    parser.add_argument("--day-start", help="reporting-day start, HH:MM")
+    parser.add_argument("--metrics-build-time", help="daily Metrics build time, HH:MM")
+    parser.add_argument("--no-metrics-schedule", action="store_true", help="disable the Metrics daily build schedule")
+    parser.add_argument("--non-interactive", action="store_true", help="never prompt; use flags and existing values")
     args = parser.parse_args()
-    init_project(args.target)
+    try:
+        init_project(args.target, timezone=args.timezone, day_start=args.day_start,
+                     metrics_build_time=args.metrics_build_time,
+                     no_metrics_schedule=args.no_metrics_schedule,
+                     non_interactive=args.non_interactive,
+                     prompt=stdin_is_interactive() and not args.non_interactive)
+    except (ReportingSetupError, EOFError, KeyboardInterrupt) as exc:
+        print(f"Setup cancelled: {exc or 'input ended'}", file=sys.stderr)
+        raise SystemExit(2)
 
 
 if __name__ == "__main__":

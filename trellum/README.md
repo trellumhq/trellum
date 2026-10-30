@@ -231,9 +231,78 @@ Use this when you are bootstrapping a **new** BI project or an empty repo that d
 python3 -m trellum.init
 ```
 
-This creates `events.yaml`, `.env.example`, `reports/`, and related scaffolding. Commit those files to git so teammates receive them when they clone.
+This creates `events.yaml`, `.env.example`, `reports/`, and related scaffolding.
+In a terminal it also asks for the project timezone, reporting-day start, and
+daily Metrics build time, stored in `config.yaml`. Commit those files to git
+so teammates receive them when they clone.
 
 **If you clone an already-scaffolded repository**, you normally **skip** `trellum.init` — only run it again when fixing a broken or incomplete checkout.
+
+### Reporting day and daily Metrics build
+
+Configure an existing project, or change its reporting settings later:
+
+```bash
+python -m trellum setup reporting
+```
+
+The three settings are independent of alert delivery schedules:
+
+```yaml
+# Project config.yaml
+reporting:
+  timezone: UTC
+  day_start: "04:00"
+  metrics_build_time: "07:00"
+```
+
+Here the reporting day labelled October 23 runs from October 23 at 04:00 UTC
+up to October 24 at 04:00 UTC. At 03:00 on October 24, `ctx.today` is still
+`2026-10-23`. Metrics builds at 07:00; an alert can independently run at 09:00.
+Choose a build time after the source data is ready. Nothing is deleted or
+reset at the boundary.
+
+Unconfigured projects retain UTC/midnight date helpers and do not gain a build
+schedule. New setup suggests UTC, 00:00, and 07:00. For unattended setup:
+
+```bash
+python -m trellum setup reporting --non-interactive \
+  --timezone UTC --day-start 04:00 --metrics-build-time 07:00
+```
+
+Use `--no-metrics-schedule` (or `metrics_build_time: null`) to disable the
+inherited schedule. To opt a report into this build time, set its manifest to:
+
+```yaml
+# reports/metrics/report.yaml
+schedule:
+  project: metrics
+```
+
+`python -m trellum metrics --report` writes this for a new Metrics report.
+Existing report files are kept: replace their schedule explicitly if you want
+them to inherit. A `schedule.cron` value takes precedence, including an empty
+string to keep that report unscheduled. After committing your configuration,
+the portal picks up changes at its next repository sync. Standalone projects
+still need a scheduler to launch builds; setup does not install a daemon.
+Scheduled alerts and the portal's idle-build suspension policy are unchanged.
+
+Report date helpers and automatic Metrics lookback windows follow the project
+reporting day. Daily source rows must already use the intended day labels;
+changing settings cannot split or re-bucket daily totals supplied by a warehouse.
+For timestamp data, use the explicit half-open UTC bounds:
+
+```python
+start, end = ctx.reporting_day_bounds(ctx.yesterday)
+# Bind these to: WHERE event_time >= :start AND event_time < :end
+```
+
+Timezone boundaries follow local wall time, so days crossing daylight-saving
+changes may last 23 or 25 hours. A repeated boundary uses its first occurrence;
+a nonexistent boundary advances by the clock-change gap. Build times use the
+portal scheduler's existing timezone-aware cron behavior. `ctx.now_utc` always
+remains the actual UTC timestamp. Custom generators using their own calendar
+logic should adopt the shared date helpers or UTC bounds.
 
 ### Opening an existing repository (first time on your machine)
 
@@ -317,11 +386,14 @@ See `trellum guide analysis` for the authoring workflow.
 
 | Property / Method | Description |
 |---|---|
-| `ctx.today` | Today's date as `"YYYY-MM-DD"` (UTC) |
+| `ctx.today` | Current reporting-day label as `"YYYY-MM-DD"` (UTC midnight unless configured) |
 | `ctx.yesterday` | Yesterday's date |
 | `ctx.two_days_ago` | Two days ago |
 | `ctx.week_ago` | Seven days ago |
 | `ctx.now_utc` | Current UTC timestamp (ISO 8601) |
+| `ctx.reporting_timezone` | Project IANA timezone, default `UTC` |
+| `ctx.reporting_day_start` | Project reporting-day boundary as `HH:MM`, default `00:00` |
+| `ctx.reporting_day_bounds(day=None)` | Half-open UTC datetime bounds for a reporting-day label; defaults to `ctx.today` |
 | `ctx.config` | The parsed `report.yaml` dict |
 | `ctx.slug` | Report slug |
 | `ctx.theme` | Active `Theme` instance |
@@ -939,11 +1011,13 @@ not silently recreated. Automatic replay is limited to single read statements
 the framework recognizes; unsupported quoting and ambiguous SQL run once.
 Read queries must not call functions with side effects.
 
-With the default connection reuse, calling driver methods directly, entering a driver context manager, setting
+With the default connection reuse, calling driver methods directly, entering a transactional driver context manager, setting
 connection attributes, or executing a statement that cannot be replayed disables
 query replay for that connection. This preserves manually managed transactions,
 temporary tables and session settings. A reconnect starts a new database
 session and may observe newer data; it does not restore a transaction snapshot.
+Vertica's connection context only manages lifetime and remains replayable;
+its `closed()` and `opened()` status checks also preserve read recovery.
 
 ### A new connection for every query
 
@@ -1349,8 +1423,8 @@ never modified — the overlay is injected into the served copy only.
 | Verb | Description |
 |---|---|
 | `start <report>` | Build if needed, serve, enable review, open the browser (`--rebuild`, `--no-browser`, `--port N`, `--restart-server`) |
-| `poll` | Block until feedback; exit 0 feedback / 2 `--timeout` / 3 ended (`--reply TEXT`, `--report SLUG` to scope to one report when several agents share the project, `--json`) |
-| `reply TEXT` | Answer into the browser's chat (`--report SLUG` to reach one report's pages only) |
+| `poll` | Block until feedback; exit 0 feedback / 2 `--timeout` / 3 ended (`--reply TEXT --session N`, `--feedback ID`, `--report SLUG` to scope to one report when several agents share the project, `--json`) |
+| `reply TEXT` | Answer into the browser's chat (`--report SLUG` to reach one report's pages; `--session N` or `--feedback ID` to complete picked-up work) |
 | `status` | One-line session state (`--json`) |
 | `end` | End the session from the agent's side |
 
@@ -1371,6 +1445,16 @@ Initialize project scaffolding (creates `reports/`, `events.yaml`, `.env.example
 | Argument | Description |
 |---|---|
 | `target` | Target directory (default: project root) |
+| `--timezone ZONE` | IANA reporting timezone, such as `UTC` or `Europe/Amsterdam` |
+| `--day-start HH:MM` | Start of the reporting day |
+| `--metrics-build-time HH:MM` | Separate daily Metrics build time in the project timezone |
+| `--no-metrics-schedule` | Disable the inherited Metrics build schedule |
+| `--non-interactive` | Use supplied values or existing/default settings without prompts |
+
+The same reporting flags are available on `python -m trellum setup reporting`,
+with `--dest PATH` to configure another project. Non-terminal input never
+prompts. Existing configured values, including a disabled build schedule,
+are retained unless changed explicitly.
 
 ---
 
@@ -1739,7 +1823,9 @@ and optional note. The agent polls with `python -m trellum review poll --report
 it with `python -m trellum analysis import reports/<slug> --inbox <capture-id>
 [--name <safe-name>]`, edit `content.md` or ordered `slides.yaml`, rebuild with
 `python -m trellum.run reports/<slug> --no-serve`, then reply by polling again
-with `python -m trellum review poll --report <slug> --reply "what changed"`.
+with `python -m trellum review poll --report <slug> --session <session> --reply "what changed"`.
+Use the session returned with the polled batch; a reply without a session or
+feedback ID is chat text only and does not complete feedback.
 Pending captures stay outside the repository and output tree under
 `~/.trellum/analysis-inbox/<project-id>`; list them after restart with
 `python -m trellum analysis inbox reports/<slug>` and explicitly discard one

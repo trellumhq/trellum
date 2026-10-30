@@ -14,7 +14,8 @@
     var root = el('div', 'fwrv-root');
     root.setAttribute('data-fw-review-ui', '');
     root.innerHTML =
-        '<div class="fwrv-endbar" id="fwrvEndbar">Review session ended — feedback was delivered to the agent.</div>' +
+        '<div class="fwrv-endbar" id="fwrvEndbar"><span>Review session ended — feedback was delivered to the agent.</span>' +
+          '<button type="button" class="fwrv-btn" id="fwrvConversation" aria-controls="fwrvPanel" aria-expanded="false">Conversation</button></div>' +
         '<div class="fwrv-bar" id="fwrvBar">' +
           '<button type="button" class="fwrv-btn" id="fwrvSelect" title="Select an element (Esc exits)">' +
             '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 4l7.5 16 2.2-6.3L20 11.5z"/></svg>Select</button>' +

@@ -1,30 +1,12 @@
-    /* ── log + toast ────────────────────────────────────────── */
-    // Light formatting for agent replies: they arrive as one long string,
-    // so honor newlines, **bold**, and break enumerations like "(1) ...;
-    // (2) ..." onto their own lines. User messages keep their line breaks.
-    function fmtChat(text) {
-        return esc(text)
-            .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
-            .replace(/\n/g, '<br>')
-            .replace(/(^|[\s;:])\((\d+)\)\s/g, '$1<br><b>($2)</b> ')
-            .replace(/^<br>/, '');
+    /* Conversation rows are reconciled in place; activity never replaces drafts. */
+    function renderConversation() {
+        window._fwReviewActivity.render(log, state.activities || [], state.chatLog);
     }
-
-    function appendLogDom(who, text) {
-        var m = el('div', 'fwrv-m ' + (who === 'you' ? 'fwrv-you' : 'fwrv-agent'));
-        var body = who === 'you' ? esc(text).replace(/\n/g, '<br>') : fmtChat(text);
-        m.innerHTML = '<span class="fwrv-w">' + (who === 'you' ? 'You' : 'Agent') + '</span>' + body;
-        log.appendChild(m);
-        log.scrollTop = log.scrollHeight;
-    }
-
-    // The conversation must survive the auto-reload after every rebuild:
-    // agent replies could be refetched, but the "You" side lives only here.
-    function addLog(who, text, replyN) {
-        appendLogDom(who, text);
-        state.chatLog.push({ who: who, text: text, n: replyN || 0 });
+    function addLog(who, text, replyN, ts) {
+        state.chatLog.push({ who: who, text: text, n: replyN || 0, ts: ts || Date.now()/1000 });
         if (state.chatLog.length > 120) state.chatLog = state.chatLog.slice(-120);
         lsSet(CHATKEY, JSON.stringify({ session: state.session, entries: state.chatLog }));
+        renderConversation();
     }
     var toastTimer = null;
     function showToast(head, text) {

@@ -4,12 +4,9 @@ from __future__ import annotations
 
 import os
 import re
-from datetime import timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
-import yaml
-
-from trellum.report_config import validate_content_config
 from trellum.themes import DEFAULT_THEME, Theme
 
 #: Live-query ids travel into ``_live_queries.json``, data.json and the host's
@@ -78,16 +75,25 @@ class ReportContext:
         # Honours FW_NOW so a run can be made reproducible; falls back to the
         # real clock when unset.
         from trellum.project import get_now_utc
+        from trellum.reporting_day import load_reporting_settings
 
-        now = get_now_utc()
+        self.reporting_settings = load_reporting_settings()
+        self.reporting_timezone = self.reporting_settings.timezone
+        self.reporting_day_start = self.reporting_settings.day_start
+        now = get_now_utc().astimezone(timezone.utc)
         self._now_utc = now
 
-        # Date strings (UTC)
-        self.today: str = now.strftime("%Y-%m-%d")
-        self.yesterday: str = (now - timedelta(days=1)).strftime("%Y-%m-%d")
-        self.two_days_ago: str = (now - timedelta(days=2)).strftime("%Y-%m-%d")
-        self.week_ago: str = (now - timedelta(days=7)).strftime("%Y-%m-%d")
+        # Reporting labels use local day boundaries; actual instants stay UTC.
+        today = self.reporting_settings.reporting_date(now)
+        self.today: str = today.isoformat()
+        self.yesterday: str = (today - timedelta(days=1)).isoformat()
+        self.two_days_ago: str = (today - timedelta(days=2)).isoformat()
+        self.week_ago: str = (today - timedelta(days=7)).isoformat()
         self.now_utc: str = now.isoformat()
+
+    def reporting_day_bounds(self, day: date | str | None = None) -> tuple[datetime, datetime]:
+        """UTC bounds of a reporting label, defaulting to the current today."""
+        return self.reporting_settings.day_bounds(self.today if day is None else day)
 
     # ── Timing ────────────────────────────────────────────────
 
@@ -585,11 +591,7 @@ class BaseReport:
 
     @classmethod
     def load_config(cls, report_dir: str) -> dict:
-        """Load and return the report.yaml from a report directory."""
-        yaml_path = os.path.join(report_dir, "report.yaml")
-        if not os.path.exists(yaml_path):
-            raise FileNotFoundError(f"No report.yaml found in {report_dir}")
-        # UTF-8 explicitly, or Windows decodes non-ASCII names via the ANSI
-        # code page and the header renders mojibake.
-        with open(yaml_path, encoding="utf-8") as f:
-            return validate_content_config(yaml.safe_load(f))
+        """Load report.yaml, resolving opted-in project schedules."""
+        from trellum.report_config import load_report_config
+
+        return load_report_config(report_dir)

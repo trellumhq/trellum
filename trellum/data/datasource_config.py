@@ -50,7 +50,10 @@ def load_datasource_config() -> dict[str, dict]:
 
     sources: dict[str, dict] = {}
     for name, entry in (raw.get("sources") or {}).items():
-        entry = dict(entry)
+        # A source placeholder written as `name:` is YAML null. Keep it
+        # unresolved until selected, just like an empty mapping, so it
+        # cannot prevent another source from loading.
+        entry = {} if entry is None else dict(entry)
         entry.setdefault("name", name)
         sources[name] = entry
 

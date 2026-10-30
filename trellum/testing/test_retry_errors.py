@@ -38,7 +38,10 @@ def _driver_exception(module, name, *args, **kwargs):
     try:
         cls = getattr(importlib.import_module(module), name)
     except (ImportError, AttributeError):
-        cls = type(name, (Exception,), {"__module__": module})
+        def initialize(self, *args, **metadata):
+            Exception.__init__(self, *args)
+            self.__dict__.update(metadata)
+        cls = type(name, (Exception,), {"__module__": module, "__init__": initialize})
     return cls(*args, **kwargs)
 
 

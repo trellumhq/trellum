@@ -11,6 +11,29 @@ from apps.core import roles
 pytestmark = pytest.mark.django_db
 
 
+def wait_for(page, condition, timeout_ms=5000):
+    """Let Playwright deliver held routes and bindings until condition() holds.
+
+    A fixed pause before asserting that something arrived fails whenever a loaded runner takes longer.
+    """
+    for _ in range(timeout_ms // 10):
+        if condition():
+            return
+        page.wait_for_timeout(10)
+    assert condition()
+
+
+def fulfill_navigation(page, route, body):
+    """Answer a held fragment request and wait until the controller has finished the navigation.
+
+    The content and aria-busy change first; focus moves to the heading a frame later, once the page has mounted.
+    Typing into the page before then can lose keystrokes to that focus move.
+    """
+    page.evaluate('window.navigated = false')
+    route.fulfill(body=body, content_type='application/json')
+    page.wait_for_function('window.navigated')
+
+
 def test_metrics_fragment_native_parity_and_access(studio_tree, member, grant_studio, login, client):
     grant_studio(member, studio_tree, roles.VIEWER)
     url = f'/s/{studio_tree.org.slug}/{studio_tree.slug}/metrics'
@@ -79,6 +102,7 @@ def test_rendered_navigation_delay_guard_history_and_native_feedback(
         page.route('http://navigation.test/**', serve)
         page.goto('http://navigation.test' + overview)
         assert page.evaluate('!!window.TrellumNavigation')
+        page.evaluate("document.addEventListener('console:navigated', function () { window.navigated = true; })")
         assert not errors
         page.evaluate("""document.addEventListener('click', function () {
             var start = performance.now(); requestAnimationFrame(function () { window.navigationPaint = performance.now() - start; });
@@ -91,13 +115,12 @@ def test_rendered_navigation_delay_guard_history_and_native_feedback(
         assert page.url.endswith(comparison)
         assert page.locator('main h1').inner_text() == 'Metrics'
         assert page.get_by_role('status').filter(has_text='Loading Metrics').count() == 1
-        assert pending
+        wait_for(page, lambda: pending)
         route = pending.pop()
         response = fragment_responses[comparison]
         payload = response.json()
         payload['html'] += '<script>window.untrustedExecuted = true</script><button id=inline-handler onclick="window.untrustedExecuted=true">Unsafe handler</button><a id=js-link href="javascript:window.untrustedExecuted=true">Unsafe link</a><input id=kept-value value="javascript:text">'
-        route.fulfill(body=json.dumps(payload), content_type='application/json')
-        page.wait_for_function("!document.querySelector('main').hasAttribute('aria-busy')")
+        fulfill_navigation(page, route, json.dumps(payload))
         assert not page.evaluate('!!window.untrustedExecuted')
         assert page.locator('#inline-handler').get_attribute('onclick') is None
         assert page.locator('#js-link').get_attribute('href') is None
@@ -111,30 +134,31 @@ def test_rendered_navigation_delay_guard_history_and_native_feedback(
         page.once('dialog', lambda dialog: dialog.accept())
         page.get_by_role('link', name='Overview', exact=True).click()
         page.wait_for_function("document.querySelector('main').getAttribute('aria-busy') === 'true'")
+        wait_for(page, lambda: pending)
         route = pending.pop()
-        response = fragment_responses[overview]
-        route.fulfill(body=response.content, content_type='application/json')
-        page.wait_for_function("!document.querySelector('main').hasAttribute('aria-busy')")
+        fulfill_navigation(page, route, fragment_responses[overview].content)
         page.evaluate("document.querySelector('main').insertAdjacentHTML('beforeend', '<form data-settings-form><input name=backdraft value=initial></form>'); TrellumSettingsForms.init(document)")
         page.locator('input[name=backdraft]').fill('keep me')
         page.once('dialog', lambda dialog: dialog.dismiss())
+        # Declining the leave undoes the Back with history.go(1). That traversal is asynchronous, so wait for
+        # its popstate (the second one) rather than a fixed delay that a loaded WebKit runner can exceed.
+        page.evaluate("window.backPops = 0; addEventListener('popstate', function () { window.backPops++; })")
         page.evaluate('history.back()')
-        page.wait_for_timeout(150)
-        assert page.url.endswith(overview)
+        page.wait_for_function('window.backPops === 2')
+        page.wait_for_url('**' + overview)
         assert page.locator('input[name=backdraft]').input_value() == 'keep me'
         page.once('dialog', lambda dialog: dialog.accept())
         page.evaluate('history.back()')
         page.wait_for_function("document.querySelector('main').getAttribute('aria-busy') === 'true'")
+        wait_for(page, lambda: pending)
         route = pending.pop()
-        response = fragment_responses[comparison]
-        route.fulfill(body=response.content, content_type='application/json')
-        page.wait_for_function("!document.querySelector('main').hasAttribute('aria-busy')")
+        fulfill_navigation(page, route, fragment_responses[comparison].content)
         assert page.url.endswith(comparison)
         page.evaluate('history.forward()')
         page.wait_for_function("document.querySelector('main').getAttribute('aria-busy') === 'true'")
+        wait_for(page, lambda: pending)
         route = pending.pop()
-        route.fulfill(body=fragment_responses[overview].content, content_type='application/json')
-        page.wait_for_function("!document.querySelector('main').hasAttribute('aria-busy')")
+        fulfill_navigation(page, route, fragment_responses[overview].content)
         assert page.url.endswith(overview)
         assert not errors
         # A leave lifecycle invalidates a pending save without erasing its draft.
@@ -142,7 +166,7 @@ def test_rendered_navigation_delay_guard_history_and_native_feedback(
         page.locator('input[name=savedraft]').fill('pending draft')
         page.get_by_role('button', name='Save draft').click()
         page.wait_for_function("document.querySelector('form[data-settings-save]').getAttribute('aria-busy') === 'true'")
-        assert saves
+        wait_for(page, lambda: saves)
         page.evaluate('TrellumSettingsForms.unmount()')
         assert page.locator('input[name=savedraft]').input_value() == 'pending draft'
         assert page.get_by_role('button', name='Save draft').is_enabled()
@@ -152,7 +176,7 @@ def test_rendered_navigation_delay_guard_history_and_native_feedback(
         assert 'outcome is unknown' in page.locator('[data-settings-dirty-status]').inner_text()
         page.evaluate("document.querySelector('form[data-settings-save]').addEventListener('settings:success', ()=>TrellumSettingsForms.unmount(), {once:true})")
         page.get_by_role('button', name='Save draft').click()
-        page.wait_for_timeout(50)
+        wait_for(page, lambda: saves)
         saves.pop().fulfill(body=json.dumps({'ok': True, 'message': 'Saved.'}), content_type='application/json')
         page.wait_for_function("document.querySelector('[data-settings-dirty-status]').textContent.includes('Saved.')")
         assert 'outcome is unknown' not in page.locator('[data-settings-dirty-status]').inner_text()
@@ -162,11 +186,11 @@ def test_rendered_navigation_delay_guard_history_and_native_feedback(
         # An obsolete reply must never replace a newer destination.
         page.get_by_role('link', name='Comparison', exact=True).click()
         page.wait_for_function("document.querySelector('main').getAttribute('aria-busy') === 'true'")
+        wait_for(page, lambda: pending)
         old_route = pending.pop()
         page.evaluate("TrellumNavigation.navigate(location.pathname.replace('/comparison', ''))")
-        page.wait_for_timeout(50)
-        pending.pop().fulfill(body=fragment_responses[overview].content, content_type='application/json')
-        page.wait_for_function("!document.querySelector('main').hasAttribute('aria-busy')")
+        wait_for(page, lambda: pending)
+        fulfill_navigation(page, pending.pop(), fragment_responses[overview].content)
         old_payload = fragment_responses[comparison].json()
         old_payload['html'] += '<p id=obsolete>Obsolete result</p>'
         old_route.fulfill(body=json.dumps(old_payload), content_type='application/json')
@@ -178,11 +202,12 @@ def test_rendered_navigation_delay_guard_history_and_native_feedback(
         old_position = page.evaluate('scrollY')
         def native_reports():
             target = page.evaluate("Array.from(document.querySelectorAll('.tl-console-nav-link')).find(n=>n.textContent.includes('Reports')).click(); var r=document.querySelector('[data-console-native-pending] button').getBoundingClientRect(); ({x:r.x+r.width/2,y:r.y+r.height/2})")
-            page.wait_for_timeout(50)
-            assert native_pending
+            wait_for(page, lambda: native_pending)
             return target
         target = native_reports()
         page.mouse.click(target['x'], target['y'])
+        # Abort the held request only once the page has cancelled it, or Chromium may show its error page.
+        page.wait_for_function("document.querySelector('[data-console-native-pending]') === null")
         native_pending.pop().abort()
         assert page.locator('#native-draft').input_value() == 'kept'
         assert page.evaluate("document.activeElement.id === 'native-draft'")
@@ -190,8 +215,8 @@ def test_rendered_navigation_delay_guard_history_and_native_feedback(
         assert not page.evaluate("document.querySelector('main').classList.contains('tl-console-native-pending')")
         native_reports()
         page.keyboard.press('Escape')
+        page.wait_for_function("document.querySelector('[data-console-native-pending]') === null")
         native_pending.pop().abort()
-        assert not page.evaluate("document.querySelector('[data-console-native-pending]') !== null")
         # The 15 s notice, shortened to 100 ms. The page is not queried while a navigation is held, so a
         # binding reports what the page showed when the notice appeared.
         notices = []
@@ -205,19 +230,19 @@ def test_rendered_navigation_delay_guard_history_and_native_feedback(
             }).observe(document.body, {subtree: true, childList: true, characterData: true})""")
         # A slow page is not a failed page: after 15 s the text says so and the request keeps going.
         native_reports()
-        page.wait_for_timeout(400)
+        wait_for(page, lambda: notices)
         assert notices == [['Still loading Reports…', 'Still loading Reports…', True]]
         # Escape and Cancel loading remain the explicit abort, even after the notice.
         page.keyboard.press('Escape')
+        page.wait_for_function("document.querySelector('[data-console-native-pending]') === null")
         native_pending.pop().abort()
-        assert not page.evaluate("document.querySelector('[data-console-native-pending]') !== null")
         assert page.locator('[data-console-navigation-native-status]').inner_text() == ''
         assert page.locator('#native-draft').input_value() == 'kept'
         assert page.evaluate('scrollY') == old_position
         delay_documents = False
         page.evaluate("document.querySelector('#native-draft').remove()")
         page.get_by_role('link', name='Comparison', exact=True).click()
-        page.wait_for_timeout(50)
+        wait_for(page, lambda: pending)
         pending.pop().fulfill(status=401, content_type='text/html', body='<h1>Sign in again</h1>')
         page.wait_for_function("document.querySelector('main [role=alert]') !== null")
         assert page.locator('.tl-console-navigation-status').count() == 0
@@ -226,20 +251,17 @@ def test_rendered_navigation_delay_guard_history_and_native_feedback(
         # An unadapted destination retains native navigation and pending feedback.
         result = page.evaluate("Array.from(document.querySelectorAll('.tl-console-nav-link')).find(n=>n.textContent.includes('Reports')).click(); ({title:document.querySelector('[data-console-native-pending] h1').textContent, path:location.pathname})")
         assert result['title'] == 'Reports'
-        page.wait_for_timeout(50)
-        assert native_pending
+        wait_for(page, lambda: native_pending)
         # Still waiting after the notice: the page is kept pending, not stopped, and then opens by itself.
-        page.wait_for_timeout(400)
-        assert len(notices) == 2
+        wait_for(page, lambda: len(notices) == 2)
         route = native_pending.pop()
         route.fulfill(body=native_responses[home].content, content_type='text/html')
         page.wait_for_url(lambda url: url.split('?')[0] == 'http://navigation.test' + home)
         result = page.evaluate("Array.from(document.querySelectorAll('.tl-console-nav-link')).find(n=>n.textContent.includes('Metrics')).click(); ({title:document.querySelector('[data-console-native-pending] h1').textContent, path:location.pathname})")
         assert result['title'] == 'Metrics'
         assert result['path'] == home
-        page.wait_for_timeout(50)
+        wait_for(page, lambda: native_pending)
         assert page.url.startswith('http://navigation.test' + home)  # native URL commits with the document
-        assert native_pending
         route = native_pending.pop()
         route.fulfill(body=native_responses[overview].content, content_type='text/html')
         page.wait_for_url('http://navigation.test' + overview)

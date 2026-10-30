@@ -20,9 +20,17 @@ MAX_AGE = timedelta(hours=4)
 
 
 def replay_safe(report) -> bool:
-    config = report.config or {}
-    policy = config.get("recovery") if isinstance(config, dict) else None
-    return isinstance(policy, dict) and policy.get("replay_safe") is True
+    config = report.config
+    if not isinstance(config, dict):
+        return False
+    if "recovery" not in config:
+        return True
+    policy = config["recovery"]
+    if not isinstance(policy, dict):
+        return False
+    if "replay_safe" not in policy:
+        return True
+    return type(policy["replay_safe"]) is bool and policy["replay_safe"]
 
 
 def _summary(chain):

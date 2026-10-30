@@ -166,10 +166,15 @@ def provider_login_url(request, cfg) -> str:  # noqa: ARG001
 
 def redirect_uri_for_org(org) -> str:
     """Shown read-only in settings: paste into the client registered at the IdP."""
+    return redirect_uri_for_provider(provider_id_for_org(org))
+
+
+def redirect_uri_for_provider(provider_id: str) -> str:
+    """Canonical callback shared by settings, authorization and token exchange."""
     from apps.core.instance import base_url
 
     path = reverse(
-        "openid_connect_callback", kwargs={"provider_id": provider_id_for_org(org)}
+        "openid_connect_callback", kwargs={"provider_id": provider_id}
     )
     return f"{base_url()}{path}"
 

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import base64
 import logging
+import re
 import secrets
 
 from allauth.account.adapter import DefaultAccountAdapter
@@ -184,7 +185,12 @@ def _trusted_entra_upn(cfg, sociallogin, email: str) -> bool:
     from urllib.parse import urlsplit
     from uuid import UUID
 
-    issuer = urlsplit(cfg.issuer_url)
+    if not isinstance(cfg.issuer_url, str):
+        return False
+    try:
+        issuer = urlsplit(cfg.issuer_url)
+    except ValueError:
+        return False
     if (
         issuer.scheme != "https" or issuer.netloc != "login.microsoftonline.com"
         or issuer.query or issuer.fragment
@@ -200,25 +206,94 @@ def _trusted_entra_upn(cfg, sociallogin, email: str) -> bool:
     token = (sociallogin.account.extra_data or {}).get("id_token") or {}
     return (
         not sso.claims(sociallogin).get("email")
+        and isinstance(token.get("tid"), str)
+        and isinstance(token.get("preferred_username"), str)
         and token.get("tid", "").lower() == tenant
         and token.get("preferred_username", "").strip().lower() == email.lower()
+    )
+
+
+def _trusted_entra_email_domain(cfg, sociallogin, email: str) -> bool:
+    """Accept Entra domain ownership only for this token's selected email.
+
+    allauth validates the ID token before constructing the social login.
+    Keep this evidence separate from the userinfo overlay: xms_edov vouches
+    for the domain of the token email, not an arbitrary userinfo address.
+    """
+    if (
+        not isinstance(cfg.issuer_url, str)
+        or sociallogin.account.provider != sso.provider_id_for_org(cfg.org)
+        or not isinstance(email, str) or not email.strip()
+    ):
+        return False
+    issuer = re.fullmatch(
+        r"https://login\.microsoftonline\.com/"
+        r"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+        r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/v2\.0",
+        cfg.issuer_url,
+    )
+    if issuer is None:
+        return False
+    data = sociallogin.account.extra_data
+    if not isinstance(data, dict):
+        return False
+    token = data.get("id_token")
+    userinfo = data.get("userinfo")
+    if not isinstance(token, dict) or (userinfo is not None and not isinstance(userinfo, dict)):
+        return False
+    for source in (token, userinfo or {}):
+        if "email_verified" in source and source["email_verified"] is not True:
+            return False
+    tid, subject, token_email = token.get("tid"), token.get("sub"), token.get("email")
+    if (
+        token.get("xms_edov") is not True
+        or not isinstance(tid, str) or tid.lower() != issuer[1].lower()
+        or token.get("iss") != cfg.issuer_url
+        or not isinstance(subject, str) or not subject.strip()
+        or subject != sociallogin.account.uid
+        or not isinstance(token_email, str) or not token_email.strip()
+    ):
+        return False
+    effective_claims = sso.claims(sociallogin)
+    if any(
+        effective_claims.get(key) is not None and not isinstance(effective_claims[key], str)
+        for key in ("email", "preferred_username", "upn")
+    ):
+        return False
+    effective_email = sso.extract_email(sociallogin)
+    return (
+        token_email.strip().lower() == email.strip().lower()
+        and effective_email.lower() == email.strip().lower()
     )
 
 
 def email_is_verified(cfg, sociallogin, email: str) -> bool:
     """Did the identity provider vouch for ``email``? The rule a first-time
     SSO login must pass before an account is linked or created."""
+    data = sociallogin.account.extra_data or {}
+    if not isinstance(data, dict) or not isinstance(email, str):
+        return False
+    if any(
+        data.get(key) is not None and not isinstance(data[key], dict)
+        for key in ("id_token", "userinfo")
+    ):
+        return False
     identity_claims = sso.claims(sociallogin)
+    if identity_claims.get("email") is not None and not isinstance(identity_claims["email"], str):
+        return False
     verified = (
         (
             identity_claims.get("email_verified") is True
-            and identity_claims.get("email", "").lower() == email.lower()
+            and (identity_claims.get("email") or "").lower() == email.lower()
         )
         or any(a.email.lower() == email.lower() and a.verified is True for a in sociallogin.email_addresses)
     )
     if "email_verified" in identity_claims and identity_claims["email_verified"] is not True:
         return False
-    return bool(verified or _trusted_entra_upn(cfg, sociallogin, email))
+    return bool(
+        verified or _trusted_entra_upn(cfg, sociallogin, email)
+        or _trusted_entra_email_domain(cfg, sociallogin, email)
+    )
 
 
 class NoSignupAccountAdapter(DefaultAccountAdapter):
@@ -309,13 +384,6 @@ class OrgSSOAdapter(DefaultSocialAccountAdapter):
                     reason_code=REASON_NOT_ENABLED, provider=provider, org=org,
                 )
             )
-        from apps.accounts import sso_test
-
-        if sso_test.consume(request, cfg):
-            # An admin's "Test sign-in" run: report what would happen and
-            # stop. Nothing below -- login, linking, provisioning, group
-            # sync -- may run, and the admin's own session stays untouched.
-            raise ImmediateHttpResponse(sso_test.finish_oidc(request, cfg, sociallogin))
         # The rest of this method only runs for a live, enabled config, so
         # every login that gets this far is unambiguously SSO -- stamp the
         # request now so auth_events._logged_in can tell auth.login apart from

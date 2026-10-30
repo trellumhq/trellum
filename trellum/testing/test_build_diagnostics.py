@@ -163,7 +163,7 @@ def test_permanent_error_has_no_transient_retry(evidence, monkeypatch, error):
 
 
 @pytest.mark.parametrize('recovery', [True, None, 'true', {'replay_safe': 'true'}, {'replay_safe': 1}])
-def test_replay_contract_requires_explicit_boolean(recovery):
+def test_replay_contract_rejects_malformed_values(recovery):
     from types import SimpleNamespace
 
     from trellum.validation.checks.yaml_schema import _check_yaml_schema
@@ -172,6 +172,18 @@ def test_replay_contract_requires_explicit_boolean(recovery):
     result = ValidationResult(slug='test')
     _check_yaml_schema(ctx, result)
     assert any(item.id == 'yaml-recovery-invalid' and item.level == 'fail' for item in result.checks)
+
+
+@pytest.mark.parametrize('config', [{}, {'recovery': {}}, {'recovery': {'replay_safe': False}}])
+def test_replay_contract_accepts_default_and_opt_out(config):
+    from types import SimpleNamespace
+
+    from trellum.validation.checks.yaml_schema import _check_yaml_schema
+    from trellum.validation.result import ValidationResult
+    ctx = SimpleNamespace(config=config, _connections={})
+    result = ValidationResult(slug='test')
+    _check_yaml_schema(ctx, result)
+    assert not any(item.id == 'yaml-recovery-invalid' for item in result.checks)
 
 
 def test_render_failure_is_not_confused_with_previous_transport_failure(evidence, tmp_path):

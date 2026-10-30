@@ -564,3 +564,168 @@ def test_per_query_close_before_first_query_is_terminal_and_releases_credentials
     with pytest.raises(RuntimeError, match="explicitly closed"):
         handle.__enter__()
     factory.assert_not_called()
+
+
+@pytest.mark.parametrize("name", ["cursor", "commit", "rollback"])
+def test_callable_probe_does_not_disable_replay(monkeypatch, name):
+    handle, factory = managed(monkeypatch, Connection(ConnectionResetError()), Connection())
+    assert hasattr(handle, name) and callable(getattr(handle, name))
+    assert query.query_df(handle, "SELECT n FROM t", cache_ttl=0).n.tolist() == [1, 2]
+    assert handle._replay_enabled and factory.call_count == 2
+
+
+def test_saved_driver_method_resolves_replacement_under_lock(monkeypatch):
+    old, fresh = Connection(ConnectionResetError()), Connection()
+    old.cursor, fresh.cursor = Mock(wraps=old.cursor), Mock(wraps=fresh.cursor)
+    handle, factory = managed(monkeypatch, old, fresh)
+    saved_cursor = handle.cursor
+    query.query_df(handle, "SELECT n FROM t", cache_ttl=0)
+    assert factory.call_count == 2 and old.cursor.call_count == fresh.cursor.call_count == 1
+    with handle._lock:
+        cursor = saved_cursor()
+    assert cursor is fresh.cursors[-1] and fresh.cursor.call_count == 2
+    assert old.cursor.call_count == 1 and not handle._replay_enabled
+    fresh.error = ConnectionResetError()
+    with pytest.raises(ConnectionResetError):
+        query.query_df(handle, "SELECT n FROM t", cache_ttl=0)
+    assert factory.call_count == 2
+    handle.close()
+    with pytest.raises(RuntimeError, match="explicitly closed"):
+        saved_cursor()
+
+
+@pytest.mark.parametrize("source", ["vertica", "postgres"])
+@pytest.mark.parametrize("name", ["closed", "opened"])
+def test_status_method_invocation_is_exempt_only_for_vertica(monkeypatch, source, name):
+    old, fresh = Connection(ConnectionResetError()), Connection()
+    setattr(old, name, Mock(return_value=False))
+    setattr(fresh, name, Mock(return_value=True))
+    factory = Mock(side_effect=[old, fresh])
+    monkeypatch.setattr(drivers, "connect", factory)
+    handle = retry.connect_managed(source, {})
+    saved_status = getattr(handle, name)
+    assert saved_status() is False
+    if source == "vertica":
+        query.query_df(handle, "SELECT n FROM t", cache_ttl=0)
+        assert saved_status() is True and handle._replay_enabled
+        assert factory.call_count == 2
+    else:
+        with pytest.raises(ConnectionResetError):
+            query.query_df(handle, "SELECT n FROM t", cache_ttl=0)
+        assert factory.call_count == 1
+
+
+@pytest.mark.parametrize("error", [None, ValueError("bad query"), KeyboardInterrupt()])
+def test_vertica_context_owns_lifetime_and_closes_replacement(monkeypatch, error):
+    old, fresh = Connection(ConnectionResetError()), Connection(error)
+    old.__enter__ = Mock(side_effect=AssertionError("native entry"))
+    old.__exit__ = Mock(side_effect=AssertionError("native exit"))
+    fresh.__exit__ = Mock(side_effect=AssertionError("native exit"))
+    factory = Mock(side_effect=[old, fresh])
+    monkeypatch.setattr(drivers, "connect", factory)
+    handle = retry.connect_managed("vertica", {})
+
+    def run():
+        with handle as entered:
+            assert entered is handle and handle._replay_enabled
+            query.query_df(handle, "SELECT n FROM t", cache_ttl=0)
+
+    if error:
+        with pytest.raises(type(error)) as caught:
+            run()
+        assert caught.value is error
+    else:
+        run()
+    assert old.closes == fresh.closes == 1 and factory.call_count == 2
+    assert handle.closed and handle._factory is None
+    old.__enter__.assert_not_called()
+    old.__exit__.assert_not_called()
+    fresh.__exit__.assert_not_called()
+
+
+def test_other_driver_context_keeps_native_semantics(monkeypatch):
+    raw = Connection()
+    raw.__enter__ = Mock(return_value=raw)
+    raw.__exit__ = Mock(return_value=True)
+    handle, _ = managed(monkeypatch, raw)
+    with handle:
+        raise ValueError("suppressed by driver")
+    raw.__enter__.assert_called_once()
+    assert raw.__exit__.call_args.args[0] is ValueError
+    assert not handle._replay_enabled and raw.closes == 0
+
+
+@pytest.mark.parametrize("sql", [
+    "-- $ # [ \\ DELETE\nSELECT 1",
+    "SELECT 1 /* $ # [ \\ UPDATE */",
+    "SELECT '#$[; DELETE', 'it''s #$['",
+    'SELECT "#$[", `#$[` FROM t',
+    "SELECT REPLACE('a#[$', 'a', 'b')",
+    "SELECT SUBSTRING('abc' FROM 1 FOR 2)",
+    "SELECT SUBSTRING(REPLACE('abc', 'a', 'b') FROM (1 + 0) FOR 2)",
+    "WITH r AS (SELECT SUBSTRING('abc' FROM 1 FOR 2) AS s) SELECT REPLACE(s, 'a', 'b') FROM r",
+])
+def test_vertica_safe_sql_retries(monkeypatch, sql):
+    factory = Mock(side_effect=[Connection(ConnectionResetError()), Connection()])
+    monkeypatch.setattr(drivers, "connect", factory)
+    handle = retry.connect_managed("vertica", {})
+    assert retry._can_replay(sql, "vertica")
+    assert query.query_df(handle, sql, cache_ttl=0).n.tolist() == [1, 2]
+    assert factory.call_count == 2
+
+
+@pytest.mark.parametrize("sql", [
+    "REPLACE INTO t VALUES (1)", "REPLACE(t)", "SELECT REPLACE FROM t",
+    "SELECT REPLACE('a', 'a', 'b'); DELETE FROM t",
+    "WITH r AS (DELETE FROM t RETURNING n) SELECT REPLACE(n, 'a', 'b') FROM r",
+    "SELECT SUBSTRING(s FROM 1 FOR 2) FROM t FOR UPDATE",
+    "SELECT SUBSTRING(s FROM 1 FOR 2) FROM t FOR SHARE",
+    "SELECT SUBSTRING(s FROM 1 FOR 2) FROM t FOR KEY SHARE",
+    "SELECT other_function(s FROM 1 FOR 2)", "SELECT SUBSTRING(s FOR 2)",
+    "SELECT SUBSTRING(s FROM (SELECT n FROM t FOR SHARE) FOR 2)",
+    "SELECT NEXTVAL('s')", "SELECT pg_advisory_lock(1)",
+    "SELECT 1 /*! SET @a = 1 */", "SELECT 1 /*M! SET @a = 1 */",
+    "SELECT 1 /* outer /* nested */ */", "SELECT 1 /* unfinished",
+    "SELECT 'back\\slash'", "SELECT E'escape\\n'", "SELECT $$value$$",
+    "SELECT $tag$value$tag$", "SELECT E'value'", "SELECT [n] FROM t", "SELECT 1 # comment",
+    "SELECT 'unfinished", 'SELECT "unfinished',
+])
+def test_vertica_unsafe_sql_stays_single_attempt(monkeypatch, sql):
+    factory = Mock(return_value=Connection(ConnectionResetError()))
+    monkeypatch.setattr(drivers, "connect", factory)
+    handle = retry.connect_managed("vertica", {})
+    assert not retry._can_replay(sql, "vertica")
+    with pytest.raises(ConnectionResetError):
+        query.query_df(handle, sql, cache_ttl=0)
+    assert factory.call_count == 1
+
+
+@pytest.mark.parametrize("source", ["postgres", "mysql", "sqlserver", "bigquery", "databricks"])
+@pytest.mark.parametrize("sql", ["SELECT REPLACE('a', 'a', 'b')", "SELECT SUBSTRING('abc' FROM 1 FOR 2)"])
+def test_vertica_expression_exemptions_do_not_change_other_dialects(source, sql):
+    assert not retry._can_replay(sql, source)
+
+
+def test_comment_and_quote_dialect_guards():
+    assert not retry._can_replay("SELECT 1--x /*! SET @a = 1 */", "mysql")
+    assert retry._can_replay("SELECT 1-- x # $ [ " + chr(92), "mysql")
+    assert retry._can_replay("SELECT [#$value] FROM t", "sqlserver")
+    for source in ("bigquery", "databricks"):
+        assert not retry._can_replay("SELECT '''value'''", source)
+        assert retry._can_replay("SELECT 1 /* ''' */", source)
+
+
+@pytest.mark.parametrize("name", ["cursor", "commit", "rollback", "ping"])
+def test_vertica_direct_driver_calls_still_disable_replay(monkeypatch, name):
+    raw = Connection(ConnectionResetError())
+    raw.ping = Mock(return_value=True)
+    factory = Mock(return_value=raw)
+    monkeypatch.setattr(drivers, "connect", factory)
+    handle = retry.connect_managed("vertica", {})
+    method = getattr(handle, name)
+    assert handle._replay_enabled
+    method()
+    assert not handle._replay_enabled
+    with pytest.raises(ConnectionResetError):
+        query.query_df(handle, "SELECT n FROM t", cache_ttl=0)
+    assert factory.call_count == 1

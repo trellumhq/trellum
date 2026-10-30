@@ -53,7 +53,8 @@ from pathlib import Path
 
 pattern = re.compile(r"^([A-Za-z0-9_.\-]+)\s*(\[[^\]]*\])?\s*([<>=!~].*)?$")
 names = {}
-for path in (Path("requirements.txt"), Path("requirements-drivers.txt")):
+for path in (Path("requirements.txt"), Path("requirements-drivers.txt"),
+             Path("requirements-drivers-common.txt")):
     for raw in path.read_text().splitlines():
         line = raw.split("#", 1)[0].strip()
         if not line or line.startswith("-r"):

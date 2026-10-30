@@ -60,21 +60,22 @@ Collect a [support bundle](/docs/latest/troubleshooting/support-bundle/).
 
 ## Automatic recovery
 
-Reports can opt into bounded whole-report recovery in `report.yaml`:
+Bounded whole-report recovery is enabled by default for valid report
+configurations. Reports whose generator or helpers have external side effects
+must explicitly disable it in `report.yaml`:
 
 ```yaml
 recovery:
-  replay_safe: true
+  replay_safe: false
 ```
 
-Set this only when the complete generator and its helpers can be run again
-without external side effects: no database writes, payments, messages, file
-uploads or other non-idempotent actions, and no detached/background work that
-outlives the build. A read-only SQL query does not establish
-that the surrounding Python is safe. The portal snapshots this promise at
-admission and checks the current configuration before admitting a retry.
-Managed connections also record unsafe/session access; that evidence vetoes
-recovery even when the report declares itself safe.
+Disable recovery for database writes, payments, messages, file uploads or other
+non-idempotent actions, and for detached/background work that outlives the build.
+A read-only SQL query does not establish that the surrounding Python is safe.
+The portal snapshots the recovery policy at admission and checks the current
+configuration before admitting a retry. Previously admitted runs retain their
+recorded policy. Managed connections also record unsafe/session access; that
+evidence vetoes recovery even when recovery is enabled in the configuration.
 
 For an eligible transient connection failure or overall build timeout, the
 coordinator records up to two further attempts, after one and five minutes
@@ -110,12 +111,12 @@ fence and shows an unconfirmed outcome until the owning worker can confirm its
 process/container has stopped. POSIX builds use a dedicated process group;
 remaining group members are killed and checked again before completion.
 Unsandboxed group confirmation cannot detect descendants that deliberately
-leave that group; such reports must not opt into recovery. Docker provides the
+leave that group; such reports must set `recovery: {replay_safe: false}`. Docker provides the
 container boundary for untrusted process trees. Direct Windows builds use a
 kill-on-close Job Object and do not start report code until the process is
 assigned to it. The runner checks that no job processes remain before
 publishing output or admitting recovery. Code that deliberately starts work
-outside the process group or job must not opt into automatic recovery. Missing
+outside the process group or job must set `recovery: {replay_safe: false}`. Missing
 Docker containers cannot provide termination confirmation here and stay
 unconfirmed. An operator must investigate a lost worker; do not
 clear its run fence before independently confirming termination. Boot catch-up

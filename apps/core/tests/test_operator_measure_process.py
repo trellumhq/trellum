@@ -25,8 +25,58 @@ def alive(pid):
     try:
         with open(f"/proc/{pid}/stat") as stat:
             return stat.read().rsplit(")", 1)[1].split()[0] != "Z"
+    except ProcessLookupError:
+        # The process can exit after /proc/<pid>/stat is opened but before
+        # read() completes. Treat only ESRCH as disappearance; other I/O
+        # failures should still make the test fail visibly.
+        return False
     except FileNotFoundError:
         return False
+
+
+@pytest.mark.parametrize(("stat", "expected"), [("42 (child) S 1 2", True), ("42 (child) Z 1 2", False)])
+def test_alive_reads_live_and_zombie_proc_stat(monkeypatch, stat, expected):
+    from io import StringIO
+
+    monkeypatch.setattr(os, "kill", lambda pid, signal: None)
+    monkeypatch.setattr("builtins.open", lambda path: StringIO(stat))
+
+    assert alive(42) is expected
+
+
+def test_alive_treats_process_disappearance_during_stat_read_as_dead(monkeypatch):
+    class VanishingStat:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def read(self):
+            raise ProcessLookupError("process disappeared during read")
+
+    monkeypatch.setattr(os, "kill", lambda pid, signal: None)
+    monkeypatch.setattr("builtins.open", lambda path: VanishingStat())
+
+    assert alive(42) is False
+
+
+def test_alive_does_not_hide_permission_errors_from_stat_read(monkeypatch):
+    class UnreadableStat:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def read(self):
+            raise PermissionError("stat read denied")
+
+    monkeypatch.setattr(os, "kill", lambda pid, signal: None)
+    monkeypatch.setattr("builtins.open", lambda path: UnreadableStat())
+
+    with pytest.raises(PermissionError, match="stat read denied"):
+        alive(42)
 
 
 def test_run_bounded_returns_output_of_a_good_child():
