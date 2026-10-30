@@ -60,6 +60,20 @@ take effect through the portal's normal authorization checks; a grant already
 issued at the edge can remain valid until its cookie expires, so the cookie
 TTL is the revocation delay.
 
+The rollout flag defaults to false; it is independent of external share-link and
+embed settings. Disabling external sharing does not disable signed-in Studio
+audience access. When scoped access is unavailable, existing Private items stay
+protected, while ordinary studio Viewers can still open their Studio-audience
+items. A report-level configuration message explains blocked content without
+preventing navigation to other reports. Workspace-wide views that require full
+visibility remain restricted when Private items exist, including retained records.
+
+Administrators can repair an item's audience through its Access page, including
+retained items at `/s/<org>/<studio>/r/<slug>/access`.
+Choose Studio audience only if it is intended for studio Viewers; otherwise
+complete the scoped-access rollout below. Removing files from Git or restarting
+the portal does not change a saved audience. No database deletion is required.
+
 This internal audience check does not revoke explicit public share links or
 embeds. Those are separate publication paths; review and revoke active links
 on the item's Access page when the content must no longer be available there.

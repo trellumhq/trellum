@@ -7,6 +7,15 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Fixed
+
+- Keep permitted Studio-audience reports available when Private items exist and
+  report-scoped access is not configured, without exposing restricted content.
+- Reject unsupported new Private publications without interrupting valid report
+  imports; retain saved audiences across repository changes and rebuilds.
+- Explain report access configuration failures within the portal and allow
+  administrators to restore Studio audience or revoke assignments explicitly.
+
 ## [0.9.1] — 2026-10-20
 
 The v0.9.0 tag was never published: its images failed the release

@@ -32,7 +32,6 @@ from apps.assistant.tools import TOOL_SCHEMAS, AssistantToolbox
 from apps.assistant.views import caller_role
 from apps.core import roles
 from apps.core.permissions import require_studio_role
-from apps.core.report_access import selected_report_access_block_reason
 from apps.datasources.models import CREDENTIAL_KEYS
 from trellum_portal import __version__
 
@@ -108,14 +107,10 @@ def _call(request, toolbox: AssistantToolbox, name: str, args: dict) -> dict:
         return _text(f"Error: '{name}' is not available to you in this studio.", True)
 
     if not request.org_roles.has_full_studio_visibility(request.studio):
-        reason = selected_report_access_block_reason()
-        if reason:
-            return _text(f"Error: selected report access is unavailable: {reason}.", True)
-
-        from apps.core.report_access import raw_scope_reports
+        from apps.core.report_access import visible_reports
         from apps.reports.models import Report
 
-        reports = raw_scope_reports(
+        reports = visible_reports(
             request.user,
             Report.objects.filter(studio=request.studio, present_in_scan=True),
             request=request,

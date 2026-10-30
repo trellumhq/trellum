@@ -512,7 +512,10 @@ def api_report_log_live(request, org_slug, studio_slug, slug):  # noqa: ARG001
 
 @require_studio_role(roles.VIEWER)
 def api_report_validation(request, org_slug, studio_slug, slug):  # noqa: ARG001
-    _get_report(request, slug)
+    report = _get_report(request, slug)
+    blocked = _selected_content_block(request, report)
+    if blocked:
+        return blocked
     try:
         meta = storage.read_meta(request.studio, slug)
     except Exception as exc:  # noqa: BLE001 - driver raises per-operation classes
@@ -1083,7 +1086,11 @@ def api_studio_members(request, org_slug, studio_slug):  # noqa: ARG001
 @require_http_methods(["GET", "POST"])
 def api_report_recipients(request, org_slug, studio_slug, slug):  # noqa: ARG001
     try:
-        response = JsonResponse(_recipient_payload(request, _get_report(request, slug)))
+        report = _get_report(request, slug)
+        blocked = _selected_content_block(request, report)
+        if blocked:
+            return blocked
+        response = JsonResponse(_recipient_payload(request, report))
     except ValueError as exc:
         return JsonResponse({"error": str(exc)}, status=400)
     response["Cache-Control"] = "private, no-store"
@@ -2979,6 +2986,9 @@ def api_report_metrics(request, org_slug, studio_slug, slug):  # noqa: ARG001
     from trellum.meta import normalize_metrics_used
 
     report = _get_report(request, slug)
+    blocked = _selected_content_block(request, report)
+    if blocked:
+        return blocked
     studio = report.studio
     runtime_meta = storage.read_meta(studio, slug)
     claims = normalize_metrics_used(runtime_meta.get("metrics_used"))
