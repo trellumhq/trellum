@@ -41,6 +41,7 @@ from apps.core.pagination import paginator_metadata
 from apps.core.permissions import (
     require_org_role,
     require_studio_role,
+    wants_json,
 )
 from apps.core.public_assets import public_asset
 from apps.core.report_access import (
@@ -48,7 +49,6 @@ from apps.core.report_access import (
     can_view_report,
     raw_scope_reports,
     require_full_studio_visibility,
-    selected_report_access_block_reason,
     visible_reports,
 )
 from apps.reports import notify
@@ -98,16 +98,35 @@ def _get_report(request, slug: str) -> Report:
     return report
 
 
-def _selected_content_block(request, report):
-    if report.audience != Report.AUDIENCE_PRIVATE and request.org_roles.has_full_studio_visibility(request.studio):
+def _selected_content_block(request, report, *, as_page=False):
+    from apps.core.report_access import report_content_block_reason
+
+    reason = report_content_block_reason(request.user, report, request=request)
+    if not reason:
         return None
-    if not selected_report_access_block_reason():
-        return None
-    return HttpResponse(
-        "Selected report access is temporarily unavailable.",
-        status=503,
-        content_type="text/plain",
-    )
+    message = "Private or selected-report access is not configured. Contact your administrator."
+    if as_page:
+        is_admin = roles.at_least(request.studio_role, roles.ADMIN)
+        response = render(
+            request,
+            "report_access_unavailable.html",
+            {
+                "prefix": f"/s/{request.org.slug}/{request.studio.slug}",
+                "is_admin": is_admin,
+                "access_url": f"/s/{request.org.slug}/{request.studio.slug}/r/{report.slug}/access",
+                "block_reason": reason if is_admin else "",
+            },
+            status=503,
+        )
+    elif wants_json(request):
+        response = JsonResponse(
+            {"error": "selected_report_access_unavailable", "message": message},
+            status=503,
+        )
+    else:
+        response = HttpResponse(message, status=503, content_type="text/plain")
+    response["Cache-Control"] = "private, no-store"
+    return response
 
 
 # ── Dashboard shell ─────────────────────────────────────────────────────────
@@ -1959,7 +1978,7 @@ def report_page(request, org_slug, studio_slug, slug):
     # content prefix, is what the edge verifies on every request. A report that
     # never published falls through to the unbuilt page below.
     from apps.core import cdn
-    blocked = _selected_content_block(request, report)
+    blocked = _selected_content_block(request, report, as_page=True)
     if blocked:
         return blocked
 
@@ -2353,7 +2372,7 @@ def _serve_report_file(
 @xframe_options_sameorigin  # the entry HTML report_page redirects to — see there
 def report_asset(request, org_slug, studio_slug, slug, asset):  # noqa: ARG001
     report = _get_report(request, slug)
-    blocked = _selected_content_block(request, report)
+    blocked = _selected_content_block(request, report, as_page=asset.lower().endswith(".html"))
     if blocked:
         return blocked
     try:
