@@ -7,6 +7,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Documentation
+
+- Explain which repository files reach a studio during Git sync, including
+  nested project roots, assistant instructions and declared data files.
+
 ### Changed
 
 - Showcase reports, written analyses, and presentations in the README, with
