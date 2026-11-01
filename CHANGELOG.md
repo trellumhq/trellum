@@ -9,6 +9,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Website links include a Nova Play report image for social previews, and the
+  public demo gallery is no longer blocked by robots.txt.
 - Report viewers no longer send the developer-only share-links and activity
   requests on every report load, which filled the browser console and server
   logs with `403 Forbidden` responses. Developers and admins keep the Share and

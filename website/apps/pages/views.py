@@ -30,7 +30,6 @@ def robots(request):
     lines = [
         "User-agent: *",
         "Allow: /",
-        "Disallow: /demo/",
         f"Sitemap: {settings.SITE_BASE_URL}/sitemap.xml",
     ]
     return HttpResponse("\n".join(lines) + "\n", content_type="text/plain")
