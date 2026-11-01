@@ -41,6 +41,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Avoid transferring duplicate audit history rows when populating action choices,
+  preserving every available label and organization scope.
+
 - Upgrade and roll back portal and runner images as a verified pair, with
   preflight image checks, paired backup manifests and guarded database recovery.
   Preserve Docker-only hosts and explicitly paired legacy-backup recovery.
