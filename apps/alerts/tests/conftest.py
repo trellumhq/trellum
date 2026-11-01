@@ -58,7 +58,8 @@ def rule(built, owner, org, studio_tree, assistant_config):
 
 
 def decide(alert, title="Revenue fell", message="Revenue is down 30% on the week.",
-           evidence=("gross_revenue 2026-09-07: 700 vs 1000 a week earlier",), interpretation=None):
+           evidence=("gross_revenue 2026-09-07: 700 vs 1000 a week earlier",), interpretation=None,
+           summary=None, why_it_matters=None, what_to_check_next=None):
     """A scripted turn that calls decide() straight away."""
     return FakeResponse(
         [ToolUseBlock("tu_decide", "decide", {
@@ -66,6 +67,9 @@ def decide(alert, title="Revenue fell", message="Revenue is down 30% on the week
             "interpretation": interpretation or {"window": "last completed day versus a week earlier",
                 "timezone": "UTC", "scope": "gross_revenue, USD", "freshness": "complete report coverage"},
             "title": title, "message": message, "evidence": list(evidence),
+            "summary": summary if summary is not None else message,
+            "why_it_matters": why_it_matters if why_it_matters is not None else "The evidence was assessed against the requested condition.",
+            **({"what_to_check_next": what_to_check_next} if what_to_check_next is not None else {}),
         })],
         stop_reason="tool_use",
     )

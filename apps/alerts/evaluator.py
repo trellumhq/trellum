@@ -75,6 +75,9 @@ DECIDE_SCHEMA = {
                     "what you compared them against"
                 ),
             },
+            "summary": {"type": "string", "description": "One short plain-language summary; include uncertainty or mock-data context when relevant."},
+            "why_it_matters": {"type": "string", "description": "Briefly connect the observed result to the requested condition; do not invent a cause."},
+            "what_to_check_next": {"type": "string", "description": "One cautious follow-up check, or empty when none is supported by the evidence."},
             "evidence": {
                 "type": "array",
                 "items": {"type": "string"},
@@ -84,7 +87,7 @@ DECIDE_SCHEMA = {
                 ),
             },
         },
-        "required": ["condition", "interpretation", "title", "message", "evidence"],
+        "required": ["condition", "interpretation", "title", "message", "summary", "why_it_matters", "evidence"],
     },
 }
 
@@ -112,6 +115,17 @@ completed clock hour. A net drain over 48 hours differs from any draining
 hour in those 48 hours. Strict >1000 excludes exactly 1000. Preserve currency;
 never compare different currencies without evidenced conversion. If the
 tools cannot establish requested coverage or freshness, choose unknown.
+
+## Reader-friendly response
+Return a short summary, why_it_matters, and what_to_check_next as separate
+plain-text fields. Keep message as a concise plain-text equivalent of those
+sections for older consumers. Keep evidence as supporting figures only; give
+each figure its metric, value with units/currency, time window, and comparison
+when available. Use only observed facts. Say when context is uncertain or data
+is mock. For not_met, explain what was observed and why it does not satisfy
+the requested condition. For unknown, say what coverage or evidence is missing;
+never describe missing evidence as healthy. Do not invent root causes or
+prescriptive actions; a next check may be omitted if none is warranted.
 
 ## Rule
 Name: {name}
@@ -354,6 +368,9 @@ def _evaluate(rule: RuleSnapshot, run: AlertRun, actor, billing_user, now) -> No
             return "Error: interpretation requires nonempty window, timezone, scope and freshness."
         if not isinstance(evidence, list) or any(not isinstance(e, str) for e in evidence):
             return "Error: evidence must be a list of strings."
+        if any(key in args and not isinstance(args[key], str)
+               for key in ("summary", "why_it_matters", "what_to_check_next")):
+            return "Error: response sections must be plain-text strings."
         # A conclusory boolean with no supporting evidence cannot mean healthy.
         if not any(e.strip() for e in evidence):
             condition = AlertRun.CONDITION_UNKNOWN
@@ -362,6 +379,9 @@ def _evaluate(rule: RuleSnapshot, run: AlertRun, actor, billing_user, now) -> No
                 for k in ("window", "timezone", "scope", "freshness")},
             title=str(args.get("title") or "")[:300],
             message=str(args.get("message") or ""),
+            summary=str(args.get("summary") or "")[:1000],
+            why_it_matters=str(args.get("why_it_matters") or "")[:1000],
+            what_to_check_next=str(args.get("what_to_check_next") or "")[:1000],
             evidence=[str(e) for e in (evidence if isinstance(evidence, list) else [evidence]) if e],
         )
         return "Decision recorded."
@@ -445,6 +465,8 @@ def _evaluate(rule: RuleSnapshot, run: AlertRun, actor, billing_user, now) -> No
     run.title, run.message = decision["title"], decision["message"]
     run.evidence = {
         "cited": decision["evidence"],
+        "response": {key: decision[key] for key in
+                     ("summary", "why_it_matters", "what_to_check_next") if decision[key]},
         "snapshot": {
             "rule_revision": rule.revision,
             "evaluation_key": getattr(run, "evaluation_key", None),

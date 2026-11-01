@@ -7,7 +7,7 @@ pytestmark = pytest.mark.django_db
 ROOT = Path(__file__).resolve().parents[3]
 
 
-def test_browser_preview_keeps_draft_and_discards_result_after_edit(rule, login):
+def test_browser_preview_keeps_draft_and_discards_result_after_edit(rule, login, tmp_path):
     url = f"/s/{rule.org.slug}/{rule.studio.slug}/alerts/{rule.pk}/edit"
     html = login(rule.created_by).get(url).content.decode()
     with sync_playwright() as playwright:
@@ -223,7 +223,7 @@ def test_change_during_preview_discards_stale_result_without_input_event(rule, l
         browser.close()
 
 
-def test_preview_button_preserves_focus_scroll_and_sends_once(rule, login):
+def test_preview_button_preserves_focus_scroll_and_sends_once(rule, login, tmp_path):
     url = f"/s/{rule.org.slug}/{rule.studio.slug}/alerts/{rule.pk}/edit"
     html = login(rule.created_by).get(url).content.decode()
     with sync_playwright() as playwright:
@@ -248,15 +248,25 @@ def test_preview_button_preserves_focus_scroll_and_sends_once(rule, login):
         page.wait_for_timeout(40)
         assert len(pending) == 1
         pending[0].fulfill(json={"ok": True, "message": "Draft tested", "result": {
-            "condition": "Unknown", "title": "<img src=x onerror=alert(1)>", "evidence": [],
+            "condition": "Unknown", "title": "Revenue review", "evidence": [],
+            "response": {"summary": "Complete revenue data was unavailable for this 48-hour window.",
+                         "why_it_matters": "Coverage for <b>sales</b> is incomplete.",
+                         "what_to_check_next": "Check the next completed day."},
             "interpretation": {"window": "48h", "timezone": "UTC", "scope": "sales", "freshness": "fresh"},
             "simulation": "unknown", "simulation_reason": "Insufficient evidence", "cost": "0.01", "status": "OK"
         }})
-        expect(page.locator("#alertPreview")).to_contain_text("<img src=x onerror=alert(1)>")
+        expect(page.locator("#alertPreview")).to_contain_text("Complete revenue data was unavailable for this 48-hour window.")
         assert page.locator("#alertPreview img").count() == 0
+        expect(page.locator("#alertPreview")).to_contain_text("Why it matters")
+        expect(page.locator("#alertPreview")).to_contain_text("What to check next")
+        assert page.locator("#alertPreview b").count() == 0
         expect(page.locator("[name=instructions]")).to_have_value("Keep this draft")
         assert page.evaluate("document.activeElement.name") == "instructions"
         assert abs(page.evaluate("scrollY") - before) < 2
+        page.screenshot(path=str(tmp_path / "alert-response-desktop.png"), full_page=True)
+        page.set_viewport_size({"width": 390, "height": 844})
+        page.screenshot(path=str(tmp_path / "alert-response-mobile.png"), full_page=True)
+        page.set_viewport_size({"width": 1280, "height": 720})
         page.locator("[data-alert-preview]").click()
         page.wait_for_timeout(40)
         assert len(pending) == 2

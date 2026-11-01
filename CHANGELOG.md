@@ -9,6 +9,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- Structure AI alert explanations into a summary, why it matters, next check, and supporting figures across the run log, draft preview, and email.
+
 - Showcase reports, written analyses, and presentations in the README, with
   desktop and mobile screenshots side by side and direct links to synthetic demos.
 

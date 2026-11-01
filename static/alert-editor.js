@@ -111,9 +111,18 @@
     result.replaceChildren();
     line(result, 'h2', 'Draft test · ' + (run.condition || run.status || 'Result unavailable'));
     line(result, 'strong', run.title);
-    line(result, 'p', run.message);
+    var response = run.response || {};
+    line(result, 'p', response.summary || run.message);
+    if (response.why_it_matters) {
+      line(result, 'h3', 'Why it matters');
+      line(result, 'p', response.why_it_matters);
+    }
+    if (response.what_to_check_next) {
+      line(result, 'h3', 'What to check next');
+      line(result, 'p', response.what_to_check_next);
+    }
     if (run.evidence && run.evidence.length) {
-      line(result, 'h3', 'Evidence');
+      line(result, 'h3', 'Supporting figures');
       var list = document.createElement('ul');
       run.evidence.forEach(function (item) { line(list, 'li', item); });
       result.appendChild(list);
