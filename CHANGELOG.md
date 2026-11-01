@@ -9,6 +9,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Maintenance
 
+- Add a standalone runner-host Compose preset with required shared storage,
+  paired release images, pool configuration and multi-host verification guidance.
+
 - Require explicit optimizer opt-in and a clean dedicated repository worktree;
   verify checkout identity before reverts and respect agent permission settings.
 
