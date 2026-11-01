@@ -9,6 +9,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Keep permitted Studio-audience reports available when Private items exist and
+  report-scoped access is not configured, without exposing restricted content.
+- Reject unsupported new Private publications without interrupting valid report
+  imports; retain saved audiences across repository changes and rebuilds.
+- Explain report access configuration failures within the portal and allow
+  administrators to restore Studio audience or revoke assignments explicitly.
 - Report viewers no longer send the developer-only share-links and activity
   requests on every report load, which filled the browser console and server
   logs with `403 Forbidden` responses. Developers and admins keep the Share and

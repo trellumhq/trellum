@@ -39,29 +39,44 @@ def selected_report_access_configuration_error() -> str | None:
     return selected_report_access_block_reason()
 
 
-def can_view_report(user, report, *, request=None) -> bool:
+def report_content_block_reason(user, report, *, request=None) -> str | None:
+    """Readiness failure for an already-authorized report's content.
+
+    Resolve identity with ``raw_scope_reports`` first: this helper does not
+    grant access. A Studio-audience grant remains usable when unrelated
+    Private rows exist, but Private content and selected-only grants require
+    scoped readiness, including for managers and instance superusers.
+    """
     if request is not None:
         if user is not request.user:
             raise ValueError("request report access must use request.user")
+    reason = selected_report_access_block_reason()
+    if reason is None:
+        return None
+    if report.audience == report.AUDIENCE_PRIVATE:
+        return reason
+    if request is not None:
         from apps.core.request_access import request_org_access
-        from apps.reports.models import Report
 
         access = request_org_access(request, report.studio.org)
-        if selected_report_access_block_reason() and (
-            not access.has_full_studio_visibility(report.studio)
-            or report.audience == report.AUDIENCE_PRIVATE
-        ):
-            return False
-        return raw_scope_reports(user, Report.objects.filter(pk=report.pk), request=request).exists()
-    from apps.core.request_access import actor_studio_access
+        studio_audience = (
+            access.has_studio_audience_access(report.studio)
+            or access.has_full_studio_visibility(report.studio)
+        )
+    else:
+        from apps.core.request_access import actor_studio_access
+
+        facts = actor_studio_access(user, report.studio)
+        studio_audience = facts.studio_audience or facts.full
+    return None if studio_audience else reason
+
+
+def can_view_report(user, report, *, request=None) -> bool:
     from apps.reports.models import Report
 
-    facts = actor_studio_access(user, report.studio)
-    if selected_report_access_block_reason() and (
-        not facts.full or report.audience == report.AUDIENCE_PRIVATE
-    ):
+    if report_content_block_reason(user, report, request=request):
         return False
-    return raw_scope_reports(user, Report.objects.filter(pk=report.pk)).exists()
+    return raw_scope_reports(user, Report.objects.filter(pk=report.pk), request=request).exists()
 
 
 def raw_scope_reports(user, queryset, *, request=None):
@@ -139,10 +154,6 @@ def _report_scope_queryset(user, queryset, *, request, blocked, raw):
         full_viewer = (
             Q(_ra_studio_viewer=True) | Q(_ra_group_viewer=True) | Q(_ra_grant_viewer=True)
         ) & Q(audience=Report.AUDIENCE_STUDIO)
-    if blocked:
-        queryset = queryset.alias(
-            _has_private_reports=Exists(Report.objects.filter(studio_id=OuterRef("studio_id"), audience=Report.AUDIENCE_PRIVATE)))
-        full_viewer &= Q(_has_private_reports=False)
     access = management | full_viewer
     if not blocked:
         explicit = ReportPermissionGrant.objects.filter(
@@ -176,8 +187,14 @@ class ReportAccessBatch:
             return False
         if user.is_superuser:
             return True
-        scope = self._roles[user.pk].report_scope_for(report.studio)
-        return scope is None or (not self._blocked and report.pk in scope)
+        resolved = self._roles[user.pk]
+        if self._blocked:
+            return (
+                resolved.has_studio_audience_access(report.studio)
+                or resolved.has_full_studio_visibility(report.studio)
+            )
+        scope = resolved.report_scope_for(report.studio)
+        return scope is None or report.pk in scope
 
 
 def bulk_can_view_report(users, report) -> dict[int, bool]:

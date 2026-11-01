@@ -21,7 +21,7 @@ from pathlib import Path
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
-from apps.reports.scan import sync_studio_registry
+from apps.reports.scan import RegistrySyncWarning, sync_studio_registry
 from apps.studios.models import Studio
 
 MARKER = "seeded-by: seed_demo_categories"
@@ -98,7 +98,11 @@ class Command(BaseCommand):
             removed = self._add(reports_dir)
             verb = "wrote"
 
-        total = sync_studio_registry(studio)
+        try:
+            total = sync_studio_registry(studio)
+        except RegistrySyncWarning as exc:
+            total = studio.reports.filter(present_in_scan=True).count()
+            self.stderr.write(self.style.WARNING(str(exc)))
         self.stdout.write(
             self.style.SUCCESS(
                 f"{verb} {removed} placeholder report(s); {studio} now scans {total} reports"

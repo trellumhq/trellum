@@ -41,7 +41,9 @@ from apps.core.audit import audit
 from apps.core.http import json_body
 from apps.core.permissions import require_studio_role
 from apps.core.public_assets import public_asset
-from apps.core.report_access import can_view_report, raw_scope_reports, selected_report_access_block_reason
+from apps.core.report_access import (
+    can_view_report, raw_scope_reports, report_content_block_reason, visible_reports,
+)
 from apps.core.request_access import request_org_access
 
 logger = logging.getLogger(__name__)
@@ -179,19 +181,11 @@ def studio_available(request, org_slug, studio_slug):  # noqa: ARG001
     restricted = not request.org_roles.has_full_studio_visibility(request.studio)
     report = None
     if ok and restricted:
-        if selected_report_access_block_reason():
+        match = _REPORT_PATH_RE.search(request.GET.get("path") or "")
+        report = _report_for(request.studio, match.group(1)) if match else None
+        if report is None or not can_view_report(request.user, report, request=request):
             ok = False
-            reason = "Selected report access is temporarily unavailable."
-        else:
-            match = _REPORT_PATH_RE.search(request.GET.get("path") or "")
-            report = _report_for(request.studio, match.group(1)) if match else None
-            from apps.reports.models import Report
-
-            if report is None or not raw_scope_reports(
-                request.user, Report.objects.filter(pk=report.pk), request=request
-            ).exists():
-                ok = False
-                reason = "Open a report you can view to use the AI assistant."
+            reason = "Open a report you can view to use the AI assistant."
     toolbox = AssistantToolbox(
         request.studio,
         actor=request.user,
@@ -243,8 +237,6 @@ def _session_rows(request):
         user=request.user, org=request.org, studio=request.studio
     ).select_related("report", "alert_run__rule")
     restricted = not request.org_roles.has_full_studio_visibility(request.studio)
-    if restricted and selected_report_access_block_reason():
-        return rows.none()
     if not restricted:
         return rows.filter(Q(scope=AssistantSession.SCOPE_FULL) | Q(
             scope=AssistantSession.SCOPE_REPORT,
@@ -254,7 +246,7 @@ def _session_rows(request):
         ))
     from apps.reports.models import Report
 
-    permitted = raw_scope_reports(
+    permitted = visible_reports(
         request.user,
         Report.objects.filter(studio=request.studio, present_in_scan=True),
         request=request,
@@ -300,14 +292,18 @@ def sessions(request, org_slug, studio_slug):  # noqa: ARG001
     report = _report_for(request.studio, report_slug)
     full = request.org_roles.has_full_studio_visibility(request.studio)
     if not full:
-        if selected_report_access_block_reason():
-            return JsonResponse(
-                {"error": "Selected report access is temporarily unavailable."}, status=503
-            )
         if not report_slug:
             return JsonResponse({"error": "A report is required for this conversation."}, status=400)
-        if report is None or not can_view_report(request.user, report, request=request):
+        from apps.reports.models import Report
+
+        if report is None or not raw_scope_reports(
+            request.user, Report.objects.filter(pk=report.pk), request=request
+        ).exists():
             raise Http404
+        if report_content_block_reason(request.user, report, request=request):
+            return JsonResponse(
+                {"error": "Report access is unavailable. Contact your administrator."}, status=503
+            )
     session = AssistantSession.objects.create(
         user=request.user,
         org=request.org,
@@ -335,10 +331,6 @@ def from_alert(request, org_slug, studio_slug, run_id):
         AlertRun.objects.select_related("rule__report"), pk=run_id, rule__studio=request.studio
     )
     full = request.org_roles.has_full_studio_visibility(request.studio)
-    if not full and selected_report_access_block_reason():
-        return JsonResponse(
-            {"error": "Selected report access is temporarily unavailable."}, status=503
-        )
     if not can_view_report(request.user, run.rule.report, request=request):
         raise Http404
     session = AssistantSession.objects.create(

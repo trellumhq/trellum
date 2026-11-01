@@ -211,9 +211,9 @@ class TestReportBoundSessions:
         settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = False
         client = login(selected_viewer)
         listing = client.get(f"{prefix}/sessions")
-        assert listing.status_code == 503
-        assert listing.json()["error"] == "selected_report_access_unavailable"
-        assert client.get(f"{prefix}/sessions/{session.pk}").status_code == 503
+        assert listing.status_code == 200
+        assert listing.json()["sessions"] == []
+        assert client.get(f"{prefix}/sessions/{session.pk}").status_code == 404
         response = client.post(
             f"{prefix}/sessions",
             data=json.dumps({"report": report_row.slug}),

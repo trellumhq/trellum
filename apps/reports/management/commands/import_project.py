@@ -62,11 +62,11 @@ class Command(BaseCommand):
                     copied.append(name)
             studio.ensure_dirs()  # recreate anything the copies replaced
 
-            from apps.reports.scan import ReportQuotaExceeded
+            from apps.reports.scan import RegistrySyncWarning
 
             try:
                 n = sync_studio_registry(studio)
-            except ReportQuotaExceeded as exc:
+            except RegistrySyncWarning as exc:
                 from apps.reports.models import Report
 
                 n = Report.objects.filter(studio=studio, present_in_scan=True).count()
