@@ -9,6 +9,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Maintenance
 
+- Verify portal data-source materialization against live PostgreSQL and MySQL
+  through the framework resolver, including credential isolation.
+
 - Update pyasn1 and OAuthlib with compatible allauth and Databricks dependencies.
 
 - Pin external CI actions to verified upstream commits while retaining weekly
