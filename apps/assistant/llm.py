@@ -542,10 +542,6 @@ def stream_turn(
             transcript.append(entry)
             if tool_index == len(tools) - 1:
                 state.pop("_continuation_error", None)
-            yield {"type": "tool_result", "id": block["id"], "name": name,
-                   "excerpt": _excerpt(result, 400), "is_error": is_error, "provenance": provenance}
-            if proposal:
-                yield {"type": "proposal", **proposal}
             if getattr(toolbox, "source_pending", None):
                 # The database worker owns execution. Finish the provider's
                 # batch explicitly before pausing, so replay has no dangling
@@ -563,6 +559,11 @@ def stream_turn(
                     "id": toolbox.source_pending, "tool_use_id": block["id"],
                     "status_url": status_url(toolbox.studio, toolbox.session, toolbox.source_pending),
                 }
+            yield {"type": "tool_result", "id": block["id"], "name": name,
+                   "excerpt": _excerpt(result, 400), "is_error": is_error, "provenance": provenance}
+            if proposal:
+                yield {"type": "proposal", **proposal}
+            if getattr(toolbox, "source_pending", None):
                 yield {"type": "source_wait", **state["_source_pending"]}
                 return
     yield _turn_limit(max_turns)

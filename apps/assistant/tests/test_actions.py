@@ -124,7 +124,7 @@ class TestCatalogue:
         for schema in TOOL_SCHEMAS:
             assert isinstance(schema["mutates"], bool)
             assert schema["role"] in (roles.VIEWER, roles.DEVELOPER, roles.ADMIN, "org_admin")
-        assert [s["name"] for s in TOOL_SCHEMAS if not s["mutates"]] == DEVELOPER_READ_TOOLS
+        assert [s["name"] for s in TOOL_SCHEMAS if not s["mutates"]] == DEVELOPER_READ_TOOLS + ["list_data_sources", "describe_source", "query_source"]
         assert {s["name"] for s in TOOL_SCHEMAS if s["mutates"]} == {
             "configure_data_source", "test_data_source", "run_report", "publish_repo_changes",
             "create_alert", "update_alert",

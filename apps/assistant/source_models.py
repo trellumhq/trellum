@@ -128,3 +128,12 @@ class SourceQuery(models.Model):
             models.UniqueConstraint(fields=["user", "session", "idempotency_key"], condition=~models.Q(idempotency_key=""), name="assistant_source_request_unique"),
             models.UniqueConstraint(fields=["session"], condition=models.Q(state__in=("accepted", "running")), name="assistant_source_session_active"),
         ]
+
+
+class SourceExecutionReservation(models.Model):
+    """Non-content capacity reservation surviving all source/session cascades."""
+
+    id = models.UUIDField(primary_key=True)
+    organization_id = models.BigIntegerField(db_index=True)
+    lease_token = models.UUIDField()
+    expires_at = models.DateTimeField(db_index=True)

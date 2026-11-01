@@ -285,4 +285,4 @@ class ProposedAction(models.Model):
         }
 
 # Separate module keeps source policy records independent of conversation state.
-from .source_models import SourceQuery, SourceReadGrant  # noqa: E402,F401
+from .source_models import SourceQuery, SourceReadGrant, SourceExecutionReservation  # noqa: E402,F401

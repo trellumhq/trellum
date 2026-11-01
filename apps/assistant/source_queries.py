@@ -18,7 +18,7 @@ from django.db import close_old_connections, connection, connections, transactio
 from django.db.models import Q
 from django.utils import timezone
 
-from apps.assistant.models import SourceQuery as Job
+from apps.assistant.models import SourceQuery as Job, SourceExecutionReservation as Reservation
 from apps.assistant.source_access import DENIED, eligible_context, policy_fingerprint, resolve_grant
 
 ACCEPTED_TTL = timedelta(minutes=5)
@@ -76,11 +76,17 @@ def _occupied(now):
     )
 
 
+def _orphan_reservations(now):
+    return Reservation.objects.filter(expires_at__gt=now).exclude(pk__in=_occupied(now).values("pk"))
+
+
 def recover_expired(now=None):
     """Bound each tick, skip locked claims and never rerun uncertain work."""
     now = now or timezone.now()
     completed = []
     with transaction.atomic():
+        expired = list(Reservation.objects.filter(expires_at__lte=now).values_list("pk", flat=True)[:RECOVERY_BATCH])
+        Reservation.objects.filter(pk__in=expired).delete()
         rows = (Job.objects.select_for_update(skip_locked=True, of=("self",))
                 .filter(Q(state=Job.ACCEPTED, accepted_at__lt=now - ACCEPTED_TTL)
                         | Q(state=Job.RUNNING, lease_expires_at__lte=now))
@@ -139,9 +145,10 @@ def admit(*, studio, actor, session, grant_id, sql="", kind="query", idempotency
         occupied = _occupied(now)
         if occupied.filter(session=conversation).exists():
             raise PendingLimitReached("session")
-        if occupied.filter(org_id=current.org_id).count() >= _limit("TRELLUM_SOURCE_QUERY_ORG_PENDING_LIMIT", 4):
+        reservations = _orphan_reservations(now)
+        if occupied.filter(org_id=current.org_id).count() + reservations.filter(organization_id=current.org_id).count() >= _limit("TRELLUM_SOURCE_QUERY_ORG_PENDING_LIMIT", 4):
             raise PendingLimitReached("org")
-        if occupied.count() >= _limit("TRELLUM_SOURCE_QUERY_FLEET_PENDING_LIMIT", 32):
+        if occupied.count() + reservations.count() >= _limit("TRELLUM_SOURCE_QUERY_FLEET_PENDING_LIMIT", 32):
             raise PendingLimitReached("fleet")
         job = Job.objects.create(
             org_id=current.org_id, studio=current, user=user, session=conversation,
@@ -203,6 +210,10 @@ def _current_grant(job):
 
 def _finish(job, state, message, result=None):
     with transaction.atomic():
+        # Remote completion is independent of whether the conversation/source
+        # still exists. Unknown outcomes retain their fixed safety reservation.
+        if state != Job.UNCONFIRMED:
+            Reservation.objects.filter(pk=job.pk, lease_token=job.lease_token).delete()
         fresh = Job.objects.select_for_update().filter(pk=job.pk, state=Job.RUNNING, lease_token=job.lease_token).first()
         if fresh is None or fresh.lease_expires_at <= timezone.now():
             return False
@@ -264,6 +275,8 @@ def process_next(*, worker_id, pools=None):
         job.lease_expires_at = job.started_at + timedelta(seconds=LEASE_SECONDS)
         job.worker_id = str(worker_id)[:100]
         job.save(update_fields=["state", "started_at", "lease_token", "lease_expires_at", "worker_id"])
+        Reservation.objects.create(id=job.pk, organization_id=job.org_id, lease_token=job.lease_token,
+                                   expires_at=job.started_at + timedelta(seconds=2 * LEASE_SECONDS) + UNCERTAINTY_HOLD)
 
     owner_thread = threading.get_ident()
     last_check = 0.0
