@@ -1539,14 +1539,14 @@
         card.appendChild(el('strong', '', approved ? 'Approved calculation' : 'Exploratory query'));
         if (approved) {
             card.appendChild(el('p', '', pv.metric_id + ' · ' + (pv.currency || pv.unit || '') + ' · ' + (pv.completeness || '')));
-            card.appendChild(el('p', '', fmtVal(pv.period) + ' · ' + (pv.timezone || '')));
+            card.appendChild(el('p', '', 'Period: ' + ((pv.period || {}).start || '') + ' to ' + ((pv.period || {}).end || '') + ' (end excluded) · ' + (pv.timezone || '')));
             card.appendChild(el('p', '', 'Filters: ' + (fmtVal(pv.filters) || 'none')));
         }
         card.appendChild(el('p', 'assistant-source-meta', ((pv.executed_at || pv.generated_at) ? fmtWhen(pv.executed_at || pv.generated_at) + ' · ' : '') +
             String(pv.rows_returned == null ? (pv.rows || []).length : pv.rows_returned) + ' rows returned' + (pv.truncated ? ' · Truncated result' : '')));
         var wrap = el('div', 'assistant-source-table'); wrap.tabIndex = 0;
-        wrap.setAttribute('role', 'region'); wrap.setAttribute('aria-label', 'Source query result');
-        var table = el('table'), caption = el('caption', '', 'Source query result'); table.appendChild(caption);
+        wrap.setAttribute('role', 'region'); wrap.setAttribute('aria-label', approved ? 'Calculated values' : 'Source query result');
+        var table = el('table'), caption = el('caption', '', approved ? 'Calculated values' : 'Source query result'); table.appendChild(caption);
         var columns = Array.isArray(pv.columns) ? pv.columns.slice(0, 50) : [];
         var head = el('thead'), header = el('tr');
         columns.forEach(function (c) { var th = el('th', '', String(c).slice(0, 256)); th.scope = 'col'; header.appendChild(th); });

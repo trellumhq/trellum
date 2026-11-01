@@ -621,3 +621,5 @@ body:not(.tl-report-console):not(.tl-report-focus) .fw-container > .fw-filter-ba
 .assistant-source-table th, .assistant-source-table td { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom: 1px solid var(--assistant-border, #64748b); max-width: 280px; overflow-wrap: anywhere; }
 .assistant-source-evidence pre { max-height: 220px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
 .assistant-source-evidence summary { cursor: pointer; padding: 8px 0; }
+
+#assistantPanel .assistant-source-table table { width: 100%; }
