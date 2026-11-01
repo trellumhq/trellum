@@ -19,6 +19,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Engagement experiments can declare `outcome_type="engagement"` to avoid
+  purchase-specific payer/revenue warnings. Purchase validation remains the
+  default, and experiment statistics are unchanged.
 - Reactivating an account in the admin clears its old dormancy warning and
   records who reactivated it. A retention sweep cannot disable it from a
   stale candidate; future dormancy requires a fresh warning and grace period.
