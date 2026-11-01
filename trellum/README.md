@@ -1402,9 +1402,11 @@ or a remote warehouse. SQLite sources are opened read-only.
 
 Serve every built report under `output/` (the same gallery index the
 published site uses). `--background` starts the server detached, prints the
-URLs, and returns immediately — the intended last action of a working
-session, so the user always ends up with a clickable link. Idempotent:
-re-running reuses a server already up for this output directory.
+URLs, and returns immediately. Use it for an explicitly requested plain
+preview without feedback. For a human review, use
+`python -m trellum review start reports/<slug>` and follow
+`python -m trellum guide review`. Idempotent: re-running reuses a server
+already up for this output directory.
 
 | Argument | Description |
 |---|---|

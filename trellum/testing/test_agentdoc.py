@@ -222,6 +222,20 @@ def test_appended_signpost_is_idempotent_and_repairs_in_place(tmp_path):
     assert text.startswith("# house\n")
 
 
+def test_generated_pointer_defaults_to_review_for_human_previews(tmp_path):
+    from trellum.agent import agentsetup
+
+    agentsetup.write_project_files(tmp_path)
+    text = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+    assert "review start reports/<slug>" in text
+    assert "review poll --report <slug>" in text
+    assert "--session <session> --reply" in text
+    assert "--no-serve" in text
+    assert "review end" in text
+    assert "plain preview without feedback" in text
+    assert "serve --background" in text
+
+
 def test_signpost_can_be_removed_leaving_their_file_intact(tmp_path):
     """Anything we add to a file we do not own, we must be able to take back."""
     from trellum.agent import agentsetup
@@ -535,6 +549,18 @@ def test_describe_stays_within_its_budget():
         f"description is {n} lines. It is sent on every exchange; move detail "
         f"behind `trellum guide`, or move this bound on purpose and say why."
     )
+
+
+def test_cli_overview_defaults_human_handoff_to_review():
+    from trellum.cli import _describe
+
+    text = _describe()
+    assert "review start reports/<slug>" in text
+    assert "review poll --report <slug>" in text
+    assert "review end" in text
+    assert "plain `serve` only when" in text
+    assert "feedback session returned by the poll" in text
+    assert "LAST action" not in text
 
 
 # ── setup portal (internal planning ticket #151) ─────────────────────────────────────────────

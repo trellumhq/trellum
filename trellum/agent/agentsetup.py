@@ -92,23 +92,32 @@ re-reads your whole context, so four separate calls cost four times the context,
 not four times the content. `guide report` returns the whole authoring contract
 at once.
 
-Build. `--no-serve` exits when the build is done; without it the command starts
-a preview server and never returns:
+Build. `--no-serve` exits when the build is done:
 
 ```
 {py} -m trellum.run reports/<slug> --no-serve
 {py} -m trellum.new <slug>
 ```
 
-Serve only when a human is going to look. It blocks until killed, so run it in
-the background, and wait for its `Serving at` line before opening the URL — it
-rebuilds the report before it binds the port. A single report is served at `/`,
-not at `/<slug>`:
+When a person will review a local report, start review mode. It prints the
+preview URL and enables feedback:
 
 ```
-{py} -m trellum.run reports/<slug>
-{py} -m trellum.run --all --serve      every report, index at /
+{py} -m trellum review start reports/<slug>
+{py} -m trellum review poll --report <slug>
 ```
+Keep the report-scoped poll active. Apply feedback, rebuild with `--no-serve`,
+then reply and continue polling:
+
+```
+{py} -m trellum.run reports/<slug> --no-serve
+{py} -m trellum review poll --report <slug> --session <session> --reply "what changed"
+```
+
+Continue until the user ends review; use `review end` if they ask you to wrap
+up. Build-only work stops after `--no-serve`. If someone explicitly asks for a
+plain preview without feedback, use `{py} -m trellum serve --background` and
+share its printed URL.
 {portal}
 A report is not finished until the validator reports no FAILs.
 """

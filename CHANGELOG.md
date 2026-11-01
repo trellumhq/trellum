@@ -9,6 +9,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Documentation
 
+- Default local human report previews to review mode, with scoped feedback
+  polling and rebuild-before-reply guidance.
+
 - Explain which repository files reach a studio during Git sync, including
   nested project roots, assistant instructions and declared data files.
 
@@ -18,6 +21,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   desktop and mobile screenshots side by side and direct links to synthetic demos.
 
 ### Fixed
+
+- Bound report snapshot height after lazy content renders, preserving full PDF output.
+- Strengthen theme regression guards for spaced names and short hex colors.
 
 - Keep the demo Sessions per DAU metric unbound so the metrics catalog
   demonstrates an unmonitored definition.
