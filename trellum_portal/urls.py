@@ -9,6 +9,7 @@ from apps.accounts import views as account_views
 from apps.accounts.forms import BoundedPasswordResetForm
 from apps.assistant import mcp as assistant_mcp
 from apps.assistant import views as assistant_views
+from apps.assistant import source_views as assistant_source_views
 from apps.core import views as core_views
 from apps.core import shell_scope_views
 from apps.datasources import views as datasource_views
@@ -123,6 +124,8 @@ studio_patterns = [
     path("api/assistant/available", assistant_views.studio_available, name="studio-assistant-available"),
     path("api/assistant/budget", assistant_views.budget, name="studio-assistant-budget"),
     path("api/assistant/sessions", assistant_views.sessions, name="studio-assistant-sessions"),
+    path("api/assistant/sessions/<int:session_id>/source-queries/<uuid:query_id>",
+         assistant_source_views.query_status, name="studio-assistant-source-query"),
     path(
         "api/assistant/sessions/<int:session_id>",
         assistant_views.session_detail,

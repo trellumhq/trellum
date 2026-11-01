@@ -414,6 +414,9 @@ def stream_turn(
         return
     transcript = transcript_of(state)
     for turn in range(max_turns):
+        if getattr(toolbox, "session", None) is not None:
+            from apps.assistant.source_tools import check_history
+            check_history(toolbox.session, actor=toolbox.actor, studio=toolbox.studio)
         if config.budgeted and config.org_id and getattr(toolbox, "actor", None) is not None:
             from . import budget
             allowed, reason = budget.precheck(config.org_id, toolbox.actor)
@@ -521,6 +524,8 @@ def stream_turn(
             return
         for tool_index, block in enumerate(tools):
             name, args = block["name"], block["input"]
+            # Stable per provider invocation, scoped by the persisted session.
+            toolbox.source_call_id = hashlib.sha256(block["id"].encode()).hexdigest()
             yield {"type": "tool_use", "id": block["id"], "name": name, "input": args}
             result = yield from _run_tool(toolbox, name, args, clock)
             if result is None:
@@ -541,6 +546,25 @@ def stream_turn(
                    "excerpt": _excerpt(result, 400), "is_error": is_error, "provenance": provenance}
             if proposal:
                 yield {"type": "proposal", **proposal}
+            if getattr(toolbox, "source_pending", None):
+                # The database worker owns execution. Finish the provider's
+                # batch explicitly before pausing, so replay has no dangling
+                # tool calls, even when the model requested parallel tools.
+                for deferred in tools[tool_index + 1:]:
+                    transcript.append({
+                        "role": "tool", "tool_use_id": deferred["id"],
+                        "name": deferred["name"], "input": deferred["input"],
+                        "result": "Not executed: wait for the pending source read, then request this tool again.",
+                        "is_error": True, "ts": time.time(),
+                    })
+                state.pop("_continuation_error", None)
+                from apps.assistant.source_tools import status_url
+                state["_source_pending"] = {
+                    "id": toolbox.source_pending, "tool_use_id": block["id"],
+                    "status_url": status_url(toolbox.studio, toolbox.session, toolbox.source_pending),
+                }
+                yield {"type": "source_wait", **state["_source_pending"]}
+                return
     yield _turn_limit(max_turns)
 
 

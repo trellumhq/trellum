@@ -24,6 +24,7 @@ from datetime import timedelta
 from functools import wraps
 
 from django.conf import settings
+from django.core.exceptions import PermissionDenied
 from django.db.models import Q
 from django.http import Http404, HttpResponse, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404
@@ -355,7 +356,14 @@ def session_detail(request, org_slug, studio_slug, session_id):  # noqa: ARG001
               message_count=session.to_summary()["message_count"])
         session.delete()
         return JsonResponse({"ok": True})
-    return JsonResponse(session.to_full())
+    from apps.assistant.source_tools import check_history
+    try:
+        check_history(session, actor=request.user, studio=request.studio)
+    except PermissionDenied:
+        return JsonResponse({"error": "Source access changed. Start a new conversation with your current permissions."}, status=403)
+    response = JsonResponse(session.to_full())
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 # ── The turn: SSE ───────────────────────────────────────────────────────────
@@ -390,8 +398,16 @@ def session_message(request, org_slug, studio_slug, session_id):  # noqa: ARG001
     session = _get_session(request, session_id)
     body = json_body(request)
     message = (body.get("message") or "").strip()
-    if not message:
+    resume_id = body.get("resume_source_query")
+    if not message and not resume_id:
         return JsonResponse({"error": "missing 'message'"}, status=400)
+    from apps.assistant.source_tools import check_history, resume
+    try:
+        check_history(session, actor=request.user, studio=request.studio)
+    except PermissionDenied:
+        return JsonResponse({"error": "Source access changed. Start a new conversation with your current permissions."}, status=403)
+    if session.state.get("_source_pending") and not resume_id:
+        return JsonResponse({"error": "A source read is still in progress.", "source_pending": session.state["_source_pending"]}, status=409)
 
     page = body.get("page") or {}
     if session.scope == AssistantSession.SCOPE_REPORT and isinstance(page, dict):
@@ -450,6 +466,19 @@ def session_message(request, org_slug, studio_slug, session_id):  # noqa: ARG001
         return JsonResponse(
             {"error": "A reply is still streaming in another tab.", "code": "busy"}, status=409
         )
+    resumed_evidence = None
+    if resume_id:
+        try:
+            if not resume(session, actor=user, studio=request.studio, query_id=resume_id):
+                AssistantSession.objects.filter(pk=session.pk).update(in_flight_until=None)
+                return JsonResponse({"error": "The source read is still running."}, status=409)
+            message = None
+            resumed_evidence = next((e.get("provenance") for e in reversed(session.transcript)
+                                     if e.get("role") == "tool" and e.get("provenance")), None)
+        except Exception as exc:
+            AssistantSession.objects.filter(pk=session.pk).update(in_flight_until=None)
+            # Never expose UUID parsing, SQL, or driver exceptions.
+            return JsonResponse({"error": "This source read cannot resume this conversation."}, status=403 if isinstance(exc, PermissionDenied) else 400)
 
     def events():
         # turn_start goes out BEFORE the prompt is assembled. Building it walks
@@ -457,6 +486,8 @@ def session_message(request, org_slug, studio_slug, session_id):  # noqa: ARG001
         # doing that above this generator meant the browser waited on it with
         # an idle connection and no way to show that anything was happening.
         yield _frame({"type": "turn_start", "session_id": session.pk, "model": config.model})
+        if resumed_evidence:
+            yield _frame({"type": "source_evidence", "evidence": resumed_evidence})
         try:
             system_blocks = build_system_prompt(toolbox)
             for event in llm.stream_turn(
@@ -469,6 +500,8 @@ def session_message(request, org_slug, studio_slug, session_id):  # noqa: ARG001
                 remaining=remaining,
                 deadline_s=deadline_s,
             ):
+                if event.get("type") in ("done", "tool_use", "tool_result", "source_wait"):
+                    check_history(session, actor=user, studio=request.studio)
                 if event.get("type") == "keepalive":
                     # An SSE comment, not an event: keeps the connection warm
                     # through a long tool call without the client parsing it.

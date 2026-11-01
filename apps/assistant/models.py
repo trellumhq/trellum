@@ -149,6 +149,7 @@ class AssistantSession(models.Model):
             **self.to_summary(),
             "transcript": self.transcript,
             "usage": self.usage,
+            "source_pending": (self.state or {}).get("_source_pending"),
         }
 
 

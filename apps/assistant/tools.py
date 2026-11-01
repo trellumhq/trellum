@@ -377,6 +377,9 @@ TOOL_SCHEMAS = [
     },
 ]
 
+from apps.assistant.source_tools import SOURCE_SCHEMAS
+
+TOOL_SCHEMAS += SOURCE_SCHEMAS
 _MUTATING = {s["name"] for s in TOOL_SCHEMAS if s["mutates"]}
 _BY_NAME = {s["name"]: s for s in TOOL_SCHEMAS}
 #: The keys the model providers accept; ``mutates`` / ``role`` are ours.
@@ -543,6 +546,9 @@ class AssistantToolbox:
         (viewer for all reads but ``check_repo_changes``); a mutating one also
         needs actions on. Checked when the catalogue is listed and again when
         a call arrives."""
+        from apps.assistant.source_tools import SOURCE_NAMES, available
+        if schema.get("name") in SOURCE_NAMES and not available(self):
+            return False
         if rank(self.role) < rank(schema.get("role", roles.VIEWER)):
             return False
         if self.is_report_bound and schema.get("name") == "check_repo_changes":
@@ -683,6 +689,10 @@ class AssistantToolbox:
             fn = self._extra[name][1]
         self.provenance = None
         self.proposal = None
+        self.source_pending = None
+        from apps.assistant.source_tools import SOURCE_NAMES, execute as execute_source
+        if name in SOURCE_NAMES:
+            fn = lambda a: execute_source(self, name, a)
         if fn is None:
             return f"Error: unknown tool '{name}'."
         if name in _BY_NAME and not self.allowed(_BY_NAME[name]):
