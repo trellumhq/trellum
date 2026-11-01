@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Branding
+
+- Add reusable lattice wordmarks, favicon formats and a shared login/setup lockup.
+
 ### Maintenance
 
 - Add a standalone runner-host Compose preset with required shared storage,

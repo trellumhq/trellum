@@ -1373,3 +1373,10 @@ body.mgmt .invitation-resend .settings-form-status { display: block; margin: 8px
 @media (max-width: 767px) {
     body.mgmt .ui-table[data-mobile-cards] tbody td.invitation-actions { display: block; width: auto; }
 }
+
+/* Shared authentication lockup follows the existing console palette. */
+.auth-brand { display: flex; align-items: center; gap: 10px; margin-bottom: var(--sp-4); color: var(--text); font-size: 20px; font-weight: 700; }
+.auth-brand-mark { width: 28px; height: 28px; flex: none; }
+.auth-brand-mark g { stroke: var(--text2); }
+.auth-brand-mark circle { fill: var(--accent-ink); }
+.auth-brand-mark .studio { fill: var(--scope-studio); }
