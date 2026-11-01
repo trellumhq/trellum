@@ -14,6 +14,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Give the assistant bounded metric definitions for project-wide access while
+  keeping report-scoped conversations isolated from the shared registry.
 - Website links include a Nova Play report image for social previews, and the
   public demo gallery is no longer blocked by robots.txt.
 - Keep permitted Studio-audience reports available when Private items exist and

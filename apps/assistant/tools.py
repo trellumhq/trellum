@@ -52,6 +52,7 @@ _PARSE_CACHE_ENTRIES = 4
 #: nothing is force-fed into the prompt from these paths.
 READ_ALLOWLIST = (
     "reports",
+    "metrics.yaml",
     "assistant.md",
     "project_context",
     ".cursor/rules",
@@ -216,8 +217,9 @@ TOOL_SCHEMAS = [
         "description": (
             "Read a documentation or schema file from this studio's project "
             "(e.g. project_context/database_schema.md, a report's report.yaml "
-            "or queries.py). Use to check table/column definitions before "
-            "writing SQL, or to explain how a report computes a metric."
+            "or queries.py; metrics.yaml definitions for project-wide access). "
+            "Use to check table/column definitions before writing SQL, or to "
+            "explain how a report computes a metric. Metric SQL requires source sharing."
         ),
         "input_schema": {
             "type": "object",
@@ -1274,7 +1276,7 @@ class AssistantToolbox:
             allowed = f"reports/{self.report_slug}"
             return p if rel == allowed or rel.startswith(allowed + "/") else None
         for prefix in READ_ALLOWLIST:
-            if rel == prefix or rel.startswith(prefix + "/"):
+            if rel == prefix or (prefix != "metrics.yaml" and rel.startswith(prefix + "/")):
                 return p
         return None
 
@@ -1282,6 +1284,10 @@ class AssistantToolbox:
         raw = (args.get("path") or "").strip()
         if not raw:
             return "Error: missing 'path' argument."
+        if Path(raw).as_posix() == "metrics.yaml":
+            from apps.assistant.metric_context import registry_text
+
+            return registry_text(self, detail=True)
         p = self._resolve_read_path(raw)
         if p is None:
             readable = f"reports/{self.report_slug}" if self.is_report_bound else ", ".join(READ_ALLOWLIST)
@@ -1290,6 +1296,10 @@ class AssistantToolbox:
                 f"Readable prefixes: {readable}."
             )
         rel = p.relative_to(self.project_root.resolve()).as_posix()
+        if rel == "metrics.yaml":
+            from apps.assistant.metric_context import registry_text
+
+            return registry_text(self, detail=True)
         if not self.share_report_source and (rel == "reports" or rel.startswith("reports/")):
             return (
                 "Error: reading report source is turned off for this organization "

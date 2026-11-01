@@ -73,6 +73,8 @@ This is the question worth answering plainly.
 When someone asks a question, the assistant sends the model provider:
 
 - your instructions to it (`assistant.md`, see below);
+- for project-wide conversations, a bounded summary of `metrics.yaml`
+  definitions, including names, labels, descriptions, owners and tags;
 - a catalog of your reports — names, descriptions, dataset names, column
   names and date ranges — and where the person is in the portal (page
   title, path, and the chart they asked about when they asked from one);
@@ -83,6 +85,14 @@ When someone asks a question, the assistant sends the model provider:
   report's own source files (`report.yaml`, `queries.py`) if it chooses to
   read one to explain how a metric is computed. Turn it off and the
   assistant is told those files are unavailable.
+
+Project-wide conversations can also read bounded metric definitions from
+`metrics.yaml`, including canonical SQL, when report source sharing is enabled.
+The assistant prefers those definitions and identifies differences from report
+source. Report-bound conversations cannot read the project registry: it has no
+per-report visibility mapping. They explain metrics from permitted report source
+and identify that limitation. Missing, invalid or oversized registries also use
+that fallback; unavailable source is never treated as a verified definition.
 
 It never sends data-source connection details (`data-sources/config.yaml`)
 — that file is not readable by the assistant at all — and nothing from
