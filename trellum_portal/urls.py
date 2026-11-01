@@ -120,6 +120,7 @@ studio_patterns = [
     # declared in _live_queries.json. Session-authenticated viewers only —
     # the public /share/<token>/ routes deliberately get no equivalent.
     path("api/reports/<str:slug>/live-query", report_livequery.api_live_query),
+    path("", include("apps.assistant.source_grant_urls")),
     # AI assistant (studio-scoped: the assistant reads this studio's output)
     path("api/assistant/available", assistant_views.studio_available, name="studio-assistant-available"),
     path("api/assistant/budget", assistant_views.budget, name="studio-assistant-budget"),

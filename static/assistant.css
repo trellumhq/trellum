@@ -611,3 +611,13 @@ body:not(.tl-report-console):not(.tl-report-focus) .fw-container > .fw-filter-ba
     /* Static "Thinking…" instead of the cycling dots. */
     .assistant-thinking::after { content: '…'; animation: none; }
 }
+
+/* Structured source results remain separate from model prose. */
+.assistant-source-progress { padding: 10px 12px; font-size: 13px; overflow-wrap: anywhere; }
+.assistant-source-evidence { min-width: 0; max-width: 100%; margin: 12px 0; padding: 12px; border: 1px solid var(--assistant-border, #64748b); border-radius: 8px; }
+.assistant-source-meta { font-size: 12px; overflow-wrap: anywhere; }
+.assistant-source-table { max-width: 100%; max-height: 320px; overflow: auto; }
+.assistant-source-table table { border-collapse: collapse; font-size: 13px; }
+.assistant-source-table th, .assistant-source-table td { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom: 1px solid var(--assistant-border, #64748b); max-width: 280px; overflow-wrap: anywhere; }
+.assistant-source-evidence pre { max-height: 220px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+.assistant-source-evidence summary { cursor: pointer; padding: 8px 0; }
