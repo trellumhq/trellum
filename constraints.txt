@@ -33,12 +33,13 @@ clickhouse-connect==1.7.1
 contourpy==1.3.3
 cryptography==50.0.0
 cycler==0.12.1
+databricks-sql-connector==4.8.0
 db-dtypes==1.7.1
 decorator==5.3.1
 distro==1.9.0
 Django==5.2.17
 django-anymail==15.2
-django-allauth==65.19.5
+django-allauth==65.21.1
 django-environ==0.14.0
 docker==7.1.0
 docstring_parser==0.18.0
@@ -86,9 +87,8 @@ msal==1.39.0
 msal-extensions==1.3.1
 multidict==6.9.1
 numpy==2.5.2
-# Databricks 4.6.0 requires OAuthLib <4; allauth 65.19.5 is compatible.
-# Upgrade both once the connector's OAuthLib 4 support is released.
-oauthlib==3.3.1
+# allauth 65.21.1 requires OAuthLib >=4,<5; Databricks 4.8.0 permits >=3.1,<5.
+oauthlib==4.0.0
 openai==3.0.0
 openpyxl==3.1.5
 orjson==3.11.9

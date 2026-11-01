@@ -9,6 +9,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Maintenance
 
+- Update pyasn1 and OAuthlib with compatible allauth and Databricks dependencies.
+
 - Pin external CI actions to verified upstream commits while retaining weekly
   dependency-update checks.
 

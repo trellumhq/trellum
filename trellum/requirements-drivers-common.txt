@@ -11,7 +11,7 @@ clickhouse-connect>=0.7.0
 duckdb>=1.0.0
 pymssql>=2.3.0
 trino>=0.330.0
-databricks-sql-connector>=4.0.0
+databricks-sql-connector>=4.8.0
 
 # SSH tunnels to any host/port source (trellum/data/ssh_tunnel.py)
 paramiko>=3.2
