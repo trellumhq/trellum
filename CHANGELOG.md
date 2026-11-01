@@ -32,6 +32,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Associate report filter labels with native and plugin controls, and expose
+  selected toggle states without changing the layout.
+
 - Save local token caches and credential configuration atomically with private
   permissions and coordinated updates; support CLI secret input through stdin
   or environment variables while retaining existing arguments.

@@ -25,11 +25,11 @@ class FlagFilter(BaseFilter):
         fv = str(f["flag_value"])
         return (
             f'<div class="fw-filter-item">'
-            f'<label class="fw-filter-label">{label}</label>'
-            f'<div class="fw-toggle-group" data-filter-id="{fid}">'
-            f'<button class="fw-toggle-btn active">All</button>'
-            f'<button class="fw-toggle-btn">Exclude {fv}</button>'
-            f'<button class="fw-toggle-btn">Only {fv}</button>'
+            f'<span class="fw-filter-label" id="{fid}_label">{label}</span>'
+            f'<div class="fw-toggle-group" role="group" aria-labelledby="{fid}_label" data-filter-id="{fid}">'
+            f'<button aria-pressed="true" class="fw-toggle-btn active">All</button>'
+            f'<button aria-pressed="false" class="fw-toggle-btn">Exclude {fv}</button>'
+            f'<button aria-pressed="false" class="fw-toggle-btn">Only {fv}</button>'
             f"</div></div>"
         )
 
