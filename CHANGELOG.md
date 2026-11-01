@@ -9,6 +9,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Maintenance
 
+- Pin external CI actions to verified upstream commits while retaining weekly
+  dependency-update checks.
+
 - Add weekly and manual vulnerability scans for published portal and runner
   images, plus grouped weekly dependency updates.
 
