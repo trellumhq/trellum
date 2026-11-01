@@ -7,6 +7,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Changed
+
+- Showcase reports, written analyses, and presentations in the README, with
+  desktop and mobile screenshots side by side and direct links to synthetic demos.
+
 ### Fixed
 
 - Website links include a Nova Play report image for social previews, and the
