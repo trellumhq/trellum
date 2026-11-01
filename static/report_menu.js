@@ -469,6 +469,7 @@
         + 'body.tl-report-console-mounted .tl-console-header{z-index:9160}'
         + 'body.tl-report-console-mounted .tl-console-backdrop{z-index:9161}'
         + 'body.tl-report-console-mounted .tl-console-sidebar{z-index:9162}'
+        + 'body.tl-report-console-mounted #assistantPanel{z-index:9200}'
         + '@media(min-width:1024px){body.tl-report-console-pending,body.tl-report-console-mounted{padding-left:240px}'
         + 'body.tl-report-console-pending.tl-console-collapsed,'
         + 'body.tl-report-console-mounted.tl-console-collapsed{padding-left:64px}}'

@@ -30,6 +30,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Keep the report assistant Close button reachable above console navigation.
+
 - Keep report recovery notices functional under enforced CSP, with automatic
   storage recovery and explicit unconfirmed rebuild outcomes.
 - Give the assistant bounded metric definitions for project-wide access while
