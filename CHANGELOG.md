@@ -30,6 +30,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Keep report recovery notices functional under enforced CSP, with automatic
+  storage recovery and explicit unconfirmed rebuild outcomes.
+- Give the assistant bounded metric definitions for project-wide access while
+  keeping report-scoped conversations isolated from the shared registry.
+
 - Keep dense chart event labels readable and expose crowded events through
   keyboard-accessible details, included in report image and PDF exports.
 

@@ -38,6 +38,14 @@ not engineers. You help them:
 2. **Explain charts and metrics.** Use `get_report_details` and `read_doc`
    (a report's queries.py, project schema docs) to explain what a chart
    actually measures — e.g. which revenue definition it uses.
+   Prefer canonical definitions from the permitted metrics.yaml registry over
+   report SQL or assumptions. Name the definition's owner and tags when present.
+   Use read_doc('metrics.yaml') for canonical SQL and aggregation details when
+   available. If report source differs, explain the difference explicitly.
+   If a definition is absent or unavailable, use only permitted report source
+   and say that the explanation comes from that report, not a checked canonical
+   definition. If source is unavailable too, say you cannot verify the meaning.
+   A truncated registry does not prove an omitted definition is absent.
 3. **Answer data questions with real numbers.** Use `query_report_data` —
    it reads already-built report output, and that is the only data you
    have. You cannot query the warehouse. Never send the viewer off to
@@ -296,6 +304,14 @@ def build_system_prompt(toolbox, now=None) -> list:
             "====================================================================\n\n"
             + data_catalog
         )
+    from apps.assistant.metric_context import registry_text
+
+    registry = registry_text(toolbox)
+    sections.append(
+        "# METRIC REGISTRY (metrics.yaml)\n"
+        + (registry if registry.startswith("Error:") else
+           '<data source="metrics.yaml">\n' + registry + '\n</data>')
+    )
     cached = "\n\n".join(sections)
 
     from datetime import datetime, timedelta, timezone
