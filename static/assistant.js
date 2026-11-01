@@ -1486,15 +1486,18 @@
         var serial = _sourceSerial, controller = _sourceAbort = new AbortController();
         var timeout = setTimeout(function () { controller.abort(); }, 15000);
         _fetch(API_BASE + '/sessions/' + pending.session, { signal: controller.signal, cache: 'no-store' })
-            .then(function (r) { if (!r.ok) throw new Error('Conversation unavailable'); return r.json(); })
+            .then(function (r) { if (!r.ok) { var error = new Error('This conversation is no longer accessible. Start a new conversation.'); error.status = r.status; throw error; } return r.json(); })
             .then(function (s) {
                 if (serial !== _sourceSerial || _source !== pending) return;
-                if (pending.error) { var error = pending.error; clearSource(); sourceStatus(error); return; }
-                if (s.source_pending && s.source_pending.id === pending.id) { pending.reconcile = false; _sourceDelay = Math.min(10000, _sourceDelay * 1.5); return; }
+                if (s.source_pending && s.source_pending.id === pending.id) {
+                    if (pending.error) { var error = pending.error; clearSource(); sourceStatus(error); return; }
+                    pending.reconcile = false; _sourceDelay = Math.min(10000, _sourceDelay * 1.5); return;
+                }
                 clearSource(); messages().innerHTML = ''; renderTranscript(s.transcript || []); renderPins();
                 if (s.source_pending) { waitForSource(s.source_pending); pollSourceSoon(); }
-            }).catch(function () {
+            }).catch(function (e) {
                 if (serial === _sourceSerial && _source === pending) {
+                    if (e.status && e.status < 500 && e.status !== 429) { clearSource(); sourceStatus(e.message); return; }
                     pending.reconcile = true;
                     sourceStatus('Reconnecting to the conversation automatically…');
                 }

@@ -238,3 +238,27 @@ def test_resume_busy_retries_quietly_and_followup_read_uses_new_job(source_brows
         assert page.locator('.assistant-source-evidence').count() == 2
     finally:
         page.close()
+
+
+def test_revoked_conversation_stops_reconciliation(source_browser):
+    page, posts, polls, _ = mount(source_browser)
+    reads = []
+    def revoked(route):
+        reads.append(True)
+        route.fulfill(status=403, json={"error": "Source access changed"})
+    page.route('**/sessions/7', revoked)
+    page.evaluate("""const original=fetch; window.fetch=function(url,opts) {
+      if(String(url).endsWith('/message') && JSON.parse(opts.body).resume_source_query)
+        return Promise.reject(new TypeError('network lost'));
+      return original(url,opts);
+    };""")
+    try:
+        page.locator('#assistantInput').fill('Totals?')
+        page.locator('#assistantSend').click()
+        expect(page.locator('.assistant-source-progress')).to_contain_text('no longer accessible')
+        expect(page.locator('#assistantSend')).to_have_text('Send')
+        page.wait_for_timeout(150)
+        assert len(reads) == 1
+        assert len(posts) == 1
+    finally:
+        page.close()
