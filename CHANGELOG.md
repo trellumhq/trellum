@@ -15,6 +15,17 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   imports; retain saved audiences across repository changes and rebuilds.
 - Explain report access configuration failures within the portal and allow
   administrators to restore Studio audience or revoke assignments explicitly.
+- Report viewers no longer send the developer-only share-links and activity
+  requests on every report load, which filled the browser console and server
+  logs with `403 Forbidden` responses. Developers and admins keep the Share and
+  Activity menu items, including Share's settings and link revocation while
+  organization sharing is switched off. The server role checks are unchanged.
+- A report left open past its session now sends the whole window to the sign-in
+  page, with the report as the return page, instead of silently failing to
+  refresh. This includes reports shown inside the console, where the shell
+  navigates rather than only the report frame. Permission-denied responses,
+  server errors and network failures do not sign anyone out, and public share
+  and embed pages are unchanged.
 
 ## [0.9.5] — 2026-10-26
 

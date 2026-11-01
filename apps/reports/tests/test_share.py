@@ -1422,3 +1422,87 @@ class TestEmbedLinks:
     def test_list_payload_reports_embed_links_enabled(self, login, developer, prefix, report_row):
         body = login(developer).get(f"{prefix}/api/reports/player-overview/share_links").json()
         assert body["embed_links_enabled"] is True
+
+
+class TestReportSessionRuntime:
+    """Signed-in report pages carry the portal's session runtime first, with
+    the viewer's own capability; nothing request-specific is saved in the
+    build or shown to anonymous share visitors."""
+
+    def _page(self, login, user, prefix):
+        resp = login(user).get(f"{prefix}/r/player-overview/index.html")
+        assert resp.status_code == 200
+        return resp
+
+    def test_viewer_is_told_not_to_probe_developer_apis(
+        self, login, viewer, prefix, built_report
+    ):
+        resp = self._page(login, viewer, prefix)
+        body = resp.content
+        assert body.count(b"data-trellum-report-session") == 1
+        assert b'"developer": false' in body
+        # First thing in <head>: ahead of every widget and report script.
+        assert body.index(b"<head><script data-trellum-report-session>") >= 0
+        assert body.index(b"data-trellum-report-session") < body.index(
+            b"/api/reports/menu-widget.js"
+        )
+        assert "private" in resp["Cache-Control"]
+
+    @pytest.mark.parametrize("who", ["developer", "org_admin"])
+    def test_developer_and_admin_get_the_share_capability(
+        self, request, login, prefix, built_report, who
+    ):
+        resp = self._page(login, request.getfixturevalue(who), prefix)
+        assert b'"developer": true' in resp.content
+
+    def test_capability_follows_the_viewer_not_the_build(
+        self, login, viewer, developer, prefix, built_report
+    ):
+        # Pretend a saved build captured another viewer's response.
+        html = (built_report / "index.html").read_text(encoding="utf-8")
+        (built_report / "index.html").write_text(
+            html.replace(
+                "<head>",
+                "<head><script data-trellum-report-session>"
+                "window.__trellumReportAccess={developer:true};</script>",
+            ),
+            encoding="utf-8",
+        )
+        body = self._page(login, viewer, prefix).content
+        assert body.count(b"data-trellum-report-session") == 1
+        assert b'"developer": false' in body
+        assert b"developer:true" not in body
+        assert b'"developer": true' in self._page(login, developer, prefix).content
+
+    def test_runtime_holds_no_link_or_secret(self, login, developer, prefix, built_report, make_link, sharing_on):
+        link = make_link()
+        body = self._page(login, developer, prefix).content
+        assert link.token.encode() not in body
+
+    def test_anonymous_share_page_gets_no_session_runtime(
+        self, client, built_report, make_link, sharing_on
+    ):
+        link = make_link()
+        body = client.get(f"/share/{link.token}/").content
+        assert b"data-trellum-report-session" not in body
+        assert b"__trellumReportAccess" not in body
+
+    def test_server_role_check_still_rejects_a_viewer(
+        self, login, viewer, prefix, built_report, sharing_on
+    ):
+        assert login(viewer).get(f"{prefix}/api/reports/player-overview/share_links").status_code == 403
+
+    def test_management_payload_is_served_while_sharing_is_disabled(
+        self, login, developer, prefix, built_report, org
+    ):
+        OrgSharePolicy.objects.update_or_create(org=org, defaults={"share_links_enabled": False})
+        client = login(developer)
+        resp = client.get(f"{prefix}/api/reports/player-overview/share_links")
+        assert resp.status_code == 200
+        assert resp.json()["sharing_enabled"] is False
+        created = client.post(
+            f"{prefix}/api/reports/player-overview/share_links",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        assert created.status_code == 403

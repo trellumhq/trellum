@@ -8142,7 +8142,7 @@
       "request_conditions": [
         "public entry; invalid input/token scenarios apply separately"
       ],
-      "adapter_sha256": "3445fa69f49bba3e015ea4fd68c135732324a071e716f669d2bc46d09e75159e"
+      "adapter_sha256": "8fdfe1094aeb2714e86c8808882764757a288e71c209c51a254df5390cb270dc"
     },
     {
       "id": "route-138",
@@ -8195,7 +8195,7 @@
       "request_conditions": [
         "public entry; invalid input/token scenarios apply separately"
       ],
-      "adapter_sha256": "8f2db2be35d603e02061a0ee052a11ce53a0945d94c530d1448cfa0a11dc4c1b"
+      "adapter_sha256": "dd10f2b568b6adf36ba529099568dffcc5436f8b17147a05c7b26b3d5462c8d8"
     },
     {
       "id": "route-139",
@@ -13281,9 +13281,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "3ef163f321e5d6abd66f1a1ac8e98053be8e99affa72230871fd9adfa89bbb75",
+      "source_sha256": "e502c7239a338241a7a37391e1f124b2bfe0028b211bdd208fb68bcf65c77cc2",
       "request_conditions": [],
-      "adapter_sha256": "6af8609e1d7bac189420b2a80dfcf358c81491d3aade784e4b6541852b90a4e0",
+      "adapter_sha256": "0585e4a8c8f6637787e4c02b69b5cef10fedbec9e37f2042905ecd12f36d8eb0",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
