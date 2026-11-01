@@ -30,6 +30,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Keep dense chart event labels readable and expose crowded events through
+  keyboard-accessible details, included in report image and PDF exports.
+
 - Bound report snapshot height after lazy content renders, preserving full PDF output.
 - Strengthen theme regression guards for spaced names and short hex colors.
 
