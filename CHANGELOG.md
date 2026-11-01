@@ -9,6 +9,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Website links include a Nova Play report image for social previews, and the
+  public demo gallery is no longer blocked by robots.txt.
 - Keep permitted Studio-audience reports available when Private items exist and
   report-scoped access is not configured, without exposing restricted content.
 - Reject unsupported new Private publications without interrupting valid report

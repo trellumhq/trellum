@@ -60,6 +60,7 @@ def test_export_writes_the_complete_finite_artifact(tmp_path):
         "static/site.js",
         "static/tour.js",
         "static/trellum-lattice.svg",
+        "static/media/nova-play-social.png",
         "tour/index.html",
     } | tour_images <= actual
     assert {

@@ -89,7 +89,7 @@ def test_robots_and_sitemap(client):
     robots = client.get("/robots.txt").content.decode()
     sitemap = client.get("/sitemap.xml").content.decode()
     assert "Sitemap: https://trellum.dev/sitemap.xml" in robots
-    assert "Disallow: /demo/" in robots
+    assert "Disallow:" not in robots
     for path in ("/", "/privacy/", "/terms/", "/cookies/", "/tour/", "/docs/latest/"):
         assert f"https://trellum.dev{path}" in sitemap
 
