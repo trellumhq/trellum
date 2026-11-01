@@ -9,6 +9,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Maintenance
 
+- Require explicit optimizer opt-in and a clean dedicated repository worktree;
+  verify checkout identity before reverts and respect agent permission settings.
+
 - Verify portal data-source materialization against live PostgreSQL and MySQL
   through the framework resolver, including credential isolation.
 
