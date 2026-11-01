@@ -466,6 +466,21 @@ def session_message(request, org_slug, studio_slug, session_id):  # noqa: ARG001
         return JsonResponse(
             {"error": "A reply is still streaming in another tab.", "code": "busy"}, status=409
         )
+    # Reload after claiming: another completed turn may have changed the state
+    # between the initial access check and this conditional update.
+    session.refresh_from_db(fields=["state", "title"])
+    try:
+        check_history(session, actor=user, studio=request.studio)
+    except PermissionDenied:
+        AssistantSession.objects.filter(pk=session.pk).update(in_flight_until=None)
+        return JsonResponse({"error": "Source access changed. Start a new conversation."}, status=403)
+    if not resume_id:
+        if session.state.get("_source_pending"):
+            AssistantSession.objects.filter(pk=session.pk).update(in_flight_until=None)
+            return JsonResponse({"error": "A source read is still in progress.", "source_pending": session.state["_source_pending"]}, status=409)
+        session.state["_source_steps"] = 0
+        if not session.transcript:
+            session.title = infer_title(message)
     resumed_evidence = None
     if resume_id:
         try:
@@ -474,7 +489,7 @@ def session_message(request, org_slug, studio_slug, session_id):  # noqa: ARG001
                 return JsonResponse({"error": "The source read is still running."}, status=409)
             message = None
             resumed_evidence = next((e.get("provenance") for e in reversed(session.transcript)
-                                     if e.get("role") == "tool" and e.get("provenance")), None)
+                                     if e.get("role") == "tool" and (e.get("provenance") or {}).get("query_id") == str(resume_id)), None)
         except Exception as exc:
             AssistantSession.objects.filter(pk=session.pk).update(in_flight_until=None)
             # Never expose UUID parsing, SQL, or driver exceptions.
@@ -486,9 +501,12 @@ def session_message(request, org_slug, studio_slug, session_id):  # noqa: ARG001
         # doing that above this generator meant the browser waited on it with
         # an idle connection and no way to show that anything was happening.
         yield _frame({"type": "turn_start", "session_id": session.pk, "model": config.model})
-        if resumed_evidence:
-            yield _frame({"type": "source_evidence", "evidence": resumed_evidence})
         try:
+            if resumed_evidence:
+                check_history(session, actor=user, studio=request.studio)
+                yield _frame({"type": "source_evidence", "evidence": resumed_evidence})
+            source_text = []
+            source_text_bytes = 0
             system_blocks = build_system_prompt(toolbox)
             for event in llm.stream_turn(
                 config,
@@ -500,8 +518,21 @@ def session_message(request, org_slug, studio_slug, session_id):  # noqa: ARG001
                 remaining=remaining,
                 deadline_s=deadline_s,
             ):
-                if event.get("type") in ("done", "tool_use", "tool_result", "source_wait"):
+                # Hold source-derived prose until the model response finishes,
+                # then recheck grants before delivering it. Database checks per
+                # token would make streaming cost grow with response length.
+                if event.get("type") == "text_delta" and session.state.get("_source_policies"):
+                    source_text_bytes += len(json.dumps(event).encode())
+                    if source_text_bytes > 1048576:
+                        raise ValueError("Source explanation exceeds the delivery bound.")
+                    source_text.append(event)
+                    continue
+                if event.get("type") in ("usage", "done", "tool_use", "tool_result", "source_wait"):
                     check_history(session, actor=user, studio=request.studio)
+                    for buffered in source_text:
+                        yield _frame(buffered)
+                    source_text.clear()
+                    source_text_bytes = 0
                 if event.get("type") == "keepalive":
                     # An SSE comment, not an event: keeps the connection warm
                     # through a long tool call without the client parsing it.

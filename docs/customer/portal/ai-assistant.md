@@ -20,10 +20,20 @@ alongside its charts. The assistant reads that published data — filters it,
 aggregates it, and quotes the result. It is the same data anyone with access
 to the report can already see, reached a different way.
 
-**It cannot reach your warehouse.** There is no database connection. If no
-report carries the answer, the assistant says so rather than going to find
-it. A question the reports cannot answer is a question for whoever builds
-them.
+**It can explore explicitly authorized PostgreSQL sources.** In a studio
+conversation, it can discover permitted tables, inspect their columns, and run
+read-only analytical queries, including joins and aggregations. An administrator
+must first grant named users or groups access to explicit schema-qualified
+relations. Report visibility and administrator status do not grant this access.
+Queries run as durable worker jobs; the panel waits and resumes the conversation
+automatically. You can cancel a pending read. Report-bound conversations continue
+to use their report's published data.
+
+Source results include the executed SQL, execution time, returned table and
+truncation indicator. They are labeled exploratory: a successful query does not
+prove that its calculation matches the business meaning of your question.
+Changes to a grant or its source configuration invalidate earlier source evidence
+in a conversation. Start a new conversation with the current permissions.
 
 **It cannot change anything on its own.** Its read operations inspect built
 reports, report documentation and accessible alerts: no creating reports, no
@@ -62,9 +72,39 @@ started in, and the assistant reads that studio's reports and no others.
 Someone who cannot open a report in the portal cannot get its numbers out of
 the assistant either — access is checked the same way for both.
 
-**It will not invent a number.** Every figure it states has to come from a
-tool result in that conversation. When it cannot retrieve something, the
-honest answer is the one it is instructed to give.
+**Check the evidence behind an answer.** The assistant is instructed to ground
+figures in tool results and identify missing information. The result tables come
+from executed reads; the model's explanation can still be mistaken. Review the
+query, filters, dates, metric definition and any truncation before relying on an
+answer. There is no guarantee that every question receives a correct answer.
+
+## Source-query setup and limits
+
+Use a dedicated PostgreSQL login with only `CONNECT`, schema `USAGE` and `SELECT`
+on the intended tables or reviewed views. Do not reuse a report-building or
+administrator login. The executor rejects superusers, bypass-RLS identities,
+role/database creators, replication roles and identities with write privileges
+on application tables. PostgreSQL row-level security remains applicable to the
+source login. A shared login does not automatically implement per-portal-user
+row policies; use suitably restricted sources and grants for those audiences.
+
+Grant explicit `schema.table` relations and named users or groups in source
+access settings. Enabling this access authorizes sending those relations' schema
+and result data to the configured model provider. Review views before granting
+them: their definitions are trusted database code. The pilot supports direct
+PostgreSQL connections and ordinary scalar types. SSH tunnels, foreign tables,
+custom types and other database engines are not supported for assistant SQL.
+Remote PostgreSQL connections require verified TLS and a trusted certificate on
+the worker host. The worker needs psycopg3/libpq with bounded cancellation support.
+
+Run a runner worker to process reads. Admission allows one active read per
+conversation, four per organization and 32 across the installation. Each read
+has a ten-second execution deadline, at most 200 returned rows and 64 KiB of
+result evidence. Connection, DNS and cancellation have additional bounded grace
+periods. A question may perform up to 12 source reads across automatic resumptions.
+These limits do not cap scanned bytes or total database memory; use database-side
+resource controls appropriate to the warehouse. A failed worker never silently
+replays an uncertain query. An unconfirmed cancellation is reported as such.
 
 ## Where your data goes
 
@@ -78,6 +118,8 @@ When someone asks a question, the assistant sends the model provider:
 - a catalog of your reports — names, descriptions, dataset names, column
   names and date ranges — and where the person is in the portal (page
   title, path, and the chart they asked about when they asked from one);
+- schema metadata and bounded query results from sources explicitly granted to
+  the person asking, when the assistant uses those sources;
 - the conversation so far;
 - the results of whatever it looked up to answer — typically an aggregated
   table of a few dozen rows, not a raw export;

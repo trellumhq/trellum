@@ -44,6 +44,7 @@ is internal and may change in a patch release without warning.
 | `python -m trellum.run` CLI flags | The documented flags, per the Tier 1 row above. This is the supported way to build a report — never by importing the runner internals |
 | `trellum.testing.runner.test_all_reports()` | Build every report against mock data, for a host's own "test run" action |
 | `trellum.themes.THEME_REGISTRY` | Available themes |
+| `trellum.data.assistant_query.validate_query`, `execute_query`, `describe_source` | Restricted PostgreSQL source reads: explicit relation grants, read-only identity, execution/cancellation deadlines and bounded JSON evidence. Synchronous worker API; callbacks run on auxiliary threads. `QueryRejected` is a safe rejection; `QueryExecutionError.confirmed` distinguishes a confirmed remote completion from an uncertain outcome, and `.cancelled` identifies confirmed caller cancellation. |
 | `trellum.data.query_df` / `resolve_connection` | Run a query against a configured data source, per the `query_df()` Tier 1 row |
 | `trellum.data.query.sql_dialect_for(source_type)` | The string-literal dialect a host must bind parameters with for a datasource type |
 | `trellum.data.query.bind_params(sql, params, dialect="standard")` | Substitute `:name` placeholders with escaped literals; `dialect` from `sql_dialect_for` |

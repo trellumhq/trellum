@@ -76,12 +76,20 @@ def execute(toolbox, name, args):
                                     for g in grants[:25]], "truncated": len(grants) > 25}
             if len(json.dumps(payload).encode()) > 65536:
                 return "Error: Source metadata exceeds the discovery limit; narrow the source grants."
+            from apps.assistant.source_access import policy_fingerprint
+            pins = toolbox.session.state.setdefault("_source_policies", {})
+            for grant in grants[:25]:
+                pins[str(grant.pk)] = policy_fingerprint(grant)
             return json.dumps(payload)
+        if toolbox.session.state.get("_source_steps", 0) >= 12:
+            return "Error: This question reached its source-read limit. Explain the evidence collected and ask the user to narrow the remaining question."
         key = getattr(toolbox, "source_call_id", None) or uuid.uuid4().hex
-        job, _ = source_queries.admit(
+        job, created = source_queries.admit(
             studio=toolbox.studio, actor=toolbox.actor, session=toolbox.session,
             grant_id=args.get("source_id"), kind="describe" if name == "describe_source" else "query",
             sql=args.get("sql", ""), idempotency_key=key)
+        if created:
+            toolbox.session.state["_source_steps"] = toolbox.session.state.get("_source_steps", 0) + 1
         payload = result_for(toolbox, job)
         if payload["state"] in ("accepted", "running"):
             toolbox.source_pending = str(job.pk)

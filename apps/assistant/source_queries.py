@@ -24,7 +24,7 @@ from apps.assistant.source_access import DENIED, eligible_context, policy_finger
 ACCEPTED_TTL = timedelta(minutes=5)
 KEY_RETENTION = timedelta(hours=24)
 LEASE_SECONDS = 30
-# Includes direct connection setup (5s), server statement timeout (10s), and
+# Includes bounded DNS/connection setup, server statement timeout (10s), and
 # cancellation/transport margin. Recovery holds capacity beyond the lost lease.
 UNCERTAINTY_HOLD = timedelta(seconds=30)
 ADMISSION_LOCK_NAMESPACE = 0x53524351
@@ -301,7 +301,7 @@ def process_next(*, worker_id, pools=None):
             if threading.get_ident() != owner_thread:
                 connections.close_all()
 
-    def on_started(backend_pid):
+    def record_started(backend_pid):
         nonlocal last_check
         last_check = 0.0  # Always recheck authority immediately before user SQL.
         if cancelled():
@@ -311,6 +311,13 @@ def process_next(*, worker_id, pools=None):
             cancel_requested=False, lease_expires_at__gt=timezone.now(),
         ).update(backend_pid=int(backend_pid)):
             raise PermissionDenied(DENIED)
+
+    def on_started(backend_pid):
+        try:
+            record_started(backend_pid)
+        finally:
+            if threading.get_ident() != owner_thread:
+                connections.close_all()
 
     attempted = completed = False
     try:
@@ -326,8 +333,7 @@ def process_next(*, worker_id, pools=None):
         fields = grant.datasource.all_fields()
         if grant.datasource.type != "postgres" or any(v for k, v in fields.items() if k.startswith("ssh_")):
             raise PermissionDenied(DENIED)
-        info = {k: v for k, v in fields.items() if k in {"host", "port", "database", "user", "password"}}
-        info["connect_timeout"] = 5
+        info = {k: v for k, v in fields.items() if k in {"host", "port", "database", "user", "password", "sslmode"}}
         kwargs = {"timeout_seconds": 10, "max_rows": 200, "max_bytes": MAX_RESULT_BYTES,
                   "cancelled": cancelled, "on_started": on_started}
         attempted = True
@@ -339,10 +345,17 @@ def process_next(*, worker_id, pools=None):
         _finish(job, Job.SUCCEEDED, "Source read completed.", _bounded_result(result))
     except PermissionDenied:
         _finish(job, Job.FAILED, MSG_REVOKED)
-    except Exception:
+    except Exception as exc:
+        from trellum.data.assistant_query import QueryExecutionError, QueryRejected
+
+        if isinstance(exc, QueryRejected):
+            _finish(job, Job.FAILED, str(exc))
+        elif isinstance(exc, QueryExecutionError) and exc.confirmed:
+            _finish(job, Job.CANCELLED if exc.cancelled else Job.FAILED, str(exc))
+        else:
+            _finish(job, Job.UNCONFIRMED if attempted and not completed else Job.FAILED, MSG_FAILED)
         # An arbitrary executor/transport failure cannot prove remote completion.
         # No exception text (which can contain SQL, data or credentials) is logged.
-        _finish(job, Job.UNCONFIRMED if attempted and not completed else Job.FAILED, MSG_FAILED)
     return True
 
 

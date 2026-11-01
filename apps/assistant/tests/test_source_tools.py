@@ -1,0 +1,128 @@
+"""The model pauses for durable reads and resumes with scoped evidence."""
+import json
+
+import pytest
+from django.core.exceptions import PermissionDenied
+
+from apps.assistant import source_tools, source_queries
+from apps.assistant.models import SourceQuery
+from apps.assistant.tools import AssistantToolbox
+from apps.assistant.tests.test_source_access import source_context  # noqa: F401
+from apps.assistant.tests.test_source_queries import executor  # noqa: F401
+from apps.assistant.tests.test_message_sse import (  # noqa: F401
+    fake_llm, FakeResponse, ToolUseBlock, TextBlock, frames,
+)
+
+pytestmark = pytest.mark.django_db(transaction=True)
+
+
+def toolbox(ctx):
+    studio, user, session, _ = ctx
+    return AssistantToolbox(studio, actor=user, session=session, role="org_admin")
+
+
+def test_discovery_pins_history_and_revocation(source_context):
+    box = toolbox(source_context)
+    payload = json.loads(source_tools.execute(box, "list_data_sources", {}))
+    assert payload["sources"][0]["source_id"] == source_context[3].pk
+    source_tools.check_history(box.session, actor=box.actor, studio=box.studio)
+    source_context[3].users.clear()
+    with pytest.raises(PermissionDenied):
+        source_tools.check_history(box.session, actor=box.actor, studio=box.studio)
+
+
+def test_jobs_resume_with_actual_evidence_without_new_user_message(source_context, executor):
+    box = toolbox(source_context)
+    payload = json.loads(source_tools.execute(box, "query_source", {
+        "source_id": source_context[3].pk, "sql": "SELECT count(*) FROM analytics.sales"}))
+    session = box.session
+    session.state["_source_pending"] = {"id": payload["id"], "tool_use_id": "call1"}
+    session.transcript.append({"role": "tool", "tool_use_id": "call1", "result": "pending"})
+    session.save()
+    assert not source_tools.resume(session, actor=box.actor, studio=box.studio, query_id=payload["id"])
+    source_queries.process_next(worker_id="synthetic")
+    assert source_tools.resume(session, actor=box.actor, studio=box.studio, query_id=payload["id"])
+    assert "_source_pending" not in session.state
+    assert len(session.transcript) == 1
+    assert session.transcript[0]["provenance"]["rows"] == [[42]]
+    assert not session.transcript[0]["is_error"]
+    source_context[3].delete()
+    with pytest.raises(PermissionDenied):
+        source_tools.check_history(session, actor=box.actor, studio=box.studio)
+
+
+def test_source_step_limit_survives_resumption(source_context, executor):
+    box = toolbox(source_context)
+    box.session.state["_source_steps"] = 12
+    assert source_tools.execute(box, "query_source", {"source_id": source_context[3].pk, "sql": "SELECT 1"}).startswith("Error:")
+    assert not SourceQuery.objects.exists()
+
+
+def test_sse_pause_status_resume_and_revocation(source_context, executor, fake_llm, login):
+    studio, user, session, grant = source_context
+    client = login(user)
+    base = f"/s/{studio.org.slug}/{studio.slug}/api/assistant/sessions/{session.pk}"
+    calls = fake_llm(
+        FakeResponse([ToolUseBlock("read1", "query_source", {"source_id": grant.pk, "sql": "SELECT count(*) FROM analytics.sales"})], "tool_use"),
+        FakeResponse([TextBlock("The executed query returned 42.")]),
+    )
+    response = client.post(base + "/message", data=json.dumps({"message": "Count sales"}), content_type="application/json")
+    events = frames(response)
+    pending = next(data for name, data in events if name == "source_wait")
+    assert len(calls) == 1
+    status = client.get(pending["status_url"])
+    assert status.status_code == 202 and "result" not in status.json()
+    source_queries.process_next(worker_id="synthetic")
+    status = client.get(pending["status_url"])
+    assert status.status_code == 200 and status.json()["evidence"]["rows"] == [[42]]
+    response = client.post(base + "/message", data=json.dumps({"resume_source_query": pending["id"]}), content_type="application/json")
+    resumed = frames(response)
+    assert any(name == "source_evidence" and data["evidence"]["rows"] == [[42]] for name, data in resumed)
+    assert any(name == "done" for name, _ in resumed)
+    assert len(calls) == 2
+    session.refresh_from_db()
+    assert len([e for e in session.transcript if e["role"] == "user"]) == 1
+    grant.users.clear()
+    assert client.get(base).status_code == 403
+    assert client.get(pending["status_url"]).status_code == 403
+
+
+@pytest.mark.heavy
+def test_real_worker_executor_and_django_permission_callbacks(source_context, source):
+    """Exercise the adapter boundary that isolated executor mocks cannot cover."""
+    reader, _ = source
+    studio, user, session, grant = source_context
+    ds = grant.datasource
+    ds.config = {key: value for key, value in reader.items() if key not in {"user", "password"}}
+    ds.credentials = {"user": reader["user"], "password": reader["password"]}
+    ds.save()
+    job, _ = source_queries.admit(studio=studio, actor=user, session=session, grant_id=grant.pk,
+                                  sql="SELECT count(*) FROM analytics.sales", idempotency_key="real-adapter")
+    assert source_queries.process_next(worker_id="synthetic-real")
+    job.refresh_from_db()
+    assert job.state == SourceQuery.SUCCEEDED, job.message
+    assert job.result["rows"] == [[500]]
+    assert job.backend_pid
+
+
+from trellum.testing.test_assistant_query_postgres import source  # noqa: E402,F401
+
+
+def test_revocation_during_explanation_does_not_deliver_buffered_source_text(source_context, login, monkeypatch):
+    from apps.assistant import llm
+    studio, user, session, grant = source_context
+    source_tools.execute(toolbox(source_context), "list_data_sources", {})
+    session.save()
+
+    def stream(*args, **kwargs):
+        yield {"type": "text_delta", "text": "Sensitive source result"}
+        grant.users.clear()
+        yield {"type": "done"}
+
+    monkeypatch.setattr(llm, "stream_turn", stream)
+    response = login(user).post(
+        f"/s/{studio.org.slug}/{studio.slug}/api/assistant/sessions/{session.pk}/message",
+        data=json.dumps({"message": "Explain the data"}), content_type="application/json")
+    events = frames(response)
+    assert not any(name == "text_delta" for name, _ in events)
+    assert any(name == "error" for name, _ in events)

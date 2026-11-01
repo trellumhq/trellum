@@ -33,7 +33,12 @@ class QueryRejected(ValueError):
 
 
 class QueryExecutionError(RuntimeError):
-    """A safe execution failure; never exposes a driver error or credentials."""
+    """Safe failure with an explicit remote-completion classification."""
+
+    def __init__(self, message, *, confirmed=False, cancelled=False):
+        super().__init__(message)
+        self.confirmed = confirmed
+        self.cancelled = cancelled
 
 
 _NODES = frozenset("""
@@ -235,15 +240,15 @@ def _metadata_query(allowed):
 async def _watch(conn, operation, deadline, cancelled):
     """Poll without worker threads; cancellation targets this connection's key."""
     try:
-        if cancelled and cancelled():
-            raise QueryExecutionError("Query cancelled.")
+        if cancelled and await asyncio.to_thread(cancelled):
+            raise QueryExecutionError("Query cancelled.", confirmed=True, cancelled=True)
     except Exception:
         operation.close()
         raise
     task = asyncio.create_task(operation)
     try:
         while not task.done():
-            reason = ("Query cancelled." if cancelled and cancelled() else
+            reason = ("Query cancelled." if cancelled and await asyncio.to_thread(cancelled) else
                       "Query timed out." if time.monotonic() >= deadline else None)
             if reason:
                 try:
@@ -260,7 +265,7 @@ async def _watch(conn, operation, deadline, cancelled):
                     raise
                 except Exception:
                     raise QueryExecutionError("Query cancellation is unconfirmed.") from None
-                raise QueryExecutionError(reason)
+                raise QueryExecutionError(reason, confirmed=True, cancelled=reason == "Query cancelled.")
             await asyncio.wait({task}, timeout=0.05)
         return await task
     finally:
@@ -312,10 +317,10 @@ async def _execute(options, query, allowed, timeout, max_rows, max_bytes, cancel
         if (len(columns) > 2000 or {(r[0], r[1]) for r in columns} != allowed
                 or (not metadata and any(r[2] != "pg_catalog" or r[3] not in _UDT or r[4] is not None for r in columns))):
             raise QueryRejected("Source relations or column types are unsupported.")
-        if cancelled and cancelled():
-            raise QueryExecutionError("Query cancelled.")
+        if cancelled and await asyncio.to_thread(cancelled):
+            raise QueryExecutionError("Query cancelled.", confirmed=True, cancelled=True)
         if on_started:
-            on_started(conn.info.backend_pid)
+            await asyncio.to_thread(on_started, conn.info.backend_pid)
         # A server cursor's initial FETCH 0 obtains names without materializing
         # the result. A second server cursor bounds each wire row in PostgreSQL
         # before libpq or Python allocates it. Duplicate column names survive.
@@ -398,8 +403,8 @@ def _dispatch(conn_info, query, allowed, *, timeout_seconds=10, max_rows=200,
         raise
     except Exception as exc:
         if getattr(exc, "sqlstate", None) == "57014":
-            raise QueryExecutionError("Query timed out or was cancelled by PostgreSQL.") from None
-        raise QueryExecutionError("PostgreSQL query failed.") from None
+            raise QueryExecutionError("Query timed out or was cancelled by PostgreSQL.", confirmed=True) from None
+        raise QueryExecutionError("PostgreSQL query failed.", confirmed=bool(getattr(exc, "sqlstate", None))) from None
 
 
 def execute_query(conn_info: dict, sql: str, relations: list[str], *, timeout_seconds=10,

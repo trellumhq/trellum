@@ -72,7 +72,7 @@ def test_worker_success_and_fresh_delivery(source_context, executor):
     _, kwargs = executor.execute_query.call_args
     assert kwargs["timeout_seconds"] == 10 and kwargs["max_rows"] == 200
     info = executor.execute_query.call_args.args[0]
-    assert info["connect_timeout"] == 5
+    assert "connect_timeout" not in info
     assert not service.process_next(worker_id="other")
     source_context[3].users.clear()
     with pytest.raises(PermissionDenied):
@@ -293,3 +293,14 @@ def test_on_started_rechecks_revocation_before_sql(source_context, executor):
 def test_invalid_query_identifier_is_safely_denied(source_context):
     with pytest.raises(PermissionDenied):
         public("not-a-uuid", source_context)
+
+
+@pytest.mark.parametrize("confirmed,cancelled,expected", [(True, True, Job.CANCELLED), (True, False, Job.FAILED), (False, False, Job.UNCONFIRMED)])
+def test_executor_completion_classification(source_context, executor, confirmed, cancelled, expected):
+    from trellum.data.assistant_query import QueryExecutionError
+    job, _ = admit(source_context)
+    executor.execute_query.side_effect = QueryExecutionError("Safe outcome.", confirmed=confirmed, cancelled=cancelled)
+    service.process_next(worker_id="worker")
+    job.refresh_from_db()
+    assert job.state == expected
+    assert job.result == {}
