@@ -19,6 +19,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Keep the demo Sessions per DAU metric unbound so the metrics catalog
+  demonstrates an unmonitored definition.
+
 - Engagement experiments can declare `outcome_type="engagement"` to avoid
   purchase-specific payer/revenue warnings. Purchase validation remains the
   default, and experiment statistics are unchanged.
