@@ -7,6 +7,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Fixed
+
+- Send report recovery emails only to current recipients whose failure
+  notification was accepted for the same incident and email address. Reports
+  that recover before their buffered failure notice is sent stay quiet.
+
 ## [0.9.5] — 2026-10-26
 
 The v0.9.4 release did not publish any images because its vulnerability scan
