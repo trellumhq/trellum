@@ -41,8 +41,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
-- Avoid transferring duplicate audit history rows when populating action choices,
-  preserving every available label and organization scope.
+- Populate audit action choices with ordered, organization-scoped probes instead
+  of transferring duplicate history rows. Add a concurrent composite index for
+  large histories with uneven action usage across organizations; preserve all labels.
 
 - Upgrade and roll back portal and runner images as a verified pair, with
   preflight image checks, paired backup manifests and guarded database recovery.

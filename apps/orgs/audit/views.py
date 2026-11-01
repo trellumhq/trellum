@@ -15,7 +15,7 @@ import json
 
 from django.contrib.auth import get_user_model
 from django.core.paginator import Paginator
-from django.db.models import Count, Exists, Q, TextField
+from django.db.models import Count, Q, Subquery, TextField, Value
 from django.db.models.functions import Cast
 from django.http import StreamingHttpResponse
 from django.shortcuts import render
@@ -179,16 +179,23 @@ def _action_choices(base_qs):
     """The registry's labels, restricted to actions this org actually has --
     a static list intersected with real usage, not a raw distinct-values
     scan rendered verbatim (the dashboard used to show bare dotted verbs)."""
-    # DISTINCT would scan the history even without the model's timestamp
-    # ordering. Probe each finite registry entry instead, stopping at its first
-    # scoped match. The existing action index supports these probes, but lacks
-    # org: an absent org/action pair can still visit another org's events.
-    # Return all flags in one query, anchored by one scoped history row.
+    # Read one latest-event witness per registry entry. EXISTS drops ordering;
+    # with skewed org/action usage its row estimate can favor a full sequential
+    # scan for an absent pair. The ordered LIMIT uses the org/action/time index
+    # without relying on cross-column statistics to estimate that pair correctly.
+    # Return all witnesses in one query. Order the anchor too, so finding its
+    # first scoped row uses the existing org/time index under tenant skew.
     names = list(emittable_actions())
     if not names:
         return []
-    probes = {f"used_{i}": Exists(base_qs.filter(action=name)) for i, name in enumerate(names)}
-    flags = list(base_qs.order_by().annotate(**probes).values_list(*probes)[:1])
+    probes = {
+        f"used_{i}": Subquery(
+            base_qs.filter(action=name).order_by("-created_at")
+            .annotate(used=Value(True)).values("used")[:1]
+        )
+        for i, name in enumerate(names)
+    }
+    flags = list(base_qs.order_by("-created_at").annotate(**probes).values_list(*probes)[:1])
     if not flags:
         return []
     choices = [(name, label_for(name)) for name, used in zip(names, flags[0]) if used]

@@ -73,13 +73,28 @@ def _nodes(node):
         yield from _nodes(child)
 
 
+def _scan_work(root):
+    # Include bitmap index work, rechecks and index-only heap fetches: the
+    # number of returned flags alone cannot detect a hidden history scan.
+    scans = [node for node in _nodes(root) if "Scan" in node["Node Type"]]
+    assert all(node.get("Relation Name", "core_auditlog") == "core_auditlog" for node in scans)
+    return {
+        "tuples": sum(
+            (node["Actual Rows"] + node.get("Rows Removed by Filter", 0)
+             + node.get("Rows Removed by Index Recheck", 0)) * node["Actual Loops"]
+            for node in scans
+        ),
+        "heap_fetches": sum(node.get("Heap Fetches", 0) * node["Actual Loops"] for node in scans),
+        "blocks": root.get("Shared Hit Blocks", 0) + root.get("Shared Read Blocks", 0),
+    }
+
+
 @pytest.mark.heavy
 def test_action_selector_postgresql_history_growth(org, org_admin, other_org):
     """Measure exact helper SQL at 120/100120 rows, including absent actions.
 
-    This certifies the repeated-event fixture, not a worst-case tenant-skew
-    bound: the existing action index does not include org, so another tenant's
-    events can still be visited when an action is absent in the selected org.
+    Includes an action with a large history only in a different tenant to
+    verify that absent scoped choices do not scan that tenant's history.
     Actor output remains proportional to the complete historical actor set.
     """
     if connection.vendor != "postgresql":
@@ -109,28 +124,30 @@ def test_action_selector_postgresql_history_growth(org, org_admin, other_org):
         # require indexed probes rather than a history scan hidden in one query.
         scans = [node for node in nodes if node.get("Relation Name") == "core_auditlog"]
         assert len(scans) == len(names) + 1
-        assert all(node["Actual Rows"] <= 1 for node in scans)
-        visited = sum(
-            (node["Actual Rows"] + node.get("Rows Removed by Filter", 0)) * node["Actual Loops"]
-            for node in scans
-        )
-        assert visited <= (len(names) + 1 if size > 120 else size * len(names) + 1)
-        assert not any(node["Node Type"] in {"Sort", "Aggregate"} for node in nodes)
+        work = _scan_work(root)
+        assert work["tuples"] <= (len(names) + 1 if size > 120 else size * (len(names) + 1))
+        assert work["heap_fetches"] <= len(names) + 1
+        if size > 120:
+            assert work["blocks"] <= 8 * (len(names) + 1)
+            assert not any(node["Node Type"] in {"Sort", "Aggregate"} for node in nodes)
         actors, actor_plans = _capture(lambda: _actor_choices(base))
         assert actors == [(org_admin.pk, org_admin.email)]
         assert "created_at" not in actor_plans[0]["sql"]
-        records.append({"size": size, "choices": choices, "plans": plans, "legacy": legacy_plans, "actors": actor_plans})
+        records.append({"size": size, "choices": choices, "plans": plans, "work": work, "legacy": legacy_plans, "actors": actor_plans})
     # An action used only in another org must never become an option here.
     AuditLog.objects.bulk_create([
         AuditLog(org=other_org, action="auth.login", category="auth") for _ in range(100000)
     ], batch_size=2000)
     with connection.cursor() as cursor:
         cursor.execute("ANALYZE core_auditlog")
-    choices, plans = _capture(lambda: _action_choices(_base_queryset(org)))
-    assert choices == [("run.enqueue", label_for("run.enqueue"))]
-    assert len(plans) == 1 and plans[0]["plan"][0]["Plan"]["Actual Rows"] == 1
-    # Retain the adversarial tenant-skew plan as a limit of the current indexes,
-    # without asserting a scan bound that the schema cannot guarantee.
-    records.append({"size": 200120, "other_org_events": 100000, "choices": choices, "plans": plans})
-    if directory := os.environ.get("AUDIT_PLAN_OUT"):
-        Path(directory, "selector-plans.json").write_text(json.dumps(records, indent=2, default=str))
+    for scoped_org, expected in ((org, "run.enqueue"), (other_org, "auth.login")):
+        choices, plans = _capture(lambda: _action_choices(_base_queryset(scoped_org)))
+        assert choices == [(expected, label_for(expected))]
+        assert len(plans) == 1 and plans[0]["plan"][0]["Plan"]["Actual Rows"] == 1
+        work = _scan_work(plans[0]["plan"][0]["Plan"])
+        records.append({"size": 200120, "org": scoped_org.slug, "choices": choices, "plans": plans, "work": work})
+        if directory := os.environ.get("AUDIT_PLAN_OUT"):
+            Path(directory, "selector-plans.json").write_text(json.dumps(records, indent=2, default=str))
+        assert work["tuples"] <= len(names) + 1
+        assert work["heap_fetches"] <= len(names) + 1
+        assert work["blocks"] <= 8 * (len(names) + 1)
