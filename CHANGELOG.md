@@ -32,6 +32,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Save local token caches and credential configuration atomically with private
+  permissions and coordinated updates; support CLI secret input through stdin
+  or environment variables while retaining existing arguments.
+
 - Keep the report assistant Close button reachable above console navigation.
 
 - Keep report recovery notices functional under enforced CSP, with automatic

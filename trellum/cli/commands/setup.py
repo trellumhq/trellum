@@ -74,7 +74,17 @@ def _setup_portal(args: argparse.Namespace) -> int:
     from trellum.agent import agentsetup
     from trellum.cli.commands.datasource import _update_env_file
 
-    if not (args.url and args.key):
+    from trellum.cli.secrets import resolve_secret
+    if not args.url:
+        print("setup portal needs --url <portal>/s/<org>/<studio>", file=sys.stderr)
+        return 2
+    try:
+        key = resolve_secret(args, "key", "Portal API key: ",
+                             interactive=not getattr(args, "non_interactive", False))
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    if not key:
         print("setup portal needs --url <portal>/s/<org>/<studio> and --key trellum_pk_...",
               file=sys.stderr)
         return 2
@@ -82,11 +92,12 @@ def _setup_portal(args: argparse.Namespace) -> int:
     print(f"Connecting {root} to the portal\n")
     rows = agentsetup.write_mcp_files(root, args.url)
     env = root / ".env"
-    before = env.read_text(encoding="utf-8") if env.is_file() else None
-    _update_env_file(str(env), {agentsetup.MCP_ENV_VAR: args.key})
-    after = env.read_text(encoding="utf-8")
-    rows.append((".env", "created" if before is None else
-                 "current" if before == after else "updated"))
+    try:
+        _update_env_file(str(env), {agentsetup.MCP_ENV_VAR: key})
+    except (OSError, ValueError):
+        print("Could not save private portal credentials; check file access and retry.", file=sys.stderr)
+        return 1
+    rows.append((".env", "saved"))
     rows += agentsetup.write_project_files(root)      # the pointers' Portal section
     for name, status in rows:
         print(f"  {status:<10} {name}")

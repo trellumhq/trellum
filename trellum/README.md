@@ -882,6 +882,53 @@ Credentials (user, password) live in `.env` locally and come from a registered r
 
 When a portal serves the project, this file is the declaration it reads: each source appears there with these details already filled in, and its credentials are entered in the portal instead of `.env`.
 
+### Local credential files and CLI input
+
+`trellum datasource add --user NAME` prompts for a hidden password when run
+in a terminal. For automation, use `--password-stdin` (one line) or
+`--password-env VARIABLE_NAME`. `trellum setup portal --url URL` similarly
+prompts for a key; use `--key-stdin` or `--key-env VARIABLE_NAME` for automation.
+`--non-interactive` disables the portal key prompt. Existing `--password VALUE`
+and `--key VALUE` arguments remain supported, but can expose secrets in shell
+history and process listings. Secret values are never included in success or
+persistence-error messages. Do not put real credentials in command examples.
+
+Local `.env` updates and the OneDrive device-login cache at
+`~/.bi-reports/msal_cache.bin` use private staging files, flush/fsync and atomic
+replacement. A persistent sibling `.lock` file coordinates readers and writers
+with OS locks and a ten-second acquisition limit; leave it in place. Cache
+mutations reload the latest cache under the lock before saving. Existing valid
+MSAL JSON caches are reused without signing in again, changing their path or
+converting their format. Invalid caches raise an error without overwriting them.
+The MSAL dependencies are included in the `drivers` extra.
+
+On POSIX, files and locks use mode `0600`, and the cache directory uses `0700`;
+existing owned credential files are tightened on access. On Windows, the code
+applies a protected DACL allowing the file owner and SYSTEM full access, removing
+inherited grants, before writing secret bytes. This requires Windows security
+descriptor support and permission to set the DACL; failures stop persistence.
+`chmod` is not used as a substitute for Windows ACLs. These files remain
+plaintext: administrators with ownership/backup privileges and processes running
+as the same account can still access them. No credential manager or encryption
+migration is performed.
+
+Use an owned, trusted local project/cache directory and trusted ancestor
+directories. Credential files, their immediate parent and lock files must not
+be symlinks or Windows reparse points; credential/lock files must be regular
+files with one hard link. On POSIX, project directories writable by another
+user are rejected. Windows project-directory access remains the operator's
+responsibility: a file DACL cannot prevent another directory writer from
+replacing/deleting its entries. Shared/network filesystems with different
+locking or replacement semantics are not supported by this policy. Older
+Trellum processes do not honor the new locks; stop them before upgrading.
+
+A failed write before replacement leaves prior file contents intact and cleans
+up staging files. After replacement the new file is authoritative; there is no
+automatic retry of an uncertain write. This is atomic local replacement, not a
+guarantee against filesystem or machine failure after replacement. `.env`
+comments, unrelated assignments and multiline values are retained; updated
+values are quoted when needed. These files still belong in `.gitignore`.
+
 ### SSH tunnels
 
 Any host/port source (`postgres`, `mysql`, `redshift`, `sqlserver`, `clickhouse`, `vertica`, `trino`) can be reached through an SSH bastion. Add `ssh_host`, and the framework connects to the bastion, forwards a local port from there to the source's own `host`/`port`, and hands the driver that local port. Everything that opens a connection -- a report build, `trellum query`, `trellum datasource add`, a portal's connection test -- takes the same path, and the tunnel closes with the connection.

@@ -97,6 +97,7 @@ pandas==3.0.6
 pillow==13.0.0
 platformdirs==4.11.2
 playwright==1.62.0
+portalocker==3.2.0
 propcache==0.5.2
 proto-plus==1.28.3
 protobuf==6.33.6
