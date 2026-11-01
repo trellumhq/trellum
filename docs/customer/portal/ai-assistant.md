@@ -78,6 +78,30 @@ from executed reads; the model's explanation can still be mistaken. Review the
 query, filters, dates, metric definition and any truncation before relying on an
 answer. There is no guarantee that every question receives a correct answer.
 
+## Approved metric calculations
+
+Reports can opt into an **Approved calculation** path by publishing explicit
+metric bindings and execution semantics. The assistant uses `list_metrics`,
+`get_metric_definition` and `query_metric` to calculate from those bound inputs.
+The evidence card displays the actual calculated values, unit/currency, period,
+timezone, filters and build/definition identifiers. The label describes the
+calculation contract; it does not certify the source data or the model's prose.
+
+Report authors configure `metrics.yaml` execution metadata and
+`report.yaml` `metric_bindings` following the
+[framework execution contract](../../../trellum/docs/COMPATIBILITY.md#optional-canonical-metric-execution).
+Existing reports keep working without these declarations. They remain exploratory
+until an author supplies and reviews the business meaning, completeness and
+freshness rules. The initial approved path supports complete daily report
+artifacts: additive sums, absolute sums, ratios of summed operands, last values
+and averages of daily totals. It refuses stale builds, missing periods, unsupported
+rollups and conflicting definitions. Live queries remain exploratory; live
+approved bindings, multi-chunk execution and non-daily calendars are not supported.
+
+The same access checks apply when reopening stored evidence. An administrator
+exporting another person's account does not automatically gain that person's
+source or metric conversation content; restricted content is withheld.
+
 ## Source-query setup and limits
 
 Use a dedicated PostgreSQL login with only `CONNECT`, schema `USAGE` and `SELECT`
@@ -104,7 +128,8 @@ result evidence. Connection, DNS and cancellation have additional bounded grace
 periods. A question may perform up to 12 source reads across automatic resumptions.
 These limits do not cap scanned bytes or total database memory; use database-side
 resource controls appropriate to the warehouse. A failed worker never silently
-replays an uncertain query. An unconfirmed cancellation is reported as such.
+replays an uncertain query. A content-free execution reservation survives
+conversation or source deletion until completion or its bounded safety expiry. An unconfirmed cancellation is reported as such.
 
 ## Where your data goes
 

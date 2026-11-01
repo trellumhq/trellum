@@ -10,6 +10,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Added
 
 - Explicit assistant source grants, scoped PostgreSQL schema discovery and read-only queries with durable execution, cancellation and query evidence.
+- Optional canonical metric calculations with explicit report bindings, period and freshness checks, and structured evidence cards.
 
 ### Changed
 
@@ -19,7 +20,6 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Fixed
 
 - Reject incomplete metric dimension-day coverage and unsafe report aggregations when explicit execution semantics are declared.
-
 - Give the assistant bounded metric definitions for project-wide access while
   keeping report-scoped conversations isolated from the shared registry.
 - Website links include a Nova Play report image for social previews, and the
