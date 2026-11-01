@@ -11,6 +11,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - Explicit assistant source grants, scoped PostgreSQL schema discovery and read-only queries with durable execution, cancellation and query evidence.
 - Optional canonical metric calculations with explicit report bindings, period and freshness checks, and structured evidence cards.
+- Offline assistant evaluation fixtures and a scorer for supplied structured captures, with model accuracy reported separately from calculation checks.
 
 ### Changed
 

@@ -98,6 +98,9 @@ and averages of daily totals. It refuses stale builds, missing periods, unsuppor
 rollups and conflicting definitions. Live queries remain exploratory; live
 approved bindings, multi-chunk execution and non-daily calendars are not supported.
 
+Use the [offline evaluation guide](assistant-evaluation.md) to check calculation
+contracts and score supplied model captures without calling a provider.
+
 The same access checks apply when reopening stored evidence. An administrator
 exporting another person's account does not automatically gain that person's
 source or metric conversation content; restricted content is withheld.

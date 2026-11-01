@@ -283,5 +283,10 @@ def test_approved_metric_card_uses_tool_values_and_shows_definition_context(sour
         card.locator('summary').click()
         expect(card).to_contain_text('build-123')
         assert card.locator('img').count() == 0
+        artifacts = Path('/tmp/trellum-source-ui-review'); artifacts.mkdir(exist_ok=True)
+        page.screenshot(path=str(artifacts / 'metric-evidence-desktop.png'))
+        page.set_viewport_size({'width': 390, 'height': 844})
+        page.screenshot(path=str(artifacts / 'metric-evidence-mobile.png'))
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     finally:
         page.close()
