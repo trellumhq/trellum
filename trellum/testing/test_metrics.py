@@ -815,3 +815,45 @@ class TestMetricsReportShape:
         # has no time axis and is deliberately left out rather than filtered
         # on a column it does not have.
         assert bars[0].propagate_to == {"orders": {"event_date": "order_date"}}
+
+
+class TestBoundedDocumentParser:
+    def test_public_parser_matches_existing_definition_hash(self, tmp_path):
+        from trellum.metrics import parse_metrics_document, load_metrics_result, invalidate_metrics_cache
+        document = {"metrics": [{"name": "revenue", "agg": "sum", "column": "amount"}]}
+        (tmp_path / "metrics.yaml").write_text(json.dumps(document))
+        invalidate_metrics_cache()
+        parsed = parse_metrics_document(document)
+        loaded = load_metrics_result(str(tmp_path))
+        assert parsed.metrics == loaded.metrics
+        assert parsed.problems == loaded.problems
+
+    def test_duplicate_and_invalid_schema_are_reported(self):
+        from trellum.metrics import parse_metrics_document
+        for document in ({"metrics": {}}, {"metrics": [{"name": "x"}, {"name": "x"}]},
+                         {"metrics": [], "datasets": {"daily": {"lookback": []}}}):
+            assert any(level == "fail" for level, _ in parse_metrics_document(document).problems)
+
+    @pytest.mark.parametrize("kind", ["bytes", "nodes", "depth", "count", "cycle", "type", "nan"])
+    def test_resource_limits(self, kind):
+        from trellum.metrics import parse_metrics_document
+        document = {"metrics": []}
+        if kind == "bytes":
+            document["text"] = "x" * 65536
+        elif kind == "nodes":
+            document["extra"] = [0] * 5001
+        elif kind == "depth":
+            node = document
+            for _ in range(14):
+                node["nested"] = {}
+                node = node["nested"]
+        elif kind == "count":
+            document["metrics"] = [{"name": f"m{i}"} for i in range(201)]
+        elif kind == "cycle":
+            document["self"] = document
+        elif kind == "type":
+            document["extra"] = object()
+        else:
+            document["extra"] = float("nan")
+        with pytest.raises(ValueError):
+            parse_metrics_document(document)

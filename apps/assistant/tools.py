@@ -1171,6 +1171,11 @@ class AssistantToolbox:
         df, note = self.load_dataset(slug, dataset_id)
         if df is None:
             return note
+        from apps.assistant.metric_tools import guard_report_aggregation
+        limitation = guard_report_aggregation(self, slug, dataset_id, args)
+        if limitation:
+            self.provenance = None
+            return limitation
         total_rows = len(df)
         # Filtering rebinds `df` rather than mutating it, so holding the
         # original costs nothing and saves the 0-row branch below from

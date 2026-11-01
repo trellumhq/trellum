@@ -62,15 +62,9 @@ def _read_payload(toolbox, slug):
 def _current_definition(toolbox, entry):
     """Uncached, bounded parse using the framework's existing definition hash."""
     from apps.assistant.metric_context import _load
-    from trellum.metrics import MetricsLoadResult, _parse_datasets, _parse_entry
+    from trellum.metrics import parse_metrics_document
 
-    raw = _load(toolbox.project_root, document=True)
-    result = MetricsLoadResult(path="metrics.yaml")
-    result.datasets = _parse_datasets(raw.get("datasets"), result)
-    for i, value in enumerate(raw["metrics"]):
-        metric = _parse_entry(value, i, result)
-        if metric is not None:
-            result.metrics[metric.name] = metric
+    result = parse_metrics_document(_load(toolbox.project_root, document=True))
     if any(level == "fail" for level, _ in result.problems):
         raise MetricUnavailable("Current canonical registry is invalid.")
     metric = result.metrics.get(entry["metric_id"])
@@ -93,6 +87,59 @@ def _entry(payload, mid, dataset):
         raise MetricUnavailable("Binding, definition or fingerprint mismatch.")
     validate_binding(entry)
     return entry
+
+
+def guard_report_aggregation(toolbox, slug, dataset, args):
+    """Keep raw/legacy reads; enforce explicit semantic contracts on reductions.
+
+    Reuse the generic reader's bounded, permission-checked cached document for
+    the selected dataset (including scoped files), without loading the registry.
+    This guard grants no approved-calculation assurance to generic queries.
+    """
+    metrics = args.get("metrics") or []
+    if not metrics:
+        return None
+    guidance = "Use query_metric for the declared calculation or query a granted live source."
+    try:
+        for path in toolbox.data_files(slug):
+            payload = toolbox.read_data(path)
+            if payload is None:
+                raise MetricUnavailable("Report data is unavailable.")
+            if "_ds_" + dataset not in payload:
+                continue
+            entries = payload.get("_metric_execution", {})
+            if not isinstance(entries, dict) or len(entries) > 200:
+                raise MetricUnavailable("Invalid metric execution metadata.")
+            for mid, entry in entries.items():
+                if not isinstance(entry, dict):
+                    raise MetricUnavailable("Invalid metric execution metadata.")
+                if entry.get("output_dataset") != dataset:
+                    continue
+                # An opt-in with broken integrity cannot authorize a reduction.
+                bounded_json(entry, 32_000)
+                entry = _entry(payload, mid, dataset)
+                semantics, spec, columns = entry["semantics"], entry["spec"], entry["columns"]
+                grouped = set(args.get("group_by") or [])
+                dimensions = {columns[d] for d in semantics["dimensions"]
+                              if d not in semantics["additive_dimensions"]}
+                date = columns[spec["date_col"]]
+                operands = {columns[c] for c in (spec["column"], spec["numerator"], spec["denominator"]) if c}
+                for metric in metrics:
+                    if (metric.get("column") not in operands
+                            or metric.get("agg", "sum") in ("count", "nunique", "min", "max")):
+                        continue
+                    # Ratios need weighted operands; balances/averages need
+                    # their declared period calculation. Single-day grouping
+                    # still must retain every non-additive dimension.
+                    if (spec["agg"] == "ratio" or not dimensions <= grouped
+                            or (semantics["time_aggregation"] != "sum" and date not in grouped)
+                            or metric.get("agg", "sum") != "sum"
+                            or spec["agg"] == "abssum"):
+                        raise MetricUnavailable("Requested aggregation conflicts with declared metric semantics.")
+            return None
+        raise MetricUnavailable("Report dataset changed during aggregation.")
+    except (MetricUnavailable, ValueError, TypeError, KeyError, AttributeError, OverflowError, RecursionError):
+        return "Error: aggregation is unavailable for this metric execution contract. " + guidance
 
 
 def execute(toolbox, name, args):

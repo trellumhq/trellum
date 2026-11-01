@@ -279,6 +279,62 @@ def load_metrics_result(project_root: str | None = None) -> MetricsLoadResult:
     return result
 
 
+def parse_metrics_document(raw: object) -> MetricsLoadResult:
+    """Parse a decoded registry without file I/O, providers or SQL execution.
+
+    Reject non-JSON values, cycles, depth >12, >5000 nodes, >64 KiB serialized
+    bytes or >200 metrics with ValueError. Registry schema problems are returned
+    in problems, as with load_metrics_result. Callers bound decoding separately.
+    """
+    nodes = size = 0
+
+    def check(value, depth=0):
+        nonlocal nodes, size
+        nodes += 1
+        if nodes > 5000 or depth > 12:
+            raise ValueError("Registry document exceeds complexity limits.")
+        if type(value) is dict:
+            size += 2 + max(0, len(value) - 1) * 2 + len(value) * 2
+        elif type(value) is list:
+            size += 2 + max(0, len(value) - 1) * 2
+        elif value is None or type(value) in (str, int, float, bool):
+            if type(value) is str and len(value) > 64 * 1024:
+                raise ValueError("Registry document exceeds byte limits.")
+            size += len(json.dumps(value, allow_nan=False).encode("utf-8"))
+        else:
+            raise ValueError("Registry document must contain JSON values.")
+        if size > 64 * 1024:
+            raise ValueError("Registry document exceeds byte limits.")
+        if type(value) is dict:
+            for key, item in value.items():
+                if type(key) is not str:
+                    raise ValueError("Registry document keys must be strings.")
+                check(key, depth + 1)
+                check(item, depth + 1)
+        elif type(value) is list:
+            for item in value:
+                check(item, depth + 1)
+
+    # Charge JSON bytes incrementally, avoiding a large intermediate encoding
+    # when a decoded document exceeds the budget across many small values.
+    check(raw)
+    result = MetricsLoadResult(path="metrics.yaml")
+    if not isinstance(raw, dict) or not isinstance(raw.get("metrics"), list):
+        result.problems.append(("fail", "metrics.yaml requires a mapping with a metrics list."))
+        return result
+    if len(raw["metrics"]) > 200:
+        raise ValueError("Registry document exceeds metric limits.")
+    try:
+        result.datasets = _parse_datasets(raw.get("datasets"), result)
+        for i, entry in enumerate(raw["metrics"]):
+            metric = _parse_entry(entry, i, result)
+            if metric is not None:
+                result.metrics[metric.name] = metric
+    except (ValueError, TypeError, AttributeError, OverflowError):
+        result.problems.append(("fail", "metrics.yaml contains invalid dataset or metric fields."))
+    return result
+
+
 def _parse_datasets(raw: object, result: MetricsLoadResult) -> dict[str, Dataset]:
     """The optional ``datasets:`` mapping -> ``{name: Dataset}``. Every problem
     is a FAIL -- an unfetchable dataset makes every metric bound to it wrong.

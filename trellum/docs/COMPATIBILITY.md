@@ -51,6 +51,9 @@ is internal and may change in a patch release without warning.
 | `trellum.runner.local_annotation_events(config)` | A report's `annotations.events` from its `report.yaml` config, normalised the way a build merges them into `_events` |
 | `trellum.data.datasource_config` | `data-sources/config.yaml` read/write helpers |
 | `trellum.metrics.load_metrics` | The project's `metrics.yaml` as `{name: Metric}` — the business-metric registry a host may present or index. `{}` when the file is absent |
+| `trellum.metrics.parse_metrics_document` | Parse an already decoded registry document without file I/O, imports of providers or SQL execution. Raises `ValueError` for non-JSON values, cycles or bounds (64 KiB serialized, 5000 nodes, depth 12, 200 metrics); returns `MetricsLoadResult` with structural `problems`. Callers must bound decoding before calling. |
+| `trellum.metric_execution` | Optional pure canonical execution: `make_binding`, `publish_bindings`, `execute_metric`, `MetricUnavailable`; explicit build contracts and bounded complete daily inputs, as described below. |
+| Optional execution metadata | `data.json._metric_execution` maps metric IDs to explicit versioned execution fingerprints, semantics, coverage and column mappings. `_meta.json.metric_execution_build` pins the successful build ID; absence never implies canonical eligibility. |
 | `trellum.project.get_project_root()` | Project root resolution |
 | `trellum.project.load_project_config()` | The project's `config.yaml` |
 | `trellum.reporting_day.load_reporting_settings(project_root=None)` | Validated project reporting timezone, day boundary and Metrics build time. Pass an explicit root in multi-project hosts. |
@@ -247,7 +250,10 @@ Dimensions and grain must match the registry dataset. Only canonical sum,
 absolute sum and ratios of additive operands are supported. Ratios are computed
 from operand totals; average means average of complete daily totals. Distinct
 counts require non-additive declarations and cannot be rolled up beyond their
-published grain. Missing periods are unavailable, never inferred as zero.
+published grain. Missing periods or dimension-day cells are unavailable, never inferred as zero.
+Every observed full dimension tuple within declared artifact coverage must have
+every requested day, including before dimensions are rolled up. Filters and
+dimension identities distinguish booleans, numbers and strings.
 
 Each `metric_bindings.<metric_id>` declares `output_dataset`, `columns` (an
 explicit canonical-column to output-column mapping covering date, dimensions
@@ -270,3 +276,11 @@ semantics before execution. Definitions never include canonical SQL in these
 tools. Unsupported artifacts can be investigated through separately granted
 source tools. Multi-chunk execution, non-daily calendars and live canonical
 bindings are not implemented by this contract version.
+
+Generic assistant report queries retain raw previews and legacy behavior when no
+execution contract is present. Explicit contracts guard reductions of mapped
+metric operands: non-additive dimensions must remain grouped, and last/average/
+non-additive time rules cannot be replaced by an overall sum. Ratio operand
+reductions are conservatively routed to `query_metric` for weighted calculation
+or a granted source query. Raw reads and descriptive min/max/count/nunique reads
+remain exploratory and receive no approved-calculation assurance.

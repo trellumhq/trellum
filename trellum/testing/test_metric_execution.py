@@ -185,3 +185,88 @@ def test_input_and_output_byte_budgets():
         row[1] += "x" * 20_000
     with pytest.raises(MetricUnavailable, match="byte budget"):
         run(payload, entry, breakdown=["platform"])
+
+
+@pytest.mark.parametrize("agg,time", [("sum", "sum"), ("ratio", "sum"),
+                                      ("sum", "last"), ("sum", "average")])
+@pytest.mark.parametrize("breakdown", [[], ["platform"]])
+def test_missing_dimension_day_never_disappears_into_rollup(agg, time, breakdown):
+    _, entry, payload = fixture(agg, time)
+    payload["_ds_report_output"]["_data"].pop()
+    with pytest.raises(MetricUnavailable, match="missing periods") as exc:
+        run(payload, entry, breakdown=breakdown)
+    assert exc.value.status == "incomplete"
+    # A complete explicitly selected series remains usable.
+    assert run(payload, entry, filters={"platform": ["ios"]})["completeness"] == "complete"
+
+
+def test_tuple_missing_entire_requested_period_is_not_zero():
+    _, entry, payload = fixture()
+    payload["_ds_report_output"]["_data"].pop()
+    with pytest.raises(MetricUnavailable, match="missing periods"):
+        execute_metric(payload, entry, start="2026-10-02", end="2026-10-03")
+
+
+def test_typed_filters_and_breakdowns_keep_bool_int_string_separate():
+    _, entry, payload = fixture()
+    payload["_ds_report_output"]["_data"] = [
+        [day, dim, value, 1] for day in ("2026-10-01", "2026-10-02")
+        for dim, value in [(True, 1), (1, 10), ("1", 100)]]
+    for dim, expected in [(True, 2), (1, 20), ("1", 200)]:
+        assert run(payload, entry, filters={"platform": [dim]})["rows"] == [[expected]]
+    rows = run(payload, entry, breakdown=["platform"])["rows"]
+    assert {(type(row[0]), row[1]) for row in rows} == {(bool, 2), (int, 20), (str, 200)}
+    payload["_ds_report_output"]["_data"] = [
+        row for row in payload["_ds_report_output"]["_data"] if type(row[1]) is bool]
+    with pytest.raises(MetricUnavailable, match="Unknown filter"):
+        run(payload, entry, filters={"platform": [1]})
+
+
+def test_null_and_zero_dimension_cells_are_explicit_not_missing():
+    _, entry, payload = fixture()
+    payload["_ds_report_output"]["_data"][-1][2] = 0
+    assert run(payload, entry)["rows"] == [[60]]
+    payload["_ds_report_output"]["_data"][-1][2] = None
+    assert run(payload, entry)["rows"] == [[None]]
+
+
+def test_full_dimension_tuple_completeness_precedes_partial_breakdown():
+    metric, entry, payload = fixture("ratio")
+    metric = replace(metric, execution={**metric.execution,
+        "dimensions": ["platform", "country"], "additive_dimensions": ["platform", "country"]})
+    entry = make_binding(metric, **{**{k: entry[k] for k in (
+        "output_dataset", "columns", "coverage_start", "coverage_end", "source_revision", "build_id", "generated_at")},
+        "columns": {**entry["columns"], "country": "country"}})
+    data = payload["_ds_report_output"]
+    data["_cols"].append("country")
+    # Both countries exist for each platform, with deliberately unequal weights.
+    data["_data"] = [row + [country] for row in data["_data"] for country in ("NL", "US")]
+    payload["_metric_execution"][metric.name] = entry
+    assert run(payload, entry, breakdown=["platform"])["rows"] == [["android", 60 / 26], ["ios", 10]]
+    data["_data"].pop()
+    with pytest.raises(MetricUnavailable, match="missing periods"):
+        run(payload, entry, breakdown=["platform"])
+
+
+def test_correlated_dimensions_do_not_require_fabricated_cartesian_cells():
+    metric, entry, payload = fixture()
+    metric = replace(metric, execution={**metric.execution,
+        "dimensions": ["platform", "country"], "additive_dimensions": ["platform", "country"]})
+    entry = make_binding(metric, **{**{k: entry[k] for k in (
+        "output_dataset", "columns", "coverage_start", "coverage_end", "source_revision", "build_id", "generated_at")},
+        "columns": {**entry["columns"], "country": "country"}})
+    payload["_ds_report_output"]["_cols"].append("country")
+    for row in payload["_ds_report_output"]["_data"]:
+        row.append("NL" if row[1] == "ios" else "US")
+    payload["_metric_execution"][metric.name] = entry
+    assert run(payload, entry)["rows"] == [[100]]
+
+
+def test_period_and_byte_budgets_reject_work_before_calculation():
+    from trellum.metric_execution import MAX_INPUT_BYTES
+    _, entry, payload = fixture()
+    with pytest.raises(MetricUnavailable, match="at most 366"):
+        execute_metric(payload, entry, start="2026-10-01", end="2027-11-01")
+    payload["unused"] = "x" * MAX_INPUT_BYTES
+    with pytest.raises(MetricUnavailable, match="byte budget"):
+        run(payload, entry)

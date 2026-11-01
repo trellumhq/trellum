@@ -217,21 +217,47 @@ def execute_metric(payload, entry, *, start, end, filters=None, breakdown=None, 
     selected = [r for r in records if start <= str(r[spec["date_col"]]) < end]
     if {r[spec["date_col"]] for r in selected} != expected:
         raise MetricUnavailable("Requested daily coverage is incomplete.", "incomplete")
+
+    def typed(value):
+        if value is not None and type(value) not in (str, int, float, bool):
+            raise MetricUnavailable("Dimensions require scalar typed values.")
+        return (type(value).__name__, value)
+
     for key, wanted in filters.items():
         if (not isinstance(wanted, list) or not wanted or len(wanted) > 50
                 or any(type(v) not in (str, int, float, bool) for v in wanted)):
             raise MetricUnavailable("Filters require bounded typed value lists.", "clarification_required")
-        if any(v not in {r[key] for r in selected} for v in wanted):
+        present = {typed(r[key]) for r in selected}
+        if any(typed(v) not in present for v in wanted):
             raise MetricUnavailable("Unknown filter value for requested period.", "clarification_required")
-    selected = [r for r in selected if all(r[k] in v for k, v in filters.items())]
+    allowed = {k: {typed(v) for v in values} for k, values in filters.items()}
+
+    def matches(row):
+        return all(typed(row[k]) in values for k, values in allowed.items())
+
+    # Require every observed full dimension tuple on each requested day. A
+    # rollup can otherwise hide missing cells behind another dimension's row.
+    # Do not invent a Cartesian product of unrelated dimension values.
+    declared = {tuple(typed(r[d]) for d in s["dimensions"]) for r in records
+                if entry["coverage_start"] <= str(r[spec["date_col"]]) < entry["coverage_end"]
+                and matches(r)}
+    selected = [r for r in selected if matches(r)]
+    cells = defaultdict(set)
     groups = defaultdict(lambda: defaultdict(list))
+    group_values = {}
     grain = set()
     for r in selected:
-        identity = (r[spec["date_col"]], *(r[d] for d in s["dimensions"]))
+        dimensions = tuple(typed(r[d]) for d in s["dimensions"])
+        identity = (r[spec["date_col"]], *dimensions)
         if identity in grain:
             raise MetricUnavailable("Duplicate rows at declared grain.")
         grain.add(identity)
-        groups[tuple(r[d] for d in breakdown)][r[spec["date_col"]]].append(r)
+        cells[dimensions].add(r[spec["date_col"]])
+        key = tuple(typed(r[d]) for d in breakdown)
+        group_values[key] = tuple(r[d] for d in breakdown)
+        groups[key][r[spec["date_col"]]].append(r)
+    if not declared or any(cells[d] != expected for d in declared):
+        raise MetricUnavailable("Dimension has missing periods; zero cannot be inferred.", "incomplete")
 
     def total(rows, column, absolute=False):
         values = [r[column] for r in rows]
@@ -259,7 +285,7 @@ def execute_metric(payload, entry, *, start, end, filters=None, breakdown=None, 
                 value = None if None in values else sum(values, Decimal(0))
                 if value is not None and mode == "average":
                     value /= len(values)
-        result.append([*key, None if value is None else float(value)])
+        result.append([*group_values[key], None if value is None else float(value)])
     if type(limit) is not int or not 1 <= limit <= 50:
         raise MetricUnavailable("Result limit must be 1–50.")
     output = dict(status="answered", columns=[*breakdown, "value"], rows=result[:limit],

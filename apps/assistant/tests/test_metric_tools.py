@@ -164,3 +164,79 @@ def test_metric_evidence_is_persisted_and_revocation_blocks_history(studio_tree,
     StudioMembership.objects.filter(user=viewer, studio=studio_tree).delete()
     with pytest.raises(PermissionDenied):
         check_history(session, actor=viewer, studio=studio_tree)
+
+
+@pytest.mark.parametrize("agg,time,additive,grouped,blocked", [
+    ("sum", "sum", True, [], False),
+    ("sum", "none", True, [], True),
+    ("sum", "last", True, [], True),
+    ("sum", "average", True, [], True),
+    ("ratio", "sum", True, [], True),
+    ("sum", "sum", False, [], True),
+    ("sum", "none", False, ["date", "os"], False),
+])
+def test_generic_query_respects_explicit_semantics(
+    studio_tree, org_admin, canonical, agg, time, additive, grouped, blocked,
+):
+    out, _, _ = canonical
+    _, _, payload = fixture(agg, time, additive)
+    (out / "data.json").write_text(json.dumps(payload))
+    box = AssistantToolbox(studio_tree, actor=org_admin)
+    result = box.execute("query_report_data", dict(slug="player-overview", dataset_id="report_output",
+                         metrics=[dict(column="value", agg="sum")], group_by=grouped))
+    assert result.startswith("Error:") == blocked
+    if blocked:
+        assert "query_metric" in result and "granted live source" in result
+        assert box.provenance is None
+
+
+def test_generic_raw_and_legacy_reads_remain_useful(studio_tree, org_admin, canonical):
+    out, _, _ = canonical
+    _, _, payload = fixture(time="none", additive=False)
+    (out / "data.json").write_text(json.dumps(payload))
+    box = AssistantToolbox(studio_tree, actor=org_admin)
+    call = dict(slug="player-overview", dataset_id="report_output")
+    assert "4 rows total" in box.execute("query_report_data", call)
+    payload.pop("_metric_execution")
+    (out / "data.json").write_text(json.dumps(payload))
+    assert "100" in box.execute("query_report_data", {**call, "metrics": [dict(column="value", agg="sum")]})
+
+
+def test_generic_cannot_bypass_contract_with_broken_fingerprint(studio_tree, org_admin, canonical):
+    out, payload, _ = canonical
+    payload["_metric_execution"]["revenue"]["semantics"]["time_aggregation"] = "none"
+    (out / "data.json").write_text(json.dumps(payload))
+    box = AssistantToolbox(studio_tree, actor=org_admin)
+    result = box.execute("query_report_data", dict(slug="player-overview", dataset_id="report_output",
+                         metrics=[dict(column="value", agg="sum")]))
+    assert result.startswith("Error:") and box.provenance is None
+
+
+@pytest.mark.parametrize("agg", ["min", "max", "count", "nunique"])
+def test_generic_descriptive_statistics_do_not_claim_a_canonical_total(studio_tree, org_admin, canonical, agg):
+    out, _, _ = canonical
+    _, _, payload = fixture(time="last")
+    (out / "data.json").write_text(json.dumps(payload))
+    box = AssistantToolbox(studio_tree, actor=org_admin)
+    result = box.execute("query_report_data", dict(slug="player-overview", dataset_id="report_output",
+                         metrics=[dict(column="value", agg=agg)]))
+    assert not result.startswith("Error:")
+    assert "assurance" not in box.provenance
+
+
+@pytest.mark.parametrize("change", ["failed", "missing_pin", "different_pin", "claim_version"])
+def test_only_successful_matching_builds_can_execute(studio_tree, org_admin, canonical, change):
+    out, payload, meta = canonical
+    if change == "failed":
+        meta["last_status"] = "error"
+    elif change == "missing_pin":
+        meta.pop("metric_execution_build")
+    elif change == "different_pin":
+        meta["metric_execution_build"] = "another-build"
+    else:
+        payload["_metrics"]["revenue"]["version"] += 1
+    (out / "data.json").write_text(json.dumps(payload))
+    (out / "_meta.json").write_text(json.dumps(meta))
+    box = AssistantToolbox(studio_tree, actor=org_admin)
+    result = json.loads(box.execute("query_metric", args()))
+    assert result["status"] == "unsupported" and box.provenance is None
