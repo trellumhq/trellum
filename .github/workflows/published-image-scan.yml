@@ -1,0 +1,122 @@
+name: published image scan
+
+on:
+  schedule:
+    - cron: '23 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: published-image-scan
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Resolve latest published stable release
+    if: github.repository == 'trellumhq/trellum'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      url: ${{ steps.release.outputs.url }}
+      id: ${{ steps.release.outputs.id }}
+    steps:
+      - name: Resolve release (never a moving image tag or prerelease)
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          timeout 60s gh api "repos/$GITHUB_REPOSITORY/releases/latest" > release.json
+          jq -e '.draft == false and .prerelease == false and .published_at != null' release.json
+          TAG=$(jq -er '.tag_name' release.json)
+          [[ "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || { echo "Invalid stable version tag" >&2; exit 1; }
+          URL=$(jq -er '.html_url' release.json)
+          ID=$(jq -er '.id' release.json)
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "id=$ID" >> "$GITHUB_OUTPUT"
+          echo "Release: $URL (ID $ID), tag: $TAG" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  scan:
+    name: Scan ${{ matrix.image }}
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      # A portal failure must not prevent the runner scan, or vice versa.
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        image: [trellum, trellum-runner]
+    steps:
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in with read-only package access
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Record exact release, tag and immutable image digest
+        id: image
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+          TAG: ${{ needs.release.outputs.tag }}
+          RELEASE_URL: ${{ needs.release.outputs.url }}
+          RELEASE_ID: ${{ needs.release.outputs.id }}
+        run: |
+          set -euo pipefail
+          printf 'Release: %s (ID %s)\nTag: %s\nImage: %s:%s\n' \
+            "$RELEASE_URL" "$RELEASE_ID" "$TAG" "$IMAGE" "$TAG" | tee identity.txt
+          timeout 120s docker buildx imagetools inspect "$IMAGE:$TAG" \
+            --format '{{json .Manifest}}' > manifest.json
+          DIGEST=$(jq -er '.digest' manifest.json)
+          [[ "$DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]] || { echo "Invalid image digest" >&2; exit 1; }
+          echo "ref=$IMAGE@$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "Scanning: $IMAGE@$DIGEST" | tee -a identity.txt
+          cat identity.txt >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Scan published digest
+        id: scan
+        # Keep the scanner action and binary aligned with release.yml.
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_IMAGE_SRC: remote
+        with:
+          version: v0.75.0
+          image-ref: ${{ steps.image.outputs.ref }}
+          scanners: vuln
+          format: table
+          output: trivy.txt
+          exit-code: '1'
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+          timeout: 10m
+          # Fetch the current database on each fresh runner; DB errors fail.
+          cache: false
+
+      - name: Show scan outcome and findings even on failure
+        if: always()
+        env:
+          IMAGE_OUTCOME: ${{ steps.image.outcome }}
+          SCAN_OUTCOME: ${{ steps.scan.outcome }}
+        run: |
+          printf 'Image resolution: %s; scan: %s\n' "$IMAGE_OUTCOME" "$SCAN_OUTCOME" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ -f trivy.txt ]; then cat trivy.txt; fi
+
+      - name: Keep identity and scan evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: published-image-scan-${{ matrix.image }}-${{ needs.release.outputs.tag }}
+          path: |
+            identity.txt
+            manifest.json
+            trivy.txt
+          if-no-files-found: warn
+          retention-days: 30

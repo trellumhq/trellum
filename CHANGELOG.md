@@ -7,6 +7,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Maintenance
+
+- Add weekly and manual vulnerability scans for published portal and runner
+  images, plus grouped weekly dependency updates.
+
 ### Documentation
 
 - Default local human report previews to review mode, with scoped feedback
