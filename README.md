@@ -5,13 +5,13 @@
 <h1 align="center">Trellum</h1>
 
 <p align="center">
-  Build interactive reports from your data.<br>
+  Build interactive reports, explain findings, and present decisions.<br>
   Build with your agent, refine in the report, review every definition in Git, and self-host when a team needs a shared home.
 </p>
 
 <p align="center">
   <a href="https://trellum.dev/">Website</a> ·
-  <a href="https://trellum.dev/demo/">Report demos</a> ·
+  <a href="https://trellum.dev/demo/">Reports &amp; analyses</a> ·
   <a href="https://trellum.dev/docs/latest/">Documentation</a> ·
   <a href="https://github.com/trellumhq/trellum">Source</a> ·
   <a href="CONTRIBUTING.md">Contributing</a> ·
@@ -37,17 +37,48 @@ send the request to your coding agent. The agent updates the report definition
 and source files, rebuilds the report, and the preview refreshes while the
 source stays reviewable in Git.
 
-<p align="center">
-  <img src="docs/assets/store-health.png" alt="Store Health report in Trellum Dark, with comparison KPIs, filters, and revenue and margin trends">
-  <br>
-  <sub>Store Health is a synthetic retail report in Trellum Dark, separate from the Nova Play examples.</sub>
-</p>
+## Explore reports on desktop and mobile
 
-<p align="center">
-  <img src="docs/assets/report-mobile.png" width="260" alt="Conversion report in Trellum Dark at a mobile viewport, with two summary KPIs and a store funnel chart">
-  <br>
-  <sub>Conversion in Trellum Dark at a mobile viewport, using synthetic data.</sub>
-</p>
+<table>
+  <tr>
+    <td width="76%" valign="top"><img src="docs/assets/store-health.png" alt="Desktop Store Health report with comparison KPIs, filters, and revenue and margin trends"></td>
+    <td width="24%" valign="top"><img src="docs/assets/report-mobile.png" alt="Mobile Conversion report with summary KPIs and a store funnel chart"></td>
+  </tr>
+  <tr>
+    <td>Store Health on desktop</td>
+    <td>Conversion on mobile</td>
+  </tr>
+</table>
+
+Both examples use synthetic data. Explore interactive charts, filters, and
+tables in the [report demos](https://trellum.dev/demo/).
+
+## Explain the findings with an analysis
+
+Turn a report view into a written story: the question, what the evidence shows,
+assumptions, and a recommended next step. Capture a chart or section with its
+selected filters, then work with your coding agent to write and refine the
+analysis. The Markdown and captured evidence stay together in Git; refreshing
+the source report does not change the evidence behind a published finding.
+
+Read [Where Northwind loses buyers](https://trellum.dev/demo/checkout-findings/),
+a fictional checkout analysis with mobile and desktop evidence, caveats, and a
+recommended investigation. Its [Markdown and evidence](trellum/demo/reports/checkout-findings/)
+show how the published article is built.
+
+## Present the decision as a slideshow
+
+Analyses can also be presentations. Arrange title, text, image, and image-with-text
+slides to tell your story, from a short decision brief to a walkthrough of your
+findings. Choose **Present** to show one slide at a time, navigate with arrow
+keys or swipes, and share the browser window in a meeting. Readers can also
+browse the slides as a document or print them.
+
+Open the [Northwind checkout presentation](https://trellum.dev/demo/checkout-presentation/)
+and choose **Present** to try the four-slide synthetic example. See its
+[slide source](trellum/demo/reports/checkout-presentation/slides.yaml) or follow
+[the analysis and presentation guide](docs/customer/workflow/published-analyses.md)
+to create your own.
 
 Use the standalone framework on a laptop, in CI, or behind your own web server.
 Add the optional self-hosted platform when reports need scheduled builds,
@@ -55,11 +86,8 @@ authentication, controlled sharing, and a place for a team to find them.
 Visit the [Trellum website](https://trellum.dev/) for the product overview,
 report gallery, and installation guides.
 
-The public [demo gallery](https://trellum.dev/demo/) presents ten interactive
-reports and one written analysis, all built from synthetic data. Analyses keep a
-finding, assumptions, recommendation, and fixed report captures together in
-Git. See [how to publish an analysis](docs/customer/workflow/published-analyses.md)
-and the worked [Northwind checkout article](trellum/demo/reports/checkout-findings/content.md).
+The public [demo gallery](https://trellum.dev/demo/) includes interactive
+reports, a written analysis, and a presentation, all built from synthetic data.
 The gallery is not a hosted portal. The optional portal is self-hosted and needs
 its own backend; [try it locally
 with Docker](docs/customer/install/try-it.md#try-the-self-hosted-portal) for a
@@ -98,6 +126,8 @@ configured AI provider.
 - **Published analyses.** Keep a written finding, its assumptions and
   recommendation beside fixed report captures. Review and publish the Markdown
   and evidence through Git; later report refreshes do not change the article.
+- **Presentations.** Turn findings and frozen evidence into an ordered slideshow
+  with browser presentation controls, document reading, and printing.
 - **A normal Git workflow.** Review report definitions and source files in a
   pull request, see why a number changed, rebuild an earlier commit, or revert
   a report change with the tools your team already uses.
