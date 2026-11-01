@@ -110,6 +110,9 @@ class Metric:
     #: The bound dataset's time column, so ``agg_spec`` can emit ``date_col``.
     date_col: str | None = None
 
+    #: Optional assistant execution semantics; excluded from the legacy hash.
+    execution: dict | None = None
+
     @property
     def executable(self) -> bool:
         """True when the metric carries an aggregation spec a live KPI can run."""
@@ -424,8 +427,17 @@ def _parse_entry(entry: object, i: int, result: MetricsLoadResult) -> Metric | N
     denominator = str(denominator) if denominator is not None else None
 
     dataset, time_agg, date_col = _parse_binding(entry, name, agg, result)
+    execution = entry.get("execution")
+    bound = result.datasets.get(dataset)
+    if execution is not None and bound is not None:
+        if (not isinstance(execution, dict) or execution.get("grain") != bound.grain
+                or not isinstance(execution.get("dimensions"), list)
+                or any(not isinstance(d, str) for d in execution["dimensions"])
+                or set(execution["dimensions"]) != set(bound.dimensions)):
+            result.problems.append(("fail", f"metric '{name}' execution grain/dimensions differ from its dataset."))
 
     return Metric(
+        execution=execution,
         dataset=dataset,
         time_agg=time_agg,
         date_col=date_col,

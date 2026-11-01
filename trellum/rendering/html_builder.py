@@ -531,6 +531,19 @@ setTimeout(function(){
     if all_chunk_manifests:
         report_data["_chunk_manifests"] = all_chunk_manifests
 
+    # Explicit opt-in bindings supplement ordinary metric claims. Never infer
+    # an output dataset identity from a warehouse dataset or column name.
+    from trellum.metric_execution import publish_bindings
+    from trellum.metrics import load_metrics_result
+    execution_registry = load_metrics_result()
+    execution_build = uuid4().hex
+    publish_bindings(
+        report_data, (config.get("metric_bindings") if not any(
+            level == "fail" for level, _ in execution_registry.problems) else None),
+        registry=execution_registry.metrics,
+        build_id=execution_build, generated_at=report_data["_freshness"]["generated_at"],
+    )
+
     t0 = time.time()
     json_bytes = orjson.dumps(
         report_data,
@@ -582,6 +595,8 @@ setTimeout(function(){
     _write_meta(out, slug, name, config, validation=validation,
                 timings=ctx._timings, details=details,
                 metrics_used=metrics_used_entries(metrics_block))
+    from trellum.meta import write_meta
+    write_meta(out, {"metric_execution_build": execution_build})
     _write_live_queries(out, live_registry)
     if hasattr(ctx, '_metric_workspace_catalog'):
         from trellum.metrics_workspace import write_pages

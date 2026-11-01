@@ -231,3 +231,42 @@ A host must separately enforce admission, retry budgets, process
 termination/fencing and delivery deduplication. The framework only validates the
 configuration shape and emits evidence; it does not schedule retries. Raw driver
 or arbitrary Python activity outside framework APIs cannot be fully observed.
+
+### Optional canonical metric execution
+
+Ordinary metric claims and older reports continue to render unchanged. Assistant
+canonical execution additionally requires `metrics.yaml` `execution` metadata
+and an explicit report.yaml `metric_bindings` entry. Missing or unsupported
+metadata leaves that execution path unavailable; it does not change rendering.
+
+`execution` declares `timezone` (IANA), `unit`, `currency` (string or null),
+`grain: day`, `dimensions`, `additive_dimensions`, `filters` (dimension names),
+`time_aggregation` (`sum`, `last`, `average`, `none`), `null_policy: propagate`,
+`zero_denominator: "null"`, and `max_age_seconds` (1–31536000).
+Dimensions and grain must match the registry dataset. Only canonical sum,
+absolute sum and ratios of additive operands are supported. Ratios are computed
+from operand totals; average means average of complete daily totals. Distinct
+counts require non-additive declarations and cannot be rolled up beyond their
+published grain. Missing periods are unavailable, never inferred as zero.
+
+Each `metric_bindings.<metric_id>` declares `output_dataset`, `columns` (an
+explicit canonical-column to output-column mapping covering date, dimensions
+and operands), `coverage_start`, `coverage_end` (exclusive), and
+`source_revision`. Registry dataset names never imply output dataset identity.
+The build publishes only claimed, non-overridden opt-ins in
+`data.json._metric_execution`, with a generated build ID and timestamp. The
+matching `_meta.json.metric_execution_build` pins the metadata. A versioned
+SHA-256 execution fingerprint covers the entire manifest, including binding,
+semantics and coverage; existing metric definition hashes are unchanged.
+This is an integrity/version check, not a signature or proof of source quality.
+
+The executor accepts explicit ISO dates `[start, end)` in the business timezone,
+declared filters and breakdowns. It requires complete daily coverage, rejects
+chunked input and duplicate grain rows, and computes before display truncation.
+The current inline budgets are 2 MiB input, 10000 rows, 366 periods, 50 output
+rows and 32000 output bytes. Report-bound tools use only that report's published
+snapshot; studio tools also compare the current bounded registry definition and
+semantics before execution. Definitions never include canonical SQL in these
+tools. Unsupported artifacts can be investigated through separately granted
+source tools. Multi-chunk execution, non-daily calendars and live canonical
+bindings are not implemented by this contract version.
