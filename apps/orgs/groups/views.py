@@ -488,17 +488,17 @@ def report_access(request, org_slug, studio_slug, slug):  # noqa: ARG001
                     return settings_error(request, "Choose a valid audience.", errors={"audience": ["Choose a valid audience."]})
                 messages.error(request, "Choose a valid audience.")
                 return redirect(request.path)
-            block_reason = selected_report_access_block_reason()
-            if block_reason:
-                if is_settings_request(request):
-                    return settings_error(request, block_reason, errors={"audience": [block_reason]})
-                messages.error(request, block_reason)
-                return redirect(request.path)
             with transaction.atomic():
                 report = get_object_or_404(
                     Report.objects.select_for_update(), pk=report.pk, studio=request.studio
                 )
                 prior = report.audience
+                block_reason = selected_report_access_block_reason()
+                if audience == Report.AUDIENCE_PRIVATE and prior != audience and block_reason:
+                    if is_settings_request(request):
+                        return settings_error(request, block_reason, errors={"audience": [block_reason]})
+                    messages.error(request, block_reason)
+                    return redirect(request.path)
                 report.audience = audience
                 report.save(update_fields=["audience"])
                 if audience == Report.AUDIENCE_STUDIO:
@@ -525,7 +525,7 @@ def report_access(request, org_slug, studio_slug, slug):  # noqa: ARG001
                 Report.objects.select_for_update(), pk=report.pk, studio=studio
             )
             block_reason = selected_report_access_block_reason()
-            if action in {"grant_report", "ungrant_report"} and block_reason:
+            if action == "grant_report" and block_reason:
                 messages.error(request, block_reason)
                 return redirect(request.path)
             grant = (

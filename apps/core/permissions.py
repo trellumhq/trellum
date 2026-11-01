@@ -20,7 +20,7 @@ from functools import wraps
 
 from django.contrib.auth.views import redirect_to_login
 from django.db.models import Prefetch
-from django.http import Http404, HttpResponse, JsonResponse
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404
 
 from apps.core import roles
@@ -36,6 +36,7 @@ class EffectiveRoles:
     report_ids_by_studio: dict[int, set[int]] = field(default_factory=dict)
     studio_report_ids: dict[int, set[int]] = field(default_factory=dict)
     private_report_ids: dict[int, set[int]] = field(default_factory=dict)
+    studio_audience_studios: set[int] = field(default_factory=set)
 
     @property
     def is_member(self) -> bool:
@@ -68,6 +69,18 @@ class EffectiveRoles:
 
     def has_full_studio_visibility(self, studio) -> bool:
         return self.role_for(studio) is not None and self.report_scope_for(studio) is None
+
+    def has_studio_audience_access(self, studio) -> bool:
+        """A studio-wide grant for Studio reports, independent of Private rows.
+
+        This does not authorize private reports or studio-wide aggregates.
+        """
+        role = self.role_for(studio)
+        return role is not None and (
+            roles.at_least(role, roles.DEVELOPER)
+            or bool(self.default_studio_role)
+            or studio.pk in self.studio_audience_studios
+        )
 
 
 def _bulk_effective_roles(users, org) -> dict[int, EffectiveRoles]:
@@ -118,6 +131,8 @@ def _bulk_effective_roles(users, org) -> dict[int, EffectiveRoles]:
         er = result[uid]
         er.studio_roles[studio_id] = roles.max_role(er.studio_roles.get(studio_id), role)
         er.full_report_studios.add(studio_id)
+        if role in (roles.VIEWER, roles.DEVELOPER, roles.ADMIN):
+            er.studio_audience_studios.add(studio_id)
 
     memberships = (
         PermissionGroupMembership.objects.filter(group__org=org, user_id__in=member_ids)
@@ -150,6 +165,10 @@ def _bulk_effective_roles(users, org) -> dict[int, EffectiveRoles]:
                 )
             if grant.viewer_scope != grant.REPORT_SCOPE_SELECTED or grant.role != roles.VIEWER:
                 er.full_report_studios.add(grant.studio_id)
+                if grant.role in (roles.DEVELOPER, roles.ADMIN) or (
+                    grant.role == roles.VIEWER and grant.viewer_scope == grant.REPORT_SCOPE_ALL
+                ):
+                    er.studio_audience_studios.add(grant.studio_id)
     return result
 
 
@@ -342,19 +361,8 @@ def require_studio_role(minimum: str):
             request.org_roles = er
             request.studio = studio
             request.studio_role = role
-            if not er.has_full_studio_visibility(studio):
-                from apps.core.report_access import selected_report_access_block_reason
-
-                if selected_report_access_block_reason():
-                    if wants_json(request):
-                        return JsonResponse(
-                            {"error": "selected_report_access_unavailable"}, status=503
-                        )
-                    return HttpResponse(
-                        "Selected report access is temporarily unavailable.",
-                        status=503,
-                        content_type="text/plain",
-                    )
+            # Readiness is report-specific. Catalogs filter with visible_reports;
+            # content and aggregate routes enforce their own narrower guards.
             return view(request, *args, org_slug=org_slug, studio_slug=studio_slug, **kwargs)
 
         return wrapper

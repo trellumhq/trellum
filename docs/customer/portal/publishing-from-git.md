@@ -48,6 +48,18 @@ setting: later manifest edits and rebuilds do not change the live audience.
 Use the item's Access page for later changes. This field protects portal
 content only; it does not protect a standalone HTML report hosted elsewhere.
 
+Private publication requires report-scoped access to be configured on the server.
+If it is unavailable, the sync reports rejected new Private items while importing
+other valid items. It never changes a rejected item to Studio audience automatically.
+
+Removing an item from Git retains its database record and saved audience for
+history. Re-adding the same slug restores that audience, even if
+`initial_audience` changed in Git. To change an existing audience, an administrator
+must use its Access page; rebuilding or restarting does not reset permissions.
+An administrator can explicitly restore Studio audience or remove assignments
+while scoped access is unavailable. Restoring Studio audience makes the item
+available to ordinary studio Viewers; only do this for content intended for them.
+
 ## What the top of the page tells you
 
 Two columns, side by side:

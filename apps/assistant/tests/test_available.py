@@ -157,8 +157,10 @@ class TestStudioScoped:
             f"{prefix}/available",
             {"path": f"/s/demo/casino/r/{report_row.slug}/"},
         )
-        assert response.status_code == 503
-        assert response.json()["error"] == "selected_report_access_unavailable"
+        assert response.status_code == 200
+        assert response.json()["available"] is False
+        assert response.json()["suggestions"] == []
+        assert response.json()["reason"]
 
 
 class TestGlobalRoute:

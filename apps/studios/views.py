@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from django.contrib import messages
+from django.db import transaction
 from django.http import Http404
 from django.shortcuts import redirect, render
 from django.utils import timezone
@@ -18,10 +19,9 @@ from apps.core.limits import INLINE_LIMIT
 from apps.core.permissions import require_studio_role
 from apps.core.report_access import selected_report_access_block_reason
 from apps.orgs.models import OrgMembership
-from apps.reports.models import Report
 
 from .forms import DefaultAudiencesForm, StudioRepoForm
-from .models import RepoPublish, StudioMembership, StudioRepo
+from .models import RepoPublish, Studio, StudioMembership, StudioRepo
 
 
 def settings_home(request, org_slug, studio_slug):  # noqa: ARG001
@@ -91,17 +91,12 @@ def repo_settings(request, org_slug, studio_slug):  # noqa: ARG001
     audience_form = DefaultAudiencesForm(instance=request.studio)
     if request.method == "POST" and "set_default_audiences" in request.POST:
         fields = DefaultAudiencesForm.Meta.fields
-        prior = {field: getattr(request.studio, field) for field in fields}
-        audience_form = DefaultAudiencesForm(request.POST, instance=request.studio)
-        if audience_form.is_valid():
-            new = {field: audience_form.cleaned_data[field] for field in fields}
-            block_reason = selected_report_access_block_reason()
-            if block_reason and any(
-                new[field] == Report.AUDIENCE_PRIVATE and prior[field] != new[field]
-                for field in fields
-            ):
-                audience_form.add_error(None, block_reason)
-            else:
+        with transaction.atomic():
+            studio = Studio.objects.select_for_update().get(pk=request.studio.pk)
+            prior = {field: getattr(studio, field) for field in fields}
+            audience_form = DefaultAudiencesForm(request.POST, instance=studio)
+            if audience_form.is_valid():
+                new = {field: audience_form.cleaned_data[field] for field in fields}
                 audience_form.save(commit=False).save(update_fields=fields)
                 audit(
                     request, "studio.default_audiences_set", target=request.studio,

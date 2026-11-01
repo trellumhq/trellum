@@ -493,7 +493,7 @@ class AssistantToolbox:
         from apps.core.request_access import actor_studio_access
         from apps.core.report_access import (
             can_view_report,
-            selected_report_access_block_reason,
+            report_content_block_reason,
         )
         from apps.orgs.models import Organization, OrgAssistantConfig
 
@@ -522,10 +522,7 @@ class AssistantToolbox:
             return "This conversation's report is no longer available."
         if slug is not None and slug != report.slug:
             return "This conversation cannot access that report."
-        if (
-            not facts.full
-            and selected_report_access_block_reason()
-        ):
+        if report_content_block_reason(actor, report):
             return "Selected report access is temporarily unavailable."
         if not can_view_report(actor, report):
             return "This conversation's report is no longer available."

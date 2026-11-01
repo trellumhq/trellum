@@ -49,7 +49,7 @@ def studio_choices(request, org):
             return rows
         # Keep authorization filtering in SQL even if guards already loaded ids.
     if request.user.is_superuser:
-        return rows.annotate(shell_role=Value(roles.ADMIN), shell_full=Value(True))
+        return rows.annotate(shell_role=Value(roles.ADMIN), shell_full=Value(True), shell_studio_audience=Value(True))
     memberships = OrgMembership.objects.filter(user=request.user, org=org)
     groups = PermissionGroupMembership.objects.filter(user=request.user, group__org=org)
     direct = StudioMembership.objects.filter(user=request.user, studio_id=OuterRef('pk'))
@@ -73,6 +73,15 @@ def studio_choices(request, org):
     )).annotate(shell_full=Case(
         When(shell_role__in=[roles.ADMIN, roles.DEVELOPER], then=Value(True)),
         When(shell_role=roles.VIEWER, _shell_full_path=True, _shell_private=False, then=Value(True)),
+        default=Value(False), output_field=BooleanField(),
+    ), shell_studio_audience=Case(
+        When(shell_role__in=[roles.ADMIN, roles.DEVELOPER], then=Value(True)),
+        When(
+            Exists(direct.filter(role=roles.VIEWER))
+            | Exists(groups.filter(group__default_studio_role=roles.VIEWER))
+            | Exists(grants.filter(role=roles.VIEWER, viewer_scope='all')),
+            then=Value(True),
+        ),
         default=Value(False), output_field=BooleanField(),
     ))
 

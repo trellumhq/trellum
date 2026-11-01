@@ -76,6 +76,27 @@ class Studio(ImmutableSlugMixin):
     def __str__(self) -> str:
         return f"{self.org.slug}/{self.slug}"
 
+    def clean(self) -> None:
+        super().clean()
+        from django.core.exceptions import ValidationError
+        from apps.core.report_access import selected_report_access_block_reason
+
+        fields = ("default_report_audience", "default_analysis_audience")
+        if not any(getattr(self, field) == self.AUDIENCE_PRIVATE for field in fields):
+            return
+        reason = selected_report_access_block_reason()
+        if not reason:
+            return
+        prior = type(self).objects.filter(pk=self.pk).values(*fields).first() or {}
+        errors = {
+            field: f"Private defaults cannot be enabled: {reason}."
+            for field in fields
+            if getattr(self, field) == self.AUDIENCE_PRIVATE
+            and prior.get(field) != self.AUDIENCE_PRIVATE
+        }
+        if errors:
+            raise ValidationError(errors)
+
     # ── Disk layout (single source of truth for every path) ──────────────
     @property
     def data_root(self) -> Path:
