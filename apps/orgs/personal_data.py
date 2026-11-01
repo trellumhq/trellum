@@ -331,9 +331,9 @@ def _export_conversation(session, actor):
     from django.core.exceptions import PermissionDenied
     from apps.assistant.source_tools import check_history
 
-    source_history = bool((session.state or {}).get("_source_policies") or (session.state or {}).get("_source_pending"))
+    source_history = bool((session.state or {}).get("_metric_reports") or (session.state or {}).get("_source_policies") or (session.state or {}).get("_source_pending"))
     source_history = source_history or any(e.get("name") in {"list_data_sources", "describe_source", "query_source"}
-                                           or (e.get("provenance") or {}).get("kind") == "source_query"
+                                           or (e.get("provenance") or {}).get("kind") in {"source_query", "metric_query"}
                                            for e in session.transcript)
     withheld = False
     if source_history:

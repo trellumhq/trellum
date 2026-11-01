@@ -146,3 +146,21 @@ def test_unknown_calculation_arguments_and_malformed_registry_are_safe(studio_tr
     result = box.execute("query_metric", args())
     assert json.loads(result)["status"] == "unsupported"
     assert "PRIVATE_PARSER_CONTENT" not in result and box.provenance is None
+
+
+def test_metric_evidence_is_persisted_and_revocation_blocks_history(studio_tree, viewer, canonical, assistant_config):
+    from django.core.exceptions import PermissionDenied
+    from apps.assistant.models import AssistantSession
+    from apps.assistant.source_tools import check_history
+    from apps.studios.models import StudioMembership
+    session = AssistantSession.objects.create(user=viewer, studio=studio_tree, org=studio_tree.org)
+    box = AssistantToolbox(studio_tree, actor=viewer, session=session)
+    result = json.loads(box.execute("query_metric", args()))
+    assert result["status"] == "answered"
+    assert result["provenance"]["schema_version"] == 1
+    assert len(result["provenance"]["evidence_id"]) == 64
+    assert session.state["_metric_reports"] == ["player-overview"]
+    check_history(session, actor=viewer, studio=studio_tree)
+    StudioMembership.objects.filter(user=viewer, studio=studio_tree).delete()
+    with pytest.raises(PermissionDenied):
+        check_history(session, actor=viewer, studio=studio_tree)

@@ -42,7 +42,7 @@ def evidence(job, payload):
     result = payload.get("result")
     if not result:
         return None
-    return {"kind": "source_query", "query_id": str(job.pk), "source_id": job.grant_id,
+    return {"schema_version": 1, "status": "answered", "policy_revision": job.policy_fingerprint, "kind": "source_query", "query_id": str(job.pk), "source_id": job.grant_id,
             "assurance": "Exploratory query", "query": result["query"],
             "executed_at": result["executed_at"], "columns": result["columns"],
             "rows": result["rows"], "truncated": result["truncated"],
@@ -106,6 +106,14 @@ def execute(toolbox, name, args):
 
 def check_history(session, *, actor, studio):
     """Revoked source evidence must not be replayed to a model or browser."""
+    reports = (session.state or {}).get("_metric_reports", [])
+    if reports:
+        from apps.assistant.tools import AssistantToolbox
+        if not isinstance(reports, list) or len(reports) > 100:
+            raise PermissionDenied("Start a new conversation; this metric history is too large to authorize.")
+        box = AssistantToolbox(studio, actor=actor, session=session, scope=session.scope, report=session.report)
+        if any(box._access_error(slug) for slug in reports):
+            raise PermissionDenied("Report access changed. Start a new conversation with your current permissions.")
     policies = (session.state or {}).get("_source_policies", {})
     if len(policies) > 100:
         raise PermissionDenied("Start a new conversation; this source history is too large to authorize.")

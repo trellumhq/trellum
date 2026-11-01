@@ -479,6 +479,7 @@ def session_message(request, org_slug, studio_slug, session_id):  # noqa: ARG001
             AssistantSession.objects.filter(pk=session.pk).update(in_flight_until=None)
             return JsonResponse({"error": "A source read is still in progress.", "source_pending": session.state["_source_pending"]}, status=409)
         session.state["_source_steps"] = 0
+        session.state["_question_clock"] = timezone.now().isoformat()
         if not session.transcript:
             session.title = infer_title(message)
     resumed_evidence = None
@@ -507,7 +508,9 @@ def session_message(request, org_slug, studio_slug, session_id):  # noqa: ARG001
                 yield _frame({"type": "source_evidence", "evidence": resumed_evidence})
             source_text = []
             source_text_bytes = 0
-            system_blocks = build_system_prompt(toolbox)
+            from datetime import datetime
+            question_clock = session.state.get("_question_clock")
+            system_blocks = build_system_prompt(toolbox, now=datetime.fromisoformat(question_clock) if question_clock else None)
             for event in llm.stream_turn(
                 config,
                 session.state,
@@ -521,7 +524,7 @@ def session_message(request, org_slug, studio_slug, session_id):  # noqa: ARG001
                 # Hold source-derived prose until the model response finishes,
                 # then recheck grants before delivering it. Database checks per
                 # token would make streaming cost grow with response length.
-                if event.get("type") == "text_delta" and session.state.get("_source_policies"):
+                if event.get("type") == "text_delta" and (session.state.get("_source_policies") or session.state.get("_metric_reports")):
                     source_text_bytes += len(json.dumps(event).encode())
                     if source_text_bytes > 1048576:
                         raise ValueError("Source explanation exceeds the delivery bound.")

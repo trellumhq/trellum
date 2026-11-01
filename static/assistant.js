@@ -871,8 +871,8 @@
     }
 
     function renderProvenance(target, provs) {
-        (provs || []).filter(function (p) { return p && p.kind === 'source_query'; }).forEach(renderSourceEvidence);
-        provs = (provs || []).filter(function (p) { return !p || p.kind !== 'source_query'; });
+        (provs || []).filter(function (p) { return p && (p.kind === 'source_query' || p.kind === 'metric_query'); }).forEach(renderSourceEvidence);
+        provs = (provs || []).filter(function (p) { return !p || (p.kind !== 'source_query' && p.kind !== 'metric_query'); });
         provs = (provs || []).filter(function (p) { return p && typeof p === 'object'; });
         if (!target || !provs.length) return;
         // One report may be described by several tools in a turn; merge
@@ -1530,13 +1530,19 @@
     window.addEventListener('pageshow', function () { pollSourceSoon(); });
 
     function renderSourceEvidence(pv) {
-        if (!pv || pv.kind !== 'source_query' || !pv.query_id) return;
-        var id = String(pv.query_id);
+        if (!pv || (pv.kind !== 'source_query' && pv.kind !== 'metric_query') || !(pv.query_id || pv.evidence_id)) return;
+        var approved = pv.kind === 'metric_query';
+        var id = String(pv.query_id || pv.evidence_id);
         if (Array.from(messages().querySelectorAll('[data-source-query]')).some(function (node) { return node.dataset.sourceQuery === id; })) return;
         var card = el('section', 'assistant-source-evidence'); card.dataset.sourceQuery = id;
-        card.setAttribute('aria-label', 'Exploratory query evidence');
-        card.appendChild(el('strong', '', 'Exploratory query'));
-        card.appendChild(el('p', 'assistant-source-meta', (pv.executed_at ? fmtWhen(pv.executed_at) + ' · ' : '') +
+        card.setAttribute('aria-label', approved ? 'Approved calculation evidence' : 'Exploratory query evidence');
+        card.appendChild(el('strong', '', approved ? 'Approved calculation' : 'Exploratory query'));
+        if (approved) {
+            card.appendChild(el('p', '', pv.metric_id + ' · ' + (pv.currency || pv.unit || '') + ' · ' + (pv.completeness || '')));
+            card.appendChild(el('p', '', fmtVal(pv.period) + ' · ' + (pv.timezone || '')));
+            card.appendChild(el('p', '', 'Filters: ' + (fmtVal(pv.filters) || 'none')));
+        }
+        card.appendChild(el('p', 'assistant-source-meta', ((pv.executed_at || pv.generated_at) ? fmtWhen(pv.executed_at || pv.generated_at) + ' · ' : '') +
             String(pv.rows_returned == null ? (pv.rows || []).length : pv.rows_returned) + ' rows returned' + (pv.truncated ? ' · Truncated result' : '')));
         var wrap = el('div', 'assistant-source-table'); wrap.tabIndex = 0;
         wrap.setAttribute('role', 'region'); wrap.setAttribute('aria-label', 'Source query result');
@@ -1558,8 +1564,9 @@
         table.appendChild(body); wrap.appendChild(table); card.appendChild(wrap);
         if (!rows.length) card.appendChild(el('p', '', 'No rows returned.'));
         if ((pv.rows || []).length > 200 || (pv.columns || []).length > 50) card.appendChild(el('p', '', 'Evidence preview limited to 200 rows and 50 columns.'));
-        var sql = el('details'), summary = el('summary', '', 'SQL used'); sql.appendChild(summary);
-        sql.appendChild(el('pre', '', String(pv.query || '').slice(0, 16384))); card.appendChild(sql);
+        var sql = el('details'), summary = el('summary', '', approved ? 'Calculation evidence' : 'SQL used'); sql.appendChild(summary);
+        var details = approved ? {report: pv.report, dataset: pv.dataset_id, build: pv.build_id, source_revision: pv.source_revision, definition: pv.definition_hash, fingerprint: pv.fingerprint} : pv.query;
+        sql.appendChild(el('pre', '', String(approved ? JSON.stringify(details, null, 2) : details || '').slice(0, 16384))); card.appendChild(sql);
         messages().appendChild(card);
     }
 

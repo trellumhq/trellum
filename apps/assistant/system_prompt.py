@@ -301,14 +301,15 @@ def build_system_prompt(toolbox, now=None) -> list:
     now = now or datetime.now(timezone.utc)
     session = (
         "====================================================================\n"
-        "# SESSION CONTEXT (refreshed every turn)\n"
+        "# SESSION CONTEXT (frozen for this question and its follow-up reads)\n"
         "====================================================================\n\n"
         f"TODAY IS **{now:%Y-%m-%d}** (UTC). "
         f"Yesterday = {now - timedelta(days=1):%Y-%m-%d}. "
         f"7 days ago = {now - timedelta(days=7):%Y-%m-%d}. "
         f"30 days ago = {now - timedelta(days=30):%Y-%m-%d}.\n\n"
-        "Use these — never a training-cutoff date — for 'yesterday', "
-        "'last week', 'last month'."
+        "Use this reference instant, converted to the metric business timezone, "
+        "for relative periods. Never use a training-cutoff date. "
+        f"Reference instant: {now.isoformat()}."
     )
     chat = getattr(toolbox, "session", None)
     if chat is not None and chat.alert_run_id:

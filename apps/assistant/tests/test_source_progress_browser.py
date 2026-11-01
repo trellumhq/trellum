@@ -262,3 +262,26 @@ def test_revoked_conversation_stops_reconciliation(source_browser):
         assert len(posts) == 1
     finally:
         page.close()
+
+
+def test_approved_metric_card_uses_tool_values_and_shows_definition_context(source_browser):
+    page, posts, polls, _ = mount(source_browser)
+    metric = dict(kind="metric_query", evidence_id="metric-evidence-1", metric_id="revenue", rows=[[123.45]],
+                  columns=["value"], unit="money", currency="EUR", completeness="complete", generated_at="2026-11-01T12:00:00Z",
+                  period={"start": "2026-10-01", "end": "2026-11-01", "bounds": "[start,end)"}, timezone="Europe/Amsterdam",
+                  report="sales", dataset_id="daily", build_id="build-123", fingerprint="v1:test", definition_hash="definition-1")
+    page.route('**/message', lambda route: route.fulfill(content_type='text/event-stream', body=stream(
+        {"type": "tool_result", "provenance": metric}, {"type": "text_delta", "text": "The table shows the calculated amount."},
+        {"type": "done"}, {"type": "turn_end"})))
+    try:
+        page.locator('#assistantInput').fill('Revenue?')
+        page.locator('#assistantSend').click()
+        card = page.locator('.assistant-source-evidence')
+        expect(card).to_contain_text('Approved calculation')
+        expect(card).to_contain_text('EUR')
+        expect(card.locator('td')).to_have_text('123.45')
+        card.locator('summary').click()
+        expect(card).to_contain_text('build-123')
+        assert card.locator('img').count() == 0
+    finally:
+        page.close()

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
 import stat
@@ -146,11 +147,20 @@ def execute(toolbox, name, args):
                                 timezone=entry["semantics"]["timezone"], filters=args.get("filters", {}),
                                 breakdown=args.get("breakdown", []), columns=output["columns"],
                                 rows=output["rows"], truncated=output["truncated"])
+                evidence.update(schema_version=1, assurance="Approved calculation", status="answered",
+                                unit=output["unit"], currency=output["currency"], completeness=output["completeness"])
+                evidence["evidence_id"] = hashlib.sha256(bounded_json(evidence).encode()).hexdigest()
                 output["provenance"] = evidence
         if toolbox._access_error(slug):
             raise MetricUnavailable("Report access is no longer available.", "access_denied")
         if toolbox.read_meta(slug) != before:
             raise MetricUnavailable("Report build changed during execution; retry against one build.", "incomplete")
+        if toolbox.session is not None:
+            reports = set(toolbox.session.state.get("_metric_reports", []))
+            reports.add(slug)
+            if len(reports) > 100:
+                raise MetricUnavailable("Start a new conversation; this metric history reached its report limit.")
+            toolbox.session.state["_metric_reports"] = sorted(reports)
         encoded = bounded_json(output, MAX_OUTPUT_BYTES)
         if name == "query_metric":
             toolbox.provenance = evidence
