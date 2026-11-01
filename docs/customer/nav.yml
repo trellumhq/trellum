@@ -13,6 +13,8 @@
       slug: workflow/who-builds-it
     - title: The analytics repository
       slug: workflow/analytics-repository
+    - title: Validate report changes in CI
+      slug: workflow/validate-in-ci
     - title: Ad-hoc analysis
       slug: workflow/ad-hoc-analysis
     - title: Publish an analysis

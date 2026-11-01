@@ -28,6 +28,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Documentation
 
+- Add a customer GitHub Actions recipe for validating report changes before merge.
+
 - Default local human report previews to review mode, with scoped feedback
   polling and rebuild-before-reply guidance.
 
