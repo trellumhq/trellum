@@ -263,7 +263,7 @@ def test_real_postgres_restore_and_failed_swap(tmp_path, monkeypatch):
 
     monkeypatch.chdir(tmp_path)
     container = "trellum-upgrade-test-" + uuid.uuid4().hex
-    database = "test_trellum_cleanup168"
+    database = "test_trellum_cleanup168review"
     d = deploy.Deployment()
     config = {"db": {"environment": {"POSTGRES_USER": "trellum", "POSTGRES_DB": database}}}
 
@@ -375,3 +375,101 @@ def test_database_command_has_server_side_deadline(monkeypatch):
     d.c("exec", "-T", "db", "pg_restore", "--list")
     assert observed[0][0] == (*d.compose, "exec", "-T", "db", "timeout", "-s", "KILL", "895", "pg_restore", "--list")
     assert observed[0][1]["timeout"] == 900
+
+
+def test_legacy_pair_requires_explicit_confirmation_before_downtime(stack):
+    d, events, _ = stack
+    Path("legacy.dump").write_bytes(b"archive")
+    with pytest.raises(deploy.DeploymentError, match="Legacy dump requires"):
+        rollback(d, "legacy.dump")
+    assert not any(e[0] == "stop" for e in events)
+
+
+def test_explicit_legacy_pair_uses_guarded_restore(stack):
+    d, events, _ = stack
+    Path("legacy.dump").write_bytes(b"archive")
+    d.execute(argparse.Namespace(action="rollback", dump="legacy.dump", previous="v1.0.0",
+                                runner_image="runner:old", confirm_legacy_pair=True, yes=True))
+    assert ("prepare", "ghcr.io/trellumhq/trellum:v1.0.0", "runner:old") in events
+    assert any("--single-transaction" in e and "pg_restore" in e for e in events)
+    assert list(Path(".").glob("*.before-rollback-*.dump"))
+
+
+def test_manifest_never_falls_back_to_legacy(stack):
+    d, events, _ = stack
+    Path("legacy.dump").write_bytes(b"archive")
+    Path("legacy.dump.images.json").write_text("broken")
+    with pytest.raises(ValueError):
+        rollback(d, "legacy.dump")
+    assert not any(e[0] == "stop" for e in events)
+
+
+def test_prepare_checks_pair_even_without_requested_version(monkeypatch):
+    d = deploy.Deployment()
+    def run(*args, **kwargs):
+        if args[:2] == ("docker", "run"):
+            return "1.0.0" if "trellum_portal" in args[-1] else "2.0.0"
+        return "sha256:test"
+    monkeypatch.setattr(deploy, "run", run)
+    with pytest.raises(deploy.DeploymentError, match="versions differ"):
+        d.prepare("portal:old", "runner:old")
+
+
+def test_invalid_deadlines_refused(monkeypatch):
+    monkeypatch.setenv("TRELLUM_COMMAND_TIMEOUT", "0")
+    with pytest.raises(deploy.DeploymentError, match="timeout"):
+        deploy.Deployment()
+
+
+@pytest.mark.parametrize("command", ["docker --context other compose", "docker compose --env-file other.env",
+                                     "docker compose --project-directory /other"])
+def test_alternate_daemon_or_pin_file_refused(stack, command):
+    import shlex
+    d, events, _ = stack
+    d.compose = shlex.split(command)
+    with pytest.raises(deploy.DeploymentError, match="calling shell"):
+        upgrade(d)
+    assert not events
+
+
+@pytest.mark.heavy
+def test_timeout_kills_compose_child_process(tmp_path):
+    import sys
+    import time
+    sentinel = tmp_path / "child-survived"
+    child = f"import time; from pathlib import Path; time.sleep(1); Path({str(sentinel)!r}).touch()"
+    parent = f"import subprocess,sys,time; subprocess.Popen([sys.executable, '-c', {child!r}]); time.sleep(60)"
+    with pytest.raises(deploy.DeploymentError, match="outcome unknown"):
+        deploy.run(sys.executable, "-c", parent, timeout=0.3)
+    time.sleep(1)
+    assert not sentinel.exists()
+
+
+def test_legacy_archive_validation_cannot_be_bypassed(stack, monkeypatch):
+    d, events, _ = stack
+    Path("legacy.dump").write_bytes(b"bad archive")
+    def invalid(path):
+        raise deploy.DeploymentError("invalid archive")
+    monkeypatch.setattr(d, "verify_dump", invalid)
+    with pytest.raises(deploy.DeploymentError, match="invalid archive"):
+        d.execute(argparse.Namespace(action="rollback", dump="legacy.dump", previous="v1.0.0",
+                                    runner_image="runner:old", confirm_legacy_pair=True, yes=True))
+    assert not any(e[0] == "stop" for e in events)
+
+
+@pytest.mark.heavy
+def test_migration_options_accepted_by_compose(stack, monkeypatch):
+    """Validate the emitted CLI against Compose without starting a container."""
+    import shutil
+    import subprocess
+    if not shutil.which("docker"):
+        pytest.skip("Docker CLI unavailable")
+    d, _, _ = stack
+    original = d.c
+    def c(*args, **kwargs):
+        if args[0] == "run":
+            subprocess.run([*d.compose, "run", "--help", *args[1:]], check=True,
+                           capture_output=True, timeout=10)
+        return original(*args, **kwargs)
+    monkeypatch.setattr(d, "c", c)
+    upgrade(d)

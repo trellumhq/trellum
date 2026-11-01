@@ -1,9 +1,9 @@
 # Upgrades
 
 The online helpers switch the portal and report-runner images together. The
-[verification record](upgrade-drill.md) lists the tested checks and the
-infrastructure blocker that prevented the complete worker-build drill. They
-require **Python 3.11+ on the Docker host**, Docker Compose v2, the bundled
+[verification record](upgrade-drill.md) lists the focused checks and isolated
+product upgrade/rollback drill. They
+require Bash, standard Linux utilities (including `timeout`), Docker Compose v2, the bundled
 Postgres service, and the default single-host combined-worker topology:
 
 ```bash
@@ -11,6 +11,17 @@ scripts/upgrade.sh v1.2.3
 # Noninteractive, after reviewing release notes:
 scripts/upgrade.sh v1.2.3 --yes
 ```
+
+Host Python is optional. If Python 3.11+ is unavailable, the wrapper builds a
+small interpreter/CLI image from `scripts/deployment.Dockerfile` before any
+application changes. This online setup needs access to the Docker and Python
+base images. Image setup has a five-minute deadline. The adapter supports a local Unix Docker socket only, verifies
+that the daemon sees the deployment directory at its exact host path, and
+mounts that directory, backup directory and legacy dump directory at the same
+paths. Keep referenced Compose files inside the deployment directory. Remote
+Docker contexts and Docker Desktop filesystem translation require an operator
+procedure. Registry authentication using external host credential-helper
+executables also requires an operator procedure when using the adapter.
 
 Published defaults are `ghcr.io/trellumhq/trellum:<version>` and
 `ghcr.io/trellumhq/trellum-runner:<version>`. For a mirror, set
@@ -23,12 +34,22 @@ both images before downtime, then pins their immutable local image IDs in
 release signatures and attestations using [Verify what you received](/docs/latest/install/verify-images/).
 
 `TRELLUM_COMPOSE` selects the Compose command, including project/file options.
-The command must select this deployment's `.env` and services. Do not export
+Run from this deployment's `.env` and services. Alternate `--env-file`,
+`--project-directory`, daemon flags and `COMPOSE_ENV_FILES` are rejected; use
+`docker compose -p <project> -f <file>` options and the calling shell's Docker
+context instead. Do not export
 `TRELLUM_IMAGE` or `TRELLUM_RUNNER_IMAGE` in the calling shell: they can override
 `.env`. A preflight configuration check rejects image overrides that prevent the
 paired pins from taking effect. The release-only overlay selects images through
 `TRELLUM_VERSION` and is **excluded**; migrate it to the base image-pin Compose
-configuration in a separately tested operator procedure first.
+configuration first on a disposable copy: record both image references from
+`docker compose config`, put those exact references in `.env` as `TRELLUM_IMAGE`
+and `TRELLUM_RUNNER_IMAGE`, then remove only `docker-compose.release.yml` from
+`COMPOSE_FILE`. Keep any supported storage override. Compare the rendered
+configuration before/after: both images and all database/data mounts must stay
+the same. This configuration conversion does not require an image upgrade or
+container restart. Retain the original `.env` for recovery. External databases
+and split/multi-host setups remain outside the helper procedure.
 
 External Postgres, offline upgrades, split workers, profiles, and multi-host
 installations are **excluded**. These require a database/operator-specific
@@ -160,10 +181,29 @@ So:
   The script leaves them in `upgrade-backups/` (override with `TRELLUM_BACKUP_DIR`)
   and prints the recovery command. Keep the recorded local images too; do not
   prune them during the recovery window. Rollback uses their immutable IDs
-  and requires both to remain available locally. A historical dump without the
-  paired manifest requires a manual restore procedure; the old image/version
-  positional argument is no longer accepted.
+  and requires both to remain available locally.
 - Report output and uploaded data-source files are untouched by either script.
+
+For an older custom-format dump without a manifest, retain the previous portal
+image/version positional argument and supply the matching runner explicitly:
+
+```bash
+scripts/rollback.sh ./backups/old.dump v0.9.1 \
+  --runner-image ghcr.io/trellumhq/trellum-runner:v0.9.1 --confirm-legacy-pair
+# For a custom portal image, also supply --previous-version 0.9.1.
+```
+
+`--confirm-legacy-pair` confirms that the backup and both selected images belong
+to the same previous release. Establish this from your deployment records;
+there is no safe way to infer the image pair from a database dump. Both images
+are pulled (unless immutable local IDs), imported and checked against the
+expected version; the dump is hashed and validated before downtime. The usual
+ROLLBACK confirmation still applies (or explicit `--yes` for automation).
+Missing metadata or a corrupt existing manifest cannot silently fall back to
+legacy recovery. New backups continue to use manifests as the preferred path.
+
+Keep the bundled `db` service running for dump validation and restore. If it
+is stopped, start only it with `docker compose up -d db` before recovery.
 
 Rollback checks the dump hash/readability and both prior image versions before
 stopping writers. It first saves a verified `before-rollback` database dump,

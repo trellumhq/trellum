@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import re
 import shlex
+import signal
 import subprocess
 import sys
 import time
@@ -19,13 +20,27 @@ class DeploymentError(Exception):
 
 
 def run(*args, data=None, stdin=None, output=None, env=None, timeout=300):
+    process = None
     try:
-        result = subprocess.run(args, input=data, stdin=stdin, env=env, stdout=output or subprocess.PIPE,
-                                stderr=subprocess.PIPE, timeout=timeout, check=True)
-    except (subprocess.SubprocessError, OSError) as exc:
-        # Never retry writes: a timeout may mean the server committed the write.
+        process = subprocess.Popen(args, stdin=subprocess.PIPE if data is not None else stdin,
+                                   env=env, stdout=output or subprocess.PIPE,
+                                   stderr=subprocess.PIPE, start_new_session=True)
+        stdout, stderr = process.communicate(input=data, timeout=timeout)
+        if process.returncode:
+            raise subprocess.CalledProcessError(process.returncode, args, stdout, stderr)
+    except (subprocess.SubprocessError, OSError, KeyboardInterrupt) as exc:
+        if process is not None:
+            # Docker launches Compose as a child process: kill the whole client
+            # group, then reap it before releasing the deployment lock. Daemon
+            # operations still need the explicit server-side cleanup below.
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.communicate()
         raise DeploymentError(f"Command failed or outcome unknown: {shlex.join(args)}\n{exc}") from exc
-    return result.stdout.decode().strip() if result.stdout is not None else ""
+    return stdout.decode().strip() if stdout is not None else ""
+
 
 
 class Deployment:
@@ -35,17 +50,20 @@ class Deployment:
         self.compose = shlex.split(os.environ.get("TRELLUM_COMPOSE", "docker compose"))
         self.health_timeout = int(os.environ.get("TRELLUM_HEALTH_TIMEOUT", "180"))
         self.command_timeout = int(os.environ.get("TRELLUM_COMMAND_TIMEOUT", "900"))
+        if self.command_timeout < 10 or self.health_timeout < 1:
+            raise DeploymentError("Command timeout must be >=10s and health timeout >=1s")
         self.marker = Path(".trellum-deployment-incomplete.json")
         self.lock = Path(".trellum-deployment-lock")
         self.stopped = False
 
     def c(self, *args, **kwargs):
+        timeout = kwargs.pop("timeout", self.command_timeout)
         if args[:3] == ("exec", "-T", "db"):
             # Killing a Docker client does not stop an exec process. The bundled
             # Postgres image includes timeout; stop server-side work first.
             args = (*args[:3], "timeout", "-s", "KILL",
-                    str(max(1, self.command_timeout - 5)), *args[3:])
-        return run(*self.compose, *args, timeout=self.command_timeout, **kwargs)
+                    str(max(1, timeout - 5)), *args[3:])
+        return run(*self.compose, *args, timeout=timeout, **kwargs)
 
     def config(self, env=None):
         return json.loads(self.c("config", "--format", "json", env=env))["services"]
@@ -58,6 +76,14 @@ class Deployment:
             raise DeploymentError("Compose overrides image pins; release overlays/exported pins unsupported")
 
     def validate(self, config):
+        # Raw Docker commands must target the same daemon as Compose, and the
+        # .env we replace must be the file Compose will read after pinning.
+        if (self.compose[:2] != ["docker", "compose"]
+                or any(arg in ("--context", "--host", "-H", "--env-file", "--project-directory")
+                       or arg.startswith(("--context=", "--host=", "--env-file=", "--project-directory="))
+                       for arg in self.compose[2:])
+                or os.environ.get("COMPOSE_ENV_FILES")):
+            raise DeploymentError("Use docker compose with this directory's .env and the calling shell's Docker daemon")
         # Reject overlays which could make us dump/restore a different database,
         # or start an unintended topology. Do not print the URL (credentials).
         required = {"web", "worker", "migrate", "sandbox-image", "db", "backup"}
@@ -95,6 +121,7 @@ class Deployment:
 
     def prepare(self, portal, runner, version=None):
         ids = []
+        versions = []
         for image, module in ((portal, "trellum_portal"), (runner, "trellum")):
             print(f"Preparing {module} image {image}", flush=True)
             # Recorded local immutable IDs need no registry lookup; other refs
@@ -115,7 +142,10 @@ class Deployment:
                 raise
             if version and got != version.removeprefix("v"):
                 raise DeploymentError(f"{module} version {got} differs from requested {version}")
+            versions.append(got)
             ids.append(image_id)
+        if versions[0] != versions[1]:
+            raise DeploymentError("Portal and runner versions differ")
         return tuple(ids)
 
     def atomic_json(self, path, value):
@@ -131,7 +161,7 @@ class Deployment:
         path = Path(".env")
         text = path.read_text()
         for key, value in (("TRELLUM_IMAGE", portal), ("TRELLUM_RUNNER_IMAGE", runner)):
-            text = re.sub(rf"^{key}=.*\n?", "", text, flags=re.MULTILINE)
+            text = re.sub(rf"^[ \t]*(?:export[ \t]+)?{key}[ \t]*=.*\n?", "", text, flags=re.MULTILINE)
             text += f"\n{key}={value}\n"
         temp = path.with_name(".env.deployment-tmp")
         with open(temp, "w", opener=lambda p, f: os.open(p, f, 0o600)) as stream:
@@ -201,7 +231,7 @@ class Deployment:
         while True:
             try:
                 raw = self.c("exec", "-T", "web", "python", "-c",
-                             "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8050/healthz', timeout=5).read(1024); print(urllib.request.urlopen('http://127.0.0.1:8050/api/version', timeout=5).read(65536).decode())")
+                             "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8050/healthz', timeout=5).read(1024); print(urllib.request.urlopen('http://127.0.0.1:8050/api/version', timeout=5).read(65536).decode())", timeout=min(self.command_timeout, max(1, deadline - time.monotonic())))
                 status = json.loads(raw)
                 if status["schema"] != "ok" or status["version"] != version.removeprefix("v"):
                     raise DeploymentError("Serving version/schema differs from expected release")
@@ -283,12 +313,32 @@ class Deployment:
                     if state not in ("", "exited", "dead"):
                         raise DeploymentError(f"Migration {migration} termination is unconfirmed; inspect before restoring")
             dump = Path(args.dump)
-            record = json.loads(Path(str(dump) + ".images.json").read_text())
-            if str(dump.resolve()) != record["dump"]:
-                raise DeploymentError("Backup manifest belongs to a different dump path")
-            if file_hash(dump) != record["dump_sha256"]:
-                raise DeploymentError("Dump hash differs from backup manifest")
-            ids = self.prepare(record["portal"], record["runner"], record["version"])
+            manifest = Path(str(dump) + ".images.json")
+            previous = getattr(args, "previous", None)
+            if manifest.exists():
+                if previous or getattr(args, "runner_image", None):
+                    raise DeploymentError("Manifest recovery does not accept image overrides")
+                record = json.loads(manifest.read_text())
+                if str(dump.resolve()) != record["dump"]:
+                    raise DeploymentError("Backup manifest belongs to a different dump path")
+                if file_hash(dump) != record["dump_sha256"]:
+                    raise DeploymentError("Dump hash differs from backup manifest")
+                ids = self.prepare(record["portal"], record["runner"], record["version"])
+            else:
+                if not (previous and getattr(args, "runner_image", None)
+                        and getattr(args, "confirm_legacy_pair", False)):
+                    raise DeploymentError("Legacy dump requires previous image/version, --runner-image and --confirm-legacy-pair")
+                is_version = re.fullmatch(r"v?\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?", previous)
+                portal = (f"{os.environ.get('TRELLUM_REGISTRY', 'ghcr.io')}/"
+                          f"{os.environ.get('TRELLUM_REPO', 'trellumhq/trellum')}:{previous}"
+                          if is_version else previous)
+                version = previous if is_version else getattr(args, "previous_version", None)
+                if not version:
+                    raise DeploymentError("Legacy custom image requires --previous-version")
+                ids = self.prepare(portal, args.runner_image, version)
+                record = {"portal": ids[0], "runner": ids[1], "version": version,
+                          "dump": str(dump.resolve()), "dump_sha256": file_hash(dump),
+                          "legacy_pair_confirmed": True}
             self.verify_dump(dump)
             self.check_pins(ids)
         if not args.yes:
@@ -306,7 +356,7 @@ class Deployment:
             migration = "trellum-migration-" + uuid.uuid4().hex
             self.atomic_json(self.marker, dict(record, action="upgrade", migration_container=migration))
             try:
-                self.c("run", "--rm", "-T", "--name", migration, "--no-deps", "--no-build", "--pull", "never", "migrate")
+                self.c("run", "--rm", "-T", "--name", migration, "--no-deps", "--pull", "never", "migrate")
             except BaseException:
                 # Killing the CLI does not stop a container-side migration.
                 try:
@@ -316,6 +366,8 @@ class Deployment:
                 raise
             version = args.version
         else:
+            if file_hash(dump) != record["dump_sha256"]:
+                raise DeploymentError("Dump changed after preflight")
             self.restore(dump, config, record)
             self.pin(*ids)
             version = record["version"]
@@ -360,7 +412,12 @@ def main():
     upgrade = sub.add_parser("upgrade")
     upgrade.add_argument("version")
     rollback = sub.add_parser("rollback")
-    rollback.add_argument("dump", help="dump with adjacent .images.json manifest from upgrade")
+    rollback.add_argument("dump", help="custom-format database dump; adjacent .images.json preferred")
+    rollback.add_argument("previous", nargs="?", help="legacy backup's previous portal image or version")
+    rollback.add_argument("--runner-image", help="explicit matching legacy runner image")
+    rollback.add_argument("--previous-version", help="expected version for a legacy custom portal image")
+    rollback.add_argument("--confirm-legacy-pair", action="store_true",
+                          help="confirm this dump and both images belong to the same previous release")
     for command in (upgrade, rollback):
         command.add_argument("--yes", action="store_true")
     try:

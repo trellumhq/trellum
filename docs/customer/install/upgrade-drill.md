@@ -1,37 +1,42 @@
 # Upgrade helper verification record
 
 Verified locally on 2026-11-01 with Docker Engine 29.6.0, Compose v2 and
-Postgres 16. This record distinguishes the checks that ran from the full drill
-that could not finish. **A migrated portal worker building a report with the
-new runner, followed by a complete product rollback, remains unverified.** Do
-not treat the database-only test as that proof.
+Postgres 16. The focused checks and the isolated product drill are described
+separately below. The drill uses fake tenant data and a separate Docker daemon;
+it does not verify an existing installation or excluded deployment topologies.
 
 ## Repeatable checks that passed
 
 From the repository, using a Python environment with the test dependencies:
 
 ```bash
-TRELLUM_TEST_DB_NAME=test_trellum_cleanup168 python scripts/test.py local \
+TRELLUM_TEST_DB_NAME=test_trellum_cleanup168review python scripts/test.py local \
   apps/core/tests/test_deployment_helpers.py --workers 1
-TRELLUM_TEST_DB_NAME=test_trellum_cleanup168 python scripts/test.py local \
+TRELLUM_TEST_DB_NAME=test_trellum_cleanup168review python scripts/test.py local \
   apps/core/tests/test_deployment_helpers.py::test_real_postgres_restore_and_failed_swap \
   --heavy --workers 1
 bash -n scripts/upgrade.sh scripts/rollback.sh
 DJANGO_SETTINGS_MODULE=trellum_portal.settings.test \
-  TRELLUM_TEST_DB_NAME=test_trellum_cleanup168 \
+  TRELLUM_TEST_DB_NAME=test_trellum_cleanup168review \
   python manage.py makemigrations --check --dry-run
 ```
 
 The ordinary suite checks paired default/custom references, both pins and the
 backup manifest, runner pull/version failures before downtime, backup and
 migration failures, incorrect serving version/schema, running-image mismatch,
-conflicting exported pins, concurrent-operation locks, corrupt backups, fatal
+conflicting exported pins, concurrent-operation locks, explicit legacy pairs and archive validation, corrupt backups, fatal
 restore failures and refusal to retry an unconfirmed rollback. Docker and
 Compose are replaced by deterministic command adapters in those ordinary tests.
 
-The heavy test uses a **new uniquely named** `postgres:16-alpine` container,
+A separate heavy process check verifies that a timeout terminates the Compose
+client and its child processes. The wrapper was also exercised with host Python
+deliberately unavailable: its containerized Docker/Compose client reached
+preflight on a uniquely named empty deployment. This is transport evidence,
+not an upgrade or worker-build drill.
+
+The heavy database test uses a **new uniquely named** `postgres:16-alpine` container,
 512 MiB RAM, one CPU, no published ports, disposable credentials and database
-`test_trellum_cleanup168`. It runs the actual helper's dump/restore methods;
+`test_trellum_cleanup168review`. It runs the actual helper's dump/restore methods;
 only the Compose `exec db` transport is adapted to that container. It:
 
 1. Creates one fake table/row and saves a custom-format dump, verified with
@@ -69,71 +74,48 @@ These checks pull and import both images, with no network inside the smoke
 containers and 512 MiB/one CPU each. They do not verify signatures, submit a
 build, or prove migration compatibility.
 
-## Attempted full drill and blocker
+## Isolated product drill
 
-To isolate the worker's Docker socket and sandbox orphan sweep from existing
-services, the attempted v0.5.0 → v0.9.1 drill used a disposable nested Docker
-daemon. No existing installation, shared Docker network, firewall, or host
-cgroup settings were changed. The setup was:
+A fake-data v0.5.0 → v0.9.1 → v0.5.0 drill used a separate Docker 29.9.2
+rootless daemon inside a disposable container capped at 4 GiB RAM, two CPUs
+and 1,024 processes, with no host ports published. The worker received only
+that daemon's socket, protecting other installations from sandbox orphan
+sweeps. The outer container enforced the combined resource bounds; per-build
+cgroup enforcement inside that daemon was not tested. This daemon served only
+as test isolation.
 
-```bash
-fixture="$PWD/.data-test/upgrade168"
-mkdir -p "$fixture/socket" "$fixture/scripts" "$fixture/docker"
-cp scripts/deployment.py scripts/upgrade.sh scripts/rollback.sh "$fixture/scripts/"
-cp docker-compose.yml "$fixture/"
-cp docker/backup.sh docker/restore_drill.sh "$fixture/docker/"
-docker run -d --name cleanup168-dind --privileged --memory 4g --cpus 2 \
-  --entrypoint dockerd \
-  -v "$fixture/socket:/var/run" -v "$fixture:$fixture" \
-  docker:29-dind --host unix:///var/run/docker.sock --storage-driver=vfs
-docker exec cleanup168-dind chmod 666 /var/run/docker.sock
-export DOCKER_HOST="unix://$fixture/socket/docker.sock"
-```
+The procedure is:
 
-The fixture's `.env` selected the public v0.5.0 portal/runner pair, fake
-Postgres/session/encryption values, in-memory email backend, update checks off,
-Docker sandboxing, a fixture-only sandbox network and data volume, and Docker
-group ID 0 for the nested socket. Its limits overlay capped Postgres at 512 MiB,
-web/worker/migrate at 768 MiB each and backup at 256 MiB, within the outer 4 GiB
-limit. No port from the nested daemon was published to the host. Initial start:
+1. Start the old portal/runner pair, seed a fake organization/studio and a
+   small Python report, add an uploaded-file sentinel, and run cleanup and
+   backups until `manage.py doctor` passes.
+2. Run `scripts/upgrade.sh v0.9.1 --yes`. Verify both immutable pins,
+   `/api/version` (`0.9.1`, schema `ok`) and `doctor`. The test database's
+   migration count changed from 141 to 155.
+3. Queue the report through the worker. Inspect the sandbox at container
+   creation and compare its actual image ID with the selected runner ID.
+   Run `b89f03b5-6ff1-42d3-b246-21f08d871db7` succeeded with exit code 0;
+   its inspected sandbox image was
+   `sha256:22ba80222ed761da302a93f86ff8c637a6455b5504447b65b42f7344a23f8805`,
+   exactly the new runner pin on this daemon.
+4. Add post-upgrade database sentinels, then run the printed manifest rollback
+   command. Verify the old pair, serving schema/version, original data and
+   uploaded-file sentinel. Inspect the retained post-upgrade database too.
+   The completed rollback reported v0.5.0/schema `ok`, restored 141 migration
+   records and the original organization name, and removed the newer sentinel
+   table/run from the current database. The retained database still had 155
+   migration records, both post-upgrade sentinels and the successful run. The
+   uploaded-file sentinel was unchanged.
 
-```bash
-docker compose --project-directory "$fixture" -p cleanup168 \
-  -f "$fixture/docker-compose.yml" -f "$fixture/limits.yml" up -d --no-build
-```
+A migration-admission failure was also recovered through the manifest path.
+The helper preserved its verified dump and left writers stopped before
+recovery. Scratch-restore and failed transactional-swap behavior are covered
+by the separate real Postgres test above.
 
-Image pulls and container creation succeeded, but the old Postgres service
-could not start:
-
-```text
-failed to create shim task: OCI runtime create failed: runc create failed:
-unable to start container process: unable to apply cgroup configuration:
-cannot enter cgroupv2 "/sys/fs/cgroup/docker" with domain controllers --
-it is in an invalid state
-```
-
-The fixture therefore never reached old-product migration, report seeding,
-helper upgrade, worker sandbox execution or helper rollback. No claims about
-those stages follow from this attempt. The nested daemon container and its
-anonymous storage were removed using its explicit name on the outer daemon.
-The separate fake-data Postgres container used for the manual restore probe
-was also removed; the automated heavy test cleans up its own fixture.
-
-## Evidence still required
-
-Repeat the complete procedure on a disposable host whose cgroups permit the
-isolated worker Docker runtime. Start a healthy old portal/runner pair with
-fake tenant/report/upload data and valid backups/cleanup state. Run the upgrade
-helper; record migrations, both immutable pins and serving schema/version.
-Queue a real report through the worker, assert successful output, and inspect
-the sandbox's actual image ID against the new runner ID (configuration alone
-is insufficient). Add a post-upgrade database sentinel, roll back with the
-printed dump/manifest, and verify both old images, old schema/data, retained
-post-upgrade database and unchanged uploaded files. Exercise failures on this
-same isolated topology as well as the deterministic tests.
+## Deployment scope
 
 External Postgres, offline/mirror-disconnected deployment, release-only
-overlays, split/multi-host workers and arbitrary custom mounts were not
-verified and are excluded from these helpers' supported path. The restore test
-proves database safeguards, not a complete disaster-recovery backup of uploads,
-keys or object storage.
+overlays, split/multi-host workers and arbitrary custom mounts are excluded
+from these helpers' supported path. Protect uploads, encryption keys and
+object storage separately. Repeat the drill on a disposable copy of your
+own deployment before changing a working installation.
