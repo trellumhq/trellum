@@ -167,6 +167,7 @@ ACTIONS: dict[str, ActionSpec] = {
 
     # ── admin ───────────────────────────────────────────────────────────
     "instance.setup": _m(CATEGORY_ADMIN, "Instance set up"),
+    "account.reactivate": _m(CATEGORY_ADMIN, "Account reactivated"),
     "instance.settings_update": _m(CATEGORY_ADMIN, "Instance settings updated"),
     "instance.email_connection_create": _m(CATEGORY_ADMIN, "Email connection created"),
     "instance.email_connection_update": _m(CATEGORY_ADMIN, "Email connection updated"),

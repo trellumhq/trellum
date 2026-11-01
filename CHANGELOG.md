@@ -19,6 +19,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Reactivating an account in the admin clears its old dormancy warning and
+  records who reactivated it. A retention sweep cannot disable it from a
+  stale candidate; future dormancy requires a fresh warning and grace period.
+
 - Website links include a Nova Play report image for social previews, and the
   public demo gallery is no longer blocked by robots.txt.
 - Keep permitted Studio-audience reports available when Private items exist and

@@ -456,8 +456,8 @@ def _dormant_candidates():
 def _warning_is_live():
     """Q for "we warned this account and they have not signed in since".
 
-    Nothing ever clears ``dormancy_warned_at``; a stamp older than the
-    account's own clock is simply spent. So this one comparison against
+    Admin reactivation clears ``dormancy_warned_at``. Otherwise a stamp older
+    than the account's own clock is simply spent. This comparison against
     ``last_seen`` is what makes a sign-in reset all three stages at once, and
     it rides on the column Django already updates inside ``login()`` -- every
     sign-in path there is or ever will be, with no receiver to register and
@@ -515,10 +515,9 @@ def warn_dormant_accounts(dry_run: bool = False) -> tuple[str, int]:
 def disable_dormant_accounts(dry_run: bool = False) -> tuple[str, int]:
     """Stage two: switch sign-in off. Nothing is deleted, so this is still
     reversible -- but only through the Django admin, the one surface in the
-    product that writes ``User.is_active``. Clearing ``dormancy_warned_at``
-    there is part of putting an account back: leaving a live warning stamped
-    means tomorrow's sweep disables it again (``apps.accounts.admin`` puts
-    the two fields side by side for that reason).
+    product that reactivates accounts. Its save hook clears the old warning,
+    so reactivation requires a fresh warning and grace period before another
+    disable.
     """
     label = "dormant sign-ins disabled"
     cutoff = _cutoff(settings.RETENTION["dormant_disable_days"])
@@ -533,9 +532,11 @@ def disable_dormant_accounts(dry_run: bool = False) -> tuple[str, int]:
 
     count = 0
     for user in list(due):
-        type(user).objects.filter(pk=user.pk).update(is_active=False)
-        _audit_dormancy(user, "retention.dormancy_disabled")
-        count += 1
+        # Recheck eligibility in the UPDATE: an admin may have reactivated
+        # this account and cleared its warning since the candidate read.
+        if due.filter(pk=user.pk).update(is_active=False):
+            _audit_dormancy(user, "retention.dormancy_disabled")
+            count += 1
     return label, count
 
 
