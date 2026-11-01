@@ -1290,6 +1290,8 @@
     function setBusy(on) {
         busy = on;
         var b = byId('assistantSend');
+        // Hosted report frames may unload before their assistant mounts.
+        if (!b) return;
         b.textContent = on ? 'Stop' : 'Send';
         b.setAttribute('aria-label', on ? 'Stop the reply' : 'Send');
         b.classList.toggle('assistant-stop', on);

@@ -58,7 +58,7 @@ def _audit(job, event):
     from apps.core.audit import audit_system
 
     audit_system(
-        "assistant.source_" + event, org=job.org,
+        "assistant.source_accepted" if event == "accepted" else "assistant.source_finished", org=job.org,
         outcome="failure" if job.state in (Job.FAILED, Job.UNCONFIRMED) else "success",
         query_id=str(job.pk), user_id=job.user_id, studio_id=job.studio_id,
         grant_id=job.grant_id, kind=job.kind, state=job.state,
