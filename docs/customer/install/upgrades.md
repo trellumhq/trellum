@@ -1,32 +1,42 @@
 # Upgrades
 
-!!! warning "Current upgrade helper limits"
-    The upgrade and rollback helpers update `TRELLUM_IMAGE` only. They do not
-    update or verify `TRELLUM_RUNNER_IMAGE`, so using them alone can leave
-    report builds on a different release from the portal. Their default image
-    repository is also outdated; set `TRELLUM_REPO=trellumhq/trellum` when
-    using the published images. Adapt and test the procedure on a separate
-    instance, including both image pins and their rollback, before upgrading
-    an installation with real data. See the matching-image settings in the
-    [Compose guide](/docs/latest/install/docker-compose/).
-
-    For the release-only Compose overlay, images are selected by
-    `TRELLUM_VERSION`, and `TRELLUM_IMAGE` is ignored. The helpers do not update
-    that version setting, so they cannot switch or roll back an installation
-    using the overlay unmodified. Treat the overlay as an initial-install path
-    until a matched-image upgrade and database-restore procedure has been
-    adapted and verified on an isolated instance.
-
-The existing portal-image helper is invoked with:
+The online helpers switch the portal and report-runner images together. The
+[verification record](upgrade-drill.md) lists the tested checks and the
+infrastructure blocker that prevented the complete worker-build drill. They
+require **Python 3.11+ on the Docker host**, Docker Compose v2, the bundled
+Postgres service, and the default single-host combined-worker topology:
 
 ```bash
-TRELLUM_REPO=trellumhq/trellum scripts/upgrade.sh v1.2.3
+scripts/upgrade.sh v1.2.3
+# Noninteractive, after reviewing release notes:
+scripts/upgrade.sh v1.2.3 --yes
 ```
 
-That takes a verified backup, stops the application, migrates, starts the new
-version, and checks the portal's reported version and schema. It prints a
-rollback command on failure; that command also needs the matching runner
-configuration described above.
+Published defaults are `ghcr.io/trellumhq/trellum:<version>` and
+`ghcr.io/trellumhq/trellum-runner:<version>`. For a mirror, set
+`TRELLUM_REGISTRY` and `TRELLUM_REPO` (the runner repository defaults to the
+portal repository plus `-runner`). To select arbitrary repositories or digests,
+set **both** `TRELLUM_TARGET_IMAGE` and `TRELLUM_TARGET_RUNNER_IMAGE`. Each image
+must report the requested product version. The helper inspects and smoke-runs
+both images before downtime, then pins their immutable local image IDs in
+`.env`. This is a version/import check, **not signature verification**; verify
+release signatures and attestations using [Verify what you received](/docs/latest/install/verify-images/).
+
+`TRELLUM_COMPOSE` selects the Compose command, including project/file options.
+The command must select this deployment's `.env` and services. Do not export
+`TRELLUM_IMAGE` or `TRELLUM_RUNNER_IMAGE` in the calling shell: they can override
+`.env`. A preflight configuration check rejects image overrides that prevent the
+paired pins from taking effect. The release-only overlay selects images through
+`TRELLUM_VERSION` and is **excluded**; migrate it to the base image-pin Compose
+configuration in a separately tested operator procedure first.
+
+External Postgres, offline upgrades, split workers, profiles, and multi-host
+installations are **excluded**. These require a database/operator-specific
+backup, drain, migration and restore procedure across all hosts. The helpers
+reject external database URLs and active split services rather than backing up
+an unused bundled database. Custom overlays must preserve the base service
+roles, database and shared-data mounts; arbitrary overlay semantics are not
+validated. An existing local image does not bypass the online target pull.
 
 ## Before you start
 
@@ -56,16 +66,19 @@ configuration described above.
 | Step | Why |
 |---|---|
 | `doctor` preflight | Refuses to upgrade an unhealthy instance |
-| `pg_dump`, then verify it with `pg_restore --list` | An unverified dump is not a backup. `pg_dump` can exit successfully having written a truncated file if the disk filled |
-| `docker pull` | Fetch before stopping, so a slow or failed pull does not extend the outage |
-| **Stop** web and worker roles | The important one — see below. The worker drains first, so no in-flight build is killed |
+| Pull, inspect and import/version-check **both** images | Fail before downtime; select immutable IDs |
+| **Stop** web, worker and backup | Drain writers before the database snapshot; stop failures abort the operation |
+| `pg_dump`, then `pg_restore --list` | Save a readable custom-format dump plus an adjacent manifest containing both prior image IDs, original configured pins, version and dump hash |
 | `migrate` | New schema, with no old code running against it |
 | Start | The new version comes up on a schema it agrees with |
 | Verify | `/healthz`, then assert `/api/version` reports the expected version and `schema: ok` |
 
-The helper operates on the current Compose project. For a multi-host install,
-coordinate the upgrade across every web and runner host; the helper does not
-orchestrate remote hosts or update `TRELLUM_RUNNER_IMAGE`.
+The helper operates on the selected Compose project. It starts only the
+combined-worker services, without rebuilding, pulling or implicitly rerunning
+migrations. Verification checks the serving version/schema, actual web and
+worker image IDs, worker runner configuration and `doctor`. It does not submit
+a report build automatically. Build a representative report and inspect its
+sandbox image before accepting the upgrade.
 
 Expect a short outage: seconds, plus however long your migrations take, plus up
 to ten minutes if a report build is mid-flight when the worker drains.
@@ -132,7 +145,7 @@ migrations.
     way back is the dump.
 
 ```bash
-TRELLUM_REPO=trellumhq/trellum scripts/rollback.sh ./upgrade-backups/pre-v1.2.3-<stamp>.dump v1.2.2
+scripts/rollback.sh ./upgrade-backups/pre-<stamp>-<pid>.dump
 ```
 
 **This discards every database change made since that dump was taken** — report
@@ -143,21 +156,60 @@ So:
 
 - **Prefer rolling forward.** If the new version is merely misbehaving, fix the
   fault and upgrade again. Reach for rollback when the new version cannot serve.
-- **Keep the dump** until you are satisfied. The script leaves it in
-  `upgrade-backups/` and prints the path.
+- **Keep the dump and its `.images.json` manifest** until you are satisfied.
+  The script leaves them in `upgrade-backups/` (override with `TRELLUM_BACKUP_DIR`)
+  and prints the recovery command. Keep the recorded local images too; do not
+  prune them during the recovery window. Rollback uses their immutable IDs
+  and requires both to remain available locally. A historical dump without the
+  paired manifest requires a manual restore procedure; the old image/version
+  positional argument is no longer accepted.
 - Report output and uploaded data-source files are untouched by either script.
+
+Rollback checks the dump hash/readability and both prior image versions before
+stopping writers. It first saves a verified `before-rollback` database dump,
+then restores into a fresh scratch database with
+`--exit-on-error --single-transaction`. Only after that succeeds does a separate
+transaction rename the current database to a retained recovery name and the
+scratch database to the configured name. This requires bundled-Postgres
+superuser privileges and space for both databases plus their dumps. New tables
+from the abandoned release cannot survive in the restored database. The
+retained database name is printed and recorded in the recovery marker during
+the operation, and in a sidecar beside the safety dump; remove it only after
+accepting the rollback. A restore or
+database-switch error is fatal. It restores both image pins, checks serving
+version/schema and worker configuration, and retains all backups. It never restores or deletes uploaded
+files, encryption keys, report output, or other shared-volume data; protect
+those separately with [Backups & restore](/docs/latest/operations/backups-and-restore/).
 
 ## If an upgrade fails midway
 
-The script prints the rollback command at every failure point. By stage:
+Before stopping services, pull, image-version, configuration and preflight
+failures leave the deployment running and its pins unchanged. After the stop
+begins, failures leave application services stopped and retain
+`.trellum-deployment-incomplete.json`. A dump that failed verification is not a
+usable recovery backup. If migration has begun, use the printed dump and paired
+manifest to roll back; never just restart the old code on a possibly new schema.
 
-- **Preflight or backup failed** — nothing has changed. Fix and retry.
-- **Pull failed** — nothing has changed. Check the registry and retry.
-- **Migration failed** — the schema may be partly moved. Roll back using the
-  dump the script just took.
-- **Verification failed** — the containers are up but wrong: the old image is
-  still serving, or `schema` is not `ok`. Check `docker compose logs web`, then
-  either fix forward or roll back.
+A failed migration is not retried; its named one-shot container is terminated
+on error/timeout. If termination cannot be confirmed, investigate that container
+before restoring. A failed restore or timeout may have an unknown outcome:
+inspect Postgres and the retained recovery marker before considering a manual
+retry. The helper refuses a second rollback after an unconfirmed rollback.
+It never automatically restores, retries a write, or restarts after failure.
+
+The directory lock `.trellum-deployment-lock` prevents concurrent helper runs.
+After a killed host process, check that no helper or migration/restore is still
+running before manually clearing a stale lock. Clear an incomplete marker only
+after reconciling database, both pins and service state. Do not delete these
+files simply to get past a failed check. The default per-command timeout is
+900 seconds (`TRELLUM_COMMAND_TIMEOUT`); startup verification has a 180-second
+polling budget (`TRELLUM_HEALTH_TIMEOUT`) with individually bounded commands.
+A slow command can extend that polling budget by one command timeout.
+Bundled Postgres commands also use its container-side `timeout` utility so
+terminating a Docker client cannot leave a database write running indefinitely.
+
+See the [isolated verification record](upgrade-drill.md) for the tested path and
+its limits.
 
 ## Versioning
 
