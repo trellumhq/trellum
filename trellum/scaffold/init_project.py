@@ -168,11 +168,12 @@ def init_project(target: str | None = None, *, timezone: str | None = None,
         print(f"  {status:<8} {name}")
 
     print("\nDone. Next steps:")
-    print("  1. Copy .env.example to .env and add your database credentials")
-    print("  2. Configure data sources in data-sources/config.yaml")
-    print("  3. Add events to events.yaml for chart annotations (optional)")
-    print("  4. Adjust the reporting day or Metrics schedule: python -m trellum setup reporting --dest .")
-    print("  5. Create your first report: python -m trellum.new my-report")
+    print("  1. Read context/README.md and analysis/README.md")
+    print("  2. Connect a source: python -m trellum datasource add --help")
+    print("  3. Explore: python -m trellum data; python -m trellum guide answer")
+    print("  4. Save useful queries/findings in analysis/ and verified context in context/")
+    print("  5. Adjust reporting dates/schedule: python -m trellum setup reporting --dest .")
+    print("  6. Create a report when needed: python -m trellum.new my-report")
     print("\nRun `trellum` to see what the framework offers.")
 
 

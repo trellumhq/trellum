@@ -54,6 +54,11 @@ Use this exact interpreter, **run from the repository root**:
 {py} -m trellum validate reports/<x> validation state of a built report
 ```
 
+Read `context/README.md` and relevant source/metric notes before investigating.
+Use `analysis/README.md` for exploration and saving reproducible findings; keep
+raw exports in the local `analysis/results/` directory. Update verified context
+for the next investigation, preserving unresolved questions as questions.
+
 `trellum` alone is not on PATH. Report paths like `reports/<slug>` are
 relative to the repository root, so run these from there.{cwd_note}
 
@@ -320,6 +325,11 @@ itself — ask it rather than reading its source.** Run from the repository root
 {py} -m trellum guide <topic>... depth on demand, several topics at once
 ```
 
+Read `context/README.md` and relevant source/metric notes before investigating.
+Use `analysis/README.md` for exploration and saving reproducible findings; keep
+raw exports in the local `analysis/results/` directory. Update verified context
+for the next investigation, preserving unresolved questions as questions.
+
 `trellum` alone is not on PATH, so name the interpreter as shown.
 {portal}{end}
 """
@@ -364,7 +374,9 @@ def write_project_files(root: str | os.PathLike[str]) -> list[tuple[str, str]]:
     is, which is the same bargain ``merge_hooks`` strikes with settings.json.
     """
     root = Path(root)
-    results: list[tuple[str, str]] = []
+    from trellum.scaffold.project_context import write_context_files
+
+    results = write_context_files(root)
     py = hook_interpreter(root)
     portal = PORTAL_SECTION.format(py=py) if portal_server(root) else ""
     pointer = POINTER.format(
