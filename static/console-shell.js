@@ -668,7 +668,10 @@
 (function () {
     var nativeSnapshot = null, nativeTimeout = null, feedback = null, slowStartedAt = 0, slowLabel = '';
     var recordKey = 'trellum-navigation-feedback';
-    function studioPath(path) { var match = /^(\/s\/[^/]+\/[^/]+)\//.exec(path); return match && match[1]; }
+    function navigationScope(path) {
+        var match = /^(\/s\/[^/]+\/[^/]+|\/orgs\/[^/]+)\//.exec(path);
+        return match && match[1];
+    }
     function forget() { try { sessionStorage.removeItem(recordKey); } catch (e) {} }
     function remember(record) { try { sessionStorage.setItem(recordKey, JSON.stringify(record)); } catch (e) {} }
     function clear(quiet) {
@@ -677,6 +680,7 @@
         forget();
         var restored = nativeSnapshot;
         if (nativeSnapshot) {
+            nativeSnapshot.main.inert = nativeSnapshot.inert;
             window.TrellumConsoleShell.setPageTitle(nativeSnapshot.title);
             nativeSnapshot.links.forEach(function (entry) { entry.node.classList.toggle('active', entry.active); if (entry.current) entry.node.setAttribute('aria-current', entry.current); else entry.node.removeAttribute('aria-current'); });
             nativeSnapshot = null;
@@ -721,7 +725,7 @@
         var pageTitle = document.querySelector('[data-console-page-title]');
         if (!main || !pageTitle) return false;
         clear(true);
-        nativeSnapshot = { position: [scrollX,scrollY], focus: document.activeElement, title: pageTitle.textContent, links: Array.from(document.querySelectorAll('.tl-console-nav-link')).map(function (node) { return {node: node, active: node.classList.contains('active'), current: node.getAttribute('aria-current')}; }) };
+        nativeSnapshot = { main: main, inert: main.inert, position: [scrollX,scrollY], focus: document.activeElement, title: pageTitle.textContent, links: Array.from(document.querySelectorAll('.tl-console-nav-link')).map(function (node) { return {node: node, active: node.classList.contains('active'), current: node.getAttribute('aria-current')}; }) };
         history.replaceState(Object.assign({}, history.state || {}, {
             trellumNativePosition: {url:location.href, position:nativeSnapshot.position}
         }), '', location.href);
@@ -733,10 +737,12 @@
             if (active) node.setAttribute('aria-current', 'page'); else node.removeAttribute('aria-current');
         });
         var record = { destination: url.href, startedAt: Date.now(), shownAt: 0, label: label };
-        var sameStudio = studioPath(url.pathname) && studioPath(url.pathname) === studioPath(location.pathname);
-        if (sameStudio) remember(record);
+        var sameScope = navigationScope(url.pathname) && navigationScope(url.pathname) === navigationScope(location.pathname);
+        if (sameScope) remember(record);
+        // Retain the page's geometry while preventing edits to a departing form.
+        main.inert = true;
         feedback = window.TrellumNavigationFeedback.start({ root: main, label: label, native: true, cancel: cancel,
-            onShow: function (at) { record.shownAt = at; if (sameStudio) remember(record); }
+            onShow: function (at) { record.shownAt = at; if (sameScope) remember(record); }
         });
         slowStartedAt = Date.now(); slowLabel = label;
         if (!document.hidden) nativeTimeout = setTimeout(slowNotice, 15000);
@@ -793,14 +799,14 @@
         clearTimeout(nativeTimeout);
         if (feedback) feedback.dispose();
     });
-    // Only carry timing metadata across an exact, same-studio native destination.
+    // Only carry timing metadata across an exact native destination in the same scope.
     // Authentication, redirects and stale records never inherit console feedback.
     var landing = null;
     try { landing = JSON.parse(sessionStorage.getItem(recordKey)); } catch (e) {}
     forget();
     var arrival = performance.getEntriesByType('navigation')[0];
     if (landing && (!arrival || (arrival.type === 'navigate' && arrival.redirectCount === 0)) &&
-            landing.destination === location.href && studioPath(location.pathname) &&
+            landing.destination === location.href && navigationScope(location.pathname) &&
             typeof landing.label === 'string' && landing.label.length <= 200 &&
             Number.isFinite(landing.startedAt) && Date.now() >= landing.startedAt && Date.now() - landing.startedAt < 30000 &&
             (!landing.shownAt || (Number.isFinite(landing.shownAt) && landing.shownAt >= landing.startedAt && landing.shownAt <= Date.now()))) {

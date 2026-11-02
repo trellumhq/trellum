@@ -994,6 +994,9 @@ function updateSearchCount(matches, total) {
 }
 
 function signalCatalogReady(container) {
+    // Favorites are primary content when this is the selected list. History
+    // restoration must wait for its rows, rather than the short loading message.
+    if (activeFolder === '_favorites' && !_favoritesReady && !_favoritesFailed) return;
     container.dataset.catalogReady = 'true';
     window.dispatchEvent(new Event('trellum:catalog-ready'));
 }

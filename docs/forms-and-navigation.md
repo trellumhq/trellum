@@ -166,7 +166,8 @@ page title and `aria-busy`, while keeping the old content, layout and scroll
 position. A fixed live loading indicator appears after 150 ms. Fast transitions
 finish immediately; once shown, feedback stays for at least 500 ms and until
 primary destination content is ready. Optional favorites, subscriptions and
-metric usage never own primary readiness. The shared timing helper in
+metric usage never own primary readiness, except when Favorites is the selected
+list and its rows are needed for history restoration. The shared timing helper in
 `console-shell.js` stops feedback timers in hidden documents and on disposal.
 
 Native navigation still commits its URL with the browser's response. Before
@@ -174,7 +175,7 @@ that commit, **Cancel loading** or Escape stops the navigation and restores the
 old page, drafts, focus and scroll. After 15 seconds the message becomes
 "Still loading <page>…" and the request keeps going. After the response commits,
 cancellation cannot restore the departed document: landing feedback has no
-Cancel button. Exact same-studio native destinations can carry short-lived
+Cancel button. Exact native destinations within one studio or organization-settings scope can carry short-lived
 loading timestamps and a label through session storage; no HTML, registry or
 report data is stored. Redirects, authentication, different studios and stale
 records cannot inherit this feedback. A catalog landing keeps feedback through

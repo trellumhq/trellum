@@ -28,6 +28,9 @@ def navigation_pages(login, org_admin, studio):
     client = login(org_admin)
     base = f"/s/{studio.org.slug}/{studio.slug}"
     documents = {path: client.get(base + path).content for path in ('/', '/analyses', '/metrics', '/metrics/comparison')}
+    for name in ('members', 'invites'):
+        path = f'/orgs/{studio.org.slug}/settings/{name}'
+        documents[path] = client.get(path).content
     rows = {kind: client.get(base + f'/api/registry?kind={kind}&page=1&limit=50').json() for kind in ('report', 'analysis')}
     fragments = {path: client.get(base + path, HTTP_X_TRELLUM_NAVIGATION='1').content for path in ('/metrics', '/metrics/comparison')}
     return base, documents, rows, fragments
@@ -67,7 +70,7 @@ class Routes:
             elif '/r/' in path:
                 route.fulfill(body='<h1>Hosted report</h1>', content_type='text/html')
             else:
-                route.fulfill(body=self.documents[path.removeprefix(self.base)], content_type='text/html')
+                route.fulfill(body=self.documents[path if path in self.documents else path.removeprefix(self.base)], content_type='text/html')
         else:
             route.fulfill(body='{}', content_type='application/json')
 
@@ -386,5 +389,53 @@ def test_cancel_navigation_before_first_registry_restores_a_loading_catalog(navi
         routes.answer_registry(superseded)
         assert page.locator('#content tr[data-slug]').first.get_attribute('data-slug') == 'r-0'
         assert not page.locator('[data-catalog-navigation-error]').count()
+        assert not routes.errors
+        browser.close()
+
+
+def test_selected_favorites_waits_for_its_rows_before_history_readiness(navigation_pages):
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        routes = Routes(page, navigation_pages)
+        page.goto('http://stable.test' + routes.base + '/?tab=_favorites&view=list')
+        expect(page.locator('#content')).to_contain_text('Loading favorites')
+        expect(page.locator('#content')).not_to_have_attribute('data-catalog-ready', 'true')
+        wait_for(page, lambda: len(routes.secondary) == 2)
+        favorite = next(route for route in routes.secondary if '/api/me/favorites' in route.request.url)
+        org, studio = routes.base.split('/')[2:4]
+        favorite.fulfill(body=json.dumps({'favorites': [{'org_slug': org, 'studio_slug': studio,
+            'slug': 'r-0', 'report_id': routes.rows['report']['reports'][0]['id']}]}), content_type='application/json')
+        expect(page.locator('#content tr[data-slug]')).to_have_count(1)
+        expect(page.locator('#content')).to_have_attribute('data-catalog-ready', 'true')
+        assert not routes.errors
+        browser.close()
+
+
+@pytest.mark.heavy
+def test_organization_navigation_carries_visible_feedback_to_destination(navigation_pages):
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        routes = Routes(page, navigation_pages)
+        org = routes.base.split('/')[2]
+        source = f'/orgs/{org}/settings/members'
+        destination = f'/orgs/{org}/settings/invites'
+        page.goto('http://stable.test' + source)
+        routes.hold_native = True
+        records = []
+        page.expose_function('saveFeedbackRecord', lambda record: records.append(record))
+        page.evaluate("""destination => {
+            document.querySelector('a[href="' + destination + '"]').click();
+            setTimeout(() => saveFeedbackRecord(JSON.parse(sessionStorage.getItem('trellum-navigation-feedback'))), 200);
+        }""", destination)
+        wait_for(page, lambda: routes.native and records)
+        record = records[0]
+        assert record['destination'] == 'http://stable.test' + destination
+        assert record['shownAt'] > 0
+        routes.native.pop().fulfill(body=routes.documents[destination], content_type='text/html')
+        page.wait_for_url('http://stable.test' + destination)
+        expect(page.locator('[data-console-loading]')).to_be_visible()
+        expect(page.locator('[data-console-loading]')).to_have_count(0)
         assert not routes.errors
         browser.close()

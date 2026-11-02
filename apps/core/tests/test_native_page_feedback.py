@@ -83,6 +83,7 @@ def test_local_page_links_show_recoverable_feedback(analytics_server, engine, wi
             assert feedback_samples
             state.update(feedback_samples.pop())
             assert len(held) == 1
+            assert page.locator('main').evaluate('(node) => node.inert')
             # The high-level screenshot waits for frames that native provisional
             # navigation can suspend. Record actual compositor output instead.
             if engine == 'chromium':
@@ -97,6 +98,7 @@ def test_local_page_links_show_recoverable_feedback(analytics_server, engine, wi
             held.pop().abort()
             expect(page.locator('[data-console-native-pending]')).to_have_count(0)
             expect(page.locator('#neighbor input')).to_have_value('keep this draft')
+            assert not page.locator('main').evaluate('(node) => node.inert')
             assert page.evaluate('nativeEvents.map(e=>e[0])') == ['console:native-start', 'console:native-restored']
             rendered = page.evaluate('pendingVisibility')
             # The old table retains its layout throughout provisional navigation.
