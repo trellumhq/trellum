@@ -126,3 +126,20 @@ def test_revocation_during_explanation_does_not_deliver_buffered_source_text(sou
     events = frames(response)
     assert not any(name == "text_delta" for name, _ in events)
     assert any(name == "error" for name, _ in events)
+
+
+@pytest.mark.parametrize('may_write', [False, True])
+def test_source_read_prompt_and_tool_contract_agree(source_context, may_write):
+    """Source reads remain advertised when portal write actions are disabled."""
+    from apps.assistant.system_prompt import build_system_prompt
+
+    box = toolbox(source_context)
+    box.may_write = may_write
+    schemas = {schema['name']: schema for schema in box.schemas}
+    assert source_tools.SOURCE_NAMES <= schemas.keys()
+    prompt = build_system_prompt(box)[0]['text']
+    assert 'Read-only source queries do not need portal' in prompt
+    assert 'Never infer\ncurrent capability from an earlier assistant refusal' in prompt
+    assert 'only data the assistant reads is what reports have already published' not in schemas['query_report_data']['description']
+    discovered = json.loads(box.execute('list_data_sources', {}))
+    assert discovered['sources'][0]['source_id'] == source_context[3].pk

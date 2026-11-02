@@ -160,8 +160,9 @@ TOOL_SCHEMAS = [
         "description": (
             "Read actual numbers from a report's already-built output (no "
             "database hit, instant). Loads the named dataset from the report's "
-            "data.json, optionally filters rows, then aggregates. Prefer this "
-            "-- the only data the assistant reads is what reports have already published. "
+            "data.json, optionally filters rows, then aggregates. This tool reads "
+            "a report snapshot, not current database contents. For live data, discover "
+            "authorized sources with list_data_sources when that tool is available. "
             "Returns a markdown table (max 50 rows). Note: for chunked "
             "datasets only the inline (most recent) months are available."
         ),
