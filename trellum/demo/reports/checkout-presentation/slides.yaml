@@ -2,34 +2,67 @@ version: 1
 slides:
   - id: question
     layout: title
-    title: Where should Northwind improve conversion?
+    title: The next growth opportunity is in your hand.
     text: |
-      **Decision brief · September 2026 · Synthetic demo data**
+      NORTHWIND / CHECKOUT OPPORTUNITY
 
-      Focus the next investigation on mobile checkout. Northwind is fictional;
-      these frozen report views demonstrate an analysis workflow.
+      ### 63.2%
+
+      of visits are on mobile. **Just 1 in 56 becomes a purchase.**
+
+      | Mobile conversion | Desktop conversion | Mobile sessions |
+      | --- | --- | --- |
+      | **1.80%** | **5.24%** | **99,072** |
+
+      September 2026 · All channels · Synthetic demo data
   - id: mobile
     layout: image-text
-    title: Mobile is the largest opportunity to investigate
+    title: The leak starts before payment.
     text: |
-      Mobile brings **63.22%** of September sessions, yet its purchase rate is
-      **1.80%**, compared with **5.24%** on desktop.
+      THE DIAGNOSIS / THREE POINTS OF FRICTION
 
-      The gap identifies where to look. It does not establish its cause.
-    image: evidence/mobile-funnel.png
-    alt: September mobile checkout funnel showing sessions, product views, cart additions and purchases
+      Mobile trails desktop at **every buying step** shown here.
+      By the final step, **1,875 of 3,657** mobile checkout starts
+      do not become purchases.
+
+      > Start with checkout, then work upstream. A different button alone
+      > is not a diagnosis.
+
+      Stage conversion = next-stage count ÷ prior-stage count.
+      Device mix can explain part of the gap; this comparison does not prove cause.
+
+      [Frozen evidence & methods](https://trellum.dev/demo/checkout-findings/#article-evidence)
+    image: evidence/stage-comparison.png
+    alt: "Derived from the frozen September synthetic counts. Product view to cart: mobile 16.6%, desktop 23.1%. Cart to checkout: mobile 41.3%, desktop 57.3%. Checkout to purchase: mobile 48.7%, desktop 68.7%. All pairs share a 0–100% scale."
   - id: comparison
     layout: image
-    title: Desktop provides a comparison
-    image: evidence/desktop-funnel.png
-    alt: September desktop checkout funnel showing sessions, product views, cart additions and purchases
+    title: A small recovery could mean 183 more purchases.
+    image: evidence/recovery-scenario.png
+    alt: "Illustrative scenario, not a forecast or measured lift. At the same 3,657 mobile checkout starts, increasing checkout completion by 5 percentage points, from 48.73% to 53.73%, would add about 183 purchases: 1,782 to about 1,965. This is about 10.3% more mobile purchases. Assumes unchanged traffic, checkout starts and all earlier stages. Synthetic September 2026 baseline."
   - id: next-step
     layout: text
-    title: Investigate before choosing an experiment
+    title: Find the friction. Then earn the lift.
     text: |
-      - Review mobile checkout usability and payment failures.
-      - Compare acquisition channels and customer intent before setting a target.
-      - Use a new capture and Git revision when evidence changes.
+      THE DECISION / PRIORITIZE MOBILE CHECKOUT
 
-      **Assumptions:** evidence covers 1–30 September 2026 across all channels.
-      Conversion is purchases divided by sessions, using summed period counts.
+      1. **Check the signal**
+
+         Reconcile checkout events. Compare like-for-like channels and
+         returning customers before attributing the gap to device experience.
+
+      2. **Find the friction**
+
+         Review shipping-cost disclosure, form errors and payment failures
+         on common mobile devices. Choose one evidenced problem.
+
+      3. **Test one fix**
+
+         Predefine the audience, sample size and stopping rule. Measure
+         purchases per eligible mobile session against a randomized control.
+
+      > **Success means more completed purchases, with healthy revenue per session,
+      > payment success and refunds.** Reconsider the priority if the gap disappears
+      > after measurement checks or audience matching.
+
+      [Read the full analysis & assumptions](https://trellum.dev/demo/checkout-findings/)
+      · Northwind is fictional. September 2026 data is synthetic.
