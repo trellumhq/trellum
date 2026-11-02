@@ -131,6 +131,34 @@ def test_input_bounds_and_missing_semantics():
         make_binding(replace(metric, execution=None), **{k: entry[k] for k in ("output_dataset", "columns", "coverage_start", "coverage_end", "source_revision", "build_id", "generated_at")})
 
 
+def test_dictionary_encoded_dimensions_use_canonical_mappings():
+    _, entry, payload = fixture()
+    data = payload["_ds_report_output"]
+    data["_dict"] = {"os": ["ios", "android"]}
+    for row in data["_data"]:
+        row[1] = data["_dict"]["os"].index(row[1])
+    assert run(payload, entry, breakdown=["platform"])["rows"] == [
+        ["android", 60], ["ios", 40],
+    ]
+    assert run(payload, entry, filters={"platform": ["ios"]})["rows"] == [[40]]
+    data["_data"].pop()
+    with pytest.raises(MetricUnavailable, match="missing periods") as exc:
+        run(payload, entry)
+    assert exc.value.status == "incomplete"
+
+
+@pytest.mark.parametrize("code", [True, -1, 2, "0", None])
+def test_invalid_dictionary_codes_are_rejected_before_calculation(code):
+    _, entry, payload = fixture()
+    data = payload["_ds_report_output"]
+    data["_dict"] = {"os": ["ios", "android"]}
+    for row in data["_data"]:
+        row[1] = 0
+    data["_data"][0][1] = code
+    with pytest.raises(MetricUnavailable, match="Invalid dictionary encoding"):
+        run(payload, entry)
+
+
 def test_invalid_binding_does_not_break_ordinary_report():
     metric, _, payload = fixture()
     payload.pop("_metric_execution")

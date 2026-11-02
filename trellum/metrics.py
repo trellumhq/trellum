@@ -45,6 +45,13 @@ import os
 import re
 from dataclasses import dataclass, field
 
+from trellum.metric_registry_validation import (
+    check_aggregation,
+    check_document_budget,
+    check_execution_binding,
+    parse_metadata,
+)
+
 #: Formats the KpiCard client runtime understands. Anything else falls back to
 #: fmtCompact in the browser; the schema check flags it here instead.
 VALID_FORMATS = {"number", "currency", "chips", "percent", "ratio", "plain"}
@@ -286,38 +293,7 @@ def parse_metrics_document(raw: object) -> MetricsLoadResult:
     bytes or >200 metrics with ValueError. Registry schema problems are returned
     in problems, as with load_metrics_result. Callers bound decoding separately.
     """
-    nodes = size = 0
-
-    def check(value, depth=0):
-        nonlocal nodes, size
-        nodes += 1
-        if nodes > 5000 or depth > 12:
-            raise ValueError("Registry document exceeds complexity limits.")
-        if type(value) is dict:
-            size += 2 + max(0, len(value) - 1) * 2 + len(value) * 2
-        elif type(value) is list:
-            size += 2 + max(0, len(value) - 1) * 2
-        elif value is None or type(value) in (str, int, float, bool):
-            if type(value) is str and len(value) > 64 * 1024:
-                raise ValueError("Registry document exceeds byte limits.")
-            size += len(json.dumps(value, allow_nan=False).encode("utf-8"))
-        else:
-            raise ValueError("Registry document must contain JSON values.")
-        if size > 64 * 1024:
-            raise ValueError("Registry document exceeds byte limits.")
-        if type(value) is dict:
-            for key, item in value.items():
-                if type(key) is not str:
-                    raise ValueError("Registry document keys must be strings.")
-                check(key, depth + 1)
-                check(item, depth + 1)
-        elif type(value) is list:
-            for item in value:
-                check(item, depth + 1)
-
-    # Charge JSON bytes incrementally, avoiding a large intermediate encoding
-    # when a decoded document exceeds the budget across many small values.
-    check(raw)
+    check_document_budget(raw)
     result = MetricsLoadResult(path="metrics.yaml")
     if not isinstance(raw, dict) or not isinstance(raw.get("metrics"), list):
         result.problems.append(("fail", "metrics.yaml requires a mapping with a metrics list."))
@@ -433,47 +409,9 @@ def _parse_entry(entry: object, i: int, result: MetricsLoadResult) -> Metric | N
     column = entry.get("column")
     numerator = entry.get("numerator")
     denominator = entry.get("denominator")
-    if agg is not None:
-        if agg not in VALID_AGGS:
-            result.problems.append(
-                ("fail", f"metric '{name}' agg '{agg}' is not one of "
-                         f"{sorted(VALID_AGGS)}.")
-            )
-        elif agg == "ratio":
-            for key, val in (("numerator", numerator),
-                             ("denominator", denominator)):
-                if not val:
-                    result.problems.append(
-                        ("fail", f"metric '{name}' agg 'ratio' is missing "
-                                 f"`{key}`.")
-                    )
-        elif agg in ("sum", "abssum") and not column:
-            result.problems.append(
-                ("fail", f"metric '{name}' agg '{agg}' is missing `column`.")
-            )
+    check_aggregation(entry, name, agg, result.problems, VALID_AGGS)
 
-    label = str(entry.get("label") or "")
-    description = str(entry.get("description") or "").strip()
-    if not label:
-        result.problems.append(
-            ("warn", f"metric '{name}' has no `label`; claims will fall "
-                     f"back to the raw id as the card title.")
-        )
-    if not description:
-        result.problems.append(
-            ("warn", f"metric '{name}' has no `description`. The definition "
-                     f"is the point of this file -- state what the number "
-                     f"means, at what grain, and what it includes.")
-        )
-
-    try:
-        version = int(entry.get("version", 1))
-    except (TypeError, ValueError):
-        result.problems.append(
-            ("fail", f"metric '{name}' version {entry.get('version')!r} "
-                     f"must be an integer.")
-        )
-        version = 1
+    label, description, version = parse_metadata(entry, name, result.problems)
 
     sql = str(entry.get("sql") or "")
     dims = entry.get("dimensions") or []
@@ -484,13 +422,7 @@ def _parse_entry(entry: object, i: int, result: MetricsLoadResult) -> Metric | N
 
     dataset, time_agg, date_col = _parse_binding(entry, name, agg, result)
     execution = entry.get("execution")
-    bound = result.datasets.get(dataset)
-    if execution is not None and bound is not None:
-        if (not isinstance(execution, dict) or execution.get("grain") != bound.grain
-                or not isinstance(execution.get("dimensions"), list)
-                or any(not isinstance(d, str) for d in execution["dimensions"])
-                or set(execution["dimensions"]) != set(bound.dimensions)):
-            result.problems.append(("fail", f"metric '{name}' execution grain/dimensions differ from its dataset."))
+    check_execution_binding(execution, result.datasets.get(dataset), name, result.problems)
 
     return Metric(
         execution=execution,

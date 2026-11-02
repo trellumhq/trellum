@@ -160,6 +160,30 @@ def validate_binding(entry):
         raise MetricUnavailable("Incomplete execution contract.")
 
 
+def _decode_records(payload, entry):
+    """Decode bounded complete artifact rows into canonical column names."""
+    ds = entry["output_dataset"]
+    if ds in payload.get("_chunk_manifests", {}):
+        raise MetricUnavailable("Chunked artifacts are not complete execution inputs; query a granted source.", "incomplete")
+    data = payload.get("_ds_" + ds, {})
+    cols, raw = data.get("_cols", []), data.get("_data", [])
+    if len(raw) > MAX_ROWS or len(cols) != len(set(cols)) or not set(entry["columns"].values()) <= set(cols):
+        raise MetricUnavailable("Input rows or mapped columns unavailable within execution limits.")
+    mapping = entry["columns"]
+    records = []
+    for row in raw:
+        if len(row) != len(cols):
+            raise MetricUnavailable("Invalid output rows.")
+        values = dict(zip(cols, row))
+        for col, dictionary in data.get("_dict", {}).items():
+            code = values.get(col)
+            if type(code) is not int or not 0 <= code < len(dictionary):
+                raise MetricUnavailable("Invalid dictionary encoding.")
+            values[col] = dictionary[code]
+        records.append({key: values[value] for key, value in mapping.items()})
+    return records
+
+
 def execute_metric(payload, entry, *, start, end, filters=None, breakdown=None, limit=50, now=None):
     """Compute completely before truncating. Throws a useful, non-approved limitation."""
     bounded_json(payload)
@@ -194,25 +218,7 @@ def execute_metric(payload, entry, *, start, end, filters=None, breakdown=None, 
         raise MetricUnavailable("Distinct/non-additive dimensions cannot be rolled up; query a granted source.")
     if s["time_aggregation"] == "none" and days != 1:
         raise MetricUnavailable("This metric cannot roll up periods; query a granted source.")
-    ds = entry["output_dataset"]
-    if ds in payload.get("_chunk_manifests", {}):
-        raise MetricUnavailable("Chunked artifacts are not complete execution inputs; query a granted source.", "incomplete")
-    data = payload.get("_ds_" + ds, {})
-    cols, raw = data.get("_cols", []), data.get("_data", [])
-    if len(raw) > MAX_ROWS or len(cols) != len(set(cols)) or not set(entry["columns"].values()) <= set(cols):
-        raise MetricUnavailable("Input rows or mapped columns unavailable within execution limits.")
-    mapping = entry["columns"]
-    records = []
-    for row in raw:
-        if len(row) != len(cols):
-            raise MetricUnavailable("Invalid output rows.")
-        values = dict(zip(cols, row))
-        for col, dictionary in data.get("_dict", {}).items():
-            code = values.get(col)
-            if type(code) is not int or not 0 <= code < len(dictionary):
-                raise MetricUnavailable("Invalid dictionary encoding.")
-            values[col] = dictionary[code]
-        records.append({key: values[value] for key, value in mapping.items()})
+    records = _decode_records(payload, entry)
     expected = {(first + timedelta(days=i)).isoformat() for i in range(days)}
     selected = [r for r in records if start <= str(r[spec["date_col"]]) < end]
     if {r[spec["date_col"]] for r in selected} != expected:
