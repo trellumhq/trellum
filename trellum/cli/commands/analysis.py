@@ -54,7 +54,10 @@ def new_analysis(slug: str, format: str = "article") -> Path:
 def _cmd_analysis(args) -> int:
     try:
         if args.verb == "new":
-            print(f"Created {new_analysis(args.slug, args.format)}")
+            directory = new_analysis(args.slug, args.format)
+            print(f"Created {directory}")
+            print("This analysis and its review stay local unless you publish them deliberately.")
+            print(f"Next: python -m trellum analysis session reports/{directory.name}")
         else:
             if bool(args.capture_file) == bool(args.inbox):
                 raise ValueError("Provide one capture file or --inbox ID")

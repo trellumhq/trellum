@@ -1,12 +1,16 @@
 # Build a local analysis with an agent
 
-Use a report as evidence, then write the finding into a Git-backed article or
-presentation. The local analysis workspace keeps the source report, the
-destination analysis, and your feedback in one review session.
+Create a local analysis from reports in this project, whether or not they have
+been published, then write the finding into a Git-backed article or
+presentation. The local analysis workspace keeps source reports, the
+destination analysis, and feedback in one review session. Reviewing here does
+not publish reports or the analysis. A local report may query a configured
+remote data source; raw files need an explicit reader or report before they can
+be selected as report evidence.
 
 ## Open the analysis workspace
 
-Name the source report in your request when you know which one to use. If you
+Ask to create and review the analysis locally. Name the source report in your request when you know which one to use. If you
 do not know its name, the agent can show the available report titles and ask
 which one to open. Articles are the default; ask for a presentation when you
 want slides. Include the reporting period and any filters that matter to the
@@ -22,7 +26,7 @@ python -m trellum analysis session reports/cart-funnel-finding --source cart-fun
 
 Use `--format presentation` for slides. The destination and source can have
 different slugs. The first `--source` sets the initial report; the source
-picker lists all visible reports in the project. Omit `--source` to choose
+picker lists eligible reports in this project, including unpublished reports. Omit `--source` to choose
 one in the workspace. The
 workspace builds the analysis and serves it with the source reports. If a
 source report is missing or out of date, the workspace builds it in the

@@ -19,9 +19,10 @@
         <button id="analysis-tab" type="button" data-tab="analysis" aria-current="page" aria-controls="analysis-pane">Analysis</button>
         <button id="reports-tab" type="button" data-tab="reports" aria-controls="reports-pane">Reports</button>
       </nav>
-      <div class="fw-report-head" id="source-controls" hidden><label for="source-select">Source report</label><select id="source-select"><option value="">Loading reports…</option></select><button type="button" id="open-report" class="fw-button">Open report</button><button type="button" id="retry-build" class="fw-button" hidden>Retry build</button></div>
-      <div class="fw-view-actions"><button id="global-select" type="button" class="fw-button fwrv-btn" aria-pressed="false" disabled>Select element</button><button type="button" id="content-only" class="fw-button" disabled>Analysis only</button></div>
+      <div class="fw-report-head" id="source-controls" hidden><label for="source-select">Reports in this project</label><select id="source-select" aria-describedby="local-source-help"><option value="">Loading reports…</option></select><button type="button" id="open-report" class="fw-button">Open report</button><button type="button" id="retry-build" class="fw-button" hidden>Retry build</button></div>
+      <div class="fw-view-actions"><button id="global-select" type="button" class="fw-button" aria-pressed="false" disabled>Select element</button><button type="button" id="content-only" class="fw-button" disabled>Analysis only</button></div>
     </div>
+    <p id="local-source-help" class="fw-help fw-chrome">Use unpublished local reports. Reviewing here does not publish them or the analysis.</p>
     <p id="workspace-status" class="fw-notice fw-chrome" role="status" hidden></p>
     <section class="fw-layout">
       <section id="analysis-pane" class="fw-pane fw-analysis-pane is-active" data-pane="analysis" aria-label="Analysis">

@@ -37,6 +37,26 @@ def _json_request(url, method="GET", body=None, headers=None):
         return json.loads(response.read())
 
 
+def test_analysis_scaffold_prints_local_next_step_without_starting_review(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("trellum.project._project_root_override", None)
+    monkeypatch.setenv("FW_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.setattr("trellum.cli.commands.analysis_session._cmd_review_start",
+                        lambda _args: pytest.fail("scaffolding must not start review"))
+
+    assert main(["analysis", "new", "article-finding"]) == 0
+    article_output = capsys.readouterr().out
+    assert "local unless you publish" in article_output
+    assert "analysis session reports/article-finding" in article_output
+    assert (tmp_path / "reports/article-finding/content.md").is_file()
+    assert not (tmp_path / "output").exists()
+
+    assert main(["analysis", "new", "slide-finding", "--format", "presentation"]) == 0
+    slide_output = capsys.readouterr().out
+    assert "analysis session reports/slide-finding" in slide_output
+    assert (tmp_path / "reports/slide-finding/slides.yaml").is_file()
+    assert not (tmp_path / "output").exists()
+
+
 def test_local_analysis_capture_import_and_slide_review(tmp_path, monkeypatch):
     from playwright.sync_api import sync_playwright
 
@@ -198,6 +218,7 @@ def test_analysis_session_cli_validates_kind_and_prints_urls(tmp_path, monkeypat
     assert (8765, "POST", "/_fw/review/analysis/start", {"slug": "decision"}) in calls
     assert "http://localhost:8765/decision/index.html" in output
     assert "http://localhost:8765/" in output
+    assert "does not publish" in output
 
     (report / "report.yaml").write_text("kind: report\nslug: decision\n", encoding="utf-8")
     assert main(["analysis", "session", "reports/decision", "--no-browser"]) == 1

@@ -134,7 +134,8 @@ def test_empty_result_hints_at_the_date_span_trap(project, capsys):
 def test_describe_advertises_query_and_serve():
     text = cli._describe()
     assert "trellum query" in text
-    assert "trellum serve --background" in text
+    assert "trellum analysis session reports/<slug> --source <source-slug>" in text
+    assert "trellum review poll --report <analysis-slug>" in text
 
 
 def test_data_footer_advertises_query(project, capsys):
@@ -143,11 +144,11 @@ def test_data_footer_advertises_query(project, capsys):
     assert "trellum query" in capsys.readouterr().out
 
 
-def test_agents_md_states_the_closing_move():
-    """The done-checklist requires handing over the link -- the rule that
-    closes the measured Opus-does-it / Sonnet-doesn't gap."""
+def test_agents_md_routes_human_review_through_review_loop():
+    """Human review keeps its feedback poll active instead of ending at serve."""
     from trellum.agent import agentdoc
     body = agentdoc.sections()["validation"].body
-    assert "serve --background" in body
+    assert "keep its feedback poll active" in body
+    assert "combined local workspace" in body
     queries = agentdoc.sections()["queries"].body
     assert "trellum query" in queries

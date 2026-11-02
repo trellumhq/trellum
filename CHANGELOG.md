@@ -9,6 +9,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- Clarify unpublished local analysis sources, workspace review, and the CLI next steps.
+
 - Showcase reports, written analyses, and presentations in the README, with
   desktop and mobile screenshots side by side and direct links to synthetic demos.
 

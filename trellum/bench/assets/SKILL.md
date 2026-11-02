@@ -72,3 +72,28 @@ failure and its cause.
 preview server and never returns.
 
 A report is not finished until the validator reports no FAILs.
+
+## Local analysis from reports
+
+When asked to create an analysis for a person to review, eligible reports under
+`reports/` are sources even if they have not been published. A source report
+may query a configured remote data source; raw files need an explicit reader or
+local report before they can be used as report evidence. Create an article by
+default (or a presentation when requested), then start the combined local
+workspace:
+
+```
+{py} -m trellum analysis new <analysis-slug>
+{py} -m trellum analysis session reports/<analysis-slug> --source <source-slug>
+{py} -m trellum review poll --report <analysis-slug>
+```
+
+The session builds missing or stale sources automatically. The workspace's
+Reports page selects source charts or sections as evidence for the analysis;
+the Analysis page selects authored content to edit. Use one listener scoped to
+the destination analysis for all feedback. Import captures, update the article
+or slides, rebuild changed reports and the analysis, reply, then poll again
+until the user ends review. Keep the feedback loop active instead of returning
+a final response after starting the workspace. This is local review: it does
+not publish reports or the analysis, and does not push the repository. Preserve
+explicit build-only, CI, and plain-preview requests.

@@ -55,7 +55,7 @@ The public [demo gallery](https://trellum.dev/demo/) contains interactive
 reports built from synthetic data. The demo project also includes a written
 [Northwind checkout analysis](https://github.com/trellumhq/trellum/blob/main/trellum/demo/reports/checkout-findings/content.md)
 with fixed captured evidence. For the article format and Git workflow, see
-[Publish an analysis](https://trellum.dev/docs/latest/workflow/published-analyses/).
+[Local analysis workflow](../docs/customer/workflow/local-analysis.md).
 For scheduled builds, team access, shared metrics, experiments, annotations,
 published analyses and optional AI assistance, explore the
 [interactive portal tour](https://trellum.dev/tour/) or
@@ -1402,8 +1402,8 @@ or a remote warehouse. SQLite sources are opened read-only.
 
 Serve every built report under `output/` (the same gallery index the
 published site uses). `--background` starts the server detached, prints the
-URLs, and returns immediately — the intended last action of a working
-session, so the user always ends up with a clickable link. Idempotent:
+URLs, and returns immediately. Use it for an explicitly requested plain preview;
+for human feedback, use `trellum review start` or the combined analysis workspace. Idempotent:
 re-running reuses a server already up for this output directory.
 
 | Argument | Description |
@@ -1743,15 +1743,17 @@ Subclass `ReportHeader` and pass to `ctx.set_header_component()`.
 <!-- topic: analysis -->
 ## Analysis articles
 
-Publish a finding as a readable article with fixed evidence. Analyses use the
-same Git repository, build command, output format, and portal access controls
-as reports, and appear under **Analyses** in the portal.
+Create a finding as a readable article with fixed evidence. Eligible local
+reports under `reports/` are analysis sources even when unpublished. A report
+can still query a configured remote data source. Reviewing the combined local
+workspace does not publish either source reports or the analysis; publishing
+or pushing is a separate deliberate action. Analyses use the same Git
+repository, build command, output format, and portal access controls as reports.
 
 ```bash
 trellum analysis new september-conversion
-trellum analysis import reports/september-conversion capture.trellum-capture.json --name conversion
-python -m trellum.run reports/september-conversion --no-serve
-trellum review start reports/september-conversion
+python -m trellum analysis session reports/september-conversion --source <source-slug>
+python -m trellum review poll --report september-conversion
 ```
 
 Choose `article` (the default) or `presentation` when scaffolding:
@@ -1806,45 +1808,47 @@ files; the JSON supplies the figure's source caption. An existing filename is
 never silently overwritten. Clicking an article image opens the full image.
 
 Analysis builds need no Python generator, warehouse credentials, data-source
-declarations, or data-refresh schedule. The evidence remains fixed as source
+declarations, or data-refresh schedule. Raw files need an explicit reader or
+local report before they can be selected as report evidence. The evidence remains fixed as source
 reports update or disappear. Revise the Markdown or import a new capture under
-a new name and publish a Git change to update the analysis. Rebuilding a broken
+a new name, then rebuild the analysis. Rebuilding a broken
 article retains its last successful output. Existing output retention still
 applies; committed evidence can recreate the article.
 
 For a local, agent-assisted analysis workflow, create an article or
 presentation with `python -m trellum analysis new <slug> --format article|presentation`
-(`article` is the default), then start `python -m trellum analysis session
-reports/<slug>`. The session builds and serves the analysis, activates its
-local review inbox, and prints preview and gallery URLs. From a report, choose
-**Export > Capture for analysis > Send to agent** to send a filtered PNG capture
-and optional note. The agent polls with `python -m trellum review poll --report
-<analysis-slug>`; the poll returns a capture ID and annotation feedback. Import
-it with `python -m trellum analysis import reports/<slug> --inbox <capture-id>
-[--name <safe-name>]`, edit `content.md` or ordered `slides.yaml`, rebuild with
-`python -m trellum.run reports/<slug> --no-serve`, then reply by polling again
-with `python -m trellum review poll --report <slug> --session <session> --reply "what changed"`.
+(`article` is the default), then start the combined workspace with
+`python -m trellum analysis session reports/<slug> --source <source-slug>`.
+Omit `--source` to choose from eligible reports in this project. Build the chosen
+source with `python -m trellum.run reports/<source-slug> --no-serve` before
+handing over the workspace. If a source is missing or stale in the workspace,
+choose **Build report** or **Rebuild report**; selection alone does not run it.
+The workspace serves the source reports and analysis together. The Reports tab remains a report picker; select a chart
+or section and queue it as evidence for the analysis. The Analysis tab selects
+content to edit. One listener handles both kinds of feedback:
+`python -m trellum review poll --report <analysis-slug>`.
+Import captures with `python -m trellum analysis import reports/<slug> --inbox
+<capture-id> [--name <safe-name>]`, edit `content.md` or ordered `slides.yaml`,
+rebuild with `python -m trellum.run reports/<slug> --no-serve`, then reply using
+`python -m trellum review poll --report <slug> --session <session> --reply "what changed"`.
 Use the session returned with the polled batch; a reply without a session or
-feedback ID is chat text only and does not complete feedback.
+feedback ID is chat text only and does not complete feedback. Poll again until
+the user ends review. Keep that one scoped
+listener active throughout the review; do not launch separate source listeners.
 Pending captures stay outside the repository and output tree under
 `~/.trellum/analysis-inbox/<project-id>`; list them after restart with
 `python -m trellum analysis inbox reports/<slug>` and explicitly discard one
 with `python -m trellum analysis discard reports/<slug> <capture-id>`. A failed
-import leaves its capture pending. With no active local session, capture JSON
-downloads and the existing file-based import still works. See the
-[local analysis workflow](../docs/customer/workflow/local-analysis.md) for the
-complete filter, capture, annotation, and rebuild loop.
+import leaves its capture pending. Without an active local session, capture
+JSON downloads and the file-based import still works. See the
+[local analysis workflow](../docs/customer/workflow/local-analysis.md) for
+filters, captures, annotations, and rebuilds.
 
 Resolve the source report from the user's request; if it is missing or
-ambiguous, offer the available report titles and ask which to open. Build the
-source separately with `--no-serve` and open both source and destination on
-the same project server. Captures are routed to the analysis, but ordinary
-source-page review selections remain tagged with the source report. Keep
-scoped listeners for both pages, acknowledge on the sending page, and collect
-each poll result before replying and polling again. Keep the agent turn
-active while reviewing; a background process followed by a final answer does
-not consume its feedback. Read `python -m trellum guide review` for the full
-source/destination and active polling contract.
+ambiguous, show available report titles and ask which to use. Preserve explicit
+build-only, CI, or plain-preview requests; for a human analysis review, use the
+combined workspace and keep polling until the user ends review. Read
+`python -m trellum guide review` for the general review contract.
 
 In the portal, the analysis's own permissions govern its article and evidence.
 New analyses inherit the studio's analysis audience default. To request a

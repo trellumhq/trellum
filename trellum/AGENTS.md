@@ -49,17 +49,17 @@ useful.
 | Goal | Where it goes |
 |---|---|
 | Recurring, interactive report — served standalone, on a schedule, or embedded in another application | `reports/{slug}/` (the framework) |
-| Publish a written finding with fixed evidence | `trellum analysis new <slug>`; Markdown in `reports/{slug}/content.md`, `kind: analysis` in `report.yaml`. See `trellum guide analysis` |
+| Create a written finding from report evidence | `trellum analysis new <slug>`; Markdown in `reports/{slug}/content.md`, `kind: analysis` in `report.yaml`. Local sources and analysis can remain unpublished. For human review, see `trellum guide analysis` |
 | A number or an answer — "what was X yesterday", a one-off check, quick exploration | `trellum query "SELECT ..."` or `from trellum import query` in Python, against the configured source by name. No report. See `trellum guide answer` |
 | Unsure | Answer first. Promote to a report when it needs a schedule, more than one reader, a consequential number that should be reviewed, or the same question comes back a third time |
 
 Scaffold a new report: `python3 -m trellum.new my-report --studio my-studio --category Revenue`. Build it: `python3 -m trellum.run reports/my-report --no-serve`.
 
-**Always pass `--no-serve` unless you have been asked to open the report in a
-browser.** Without it the command starts a preview server on :8050 and never
-exits — the build itself finishes in under a second, but the process stays in
-the foreground until it is killed. Build first, then serve as a separate step
-if a human is going to look at it.
+For a human who wants to inspect an analysis, use the combined local analysis
+workspace and keep its destination-scoped review poll active; see `trellum
+guide analysis`. Preserve explicit build-only, CI, and plain-preview requests.
+For reports, use `--no-serve` for build-only work. A plain preview is available
+when explicitly requested; the command starts a server and stays running.
 
 **Read files with your file-reading tool, not with `cat`, `ls` or `grep` in a
 shell.** Every shell command starts a process; your native read, glob and search
@@ -1035,7 +1035,14 @@ serve` server — review endpoints live under `/_fw/review/`, loopback-only,
 and the on-disk HTML is never modified (the overlay is injected into the
 served copy only).
 
-### Building an analysis from a report
+### Building an analysis from local report evidence
+
+Analysis is local-first. Eligible report manifests under this project's
+`reports/` directory are available as sources whether or not they have been
+published. A report may query a remote configured data source; that does not
+publish the report or analysis. Raw files need an explicit reader or report
+before they can serve as report evidence. Creating and reviewing an analysis
+does not publish or push anything.
 
 When asked to make an analysis from a source report, keep the source report
 slug, destination analysis slug, requested format, and reporting period and
@@ -1160,7 +1167,7 @@ A report task is **not done** until you have:
 2. Surfaced every **FAIL** and **WARN** to the user with check ID, affected component/section, and a concrete fix.
 3. **Fixed every FAIL.** WARNs should be fixed unless intentionally accepted (then suppress in `report.yaml` under `validation.suppress` with a one-line reason for why).
 4. If the report has zero FAILs and zero WARNs, said so explicitly.
-5. **Handed the user a clickable link.** The last action before reporting done is `python -m trellum serve --background` — it starts (or reuses) a detached server, prints the URLs, and returns immediately — and your final message to the user must contain the printed report URL. A finished build the user cannot click is not finished. (Keep using `--no-serve` for the build/iterate loop itself; the link is the closing move, not a per-build cost.)
+5. If a human is reviewing a report, use the live review workflow and keep its feedback poll active. For an analysis, use the combined local workspace and destination-scoped poll described above. Preserve explicit build-only, CI, and plain-preview requests.
 
 Severity:
 
