@@ -788,6 +788,13 @@
     window.addEventListener('keydown', function (event) {
         if (event.key === 'Escape' && nativeSnapshot) { event.preventDefault(); cancel(); }
     });
+    // Keep the locked outgoing document at its captured position, including
+    // browser scroll restoration before the incoming document has committed.
+    window.addEventListener('scroll', function () {
+        if (nativeSnapshot && (scrollX !== nativeSnapshot.position[0] || scrollY !== nativeSnapshot.position[1])) {
+            window.scrollTo(nativeSnapshot.position[0], nativeSnapshot.position[1]);
+        }
+    }, { passive: true });
     window.addEventListener('pageshow', function (event) {
         if (event.persisted || nativeSnapshot) clear();
         var saved = history.state && history.state.trellumNativePosition;

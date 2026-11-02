@@ -208,6 +208,9 @@ def test_rendered_navigation_delay_guard_history_and_native_feedback(
         page.expose_function('nativeSample', lambda sample: samples.append(sample))
         def native_reports():
             page.evaluate("""Array.from(document.querySelectorAll('.tl-console-nav-link')).find(n=>n.textContent.includes('Reports')).click();
+                // A provisional document navigation can reset the old viewport.
+                // The locked outgoing page must preserve its captured position.
+                scrollTo(0,0);
                 setTimeout(function () {
                     var r=document.querySelector('[data-console-native-pending] button').getBoundingClientRect();
                     window.nativeSample({x:r.x+r.width/2,y:r.y+r.height/2, yScroll:scrollY,
