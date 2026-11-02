@@ -40,7 +40,7 @@ def rect(draw, bounds, color, radius=0):
 
 
 def build_comparison(data):
-    image, draw = canvas(1040, 660)
+    image, draw = canvas(1040, 710)
     rect(draw, (32, 32, 56, 56), PALETTE.bg_header, 5)
     text(draw, (70, 25), "Mobile", 30, bold=True)
     rect(draw, (270, 32, 294, 56), PALETTE.text_secondary, 5)
@@ -62,6 +62,8 @@ def build_comparison(data):
             text(draw, (1008, bar_y - 5), f"{value:.1%}", 30, color, bold=True, anchor="ra")
     text(draw, (32, 614), "0%", 24, PALETTE.text_muted)
     text(draw, (894, 614), "100%", 24, PALETTE.text_muted, anchor="ra")
+    text(draw, (32, 667), "September 2026 · All channels · Synthetic snapshot", 24,
+         PALETTE.text_secondary)
     image.save(ROOT / "evidence" / "stage-comparison.png", optimize=True)
 
 
