@@ -58,6 +58,47 @@ Two ways to provide access, and you do not need both:
 Configured sources are usually enough — see
 [Ad-hoc analysis](/docs/latest/workflow/ad-hoc-analysis/).
 
+## Point agents at Trellum, check it, take it out
+
+`trellum init` does this for a new project; for an existing one run it
+yourself, from the repository root:
+
+```bash
+trellum setup project     # add the guidance and the hooks
+trellum doctor            # check that an agent session will actually see them
+trellum setup project --remove
+```
+
+Setup tells you what it wrote and the exact `doctor` and `--remove` commands
+for this project:
+
+- **Guidance** in `CLAUDE.md` and `AGENTS.md`: a file that does not exist gets
+  a short pointer; a file you already have keeps every word and gains a
+  fenced `<!-- trellum:start -->` … `<!-- trellum:end -->` block at the end.
+- **Claude Code hooks** in `.claude/settings.json`: a `SessionStart` hook and a
+  `PostToolUse` hook, merged next to any hooks you already have.
+
+Running setup again refreshes these in place; it never adds a second copy.
+
+`--remove` takes back only that, and only what it can prove setup wrote:
+
+- the fenced block, or a whole pointer file that is still exactly what setup
+  created. A pointer you have edited is kept and reported, because it now also
+  holds your words;
+- hook entries identical to the two setup writes. Your own hooks, including
+  ones that merely run `-m trellum`, stay;
+- the `trellum` server entry that `setup portal` wrote to `.mcp.json` and
+  `.cursor/mcp.json`. Other servers, and a `trellum` entry setup did not
+  write, stay.
+
+A JSON file left with nothing in it is deleted, along with its folder if that
+is now empty. Files that cannot be parsed are not touched. `.env` is never
+opened: if it holds `TRELLUM_API_KEY`, the command says so, and you delete the
+line and revoke the key yourself. The command exits non-zero when it leaves
+Trellum content behind. Your files come back as they were, line endings and
+trailing newlines included; JSON files are re-indented with two spaces, and
+a file that had no final newline gets one.
+
 ## Connect it to the portal
 
 The portal is also an MCP server, so the agent that writes reports can read

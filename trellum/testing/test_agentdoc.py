@@ -659,9 +659,11 @@ def test_remove_project_files_drops_our_server_entry_only(tmp_path):
     (tmp_path / ".mcp.json").write_text(json.dumps(conf), encoding="utf-8")
 
     results = dict(agentsetup.remove_project_files(tmp_path))
-    assert results[".mcp.json"] == "removed" and results[".cursor/mcp.json"] == "removed"
+    assert results[".mcp.json"] == "removed"
     assert _read_json(tmp_path / ".mcp.json")["mcpServers"] == {"docs": {"command": "x"}}
-    assert "trellum" not in _read_json(tmp_path / ".cursor" / "mcp.json")["mcpServers"]
+    # Nothing but our entry was in this one, so the file setup created goes too.
+    assert results[".cursor/mcp.json"] == "deleted"
+    assert not (tmp_path / ".cursor").exists()
     assert (tmp_path / "AGENTS.md").read_text(encoding="utf-8") == "# house\n"
 
 

@@ -10,6 +10,12 @@ from pathlib import Path
 
 def _cmd_setup(args: argparse.Namespace) -> int:
     from trellum.agent import agentsetup
+    if args.remove and args.what != "project":
+        # Before anything is written: `setup portal --remove` must not go on to
+        # connect the portal, and there is no machine-wide removal.
+        print(f"--remove applies to `setup project` only, not `setup {args.what}`.",
+              file=sys.stderr)
+        return 2
     if args.what == "reporting":
         from trellum.project import get_project_root
         from trellum.scaffold.reporting import (
@@ -38,10 +44,13 @@ def _cmd_setup(args: argparse.Namespace) -> int:
         return 0
     if args.what == "portal":
         return _setup_portal(args)
+    if args.what == "project" and args.remove:
+        return _remove_project(Path(args.dest or ".").resolve())
     if args.what == "project":
         root = Path(args.dest or ".").resolve()
         print(f"Writing agent pointers into {root}\n")
-        for name, status in agentsetup.write_project_files(root):
+        rows = agentsetup.write_project_files(root)
+        for name, status in rows:
             print(f"  {status:<10} {name}")
 
         # Writing a hook without running it is how a broken one ends up firing
@@ -55,7 +64,8 @@ def _cmd_setup(args: argparse.Namespace) -> int:
             print("  Sessions will show an error banner. Remove the SessionStart "
                   "entry from\n  .claude/settings.json, or re-run this from the "
                   "interpreter that has the\n  framework installed.", file=sys.stderr)
-        print("\nThese travel with the repository. Commit them.")
+        print("\nThese travel with the repository. Commit them.\n")
+        print("\n".join(agentsetup.setup_summary(root, rows)))
         return 0 if ok else 1
 
     print("Installing session hooks (machine-wide)\n")
@@ -66,6 +76,32 @@ def _cmd_setup(args: argparse.Namespace) -> int:
     print("Note these are invisible from any repository -- `trellum setup "
           "project` is the version that travels with your code.")
     return 0 if all(s != "unreadable" for _, s in rows) else 1
+
+def _remove_project(root: Path) -> int:
+    """Undo `setup project` / `setup portal`: only Trellum's own parts."""
+    from trellum.agent import agentremoval, agentsetup
+
+    print(f"Removing Trellum's agent integration from {root}\n")
+    rows = agentremoval.remove(root)
+    for row in rows:
+        print(f"  {row.status:<10} {row.name}")
+    for row in rows:
+        if row.note:
+            print(f"\n  {row.name}: {row.note}", file=sys.stderr)
+
+    if agentsetup.env_value(root / ".env", agentsetup.MCP_ENV_VAR):
+        print(f"\n  .env still holds {agentsetup.MCP_ENV_VAR}; setup never edits it. "
+              "Delete the line, and revoke the key in the portal if it is no longer used.")
+    if not any(r.status in ("removed", "deleted") for r in rows) and not agentremoval.incomplete(rows):
+        print("\nNothing from Trellum to remove.")
+    elif agentremoval.incomplete(rows):
+        print("\nSome Trellum content is still in place (see above). Everything else "
+              "was left exactly as it was.", file=sys.stderr)
+    else:
+        print("\nRemoved. Everything else was left exactly as it was. "
+              f"`{agentsetup.command_for(root, 'setup project')}` sets it up again.")
+    return 1 if agentremoval.incomplete(rows) else 0
+
 
 def _setup_portal(args: argparse.Namespace) -> int:
     """Wire the repository to its studio: our server entry in both MCP files,
