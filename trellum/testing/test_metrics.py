@@ -819,7 +819,11 @@ class TestMetricsReportShape:
 
 class TestBoundedDocumentParser:
     def test_public_parser_matches_existing_definition_hash(self, tmp_path):
-        from trellum.metrics import parse_metrics_document, load_metrics_result, invalidate_metrics_cache
+        from trellum.metrics import (
+            invalidate_metrics_cache,
+            load_metrics_result,
+            parse_metrics_document,
+        )
         document = {"metrics": [{"name": "revenue", "agg": "sum", "column": "amount"}]}
         (tmp_path / "metrics.yaml").write_text(json.dumps(document))
         invalidate_metrics_cache()
