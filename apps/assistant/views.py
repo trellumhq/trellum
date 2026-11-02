@@ -506,8 +506,8 @@ def session_message(request, org_slug, studio_slug, session_id):  # noqa: ARG001
             if resumed_evidence:
                 check_history(session, actor=user, studio=request.studio)
                 yield _frame({"type": "source_evidence", "evidence": resumed_evidence})
-            source_text = []
-            source_text_bytes = 0
+            answer_text = []
+            answer_bytes = 0
             from datetime import datetime
             question_clock = session.state.get("_question_clock")
             system_blocks = build_system_prompt(toolbox, now=datetime.fromisoformat(question_clock) if question_clock else None)
@@ -521,21 +521,24 @@ def session_message(request, org_slug, studio_slug, session_id):  # noqa: ARG001
                 remaining=remaining,
                 deadline_s=deadline_s,
             ):
-                # Hold source-derived prose until the model response finishes,
-                # then recheck grants before delivering it. Database checks per
-                # token would make streaming cost grow with response length.
-                if event.get("type") == "text_delta" and (session.state.get("_source_policies") or session.state.get("_metric_reports")):
-                    source_text_bytes += len(json.dumps(event).encode())
-                    if source_text_bytes > 1048576:
-                        raise ValueError("Source explanation exceeds the delivery bound.")
-                    source_text.append(event)
+                # Publish a complete server-rendered answer only at done.
+                # Usage, source pauses and errors cannot flush partial text.
+                if event.get("type") == "text_delta":
+                    answer_bytes += len(event.get("text", "").encode())
+                    if answer_bytes > 65536:
+                        raise ValueError("Answer exceeds the delivery bound.")
+                    answer_text.append(event)
                     continue
                 if event.get("type") in ("usage", "done", "tool_use", "tool_result", "source_wait"):
                     check_history(session, actor=user, studio=request.studio)
-                    for buffered in source_text:
+                if event.get("type") == "done":
+                    for buffered in answer_text:
                         yield _frame(buffered)
-                    source_text.clear()
-                    source_text_bytes = 0
+                    answer_text.clear()
+                    answer_bytes = 0
+                elif event.get("type") in ("error", "source_wait", "tool_use", "tool_result"):
+                    answer_text.clear()
+                    answer_bytes = 0
                 if event.get("type") == "keepalive":
                     # An SSE comment, not an event: keeps the connection warm
                     # through a long tool call without the client parsing it.

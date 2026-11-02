@@ -347,7 +347,7 @@ def _export_conversation(session, actor):
                 withheld = True
     return {"title": "Source conversation (content withheld)" if withheld else session.title,
             "created_at": _dt(session.created_at), "updated_at": _dt(session.updated_at),
-            "transcript": [] if withheld else session.transcript, "usage": session.usage,
+            "transcript": [] if withheld else session.visible_transcript, "usage": session.usage,
             **({"content_withheld": True} if withheld else {})}
 
 

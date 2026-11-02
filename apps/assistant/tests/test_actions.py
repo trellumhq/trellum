@@ -391,7 +391,7 @@ class TestApprove:
         proposal = ProposedAction.objects.get()
         approve(client, prefix, proposal, user="u", password="p")
 
-        calls = fake_llm(FakeResponse([TextBlock("Connected. Anything else?")]))
+        calls = fake_llm(FakeResponse([ToolUseBlock("finish", "submit_answer", {"mode": "action", "proposal_id": proposal.pk})], "tool_use"))
         events = frames(post_message(client, prefix, session, text=f"Action #{proposal.pk} approved: connected."))
         assert [n for n, _ in events][-2:] == ["done", "turn_end"]
         # Exactly one tool_result reaches the model -- the proposal's own,

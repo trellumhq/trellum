@@ -1226,6 +1226,9 @@ class AssistantToolbox:
         }
 
         if df.empty:
+            self.provenance.update(kind="report_query", status="answered", columns=list(df.columns),
+                                   rows=[], truncated=False)
+            self._pin_answer_report(slug)
             # Self-healing hint: tell the model what WOULD have matched so it
             # can correct the filter in one retry instead of giving up.
             hints = []
@@ -1253,7 +1256,9 @@ class AssistantToolbox:
                 return f"Error: metric column '{m.get('column')}' not in dataset."
 
         if metrics:
-            agg_spec = {m["column"]: m.get("agg", "sum") for m in metrics}
+            # All-NULL operands are missing evidence, not a measured zero.
+            agg_spec = {m["column"]: ((lambda values: values.sum(min_count=1))
+                                     if m.get("agg", "sum") == "sum" else m.get("agg")) for m in metrics}
             if group_by:
                 result = df.groupby(group_by, observed=True).agg(agg_spec).reset_index()
             else:
@@ -1270,13 +1275,35 @@ class AssistantToolbox:
         limit = min(int(args.get("limit") or _DATA_DISPLAY_CAP), 200)
         table = format_df_markdown(result, limit)
         self.provenance["rows_returned"] = min(len(result), limit)
+        preview = result.head(limit)
+        # pandas.to_json rounds floats by default. Preserve scalar values and
+        # normalize missing cells explicitly before the canonical JSON encoding.
+        cells = {"columns": list(preview.columns),
+                 "data": preview.astype(object).where(preview.notna(), None).values.tolist()}
+        self.provenance.update(kind="report_query", status="answered", columns=cells["columns"],
+                               rows=cells["data"], truncated=len(result) > limit)
+        from .answer_review import encoded
+        if len(encoded(self.provenance).encode()) > 65536:
+            self.provenance = None
+            return "Error: Structured report evidence exceeds the result byte limit; narrow the query."
+        self._pin_answer_report(slug)
         header = (
             f"Dataset '{dataset_id}' of report '{slug}' (built {built_at or 'unknown'}) — "
             f"{total_rows:,} rows total, {len(df):,} after filters, {len(result):,} result row(s)."
         )
         if note:
             header += "\n" + note
-        return header + "\n\n" + table + f"\n\nLink (with these filters applied): {link}"
+        return (header + "\n\n" + table + f"\n\nLink (with these filters applied): {link}"
+                + "\nStructured result cells: " + encoded({"columns": cells["columns"], "rows": cells["data"]}))
+
+    def _pin_answer_report(self, slug):
+        if self.session is not None:
+            reports = set(self.session.state.get("_metric_reports", []))
+            reports.add(slug)
+            if len(reports) > 100:
+                self.provenance = None
+                raise ValueError("Start a new conversation; report evidence reached its authorization limit.")
+            self.session.state["_metric_reports"] = sorted(reports)
 
     # read_doc ------------------------------------------------------------
     def _resolve_read_path(self, path: str) -> Path | None:
