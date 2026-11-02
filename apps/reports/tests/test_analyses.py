@@ -113,13 +113,15 @@ def test_kind_defaults_to_report(studio_tree):
 
 
 def test_sync_kind_transition_keeps_identity_and_grant(
-    studio_tree, analysis, article_reader, monkeypatch,
+    studio_tree, analysis, article_reader, write_report, monkeypatch,
 ):
     # Defensive sync must clear a stale cron even if the scanner supplies one.
     import trellum.runner
+    directory = write_report(analysis.slug)
+    (directory / "content.md").write_text("# Edited analysis")
     config = {"kind": "analysis", "name": "Edited", "schedule": {"cron": "0 7 * * *"}}
     monkeypatch.setattr(trellum.runner, "scan_report_configs", lambda *a, **kw: [
-        {"slug": analysis.slug, "config": config},
+        {"dir": str(directory), "slug": analysis.slug, "config": config},
     ])
     studio_tree.reports_dir.mkdir(exist_ok=True)
     sync_studio_registry(studio_tree)

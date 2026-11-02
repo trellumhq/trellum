@@ -15,7 +15,7 @@ from django.views.decorators.http import require_GET
 from apps.core import roles
 from apps.core.limits import INLINE_LIMIT
 from apps.core.permissions import require_studio_role
-from apps.core.report_access import require_full_studio_visibility
+from apps.core.report_access import regular_reports, require_full_studio_visibility
 from .models import MetricCatalogState, MetricDefinition, Report, ReportMetricClaim, ReportMetricPreview
 
 
@@ -51,8 +51,8 @@ def _revisions(studio):
 
 
 def _reports(studio):
-    return Report.objects.filter(studio=studio, present_in_scan=True, kind=Report.KIND_REPORT,
-                                 data_expired_at__isnull=True)
+    return regular_reports(Report.objects.filter(studio=studio, present_in_scan=True, kind=Report.KIND_REPORT,
+                                 data_expired_at__isnull=True))
 
 
 def _claims(studio):

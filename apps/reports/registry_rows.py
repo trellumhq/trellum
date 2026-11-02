@@ -88,7 +88,7 @@ SUMMARY_FIELDS = tuple(S + name for name in (
     "attempt_error", "has_output", "html_entry", "has_live_queries",
 ))
 ROW_FIELDS = (
-    "id", "slug", "kind", "display_name", "display_category", "description", "tags", "schedule_cron",
+    "id", "slug", "kind", "catalog_favorite", "archived_in_scan", "expires_at", "display_name", "display_category", "description", "tags", "schedule_cron",
     "schedule_timezone", "priority", "disabled", "refresh_suspended_at", "last_built_at", "data_expired_at",
     "studio__slug", "metrics_report", "references", "referenced_count", "blocked_preview", "blocked_count",
     "runtime_projection", *SUMMARY_FIELDS,
@@ -122,6 +122,8 @@ class ReferenceNames(Func):
 
 def annotate_rows(relation):
     """The columns one page of registry rows reads, all computed in SQL."""
+    if "catalog_favorite" not in relation.query.annotations:
+        relation = relation.annotate(catalog_favorite=Value(False, output_field=BooleanField()))
     runtime = S + "runtime"
     projection = JSONObject(
         validation=KeyTransform("summary", KeyTransform("validation", runtime)),
@@ -355,6 +357,11 @@ def serialize_row(raw, *, now, latest, done, sources, views_30d, last_viewed, li
     return {
         "id": raw["id"], "kind": raw["kind"], "slug": raw["slug"], "name": raw["display_name"], "description": raw["description"] or "",
         "category": raw["display_category"], "studio": raw["studio__slug"], "tags": raw["tags"] if isinstance(raw["tags"], list) else [],
+        "favorite": raw["catalog_favorite"],
+        "hidden": bool(raw["archived_in_scan"]),
+        "expired": raw["expires_at"] is not None and raw["expires_at"] <= now,
+        "expires_at": _iso(raw["expires_at"]),
+        "data_expired_at": _iso(raw["data_expired_at"]),
         "schedule": raw["schedule_cron"], "schedule_timezone": raw["schedule_timezone"], "disabled": raw["disabled"],
         "last_run": _iso(last_run), "last_status": status["last_status"], "build_status": status["build_status"],
         "last_error": status["error"] or None, "blocked_by": blocked_by, "waiting": bool(blocked_by),

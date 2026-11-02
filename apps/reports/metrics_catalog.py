@@ -27,7 +27,7 @@ from django.views.decorators.http import require_GET
 
 from apps.core import roles
 from apps.core.permissions import require_studio_role
-from apps.core.report_access import require_full_studio_visibility
+from apps.core.report_access import regular_reports, require_full_studio_visibility
 from apps.reports.models import MetricDefinition, Report
 
 logger = logging.getLogger(__name__)
@@ -316,7 +316,7 @@ def studio_metrics_overview(studio) -> dict:
         Max("last_scanned_at")
     )["last_scanned_at__max"]
 
-    reports = list(Report.objects.filter(studio=studio, present_in_scan=True, kind=Report.KIND_REPORT))
+    reports = list(regular_reports(Report.objects.filter(studio=studio, present_in_scan=True, kind=Report.KIND_REPORT)))
     claims_by_id, built_slugs, storage_down = _claims_by_metric_id(studio, reports)
 
     # The generated metrics report is where a metric's own chart comes from:

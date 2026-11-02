@@ -11,6 +11,7 @@ import json
 import logging
 import os
 
+from django.db import models
 from django.core.serializers.json import DjangoJSONEncoder
 from django.core.exceptions import ValidationError
 from django.utils import timezone as dj_tz
@@ -58,7 +59,8 @@ def _apply_report_cap(studio, entries: list) -> tuple[int, int] | None:
     from apps.reports.models import Report
 
     elsewhere = (
-        Report.objects.filter(studio__org=studio.org, present_in_scan=True)
+        Report.objects.filter(studio__org=studio.org).filter(
+            models.Q(present_in_scan=True) | models.Q(archived_in_scan=True))
         .exclude(studio=studio)
         .count()
     )
@@ -67,7 +69,8 @@ def _apply_report_cap(studio, entries: list) -> tuple[int, int] | None:
         return None
 
     known = set(
-        Report.objects.filter(studio=studio, present_in_scan=True).values_list(
+        Report.objects.filter(studio=studio).filter(
+            models.Q(present_in_scan=True) | models.Q(archived_in_scan=True)).values_list(
             "slug", flat=True
         )
     )
@@ -123,7 +126,15 @@ def sync_studio_registry(studio) -> int:
     # A repository sync may have retained this instance while settings changed.
     studio.refresh_from_db(fields=["default_report_audience", "default_analysis_audience"])
     reports_dir = str(studio.reports_dir)
-    entries = scan_report_configs(reports_dir, include_hidden=False) if os.path.isdir(reports_dir) else []
+    entries = scan_report_configs(reports_dir, include_hidden=True, include_disabled=True) if os.path.isdir(reports_dir) else []
+    # include_hidden also includes incomplete framework drafts. Keep the same
+    # publishability requirement as the ordinary scan, while indexing hidden
+    # items for administrator discovery. Repository hidden state is authoritative.
+    entries = [entry for entry in entries if os.path.isfile(os.path.join(
+        entry["dir"],
+        ("slides.yaml" if entry["config"].get("format") == "presentation" else "content.md")
+        if entry["config"].get("kind") == Report.KIND_ANALYSIS else "generator.py",
+    ))]
 
     rejected = 0
     rejected_slugs: set[str] = set()
@@ -180,7 +191,8 @@ def sync_studio_registry(studio) -> int:
             "disabled": bool(config.get("disabled", False)),
             "priority": _priority(config),
             "config": config,
-            "present_in_scan": True,
+            "present_in_scan": not bool(config.get("hidden")),
+            "archived_in_scan": bool(config.get("hidden")),
             "last_scanned_at": now,
         }
         from django.db import transaction
@@ -203,9 +215,10 @@ def sync_studio_registry(studio) -> int:
     from .source_summary import invalidate_reports
 
     with transaction.atomic():
-        missing = Report.objects.filter(studio=studio, present_in_scan=True).exclude(slug__in=seen)
+        missing = Report.objects.filter(studio=studio).filter(
+            models.Q(present_in_scan=True) | models.Q(archived_in_scan=True)).exclude(slug__in=seen)
         missing_ids = list(missing.values_list("pk", flat=True))
-        missing.update(present_in_scan=False, last_scanned_at=now)
+        missing.update(present_in_scan=False, archived_in_scan=False, last_scanned_at=now)
         invalidate_reports(missing_ids, "removed")
     try:
         sync_studio_metrics(studio)

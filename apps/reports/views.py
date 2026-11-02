@@ -50,6 +50,9 @@ from apps.core.report_access import (
     bulk_can_view_report,
     can_view_report,
     raw_scope_reports,
+    regular_reports,
+    registered_reports,
+    report_administrator,
     require_full_studio_visibility,
     visible_reports,
 )
@@ -92,21 +95,28 @@ _SERVER_START = time.time()
 def _get_report(request, slug: str) -> Report:
     report = raw_scope_reports(
         request.user,
-        Report.objects.filter(studio=request.studio, slug=slug, present_in_scan=True),
+        registered_reports(Report.objects.filter(studio=request.studio, slug=slug)),
         request=request,
     ).select_related("studio", "studio__org").first()
     if report is None:
         raise Http404
+    if (report.is_hidden or (report.is_expired and not roles.at_least(request.studio_role, roles.DEVELOPER))) and not report_administrator(request.user, report, request=request):
+        raise Http404
     return report
 
 
-def _selected_content_block(request, report, *, as_page=False):
-    from apps.core.report_access import report_content_block_reason
+def _selected_content_block(request, report, *, as_page=False, management=False):
+    from apps.core.report_access import report_audience_block_reason, report_content_block_reason
 
-    reason = report_content_block_reason(request.user, report, request=request)
+    if not management and (report.is_hidden or report.is_expired) and not report_administrator(request.user, report, request=request):
+        raise Http404
+    reason = (report_audience_block_reason(request.user, report, request=request) if management
+              else report_content_block_reason(request.user, report, request=request))
     if not reason:
         return None
-    message = "Private or selected-report access is not configured. Contact your administrator."
+    expiry_blocked = report.expires_at is not None and reason.startswith("Report expiry requires")
+    message = ("Report expiry requires proxy report access. Contact your administrator." if expiry_blocked
+               else "Private or selected-report access is not configured. Contact your administrator.")
     if as_page:
         is_admin = roles.at_least(request.studio_role, roles.ADMIN)
         response = render(
@@ -117,6 +127,7 @@ def _selected_content_block(request, report, *, as_page=False):
                 "is_admin": is_admin,
                 "access_url": f"/s/{request.org.slug}/{request.studio.slug}/r/{report.slug}/access",
                 "block_reason": reason if is_admin else "",
+                "expiry_blocked": expiry_blocked,
             },
             status=503,
         )
@@ -1230,7 +1241,7 @@ def _schedule_form_body(request):
 @transaction.atomic
 def api_email_schedules(request, org_slug, studio_slug, slug):  # noqa: ARG001
     report = _get_report(request, slug)
-    blocked = _selected_content_block(request, report)
+    blocked = _selected_content_block(request, report, management=roles.at_least(request.studio_role, roles.DEVELOPER))
     if blocked:
         return blocked
     if request.method == "GET":
@@ -2451,6 +2462,8 @@ def report_asset(request, org_slug, studio_slug, slug, asset):  # noqa: ARG001
         target, org=request.org, studio=request.studio, user=request.user, kind=report.kind,
         developer=roles.at_least(request.studio_role, roles.DEVELOPER),
     )
+    if report.expires_at is not None:
+        response["Cache-Control"] = "private, no-store"
     if (
         is_entry
         and target.suffix.lower() == ".html"
@@ -2561,7 +2574,9 @@ def _get_share_link(token: str) -> ShareLink | None:
 
 def _share_gone(request):
     """Revoked or expired: the link existed, but is no longer live."""
-    return render(request, "reports/share_gone.html", status=410)
+    response = render(request, "reports/share_gone.html", status=410)
+    response["Cache-Control"] = "private, no-store"
+    return response
 
 
 def _share_storage_locked(request):
@@ -2649,6 +2664,8 @@ def _share_response(link, target, studio):
     blank frame."""
     # ponytail: 410/503 pages for an embed link keep X-Frame-Options: DENY and render blank in the frame; upgrade = pass link to _share_gone and exempt there too
     resp = _serve_report_file(target, org=studio.org, studio=studio, extra_head=_share_head_extra(link), kind=link.report.kind)
+    if link.report.expires_at is not None:
+        resp["Cache-Control"] = "private, no-store"
     if link.embed:
         resp.xframe_options_exempt = True  # honoured by the stock XFrameOptionsMiddleware
         resp["Content-Security-Policy"] = "frame-ancestors " + " ".join(
@@ -3510,7 +3527,7 @@ def _favorites_auth(request):
 
 
 def _visible_favorite_rows(request):
-    allowed_reports = raw_scope_reports(request.user, Report.objects.filter(present_in_scan=True), request=request)
+    allowed_reports = raw_scope_reports(request.user, regular_reports(Report.objects.filter(present_in_scan=True)), request=request)
     return list(
         ReportFavorite.objects.filter(user=request.user, report_id__in=allowed_reports.order_by().values("pk"))
         .select_related("report", "report__studio", "report__studio__org")

@@ -31,18 +31,18 @@ class TestSync:
             schedule={"cron": "0 7 * * *", "timezone": "Europe/Amsterdam"},
             display={"priority": 3},
         )
-        # Disabled reports are excluded by the framework scan itself
-        # (legacy parity: they never appeared in the registry either).
+        # Disabled sources are indexed for administrator discovery, while
+        # the regular catalog and execution discovery exclude them.
         write_report("beta", disabled=True)
         n = sync_studio_registry(studio_tree)
-        assert n == 1
+        assert n == 2
         alpha = Report.objects.get(studio=studio_tree, slug="alpha")
         assert alpha.category == "Revenue"
         assert alpha.schedule_cron == "0 7 * * *"
         assert alpha.schedule_timezone == "Europe/Amsterdam"
         assert alpha.priority == 3
         assert alpha.tags == ["daily"]
-        assert not Report.objects.filter(studio=studio_tree, slug="beta").exists()
+        assert Report.objects.get(studio=studio_tree, slug="beta").disabled
 
     def test_vanished_report_flagged_not_deleted(self, studio_tree, write_report):
         import shutil
@@ -166,6 +166,7 @@ class TestPayload:
         expected_keys = {
             "id", "slug", "kind", "name", "description", "category", "studio", "tags",
             "schedule", "schedule_timezone", "disabled",
+            "hidden", "expired", "expires_at", "data_expired_at", "favorite",
             "last_run", "last_status", "build_status", "last_error",
             "has_output", "html_entry", "validation", "details", "framework_version",
             # View analytics: views over the last 30 days and the last view.

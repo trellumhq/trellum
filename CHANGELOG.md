@@ -7,6 +7,16 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- Administrators can include hidden, expired and disabled reports on the regular
+  Reports page with a default-off option. Cards and lists identify repository
+  hiding, disabled builds, availability expiry and expired retained output.
+  The accessible switch sits beside search and sorting in stable responsive
+  rows, with an Admin view notice and existing More category overflow.
+  Repository visibility stays authoritative; discovery does not publish reports
+  or change their audience.
+
 ### Changed
 
 - Showcase reports, written analyses, and presentations in the README, with

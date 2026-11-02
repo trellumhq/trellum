@@ -124,11 +124,13 @@ def scan_report_configs(
     studio: str | None = None,
     category: str | None = None,
     include_hidden: bool = False,
+    include_disabled: bool = False,
 ) -> list[dict]:
     """Scan reports/*/report.yaml and return matching report entries.
 
     Each entry contains ``dir`` (absolute path), parsed ``config``, and ``slug``.
-    Used by both the runner and a host's server.
+    Used by both the runner and a host's server. Hosts may opt into disabled
+    entries for metadata discovery; ordinary execution discovery omits them.
     """
     if reports_dir is None:
         reports_dir = os.path.join(get_project_root(), "reports")
@@ -164,7 +166,7 @@ def scan_report_configs(
         if not include_hidden and not os.path.isfile(required):
             continue
 
-        if config.get("disabled"):
+        if config.get("disabled") and not include_disabled:
             continue
         if not include_hidden and config.get("hidden"):
             continue

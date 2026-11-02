@@ -149,6 +149,14 @@ var _favoritesFailed = false;
 
 function isFav(slug) { return _favSlugs.has(slug); }
 
+function _catalogFavorites(rows) {
+    rows.forEach(function(r) {
+        if (typeof r.favorite !== 'boolean') return;
+        if (r.favorite) _favSlugs.add(r.slug); else _favSlugs.delete(r.slug);
+        _favIds[r.slug] = r.id;
+    });
+}
+
 function _favReportId(slug) {
     if (_favIds[slug] != null) return _favIds[slug];
     var r = reports.find(function(x) { return x.slug === slug; });
@@ -165,6 +173,12 @@ function loadFavorites() {
                     _favSlugs.add(f.slug);
                     _favIds[f.slug] = f.report_id;
                 }
+            });
+            reports.forEach(function(row) {
+                // The global feed intentionally omits hidden/expired rows.
+                if (row.hidden || row.expired) {
+                    if (row.favorite) _favSlugs.add(row.slug); else _favSlugs.delete(row.slug);
+                } else row.favorite = _favSlugs.has(row.slug);
             });
             _favoritesReady = true;
             _favoritesFailed = false;
@@ -243,6 +257,8 @@ function toggleFav(slug) {
         return;
     }
     var wasFav = _favSlugs.has(slug);
+    var row = reports.find(function(r) { return r.slug === slug; });
+    if (row) row.favorite = !wasFav;
     /* Optimistic: flip locally, re-render, roll back if the server refuses. */
     if (wasFav) _favSlugs.delete(slug);
     else { _favSlugs.add(slug); _favIds[slug] = id; }
@@ -250,11 +266,13 @@ function toggleFav(slug) {
     apiFetch('/api/me/favorites/' + id, { method: wasFav ? 'DELETE' : 'PUT' })
         .then(function(r) {
             if (r.ok) return;
+            if (row) row.favorite = wasFav;
             if (wasFav) _favSlugs.add(slug); else _favSlugs.delete(slug);
             showToast('Failed to update favorites', 'error');
             render();
         })
         .catch(function() {
+            if (row) row.favorite = wasFav;
             if (wasFav) _favSlugs.add(slug); else _favSlugs.delete(slug);
             showToast('Failed to update favorites', 'error');
             render();
@@ -318,7 +336,7 @@ function matchesSearch(r, q) {
 
 /* A row whose output is not known yet (no worker observation) is still
    offered for opening: the report page answers for itself. */
-function canOpen(r) { return r.has_output !== false; }
+function canOpen(r) { return r.has_output !== false && !r.hidden && !r.expired; }
 
 /* ── Recent reports (localStorage) ── */
 function getRecent() {
@@ -548,6 +566,15 @@ function liveChipHtml(r) {
         + '<span class="live-dot"></span>Live</span>';
 }
 
+function availabilityBadgesHtml(r) {
+    var html = '';
+    if (r.hidden) html += '<span class="ui-badge info" title="Hidden in the repository">Hidden</span> ';
+    if (r.expired) html += '<span class="ui-badge warn" title="The saved availability cutoff has passed">Expired</span> ';
+    if (r.data_expired_at) html += '<span class="ui-badge warn" title="Built output was removed by retention">Data expired</span> ';
+    if (r.disabled) html += '<span class="ui-badge info" title="Builds are disabled">Disabled</span> ';
+    return html;
+}
+
 /* ── Card HTML ── */
 function cardHtml(r) {
     const disabled = !canOpen(r);
@@ -575,6 +602,7 @@ function cardHtml(r) {
         + '</div>'
         + '<div class="card-desc ui-desc-clamp">' + esc(r.description || '') + '</div>'
         + '<div class="card-meta">'
+        +   availabilityBadgesHtml(r)
         +   liveChipHtml(r)
         +   (r.studio ? '<span class="studio-badge">' + r.studio.toUpperCase() + '</span>' : '')
         +   tags
@@ -713,7 +741,7 @@ function listTableHtml(groups) {
             + '<div class="list-desc" title="' + escAttr(r.description || '') + '">' + esc(r.description || '') + '</div></td>';
         html += '<td data-label="Category">' + esc(r.category || '') + '</td>';
         html += '<td data-label="Studio">' + (r.studio ? '<span class="studio-badge">' + r.studio.toUpperCase() + '</span>' : '—') + '</td>';
-        html += '<td data-label="Status"><span class="list-status ' + dot.cls + '"' + (dot.title ? ' title="' + escAttr(dot.title) + '"' : '') + '></span><span class="list-status-label">' + esc(dot.label) + '</span></td>';
+        html += '<td data-label="Status"><span class="list-status ' + dot.cls + '"' + (dot.title ? ' title="' + escAttr(dot.title) + '"' : '') + '></span><span class="list-status-label">' + esc(dot.label) + '</span> ' + availabilityBadgesHtml(r) + '</td>';
         if (!IS_ANALYSES_PAGE) html += '<td data-label="Schedule">' + cronLabel(r.schedule)
             + (r.refresh_suspended_at ? ' ' + refreshPausedBadgeHtml(r) : '') + '</td>';
         html += '<td data-label="Last updated">' + (r.last_run ? relativeTime(r.last_run) : '<span style="color:var(--text3)">Never</span>') + '</td>';
@@ -995,6 +1023,12 @@ function signalCatalogReady(container) {
 /* ── Main render ── */
 function render(preservePickerState) {
     const container = document.getElementById('content');
+    if (_catalogSelectionState) {
+        container.innerHTML = '<div class="ui-empty" role="status">'
+            + (_catalogSelectionState === 'loading' ? 'Loading reports…' : 'Reports could not be loaded. Please try again later.') + '</div>';
+        if (_catalogSelectionState !== 'loading') signalCatalogReady(container);
+        return;
+    }
     const q = searchQuery.toLowerCase();
     const isSearching = q.length > 0;
 
@@ -1169,10 +1203,24 @@ document.addEventListener('click', function(e) {
 
 /* The row is measured, so a resize can change what fits. */
 var _tabFitTimer = null;
-window.addEventListener('resize', function() {
+function scheduleTabFit() {
     clearTimeout(_tabFitTimer);
     _tabFitTimer = setTimeout(renderTabs, 120);
-});
+}
+window.addEventListener('resize', scheduleTabFit);
+/* The admin grid also changes tracks when the sidebar animates, without a
+   window resize. Refit after its width settles; ignore height-only changes
+   from rendering the tabs themselves. */
+const discoveryTabs = document.querySelector('.catalog-admin-discovery #folderTabs');
+if (discoveryTabs) {
+    let tabWidth = discoveryTabs.clientWidth;
+    new ResizeObserver(function() {
+        const width = discoveryTabs.clientWidth;
+        if (width === tabWidth) return;
+        tabWidth = width;
+        scheduleTabFit();
+    }).observe(discoveryTabs);
+}
 
 /* Studio filter pills */
 document.getElementById('studioFilters').addEventListener('click', function(e) {
@@ -3458,6 +3506,28 @@ var _catalogInterrupted = false;
 var _catalogSearchTimer = null;
 var _catalogSearchController = null;
 var _catalogMoreBusy = false;
+var _catalogMoreController = null;
+var _includeUnavailable = false;
+var _catalogSelectionState = '';
+var discoveryToggle = document.getElementById('showUnavailable');
+if (discoveryToggle) discoveryToggle.checked = false;
+if (discoveryToggle) discoveryToggle.addEventListener('change', function() {
+    _includeUnavailable = this.checked;
+    _catalogSelectionState = 'loading';
+    document.getElementById('discoveryHelp').hidden = !this.checked;
+    clearTimeout(_catalogSearchTimer);
+    if (_catalogSearchController) _catalogSearchController.abort();
+    _catalogSearchController = null;
+    if (_catalogMoreController) _catalogMoreController.abort();
+    _catalogMoreController = null;
+    _catalogMoreBusy = false;
+    _catalogTotal = 0;
+    _catalogSlices = 0;
+    reports = [];
+    _catalogAnnounceLoading();
+    render();
+    _catalogRefresh();
+});
 
 function _catalogPartial() { return _catalogSlices * CATALOG_SLICE < _catalogTotal; }
 
@@ -3477,6 +3547,7 @@ function _catalogMerge(base, extra) {
 function _catalogUrl(page, limit, extra) {
     var qs = new URLSearchParams();
     qs.set('kind', IS_ANALYSES_PAGE ? 'analysis' : 'report');
+    if (_includeUnavailable) qs.set('include_unavailable', '1');
     qs.set('page', page);
     qs.set('limit', limit);
     Object.keys(extra || {}).forEach(function(key) {
@@ -3524,6 +3595,7 @@ function _catalogLoadAll(signal) {
         var slices = Math.max(1, Math.ceil(head.total / CATALOG_SLICE));
         var held = Math.min(slices, CATALOG_AUTOLOAD / CATALOG_SLICE);
         return _catalogRange(null, signal, 2, held, head.reports).then(function(rows) {
+            if (signal.aborted) throw new DOMException('aborted', 'AbortError');
             _catalogTotal = head.total;
             _catalogSlices = held;
             return rows;
@@ -3577,6 +3649,7 @@ function _catalogFetch() {
     return _catalogLoadRetrying(controller.signal, 0).then(function(rows) {
         if (run !== _catalogRun) throw new DOMException('superseded', 'AbortError');
         _catalogController = null;
+        _catalogFavorites(rows);
         return rows;
     }, function(error) {
         if (run === _catalogRun) _catalogController = null;
@@ -3589,6 +3662,7 @@ function _catalogFetch() {
 function _catalogRefresh() {
     _catalogAnnounceLoading();
     return _catalogFetch().then(function(rows) {
+        _catalogSelectionState = '';
         reports = rows;
         _seedErrorLog();
         render();
@@ -3596,6 +3670,11 @@ function _catalogRefresh() {
         if (searchQuery && _catalogPartial()) _catalogServerSearch(searchQuery);
     }).catch(function(error) {
         if (error && error.name === 'AbortError') return;
+        if (_catalogSelectionState) {
+            _catalogSelectionState = 'failed';
+            render();
+            return;
+        }
         /* Keep what is on screen; the next visit or return tries again. */
         var container = document.getElementById('content');
         if (container) signalCatalogReady(container);
@@ -3616,6 +3695,7 @@ function _catalogServerSearch(q) {
         _catalogSearchController = null;
         /* Matches beyond the preloaded rows join the held set; the same local
            filter then shows them. */
+        _catalogFavorites(rows);
         reports = _catalogMerge(reports, rows);
         render();
     }).catch(function() {});
@@ -3635,13 +3715,18 @@ function _catalogShowMore() {
     render();
     var first = _catalogSlices + 1;
     var last = Math.min(Math.ceil(_catalogTotal / CATALOG_SLICE), _catalogSlices + CATALOG_AUTOLOAD / CATALOG_SLICE);
-    var controller = new AbortController();
+    var run = _catalogRun;
+    var controller = _catalogMoreController = new AbortController();
     _catalogRange(null, controller.signal, first, last, []).then(function(rows) {
+        if (run !== _catalogRun || controller.signal.aborted) return;
+        _catalogFavorites(rows);
         reports = _catalogMerge(reports, rows);
         _catalogSlices = last;
     }).catch(function() {
-        showToast('Could not load more reports', 'error');
+        if (run === _catalogRun && !controller.signal.aborted) showToast('Could not load more reports', 'error');
     }).then(function() {
+        if (run !== _catalogRun || controller.signal.aborted) return;
+        _catalogMoreController = null;
         _catalogMoreBusy = false;
         render();
     });

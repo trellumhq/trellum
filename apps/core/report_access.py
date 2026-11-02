@@ -6,9 +6,49 @@ from functools import wraps
 
 from django.conf import settings
 from django.db.models import Exists, OuterRef, Q
+from django.utils import timezone
 
 from apps.core import roles
 from apps.core.permissions import EffectiveRoles, bulk_effective_roles, _forbidden
+
+
+def hidden_reports_q():
+    """Indexed effective visibility, without reading large report config blobs.
+
+    The scan projects repository hidden state into archived_in_scan.
+    The legacy portal override column is retained but no longer consulted.
+    """
+    return Q(archived_in_scan=True)
+
+
+def registered_reports(queryset):
+    """Complete source entries, including repository-hidden reports."""
+    return queryset.filter(Q(present_in_scan=True) | Q(archived_in_scan=True))
+
+
+def regular_reports(queryset):
+    """Catalog availability, including for administrators. Never deletes data."""
+    return queryset.exclude(hidden_reports_q()).filter(
+        Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now())
+    )
+
+
+def report_administrator(user, report, *, request=None):
+    from apps.core.request_access import actor_studio_access, request_org_access
+
+    if request is not None:
+        if user is not request.user:
+            raise ValueError("request report access must use request.user")
+        return request_org_access(request, report.studio.org).role_for(report.studio) == roles.ADMIN
+    return actor_studio_access(user, report.studio).role == roles.ADMIN
+
+
+def expiry_enforcement_block_reason():
+    from apps.core import cdn
+
+    if cdn.access_model() != cdn.MODEL_PROXY:
+        return "Report expiry requires proxy report access; edge content grants cannot be recalled immediately."
+    return None
 
 
 def selected_report_access_block_reason() -> str | None:
@@ -50,6 +90,17 @@ def report_content_block_reason(user, report, *, request=None) -> str | None:
     if request is not None:
         if user is not request.user:
             raise ValueError("request report access must use request.user")
+    if (report.is_hidden or report.is_expired) and not report_administrator(user, report, request=request):
+        return "Report is unavailable."
+    if report.expires_at is not None and expiry_enforcement_block_reason():
+        return expiry_enforcement_block_reason()
+    return report_audience_block_reason(user, report, request=request)
+
+
+def report_audience_block_reason(user, report, *, request=None) -> str | None:
+    """Audience readiness, also used by existing developer management controls."""
+    if request is not None and user is not request.user:
+        raise ValueError("request report access must use request.user")
     reason = selected_report_access_block_reason()
     if reason is None:
         return None
@@ -89,10 +140,15 @@ def raw_scope_reports(user, queryset, *, request=None):
     return _report_scope_queryset(user, queryset, request=request, blocked=False, raw=True)
 
 
-def visible_reports(user, queryset, *, request=None):
-    """Filter a Report queryset to rows visible under current access readiness."""
+def visible_reports(user, queryset, *, request=None, include_unavailable=False):
+    """Filter rows under current access readiness.
+
+    include_unavailable is reserved for the catalog's effective-admin opt-in;
+    callers must authorize that mode before passing it.
+    """
     return _report_scope_queryset(
-        user, queryset, request=request, blocked=bool(selected_report_access_block_reason()), raw=False
+        user, queryset if include_unavailable else regular_reports(queryset),
+        request=request, blocked=bool(selected_report_access_block_reason()), raw=False
     )
 
 
@@ -182,6 +238,12 @@ class ReportAccessBatch:
         if user.pk not in self._users or self._users[user.pk] is not user:
             raise ValueError("user was not included in this access batch")
         if not self._org.is_active or not user.is_authenticated:
+            return False
+        if report.expires_at is not None and expiry_enforcement_block_reason():
+            return False
+        if (report.is_hidden or report.is_expired) and not (
+            user.is_superuser or self._roles[user.pk].role_for(report.studio) == roles.ADMIN
+        ):
             return False
         if report.audience == report.AUDIENCE_PRIVATE and self._blocked:
             return False
