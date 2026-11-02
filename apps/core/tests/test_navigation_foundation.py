@@ -199,8 +199,11 @@ def test_rendered_navigation_delay_guard_history_and_native_feedback(
         assert page.locator('#obsolete').count() == 0
         assert page.get_by_role('link', name='Overview', exact=True).get_attribute('aria-current') == 'page'
         delay_documents = True
-        page.evaluate("document.querySelector('main').insertAdjacentHTML('beforeend', '<input id=native-draft value=kept><div style=height:1400px></div>'); document.querySelector('#native-draft').focus(); scrollTo(0,400)")
+        # WebKit can defer a programmatic focus scroll until the next paint.
+        # Keep that setup scroll separate from the navigation being measured.
+        page.evaluate("document.querySelector('main').insertAdjacentHTML('beforeend', '<input id=native-draft value=kept><div style=height:1400px></div>'); document.querySelector('#native-draft').focus({preventScroll:true}); scrollTo(0,400)")
         old_position = page.evaluate('scrollY')
+        assert old_position == 400
         samples = []
         page.expose_function('nativeSample', lambda sample: samples.append(sample))
         def native_reports():
@@ -212,7 +215,7 @@ def test_rendered_navigation_delay_guard_history_and_native_feedback(
                 }, 200)""")
             wait_for(page, lambda: native_pending and samples)
             sample = samples.pop()
-            assert sample['draftVisible'] and sample['yScroll'] == old_position
+            assert sample['draftVisible'] and sample['yScroll'] == old_position, sample
             return sample
         target = native_reports()
         page.mouse.click(target['x'], target['y'])
