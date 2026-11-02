@@ -91,13 +91,14 @@ Running setup again refreshes these in place; it never adds a second copy.
   `.cursor/mcp.json`. Other servers, and a `trellum` entry setup did not
   write, stay.
 
-A JSON file left with nothing in it is deleted, along with its folder if that
+A JSON file left with nothing in it is deleted, along with its `.claude` or `.cursor` folder if that
 is now empty. Files that cannot be parsed are not touched. `.env` is never
-opened: if it holds `TRELLUM_API_KEY`, the command says so, and you delete the
+modified: if it holds `TRELLUM_API_KEY`, the command says so, and you delete the
 line and revoke the key yourself. The command exits non-zero when it leaves
 Trellum content behind. Your files come back as they were, line endings and
-trailing newlines included; JSON files are re-indented with two spaces, and
-a file that had no final newline gets one.
+trailing newlines included for blocks installed by this version. Older blocks
+may lose a trailing blank line. JSON files are re-indented with two spaces;
+a pre-existing empty JSON file may be deleted once its integration is removed.
 
 ## Connect it to the portal
 

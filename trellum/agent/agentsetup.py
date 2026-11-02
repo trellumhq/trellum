@@ -172,21 +172,6 @@ def hook_interpreter(root: str | os.PathLike[str] | None = None) -> str:
     return exe.as_posix()
 
 
-def _is_ours(group: dict) -> bool:
-    """Is this hook group one we wrote?
-
-    Matches on `-m trellum` rather than the leading token, because the leading
-    token is an interpreter path that differs per machine.
-    """
-    for h in group.get("hooks") or []:
-        cmd = h.get("command")
-        if not isinstance(cmd, str):
-            continue
-        if "-m trellum" in cmd or cmd.split()[0:1] == [MARKER]:
-            return True
-    return False
-
-
 def hook_config(root: str | os.PathLike[str] | None = None) -> dict:
     """The two hooks, as they appear in a settings.json.
 
@@ -218,18 +203,24 @@ def merge_hooks(settings: dict,
     Marker-based rather than positional, so re-running repairs rather than
     duplicating, and somebody else's hooks are never touched.
     """
-    settings = dict(settings)
-    hooks = dict(settings.get("hooks") or {})
-    changed = False
+    from trellum.agent.agentremoval import strip_hooks
+
+    cleaned, _ = strip_hooks(settings)
+    hooks = dict(cleaned.get("hooks") or {})
     for event, groups in hook_config(root).items():
-        existing = [g for g in (hooks.get(event) or []) if not _is_ours(g)]
-        merged = existing + groups
-        if merged != (hooks.get(event) or []):
-            hooks[event] = merged
-            changed = True
-    if changed:
-        settings["hooks"] = hooks
-    return settings, changed
+        existing = hooks.get(event) or []
+        # Repair the historical bare command, without dropping its neighbours.
+        kept = []
+        for group in existing:
+            if isinstance(group, dict) and set(group) == {"matcher", "hooks"} and group["matcher"] == groups[0]["matcher"]:
+                left = [h for h in group["hooks"] if h != {"type": "command", "command": "trellum"}]
+                if left:
+                    kept.append({**group, "hooks": left})
+            else:
+                kept.append(group)
+        hooks[event] = kept + groups
+    result = {**cleaned, "hooks": hooks}
+    return result, result != settings
 
 
 def dump_json(data: dict) -> str:
@@ -347,7 +338,7 @@ def _merge_signpost(existing: str, py: str, portal: str = "") -> tuple[str, bool
     # One blank line between their text and our block. The separator is chosen
     # so removal can take back exactly what was added: a newline-terminated
     # file gets one more newline, never a normalised amount.
-    separator = "" if not existing else ("\n" if existing.endswith("\n") else "\n\n")
+    separator = "\n" if existing else ""
     return existing + separator + block + "\n", True
 
 
@@ -433,8 +424,8 @@ def command_for(root: str | os.PathLike[str], tail: str) -> str:
 
     root = Path(root).resolve()
     if root == Path.cwd().resolve():
-        return f"{hook_interpreter(root)} -m trellum {tail}"
-    return f"{Path(sys.executable).as_posix()} -m trellum {tail} --dest {shlex.quote(str(root))}"
+        return f"{shlex.quote(hook_interpreter(root))} -m trellum {tail}"
+    return f"{shlex.quote(Path(sys.executable).as_posix())} -m trellum {tail} --dest {shlex.quote(str(root))}"
 
 
 def setup_summary(root: str | os.PathLike[str], rows: list[tuple[str, str]]) -> list[str]:
@@ -446,7 +437,7 @@ def setup_summary(root: str | os.PathLike[str], rows: list[tuple[str, str]]) -> 
     """
     done = [name for name, status in rows if status != "unreadable"]
     guidance = [n for n in done if n in ("CLAUDE.md", "AGENTS.md")]
-    hooks = [n for n in done if n not in guidance]
+    hooks = [n for n in done if n == ".claude/settings.json"]
     lines = ["Agent setup:"]
     if guidance:
         lines.append(f"  guidance  {', '.join(guidance)}")

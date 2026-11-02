@@ -95,10 +95,10 @@ def _remove_project(root: Path) -> int:
     if not any(r.status in ("removed", "deleted") for r in rows) and not agentremoval.incomplete(rows):
         print("\nNothing from Trellum to remove.")
     elif agentremoval.incomplete(rows):
-        print("\nSome Trellum content is still in place (see above). Everything else "
-              "was left exactly as it was.", file=sys.stderr)
+        print("\nSome Trellum content is still in place (see above). Other settings and user instructions "
+              "were preserved.", file=sys.stderr)
     else:
-        print("\nRemoved. Everything else was left exactly as it was. "
+        print("\nRemoved. Other settings and user instructions were preserved. "
               f"`{agentsetup.command_for(root, 'setup project')}` sets it up again.")
     return 1 if agentremoval.incomplete(rows) else 0
 

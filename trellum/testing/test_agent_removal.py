@@ -98,9 +98,7 @@ def test_setup_then_remove_gives_the_project_back_byte_for_byte(tmp_path, capsys
     (b"x\n\n\n\n", b"x\n\n\n\n"),
     (b"x\r\n", b"x\r\n"),
     (b"x\r\ny\r\n\r\n", b"x\r\ny\r\n\r\n"),
-    # No final newline cannot be told apart from one afterwards, so the file
-    # comes back with the single newline every text file should have.
-    (b"x", b"x\n"),
+    (b"x", b"x"),
 ])
 def test_trailing_newlines_and_line_endings_come_back_as_they_were(tmp_path, original, restored):
     (tmp_path / "AGENTS.md").write_bytes(original)
@@ -305,3 +303,28 @@ def test_removing_from_a_project_that_never_had_setup_changes_nothing(tmp_path, 
     assert main(["setup", "project", "--remove", "--dest", str(tmp_path)]) == 0
     assert _tree(tmp_path) == before
     assert "Nothing from Trellum to remove" in capsys.readouterr().out
+
+
+def test_setup_preserves_custom_hooks_and_mixed_groups():
+    custom = {"type": "command", "command": "python -m trellum-tools", "timeout": 10}
+    settings = agentsetup.hook_config()
+    settings["SessionStart"][0]["hooks"].append(custom)
+    merged, _ = agentsetup.merge_hooks({"hooks": settings})
+    assert any(custom in g["hooks"] for g in merged["hooks"]["SessionStart"])
+    assert agentsetup.merge_hooks(merged) == (merged, False)
+
+
+def test_removal_keeps_project_directory(tmp_path):
+    _write_json(tmp_path / ".mcp.json", {"mcpServers": {"trellum": agentsetup.mcp_servers(PORTAL_URL)[".mcp.json"]}})
+    agentremoval.remove(tmp_path)
+    assert tmp_path.is_dir()
+
+
+def test_removal_does_not_write_through_symlink(tmp_path):
+    outside = tmp_path / "outside.json"
+    _write_json(outside, {"hooks": agentsetup.hook_config()})
+    before = outside.read_bytes()
+    (tmp_path / ".claude").mkdir()
+    (tmp_path / ".claude/settings.json").symlink_to(outside)
+    assert agentremoval.incomplete(agentremoval.remove(tmp_path))
+    assert outside.read_bytes() == before

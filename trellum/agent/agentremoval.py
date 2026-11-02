@@ -114,6 +114,8 @@ def strip_block(text: str) -> tuple[str | None, str]:
 
 
 def _remove_guidance(path: Path, name: str) -> Row:
+    if path.is_symlink() or path.parent.is_symlink():
+        return Row(name, "kept", "symlink; left untouched")
     if not path.is_file():
         return Row(name, "absent")
     text = setup.read_exact(path)
@@ -240,6 +242,8 @@ def strip_server(config: dict, name: str) -> tuple[dict, bool, str]:
 
 def _remove_json(path: Path, name: str, strip) -> Row:
     """Read, strip, write back -- or delete a file left with nothing in it."""
+    if path.is_symlink() or path.parent.is_symlink():
+        return Row(name, "kept", "symlink; left untouched")
     if not path.is_file():
         return Row(name, "absent")
     text = setup.read_exact(path)
@@ -257,7 +261,8 @@ def _remove_json(path: Path, name: str, strip) -> Row:
         return Row(name, "removed", note)
     path.unlink()
     try:
-        path.parent.rmdir()          # only if it is now empty; never recursive
+        if name.startswith((".claude/", ".cursor/")):
+            path.parent.rmdir()          # only if it is now empty; never recursive
     except OSError:
         pass
     return Row(name, "deleted")
