@@ -17,7 +17,6 @@ from PIL import Image, ImageDraw, ImageFont
 import trellum
 from trellum.themes import DefaultTheme
 
-
 ROOT = Path(__file__).resolve().parent
 FONTS = Path(trellum.__file__).resolve().parent / "static" / "vendor" / "fonts"
 PALETTE = DefaultTheme
