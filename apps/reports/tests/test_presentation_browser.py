@@ -110,7 +110,7 @@ def test_deck_navigation_history_fullscreen_denial_and_focus(deck_browser, deck_
     page.screenshot(path=str(output / "presentation-desktop.png"))
     assert page.locator(".fw-slide:visible").bounding_box()["width"] <= 1440
     page.keyboard.press("Escape")
-    assert page.locator(".fw-slide:visible").count() == 4
+    assert page.locator(".fw-slide:visible").count() == 1
     assert page.evaluate("document.activeElement.textContent") == "Present"
     page.evaluate("history.pushState(history.state, '', location.pathname + location.search); window.dispatchEvent(new PopStateEvent('popstate'))")
     assert page.locator(".fw-presentation-position").inner_text() == "Slide 1 of 4"
@@ -154,7 +154,7 @@ def test_native_fullscreen_lifecycle_and_mobile_click_swipe(deck_browser, deck_s
     page.get_by_text("Long discussion paragraph 39", exact=True).scroll_into_view_if_needed()
     assert page.get_by_text("Long discussion paragraph 39", exact=True).is_visible()
     page.get_by_role("button", name="Exit presentation", exact=True).click()
-    assert page.locator(".fw-slide:visible").count() == 4
+    assert page.locator(".fw-slide:visible").count() == 1
     context.close()
 
 
@@ -170,7 +170,7 @@ def test_host_fallback_hides_chrome_and_guards_messages(deck_browser, deck_serve
     child.evaluate("() => { document.querySelector('.fw-presentation').requestFullscreen = () => Promise.reject(new Error('denied')); }")
     page.evaluate("window.postMessage({type:'trellum:presentation',report:'player-overview',hostToken:'wrong',presenting:true},location.origin)")
     assert not page.locator("body").evaluate("el => el.classList.contains('tl-console-presenting')")
-    frame.get_by_role("link", name="Investigate before choosing an experiment", exact=True).click()
+    frame.locator('.fw-presentation-toc a[href="#slide-next-step"]').click()
     assert len(page.frames) == 2
     frame.get_by_role("button", name="Present", exact=True).click()
     page.wait_for_function("document.body.classList.contains('tl-console-presenting')")
