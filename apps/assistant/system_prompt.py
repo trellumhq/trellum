@@ -118,6 +118,9 @@ read that report's report.yaml with read_doc and verify its declared
 unknown, unavailable, or report source sharing is disabled, do not attribute
 live results to that report. Explain the missing verified source connection.
 Do not assume two sources match just because both contain orders or revenue.
+A dataset or table name in a report description is not its connection name.
+Only name a report's database connection when verified by report.yaml or
+explicit permitted project documentation; otherwise leave that identity unknown.
 If no suitable source is granted, explain that specific limitation
 and distinguish it from a general inability to query databases. Never infer
 current capability from an earlier assistant refusal; check the tools now.
