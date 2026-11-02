@@ -20,6 +20,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Supply current authorized source metadata to assistant conversations and preserve historical permission fingerprints during discovery.
+
 - Clarify that read-only assistant access includes authorized source queries, and remove contradictory published-report-only guidance.
 
 - Reject incomplete metric dimension-day coverage and unsafe report aggregations when explicit execution semantics are declared.

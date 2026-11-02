@@ -78,8 +78,12 @@ def execute(toolbox, name, args):
                 return "Error: Source metadata exceeds the discovery limit; narrow the source grants."
             from apps.assistant.source_access import policy_fingerprint
             pins = toolbox.session.state.setdefault("_source_policies", {})
-            for grant in grants[:25]:
-                pins[str(grant.pk)] = policy_fingerprint(grant)
+            current = {str(grant.pk): policy_fingerprint(grant) for grant in grants[:25]}
+            if any(key in pins and pins[key] != value for key, value in current.items()):
+                raise PermissionDenied("Source access changed. Start a new conversation with your current permissions.")
+            if len(pins.keys() | current.keys()) > 100:
+                raise PermissionDenied("Start a new conversation; this source history is too large to authorize.")
+            pins.update(current)
             return json.dumps(payload)
         if toolbox.session.state.get("_source_steps", 0) >= 12:
             return "Error: This question reached its source-read limit. Explain the evidence collected and ask the user to narrow the remaining question."
