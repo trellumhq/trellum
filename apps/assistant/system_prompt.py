@@ -292,6 +292,14 @@ def build_system_prompt(toolbox, now=None) -> list:
             "elsewhere. Explain the conversation scope, not a studio-wide absence; "
             "users with full studio access can open a studio conversation."
         )
+    if toolbox.report_id and not toolbox.is_report_bound:
+        sections.append(
+            "This conversation was started for a report. Direct database queries "
+            "and source discovery are unavailable here even though other report "
+            "tools remain accessible. Start a studio conversation without a "
+            "selected report to use authorized source queries. This is a "
+            "conversation limitation, not evidence that a source does not exist."
+        )
     if project_context:
         sections.append(
             "====================================================================\n"

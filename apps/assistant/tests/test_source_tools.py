@@ -228,3 +228,17 @@ def test_live_report_questions_require_source_and_business_meaning_verification(
     assert "verify its declared\n`data_sources` includes the proposed source name" in text
     assert 'negative quantity is not a refund flag' in text
     assert 'do not fabricate a zero, proxy, or formula' in text
+
+
+def test_full_access_report_conversation_explains_source_query_boundary(source_context):
+    from types import SimpleNamespace
+    from apps.assistant.system_prompt import build_system_prompt
+
+    studio, user, session, _ = source_context
+    box = AssistantToolbox(studio, actor=user, session=session, role='org_admin',
+                           report=SimpleNamespace(pk=123, slug='example'))
+    assert not box.is_report_bound
+    blocks = build_system_prompt(box)
+    assert 'conversation limitation, not evidence that a source does not exist' in blocks[0]['text']
+    assert 'authorized-query-sources' not in blocks[1]['text']
+    assert not source_tools.SOURCE_NAMES.intersection(s['name'] for s in box.schemas)
