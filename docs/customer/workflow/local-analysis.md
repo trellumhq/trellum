@@ -10,7 +10,8 @@ be selected as report evidence.
 
 ## Open the analysis workspace
 
-Ask to create and review the analysis locally. Name the source report in your request when you know which one to use. If you
+Ask to create an analysis; the agent opens local review by default. Name the
+source report in your request when you know which one to use. If you
 do not know its name, the agent can show the available report titles and ask
 which one to open. Articles are the default; ask for a presentation when you
 want slides. Include the reporting period and any filters that matter to the
@@ -21,6 +22,7 @@ workspace with the chosen source report selected:
 
 ```bash
 python -m trellum analysis new cart-funnel-finding --format article
+python -m trellum.run reports/cart-funnel --no-serve
 python -m trellum analysis session reports/cart-funnel-finding --source cart-funnel
 ```
 
@@ -29,8 +31,10 @@ different slugs. The first `--source` sets the initial report; the source
 picker lists eligible reports in this project, including unpublished reports. Omit `--source` to choose
 one in the workspace. The
 workspace builds the analysis and serves it with the source reports. If a
-source report is missing or out of date, the workspace builds it in the
-background and opens it when ready.
+source report is missing or out of date, choose **Build report** or
+**Rebuild report** to build it in the background and open it when ready.
+Selecting a source alone does not run a build. Ask for build-only output if
+you do not want a review session.
 
 The printed **Analysis workspace** URL opens the combined review. Its tabs
 show the analysis, source reports, and feedback queue. You can return to the

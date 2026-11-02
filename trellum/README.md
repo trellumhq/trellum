@@ -1747,11 +1747,14 @@ Create a finding as a readable article with fixed evidence. Eligible local
 reports under `reports/` are analysis sources even when unpublished. A report
 can still query a configured remote data source. Reviewing the combined local
 workspace does not publish either source reports or the analysis; publishing
-or pushing is a separate deliberate action. Analyses use the same Git
+or pushing is a separate deliberate action. When asked to create an analysis,
+open this workspace by default, even without an explicit preview request.
+Honor build-only, CI and plain-preview requests. Analyses use the same Git
 repository, build command, output format, and portal access controls as reports.
 
 ```bash
-trellum analysis new september-conversion
+python -m trellum analysis new september-conversion
+python -m trellum.run reports/<source-slug> --no-serve
 python -m trellum analysis session reports/september-conversion --source <source-slug>
 python -m trellum review poll --report september-conversion
 ```
@@ -1856,6 +1859,8 @@ different initial audience, set `initial_audience: private` or
 `initial_audience: studio` in `report.yaml` before its first import. Later Git
 changes preserve the audience; use the analysis's Access page to change it.
 Publishing it deliberately shares the captured evidence with that audience.
+In a repository configured for automatic publishing, pushing changes can
+trigger publication; keep local-only work unpushed.
 Source report links require their own access. Sharing, embedding, favorites,
 activity, exports, and snapshot delivery reuse the report features and their
 existing deployment restrictions.

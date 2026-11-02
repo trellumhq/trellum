@@ -55,9 +55,9 @@ useful.
 
 Scaffold a new report: `python3 -m trellum.new my-report --studio my-studio --category Revenue`. Build it: `python3 -m trellum.run reports/my-report --no-serve`.
 
-For a human who wants to inspect an analysis, use the combined local analysis
-workspace and keep its destination-scoped review poll active; see `trellum
-guide analysis`. Preserve explicit build-only, CI, and plain-preview requests.
+When a user asks to create an analysis, open the combined local analysis
+workspace even if they did not explicitly ask for a preview, and keep its
+destination-scoped review poll active; see `trellum guide analysis`. Preserve explicit build-only, CI, and plain-preview requests.
 For reports, use `--no-serve` for build-only work. A plain preview is available
 when explicitly requested; the command starts a server and stays running.
 
@@ -1048,10 +1048,11 @@ When asked to make an analysis from a source report, keep the source report
 slug, destination analysis slug, requested format, and reporting period and
 filters explicit throughout the session. If the source is missing or
 ambiguous, offer the visible report titles and ask which one to open. Default
-to an article unless a presentation is requested. The analysis workspace can
-build a missing or stale source asynchronously; no separate source build or
-second preview server is needed. Start it with the source preselected when
-known:
+to an article unless a presentation is requested. Build the chosen source with
+`python -m trellum.run reports/<source-slug> --no-serve` before handing over
+the workspace. In the workspace, missing or stale sources need an explicit
+**Build report** or **Rebuild report** action; selection alone does not run them.
+Start the workspace with the source preselected when known:
 
 ```
 python -m trellum analysis session reports/<analysis-slug> --source <source-slug>

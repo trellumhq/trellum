@@ -1,6 +1,6 @@
 ---
 name: trellum
-description: Build, fix and validate reports in a repository that uses the Trellum reporting framework, and add or troubleshoot the data sources they read from. Use whenever a task involves a report, a chart, a dashboard, a metric, `report.yaml`, a generator, `data-sources/config.yaml`, or connecting a database for reporting.
+description: Create and review local analyses from unpublished reports; build, fix and validate reports in a repository that uses the Trellum reporting framework, and add or troubleshoot the data sources they read from. Use whenever a task involves a report, a chart, a dashboard, a metric, `report.yaml`, a generator, `data-sources/config.yaml`, or connecting a database for reporting.
 ---
 
 # Trellum reports
@@ -75,7 +75,8 @@ A report is not finished until the validator reports no FAILs.
 
 ## Local analysis from reports
 
-When asked to create an analysis for a person to review, eligible reports under
+When asked to create an analysis, default to local review even without an
+explicit preview request. Eligible reports under
 `reports/` are sources even if they have not been published. A source report
 may query a configured remote data source; raw files need an explicit reader or
 local report before they can be used as report evidence. Create an article by
@@ -84,15 +85,18 @@ workspace:
 
 ```
 {py} -m trellum analysis new <analysis-slug>
+{py} -m trellum.run reports/<source-slug> --no-serve
 {py} -m trellum analysis session reports/<analysis-slug> --source <source-slug>
 {py} -m trellum review poll --report <analysis-slug>
 ```
 
-The session builds missing or stale sources automatically. The workspace's
+Build the chosen source before handing over the workspace. If another source
+is missing or stale, use its Build report or Rebuild report action. The workspace's
 Reports page selects source charts or sections as evidence for the analysis;
 the Analysis page selects authored content to edit. Use one listener scoped to
 the destination analysis for all feedback. Import captures, update the article
-or slides, rebuild changed reports and the analysis, reply, then poll again
+or slides, rebuild changed reports and the analysis, reply with the original
+polled session or feedback identity (see `guide review`), then poll again
 until the user ends review. Keep the feedback loop active instead of returning
 a final response after starting the workspace. This is local review: it does
 not publish reports or the analysis, and does not push the repository. Preserve
