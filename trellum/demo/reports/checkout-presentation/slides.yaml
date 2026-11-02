@@ -19,17 +19,17 @@ slides:
     layout: image-text
     title: The leak starts before payment.
     text: |
-      THE DIAGNOSIS / THREE POINTS OF FRICTION
+      **THE DIAGNOSIS / THREE POINTS OF FRICTION**
 
       Mobile trails desktop at **every buying step** shown here.
       By the final step, **1,875 of 3,657** mobile checkout starts
       do not become purchases.
 
-      > Start with checkout, then work upstream. A different button alone
-      > is not a diagnosis.
+      > Start with checkout, then work upstream. Investigate the experience
+      > behind each step.
 
       Stage conversion = next-stage count ÷ prior-stage count.
-      Device mix can explain part of the gap; this comparison does not prove cause.
+      Audience differences may explain part of the gap.
 
       [Frozen evidence & methods](https://trellum.dev/demo/checkout-findings/#article-evidence)
     image: evidence/stage-comparison.png
@@ -43,26 +43,25 @@ slides:
     layout: text
     title: Find the friction. Then earn the lift.
     text: |
-      THE DECISION / PRIORITIZE MOBILE CHECKOUT
+      **THE DECISION / PRIORITIZE MOBILE CHECKOUT**
 
       1. **Check the signal**
 
-         Reconcile checkout events. Compare like-for-like channels and
-         returning customers before attributing the gap to device experience.
+         Reconcile checkout events. Compare channels and returning customers
+         before attributing the gap to the experience.
 
       2. **Find the friction**
 
-         Review shipping-cost disclosure, form errors and payment failures
-         on common mobile devices. Choose one evidenced problem.
+         Review shipping costs, form errors and payment failures on mobile.
+         Choose one evidenced problem.
 
       3. **Test one fix**
 
-         Predefine the audience, sample size and stopping rule. Measure
-         purchases per eligible mobile session against a randomized control.
+         Define the audience, sample size and stopping rule. Compare purchases
+         per eligible session against a randomized control.
 
-      > **Success means more completed purchases, with healthy revenue per session,
-      > payment success and refunds.** Reconsider the priority if the gap disappears
-      > after measurement checks or audience matching.
+      > **Guardrails:** revenue per session, payment success and refunds.
+      > Reconsider if the gap disappears after measurement or audience checks.
 
       [Read the full analysis & assumptions](https://trellum.dev/demo/checkout-findings/)
-      · Northwind is fictional. September 2026 data is synthetic.
+      · Synthetic September 2026 data.

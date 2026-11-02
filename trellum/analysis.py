@@ -335,7 +335,8 @@ def _presentation_markup(root: Path, output: Path, view: str = "document") -> st
                         f'data-fw-section-title="{html.escape(slide["title"], quote=True)}" '
                         f'aria-labelledby="{anchor}-title">{number}<h2 id="{anchor}-title">{title}</h2>'
                         f'<div class="fw-slide-body">{text}{evidence}</div></section>')
-        links.append(f'<li><a href="#{anchor}">{title}</a></li>')
+        link_title = f'<span class="fw-slide-link-title">{title}</span>' if view == "slides" else title
+        links.append(f'<li><a href="#{anchor}">{link_title}</a></li>')
     _copy_assets(output, assets)
     return ('<nav class="fw-presentation-toc" aria-label="Slides"><strong>Slides</strong><ol>'
             + "".join(links) + '</ol></nav>' + "".join(sections))

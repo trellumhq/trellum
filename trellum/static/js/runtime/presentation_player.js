@@ -125,10 +125,14 @@
         });
         window.addEventListener('hashchange', fromLocation);
         window.addEventListener('popstate', fromLocation);
+        function revealDeck() {
+            if (paged && !presenting) deck.scrollIntoView({block: 'start', behavior: 'instant'});
+        }
         function fromLocation() {
             var linked = linkedIndex();
             if (linked >= 0) show(linked, false, presenting || paged);
             else if (!window.location.hash) show(0, false, presenting || paged);
+            revealDeck();
         }
         document.addEventListener('keydown', function (event) {
             if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
@@ -169,6 +173,12 @@
         }, {passive: true});
         deck.addEventListener('touchcancel', function () { touch = null; });
         var linked = linkedIndex(); show(linked >= 0 ? linked : 0, false, false);
+        // Native anchor scrolling runs during page load. Keep the deck controls
+        // below the sticky report header when opening a linked inline slide.
+        if (paged && linked >= 0) {
+            if (document.readyState === 'complete') revealDeck();
+            else window.addEventListener('load', revealDeck, {once: true});
+        }
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
     else init();

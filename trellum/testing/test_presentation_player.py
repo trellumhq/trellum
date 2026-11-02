@@ -106,6 +106,8 @@ def test_inline_navigation_reading_history_and_keyboard_scope(chromium, deck_sit
         expect(page.locator(".fw-slide:visible")).to_have_count(1)
         expect(page.locator("#slide-finding")).to_be_visible()
         expect(page.locator(".fw-presentation-toc a[aria-current]")).to_have_attribute("href", "#slide-finding")
+        # A deep link must leave the top controls below the sticky report bar.
+        assert page.locator(".fw-presentation-controls").bounding_box()["y"] >= 45
         assert not page.evaluate("!!document.fullscreenElement")
         page.locator("#slide-finding .fw-slide-text > p").first.click()
         page.keyboard.press("ArrowRight")
