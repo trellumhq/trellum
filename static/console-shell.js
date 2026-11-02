@@ -742,7 +742,12 @@
         // Retain the page's geometry while preventing edits to a departing form.
         main.inert = true;
         feedback = window.TrellumNavigationFeedback.start({ root: main, label: label, native: true, cancel: cancel,
-            onShow: function (at) { record.shownAt = at; if (sameScope) remember(record); }
+            onShow: function (at) {
+                // WebKit may defer scroll events while the document response is pending.
+                // Restore the outgoing viewport before painting loading feedback too.
+                window.scrollTo(nativeSnapshot.position[0], nativeSnapshot.position[1]);
+                record.shownAt = at; if (sameScope) remember(record);
+            }
         });
         slowStartedAt = Date.now(); slowLabel = label;
         if (!document.hidden) nativeTimeout = setTimeout(slowNotice, 15000);
