@@ -29,7 +29,10 @@ def _ts() -> str:
 
 
 def _closing_move() -> None:
-    """The session's closing move, said where the agent is already reading:
-    a finished build the user cannot click is not done."""
-    print("\nWhen you are done: python -m trellum serve --background   "
-          "(prints the link -- give it to the user)", flush=True)
+    """Point human review to the appropriate local workspace after a build."""
+    print("\nFor human review, open the local workspace and listen for feedback:\n"
+          "  Analysis: python -m trellum analysis session reports/<slug>\n"
+          "  Report:   python -m trellum review start reports/<slug>\n"
+          "  Listen:   python -m trellum review poll --report <slug>\n"
+          "Build-only or CI requests need no preview. For an explicitly requested "
+          "plain preview: python -m trellum serve --background", flush=True)
