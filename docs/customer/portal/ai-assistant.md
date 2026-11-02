@@ -72,9 +72,23 @@ started in, and the assistant reads that studio's reports and no others.
 Someone who cannot open a report in the portal cannot get its numbers out of
 the assistant either — access is checked the same way for both.
 
-**Check the evidence behind an answer.** The assistant is instructed to ground
-figures in tool results and identify missing information. The result tables come
-from executed reads; the model's explanation can still be mistaken. Review the
+**Check the evidence behind an answer.** Analytical answers pass a structured
+review before delivery. The server renders referenced values from successful,
+authorized tool results, checks declared intended context against available
+executor metadata, and rejects mismatched values and unsupported complete totals.
+The answer names its source context and shows the assistant's actual assumptions
+and unresolved business-analysis rationales. Draft answers stay private while the
+assistant gathers evidence or corrects a submission.
+
+These checks establish result cells and supported structured context. They do
+not prove that the assistant understood your question, selected the right metric,
+interpreted SQL correctly or explained a cause correctly. Qualitative explanations
+remain model assessments, including when a canonical metric was calculated.
+Clarifications can ask specifically which revenue definition, population or
+period you mean; ordinary help and documentation explanations remain available.
+Conversational explanations receive no numerical-evidence assurance.
+
+The result tables come from executed reads; the model's explanation can still be mistaken. Review the
 query, filters, dates, metric definition and any truncation before relying on an
 answer. There is no guarantee that every question receives a correct answer.
 

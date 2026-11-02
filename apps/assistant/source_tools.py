@@ -43,7 +43,7 @@ def evidence(job, payload):
     if not result:
         return None
     return {"schema_version": 1, "status": "answered", "policy_revision": job.policy_fingerprint, "kind": "source_query", "query_id": str(job.pk), "source_id": job.grant_id,
-            "assurance": "Exploratory query", "query": result["query"],
+            "assurance": "Exploratory query", "source_name": job.grant.datasource.name, "query": result["query"],
             "executed_at": result["executed_at"], "columns": result["columns"],
             "rows": result["rows"], "truncated": result["truncated"],
             "rows_returned": len(result["rows"])}

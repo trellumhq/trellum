@@ -512,6 +512,13 @@
     }
 
     function inlineMd(s) {
+        // Protect literal Markdown punctuation before interpreting formatting.
+        // Answer evidence uses these escapes for source values and labels.
+        var literals = [];
+        s = s.replace(/\u0000/g, '\uFFFD').replace(/\\([\\`*_{}\[\]()#+.!|~><&-])/g, function (_, ch) {
+            literals.push(escapeHtml(ch));
+            return '\u0000' + (literals.length - 1) + '\u0000';
+        });
         s = escapeHtml(s);
         s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
         s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
@@ -521,7 +528,7 @@
             if (!/^(https?:)?\//.test(href) || !sameOrigin(href)) return label;
             return '<a href="' + attr(href) + '" target="_blank" rel="noopener">' + label + '</a>';
         });
-        return s;
+        return s.replace(/\u0000(\d+)\u0000/g, function (_, index) { return literals[Number(index)]; });
     }
 
     function renderMarkdown(md) {
@@ -577,7 +584,18 @@
 
     function renderTable(rows) {
         var cells = rows.map(function (r) {
-            return r.replace(/^\s*\||\|\s*$/g, '').split('|').map(function (c) { return c.trim(); });
+            var parts = [], cell = '', escaped = false, delimiter = false;
+            r = r.trim();
+            for (var i = 0; i < r.length; i++) {
+                delimiter = r[i] === '|' && !escaped;
+                if (delimiter) { parts.push(cell.trim()); cell = ''; }
+                else cell += r[i];
+                escaped = r[i] === '\\' ? !escaped : false;
+            }
+            parts.push(cell.trim());
+            if (r[0] === '|') parts.shift();
+            if (delimiter) parts.pop();
+            return parts;
         });
         var body = cells.filter(function (r) {
             return !r.every(function (c) { return /^:?-{2,}:?$/.test(c); });
@@ -588,7 +606,8 @@
         out += '</tr></thead><tbody>';
         for (var r = 1; r < body.length; r++) {
             out += '<tr>' + body[r].map(function (c) {
-                return (isNumeric(c) ? '<td class="num">' : '<td>') + inlineMd(c) + '</td>';
+                var literal = c.replace(/\\([\\`*_{}\[\]()#+.!|~><&-])/g, '$1');
+                return (isNumeric(literal) ? '<td class="num">' : '<td>') + inlineMd(c) + '</td>';
             }).join('') + '</tr>';
         }
         return out + '</tbody></table>';

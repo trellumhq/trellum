@@ -41,9 +41,27 @@ def state_for(entry=None):
 
 def submission(entry):
     ref = review.reference(entry)
-    return {"mode": "analysis", "checks": {key: {"state": "unknown", "note": "", "evidence": []}
-                                              for key in review.CHECKS},
-            "claims": [{**ref, "row": 0, "column": "value", "scope": "cell", "expected": 42}]}
+    identity = {key: ref[key] for key in ("tool_result_id", "evidence_hash")}
+    actual = entry["provenance"]
+    intended = {key: copy.deepcopy(actual[key]) for key in review.CONTEXT_FIELDS if key in actual}
+    notes = {
+        "question_interpretation": "Read the requested sales count as an exploratory observation of the returned value.",
+        "business_meaning": "The user has not specified whether sales means orders, booked revenue or collected payments.",
+        "assumptions": "Cancelled orders and refunds may need different treatment; this has not been established.",
+        "source_suitability": "The returned source can support exploration; its fitness for the business decision is unknown.",
+        "period_bounds_timezone": "The intended reporting window and local date boundary need confirmation.",
+        "filters": "The requested population may exclude test accounts; this is not established by the observation.",
+        "grain_units": "The business unit and deduplication grain have not been confirmed with the user.",
+        "data_quality": "The result does not establish whether ingestion is complete or duplicate records exist.",
+        "reconciliation": "The displayed value is read directly from the referenced result cell without arithmetic.",
+    }
+    return {"mode": "analysis", "text": "{{label:result}}: {{result}}.",
+            "interpretation": {"question": notes["question_interpretation"], "approach": "exploratory"},
+            "intended": [{**identity, "context": intended}],
+            "checks": {key: {"state": "assessed" if key in {"question_interpretation", "reconciliation"} else "unknown",
+                             "note": notes[key], "evidence": [identity] if key in {"question_interpretation", "reconciliation"} else []}
+                       for key in review.CHECKS},
+            "claims": [{**ref, "id": "result", "row": 0, "column": "value", "scope": "cell", "expected": 42}]}
 
 
 class Box(AssistantToolbox):
@@ -150,7 +168,7 @@ def test_valid_cells_only_render_from_actual_tool_results(monkeypatch, kind):
         return submit_response(args)
     events, state, calls, box = run(monkeypatch, [[response([tool({}, name=entry["name"], id="evidence-call")])], final], box=Box(entry))
     text = rendered(events)
-    assert '"value": 42' in text
+    assert 'value: 42' in text
     assert "not independently proven" in text
     assert "business meaning (unknown)" in text
     assert ("Canonical executor calculation" in text) == (kind == "metric_query")
@@ -216,7 +234,7 @@ def test_truncated_results_cannot_certify_totals(kind):
     assert review.submit(args, state_for(entry), Box(entry))[0] is None
     args["claims"][0]["scope"] = "cell"
     text, _ = review.submit(args, state_for(entry), Box(entry))
-    assert '"truncated":true' in text
+    assert "truncated result" in text
 
 
 @pytest.mark.parametrize("kind", ["metric_query", "report_query"])
@@ -264,11 +282,11 @@ def test_old_evidence_followup_is_explicit_and_new_question_resets_approval(monk
     state = state_for(entry)
     first_question = state["_answer_review"]["question"]
     events, state, _, _ = run(monkeypatch, [submit_response(submission(entry))], state=state, message="Explain that count")
-    assert '"value": 42' in rendered(events)
+    assert 'value: 42' in rendered(events)
     assert state["_answer_review"]["question"] != first_question
     previous = state["_answer_review"]["question"]
-    events, state, _, _ = run(monkeypatch, [submit_response({"mode": "clarification", "clarify": ["period"]})], state=state, message="Explain that count")
-    assert rendered(events) == "Please clarify: period."
+    events, state, _, _ = run(monkeypatch, [submit_response({"mode": "clarification", "clarify": ["period"], "text": "Which reporting period should I use?"})], state=state, message="Explain that count")
+    assert "Which reporting period should I use?" in rendered(events)
     assert state["_answer_review"]["question"] != previous
     assert not state["_answer_review"]["evidence"]
     assert state["_answer_review"]["attempts"] == 0
@@ -281,7 +299,7 @@ def test_correction_can_succeed_without_leaking_failed_submission(monkeypatch):
     bad["claims"][0]["expected"] = "__REJECTED_VALUE__"
     events, state, _, _ = run(monkeypatch, [submit_response(bad), submit_response(submission(entry), id="corrected")], state=state)
     assert state["_answer_review"]["attempts"] == 1
-    assert '"value": 42' in rendered(events)
+    assert 'value: 42' in rendered(events)
     assert "__REJECTED_VALUE__" not in json.dumps(events) + json.dumps(state["transcript"])
 
 
@@ -309,7 +327,7 @@ def test_permission_is_rechecked_before_accepted_answer(monkeypatch):
 
 
 @pytest.mark.parametrize("args", [{"mode": "greeting"}, {"mode": "help"}, {"mode": "limitation"},
-                                 {"mode": "clarification", "clarify": ["business_meaning", "period"]}])
+                                 {"mode": "clarification", "clarify": ["business_meaning", "period"], "text": "Should revenue mean booked sales or collected payments, and for which period?"}])
 def test_non_data_workflows_need_no_fabricated_evidence(monkeypatch, args):
     events, state, _, _ = run(monkeypatch, [submit_response(args)])
     assert rendered(events) and state["_answer_review"]["evidence"] == []

@@ -48,7 +48,7 @@ def test_real_report_executor_reconciles_before_answer(kind, canonical, built, s
         return submit_response(args)
     events, state, _, _ = run(monkeypatch, [[response([tool(args, name=name, id="real-read")])], final],
                               state=session.state, box=box)
-    assert f'"{column}": {expected}' in rendered(events), state["transcript"]
+    assert f'{column}: {expected}' in rendered(events), state["transcript"]
     assert state["_answer_review"]["status"] == "accepted"
     assert state["_metric_reports"] == ["player-overview"]
     assert ("Canonical executor calculation" in rendered(events)) == (kind == "canonical")
@@ -91,7 +91,7 @@ def test_source_pause_resume_reconnect_and_history_exclude_drafts(source_context
             args["claims"][0]["column"] = "total"
             yield from submit_response(args)
         else:
-            yield from submit_response({"mode": "clarification", "clarify": ["period"]})
+            yield from submit_response({"mode": "clarification", "clarify": ["period"], "text": "Which reporting period should I use?"})
     monkeypatch.setattr(llm, "_adapter", lambda provider: adapter)
     base = f"/s/{studio.org.slug}/{studio.slug}/api/assistant/sessions/{session.pk}"
     client = login(user)
@@ -111,7 +111,7 @@ def test_source_pause_resume_reconnect_and_history_exclude_drafts(source_context
     phase = "resume"
     events = frames(client.post(base + "/message", data=json.dumps({"resume_source_query": pending["id"]}), content_type="application/json"))
     text = "".join(data["text"] for name, data in events if name == "text_delta")
-    assert '"total": 42' in text
+    assert 'total: 42' in text
     assert any(name == "source_evidence" for name, _ in events)
     session.refresh_from_db()
     assert session.state["_answer_review"]["question"] == question

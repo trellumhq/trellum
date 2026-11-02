@@ -22,6 +22,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Render readable assistant analysis with evidence placeholders, specific clarifications and visible business-analysis rationales; compare declared intent with executor metadata while preserving private draft and source-continuation checks.
+
 - Supply current authorized source metadata to assistant conversations and preserve historical permission fingerprints during discovery.
 
 - Clarify that read-only assistant access includes authorized source queries, and remove contradictory published-report-only guidance.
