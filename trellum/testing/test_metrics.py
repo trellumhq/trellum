@@ -818,6 +818,35 @@ class TestMetricsReportShape:
 
 
 class TestBoundedDocumentParser:
+    def test_recoverable_field_problems_preserve_order_and_first_definition(self):
+        from trellum.metrics import parse_metrics_document
+
+        result = parse_metrics_document({
+            "datasets": {"daily": {
+                "provider": "fixture:daily", "time": {"column": "day", "grain": "day"},
+                "dimensions": ["platform"],
+            }},
+            "metrics": [
+                {"name": "revenue", "agg": "ratio", "numerator": 0,
+                 "dataset": "daily", "description": "  ", "version": [],
+                 "execution": {"grain": "month", "dimensions": ["platform"]}},
+                {"name": "revenue", "label": "Replacement"},
+            ],
+        })
+        assert [level for level, _ in result.problems] == [
+            "fail", "fail", "warn", "warn", "fail", "fail", "fail",
+        ]
+        for (_, message), expected in zip(result.problems, [
+            "missing `numerator`", "missing `denominator`", "no `label`",
+            "no `description`", "must be an integer", "execution grain/dimensions",
+            "defined more than once",
+        ]):
+            assert expected in message
+        metric = result.metrics["revenue"]
+        assert metric.numerator == "0" and metric.denominator is None
+        assert metric.label == "" and metric.description == "" and metric.version == 1
+        assert metric.dataset == "daily" and metric.date_col == "day"
+
     def test_public_parser_matches_existing_definition_hash(self, tmp_path):
         from trellum.metrics import (
             invalidate_metrics_cache,

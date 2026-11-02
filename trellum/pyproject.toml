@@ -50,6 +50,7 @@ drivers = [
   "google-cloud-bigquery>=3.0.0",
   "db-dtypes>=1.0.0",
   "psycopg2-binary>=2.9.0",
+  "psycopg[binary]==3.3.4",
   "pymysql>=1.1.0",
   "snowflake-connector-python>=5.1.0",  # no [pandas] extra: see requirements-drivers.txt
   "clickhouse-connect>=0.7.0",

@@ -37,6 +37,7 @@ from trellum.rendering.artifacts import (
 )
 from trellum.rendering.cdn import build_cdn_tags
 from trellum.rendering.js_runtime import generate_js_runtime, host_flag_scripts
+from trellum.rendering.report_assets import collect_report_assets
 from trellum.rendering.sections import _inject_nav, _render_section_list
 from trellum.themes import BUILTIN_THEMES, DEFAULT_THEME_NAME, THEME_REGISTRY, effective_theme_name
 from trellum.themes.theme import Theme
@@ -336,24 +337,9 @@ def render_report(
         for rk, rv in render_ctx.raw_data_blocks.items():
             report_data[rk] = rv
 
-    # ── Collect CSS and JS assets from all rendered component types ──
-    all_seen: set[type] = set()
-    for rctx in all_render_ctxs:
-        all_seen.update(rctx._seen_types)
-
-    # Shared with RenderContext.collect_assets. This was a second copy of that
-    # loop, and the copy was the one that actually ran -- so a fix applied to
-    # the method (making emission order deterministic) changed nothing here.
-    seen_css: set[str] = set()
-    seen_js: set[str] = set()
-    component_css_parts, component_js_parts = collect_asset_parts(
-        all_seen, seen_css, seen_js,
+    component_css_parts, component_js_parts, seen_css, seen_js, all_cdn_keys = collect_report_assets(
+        all_render_ctxs, config,
     )
-
-    all_cdn_keys: set[str] = set()
-    for rctx in all_render_ctxs:
-        all_cdn_keys.update(rctx.collect_cdn_deps())
-    all_cdn_keys.update(config.get("extra_cdn", {}).keys())
 
     # ── Assemble page ────────────────────────────────────────
     subtitle = ctx.header_meta.get("subtitle", "")
