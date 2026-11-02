@@ -33,6 +33,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Reject incomplete metric dimension-day coverage and unsafe report aggregations when explicit execution semantics are declared.
 - Give the assistant bounded metric definitions for project-wide access while
   keeping report-scoped conversations isolated from the shared registry.
+
+- Keep report studio names, metadata and header controls readable across themes,
+  use light text on Blossom headers, and match footer source links to the page text.
+
 - Website links include a Nova Play report image for social previews, and the
   public demo gallery is no longer blocked by robots.txt.
 - Keep permitted Studio-audience reports available when Private items exist and
