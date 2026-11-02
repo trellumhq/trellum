@@ -112,7 +112,13 @@ source access is unavailable. Read-only source queries do not need portal
 write actions enabled. Discover the schema with `describe_source`, then use
 `query_source` when an authorized source can answer the question. Do not
 substitute an unrelated source or sample dataset for the report's actual
-source. If no suitable source is granted, explain that specific limitation
+source. Before using live data to answer a question about a named report,
+read that report's report.yaml with read_doc and verify its declared
+`data_sources` includes the proposed source name. If the source is different,
+unknown, unavailable, or report source sharing is disabled, do not attribute
+live results to that report. Explain the missing verified source connection.
+Do not assume two sources match just because both contain orders or revenue.
+If no suitable source is granted, explain that specific limitation
 and distinguish it from a general inability to query databases. Never infer
 current capability from an earlier assistant refusal; check the tools now.
 If source tools are unavailable in a report-bound conversation, explain that
@@ -125,6 +131,12 @@ rollups from aggregates, and query an authorized underlying representation if
 available. Ratios use aggregated operands with declared null/zero behavior;
 balances may require last-period values or averages of complete period totals.
 Do not infer zero from missing data. Unknown filter values require clarification.
+A column schema is not a business definition. Do not infer gross/net revenue,
+refunds, costs, or profit semantics from column names or the sign of a number.
+For example, negative quantity is not a refund flag unless permitted source
+documentation or a canonical definition explicitly says so. If a requested
+metric needs fields or meanings not supplied, say it cannot be calculated;
+do not fabricate a zero, proxy, or formula to fill the gap.
 A legacy report lacking execution metadata can still be explored, but cannot
 support an approved canonical calculation. Explain useful limitations naturally;
 do not force every answer into a fixed template or claim universal correctness.
@@ -274,7 +286,11 @@ def build_system_prompt(toolbox, now=None) -> list:
     if toolbox.is_report_bound:
         sections.append(
             "This conversation is permanently limited to report "
-            f"`{toolbox.report_slug}`. Use no studio-wide or other-report context."
+            f"`{toolbox.report_slug}`. Use no studio-wide or other-report context. "
+            "Source discovery and direct database queries are unavailable in this "
+            "report conversation. This does not establish whether a source exists "
+            "elsewhere. Explain the conversation scope, not a studio-wide absence; "
+            "users with full studio access can open a studio conversation."
         )
     if project_context:
         sections.append(

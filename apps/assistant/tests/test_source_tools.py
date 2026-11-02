@@ -219,3 +219,12 @@ def test_prompt_inventory_keeps_incomplete_discovery_explicit(source_context, mo
     assert payload in fresh
     assert 'If truncated, search' in fresh
     assert 'An error means discovery failed, not that no sources exist' in fresh
+
+
+def test_live_report_questions_require_source_and_business_meaning_verification(source_context):
+    from apps.assistant.system_prompt import build_system_prompt
+
+    text = build_system_prompt(toolbox(source_context))[0]['text']
+    assert "verify its declared\n`data_sources` includes the proposed source name" in text
+    assert 'negative quantity is not a refund flag' in text
+    assert 'do not fabricate a zero, proxy, or formula' in text
