@@ -68,6 +68,34 @@ def test_report_all_null_sum_is_missing_and_empty_filter_has_no_cells(built, stu
     assert box.provenance["rows"] == []
 
 
+def test_nonfinite_report_result_cannot_poison_persisted_evidence(built, studio_tree, viewer):  # noqa: F811
+    path = built / "data.json"
+    payload = json.loads(path.read_text())
+    payload["_ds_revenue_daily"]["_data"][0][-1] = float("inf")
+    path.write_text(json.dumps(payload))
+    box = AssistantToolbox(studio_tree, actor=viewer)
+    result = box.execute("query_report_data", {
+        "slug": "player-overview", "dataset_id": "revenue_daily",
+        "metrics": [{"column": "revenue"}],
+    })
+    assert result.startswith("Error:")
+    assert box.provenance is None
+
+
+def test_empty_report_evidence_still_obeys_byte_bound(built, studio_tree, viewer):  # noqa: F811
+    path = built / "data.json"
+    payload = json.loads(path.read_text())
+    payload["_ds_revenue_daily"]["_cols"][-1] = "x" * 65536
+    path.write_text(json.dumps(payload))
+    box = AssistantToolbox(studio_tree, actor=viewer)
+    result = box.execute("query_report_data", {
+        "slug": "player-overview", "dataset_id": "revenue_daily",
+        "filters": {"platform": ["missing"]},
+    })
+    assert "evidence exceeds" in result
+    assert box.provenance is None
+
+
 def test_source_pause_resume_reconnect_and_history_exclude_drafts(source_context, executor, login, monkeypatch):  # noqa: F811
     studio, user, session, grant = source_context
     draft = "__REJECTED_SOURCE_DRAFT__ 654321"

@@ -1228,6 +1228,10 @@ class AssistantToolbox:
         if df.empty:
             self.provenance.update(kind="report_query", status="answered", columns=list(df.columns),
                                    rows=[], truncated=False)
+            from .answer_review import encoded
+            if len(encoded(self.provenance).encode()) > 65536:
+                self.provenance = None
+                return "Error: Structured report evidence exceeds the result byte limit; narrow the query."
             self._pin_answer_report(slug)
             # Self-healing hint: tell the model what WOULD have matched so it
             # can correct the filter in one retry instead of giving up.
@@ -1283,7 +1287,14 @@ class AssistantToolbox:
         self.provenance.update(kind="report_query", status="answered", columns=cells["columns"],
                                rows=cells["data"], truncated=len(result) > limit)
         from .answer_review import encoded
-        if len(encoded(self.provenance).encode()) > 65536:
+        try:
+            evidence_size = len(encoded(self.provenance).encode())
+        except (ValueError, TypeError, OverflowError):
+            # Failed serialization must not leave non-JSON cells attached to
+            # the transcript: its database save uses this same provenance.
+            self.provenance = None
+            return "Error: Report results contain values that cannot be represented as analytical evidence."
+        if evidence_size > 65536:
             self.provenance = None
             return "Error: Structured report evidence exceeds the result byte limit; narrow the query."
         self._pin_answer_report(slug)
