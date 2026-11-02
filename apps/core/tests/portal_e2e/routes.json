@@ -11976,9 +11976,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "f74a5749232fa97b02b25d26a518c5246a02b8c4a8d9a9b4b6d8dad997c777ea",
+      "source_sha256": "6ad4efd9fb23ac6841032252f41b2aa15eea17b9370fd2dcca2bc53a156fd599",
       "request_conditions": [],
-      "adapter_sha256": "2d01625b3dc095bb5034fa6a64677174f6e2cebca9a534876ef5a922ed0a4024",
+      "adapter_sha256": "9d41e9358af6e18605d32b383446271f9bacb5d1e5c9f36b9e12e49a86557adb",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -19243,9 +19243,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "82278fc56816addf3a3db8bb4e34022e0cf59b6184897431d8ab874a207c2009",
+      "source_sha256": "a0cc603f41ff919bfbf9f2d814f5d137c5017c3554b963c288d86d18291aaaac",
       "request_conditions": [],
-      "adapter_sha256": "1282b4b0bfa85741a779403dee6efdf8757b48810e294b187ec2f737f23cac5c",
+      "adapter_sha256": "a37e95c851bc34d9613f21e04c0780306b0589210d59f893f798fd424de6e439",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
