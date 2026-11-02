@@ -146,7 +146,8 @@ on edits or submitted values on validation rerenders.
 ## Console navigation
 
 Console pages are ordinary documents. The shell gives them loading feedback,
-and one route pair, Metrics Overview and Comparison, also swaps in place.
+and two same-studio pairs also swap in place: Reports/Analyses and Metrics
+Overview/Comparison.
 
 **Loading feedback is opt-in.** Mark a link or a GET form that opens another
 console page with `data-console-nav`, or put the attribute on a container that
@@ -160,12 +161,34 @@ and a new route needs no change in `static/console-shell.js`. Modifier clicks,
 new tabs, `download`, same-page hashes and other origins are skipped even when
 marked.
 
-A marked link shows the destination heading and a "Loading <page>…" state, with
-**Cancel loading**; the document URL commits with the browser's response.
-Cancel loading or Escape stops the request and restores the old page, focus and
-scroll. A slow page is not a failed page: after 15 seconds the text becomes
-"Still loading <page>…" and the request keeps going. Nothing stops it except
-that explicit cancel, so users never have to retry a page that was about to open.
+A marked link acknowledges the destination immediately through the sidebar,
+page title and `aria-busy`, while keeping the old content, layout and scroll
+position. A fixed live loading indicator appears after 150 ms. Fast transitions
+finish immediately; once shown, feedback stays for at least 500 ms and until
+primary destination content is ready. Optional favorites, subscriptions and
+metric usage never own primary readiness. The shared timing helper in
+`console-shell.js` stops feedback timers in hidden documents and on disposal.
+
+Native navigation still commits its URL with the browser's response. Before
+that commit, **Cancel loading** or Escape stops the navigation and restores the
+old page, drafts, focus and scroll. After 15 seconds the message becomes
+"Still loading <page>…" and the request keeps going. After the response commits,
+cancellation cannot restore the departed document: landing feedback has no
+Cancel button. Exact same-studio native destinations can carry short-lived
+loading timestamps and a label through session storage; no HTML, registry or
+report data is stored. Redirects, authentication, different studios and stale
+records cannot inherit this feedback. A catalog landing keeps feedback through
+its primary registry read.
+
+**Reports and Analyses** reuse the mounted catalog only within one studio.
+They keep the old list while bounded, authorized registry reads fetch the
+requested kind; the destination URL and rows commit together after shared
+feedback timing. Superseded reads are aborted and guarded, and a failed read
+keeps the old list with a direct-entry link instead of claiming it is empty.
+Operations and cross-studio links remain native. Catalog query updates preserve
+other history owners' state. Back and Forward restore filters, sort, view and
+position after rows are ready, including when returning from a hosted report;
+the report host tracks the last committed catalog path.
 
 **Metrics Overview and Comparison** of one studio update the URL, heading,
 sidebar selection and loading state in place, after the shared leave guard, and
@@ -187,8 +210,8 @@ Forward history. Report hosts keep their existing history owner. A failed
 in-place request offers direct entry and does not silently execute a login
 document or claim content is empty.
 
-Other pages stay native. This is not an enhancement of the catalog, settings or
-report hosts. Authentication retains native semantics.
+Other pages stay native. Settings and authentication retain native semantics;
+report hosts keep their iframe and history ownership.
 
 The shared leave guard inspects every tracked dirty or saving form, including
 sidebar departures. Cancel retains drafts. Accepted departure invalidates

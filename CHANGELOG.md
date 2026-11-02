@@ -14,6 +14,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Keep Reports and Analyses mounted while switching catalogs, and retain page
+  content during Metrics and native navigation. Loading feedback appears only
+  for slower transitions and remains visible through primary content readiness.
 - Website links include a Nova Play report image for social previews, and the
   public demo gallery is no longer blocked by robots.txt.
 - Keep permitted Studio-audience reports available when Private items exist and

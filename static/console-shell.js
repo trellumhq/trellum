@@ -1,3 +1,75 @@
+/* Shared navigation timing. Content stays mounted until the destination is ready.
+   Hidden documents own no feedback timers; returning resumes from wall-clock time. */
+(function () {
+    'use strict';
+    function start(options) {
+        var root = options.root, previousBusy = root && root.getAttribute('aria-busy');
+        var started = options.startedAt || Date.now(), shown = options.shownAt || 0;
+        var panel = null, timer = null, disposed = false, finishing = false, resolveReady = null, finishPromise = null;
+        if (root) root.setAttribute('aria-busy', 'true');
+        function show() {
+            if (panel || disposed) return;
+            var shell = document.querySelector('[data-console-shell]');
+            if (!shell) return;
+            panel = document.createElement('section');
+            panel.className = 'tl-console-loading-feedback';
+            panel.dataset.consoleLoading = '';
+            if (options.native) panel.dataset.consoleNativePending = '';
+            var status = document.createElement('span'); status.setAttribute('role', 'status');
+            status.textContent = 'Loading ' + options.label + '…'; panel.append(status);
+            if (options.cancel) {
+                var button = document.createElement('button'); button.type = 'button';
+                button.className = 'ui-btn ghost'; button.textContent = 'Cancel loading';
+                button.addEventListener('click', options.cancel); panel.append(button);
+            }
+            shell.append(panel);
+            if (!shown) { shown = Date.now(); if (options.onShow) options.onShow(shown); }
+        }
+        function dispose() {
+            if (disposed) return;
+            disposed = true; clearTimeout(timer);
+            document.removeEventListener('visibilitychange', schedule);
+            if (options.signal) options.signal.removeEventListener('abort', dispose);
+            if (panel) panel.remove();
+            if (root) {
+                if (previousBusy === null) root.removeAttribute('aria-busy');
+                else root.setAttribute('aria-busy', previousBusy);
+            }
+            if (resolveReady) resolveReady();
+        }
+        function schedule() {
+            clearTimeout(timer);
+            if (disposed || document.hidden) return;
+            if (finishing) {
+                var remaining = shown ? Math.max(0, shown + 500 - Date.now()) : 0;
+                if (remaining) timer = setTimeout(schedule, remaining);
+                else if (resolveReady) { var done = resolveReady; resolveReady = null; done(); }
+            } else {
+                var delay = Math.max(0, started + 150 - Date.now());
+                if (shown || !delay) show(); else timer = setTimeout(schedule, delay);
+            }
+        }
+        document.addEventListener('visibilitychange', schedule);
+        if (options.signal) options.signal.addEventListener('abort', dispose, { once: true });
+        schedule();
+        function finish() {
+            if (finishPromise) return finishPromise;
+            finishing = true;
+            finishPromise = new Promise(function (resolve) { resolveReady = resolve; if (disposed) resolve(); else schedule(); });
+            return finishPromise;
+        }
+        return {
+            // Mounting primary content may discover further readiness work. A fast
+            // response must leave the delayed indicator armed until that work settles.
+            beforeCommit: function () { return shown ? finish() : Promise.resolve(); },
+            finish: finish,
+            dispose: dispose,
+            message: function (text) { if (panel) panel.querySelector('[role=status]').textContent = text; }
+        };
+    }
+    window.TrellumNavigationFeedback = { start: start };
+}());
+
 (function () {
     'use strict';
 
@@ -594,22 +666,23 @@
 }());
 
 (function () {
-    var nativeSnapshot = null, nativeTimeout = null;
+    var nativeSnapshot = null, nativeTimeout = null, feedback = null, slowStartedAt = 0, slowLabel = '';
+    var recordKey = 'trellum-navigation-feedback';
+    function studioPath(path) { var match = /^(\/s\/[^/]+\/[^/]+)\//.exec(path); return match && match[1]; }
+    function forget() { try { sessionStorage.removeItem(recordKey); } catch (e) {} }
+    function remember(record) { try { sessionStorage.setItem(recordKey, JSON.stringify(record)); } catch (e) {} }
     function clear(quiet) {
         clearTimeout(nativeTimeout); nativeTimeout = null;
+        if (feedback) { feedback.dispose(); feedback = null; }
+        forget();
         var restored = nativeSnapshot;
         if (nativeSnapshot) {
             window.TrellumConsoleShell.setPageTitle(nativeSnapshot.title);
-            nativeSnapshot.content.forEach(function (entry) {
-                entry.node.inert = entry.inert;
-                if (entry.hidden === null) entry.node.removeAttribute('hidden');
-                else entry.node.setAttribute('hidden', entry.hidden);
-            });
             nativeSnapshot.links.forEach(function (entry) { entry.node.classList.toggle('active', entry.active); if (entry.current) entry.node.setAttribute('aria-current', entry.current); else entry.node.removeAttribute('aria-current'); });
             nativeSnapshot = null;
         }
         document.querySelectorAll('[data-console-native-pending]').forEach(function (node) { node.remove(); });
-        var main = document.querySelector('main,[data-console-catalog]'); if (main) main.classList.remove('tl-console-native-pending');
+
         var status = document.querySelector('[data-console-navigation-native-status]'); if (status) status.textContent = '';
         if (restored) {
             window.scrollTo(restored.position[0], restored.position[1]);
@@ -625,6 +698,17 @@
         window.stop(); clear();
         if (window.TrellumSettingsForms) window.TrellumSettingsForms.resume();
     }
+    function slowNotice() {
+        if (!nativeSnapshot || !feedback) return;
+        feedback.message('Still loading ' + slowLabel + '…');
+        var status = document.querySelector('[data-console-navigation-native-status]');
+        if (status) status.textContent = 'Still loading ' + slowLabel + '…';
+    }
+    document.addEventListener('visibilitychange', function () {
+        clearTimeout(nativeTimeout);
+        if (nativeSnapshot && !document.hidden) nativeTimeout = setTimeout(slowNotice, Math.max(0, 15000 - (Date.now() - slowStartedAt)));
+    });
+    window.TrellumConsoleShell.cancelNavigation = cancel;
     /* Only elements inside a data-console-nav region (or carrying it) show loading feedback: templates mark the
        links and GET forms that open a console page. data-console-no-feedback opts one out. Report hosts, downloads
        and APIs are never marked, so they keep the browser's own navigation. */
@@ -637,9 +721,7 @@
         var pageTitle = document.querySelector('[data-console-page-title]');
         if (!main || !pageTitle) return false;
         clear(true);
-        nativeSnapshot = { content: Array.from(main.children).map(function (node) {
-            return {node:node, inert:node.inert, hidden:node.getAttribute('hidden')};
-        }), position: [scrollX,scrollY], focus: document.activeElement, title: pageTitle.textContent, links: Array.from(document.querySelectorAll('.tl-console-nav-link')).map(function (node) { return {node: node, active: node.classList.contains('active'), current: node.getAttribute('aria-current')}; }) };
+        nativeSnapshot = { position: [scrollX,scrollY], focus: document.activeElement, title: pageTitle.textContent, links: Array.from(document.querySelectorAll('.tl-console-nav-link')).map(function (node) { return {node: node, active: node.classList.contains('active'), current: node.getAttribute('aria-current')}; }) };
         history.replaceState(Object.assign({}, history.state || {}, {
             trellumNativePosition: {url:location.href, position:nativeSnapshot.position}
         }), '', location.href);
@@ -650,23 +732,14 @@
             var active = node === link; node.classList.toggle('active', active);
             if (active) node.setAttribute('aria-current', 'page'); else node.removeAttribute('aria-current');
         });
-        var panel = document.createElement('section'); panel.dataset.consoleNativePending = ''; panel.className = 'page-head';
-        var heading = document.createElement('h1'); heading.textContent = label; heading.tabIndex = -1;
-        var status = document.createElement('p'); status.setAttribute('role', 'status'); status.textContent = 'Opening ' + label + '…';
-        var stop = document.createElement('button'); stop.type = 'button'; stop.className = 'ui-btn ghost'; stop.textContent = 'Cancel loading';
-        stop.addEventListener('click', function () { cancel(); });
-        // Prevent keyboard focus from entering the previous page while loading.
-        nativeSnapshot.content.forEach(function (entry) { entry.node.inert = true; entry.node.hidden = true; });
-        panel.append(heading, status, stop); main.prepend(panel); main.classList.add('tl-console-native-pending');
-        heading.focus({preventScroll:true});
-        var sharedStatus = document.querySelector('[data-console-navigation-native-status]');
-        if (sharedStatus) sharedStatus.textContent = 'Opening page…';
-        window.scrollTo(0,0);
-        // A slow page is not a failed page: say so, and keep waiting.
-        nativeTimeout = setTimeout(function () {
-            status.textContent = 'Still loading ' + label + '…';
-            if (sharedStatus) sharedStatus.textContent = 'Still loading ' + label + '…';
-        }, 15000);
+        var record = { destination: url.href, startedAt: Date.now(), shownAt: 0, label: label };
+        var sameStudio = studioPath(url.pathname) && studioPath(url.pathname) === studioPath(location.pathname);
+        if (sameStudio) remember(record);
+        feedback = window.TrellumNavigationFeedback.start({ root: main, label: label, native: true, cancel: cancel,
+            onShow: function (at) { record.shownAt = at; if (sameStudio) remember(record); }
+        });
+        slowStartedAt = Date.now(); slowLabel = label;
+        if (!document.hidden) nativeTimeout = setTimeout(slowNotice, 15000);
         document.dispatchEvent(new CustomEvent('console:native-start', {detail: {url: url.href}}));
         return true;
     }
@@ -709,11 +782,38 @@
     window.addEventListener('keydown', function (event) {
         if (event.key === 'Escape' && nativeSnapshot) { event.preventDefault(); cancel(); }
     });
-    window.addEventListener('pageshow', function () {
-        clear();
+    window.addEventListener('pageshow', function (event) {
+        if (event.persisted || nativeSnapshot) clear();
         var saved = history.state && history.state.trellumNativePosition;
         if (saved && saved.url === location.href && Array.isArray(saved.position)) {
             requestAnimationFrame(function () { window.scrollTo(saved.position[0], saved.position[1]); });
         }
     });
+    window.addEventListener('pagehide', function () {
+        clearTimeout(nativeTimeout);
+        if (feedback) feedback.dispose();
+    });
+    // Only carry timing metadata across an exact, same-studio native destination.
+    // Authentication, redirects and stale records never inherit console feedback.
+    var landing = null;
+    try { landing = JSON.parse(sessionStorage.getItem(recordKey)); } catch (e) {}
+    forget();
+    var arrival = performance.getEntriesByType('navigation')[0];
+    if (landing && (!arrival || (arrival.type === 'navigate' && arrival.redirectCount === 0)) &&
+            landing.destination === location.href && studioPath(location.pathname) &&
+            typeof landing.label === 'string' && landing.label.length <= 200 &&
+            Number.isFinite(landing.startedAt) && Date.now() >= landing.startedAt && Date.now() - landing.startedAt < 30000 &&
+            (!landing.shownAt || (Number.isFinite(landing.shownAt) && landing.shownAt >= landing.startedAt && landing.shownAt <= Date.now()))) {
+        var landingRoot = document.querySelector('main,[data-console-catalog]');
+        var arriving = window.TrellumNavigationFeedback.start({ root: landingRoot, label: landing.label,
+            startedAt: landing.startedAt, shownAt: landing.shownAt });
+        var primaryReady = function () { arriving.finish().then(arriving.dispose); };
+        if (document.querySelector('[data-console-catalog]')) {
+            window.addEventListener('trellum:catalog-ready', primaryReady, { once: true });
+            window.addEventListener('trellum:catalog-failed', primaryReady, { once: true });
+        } else if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', primaryReady, { once: true });
+        else primaryReady();
+        window.addEventListener('pagehide', arriving.dispose, { once: true });
+    }
+
 }());

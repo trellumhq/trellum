@@ -56,6 +56,7 @@ def test_metrics_fragment_native_parity_and_access(studio_tree, member, grant_st
     assert denied.status_code == 302 and '/login' in denied.url
 
 
+@pytest.mark.heavy
 @pytest.mark.parametrize('engine', ['chromium', 'webkit'])
 @pytest.mark.parametrize('width', [1440, 390])
 def test_rendered_navigation_delay_guard_history_and_native_feedback(
@@ -114,7 +115,7 @@ def test_rendered_navigation_delay_guard_history_and_native_feedback(
         assert sample <= 100, sample
         assert page.url.endswith(comparison)
         assert page.locator('main h1').inner_text() == 'Metrics'
-        assert page.get_by_role('status').filter(has_text='Loading Metrics').count() == 1
+        page.wait_for_function("document.querySelector('[data-console-loading] [role=status]')?.textContent === 'Loading Metrics…'")
         wait_for(page, lambda: pending)
         route = pending.pop()
         response = fragment_responses[comparison]
@@ -200,10 +201,19 @@ def test_rendered_navigation_delay_guard_history_and_native_feedback(
         delay_documents = True
         page.evaluate("document.querySelector('main').insertAdjacentHTML('beforeend', '<input id=native-draft value=kept><div style=height:1400px></div>'); document.querySelector('#native-draft').focus(); scrollTo(0,400)")
         old_position = page.evaluate('scrollY')
+        samples = []
+        page.expose_function('nativeSample', lambda sample: samples.append(sample))
         def native_reports():
-            target = page.evaluate("Array.from(document.querySelectorAll('.tl-console-nav-link')).find(n=>n.textContent.includes('Reports')).click(); var r=document.querySelector('[data-console-native-pending] button').getBoundingClientRect(); ({x:r.x+r.width/2,y:r.y+r.height/2})")
-            wait_for(page, lambda: native_pending)
-            return target
+            page.evaluate("""Array.from(document.querySelectorAll('.tl-console-nav-link')).find(n=>n.textContent.includes('Reports')).click();
+                setTimeout(function () {
+                    var r=document.querySelector('[data-console-native-pending] button').getBoundingClientRect();
+                    window.nativeSample({x:r.x+r.width/2,y:r.y+r.height/2, yScroll:scrollY,
+                        draftVisible:document.querySelector('#native-draft').getClientRects().length > 0});
+                }, 200)""")
+            wait_for(page, lambda: native_pending and samples)
+            sample = samples.pop()
+            assert sample['draftVisible'] and sample['yScroll'] == old_position
+            return sample
         target = native_reports()
         page.mouse.click(target['x'], target['y'])
         # Abort the held request only once the page has cancelled it, or Chromium may show its error page.
@@ -222,7 +232,7 @@ def test_rendered_navigation_delay_guard_history_and_native_feedback(
         notices = []
         page.expose_function('noticeSeen', lambda seen: notices.append(seen))
         page.evaluate("""var setTimeoutNow = window.setTimeout;
-            window.setTimeout = function (fn, ms) { return setTimeoutNow.apply(window, [fn, ms === 15000 ? 100 : ms].concat([].slice.call(arguments, 2))); };
+            window.setTimeout = function (fn, ms) { return setTimeoutNow.apply(window, [fn, ms === 15000 ? 300 : ms].concat([].slice.call(arguments, 2))); };
             new MutationObserver(function () {
                 var panel = document.querySelector('[data-console-native-pending] [role=status]');
                 if (panel && panel.textContent.indexOf('Still loading') === 0) window.noticeSeen([panel.textContent,
@@ -249,7 +259,7 @@ def test_rendered_navigation_delay_guard_history_and_native_feedback(
         assert page.get_by_role('link', name='Open page directly').get_attribute('href').endswith(comparison)
         delay_documents = True
         # An unadapted destination retains native navigation and pending feedback.
-        result = page.evaluate("Array.from(document.querySelectorAll('.tl-console-nav-link')).find(n=>n.textContent.includes('Reports')).click(); ({title:document.querySelector('[data-console-native-pending] h1').textContent, path:location.pathname})")
+        result = page.evaluate("Array.from(document.querySelectorAll('.tl-console-nav-link')).find(n=>n.textContent.includes('Reports')).click(); ({title:document.querySelector('[data-console-page-title]').textContent, path:location.pathname})")
         assert result['title'] == 'Reports'
         wait_for(page, lambda: native_pending)
         # Still waiting after the notice: the page is kept pending, not stopped, and then opens by itself.
@@ -257,7 +267,7 @@ def test_rendered_navigation_delay_guard_history_and_native_feedback(
         route = native_pending.pop()
         route.fulfill(body=native_responses[home].content, content_type='text/html')
         page.wait_for_url(lambda url: url.split('?')[0] == 'http://navigation.test' + home)
-        result = page.evaluate("Array.from(document.querySelectorAll('.tl-console-nav-link')).find(n=>n.textContent.includes('Metrics')).click(); ({title:document.querySelector('[data-console-native-pending] h1').textContent, path:location.pathname})")
+        result = page.evaluate("Array.from(document.querySelectorAll('.tl-console-nav-link')).find(n=>n.textContent.includes('Metrics')).click(); ({title:document.querySelector('[data-console-page-title]').textContent, path:location.pathname})")
         assert result['title'] == 'Metrics'
         assert result['path'] == home
         wait_for(page, lambda: native_pending)
@@ -268,6 +278,7 @@ def test_rendered_navigation_delay_guard_history_and_native_feedback(
         context.close()
         browser.close()
 
+@pytest.mark.heavy
 @pytest.mark.django_db(transaction=True)
 def test_real_delayed_django_metrics_destination(live_server, studio_tree, member, grant_studio, login, monkeypatch):
     """Real HTTP/PG/static assets: primary response deliberately delayed 1.5s.
@@ -308,7 +319,7 @@ def test_real_delayed_django_metrics_destination(live_server, studio_tree, membe
         assert sample['ms'] <= 100, sample
         assert sample['title'] == 'Metrics' and sample['busy'] == 'true'
         assert sample['url'] == overview + '/comparison'
-        assert page.evaluate("document.activeElement.matches('h1,[data-console-page-title]')")
+        assert page.evaluate("document.activeElement.textContent === 'Comparison'")
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         page.wait_for_function("!document.querySelector('main').hasAttribute('aria-busy')")
         assert page.get_by_role('link', name='Comparison', exact=True).get_attribute('aria-current') == 'page'
@@ -321,7 +332,7 @@ def test_real_delayed_django_metrics_destination(live_server, studio_tree, membe
         page.wait_for_load_state('networkidle')
         native = page.evaluate("""var start=performance.now();
             Array.from(document.querySelectorAll('.tl-console-nav-link')).find(n=>n.textContent.includes('Metrics')).click();
-            ({ms:performance.now()-start, title:document.querySelector('[data-console-native-pending] h1').textContent,
+            ({ms:performance.now()-start, title:document.querySelector('[data-console-page-title]').textContent,
               url:location.pathname, documentTitle:document.title})""")
         assert native['ms'] <= 100 and native['title'] == 'Metrics'
         assert native['url'] == home

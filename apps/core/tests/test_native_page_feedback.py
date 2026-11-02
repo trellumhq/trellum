@@ -13,6 +13,7 @@ pytestmark = pytest.mark.django_db
 
 # The behaviour (held navigation, Still-loading notice, cancel, recovery) does not
 # depend on the width, so run each engine at one width: desktop chromium, phone webkit.
+@pytest.mark.heavy
 @pytest.mark.parametrize("engine, width", [("chromium", 1440), ("webkit", 390)])
 def test_local_page_links_show_recoverable_feedback(analytics_server, engine, width):
     from playwright.sync_api import sync_playwright, expect
@@ -28,7 +29,8 @@ def test_local_page_links_show_recoverable_feedback(analytics_server, engine, wi
         dialogs = []
         page.on("pageerror", lambda error: errors.append(str(error)))
         page.on("dialog", lambda dialog: dialogs.append(dialog.message))
-        held = []
+        held, feedback_samples = [], []
+        page.expose_function('feedbackSample', lambda sample: feedback_samples.append(sample))
         try:
             _login(page, server, "admin")
             page.evaluate("""() => {
@@ -44,11 +46,14 @@ def test_local_page_links_show_recoverable_feedback(analytics_server, engine, wi
                             display:getComputedStyle(node).display, rects:node.getClientRects().length}))
                     });
                     const immediateDisplay = displayDiagnostic();
-                    setTimeout(() => pendingVisibility.push({
-                        immediateDisplay, display:displayDiagnostic(),
-                        milliseconds:performance.now()-started,
-                        pending:!!document.querySelector('[data-console-native-pending]')
-                    }), 50);
+                    setTimeout(() => {
+                        const r=document.querySelector('[data-console-native-pending] button').getBoundingClientRect();
+                        const sample = { immediateDisplay, display:displayDiagnostic(),
+                            milliseconds:performance.now()-started,
+                            pending:!!document.querySelector('[data-console-native-pending]'),
+                            x:r.x+r.width/2,y:r.y+r.height/2 };
+                        pendingVisibility.push(sample); window.feedbackSample(sample);
+                    }, 250);
                 });
                 ['console:native-start','console:native-restored'].forEach(name =>
                     document.addEventListener(name, event => nativeEvents.push([name,event.detail.url])));
@@ -67,15 +72,16 @@ def test_local_page_links_show_recoverable_feedback(analytics_server, engine, wi
             state = page.evaluate("""() => {
                 const started = performance.now();
                 document.querySelector('.ui-pager a:last-child').click();
-                const panel = document.querySelector('[data-console-native-pending]');
-                const r = panel.querySelector('button').getBoundingClientRect();
-                return {ms:performance.now()-started,text:panel.textContent,x:r.x+r.width/2,y:r.y+r.height/2,
+                return {ms:performance.now()-started,
                     oldVisibility:getComputedStyle(document.querySelector('#analyticsTable')).visibility,
                     observedAt:performance.now()};
             }""")
             assert state['ms'] < 100
-            assert 'Opening Report Analytics' in state['text']
-            page.wait_for_timeout(50)
+            for _ in range(500):
+                if feedback_samples: break
+                page.wait_for_timeout(10)
+            assert feedback_samples
+            state.update(feedback_samples.pop())
             assert len(held) == 1
             # The high-level screenshot waits for frames that native provisional
             # navigation can suspend. Record actual compositor output instead.
@@ -93,11 +99,9 @@ def test_local_page_links_show_recoverable_feedback(analytics_server, engine, wi
             expect(page.locator('#neighbor input')).to_have_value('keep this draft')
             assert page.evaluate('nativeEvents.map(e=>e[0])') == ['console:native-start', 'console:native-restored']
             rendered = page.evaluate('pendingVisibility')
-            # The old table is gone the moment navigation starts, and still gone
-            # a beat later while the request is held. (How late that beat fires
-            # is the runner's timer latency, not page behaviour, so not asserted.)
-            assert rendered and rendered[-1]['immediateDisplay']['tableRects'] == 0, rendered
-            assert rendered[-1]['pending'] and rendered[-1]['display']['tableRects'] == 0, rendered
+            # The old table retains its layout throughout provisional navigation.
+            assert rendered and rendered[-1]['immediateDisplay']['tableRects'] > 0, rendered
+            assert rendered[-1]['pending'] and rendered[-1]['display']['tableRects'] > 0, rendered
 
             # Resolve an actual authorized response; no synthetic result body.
             page.evaluate("document.querySelector('#neighbor').remove()")
@@ -115,6 +119,7 @@ def test_local_page_links_show_recoverable_feedback(analytics_server, engine, wi
             # still loading, and the shell's link handlers do not exist until
             # those scripts have run, so wait for the load before using them.
             page.wait_for_load_state('load')
+            expect(page.locator('main')).not_to_have_attribute('aria-busy', 'true')
             # Loading feedback is opt-in: only links (and GET forms) marked data-console-nav, or inside a
             # marked region, take it. Everything else keeps the browser's own navigation.
             probe = """(cases) => cases.map(([href, attrs, wrap]) => {
@@ -126,7 +131,7 @@ def test_local_page_links_show_recoverable_feedback(analytics_server, engine, wi
                 // Prevent the actual destination after the production window listener.
                 window.addEventListener('click', event => event.preventDefault(), {once: true});
                 link.click();
-                const pending = !!document.querySelector('[data-console-native-pending]');
+                const pending = document.querySelector('main').getAttribute('aria-busy') === 'true';
                 document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
                 host.remove(); return {href, pending};
             })"""
