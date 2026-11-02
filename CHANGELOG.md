@@ -20,6 +20,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Include the psycopg 3 driver required for bounded assistant source reads in
+  framework driver installations.
+
 - Align the pinned SQLGlot parser and Snowflake emulator dependencies so the
   framework integration suite can install with all engine coverage intact.
 
