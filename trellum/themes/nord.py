@@ -6,6 +6,7 @@ NordTheme = Theme(
     bg_card_hover="#434c5e",
     bg_header="#5e81ac",
     primary_fill="#4f7099",
+    header_fill="#4f7099",
 
     text_main="#eceff4",
     text_secondary="#d8dee9",
