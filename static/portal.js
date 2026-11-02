@@ -3605,7 +3605,15 @@ function _catalogFetch(kind, query) {
         _catalogTotal = snapshot.total; _catalogSlices = snapshot.slices;
         return snapshot.rows;
     }, function(error) {
-        if (run === _catalogRun) _catalogController = null;
+        if (run !== _catalogRun || controller.signal.aborted) {
+            throw new DOMException('superseded', 'AbortError');
+        }
+        _catalogController = null;
+        // The bounded request's deadline aborts its own signal, not this
+        // catalog's lifecycle. Exhausted timeouts must finish loading as failures.
+        if (error && error.name === 'AbortError') {
+            throw new DOMException('Catalog request timed out', 'TimeoutError');
+        }
         throw error;
     });
 }
@@ -3618,13 +3626,15 @@ function _catalogRefresh() {
         reports = rows;
         if (!_catalogInitialized) { _initStudios(); readFromUrl(); _catalogInitialized = true; }
         _seedErrorLog();
+        var error = document.querySelector('[data-catalog-navigation-error]'); if (error) error.remove();
         render();
         updateErrorBadge(); _catalogLoadSupplement(); _catalogStartSecondary();
     }).catch(function(error) {
         if (error && error.name === 'AbortError') return;
         /* Keep what is on screen; the next visit or return tries again. */
+        _catalogFailure(new URL(_catalogHere));
         var container = document.getElementById('content');
-        if (container) signalCatalogReady(container);
+        if (container && _catalogInitialized) signalCatalogReady(container);
     });
 }
 

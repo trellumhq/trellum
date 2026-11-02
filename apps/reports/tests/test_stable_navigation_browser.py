@@ -393,6 +393,59 @@ def test_cancel_navigation_before_first_registry_restores_a_loading_catalog(navi
         browser.close()
 
 
+@pytest.mark.heavy
+@pytest.mark.parametrize('entry', ['initial', 'restored'])
+def test_catalog_exhausted_timeouts_finish_loading_and_recover(navigation_pages, entry):
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        routes = Routes(page, navigation_pages)
+        now = datetime(2030, 1, 1, tzinfo=timezone.utc)
+        page.clock.install(time=now)
+        page.clock.pause_at(now)
+        routes.open()
+        routes.hold_registry = True
+        if entry == 'initial':
+            # Carry feedback from a slow native departure into the catalog.
+            destination = 'http://stable.test' + routes.base + '/?q=Report&view=list'
+            page.evaluate("""destination => sessionStorage.setItem('trellum-navigation-feedback', JSON.stringify({
+                destination:destination, label:'Reports',
+                startedAt:Date.now()-1000, shownAt:Date.now()-500
+            }))""", destination)
+            page.goto(destination)
+            expect(page.locator('[data-console-loading]')).to_be_visible()
+        else:
+            page.evaluate("dispatchEvent(new PageTransitionEvent('pageshow', {persisted:true}))")
+
+        failed_requests = []
+        page.on('requestfailed', lambda request: failed_requests.append(request.url)
+                if '/api/registry' in request.url else None)
+        for attempt in range(4):
+            wait_for(page, lambda: len(routes.registry) == attempt + 1)
+            # Exercise the real AbortController deadline, not a synthetic HTTP error.
+            page.clock.run_for(15001)
+            wait_for(page, lambda: len(failed_requests) == attempt + 1)
+            if attempt < 3:
+                page.clock.run_for([1000, 3000, 8000][attempt] + 1)
+
+        expect(page.locator('[data-catalog-navigation-error]')).to_be_visible()
+        expect(page.locator('[data-console-loading]')).to_have_count(0)
+        expect(page.locator('[data-console-catalog]')).not_to_have_attribute('aria-busy', 'true')
+        expect(page.locator('#content tr[data-slug]')).to_have_count(0 if entry == 'initial' else 40)
+        assert 'No reports' not in page.locator('#content').inner_text()
+        page.clock.run_for(30000)
+        assert len(routes.registry) == 4  # exhausted retries remain bounded
+
+        # A later restoration starts a fresh read and clears the old failure.
+        routes.hold_registry = False
+        page.evaluate("dispatchEvent(new PageTransitionEvent('pageshow', {persisted:true}))")
+        expect(page.locator('#content tr[data-slug]')).to_have_count(40)
+        expect(page.locator('#content')).to_have_attribute('data-catalog-ready', 'true')
+        expect(page.locator('[data-catalog-navigation-error]')).to_have_count(0)
+        assert not routes.errors
+        browser.close()
+
+
 def test_selected_favorites_waits_for_its_rows_before_history_readiness(navigation_pages):
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()

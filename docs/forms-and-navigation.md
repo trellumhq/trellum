@@ -179,7 +179,10 @@ Cancel button. Exact native destinations within one studio or organization-setti
 loading timestamps and a label through session storage; no HTML, registry or
 report data is stored. Redirects, authentication, different studios and stale
 records cannot inherit this feedback. A catalog landing keeps feedback through
-its primary registry read.
+its primary registry read. Exhausted registry timeouts end that feedback and
+show the catalog recovery message. Initial entry and history restoration
+distinguish failed reads from intentional cancellation; restoration retains any
+existing rows, and a later successful read clears the failure message.
 
 **Reports and Analyses** reuse the mounted catalog only within one studio.
 They keep the old list while bounded, authorized registry reads fetch the
