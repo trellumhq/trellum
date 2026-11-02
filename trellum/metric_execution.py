@@ -8,11 +8,11 @@ never change) the existing definition hash.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
-import hashlib
-import json
 from zoneinfo import ZoneInfo
 
 MAX_INPUT_BYTES = 2 * 1024 * 1024

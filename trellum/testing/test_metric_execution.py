@@ -5,13 +5,18 @@ from dataclasses import replace
 import pytest
 
 from trellum.metric_execution import (
-    MAX_ROWS, MetricUnavailable, execute_metric, make_binding, publish_bindings,
+    MAX_ROWS,
+    MetricUnavailable,
+    execute_metric,
+    make_binding,
+    publish_bindings,
 )
-from trellum.metrics import Metric, metrics_artifact, compute_definition_hash
+from trellum.metrics import Metric, compute_definition_hash, metrics_artifact
 
 
 def freeze_clock(monkeypatch):
     from datetime import datetime, timezone
+
     from trellum import metric_execution
     class FrozenClock(datetime):
         @classmethod
@@ -135,8 +140,10 @@ def test_invalid_binding_does_not_break_ordinary_report():
 
 def test_real_report_build_publishes_explicit_binding(tmp_path, monkeypatch):
     import json
+
     import pandas as pd
     import yaml
+
     from trellum.components import DataSource, KpiRow
     from trellum.metrics import invalidate_metrics_cache
     from trellum.rendering.html_builder import render_report
