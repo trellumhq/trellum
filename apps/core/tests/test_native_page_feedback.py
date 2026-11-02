@@ -50,6 +50,7 @@ def test_local_page_links_show_recoverable_feedback(analytics_server, engine, wi
                         const r=document.querySelector('[data-console-native-pending] button').getBoundingClientRect();
                         const sample = { immediateDisplay, display:displayDiagnostic(),
                             milliseconds:performance.now()-started,
+                            inert:document.querySelector('main').inert,
                             pending:!!document.querySelector('[data-console-native-pending]'),
                             x:r.x+r.width/2,y:r.y+r.height/2 };
                         pendingVisibility.push(sample); window.feedbackSample(sample);
@@ -83,7 +84,7 @@ def test_local_page_links_show_recoverable_feedback(analytics_server, engine, wi
             assert feedback_samples
             state.update(feedback_samples.pop())
             assert len(held) == 1
-            assert page.locator('main').evaluate('(node) => node.inert')
+            assert state['inert']
             # The high-level screenshot waits for frames that native provisional
             # navigation can suspend. Record actual compositor output instead.
             if engine == 'chromium':

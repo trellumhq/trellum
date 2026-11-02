@@ -741,6 +741,8 @@
         if (sameScope) remember(record);
         // Retain the page's geometry while preventing edits to a departing form.
         main.inert = true;
+        // Making a focused subtree inert can move WebKit's viewport to the top.
+        window.scrollTo(nativeSnapshot.position[0], nativeSnapshot.position[1]);
         feedback = window.TrellumNavigationFeedback.start({ root: main, label: label, native: true, cancel: cancel,
             onShow: function (at) { record.shownAt = at; if (sameScope) remember(record); }
         });
