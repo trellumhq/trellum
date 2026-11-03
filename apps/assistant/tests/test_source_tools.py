@@ -64,7 +64,7 @@ def test_sse_pause_status_resume_and_revocation(source_context, executor, fake_l
     base = f"/s/{studio.org.slug}/{studio.slug}/api/assistant/sessions/{session.pk}"
     calls = fake_llm(
         FakeResponse([ToolUseBlock("read1", "query_source", {"source_id": grant.pk, "sql": "SELECT count(*) FROM analytics.sales"})], "tool_use"),
-        FakeResponse([TextBlock("The executed query returned 42.")]),
+        FakeResponse([ToolUseBlock("finish", "submit_answer", {"mode": "limitation"})], "tool_use"),
     )
     response = client.post(base + "/message", data=json.dumps({"message": "Count sales"}), content_type="application/json")
     events = frames(response)
