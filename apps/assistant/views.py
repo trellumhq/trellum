@@ -24,6 +24,7 @@ from datetime import timedelta
 from functools import wraps
 
 from django.conf import settings
+from django.core.exceptions import PermissionDenied
 from django.db.models import Q
 from django.http import Http404, HttpResponse, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404
@@ -355,7 +356,14 @@ def session_detail(request, org_slug, studio_slug, session_id):  # noqa: ARG001
               message_count=session.to_summary()["message_count"])
         session.delete()
         return JsonResponse({"ok": True})
-    return JsonResponse(session.to_full())
+    from apps.assistant.source_tools import check_history
+    try:
+        check_history(session, actor=request.user, studio=request.studio)
+    except PermissionDenied:
+        return JsonResponse({"error": "Source access changed. Start a new conversation with your current permissions."}, status=403)
+    response = JsonResponse(session.to_full())
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 # ── The turn: SSE ───────────────────────────────────────────────────────────
@@ -390,8 +398,16 @@ def session_message(request, org_slug, studio_slug, session_id):  # noqa: ARG001
     session = _get_session(request, session_id)
     body = json_body(request)
     message = (body.get("message") or "").strip()
-    if not message:
+    resume_id = body.get("resume_source_query")
+    if not message and not resume_id:
         return JsonResponse({"error": "missing 'message'"}, status=400)
+    from apps.assistant.source_tools import check_history, resume
+    try:
+        check_history(session, actor=request.user, studio=request.studio)
+    except PermissionDenied:
+        return JsonResponse({"error": "Source access changed. Start a new conversation with your current permissions."}, status=403)
+    if session.state.get("_source_pending") and not resume_id:
+        return JsonResponse({"error": "A source read is still in progress.", "source_pending": session.state["_source_pending"]}, status=409)
 
     page = body.get("page") or {}
     if session.scope == AssistantSession.SCOPE_REPORT and isinstance(page, dict):
@@ -450,6 +466,35 @@ def session_message(request, org_slug, studio_slug, session_id):  # noqa: ARG001
         return JsonResponse(
             {"error": "A reply is still streaming in another tab.", "code": "busy"}, status=409
         )
+    # Reload after claiming: another completed turn may have changed the state
+    # between the initial access check and this conditional update.
+    session.refresh_from_db(fields=["state", "title"])
+    try:
+        check_history(session, actor=user, studio=request.studio)
+    except PermissionDenied:
+        AssistantSession.objects.filter(pk=session.pk).update(in_flight_until=None)
+        return JsonResponse({"error": "Source access changed. Start a new conversation."}, status=403)
+    if not resume_id:
+        if session.state.get("_source_pending"):
+            AssistantSession.objects.filter(pk=session.pk).update(in_flight_until=None)
+            return JsonResponse({"error": "A source read is still in progress.", "source_pending": session.state["_source_pending"]}, status=409)
+        session.state["_source_steps"] = 0
+        session.state["_question_clock"] = timezone.now().isoformat()
+        if not session.transcript:
+            session.title = infer_title(message)
+    resumed_evidence = None
+    if resume_id:
+        try:
+            if not resume(session, actor=user, studio=request.studio, query_id=resume_id):
+                AssistantSession.objects.filter(pk=session.pk).update(in_flight_until=None)
+                return JsonResponse({"error": "The source read is still running."}, status=409)
+            message = None
+            resumed_evidence = next((e.get("provenance") for e in reversed(session.transcript)
+                                     if e.get("role") == "tool" and (e.get("provenance") or {}).get("query_id") == str(resume_id)), None)
+        except Exception as exc:
+            AssistantSession.objects.filter(pk=session.pk).update(in_flight_until=None)
+            # Never expose UUID parsing, SQL, or driver exceptions.
+            return JsonResponse({"error": "This source read cannot resume this conversation."}, status=403 if isinstance(exc, PermissionDenied) else 400)
 
     def events():
         # turn_start goes out BEFORE the prompt is assembled. Building it walks
@@ -458,7 +503,14 @@ def session_message(request, org_slug, studio_slug, session_id):  # noqa: ARG001
         # an idle connection and no way to show that anything was happening.
         yield _frame({"type": "turn_start", "session_id": session.pk, "model": config.model})
         try:
-            system_blocks = build_system_prompt(toolbox)
+            if resumed_evidence:
+                check_history(session, actor=user, studio=request.studio)
+                yield _frame({"type": "source_evidence", "evidence": resumed_evidence})
+            source_text = []
+            source_text_bytes = 0
+            from datetime import datetime
+            question_clock = session.state.get("_question_clock")
+            system_blocks = build_system_prompt(toolbox, now=datetime.fromisoformat(question_clock) if question_clock else None)
             for event in llm.stream_turn(
                 config,
                 session.state,
@@ -469,6 +521,21 @@ def session_message(request, org_slug, studio_slug, session_id):  # noqa: ARG001
                 remaining=remaining,
                 deadline_s=deadline_s,
             ):
+                # Hold source-derived prose until the model response finishes,
+                # then recheck grants before delivering it. Database checks per
+                # token would make streaming cost grow with response length.
+                if event.get("type") == "text_delta" and (session.state.get("_source_policies") or session.state.get("_metric_reports")):
+                    source_text_bytes += len(json.dumps(event).encode())
+                    if source_text_bytes > 1048576:
+                        raise ValueError("Source explanation exceeds the delivery bound.")
+                    source_text.append(event)
+                    continue
+                if event.get("type") in ("usage", "done", "tool_use", "tool_result", "source_wait"):
+                    check_history(session, actor=user, studio=request.studio)
+                    for buffered in source_text:
+                        yield _frame(buffered)
+                    source_text.clear()
+                    source_text_bytes = 0
                 if event.get("type") == "keepalive":
                     # An SSE comment, not an event: keeps the connection warm
                     # through a long tool call without the client parsing it.

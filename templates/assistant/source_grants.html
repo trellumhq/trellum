@@ -1,0 +1,52 @@
+{% extends "settings_base.html" %}
+{% block title %}Assistant source access — {{ studio.name }}{% endblock %}
+{% block settings %}
+<header class="page-head">
+  <div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }}</div>
+  <h1>Assistant source access</h1>
+  <p class="muted page-sub">Explicit read grants for studio conversations. Access is never granted to everyone by default.</p>
+  <a class="ui-btn ghost" data-console-nav href="/s/{{ org.slug }}/{{ studio.slug }}/settings/datasources">Back to data sources</a>
+</header>
+<p class="ui-flash warning">Enabling access sends selected source data to the configured AI provider. Use a read-only, least-privileged database role with access limited to the intended data. Existing source credentials are referenced securely and are never shown here.</p>
+{% if has_sources %}
+<div class="ui-field" data-choice-picker>{{ form.datasource.label_tag }}{{ form.datasource }}{{ form.datasource.errors }}</div>
+<form id="source-grant-form" method="post" action="{{ base_url }}" data-settings-form data-settings-save>
+  {% csrf_token %}{{ form.revision }}<input type="hidden" name="datasource" value="{{ form.datasource.value|default_if_none:'' }}">{{ form.non_field_errors }}
+  <section class="ui-section">
+    <h2>Source and allowed data</h2>
+    <p class="muted">Only direct PostgreSQL connections are supported. SSH connections are unavailable. Manage connection configuration in Data sources.</p>
+
+    <div class="ui-field">{{ form.relations.label_tag }}{{ form.relations }}<p class="muted">{{ form.relations.help_text }}</p>{{ form.relations.errors }}</div>
+    <div class="ui-field" data-recipient-picker data-picker-label="Permitted people and groups"{% if form.recipient_source %} data-recipient-source="{{ form.recipient_source }}" data-recipient-people-name="users" data-recipient-group-name="groups"{% endif %}>
+      <label>Permitted people and groups</label>
+      <div data-recipient-type="people">{{ form.users }}{{ form.users.errors }}</div>
+      <div data-recipient-type="groups">{{ form.groups }}{{ form.groups.errors }}</div>
+    </div>
+    <div class="ui-field"><label>{{ form.enabled }} {{ form.enabled.label }}</label>{{ form.enabled.errors }}</div>
+  </section>
+  <div class="ui-form-actions"><button class="ui-btn primary" type="submit">Save source access</button></div>
+</form>
+<script>
+(function () {
+  var form = document.getElementById('source-grant-form');
+  var source = document.getElementById('id_datasource');
+  var savedSource = source.value;
+  source.addEventListener('change', function () {
+    if (source.value === savedSource) return;
+    var destination = new URL(location.href);
+    destination.searchParams.set('source', source.value);
+    var link = document.createElement('a');
+    link.href = destination.href;
+    link.dataset.settingsLeave = form.id;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    source.value = savedSource;
+    source.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+})();
+</script>
+{% else %}
+<section class="ui-empty" role="status"><h2>No supported sources</h2><p>Add a direct PostgreSQL source in Data sources to configure assistant access. Other connectors and SSH connections are not supported.</p></section>
+{% endif %}
+{% endblock %}

@@ -7,12 +7,32 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- Explicit assistant source grants, scoped PostgreSQL schema discovery and read-only queries with durable execution, cancellation and query evidence.
+- Optional canonical metric calculations with explicit report bindings, period and freshness checks, and structured evidence cards.
+- Offline assistant evaluation fixtures and a scorer for supplied structured captures, with model accuracy reported separately from calculation checks.
+
 ### Changed
 
 - Showcase reports, written analyses, and presentations in the README, with
   desktop and mobile screenshots side by side and direct links to synthetic demos.
 
 ### Fixed
+
+- Include the psycopg 3 driver required for bounded assistant source reads in
+  framework driver installations.
+
+- Align the pinned SQLGlot parser and Snowflake emulator dependencies so the
+  framework integration suite can install with all engine coverage intact.
+
+- Supply current authorized source metadata to assistant conversations and preserve historical permission fingerprints during discovery.
+
+- Clarify that read-only assistant access includes authorized source queries, and remove contradictory published-report-only guidance.
+
+- Reject incomplete metric dimension-day coverage and unsafe report aggregations when explicit execution semantics are declared.
+- Give the assistant bounded metric definitions for project-wide access while
+  keeping report-scoped conversations isolated from the shared registry.
 
 - Keep report studio names, metadata and header controls readable across themes,
   use light text on Blossom headers, and match footer source links to the page text.

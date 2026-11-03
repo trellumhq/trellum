@@ -248,6 +248,7 @@
         applyLayout(true);
         setExpanded(true);
         input().focus();
+        pollSourceSoon();
     }
 
     // getClientRects, not offsetParent: the latter is null for the fixed pill
@@ -256,6 +257,7 @@
 
     function closePanel(fromPop) {
         if (!isOpen()) return;
+        pauseSource();
         panel.classList.remove('assistant-open', 'assistant-tall');
         lsSet(LS_OPEN, '0');
         applyLayout(true);
@@ -691,6 +693,7 @@
         var code = (j && j.code) || (status === 409 ? 'busy' : null);
         var e = new Error(errorText(code, (j && j.error) || ('request failed (' + status + ')')));
         e.code = code;
+        e.status = status;
         return e;
     }
 
@@ -868,6 +871,8 @@
     }
 
     function renderProvenance(target, provs) {
+        (provs || []).filter(function (p) { return p && (p.kind === 'source_query' || p.kind === 'metric_query'); }).forEach(renderSourceEvidence);
+        provs = (provs || []).filter(function (p) { return !p || (p.kind !== 'source_query' && p.kind !== 'metric_query'); });
         provs = (provs || []).filter(function (p) { return p && typeof p === 'object'; });
         if (!target || !provs.length) return;
         // One report may be described by several tools in a turn; merge
@@ -941,6 +946,7 @@
 
     function ensureSession() {
         if (sessionId) return Promise.resolve(sessionId);
+        var sessionSerial = _sessionSerial;
         return _fetch(API_BASE + '/sessions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -952,6 +958,7 @@
                 return r.json();
             })
             .then(function (s) {
+                if (sessionSerial !== _sessionSerial) throw new DOMException('Conversation changed', 'AbortError');
                 sessionId = s.id;
                 sessionScope = s.scope;
                 sessionReport = s.report;
@@ -976,7 +983,11 @@
         });
     }
 
+    var _sessionSerial = 0;
     function loadSession(id) {
+        clearSource();
+        stop();
+        var serial = ++_sessionSerial;
         return _fetch(API_BASE + '/sessions/' + encodeURIComponent(id))
             .then(function (r) {
                 if (r.status === 401) throw AuthError();
@@ -984,6 +995,7 @@
                 return r.json();
             })
             .then(function (s) {
+                if (serial !== _sessionSerial) return;
                 if (s.scope === 'report' && s.report !== _contextReport) throw new Error('context changed');
                 sessionId = s.id;
                 sessionScope = s.scope;
@@ -994,6 +1006,7 @@
                 if ((s.transcript || []).length) renderTranscript(s.transcript);
                 else appendEmptyHint(s.alert_title ? 'This conversation starts from the alert above — ask about it.' : null);
                 renderPins();
+                if (s.source_pending) { waitForSource(s.source_pending); pollSourceSoon(); }
             });
     }
 
@@ -1010,6 +1023,9 @@
     }
 
     function resetSession(intro) {
+        ++_sessionSerial;
+        clearSource();
+        stop();
         sessionId = null;
         sessionScope = null;
         sessionReport = null;
@@ -1198,6 +1214,12 @@
 
     function handleEvent(ev) {
         switch (ev.type) {
+            case 'source_wait':
+                waitForSource(ev);
+                break;
+            case 'source_evidence':
+                renderSourceEvidence(ev.evidence);
+                break;
             case 'turn_start':
                 showThinking();
                 break;
@@ -1268,6 +1290,8 @@
     function setBusy(on) {
         busy = on;
         var b = byId('assistantSend');
+        // Hosted report frames may unload before their assistant mounts.
+        if (!b) return;
         b.textContent = on ? 'Stop' : 'Send';
         b.setAttribute('aria-label', on ? 'Stop the reply' : 'Send');
         b.classList.toggle('assistant-stop', on);
@@ -1278,15 +1302,23 @@
     }
 
     function stop() {
+        ++_turnSerial;
         // Cancel the body reader too: it ends the read loop even when the
         // response body is not wired to the signal (proxies, stubs).
         if (_reader) _reader.cancel().catch(function () {});
         if (_abort) _abort.abort();
+        _reader = null; _abort = null;
+        hideThinking(); closeAssistant(); setBusy(!!_source);
     }
 
     function send() {
+        if (_source) {
+            cancelSource();
+            return;
+        }
         if (busy) {
             stop();
+            setBusy(false);
             return;
         }
         var text = input().value.trim();
@@ -1298,71 +1330,246 @@
 
     // One turn: the composer's text, or the automatic follow-up a decided
     // proposal posts so the model hears what happened.
+    var _turnSerial = 0;
     function sendText(text) {
-        if (busy) return;
-        setBusy(true);
+        if (busy || _source) return;
         var userEl = appendUser(text);
         closeAssistant();
         _gotText = false;
         _prov = [];
+        var page = { path: contextPath(), title: (_hostedDocument && _hostedDocument.title) || document.title || '' };
+        if (_chart) { page.chart = _chart; _chart = null; }
+        runTurn({ message: text, page: page }, function (e) {
+            if (e && e.isAuth) appendLoginPrompt();
+            else failTurn(text, userEl, e.message || String(e), e.detail);
+        });
+    }
+
+    function runTurn(body, failed) {
+        setBusy(true);
+        var serial = ++_turnSerial;
         _abort = new AbortController();
         var signal = _abort.signal;
-        var page = {
-            path: contextPath(),
-            title: (_hostedDocument && _hostedDocument.title) || document.title || ''
-        };
-        if (_chart) { page.chart = _chart; _chart = null; }
-
-        ensureSession()
-            .then(function (sid) {
-                return _fetch(API_BASE + '/sessions/' + sid + '/message', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    signal: signal,
-                    body: JSON.stringify({
-                        message: text,
-                        // Where the user currently is — lets the assistant
-                        // resolve "this report" / "this chart" questions.
-                        page: page
-                    })
-                });
-            })
-            .then(function (resp) {
-                if (resp.status === 401) throw AuthError();
-                if (!resp.ok) {
-                    return resp.json().then(function (j) {
-                        throw httpError(resp.status, j);
-                    }, function () {
-                        throw httpError(resp.status, null);
-                    });
-                }
-                var reader = _reader = resp.body.getReader();
-                var decoder = new TextDecoder();
-                var buffer = '';
-                function pump() {
-                    return reader.read().then(function (chunk) {
-                        if (chunk.done) return;
-                        buffer += decoder.decode(chunk.value, { stream: true });
-                        buffer = parseFrames(buffer, handleEvent);
-                        return pump();
-                    });
-                }
-                return pump();
-            })
-            .catch(function (e) {
-                if (e && e.name === 'AbortError') return;
-                stop();  // a server-side error frame: drop the rest of the stream
-                if (e && e.isAuth) appendLoginPrompt();
-                else failTurn(text, userEl, e.message || String(e), e.detail);
-            })
-            .then(function () {
-                hideThinking();
-                closeAssistant();
-                _abort = null;
-                _reader = null;
-                setBusy(false);
-                input().focus();
+        return ensureSession().then(function (sid) {
+            if (serial !== _turnSerial) return;
+            return _fetch(API_BASE + '/sessions/' + sid + '/message', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                signal: signal, body: JSON.stringify(body)
             });
+        }).then(function (resp) {
+            if (serial !== _turnSerial || !resp) return;
+            if (resp.status === 401) throw AuthError();
+            if (!resp.ok) return resp.json().then(function (j) { throw httpError(resp.status, j); });
+            var reader = _reader = resp.body.getReader(), decoder = new TextDecoder(), buffer = '';
+            function pump() {
+                return reader.read().then(function (chunk) {
+                    if (serial !== _turnSerial || chunk.done) return;
+                    buffer += decoder.decode(chunk.value, { stream: true });
+                    buffer = parseFrames(buffer, handleEvent);
+                    return pump();
+                });
+            }
+            return pump();
+        }).catch(function (e) {
+            if (serial !== _turnSerial || signal.aborted) return;
+            if (_reader) _reader.cancel().catch(function () {});
+            if (failed) failed(e);
+        }).then(function () {
+            if (serial !== _turnSerial) return;
+            hideThinking(); closeAssistant();
+            _abort = null; _reader = null;
+            setBusy(!!_source);
+            if (_source) pollSourceSoon();
+        });
+    }
+
+    // Source reads have one caller-owned status request and never replay a user message.
+    var _source = null, _sourceSerial = 0, _sourceTimer = null, _sourceAbort = null;
+    var _sourceDelay = 1000, _sourceProgress = null, _sourceResuming = false;
+    function sourceStatus(text) {
+        if (!_sourceProgress || !_sourceProgress.isConnected) {
+            _sourceProgress = el('div', 'assistant-source-progress');
+            _sourceProgress.setAttribute('role', 'status');
+            messages().appendChild(_sourceProgress);
+        }
+        _sourceProgress.textContent = text;
+    }
+    function validSource(pending) {
+        if (!pending || typeof pending.id !== 'string' || typeof pending.status_url !== 'string') return null;
+        try {
+            var url = new URL(pending.status_url, location.href);
+            var expected = API_BASE + '/sessions/' + sessionId + '/source-queries/' + pending.id;
+            if (url.origin !== location.origin || url.pathname !== expected || url.search || url.hash ||
+                !/^[0-9a-f-]{36}$/i.test(pending.id) || url.username || url.password) return null;
+            return { id: pending.id, status_url: url.pathname, session: sessionId, cancelSent: false };
+        } catch (e) { return null; }
+    }
+    function sourceVisible() { return panel.isConnected && isOpen() && !document.hidden; }
+    function pauseSource() {
+        ++_sourceSerial;
+        clearTimeout(_sourceTimer); _sourceTimer = null;
+        if (_sourceAbort) _sourceAbort.abort();
+        _sourceAbort = null;
+        if (_sourceResuming) { if (_source) _source.reconcile = true; stop(); _sourceResuming = false; }
+    }
+    function clearSource() {
+        pauseSource(); _source = null; _sourceDelay = 1000;
+        if (_sourceProgress) _sourceProgress.remove();
+        _sourceProgress = null; setBusy(false);
+    }
+    function waitForSource(pending) {
+        var next = validSource(pending);
+        if (!next) { sourceStatus('The source read returned an invalid status address.'); return; }
+        if (_source && _source.id === next.id) return;
+        _sourceResuming = false;
+        clearSource(); _source = next;
+        hideThinking(); sourceStatus('Source read queued…'); setBusy(true);
+    }
+    function pollSourceSoon() {
+        if (!_source || !sourceVisible() || _sourceAbort || _sourceTimer || _sourceResuming) return;
+        if (_source.reconcile) { reconcileSource(_source); return; }
+        _sourceTimer = setTimeout(function () { _sourceTimer = null; pollSource(); }, _sourceDelay);
+    }
+    function pollSource() {
+        if (!_source || !sourceVisible() || _sourceAbort) return;
+        var pending = _source, serial = _sourceSerial, controller = _sourceAbort = new AbortController();
+        var timeout = setTimeout(function () { controller.abort(); }, 15000);
+        function current() { return serial === _sourceSerial && _source === pending && sessionId === pending.session; }
+        _fetch(pending.status_url, { signal: controller.signal, cache: 'no-store' }).then(function (r) {
+            if (!r.ok) { var error = new Error('Source status is unavailable (' + r.status + ').'); error.status = r.status; throw error; }
+            return r.json();
+        }).then(function (j) {
+            if (!current()) return;
+            if (j.id !== pending.id) throw new Error('Source status did not match this read.');
+            _sourceDelay = Math.min(5000, Math.round(_sourceDelay * 1.25));
+            if (j.state === 'accepted' || j.state === 'running') {
+                sourceStatus(j.cancel_requested ? 'Cancellation requested. Waiting for the source to confirm…' : j.state === 'accepted' ? 'Source read queued…' : 'Reading source data…');
+            } else if (['succeeded', 'failed', 'cancelled', 'unconfirmed'].indexOf(j.state) >= 0) {
+                clearTimeout(timeout); _sourceAbort = null;
+                resumeSource(pending);
+            } else throw new Error('Unknown source read state.');
+        }).catch(function (e) {
+            if (!current()) return;
+            if (e.status && e.status < 500 && e.status !== 429) {
+                clearSource(); sourceStatus(e.message); return;
+            }
+            _sourceDelay = Math.min(10000, _sourceDelay * 1.5);
+            sourceStatus('Source status connection interrupted. Reconnecting automatically…');
+        }).finally(function () {
+            clearTimeout(timeout);
+            if (!current()) return;
+            if (_sourceAbort === controller) _sourceAbort = null;
+            pollSourceSoon();
+        });
+    }
+    function resumeSource(pending) {
+        if (_source !== pending || !sourceVisible()) return;
+        _sourceResuming = true;
+        sourceStatus('Source read finished. Preparing the explanation…');
+        var serial = _sourceSerial;
+        // A response may be lost after the server resumed. Reconcile the persisted
+        // session before another resume attempt; never send the original question.
+        runTurn({ resume_source_query: pending.id }, function (e) {
+            if (_source !== pending || serial !== _sourceSerial) return;
+            pending.reconcile = true;
+            if (e.status && e.status !== 409 && e.status < 500) pending.error = e.message;
+        }).then(function () {
+            if (_source !== pending || serial !== _sourceSerial) { pollSourceSoon(); return; }
+            _sourceResuming = false;
+            if (pending.reconcile) {
+                pending.reconcile = false;
+                reconcileSource(pending);
+            } else { clearSource(); }
+        });
+    }
+    function reconcileSource(pending) {
+        if (!sourceVisible() || _sourceAbort || _sourceResuming || _source !== pending) return;
+        pending.reconcile = true;
+        var serial = _sourceSerial, controller = _sourceAbort = new AbortController();
+        var timeout = setTimeout(function () { controller.abort(); }, 15000);
+        _fetch(API_BASE + '/sessions/' + pending.session, { signal: controller.signal, cache: 'no-store' })
+            .then(function (r) { if (!r.ok) { var error = new Error('This conversation is no longer accessible. Start a new conversation.'); error.status = r.status; throw error; } return r.json(); })
+            .then(function (s) {
+                if (serial !== _sourceSerial || _source !== pending) return;
+                if (s.source_pending && s.source_pending.id === pending.id) {
+                    if (pending.error) { var error = pending.error; clearSource(); sourceStatus(error); return; }
+                    pending.reconcile = false; _sourceDelay = Math.min(10000, _sourceDelay * 1.5); return;
+                }
+                clearSource(); messages().innerHTML = ''; renderTranscript(s.transcript || []); renderPins();
+                if (s.source_pending) { waitForSource(s.source_pending); pollSourceSoon(); }
+            }).catch(function (e) {
+                if (serial === _sourceSerial && _source === pending) {
+                    if (e.status && e.status < 500 && e.status !== 429) { clearSource(); sourceStatus(e.message); return; }
+                    pending.reconcile = true;
+                    sourceStatus('Reconnecting to the conversation automatically…');
+                }
+            }).finally(function () {
+                clearTimeout(timeout);
+                if (serial !== _sourceSerial || _source !== pending) return;
+                _sourceAbort = null;
+                if (pending.reconcile) {
+                    _sourceTimer = setTimeout(function () { _sourceTimer = null; reconcileSource(pending); }, 5000);
+                } else pollSourceSoon();
+            });
+    }
+    function cancelSource() {
+        if (!_source || _source.cancelSent) return;
+        var pending = _source;
+        pauseSource(); pending.cancelSent = true;
+        sourceStatus('Cancellation requested. Waiting for the source to confirm…');
+        // The write is sent once, including when its outcome is unknown.
+        var controller = new AbortController(), timeout = setTimeout(function () { controller.abort(); }, 15000);
+        _fetch(pending.status_url, { method: 'POST', signal: controller.signal }).catch(function () {
+            if (_source === pending) sourceStatus('Cancellation outcome unconfirmed. Checking source status…');
+        }).finally(function () { clearTimeout(timeout); if (_source === pending) pollSourceSoon(); });
+    }
+    document.addEventListener('visibilitychange', function () {
+        if (document.hidden) pauseSource();
+        else if (_source && _source.reconcile) reconcileSource(_source);
+        else pollSourceSoon();
+    });
+    window.addEventListener('pagehide', function () { pauseSource(); stop(); });
+    window.addEventListener('pageshow', function () { pollSourceSoon(); });
+
+    function renderSourceEvidence(pv) {
+        if (!pv || (pv.kind !== 'source_query' && pv.kind !== 'metric_query') || !(pv.query_id || pv.evidence_id)) return;
+        var approved = pv.kind === 'metric_query';
+        var id = String(pv.query_id || pv.evidence_id);
+        if (Array.from(messages().querySelectorAll('[data-source-query]')).some(function (node) { return node.dataset.sourceQuery === id; })) return;
+        var card = el('section', 'assistant-source-evidence'); card.dataset.sourceQuery = id;
+        card.setAttribute('aria-label', approved ? 'Approved calculation evidence' : 'Exploratory query evidence');
+        card.appendChild(el('strong', '', approved ? 'Approved calculation' : 'Exploratory query'));
+        if (approved) {
+            card.appendChild(el('p', '', pv.metric_id + ' · ' + (pv.currency || pv.unit || '') + ' · ' + (pv.completeness || '')));
+            card.appendChild(el('p', '', 'Period: ' + ((pv.period || {}).start || '') + ' to ' + ((pv.period || {}).end || '') + ' (end excluded) · ' + (pv.timezone || '')));
+            card.appendChild(el('p', '', 'Filters: ' + (fmtVal(pv.filters) || 'none')));
+        }
+        card.appendChild(el('p', 'assistant-source-meta', ((pv.executed_at || pv.generated_at) ? fmtWhen(pv.executed_at || pv.generated_at) + ' · ' : '') +
+            String(pv.rows_returned == null ? (pv.rows || []).length : pv.rows_returned) + ' rows returned' + (pv.truncated ? ' · Truncated result' : '')));
+        var wrap = el('div', 'assistant-source-table'); wrap.tabIndex = 0;
+        wrap.setAttribute('role', 'region'); wrap.setAttribute('aria-label', approved ? 'Calculated values' : 'Source query result');
+        var table = el('table'), caption = el('caption', '', approved ? 'Calculated values' : 'Source query result'); table.appendChild(caption);
+        var columns = Array.isArray(pv.columns) ? pv.columns.slice(0, 50) : [];
+        var head = el('thead'), header = el('tr');
+        columns.forEach(function (c) { var th = el('th', '', String(c).slice(0, 256)); th.scope = 'col'; header.appendChild(th); });
+        head.appendChild(header); table.appendChild(head);
+        var body = el('tbody'), rows = Array.isArray(pv.rows) ? pv.rows.slice(0, 200) : [];
+        rows.forEach(function (row) {
+            var tr = el('tr');
+            columns.forEach(function (c, i) {
+                var value = Array.isArray(row) ? row[i] : row && typeof row === 'object' ? row[c] : null;
+                var text = value == null ? '—' : String(value);
+                tr.appendChild(el('td', '', text.length > 2048 ? text.slice(0, 2048) + '…' : text));
+            });
+            body.appendChild(tr);
+        });
+        table.appendChild(body); wrap.appendChild(table); card.appendChild(wrap);
+        if (!rows.length) card.appendChild(el('p', '', 'No rows returned.'));
+        if ((pv.rows || []).length > 200 || (pv.columns || []).length > 50) card.appendChild(el('p', '', 'Evidence preview limited to 200 rows and 50 columns.'));
+        var sql = el('details'), summary = el('summary', '', approved ? 'Calculation evidence' : 'SQL used'); sql.appendChild(summary);
+        var details = approved ? {report: pv.report, dataset: pv.dataset_id, build: pv.build_id, source_revision: pv.source_revision, definition: pv.definition_hash, fingerprint: pv.fingerprint} : pv.query;
+        sql.appendChild(el('pre', '', String(approved ? JSON.stringify(details, null, 2) : details || '').slice(0, 16384))); card.appendChild(sql);
+        messages().appendChild(card);
     }
 
     // ── "Ask about this chart" ─────────────────────────────────────────

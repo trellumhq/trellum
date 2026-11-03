@@ -40,6 +40,7 @@ SEES_WORKER_THREAD = pytest.mark.django_db(transaction=True)
 READ_TOOLS = ["list_reports", "get_report_details", "query_report_data", "read_doc", "list_alerts", "get_alert"]
 #: ... plus the one read tool that needs the developer role (internal planning ticket #151).
 DEVELOPER_READ_TOOLS = READ_TOOLS + ["check_repo_changes"]
+METRIC_READ_TOOLS = ["list_metrics", "get_metric_definition", "query_metric"]
 
 
 @pytest.fixture
@@ -124,7 +125,7 @@ class TestCatalogue:
         for schema in TOOL_SCHEMAS:
             assert isinstance(schema["mutates"], bool)
             assert schema["role"] in (roles.VIEWER, roles.DEVELOPER, roles.ADMIN, "org_admin")
-        assert [s["name"] for s in TOOL_SCHEMAS if not s["mutates"]] == DEVELOPER_READ_TOOLS
+        assert [s["name"] for s in TOOL_SCHEMAS if not s["mutates"]] == DEVELOPER_READ_TOOLS + ["list_data_sources", "describe_source", "query_source"] + METRIC_READ_TOOLS
         assert {s["name"] for s in TOOL_SCHEMAS if s["mutates"]} == {
             "configure_data_source", "test_data_source", "run_report", "publish_repo_changes",
             "create_alert", "update_alert",
@@ -132,7 +133,7 @@ class TestCatalogue:
 
     def test_viewer_sees_no_write_tools_even_with_actions_on(self, studio_tree):
         box = AssistantToolbox(studio_tree, role=roles.VIEWER, may_write=True)
-        assert [s["name"] for s in box.schemas] == READ_TOOLS
+        assert [s["name"] for s in box.schemas] == READ_TOOLS + METRIC_READ_TOOLS
 
     def test_developer_sees_developer_actions_not_admin_ones(self, studio_tree):
         names = [s["name"] for s in AssistantToolbox(studio_tree, role=roles.DEVELOPER, may_write=True).schemas]
@@ -151,13 +152,13 @@ class TestCatalogue:
             scope=AssistantSession.SCOPE_REPORT, report=report_row,
         )
         names = [schema["name"] for schema in box.schemas]
-        assert [name for name in names if name not in READ_TOOLS] == ["run_report"]
+        assert [name for name in names if name not in READ_TOOLS + METRIC_READ_TOOLS] == ["run_report"]
         assert box.execute("check_repo_changes", {}).startswith("Error")
 
     def test_actions_off_hides_every_write_tool_from_everyone(self, studio_tree):
         for role in (roles.ADMIN, "org_admin"):
             box = AssistantToolbox(studio_tree, role=role, may_write=False)
-            assert [s["name"] for s in box.schemas] == DEVELOPER_READ_TOOLS
+            assert [s["name"] for s in box.schemas] == DEVELOPER_READ_TOOLS + METRIC_READ_TOOLS
 
     def test_the_provider_never_sees_our_catalogue_keys(self, studio_tree):
         for schema in AssistantToolbox(studio_tree, role="org_admin", may_write=True).schemas:

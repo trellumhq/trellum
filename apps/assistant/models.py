@@ -149,6 +149,7 @@ class AssistantSession(models.Model):
             **self.to_summary(),
             "transcript": self.transcript,
             "usage": self.usage,
+            "source_pending": (self.state or {}).get("_source_pending"),
         }
 
 
@@ -282,3 +283,6 @@ class ProposedAction(models.Model):
             "result": self.result,
             "expires_at": self.expires_at.isoformat(),
         }
+
+# Separate module keeps source policy records independent of conversation state.
+from .source_models import SourceQuery, SourceReadGrant, SourceExecutionReservation  # noqa: E402,F401
