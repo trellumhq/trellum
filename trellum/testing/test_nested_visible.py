@@ -8,7 +8,7 @@ import pytest
 from trellum.assets import load_js
 from trellum.components import BarChart, RenderContext, Toggle, Visible
 from trellum.rendering.js_runtime import generate_js_runtime
-from trellum.themes import DefaultTheme, THEME_REGISTRY
+from trellum.themes import THEME_REGISTRY, DefaultTheme
 
 
 @pytest.mark.parametrize('hidden', ['outer', 'middle', 'inner'])
