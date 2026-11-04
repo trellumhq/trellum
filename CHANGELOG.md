@@ -9,6 +9,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- `LineChart(height=...)`: the plotting area is 220px (`"balanced"`, the
+  default) at every viewport width, with optional `"compact"` (160px) and
+  `"roomy"` (320px) sizes. The title is now kept in tile grids. Other charts keep
+  their sizes.
+- `LineChart(header_summary={...})`: an optional right-aligned mean, sum, last,
+  min or max of one plotted series, recomputed from the filtered, aggregated
+  series on every update, with an em dash when nothing is plottable. New
+  validator checks `line-chart-height-invalid` and `line-chart-summary-invalid`.
 - Structured assistant answer review with bounded corrections, evidence cell reconciliation and private draft handling before chat delivery.
 
 - Explicit assistant source grants, scoped PostgreSQL schema discovery and read-only queries with durable execution, cancellation and query evidence.
@@ -17,6 +25,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- `LineChart` now defaults to a 220px plotting area at every viewport width
+  (previously 180 to 380px depending on the window, 200px in tile grids), and
+  keeps its title in tile grids. Pass `height="roomy"` for 320px.
 - Showcase reports, written analyses, and presentations in the README, with
   desktop and mobile screenshots side by side and direct links to synthetic demos.
 

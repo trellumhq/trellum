@@ -18,6 +18,7 @@ from __future__ import annotations
 from typing import Any
 
 from trellum.validation.checks.annotations import _check_annotations
+from trellum.validation.checks.chart_options import _check_chart_options
 from trellum.validation.checks.columns import _check_columns
 from trellum.validation.checks.datasource import (
     _check_dataset_id_integrity,
@@ -89,6 +90,7 @@ def validate_report(
     _run("theme", _check_theme, ctx, comps, result)
     _run("annotations", _check_annotations, ctx, comps, events, result)
     _run("columns", _check_columns, comps, ds_map, result)
+    _run("chart options", _check_chart_options, comps, result)
     _run("metrics", _check_metrics, ctx, comps, ds_map, result)
     _run("toggle and visible", _check_toggle_visible, comps, result)
     _run("scopes", _check_scopes, ctx, result)

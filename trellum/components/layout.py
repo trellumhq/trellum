@@ -105,7 +105,9 @@ class Grid(Component):
             is ignored: the row fits as many tiles as the width allows and
             reflows on its own, with no breakpoints to keep in sync. Each
             cell is then a TILE -- a glance, not a page -- so the charts
-            inside it are shortened and their titles dropped (grid.css).
+            inside it are shortened and their titles dropped (grid.css). A
+            ``LineChart`` is the exception: it keeps its title and its own
+            ``height``.
             A chart stops being readable much under 320px.
     """
     children: List[Any]

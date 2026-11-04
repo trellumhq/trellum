@@ -1,3 +1,50 @@
+/* Header summary: one statistic over one plotted series. It reads the
+   datasets the chart was just given, so it can only ever describe the line on
+   screen -- after filters, aggregation and ratio division alike. Missing and
+   non-finite points are skipped, never counted as zero. */
+function _fwSummaryValue(values, stat) {
+    var nums = [];
+    for (var i = 0; i < values.length; i++) {
+        var v = values[i];
+        if (typeof v === 'number' && isFinite(v)) nums.push(v);
+    }
+    if (!nums.length) return null;
+    if (stat === 'last') return nums[nums.length - 1];
+    var total = 0, lo = nums[0], hi = nums[0];
+    for (var j = 0; j < nums.length; j++) {
+        total += nums[j];
+        if (nums[j] < lo) lo = nums[j];
+        if (nums[j] > hi) hi = nums[j];
+    }
+    if (stat === 'sum') return total;
+    if (stat === 'min') return lo;
+    if (stat === 'max') return hi;
+    return total / nums.length;
+}
+
+function _fwSummarySeries(datasets, series) {
+    if (typeof series === 'number') return datasets[series] || null;
+    for (var i = 0; i < datasets.length; i++) {
+        if (datasets[i].label === series) return datasets[i];
+    }
+    return null;
+}
+
+function _fwUpdateHeaderSummary(id, summary, datasets, chartFmt) {
+    var box = document.querySelector('[data-chart-summary="' + id + '"]');
+    if (!box || !summary) return;
+    var ds = _fwSummarySeries(datasets || [], summary.series);
+    var value = ds ? _fwSummaryValue(ds.data || [], summary.stat) : null;
+    /* An explicit format wins; otherwise the value reads as the chart's own
+       tooltips and axis do. */
+    var fmt = summary.format ? window.getFormatter(summary.format) : (chartFmt || window.fmtCompact);
+    var label = box.querySelector('.fw-chart-summary-label');
+    var out = box.querySelector('.fw-chart-summary-value');
+    /* textContent only: the label comes from report configuration. */
+    label.textContent = summary.label || '';
+    out.textContent = value === null ? '\u2014' : fmt(value);
+}
+
 /* Shared chart factory -- called by both static and live modes.
    spec: { type, labels, datasets, stacked, horizontal, showLegend, yFmt, tooltip } */
 function _createChart(id, canvas, spec) {
@@ -128,6 +175,7 @@ function _createChart(id, canvas, spec) {
     });
     window._chartInstances[id]._fwThemeManagedAxes = true;
     window._chartInstances[id]._fwThemeManagedFonts = true;
+    if (spec.headerSummary) _fwUpdateHeaderSummary(id, spec.headerSummary, spec.datasets, spec.yFmt);
 }
 
 window._fwRenderers['chart'] = function renderChart(id, cfg) {
@@ -193,6 +241,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
             if (cfg.y_max !== undefined) spec.yMax = cfg.y_max;
             if (cfg.y1_max !== undefined) spec.y1Max = cfg.y1_max;
             if (cfg.show_labels) spec.showLabels = true;
+            if (cfg.header_summary) spec.headerSummary = cfg.header_summary;
             return spec;
         }
 
@@ -652,7 +701,8 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
     _createChart(id, canvas, {
         type: cfg.chartType, labels: cfg.labels, datasets: cfg.datasets,
         stacked: cfg.stacked, horizontal: cfg.horizontal,
-        showLegend: cfg.showLegend !== false, yFmt: yFmt, tooltip: tooltip
+        showLegend: cfg.showLegend !== false, yFmt: yFmt, tooltip: tooltip,
+        headerSummary: cfg.header_summary
     });
 };
 

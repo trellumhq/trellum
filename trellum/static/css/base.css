@@ -145,7 +145,8 @@ body.fw-only .fw-section {
     background: none; border: 0; box-shadow: none; padding: 0; margin: 0;
 }
 body.fw-only .fw-section h2,
-body.fw-only .fw-chart-title { display: none; }
+body.fw-only .fw-chart-title,
+body.fw-only .fw-chart-head { display: none; }
 body.fw-only .fw-filter-bar {
     position: static;
     background: none; border: 0; box-shadow: none;

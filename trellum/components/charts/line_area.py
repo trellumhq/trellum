@@ -15,6 +15,90 @@ from trellum.components.charts.base import (
     _stack_toggle_html,
 )
 
+#: Plotting-area heights a LineChart can ask for, in CSS pixels. The class a
+#: height maps to sets the same value at every viewport width.
+LINE_CHART_HEIGHTS = {"balanced": 220, "compact": 160, "roomy": 320}
+
+#: Statistics a header summary can compute over one plotted series.
+SUMMARY_STATS = ("mean", "sum", "last", "min", "max")
+#: Formatter names the runtime's ``getFormatter`` knows.
+SUMMARY_FORMATS = ("number", "currency", "percent", "chips", "ratio", "plain")
+_SUMMARY_KEYS = {"stat", "series", "label", "format"}
+_SUMMARY_LABEL_MAX = 60
+_DEFAULT_SUMMARY_LABELS = {
+    "mean": "Average", "sum": "Total", "last": "Latest", "min": "Min", "max": "Max",
+}
+
+
+def _line_series_labels(chart: "LineChart") -> list[str]:
+    """Labels of the series the chart plots, in plotting order."""
+    if chart.ratios and chart.dataset_id:
+        return [str(r.get("label", "")) for r in chart.ratios]
+    y_cols = chart.y if isinstance(chart.y, list) else [chart.y]
+    labels = chart.y_labels or y_cols
+    return [str(lb) for lb, _ in zip(labels, y_cols)]
+
+
+def line_option_problems(chart: "LineChart") -> list[tuple[str, str]]:
+    """Everything wrong with a LineChart's ``height`` and ``header_summary``.
+
+    Returns ``(check id, message)`` pairs; empty when the options are usable.
+    The component raises on the first one at construction, and the report
+    validator reports them all for a chart changed afterwards.
+    """
+    problems: list[tuple[str, str]] = []
+    if chart.height not in LINE_CHART_HEIGHTS:
+        problems.append((
+            "line-chart-height-invalid",
+            f"LineChart height={chart.height!r} must be one of "
+            f"{sorted(LINE_CHART_HEIGHTS)}.",
+        ))
+    cfg = chart.header_summary
+    if cfg is None:
+        return problems
+
+    def bad(message: str) -> None:
+        problems.append(("line-chart-summary-invalid", f"LineChart header_summary: {message}"))
+
+    if not isinstance(cfg, dict):
+        bad("must be a dict such as {'stat': 'mean', 'series': 0, 'label': 'Daily avg'}.")
+        return problems
+    unknown = sorted(set(cfg) - _SUMMARY_KEYS)
+    if unknown:
+        bad(f"unknown keys {unknown}; allowed keys are {sorted(_SUMMARY_KEYS)}.")
+    stat = cfg.get("stat")
+    if stat not in SUMMARY_STATS:
+        bad(f"stat={stat!r} must be one of {list(SUMMARY_STATS)}.")
+    fmt = cfg.get("format")
+    if fmt is not None and fmt not in SUMMARY_FORMATS:
+        bad(f"format={fmt!r} must be one of {list(SUMMARY_FORMATS)}.")
+    label = cfg.get("label")
+    if label is not None and (not isinstance(label, str) or len(label) > _SUMMARY_LABEL_MAX):
+        bad(f"label must be text of at most {_SUMMARY_LABEL_MAX} characters.")
+    if chart.stack_by or chart.stack_by_options:
+        bad("is not supported with stack_by or stack_by_options: the lines come "
+            "from the data and change with the breakdown, so no series can be "
+            "named in advance.")
+        return problems
+
+    labels = _line_series_labels(chart)
+    series = cfg.get("series")
+    if series is None:
+        if len(labels) != 1:
+            bad(f"series is required when the chart plots {len(labels)} series; "
+                "give a position (0 is the first) or the series label.")
+    elif isinstance(series, bool) or not isinstance(series, (int, str)):
+        bad("series must be a position (int) or a series label (str).")
+    elif isinstance(series, int):
+        if not 0 <= series < len(labels):
+            bad(f"series={series} is outside the {len(labels)} plotted series.")
+    elif labels.count(series) != 1:
+        found = "no series" if series not in labels else "more than one series"
+        bad(f"series={series!r} matches {found} labelled that way; labels are {labels}.")
+    if stat == "sum" and chart.ratios and chart.dataset_id:
+        bad("stat='sum' is not meaningful for ratio series; use mean, last, min or max.")
+    return problems
+
 
 @dataclass
 class LineChart(_ChartBase):
@@ -31,6 +115,16 @@ class LineChart(_ChartBase):
     rows by, producing one line per distinct value. Works with both
     ``y`` and ``ratios``. Long-format friendly — prefer this over
     hand-listing one ``y`` column per category.
+
+    ``height``: size of the plotting area, the same at every viewport width.
+    ``"balanced"`` (default) is 220px, ``"compact"`` 160px and ``"roomy"``
+    320px. The title stays visible at every size, including in tile grids.
+
+    ``header_summary``: optional statistic shown right-aligned in the chart
+    header, for example ``{"stat": "mean", "series": 0, "label": "Daily avg",
+    "format": "number"}``. It is computed in the browser from the series the
+    chart plots after filters and aggregation, so it always matches the line.
+    See the LineChart section of the README.
     """
 
     df: pd.DataFrame
@@ -63,8 +157,38 @@ class LineChart(_ChartBase):
     # raise this when the long tail itself is the point of the chart.
     max_stacks: Optional[int] = None
     show_labels: bool = False  # Show data values on line points
+    height: str = "balanced"
+    header_summary: Optional[Dict[str, Any]] = None
 
     _component_type: str = field(default="line_chart", init=False, repr=False)
+
+    def __post_init__(self):
+        problems = line_option_problems(self)
+        if problems:
+            raise ValueError(problems[0][1])
+
+    def _container(self, cid: str, extra_before: str = "") -> str:
+        return _chart_container_html(
+            cid, self.title, extra_before=extra_before,
+            container_class=f"fw-line-chart fw-line-{self.height}",
+            title_class="fw-line-chart-title",
+            summary=self.header_summary is not None,
+        )
+
+    def _summary_config(self) -> dict[str, Any]:
+        """The ``header_summary`` entry for the chart's registered config."""
+        cfg = self.header_summary
+        if cfg is None:
+            return {}
+        out: dict[str, Any] = {
+            "stat": cfg["stat"],
+            "series": 0 if cfg.get("series") is None else cfg["series"],
+            "label": cfg["label"] if cfg.get("label") is not None
+            else _DEFAULT_SUMMARY_LABELS[cfg["stat"]],
+        }
+        if cfg.get("format"):
+            out["format"] = cfg["format"]
+        return {"header_summary": out}
 
     def render_html(self, ctx: RenderContext) -> str:
         cid = ctx.next_id()
@@ -101,13 +225,14 @@ class LineChart(_ChartBase):
                 cfg_r["max_stacks"] = self.max_stacks
             if self.show_labels:
                 cfg_r["show_labels"] = True
+            cfg_r.update(self._summary_config())
             ctx.register(cid, cfg_r)
             toggle_html_r = ""
             if self.stack_by_options:
                 toggle_html_r = _stack_toggle_html(
                     cid, self.stack_by_options, self.stack_toggle_id,
                 )
-            return _chart_container_html(cid, self.title, extra_before=toggle_html_r)
+            return self._container(cid, toggle_html_r)
 
         y_cols = self.y if isinstance(self.y, list) else [self.y]
         y_labels = self.y_labels or y_cols
@@ -140,6 +265,7 @@ class LineChart(_ChartBase):
                 cfg["max_stacks"] = self.max_stacks
             if self.show_labels:
                 cfg["show_labels"] = True
+            cfg.update(self._summary_config())
             ctx.register(cid, cfg)
             toggle_html_l = ""
             if self.stack_by_options:
@@ -147,7 +273,7 @@ class LineChart(_ChartBase):
                     cid, self.stack_by_options, self.stack_toggle_id,
                 )
             if toggle_html_l:
-                return _chart_container_html(cid, self.title, extra_before=toggle_html_l)
+                return self._container(cid, toggle_html_l)
         else:
             theme = ctx.theme
             datasets = []
@@ -175,9 +301,10 @@ class LineChart(_ChartBase):
                 "gridColor": theme.grid_color,
                 "tickColor": theme.tick_color,
                 "textSecondary": theme.text_secondary,
+                **self._summary_config(),
             })
 
-        return _chart_container_html(cid, self.title)
+        return self._container(cid)
 
 @dataclass
 class AreaChart(_ChartBase):

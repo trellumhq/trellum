@@ -444,7 +444,7 @@ also works with a custom header component; there is no need to instantiate
 
 | Component | Constructor | Description |
 |---|---|---|
-| `LineChart` | `(df, x, y, title, dataset_id)` | Time series. `y` can be a string or list. Supports `ratios=[{numerator, denominator, label}]` for computed ratio lines. `stack_by="col"` pivots rows by a categorical column to produce one line per value (works with both `y` and `ratios`; long-format friendly). `y_format` controls axis formatting. |
+| `LineChart` | `(df, x, y, title, dataset_id)` | Time series. `y` can be a string or list. Supports `ratios=[{numerator, denominator, label}]` for computed ratio lines. `stack_by="col"` pivots rows by a categorical column to produce one line per value (works with both `y` and `ratios`; long-format friendly). `y_format` controls axis formatting. `height` (`"balanced"` 220px default, `"compact"` 160px, `"roomy"` 320px) sets the plotting area; `header_summary` adds a right-aligned statistic (see below). |
 | `AreaChart` | `(df, x, y, title, stacked, dataset_id)` | Filled area chart. `stacked=True` for composition over time. |
 | `BarChart` | `(df, x, y, title, dataset_id)` | Vertical or horizontal bars. `horizontal=True`, `stacked=True`, `cross_filter=True`. `ratios=[{numerator, denominator, label}]` plots sum(num)/sum(den) per x-value — combine with `horizontal=True, sort='desc'` for categorical ratio rankings (CPD by comfort_zone, ARPPU by country). |
 | `StackedBar` | `(df, x, y_cols, title, dataset_id)` | Stacked bar chart. `stack_tooltip_breakdown=True` shows segment details. `value_format` controls tooltips (`"currency"` or `"number"`). `stack_by` / `stack_by_options` for dynamic grouping. `cross_filter=True` for click-to-filter. |
@@ -454,6 +454,49 @@ also works with a custom header component; there is no need to instantiate
 | `FunnelChart` | `(df, label, value, title, dataset_id)` | Conversion funnel. Each row is a stage. `show_percentages=True` (default). |
 | `TreemapChart` | `(df, group_cols, value, title, dataset_id)` | Hierarchical treemap. `group_cols` is a list for nested grouping. Optional `color_col`. |
 | `ScatterChart` | `(df, x, y, title, dataset_id)` | Scatter or bubble chart. `size` column enables bubble mode. `color_by` splits by category. |
+
+#### LineChart height and header summary
+
+`LineChart` plots in a 220px area at every viewport width. Pass
+`height="compact"` for 160px, or `height="roomy"` for the former 320px. Other
+chart types keep their existing sizes. The title stays visible at every size,
+including inside tile grids (`Grid(min_width=...)`), which hide other charts'
+titles. In any `Grid` it keeps its height rather than stretching to fill a
+taller neighbour.
+
+`header_summary` shows one statistic right-aligned in the chart header:
+
+```python
+LineChart(df, x="day", y="revenue", title="Revenue", dataset_id="sales",
+          height="compact",
+          header_summary={"stat": "mean", "series": 0, "label": "Daily avg",
+                          "format": "number"})
+```
+
+| Key | Meaning |
+|---|---|
+| `stat` | Required: `mean`, `sum`, `last`, `min` or `max`. `last` is the last plotted point that has a value. |
+| `series` | Which plotted line: its position (0 is the first) or its label. Optional only when the chart plots exactly one series; required otherwise. |
+| `label` | Text shown before the value (up to 60 characters). Defaults to Average, Total, Latest, Min or Max; `""` shows the value alone. Always rendered as plain text. |
+| `format` | Optional: `number`, `currency`, `percent`, `chips`, `ratio` or `plain`, the same formatters KPI cards use. Omitted, the value reads like the chart's own tooltips and axis (`y_format`), so a `y_format="decimal1"` ratio chart summarises as `1.8`, not a rounded `2`. |
+
+No summary is shown unless `header_summary` is set. It is computed in the
+browser from the series the chart actually plots, so it follows every filter
+change and always agrees with the line: for `ratios=[...]` it works on the
+ratios after numerator and denominator are summed per x value, so `mean` is the
+mean of the plotted ratios, not the overall weighted ratio (use a `KpiRow`
+ratio for that), and `sum` is rejected. Points with no value, or that are not
+finite numbers, are skipped and never counted as zero; when no point remains the
+summary shows an em dash (`—`). Zooming and hiding a line in the legend do not
+change the summary.
+
+`header_summary` cannot be combined with `stack_by` or `stack_by_options`,
+because the lines come from the data and change with the breakdown; the chart
+raises `ValueError` rather than summarise an unrelated line. An unknown
+`stat`, `format`, key or `height`, a missing or out-of-range `series`, or a
+summary on a chart that plots several series without naming one are rejected the
+same way, and the validator reports `line-chart-height-invalid` and
+`line-chart-summary-invalid` for charts changed after construction.
 
 ### KPIs
 
@@ -1507,6 +1550,7 @@ Every report generation automatically runs a post-generation validator that chec
 | Theme compatibility | `theme-invalid`, `rawhtml-cached-theme-colors`, `rawhtml-hardcoded-colors` |
 | Annotation support | `annotations-enabled-no-events`, `annotations-studio-mismatch`, `annotations-non-date-x-axis` |
 | Column validation | `chart-column-missing`, `ratios-without-dataset-id`, `ratios-missing-keys`, `ratios-column-missing`, `stackedbar-option-column-missing` |
+| LineChart options | `line-chart-height-invalid`, `line-chart-summary-invalid` |
 | Toggle / Visible wiring | `visible-target-missing`, `visible-value-missing`, `toggle-unused`, `rawhtml-toggle-id-mismatch` |
 | Scope system | `scope-empty`, `scope-no-default` |
 | YAML schema | `yaml-missing-required`, `yaml-missing-data-sources`, `yaml-cron-invalid`, `report-description-weak` |

@@ -50,3 +50,29 @@
 }
 .fw-chart-container:hover .fw-chart-dl { opacity: 1; }
 .fw-chart-dl:hover { color: var(--text-main); }
+
+/* ── LineChart plotting-area sizes ──
+   The same height at every viewport width, so these outrank the width-keyed
+   rules above on specificity rather than on order. Other charts keep those
+   rules. */
+.fw-chart-container.fw-line-balanced { height: 220px; }
+.fw-chart-container.fw-line-compact { height: 160px; }
+.fw-chart-container.fw-line-roomy { height: 320px; }
+
+/* Title on the left, optional summary on the right; the summary wraps under a
+   long title instead of squeezing it. */
+.fw-chart-head {
+    display: flex; flex-wrap: wrap; align-items: baseline;
+    justify-content: space-between; column-gap: 12px;
+    margin-bottom: 4px;
+}
+.fw-chart-head .fw-chart-title { min-width: 0; }
+.fw-chart-summary {
+    margin-left: auto; white-space: nowrap;
+    font-size: var(--font-size-label); color: var(--text-secondary);
+}
+.fw-chart-summary-label { margin-right: 6px; }
+.fw-chart-summary-value {
+    font-size: 15px; font-weight: 600; color: var(--text-main);
+    font-variant-numeric: tabular-nums;
+}

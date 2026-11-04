@@ -70,23 +70,51 @@ def _scatter_radius(v, series: pd.Series, max_r: float = 20.0, min_r: float = 3.
         return min_r
     return max(min_r, (float(v) / float(mx)) ** 0.5 * max_r)
 
-def _chart_container_html(cid: str, title: str = "", extra_before: str = "") -> str:
+def _chart_container_html(
+    cid: str,
+    title: str = "",
+    extra_before: str = "",
+    *,
+    container_class: str = "",
+    title_class: str = "",
+    summary: bool = False,
+) -> str:
+    """The chart's title, optional controls and canvas box.
+
+    The keyword-only arguments are for a chart that sizes its own box
+    (``container_class``), keeps its title where tiles hide it
+    (``title_class``) or carries a header summary the runtime fills in
+    (``summary``). Called without them the markup is the original.
+    """
     dl_btn = (
         f'<button class="fw-chart-dl" data-csv-chart="{cid}" '
         f'title="Download CSV">{_DOWNLOAD_SVG}</button>'
     )
+    box = f"fw-chart-container {container_class}".strip()
+    if summary:
+        head = (
+            '<div class="fw-chart-head">'
+            f'{_title_html(title, cls=title_class, margin=False)}'
+            f'<div class="fw-chart-summary" data-chart-summary="{cid}">'
+            '<span class="fw-chart-summary-label"></span>'
+            '<span class="fw-chart-summary-value"></span></div></div>'
+        )
+    else:
+        head = _title_html(title, cls=title_class)
     return (
-        f'{_title_html(title)}{extra_before}'
-        f'<div class="fw-chart-container">'
+        f'{head}{extra_before}'
+        f'<div class="{box}">'
         f'<canvas id="{cid}"></canvas>{dl_btn}</div>'
     )
 
-def _title_html(title: str) -> str:
+def _title_html(title: str, *, cls: str = "", margin: bool = True) -> str:
     if not title:
         return ""
+    name = f"fw-chart-title {cls}".strip()
+    bottom = "margin-bottom:4px;" if margin else ""
     return (
-        f'<div class="fw-chart-title" style="font-size:13px;'
-        f'color:var(--text-secondary);margin-bottom:4px;">{title}</div>'
+        f'<div class="{name}" style="font-size:13px;'
+        f'color:var(--text-secondary);{bottom}">{title}</div>'
     )
 
 def _stack_toggle_html(
