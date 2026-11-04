@@ -1992,7 +1992,8 @@ def test_summary_describes_the_plotted_daily_totals_and_follows_filters(capture_
             "last": _live(_summary("last")), "min": _live(_summary("min")),
             "max": _live(_summary("max"))}
     out = _run_summary(capture_page, cfgs, _ROWS, [("platform", "ios"), ("platform", "web")])
-    values = lambda step: {k: v[1] for k, v in step.items()}
+    def values(step):
+        return {k: v[1] for k, v in step.items()}
     assert values(out[0]) == {"mean": "73.33333333333333", "sum": "220", "last": "150",
                               "min": "30", "max": "150"}
     assert values(out[1]) == {"mean": "36.666666666666664", "sum": "110", "last": "60",

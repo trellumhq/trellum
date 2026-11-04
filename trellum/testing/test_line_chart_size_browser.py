@@ -173,6 +173,14 @@ def test_line_chart_sizes_title_and_summary_in_page_and_tiles(tmp_path, width):
             page.get_by_role("button", name="All", exact=True).click()
             page.wait_for_function(
                 "() => document.querySelector('[data-chart-summary]').textContent.endsWith('11')")
+            # A valid long label must wrap inside a narrow card, not widen the page.
+            page.evaluate("""() => {
+                const label = document.querySelector('.fw-chart-summary-label');
+                label.textContent = 'LongSummaryLabel'.repeat(4).slice(0, 60);
+            }""")
+            assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+            page.evaluate("document.querySelector('.fw-chart-summary-label').textContent = 'Daily avg'")
+            page.evaluate("window.scrollTo(0, 0)")
             if shots:
                 page.screenshot(path=str(Path(shots) / f"line-chart-{width}-viewport.png"))
             assert errors == []

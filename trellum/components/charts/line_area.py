@@ -47,7 +47,7 @@ def line_option_problems(chart: "LineChart") -> list[tuple[str, str]]:
     validator reports them all for a chart changed afterwards.
     """
     problems: list[tuple[str, str]] = []
-    if chart.height not in LINE_CHART_HEIGHTS:
+    if not isinstance(chart.height, str) or chart.height not in LINE_CHART_HEIGHTS:
         problems.append((
             "line-chart-height-invalid",
             f"LineChart height={chart.height!r} must be one of "
@@ -63,7 +63,7 @@ def line_option_problems(chart: "LineChart") -> list[tuple[str, str]]:
     if not isinstance(cfg, dict):
         bad("must be a dict such as {'stat': 'mean', 'series': 0, 'label': 'Daily avg'}.")
         return problems
-    unknown = sorted(set(cfg) - _SUMMARY_KEYS)
+    unknown = sorted(set(cfg) - _SUMMARY_KEYS, key=str)
     if unknown:
         bad(f"unknown keys {unknown}; allowed keys are {sorted(_SUMMARY_KEYS)}.")
     stat = cfg.get("stat")

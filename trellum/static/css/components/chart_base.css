@@ -66,13 +66,15 @@
     justify-content: space-between; column-gap: 12px;
     margin-bottom: 4px;
 }
-.fw-chart-head .fw-chart-title { min-width: 0; }
+.fw-chart-head .fw-chart-title { min-width: 0; overflow-wrap: anywhere; }
 .fw-chart-summary {
-    margin-left: auto; white-space: nowrap;
+    margin-left: auto; max-width: 100%;
+    display: flex; flex-wrap: wrap; justify-content: flex-end; column-gap: 6px;
     font-size: var(--font-size-label); color: var(--text-secondary);
 }
-.fw-chart-summary-label { margin-right: 6px; }
+.fw-chart-summary-label { min-width: 0; overflow-wrap: anywhere; }
 .fw-chart-summary-value {
+    white-space: nowrap;
     font-size: 15px; font-weight: 600; color: var(--text-main);
     font-variant-numeric: tabular-nums;
 }

@@ -142,6 +142,8 @@ def test_title_markup_inside_the_header_matches_the_plain_title():
 @pytest.mark.parametrize("kwargs", [
     {"height": "tall"},
     {"height": 220},
+    {"height": []},
+    {"header_summary": {"stat": "mean", 1: True, "extra": True}},
     {"header_summary": "mean"},
     {"header_summary": {}},
     {"header_summary": {"stat": "median"}},
