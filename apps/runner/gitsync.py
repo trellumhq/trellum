@@ -900,6 +900,8 @@ class StudioGitSync:
             health = check_studio_files(self.repo)
             if not health["ready"]:
                 raise RuntimeError(health["message"])
+            if self.repo.last_error.startswith(("Studio files missing.", "Studio files need restoring.")):
+                self.repo.last_error = ""
             warning = self._sync_repo_datasources(sha)
             warnings = [warning, *self._ship_declared_files(sha)]
             if any(warnings):
@@ -975,10 +977,14 @@ class StudioGitSync:
         # Root files land on disk BEFORE the registry re-scan reads them
         # (sync_studio_registry -> sync_studio_metrics / the repo_theme
         # parse both read project_root off disk).
-        if initial or pending.get("root_files"):
+        restoring = bool(pending.get("restoration"))
+        if initial or restoring or pending.get("root_files"):
             self._copy_root_files()
         full = initial or bool(pending.get("full_listing"))
-        self._copy_reports(only_slugs=None if full else added | modified | removed)
+        self._copy_reports(only_slugs=None if full or restoring else added | modified | removed)
+        if restoring and removed:
+            # A full materialization also has to apply known deletions.
+            self._copy_reports(only_slugs=removed)
 
         warnings: list[str] = []
         try:
@@ -1061,7 +1067,31 @@ class StudioGitSync:
             except Exception as exc:  # noqa: BLE001 - local recovery can still work
                 fetch_error = exc
                 pending = self.repo.pending_changes
-            if needs_restore:
+            if fetch_error is None and not pending:
+                # A successful unchanged fetch resolves an earlier sync error.
+                # Restore errors below still fail the operation; warnings from
+                # restoring or mirroring declarations are recorded afterwards.
+                self.repo.last_error = ""
+            if not needs_restore and self.repo.last_synced_sha:
+                # Fetch can take time. Check again before returning a no-op.
+                needs_restore = not check_studio_files(self.repo)["ready"]
+            reviewed = self.repo.publish_requested_to
+            restore_with_publish = False
+            if needs_restore and pending and fetch_error is None:
+                restore_with_publish = (
+                    self.repo.publish_requested and (not reviewed or reviewed == pending["to"])
+                ) or (
+                    not self.repo.publish_requested and self.repo.publish_mode == "auto"
+                    and not RepoPublish.objects.filter(
+                        studio=self.studio, to_sha=pending["to"], status="error",
+                    ).exists()
+                )
+                if restore_with_publish:
+                    # Normal publishing permission still applies. Materialize
+                    # every file of this approved target; a shallow or rewritten
+                    # remote need not retain the old published object forever.
+                    pending = {**pending, "restoration": True}
+            if needs_restore and not restore_with_publish:
                 try:
                     self._restore_published()
                 except Exception as exc:
@@ -1073,7 +1103,6 @@ class StudioGitSync:
                 raise fetch_error
             changed: list[str] = []
             published = False
-            reviewed = self.repo.publish_requested_to
             if pending and self.repo.publish_requested and reviewed and reviewed != pending["to"]:
                 # The request named the commit it reviewed; the branch has
                 # moved on since. Keep the new pending set, drop the request.
@@ -1094,9 +1123,6 @@ class StudioGitSync:
             elif self.repo.publish_requested:
                 # Nothing to publish: the request is spent.
                 self.repo.save(update_fields=self._spend_request())
-            # A no-op or restoration is not evidence that an earlier
-            # operational error has been resolved. A publish sets its own
-            # outcome; otherwise preserve errors until explicitly resolved.
             if not published and self.repo.last_synced_sha:
                 # Declarations are read from the published commit, not the
                 # checkout, so a fetch with nothing new still has them to
@@ -1109,6 +1135,8 @@ class StudioGitSync:
             self.repo.sync_requested = False
             self.repo.sync_reason = "schedule"
             self.repo.save(update_fields=["sync_requested", "sync_reason", "last_error"])
+            if published and restore_with_publish:
+                result["restored"] = True
             result.update(ok=True, changed=changed, had_changes=published or result["restored"])
             return result
         except Exception as exc:  # noqa: BLE001

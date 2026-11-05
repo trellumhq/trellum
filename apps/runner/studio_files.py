@@ -52,6 +52,7 @@ def _checkout_head(cache: Path) -> str:
     env.update({
         "GIT_NO_LAZY_FETCH": "1", "GIT_TERMINAL_PROMPT": "0",
         "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_ALLOW_PROTOCOL": "",
     })
     proc = subprocess.run(
         ["git", "--git-dir", str(cache / ".git"), "--work-tree", str(cache),

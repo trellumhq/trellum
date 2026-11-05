@@ -130,7 +130,7 @@ def test_missing_files_notice_rendered_on_open(client, org_admin, published_repo
             prefix + "/", prefix + "/settings/repo", prefix + "/api/registry",
         )
     }
-    screenshots = ROOT / "artifacts" / "studio-files"
+    screenshots = ROOT / ".data-test" / "studio-files"
     screenshots.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)

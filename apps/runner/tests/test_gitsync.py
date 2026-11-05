@@ -1229,7 +1229,7 @@ class TestPublishMode:
         assert "v2" in (studio_tree.reports_dir / "gamma" / "generator.py").read_text()
         assert list(Run.objects.values_list("slug", flat=True)) == ["gamma"]
 
-    def test_an_unavailable_published_commit_is_not_replaced_by_remote_head(
+    def test_a_published_commit_missing_from_the_cache_falls_back_to_a_full_listing(
         self, studio_repo, studio_tree, upstream
     ):
         _set(studio_repo, auto_run_changed=True)
@@ -1239,22 +1239,22 @@ class TestPublishMode:
         _sync(studio_repo)
         assert list(Run.objects.values_list("slug", flat=True)) == ["beta"]
 
-        # An unavailable published SHA cannot be substituted with the
-        # remote head, even when a full-listing pending preview is possible.
+        # Automatic publishing can fully materialize an approved new head
+        # even if the old published object is no longer available.
         _set(studio_repo, last_synced_sha="f" * 40)
         upstream["write_report"]("gamma")
         upstream["push"]("add gamma")
         result = _sync(studio_repo)
-        assert not result["ok"] and not result["restored"], result
+        assert result["ok"] and result["restored"], result
         repo = _fresh_repo(studio_repo)
-        assert "Published commit unavailable" in repo.last_error
-        pending = repo.pending_changes
-        assert pending["rewritten"] is True and pending["full_listing"] is True
-        assert pending["reports"]["added"] == ["alpha", "beta", "gamma"]
-        assert repo.last_synced_sha == "f" * 40
-        assert not (studio_tree.reports_dir / "gamma").exists()
-        assert Report.objects.get(studio=studio_tree, slug="alpha").present_in_scan
-        assert Run.objects.count() == 1
+        summary = repo.studio.publishes.first().summary
+        assert summary["rewritten"] is True and summary["full_listing"] is True
+        assert summary["reports"]["added"] == ["alpha", "beta", "gamma"]
+        assert summary["reports"]["removed"] == []
+        for slug in ("alpha", "beta", "gamma"):
+            assert (studio_tree.reports_dir / slug / "report.yaml").is_file()
+        assert repo.last_synced_sha == summary["to"]
+        assert Run.objects.count() == 1  # nothing else was enqueued
 
     def test_a_failed_fetch_spends_the_publish_request(self, studio_repo, make_user):
         _sync(studio_repo)
@@ -1625,6 +1625,73 @@ def test_private_admission_warning_keeps_valid_sync_and_records_author_feedback(
 
 
 class TestPublishedFilesRestoration:
+    @pytest.mark.parametrize("mode", ["auto", "manual"])
+    def test_approved_new_publish_restores_unchanged_files_and_applies_deletions(
+        self, studio_repo, studio_tree, upstream, mode,
+    ):
+        upstream["write_report"]("removed")
+        upstream["write_events"]("events: []\n")
+        upstream["push"]("published files")
+        assert _sync(studio_repo)["ok"]
+        upstream["write_report"]("beta")
+        upstream["delete_report"]("removed")
+        upstream["push"]("new version")
+        (studio_tree.reports_dir / "alpha" / "report.yaml").unlink()
+        (studio_tree.project_root / "events.yaml").unlink()
+        _set(studio_repo, publish_mode=mode, publish_requested=(mode == "manual"))
+        result = _sync(studio_repo)
+        assert result["ok"] and result["restored"] and result["had_changes"], result
+        repo = _fresh_repo(studio_repo)
+        assert repo.last_synced_sha == repo.remote_sha
+        assert (studio_tree.reports_dir / "alpha" / "report.yaml").is_file()
+        assert (studio_tree.reports_dir / "beta" / "report.yaml").is_file()
+        assert (studio_tree.project_root / "events.yaml").is_file()
+        assert not (studio_tree.reports_dir / "removed").exists()
+        assert not Report.objects.get(studio=studio_tree, slug="removed").present_in_scan
+
+    def test_manual_unavailable_published_commit_never_approves_remote(self, studio_repo, upstream):
+        assert _sync(studio_repo)["ok"]
+        _set(studio_repo, publish_mode="manual", last_synced_sha="f" * 40)
+        upstream["write_report"]("beta")
+        upstream["push"]("unreviewed")
+        result = _sync(studio_repo)
+        assert not result["ok"] and not result["restored"], result
+        repo = _fresh_repo(studio_repo)
+        assert "Published commit unavailable" in repo.last_error
+        assert repo.last_synced_sha == "f" * 40
+        assert repo.pending_changes["to"] == repo.remote_sha
+        assert not Report.objects.filter(studio=repo.studio, slug="beta").exists()
+
+    @pytest.mark.parametrize("newer_remote", [False, True])
+    def test_restore_clears_startup_warning(self, studio_repo, studio_tree, upstream, newer_remote):
+        from apps.studios.startup import check_studio_files_at_startup
+
+        assert _sync(studio_repo)["ok"]
+        _set(studio_repo, publish_mode="manual")
+        if newer_remote:
+            upstream["write_report"]("beta")
+            upstream["push"]("pending review")
+        (studio_tree.reports_dir / "alpha" / "report.yaml").unlink()
+        check_studio_files_at_startup()
+        assert _fresh_repo(studio_repo).last_error.startswith("Studio files missing.")
+        result = _sync(studio_repo)
+        assert result["ok"] and result["restored"], result
+        assert _fresh_repo(studio_repo).last_error == ""
+
+    def test_files_removed_during_fetch_are_restored(self, studio_repo, studio_tree, monkeypatch):
+        assert _sync(studio_repo)["ok"]
+        fetch = StudioGitSync.fetch
+
+        def lose_manifest(sync):
+            pending = fetch(sync)
+            (studio_tree.reports_dir / "alpha" / "report.yaml").unlink()
+            return pending
+
+        monkeypatch.setattr(StudioGitSync, "fetch", lose_manifest)
+        result = _sync(studio_repo)
+        assert result["ok"] and result["restored"] and result["had_changes"], result
+        assert (studio_tree.reports_dir / "alpha" / "report.yaml").is_file()
+
     @pytest.mark.parametrize("damage", ["studio", "project", "report", "manifest", "cache", "metadata", "invalid-metadata", "metadata-file"])
     def test_same_sha_restores_full_published_files(self, studio_repo, studio_tree, upstream, damage):
         import shutil
