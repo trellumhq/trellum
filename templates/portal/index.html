@@ -34,6 +34,9 @@ Light/Dark/Auto preference. Named report themes apply inside reports only.{% end
 <header class="page-head">
   <div class="ui-label page-kicker scope-studio">Studio · {{ studio.name }}</div>
   <h1>{{ console_page_title }}</h1>
+{% if studio_files.state == "missing" or studio_files.state == "mismatch" %}
+<div class="ui-flash warning" role="status" data-studio-files-status>{{ studio_files.message }}</div>
+{% endif %}
 </header>
 <div class="folder-bar">
   <div class="folder-rail">

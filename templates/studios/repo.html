@@ -31,6 +31,9 @@
 <section id="repoResults" data-repo-results data-status-url="/s/{{ org.slug }}/{{ studio.slug }}/api/system/git/status">
 {% if repo and repo.repo_url %}
 <span data-repo-status data-status-url="/s/{{ org.slug }}/{{ studio.slug }}/api/system/git/status" data-sync-requested="{{ repo.sync_requested|yesno:'true,false' }}" data-publish-mode="{{ repo.publish_mode }}" data-publish-requested="{{ repo.publish_requested|yesno:'true,false' }}" hidden></span>
+{% if studio_files.state == "missing" or studio_files.state == "mismatch" %}
+<div class="ui-flash warning" role="status" data-studio-files-status>{{ studio_files.message }}</div>
+{% endif %}
 {% if repo.publish_requested %}
 <div class="ui-flash info" role="status">Publishing <code>{{ repo.remote_sha|slice:":7" }}</code>…
   the runner will pick it up within a few seconds.</div>
@@ -49,10 +52,15 @@
       {% else %}
       <div class="muted">Nothing published yet</div>
       {% endif %}
-      <div>{% if repo.last_error %}<span class="ui-badge error">error</span>
+      <div>{% if studio_files.state == "missing" %}<span class="ui-badge warn">Studio files missing</span>
+          {% elif studio_files.state == "mismatch" %}<span class="ui-badge warn">Studio files need restoring</span>
+          {% elif repo.last_error %}<span class="ui-badge error">error</span>
             <span class="muted">{{ repo.last_error }}</span>
           {% elif repo.sync_requested %}<span class="ui-badge warn">sync scheduled</span>
           {% else %}<span class="ui-badge ok">ok</span>{% endif %}</div>
+      {% if repo.last_error and studio_files.state == "missing" or repo.last_error and studio_files.state == "mismatch" %}
+      {% if repo.last_error != studio_files.message %}<div class="muted">{{ repo.last_error }}</div>{% endif %}
+      {% endif %}
     </div>
     <div>
       <span class="ui-label">Remote <code>{{ repo.branch }}</code></span>
@@ -60,7 +68,8 @@
       <div><code>{{ repo.remote_sha|slice:":7" }}</code> ·
         <span{% if remote_stale %} class="text-warn" title="The runner has not checked recently."{% endif %}>checked {{ repo.remote_checked_at|timesince }} ago</span></div>
       <div>{% if pending %}<b class="text-warn">{{ ahead }} commit{{ ahead|pluralize }} ahead</b>
-          {% else %}<span class="ui-badge ok">Up to date</span>{% endif %}</div>
+          {% elif studio_files.ready %}<span class="ui-badge ok">Up to date</span>
+          {% else %}<span class="muted">Files not ready</span>{% endif %}</div>
       {% else %}
       <div class="muted">Not checked yet</div>
       {% endif %}
@@ -86,7 +95,8 @@
     {% if repo.publish_mode == "manual" %}
       {% if repo.publish_requested %}<button class="ui-btn primary" type="button" disabled>Publishing…</button>
       {% elif pending %}<button class="ui-btn primary" type="button" id="reviewBtn" data-remote="{{ repo.remote_sha }}">Review &amp; publish</button>
-      {% else %}<button class="ui-btn primary" type="button" disabled title="Up to date">Up to date</button>{% endif %}
+      {% elif studio_files.ready %}<button class="ui-btn primary" type="button" disabled title="Up to date">Up to date</button>
+      {% else %}<button class="ui-btn primary" type="button" disabled>Files not ready</button>{% endif %}
     {% endif %}
   </div>
 </div>

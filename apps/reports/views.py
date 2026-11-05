@@ -139,6 +139,7 @@ def _dashboard_page(request, *, initial_view: str, extra: dict | None = None):
     portal.js boots the matching surface — these are pages with URLs, not
     client-side view modes (the studio tab bar navigates between them)."""
     from django.middleware.csrf import get_token
+    from apps.runner.studio_files import check_studio_files
 
     get_token(request)  # guarantee the csrftoken cookie for portal.js
     ctx_blob = {
@@ -167,6 +168,7 @@ def _dashboard_page(request, *, initial_view: str, extra: dict | None = None):
             "portal_ctx_json": json.dumps(ctx_blob),
             "studio_role": request.studio_role,
             "console_page_title": page_title,
+            "studio_files": check_studio_files(getattr(request.studio, "repo", None)),
             **(extra or {}),
             # studio_theme (the viewer's named theme, or "" for the Trellum
             # default) comes from the shell context processor, which already
@@ -711,6 +713,7 @@ def git_status_payload(studio) -> dict:
     """One studio's git-sync state, as ``api/system/git/status`` answers it
     and the assistant's ``check_repo_changes`` reads it."""
     from apps.studios.models import RepoPublish
+    from apps.runner.studio_files import check_studio_files
 
     repo = getattr(studio, "repo", None)
     if repo is None or not repo.repo_url:
@@ -737,6 +740,7 @@ def git_status_payload(studio) -> dict:
         ),
         "pending": repo.pending_changes or None,
         "publishing": repo.publish_requested,
+        "files": check_studio_files(repo),
     }
 
 
