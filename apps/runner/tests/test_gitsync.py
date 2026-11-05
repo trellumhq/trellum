@@ -1229,7 +1229,7 @@ class TestPublishMode:
         assert "v2" in (studio_tree.reports_dir / "gamma" / "generator.py").read_text()
         assert list(Run.objects.values_list("slug", flat=True)) == ["gamma"]
 
-    def test_a_published_commit_missing_from_the_cache_falls_back_to_a_full_listing(
+    def test_an_unavailable_published_commit_is_not_replaced_by_remote_head(
         self, studio_repo, studio_tree, upstream
     ):
         _set(studio_repo, auto_run_changed=True)
@@ -1239,22 +1239,22 @@ class TestPublishMode:
         _sync(studio_repo)
         assert list(Run.objects.values_list("slug", flat=True)) == ["beta"]
 
-        # The state a shallow re-clone leaves behind: the published commit is
-        # not an object the cache holds, so there is nothing to diff against.
+        # An unavailable published SHA cannot be substituted with the
+        # remote head, even when a full-listing pending preview is possible.
         _set(studio_repo, last_synced_sha="f" * 40)
         upstream["write_report"]("gamma")
         upstream["push"]("add gamma")
         result = _sync(studio_repo)
-        assert result["ok"], result
+        assert not result["ok"] and not result["restored"], result
         repo = _fresh_repo(studio_repo)
-        summary = repo.studio.publishes.first().summary
-        assert summary["rewritten"] is True and summary["full_listing"] is True
-        assert summary["reports"]["added"] == ["alpha", "beta", "gamma"]
-        assert summary["reports"]["removed"] == []
-        for slug in ("alpha", "beta", "gamma"):
-            assert (studio_tree.reports_dir / slug / "report.yaml").is_file()
-        assert repo.last_synced_sha == summary["to"]
-        assert Run.objects.count() == 1  # nothing else was enqueued
+        assert "Published commit unavailable" in repo.last_error
+        pending = repo.pending_changes
+        assert pending["rewritten"] is True and pending["full_listing"] is True
+        assert pending["reports"]["added"] == ["alpha", "beta", "gamma"]
+        assert repo.last_synced_sha == "f" * 40
+        assert not (studio_tree.reports_dir / "gamma").exists()
+        assert Report.objects.get(studio=studio_tree, slug="alpha").present_in_scan
+        assert Run.objects.count() == 1
 
     def test_a_failed_fetch_spends_the_publish_request(self, studio_repo, make_user):
         _sync(studio_repo)
@@ -1622,3 +1622,232 @@ def test_private_admission_warning_keeps_valid_sync_and_records_author_feedback(
     assert len(repo.last_error.encode()) < 2000
     assert set(studio_tree.reports.values_list("slug", flat=True)) == {"alpha", "z-valid"}
     assert studio_tree.publishes.get().status == "ok"
+
+
+class TestPublishedFilesRestoration:
+    @pytest.mark.parametrize("damage", ["studio", "project", "report", "manifest", "cache", "metadata", "invalid-metadata", "metadata-file"])
+    def test_same_sha_restores_full_published_files(self, studio_repo, studio_tree, upstream, damage):
+        import shutil
+
+        from apps.runner.studio_files import check_studio_files
+        from apps.studios.models import RepoPublish
+
+        upstream["write_report"]("gamma")
+        upstream["write_events"]("events: []\n")
+        upstream["write_datasources"](_DEMO_DB)
+        upstream["write_file"]("data/demo.sqlite", _V1)
+        upstream["push"]("published sources")
+        _set(studio_repo, auto_run_changed=True)
+        assert _sync(studio_repo)["ok"]
+        sha = _fresh_repo(studio_repo).last_synced_sha
+        # Portal uploads are independent of the cache and survive its repair.
+        upload = studio_tree.project_root / "data" / "portal-upload.csv"
+        upload.write_bytes(b"uploaded")
+        target = {
+            "studio": studio_tree.data_root,
+            "project": studio_tree.project_root,
+            "report": studio_tree.reports_dir / "alpha",
+            "manifest": studio_tree.reports_dir / "alpha" / "report.yaml",
+            "cache": studio_tree.repo_dir,
+            "metadata": studio_tree.repo_dir / ".git",
+            "invalid-metadata": studio_tree.repo_dir / ".git" / "HEAD",
+            "metadata-file": studio_tree.repo_dir / ".git",
+        }[damage]
+        shutil.rmtree(target) if target.is_dir() else target.unlink()
+        if damage == "invalid-metadata":
+            target.write_text("corrupt\n")
+        elif damage == "metadata-file":
+            target.write_text("gitdir: /unrelated\n")
+        result = _sync(studio_repo)
+        assert result["ok"] and result["restored"] and result["had_changes"], result
+        repo = _fresh_repo(studio_repo)
+        assert repo.last_synced_sha == sha and repo.remote_sha == sha
+        assert repo.pending_changes == {}
+        assert check_studio_files(repo)["ready"]
+        assert (studio_tree.project_root / "events.yaml").read_text() == "events: []\n"
+        assert (studio_tree.project_root / "data" / "demo.sqlite").read_bytes() == _V1
+        assert (studio_tree.reports_dir / "gamma" / "report.yaml").is_file()
+        assert Report.objects.filter(studio=studio_tree, present_in_scan=True).count() == 2
+        assert Run.objects.count() == 0
+        row = RepoPublish.objects.filter(studio=studio_tree).first()
+        assert row.status == "ok" and row.summary["restoration"] is True
+        assert row.from_sha == row.to_sha == sha
+        if damage not in {"studio", "project"}:
+            assert upload.read_bytes() == b"uploaded"
+        intact = _sync(studio_repo)
+        assert intact["ok"] and not intact["restored"] and not intact["had_changes"]
+
+    @pytest.mark.parametrize("lose_cache", [False, True])
+    def test_manual_newer_remote_stays_pending_while_published_files_restore(
+        self, studio_repo, studio_tree, upstream, lose_cache,
+    ):
+        import shutil
+
+        from apps.runner.studio_files import check_studio_files
+
+        # file:// honours shallow cloning, unlike a plain local path.
+        if lose_cache:
+            _set(studio_repo, repo_url=upstream["bare"].as_uri())
+        upstream["write_events"]("events: []\n")
+        upstream["write_datasources"](_DEMO_DB)
+        upstream["write_file"]("data/demo.sqlite", _V1)
+        upstream["push"]("published declarations")
+        assert _sync(studio_repo)["ok"]
+        published = _fresh_repo(studio_repo).last_synced_sha
+        upstream["write_report"]("alpha", "print('unreviewed')")
+        upstream["write_report"]("beta")
+        upstream["write_events"]("events: [{name: unreviewed}]\n")
+        upstream["write_file"]("data/demo.sqlite", _V2)
+        upstream["push"]("unreviewed changes")
+        _set(studio_repo, publish_mode="manual", auto_run_changed=True)
+        shutil.rmtree(studio_tree.project_root)
+        if lose_cache:
+            shutil.rmtree(studio_tree.repo_dir)
+        result = _sync(studio_repo)
+        assert result["ok"] and result["restored"] and result["had_changes"], result
+        repo = _fresh_repo(studio_repo)
+        assert repo.last_synced_sha == published != repo.remote_sha
+        assert repo.pending_changes["to"] == repo.remote_sha
+        assert check_studio_files(repo)["ready"]
+        assert "unreviewed" not in (studio_tree.reports_dir / "alpha" / "generator.py").read_text()
+        assert not (studio_tree.reports_dir / "beta").exists()
+        assert not Report.objects.filter(studio=studio_tree, slug="beta").exists()
+        assert (studio_tree.project_root / "events.yaml").read_text() == "events: []\n"
+        assert (studio_tree.project_root / "data" / "demo.sqlite").read_bytes() == _V1
+        assert Run.objects.count() == 0
+        pending = repo.pending_changes
+        # A subsequent fetch remains a no-op; a reviewed request can still publish.
+        assert not _sync(studio_repo)["restored"]
+        _set(studio_repo, publish_requested=True, publish_requested_to=repo.remote_sha)
+        assert _sync(studio_repo)["ok"]
+        assert _fresh_repo(studio_repo).last_synced_sha == pending["to"]
+        assert (studio_tree.reports_dir / "beta" / "report.yaml").is_file()
+
+    def test_wrong_head_after_failed_publish_restores_old_version(self, studio_repo, studio_tree, upstream):
+        from apps.runner.studio_files import check_studio_files
+
+        assert _sync(studio_repo)["ok"]
+        sha = _fresh_repo(studio_repo).last_synced_sha
+        upstream["write_report"]("beta")
+        (upstream["work"] / "reports" / "beta" / "report.yaml").write_text("slug: [\n")
+        upstream["push"]("invalid")
+        result = _sync(studio_repo)
+        assert result["ok"] and not result["had_changes"]
+        assert check_studio_files(_fresh_repo(studio_repo))["state"] == "mismatch"
+        error = _fresh_repo(studio_repo).last_error
+        result = _sync(studio_repo)
+        assert result["ok"] and result["restored"], result
+        repo = _fresh_repo(studio_repo)
+        assert repo.last_synced_sha == sha and repo.last_error == error
+        assert repo.pending_changes["to"] == repo.remote_sha != sha
+        assert check_studio_files(repo)["ready"]
+        assert not _sync(studio_repo)["restored"]
+
+    def test_fetch_failure_can_restore_locally_but_remains_an_error(self, studio_repo, studio_tree, monkeypatch):
+        assert _sync(studio_repo)["ok"]
+        (studio_tree.reports_dir / "alpha" / "report.yaml").unlink()
+        _set(studio_repo, sync_requested=True)
+        monkeypatch.setattr(StudioGitSync, "fetch", lambda _: (_ for _ in ()).throw(RuntimeError("fetch unavailable")))
+        result = _sync(studio_repo)
+        assert not result["ok"] and result["restored"] and result["had_changes"]
+        assert "fetch unavailable" in result["error"]
+        assert (studio_tree.reports_dir / "alpha" / "report.yaml").is_file()
+        repo = _fresh_repo(studio_repo)
+        assert "fetch unavailable" in repo.last_error
+        assert not repo.sync_requested and due_repos() == []
+
+    def test_incomplete_restore_never_rescans_registry(self, studio_repo, studio_tree, monkeypatch):
+        from apps.studios.models import RepoPublish
+
+        assert _sync(studio_repo)["ok"]
+        (studio_tree.reports_dir / "alpha" / "report.yaml").unlink()
+        monkeypatch.setattr(StudioGitSync, "_copy_reports", lambda *a, **kw: None)
+        monkeypatch.setattr("apps.reports.scan.sync_studio_registry", lambda _: pytest.fail("incomplete restore scanned"))
+        result = _sync(studio_repo)
+        assert not result["ok"] and not result["restored"] and not result["had_changes"]
+        assert Report.objects.get(studio=studio_tree, slug="alpha").present_in_scan
+        row = RepoPublish.objects.filter(studio=studio_tree).first()
+        assert row.status == "error" and row.summary["restoration"]
+        assert _fresh_repo(studio_repo).last_error
+
+    def test_restore_failure_does_not_publish_new_auto_head(self, studio_repo, studio_tree, upstream, monkeypatch):
+        assert _sync(studio_repo)["ok"]
+        published = _fresh_repo(studio_repo).last_synced_sha
+        (studio_tree.reports_dir / "alpha" / "report.yaml").unlink()
+        upstream["write_report"]("beta")
+        upstream["push"]("newer")
+        monkeypatch.setattr(StudioGitSync, "_copy_reports", lambda *a, **kw: (_ for _ in ()).throw(OSError("copy failed")))
+        result = _sync(studio_repo)
+        assert not result["ok"] and not result["restored"]
+        repo = _fresh_repo(studio_repo)
+        assert repo.last_synced_sha == published != repo.remote_sha
+        assert repo.pending_changes["to"] == repo.remote_sha
+        assert "copy failed" in repo.last_error
+
+    def test_restoration_does_not_consume_review_request(self, studio_repo, studio_tree, upstream, monkeypatch):
+        assert _sync(studio_repo)["ok"]
+        upstream["write_report"]("beta")
+        upstream["push"]("reviewed")
+        _set(studio_repo, publish_mode="manual")
+        assert _sync(studio_repo)["ok"]
+        remote = _fresh_repo(studio_repo).remote_sha
+        _set(studio_repo, publish_requested=True, publish_requested_to=remote, publish_rebuild_override=True)
+        (studio_tree.reports_dir / "alpha" / "report.yaml").unlink()
+        real = StudioGitSync.publish
+
+        def publish(sync, pending):
+            assert sync.repo.publish_requested
+            assert sync.repo.publish_requested_to == remote
+            assert sync.repo.publish_rebuild_override is True
+            assert pending["to"] == remote
+            return real(sync, pending)
+
+        monkeypatch.setattr(StudioGitSync, "publish", publish)
+        result = _sync(studio_repo)
+        assert result["ok"] and result["restored"]
+        assert _fresh_repo(studio_repo).last_synced_sha == remote
+
+    def test_intentional_removal_stays_removed_after_restore(self, studio_repo, studio_tree, upstream):
+        import shutil
+
+        upstream["write_report"]("beta")
+        upstream["push"]("add beta")
+        assert _sync(studio_repo)["ok"]
+        upstream["delete_report"]("alpha")
+        upstream["push"]("remove alpha")
+        assert _sync(studio_repo)["ok"]
+        shutil.rmtree(studio_tree.project_root)
+        result = _sync(studio_repo)
+        assert result["ok"] and result["restored"], result
+        assert not (studio_tree.reports_dir / "alpha").exists()
+        assert not Report.objects.get(studio=studio_tree, slug="alpha").present_in_scan
+        assert Report.objects.get(studio=studio_tree, slug="beta").present_in_scan
+
+    @pytest.mark.parametrize("target", ["repo", "project", "project/reports"])
+    def test_restore_never_erases_symlink_targets(self, studio_repo, studio_tree, tmp_path, target):
+        import shutil
+
+        assert _sync(studio_repo)["ok"]
+        directory = studio_tree.data_root / target
+        shutil.rmtree(directory)
+        unrelated = tmp_path / "unrelated"
+        unrelated.mkdir()
+        sentinel = unrelated / "keep.txt"
+        sentinel.write_text("keep")
+        directory.symlink_to(unrelated, target_is_directory=True)
+        result = _sync(studio_repo)
+        if target == "repo":
+            assert result["ok"] and result["restored"], result
+            assert not directory.is_symlink()
+        else:
+            assert not result["ok"] and not result["restored"]
+        assert sentinel.read_text() == "keep"
+        assert list(unrelated.iterdir()) == [sentinel]
+
+    def test_data_shipping_failure_is_not_successful_restoration(self, studio_repo, studio_tree, monkeypatch):
+        assert _sync(studio_repo)["ok"]
+        (studio_tree.reports_dir / "alpha" / "report.yaml").unlink()
+        monkeypatch.setattr(StudioGitSync, "_ship_declared_files", lambda *a: ["declared file unavailable"])
+        result = _sync(studio_repo)
+        assert not result["ok"] and not result["restored"] and not result["had_changes"]
+        assert "declared file unavailable" in _fresh_repo(studio_repo).last_error

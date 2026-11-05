@@ -53,6 +53,9 @@ from pathlib import Path
 import yaml
 
 from apps.runner.safe_copy import reject_symlinks, safe_copyfile, safe_copytree
+from apps.runner.studio_files import (
+    _checked_path, _checkout_head, _safe_slug, check_studio_files,
+)
 from django.conf import settings
 from django.utils import timezone
 
@@ -106,6 +109,16 @@ def safe_project_relpath(path: str) -> bool:
     if any(ch < " " or ch == "\x7f" for ch in path):
         return False
     return all(part and part not in (".", "..") for part in path.split("/"))
+
+
+def _ensure_directory(path: Path) -> None:
+    """Create missing directories only below verified, link-free parents."""
+    try:
+        _checked_path(path, directory=True)
+    except FileNotFoundError:
+        _ensure_directory(path.parent)
+        path.mkdir(exist_ok=True)
+        _checked_path(path, directory=True)
 
 
 def _studio_lock(studio_id: int) -> threading.Lock:
@@ -234,9 +247,26 @@ class StudioGitSync:
         materialized. The checkout is a cache for publish(); nothing here
         reaches the project dir."""
         validate_repo_fields(self.repo.path, self.repo.branch)
-        if os.path.isdir(os.path.join(self.cache_dir, ".git")):
-            return
-        os.makedirs(self.cache_dir, exist_ok=True)
+        try:
+            if _checkout_head(Path(self.cache_dir)):
+                return
+        except (OSError, ValueError, subprocess.SubprocessError):
+            pass
+        # Only the dedicated cache may be replaced. Never follow a link or
+        # remove the project (which can also contain portal-owned uploads).
+        cache = Path(self.cache_dir)
+        if cache != self.studio.data_root / "repo":
+            raise ValueError("Invalid studio cache path")
+        _ensure_directory(cache.parent)
+        if cache.is_symlink():
+            cache.unlink()  # unlink only this cache pointer, never its target
+        elif cache.exists():
+            if cache.is_dir():
+                shutil.rmtree(cache)
+            else:
+                _checked_path(cache, directory=False)
+                cache.unlink()
+        _ensure_directory(cache)
         logger.info(
             f"{self.studio}: cloning {self._scrub(self.repo.repo_url)} "
             f"(branch {self.repo.branch}, sparse: {self.repo.path}/)"
@@ -305,7 +335,11 @@ class StudioGitSync:
         project dir is not touched."""
         validate_repo_fields(self.repo.path, self.repo.branch)
         branch = self.repo.branch
-        if not os.path.isdir(os.path.join(self.cache_dir, ".git")):
+        try:
+            valid_cache = bool(_checkout_head(Path(self.cache_dir)))
+        except (OSError, ValueError, subprocess.SubprocessError):
+            valid_cache = False
+        if not valid_cache:
             self.ensure_clone()
         else:
             # Scrub any token a previous version embedded in the remote URL.
@@ -458,6 +492,11 @@ class StudioGitSync:
     def _copy_reports(self, only_slugs: set[str] | None = None) -> None:
         src_reports = os.path.join(self.cache_dir, self.repo.path)
         dst_reports = str(self.studio.reports_dir)
+        _ensure_directory(self.studio.project_root)
+        if self.studio.reports_dir.exists() or self.studio.reports_dir.is_symlink():
+            _checked_path(self.studio.reports_dir, directory=True)
+        if only_slugs is not None and any(not _safe_slug(s) for s in only_slugs):
+            raise ValueError("Unsafe report path")
         if not os.path.isdir(src_reports):
             # Deleting the last report removes the whole dir from the sparse
             # checkout; the deletions must still propagate to the working copy.
@@ -473,7 +512,7 @@ class StudioGitSync:
             # a reports/ dir that never existed. Nothing changed under
             # reports/, nothing to do, no warning to log.
             return
-        os.makedirs(dst_reports, exist_ok=True)
+        _ensure_directory(self.studio.reports_dir)
         # `None` means "full copy" (fresh clone, or no changed-slugs info at
         # all). An explicit set -- even an EMPTY one, e.g. an events.yaml
         # -only push -- means "only these slugs changed". The old
@@ -483,6 +522,11 @@ class StudioGitSync:
         slugs = os.listdir(src_reports) if only_slugs is None else only_slugs
         inputs = []
         for slug in slugs:
+            if not _safe_slug(slug):
+                raise ValueError("Unsafe report path")
+            dst = Path(dst_reports) / slug
+            if dst.exists() or dst.is_symlink():
+                _checked_path(dst, directory=True)
             src = Path(src_reports) / slug
             if src.is_dir():
                 reject_symlinks(src, root=Path(self.cache_dir))
@@ -515,6 +559,7 @@ class StudioGitSync:
         catalog all read these files, potentially while a sync is mid-copy,
         and must never see a half-written one.
         """
+        _ensure_directory(self.studio.project_root)
         for name in self._root_synced_files():
             src = Path(self.cache_dir) / self._root_file_relpath(name)
             if not src.is_file():
@@ -820,6 +865,59 @@ class StudioGitSync:
             return warn(self._yaml_problem(exc))
         return ""
 
+    def _restore_published(self) -> None:
+        """Materialize the published commit without consuming pending review.
+
+        Called only under the sync locks. Validate existing registry files
+        before rescanning, so a partial copy cannot mark reports removed.
+        Restoring sources never queues builds.
+        """
+        from apps.reports.scan import RegistrySyncWarning, sync_studio_registry
+        from apps.studios.models import RepoPublish
+        from trellum.runner import scan_report_configs
+
+        sha = self.repo.last_synced_sha
+        if not re.fullmatch(r"[0-9a-fA-F]{40,64}", sha):
+            raise RuntimeError("Published commit is invalid")
+        row = RepoPublish(
+            studio=self.studio, from_sha=sha, to_sha=sha, trigger="auto",
+            summary={"restoration": True, "from": sha, "to": sha},
+        )
+        try:
+            self.ensure_clone()
+            # A shallow replacement cache might only have the newer remote
+            # tip. Fetch this exact published object, never substitute HEAD.
+            if self._run_git("cat-file", "-e", f"{sha}^{{commit}}")[0]:
+                rc, _, err = self._run_git("fetch", "origin", sha)
+                if rc:
+                    raise RuntimeError(f"Published commit unavailable: {err}")
+            rc, _, err = self._run_git("checkout", "--force", "--detach", sha)
+            if rc:
+                raise RuntimeError(f"Restore checkout failed: {err}")
+            scan_report_configs(os.path.join(self.cache_dir, self.repo.path))
+            self._copy_root_files()
+            self._copy_reports()
+            health = check_studio_files(self.repo)
+            if not health["ready"]:
+                raise RuntimeError(health["message"])
+            warning = self._sync_repo_datasources(sha)
+            warnings = [warning, *self._ship_declared_files(sha)]
+            if any(warnings):
+                raise RuntimeError("; ".join(w for w in warnings if w))
+            try:
+                sync_studio_registry(self.studio)
+            except RegistrySyncWarning as exc:
+                # Keep the registry's existing nonfatal admission semantics
+                # without hiding a previous operational error.
+                warning = str(exc)
+                if warning not in self.repo.last_error:
+                    self.repo.last_error = "; ".join(filter(None, (self.repo.last_error, warning)))[:2000]
+            row.save()
+        except Exception as exc:  # noqa: BLE001 - record failed recovery
+            row.status, row.error = "error", self._scrub(str(exc))[:2000]
+            row.save()
+            raise
+
     def publish(self, pending: dict) -> tuple[list[str], bool]:
         """Bring the project dir up to ``pending["to"]``: check the commit
         out, validate every report.yaml in the checkout, and only then copy.
@@ -938,7 +1036,7 @@ class StudioGitSync:
         """
         from apps.studios.models import RepoPublish
 
-        result = {"ok": False, "changed": [], "error": ""}
+        result = {"ok": False, "changed": [], "error": "", "restored": False, "had_changes": False}
         if not self.is_configured:
             result["error"] = "no repository configured"
             return result
@@ -954,7 +1052,25 @@ class StudioGitSync:
             result["error"] = "sync already in progress on another worker"
             return result
         try:
-            pending = self.fetch()
+            needs_restore = (
+                bool(self.repo.last_synced_sha) and not check_studio_files(self.repo)["ready"]
+            )
+            fetch_error = None
+            try:
+                pending = self.fetch()
+            except Exception as exc:  # noqa: BLE001 - local recovery can still work
+                fetch_error = exc
+                pending = self.repo.pending_changes
+            if needs_restore:
+                try:
+                    self._restore_published()
+                except Exception as exc:
+                    if fetch_error is not None:
+                        raise RuntimeError(f"{fetch_error}; restore failed: {exc}") from exc
+                    raise
+                result.update(restored=True, had_changes=True)
+            if fetch_error is not None:
+                raise fetch_error
             changed: list[str] = []
             published = False
             reviewed = self.repo.publish_requested_to
@@ -978,8 +1094,9 @@ class StudioGitSync:
             elif self.repo.publish_requested:
                 # Nothing to publish: the request is spent.
                 self.repo.save(update_fields=self._spend_request())
-            if not published and not pending:
-                self.repo.last_error = ""  # nothing pending, nothing wrong
+            # A no-op or restoration is not evidence that an earlier
+            # operational error has been resolved. A publish sets its own
+            # outcome; otherwise preserve errors until explicitly resolved.
             if not published and self.repo.last_synced_sha:
                 # Declarations are read from the published commit, not the
                 # checkout, so a fetch with nothing new still has them to
@@ -987,12 +1104,12 @@ class StudioGitSync:
                 # before declarations were mirrored). A publish mirrors its
                 # own commit, so only the no-publish path needs this.
                 warning = self._sync_repo_datasources(self.repo.last_synced_sha)
-                if warning:
-                    self.repo.last_error = warning
+                if warning and warning not in self.repo.last_error:
+                    self.repo.last_error = "; ".join(filter(None, (self.repo.last_error, warning)))[:2000]
             self.repo.sync_requested = False
             self.repo.sync_reason = "schedule"
             self.repo.save(update_fields=["sync_requested", "sync_reason", "last_error"])
-            result.update(ok=True, changed=changed, had_changes=published)
+            result.update(ok=True, changed=changed, had_changes=published or result["restored"])
             return result
         except Exception as exc:  # noqa: BLE001
             message = self._scrub(str(exc))
