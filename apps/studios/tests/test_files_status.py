@@ -6,6 +6,7 @@ import pytest
 from django.db import OperationalError
 
 from apps.core import roles
+from apps.runner.tests.test_gitsync import studio_repo, upstream  # noqa: F401
 from apps.studios.models import StudioRepo
 from apps.studios.startup import check_studio_files_at_startup
 
@@ -47,6 +48,25 @@ def test_git_status_checks_files_without_mutating_repo(client, org_admin, publis
     assert not published_repo.last_error
 
 
+def test_sync_replaces_missing_status_with_up_to_date(client, org_admin, studio_repo):
+    from apps.runner.gitsync import StudioGitSync
+
+    client.force_login(org_admin)
+    studio = studio_repo.studio
+    prefix = f"/s/{studio.org.slug}/{studio.slug}"
+    assert StudioGitSync(studio_repo).sync()["ok"]
+    (studio.reports_dir / "alpha" / "report.yaml").unlink()
+    check_studio_files_at_startup()
+    assert b"Studio files missing." in client.get(prefix + "/").content
+    studio_repo.refresh_from_db()
+    result = StudioGitSync(studio_repo).sync()
+    assert result["ok"] and result["restored"]
+    page = client.get(prefix + "/settings/repo").content
+    assert b"data-studio-files-status" not in page
+    assert b">Up to date<" in page
+    assert client.get(prefix + "/api/system/git/status").json()["files"]["ready"]
+
+
 def test_viewer_sees_generic_notice_without_git_access(client, member, grant_studio, published_repo):
     studio = published_repo.studio
     grant_studio(member, studio, roles.VIEWER)
@@ -72,6 +92,26 @@ def test_startup_preserves_operational_error(published_repo):
     check_studio_files_at_startup()
     published_repo.refresh_from_db()
     assert published_repo.last_error == "Repository authentication failed"
+
+
+def test_startup_skips_a_checkout_being_restored(published_repo):
+    from django.db import connections
+    from apps.runner.gitsync import GITSYNC_LOCK_NAMESPACE
+
+    peer = connections["default"].copy(alias="startup_sync_peer")
+    try:
+        with peer.cursor() as cursor:
+            cursor.execute("SELECT pg_advisory_lock(%s, %s)", [
+                GITSYNC_LOCK_NAMESPACE, published_repo.studio_id,
+            ])
+        check_studio_files_at_startup()
+        published_repo.refresh_from_db()
+        assert published_repo.last_error == ""
+    finally:
+        peer.close()
+    check_studio_files_at_startup()
+    published_repo.refresh_from_db()
+    assert published_repo.last_error.startswith("Studio files missing.")
 
 
 def test_startup_clears_only_obsolete_file_status(published_repo):
