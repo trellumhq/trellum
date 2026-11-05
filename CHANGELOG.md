@@ -33,6 +33,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Clarify the Live Ops demo's embedded snapshot, 300-event result scope and
+  separate top-15 actor ranking in its report introduction and gallery description.
+- Document both fixed-evidence analysis examples in the demo guide.
+
 - Render readable assistant analysis with evidence placeholders, specific clarifications and visible business-analysis rationales; compare declared intent with executor metadata while preserving private draft and source-continuation checks.
 - Include the psycopg 3 driver required for bounded assistant source reads in
   framework driver installations.

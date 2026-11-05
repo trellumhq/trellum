@@ -73,7 +73,7 @@ Extra arguments pass straight through to the framework:
 
 Missing fixtures are generated automatically the first time you need them.
 
-## Two businesses, ten reports, and one analysis
+## Two businesses, ten reports, and two analyses
 
 The demo is organised the way the product is meant to be used: **per business,
 around the questions that business asks** — not as a catalogue of chart types.
@@ -83,7 +83,8 @@ Every report answers a different question. The `metrics` report is generated
 rather than hand-written: `python -m trellum metrics
 --report` builds it from `metrics.yaml`, with one KPI and trend per bound
 metric. A separate Northwind analysis turns the checkout question into a
-written finding with evidence. Two fictional companies share the warehouse,
+written finding with evidence and a separate four-slide decision brief.
+Two fictional companies share the warehouse,
 each with its own `studio` and its own annotated events. Signature charts state
 what they demonstrate in a `· demo:` suffix — this is a demo, and the feature
 is the content.
@@ -98,7 +99,7 @@ is the content.
 | `experiments` | The studio's whole A/B program on one page, three tests with three different reads: checkout_v2 (CUPED, winsorisation, bootstrap CIs — running), starter_pack_price (a conversion lift that ARPU doesn't confirm — past its declared end), onboarding_v2 (read by Day-1 Return rather than by revenue — concluded). Its `ab_test:` **list** gives each test its own row and lifecycle on the portal's Experiments overview |
 | `economy-firehose` | **A lot of data.** Every currency source and sink at full grain — **2,013,984 rows** on the published gallery, all of them live in the browser at once: usable immediately on the three inline months while the other 49 stream in behind you, and every filter re-measured over the whole two million in ~60ms (the page says so itself, timed in your own browser). Sized deliberately: see `ECONOMY_HISTORY_MULT` for the browser-heap ceiling that picks this number. A real economy bug is hidden inside. A project install generates a slice of the same thing (`python -m trellum.demo --full` for the whole set) |
 | `insert-coin` | **The report that is a minigame** — drawn as a chart, because it is one. At rest: a line chart of the filtered window (DAU terrain, revenue orbs sized by value, outage days as gaps in the line, real event annotations). Press Start and you ride it as a comet; nothing moves until you do. Filters rebuild the world; one selected tier changes the comet you play as |
-| `user-event-log` | **The live-lookup demo.** Type a user id, read that user's raw event stream from `fact_user_events`. The artifact bakes one user's log at build time; served by a host advertising a live-query endpoint, the same input queries the warehouse on demand — the log itself is never compiled in |
+| `user-event-log` | **Live Ops Monitor.** A build-time snapshot of up to 300 recent events drives the KPIs, charts and searchable table. On a live-query host, severity, service, actor and date filters request fresh results. A separate top-15 actor ranking shares service/date filters and covers all matching events; actor/severity do not narrow it. The standalone gallery shows snapshots with live filters disabled |
 
 ### Northwind Threads — an apparel shop
 
@@ -122,6 +123,12 @@ runner:
 ```powershell
 python -m trellum.run reports/checkout-findings --no-serve
 ```
+
+`reports/checkout-presentation` presents the same fixed September evidence as
+a four-slide decision brief, **Northwind checkout decision**, with its own
+assumptions and recommended investigation. It is a separate analysis artifact,
+not a live dashboard. Rebuild it with
+`python -m trellum.run reports/checkout-presentation --no-serve`.
 
 Scaffold another article with `python -m trellum analysis new <slug>`, import a
 capture with `python -m trellum analysis import reports/<slug> <capture-file>

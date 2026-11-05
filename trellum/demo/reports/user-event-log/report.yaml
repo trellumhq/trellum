@@ -1,7 +1,7 @@
 # ─── Identity ───────────────────────────────────────────────
 name: "Live Ops Monitor"
 slug: user-event-log
-description: "Type a user id and the warehouse answers at view time: a live-query report whose event log is never baked into the page — one declared query drives the KPIs, charts and raw-events table."
+description: "Synthetic event-level operations data by severity, service, actor and date, with a build-time snapshot of up to 300 recent events and a separate top-15 actor ranking. Standalone pages show that snapshot; a live-query host can refresh results when filters change."
 version: 0.1.0
 
 # ─── Scheduling ─────────────────────────────────────────────
