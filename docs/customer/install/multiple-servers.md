@@ -171,19 +171,22 @@ a failure and stop the drill rather than retrying indefinitely.
 3. Queue a controlled long-running offline fixture on runner A. After recording
    its worker/run/container IDs and running state, kill **only that disposable
    runner container**. Confirm the coordinator fences the stale run as
-   unconfirmed (`termination_confirmed=False`, `stop_requested=True`, diagnostic
-   cause `worker_outcome_unconfirmed`) after the heartbeat deadline. The run
+   unconfirmed (`termination_confirmed=False`, diagnostic cause
+   `worker_outcome_unconfirmed`) after the heartbeat deadline. The run
    stays active: missing heartbeats do not prove a remote sandbox stopped.
-   Confirm no duplicate run or automatic replay appears. Inspect any surviving
-   sandbox on A and stop/remove it by its recorded exact container ID only,
-   after confirming it belongs to the fixture. Record actual termination
-   evidence; do not fabricate completion or clear the fence with ad hoc SQL.
-4. Restart A and observe whether its original run finalizes. If the fence
-   remains, record the recovery/admission limitation and stop this part of the
-   drill; automatic return of crashed work to the fleet is not established.
-   Once the original run has safely finalized, explicitly queue a new run of
-   that fixture and confirm success and visible output. Verify B continues serving
-   only its own pool and the coordinator remains active. Record final run states and recovery lineage.
+   Confirm no duplicate run or automatic replay appears. Preserve the recorded
+   sandbox on A so the owning runner's restart can establish termination.
+4. Restart A's runner against its original local daemon. Verify that it inspects
+   and stops the exact recorded orphan, sets `termination_confirmed=True` and
+   finalizes the original run. Retain container events, runner logs and the
+   run's unknown-write-outcome diagnostics. A remote daemon's missing container
+   is not termination evidence. If the fence remains or the step times out,
+   record the failure and stop this part of the drill. Manual cleanup is not
+   evidence of successful restart recovery; do not clear the fence with ad hoc
+   SQL. After confirmed termination and finalization, explicitly queue a new
+   run of that fixture and confirm success and visible output. Verify B
+   continues serving only its own pool and the coordinator remains active.
+   Record final run states and recovery lineage; do not replay the old run.
 5. Drain the fixture runners and remove only the drill's recorded resources;
    retain evidence and remove the shared-file probe. Do not prune Docker or
    remove any production volumes.
