@@ -37,11 +37,18 @@ class KpiCard(Component):
     clickable: bool = False
     card_id: Optional[str] = None
     metric: Optional[str] = None
+    alignment: str = field(default="left", kw_only=True)
+    full_number: bool = field(default=False, kw_only=True)
+    precision: Optional[int] = field(default=None, kw_only=True)
 
     _component_type: str = field(default="kpi_card", init=False, repr=False)
 
     def render_html(self, ctx: RenderContext) -> str:
         cid = ctx.next_id()
+
+        _validate_number_options(self.format, self.full_number, self.precision)
+        if self.alignment not in {"left", "center"}:
+            raise ValueError("alignment must be 'left' or 'center'")
 
         label, fmt = self.label, self.format
         if self.metric:
@@ -58,12 +65,16 @@ class KpiCard(Component):
             expanded = expand_claim(claim)
             label = expanded.get("label", label)
             fmt = expanded.get("format", fmt)
+        _validate_number_options(fmt, self.full_number, self.precision)
 
         data: dict[str, Any] = {
             "type": "kpi",
             "value": self.value,
             "format": fmt,
             "label": label,
+            "alignment": self.alignment,
+            "full_number": self.full_number,
+            "precision": self.precision,
         }
         if self.metric:
             data["metric"] = self.metric
@@ -131,18 +142,34 @@ class KpiRow(Component):
         if self.dataset_id:
             from trellum.metrics import expand_claim
 
+            kpis = [expand_claim(k) if isinstance(k, dict)
+                    else {"label": k.label, "format": k.format,
+                          "value": k.value, "alignment": k.alignment,
+                          "full_number": k.full_number, "precision": k.precision}
+                    for k in self.kpis]
+            for kpi in kpis:
+                _validate_number_options(kpi.get("format", "number"),
+                                         kpi.get("full_number", False),
+                                         kpi.get("precision"))
             ctx.register(cid, {
                 "type": "kpi_row_live",
                 "dataset_id": self.dataset_id,
-                "kpis": [expand_claim(k) if isinstance(k, dict)
-                         else {"label": k.label, "format": k.format}
-                         for k in self.kpis],
+                "kpis": kpis,
             })
             cards = [
                 f'<div class="fw-kpi-card" id="{cid}_k{i}"></div>'
                 for i in range(len(self.kpis))
             ]
-            return f'<div class="fw-kpi-grid" id="{cid}">{"".join(cards)}</div>'
+            mc = self.mobile_collapse
+            if mc and 0 < mc < len(cards):
+                for i in range(mc, len(cards)):
+                    cards[i] = cards[i].replace('class="fw-kpi-card"',
+                                                'class="fw-kpi-card fw-kpi-extra"')
+            grid = f'<div class="fw-kpi-grid" id="{cid}">{"".join(cards)}</div>'
+            if mc and 0 < mc < len(cards):
+                grid += (f'<button class="fw-kpi-more-btn" aria-controls="{cid}" aria-expanded="false">'
+                         f'+ {len(cards) - mc} more</button>')
+            return grid
 
         mc = self.mobile_collapse
         cards = []
@@ -158,12 +185,12 @@ class KpiRow(Component):
                 )
             cards.append(html)
 
-        grid = f'<div class="fw-kpi-grid">{"".join(cards)}</div>'
+        grid = f'<div class="fw-kpi-grid" id="{cid}">{"".join(cards)}</div>'
 
         if mc and 0 < mc < len(cards):
             rest_count = len(cards) - mc
             grid += (
-                f'<button class="fw-kpi-more-btn" aria-expanded="false">'
+                f'<button class="fw-kpi-more-btn" aria-controls="{cid}" aria-expanded="false">'
                 f'+ {rest_count} more</button>'
             )
 
@@ -196,11 +223,15 @@ class MiniKpi(Component):
     value: Any = None
     format: str = "number"
     metric: Optional[str] = None
+    stacked: bool = field(default=False, kw_only=True)
+    full_number: bool = field(default=False, kw_only=True)
+    precision: Optional[int] = field(default=None, kw_only=True)
 
     _component_type: str = field(default="mini_kpi", init=False, repr=False)
 
     def render_html(self, ctx: RenderContext) -> str:
         cid = ctx.next_id()
+        _validate_number_options(self.format, self.full_number, self.precision)
 
         label, fmt = self.label, self.format
         if self.metric:
@@ -214,12 +245,16 @@ class MiniKpi(Component):
             expanded = expand_claim(claim)
             label = expanded.get("label", label)
             fmt = expanded.get("format", fmt)
+        _validate_number_options(fmt, self.full_number, self.precision)
 
         data: dict[str, Any] = {
             "type": "mini_kpi",
             "label": label,
             "value": self.value,
             "format": fmt,
+            "stacked": self.stacked,
+            "full_number": self.full_number,
+            "precision": self.precision,
         }
         if self.metric:
             data["metric"] = self.metric
@@ -235,13 +270,28 @@ class MiniKpi(Component):
     font-size: var(--font-size-small);
     color: var(--text-secondary);
 }
-.fw-mini-kpi .fw-mini-val { font-weight: 600; color: var(--text-main); }"""
+.fw-mini-kpi .fw-mini-val { font-weight: 600; color: var(--text-main); }
+.fw-mini-kpi.fw-mini-stacked { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.fw-mini-kpi.fw-mini-stacked .fw-mini-val { color: var(--text-main); }"""
 
     @classmethod
     def client_js(cls) -> str:
-        return """\
+        return load_js("components/kpi_card.js") + "\n" + """\
 window._fwRenderers['mini_kpi'] = function renderMiniKpi(id, cfg) {
     var el = document.getElementById(id);
-    var fmt = window.getFormatter(cfg.format);
-    el.innerHTML = cfg.label + ': <span class="fw-mini-val">' + fmt(cfg.value) + '</span>';
+    var label = document.createElement('span');
+    label.textContent = cfg.label + ': ';
+    var value = document.createElement('span');
+    value.className = 'fw-mini-val';
+    value.textContent = window._fwKpiFormat(cfg.value, cfg.format, cfg.full_number, cfg.precision);
+    el.replaceChildren(label, value);
+    el.classList.toggle('fw-mini-stacked', !!cfg.stacked);
 };"""
+
+
+def _validate_number_options(fmt: str, full_number: bool, precision: Optional[int]) -> None:
+    if precision is not None and (isinstance(precision, bool) or not isinstance(precision, int)
+                                  or not 0 <= precision <= 12):
+        raise ValueError("precision must be an integer from 0 to 12")
+    if (full_number or precision is not None) and fmt not in {"number", "currency", "percent", "ratio"}:
+        raise ValueError("full_number and precision support number, currency, percent, and ratio formats")

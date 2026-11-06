@@ -7,6 +7,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+- Added optional alignment, full-number and precision presentation to KPI
+  components, stacked MiniKpi labels, and mobile expansion for filtered KPI rows.
+
 ### Added
 - A database-free report component showcase in the demo gallery, with interactive
   LineChart size and filtered-summary examples.

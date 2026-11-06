@@ -376,6 +376,67 @@ def test_mini_kpi_render():
     assert registered["label"] == "DAU"
 
 
+def test_kpi_presentation_options_are_keyword_only_and_validated():
+    import inspect
+    assert inspect.signature(KpiCard).parameters["alignment"].kind is inspect.Parameter.KEYWORD_ONLY
+    assert inspect.signature(MiniKpi).parameters["full_number"].kind is inspect.Parameter.KEYWORD_ONLY
+    # Existing positional constructor arguments remain in their original slots.
+    card = KpiCard("Revenue", 5, "currency", "+2%", "up", 8, "daily", True, "rev", None)
+    assert card.card_id == "rev" and card.clickable
+    ctx = _make_ctx()
+    card = KpiCard(label="Total", value=1250345, full_number=True, precision=0,
+                   alignment="center")
+    card.render_html(ctx)
+    config = next(iter(ctx.component_data.values()))
+    assert config["full_number"] is True and config["precision"] == 0
+    assert config["alignment"] == "center"
+    for kwargs in ({"precision": 13}, {"precision": 1.5},
+                   {"format": "chips", "full_number": True}):
+        with pytest.raises(ValueError):
+            KpiCard(label="Bad", value=3, **kwargs).render_html(_make_ctx())
+
+
+def test_live_kpi_row_mobile_collapse_and_static_siblings():
+    ctx = _make_ctx()
+    row = KpiRow([
+        {"label": "Static", "value": 12, "format": "number"},
+        {"label": "Aggregate", "agg": "sum", "column": "amount"},
+        {"label": "Third", "agg": "count"},
+    ], dataset_id="events", mobile_collapse=1)
+    html = row.render_html(ctx)
+    assert "fw-kpi-extra" in html
+    assert 'aria-controls="' in html and 'aria-expanded="false"' in html
+    cfg = next(iter(ctx.component_data.values()))
+    assert cfg["kpis"][0]["value"] == 12
+
+
+def test_mini_kpi_stacked_and_safe_dom_renderer():
+    ctx = _make_ctx()
+    MiniKpi(label="<img src=x>", value=2, stacked=True).render_html(ctx)
+    cfg = next(iter(ctx.component_data.values()))
+    assert cfg["label"] == "<img src=x>" and cfg["stacked"]
+    js = MiniKpi.client_js()
+    assert "textContent = cfg.label" in js and "replaceChildren" in js
+
+
+def test_kpi_showcase_module_adds_sections_to_report_context(tmp_path):
+    import importlib.util
+    from pathlib import Path
+    from trellum.report import ReportContext
+
+    module_path = (Path(__file__).parents[1] / "demo/reports/component-showcase"
+                   / "examples_kpis.py")
+    spec = importlib.util.spec_from_file_location("examples_kpis", module_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    ctx = ReportContext(config={"name": "KPI showcase"}, slug="kpi-showcase",
+                        output_dir=str(tmp_path))
+    module.add_sections(ctx)
+    assert len(ctx.sections) == 2
+    assert any(isinstance(component, KpiRow)
+               for section in ctx.sections for component in section["components"])
+
+
 # ── Table tests ──────────────────────────────────────────────
 
 def test_data_table_render():

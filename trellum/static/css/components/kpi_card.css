@@ -15,6 +15,7 @@
     min-width: 0;
 }
 .fw-kpi-card:hover { background: var(--bg-card-hover); }
+.fw-kpi-card.fw-kpi-centered { text-align: center; }
 .fw-kpi-label {
     font-size: var(--font-size-label); color: var(--text-secondary);
     text-transform: uppercase; letter-spacing: 0.5px;

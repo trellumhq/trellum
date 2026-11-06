@@ -1,3 +1,22 @@
+if (!window._fwKpiFormat) {
+    window._fwKpiFormat = function(value, format, fullNumber, precision) {
+        if (!fullNumber && precision == null) return window.getFormatter(format || 'number')(value);
+        if (value == null || !Number.isFinite(Number(value))) return '-';
+        var n = Number(value);
+        if (format === 'percent') n *= 100;
+        if (format === 'currency') return new Intl.NumberFormat(undefined, {
+            style: 'currency', currency: 'USD',
+            minimumFractionDigits: precision == null ? 2 : precision,
+            maximumFractionDigits: precision == null ? 2 : precision
+        }).format(n);
+        var defaultPlaces = format === 'number' ? 12 : 2;
+        return n.toLocaleString(undefined, {
+            minimumFractionDigits: precision == null ? 0 : precision,
+            maximumFractionDigits: precision == null ? defaultPlaces : precision
+        }) + (format === 'percent' ? '%' : format === 'ratio' ? 'x' : '');
+    };
+}
+
 window._fwRenderers['kpi_row_live'] = function(id, cfg) {
     function _render(rows) {
         var A = window._fwAggregate;
@@ -13,12 +32,13 @@ window._fwRenderers['kpi_row_live'] = function(id, cfg) {
                 var sdisp;
                 if (kpi.format === 'percent') {
                     sdisp = (typeof kpi.value === 'number')
-                        ? kpi.value.toFixed(1) + '%' : kpi.value;
+                        ? (kpi.full_number || kpi.precision != null
+                            ? window._fwKpiFormat(kpi.value, 'number', kpi.full_number, kpi.precision) + '%'
+                            : kpi.value.toFixed(1) + '%') : kpi.value;
                 } else {
-                    sdisp = window.getFormatter(kpi.format || 'number')(kpi.value);
+                    sdisp = window._fwKpiFormat(kpi.value, kpi.format || 'number', kpi.full_number, kpi.precision);
                 }
-                el.innerHTML = '<div class="fw-kpi-label">' + (kpi.label || '')
-                             + '</div><div class="fw-kpi-value">' + sdisp + '</div>';
+                _renderKpiValue(el, kpi, sdisp);
                 continue;
             }
             var val, agg = kpi.agg || 'sum';
@@ -75,8 +95,12 @@ window._fwRenderers['kpi_row_live'] = function(id, cfg) {
                 val = total > 0 ? (matched / total * 100) : 0;
             }
             var disp;
-            if (kpi.format === 'percent') { disp = val != null ? val.toFixed(1) + '%' : '-'; }
-            else { disp = window.getFormatter(kpi.format || 'number')(val); }
+            if (kpi.format === 'percent') {
+                disp = val != null ? (kpi.full_number || kpi.precision != null
+                    ? window._fwKpiFormat(val, 'number', kpi.full_number, kpi.precision) + '%'
+                    : val.toFixed(1) + '%') : '-';
+            }
+            else { disp = window._fwKpiFormat(val, kpi.format || 'number', kpi.full_number, kpi.precision); }
             var deltaHtml = '';
             if (kpi.delta_col) {
                 var dVal;
@@ -100,9 +124,21 @@ window._fwRenderers['kpi_row_live'] = function(id, cfg) {
                 if (dDir === 'auto') dDir = dVal >= 0 ? 'up' : 'down';
                 deltaHtml = '<div class="fw-kpi-delta ' + dDir + '">' + dStr + '</div>';
             }
-            el.innerHTML = '<div class="fw-kpi-label">' + (kpi.label || '') + '</div>'
-                         + '<div class="fw-kpi-value">' + disp + '</div>' + deltaHtml;
+            _renderKpiValue(el, kpi, disp);
+            if (deltaHtml) el.insertAdjacentHTML('beforeend', deltaHtml);
         }
     }
     window._fwLiveWrap(id, cfg, _render);
 };
+
+function _renderKpiValue(el, kpi, display) {
+    var label = document.createElement('div');
+    label.className = 'fw-kpi-label';
+    label.textContent = kpi.label || '';
+    var value = document.createElement('div');
+    value.className = 'fw-kpi-value';
+    value.textContent = display;
+    value.title = display;
+    el.replaceChildren(label, value);
+    el.classList.toggle('fw-kpi-centered', kpi.alignment === 'center');
+}
