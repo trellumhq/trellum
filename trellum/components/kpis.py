@@ -235,6 +235,8 @@ class MiniKpi(Component):
         metric: Optional metrics.yaml id this KPI claims -- fills label and
             format from the definition (explicit values win); the value must
             still be supplied.
+        binding: Optional exact dataset_id/group/metric reference to a MetricView.
+            The supplied value must be None when this keyword-only option is set.
     """
     label: str = ""
     value: Any = None
@@ -244,9 +246,23 @@ class MiniKpi(Component):
     full_number: bool = field(default=False, kw_only=True)
     precision: Optional[int] = field(default=None, kw_only=True)
 
+    binding: Optional[Dict[str, str]] = field(default=None, kw_only=True)
+
+    @property
+    def dataset_id(self):
+        return self.binding.get("dataset_id") if isinstance(self.binding, dict) else None
+
     _component_type: str = field(default="mini_kpi", init=False, repr=False)
 
+    def __post_init__(self):
+        from trellum.components.metric_views import validate_binding
+
+        validate_binding(self.binding, self.value)
+
     def render_html(self, ctx: RenderContext) -> str:
+        from trellum.components.metric_views import validate_binding
+
+        validate_binding(self.binding, self.value)
         cid = ctx.next_id()
         _validate_number_options(self.format, self.full_number, self.precision)
 
@@ -275,6 +291,9 @@ class MiniKpi(Component):
         }
         if self.metric:
             data["metric"] = self.metric
+        if self.binding is not None:
+            data["binding"] = self.binding
+            data["dataset_id"] = self.binding["dataset_id"]
         ctx.register(cid, data)
         return f'<span class="fw-mini-kpi" id="{cid}"></span>'
 
@@ -305,6 +324,7 @@ class MiniKpi(Component):
     def client_js(cls) -> str:
         return load_js("components/kpi_card.js") + "\n" + """\
 window._fwRenderers['mini_kpi'] = function renderMiniKpi(id, cfg) {
+    if (window._fwMetricViews) window._fwMetricViews.disposeMini(id);
     var el = document.getElementById(id);
     var label = document.createElement('span');
     label.className = 'fw-mini-label';
@@ -314,6 +334,21 @@ window._fwRenderers['mini_kpi'] = function renderMiniKpi(id, cfg) {
     value.textContent = window._fwKpiFormat(cfg.value, cfg.format, cfg.full_number, cfg.precision);
     el.replaceChildren(label, value);
     el.classList.toggle('fw-mini-stacked', !!cfg.stacked);
+    if (cfg.binding && window._fwMetricViews) {
+        value.style.paddingInlineEnd = '4px';
+        var reason = document.createElement('span');
+        reason.className = 'fw-mini-binding-reason';
+        reason.setAttribute('role', 'status');
+        reason.style.cssText = 'flex-basis:100%;white-space:normal;overflow-wrap:anywhere';
+        el.appendChild(reason);
+        window._fwMetricViews.bindMini(id, cfg, function(number, why) {
+            value.textContent = why ? '—' : window._fwKpiFormat(number, cfg.format, cfg.full_number, cfg.precision);
+            reason.textContent = why;
+            reason.hidden = !why;
+            if (why) value.setAttribute('aria-label', 'Unavailable: ' + why);
+            else value.removeAttribute('aria-label');
+        });
+    }
 };"""
 
 

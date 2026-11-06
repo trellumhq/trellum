@@ -59,7 +59,7 @@ def _classify_filter(
                 "target_column": parent_cell.get("target_column") or src_col,
                 "status": "active",
                 "reason": (
-                    f"ScopedDataSource '{target_ds_id}' inherits this filter "
+                    f"Derived dataset '{target_ds_id}' inherits this filter "
                     f"from parent '{parent_id}'."
                 ),
             }
@@ -139,6 +139,7 @@ def _compute_view_matrix(
 ) -> list[ChartFilterRow]:
     """Build filter-coverage rows for one view (flat or one scope's sections)."""
     from trellum.components.filterable import DataSource, FilterBar, ScopedDataSource
+    from trellum.components.metric_views import MetricView
     from trellum.components.layout import RawHTML
 
     pairs = _walk_view(sections)
@@ -151,7 +152,7 @@ def _compute_view_matrix(
         if isinstance(comp, DataSource):
             ds_columns[comp.id] = _df_columns(getattr(comp, "df", None))
             ds_dfs[comp.id] = getattr(comp, "df", None)
-        elif isinstance(comp, ScopedDataSource):
+        elif isinstance(comp, (ScopedDataSource, MetricView)):
             scoped_parents[comp.id] = comp.parent
         elif isinstance(comp, FilterBar):
             fbs.append(comp)
@@ -163,10 +164,26 @@ def _compute_view_matrix(
         parent_id_resolved = parent_id
         # walk up if the user accidentally chained (validator already
         # forbids this, but be defensive)
-        while parent_id_resolved in scoped_parents:
+        seen = {child_id}
+        while parent_id_resolved in scoped_parents and parent_id_resolved not in seen:
+            seen.add(parent_id_resolved)
             parent_id_resolved = scoped_parents[parent_id_resolved]
         ds_columns[child_id] = ds_columns.get(parent_id_resolved, set())
         ds_dfs[child_id] = ds_dfs.get(parent_id_resolved)
+
+    for comp, _sec in pairs:
+        if isinstance(comp, MetricView):
+            ds_columns[comp.id] = set(comp.output_columns)
+            ds_dfs.pop(comp.id, None)  # Group rows are never source-grain facts.
+
+    for child in list(scoped_parents):
+        seen = set()
+        target = child
+        while target in scoped_parents and target not in seen:
+            seen.add(target)
+            target = scoped_parents[target]
+        if target in seen:
+            scoped_parents.pop(child, None)
 
     # Build dataset_id → list[FilterBar]. A DataSource is "covered"
     # by a FilterBar if it is the FilterBar's primary DS or appears in
@@ -183,13 +200,15 @@ def _compute_view_matrix(
     # Inheritance: every FilterBar that covers a parent also implicitly
     # covers each ScopedDataSource child (the JS engine derives child
     # rows from parent's filtered output).
-    for child_id, parent_id in scoped_parents.items():
-        if parent_id in fb_by_ds:
-            fb_by_ds.setdefault(child_id, []).extend(fb_by_ds[parent_id])
+    for _ in range(2):
+        for child_id, parent_id in scoped_parents.items():
+            for fb in fb_by_ds.get(parent_id, []):
+                if all(existing is not fb for existing in fb_by_ds.setdefault(child_id, [])):
+                    fb_by_ds[child_id].append(fb)
 
     rows: list[ChartFilterRow] = []
     for comp, sec_title in pairs:
-        if isinstance(comp, (DataSource, FilterBar)):
+        if isinstance(comp, (DataSource, FilterBar, MetricView)):
             continue
 
         kind = _comp_kind(comp)

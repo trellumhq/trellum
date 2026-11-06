@@ -12,6 +12,7 @@ import pandas as pd
 from trellum.assets import load_css, load_js
 from trellum.components._table_drill_down import drill_down_config, raw_action_key
 from trellum.components._table_totals import totals_config, typed_inputs
+from trellum.components._table_column_formats import column_formats_config
 from trellum.components.base import Component, RenderContext
 from trellum.data.transforms import df_to_json_records, format_value
 
@@ -45,6 +46,8 @@ class DataTable(Component):
     ``None`` keeps the existing ``max_rows`` display contract.
     Keyword-only ``cell_shading`` optionally declares whole-column raw-unit
     targets and ``higher``/``lower`` direction, without changing text colors.
+    Keyword-only ``column_formats`` formats explicitly named ordinary columns
+    for display/search while retaining raw numeric sort/CSV values.
     Keyword-only ``totals`` declares additive sums or weighted ratios over
     matching delivered rows before display limits; column one labels Total.
     Keyword-only ``pin_header`` and ``pin_footer`` opt into pinning the current
@@ -83,6 +86,8 @@ class DataTable(Component):
     drill_down: Optional[dict] = field(default=None, kw_only=True)
     live_context: bool = field(default=True, kw_only=True)
 
+    column_formats: Optional[dict] = field(default=None, kw_only=True)
+
     # ComparisonTable's presentation metadata travels with the same population.
     _comparison: Optional[dict] = field(default=None, init=False, repr=False)
 
@@ -92,6 +97,8 @@ class DataTable(Component):
     def __post_init__(self) -> None:
         if type(self.live_context) is not bool:
             raise ValueError("DataTable live_context must be bool")
+        if self.column_formats is not None:
+            self.column_formats = column_formats_config(self.column_formats, self.df, self.columns or list(self.df.columns))
         self.drill_down = drill_down_config(self.drill_down, self.df, self.columns or list(self.df.columns))
         _validate_row_limit(self.row_limit)
         _validate_table_pinning(self.pin_header, self.pin_footer, self.pin_height)
@@ -105,6 +112,9 @@ class DataTable(Component):
             raise ValueError("DataTable live_context must be bool")
         if self.live:
             raise ValueError(_LIVE_LEGACY_ERROR)
+        column_formats = column_formats_config(self.column_formats, self.df, self.columns or list(self.df.columns))
+        if column_formats and self._comparison is not None:
+            raise ValueError("DataTable column_formats is unsupported on ComparisonTable")
         row_limit = _validate_row_limit(self.row_limit)
         _validate_table_pinning(self.pin_header, self.pin_footer, self.pin_height)
         shading = self._cell_shading_config()
@@ -149,6 +159,8 @@ class DataTable(Component):
                 "sortable": self.sortable,
                 "numericColumns": numeric_cols,
             }
+            if column_formats:
+                cfg["columnFormats"] = column_formats
             if self.conditional_formats:
                 cfg["conditionalFormats"] = self.conditional_formats
             if shading:
@@ -199,17 +211,23 @@ class DataTable(Component):
             reg["drillDown"] = drill_down
             reg["title"] = self.title
             reg["drillDownKeys"] = [raw_action_key(value) for value in self.df[drill_down["value_column"]]]
-        if numeric_cols or (self._comparison and self._comparison["context"] is not None):
+        if column_formats:
+            reg["columnFormats"] = column_formats
+        if column_formats or numeric_cols or (self._comparison and self._comparison["context"] is not None):
             # Keep established text/date/boolean CSV representation; only
             # numeric cells need a separate unrounded value. Text-only catalog
             # tables need no duplicate row payload (workspace pages fill those
             # rows from their catalog).
             raw_rows = [row.copy() for row in reg["rows"]]
-            raw_cols = show_cols if self._comparison and self._comparison["context"] is not None else numeric_cols
+            raw_cols = show_cols if self._comparison and self._comparison["context"] is not None else list(dict.fromkeys([*numeric_cols, *column_formats]))
             numeric_indices = [(show_cols.index(c), c) for c in raw_cols]
             for row, record in zip(raw_rows, df_to_json_records(df[raw_cols])):
                 for index, column in numeric_indices:
                     value = record[column]
+                    if column in column_formats and value is not None and value is not pd.NA and (
+                        isinstance(value, bool) or not isinstance(value, (int, float, Decimal))
+                    ):
+                        continue  # Text/boolean/date CSV representation stays unchanged.
                     # JSON numbers cannot carry arbitrary decimal precision or
                     # integers beyond JavaScript's exact range. Keep their
                     # numeric text for lossless table sort and CSV.
@@ -284,7 +302,7 @@ class DataTable(Component):
 
     @classmethod
     def client_js(cls) -> str:
-        return load_js("components/live_result_context.js") + "\n" + load_js("components/data_table_totals.js") + "\n" + load_js("components/data_table.js")
+        return load_js("components/live_result_context.js") + "\n" + load_js("components/data_table_totals.js") + "\n" + load_js("components/data_table_column_formats.js") + "\n" + load_js("components/data_table.js")
 
 
 def _validate_row_limit(value):

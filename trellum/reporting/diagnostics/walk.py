@@ -43,7 +43,10 @@ def _df_columns(df: Any) -> set[str]:
     return set()
 
 def _is_filterable(comp: Any) -> bool:
-    return bool(getattr(comp, "_supports_dataset_id", False))
+    from trellum.components.kpis import MiniKpi
+
+    return bool(getattr(comp, "_supports_dataset_id", False) or
+                isinstance(comp, MiniKpi) and getattr(comp, "binding", None))
 
 def _comp_kind(comp: Any) -> str:
     return type(comp).__name__

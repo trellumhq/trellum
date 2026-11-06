@@ -78,11 +78,14 @@ def _resolve_ds_columns(ds_id: str, ds_map: dict[str, Any]) -> set[str]:
     column names can a component on this dataset legally reference".
     """
     from trellum.components.filterable import ScopedDataSource
+    from trellum.components.metric_views import MetricView
 
     seen: set[str] = set()
     while ds_id in ds_map and ds_id not in seen:
         seen.add(ds_id)
         ds = ds_map[ds_id]
+        if isinstance(ds, MetricView):
+            return set(ds.output_columns)
         if isinstance(ds, ScopedDataSource):
             ds_id = ds.parent
             continue

@@ -255,7 +255,7 @@
        Every new data-registering component belongs in this list. */
     var _PRIORITY_TYPES = {
         /* registrars: populate the filter engine */
-        data_source: true, scoped_data_source: true, live_data_source: true,
+        data_source: true, scoped_data_source: true, live_data_source: true, metric_view: true,
         /* filter UI: must exist before consumers read filtered rows */
         filter_bar: true,
         /* live consumers: cheap to render, and painting them late flashes */

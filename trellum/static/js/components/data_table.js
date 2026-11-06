@@ -12,6 +12,16 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
     var cf = cfg.conditionalFormats || {};
     var comparison = cfg.comparison;
     var context = comparison && comparison.context;
+    var columnFormats = !comparison && cfg.workspacePageSize !== 25 && cfg.columnFormats;
+    function _formatColumns(row, columns) {
+        if (!columnFormats || !Object.keys(columnFormats).length) return row;
+        row.legacyDisplay = row.display.slice();
+        columns.forEach(function(column, i) {
+            if (Object.prototype.hasOwnProperty.call(columnFormats, column))
+                row.display[i] = window._fwTableColumnFormat(row.raw[i], columnFormats[column]);
+        });
+        return row;
+    }
     function _own(object, key) {
         return object && Object.prototype.hasOwnProperty.call(object, key) ? object[key] : undefined;
     }
@@ -408,7 +418,7 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
         var barMax = 0;
         if (barCol >= 0) {
             filtered.forEach(function(row) {
-                var v = parseFloat(String(row.display[barCol]).replace(/[^0-9.\-]/g, ''));
+                var v = parseFloat(String((row.legacyDisplay || row.display)[barCol]).replace(/[^0-9.\-]/g, ''));
                 if (!isNaN(v) && v > barMax) barMax = v;
             });
         }
@@ -434,7 +444,7 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
                 var condRules = _own(cf, columns[i]);
                 var style = info && info.tone ? ' style="color:' + info.tone + ';font-weight:600"' : '';
                 if (condRules) {
-                    var color = _evalCondFmt(info ? row.raw[i] : v, condRules);
+                    var color = _evalCondFmt(info ? row.raw[i] : (row.legacyDisplay || row.display)[i], condRules);
                     if (color) style = ' style="color:' + (comparison ? _escapeHtml(color) : color) + ';font-weight:600"';
                 }
                 var text = _escapeHtml(v != null ? v : '');
@@ -443,7 +453,7 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
                 if (info) return '<td' + cellClass + '><span' + style + '>' + _escapeHtml(info.text == null ? '' : info.text) + '</span>' +
                     (info.outcome ? '<span class="fw-comparison-outcome">' + _escapeHtml(info.outcome) + '</span>' : '') + '</td>';
                 if (i === barCol && barMax > 0) {
-                    var num = parseFloat(String(v).replace(/[^0-9.\-]/g, ''));
+                    var num = parseFloat(String((row.legacyDisplay || row.display)[i]).replace(/[^0-9.\-]/g, ''));
                     var pct = isNaN(num) ? 0 : (num / barMax * 100);
                     return '<td' + cellClass + style + '><div class="fw-bar-cell"><div class="fw-bar-fill" style="width:'
                         + pct.toFixed(1) + '%"></div><span>' + text + '</span></div></td>';
@@ -639,8 +649,8 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
                     if (typeof v === 'number') return fmtCompact(v);
                     return String(v);
                 });
-                return _comparisonRow({display: display, raw: raw, index: index,
-                    totalsRecord: _totalsRecord(r), drillKey: _own(r, cfg.drillDown && cfg.drillDown.value_column)}, r, cols);
+                return _formatColumns(_comparisonRow({display: display, raw: raw, index: index,
+                    totalsRecord: _totalsRecord(r), drillKey: _own(r, cfg.drillDown && cfg.drillDown.value_column)}, r, cols), cols);
             });
             _lastRows = rows; _lastCols = cols; _lastTotal = rawRows.length;
             _renderRows(cols, rows, rawRows.length);
@@ -650,10 +660,10 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
     } else {
         /* ── Static mode ── */
         _lastRows = cfg.rows.map(function(row, index) {
-            return _comparisonRow({display: row.slice(), raw: cfg.rawRows ? cfg.rawRows[index] : row,
+            return _formatColumns(_comparisonRow({display: row.slice(), raw: cfg.rawRows ? cfg.rawRows[index] : row,
                     legacy: !cfg.rawRows && !Array.isArray(cfg.numericColumns), index: index,
                     drillKey: cfg.drillDownKeys && cfg.drillDownKeys[index]},
-                    cfg.comparisonRows ? cfg.comparisonRows[index] : {}, cfg.columns);
+                    cfg.comparisonRows ? cfg.comparisonRows[index] : {}, cfg.columns), cfg.columns);
         });
         _lastCols = cfg.columns; _lastTotal = cfg.totalRows == null ? cfg.rows.length : cfg.totalRows;
         // A definition deep link opens the table page that holds its row.

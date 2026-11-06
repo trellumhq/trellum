@@ -40,6 +40,8 @@ def _check_datasource_filterbar(ctx: Any, comps: list[tuple[Any, str]], result: 
         ScopedDataSource,
     )
 
+    from trellum.components.metric_views import MetricView
+
     ds_map: dict[str, Any] = {}
     fb_list: list[tuple[Any, str]] = []
     scoped_list: list[tuple[Any, str]] = []
@@ -56,6 +58,8 @@ def _check_datasource_filterbar(ctx: Any, comps: list[tuple[Any, str]], result: 
         elif isinstance(comp, ScopedDataSource):
             _register_ds(ds_map, comp, sec, "ScopedDataSource", result)
             scoped_list.append((comp, sec))
+        elif isinstance(comp, MetricView):
+            _register_ds(ds_map, comp, sec, "MetricView", result)
         elif isinstance(comp, FilterBar):
             fb_list.append((comp, sec))
 
@@ -150,8 +154,14 @@ def _check_datasource_filterbar(ctx: Any, comps: list[tuple[Any, str]], result: 
     # lives in the same section as the DataSource. Only flag DSes
     # covered by zero FilterBars.
     covered = fb_ds_ids | propagate_targets
+    # Derived rows inherit source filter reach, without pretending to be scoped facts.
+    for _ in range(2):
+        covered |= {ds.id for ds in ds_map.values()
+                    if isinstance(ds, (ScopedDataSource, MetricView)) and ds.parent in covered}
     consuming_ds_ids: set[str] = set()
     for comp, _ in comps:
+        if isinstance(comp, MetricView):
+            consuming_ds_ids.add(comp.parent)
         if isinstance(comp, (DataSource, FilterBar)):
             continue
         ds_id = getattr(comp, "dataset_id", None)
@@ -175,7 +185,7 @@ def _check_datasource_filterbar(ctx: Any, comps: list[tuple[Any, str]], result: 
             continue
         # ScopedDataSources are transparent: they inherit the parent's filters
         # automatically, so they don't need their own FilterBar coverage check.
-        if isinstance(ds, ScopedDataSource):
+        if isinstance(ds, (ScopedDataSource, MetricView)):
             continue
         # `ds-no-filterbar` is only a real concern when the DataSource
         # actually feeds something that should be reactive. Skip when no
@@ -296,7 +306,7 @@ def _check_datasource_filterbar(ctx: Any, comps: list[tuple[Any, str]], result: 
     _LARGE_DS_BYTES = 50 * 1024 * 1024  # 50 MB
 
     for ds_id, ds in ds_map.items():
-        if isinstance(ds, ScopedDataSource):
+        if isinstance(ds, (ScopedDataSource, MetricView)):
             # No DataFrame and no chunking — derived from parent at runtime.
             continue
         if getattr(ds, "chunk_by", None):

@@ -182,6 +182,8 @@
     function _fwExportCaptureNow(cb) {
         var container = document.querySelector('.fw-container');
         if (!container) return;
+        var metricError = _metricViewCaptureError(container, _analysisComponents().components);
+        if (metricError) { _analysisMessage(metricError, true); return; }
         var btn = document.getElementById('fwExportBtn');
         if (btn) btn.classList.add('running');
         var slug = document.body.getAttribute('data-report-slug') || 'report';
@@ -449,7 +451,7 @@
         var parents = {};
         Object.keys(components).forEach(function(id) {
             var cfg = components[id];
-            if (cfg && cfg.type === 'scoped_data_source' && cfg.dataset_id && cfg.parent_id)
+            if (cfg && (cfg.type === 'scoped_data_source' || cfg.type === 'metric_view') && cfg.dataset_id && cfg.parent_id)
                 parents[cfg.dataset_id] = cfg.parent_id;
         });
         var datasets = {};
@@ -464,7 +466,7 @@
                 dsId = parents[dsId];
             }
         });
-        Object.keys(datasets).forEach(function(dsId) {
+        Object.keys(datasets).sort().forEach(function(dsId) {
             if (window.fw.filterEngine && window.fw.filterEngine.isReady(dsId))
                 filters[dsId] = window.fw.filterEngine.getFilterState(dsId);
         });
@@ -491,7 +493,26 @@
             || JSON.stringify(current.filters) !== JSON.stringify(snapshot.filters);
     }
 
+    function _metricViewCaptureError(target, components) {
+        var derived = {};
+        Object.keys(components).forEach(function(id) {
+            var cfg = components[id];
+            if (cfg.type === 'metric_view') derived[cfg.dataset_id] = true;
+        });
+        var roots = [target].concat(Array.from(target.querySelectorAll('[data-fw-kind]')));
+        for (var i = 0; i < roots.length; i++) {
+            var cfg = components[roots[i].id];
+            if (!cfg || !derived[cfg.dataset_id] || !_analysisVisible(roots[i])) continue;
+            var state = window._fwMetricViews && window._fwMetricViews.status(cfg.dataset_id);
+            if (!state || !state.ready || !window._fwFilterEngine.isReady(cfg.dataset_id))
+                return state && state.reason || 'Metric result unresolved';
+        }
+        return '';
+    }
+
     function _analysisReady(target, components) {
+        var metricError = _metricViewCaptureError(target, components);
+        if (metricError) return metricError;
         var roots = [];
         if (target.matches('[data-fw-kind]')) roots.push(target);
         Array.prototype.push.apply(roots, target.querySelectorAll('[data-fw-kind]'));
@@ -499,13 +520,14 @@
         Array.prototype.push.apply(roots, target.querySelectorAll('canvas'));
         var chartTypes = {chart: true, line: true, doughnut: true, funnel: true,
             scatter: true, heatmap: true, treemap: true, sankey: true};
-        var nonVisual = {data_source: true, scoped_data_source: true,
+        var nonVisual = {data_source: true, scoped_data_source: true, metric_view: true,
             live_data_source: true, raw_html: true};
         for (var i = 0; i < roots.length; i++) {
             var root = roots[i];
             if (!_analysisVisible(root)) continue;
             var cfg = components[root.id];
-            if (!cfg || !cfg.type || nonVisual[cfg.type]) continue;
+            if (!cfg || !cfg.type) continue;
+            if (nonVisual[cfg.type]) continue;
             if (cfg.dataset_id && window.fw.filterEngine && !window.fw.filterEngine.isReady(cfg.dataset_id))
                 return 'This section is still loading its data. Wait and try again.';
             if (cfg.type === 'sankey') {

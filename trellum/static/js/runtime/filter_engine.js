@@ -10,6 +10,23 @@
         _scopes: {},   // childId → { parent: parentId } for ScopedDataSource
         _liveDatasets: {},  // dsId → binder hooks ({onChange}) for LiveDataSource
 
+        // Opt-in structural lifecycle; row notifications retain their existing contract.
+        subscribeLifecycle: function(fn) {
+            if (!this._lifecycleListeners) this._lifecycleListeners = new Set();
+            var entry = {fn: fn};
+            this._lifecycleListeners.add(entry);
+            var listeners = this._lifecycleListeners;
+            return function() { listeners.delete(entry); };
+        },
+
+        _emitLifecycle: function(type, dsId) {
+            if (!this._lifecycleListeners) return;
+            var listeners = this._lifecycleListeners;
+            Array.from(listeners).forEach(function(entry) {
+                if (listeners.has(entry)) entry.fn({type: type, dataset_id: dsId});
+            });
+        },
+
         init: function(dsId, rows) {
             // Deprecated legacy entrypoint: normalize rows into columnar storage.
             this.initColumnar(dsId, this._rowsToColumnar(rows || []));
@@ -108,6 +125,7 @@
             delete this._subscribers[dsId];
             delete this._scopes[dsId];
             delete this._liveDatasets[dsId];
+            this._emitLifecycle('remove', dsId);
         },
 
         getEngineStats: function() {
@@ -168,10 +186,12 @@
         initColumnar: function(dsId, col) {
             if (!col) {
                 this._setColumnarDataset(dsId, { _cols: [], _data: [], _dict: {} });
+                this._emitLifecycle('init', dsId);
                 return;
             }
             if (!(col._cols && col._data)) col = this._rowsToColumnar(col);
             this._setColumnarDataset(dsId, col);
+            this._emitLifecycle('init', dsId);
         },
 
         setFilter: function(dsId, filterId, column, mode, value, flagValue) {
@@ -535,6 +555,7 @@
             // reflect the parent's initial state — notify() above handles change
             // propagation; for the initial render we rely on getFiltered() being
             // pulled directly by the consuming components.
+            this._emitLifecycle('scope', childId);
         },
 
         onReady: function(dsId, fn) {
