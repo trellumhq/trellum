@@ -316,6 +316,20 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             month_window.locator('.fw-date-trigger').click()
             expect(event_details.locator('summary')).to_contain_text('13 events')
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
+            page.get_by_role('link', name='line availability', exact=True).click()
+            availability_section = page.locator('#sec-line-availability-—-selected-supplied-observations')
+            availability_canvas = availability_section.locator('canvas[data-fw-title="Complete selected orders"]')
+            availability_canvas.scroll_into_view_if_needed()
+            availability_id = availability_canvas.get_attribute('id')
+            expect(page.locator(f'#{availability_id}-availability')).to_contain_text('2026-10-01')
+            assert page.evaluate('id => window._chartInstances[id].data.datasets[0].data', availability_id) == [29, 0, None, 74]
+            availability_section.get_by_role('button', name='Web', exact=True).click()
+            expect(page.locator(f'#{availability_id}-availability')).to_have_count(0)
+            assert page.evaluate('id => window._chartInstances[id].data.datasets[0].data', availability_id) == [12, 0, 24, 31]
+            availability_section.get_by_role('button', name='App', exact=True).click()
+            expect(page.locator(f'#{availability_id}-availability')).to_have_count(1)
+            assert page.evaluate('id => window._chartInstances[id].data.datasets[0].data', availability_id) == [17, 0, None, 43]
+            assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
             # Every chart must own a real canvas and draw after scrolling into
             # view; scope-based data swaps cannot stand in for different layouts.
             for canvas in page.locator("canvas:visible").all():

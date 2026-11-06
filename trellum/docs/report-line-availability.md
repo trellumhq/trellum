@@ -57,7 +57,10 @@ unavailable. Undeclared siblings retain their existing aggregation semantics.
 
 Static charts check each source row independently, preserving duplicate labels,
 row order and null gaps. They do not group, resample or filter source points.
-Missing required fields withhold points. Declared lines use `spanGaps=false`;
+Missing required fields withhold points. Invalid numeric scalars in declared
+static series, including pandas nullable values, serialize as JSON null; finite
+values remain in the payload for the runtime's state and extra-input checks.
+Declared lines use `spanGaps=false`;
 isolated valid markers, optional curves and forecast styling remain available.
 Header summaries consume the final masked series, skipping null and including
 measured zero; no new summary math is introduced.
@@ -73,7 +76,7 @@ skip-null sums are unchanged.
 ## Context, interaction and capture
 
 When a visible declared series has unavailable supplied points, brief
-`Selected-data context` follows the fixed-height plot, optional month row and
+`Selected data` context follows the fixed-height plot, optional month row and
 grouped event disclosure. It names the actual displayed metric, unavailable
 count, up to three exact supplied labels and the remaining count. Default text
 distinguishes incomplete inputs, undefined denominators and nonfinite results;

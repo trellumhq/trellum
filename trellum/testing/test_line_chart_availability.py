@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import dataclasses
+import base64
 import importlib.util
 import inspect
 import hashlib
@@ -14,6 +15,7 @@ import sys
 from urllib.parse import unquote, urlparse
 
 import pandas as pd
+import orjson
 import pytest
 
 from trellum.assets import load_css, load_js
@@ -130,6 +132,16 @@ def test_static_strict_inputs_positions_missing_fields_and_state():
     assert extra['series_availability'][0]['unavailable'] == [0, 1, 2]
 
 
+def test_static_nullable_observations_reach_the_runtime_as_json():
+    data = pd.DataFrame({'day': ['2026-10-01', '2026-10-02', '2026-10-03'],
+                         'value': pd.Series([0, pd.NA, 5], dtype='Int64')})
+    cfg = config(LineChart(data, 'day', 'value', static=True,
+        series_availability=[rule()]))
+    payload = orjson.loads(orjson.dumps(cfg, option=orjson.OPT_SERIALIZE_NUMPY))
+    assert payload['datasets'][0]['data'] == [0, None, 5]
+    assert payload['series_availability'][0]['unavailable'] == [1]
+
+
 def test_raw_runtime_masking_before_summary_and_without_global_aggregation_changes():
     # Execute the shipped helper, with real aggregate output; no chart mocks.
     script = "const window={_fwRenderers:{}}; const document={addEventListener(){}};\n" + load_js('runtime/aggregate.js') + load_js('components/chart_base.js') + r'''
@@ -189,15 +201,25 @@ def _module(path, name):
 def _build(output, baseline=False):
     output.mkdir(parents=True, exist_ok=True)
     module = _module(ROOT / 'trellum/demo/reports/component-showcase/examples_line_availability.py', 'availability_examples')
+    historical = False
     if baseline:
-        source = subprocess.check_output(['git', 'show', f'{BASELINE}:trellum/components/charts/line_area.py'])
-        path = output / 'baseline_line_area.py'
-        path.write_bytes(source)
-        old = _module(path, 'availability_baseline')
+        try:
+            source = subprocess.check_output(['git', 'show', f'{BASELINE}:trellum/components/charts/line_area.py'],
+                                             cwd=ROOT, stderr=subprocess.DEVNULL)
+        except subprocess.CalledProcessError:
+            original = LineChart
+        else:
+            historical = True
+            path = output / 'baseline_line_area.py'
+            path.write_bytes(source)
+            original = _module(path, 'availability_baseline').LineChart
         def factory(*args, **kwargs):
             kwargs.pop('series_availability', None)
-            return old.LineChart(*args, **kwargs)
+            return original(*args, **kwargs)
         module.LineChart = factory
+        (output / 'baseline-reference.txt').write_text(
+            'Actual dependency Git sources: ' + BASELINE if historical
+            else 'Current opt-out control (dependency history unavailable)')
     ctx = ReportContext(config={'name': 'Supplied line observations', 'studio': 'shared', 'category': 'Test',
         'description': 'Synthetic daily platform and channel contributions, supplied input availability and selected rates.',
         'theme': 'trellum light', 'annotations': {'events': [
@@ -211,15 +233,14 @@ def _build(output, baseline=False):
     from trellum.runner.events import local_annotation_events
     render_report(ctx, str(output), data={'_events': local_annotation_events(ctx.config)}, auto_refresh=False)
     copy_vendor_tree(output)
-    if baseline:
+    if historical:
         html = (output / 'index.html').read_text()
         for path, current in [('js/components/chart_base.js', load_js('components/chart_base.js')),
                               ('css/components/chart_base.css', load_css('components/chart_base.css'))]:
-            old = subprocess.check_output(['git', 'show', f'{BASELINE}:trellum/static/{path}']).decode()
+            old = subprocess.check_output(['git', 'show', f'{BASELINE}:trellum/static/{path}'], cwd=ROOT).decode()
             assert current in html
             html = html.replace(current, old)
         (output / 'index.html').write_text(html)
-        (output / 'baseline-reference.txt').write_text('Actual dependency Git sources: ' + BASELINE)
     return ctx
 
 
@@ -293,7 +314,7 @@ def _browser(tmp_path, width):
         assert actual['data'] == [[29, 0, None, 74]]
         assert actual['ds'][0]['segments'] == [[0, 1], [3, 3]]
         assert actual['ds'][0]['span'] is False and actual['ds'][0]['points'][3]['radius'] == 2
-        assert 'Orders: 1 unavailable supplied observation (2026-10-01)' in actual['note']
+        assert 'Orders: 1 unavailable observation (2026-10-01)' in actual['note']
         assert actual['height'] == 220 and (actual['min'], actual['max']) == (0, 100)
         # The undeclared plot matches actual dependency Python, JS and CSS paint.
         old = state('Legacy selected subtotal', before)
@@ -309,7 +330,7 @@ def _browser(tmp_path, width):
         assert total['data'] == [[54, None, 66, 72], [119, 129, None, 151]]
         rate = state('Complete supplied conversion rate')
         assert rate['data'] == [[18/84, None, None, 0, 34/114]]
-        assert 'Undefined ratio: denominator' in rate['note'] and 'Incomplete supplied' in rate['note']
+        assert 'No valid positive denominator' in rate['note'] and 'Required observations are incomplete' in rate['note']
         assert 'Mean plotted daily rate' in rate['summary']
         expected_mean = (18 / 84 + 34 / 114) / 3
         assert page.evaluate('id=>_fwSummaryValue(window._chartInstances[id].data.datasets[0].data,"mean")', rate['id']) == expected_mean
@@ -347,7 +368,7 @@ def _browser(tmp_path, width):
           cfg.series_availability=[{series:1,unavailable:[0,1,2,3,4],reason:'<img src=x onerror="window.availabilityXss=true"> & literal'}];
           window._fwRenderers.chart(id,cfg);}''', sid)
         multi = state('Static supplied observations and forecast')
-        assert 'Supplied forecast: 5 unavailable supplied observations (2026-09-29, 2026-09-30, 2026-10-01; 2 more)' in multi['note']
+        assert 'Supplied forecast: 5 unavailable observations (2026-09-29, 2026-09-30, 2026-10-01; 2 more)' in multi['note']
         assert '<img src=x onerror=' in multi['note']
         assert multi['data'][1] == [None] * 5 and multi['ds'][1]['dash'] == [7, 4]
         assert page.locator('.fw-line-availability img').count() == 0
@@ -460,8 +481,12 @@ def _browser(tmp_path, width):
         assert page.evaluate('document.documentElement.scrollWidth<=window.innerWidth')
         page.locator('#'+sid).scroll_into_view_if_needed()
         page.screenshot(path=str(evidence / f'line-availability-context-{width}.png'))
+        section = page.locator('#'+sid).locator('xpath=ancestor::*[contains(@class,"fw-section")][1]')
+        capture = section.evaluate('el=>fw.captureElementSnapshotForAnalysis(el)')
+        (evidence / f'line-availability-section-capture-{width}.png').write_bytes(
+            base64.b64decode(capture['image']['data_base64']))
         (evidence / f'line-availability-verification-{width}.json').write_text(json.dumps({
-            'baseline': BASELINE, 'viewport_width': width,
+            'baseline': (baseline / 'baseline-reference.txt').read_text(), 'viewport_width': width,
             'opt_out_paint_sha256': hashlib.sha256(off['paint'].encode()).hexdigest(),
             'all_valid_bound_paint_sha256': hashlib.sha256(complete['paint'].encode()).hexdigest(),
             'all_valid_static_paint_sha256': hashlib.sha256(all_valid_static['paint'].encode()).hexdigest(),

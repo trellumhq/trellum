@@ -134,6 +134,16 @@ def _normalize_series_availability(value: Any) -> Optional[list[dict]]:
     return result
 
 
+def _finite_line_input(value: Any) -> bool:
+    """Numeric scalars supported by the chart, excluding missing/boolean values."""
+    if not isinstance(value, Real) or isinstance(value, bool):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
+
+
 def _series_availability_config(chart: "LineChart") -> dict:
     rules = _normalize_series_availability(chart.series_availability) or []
     if not rules:
@@ -162,8 +172,7 @@ def _series_availability_config(chart: "LineChart") -> dict:
         if not chart.dataset_id:
             # Static points retain their source row positions, including duplicate x labels.
             item["unavailable"] = [i for i, row in enumerate(chart.df.to_dict("records"))
-                if any(not isinstance(row.get(col), Real) or isinstance(row.get(col), bool)
-                       or not math.isfinite(row[col]) for col in rule["required_columns"])
+                if any(not _finite_line_input(row.get(col)) for col in rule["required_columns"])
                 or ("state_column" in rule and (not isinstance(row.get(rule["state_column"]), str)
                     or row[rule["state_column"]] != "available"))]
         resolved.append(item)
@@ -479,6 +488,11 @@ class LineChart(_ChartBase):
                          else theme.chart_colors[i % len(theme.chart_colors)])
                 values = ([None] * len(self.df) if col not in self.df and i in declared
                           else _clean_list(self.df[col].tolist()))
+                if i in declared:
+                    # Nullable pandas scalars must reach the browser as JSON null.
+                    # Keep finite values so state/extra-input rules still mask only
+                    # the final runtime spec, without mutating the source frame.
+                    values = [v if _finite_line_input(v) else None for v in values]
                 datasets.append({
                     "label": label,
                     "data": values,

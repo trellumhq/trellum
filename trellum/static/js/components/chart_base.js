@@ -488,16 +488,16 @@ function _fwLineAvailabilityPlugin(availability) {
                 var ds = chart.data.datasets[item.series];
                 var metric = ds.label || ('Series ' + (item.series + 1));
                 var reasons = item.reason ? [item.reason] : Array.from(new Set(item.points.map(function(p) {
-                    return p.kind === 'denominator' ? 'Undefined ratio: denominator is nonpositive or nonfinite.'
-                        : p.kind === 'aggregate' ? 'Nonfinite aggregate or ratio result.'
-                        : 'Incomplete supplied numeric inputs or unavailable supplied state.';
+                    return p.kind === 'denominator' ? 'No valid positive denominator.'
+                        : p.kind === 'aggregate' ? 'The calculated value is not finite.'
+                        : 'Required observations are incomplete or unavailable.';
                 })));
                 var labels = item.points.slice(0, 3).map(function(p) { return String(p.label); }).join(', ');
                 var more = item.points.length > 3 ? '; ' + (item.points.length - 3) + ' more' : '';
-                return metric + ': ' + item.points.length + ' unavailable supplied ' +
+                return metric + ': ' + item.points.length + ' unavailable ' +
                     (item.points.length === 1 ? 'observation' : 'observations') + ' (' + labels + more + '). ' + reasons.join(' ');
             });
-            var text = 'Selected-data context: ' + lines.join(' ');
+            var text = 'Selected data: ' + lines.join(' ');
             if (note.textContent !== text) note.textContent = text;
             // Follow the native plot/month/event siblings; never move event DOM
             // (it may own keyboard focus) to put our own final sibling in place.

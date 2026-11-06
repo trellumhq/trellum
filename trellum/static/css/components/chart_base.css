@@ -146,7 +146,7 @@
 
 /* Supplied LineChart availability context lives outside the fixed plot. */
 .fw-line-availability {
-    color: var(--text-secondary);
+    color: var(--text-context, var(--text-secondary));
     font-size: var(--font-size-label, 12px);
     line-height: 1.5;
     margin-top: 6px;
