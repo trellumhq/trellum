@@ -1,5 +1,16 @@
 # Framework Migration Guide
 
+## Unreleased: optional DoughnutChart summaries
+
+Existing calls need no changes. Opt in with keyword-only
+`header_summary={"stat": "sum", "scope": "all_categories"}` only for declared
+complete, disjoint, additive amounts. Max and entry count are also available;
+static duplicate labels remain separate entries, while bound charts retain
+their current grouping. Hidden entries remain included. Center totals and
+header context are independent. Rebuild matching report assets; no database
+or host migration is required. See [Doughnut summaries](report-doughnut-summaries.md)
+and the component showcase's four dedicated examples.
+
 ## Unreleased: report result presentation
 
 Ordinary LineCharts now show precise no-result messages within the plot and

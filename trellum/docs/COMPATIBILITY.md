@@ -1,5 +1,14 @@
 # Framework Compatibility Policy
 
+## Unreleased: optional DoughnutChart summaries
+
+Keyword-only `header_summary=None` preserves existing constructors, markup,
+plots and CSV. Explicit `sum`, `max` or `count` declarations use
+`scope="all_categories"`, including hidden entries in the current result.
+Sum/max withhold invalid amounts; count describes entries independently of
+amount completeness. Rebuild matching report assets for the option; no host
+or database migration is required. See [Doughnut summaries](report-doughnut-summaries.md).
+
 ## Unreleased: report result presentation
 
 New ordinary LineCharts default to `result_presentation=True`; no-result text

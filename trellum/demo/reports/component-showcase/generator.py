@@ -6,6 +6,7 @@ from trellum import BaseReport
 from trellum.components import DataSource, FilterBar, Grid, LineChart, RawHTML
 
 from . import (
+    examples_doughnut_summaries,
     examples_line_results,
     examples_overview,
     examples_cohorts,
@@ -58,7 +59,8 @@ class ComponentShowcaseReport(BaseReport):
             '<a href="#sec-sankey-—-complete-weekly-paths">Sankey paths</a>, '
             '<a href="#sec-heatmaps-—-global-quantity-scales">heatmaps</a>, '
             '<a href="#sec-treemaps-—-hierarchy-and-optional-shares">treemaps</a>, '
-            '<a href="#sec-doughnuts-—-compact-rings-and-optional-total">doughnuts</a> or '
+            '<a href="#sec-doughnuts-—-compact-rings-and-optional-total">doughnuts</a>, '
+            '<a href="#sec-doughnut-summaries-—-off-and-on">doughnut summaries</a> or '
             '<a href="#sec-date-ranges-—-daily-readings">date ranges</a>.</p>'
             '<p>For business reports, return to the <a href="../">demo gallery</a>: '
             "Player Overview, Monetization, Store Health and Live Ops show these "
@@ -139,6 +141,7 @@ class ComponentShowcaseReport(BaseReport):
         examples_dates.add_sections(ctx)
 
         examples_doughnuts.add_sections(ctx)
+        examples_doughnut_summaries.add_sections(ctx)
 
         examples_pivots.add_sections(ctx)
         examples_hierarchies.add_sections(ctx)

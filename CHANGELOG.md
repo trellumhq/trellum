@@ -9,6 +9,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Optional DoughnutChart header summaries for current category-entry totals,
+  maxima and counts, with explicit scope, guarded amounts and native examples.
+
 - Ordinary LineCharts now distinguish no-result states and identify retained
   live selections; `result_presentation=False` preserves the previous presentation.
 - Live-query KPI rows and ordinary tables identify displayed selections and

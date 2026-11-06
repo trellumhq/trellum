@@ -517,6 +517,11 @@ summary on a chart that plots several series without naming one are rejected the
 same way, and the validator reports `line-chart-height-invalid` and
 `line-chart-summary-invalid` for charts changed after construction.
 
+[DoughnutChart header summaries](docs/report-doughnut-summaries.md) are optional:
+declare `header_summary={"stat": "sum", "scope": "all_categories"}` for
+additive amounts, or choose `max` or `count`. They include hidden entries in
+the current filtered result; center totals remain a separate option.
+
 `SankeyChart(df, title="", *, mode, stages, weight, unit, ...)` displays
 supplied complete paths or adjacent transitions using the bundled Sankey plugin.
 Exact details and CSV preserve the declared population model.

@@ -126,6 +126,13 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             assert doughnut.locator('.fw-doughnut-center-value').inner_text() == "$40,000.00"
             doughnut.locator('.fw-doughnut-entry').first.click()
             assert doughnut.locator('.fw-doughnut-center-value').inner_text() == "$40,000.00"
+            page.get_by_role("link", name="doughnut summaries", exact=True).click()
+            summaries = page.locator('#sec-doughnut-summaries-—-filtered-category-amounts')
+            summaries.scroll_into_view_if_needed()
+            expect(summaries.locator('.fw-doughnut-summary-value')).to_have_text(['120', '90', '3'])
+            summaries.get_by_role('button', name='iOS', exact=True).click()
+            expect(summaries.locator('.fw-doughnut-summary-value')).to_have_text(['40', '30', '3'])
+            assert doughnut.locator('.fw-doughnut-center-value').inner_text() == "$40,000.00"
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
             page.get_by_role("link", name="pivot tables", exact=True).click()
             pivot = page.locator('.fw-section').filter(has=page.get_by_role(

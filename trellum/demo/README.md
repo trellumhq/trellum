@@ -80,6 +80,10 @@ gallery as the business reports. Its deterministic synthetic data needs no
 database. Use it to inspect default and optional behavior, then browse the
 business reports to see those components in context.
 
+Its [Doughnut summary examples](../docs/report-doughnut-summaries.md) compare
+off/on headers, filtered totals/maxima/counts, independent center totals and
+static duplicate-label entries.
+
 `live-result-examples` is a separate native teaching report for displayed
 snapshot/query identity and returned-row scope. It uses bounded literal
 synthetic SQL through the existing `demo_db` connection, with no new tables.
