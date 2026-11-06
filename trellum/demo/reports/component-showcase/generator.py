@@ -6,6 +6,7 @@ from trellum import BaseReport
 from trellum.components import DataSource, FilterBar, Grid, LineChart, RawHTML
 
 from . import (
+    examples_keyboard,
     examples_combo_summaries,
     examples_sankey_summaries,
     examples_treemap_summaries,
@@ -64,6 +65,7 @@ class ComponentShowcaseReport(BaseReport):
             '<a href="#sec-kpi-states-—-supplied-observation-completeness">KPI states and comparisons</a>, '
             '<a href="#sec-readable-small-status-text">status text</a>, '
             '<a href="#sec-standalone-choices">report controls</a>, '
+            '<a href="#sec-keyboard-—-table-sorting-and-control-focus">keyboard controls</a>, '
             '<a href="#sec-datatable-—-static-population">data tables</a>, '
             '<a href="#sec-datatable-row-limits-—-legacy">table row limits</a>, '
             '<a href="#sec-table-totals-—-exact-campaign-snapshot-off-and-on">table totals</a>, '
@@ -146,6 +148,7 @@ class ComponentShowcaseReport(BaseReport):
         examples_category_colors.add_sections(ctx)
 
         examples_controls.add_sections(ctx)
+        examples_keyboard.add_sections(ctx)
 
         examples_tables.add_sections(ctx)
         examples_table_row_limits.add_sections(ctx)

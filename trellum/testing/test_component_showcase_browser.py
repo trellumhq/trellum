@@ -218,6 +218,15 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             expect(combos.locator('.fw-combo-summary-value')).to_have_text(
                 ['$30.00', '$15.00', '$10.00', '$20.00', '$20.00', '9', '5', '$6.00', '60'])
             expect(sankey_summaries.locator('.fw-chart-summary-value').first).to_have_text('500')
+            page.get_by_role('link', name='keyboard controls', exact=True).click()
+            keyboard = page.locator('#sec-keyboard-—-table-sorting-and-control-focus')
+            amount = keyboard.get_by_role('columnheader', name='Amount')
+            amount.focus()
+            page.keyboard.press('Space')
+            expect(amount).to_be_focused()
+            expect(amount).to_have_attribute('aria-sort', 'descending')
+            expect(keyboard.locator('tbody tr').first.locator('td').first).to_have_text('Largest amount')
+            expect(combos.locator('.fw-combo-summary-value').first).to_have_text('$30.00')
             expect(marketing.locator('.fw-mini-val').first).to_have_text('840')
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
             page.get_by_role("link", name="pivot tables", exact=True).click()

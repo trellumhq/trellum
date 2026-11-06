@@ -1,5 +1,13 @@
 # Framework Compatibility Policy
 
+## Unreleased: report keyboard controls
+
+Ordinary sortable table headers now participate in keyboard navigation and
+retain focus after Enter/Space sorting. Existing chart CSV buttons become
+visible on keyboard focus; Toggle focus outlines stay inside their boundaries.
+No API or data changes are required. Pointer layout, workspace paging, sorting
+and CSV contracts remain unchanged. See [report keyboard controls](report-keyboard.md).
+
 ## Unreleased: optional ComboChart summaries
 
 Keyword-only `header_summary=None` preserves historical output. A declaration

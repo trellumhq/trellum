@@ -106,6 +106,8 @@ The [Sankey summary examples](../docs/report-sankey-summaries.md) compare
 complete-path and adjacent-boundary statistics, including empty and zero results.
 The [Combo summary examples](../docs/report-combo-summaries.md) compare explicit
 axis/series identities, reducers, native formats and selected-input eligibility.
+The [keyboard examples](../docs/report-keyboard.md) demonstrate native table
+sorting, control focus and chart CSV without changing the default layout.
 
 `live-result-examples` is a separate native teaching report for displayed
 snapshot/query identity and returned-row scope. It uses bounded literal

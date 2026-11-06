@@ -26,8 +26,8 @@ def add_sections(ctx):
         ]),
         RawHTML("<p>Use Tab to reach sortable column headings. Enter or Space sorts "
                 "the same way as a click; the first sort is descending and the next "
-                "ascending. Focus stays on that heading. Search and CSV include all "
-                "six matching observations, even though only four rows are shown. "
+                "ascending. Focus stays on that heading. Search and CSV include every "
+                "matching observation, even beyond the four-row display limit. "
                 "Tab also reveals the chart CSV button. Enter or Space activates "
                 "the native toggle below to change its explanatory content.</p>"),
         DataTable(frame, "Keyboard observations", dataset_id=dataset,

@@ -1,5 +1,11 @@
 # Framework Migration Guide
 
+## Unreleased: report keyboard controls
+
+Rebuild reports to obtain keyboard sorting on existing `sortable=True` tables
+and visible focus on existing chart CSV and Toggle controls. No code or data
+migration is needed. See [report keyboard controls](report-keyboard.md).
+
 ## Unreleased: optional ComboChart summaries
 
 Existing calls need no changes. Use `header_summary={"stat": "sum",

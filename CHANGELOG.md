@@ -219,6 +219,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- Enable keyboard sorting for ordinary report tables, reveal chart CSV controls
+  on keyboard focus, and keep Toggle focus outlines inside their boundaries.
+
 - AreaChart defaults use lighter overlapping fills and translucent additive
   stacked bands that follow the preceding visible series. The component
   showcase includes deterministic static and filterable examples.

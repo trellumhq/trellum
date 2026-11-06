@@ -45,9 +45,8 @@ rows; CSV includes every matching observation. A native Toggle controls real
 `Visible` explanatory content, and a native LineChart supplies chart CSV.
 There is no report-local JavaScript or renderer adapter.
 
-For an existing showcase generator, import `examples_keyboard` alongside the
-other example modules and call `examples_keyboard.add_sections(ctx)` once.
-Its navigation anchor is
+The shared component showcase includes this section through its keyboard
+controls link. Its navigation anchor is
 `#sec-keyboard-—-table-sorting-and-control-focus`.
 
 ## Verification and limits
