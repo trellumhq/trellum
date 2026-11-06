@@ -24,6 +24,7 @@ configuration remains unsupported.
 | `title` | required | Section/component title. |
 | `columns` | all columns | Selected display and CSV columns, in the specified order, for static and dataset tables. |
 | `max_rows` | `200` | Limits rendered rows after search and sorting. Does not limit search or CSV. |
+| `row_limit` | `None` | Keyword-only opt-in to a Rows selector (10, 20, 50, 100 or `"all"`), initially selected at construction. |
 | `searchable` | automatic above 20 initial rows | Enables local case-insensitive substring search across displayed column values. Leading/trailing search whitespace is ignored; typing applies after 200ms. |
 | `sortable` | `False` | Click a header to sort all matches. A new column starts descending; another click reverses it. Equal values keep population order. |
 | `conditional_formats` | `None` | Existing per-column colored-number rules, using `op`, `value` and `color`. |
@@ -36,6 +37,18 @@ local search runs first, stable sorting runs second, and the display limit runs
 last. The table shows its supplied, matching and CSV row counts. Generated
 workspace definition tables retain their 25-row pagination and anchor links;
 CSV spans every matching page.
+
+`ComparisonTable` accepts the same keyword-only `row_limit` option and uses the
+same display and export rules.
+
+With `row_limit` enabled, the author-selected choice controls display after
+local search and sorting and supersedes `max_rows` for display only. It never
+changes supplied data, filters, or CSV. All displays every matching row up to
+and including 1,000 matches. Above 1,000 matches, All is disabled; an active
+or authored All falls back to 100 and remains at 100 until the reader chooses
+another option. The adjacent note states that All is available for up to 1,000
+matches and CSV still includes every match. This bound is exclusive to the
+opt-in selector; legacy `max_rows` behavior is unchanged.
 
 CSV downloads exactly the current matching rows in the table's selected sort
 order, across display limits and pages. Export uses the population from the

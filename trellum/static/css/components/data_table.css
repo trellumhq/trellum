@@ -64,6 +64,18 @@
     margin-bottom: 4px;
 }
 .fw-data-table-header { flex-wrap: wrap; gap: 4px; }
+.fw-row-limit-control {
+    display: inline-flex; align-items: center; gap: 6px;
+    color: var(--text-secondary); font-size: var(--font-size-meta);
+}
+.fw-row-limit-control select {
+    min-height: 32px; padding: 4px 26px 4px 8px;
+    color: var(--text-main); background: var(--bg-main);
+    border: 1px solid var(--border-color); border-radius: var(--radius-control);
+    font: inherit;
+}
+.fw-row-limit-control select:focus-visible { outline: 2px solid var(--accent-red); outline-offset: 2px; }
+.fw-row-limit-note { margin-top: 2px; }
 .fw-csv-btn {
     background: transparent; border: 1px solid var(--border-color);
     border-radius: var(--radius-control); padding: 4px 8px; cursor: pointer;
@@ -113,4 +125,5 @@
     .fw-table th,
     .fw-table td { padding: 6px 8px; }
     .fw-table th { font-size: var(--font-size-label); }
+    .fw-row-limit-control select { min-height: 44px; font-size: 16px; }
 }

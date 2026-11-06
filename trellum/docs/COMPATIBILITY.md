@@ -1,5 +1,14 @@
 # Framework Compatibility Policy
 
+## Unreleased: DataTable ranked row-count selection
+
+`DataTable.row_limit` and `ComparisonTable.row_limit` are keyword-only opt-ins.
+`None` preserves legacy `max_rows` output and payloads. Choices are 10, 20, 50,
+100 and `"all"`; All is bounded to 1,000 matching rows, while CSV continues to
+include all matching delivered rows. Existing callers and workspace definition
+tables retain their prior behavior. Rebuild report artifacts to include the
+selector configuration and runtime.
+
 This document defines the stability tiers for framework APIs and the deprecation process for removing or changing them.
 
 

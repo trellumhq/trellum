@@ -39,6 +39,8 @@ class DataTable(Component):
     ``columns`` also selects static display/export columns. ``max_rows`` only
     limits display: search, stable sort and CSV use every supplied row (or
     every row delivered by the dataset wrapper). CSV uses raw numeric values.
+    Keyword-only ``row_limit`` opts into a reader-selected visible row count;
+    ``None`` keeps the existing ``max_rows`` display contract.
     Keyword-only ``cell_shading`` optionally declares whole-column raw-unit
     targets and ``higher``/``lower`` direction, without changing text colors.
 
@@ -61,6 +63,7 @@ class DataTable(Component):
     searchable: Optional[bool] = None
     live: Optional[dict] = None
     cell_shading: Optional[dict] = field(default=None, kw_only=True)
+    row_limit: Optional[int | str] = field(default=None, kw_only=True)
 
     # ComparisonTable's presentation metadata travels with the same population.
     _comparison: Optional[dict] = field(default=None, init=False, repr=False)
@@ -68,9 +71,13 @@ class DataTable(Component):
     _component_type: str = field(default="data_table", init=False, repr=False)
     _supports_dataset_id: bool = field(default=True, init=False, repr=False)
 
+    def __post_init__(self) -> None:
+        _validate_row_limit(self.row_limit)
+
     def render_html(self, ctx: RenderContext) -> str:
         if self.live:
             raise ValueError(_LIVE_LEGACY_ERROR)
+        row_limit = _validate_row_limit(self.row_limit)
         shading = self._cell_shading_config()
 
         cid = ctx.next_id()
@@ -113,11 +120,13 @@ class DataTable(Component):
                 cfg["conditionalFormats"] = self.conditional_formats
             if shading:
                 cfg["cellShading"] = shading
+            if row_limit is not None:
+                cfg["rowLimit"] = row_limit
             if self._comparison is not None:
                 cfg["comparison"] = self._comparison
             ctx.register(cid, cfg)
             return (
-                f'<div class="fw-table-header fw-data-table-header">{search_html}{dl_btn}</div>'
+                f'<div class="fw-table-header fw-data-table-header">{search_html}{_row_limit_control(row_limit, cid)}{dl_btn}</div>'
                 f'<div id="{cid}" class="fw-table-scroll"></div>'
             )
 
@@ -139,6 +148,8 @@ class DataTable(Component):
             "searchable": show_search,
             "sortable": self.sortable,
         }
+        if row_limit is not None:
+            reg["rowLimit"] = row_limit
         if numeric_cols or (self._comparison and self._comparison["context"] is not None):
             # Keep established text/date/boolean CSV representation; only
             # numeric cells need a separate unrounded value. Text-only catalog
@@ -189,7 +200,7 @@ class DataTable(Component):
                 reg["comparisonRows"] = df_to_json_records(self.df[metadata_cols])
 
         table_html = (
-            f'<div class="fw-table-header fw-data-table-header">{search_html}{dl_btn}</div>'
+            f'<div class="fw-table-header fw-data-table-header">{search_html}{_row_limit_control(row_limit, cid)}{dl_btn}</div>'
             f'<div id="{cid}" class="fw-table-scroll"></div>'
         )
         ctx.register(cid, reg)
@@ -225,6 +236,28 @@ class DataTable(Component):
     @classmethod
     def client_js(cls) -> str:
         return load_js("components/data_table.js")
+
+
+def _validate_row_limit(value):
+    """Validate opt-in visible row choices; call from subclass renderers too."""
+    if value is None:
+        return None
+    if type(value) is int and value in (10, 20, 50, 100):
+        return value
+    if type(value) is str and value == "all":
+        return value
+    raise ValueError('DataTable row_limit must be None, 10, 20, 50, 100 or "all"')
+
+
+def _row_limit_control(value, cid):
+    if value is None:
+        return ""
+    options = "".join(
+        f'<option value="{choice}"{" selected" if value == choice else ""}>{"All" if choice == "all" else choice}</option>'
+        for choice in (10, 20, 50, 100, "all")
+    )
+    return (f'<label class="fw-row-limit-control" data-row-limit-for="{cid}">Rows '
+            f'<select data-table-row-limit="{cid}" aria-label="Rows">{options}</select></label>')
 
 
 def _finite_target(value) -> bool:
@@ -362,6 +395,8 @@ class ComparisonTable(Component):
         show_divider: Keyword-only opt-out for the comparison group border.
         cell_shading: Keyword-only whole-column raw-unit threshold declarations.
             See ``trellum/docs/report-data-tables.md`` for units and type limits.
+        row_limit: Keyword-only initial row selector choice (10, 20, 50, 100 or
+            ``"all"``); All is bounded to 1,000 matching rows.
     """
     df: pd.DataFrame
     title: str
@@ -374,9 +409,13 @@ class ComparisonTable(Component):
     comparison_context: Optional[dict] = field(default=None, kw_only=True)
     show_divider: bool = field(default=True, kw_only=True)
     cell_shading: Optional[dict] = field(default=None, kw_only=True)
+    row_limit: Optional[int | str] = field(default=None, kw_only=True)
 
     _component_type: str = field(default="comparison_table", init=False, repr=False)
     _supports_dataset_id: bool = field(default=True, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        _validate_row_limit(self.row_limit)
 
     def render_html(self, ctx: RenderContext) -> str:
         context = self.comparison_context
@@ -397,6 +436,7 @@ class ComparisonTable(Component):
             dataset_id=self.dataset_id,
             static=self.static,
             cell_shading=self.cell_shading,
+            row_limit=self.row_limit,
             conditional_formats=cf,
             columns=(self.columns if self.columns is not None else
                      [c for c in self.df.columns

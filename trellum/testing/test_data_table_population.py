@@ -40,6 +40,37 @@ def test_static_population_projection_and_raw_numeric_precision():
     assert cfg["rows"][0][1] == "1,234.00"
 
 
+def test_row_limit_is_strict_keyword_only_and_opt_in():
+    frame = pd.DataFrame({"id": range(120)})
+    legacy = _register(DataTable(frame, "Legacy", 20, True))
+    assert "rowLimit" not in legacy
+    assert "data-table-row-limit" not in DataTable(frame, "Legacy").render_html(RenderContext(DEFAULT_THEME))
+    enabled = DataTable(frame, "Limited", 20, True, row_limit=10)
+    assert _register(enabled)["rowLimit"] == 10
+    bound = DataTable(frame, "Bound wins", dataset_id="events", static=True,
+                      max_rows=5, row_limit=20)
+    bound_cfg = _register(bound)
+    assert bound_cfg["dataset_id"] == "events" and bound_cfg["maxRows"] == 5
+    assert bound_cfg["rowLimit"] == 20 and "rows" not in bound_cfg
+    enabled.row_limit = 10.0
+    with pytest.raises(ValueError, match="row_limit"):
+        enabled.render_html(RenderContext(DEFAULT_THEME))
+    for invalid in (True, 10.0, "10", "All", 0, 101):
+        with pytest.raises(ValueError, match="row_limit"):
+            DataTable(frame, "Invalid", row_limit=invalid)
+
+
+def test_comparison_table_preserves_legacy_positional_constructor_and_row_limit():
+    from trellum.components import ComparisonTable
+
+    frame = pd.DataFrame({"metric": ["x"], "value": [2], "prior": [1]})
+    table = ComparisonTable(frame, "Compare", "value", ["prior"], None, False)
+    assert table.static is False
+    table.row_limit = 20
+    cfg = _register(table)
+    assert cfg["rowLimit"] == 20
+
+
 def test_numeric_metadata_uses_original_types_and_text_catalogs_need_no_duplicate_rows():
     frame = pd.DataFrame({"id": ["001", "002"], "day": pd.to_datetime(["2026-09-01"] * 2),
                           "flag": [True, False], "object_number": pd.Series([0, 1.25], dtype=object)})
@@ -92,7 +123,14 @@ def report_page(tmp_path):
             "Decimal": [Decimal("1.00000000000000000002"),
                         Decimal("1.00000000000000000003"), Decimal("-2.5E-10")],
         }), "Exact numeric values", max_rows=2, sortable=True, static=True),
+        DataTable(frame, "Ranked row limit", max_rows=1, row_limit=10,
+                  sortable=True, searchable=True, static=True),
     ])
+    row_limit_module = Path(__file__).parents[1] / "demo/reports/component-showcase/examples_table_row_limits.py"
+    row_limit_spec = importlib.util.spec_from_file_location("examples_table_row_limits", row_limit_module)
+    row_limit_examples = importlib.util.module_from_spec(row_limit_spec)
+    row_limit_spec.loader.exec_module(row_limit_examples)
+    row_limit_examples.add_sections(ctx)
     render_report(ctx, auto_refresh=False)
     data = json.loads((tmp_path / "data.json").read_text())
     table_ids = [cid for cid, cfg in data["components"].items() if cfg["type"] == "table"]
@@ -132,6 +170,112 @@ def _export(page, cid):
     return page.evaluate("window.csvCalls.at(-1)")
 
 
+def test_ranked_row_limit_search_sort_csv_and_keyboard(report_page):
+    page, ids, data = report_page
+    cid = ids[5]
+    choice = page.locator(f'[data-table-row-limit="{cid}"]')
+    assert choice.select_option("20") == ["20"]
+    assert page.locator(f"#{cid} tbody tr").count() == 6
+    choice.focus()
+    page.keyboard.press("ArrowDown")
+    page.keyboard.press("Enter")
+    assert choice.input_value() == "50"
+    search = page.locator(f'[data-table-search="{cid}"]')
+    search.fill("precision third")
+    page.wait_for_function("id => document.getElementById(id)._fwTableState.term === 'precision third'", arg=cid)
+    assert page.locator(f"#{cid} tbody tr").count() == 1
+    assert len(_export(page, cid)["rows"]) == 1
+    search.fill("")
+    page.wait_for_function("id => document.getElementById(id)._fwTableState.term === ''", arg=cid)
+    choice.select_option("all")
+    assert page.locator(f"#{cid} tbody tr").count() == 6
+    assert len(_export(page, cid)["rows"]) == 6
+    page.evaluate("([id, cfg]) => window._fwRenderers.table(id, cfg)", [cid, data["components"][cid]])
+    assert choice.input_value() == "all"
+    search.fill("no matching row")
+    page.wait_for_function("id => document.getElementById(id)._fwTableState.term === 'no matching row'", arg=cid)
+    assert page.locator(f"#{cid} tbody tr").count() == 0
+    assert len(_export(page, cid)["rows"]) == 0
+    search.fill("")
+    page.wait_for_function("id => document.getElementById(id)._fwTableState.term === ''", arg=cid)
+    cfg = page.evaluate("id => window._reportData.components[id]", cid)
+    page.evaluate("([id, cfg]) => { cfg.rowLimit = 20; window._fwRenderers.table(id, cfg); }", [cid, cfg])
+    assert choice.input_value() == "20"  # Changed author default takes effect.
+    page.evaluate("([id, cfg]) => { delete cfg.rowLimit; window._fwRenderers.table(id, cfg); }", [cid, cfg])
+    assert page.locator(f'[data-table-row-limit="{cid}"]').count() == 0
+    assert page.locator(f"#{cid} tbody tr").count() == 1  # Current max_rows restored.
+    page.evaluate("([id, cfg]) => { cfg.rowLimit = 50; window._fwRenderers.table(id, cfg); }", [cid, cfg])
+    assert page.locator(f'[data-table-row-limit="{cid}"]').input_value() == "50"
+    assert page.locator(f'[data-table-row-limit="{cid}"]').count() == 1
+
+
+@pytest.mark.heavy
+def test_row_limit_all_is_bounded_but_csv_keeps_every_match(report_page):
+    page, ids, _ = report_page
+    cid = ids[5]
+    page.evaluate("""id => {
+        const cfg = window._reportData.components[id];
+        cfg.rowLimit = 'all';
+        cfg.columns = ['Event', 'Amount'];
+        cfg.numericColumns = ['Amount'];
+        cfg.rows = Array.from({length: 1200}, (_, i) => ['ROW-' + i, String(i)]);
+        cfg.rawRows = cfg.rows.map(row => [row[0], Number(row[1])]);
+        cfg.totalRows = 1200;
+        window._fwRenderers.table(id, cfg);
+    }""", cid)
+    assert page.locator(f"#{cid} tbody tr").count() == 100
+    assert page.locator(f"#{cid} .fw-table-note").all_inner_texts()[-1] == (
+        "All is available for up to 1,000 matching rows. CSV includes all 1200 matches.")
+    choice = page.locator(f'[data-table-row-limit="{cid}"]')
+    assert choice.input_value() == "100"
+    assert choice.locator('option[value="all"]').evaluate("el => el.disabled")
+    assert len(_export(page, cid)["rows"]) == 1200
+    page.evaluate("""id => {
+        const cfg = window._reportData.components[id];
+        cfg.rows = cfg.rows.slice(0, 120); cfg.rawRows = cfg.rawRows.slice(0, 120); cfg.totalRows = 120;
+        window._fwRenderers.table(id, cfg);
+    }""", cid)
+    assert choice.input_value() == "100"
+    assert not choice.locator('option[value="all"]').is_disabled()
+    assert page.locator(f"#{cid} .fw-table-note").all_inner_texts() == [
+        "Showing 100 of 120 matching rows (120 supplied) — CSV exports 120 rows"]
+    choice.select_option("all")
+    assert page.locator(f"#{cid} tbody tr").count() == 120
+
+
+def test_bound_row_limit_does_not_change_filter_or_kpi_population(report_page):
+    page, ids, data = report_page
+    cid = ids[8]
+    assert page.locator(f"#{cid} tbody tr").count() == 10
+    kpi = page.locator(".fw-kpi-grid").last
+    initial_kpi = kpi.inner_text()
+    assert "120" in initial_kpi and "120" in page.locator(f"#{cid} .fw-table-note").inner_text()
+    page.locator(f"#{cid} th").filter(has_text="Value").click()
+    expected_order = sorted(range(120), key=lambda i: (-(0 if i in (0, 1, 60, 61) else (i % 11) * 10), i))
+    exported = _export(page, cid)["rows"]
+    assert [row[0] for row in exported] == [f"EV-{i + 1:03d}" for i in expected_order]
+    assert [row.locator("td").first.inner_text() for row in page.locator(f"#{cid} tbody tr").all()] == [
+        f"EV-{i + 1:03d}" for i in expected_order[:10]]
+    page.locator(f'[data-table-row-limit="{cid}"]').select_option("all")
+    assert page.locator(f"#{cid} tbody tr").count() == 120
+    assert kpi.inner_text() == initial_kpi
+    filter_id = next(key for key, cfg in data["components"].items()
+                     if cfg.get("type") == "filter_bar" and cfg.get("dataset_id") == "row_limit_events")
+    page.locator(f"#{filter_id}").get_by_role("button", name="Android", exact=True).click()
+    page.wait_for_function("id => document.querySelector('#'+id+' .fw-table-note').textContent.includes('60 matching')", arg=cid)
+    assert page.locator(f"#{cid} tbody tr").count() == 60
+    assert page.locator(f'[data-table-row-limit="{cid}"]').input_value() == "all"
+    assert kpi.inner_text() != initial_kpi and "60" in kpi.inner_text()
+    filtered_kpi = kpi.inner_text()
+    page.locator(f'[data-table-search="{cid}"]').fill("Campaign 120")
+    page.wait_for_function("id => document.getElementById(id)._fwTableState.term === 'campaign 120'", arg=cid)
+    assert page.locator(f"#{cid} tbody tr").count() == 1
+    assert len(_export(page, cid)["rows"]) == 1
+    # Local search stays table-only while the source-filtered KPI still reports
+    # all 60 Android events.
+    assert kpi.inner_text() == filtered_kpi
+
+
 @pytest.mark.parametrize("width", [1280, pytest.param(390, marks=pytest.mark.heavy)])
 def test_showcase_whole_population_filter_search_sort_csv_and_rendering(report_page, width):
     page, ids, data = report_page
@@ -152,7 +296,9 @@ def test_showcase_whole_population_filter_search_sort_csv_and_rendering(report_p
             "Showing 10 of 32 matching rows (80 supplied) — CSV exports 32 rows")
         assert page.locator(f"#{cid} tbody tr").count() == 10
 
-    page.get_by_role("button", name="Android", exact=True).click()
+    existing_filter = next(key for key, cfg in data["components"].items()
+                           if cfg.get("type") == "filter_bar" and cfg.get("dataset_id") == "showcase_tables_acquisition")
+    page.locator(f"#{existing_filter}").get_by_role("button", name="Android", exact=True).click()
     page.wait_for_function("id => document.querySelector('#' + id + ' .fw-table-note').textContent.includes('16 matching')", arg=reactive)
     expected = sorted(range(49, 80, 2), key=lambda i: -(95 + i * 31 % 140 + i / 1000))
     assert [row[0] for row in _export(page, reactive)["rows"]] == [f"{i + 1:05d}" for i in expected]
@@ -182,6 +328,10 @@ def test_showcase_whole_population_filter_search_sort_csv_and_rendering(report_p
             assert styles["padding"] == "6px"
             assert styles["rows"][0] != styles["rows"][1]
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        if width == 390:
+            row_select = page.locator(f'[data-table-row-limit="{ids[5]}"]')
+            assert row_select.bounding_box()["height"] >= 44
+            assert row_select.input_value() == "10"
         shots = os.environ.get("TRELLUM_SCREENSHOT_DIR")
         if shots:
             Path(shots).mkdir(parents=True, exist_ok=True)

@@ -1,5 +1,13 @@
 # Framework Migration Guide
 
+## Unreleased: optional DataTable row limits
+
+No migration is needed. Existing `DataTable` and `ComparisonTable` calls keep
+their `max_rows` behavior. Authors may opt in with keyword-only
+`row_limit=10`, `20`, `50`, `100` or `"all"`. The All choice displays at most
+1,000 matches; CSV continues to export all matches. Rebuild existing report
+artifacts to use the new control. See [Report data tables](report-data-tables.md).
+
 Each section documents a breaking or significant change, how to detect affected
 code, and the exact replacement.
 

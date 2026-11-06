@@ -9,6 +9,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Opt-in `DataTable.row_limit` selector with bounded All display and full-population CSV.
+
 - Optional observed-day monthly averages for ordinary daily LineChart and vertical
   BarChart: explicit reporting intervals, complete additive daily inputs, clipped
   guides and a native coverage table. Default plots and CSV remain unchanged.

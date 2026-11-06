@@ -84,6 +84,43 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
         try { _definitionHash = decodeURIComponent(location.hash.slice(1)); } catch (error) {}
     }
     var _page = 1;
+    var _rowLimitEnabled = cfg.rowLimit != null && !_pageSize;
+    var _rowLimitControl = document.querySelector('[data-table-row-limit="' + id + '"]');
+    var _rowLimitDefault = cfg.rowLimit;
+    function _ensureRowLimitControl() {
+        if (!_rowLimitEnabled) {
+            if (_rowLimitControl && _rowLimitControl.parentNode) _rowLimitControl.parentNode.remove();
+            _rowLimitControl = null;
+            return;
+        }
+        if (!_rowLimitControl) {
+            var header = document.querySelector('[data-csv-target="' + id + '"]');
+            if (!header) return;
+            var label = document.createElement('label');
+            label.className = 'fw-row-limit-control'; label.dataset.rowLimitFor = id;
+            label.appendChild(document.createTextNode('Rows '));
+            var select = document.createElement('select');
+            select.dataset.tableRowLimit = id; select.setAttribute('aria-label', 'Rows');
+            [10, 20, 50, 100, 'all'].forEach(function(choice) {
+                var option = document.createElement('option');
+                option.value = String(choice); option.textContent = choice === 'all' ? 'All' : String(choice);
+                select.appendChild(option);
+            });
+            label.appendChild(select);
+            header.parentNode.insertBefore(label, header);
+            _rowLimitControl = select;
+        }
+    }
+    _ensureRowLimitControl();
+    if (_rowLimitEnabled) {
+        if (el._fwRowLimitDefault !== _rowLimitDefault || !el._fwRowLimitValue) {
+            el._fwRowLimitDefault = _rowLimitDefault;
+            el._fwRowLimitValue = _rowLimitDefault;
+        }
+    } else {
+        delete el._fwRowLimitDefault;
+        delete el._fwRowLimitValue;
+    }
     if (el._fwTableState || (_pageSize && el._fwWorkspaceTableState)) {
         var saved = el._fwTableState || el._fwWorkspaceTableState;
         _page = saved.page; _searchTerm = saved.term; _sortCol = saved.sortCol; _sortDir = saved.sortDir;
@@ -254,7 +291,17 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
         var pages = _pageSize ? Math.max(1, Math.ceil(filtered.length / _pageSize)) : 1;
         if (_pageSize) _page = Math.min(pages, Math.max(1, _page));
         el._fwTableState = {page: _page, term: _searchTerm, sortCol: _sortCol, sortDir: _sortDir};
-        var visible = _pageSize ? filtered.slice((_page - 1) * _pageSize, _page * _pageSize) : filtered.slice(0, cfg.maxRows);
+        var limit = _rowLimitEnabled ? el._fwRowLimitValue : cfg.maxRows;
+        if (_rowLimitEnabled && filtered.length > 1000 && limit === 'all') {
+            limit = el._fwRowLimitValue = 100;
+        }
+        if (_rowLimitControl) {
+            _rowLimitControl.value = String(el._fwRowLimitValue);
+            var allOption = _rowLimitControl.querySelector('option[value="all"]');
+            if (allOption) allOption.disabled = filtered.length > 1000;
+        }
+        var visible = _pageSize ? filtered.slice((_page - 1) * _pageSize, _page * _pageSize)
+            : filtered.slice(0, _rowLimitEnabled ? (limit === 'all' ? filtered.length : limit) : cfg.maxRows);
         var numericColumns = columns.map(function(c, index) { return _isNumericColumn(columns, rows, index); });
         var barCol = (cfg.barColumn != null) ? cfg.barColumn : -1;
         var barMax = 0;
@@ -304,6 +351,9 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
             + ' of ' + filtered.length + ' matching rows ('
             + (rows.length < totalRows ? rows.length + ' available of ' : '') + totalRows
             + ' supplied) — CSV exports ' + filtered.length + ' rows</div>';
+        if (_rowLimitEnabled && filtered.length > 1000) {
+            note += '<div class="fw-table-note fw-row-limit-note">All is available for up to 1,000 matching rows. CSV includes all ' + filtered.length + ' matches.</div>';
+        }
         if (_pageSize) {
             note = '<div class="fw-table-note" data-workspace-table-status tabindex="-1" role="status">' + filtered.length + ' of ' + totalRows + ' rows · Page ' + _page + ' of ' + pages
                 + ' · CSV exports ' + filtered.length + ' rows</div><div class="fw-metric-actions" data-workspace-table-pager>'
@@ -390,6 +440,14 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
                 };
             });
         }
+    }
+
+    if (_rowLimitControl && _rowLimitEnabled) {
+        _rowLimitControl.onchange = function() {
+            el._fwRowLimitValue = this.value === 'all' ? 'all' : Number(this.value);
+            if (_lastRows) _renderRows(_lastCols, _lastRows, _lastTotal);
+            this.focus({preventScroll: true});
+        };
     }
 
     function _cellClass(column, numeric) {
