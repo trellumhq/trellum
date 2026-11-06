@@ -5,7 +5,7 @@ import pandas as pd
 from trellum import BaseReport
 from trellum.components import DataSource, FilterBar, Grid, LineChart, RawHTML
 
-from . import examples_layouts
+from . import examples_kpis, examples_layouts
 
 
 class ComponentShowcaseReport(BaseReport):
@@ -15,15 +15,17 @@ class ComponentShowcaseReport(BaseReport):
         # the framework components and their normal filtering runtime.
         ctx.add_section("About these examples", [RawHTML(html=(
             "<p>These examples use deterministic synthetic data. Change their "
-            "controls to explore the component behavior. Choose a component "
-            "view above; each view has its own filters. Optional features are "
+            "controls to explore the component behavior. Each group of examples "
+            "has its own filters. Optional features are "
             "identified beside each example.</p>"
+            '<p>Jump to <a href="#sec-line-example-filters">line charts</a>, '
+            '<a href="#sec-layout-example-filters">layouts</a> or '
+            '<a href="#sec-kpi-cards-and-compact-metrics">KPI metrics</a>.</p>'
             '<p>For business reports, return to the <a href="../">demo gallery</a>: '
             "Player Overview, Monetization, Store Health and Live Ops show these "
             "components in context.</p>"
         ))])
 
-        ctx.set_scope("lines", "Line charts")
         days = pd.date_range("2026-09-01", periods=30).strftime("%Y-%m-%d")
         frame = pd.DataFrame([
             {"day": day, "platform": platform,
@@ -31,7 +33,7 @@ class ComponentShowcaseReport(BaseReport):
             for index, day in enumerate(days)
             for platform, multiplier in (("iOS", 2), ("Android", 1))
         ])
-        ctx.add_section("", [
+        ctx.add_section("Line example filters", [
             DataSource("showcase_lines", frame),
             FilterBar("showcase_lines", frame, filters=[
                 {"column": "platform", "label": "Line examples: platform",
@@ -55,5 +57,6 @@ class ComponentShowcaseReport(BaseReport):
             LineChart(title="Roomy · 320px", height="roomy", **common),
         ])
 
-        ctx.set_scope("layouts", "Layouts")
         examples_layouts.add_sections(ctx)
+
+        examples_kpis.add_sections(ctx)

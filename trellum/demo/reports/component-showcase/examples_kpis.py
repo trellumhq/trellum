@@ -13,18 +13,22 @@ def add_sections(ctx):
             "full values, explicit precision and stacked MiniKpi labels are "
             "optional settings.</p>"
         )),
-        KpiCard(label="Gross revenue", value=184230.5, format="currency",
-                delta="+4.8%", delta_direction="up"),
-        KpiCard(label="Active players", value=28450, format="number",
-                alignment="center"),
+        KpiRow([
+            KpiCard(label="Revenue · left", value=184230.5, format="currency",
+                    delta="+4.8%", delta_direction="up"),
+            KpiCard(label="Revenue · centered", value=184230.5, format="currency",
+                    delta="+4.8%", delta_direction="up", alignment="center"),
+            KpiCard(label="Compact total", value=1250345, format="number"),
+            KpiCard(label="Full total", value=1250345, format="number",
+                    full_number=True),
+            KpiCard(label="Compact precision", value=1250345, format="number",
+                    precision=2),
+            KpiCard(label="Precise ratio", value=1.23456, format="ratio",
+                    precision=3),
+        ], static=True),
         MiniKpi(label="Conversion", value=0.0842, format="percent"),
         MiniKpi(label="Revenue / player", value=6.475, format="currency",
                 stacked=True),
-        KpiCard(label="Compact total", value=1250345, format="number"),
-        KpiCard(label="Full total", value=1250345, format="number",
-                full_number=True),
-        KpiCard(label="Precise ratio", value=1.23456, format="ratio",
-                precision=3),
     ])
 
     frame = pd.DataFrame([
@@ -38,16 +42,16 @@ def add_sections(ctx):
         )
     ])
     ctx.add_section("Filterable KPI row", [
-        RawHTML(html=(
-            "<p>Optional mobile_collapse=4 reveals the remaining cards on "
-            "narrow screens. The row starts with all values available to the "
-            "filter and updates them when platform changes.</p>"
-        )),
         DataSource("showcase_kpi", frame),
         FilterBar("showcase_kpi", frame, filters=[
             {"column": "platform", "label": "KPI examples: platform",
              "type": "toggle"},
         ]),
+        RawHTML(html=(
+            "<p>Optional mobile_collapse=4 reveals the remaining cards on "
+            "narrow screens. All values update when platform changes, including "
+            "cards that are currently collapsed.</p>"
+        )),
         KpiRow([
             {"label": "Revenue", "format": "currency", "agg": "sum",
              "column": "revenue"},

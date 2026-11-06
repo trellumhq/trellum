@@ -151,6 +151,8 @@ class KpiRow(Component):
                 _validate_number_options(kpi.get("format", "number"),
                                          kpi.get("full_number", False),
                                          kpi.get("precision"))
+                if kpi.get("alignment", "left") not in {"left", "center"}:
+                    raise ValueError("alignment must be 'left' or 'center'")
             ctx.register(cid, {
                 "type": "kpi_row_live",
                 "dataset_id": self.dataset_id,
@@ -265,14 +267,24 @@ class MiniKpi(Component):
     def css(cls) -> str:
         return """\
 .fw-mini-kpi {
-    display: inline-block;
+    display: inline-flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 4px;
+    max-width: 100%;
+    box-sizing: border-box;
     padding: 4px var(--spacing-sm);
     font-size: var(--font-size-small);
     color: var(--text-secondary);
 }
-.fw-mini-kpi .fw-mini-val { font-weight: 600; color: var(--text-main); }
+.fw-mini-kpi .fw-mini-label { min-width: 0; overflow-wrap: anywhere; }
+.fw-mini-kpi .fw-mini-val {
+    font-size: 14px; font-weight: 600; color: var(--text-main);
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+    max-width: 100%; overflow-x: auto;
+}
 .fw-mini-kpi.fw-mini-stacked { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
-.fw-mini-kpi.fw-mini-stacked .fw-mini-val { color: var(--text-main); }"""
+.fw-mini-kpi.fw-mini-stacked .fw-mini-val { font-size: 16px; }"""
 
     @classmethod
     def client_js(cls) -> str:
@@ -280,7 +292,8 @@ class MiniKpi(Component):
 window._fwRenderers['mini_kpi'] = function renderMiniKpi(id, cfg) {
     var el = document.getElementById(id);
     var label = document.createElement('span');
-    label.textContent = cfg.label + ': ';
+    label.className = 'fw-mini-label';
+    label.textContent = cfg.label + (cfg.stacked ? '' : ':');
     var value = document.createElement('span');
     value.className = 'fw-mini-val';
     value.textContent = window._fwKpiFormat(cfg.value, cfg.format, cfg.full_number, cfg.precision);

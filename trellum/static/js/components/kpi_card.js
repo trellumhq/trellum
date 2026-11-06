@@ -12,7 +12,8 @@ window._fwRenderers['kpi'] = function renderKpi(id, cfg) {
     if (cfg.delta) {
         var cls = cfg.deltaDirection ? ' ' + cfg.deltaDirection : '';
         var delta = document.createElement('div'); delta.className = 'fw-kpi-delta' + cls;
-        delta.textContent = cfg.delta; el.appendChild(delta);
+        var change = document.createElement('span'); change.className = 'fw-kpi-change';
+        change.textContent = cfg.delta; delta.appendChild(change); el.appendChild(delta);
     }
     if (cfg.forecast != null) {
         var forecast = document.createElement('div'); forecast.className = 'fw-kpi-forecast';
@@ -30,14 +31,24 @@ window._fwKpiFormat = function(value, format, fullNumber, precision) {
     if (value == null || !Number.isFinite(Number(value))) return '-';
     var n = Number(value);
     if (format === 'percent') n *= 100;
-    if (format === 'currency') return new Intl.NumberFormat(undefined, {
-        style: 'currency', currency: 'USD',
-        minimumFractionDigits: precision == null ? 2 : precision,
-        maximumFractionDigits: precision == null ? 2 : precision
-    }).format(n);
-    var defaultPlaces = format === 'number' ? 12 : 2;
-    return n.toLocaleString(undefined, {
-        minimumFractionDigits: precision == null ? 0 : precision,
-        maximumFractionDigits: precision == null ? defaultPlaces : precision
+    var prefix = format === 'currency' ? '$' : '';
+    if (!fullNumber && (format === 'number' || format === 'currency')) {
+        var magnitude = Math.abs(n);
+        // Keep the existing compact thresholds, including rounded cents.
+        if (format === 'currency' && Math.round(magnitude * 100) >= 100000) {
+            magnitude = Math.max(magnitude, 1000);
+        }
+        var units = [[1e12, 'T'], [1e9, 'B'], [1e6, 'M'], [1e3, 'k']];
+        for (var i = 0; i < units.length; i++) {
+            if (magnitude >= units[i][0]) {
+                return prefix + (n < 0 ? '-' : '')
+                    + (magnitude / units[i][0]).toFixed(precision) + units[i][1];
+            }
+        }
+    }
+    var places = precision == null ? (format === 'number' ? 12 : 2) : precision;
+    return prefix + n.toLocaleString(undefined, {
+        minimumFractionDigits: precision == null && format === 'number' ? 0 : places,
+        maximumFractionDigits: places
     }) + (format === 'percent' ? '%' : format === 'ratio' ? 'x' : '');
 };

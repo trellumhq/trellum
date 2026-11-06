@@ -4,15 +4,25 @@ if (!window._fwKpiFormat) {
         if (value == null || !Number.isFinite(Number(value))) return '-';
         var n = Number(value);
         if (format === 'percent') n *= 100;
-        if (format === 'currency') return new Intl.NumberFormat(undefined, {
-            style: 'currency', currency: 'USD',
-            minimumFractionDigits: precision == null ? 2 : precision,
-            maximumFractionDigits: precision == null ? 2 : precision
-        }).format(n);
-        var defaultPlaces = format === 'number' ? 12 : 2;
-        return n.toLocaleString(undefined, {
-            minimumFractionDigits: precision == null ? 0 : precision,
-            maximumFractionDigits: precision == null ? defaultPlaces : precision
+        var prefix = format === 'currency' ? '$' : '';
+        if (!fullNumber && (format === 'number' || format === 'currency')) {
+            var magnitude = Math.abs(n);
+            // Keep the existing compact thresholds, including rounded cents.
+            if (format === 'currency' && Math.round(magnitude * 100) >= 100000) {
+                magnitude = Math.max(magnitude, 1000);
+            }
+            var units = [[1e12, 'T'], [1e9, 'B'], [1e6, 'M'], [1e3, 'k']];
+            for (var i = 0; i < units.length; i++) {
+                if (magnitude >= units[i][0]) {
+                    return prefix + (n < 0 ? '-' : '')
+                        + (magnitude / units[i][0]).toFixed(precision) + units[i][1];
+                }
+            }
+        }
+        var places = precision == null ? (format === 'number' ? 12 : 2) : precision;
+        return prefix + n.toLocaleString(undefined, {
+            minimumFractionDigits: precision == null && format === 'number' ? 0 : places,
+            maximumFractionDigits: places
         }) + (format === 'percent' ? '%' : format === 'ratio' ? 'x' : '');
     };
 }
@@ -33,7 +43,8 @@ window._fwRenderers['kpi_row_live'] = function(id, cfg) {
                 if (kpi.format === 'percent') {
                     sdisp = (typeof kpi.value === 'number')
                         ? (kpi.full_number || kpi.precision != null
-                            ? window._fwKpiFormat(kpi.value, 'number', kpi.full_number, kpi.precision) + '%'
+                            ? window._fwKpiFormat(kpi.value / 100, 'percent', kpi.full_number,
+                                kpi.precision == null ? 1 : kpi.precision)
                             : kpi.value.toFixed(1) + '%') : kpi.value;
                 } else {
                     sdisp = window._fwKpiFormat(kpi.value, kpi.format || 'number', kpi.full_number, kpi.precision);
@@ -97,11 +108,12 @@ window._fwRenderers['kpi_row_live'] = function(id, cfg) {
             var disp;
             if (kpi.format === 'percent') {
                 disp = val != null ? (kpi.full_number || kpi.precision != null
-                    ? window._fwKpiFormat(val, 'number', kpi.full_number, kpi.precision) + '%'
+                    ? window._fwKpiFormat(val / 100, 'percent', kpi.full_number,
+                        kpi.precision == null ? 1 : kpi.precision)
                     : val.toFixed(1) + '%') : '-';
             }
             else { disp = window._fwKpiFormat(val, kpi.format || 'number', kpi.full_number, kpi.precision); }
-            var deltaHtml = '';
+            var deltaText = '', deltaDirection = '';
             if (kpi.delta_col) {
                 var dVal;
                 var dAgg = kpi.delta_agg || kpi.agg || 'sum';
@@ -122,10 +134,19 @@ window._fwRenderers['kpi_row_live'] = function(id, cfg) {
                 else dStr = (dVal >= 0 ? '+' : '') + fmtCompact(dVal);
                 var dDir = kpi.delta_direction || 'auto';
                 if (dDir === 'auto') dDir = dVal >= 0 ? 'up' : 'down';
-                deltaHtml = '<div class="fw-kpi-delta ' + dDir + '">' + dStr + '</div>';
+                deltaText = dStr;
+                deltaDirection = dDir;
             }
             _renderKpiValue(el, kpi, disp);
-            if (deltaHtml) el.insertAdjacentHTML('beforeend', deltaHtml);
+            if (deltaText) {
+                var delta = document.createElement('div');
+                delta.className = 'fw-kpi-delta ' + deltaDirection;
+                var change = document.createElement('span');
+                change.className = 'fw-kpi-change';
+                change.textContent = deltaText;
+                delta.appendChild(change);
+                el.appendChild(delta);
+            }
         }
     }
     window._fwLiveWrap(id, cfg, _render);

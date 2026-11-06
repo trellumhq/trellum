@@ -3,7 +3,7 @@
 Each section documents a breaking or significant change, how to detect affected
 code, and the exact replacement.
 
-## Unreleased: report chart sizes and panel-width layouts
+## Unreleased: report chart sizes, panel-width layouts and KPI presentation
 
 Existing constructor positional arguments remain accepted. No host API or
 artifact schema changes are required. Rebuilding a report applies these
@@ -26,6 +26,14 @@ presentation changes; previously generated report files are unaffected.
   is preserved. Set keyword-only `left_min_width` and `right_min_width` to tune
   the stacking point; both default to 320px. Custom CSS that targets direct
   SplitPane children should account for the new `.fw-split-pane` wrapper.
+- KPI comparisons gain a subtle background without changing the card's spacing
+  or height. `MiniKpi` uses an inline label and 14px tabular value; the optional
+  stacked layout uses a 16px value. KPI card alignment, full-number formatting
+  and precision are keyword-only options. Omitted options retain existing
+  compact formatting. `precision` alone keeps compact number/currency suffixes.
+- Filtered `KpiRow` now honors an explicitly supplied `mobile_collapse`, just as
+  static rows do. Omit it (the default) to keep every metric visible. Expanding
+  a row retains its state through filter changes.
 
 Find affected authoring code with `rg 'LineChart\(|Grid\(|SplitPane\(' reports`.
 See [report layouts](report-layouts.md) for examples and the

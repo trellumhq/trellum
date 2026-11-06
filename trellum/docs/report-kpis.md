@@ -16,12 +16,17 @@ MiniKpi(label="Conversion", value=0.0842, format="percent", stacked=True)
 
 `alignment` accepts `"left"` (the default) or `"center"`. The option is
 keyword-only. `MiniKpi` is inline by default; `stacked=True` places its label
-above its value. These settings keep the standard component dimensions.
+above its value. KPI cards keep their standard height and row arrangement;
+supplied comparisons use a subtle pill within the existing comparison line.
+MiniKpi values use tabular numerals, at 14px inline and 16px stacked, while long
+labels wrap. No metric icons are added.
 
 `full_number=True` disables compact suffixes for `number`, `currency`,
 `percent`, and `ratio` formats. It preserves each format's units and scaling.
 `precision` is an optional integer from 0 through 12 and sets the number of
 fractional digits. Without either option, the existing formatter is used.
+Precision alone retains compact suffixes: a number of 12,345.67 with
+`precision=2` displays `12.35k`; add `full_number=True` to display `12,345.67`.
 These options are keyword-only on `KpiCard` and `MiniKpi`; in a live `KpiRow`,
 put them on each KPI definition. Unsupported formats and invalid precision
 values raise `ValueError`.

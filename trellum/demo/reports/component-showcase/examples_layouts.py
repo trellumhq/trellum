@@ -19,7 +19,7 @@ def add_sections(ctx):
         for channel, channel_weight in (("Organic", 2), ("Paid", 1))
     ])
     dataset = "showcase_layouts_daily"
-    ctx.add_section("", [
+    ctx.add_section("Layout example filters", [
         DataSource(dataset, frame),
         FilterBar(dataset, frame, filters=[
             {"column": "platform", "label": "Layout examples: platform", "type": "toggle"},

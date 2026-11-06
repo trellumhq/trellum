@@ -32,6 +32,14 @@
 }
 .fw-kpi-sub { font-size: var(--font-size-meta); color: var(--text-muted); margin-top: 4px; }
 .fw-kpi-delta { font-size: var(--font-size-small); margin-top: 4px; }
+.fw-kpi-change {
+    /* Inline paint keeps the existing comparison line box and card height. */
+    border-radius: 4px;
+    padding: 0 5px;
+    margin: 0 -5px;
+    background: color-mix(in srgb, currentColor 12%, transparent);
+    box-decoration-break: clone;
+}
 .fw-kpi-delta.up { color: var(--accent-green); }
 .fw-kpi-delta.down { color: var(--accent-red); }
 @media (max-width: 900px) {

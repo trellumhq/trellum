@@ -32,6 +32,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- Display report KPI comparisons as subtle pills within their existing line
+  height, and use readable tabular values for inline and stacked MiniKpi metrics.
+
 - Fit report Grid columns to the available panel width, up to `columns`, with
   configurable minimum cell widths and narrow-panel fallback. Automatic tile
   grids retain chart titles, controls and chart-owned heights; keyword-only
