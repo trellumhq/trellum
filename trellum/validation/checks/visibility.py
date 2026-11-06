@@ -21,6 +21,8 @@ def _check_toggle_visible(comps: list[tuple[Any, str]], result: ValidationResult
         comps, rawhtml_list, toggle_map, visible_targets_used, result,
     )
     visible_targets_used.update(_check_shared_stacked_controls(comps, result))
+    from trellum.components.period_comparison import PeriodComparison
+    visible_targets_used.update(c.toggle_id for c, _ in comps if isinstance(c, PeriodComparison))
     for tid in toggle_map:
         if tid not in visible_targets_used:
             result.info(

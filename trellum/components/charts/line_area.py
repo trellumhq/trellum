@@ -12,6 +12,7 @@ import pandas as pd
 from trellum.assets import load_css
 from trellum.components.base import RenderContext
 from trellum.components.charts._header_summary import header_summary_config
+from trellum.components.charts._point_context import point_context_config, _LinePointContextAssets
 from trellum.components.charts.base import (
     _category_colors_config,
     _chart_container_html,
@@ -190,6 +191,10 @@ def line_option_problems(chart: "LineChart") -> list[tuple[str, str]]:
     validator reports them all for a chart changed afterwards.
     """
     problems: list[tuple[str, str]] = []
+    try:
+        point_context_config(chart)
+    except ValueError as exc:
+        problems.append(("line-chart-point-context-invalid", str(exc)))
     if type(getattr(chart, "result_presentation", True)) is not bool:
         problems.append(("line-chart-result-presentation-invalid", "LineChart result_presentation must be bool."))
     try:
@@ -346,6 +351,7 @@ class LineChart(_ChartBase):
     event_labels: str = field(default="grouped", kw_only=True)
     series_availability: Optional[list[dict] | tuple[dict, ...]] = field(default=None, kw_only=True)
     result_presentation: bool = field(default=True, kw_only=True)
+    point_context: Optional[list[dict]] = field(default=None, kw_only=True)
 
     _component_type: str = field(default="line_chart", init=False, repr=False)
 
@@ -406,7 +412,9 @@ class LineChart(_ChartBase):
         month_config = {**_month_context_config(self), **_monthly_average_config(self)}
         self._validate_event_labels()
         forecast_indices = _forecast_series_indices(self)
-        availability_config = _series_availability_config(self)
+        availability_config = {**_series_availability_config(self), **point_context_config(self, ctx)}
+        if self.point_context is not None:
+            ctx.render_child(_LinePointContextAssets())
         category_config = _category_colors_config(self, ctx)
         cid = ctx.next_id()
 

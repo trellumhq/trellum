@@ -453,6 +453,8 @@
             var cfg = components[id];
             if (cfg && (cfg.type === 'scoped_data_source' || cfg.type === 'metric_view') && cfg.dataset_id && cfg.parent_id)
                 parents[cfg.dataset_id] = cfg.parent_id;
+            if (cfg && cfg.type === 'period_comparison')
+                (cfg.outputs || []).forEach(function(ds) { parents[ds] = cfg.parent_id; });
         });
         var datasets = {};
         roots.forEach(function(root) {
@@ -497,13 +499,15 @@
         var derived = {};
         Object.keys(components).forEach(function(id) {
             var cfg = components[id];
-            if (cfg.type === 'metric_view') derived[cfg.dataset_id] = true;
+            if (cfg.type === 'metric_view') derived[cfg.dataset_id] = 'metric';
+            if (cfg.type === 'period_comparison') (cfg.outputs || []).forEach(function(ds) { derived[ds] = 'period'; });
         });
         var roots = [target].concat(Array.from(target.querySelectorAll('[data-fw-kind]')));
         for (var i = 0; i < roots.length; i++) {
             var cfg = components[roots[i].id];
             if (!cfg || !derived[cfg.dataset_id] || !_analysisVisible(roots[i])) continue;
-            var state = window._fwMetricViews && window._fwMetricViews.status(cfg.dataset_id);
+            var runtime = derived[cfg.dataset_id] === 'period' ? window._fwPeriodComparison : window._fwMetricViews;
+            var state = runtime && runtime.status(cfg.dataset_id);
             if (!state || !state.ready || !window._fwFilterEngine.isReady(cfg.dataset_id))
                 return state && state.reason || 'Metric result unresolved';
         }
@@ -520,7 +524,7 @@
         Array.prototype.push.apply(roots, target.querySelectorAll('canvas'));
         var chartTypes = {chart: true, line: true, doughnut: true, funnel: true,
             scatter: true, heatmap: true, treemap: true, sankey: true};
-        var nonVisual = {data_source: true, scoped_data_source: true, metric_view: true,
+        var nonVisual = {data_source: true, scoped_data_source: true, metric_view: true, period_comparison: true,
             live_data_source: true, raw_html: true};
         for (var i = 0; i < roots.length; i++) {
             var root = roots[i];

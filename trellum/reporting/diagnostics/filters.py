@@ -140,6 +140,7 @@ def _compute_view_matrix(
     """Build filter-coverage rows for one view (flat or one scope's sections)."""
     from trellum.components.filterable import DataSource, FilterBar, ScopedDataSource
     from trellum.components.metric_views import MetricView
+    from trellum.components.period_comparison import PeriodComparison
     from trellum.components.layout import RawHTML
 
     pairs = _walk_view(sections)
@@ -152,6 +153,9 @@ def _compute_view_matrix(
         if isinstance(comp, DataSource):
             ds_columns[comp.id] = _df_columns(getattr(comp, "df", None))
             ds_dfs[comp.id] = getattr(comp, "df", None)
+        elif isinstance(comp, PeriodComparison):
+            for output in comp.outputs:
+                scoped_parents[output.id] = output.parent
         elif isinstance(comp, (ScopedDataSource, MetricView)):
             scoped_parents[comp.id] = comp.parent
         elif isinstance(comp, FilterBar):
@@ -175,6 +179,12 @@ def _compute_view_matrix(
         if isinstance(comp, MetricView):
             ds_columns[comp.id] = set(comp.output_columns)
             ds_dfs.pop(comp.id, None)  # Group rows are never source-grain facts.
+
+    for comp, _sec in pairs:
+        if isinstance(comp, PeriodComparison):
+            for output in comp.outputs:
+                ds_columns[output.id] = set(output.output_columns)
+                ds_dfs.pop(output.id, None)
 
     for child in list(scoped_parents):
         seen = set()
@@ -208,7 +218,7 @@ def _compute_view_matrix(
 
     rows: list[ChartFilterRow] = []
     for comp, sec_title in pairs:
-        if isinstance(comp, (DataSource, FilterBar, MetricView)):
+        if isinstance(comp, (DataSource, FilterBar, MetricView, PeriodComparison)):
             continue
 
         kind = _comp_kind(comp)

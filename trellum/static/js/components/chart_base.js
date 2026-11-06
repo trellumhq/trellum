@@ -867,6 +867,8 @@ function _createChart(id, canvas, spec) {
             return (lbl ? lbl + ': ' : '') + _httFmt(ctx.parsed.x);
         }}};
     }
+    // Line point-context: own only the painted title callback.
+    if (spec.linePointContext) plugins.tooltip = window._fwLinePointContextTooltip(spec.linePointContext, plugins.tooltip);
     var _numFmt = spec.yFmt || function(v) { return fmtCompact(v); };
     var scales = spec.horizontal ? {
         /* horizontal bars: X carries values, Y carries categories */
@@ -1294,6 +1296,8 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                 spec.comboSummaryInputReason = _fwComboSummaryInputReason(cfg, labelRows);
             }
             if (cfg.header_summary) spec.headerSummary = cfg.header_summary;
+            // Line point-context is applied to the completed ordinary spec only.
+            if (cfg.point_context) spec = window._fwLinePointContextSpec(cfg, labelRows, spec);
             return _fwUpdateLineResult(canvas, cfg,
                 window._fwMonthlyAverageSpec(cfg, labelRows, _fwApplyLineAvailability(cfg, labelRows, spec)), labelRows);
         }
@@ -1824,7 +1828,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
         }};
     }
     var yFmt = cfg.yTickFormat === 'currency' ? function(v) { return fmtCompact$(v); } : undefined;
-    _createChart(id, canvas, _fwUpdateLineResult(canvas, cfg, window._fwMonthlyAverageSpec(cfg, null, _fwApplyLineAvailability(cfg, null, {
+    _createChart(id, canvas, _fwUpdateLineResult(canvas, cfg, window._fwMonthlyAverageSpec(cfg, null, _fwApplyLineAvailability(cfg, null, (cfg.point_context ? window._fwLinePointContextSpec : function(c, r, s) { return s; })(cfg, null, {
         type: cfg.chartType, labels: cfg.labels, datasets: cfg.datasets,
         stacked: cfg.stacked, horizontal: cfg.horizontal,
         showLegend: cfg.showLegend !== false, yFmt: yFmt, tooltip: tooltip,
@@ -1843,7 +1847,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
         stackNormalized: false,
         stackLabelReason: cfg.stack_labels && (cfg.stack_labels.totals || cfg.stack_labels.percentages)
             ? _fwStaticStackLabelEligibility(cfg) : ''
-    })), null));
+    }))), null));
 };
 
 document.addEventListener('click', function(e) {
