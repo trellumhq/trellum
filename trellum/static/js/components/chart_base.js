@@ -229,6 +229,130 @@ function _fwUpdateStackSummary(canvas, summary, datasets, inputReason) {
     }
 }
 
+/* Combo summaries own axis+caption identity and never share generic summary DOM.
+   Read final vectors after the existing aggregation; eligibility reads selected
+   original values before its legacy coercion. Neither path edits chart data. */
+function _fwComboSummarySafe(v) {
+    return typeof v === 'number' && Number.isFinite(v) && (!Number.isInteger(v) || Number.isSafeInteger(v));
+}
+function _fwComboSummaryResult(summary, datasets, inputReason) {
+    var axis = summary.axis === 'left' ? 'y' : 'y1';
+    var matches = (datasets || []).filter(function(ds) { return ds.yAxisID === axis && ds.label === summary.series; });
+    function unavailable(reason) { return {value: null, reason: reason}; }
+    if (matches.length !== 1) return unavailable(matches.length ? 'Ambiguous caption on selected axis' : 'Selected axis series unavailable');
+    if (inputReason) return unavailable(inputReason);
+    var values = matches[0].data || [];
+    if (!values.length) return unavailable('No displayed entries');
+    if (!values.every(_fwComboSummarySafe)) return unavailable('Nonfinite, unsafe or unavailable displayed values');
+    var result;
+    if (summary.stat === 'last') result = values[values.length - 1];
+    else if (summary.stat === 'min' || summary.stat === 'max') {
+        result = values[0];
+        values.forEach(function(v) { result = summary.stat === 'min' ? Math.min(result, v) : Math.max(result, v); });
+    } else {
+        // Neumaier compensation preserves small residuals after cancellation.
+        // A scaled retry avoids needless intermediate overflow for finite means.
+        function compensated(scale) {
+            var total = 0, correction = 0;
+            values.forEach(function(value) {
+                var v = value / scale, next = total + v;
+                correction += Math.abs(total) >= Math.abs(v) ? (total-next)+v : (v-next)+total;
+                total = next;
+            });
+            return [total, correction];
+        }
+        var divisor = summary.stat === 'mean' ? values.length : 1;
+        var parts = compensated(1);
+        if (parts.every(Number.isFinite)) result = parts[0] / divisor + parts[1] / divisor;
+        else {
+            var scale = values.reduce(function(m, v) { return Math.max(m, Math.abs(v)); }, 0);
+            parts = compensated(scale || 1);
+            result = (parts[0] / divisor + parts[1] / divisor) * scale;
+        }
+    }
+    return _fwComboSummarySafe(result) ? {value: result, reason: ''} : unavailable('Nonfinite or unsafe summary result');
+}
+function _fwComboSummaryInputReason(cfg, rows) {
+    if (!cfg.combo_summary) return '';
+    if (!rows) return cfg.combo_summary_input_reason || '';
+    var summary = cfg.combo_summary, left = summary.axis === 'left';
+    var cols = (left ? cfg.value_cols : cfg.line_cols) || [];
+    var labels = (left ? cfg.y_labels : cfg.line_labels) || cols;
+    var matches = cols.filter(function(col, i) { return (labels[i] || col) === summary.series; });
+    // Final identity selection diagnoses absence/ambiguity before raw eligibility.
+    if (matches.length !== 1) return '';
+    return rows.some(function(row) { return !_fwComboSummarySafe(row[matches[0]]); })
+        ? 'Incomplete, nonnumeric, nonfinite or unsafe original selected values' : '';
+}
+function _fwClearComboSummary(canvas) {
+    var owned = canvas._fwComboSummary;
+    if (!owned) return;
+    var tokens = (canvas.getAttribute('aria-describedby') || '').split(/\s+/).filter(function(token) {
+        return token && token !== owned.description.id;
+    });
+    if (tokens.length) canvas.setAttribute('aria-describedby', tokens.join(' '));
+    else canvas.removeAttribute('aria-describedby');
+    owned.observer.disconnect();
+    if (owned.box._fwComboSummaryCanvas === canvas) {
+        var head = owned.box.parentElement;
+        owned.box.remove();
+        if (head && head.classList.contains('fw-combo-summary-head')) {
+            var title = head.querySelector('.fw-chart-title');
+            if (title) { title.style.marginBottom = '4px'; head.before(title); }
+            head.remove();
+        }
+    }
+    delete canvas._fwComboSummary;
+}
+function _fwUpdateComboSummary(canvas, summary, datasets, inputReason) {
+    if (!summary) { _fwClearComboSummary(canvas); return; }
+    var box = Array.from(document.querySelectorAll('[data-combo-summary]')).find(function(el) { return el.dataset.comboSummary === canvas.id; });
+    if (box && box._fwComboSummaryCanvas && box._fwComboSummaryCanvas !== canvas) {
+        _fwClearComboSummary(box._fwComboSummaryCanvas); box = null;
+    }
+    if (!box) {
+        var anchor = canvas.parentElement, previous = anchor.previousElementSibling;
+        while (previous && (previous.classList.contains('fw-chart-header-context') || previous.classList.contains('fw-chart-legend'))) {
+            anchor = previous; previous = anchor.previousElementSibling;
+        }
+        var head = document.createElement('div'); head.className = 'fw-combo-summary-head';
+        anchor.before(head);
+        if (previous && previous.classList.contains('fw-chart-title')) {
+            previous.style.marginBottom = ''; head.appendChild(previous);
+        }
+        box = document.createElement('div'); box.className = 'fw-combo-summary';
+        box.dataset.comboSummary = canvas.id; head.appendChild(box);
+    }
+    box._fwComboSummaryCanvas = canvas;
+    var result = _fwComboSummaryResult(summary, datasets, inputReason);
+    function span(cls, text) { var el = document.createElement('span'); el.className = cls; el.textContent = text; return el; }
+    var value = result.value === null ? '—' : window.getFormatter(summary.format)(result.value);
+    var scope = (summary.axis === 'left' ? 'Left · bars' : 'Right · lines') + ' · ' + summary.series;
+    var description = span('fw-combo-summary-description',
+        'One final series on the ' + summary.axis + ' axis (' + summary.series + '), after existing aggregation and display order. ' +
+        'Every supplied or currently filtered original selected value and every displayed entry must be finite native numbers with safe integers; none are skipped. ' +
+        'Stacked bars use individual values. Last is the final displayed entry. Legend hiding and zoom do not change scope. ' +
+        'Delivered population only; no inferred weights, ratios, unique people or warehouse completeness claim. ' + result.reason);
+    description.id = canvas.id + '-combo-summary-scope';
+    var children = [span('fw-combo-summary-label', summary.label), span('fw-combo-summary-value', value), span('fw-combo-summary-scope', scope)];
+    if (result.reason) children.push(span('fw-combo-summary-reason', result.reason));
+    children.push(description); box.replaceChildren.apply(box, children);
+    box.setAttribute('role', 'note'); box.title = description.textContent;
+    box.setAttribute('aria-label', summary.label + ': ' + value + '. ' + description.textContent);
+    var tokens = (canvas.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean);
+    if (tokens.indexOf(description.id) < 0) tokens.push(description.id);
+    canvas.setAttribute('aria-describedby', tokens.join(' '));
+    var owned = canvas._fwComboSummary;
+    if (!owned) {
+        owned = {observer: new MutationObserver(function() {
+            if (document.getElementById(canvas.id) !== canvas) _fwClearComboSummary(canvas);
+        })};
+        canvas._fwComboSummary = owned;
+        owned.observer.observe(document.body, {childList: true, subtree: true});
+    }
+    owned.box = box; owned.description = description;
+}
+
 /* Combo-only context. Use axis + caption identity, preserving intentional
    same-axis pairs. Reconcile nodes so chart.update() retains keyboard focus. */
 window._fwComboLegendUpdate = function(chart) {
@@ -869,7 +993,8 @@ function _createChart(id, canvas, spec) {
         if (focused) focused.focus({ preventScroll: true });
     }
     if (spec.comboAxes) delete canvas._fwComboFocusKey;
-    if (spec.stackedSummary) _fwUpdateStackSummary(canvas, spec.stackedSummary, spec.datasets, spec.stackedSummaryInputReason);
+    if (spec.comboAxes) _fwUpdateComboSummary(canvas, spec.comboSummary, spec.datasets, spec.comboSummaryInputReason);
+    else if (spec.stackedSummary) _fwUpdateStackSummary(canvas, spec.stackedSummary, spec.datasets, spec.stackedSummaryInputReason);
     else _fwUpdateHeaderSummary(id, spec.headerSummary, spec.datasets, spec.yFmt);
 }
 
@@ -1029,6 +1154,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
     var canvas = document.getElementById(id);
     if (!canvas) return;
     if (canvas._fwLineResult && (cfg.line_result_presentation !== true || window._fwMetricsWorkspace)) canvas._fwLineResult.dispose();
+    if (!cfg.combo_axes || !cfg.combo_summary) _fwClearComboSummary(canvas);
     if (!cfg.stacked_summary) _fwClearStackSummary(canvas);
     if (!cfg.header_summary) _fwUpdateHeaderSummary(id, null);
     var previousBindings = window._fwCategoryChartBindings;
@@ -1041,13 +1167,15 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
     // Modern ordinary lines/bars may gain/remove declarations during renderAll.
     // Keep one scoped binding before opt-in so adoption cannot retain an old
     // anonymous theme handler or a second subscription.
-    var scopedLive = cfg.stack_labels || cfg.stacked_bar_controls || cfg.category_colors || cfg.line_style === 'adaptive' || cfg.bar_values || canvas._fwAvailabilityOwned;
+    var scopedLive = cfg.combo_axes || cfg.stack_labels || cfg.stacked_bar_controls || cfg.category_colors || cfg.line_style === 'adaptive' || cfg.bar_values || canvas._fwAvailabilityOwned;
     // Tagged StackedBars own local/shared controls from the first draw, so
     // adding/removing summaries cannot strand anonymous legacy handlers.
     // Legacy untagged payloads and workspace leasing keep their existing path.
     var stackOwner = !!(cfg.stack_labels || cfg.stacked_bar_controls === true) && !window._fwMetricsWorkspace;
+    var comboOwner = !!cfg.combo_axes && !window._fwMetricsWorkspace;
+    var chartOwner = stackOwner || comboOwner;
     var stackScope = window._currentScope;
-    var stackSource = stackOwner && window._fwFilterEngine._columnar[cfg.dataset_id];
+    var stackSource = chartOwner && window._fwFilterEngine._columnar[cfg.dataset_id];
     var stackGroup = stackOwner && Array.from(document.querySelectorAll('[data-toggle-id], [data-stack-toggle], [data-normalize-toggle]')).find(function(el) {
         return cfg.stack_toggle_id ? el.dataset.toggleId === cfg.stack_toggle_id : el.dataset.stackToggle === id;
     });
@@ -1055,7 +1183,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
         return cfg.normalize_toggle_id ? el.dataset.toggleId === cfg.normalize_toggle_id : el.dataset.normalizeToggle === id;
     });
     var oldStack = canvas._fwBarLive;
-    if (stackOwner && previousBindings && previousBindings.has(id) && (!oldStack || oldStack.cfg !== cfg ||
+    if (chartOwner && previousBindings && previousBindings.has(id) && (!oldStack || oldStack.cfg !== cfg ||
             oldStack.scope !== stackScope || oldStack.source !== stackSource ||
             oldStack.stackGroup !== stackGroup || oldStack.normalizeGroup !== normalizeGroup)) {
         previousBindings.get(id)();
@@ -1160,6 +1288,10 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
             if (cfg.stacked_summary) {
                 spec.stackedSummary = cfg.stacked_summary;
                 spec.stackedSummaryInputReason = _fwStackSummaryInputReason(cfg, labelRows);
+            }
+            if (cfg.combo_axes && cfg.combo_summary) {
+                spec.comboSummary = cfg.combo_summary;
+                spec.comboSummaryInputReason = _fwComboSummaryInputReason(cfg, labelRows);
             }
             if (cfg.header_summary) spec.headerSummary = cfg.header_summary;
             return _fwUpdateLineResult(canvas, cfg,
@@ -1609,7 +1741,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                     stacked: cfg.stacked, horizontal: cfg.horizontal, showLegend: datasets2.length > 1, yFmt: yFmt2, tooltip: tt2 }));
             }
         }
-        if (taggedBars) canvas._fwBarLive = stackOwner ? {cfg: cfg, draw: _drawLive, scope: stackScope,
+        if (taggedBars) canvas._fwBarLive = chartOwner ? {cfg: cfg, draw: _drawLive, scope: stackScope,
             source: stackSource, stackGroup: stackGroup, normalizeGroup: normalizeGroup} : {cfg: cfg, draw: _drawLive};
         if (scopedLive && !window._fwMetricsWorkspace) {
             // Opted-in charts own one binding across renderAll, changed configs
@@ -1617,7 +1749,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
             var bindings = window._fwCategoryChartBindings || (window._fwCategoryChartBindings = new Map());
             if (bindings.has(id)) bindings.get(id)();
             function stackRetired() {
-                return stackOwner && (window._currentScope !== stackScope ||
+                return chartOwner && (window._currentScope !== stackScope ||
                     (stackGroup && !stackGroup.isConnected) || (normalizeGroup && !normalizeGroup.isConnected));
             }
             function current() {
@@ -1625,8 +1757,12 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                 _drawLive(window._fwFilterEngine.getFiltered(cfg.dataset_id));
             }
             var unsubscribe = window._fwFilterEngine.subscribe(cfg.dataset_id, id, current);
-            var lifeOff = stackOwner ? window._fwFilterEngine.subscribeLifecycle(function(event) {
-                if (event.dataset_id !== cfg.dataset_id) return;
+            var lifeOff = chartOwner ? window._fwFilterEngine.subscribeLifecycle(function(event) {
+                var source = comboOwner && _fwLineResultSource(window._fwFilterEngine, cfg.dataset_id);
+                if (event.dataset_id !== cfg.dataset_id && (!source || event.dataset_id !== source.id)) return;
+                // Structural parent replacement does not run the engine's row
+                // notify cascade. Retire this Combo's cached scoped result.
+                if (comboOwner && source && source.subset) window._fwFilterEngine._cache[cfg.dataset_id] = null;
                 if (event.type === 'init' || event.type === 'scope') {
                     unsubscribe();
                     unsubscribe = window._fwFilterEngine.subscribe(cfg.dataset_id, id, current);
@@ -1639,15 +1775,16 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                 }
                 _drawLive(window._fwFilterEngine.getFiltered(cfg.dataset_id));
             }
-            var observer = (stackOwner || cfg.line_style === 'adaptive' || canvas._fwAvailabilityOwned || cfg.bar_values || cfg.monthly_average) ? new MutationObserver(function() {
+            var observer = (chartOwner || cfg.line_style === 'adaptive' || canvas._fwAvailabilityOwned || cfg.bar_values || cfg.monthly_average) ? new MutationObserver(function() {
                 if (document.getElementById(id) !== canvas || stackRetired()) dispose();
             }) : null;
             function dispose() {
                 unsubscribe(); window.removeEventListener('fw-theme-change', onTheme);
                 if (lifeOff) lifeOff();
                 if (stackOwner) _fwClearStackSummary(canvas);
+                if (comboOwner) _fwClearComboSummary(canvas);
                 if (barSignals) barSignals.abort();
-                if (stackOwner && canvas._fwBarLive && canvas._fwBarLive.cfg === cfg) delete canvas._fwBarLive;
+                if (chartOwner && canvas._fwBarLive && canvas._fwBarLive.cfg === cfg) delete canvas._fwBarLive;
                 if (observer) observer.disconnect();
                 if (bindings.get(id) === dispose) bindings.delete(id);
                 var chart = window._chartInstances[id];
@@ -1657,7 +1794,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
             }
             bindings.set(id, dispose);
             if (observer) observer.observe(document.body, {childList: true, subtree: true});
-            if (stackOwner && observer) {
+            if (chartOwner && observer) {
                 var stackPanel = canvas.closest('[data-toggle-target="__scope__"]');
                 if (stackPanel) observer.observe(stackPanel, {attributes: true, attributeFilter: ['style']});
             }
@@ -1699,6 +1836,8 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
         stackedSummary: cfg.stacked_summary,
         stackedSummaryInputReason: _fwStackSummaryInputReason(cfg, null),
         comboAxes: cfg.combo_axes,
+        comboSummary: cfg.combo_axes && cfg.combo_summary,
+        comboSummaryInputReason: _fwComboSummaryInputReason(cfg, null),
         barValues: cfg.bar_values,
         stackLabels: cfg.stack_labels,
         stackNormalized: false,

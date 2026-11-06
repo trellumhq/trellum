@@ -465,9 +465,13 @@ class ComboChart(_ChartBase):
     month_context: bool = field(default=False, kw_only=True)
     header_context: Optional[str] = field(default=None, kw_only=True)
 
+    header_summary: Optional[Dict[str, Any]] = field(default=None, kw_only=True)
+
     _component_type: str = field(default="combo_chart", init=False, repr=False)
 
     def __post_init__(self) -> None:
+        from trellum.components.charts._combo_summary import combo_summary_config
+        combo_summary_config(self)
         _month_context_config(self)
         _validate_header_context(self.header_context)
         self._validate_axis_labels()
@@ -485,6 +489,10 @@ class ComboChart(_ChartBase):
         return super().css() + load_css("components/combo_chart.css")
 
     def render_html(self, ctx: RenderContext) -> str:
+        from trellum.components.charts._combo_summary import (
+            combo_summary_config, combo_summary_html, combo_summary_input_reason,
+        )
+        summary_config = combo_summary_config(self)
         month_config = _month_context_config(self)
         self._validate_axis_labels()
         cid = ctx.next_id()
@@ -497,6 +505,7 @@ class ComboChart(_ChartBase):
             cfg = {
                 "type": "chart",
                 **month_config,
+                **summary_config,
                 "dataset_id": self.dataset_id,
                 "chartType": "bar",
                 "x": self.x,
@@ -521,6 +530,8 @@ class ComboChart(_ChartBase):
                 cfg["y1_max"] = self.y1_max
             ctx.register(cid, cfg)
         else:
+            if summary_config:
+                summary_config["combo_summary_input_reason"] = combo_summary_input_reason(self)
             theme = ctx.theme
             datasets = []
             for i, (col, label) in enumerate(zip(self.bar_cols, b_labels)):
@@ -558,6 +569,7 @@ class ComboChart(_ChartBase):
             ctx.register(cid, {
                 "type": "chart",
                 **month_config,
+                **summary_config,
                 "chartType": "bar",
                 "combo_axes": combo_axes,
                 "labels": _clean_list(self.df[self.x].tolist()),
@@ -569,18 +581,21 @@ class ComboChart(_ChartBase):
                 "tickColor": theme.tick_color,
             })
 
+        def with_summary(html):
+            return combo_summary_html(cid, self.title, html) if summary_config else html
+
         # Use custom height if provided
         if self.height:
             dl_btn = (
                 f'<button class="fw-chart-dl" data-csv-chart="{cid}" '
                 f'title="Download CSV">{_DOWNLOAD_SVG}</button>'
             )
-            return (
+            return with_summary(
                 f'{_title_html(self.title)}'
                 f'{_header_context_html(cid, self.header_context)}'
                 f'<div class="fw-chart-container" style="height: {self.height}px;">'
                 f'<canvas id="{cid}"{_context_description_attr(cid, self.header_context)}></canvas>{dl_btn}</div>'
             )
-        return (
+        return with_summary(
             _chart_container_html(cid, self.title, header_context=self.header_context)
         )
