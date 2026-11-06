@@ -73,7 +73,6 @@ def _setup_portal(args: argparse.Namespace) -> int:
     ignored -- the one file the key is in must be the one git never sees."""
     from trellum.agent import agentsetup
     from trellum.cli.commands.datasource import _update_env_file
-
     from trellum.cli.secrets import resolve_secret
     if not args.url:
         print("setup portal needs --url <portal>/s/<org>/<studio>", file=sys.stderr)

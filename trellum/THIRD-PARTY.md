@@ -79,6 +79,7 @@ are redistributed in a container image.
 | vertica-python | Apache-2.0 |
 | openpyxl | MIT |
 | python-dotenv | BSD-3-Clause |
+| portalocker | BSD-3-Clause |
 | pyyaml | MIT |
 | jinja2 | BSD-3-Clause |
 | markdown-it-py | [MIT](https://github.com/executablebooks/markdown-it-py/blob/master/LICENSE) |

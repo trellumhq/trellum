@@ -1,4 +1,5 @@
 """Atomic MSAL Extensions persistence, compatible with existing MSAL JSON caches."""
+from contextlib import contextmanager
 from pathlib import Path
 
 import msal
@@ -6,7 +7,11 @@ from msal_extensions import FilePersistence, PersistedTokenCache
 from msal_extensions.persistence import PersistenceNotFound
 
 from trellum.private_files import (
-    CredentialPersistenceError, atomic_write, prepare_parent, private_lock, read_private,
+    CredentialPersistenceError,
+    atomic_write,
+    prepare_parent,
+    private_lock,
+    read_private,
 )
 
 
@@ -36,16 +41,30 @@ class PrivateTokenCache(PersistedTokenCache):
         except (ValueError, UnicodeError):
             raise CredentialPersistenceError("Invalid credential cache; existing file was retained.") from None
 
+    @contextmanager
+    def _transaction(self):
+        with self._lock:
+            # MSAL search removes expired tokens through our modify override.
+            # Reuse this transaction without relocking or reloading its state.
+            if getattr(self, "_transaction_active", False):
+                yield
+                return
+            with private_lock(Path(self._persistence.get_location())):
+                self._reload_if_necessary()
+                self._transaction_active = True
+                try:
+                    yield
+                finally:
+                    self._transaction_active = False
+
     def modify(self, credential_type, old_entry, new_key_value_pairs=None):
-        with self._lock, private_lock(Path(self._persistence.get_location())):
-            self._reload_if_necessary()
+        with self._transaction():
             msal.SerializableTokenCache.modify(self, credential_type, old_entry, new_key_value_pairs)
             self._persistence.save(self.serialize())
 
     def search(self, credential_type, **kwargs):
         # Materialize while holding locks: MSAL search returns a lazy generator.
-        with self._lock, private_lock(Path(self._persistence.get_location())):
-            self._reload_if_necessary()
+        with self._transaction():
             return iter(list(msal.SerializableTokenCache.search(self, credential_type, **kwargs)))
 
 
