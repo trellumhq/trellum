@@ -1,0 +1,2 @@
+/* Only an explicitly sized StackedBar overrides responsive plot heights. */
+.fw-chart-container.fw-stacked-height { height: var(--fw-stacked-height); }

@@ -20,6 +20,7 @@ def _check_toggle_visible(comps: list[tuple[Any, str]], result: ValidationResult
     _check_rawhtml_toggle_references(
         comps, rawhtml_list, toggle_map, visible_targets_used, result,
     )
+    visible_targets_used.update(_check_shared_stacked_controls(comps, result))
     for tid in toggle_map:
         if tid not in visible_targets_used:
             result.info(
@@ -159,3 +160,54 @@ def _check_rawhtml_toggle_references(comps, rawhtml_list, toggle_map,
                     f"Toggle(id='{ref_id}') exists.",
                     component="RawHTML", section=sec,
                 )
+
+
+def _check_shared_stacked_controls(comps, result):
+    """Opt-in shared IDs must be report-unique, including inactive report scopes.
+
+    The existing visibility walker flattens report scopes. Until it supplies
+    scope identity, this narrow composition deliberately requires report-wide
+    unique native owners; legacy local controls retain their diagnostics.
+    """
+    from trellum.components.charts.bar import StackedBar, stack_option_problems
+    from trellum.components.charts.line_area import LineChart
+    from trellum.components.controls import Toggle
+
+    used = set()
+    for chart, section in comps:
+        if not isinstance(chart, StackedBar):
+            continue
+        # Sizing problems are dispatched by chart_options; control diagnostics
+        # belong here so they also run without the optional shared hook.
+        for check_id, message in stack_option_problems(chart):
+            if check_id != "stacked-bar-height-invalid":
+                result.fail(check_id, message, component="StackedBar", section=section)
+        if chart.show_controls is not False or not chart.dataset_id:
+            continue
+        requests = []
+        if chart.stack_by_options:
+            requests.append((chart.stack_toggle_id, list(chart.stack_by_options)))
+        if chart.normalize_toggle:
+            requests.append((chart.normalize_toggle_id, ["Absolute", "Percentage"]))
+        for tid, expected in requests:
+            if not isinstance(tid, str) or not tid.strip():
+                continue
+            owners = [c for c, _ in comps if isinstance(c, Toggle) and c.id == tid]
+            local_duplicates = [c for c, _ in comps if isinstance(c, (StackedBar, LineChart))
+                and c.dataset_id and getattr(c, "show_controls", True) is not False and
+                ((c.stack_by_options and c.stack_toggle_id == tid) or
+                 (c.normalize_toggle and c.normalize_toggle_id == tid))]
+            if len(owners) != 1 or local_duplicates:
+                result.fail("stacked-bar-control-owner-invalid",
+                    f"Shared StackedBar control '{tid}' requires exactly one native Toggle and no chart-local copy. "
+                    "This opt-in composition requires report-wide unique IDs, including inactive report scopes; "
+                    "use a distinct shared ID for each independent scope/pair.", component="StackedBar", section=section)
+            elif (list(owners[0].options) != expected or not expected or
+                  any(not isinstance(v, str) or not v.strip() or v != v.strip() for v in expected) or
+                  owners[0].default not in expected):
+                result.fail("stacked-bar-control-options-invalid",
+                    f"Shared StackedBar control '{tid}' requires exactly {expected!r} in order and a selected default from those choices.",
+                    component="StackedBar", section=section)
+            else:
+                used.add(tid)
+    return used

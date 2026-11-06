@@ -209,6 +209,7 @@ def _chart_container_html(
     extra_before: str = "",
     *,
     container_class: str = "",
+    container_style: str = "",
     title_class: str = "",
     summary: bool = False,
     header_context: Optional[str] = None,
@@ -225,6 +226,7 @@ def _chart_container_html(
         f'title="Download CSV">{_DOWNLOAD_SVG}</button>'
     )
     box = f"fw-chart-container {container_class}".strip()
+    style_attr = f' style="{escape(container_style, quote=True)}"' if container_style else ""
     context = _header_context_html(cid, header_context)
     if summary:
         head = (
@@ -238,7 +240,7 @@ def _chart_container_html(
         head = _title_html(title, cls=title_class)
     return (
         f'{head}{context}{extra_before}'
-        f'<div class="{box}">'
+        f'<div class="{box}"{style_attr}>'
         f'<canvas id="{cid}"{_context_description_attr(cid, header_context)}></canvas>{dl_btn}</div>'
     )
 

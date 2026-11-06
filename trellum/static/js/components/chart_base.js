@@ -563,6 +563,13 @@ function _fwLineResultView(chart) {
 
 function _createChart(id, canvas, spec) {
     var previous = window._chartInstances[id];
+    if (spec.stackedControlView) {
+        if (previous && previous._fwStackControlView) _fwRememberStackControlView(previous);
+        var stackHidden = canvas._fwStackControlHidden || {};
+        spec.datasets.forEach(function(ds) {
+            ds.hidden = stackHidden[JSON.stringify([spec.stackedControlView, ds.label])] === true;
+        });
+    }
     // A status/theme/reentry draw of the same ordinary result keeps the user's
     // view. A genuinely different result retains the existing reset behavior.
     var lineView = spec.lineResultPresentation ? (previous ? _fwLineResultView(previous) : canvas._fwLineResultView) : null;
@@ -728,7 +735,7 @@ function _createChart(id, canvas, spec) {
         type: spec.type || 'bar',
         data: { labels: spec.labels, datasets: spec.datasets },
         options: chartOpts,
-        plugins: (spec.lineResultPresentation ? [{id: 'fwLineResultView', beforeDestroy: function(chart) {
+        plugins: (spec.stackedControlView ? [{id: 'fwStackControlView', beforeDestroy: _fwRememberStackControlView}] : []).concat(spec.lineResultPresentation ? [{id: 'fwLineResultView', beforeDestroy: function(chart) {
             if (canvas.isConnected) canvas._fwLineResultView = _fwLineResultView(chart);
         }}] : []).concat(spec.monthContext ? [window._fwMonthContextPlugin()] : []).concat((spec.barValues || spec.stackLabels) ? [_fwBarLabelPlugin(spec)] : []).concat(
             spec.eventLabels === 'grouped' && window._fwLineEventLabelsPlugin
@@ -736,6 +743,7 @@ function _createChart(id, canvas, spec) {
             spec.availability ? [_fwLineAvailabilityPlugin(spec.availability)] : []).concat(
             spec.monthlyAverage ? [window._fwMonthlyAveragePlugin(spec.monthlyAverage)] : [])
     });
+    if (spec.stackedControlView) window._chartInstances[id]._fwStackControlView = spec.stackedControlView;
     window._chartInstances[id]._fwThemeManagedAxes = true;
     window._chartInstances[id]._fwThemeManagedFonts = true;
     if (comboFocus) {
@@ -890,6 +898,17 @@ function _fwUpdateLineResult(canvas, cfg, spec, rows) {
     return spec;
 }
 
+// Shared-control views retain each chart's own label visibility, never the
+// sibling chart's. The denominator still uses all matching series.
+function _fwRememberStackControlView(chart) {
+    var key = chart._fwStackControlView;
+    if (!key) return;
+    var hidden = chart.canvas._fwStackControlHidden || (chart.canvas._fwStackControlHidden = {});
+    chart.data.datasets.forEach(function(ds, i) {
+        hidden[JSON.stringify([key, ds.label])] = !chart.isDatasetVisible(i);
+    });
+}
+
 window._fwRenderers['chart'] = function renderChart(id, cfg) {
     var canvas = document.getElementById(id);
     if (!canvas) return;
@@ -905,7 +924,24 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
     // Modern ordinary lines/bars may gain/remove declarations during renderAll.
     // Keep one scoped binding before opt-in so adoption cannot retain an old
     // anonymous theme handler or a second subscription.
-    var scopedLive = cfg.category_colors || cfg.line_style === 'adaptive' || cfg.bar_values || canvas._fwAvailabilityOwned;
+    var scopedLive = cfg.stacked_bar_controls || cfg.category_colors || cfg.line_style === 'adaptive' || cfg.bar_values || canvas._fwAvailabilityOwned;
+    // Shared StackedBars alone adopt ownership of scope/control/source changes.
+    // Legacy untagged payloads and workspace leasing keep their existing path.
+    var stackOwner = cfg.stacked_bar_controls === true && !window._fwMetricsWorkspace;
+    var stackScope = window._currentScope;
+    var stackSource = stackOwner && window._fwFilterEngine._columnar[cfg.dataset_id];
+    var stackGroup = stackOwner && Array.from(document.querySelectorAll('[data-toggle-id]')).find(function(el) {
+        return el.dataset.toggleId === cfg.stack_toggle_id;
+    });
+    var normalizeGroup = stackOwner && Array.from(document.querySelectorAll('[data-toggle-id]')).find(function(el) {
+        return el.dataset.toggleId === cfg.normalize_toggle_id;
+    });
+    var oldStack = canvas._fwBarLive;
+    if (stackOwner && previousBindings && previousBindings.has(id) && (!oldStack || oldStack.cfg !== cfg ||
+            oldStack.scope !== stackScope || oldStack.source !== stackSource ||
+            oldStack.stackGroup !== stackGroup || oldStack.normalizeGroup !== normalizeGroup)) {
+        previousBindings.get(id)();
+    }
     if ((!scopedLive || !cfg.dataset_id || window._fwMetricsWorkspace) && previousBindings && previousBindings.has(id)) {
         previousBindings.get(id)(); previousBindings.delete(id);
         // The cached draw belonged to the binding just disposed. A reused
@@ -931,7 +967,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
             var stackSel = cfg.stack_toggle_id
                 ? '[data-toggle-id="' + cfg.stack_toggle_id + '"]'
                 : '[data-stack-toggle="' + id + '"]';
-            var tog = document.querySelector(stackSel);
+            var tog = stackOwner ? stackGroup : document.querySelector(stackSel);
             if (tog) {
                 var initBtn = tog.querySelector('.fw-toggle-btn.active');
                 if (initBtn) activeStackBy = cfg.stack_by_options[initBtn.textContent.trim()] || cfg.stack_by;
@@ -952,7 +988,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
             var normSel = cfg.normalize_toggle_id
                 ? '[data-toggle-id="' + cfg.normalize_toggle_id + '"]'
                 : '[data-normalize-toggle="' + id + '"]';
-            var normTog = document.querySelector(normSel);
+            var normTog = stackOwner ? normalizeGroup : document.querySelector(normSel);
             if (normTog) {
                 var initNormBtn = normTog.querySelector('.fw-toggle-btn.active');
                 if (initNormBtn) normalized = initNormBtn.textContent.trim() === 'Percentage';
@@ -973,6 +1009,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
         }, barListener);
 
         function _mkSpec(spec) {
+            if (stackOwner) spec.stackedControlView = [cfg.dataset_id, activeStackBy];
             if (cfg.month_context === true) spec.monthContext = true;
             if (cfg.event_labels) spec.eventLabels = cfg.event_labels;
             if (cfg.bar_values) {
@@ -1449,29 +1486,35 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                     stacked: cfg.stacked, horizontal: cfg.horizontal, showLegend: datasets2.length > 1, yFmt: yFmt2, tooltip: tt2 }));
             }
         }
-        if (taggedBars) canvas._fwBarLive = {cfg: cfg, draw: _drawLive};
+        if (taggedBars) canvas._fwBarLive = stackOwner ? {cfg: cfg, draw: _drawLive, scope: stackScope,
+            source: stackSource, stackGroup: stackGroup, normalizeGroup: normalizeGroup} : {cfg: cfg, draw: _drawLive};
         if (scopedLive && !window._fwMetricsWorkspace) {
             // Opted-in charts own one binding across renderAll, changed configs
             // and canvas replacement. Untagged live charts retain their path.
             var bindings = window._fwCategoryChartBindings || (window._fwCategoryChartBindings = new Map());
             if (bindings.has(id)) bindings.get(id)();
+            function stackRetired() {
+                return stackOwner && (window._currentScope !== stackScope ||
+                    (stackGroup && !stackGroup.isConnected) || (normalizeGroup && !normalizeGroup.isConnected));
+            }
             function current() {
-                if (document.getElementById(id) !== canvas) { dispose(); return; }
+                if (document.getElementById(id) !== canvas || stackRetired()) { dispose(); return; }
                 _drawLive(window._fwFilterEngine.getFiltered(cfg.dataset_id));
             }
             var unsubscribe = window._fwFilterEngine.subscribe(cfg.dataset_id, id, current);
             function onTheme() {
-                if (document.getElementById(id) !== canvas) {
+                if (document.getElementById(id) !== canvas || stackRetired()) {
                     bindings.get(id)(); bindings.delete(id); return;
                 }
                 _drawLive(window._fwFilterEngine.getFiltered(cfg.dataset_id));
             }
-            var observer = (cfg.line_style === 'adaptive' || canvas._fwAvailabilityOwned || cfg.bar_values || cfg.monthly_average) ? new MutationObserver(function() {
-                if (document.getElementById(id) !== canvas) dispose();
+            var observer = (stackOwner || cfg.line_style === 'adaptive' || canvas._fwAvailabilityOwned || cfg.bar_values || cfg.monthly_average) ? new MutationObserver(function() {
+                if (document.getElementById(id) !== canvas || stackRetired()) dispose();
             }) : null;
             function dispose() {
                 unsubscribe(); window.removeEventListener('fw-theme-change', onTheme);
                 if (barSignals) barSignals.abort();
+                if (stackOwner && canvas._fwBarLive && canvas._fwBarLive.cfg === cfg) delete canvas._fwBarLive;
                 if (observer) observer.disconnect();
                 if (bindings.get(id) === dispose) bindings.delete(id);
                 var chart = window._chartInstances[id];
@@ -1481,6 +1524,10 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
             }
             bindings.set(id, dispose);
             if (observer) observer.observe(document.body, {childList: true, subtree: true});
+            if (stackOwner && observer) {
+                var stackPanel = canvas.closest('[data-toggle-target="__scope__"]');
+                if (stackPanel) observer.observe(stackPanel, {attributes: true, attributeFilter: ['style']});
+            }
             window.addEventListener('fw-theme-change', onTheme);
             _drawLive(window._fwFilterEngine.getFiltered(cfg.dataset_id));
         } else window._fwLiveWrap(id, cfg, _drawLive);

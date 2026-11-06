@@ -219,7 +219,11 @@ class StackedBar(_ChartBase):
     """Stacked bar chart, optionally diverging around zero.
 
     In live mode (``dataset_id`` set), use ``stack_by`` to specify which column
-    to pivot on.  ``stack_by_options`` renders a toggle to switch dimensions.
+    to pivot on. ``stack_by_options`` renders a toggle to switch dimensions.
+    Keyword-only ``show_controls=False`` binds explicit external native Toggles
+    without local copies. ``height=None`` keeps responsive sizing; an integer
+    128..1200 sizes only the plot at every viewport. See
+    docs/report-traffic-composition.md.
     Keyword-only ``show_totals=False`` enables visible absolute bar totals;
     ``show_percentages=False`` enables fitting labels in live pivot Percentage
     mode. Both require complete finite nonnegative additive quantities. See
@@ -259,6 +263,9 @@ class StackedBar(_ChartBase):
     # UI is enough to identify individual series.
     show_legend: bool = True
 
+    show_controls: bool = field(default=True, kw_only=True)
+    height: Optional[int] = field(default=None, kw_only=True)
+
     show_totals: bool = field(default=False, kw_only=True)
     show_percentages: bool = field(default=False, kw_only=True)
     # Author-declared daily reporting dates; see docs/report-month-context.md.
@@ -273,16 +280,32 @@ class StackedBar(_ChartBase):
         _validate_header_context(self.header_context)
         _validate_category_colors(self.category_colors)
         self._validate_stack_labels()
+        problems = stack_option_problems(self)
+        if problems:
+            raise ValueError(problems[0][1])
 
     def _validate_stack_labels(self) -> None:
         for name in ("show_totals", "show_percentages"):
             if type(getattr(self, name)) is not bool:
                 raise ValueError(f"{name} must be bool")
 
+    @classmethod
+    def css(cls) -> str:
+        from trellum.assets import load_css
+        return super().css() + "\n" + load_css("components/stacked_bar.css")
+
+    def _plot_container(self) -> dict:
+        if self.height is None:
+            return {}
+        return {"container_class": "fw-stacked-height", "container_style": f"--fw-stacked-height:{self.height}px"}
+
     def render_html(self, ctx: RenderContext) -> str:
         month_config = _month_context_config(self)
         category_config = _category_colors_config(self, ctx)
         self._validate_stack_labels()
+        problems = stack_option_problems(self)
+        if problems:
+            raise ValueError(problems[0][1])
         cid = ctx.next_id()
         stack_labels = {"totals": self.show_totals, "percentages": self.show_percentages,
                         "format": self.value_format}
@@ -302,6 +325,8 @@ class StackedBar(_ChartBase):
                 "title": self.title,
                 "value_format": self.value_format,
             }
+            if not self.show_controls:
+                cfg["stacked_bar_controls"] = True
             if self.diverging:
                 cfg["diverging"] = True
             if self.line_cols:
@@ -327,18 +352,18 @@ class StackedBar(_ChartBase):
             cfg.update(category_config)
             ctx.register(cid, cfg)
             toggle_html = ""
-            if self.stack_by_options:
+            if self.show_controls and self.stack_by_options:
                 toggle_html = _stack_toggle_html(
                     cid, self.stack_by_options, self.stack_toggle_id,
                 )
             normalize_html = ""
-            if self.normalize_toggle:
+            if self.show_controls and self.normalize_toggle:
                 normalize_html = _normalize_toggle_html(
                     cid, self.normalize_toggle_id,
                 )
             controls_html = toggle_html + normalize_html
             return _chart_container_html(cid, self.title, extra_before=controls_html,
-                                         header_context=self.header_context)
+                                         header_context=self.header_context, **self._plot_container())
 
         if self.show_totals or self.show_percentages:
             stack_labels["duplicate_columns"] = len(set(self.y_cols)) != len(self.y_cols)
@@ -373,7 +398,21 @@ class StackedBar(_ChartBase):
             "yTickFormat": self.value_format,
         })
 
-        return _chart_container_html(cid, header_context=self.header_context)
+        return _chart_container_html(cid, header_context=self.header_context, **self._plot_container())
+
+def stack_option_problems(chart: StackedBar) -> list[tuple[str, str]]:
+    """Strict opt-in controls/sizing diagnostics, also after author mutation."""
+    problems = []
+    if type(chart.show_controls) is not bool:
+        problems.append(("stacked-bar-controls-invalid", "StackedBar show_controls must be bool."))
+    if chart.height is not None and (type(chart.height) is not int or not 128 <= chart.height <= 1200):
+        problems.append(("stacked-bar-height-invalid", "StackedBar height must be None or an integer from 128 to 1200 (bool is not a height)."))
+    if chart.show_controls is False and chart.dataset_id:
+        for requested, name in ((chart.stack_by_options, "stack_toggle_id"), (chart.normalize_toggle, "normalize_toggle_id")):
+            value = getattr(chart, name)
+            if requested and (not isinstance(value, str) or not value.strip() or value != value.strip()):
+                problems.append(("stacked-bar-control-id-missing", f"StackedBar show_controls=False requires an explicit nonempty {name} for each requested control."))
+    return problems
 
 @dataclass
 class ComboChart(_ChartBase):
