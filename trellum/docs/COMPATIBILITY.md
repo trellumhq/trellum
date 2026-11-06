@@ -1,5 +1,15 @@
 # Framework Compatibility Policy
 
+## Unreleased: optional TreemapChart summaries
+
+Keyword-only `header_summary=None` preserves existing constructor positions,
+markup and payloads. Enabled summaries reduce final leaf entries after current
+grouping; numeric results require safe nonnegative supplied values and complete
+leaf coverage. Count is independent of numeric eligibility. Existing sizing,
+colors, plot heights and CSV remain unchanged. See
+[TreemapChart summaries](report-treemap-summaries.md) for scope and retained
+precision/grouping limits. Rebuild matching assets; no migration is needed.
+
 ## Unreleased: optional StackedBar summaries
 
 Keyword-only `header_summary=None` preserves existing constructor positions,

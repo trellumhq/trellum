@@ -532,6 +532,10 @@ color normalization, with explicit original-input eligibility.
 [StackedBar header summaries](docs/report-stacked-summaries.md) describe one
 exact final bar-series caption in original units, including in Percentage mode.
 
+[TreemapChart header summaries](docs/report-treemap-summaries.md) reduce current
+final leaf entries after grouping, with independent counts and guarded numeric
+results that exclude parent entries.
+
 [FunnelChart header summaries](docs/report-funnel-summaries.md) optionally show
 a named stage, maximum stage-entry count or entry count above the current plot.
 They preserve stage ordering and do not infer conversions or cross-stage totals.

@@ -188,6 +188,15 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             stack_summaries.get_by_role('button', name='iOS', exact=True).click()
             expect(stack_summaries.locator('.fw-chart-summary-value')).to_have_text(['30', '15', '10', '20', '20'])
             expect(heatmaps.locator('.fw-chart-summary-value').first).to_have_text('180')
+            page.get_by_role('link', name='Treemap summaries', exact=True).click()
+            treemaps = page.locator('#sec-treemap-summaries-—-filtered-leaf-reducers-and-count')
+            treemaps.scroll_into_view_if_needed()
+            for canvas in treemaps.locator('canvas').all():
+                canvas.scroll_into_view_if_needed()
+            expect(treemaps.locator('.fw-chart-summary-value')).to_have_text(['$900.00', '4', '$225.00', '$90.00', '$360.00'])
+            treemaps.get_by_role('button', name='iOS', exact=True).click()
+            expect(treemaps.locator('.fw-chart-summary-value')).to_have_text(['$300.00', '4', '$75.00', '$30.00', '$120.00'])
+            expect(stack_summaries.locator('.fw-chart-summary-value').first).to_have_text('30')
             expect(scatter.locator('.fw-chart-summary-value').last).to_have_text('4')
             expect(marketing.locator('.fw-mini-val').first).to_have_text('840')
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"

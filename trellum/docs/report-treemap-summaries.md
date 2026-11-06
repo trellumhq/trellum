@@ -123,7 +123,7 @@ unchanged. This option adds no populated full-path CSV schema. Use the ordinary
 DataTable in the examples for a meaningful **source-row grain** CSV; source-row
 grain differs from final aggregate leaves.
 
-## Native examples and common integration hooks
+## Native examples and validation
 
 `demo/reports/component-showcase/examples_treemap_summaries.py` exposes
 `add_sections(ctx)` and contributes exactly four named sections:
@@ -147,25 +147,7 @@ iOS and August 1 gives 10/20/30/40: sum 100, count 4 and mean 25. Parent values
 also total 900 but never combine with leaves to make 1800. All amounts are
 synthetic additive USD; no real-report data parity is claimed.
 
-Common wiring for the integrating caller:
-
-```python
-# Showcase generator: import and call once, alongside existing example modules.
-import examples_treemap_summaries
-examples_treemap_summaries.add_sections(ctx)
-
-# validation/checks/chart_options.py, inside _check_chart_options:
-from trellum.components.charts._treemap_summary import treemap_summary_option_problems
-# In the existing component loop:
-if _comp_name(comp) == "TreemapChart":
-    for check_id, message in treemap_summary_option_problems(comp):
-        result.fail(check_id, message, component="TreemapChart", section=sec)
-```
-
-Until that shared dispatch is integrated, invoke the pure helper alongside
-`compute_details(ctx)` and `validate_report(ctx, details=details)`, as the owned
-tests do. No new common component export is needed: TreemapChart already exists.
-Add these four section titles to any showcase navigation/section expectations,
-and link this page from the common chart-summary/API documentation. Record the
-keyword-only opt-in in compatibility guidance; no migration or version change
-is required.
+The shared showcase includes these sections through its Treemap summaries link.
+The shared chart-options validator dispatches `treemap_summary_option_problems`
+and reports `chart-summary-invalid` for malformed or mutated declarations.
+Import the existing `TreemapChart` from `trellum.components`.

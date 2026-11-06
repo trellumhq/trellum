@@ -6,6 +6,7 @@ from trellum import BaseReport
 from trellum.components import DataSource, FilterBar, Grid, LineChart, RawHTML
 
 from . import (
+    examples_treemap_summaries,
     examples_stacked_summaries,
     examples_heatmap_summaries,
     examples_marketing,
@@ -37,6 +38,7 @@ class ComponentShowcaseReport(BaseReport):
             '<a href="#sec-scatter-summaries-—-off-and-on">Scatter summaries</a>, '
             '<a href="#sec-heatmap-summaries-—-static-off-and-on">Heatmap summaries</a>, '
             '<a href="#sec-stacked-summaries-—-static-off/on">Stacked summaries</a>, '
+            '<a href="#sec-treemap-summaries-—-off-and-on">Treemap summaries</a>, '
             '<a href="#sec-line-example-filters">line charts</a>, '
             '<a href="#sec-traffic-composition-—-local-controls,-responsive-plots">Traffic composition</a>, '
             '<a href="#sec-line-styles:-density-follows-the-plot">line styles</a>, '
@@ -169,6 +171,7 @@ class ComponentShowcaseReport(BaseReport):
         examples_heatmaps.add_sections(ctx)
 
         examples_treemaps.add_sections(ctx)
+        examples_treemap_summaries.add_sections(ctx)
 
         examples_status_text.add_sections(ctx)
 

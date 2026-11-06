@@ -9,6 +9,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Optional TreemapChart header summaries over final leaf entries, with
+  conservative numeric eligibility and native filtered examples.
+
 - Optional StackedBar header summaries for one exact final bar series in
   original units, with explicit input eligibility.
 

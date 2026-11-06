@@ -19,11 +19,15 @@ def _check_chart_options(comps: list[tuple[Any, str]], result: ValidationResult)
     from trellum.components.charts._scatter_summary import scatter_option_problems
     from trellum.components.charts._heatmap_summary import heatmap_option_problems
     from trellum.components.charts._stacked_summary import stacked_summary_option_problems
+    from trellum.components.charts._treemap_summary import treemap_summary_option_problems
     from trellum.components.charts.bar import stack_option_problems
 
     from trellum.components.charts._header_summary import header_summary_config, doughnut_summary_config
 
     for comp, sec in comps:
+        if _comp_name(comp) == "TreemapChart":
+            for check_id, message in treemap_summary_option_problems(comp):
+                result.fail(check_id, message, component="TreemapChart", section=sec)
         if _comp_name(comp) == "HeatmapChart":
             for check_id, message in heatmap_option_problems(comp):
                 result.fail(check_id, message, component="HeatmapChart", section=sec)

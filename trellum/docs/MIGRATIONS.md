@@ -1,5 +1,13 @@
 # Framework Migration Guide
 
+## Unreleased: optional TreemapChart summaries
+
+Existing calls need no changes. Use `header_summary={"stat": "sum",
+"scope": "leaf_entries"}` to summarize current final leaves, excluding parent
+entries. See [TreemapChart summaries](report-treemap-summaries.md) for reducers,
+input eligibility and count semantics. Rebuild report assets. Generic treemap
+CSV retains its existing header-only output; examples include a source-row table.
+
 ## Unreleased: optional StackedBar summaries
 
 Existing calls need no changes. Use `header_summary={"stat": "sum",

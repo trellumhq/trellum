@@ -19,6 +19,8 @@ from trellum.report import ReportContext
 from trellum.reporting.diagnostics import compute_details
 from trellum.themes import DEFAULT_THEME
 from trellum.validation import validate_report
+from trellum.validation.checks.chart_options import _check_chart_options
+from trellum.validation.result import ValidationResult
 
 ROOT = Path(__file__).resolve().parents[2]
 BASELINE = 'c519ebe960fa6c405108558678cedcb3ded3b6c4'
@@ -67,6 +69,9 @@ def test_opt_out_exact_baseline_payload_markup_and_positions(dataset, colors):
         for context in (None, '<context>'):
             options = {'show_percentages': shares, 'header_context': context}
             assert render(TreemapChart(*args, **options)) == render(baseline_class()(*args, **options))
+            result = ValidationResult(slug='historical-treemap')
+            _check_chart_options([(baseline_class()(*args, **options), 'Treemaps')], result)
+            assert result.checks == []
     params = inspect.signature(TreemapChart).parameters
     assert params['header_summary'].kind == inspect.Parameter.KEYWORD_ONLY
     assert [n for n, p in params.items() if p.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD] == [
@@ -89,6 +94,10 @@ def test_invalid_construction_render_mutation_and_dispatch(declaration):
     with pytest.raises(ValueError, match='header_summary'):
         render(chart)
     assert [code for code, _ in treemap_summary_option_problems(chart)] == ['chart-summary-invalid']
+    result = ValidationResult(slug='mutated-treemap')
+    _check_chart_options([(chart, 'Treemaps')], result)
+    assert [(c.id, c.level, c.component, c.section) for c in result.checks] == [
+        ('chart-summary-invalid', 'fail', 'TreemapChart', 'Treemaps')]
 
 
 @pytest.mark.parametrize('stat,label', [('sum', 'Leaf total'), ('count', 'Leaf entries'),
@@ -140,11 +149,6 @@ def test_fixture_oracle_and_native_validation(tmp_path):
     details = compute_details(ctx)
     result = validate_report(ctx, details=details)
     assert [c.to_dict() for c in result.checks if c.level in ('warn', 'fail')] == []
-    from trellum.validation.walk import _walk_components
-    for section in ctx.sections:
-        for comp, _ in _walk_components(section['components'], section_title=section['title']):
-            if isinstance(comp, TreemapChart):
-                assert treemap_summary_option_problems(comp) == []
 
 
 def test_real_javascript_reducer_membership_precision_and_count():
