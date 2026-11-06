@@ -7,7 +7,8 @@ from typing import Optional
 
 import pandas as pd
 
-from trellum.assets import load_js
+from trellum.assets import load_css, load_js
+from trellum.components.charts._funnel_summary import funnel_summary_config
 from trellum.components.base import Component, RenderContext
 from trellum.components.charts.base import (
     _chart_container_html,
@@ -34,14 +35,17 @@ class FunnelChart(Component):
     dataset_id: Optional[str] = None
     static: bool = False
     header_context: Optional[str] = field(default=None, kw_only=True)
+    header_summary: Optional[dict] = field(default=None, kw_only=True)
 
     _component_type: str = field(default="funnel_chart", init=False, repr=False)
     _supports_dataset_id: bool = field(default=True, init=False, repr=False)
 
     def __post_init__(self) -> None:
         _validate_header_context(self.header_context)
+        funnel_summary_config(self)
 
     def render_html(self, ctx: RenderContext) -> str:
+        summary = funnel_summary_config(self)
         cid = ctx.next_id()
 
         if self.dataset_id:
@@ -52,6 +56,7 @@ class FunnelChart(Component):
                 "value_col": self.value,
                 "show_pct": self.show_percentages,
                 "title": self.title,
+                **summary,
             })
         else:
             labels = _clean_list(self.df[self.label].tolist())
@@ -61,9 +66,11 @@ class FunnelChart(Component):
                 "labels": labels,
                 "values": values,
                 "show_pct": self.show_percentages,
+                **summary,
             })
 
-        return _chart_container_html(cid, self.title, header_context=self.header_context)
+        return _chart_container_html(cid, self.title, header_context=self.header_context,
+                                     summary=bool(summary))
 
     @classmethod
     def cdn_deps(cls) -> list[str]:
@@ -71,7 +78,7 @@ class FunnelChart(Component):
 
     @classmethod
     def css(cls) -> str:
-        return _ChartBase.css()
+        return _ChartBase.css() + load_css("components/funnel.css")
 
     @classmethod
     def client_js(cls) -> str:
