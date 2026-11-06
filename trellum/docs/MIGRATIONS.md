@@ -3,6 +3,28 @@
 Each section documents a breaking or significant change, how to detect affected
 code, and the exact replacement.
 
+## Unreleased: supplied LineChart forecast styling
+
+LineChart adds keyword-only `forecast_series=None` for static lines, bound
+ordinary wide-series lines and bound ratios. It accepts copied lists/tuples of
+non-bool integer positions or exact displayed labels. Omitted, `None` and empty
+sequences preserve existing payloads; invalid, duplicate, ambiguous and
+out-of-range references are rejected at render. Nonempty declarations with
+dynamic `stack_by` or `stack_by_options` are rejected. Explicit `dataset_id`
+still takes precedence over `static=True`, and prior positional/subclass
+arguments remain unchanged.
+
+Selected supplied datasets retain their values, colors, order, widths, gaps,
+adaptive point density and plot heights while gaining dashed strokes and hollow
+markers. Existing multi-series HTML legend entries gain a compact matching key;
+narrow legend chips may wrap onto different rows without changing plot height.
+CSV, raster and report captures retain the supplied data. No values are
+generated, anchored or interpolated. Static null gaps are preserved; bound sum
+aggregation still zero-fills missing inputs, so bound comparisons should
+provide complete values per compared date. Rebuild reports with matching
+runtime assets. No database migration or host change is required. See
+[LineChart supplied forecasts](report-line-forecasts.md).
+
 ## Unreleased: declared category palette slots
 
 LineChart, StackedBar and DoughnutChart add keyword-only `category_colors=None`.

@@ -9,6 +9,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Optional keyword-only LineChart `forecast_series` styling for explicitly
+  supplied static, bound wide-series and bound ratio datasets. Selected lines
+  retain supplied data and gain dashed strokes, hollow theme-following markers
+  and a matching symbol on their existing legend chip. Empty declarations
+  preserve current output; dynamic stack splits are rejected. Added API and
+  upgrade guidance, plus deterministic native examples; generation and missing
+  value aggregation semantics are unchanged.
+
 - Optional keyword-only `category_colors` on dataset-bound LineChart/StackedBar
   category splits and static/live DoughnutChart labels. Explicit shared domains
   map string categories to theme palette slots, with per-chart fixed overrides

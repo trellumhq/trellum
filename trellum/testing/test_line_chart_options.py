@@ -5,6 +5,8 @@ from __future__ import annotations
 import dataclasses
 import json
 import re
+import dataclasses
+import inspect
 
 import pandas as pd
 import pytest
@@ -137,6 +139,70 @@ def test_title_markup_inside_the_header_matches_the_plain_title():
     head, _ = _render(LineChart(_df(), x="day", y="revenue", title="<b>Revenue</b>",
                                 header_summary=_SUMMARY))
     assert "<b>Revenue</b></div>" in plain and "<b>Revenue</b></div>" in head
+
+
+def test_forecast_series_shape_resolution_and_empty_payload_compatibility():
+    frame = _df()
+    frame["cost"] = [20, 30, 25]
+    baseline = _render(LineChart(frame, "day", ["revenue", "cost"], "T"))[1]
+    for declaration in (None, [], ()):
+        cfg = _render(LineChart(frame, "day", ["revenue", "cost"], "T",
+                                forecast_series=declaration))[1]
+        assert cfg == baseline
+    assert inspect.signature(LineChart).parameters["forecast_series"].kind == inspect.Parameter.KEYWORD_ONLY
+    assert [f.name for f in dataclasses.fields(LineChart) if f.init and not f.kw_only][-2:] == ["height", "header_summary"]
+
+    labels = ["Revenue", "Cost"]
+    for declaration in ([1], ("Cost",), [0, "Cost"]):
+        _, cfg = _render(LineChart(frame, "day", ["revenue", "cost"], "T",
+                                   y_labels=labels, forecast_series=declaration, static=True))
+        assert [i for i, ds in enumerate(cfg["datasets"]) if ds.get("_fwForecast")] == (
+            [0, 1] if len(declaration) == 2 else [1])
+    _, static_cfg = _render(LineChart(frame, "day", ["revenue", "cost"], "T",
+                                      y_labels=labels, forecast_series=[1], static=True))
+    assert "forecast_series" not in static_cfg
+    assert static_cfg["datasets"][1]["borderDash"] == [7, 4]
+    assert "_fwForecast" not in static_cfg["datasets"][0]
+    _, bound_cfg = _render(LineChart(frame, "day", ["revenue", "cost"], "T",
+                                     y_labels=labels, forecast_series=["Cost"],
+                                     dataset_id="d", static=True))
+    assert bound_cfg["dataset_id"] == "d" and bound_cfg["forecast_series"] == [1]
+    _, ratio_cfg = _render(LineChart(frame, "day", "revenue", "T", dataset_id="d",
+        ratios=[{"numerator": "revenue", "denominator": "users", "label": "ARPU"}],
+        forecast_series=["ARPU"]))
+    assert ratio_cfg["forecast_series"] == [0]
+
+
+@pytest.mark.parametrize("value", ["Forecast", 1, True, [1.0], [None], {1}, [True]])
+def test_invalid_forecast_series_declaration_shape(value):
+    with pytest.raises(ValueError, match="forecast_series"):
+        LineChart(_df(), "day", "revenue", forecast_series=value)
+
+
+@pytest.mark.parametrize("declaration,labels,error", [
+    ([3], ["Revenue", "Cost"], "outside"),
+    (["Nope"], ["Revenue", "Cost"], "no series"),
+    (["Revenue"], ["Revenue", "Revenue"], "more than one"),
+    ([0, "Revenue"], ["Revenue", "Cost"], "more than once"),
+    (["Revenue"], ["Revenue", "Revenue"], "more than one"),
+])
+def test_forecast_resolution_rejects_invalid_and_mutated_declarations(declaration, labels, error):
+    chart = LineChart(_df(), "day", ["revenue", "users"], y_labels=labels)
+    chart.forecast_series = declaration
+    with pytest.raises(ValueError, match=error):
+        chart.render_html(RenderContext(theme=DefaultTheme))
+
+
+def test_forecast_mutable_inputs_are_copied_and_stack_splits_are_rejected_only_when_enabled():
+    declaration = [1]
+    chart = LineChart(_df(), "day", ["revenue", "users"], forecast_series=declaration)
+    declaration.clear()
+    assert chart.forecast_series == [1]
+    assert LineChart(_df(), "day", "revenue", dataset_id="d", stack_by="platform",
+                     forecast_series=[])
+    with pytest.raises(ValueError, match="dynamic"):
+        LineChart(_df(), "day", "revenue", dataset_id="d", stack_by="platform",
+                  forecast_series=[0]).render_html(RenderContext(theme=DefaultTheme))
 
 
 @pytest.mark.parametrize("kwargs", [

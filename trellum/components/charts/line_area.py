@@ -43,6 +43,47 @@ def _line_series_labels(chart: "LineChart") -> list[str]:
     return [str(lb) for lb, _ in zip(labels, y_cols)]
 
 
+def _normalize_forecast_series(value: Any) -> Optional[list[int | str]]:
+    """Copy and shape-check author-selected forecast series references."""
+    if value is None:
+        return None
+    if not isinstance(value, (list, tuple)):
+        raise ValueError("LineChart forecast_series must be a list or tuple of series positions or labels.")
+    result: list[int | str] = []
+    for item in value:
+        if isinstance(item, bool) or not isinstance(item, (int, str)):
+            raise ValueError("LineChart forecast_series entries must be non-bool integer positions or exact string labels.")
+        result.append(item)
+    return result
+
+
+def _forecast_series_indices(chart: "LineChart") -> list[int]:
+    """Resolve declarations against the chart's ordinary wide series."""
+    refs = _normalize_forecast_series(chart.forecast_series) or []
+    if not refs:
+        return []
+    if chart.stack_by or chart.stack_by_options:
+        raise ValueError("LineChart forecast_series is not supported with stack_by or stack_by_options because split series are dynamic.")
+    labels = _line_series_labels(chart)
+    resolved: list[int] = []
+    for ref in refs:
+        if isinstance(ref, int):
+            if not 0 <= ref < len(labels):
+                raise ValueError(f"LineChart forecast_series position {ref} is outside the {len(labels)} plotted series.")
+            index = ref
+        else:
+            matches = [i for i, label in enumerate(labels) if label == ref]
+            if len(matches) != 1:
+                raise ValueError(f"LineChart forecast_series label {ref!r} matches {'no series' if not matches else 'more than one series'}; labels are {labels}.")
+            index = matches[0]
+        if index in resolved:
+            raise ValueError(f"LineChart forecast_series selects series {index} more than once.")
+        if labels.count(labels[index]) != 1:
+            raise ValueError(f"LineChart forecast_series selects {labels[index]!r}, whose caption is shared by another series and grouped by the existing legend.")
+        resolved.append(index)
+    return resolved
+
+
 def line_option_problems(chart: "LineChart") -> list[tuple[str, str]]:
     """Everything wrong with a LineChart's size, summary and interpolation.
 
@@ -178,12 +219,14 @@ class LineChart(_ChartBase):
     header_summary: Optional[Dict[str, Any]] = None
     header_context: Optional[str] = field(default=None, kw_only=True)
     category_colors: Optional[dict] = field(default=None, kw_only=True)
+    forecast_series: Optional[List[int | str] | tuple[int | str, ...]] = field(default=None, kw_only=True)
 
     _component_type: str = field(default="line_chart", init=False, repr=False)
 
     def __post_init__(self):
         _validate_header_context(self.header_context)
         _validate_category_colors(self.category_colors)
+        self.forecast_series = _normalize_forecast_series(self.forecast_series)
         problems = line_option_problems(self)
         if problems:
             raise ValueError(problems[0][1])
@@ -216,6 +259,7 @@ class LineChart(_ChartBase):
         return {"line_style": "adaptive", "tension": self.tension}
 
     def render_html(self, ctx: RenderContext) -> str:
+        forecast_indices = _forecast_series_indices(self)
         category_config = _category_colors_config(self, ctx)
         cid = ctx.next_id()
 
@@ -235,6 +279,8 @@ class LineChart(_ChartBase):
                 "y_format": self.y_format or "number",
                 "title": self.title,
             }
+            if forecast_indices:
+                cfg_r["forecast_series"] = forecast_indices
             if self.y_min is not None:
                 cfg_r["y_min"] = self.y_min
             if self.y_max is not None:
@@ -275,6 +321,8 @@ class LineChart(_ChartBase):
                 "y_labels": y_labels,
                 "title": self.title,
             }
+            if forecast_indices:
+                cfg["forecast_series"] = forecast_indices
             if self.y_format:
                 cfg["y_format"] = self.y_format
             if self.y_min is not None:
@@ -321,6 +369,8 @@ class LineChart(_ChartBase):
                     "tension": self.tension,
                     "spanGaps": False,
                     "_themeManaged": not has_custom_color,
+                    **({"_fwForecast": True} if i in forecast_indices else {}),
+                    **({"borderDash": [7, 4]} if i in forecast_indices else {}),
                 })
             ctx.register(cid, {
                 "type": "chart",

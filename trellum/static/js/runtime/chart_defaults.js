@@ -281,7 +281,7 @@
                 var legEl = chart._fwLegendEl;
                 if (!legEl) return;
                 legEl.innerHTML = '';
-                var seenLabels = {};
+                var seenLabels = Object.create(null);
                 chart.data.datasets.forEach(function(ds, i) {
                     var lbl = ds.label || 'Series ' + (i+1);
                     if (seenLabels[lbl]) return;
@@ -293,8 +293,19 @@
                     btn.className = 'cl' + (vis ? ' active' : '');
                     btn.style.borderColor = vis ? color : 'var(--border-color)';
                     btn.style.background = vis ? color + '20' : 'transparent';
-                    btn.innerHTML = '<span class="dot" style="background:' + color + '"></span>' + lbl;
+                    var symbol = document.createElement('span');
+                    symbol.className = ds._fwForecast ? 'fw-forecast-key' : 'dot';
+                    symbol.setAttribute('aria-hidden', 'true');
+                    if (ds._fwForecast) symbol.style.setProperty('--fw-forecast-color', color);
+                    else symbol.style.background = color;
+                    var caption = document.createElement('span');
+                    caption.textContent = lbl;
+                    btn.append(symbol, caption);
                     btn.title = 'Click to toggle  •  Double-click (or Shift-click) to show only this';
+                    if (ds._fwForecast) {
+                        btn.setAttribute('aria-label', lbl + ', forecast series. ' + btn.title);
+                        btn.title = lbl + ' · forecast series. ' + btn.title;
+                    }
                     // "Isolate" = hide every series whose label is not `lbl`. If
                     // already isolated to `lbl`, restore visibility on all.
                     var _isolate = function() {

@@ -85,6 +85,20 @@ def _report(output):
         LineChart(frame, "day", "value", "Live ratio breakdown", dataset_id="lines", stack_by="platform",
                   tension=.35, ratios=[{"numerator": "value", "denominator": "users", "label": "Ratio"}]),
     ])
+    comparison = pd.DataFrame([
+        {"day": f"2026-10-{day:02d}", "platform": platform,
+         "actual": 40 + day + offset, "prior": 39 + day + offset}
+        for platform, offset in (("Desktop", 0), ("Mobile", 8))
+        for day in range(1, 8)
+    ])
+    ctx.add_section("Bound forecast", [DataSource("forecast_live", comparison),
+        FilterBar("forecast_live", comparison, filters=[
+            {"column": "platform", "type": "toggle", "label": "Forecast platform"},
+        ]),
+        LineChart(comparison, "day", ["actual", "prior"], "Bound forecast comparison",
+                  dataset_id="forecast_live", forecast_series=[1], colors=["#2563eb", "#c2410c"],
+                  y_labels=["Realized", "Earlier forecast"]),
+    ])
     isolated = _frame(500)
     isolated["value"] = float("nan")
     isolated.loc[[67, 249, 412], "value"] = [10, 20, 0]
@@ -92,6 +106,9 @@ def _report(output):
     gap["value"] = [0, None, 20, 20, None, 0, None, 10]
     plateau = _frame(8)
     plateau["value"] = [0, 20, 20, 80, 80, 0, 100, 100]
+    forecast_frame = pd.DataFrame({"day": pd.date_range("2026-10-01", periods=10).strftime("%Y-%m-%d"),
+        "actual": [42, 45, 43, 48, 51, 49, 54, None, None, None],
+        "forecast": [None, None, None, None, None, None, None, 52, 55, 57]})
     ctx.add_section("Static fixtures", [
         LineChart(_frame(181), "day", "value", "Dense", static=True),
         LineChart(_frame(401), "day", "value", "Beyond cutoff", static=True),
@@ -103,6 +120,16 @@ def _report(output):
         LineChart(plateau, "day", "value", "Curved", static=True, tension=.35),
         LineChart(_frame(1), "day", "value", "One", static=True),
         LineChart(_frame(12), "day", "value", "Explicit", static=True, colors=["#ab3478"]),
+        LineChart(_frame(500).assign(value=lambda df: [10 + i % 9 for i in range(len(df))]),
+                  "day", "value", "Dense forecast", static=True, forecast_series=[0]),
+        LineChart(isolated, "day", "value", "Forecast isolated points", static=True,
+                  forecast_series=[0]),
+        LineChart(forecast_frame, "day", ["actual", "forecast"], "Forecast opt-out baseline",
+            static=True, y_labels=["Observed", "Forecast"], colors=["#2563eb", "#c2410c"]),
+        LineChart(forecast_frame,
+            "day", ["actual", "forecast"], "Forecast horizon", static=True,
+            y_labels=["Observed", "Forecast"], colors=["#2563eb", "#c2410c"],
+            forecast_series=["Forecast"]),
         AreaChart(_frame(12), "day", "value", "Area", static=True),
         ComboChart(_frame(12), "day", ["value"], ["value"], "Combo", static=True),
     ])
@@ -114,7 +141,9 @@ _STATE = """title => {
     const c=Object.values(window._chartInstances).find(c=>c.canvas.dataset.fwTitle===title);
     return {id:c.canvas.id, width:c.chartArea.width,height:c.height,
       min:c.scales.x.min,max:c.scales.x.max,ymin:c.scales.y.min,ymax:c.scales.y.max,
+      visible:c.data.datasets.map((_,i)=>c.isDatasetVisible(i)),
       ds:c.data.datasets.map((d,di)=>({data:d.data.slice(),color:d.borderColor,tension:d.tension,
+        dash:d.borderDash,forecast:d._fwForecast,
         border:d.borderWidth,fill:d.fill,activeRadius:c.getDatasetMeta(di).controller.getStyle(0,true).radius,
         segments:c.getDatasetMeta(di).dataset?.segments?.map(s=>[s.start,s.end]),
         points:c.getDatasetMeta(di).data.map(p=>({radius:p.options.radius,skip:p.skip,
@@ -277,7 +306,7 @@ def _browser_check(tmp_path, width):
             s = state(title)
             page.locator(f"[data-csv-chart='{s['id']}']").click()
             assert page.evaluate("window.csvCaptured.rows.map(r=>r[1])") == s["ds"][0]["data"]
-        page.get_by_role("button", name="All", exact=True).click()
+        page.get_by_role("button", name="All", exact=True).first.click()
         page.wait_for_function("""()=>Object.values(window._chartInstances).find(c=>c.canvas.dataset.fwTitle==='Live totals').data.datasets[0].data[0]===20""")
 
         assert page.evaluate("document.documentElement.scrollWidth<=innerWidth")
@@ -312,6 +341,119 @@ def test_line_styles_chromium_phone(tmp_path):
     _browser_check(tmp_path, 390)
 
 
+def _forecast_browser_check(tmp_path, width):
+    from playwright.sync_api import sync_playwright
+
+    _report(tmp_path)
+    shots = Path(os.environ.get("TRELLUM_SCREENSHOT_DIR", str(tmp_path / "evidence")))
+    shots.mkdir(parents=True, exist_ok=True)
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": width, "height": 900}, device_scale_factor=2)
+        errors = []
+        page.on("pageerror", lambda exc: errors.append(str(exc)))
+        _open(page, tmp_path)
+        chart = page.locator("canvas[data-fw-title='Forecast horizon']")
+        chart.scroll_into_view_if_needed()
+        cid = chart.get_attribute("id")
+        page.wait_for_function("id=>!!window._chartInstances[id]", arg=cid)
+        state = page.evaluate(_STATE, "Forecast horizon")
+        assert state["visible"] == [True, True]
+        baseline = page.evaluate(_STATE, "Forecast opt-out baseline")
+        assert baseline["ds"][0]["data"] == state["ds"][0]["data"]
+        assert baseline["ds"][1]["data"] == state["ds"][1]["data"]
+        assert (baseline["height"], baseline["ymin"], baseline["ymax"]) == (
+            state["height"], state["ymin"], state["ymax"])
+        assert baseline["width"] == state["width"]
+        for before, after in zip(baseline["ds"], state["ds"]):
+            assert before["data"] == after["data"]
+            assert (before["border"], before["tension"]) == (after["border"], after["tension"])
+            assert [(p["x"], p["y"], p["radius"]) for p in before["points"]] == [
+                (p["x"], p["y"], p["radius"]) for p in after["points"]]
+        page.locator("canvas[data-fw-title='Forecast opt-out baseline']").screenshot(
+            path=str(shots / f"line-forecasts-{width}-baseline-opt-out.png"))
+        assert state["ds"][0]["data"] == [42, 45, 43, 48, 51, 49, 54, None, None, None]
+        assert state["ds"][1]["data"] == [None, None, None, None, None, None, None, 52, 55, 57]
+        assert state["ds"][0]["dash"] is None and not state["ds"][0]["forecast"]
+        assert state["ds"][1]["dash"] == [7, 4] and state["ds"][1]["forecast"]
+        assert state["ds"][1]["color"] == "#c2410c"
+        assert [p["radius"] for p in state["ds"][1]["points"]] == [0] * 7 + [2, 2, 2]
+        dense = page.evaluate(_STATE, "Dense forecast")
+        assert dense["ds"][0]["forecast"] and sum(p["radius"] > 0 for p in dense["ds"][0]["points"]) == 0
+        isolated = page.evaluate(_STATE, "Forecast isolated points")
+        assert isolated["ds"][0]["data"][249] == 20
+        assert [i for i, p in enumerate(isolated["ds"][0]["points"]) if p["radius"] > 0] == [67, 249, 412]
+        border_bg = page.evaluate("""id=>{const c=window._chartInstances[id];return c.getDatasetMeta(1).data
+            .map(p=>({fill:p.options.backgroundColor,border:p.options.borderColor}));}""", cid)
+        assert all(p["fill"] == "#ffffff" and p["border"] == "#c2410c" for p in border_bg[7:]), border_bg
+        # Verify an actual hollow marker raster, not only its resolved options.
+        raster = page.evaluate("""id=>{const c=window._chartInstances[id],r=c.currentDevicePixelRatio;
+            const p=c.getDatasetMeta(1).data[7],x=Math.round(p.x*r),y=Math.round(p.y*r);
+            return Array.from(c.ctx.getImageData(x-1,y-1,3,3).data);}""", cid)
+        assert any(raster[i:i+4] == [255, 255, 255, 255] for i in range(0, len(raster), 4)), raster
+        legend = page.locator(f"#{cid}").locator("xpath=../preceding-sibling::div[1]")
+        key = legend.locator(".fw-forecast-key")
+        assert key.count() == 1
+        forecast_chip = legend.locator(".cl").filter(has_text="Forecast")
+        assert "forecast series" in forecast_chip.get_attribute("aria-label")
+        assert forecast_chip.inner_text().strip() == "Forecast"
+        # Existing chip toggling and double-click isolate continue to operate.
+        forecast_chip.click()
+        assert page.evaluate("id=>window._chartInstances[id].isDatasetVisible(1)", cid) is False
+        forecast_chip.dblclick()
+        assert page.evaluate("id=>window._chartInstances[id].data.datasets.map((_,i)=>window._chartInstances[id].isDatasetVisible(i))", cid) == [False, True]
+        forecast_chip.dblclick()
+        assert page.evaluate("id=>window._chartInstances[id].data.datasets.map((_,i)=>window._chartInstances[id].isDatasetVisible(i))", cid) == [True, True]
+        point = page.evaluate("id=>{const c=window._chartInstances[id],p=c.getDatasetMeta(1).data[7];return {x:p.x,y:p.y,box:c.canvas.getBoundingClientRect().toJSON()};}", cid)
+        page.mouse.move(point["box"]["x"] + point["x"], point["box"]["y"] + point["y"])
+        page.wait_for_function("id=>window._chartInstances[id].tooltip.dataPoints?.[0]?.dataset.label==='Forecast'", arg=cid)
+        assert page.evaluate("id=>window._chartInstances[id].tooltip.dataPoints[0].parsed.y", cid) == 52
+        page.mouse.move(0, 0)
+        page.wait_for_function("id=>window._chartInstances[id].tooltip.opacity===0", arg=cid)
+        page.evaluate("id=>window._chartInstances[id].zoomScale('x',{min:7,max:9},'none')", cid)
+        assert page.evaluate("id=>window._chartInstances[id].data.datasets[1].borderDash", cid) == [7, 4]
+        page.evaluate("id=>window._chartInstances[id].resetZoom('none')", cid)
+        width_before_resize = page.evaluate("id=>window._chartInstances[id].width", cid)
+        page.set_viewport_size({"width": width - 100, "height": 900})
+        page.wait_for_function("({id,w})=>window._chartInstances[id].width < w", arg={"id": cid, "w": width_before_resize})
+        page.set_viewport_size({"width": width, "height": 900})
+        page.wait_for_function("({id,w})=>window._chartInstances[id].width >= w-1", arg={"id": cid, "w": width_before_resize})
+        page.wait_for_function("id=>window._chartInstances[id].data.datasets[1].borderDash.join(',')==='7,4'", arg=cid)
+        bound_canvas = page.locator("canvas[data-fw-title='Bound forecast comparison']")
+        bound_canvas.scroll_into_view_if_needed()
+        bound_id = bound_canvas.get_attribute("id")
+        assert page.evaluate("id=>window._chartInstances[id].data.datasets[1].data", bound_id) == [88 + 2 * i for i in range(7)]
+        page.get_by_role("button", name="Mobile", exact=True).click()
+        page.wait_for_function("id=>window._chartInstances[id].data.datasets[0].data[0]===49", arg=bound_id)
+        assert page.evaluate("id=>window._chartInstances[id].data.datasets[1].data", bound_id) == [47 + day for day in range(1, 8)]
+        # Theme switch then lazy reveal updates the hollow center to the card surface.
+        for theme, expected in (("trellum dark", "#181b1f"), ("trellum light", "#ffffff")):
+            page.locator("#fwThemeSelect").select_option(theme)
+            chart.scroll_into_view_if_needed()
+            page.wait_for_function("id=>!document.getElementById(id)._fwPendingTheme", arg=cid)
+            fills = page.evaluate("id=>window._chartInstances[id].getDatasetMeta(1).data.slice(7).map(p=>p.options.backgroundColor)", cid)
+            assert fills == [expected] * 3
+            page.screenshot(path=str(shots / f"line-forecasts-{width}-{theme.split()[1]}.png"))
+        page.evaluate("window.renderAll()")
+        page.wait_for_function("id=>!!window._chartInstances[id]", arg=cid)
+        page.locator(f"#{cid}").scroll_into_view_if_needed()
+        # Current-runtime opt-out is the baseline here: omitted forecast role,
+        # matching the pre-option chart data and geometry without claiming an
+        # unavailable historical checkout.
+        page.screenshot(path=str(shots / f"line-forecasts-{width}-changed.png"))
+        assert errors == []
+        browser.close()
+
+
+def test_line_forecasts_chromium_desktop(tmp_path):
+    _forecast_browser_check(tmp_path, 1280)
+
+
+@pytest.mark.heavy
+def test_line_forecasts_chromium_phone(tmp_path):
+    _forecast_browser_check(tmp_path, 390)
+
+
 def test_example_module_builds_with_zero_warn_fail(tmp_path):
     path = Path(__file__).parents[1] / "demo/reports/component-showcase/examples_line_styles.py"
     spec = importlib.util.spec_from_file_location("examples_line_styles", path)
@@ -322,6 +464,22 @@ def test_example_module_builds_with_zero_warn_fail(tmp_path):
     from trellum.reporting.diagnostics import compute_details
     result = validate_report(ctx, details=compute_details(ctx))
     assert result.summary["warn"] == result.summary["fail"] == 0, [dataclasses.asdict(c) for c in result.checks if c.level in ("warn", "fail")]
+    render_report(ctx, str(tmp_path), auto_refresh=False, validation=result)
+    result.write(str(tmp_path))
+    assert (tmp_path / "index.html").is_file()
+
+
+def test_forecast_example_module_has_full_diagnostics_and_builds(tmp_path):
+    path = Path(__file__).parents[1] / "demo/reports/component-showcase/examples_line_forecasts.py"
+    spec = importlib.util.spec_from_file_location("examples_line_forecasts", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    ctx = _context(tmp_path)
+    module.add_sections(ctx)
+    from trellum.reporting.diagnostics import compute_details
+    result = validate_report(ctx, details=compute_details(ctx))
+    assert result.summary["warn"] == result.summary["fail"] == 0, [
+        dataclasses.asdict(c) for c in result.checks if c.level in ("warn", "fail")]
     render_report(ctx, str(tmp_path), auto_refresh=False, validation=result)
     result.write(str(tmp_path))
     assert (tmp_path / "index.html").is_file()

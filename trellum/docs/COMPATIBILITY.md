@@ -14,6 +14,20 @@ omission remains. Static wide-column lines/bars reject category declarations;
 legacy aggregation semantics and limitations remain. See
 [category colors](report-category-colors.md) and [migration guidance](MIGRATIONS.md).
 
+## Supplied LineChart forecast styling
+
+LineChart adds keyword-only `forecast_series=None`, an additive declaration of
+wide-series positions or exact displayed labels. Omitted, `None` and empty
+sequences preserve the existing chart payload. Enabled declarations add role
+metadata to the selected static datasets or bound chart config; matching
+framework assets render dashed lines, hollow points and a forecast symbol in
+the existing HTML legend. Positional/subclass calls and explicit `dataset_id`
+precedence remain unchanged. Static, bound wide-series and bound ratio paths
+are supported; nonempty declarations with dynamic stack splits are rejected.
+See [LineChart supplied forecasts](report-line-forecasts.md) and the
+[migration guide](MIGRATIONS.md). This presentation API does not generate values
+or change bound aggregation's existing missing-input behavior.
+
 ## KPI declaration metadata
 
 `KpiCard` adds keyword-only `availability`, `maturity` and `comparison`; bound

@@ -20,6 +20,13 @@ function _fwLinePointColor(ctx) {
     return ctx.dataset.borderColor;
 }
 
+function _fwLinePointFill(ctx) {
+    if (ctx.dataset._fwForecast) {
+        return getComputedStyle(document.documentElement).getPropertyValue('--bg-card').trim() || '#fff';
+    }
+    return ctx.dataset.borderColor;
+}
+
 /* Header summary: one statistic over one plotted series. It reads the
    datasets the chart was just given, so it can only ever describe the line on
    screen -- after filters, aggregation and ratio division alike. Missing and
@@ -478,14 +485,24 @@ function _createChart(id, canvas, spec) {
             if (ds.borderRadius === undefined) ds.borderRadius = 3;
         });
     }
+    (spec.forecastSeries || []).forEach(function(index) {
+        if (spec.datasets[index]) spec.datasets[index]._fwForecast = true;
+    });
     if (spec.lineStyle === 'adaptive') {
         spec.datasets.forEach(function(ds) {
             ds.pointRadius = _fwLinePointRadius;
             ds.pointBorderColor = _fwLinePointColor;
-            ds.pointBackgroundColor = _fwLinePointColor;
+            ds.pointBackgroundColor = _fwLinePointFill;
             ds.tension = spec.tension;
         });
     }
+    spec.datasets.forEach(function(ds) {
+        if (ds._fwForecast) {
+            ds.borderDash = [7, 4];
+            ds.pointBackgroundColor = _fwLinePointFill;
+            ds.pointBorderColor = _fwLinePointColor;
+        }
+    });
     if (spec.lineStyle !== 'adaptive' && (spec.type === 'line') && spec.labels && spec.labels.length > 400) {
         spec.datasets.forEach(function(ds) {
             if (ds.pointRadius === undefined || ds.pointRadius > 0) ds.pointRadius = 0;
@@ -629,6 +646,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                 spec.lineStyle = cfg.line_style;
                 spec.tension = cfg.tension;
             }
+            if (cfg.forecast_series) spec.forecastSeries = cfg.forecast_series;
             if (cfg.crossFilter && cfg.dataset_id) {
                 spec.crossFilter = (cfg.crossFilterMode === 'dataset' && activeStackBy)
                     ? activeStackBy : cfg.crossFilter;
@@ -1071,6 +1089,9 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                     }
                     datasets2.push(ds2);
                 }
+                (cfg.forecast_series || []).forEach(function(index) {
+                    if (datasets2[index]) datasets2[index]._fwForecast = true;
+                });
                 var tt2;
                 if (yFmt2 || cfg.horizontal) {
                     var _ttFmt = yFmt2 || function(v) { return fmtCompact(v); };
@@ -1131,6 +1152,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
         stacked: cfg.stacked, horizontal: cfg.horizontal,
         showLegend: cfg.showLegend !== false, yFmt: yFmt, tooltip: tooltip,
         lineStyle: cfg.line_style, tension: cfg.tension,
+        forecastSeries: cfg.forecast_series,
         headerSummary: cfg.header_summary,
         comboAxes: cfg.combo_axes,
         barValues: cfg.bar_values,
