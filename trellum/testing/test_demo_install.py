@@ -4,6 +4,8 @@ import json
 import subprocess
 import sys
 
+import pytest
+
 from trellum.demo import __main__ as demo
 
 
@@ -37,15 +39,16 @@ def test_installs_analysis_content_and_evidence_without_data(tmp_path, monkeypat
     )
 
 
-def test_packaged_analysis_installs_and_builds_offline(tmp_path, monkeypatch):
+@pytest.mark.parametrize("slug", ["checkout-findings", "checkout-presentation"])
+def test_packaged_analysis_installs_and_builds_offline(tmp_path, monkeypatch, slug):
     destination = tmp_path / "consumer"
     assert demo.main(["--dest", str(destination), "--no-data"]) == 0
     # A source checkout can already contain generated fixtures; a wheel never
     # carries them. Remove that optional copy before proving the offline build.
     (destination / "data-sources" / "demo.sqlite").unlink(missing_ok=True)
 
-    source = demo.DEMO_ROOT / "reports" / "checkout-findings"
-    installed = destination / "reports" / "checkout-findings"
+    source = demo.DEMO_ROOT / "reports" / slug
+    installed = destination / "reports" / slug
     for path in source.rglob("*"):
         if path.is_file():
             assert (installed / path.relative_to(source)).read_bytes() == path.read_bytes()
@@ -54,8 +57,15 @@ def test_packaged_analysis_installs_and_builds_offline(tmp_path, monkeypatch):
     # process-global project-root override.
     monkeypatch.delenv("FW_PROJECT_ROOT", raising=False)
     result = subprocess.run(
-        [sys.executable, "-m", "trellum.run", "reports/checkout-findings", "--no-serve"],
+        [sys.executable, "-m", "trellum.run", f"reports/{slug}", "--no-serve"],
         cwd=destination, capture_output=True, text=True, timeout=60,
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    assert (destination / "output" / "checkout-findings" / "index.html").is_file()
+    output = destination / "output" / slug
+    assert (output / "index.html").is_file()
+    validation = json.loads((output / "_validation.json").read_text())
+    assert validation["summary"]["fail"] == 0
+    assert validation["summary"]["warn"] == 0
+    if slug == "checkout-presentation":
+        for name in ("stage-comparison.png", "recovery-scenario.png"):
+            assert (output / "evidence" / name).read_bytes() == (source / "evidence" / name).read_bytes()
