@@ -7,6 +7,9 @@ ordinary wide series (`y`/`y_labels`), or the declared ratio labels in a bound
 ratio chart. Labels must identify exactly one plotted series; duplicate
 selections, invalid positions and captions shared by another series are errors.
 Declarations are copied on construction and checked again when rendered.
+References use the actual displayed caption, including column-name fallbacks
+in bound charts and `Series N` for a blank static legend caption. Existing
+static behavior with a shortened `y_labels` list is unchanged.
 
 An enabled series keeps its supplied values and order. It receives a dashed line
 and hollow markers whose outline follows the series color and whose center uses

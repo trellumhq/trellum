@@ -8,6 +8,8 @@ import json
 import mimetypes
 import os
 from pathlib import Path
+import subprocess
+import sys
 from urllib.parse import urlparse
 
 import pandas as pd
@@ -87,7 +89,7 @@ def _report(output):
     ])
     comparison = pd.DataFrame([
         {"day": f"2026-10-{day:02d}", "platform": platform,
-         "actual": 40 + day + offset, "prior": 39 + day + offset}
+         "actual": 40 + day + offset, "prior": 39 + day + offset, "users": 10}
         for platform, offset in (("Desktop", 0), ("Mobile", 8))
         for day in range(1, 8)
     ])
@@ -98,6 +100,10 @@ def _report(output):
         LineChart(comparison, "day", ["actual", "prior"], "Bound forecast comparison",
                   dataset_id="forecast_live", forecast_series=[1], colors=["#2563eb", "#c2410c"],
                   y_labels=["Realized", "Earlier forecast"]),
+        LineChart(comparison, "day", title="Bound forecast ratios", dataset_id="forecast_live",
+                  ratios=[{"numerator": "actual", "denominator": "users", "label": "Actual per user"},
+                          {"numerator": "prior", "denominator": "users", "label": "Forecast per user"}],
+                  forecast_series=["Forecast per user"]),
     ])
     isolated = _frame(500)
     isolated["value"] = float("nan")
@@ -341,10 +347,73 @@ def test_line_styles_chromium_phone(tmp_path):
     _browser_check(tmp_path, 390)
 
 
+def _build_forecast_reference(output):
+    """Build old Python/JS/CSS in a separate process; label shallow fallback."""
+    script = '''
+import importlib, json, pathlib, runpy, subprocess, sys
+import trellum.assets as assets
+root = pathlib.Path(sys.argv[1])
+baseline = '2a9594ede767e9eb57dec761afa79a010bb1edf8'
+fixture = runpy.run_path(str(root / 'trellum/testing/test_line_chart_style.py'))
+try:
+    historical = subprocess.run(['git', 'cat-file', '-e', baseline], cwd=root,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+except FileNotFoundError:
+    historical = False
+if historical:
+    paths = ['js/components/chart_base.js', 'js/runtime/chart_defaults.js',
+             'css/components/chart_base.css']
+    sources = {assets.STATIC_ROOT / path: subprocess.check_output(
+        ['git', 'show', baseline + ':trellum/static/' + path], cwd=root, text=True) for path in paths}
+    original = assets._read
+    assets._read = lambda path: sources[path] if path in sources else original(path)
+    module = importlib.import_module('trellum.components.charts.line_area')
+    source = subprocess.check_output(['git', 'show', baseline + ':trellum/components/charts/line_area.py'],
+                                     cwd=root, text=True)
+    exec(compile(source, baseline + '/line_area.py', 'exec'), module.__dict__)
+    kind = module.LineChart
+else:
+    kind = fixture['LineChart']
+def without_forecast(*args, **kwargs):
+    kwargs.pop('forecast_series', None)
+    return kind(*args, **kwargs)
+fixture['_report'].__globals__['LineChart'] = without_forecast
+output = pathlib.Path(sys.argv[2])
+fixture['_report'](output)
+(output / 'source.json').write_text(json.dumps({'baseline': baseline if historical else None,
+    'description': 'historical Python/JS/CSS' if historical else 'current-runtime opt-out control'}))
+'''
+    subprocess.run([sys.executable, "-c", script, str(Path(__file__).resolve().parents[2]), str(output)],
+                   check=True, timeout=90)
+    return json.loads((output / "source.json").read_text())
+
+
+def _capture_forecast_chart(page, title, output):
+    canvas = page.locator(f"canvas[data-fw-title='{title}']")
+    canvas.scroll_into_view_if_needed()
+    canvas.evaluate("""canvas => {
+        scrollTo({top:scrollY + canvas.getBoundingClientRect().top - 240, behavior:'instant'});
+        return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    }""")
+    clip = canvas.evaluate("""canvas => {
+        const plot = canvas.parentElement, box = plot.getBoundingClientRect();
+        let top = box.top, sibling = plot.previousElementSibling;
+        while (sibling && sibling.matches('.fw-chart-legend,.fw-chart-title,.fw-chart-head')) {
+            top = Math.min(top, sibling.getBoundingClientRect().top);
+            sibling = sibling.previousElementSibling;
+        }
+        return {x:box.left, y:top,
+                width:box.width, height:box.bottom - top};
+    }""")
+    page.screenshot(path=str(output), clip=clip)
+
+
 def _forecast_browser_check(tmp_path, width):
     from playwright.sync_api import sync_playwright
 
     _report(tmp_path)
+    reference_path = tmp_path / "reference"
+    reference_source = _build_forecast_reference(reference_path)
     shots = Path(os.environ.get("TRELLUM_SCREENSHOT_DIR", str(tmp_path / "evidence")))
     shots.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as pw:
@@ -353,11 +422,28 @@ def _forecast_browser_check(tmp_path, width):
         errors = []
         page.on("pageerror", lambda exc: errors.append(str(exc)))
         _open(page, tmp_path)
+        reference_page = browser.new_page(viewport={"width": width, "height": 900}, device_scale_factor=2)
+        _open(reference_page, reference_path)
+        historical = reference_page.evaluate(_STATE, "Forecast horizon")
+        reference_canvas = reference_page.locator("canvas[data-fw-title='Forecast horizon']")
+        reference_canvas.scroll_into_view_if_needed()
+        source_name = "historical" if reference_source["baseline"] else "opt-out-control"
+        _capture_forecast_chart(reference_page, "Forecast horizon",
+            shots / f"line-forecasts-{width}-{source_name}.png")
+        (shots / f"line-forecasts-{width}-source.json").write_text(json.dumps(reference_source))
         chart = page.locator("canvas[data-fw-title='Forecast horizon']")
         chart.scroll_into_view_if_needed()
         cid = chart.get_attribute("id")
         page.wait_for_function("id=>!!window._chartInstances[id]", arg=cid)
         state = page.evaluate(_STATE, "Forecast horizon")
+        assert historical["ds"][0] == state["ds"][0]
+        for key in ("width", "height", "min", "max", "ymin", "ymax", "visible"):
+            assert historical[key] == state[key]
+        for before, after in zip(historical["ds"], state["ds"]):
+            assert before["data"] == after["data"]
+            assert [(p["x"], p["y"], p["radius"]) for p in before["points"]] == [
+                (p["x"], p["y"], p["radius"]) for p in after["points"]]
+        reference_page.close()
         assert state["visible"] == [True, True]
         baseline = page.evaluate(_STATE, "Forecast opt-out baseline")
         assert baseline["ds"][0]["data"] == state["ds"][0]["data"]
@@ -426,6 +512,9 @@ def _forecast_browser_check(tmp_path, width):
         page.get_by_role("button", name="Mobile", exact=True).click()
         page.wait_for_function("id=>window._chartInstances[id].data.datasets[0].data[0]===49", arg=bound_id)
         assert page.evaluate("id=>window._chartInstances[id].data.datasets[1].data", bound_id) == [47 + day for day in range(1, 8)]
+        ratio = page.evaluate(_STATE, "Bound forecast ratios")
+        assert ratio["ds"][1]["data"] == [(47 + day) / 10 for day in range(1, 8)]
+        assert ratio["ds"][1]["dash"] == [7, 4] and ratio["ds"][1]["forecast"]
         # Theme switch then lazy reveal updates the hollow center to the card surface.
         for theme, expected in (("trellum dark", "#181b1f"), ("trellum light", "#ffffff")):
             page.locator("#fwThemeSelect").select_option(theme)
@@ -433,14 +522,23 @@ def _forecast_browser_check(tmp_path, width):
             page.wait_for_function("id=>!document.getElementById(id)._fwPendingTheme", arg=cid)
             fills = page.evaluate("id=>window._chartInstances[id].getDatasetMeta(1).data.slice(7).map(p=>p.options.backgroundColor)", cid)
             assert fills == [expected] * 3
+            ratio_canvas = page.locator("canvas[data-fw-title='Bound forecast ratios']")
+            ratio_canvas.scroll_into_view_if_needed()
+            ratio_id = ratio_canvas.get_attribute("id")
+            page.wait_for_function("id=>!document.getElementById(id)._fwPendingTheme", arg=ratio_id)
+            assert page.evaluate("""id=>{const c=window._chartInstances[id],d=c.data.datasets[1];
+                return c.getDatasetMeta(1).data.every(p=>p.options.borderColor===d.borderColor);
+            }""", ratio_id)
+            chart.scroll_into_view_if_needed()
             page.screenshot(path=str(shots / f"line-forecasts-{width}-{theme.split()[1]}.png"))
         page.evaluate("window.renderAll()")
         page.wait_for_function("id=>!!window._chartInstances[id]", arg=cid)
         page.locator(f"#{cid}").scroll_into_view_if_needed()
-        # Current-runtime opt-out is the baseline here: omitted forecast role,
-        # matching the pre-option chart data and geometry without claiming an
-        # unavailable historical checkout.
-        page.screenshot(path=str(shots / f"line-forecasts-{width}-changed.png"))
+        _capture_forecast_chart(page, "Forecast horizon", shots / f"line-forecasts-{width}-changed.png")
+        page.evaluate("window._fwDownloadCsv=(headers,rows,name)=>window.forecastCsv={headers,rows,name}")
+        page.locator(f"[data-csv-chart='{cid}']").click()
+        assert page.evaluate("window.forecastCsv.rows.map(r=>r.slice(1))") == [
+            [actual, predicted] for actual, predicted in zip(state["ds"][0]["data"], state["ds"][1]["data"])]
         assert errors == []
         browser.close()
 

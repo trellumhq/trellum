@@ -49,13 +49,12 @@ def add_sections(ctx):
         ]),
         RawHTML(html=(
             "<p>Complete synthetic realized and earlier-supplied values for each "
-            "date and platform. Values are authored for this comparison; the "
-            "framework does not fill missing forecasts.</p>"
+            "date and platform. Every compared date supplies both values; "
+            "no forecast is generated.</p>"
         )),
         LineChart(historical, "day", ["actual", "earlier_forecast"],
                   "Actual and earlier forecast", y_labels=["Realized", "Earlier forecast"],
                   dataset_id=source, forecast_series=["Earlier forecast"],
-                  colors=["#2563eb", "#c2410c"],
                   header_context="Synthetic; earlier forecast supplied before each date"),
     ])
 

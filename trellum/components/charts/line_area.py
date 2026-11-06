@@ -64,7 +64,20 @@ def _forecast_series_indices(chart: "LineChart") -> list[int]:
         return []
     if chart.stack_by or chart.stack_by_options:
         raise ValueError("LineChart forecast_series is not supported with stack_by or stack_by_options because split series are dynamic.")
-    labels = _line_series_labels(chart)
+    # Match the captions actually emitted by each existing renderer. Bound
+    # wide series fall back to column names when y_labels is short or blank;
+    # static series retain their existing zip behavior. The HTML legend also
+    # supplies a caption for a blank dataset label.
+    if chart.ratios and chart.dataset_id:
+        captions = [ratio.get("label") for ratio in chart.ratios]
+    else:
+        columns = chart.y if isinstance(chart.y, list) else [chart.y]
+        authored = chart.y_labels or columns
+        captions = ([authored[i] if i < len(authored) and authored[i] else column
+                     for i, column in enumerate(columns)] if chart.dataset_id
+                    else [label for label, _ in zip(authored, columns)])
+    labels = [str(label) if label else f"Series {i + 1}"
+              for i, label in enumerate(captions)]
     resolved: list[int] = []
     for ref in refs:
         if isinstance(ref, int):

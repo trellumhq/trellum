@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import dataclasses
+import inspect
 import json
 import re
-import dataclasses
-import inspect
 
 import pandas as pd
 import pytest
@@ -182,7 +181,7 @@ def test_invalid_forecast_series_declaration_shape(value):
 @pytest.mark.parametrize("declaration,labels,error", [
     ([3], ["Revenue", "Cost"], "outside"),
     (["Nope"], ["Revenue", "Cost"], "no series"),
-    (["Revenue"], ["Revenue", "Revenue"], "more than one"),
+    ([0], ["Revenue", "Revenue"], "caption is shared"),
     ([0, "Revenue"], ["Revenue", "Cost"], "more than once"),
     (["Revenue"], ["Revenue", "Revenue"], "more than one"),
 ])
@@ -203,6 +202,30 @@ def test_forecast_mutable_inputs_are_copied_and_stack_splits_are_rejected_only_w
     with pytest.raises(ValueError, match="dynamic"):
         LineChart(_df(), "day", "revenue", dataset_id="d", stack_by="platform",
                   forecast_series=[0]).render_html(RenderContext(theme=DefaultTheme))
+
+
+def test_forecast_selection_uses_actual_static_and_bound_caption_fallbacks():
+    _, bound = _render(LineChart(_df(), "day", ["revenue", "users"],
+        dataset_id="d", y_labels=["Revenue"], forecast_series=["users"]))
+    assert bound["forecast_series"] == [1]
+    _, blank = _render(LineChart(_df(), "day", ["revenue", "users"],
+        static=True, y_labels=["Revenue", ""], forecast_series=["Series 2"]))
+    assert blank["datasets"][1]["_fwForecast"]
+    with pytest.raises(ValueError, match="caption is shared"):
+        _render(LineChart(_df(), "day", ["revenue", "users"], static=True,
+            y_labels=["Series 2", ""], forecast_series=[1]))
+    with pytest.raises(ValueError, match="outside"):
+        _render(LineChart(_df(), "day", ["revenue", "users"], static=True,
+            y_labels=["Revenue"], forecast_series=[1]))
+
+
+def test_forecast_option_preserves_subclass_positional_fields():
+    @dataclasses.dataclass
+    class Child(LineChart):
+        extra: str = "child"
+
+    assert inspect.signature(Child).parameters["extra"].kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
+    assert inspect.signature(Child).parameters["forecast_series"].kind == inspect.Parameter.KEYWORD_ONLY
 
 
 @pytest.mark.parametrize("kwargs", [

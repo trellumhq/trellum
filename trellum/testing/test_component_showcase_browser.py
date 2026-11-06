@@ -254,6 +254,17 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             page.wait_for_function("id => window._chartInstances[id]?.data.datasets[0].data[0] === 323",
                                    arg=color_ring.get_attribute('id'))
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
+            page.get_by_role('link', name='line forecasts', exact=True).click()
+            forecast_section = page.locator('#sec-line-forecasts-—-filtered-complete-historical-comparison')
+            forecast_canvas = forecast_section.locator('canvas')
+            forecast_canvas.scroll_into_view_if_needed()
+            forecast_section.get_by_role('button', name='Mobile', exact=True).click()
+            forecast_id = forecast_canvas.get_attribute('id')
+            page.wait_for_function("id => window._chartInstances[id]?.data.datasets[1].data[0] === 49",
+                                   arg=forecast_id)
+            assert page.evaluate("id => window._chartInstances[id].data.datasets[1].borderDash", forecast_id) == [7, 4]
+            assert forecast_section.locator('.fw-forecast-key').count() == 1
+            assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
             # Every chart must own a real canvas and draw after scrolling into
             # view; scope-based data swaps cannot stand in for different layouts.
             for canvas in page.locator("canvas:visible").all():
