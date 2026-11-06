@@ -18,6 +18,25 @@ New `combo_axes` payload metadata scopes this behavior to rebuilt ComboCharts.
 Untagged payloads and other chart families keep their legacy legends. Older
 runtimes ignore the metadata safely. See [report combos](report-combos.md).
 
+## Unreleased: HeatmapChart scales and cell values
+
+Rebuild reports to apply the automatic single-hue palette for finite nonnegative
+aggregated cells, an explicit global/relative scale key, and hatched absent
+coordinates. The new keyword-only `show_values=True` option draws existing-unit
+labels when measured space allows; `False` hides labels. Tooltips retain full
+aggregate values. Existing positional calls and dataclass subclasses remain
+compatible. Explicit palettes, normalization/logarithmic math, aggregation,
+static/live precedence, category order and `drop_empty` removal rules remain.
+
+The additive `heatmap_style="sequential-v1"`, `show_values` and static
+`scale_population` metadata do not change the raw cells. Untagged payloads keep
+legacy palette/label behavior; markup without a key is safe. New payloads remain
+readable by older runtimes, which ignore the presentation fields. Rebuild with
+matching assets to apply the presentation. No host or database migration is
+required. Signed/nonfinite cells keep legacy calculations/geometry with honest
+context; null coercion, category-key collisions and empty matrix CSV limitations
+are unchanged. See [report heatmaps](report-heatmaps.md).
+
 ## Unreleased: PivotTable presentation and optional freezing
 
 PivotTable adds keyword-only `freeze=False` and `freeze_height=320`. The latter

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import math
 from typing import Any, Optional
 
 import pandas as pd
 
-from trellum.assets import load_js
+from trellum.assets import load_css, load_js
 from trellum.components.base import Component, RenderContext
 from trellum.components.charts.base import (
     _chart_container_html,
@@ -20,7 +21,11 @@ class HeatmapChart(Component):
     """Color-coded matrix chart using ``chartjs-chart-matrix``.
 
     Ideal for retention cohort grids and day/hour pattern analysis.
-    Pass ``dataset_id`` for reactive filter support.
+    Pass ``dataset_id`` for reactive filter support. Finite nonnegative cells
+    use a single theme hue and an explicit scale key. Keyword-only
+    ``show_values=False`` hides the default fitted values; tooltips keep units
+    and full aggregate values. Absent coordinates are distinct from measured
+    zero; existing null-to-zero aggregation is unchanged.
 
     ``normalize``: ``None`` (default) colours cells on one global scale;
     ``"row"`` / ``"col"`` stretch each row or column across its own min..max.
@@ -48,8 +53,12 @@ class HeatmapChart(Component):
     value_format: str = "number"
     dataset_id: Optional[str] = None
     static: bool = False
+    #: Draw formatted cell values when they fit; exact values remain in tooltips.
+    show_values: bool = field(default=True, kw_only=True)
 
     def __post_init__(self):
+        if not isinstance(self.show_values, bool):
+            raise ValueError("HeatmapChart show_values must be a bool")
         if self.normalize not in (None, "row", "col"):
             raise ValueError(
                 f"HeatmapChart normalize must be None, 'row' or 'col', "
@@ -71,6 +80,8 @@ class HeatmapChart(Component):
                 "color_scale": self.color_scale,
                 "value_format": self.value_format,
                 "title": self.title,
+                "heatmap_style": "sequential-v1",
+                "show_values": self.show_values,
             }
             if self.log_scale is not None:
                 cfg["log_scale"] = self.log_scale
@@ -96,6 +107,13 @@ class HeatmapChart(Component):
                 "y_labels": y_labels,
                 "color_scale": self.color_scale,
                 "value_format": self.value_format,
+                "heatmap_style": "sequential-v1",
+                "show_values": self.show_values,
+                # JSON sanitization can turn nonfinite numbers into nulls.
+                # Keep this presentation fact separate from aggregated values.
+                "scale_population": ("nonnegative" if all(
+                    c["v"] is not None and math.isfinite(c["v"]) and c["v"] >= 0
+                    for c in cells) else "unsupported"),
             }
             if self.log_scale is not None:
                 cfg["log_scale"] = self.log_scale
@@ -105,7 +123,10 @@ class HeatmapChart(Component):
                 cfg["drop_empty"] = True
             ctx.register(cid, cfg)
 
-        return _chart_container_html(cid, self.title)
+        return _chart_container_html(
+            cid, self.title,
+            extra_before=f'<div class="fw-heatmap-key" data-heatmap-key="{cid}"></div>',
+        )
 
     def _aggregate_cells(self, df: pd.DataFrame) -> list[dict]:
         """Collapse to one row per (x, y) coordinate, summing the value."""
@@ -132,7 +153,7 @@ class HeatmapChart(Component):
 
     @classmethod
     def css(cls) -> str:
-        return _ChartBase.css()
+        return _ChartBase.css() + "\n" + load_css("components/heatmap.css")
 
     @classmethod
     def client_js(cls) -> str:

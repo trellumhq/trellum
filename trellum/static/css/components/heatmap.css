@@ -1,0 +1,24 @@
+/* Heatmap presentation is scoped to its own key and missing-cell tooltip. */
+.fw-heatmap-key {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px;
+    margin: 6px 0 10px; color: var(--text-secondary);
+    font-size: var(--font-size-label); line-height: 1.5; min-width: 0;
+}
+.fw-heatmap-key:empty { display: none; }
+.fw-heatmap-gradient {
+    width: 96px; height: 10px; flex-shrink: 0;
+    border: 1px solid var(--border-color); border-radius: 2px;
+}
+.fw-heatmap-range { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.fw-heatmap-context { flex-basis: 100%; overflow-wrap: anywhere; }
+.fw-heatmap-missing {
+    width: 18px; height: 12px; border: 1px solid var(--border-color);
+    background: repeating-linear-gradient(135deg, var(--bg-card) 0 4px, var(--border-color) 4px 5px);
+}
+.fw-heatmap-tooltip {
+    position: absolute; z-index: 6; pointer-events: none;
+    max-width: 100%; box-sizing: border-box; padding: 6px 8px;
+    background: var(--bg-card); color: var(--text-main);
+    border: 1px solid var(--border-color); border-radius: var(--radius-control);
+    font-size: var(--font-size-tooltip); overflow-wrap: anywhere;
+}

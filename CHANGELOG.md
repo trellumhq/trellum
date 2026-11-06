@@ -14,6 +14,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   keyword-only unit descriptions, and deterministic live/static showcase examples.
   Existing plotted data, scales, heights, nearest tooltips and CSV are preserved.
 
+- Report heatmaps use a theme-hue quantity scale for nonnegative cells, with
+  explicit global/relative scale context, distinct absent coordinates and
+  default fitted values (keyword-only `show_values=False` hides them). Added
+  deterministic heatmap examples and responsive axis-slot sizing; existing
+  aggregation, palettes and data/export boundaries remain.
+
 - Compact PivotTable rows, grouped category headers and a distinct grand-total
   band, plus keyword-only opt-in header/first-dimension freezing. Selectors,
   calculations and CSV scope remain unchanged.
