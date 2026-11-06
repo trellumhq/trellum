@@ -15,7 +15,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   setup and deletes only unchanged owned scaffolds; edited notes and ignore
   protection for retained results stay in place. Unchanged guidance generated
   before context scaffolding is still recognized during removal. Windows setup
-  and removal reject reparse points while preserving edited notes and exports.
+  and removal reject reparse points and pin scaffold directories against
+  replacement while preserving edited notes and exports.
 
 - Administrators can include hidden, expired and disabled reports on the regular
   Reports page with a default-off option. Cards and lists identify repository

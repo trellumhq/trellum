@@ -29,8 +29,10 @@ def _handle(path, *, directory=False):
 
     kernel = _kernel()
     # No FILE_SHARE_DELETE: ancestors cannot be renamed/replaced while pinned.
+    # FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES engages sharing checks;
+    # attribute-only directory handles do not prevent rename or deletion.
     # OPEN_REPARSE_POINT inspects the link itself rather than following it.
-    handle = kernel.CreateFileW(str(path), 0x80 if directory else 0x80000000,
+    handle = kernel.CreateFileW(str(path), 0x81 if directory else 0x80000000,
                                 3 if directory else 1, None, 3, 0x02200000, None)
     if handle == ctypes.c_void_p(-1).value:
         raise ctypes.WinError(ctypes.get_last_error())
