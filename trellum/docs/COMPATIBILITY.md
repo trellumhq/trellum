@@ -1,5 +1,17 @@
 # Framework Compatibility Policy
 
+## Unreleased: live-result identity and request ownership
+
+The live-query binder adds detached per-dataset state and subscriptions without
+changing component constructors, request bodies, host gates or completed layouts.
+Native registration owns snapshot installation so repeat rendering preserves
+queried rows. Source replacement invalidates old work; a 30-second client
+deadline covers fetch and body parsing. Malformed success envelopes retain the
+previous result and report failure instead of becoming empty results. The first
+429 still receives one automatic retry. Consumers must release subscriptions;
+snapshot replacement requires new objects. Rebuild matching runtime assets;
+no host or database migration is required. See [live-result state](live-result-state.md).
+
 ## Unreleased: optional SankeyChart
 
 `SankeyChart` adds a snapshot-only chart API without changing existing chart

@@ -9,6 +9,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Per-dataset live-result identity and subscriptions, with owned retries,
+  abortable requests and a 30-second client deadline. Redraws retain queried
+  rows; source replacement and stale responses cannot overwrite newer results.
+  Existing report layouts and live-query endpoint contracts remain unchanged.
+
 - Optional Sankey charts for supplied complete paths or adjacent transitions,
   with exact details, bounded snapshot validation, native filters and CSV export.
   Native captures support completed empty and zero-flow results.

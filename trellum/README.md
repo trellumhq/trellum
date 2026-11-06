@@ -812,6 +812,11 @@ table, KPI row — redraws through its normal path; sorting, search and CSV
 download keep working on live results. A `429` shows "busy — retrying" and
 retries once after `Retry-After`.
 
+The runtime exposes per-dataset requested/displayed selection and snapshot/query
+identity through [live-result state](docs/live-result-state.md). Redraws preserve
+queried rows; requests and body parsing have a 30-second client deadline.
+Completion time describes receipt of a result, not freshness of its source.
+
 **What ships where.** The SQL is written to `_live_queries.json` beside
 `_meta.json` for the host to read. It never enters `data.json` or
 `index.html` — the page carries only the query id, the param schema

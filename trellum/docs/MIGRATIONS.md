@@ -1,5 +1,18 @@
 # Framework Migration Guide
 
+## Unreleased: live-result identity and request ownership
+
+Existing reports need no source changes. Rebuild report assets together to gain
+coherent live-result identity, redraw preservation and abortable request
+lifecycles. Custom consumers may use `getDatasetState` and `subscribeDataset`
+on `window._fwLiveQuery`; unsubscribe on replacement/removal and treat a valid
+empty result separately from an absent result. Custom source replacement must
+provide new snapshot/report objects instead of mutating their cells in place.
+Requests now fail after a 30-second client deadline or an invalid response
+envelope while retaining valid displayed rows. Server-side SQL cancellation is
+not guaranteed by browser abort. No endpoint or database migration is needed.
+See [the state contract](live-result-state.md).
+
 ## Unreleased: optional SankeyChart
 
 Existing charts need no changes. Import `SankeyChart` from `trellum.components`
