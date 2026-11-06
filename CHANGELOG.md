@@ -33,6 +33,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- Present report date ranges with readable locale-aware dates, paired endpoint
+  labels, quieter presets, recorded-date context, unavailable-bound feedback
+  and viewport-bounded keyboard-accessible pickers. Range calculations and
+  URL behavior are preserved.
+
 - Display report KPI comparisons as subtle pills within their existing line
   height, and use readable tabular values for inline and stacked MiniKpi metrics.
 

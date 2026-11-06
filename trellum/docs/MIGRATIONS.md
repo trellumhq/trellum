@@ -27,6 +27,21 @@ tables to include omitted rows. New code still accepts older payloads. Matching,
 available and export counts describe the actual table population. See
 [report data tables](report-data-tables.md) for precision and live-result details.
 
+## Unreleased: report date range presentation
+
+Rebuild reports to receive readable locale-aware trigger dates, paired native
+Start/End date and time fields, quieter presets and explicit recorded-bound
+context. Closed trigger height and existing filter values remain unchanged;
+long text fits its panel. Escape closes the floating picker and returns focus.
+Unavailable recorded bounds disable selection with a brief explanation.
+
+No authoring API, host, artifact or URL migration is required. Existing
+`default_days`, custom presets, inclusive ranges and timezone calculations are
+preserved. Custom styles targeting the former separate time row should account
+for `.fw-date-endpoint` wrappers. Date/time classes, `data-edge` attributes and
+Start/End query order remain intact. See [report date ranges](report-date-ranges.md)
+for API usage and pre-existing precision, timezone and open-link limitations.
+
 ## Unreleased: standalone report choices and views
 
 Rebuilding applies a labeled, searchable, wrapping presentation to standalone

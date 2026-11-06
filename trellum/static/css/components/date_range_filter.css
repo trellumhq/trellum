@@ -1,48 +1,41 @@
-.fw-filter-date-item { position: relative; }
-.fw-date-range { position: relative; }
+.fw-filter-date-item { position: relative; min-width: 0; max-width: 100%; }
+.fw-date-range { position: relative; min-width: 0; max-width: 100%; }
 .fw-date-trigger {
     display: inline-flex; align-items: center; gap: 6px;
     padding: 4px 10px; font-size: var(--font-size-interface); font-weight: 500;
     background: var(--bg-card); color: var(--text-main);
     border: 1px solid var(--border-color); border-radius: var(--radius-control);
     cursor: pointer; white-space: nowrap; transition: all 0.15s;
-    font-family: inherit;
+    font-family: inherit; max-width: 100%; box-sizing: border-box;
 }
+.fw-date-trigger-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .fw-date-trigger:hover { border-color: var(--accent-red); }
 .fw-date-trigger-icon { width: 14px; height: 14px; opacity: 0.5; flex-shrink: 0; }
 .fw-date-popover {
     display: none; position: absolute; top: calc(100% + 4px); left: 0;
-    z-index: 200; min-width: 280px;
+    z-index: 200; width: 360px; max-width: calc(100vw - 16px); min-width: 0;
     background: var(--bg-card); border: 1px solid var(--border-color);
-    border-radius: var(--radius-card); padding: 12px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+    border-radius: var(--radius-card); padding: 12px; box-sizing: border-box;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15); overflow: auto;
 }
 .fw-date-popover.open { display: block; }
-.fw-date-popover-row {
-    display: flex; gap: 8px; margin-bottom: 8px;
-}
-.fw-date-field { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.fw-date-popover-row { display: flex; gap: 8px; margin-bottom: 8px; }
+.fw-date-endpoint { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 0; }
+.fw-date-field { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .fw-date-field-label {
-    font-size: var(--font-size-label); text-transform: uppercase; letter-spacing: 0.5px;
-    color: var(--text-secondary); font-weight: 600;
+    font-size: var(--font-size-label); color: var(--text-secondary); font-weight: 600;
 }
-.fw-date-popover .fw-date-input {
-    padding: 5px 8px; font-size: var(--font-size-interface); width: 100%;
+.fw-date-popover .fw-date-input, .fw-date-hour {
+    padding: 5px 8px; font-size: var(--font-size-interface); width: 100%; min-width: 0;
     background: var(--bg-main); color: var(--text-main);
     border: 1px solid var(--border-color); border-radius: var(--radius-control);
-    box-sizing: border-box;
+    box-sizing: border-box; font-family: inherit;
 }
-.fw-date-hour-row {
-    display: flex; align-items: center; gap: 6px;
-    margin-bottom: 8px;
+.fw-date-reference, .fw-date-unavailable {
+    font-size: var(--font-size-label); color: var(--text-secondary);
+    line-height: 1.5; margin: 0 0 8px; overflow-wrap: anywhere;
 }
-.fw-date-hour {
-    padding: 4px 8px; font-size: var(--font-size-interface); flex: 1;
-    background: var(--bg-main); color: var(--text-main);
-    border: 1px solid var(--border-color); border-radius: var(--radius-control);
-    font-family: inherit;
-}
-.fw-date-sep { color: var(--text-secondary); font-size: 12px; flex-shrink: 0; }
+.fw-date-unavailable { max-width: 32ch; margin: 4px 0 0; }
 .fw-date-presets {
     display: flex; gap: 4px; flex-wrap: wrap;
     border-top: 1px solid var(--border-color); padding-top: 8px;
@@ -54,10 +47,18 @@
     cursor: pointer; white-space: nowrap; transition: all 0.15s;
     line-height: 1.4; font-family: inherit;
 }
-.fw-date-preset:hover {
-    border-color: var(--accent-red); color: var(--accent-red);
-}
+.fw-date-preset:hover { border-color: var(--accent-red); color: var(--accent-red); }
 .fw-date-preset.active {
-    background: var(--primary-fill); color: var(--on-accent);
-    border-color: var(--primary-fill); font-weight: 600;
+    background: var(--bg-main); color: var(--text-main);
+    border-color: var(--accent-red); font-weight: 600;
+}
+.fw-date-trigger:disabled, .fw-date-preset:disabled,
+.fw-date-input:disabled, .fw-date-hour:disabled { opacity: 0.6; cursor: default; }
+.fw-date-trigger:focus-visible, .fw-date-preset:focus-visible,
+.fw-date-input:focus-visible, .fw-date-hour:focus-visible {
+    outline: 2px solid var(--accent-red); outline-offset: 2px;
+}
+@media (max-width: 640px) {
+    .fw-date-popover .fw-date-input, .fw-date-hour { min-height: 40px; font-size: 16px; }
+    .fw-date-preset { min-height: 40px; }
 }
