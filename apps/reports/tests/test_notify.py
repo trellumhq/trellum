@@ -302,6 +302,7 @@ class TestRunFinishedTransitions:
     def test_recovery_sends_one_recovered_mail(self, report_row, developer):
         _make_run(report_row, Run.SUCCESS)
         notify_run_finished(_make_run(report_row, Run.ERROR))
+        flush_broken_buffers(force=True)
         mail.outbox.clear()
 
         notify_run_finished(_make_run(report_row, Run.SUCCESS))
@@ -373,9 +374,10 @@ class TestRunFinishedTransitions:
         notify_run_finished(success)
         flush_broken_buffers(force=True)
         assert ["Broken" in m.subject for m in mail.outbox] == (
-            [True, False] if flush_before_recovery else [False]
+            [True, False] if flush_before_recovery else []
         )
-        assert "Recovered" in mail.outbox[-1].subject
+        if flush_before_recovery:
+            assert "Recovered" in mail.outbox[-1].subject
         assert not BrokenReportPending.objects.filter(report=report_row).exists()
 
     def test_first_failure_without_eligible_audience(self, report_row, viewer):
@@ -427,6 +429,286 @@ class TestRunFinishedTransitions:
 
 
 # ── broken-mail coalescing ────────────────────────────────────────────────────
+
+class TestRecoveryAcceptance:
+    @pytest.mark.parametrize("status", [Run.ERROR, Run.TIMEOUT, Run.OOM_KILLED])
+    def test_quick_recovery_is_silent(self, report_row, developer, status):
+        notify_run_finished(_make_run(report_row, status))
+        notify_run_finished(_make_run(report_row, Run.SUCCESS))
+        flush_broken_buffers(force=True)
+        assert mail.outbox == []
+
+    def test_accepted_failure_recovers_once_after_failed_retries(self, report_row, developer):
+        from apps.reports.models import BrokenReportReceipt
+
+        failure = _make_run(report_row, Run.ERROR)
+        notify_run_finished(failure)
+        flush_broken_buffers(force=True)
+        assert list(BrokenReportReceipt.objects.values_list("failure_run_id", "user_id", "email")) == [
+            (failure.pk, developer.pk, developer.email)
+        ]
+        for status in (Run.TIMEOUT, Run.STOPPED, Run.OOM_KILLED, Run.STOPPED):
+            notify_run_finished(_make_run(report_row, status))
+            flush_broken_buffers(force=True)
+        success = _make_run(report_row, Run.SUCCESS)
+        notify_run_finished(success)
+        notify_run_finished(success)
+        notify_run_finished(failure)
+        flush_broken_buffers(force=True)
+        assert len(mail.outbox) == 2
+        assert "Recovered" in mail.outbox[-1].subject
+        assert not BrokenReportReceipt.objects.exists()
+
+    @pytest.mark.parametrize("outcome", ["zero", "exception"])
+    def test_unaccepted_failure_cannot_recover(self, report_row, developer, monkeypatch, outcome):
+        from apps.reports import notify
+        from apps.reports.models import BrokenReportReceipt
+
+        def send(*args, **kwargs):
+            if outcome == "exception":
+                raise RuntimeError("synthetic failure")
+            return 0
+
+        notify_run_finished(_make_run(report_row, Run.ERROR))
+        with monkeypatch.context() as patch:
+            patch.setattr(notify.EmailMultiAlternatives, "send", send)
+            flush_broken_buffers(force=True)
+        assert not BrokenReportReceipt.objects.exists()
+        notify_run_finished(_make_run(report_row, Run.SUCCESS))
+        assert mail.outbox == []
+
+    @pytest.mark.parametrize("outcome", ["zero", "exception"])
+    def test_only_accepted_recipient_recovers(
+        self, report_row, developer, other_developer, monkeypatch, outcome
+    ):
+        from apps.reports import notify
+
+        original = notify.EmailMultiAlternatives.send
+
+        def send(message, **kwargs):
+            if message.to == [developer.email]:
+                return original(message, **kwargs)
+            if outcome == "exception":
+                raise RuntimeError("synthetic failure")
+            return 0
+
+        notify_run_finished(_make_run(report_row, Run.ERROR))
+        with monkeypatch.context() as patch:
+            patch.setattr(notify.EmailMultiAlternatives, "send", send)
+            flush_broken_buffers(force=True)
+        mail.outbox.clear()
+        notify_run_finished(_make_run(report_row, Run.SUCCESS))
+        assert [message.to for message in mail.outbox] == [[developer.email]]
+
+    @pytest.mark.parametrize("change", ["revoked", "deactivated", "email", "replacement", "private"])
+    def test_recovery_requires_same_user_address_and_current_access(
+        self, report_row, developer, make_user, grant_studio, settings, change
+    ):
+        from apps.reports.models import BrokenReportReceipt
+        from apps.studios.models import StudioMembership
+
+        notify_run_finished(_make_run(report_row, Run.ERROR))
+        flush_broken_buffers(force=True)
+        mail.outbox.clear()
+        old_email = developer.email
+        if change in ("revoked", "replacement"):
+            StudioMembership.objects.filter(studio=report_row.studio, user=developer).delete()
+        if change == "deactivated":
+            developer.is_active = False
+            developer.save(update_fields=["is_active"])
+        if change in ("email", "replacement"):
+            developer.email = "changed@example.test"
+            developer.save(update_fields=["email"])
+        if change == "replacement":
+            replacement = make_user(old_email, org=report_row.studio.org)
+            grant_studio(replacement, report_row.studio, roles.DEVELOPER)
+        if change == "private":
+            settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = False
+            report_row.audience = report_row.AUDIENCE_PRIVATE
+            report_row.save(update_fields=["audience"])
+        notify_run_finished(_make_run(report_row, Run.SUCCESS))
+        assert mail.outbox == []
+        assert not BrokenReportReceipt.objects.exists()
+        # Restoring the original recipient cannot resurrect the consumed episode.
+        developer.email, developer.is_active = old_email, True
+        if change == "replacement":
+            replacement.delete()
+        developer.save(update_fields=["email", "is_active"])
+        StudioMembership.objects.update_or_create(
+            user=developer, studio=report_row.studio, defaults={"role": roles.DEVELOPER}
+        )
+        report_row.audience = report_row.AUDIENCE_STUDIO
+        report_row.save(update_fields=["audience"])
+        notify_run_finished(_make_run(report_row, Run.ERROR))
+        notify_run_finished(_make_run(report_row, Run.SUCCESS))
+        flush_broken_buffers(force=True)
+        assert mail.outbox == []
+
+    def test_new_recipient_does_not_get_recovery(
+        self, report_row, developer, make_user, grant_studio
+    ):
+        notify_run_finished(_make_run(report_row, Run.ERROR))
+        flush_broken_buffers(force=True)
+        joiner = make_user("joiner@example.test", org=report_row.studio.org)
+        grant_studio(joiner, report_row.studio, roles.DEVELOPER)
+        mail.outbox.clear()
+        notify_run_finished(_make_run(report_row, Run.SUCCESS))
+        assert [message.to for message in mail.outbox] == [[developer.email]]
+
+    def test_second_quick_incident_cannot_reuse_acceptance(self, report_row, developer):
+        notify_run_finished(_make_run(report_row, Run.ERROR))
+        flush_broken_buffers(force=True)
+        notify_run_finished(_make_run(report_row, Run.SUCCESS))
+        mail.outbox.clear()
+        notify_run_finished(_make_run(report_row, Run.TIMEOUT))
+        notify_run_finished(_make_run(report_row, Run.SUCCESS))
+        flush_broken_buffers(force=True)
+        assert mail.outbox == []
+
+    def test_historical_failure_without_receipt_is_quiet(self, report_row, developer):
+        _make_run(report_row, Run.ERROR)
+        notify_run_finished(_make_run(report_row, Run.SUCCESS))
+        assert mail.outbox == []
+
+    def test_unprocessed_success_still_closes_old_receipts(self, report_row, developer):
+        from apps.reports.models import BrokenReportReceipt
+
+        notify_run_finished(_make_run(report_row, Run.ERROR))
+        flush_broken_buffers(force=True)
+        _make_run(report_row, Run.SUCCESS)  # its callback is delayed or lost
+        notify_run_finished(_make_run(report_row, Run.ERROR))
+        mail.outbox.clear()
+        notify_run_finished(_make_run(report_row, Run.SUCCESS))
+        flush_broken_buffers(force=True)
+        assert mail.outbox == []
+        assert not BrokenReportReceipt.objects.exists()
+
+    def test_delayed_failure_callback_after_success_does_not_buffer(self, report_row, developer):
+        from apps.reports.models import BrokenReportPending
+
+        failure = _make_run(report_row, Run.ERROR)
+        notify_run_finished(_make_run(report_row, Run.SUCCESS))
+        notify_run_finished(failure)
+        flush_broken_buffers(force=True)
+        assert mail.outbox == []
+        assert not BrokenReportPending.objects.exists()
+
+    @pytest.mark.django_db(transaction=True)
+    def test_alert_transport_runs_outside_transactions(self, report_row, developer, monkeypatch):
+        from django.db import connection
+        from apps.reports import notify
+
+        original = notify.EmailMultiAlternatives.send
+
+        def send(message, **kwargs):
+            assert not connection.in_atomic_block
+            return original(message, **kwargs)
+
+        monkeypatch.setattr(notify.EmailMultiAlternatives, "send", send)
+        notify_run_finished(_make_run(report_row, Run.ERROR))
+        flush_broken_buffers(force=True)
+        notify_run_finished(_make_run(report_row, Run.SUCCESS))
+        assert len(mail.outbox) == 2
+
+    @pytest.mark.parametrize("callback", [False, True])
+    def test_loaded_buffer_superseded_by_success_is_not_sent(
+        self, report_row, developer, callback
+    ):
+        from apps.reports import notify
+        from apps.reports.models import BrokenReportPending, BrokenReportReceipt
+
+        failure = _make_run(report_row, Run.ERROR)
+        notify_run_finished(failure)
+        loaded = list(BrokenReportPending.objects.select_related("report", "run", "previous_run"))
+        success = _make_run(report_row, Run.SUCCESS)
+        if callback:
+            notify_run_finished(success)
+        notify._flush_studio_buffer(loaded)
+        notify_run_finished(failure)
+        assert mail.outbox == []
+        assert not BrokenReportPending.objects.exists()
+        assert not BrokenReportReceipt.objects.exists()
+
+    @pytest.mark.django_db(transaction=True)
+    def test_recovery_during_failure_transport_cannot_leave_late_receipt(
+        self, report_row, developer, monkeypatch
+    ):
+        from django.db import connection
+        from apps.reports import notify
+        from apps.reports.models import BrokenReportReceipt
+
+        original = notify.EmailMultiAlternatives.send
+
+        def send(message, **kwargs):
+            assert not connection.in_atomic_block
+            accepted = original(message, **kwargs)
+            notify_run_finished(_make_run(report_row, Run.SUCCESS))
+            return accepted
+
+        notify_run_finished(_make_run(report_row, Run.ERROR))
+        with monkeypatch.context() as patch:
+            patch.setattr(notify.EmailMultiAlternatives, "send", send)
+            flush_broken_buffers(force=True)
+        assert not BrokenReportReceipt.objects.exists()
+        mail.outbox.clear()
+        notify_run_finished(_make_run(report_row, Run.ERROR))
+        notify_run_finished(_make_run(report_row, Run.SUCCESS))
+        assert mail.outbox == []
+
+    def test_delayed_success_does_not_consume_new_incident(self, report_row, developer):
+        from apps.reports.models import BrokenReportReceipt
+
+        notify_run_finished(_make_run(report_row, Run.ERROR))
+        flush_broken_buffers(force=True)
+        old_success = _make_run(report_row, Run.SUCCESS)
+        second_failure = _make_run(report_row, Run.ERROR)
+        notify_run_finished(second_failure)
+        flush_broken_buffers(force=True)
+        mail.outbox.clear()
+        notify_run_finished(old_success)
+        assert BrokenReportReceipt.objects.get().failure_run_id == second_failure.pk
+        notify_run_finished(_make_run(report_row, Run.SUCCESS))
+        assert len(mail.outbox) == 1
+        assert "Recovered" in mail.outbox[0].subject
+
+    @pytest.mark.parametrize("outcome", ["all", "zero", "exception", "partial"])
+    def test_grouped_notices_record_each_accepted_report_and_recipient(
+        self, studio_tree, write_report, developer, other_developer, monkeypatch, outcome
+    ):
+        from apps.reports import notify
+        from apps.reports.models import BrokenReportReceipt, Report
+        from apps.reports.scan import sync_studio_registry
+
+        for slug in ("receipt-a", "receipt-b"):
+            write_report(slug)
+        sync_studio_registry(studio_tree)
+        reports = list(Report.objects.filter(studio=studio_tree, slug__startswith="receipt-"))
+        for report in reports:
+            notify_run_finished(_make_run(report, Run.ERROR))
+        original = notify.EmailMultiAlternatives.send
+
+        def send(message, **kwargs):
+            if outcome == "zero" or (outcome == "partial" and message.to != [developer.email]):
+                return 0
+            if outcome == "exception":
+                raise RuntimeError("synthetic failure")
+            return original(message, **kwargs)
+
+        with monkeypatch.context() as patch:
+            patch.setattr(notify.EmailMultiAlternatives, "send", send)
+            flush_broken_buffers(force=True)
+        users = [developer, other_developer] if outcome == "all" else [developer] if outcome == "partial" else []
+        assert set(BrokenReportReceipt.objects.values_list("report_id", "user_id", "email")) == {
+            (report.pk, user.pk, user.email) for report in reports for user in users
+        }
+        mail.outbox.clear()
+        for report in reports:
+            notify_run_finished(_make_run(report, Run.SUCCESS))
+        assert sorted(message.to[0] for message in mail.outbox) == sorted(
+            user.email for report in reports for user in users
+        )
+        assert not BrokenReportReceipt.objects.exists()
+
 
 class TestCoalescing:
     """A broken-build transition is buffered (BrokenReportPending), not
@@ -528,6 +810,7 @@ class TestCoalescing:
     def test_recovered_mail_is_never_buffered(self, report_row, developer):
         _make_run(report_row, Run.SUCCESS)
         notify_run_finished(_make_run(report_row, Run.ERROR))
+        flush_broken_buffers(force=True)
         mail.outbox.clear()
 
         notify_run_finished(_make_run(report_row, Run.SUCCESS))
@@ -539,7 +822,7 @@ class TestCoalescing:
         """A fail -> recover within the coalescing window must not leave a
         stale BrokenReportPending row behind -- otherwise the next flush
         mails a confusing "Broken" notice for a report that already
-        recovered (on top of the Recovered mail already sent)."""
+        recovered. Both failure and recovery stay quiet for this incident."""
         from apps.reports.models import BrokenReportPending
 
         _make_run(report_row, Run.SUCCESS)
@@ -549,29 +832,24 @@ class TestCoalescing:
 
         notify_run_finished(_make_run(report_row, Run.SUCCESS))  # recovers, still inside the window
 
-        assert len(mail.outbox) == 1
-        assert "Recovered" in mail.outbox[0].subject
+        assert mail.outbox == []
         assert not BrokenReportPending.objects.filter(report=report_row).exists()
 
         flush_broken_buffers(force=True)  # nothing left to flush
 
-        assert len(mail.outbox) == 1  # unchanged: no stale Broken mail
+        assert mail.outbox == []
 
-    def test_same_report_breaking_twice_in_window_is_still_a_single_report_mail(
+    def test_stopped_retry_preserves_one_pending_failure(
         self, report_row, developer
     ):
-        """A report can rack up more than one buffered transition within
-        one coalescing window: break, get cancelled by a user (STOPPED
-        counts as neither broken nor recovered), then break again before
-        the window elapses. That must still read as ONE broken report, not
-        trip the multi-report summary path on itself."""
+        """Cancelling a retry neither closes nor restarts the incident."""
         from apps.reports.models import BrokenReportPending
 
         _make_run(report_row, Run.SUCCESS)
         notify_run_finished(_make_run(report_row, Run.ERROR, stderr_tail="boom"))
         notify_run_finished(_make_run(report_row, Run.STOPPED))
         notify_run_finished(_make_run(report_row, Run.ERROR, stderr_tail="boom again"))
-        assert BrokenReportPending.objects.filter(report=report_row).count() == 2
+        assert BrokenReportPending.objects.filter(report=report_row).count() == 1
 
         flush_broken_buffers(force=True)
 
@@ -644,6 +922,7 @@ class TestNoUnsubscribeOnAlertMail:
     def test_recovered_mail_has_no_unsubscribe_link(self, report_row, developer):
         _make_run(report_row, Run.SUCCESS)
         notify_run_finished(_make_run(report_row, Run.ERROR))
+        flush_broken_buffers(force=True)
         mail.outbox.clear()
 
         notify_run_finished(_make_run(report_row, Run.SUCCESS))

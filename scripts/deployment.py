@@ -5,7 +5,6 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
 import re
 import shlex
 import signal
@@ -13,6 +12,7 @@ import subprocess
 import sys
 import time
 import uuid
+from pathlib import Path
 
 
 class DeploymentError(Exception):
