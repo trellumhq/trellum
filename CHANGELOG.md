@@ -80,6 +80,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   Exhausted catalog request timeouts clear loading feedback on initial entry and
   history restoration, retain existing rows, and show a recoverable failure.
 
+- Recover abandoned local report sandboxes after a worker restart, including
+  cancelled runs, while retaining the admission fence until termination is
+  confirmed and preventing automatic replay of unknown outcomes.
+
 - Upgrade and roll back portal and runner images as a verified pair, with
   preflight image checks, paired backup manifests and guarded database recovery.
   Preserve Docker-only hosts and explicitly paired legacy-backup recovery.
