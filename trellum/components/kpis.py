@@ -145,6 +145,7 @@ class KpiRow(Component):
     mobile_collapse: int = 0
     dataset_id: Optional[str] = None
     static: bool = False
+    live_context: bool = field(default=True, kw_only=True)
 
     _component_type: str = field(default="kpi_row", init=False, repr=False)
     _supports_dataset_id: bool = field(default=True, init=False, repr=False)
@@ -152,6 +153,8 @@ class KpiRow(Component):
     def render_html(self, ctx: RenderContext) -> str:
         cid = ctx.next_id()
 
+        if type(self.live_context) is not bool:
+            raise ValueError("KpiRow live_context must be bool")
         if self.dataset_id:
             from trellum.metrics import expand_claim
 
@@ -168,6 +171,7 @@ class KpiRow(Component):
                 "type": "kpi_row_live",
                 "dataset_id": self.dataset_id,
                 "kpis": kpis,
+                **({"live_context": True} if self.live_context and not self.static else {}),
             })
             cards = [
                 f'<div class="fw-kpi-card" id="{cid}_k{i}"></div>'
@@ -211,13 +215,13 @@ class KpiRow(Component):
 
     @classmethod
     def css(cls) -> str:
-        return KpiCard.css()
+        return KpiCard.css() + "\n" + load_css("components/live_result_context.css")
 
     @classmethod
     def client_js(cls) -> str:
         static_js = KpiCard.client_js()
         live_js = load_js("components/kpi_row.js")
-        return static_js + "\n" + live_js
+        return static_js + "\n" + load_js("components/live_result_context.js") + "\n" + live_js
 
 
 @dataclass

@@ -81,6 +81,7 @@ class DataTable(Component):
     pin_footer: bool = field(default=False, kw_only=True)
     pin_height: int = field(default=320, kw_only=True)
     drill_down: Optional[dict] = field(default=None, kw_only=True)
+    live_context: bool = field(default=True, kw_only=True)
 
     # ComparisonTable's presentation metadata travels with the same population.
     _comparison: Optional[dict] = field(default=None, init=False, repr=False)
@@ -89,6 +90,8 @@ class DataTable(Component):
     _supports_dataset_id: bool = field(default=True, init=False, repr=False)
 
     def __post_init__(self) -> None:
+        if type(self.live_context) is not bool:
+            raise ValueError("DataTable live_context must be bool")
         self.drill_down = drill_down_config(self.drill_down, self.df, self.columns or list(self.df.columns))
         _validate_row_limit(self.row_limit)
         _validate_table_pinning(self.pin_header, self.pin_footer, self.pin_height)
@@ -98,6 +101,8 @@ class DataTable(Component):
             raise ValueError("DataTable pin_footer requires nonempty totals declarations")
 
     def render_html(self, ctx: RenderContext) -> str:
+        if type(self.live_context) is not bool:
+            raise ValueError("DataTable live_context must be bool")
         if self.live:
             raise ValueError(_LIVE_LEGACY_ERROR)
         row_limit = _validate_row_limit(self.row_limit)
@@ -158,6 +163,8 @@ class DataTable(Component):
                 cfg["title"] = self.title
             if self._comparison is not None:
                 cfg["comparison"] = self._comparison
+            elif self.live_context and not self.static:
+                cfg["live_context"] = True
             ctx.register(cid, cfg)
             return (
                 f'<div class="fw-table-header fw-data-table-header">{search_html}{_row_limit_control(row_limit, cid)}{dl_btn}</div>'
@@ -273,11 +280,11 @@ class DataTable(Component):
 
     @classmethod
     def css(cls) -> str:
-        return load_css("components/data_table.css")
+        return load_css("components/data_table.css") + "\n" + load_css("components/live_result_context.css")
 
     @classmethod
     def client_js(cls) -> str:
-        return load_js("components/data_table_totals.js") + "\n" + load_js("components/data_table.js")
+        return load_js("components/live_result_context.js") + "\n" + load_js("components/data_table_totals.js") + "\n" + load_js("components/data_table.js")
 
 
 def _validate_row_limit(value):

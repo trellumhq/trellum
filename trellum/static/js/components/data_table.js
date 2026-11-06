@@ -1,6 +1,7 @@
 window._fwRenderers['table'] = function renderTable(id, cfg) {
     var el = document.getElementById(id);
     if (!el) return;
+    if (window._fwLiveResultContext) window._fwLiveResultContext.attach(id, cfg);
     var _drillReentryFocus = el._fwDrillFocus && el._fwDrillFocus();
     if (el._fwDrillDispose) el._fwDrillDispose();
     var _drill = null;

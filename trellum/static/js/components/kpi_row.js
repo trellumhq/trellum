@@ -28,6 +28,7 @@ if (!window._fwKpiFormat) {
 }
 
 window._fwRenderers['kpi_row_live'] = function(id, cfg) {
+    if (window._fwLiveResultContext) window._fwLiveResultContext.attach(id, cfg);
     function _render(rows) {
         var A = window._fwAggregate;
         for (var i = 0; i < cfg.kpis.length; i++) {

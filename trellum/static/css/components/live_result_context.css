@@ -1,0 +1,11 @@
+/* Context adds flow height without changing any consumer's own geometry. */
+.fw-live-result-context {
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.5;
+    margin: 0 0 12px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.fw-live-result-context > :first-child { color: var(--text-primary); }
+.fw-live-result-context [hidden] { display: none; }
