@@ -26,6 +26,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   update.
 ### Maintenance
 
+- Run the opt-in heavy portal CI suite on a native runner with Docker and
+  Compose so live database and restore checks execute alongside browser tests.
+
 - Require explicit optimizer opt-in and a clean dedicated repository worktree;
   verify checkout identity before reverts and respect agent permission settings.
   Check both rename paths and preserve unusual filenames in guidance restrictions.
