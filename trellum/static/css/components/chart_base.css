@@ -105,3 +105,24 @@
     overflow-wrap: anywhere;
     word-break: break-word;
 }
+
+/* Grouped dated events belong below the unchanged plotting container. */
+.fw-event-details {
+    margin: 0 0 var(--spacing-md);
+    color: var(--text-secondary);
+    font-size: var(--font-size-label);
+    overflow-wrap: anywhere;
+}
+.fw-event-details[hidden] { display: none; }
+.fw-event-details summary { cursor: pointer; padding: 8px 0; color: var(--text-main); list-style: none; }
+.fw-event-details summary::-webkit-details-marker { display: none; }
+.fw-event-details summary::before { content: "▸"; display: inline-block; width: 1em; }
+.fw-event-details[open] summary::before { content: "▾"; }
+/* Explicit visibility also survives the existing screen-capture DOM clone. */
+.fw-event-details:not([open]) > :not(summary) { display: none; }
+.fw-event-note { margin: 4px 0 8px; }
+.fw-event-list { max-height: 280px; overflow-y: auto; overscroll-behavior: contain; }
+.fw-event-list h4 { margin: 8px 0 4px; color: var(--text-main); font-size: inherit; }
+.fw-event-list ul { margin: 0; padding-left: 22px; }
+.fw-event-list li { margin: 4px 0; white-space: normal; }
+.fw-event-details :focus-visible { outline: 2px solid var(--text-main); outline-offset: 2px; }

@@ -195,6 +195,10 @@ class LineChart(_ChartBase):
     "format": "number"}``. It is computed in the browser from the series the
     chart plots after filters and aggregation, so it always matches the line.
     See the LineChart section of the README.
+
+    ``event_labels``: keyword-only ``"grouped"`` (default) draws numbered
+    event markers with a collapsed list of original names and dates below
+    the plot. ``"full"`` keeps legacy in-plot labels without a details row.
     """
 
     df: pd.DataFrame
@@ -233,10 +237,12 @@ class LineChart(_ChartBase):
     header_context: Optional[str] = field(default=None, kw_only=True)
     category_colors: Optional[dict] = field(default=None, kw_only=True)
     forecast_series: Optional[List[int | str] | tuple[int | str, ...]] = field(default=None, kw_only=True)
+    event_labels: str = field(default="grouped", kw_only=True)
 
     _component_type: str = field(default="line_chart", init=False, repr=False)
 
     def __post_init__(self):
+        self._validate_event_labels()
         _validate_header_context(self.header_context)
         _validate_category_colors(self.category_colors)
         self.forecast_series = _normalize_forecast_series(self.forecast_series)
@@ -269,9 +275,15 @@ class LineChart(_ChartBase):
         return {"header_summary": out}
 
     def _style_config(self) -> dict[str, Any]:
-        return {"line_style": "adaptive", "tension": self.tension}
+        return {"line_style": "adaptive", "tension": self.tension,
+                "event_labels": self.event_labels}
+
+    def _validate_event_labels(self) -> None:
+        if not isinstance(self.event_labels, str) or self.event_labels not in ("grouped", "full"):
+            raise ValueError("LineChart event_labels must be 'grouped' or 'full'.")
 
     def render_html(self, ctx: RenderContext) -> str:
+        self._validate_event_labels()
         forecast_indices = _forecast_series_indices(self)
         category_config = _category_colors_config(self, ctx)
         cid = ctx.next_id()

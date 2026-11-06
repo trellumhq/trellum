@@ -9,6 +9,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Ordinary report LineChart defaults to grouped dated-event markers with a
+  collapsed list of original event names, exact dates/ranges and types.
+  Keyword-only `event_labels="full"` retains full in-plot labels; payloads with
+  no flag and other chart families keep existing labels. Native annotation
+  marks, weekday lines, plotted data and heights stay unchanged. Added native
+  synthetic examples, API guidance and geometry/interaction/export checks.
+
 - Optional keyword-only LineChart `forecast_series` styling for explicitly
   supplied static, bound wide-series and bound ratio datasets. Selected lines
   retain supplied data and gain dashed strokes, hollow theme-following markers

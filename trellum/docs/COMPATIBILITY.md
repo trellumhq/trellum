@@ -2,6 +2,18 @@
 
 This document defines the stability tiers for framework APIs and the deprecation process for removing or changing them.
 
+## LineChart dated-event labels
+
+New LineChart builds default to keyword-only `event_labels="grouped"`: numbered
+native canvas markers plus a collapsed original-name/date list. This is an
+intentional default appearance change. Explicit `"full"` retains existing
+in-plot labels without details. Payloads missing the flag, other chart families
+and the two-argument shared annotation helper retain full labels. Positional and
+subclass constructors, explicit dataset binding precedence, values, event marks,
+weekday lines and plot heights are preserved. Rebuild matching assets; no
+artifact schema version changes. See [dated events](report-line-events.md) for
+retained loader/date limits and export behavior, and [MIGRATIONS](MIGRATIONS.md).
+
 ## Declared category colors
 
 Keyword-only `category_colors=None` is additive on LineChart, StackedBar and

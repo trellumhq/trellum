@@ -398,6 +398,9 @@ function _fwBarLabelPlugin(spec) {
 /* Shared chart factory -- called by both static and live modes.
    spec: { type, labels, datasets, stacked, horizontal, showLegend, yFmt, tooltip } */
 function _createChart(id, canvas, spec) {
+    var previous = window._chartInstances[id];
+    var eventDetails = spec.eventLabels === 'grouped' && previous && previous._fwTakeEventDetails
+        ? previous._fwTakeEventDetails() : (spec.eventLabels === 'grouped' && canvas._fwEventDetailsState);
     var comboFocus = spec.comboAxes && document.activeElement &&
         document.activeElement.closest('.fw-combo-context') &&
         document.activeElement.closest('.fw-combo-context').id === id + '-combo-context'
@@ -406,11 +409,13 @@ function _createChart(id, canvas, spec) {
         window._chartInstances[id].destroy();
         delete window._chartInstances[id];
     }
+    delete canvas._fwEventDetailsState;
     var tc = window.getThemeColors();
     var axisFont = window._fwFontPx('--font-size-axis', 12);
     var labelFont = window._fwFontPx('--font-size-label', 12);
     var events = window._reportData && window._reportData._events;
-    var annos = window._buildAnnotations ? window._buildAnnotations(events, spec.labels) : {};
+    var datedEvents = spec.eventLabels === 'grouped' ? [] : null;
+    var annos = window._buildAnnotations ? window._buildAnnotations(events, spec.labels, datedEvents) : {};
     var plugins = {
         legend: { display: false },
         fwLegend: { display: !!spec.showLegend },
@@ -545,7 +550,9 @@ function _createChart(id, canvas, spec) {
         type: spec.type || 'bar',
         data: { labels: spec.labels, datasets: spec.datasets },
         options: chartOpts,
-        plugins: (spec.barValues || spec.stackLabels) ? [_fwBarLabelPlugin(spec)] : []
+        plugins: ((spec.barValues || spec.stackLabels) ? [_fwBarLabelPlugin(spec)] : []).concat(
+            spec.eventLabels === 'grouped' && window._fwLineEventLabelsPlugin
+                ? [window._fwLineEventLabelsPlugin(eventDetails, datedEvents)] : [])
     });
     window._chartInstances[id]._fwThemeManagedAxes = true;
     window._chartInstances[id]._fwThemeManagedFonts = true;
@@ -631,6 +638,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
         }, barListener);
 
         function _mkSpec(spec) {
+            if (cfg.event_labels) spec.eventLabels = cfg.event_labels;
             if (cfg.bar_values) {
                 spec.barValues = cfg.bar_values;
                 spec.barConfiguredStacked = cfg.stacked;
@@ -1153,6 +1161,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
         showLegend: cfg.showLegend !== false, yFmt: yFmt, tooltip: tooltip,
         lineStyle: cfg.line_style, tension: cfg.tension,
         forecastSeries: cfg.forecast_series,
+        eventLabels: cfg.event_labels,
         headerSummary: cfg.header_summary,
         comboAxes: cfg.combo_axes,
         barValues: cfg.bar_values,

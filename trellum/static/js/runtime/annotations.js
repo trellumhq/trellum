@@ -126,7 +126,10 @@
         return lum > 0.35 ? '#111' : '#fff';
     }
 
-    function _buildAnnotations(events, labels) {
+    // An optional collector is used ONLY by grouped LineCharts. Associate the
+    // original event with the annotation here, at the one eligibility/snap path;
+    // never recover dates or identities from positioned category labels.
+    function _buildAnnotations(events, labels, dated) {
         var _wh = window._reportData && window._reportData._weekday_highlight;
         if ((!events || !events.length) && !_wh) return {};
         if (!labels || !labels.length) return {};
@@ -189,6 +192,11 @@
                         backgroundColor: solidColor, padding: {x: 4, y: 2}, borderRadius: 3}
                 };
             }
+            if (dated) {
+                var key = 'ev_' + (annos['ev_box_' + i] ? 'box_' : 'line_') + i;
+                annos[key].label.display = false;
+                dated.push({key: key, index: i, event: ev, annotation: annos[key]});
+            }
         });
         // Recurring weekday markers — thin vertical lines drawn on every
         // chart label whose weekday matches the report's config. Computed
@@ -215,6 +223,241 @@
         return annos;
     }
 
+    // Per-chart native canvas plugin. It adds no layout padding, datasets or
+    // annotation geometry. Canvas drawing is included in existing PNG/PDF paths.
+    function _lineEventLabelsPlugin(previous, dated) {
+        var root = previous && previous.root, signature = '', handedOff = false;
+        var pendingFocus = previous && previous.focusKey;
+        var restoreFocus = pendingFocus && document.activeElement === document.body;
+        var listeners = new AbortController();
+        var groups = [], pressed = null, beganOutside = false;
+        function focusKey() {
+            var active = document.activeElement;
+            return root && root.contains(active) ? active.dataset.eventFocus || 'summary' : null;
+        }
+        function describe(chart, add) {
+            var id = chart.canvas.id + '-event-details';
+            var tokens = (chart.canvas.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean);
+            tokens = tokens.filter(function(t) { return t !== id; });
+            if (add) tokens.push(id);
+            if (tokens.length) chart.canvas.setAttribute('aria-describedby', tokens.join(' '));
+            else chart.canvas.removeAttribute('aria-describedby');
+        }
+        function summary() { return root && root.querySelector('summary'); }
+        function reconcile(chart) {
+            if (!groups.length) {
+                if (root) {
+                    // Keep open preference for a subsequent nonempty selection,
+                    // but reserve no row and leave no stale event descriptions.
+                    if (focusKey()) summary().focus({preventScroll: true});
+                    root.hidden = true;
+                    root.querySelector('.fw-event-list').replaceChildren();
+                }
+                describe(chart, false);
+                signature = '';
+                return;
+            }
+            if (!root) {
+                root = document.createElement('details');
+                root.className = 'fw-event-details';
+                root.id = chart.canvas.id + '-event-details';
+                root.open = !!(previous && previous.open);
+                var heading = document.createElement('summary');
+                heading.dataset.eventFocus = 'summary';
+                var note = document.createElement('p');
+                note.className = 'fw-event-note';
+                note.textContent = 'Events in displayed range. A marker such as “2 · 3” means group 2 contains 3 events, not a metric value. Numbers may change with width or selection. Dates below are original dates; marks use the chart’s existing date mapping.';
+                var list = document.createElement('div');
+                list.className = 'fw-event-list';
+                root.append(heading, note, list);
+            }
+            if (chart.canvas.parentElement.nextElementSibling !== root)
+                chart.canvas.parentElement.after(root);
+            root.hidden = false;
+            describe(chart, true);
+            var count = groups.reduce(function(n, g) { return n + g.events.length; }, 0);
+            summary().textContent = 'Events in displayed range · ' + count + (count === 1 ? ' event' : ' events') +
+                ' · ' + groups.length + (groups.length === 1 ? ' group' : ' groups');
+            var next = JSON.stringify(groups.map(function(g) {
+                return g.events.map(function(d) { return [d.index, d.event.label, d.event.date, d.event.end_date, d.event.type]; });
+            }));
+            if (next === signature) return;
+            var focused = focusKey() || (restoreFocus && pendingFocus);
+            pendingFocus = null;
+            var content = root.querySelector('.fw-event-list');
+            // Reuse per-event nodes when membership/width changes. Stable keys
+            // come from source identity, never the local marker number.
+            var items = new Map(Array.from(content.querySelectorAll('[data-event-item]')).map(function(item) {
+                return [item.dataset.eventFocus, item];
+            }));
+            var fragment = document.createDocumentFragment();
+            groups.forEach(function(g, i) {
+                var section = document.createElement('section');
+                section.dataset.eventGroup = String(i + 1);
+                var heading = document.createElement('h4');
+                heading.tabIndex = -1;
+                heading.dataset.eventFocus = 'group:' + g.events[0].index;
+                heading.textContent = 'Group ' + (i + 1) + ' · ' + g.events.length + (g.events.length === 1 ? ' event' : ' events');
+                var list = document.createElement('ul');
+                g.events.forEach(function(d) {
+                    var key = 'event:' + d.index;
+                    var item = items.get(key) || document.createElement('li');
+                    item.dataset.eventFocus = key;
+                    item.dataset.eventItem = String(d.index);
+                    item.tabIndex = -1;
+                    // Literal text only, including hostile report-authored names.
+                    item.textContent = String(d.event.label == null ? '' : d.event.label) + ' — ' + String(d.event.date) +
+                        (d.event.end_date ? ' – ' + String(d.event.end_date) : '') + ' · ' + String(d.event.type || 'release');
+                    list.appendChild(item);
+                });
+                section.append(heading, list);
+                fragment.appendChild(section);
+            });
+            content.replaceChildren(fragment);
+            signature = next;
+            if (focused) {
+                var target = Array.from(root.querySelectorAll('[data-event-focus]')).find(function(el) {
+                    return el.dataset.eventFocus === focused;
+                }) || summary();
+                target.focus({preventScroll: true});
+            }
+        }
+        function layout(chart) {
+            var area = chart.chartArea, x = chart.scales.x;
+            groups = [];
+            chart._fwEventMarkers = groups;
+            if (!area || !x || area.width <= 0) return;
+            dated.forEach(function(d) {
+                var a = d.annotation, labels = chart.data.labels;
+                var start = x.getPixelForValue(labels.indexOf(a.xMin));
+                var end = x.getPixelForValue(labels.indexOf(a.xMax));
+                if (!Number.isFinite(start) || !Number.isFinite(end) ||
+                        Math.max(start, end) < area.left || Math.min(start, end) > area.right) return;
+                groups.push({anchor: Math.max(area.left, Math.min(area.right, start)), events: [d]});
+            });
+            groups.sort(function(a, b) { return a.anchor - b.anchor || a.events[0].index - b.events[0].index; });
+            var clustered = [];
+            groups.forEach(function(g) {
+                var last = clustered[clustered.length - 1];
+                if (last && g.anchor - last.anchor <= 52) last.events.push(g.events[0]);
+                else clustered.push(g);
+            });
+            groups = clustered;
+            var ctx = chart.ctx;
+            ctx.save();
+            var size = window._fwFontPx('--font-size-label', 12);
+            ctx.font = '600 ' + size + 'px ' + Chart.defaults.font.family;
+            // Clamping can collide even when starts were far apart. Merge and
+            // renumber until all final measured boxes fit. Each pass removes a
+            // group; even arbitrarily dense plots retain every event in a group.
+            var merged;
+            do {
+                merged = false;
+                groups.forEach(function(g, i) {
+                    ctx.font = '600 ' + size + 'px ' + Chart.defaults.font.family;
+                    g.text = String(i + 1) + (g.events.length > 1 ? ' · ' + g.events.length : '');
+                    var textWidth = ctx.measureText(g.text).width;
+                    var fittedSize = Math.min(size, size * Math.max(1, area.width - 12) / textWidth);
+                    g.font = '600 ' + fittedSize + 'px ' + Chart.defaults.font.family;
+                    ctx.font = g.font;
+                    g.width = Math.min(area.width, ctx.measureText(g.text).width + 12);
+                    g.height = fittedSize + 10;
+                    g.left = Math.max(area.left, Math.min(area.right - g.width, g.anchor - g.width / 2));
+                    g.top = area.top + 3;
+                });
+                for (var i = 1; i < groups.length; i++) {
+                    if (groups[i - 1].left + groups[i - 1].width + 4 > groups[i].left) {
+                        groups[i - 1].events = groups[i - 1].events.concat(groups[i].events);
+                        groups.splice(i, 1);
+                        merged = true;
+                        break;
+                    }
+                }
+            } while (merged);
+            ctx.restore();
+            chart._fwEventMarkers = groups;
+        }
+        function hit(chart, e) {
+            var point = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]) || e;
+            var box = chart.canvas.getBoundingClientRect();
+            var x = (point.clientX - box.left) * chart.width / box.width;
+            var y = (point.clientY - box.top) * chart.height / box.height;
+            return groups.find(function(g) {
+                return x >= g.left && x <= g.left + g.width && y >= g.top && y <= g.top + g.height;
+            });
+        }
+        return {
+            id: 'fwLineEventLabels',
+            beforeInit: function(chart) {
+                chart._fwDatedEvents = dated;
+                chart._fwTakeEventDetails = function() { handedOff = true; return {root: root}; };
+                // Capture before Chart.js and drag-zoom's native listeners. Only
+                // marker hits are consumed; normal plotting interactions pass.
+                ['pointerdown', 'pointerup', 'pointercancel', 'mousedown', 'mouseup', 'touchstart', 'touchend', 'click', 'dblclick'].forEach(function(type) {
+                    chart.canvas.addEventListener(type, function(e) {
+                        if (type === 'pointercancel') { pressed = null; beganOutside = false; return; }
+                        var group = hit(chart, e);
+                        var down = type === 'pointerdown' || type === 'mousedown' || type === 'touchstart';
+                        if (down && !group) { pressed = null; beganOutside = true; return; }
+                        if (type === 'click' && beganOutside) { beganOutside = false; return; }
+                        if ((type === 'pointerup' || type === 'mouseup' || type === 'touchend') && !pressed) return;
+                        if (!group && !pressed) return;
+                        if (down) {
+                            pressed = group;
+                            beganOutside = false;
+                            if (type === 'pointerdown') chart.canvas.setPointerCapture(e.pointerId);
+                        }
+                        e.preventDefault(); e.stopImmediatePropagation();
+                        if (type !== 'click' && type !== 'touchend') return;
+                        pressed = null;
+                        if (!group) return;
+                        if (!root) return;
+                        root.open = true;
+                        var i = groups.indexOf(group);
+                        var heading = root.querySelector('[data-event-group="' + (i + 1) + '"] h4');
+                        if (heading) {
+                            heading.scrollIntoView({block: 'nearest'});
+                            heading.focus({preventScroll: true});
+                        }
+                    }, {capture: true, passive: false, signal: listeners.signal});
+                });
+            },
+            afterUpdate: function(chart) { layout(chart); reconcile(chart); },
+            afterDraw: function(chart) {
+                var ctx = chart.ctx;
+                ctx.save();
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                var css = getComputedStyle(document.documentElement);
+                groups.forEach(function(g) {
+                    ctx.font = g.font;
+                    ctx.fillStyle = css.getPropertyValue('--bg-card').trim() || '#fff';
+                    ctx.fillRect(g.left, g.top, g.width, g.height);
+                    ctx.strokeStyle = css.getPropertyValue('--text-secondary').trim() || '#666';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(g.left + .5, g.top + .5, g.width - 1, g.height - 1);
+                    ctx.fillStyle = css.getPropertyValue('--text-main').trim() || '#111';
+                    ctx.fillText(g.text, g.left + g.width / 2, g.top + g.height / 2);
+                });
+                ctx.restore();
+            },
+            beforeDestroy: function(chart) {
+                listeners.abort();
+                // renderAll destroys charts before invoking the renderer. Keep
+                // only small UI state on the surviving canvas, never listeners
+                // or detached rows. The factory's direct handoff can reuse DOM.
+                chart.canvas._fwEventDetailsState = {
+                    open: !!(root && root.open), focusKey: focusKey()
+                };
+                describe(chart, false);
+                if (root && !handedOff) root.remove();
+                delete chart._fwEventMarkers;
+                delete chart._fwTakeEventDetails;
+                delete chart._fwDatedEvents;
+            }
+        };
+    }
+    window._fwLineEventLabelsPlugin = _lineEventLabelsPlugin;
+
     function _refreshAllAnnotations() {
         var instances = window._chartInstances || {};
         var events = window._reportData && window._reportData._events;
@@ -224,7 +467,10 @@
             if (!chart || !chart.options || !chart.options.plugins) return;
             if (!chart.options.plugins.annotation) return;
             var labels = chart.data && chart.data.labels;
-            chart.options.plugins.annotation.annotations = _buildAnnotations(events, labels);
+            if (chart._fwDatedEvents) {
+                chart._fwDatedEvents.length = 0;
+                chart.config.options.plugins.annotation.annotations = _buildAnnotations(events, labels, chart._fwDatedEvents);
+            } else chart.options.plugins.annotation.annotations = _buildAnnotations(events, labels);
             chart.update('none');
         });
     }
