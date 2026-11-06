@@ -14,12 +14,13 @@ from trellum.components.charts.funnel import FunnelChart
 from trellum.components.charts.heatmap import HeatmapChart
 from trellum.components.charts.line_area import AreaChart, LineChart
 from trellum.components.charts.scatter import ScatterChart
+from trellum.components.charts.sankey import SankeyChart
 from trellum.components.charts.treemap import TreemapChart
 
 __all__ = [
     "LineChart", "AreaChart", "BarChart", "StackedBar", "ComboChart",
     "DoughnutChart", "HeatmapChart", "FunnelChart", "TreemapChart",
-    "ScatterChart",
+    "ScatterChart", "SankeyChart",
     # Not a component: the shared base, imported by validation and by any
     # project defining its own chart type.
     "_ChartBase",

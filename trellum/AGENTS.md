@@ -341,6 +341,7 @@ question.
 | Funnel | `FunnelChart` |
 | Treemap | `TreemapChart` |
 | Scatter / correlation / bubble | `ScatterChart` |
+| Supplied complete paths / adjacent transitions | `SankeyChart` (`docs/report-sankey-charts.md`); never infer complete journeys from adjacent edges |
 | Dual-axis bar + line | `ComboChart` |
 | Ratio metrics (ARPDAU, ARPPU, retention, conversion) | `LineChart(ratios=[{numerator, denominator, label}])` — never hand-roll the division in JS |
 | Ratio by category (CPD per comfort_zone, ARPPU by country) | `BarChart(ratios=[...], horizontal=True, sort='desc')` — categorical ratio bars |

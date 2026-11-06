@@ -9,6 +9,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Optional Sankey charts for supplied complete paths or adjacent transitions,
+  with exact details, bounded snapshot validation, native filters and CSV export.
+  Native captures support completed empty and zero-flow results.
+
 - Optional CohortTable for precomputed observations and supplied forecasts, with
   provenance, whole-cohort filtering, sampled milestones and raw CSV export.
   Added independent native examples; existing PivotTable selectors are unchanged.

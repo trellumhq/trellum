@@ -498,7 +498,7 @@
         if (target.matches('canvas')) roots.push(target);
         Array.prototype.push.apply(roots, target.querySelectorAll('canvas'));
         var chartTypes = {chart: true, line: true, doughnut: true, funnel: true,
-            scatter: true, heatmap: true, treemap: true};
+            scatter: true, heatmap: true, treemap: true, sankey: true};
         var nonVisual = {data_source: true, scoped_data_source: true,
             live_data_source: true, raw_html: true};
         for (var i = 0; i < roots.length; i++) {
@@ -508,6 +508,13 @@
             if (!cfg || !cfg.type || nonVisual[cfg.type]) continue;
             if (cfg.dataset_id && window.fw.filterEngine && !window.fw.filterEngine.isReady(cfg.dataset_id))
                 return 'This section is still loading its data. Wait and try again.';
+            if (cfg.type === 'sankey') {
+                var sankey = root.closest('.fw-sankey');
+                var sankeyState = sankey && sankey.dataset.sankeyState;
+                if (sankeyState === 'invalid')
+                    return sankey.querySelector('.fw-sankey-state').textContent || 'Sankey data is invalid.';
+                if (sankeyState === 'empty' || sankeyState === 'zero') continue;
+            }
             if (chartTypes[cfg.type] && !(window._chartInstances || {})[root.id])
                 return 'A chart in this section has not finished rendering. Scroll it into view, wait, and try again.';
             if (!chartTypes[cfg.type] && !root.childElementCount && !(root.textContent || '').trim())
@@ -519,6 +526,10 @@
             if (!_analysisVisible(canvas)) continue;
             var canvasConfig = components[canvas.id];
             if (!canvasConfig || !chartTypes[canvasConfig.type]) continue;
+            if (canvasConfig.type === 'sankey') {
+                var owner = canvas.closest('.fw-sankey');
+                if (owner && (owner.dataset.sankeyState === 'empty' || owner.dataset.sankeyState === 'zero')) continue;
+            }
             var chart = (window._chartInstances || {})[canvas.id];
             if (!chart || !canvas.width || !canvas.height)
                 return 'A chart in this section has not finished rendering. Wait for it to appear, then capture again.';

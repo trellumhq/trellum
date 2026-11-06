@@ -169,6 +169,23 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             expect(tree.locator('tfoot td').last).to_have_text('$17,850.00')
             assert pivot.locator('tfoot td').last.inner_text() == "$5.7k"
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
+            page.get_by_role('link', name='Sankey paths', exact=True).click()
+            sankey_section = page.locator('#sec-sankey-—-complete-weekly-paths')
+            sankey = sankey_section.locator('.fw-sankey')
+            expect(sankey).to_have_attribute('data-sankey-state', 'ready')
+            expect(sankey.locator('.fw-sankey-population')).to_contain_text('1000 players')
+            sankey_section.get_by_role('button', name='iOS', exact=True).click()
+            expect(sankey.locator('.fw-sankey-population')).to_contain_text('500 players')
+            with page.expect_download() as sankey_download:
+                sankey.get_by_role('button', name='Download CSV', exact=True).click()
+            with open(sankey_download.value.path(), encoding='utf-8', newline='') as file:
+                sankey_rows = list(csv.DictReader(file))
+            assert len(sankey_rows) == 4 and sum(int(r['weight']) for r in sankey_rows) == 500
+            sankey_section.get_by_role('button', name='All', exact=True).click()
+            expect(sankey.locator('.fw-sankey-population')).to_contain_text('1000 players')
+            expect(cohorts.locator('tbody td')).to_have_count(30)
+            expect(tree.locator('tfoot td').last).to_have_text('$17,850.00')
+            assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
             page.get_by_role("link", name="line styles", exact=True).click()
             density = page.locator('[data-tab-id="showcase_line_density"]')
             density.get_by_role('tab', name='Sparse: 12 daily observations', exact=True).click()
@@ -492,11 +509,12 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             expect(pin_visits.locator('.fw-kpi-value')).to_have_text('$462.00')
             expect(total_events.locator('.fw-kpi-value')).to_have_text('$456.00')
             assert live.locator('.fw-kpi-value').first.inner_text() == '$18.4k'
-            # Every chart must own a real canvas and draw after scrolling into
-            # view; scope-based data swaps cannot stand in for different layouts.
+            # Every visible chart completes after reveal. Empty/zero Sankeys
+            # intentionally have no geometry or Chart.js instance.
             for canvas in page.locator("canvas:visible").all():
                 canvas.scroll_into_view_if_needed()
-                page.wait_for_function("id => !!window._chartInstances[id]",
+                page.wait_for_function("""id => !!window._chartInstances[id] ||
+                    ['empty','zero'].includes(document.getElementById(id).closest('.fw-sankey')?.dataset.sankeyState)""",
                                        arg=canvas.get_attribute("id"))
                 box = canvas.bounding_box()
                 assert box["width"] > 0 and box["height"] > 0

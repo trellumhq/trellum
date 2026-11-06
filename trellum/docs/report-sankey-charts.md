@@ -6,7 +6,7 @@ defaults. It does not replace an existing chart or change another chart's size,
 legend, tooltip or filtering behavior.
 
 ```python
-from trellum.components.charts.sankey import SankeyChart
+from trellum.components import SankeyChart
 
 stages = [
     {"key": "week_1", "label": "5 October"},
@@ -181,48 +181,24 @@ visible area; images do not promise every offscreen label or detail row. Open
 the disclosure or adjust local scroll before capturing. CSV retains all selected
 exact records regardless of scroll or disclosure state.
 
-The shared CSV helper currently quotes commas, quotes and line feeds, but not a
-bare carriage return. Its integration fix must also quote `\r` so an authored
-category containing that character round-trips exactly. Sankey does not replace
-or patch the shared download helper.
+The shared CSV writer quotes commas, quotes, line feeds and carriage returns in
+headers and cells, preserving authored category text.
 
-## Integration hooks
+## Native integration and examples
 
-During integration, export `SankeyChart` from `trellum.components.charts` and
-`trellum.components` and add it to their `__all__` lists. Until then, examples
-and tests import the implementation module directly.
+Import `SankeyChart` from `trellum.components` or `trellum.components.charts`.
+The shared validator checks effective snapshot scope and graph bounds in its
+Sankey-charts group, with `sankey-valid` / `sankey-invalid` diagnostics. The check
+catalogue discovers both IDs automatically. Filter diagnostics introspect the
+supplied weight column.
 
-Import `check_sankey_charts` from `trellum.validation.checks.sankey` in the shared
-validator. After collecting `ds_map`, call
-`_run("sankey charts", check_sankey_charts, comps, ds_map, result)` before
-deduplication/suppressions. This supplies `sankey-valid` / `sankey-invalid`
-diagnostics; add both IDs to the shared check catalogue. Include `weight` in
-the diagnostic value-column introspector for `SankeyChart`, so filter health
-can describe its measure. Its existing `_supports_dataset_id=True` metadata
-already participates in generic binding and coverage discovery.
+Native analysis captures treat completed empty and zero-flow diagrams as ready;
+invalid input blocks capture with the component's explanation. Positive-flow
+results require a ready Chart.js instance and canvas. The outer component keeps
+titles, context and details together in section or chart-target captures.
 
-In `static/js/runtime/csv_download.js`, extend the existing cell-quoting
-predicate to include `s.indexOf('\r') >= 0`. Keep its public signature and
-download behavior; this completes the bare-carriage-return text case above.
-
-In `static/js/runtime/export.js`, add `sankey: true` to `_analysisReady`'s
-`chartTypes`. For `sankey` only, handle local `data-sankey-state` explicitly:
-`empty` and `zero` are complete render states without a Chart.js instance;
-`invalid` must fail capture with the local explanation. A ready positive-flow
-Sankey still requires its instance/canvas. The outer `.fw-chart-container`
-groups context and details for native chart-target capture. The component does
-not bypass the shared readiness guard. Without this common hook, native section
-capture fails its existing unknown-content guard; browser tests record that
-pending hook instead of presenting a screenshot as native capture success.
-
-Wire `examples_sankeys.add_sections(ctx)` into the common showcase generator and
-add a visible navigation entry for the four Sankey sections. The examples use
-independent `showcase_sankey_paths`, `showcase_sankey_observations` and
-`showcase_sankey_edges` datasets/filters. They supply eight mutually exclusive
-paths totaling 1,000, an iOS selection totaling 500, separate unavailable,
-No purchase, tiny and zero cases, and honestly unbalanced adjacent edges.
-The different-paths/same-links ambiguity has a focused Python test.
-
-Proposed shared changelog entry: “Add optional Sankey charts for supplied complete
-paths or adjacent transitions, with exact details, bounded snapshot validation,
-native filters and CSV export.”
+The shared component showcase's **Sankey paths** link opens four native sections
+from `examples_sankeys.add_sections(ctx)`. Their independent datasets and filters
+show eight complete paths totaling 1,000 players (iOS: 500), separate unavailable,
+No purchase, tiny and zero cases, and unbalanced adjacent transitions. These are
+synthetic supplied populations, not inferred journeys.

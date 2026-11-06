@@ -4,7 +4,7 @@ MANDATORY: Check this list BEFORE writing any RawHTML with Chart.js code.
 If a component below can do it, you MUST use it.
 
 Charts:   LineChart, AreaChart, BarChart, StackedBar, ComboChart,
-          DoughnutChart, HeatmapChart, FunnelChart, TreemapChart, ScatterChart
+          DoughnutChart, HeatmapChart, FunnelChart, TreemapChart, ScatterChart, SankeyChart
 KPIs:     KpiRow, KpiCard, MiniKpi
 Tables:   DataTable, ComparisonTable, PivotTable, HierarchyTable, CohortTable
 Controls: Toggle, Dropdown, TabGroup, DateSelector
@@ -28,6 +28,7 @@ from trellum.components.charts import (
     HeatmapChart,
     LineChart,
     ScatterChart,
+    SankeyChart,
     StackedBar,
     TreemapChart,
 )
@@ -48,7 +49,7 @@ from trellum.components.tables import ComparisonTable, DataTable, PivotTable
 
 __all__ = [
     "Component", "RenderContext",
-    "LineChart", "AreaChart", "BarChart", "StackedBar", "ComboChart", "DoughnutChart", "HeatmapChart", "FunnelChart", "TreemapChart", "ScatterChart",
+    "LineChart", "AreaChart", "BarChart", "StackedBar", "ComboChart", "DoughnutChart", "HeatmapChart", "FunnelChart", "TreemapChart", "ScatterChart", "SankeyChart",
     "DataTable", "ComparisonTable", "PivotTable", "HierarchyTable", "CohortTable",
     "KpiCard", "KpiRow", "MiniKpi",
     "Toggle", "Dropdown", "TabGroup", "DateSelector",

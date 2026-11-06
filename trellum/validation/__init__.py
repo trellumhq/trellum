@@ -31,6 +31,7 @@ from trellum.validation.checks.live_query import _check_live_queries
 from trellum.validation.checks.metrics import _check_metrics
 from trellum.validation.checks.rawhtml import _check_rawhtml
 from trellum.validation.checks.scopes import _check_scopes
+from trellum.validation.checks.sankey import check_sankey_charts
 from trellum.validation.checks.structural import _check_structural
 from trellum.validation.checks.theme import _check_theme
 from trellum.validation.checks.visibility import _check_toggle_visible
@@ -85,6 +86,7 @@ def validate_report(
     if ds_map is None:
         ds_map = {}
     _run("cohort tables", check_cohort_tables, comps, ds_map, result)
+    _run("sankey charts", check_sankey_charts, comps, ds_map, result)
     _run("dataset id integrity", _check_dataset_id_integrity, comps, ds_map, result)
     _run("slider filter columns", _check_slider_filter_columns, comps, result)
     _run("live queries", _check_live_queries, ctx, comps, result)

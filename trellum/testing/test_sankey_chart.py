@@ -10,7 +10,8 @@ import pytest
 
 from trellum.components import DataSource, FilterBar, LiveDataSource, ScopedDataSource
 from trellum.components.base import RenderContext
-from trellum.components.charts.sankey import SankeyChart, SAFE_INTEGER
+from trellum.components import SankeyChart
+from trellum.components.charts.sankey import SAFE_INTEGER
 from trellum.themes import DEFAULT_THEME
 from trellum.validation.checks.sankey import check_sankey_charts
 from trellum.validation.result import ValidationResult

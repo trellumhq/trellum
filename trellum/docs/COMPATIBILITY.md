@@ -1,5 +1,16 @@
 # Framework Compatibility Policy
 
+## Unreleased: optional SankeyChart
+
+`SankeyChart` adds a snapshot-only chart API without changing existing chart
+constructors or defaults. Complete paths preserve grouped path identities in
+details/CSV; adjacent transitions never imply complete journeys or one total
+across boundaries. Live-connected and chunked populations fail validation.
+The existing Chart.js stack loads its bundled Sankey plugin on demand.
+Image captures retain current scroll/disclosure scope; completed empty and
+zero-flow states are capturable while invalid input blocks native analysis
+capture. See [Sankey charts](report-sankey-charts.md) for bounds and exact data rules.
+
 ## Unreleased: optional CohortTable
 
 `CohortTable` is an additive component API for author-supplied snapshot cells.

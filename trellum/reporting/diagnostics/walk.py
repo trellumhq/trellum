@@ -90,8 +90,8 @@ def _chart_value_columns(comp: Any) -> list[str]:
             for x in v:
                 _add(x)
 
-    # Doughnut / Funnel / Treemap / Heatmap / Scatter
-    for attr in ("value", "size", "color_col", "color_by"):
+    # Doughnut / Funnel / Treemap / Heatmap / Scatter / Sankey
+    for attr in ("value", "size", "color_col", "color_by", "weight"):
         _add(getattr(comp, attr, None))
 
     # KpiRow: walk every kpi spec

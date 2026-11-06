@@ -517,6 +517,11 @@ summary on a chart that plots several series without naming one are rejected the
 same way, and the validator reports `line-chart-height-invalid` and
 `line-chart-summary-invalid` for charts changed after construction.
 
+`SankeyChart(df, title="", *, mode, stages, weight, unit, ...)` displays
+supplied complete paths or adjacent transitions using the bundled Sankey plugin.
+Exact details and CSV preserve the declared population model.
+See [Sankey API and limits](docs/report-sankey-charts.md).
+
 ### KPIs
 
 | Component | Constructor | Description |

@@ -1,5 +1,13 @@
 # Framework Migration Guide
 
+## Unreleased: optional SankeyChart
+
+Existing charts need no changes. Import `SankeyChart` from `trellum.components`
+for a bounded complete snapshot of supplied paths or adjacent transitions.
+Declare ordered stages, numeric weight and its units. The bundled Sankey plugin
+is included only when needed. Rebuild matching report assets to use the component;
+no host or database migration is required. See [Sankey charts](report-sankey-charts.md).
+
 ## Unreleased: optional CohortTable
 
 Existing reports need no changes. Import `CohortTable` from `trellum.components`

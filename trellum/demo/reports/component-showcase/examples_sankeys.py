@@ -2,8 +2,7 @@
 
 import pandas as pd
 
-from trellum.components import DataSource, FilterBar, Grid, Panel
-from trellum.components.charts.sankey import SankeyChart
+from trellum.components import DataSource, FilterBar, Grid, Panel, SankeyChart
 
 STAGES = [{"key": f"w{i}", "label": label} for i, label in enumerate(
     ("5 October", "12 October", "19 October", "26 October"), 1)]

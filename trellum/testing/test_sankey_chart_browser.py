@@ -14,14 +14,11 @@ import pandas as pd
 import pytest
 
 from trellum.components import BarChart, DataSource, FilterBar, ScopedDataSource, TabGroup, TreemapChart
-from trellum.components.charts.sankey import SankeyChart
 from trellum.rendering.cdn import copy_vendor_tree
 from trellum.rendering.html_builder import render_report
 from trellum.report import ReportContext
 from trellum.reporting.diagnostics import compute_details
 from trellum.validation import validate_report
-from trellum.validation.checks.sankey import check_sankey_charts
-from trellum.validation.walk import _all_components
 from trellum.testing.test_sankey_chart import chart, examples
 
 EVIDENCE = Path(os.environ.get("TRELLUM_SANKEY_EVIDENCE", "/tmp/trellum-sankey-evidence"))
@@ -49,7 +46,7 @@ def _build(output, *, standalone=False):
             ]),
         ])
         hostile = pd.DataFrame([[None,"Unavailable",1],["Unavailable",None,2],
-                                ["__proto__","constructor",3],["<img src=x onerror=bad()>",'Long "quoted", category\nline',0]],
+                                ["__proto__","constructor",3],["<img src=x onerror=bad()>",'Long "quoted", category\rline',0]],
                                columns=["a","b","players"])
         ctx.add_section("Exact identity and representative charts",[
             chart(hostile, title=IDENTITY_TITLE,static=True,stages=[{"key":"a","label":"Repeated stage"},{"key":"b","label":"Repeated stage"}]),
@@ -58,8 +55,6 @@ def _build(output, *, standalone=False):
         ])
     details = compute_details(ctx)
     result = validate_report(ctx, details=details)
-    comps = _all_components(ctx)
-    check_sankey_charts(comps,{c.id:c for c,_ in comps if isinstance(c,(DataSource,ScopedDataSource))},result)
     issues = [(c.level,c.id,c.message) for c in result.checks if c.level in {"warn","fail"}]
     assert issues == [], issues
     render_report(ctx,str(output),auto_refresh=False)
@@ -101,7 +96,8 @@ def _csv(page, root):
     try:
         with page.expect_download() as pending:
             root.get_by_role("button",name="Download CSV",exact=True).click()
-        rows = list(csv.DictReader(Path(pending.value.path()).read_text(encoding="utf-8-sig").splitlines(keepends=True)))
+        with open(pending.value.path(), encoding="utf-8-sig", newline="") as stream:
+            rows = list(csv.DictReader(stream))
         # A second download would prove that generic chart delegation also ran.
         page.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
         assert len(downloads) == 1
@@ -256,7 +252,7 @@ def test_native_sankey_paths_edges_filters_geometry_lifecycle_and_exports(tmp_pa
             expect(identity.locator('.fw-sankey-records')).to_contain_text('__proto__')
             assert identity.locator('img,script').count() == 0
             id_rows = _csv(page,identity)
-            assert id_rows[-1]['stage_2_category'] == 'Long "quoted", category\nline'
+            assert id_rows[-1]['stage_2_category'] == 'Long "quoted", category\rline'
             for title,kind in (('Ordinary bar','bar'),('Ordinary Treemap','treemap')):
                 baseline = page.locator(f'canvas[data-fw-title="{title}"]')
                 baseline.scroll_into_view_if_needed()
@@ -279,16 +275,12 @@ def test_native_sankey_paths_edges_filters_geometry_lifecycle_and_exports(tmp_pa
                 page.keyboard.press('ArrowRight')
                 page.wait_for_function("id=>document.getElementById(id).closest('.fw-sankey-scroll').scrollLeft>0",arg=cid)
             else:
-                # This calls the real native capture path. The shared registry is lead-owned.
+                # Capture through the real shared readiness and snapshot path.
                 main.scroll_into_view_if_needed()
-                try:
-                    snapshot = section.evaluate('el=>fw.captureElementSnapshotForAnalysis(el)')
-                except Exception as error:
-                    assert 'Content in this section has not finished rendering' in str(error)
-                    (EVIDENCE/'native-section-pending-hook.txt').write_text(str(error))
-                else:
-                    (EVIDENCE/'native-section.json').write_text(json.dumps(snapshot,indent=2))
-                    (EVIDENCE/'native-section.png').write_bytes(base64.b64decode(snapshot['image']['data_base64']))
+                snapshot = section.evaluate('el=>fw.captureElementSnapshotForAnalysis(el)')
+                assert snapshot['format'] == 'trellum-analysis-capture'
+                (EVIDENCE/'native-section.json').write_text(json.dumps(snapshot,indent=2))
+                (EVIDENCE/'native-section.png').write_bytes(base64.b64decode(snapshot['image']['data_base64']))
                 for extension,fn in (('png','exportPNG'),('pdf','exportPDF')):
                     with page.expect_download(timeout=60000) as pending:
                         page.evaluate(f'fw.{fn}()')
@@ -337,6 +329,18 @@ def test_runtime_invalid_schema_values_and_unready_injection_clear_geometry(tmp_
             page.goto('http://sankey-injection.test/index.html',wait_until='networkidle')
             root = _root(page,'Only Sankey'); _ready(root)
             cid = root.locator('canvas').get_attribute('id')
+            # Completed empty/zero states capture without a Chart.js instance.
+            for zero in (False, True):
+                page.evaluate('''([id,zero])=>{
+                    const cfg=structuredClone(_reportData.components[id]);
+                    cfg.rows=zero ? cfg.rows.map(r=>({...r,players:0})) : [];
+                    _fwRenderers.sankey(id,cfg);
+                }''', [cid,zero])
+                _ready(root, 'zero' if zero else 'empty')
+                snapshot = root.evaluate('el=>fw.captureElementSnapshotForAnalysis(el)')
+                assert snapshot['format'] == 'trellum-analysis-capture'
+            page.evaluate('id=>_fwRenderers.sankey(id,_reportData.components[id])',cid)
+            _ready(root)
             for mutation in (
                 "cfg.rows[0].players=true", "cfg.rows[0].players='260'", "cfg.rows[0].players=null",
                 "cfg.rows[0].players=-1", "cfg.rows[0].players=Infinity", "cfg.rows[0].w1={label:'Low'}",
@@ -350,6 +354,8 @@ def test_runtime_invalid_schema_values_and_unready_injection_clear_geometry(tmp_
                 }""",{'id':cid,'mutation':mutation})
                 _ready(root,'invalid')
                 assert page.evaluate('id=>!window._chartInstances[id]',cid)
+                with pytest.raises(Exception, match='Sankey unavailable:'):
+                    root.evaluate('el=>fw.captureElementSnapshotForAnalysis(el)')
                 page.evaluate('id=>window._fwRenderers.sankey(id,window._reportData.components[id])',cid)
                 _ready(root)
             # External instance destruction releases ownership and can re-enter cleanly.
