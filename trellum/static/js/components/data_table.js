@@ -75,6 +75,21 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
     // Only generated workspace definition tables opt in. Their rows are light
     // catalog metadata; ordinary authored tables keep their existing contract.
     var _pageSize = window._fwMetricsWorkspace && cfg.workspacePageSize === 25 ? 25 : 0;
+    // Workspace definitions and wrapper comparisons never acquire totals.
+    var _totalsEnabled = cfg.workspacePageSize !== 25 && !comparison && cfg.totals && Object.keys(cfg.totals).length;
+    // Re-entry may wait for a source without completing another draw. Remove
+    // only owned totals metadata; ordinary retained cells stay untouched.
+    el.querySelectorAll('.fw-table-totals, .fw-table-totals-note').forEach(function(node) { node.remove(); });
+    var previousTotalsNote = document.getElementById(id + '-totals-note');
+    if (previousTotalsNote) previousTotalsNote.remove();
+    var previousTable = el.querySelector('table');
+    if (previousTable) {
+        var descriptions = (previousTable.getAttribute('aria-describedby') || '').split(/\s+/).filter(function(token) {
+            return token && token !== id + '-totals-note';
+        });
+        if (descriptions.length) previousTable.setAttribute('aria-describedby', descriptions.join(' '));
+        else previousTable.removeAttribute('aria-describedby');
+    }
     var _definitionAnchors = null, _definitionHash = '';
     if (_pageSize && window._fwMetricsWorkspace.definitionId === id) {
         _definitionAnchors = Object.create(null);
@@ -382,6 +397,20 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
             el._fwWorkspaceTableState = {page: _page, term: _searchTerm, sortCol: _sortCol, sortDir: _sortDir};
         }
         var colgroup = '', tableAttr = '';
+        var footer = '', totalsNote = '', totalsNoteId = id + '-totals-note';
+        var oldTotalsNote = document.getElementById(totalsNoteId);
+        if (oldTotalsNote) oldTotalsNote.remove();
+        if (_totalsEnabled && filtered.length) {
+            var totals = window._fwTableTotals(cfg, _matchingRows), reasons = [];
+            footer = '<tfoot class="fw-table-totals"><tr><th scope="row">Total</th>' + columns.slice(1).map(function(column) {
+                var result = _own(totals, column);
+                if (result && result.reason) reasons.push(column + ': ' + result.reason);
+                return '<td' + (result ? ' class="fw-table-numeric"' : '') + '>' +
+                    (result ? _escapeHtml(result.text) : '') + '</td>';
+            }).join('') + '</tr></tfoot>';
+            totalsNote = 'Totals cover ' + filtered.length + ' matching rows before the display limit. Delivered table scope.' +
+                (reasons.length ? ' ' + reasons.join(' ') : '');
+        }
         if (_colWidths && _colWidths.length === columns.length) {
             colgroup = '<colgroup>' + _colWidths.map(function(w) {
                 return '<col style="width:' + w + 'px">';
@@ -390,7 +419,14 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
         }
         el.innerHTML = '<table class="fw-table fw-data-table' + (comparison ? ' fw-comparison-table' : '') + (context ? ' fw-comparison-context' : '') + '"' + tableAttr + '>' + colgroup
             + '<thead><tr>' + hdr + '</tr></thead><tbody>'
-            + body + '</tbody></table>' + note;
+            + body + '</tbody>' + footer + '</table>' + note;
+        if (totalsNote) {
+            var scopeNote = document.createElement('div');
+            scopeNote.id = totalsNoteId; scopeNote.className = 'fw-table-note fw-table-totals-note';
+            scopeNote.textContent = totalsNote;
+            el.after(scopeNote);
+            el.querySelector('table').setAttribute('aria-describedby', totalsNoteId);
+        }
         if (_definitionAnchors) {
             el.querySelectorAll('tbody tr').forEach(function(row, index) {
                 var anchor = _definitionAnchors[visible[index].display[0]];
@@ -511,6 +547,16 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
 
     /* ── Live mode ── */
     if (cfg.dataset_id) {
+        function _totalsRecord(record) {
+            if (!_totalsEnabled) return null;
+            var inputs = Object.create(null);
+            Object.keys(cfg.totals).forEach(function(column) {
+                var spec = cfg.totals[column];
+                var required = spec.agg === 'sum' ? [column] : [spec.numerator, spec.denominator];
+                required.forEach(function(name) { inputs[name] = _own(record, name); });
+            });
+            return inputs;
+        }
         function _drawTable(rawRows) {
             if (el._fwTableGeneration !== generation) return;
             var cols = cfg.columns;
@@ -522,7 +568,8 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
                     if (typeof v === 'number') return fmtCompact(v);
                     return String(v);
                 });
-                return _comparisonRow({display: display, raw: raw, index: index}, r, cols);
+                return _comparisonRow({display: display, raw: raw, index: index,
+                    totalsRecord: _totalsRecord(r)}, r, cols);
             });
             _lastRows = rows; _lastCols = cols; _lastTotal = rawRows.length;
             _renderRows(cols, rows, rawRows.length);

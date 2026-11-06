@@ -10,6 +10,7 @@ from typing import Any, List, Optional
 import pandas as pd
 
 from trellum.assets import load_css, load_js
+from trellum.components._table_totals import totals_config, typed_inputs
 from trellum.components.base import Component, RenderContext
 from trellum.data.transforms import df_to_json_records, format_value
 
@@ -43,6 +44,8 @@ class DataTable(Component):
     ``None`` keeps the existing ``max_rows`` display contract.
     Keyword-only ``cell_shading`` optionally declares whole-column raw-unit
     targets and ``higher``/``lower`` direction, without changing text colors.
+    Keyword-only ``totals`` declares additive sums or weighted ratios over
+    matching delivered rows before display limits; column one labels Total.
 
     A live-query-backed table is just a reactive table: declare
     ``LiveDataSource(id, query=..., df=snapshot)`` and pass
@@ -64,6 +67,7 @@ class DataTable(Component):
     live: Optional[dict] = None
     cell_shading: Optional[dict] = field(default=None, kw_only=True)
     row_limit: Optional[int | str] = field(default=None, kw_only=True)
+    totals: Optional[dict] = field(default=None, kw_only=True)
 
     # ComparisonTable's presentation metadata travels with the same population.
     _comparison: Optional[dict] = field(default=None, init=False, repr=False)
@@ -73,12 +77,15 @@ class DataTable(Component):
 
     def __post_init__(self) -> None:
         _validate_row_limit(self.row_limit)
+        if self.totals is not None:
+            self.totals = totals_config(self.totals, self.df, self.columns or list(self.df.columns))
 
     def render_html(self, ctx: RenderContext) -> str:
         if self.live:
             raise ValueError(_LIVE_LEGACY_ERROR)
         row_limit = _validate_row_limit(self.row_limit)
         shading = self._cell_shading_config()
+        totals = totals_config(self.totals, self.df, self.columns or list(self.df.columns))
 
         cid = ctx.next_id()
 
@@ -122,6 +129,8 @@ class DataTable(Component):
                 cfg["cellShading"] = shading
             if row_limit is not None:
                 cfg["rowLimit"] = row_limit
+            if totals:
+                cfg["totals"] = totals
             if self._comparison is not None:
                 cfg["comparison"] = self._comparison
             ctx.register(cid, cfg)
@@ -150,6 +159,9 @@ class DataTable(Component):
         }
         if row_limit is not None:
             reg["rowLimit"] = row_limit
+        if totals:
+            reg["totals"] = totals
+            reg["totalsInputs"] = typed_inputs(self.df, totals)
         if numeric_cols or (self._comparison and self._comparison["context"] is not None):
             # Keep established text/date/boolean CSV representation; only
             # numeric cells need a separate unrounded value. Text-only catalog
@@ -235,7 +247,7 @@ class DataTable(Component):
 
     @classmethod
     def client_js(cls) -> str:
-        return load_js("components/data_table.js")
+        return load_js("components/data_table_totals.js") + "\n" + load_js("components/data_table.js")
 
 
 def _validate_row_limit(value):

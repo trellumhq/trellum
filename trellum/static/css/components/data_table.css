@@ -52,6 +52,16 @@
     font-size: var(--font-size-meta); color: var(--text-context, var(--text-muted));
     margin-top: var(--spacing-sm);
 }
+.fw-data-table .fw-table-totals th, .fw-data-table .fw-table-totals td {
+    border: none;
+    background-image: linear-gradient(var(--border-color), var(--border-color));
+    background-size: 100% 1px; background-repeat: no-repeat;
+    font-weight: 600; color: var(--text-main);
+}
+.fw-data-table .fw-table-totals th {
+    font-size: inherit; text-transform: none; letter-spacing: normal;
+}
+.fw-table-totals-note { white-space: normal; overflow-wrap: anywhere; }
 .fw-bar-cell { position: relative; min-width: 80px; }
 .fw-bar-fill {
     position: absolute; left: 0; top: 0; bottom: 0;

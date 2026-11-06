@@ -9,6 +9,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Optional keyword-only DataTable totals declare additive sums and weighted
+  ratios over matching delivered rows before display limits, using bounded
+  decimal arithmetic and independent completeness reasons. Added native
+  examples and API guidance; existing cells, CSV and wrapper totals stay intact.
+
 - Opt-in `DataTable.row_limit` selector with bounded All display and full-population CSV.
 
 - Optional observed-day monthly averages for ordinary daily LineChart and vertical

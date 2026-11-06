@@ -133,3 +133,92 @@ There is no runtime shading toggle. Rebuild with matching assets to enable it.
 `examples_table_shading.add_sections(ctx)` in the component showcase provides
 default/opt-in snapshots, filterable cohort metrics with explicit text rules,
 lossless boundaries and a homogeneous retention comparison.
+
+
+## Optional totals over matching delivered rows
+
+`DataTable.totals=None` is keyword-only. Omitted, `None` and `{}` add no
+configuration, footer or space. Declarations are copied and checked at
+construction and rendering. Each key must name a supplied, displayed metric.
+The first displayed column is reserved for the **Total** label and cannot have
+a total declaration. All-numeric tables that need their first metric summed
+must supply an explicit label column first. `columns=None` and `columns=[]`
+retain their existing all-columns fallback.
+
+```python
+DataTable(df, "Campaign contributions", static=True,
+          columns=["Campaign", "Spend", "Revenue", "ROAS"],
+          totals={
+              "Spend": {"agg": "sum", "format": "currency"},
+              "Revenue": {"agg": "sum", "format": "currency"},
+              "ROAS": {"agg": "ratio", "numerator": "Revenue",
+                       "denominator": "Spend", "format": "ratio", "precision": 2},
+          })
+```
+
+A sum declares a genuinely additive metric: do not sum stocks, cumulative
+counts, distinct users or rates. It reads its own column. A ratio sums the
+explicit numerator and denominator over the **same matching records**, then
+divides; it never averages row rates or parses formatted values. Ratio input
+columns must be present in the supplied dataframe but may be hidden from the
+display. Hidden inputs do not become searchable or appear in CSV.
+
+Only `agg` is required for sums; ratios also require nonempty string
+`numerator` and `denominator` names. `format` defaults to `number` and
+`precision` to `2`. Sums accept `number`, `currency`, `plain`; ratios also
+accept `percent` (ratio × 100) and `ratio` (an `x` suffix). Precision must be
+an integer from 0 to 6, excluding booleans. Unknown options, columns, enums,
+floating precision, callbacks and malformed declarations raise `ValueError`.
+
+Totals cover the last completed draw's matching delivered population **before**
+`row_limit` or `max_rows`. Report filters narrow that population; table search
+narrows it locally. Sorting changes order only. The Rows selector changes no
+total, report filter, KPI or chart. No matches means no total row or scope note.
+The semantic footer and adjacent scope note identify matching row counts and
+delivered table scope, without claiming warehouse completeness.
+
+Every total independently requires finite genuinely numeric inputs for every
+matching record. Null/NA/NaN, infinity, booleans, authored numeric-looking
+strings and unsupported types withhold that metric as a dash and a named
+reason; valid siblings and measured zero remain. Signed additive values are
+supported. A ratio requires complete components and a **positive summed
+denominator**; zero or negative denominators withhold it.
+
+Static `int`, `float` and `Decimal` inputs use a separate typed numeric text
+payload indexed by original row position. It includes only columns required
+by declarations and preserves numeric provenance and Decimal/large-int
+precision without changing display, raw rows, search or CSV. Ordinary
+DataSource/ScopedDataSource deliveries require finite JavaScript numbers;
+unsafe integer Numbers and strings cannot establish precise inputs and
+withhold the affected metric. Precision lost upstream cannot be recovered.
+Live-query sources and their scoped descendants withhold totals with
+“Live-query total scope is not declared.” Ordinary unready sources cannot
+establish total scope until ready. These states leave ordinary cells and
+loading/failure handling intact.
+
+New totals use bounded decimal coefficient arithmetic with BigInt, exact sums,
+and half-away-from-zero rounding only at the requested output precision.
+Numeric declarations allow at most 1,000 coefficient digits and absolute
+base-ten exponent 1,000; intermediates and results are bounded to 2,048 digits.
+Values outside these limits display “Numeric range is unsupported.” rather
+than expanding extreme exponents. Browsers without BigInt explicitly withhold
+totals. Number/currency/percent/ratio use en-US grouping and fixed precision;
+plain omits grouping. Currency uses `$` (`-$` for negatives), and rounded
+negative zero is normalized. No compact notation hides authored precision.
+
+CSV remains **only matching source rows in current stable sort order**, with
+no total/footer or unit changes. Native report/section PNG and PDF capture
+the rendered footer and scope note in normal flow when the existing capture
+renderer supports the section’s styles. The vendored html2canvas currently
+rejects the existing even-row `color-mix` paint (`unsupported color function
+"color"`); this also affects default-off tables. A bounded one-visible-row
+section can be captured with its full matching-population total and scope.
+This option does not change body paint or the global capture runtime to work
+around that limitation. Captures retain the current bounded table display and horizontal scroll viewport; they do not expand
+hidden rows/columns or add an export-only total. This option adds no pinning,
+hierarchy, row drill-down or Pivot changes. ComparisonTable exposes no totals
+argument, and workspace definition catalogs ignore injected totals settings.
+Rebuild artifacts with matching Python and browser assets to enable totals.
+
+`examples_table_totals.add_sections(ctx)` supplies native off/on static,
+filtered 36-contributor and incomplete-input examples.

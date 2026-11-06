@@ -1,5 +1,20 @@
 # Framework Migration Guide
 
+## Unreleased: optional DataTable matching-population totals
+
+Keyword-only `DataTable.totals=None` preserves existing callers and output.
+Nonempty declarations add explicit additive sums or weighted ratios over
+matching delivered records before the display limit. The first displayed
+column labels Total; provide a label column if every metric needs a sum.
+Incomplete/unsafe inputs and undeclared live-query scope withhold affected
+totals with reasons. ComparisonTable has no new totals argument; Pivot totals
+and CSV remain unchanged. Static typed numeric inputs are additive payload
+metadata. Rebuild matching Python/HTML/data/runtime assets; older runtimes
+do not render totals. No database or host migration is needed. Native captures
+include the rendered footer within the current bounded table viewport. The
+existing striped-table html2canvas color limitation remains. See
+[Report data tables](report-data-tables.md#optional-totals-over-matching-delivered-rows).
+
 ## Unreleased: optional DataTable row limits
 
 No migration is needed. Existing `DataTable` and `ComparisonTable` calls keep
