@@ -5,15 +5,14 @@
     align-items: center;
     column-gap: 12px;
     padding: 5px 16px 4px;
-    background: var(--bg-header);
+    background: var(--header-fill, var(--bg-header));
     position: sticky; top: 0; z-index: 100;
-}
-/* Classic Dark uses white ink throughout its red report header. */
-[data-theme="dark"] .fw-report-chrome {
-    --on-accent: #fff;
 }
 .fw-report-chrome > .fw-header { display: contents; }
 .fw-report-chrome > .fw-report-metadata { grid-area: 2 / 1; }
+.fw-header :is(.fw-back-link, .fw-export-btn, .fw-help-btn, .fw-theme-select):focus-visible {
+    outline-color: var(--on-header, #fff);
+}
 .fw-report-chrome .fw-header-left { grid-area: 1 / 1; }
 .fw-report-chrome .fw-header-right { grid-area: 1 / 2 / 3 / 3; min-width: max-content; }
 .fw-report-chrome .fw-export-wrap { flex-shrink: 0; }
@@ -21,11 +20,11 @@
 .fw-report-chrome .fw-titleblock { display: flex; flex-direction: row; align-items: baseline; gap: 8px; }
 .fw-report-chrome .fw-export-btn { box-sizing: border-box; width: 96px; height: 30px; }
 .fw-report-chrome .fw-help-btn { box-sizing: border-box; width: 96px; height: 30px; }
-.fw-report-chrome .fw-header h1 { color: var(--on-accent, #fff); }
-.fw-report-chrome .fw-header .fw-subtitle { color: var(--on-accent, #fff); opacity: .72; }
+.fw-report-chrome .fw-header h1 { color: var(--on-header, #fff); }
+.fw-report-chrome .fw-header .fw-subtitle { color: var(--on-header, #fff); }
 .fw-report-chrome .fw-export-btn,
 .fw-report-chrome .fw-help-btn,
-.fw-report-chrome .fw-theme-select { color: var(--on-accent, #fff); }
+.fw-report-chrome .fw-theme-select { color: var(--on-header, #fff); }
 .fw-report-chrome .fw-export-btn,
 .fw-report-chrome .fw-help-btn,
 .fw-report-chrome .fw-theme-select {
@@ -35,15 +34,15 @@
 .fw-report-chrome .fw-theme-select {
     box-sizing: border-box; width: 96px; height: 30px;
     padding: 4px 16px 4px 6px;
-    background-position: right 4px center;
+    background-position: right 8px center, right 4px center;
 }
-.fw-report-chrome .fw-report-metadata { color: var(--on-accent, #fff); }
-.fw-report-chrome .fw-report-metadata-label { color: var(--on-accent, #fff); opacity: .72; }
+.fw-report-chrome .fw-report-metadata { color: var(--on-header, #fff); }
+.fw-report-chrome .fw-report-metadata-label { color: var(--on-header, #fff); }
 .fw-report-chrome .fw-freshness.fresh,
 .fw-report-chrome .fw-freshness.stale,
-.fw-report-chrome .fw-freshness.very-stale { color: var(--on-accent, #fff); }
+.fw-report-chrome .fw-freshness.very-stale { color: var(--on-header, #fff); }
 .fw-header {
-    background: var(--bg-header);
+    background: var(--header-fill, var(--bg-header));
     padding: 7px 16px;
     display: flex; flex-wrap: nowrap;
     justify-content: space-between; align-items: center;
@@ -55,7 +54,7 @@
     overflow: hidden;
 }
 .fw-header h1 {
-    font-size: 12px; font-weight: 700; white-space: nowrap; color: #fff;
+    font-size: 12px; font-weight: 700; white-space: nowrap; color: var(--on-header, #fff);
     flex: 0 0 auto;
 }
 /* Title + subtitle on one row (desktop). The mobile query flips this to a
@@ -70,21 +69,21 @@
     min-width: 0; overflow: hidden; flex: 1 1 auto;
 }
 .fw-header .fw-subtitle {
-    font-size: 12px; color: rgba(255,255,255,0.7);
+    font-size: 12px; color: var(--on-header, #fff);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     min-width: 0; flex: 1 1 auto;
 }
 .fw-header .fw-subtitle:not(:empty)::before { content: "\00b7\0020"; }
 .fw-back-link {
     display: inline-flex; align-items: center; gap: 4px;
-    color: rgba(255,255,255,0.7); text-decoration: none;
+    color: var(--on-header, #fff); text-decoration: none;
     font-size: 12px; font-weight: 500;
     padding: 4px 10px; border-radius: var(--radius-control);
-    background: rgba(0,0,0,0.2);
-    border: 1px solid rgba(255,255,255,0.15);
-    transition: all 0.2s; white-space: nowrap; flex-shrink: 0;
+    background: transparent;
+    border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+    transition: border-color 0.2s; white-space: nowrap; flex-shrink: 0;
 }
-.fw-back-link:hover { background: rgba(0,0,0,0.35); color: #fff; }
+.fw-back-link:hover { border-color: currentColor; }
 .fw-back-link svg { width: 14px; height: 14px; }
 .fw-nav-group { display:inline-flex; align-items:center; gap:6px; margin-right:12px; flex-shrink:0; }
 /* The brand/lattice mark: a bare svg dropped directly into the nav slot
@@ -95,14 +94,14 @@
 .fw-export-wrap { position: relative; }
 .fw-export-btn {
     display: inline-flex; align-items: center; gap: 4px;
-    color: rgba(255,255,255,0.7);
+    color: var(--on-header, #fff);
     font-size: var(--font-size-interface); font-weight: 500;
     padding: 5px 12px; border-radius: var(--radius-control);
-    background: rgba(0,0,0,0.2);
-    border: 1px solid rgba(255,255,255,0.15);
-    transition: all 0.2s; white-space: nowrap; cursor: pointer;
+    background: transparent;
+    border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+    transition: border-color 0.2s; white-space: nowrap; cursor: pointer;
 }
-.fw-export-btn:hover { background: rgba(0,0,0,0.35); color: #fff; }
+.fw-export-btn:hover { border-color: currentColor; }
 .fw-export-btn svg { width: 14px; height: 14px; }
 .fw-export-btn.running svg { animation: fw-spin 1s linear infinite; }
 .fw-export-menu {
@@ -123,14 +122,14 @@
 .fw-help-btn {
     display: inline-flex; align-items: center; justify-content: center;
     padding: 5px 10px; border-radius: var(--radius-control);
-    color: rgba(255,255,255,0.75);
+    color: var(--on-header, #fff);
     font-size: var(--font-size-label); font-weight: 600; letter-spacing: 0.3px;
     text-transform: uppercase; line-height: 1;
-    background: rgba(0,0,0,0.2);
-    border: 1px solid rgba(255,255,255,0.15);
-    transition: all 0.2s; cursor: pointer; white-space: nowrap;
+    background: transparent;
+    border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+    transition: border-color 0.2s; cursor: pointer; white-space: nowrap;
 }
-.fw-help-btn:hover { background: rgba(0,0,0,0.35); color: #fff; }
+.fw-help-btn:hover { border-color: currentColor; }
 @media (max-width: 640px) {
     .fw-help-wrap { display: none; }
 }

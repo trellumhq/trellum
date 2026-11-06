@@ -140,7 +140,8 @@ jobs:
     if: needs.changes.outputs.portal == 'yes'
     name: django unit tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Leave time for setup and reports around the complete ordinary suite.
+    timeout-minutes: 20
     container:
       # Keep this tag aligned with the Playwright pin in requirements-django.txt.
       image: mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:51d31fdfacb0cff99a1a724152e34ae408d2bd4e7da310ff157450f49261cc59
@@ -225,7 +226,9 @@ jobs:
         # Docker integration runs in the sandbox jobs, where bind-mount paths
         # belong to the daemon's host rather than this test container. Heavy
         # tests are opt-in: see the django-heavy-tests job.
-        run: python scripts/test.py portal --workers 2 --junitxml .test-results/portal.xml --durations 20
+        # Stop on a failure so its traceback and JUnit report are available
+        # before later tests can consume the remaining job budget.
+        run: python scripts/test.py portal --workers 2 --fail-fast --junitxml .test-results/portal.xml --durations 20
 
       - name: Summarize test outcomes and timings
         if: always()

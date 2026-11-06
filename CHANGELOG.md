@@ -9,6 +9,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Maintenance
 
+- Give the ordinary portal CI suite a 20-minute job budget and stop on the
+  first test failure so its traceback and test report are available promptly.
+
 - Pin external CI actions to verified upstream commits while retaining weekly
   dependency-update checks.
 
@@ -18,12 +21,27 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Documentation
 
 - Default local human report previews to review mode, with scoped feedback
-  polling and rebuild-before-reply guidance.
+  polling and rebuild-before-reply guidance. Setup refreshes the managed
+  guidance in existing projects while preserving their custom instructions.
 
 - Explain which repository files reach a studio during Git sync, including
   nested project roots, assistant instructions and declared data files.
 
+### Added
+
+- Structured assistant answer review with bounded corrections, evidence cell reconciliation and private draft handling before chat delivery.
+
+- Explicit assistant source grants, scoped PostgreSQL schema discovery and read-only queries with durable execution, cancellation and query evidence.
+- Optional canonical metric calculations with explicit report bindings, period and freshness checks, and structured evidence cards.
+- Offline assistant evaluation fixtures and a scorer for supplied structured captures, with model accuracy reported separately from calculation checks.
+
 ### Changed
+
+- Remove the former waitlist notice from the website privacy page.
+
+- Refresh the checkout presentation with four visual decision slides, stage
+  comparisons and an explicitly hypothetical recovery scenario. Presentations
+  can opt into a single-slide view with a read-all option.
 
 - Showcase reports, written analyses, and presentations in the README, with
   desktop and mobile screenshots side by side and direct links to synthetic demos.
@@ -32,16 +50,18 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - Keep the report assistant Close button reachable above console navigation.
 
-- Keep report recovery notices functional under enforced CSP, with automatic
-  storage recovery and explicit unconfirmed rebuild outcomes.
-- Give the assistant bounded metric definitions for project-wide access while
-  keeping report-scoped conversations isolated from the shared registry.
+- Keep report recovery notices functional under enforced Content Security
+  Policy, recover automatically when storage returns, and show rejected or
+  unconfirmed rebuild requests without automatically repeating them.
 
 - Keep dense chart event labels readable and expose crowded events through
   keyboard-accessible details, included in report image and PDF exports.
 
-- Bound report snapshot height after lazy content renders, preserving full PDF output.
-- Strengthen theme regression guards for spaced names and short hex colors.
+- Strengthen theme regression checks for spaced names, light/dark classification
+  and three-digit hex colors.
+
+- Remeasure lazy report content before clipping emailed snapshots to their
+  height limit, with bounded viewport growth and settling.
 
 - Keep the demo Sessions per DAU metric unbound so the metrics catalog
   demonstrates an unmonitored definition.
@@ -52,6 +72,24 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Reactivating an account in the admin clears its old dormancy warning and
   records who reactivated it. A retention sweep cannot disable it from a
   stale candidate; future dormancy requires a fresh warning and grace period.
+
+- Render readable assistant analysis with evidence placeholders, specific clarifications and visible business-analysis rationales; compare declared intent with executor metadata while preserving private draft and source-continuation checks.
+- Include the psycopg 3 driver required for bounded assistant source reads in
+  framework driver installations.
+
+- Align the pinned SQLGlot parser and Snowflake emulator dependencies so the
+  framework integration suite can install with all engine coverage intact.
+
+- Supply current authorized source metadata to assistant conversations and preserve historical permission fingerprints during discovery.
+
+- Clarify that read-only assistant access includes authorized source queries, and remove contradictory published-report-only guidance.
+
+- Reject incomplete metric dimension-day coverage and unsafe report aggregations when explicit execution semantics are declared.
+- Give the assistant bounded metric definitions for project-wide access while
+  keeping report-scoped conversations isolated from the shared registry.
+
+- Keep report studio names, metadata and header controls readable across themes,
+  use light text on Blossom headers, and match footer source links to the page text.
 
 - Website links include a Nova Play report image for social previews, and the
   public demo gallery is no longer blocked by robots.txt.

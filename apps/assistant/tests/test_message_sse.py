@@ -4,7 +4,7 @@ from decimal import Decimal
 
 import pytest
 
-from apps.assistant import llm
+from apps.assistant import answer_review, llm
 from apps.assistant.models import AssistantSession, LlmUsage
 
 pytestmark = pytest.mark.django_db
@@ -144,7 +144,7 @@ def frames(response) -> list[tuple[str, dict]]:
 
 class TestEventProtocol:
     def test_plain_answer_stream(self, login, viewer, prefix, session, assistant_config, fake_llm):
-        fake_llm(FakeResponse([TextBlock("Revenue was $5.00.")]))
+        fake_llm(FakeResponse([TextBlock("Unapproved revenue was $5.00."), ToolUseBlock("finish", "submit_answer", {"mode": "limitation"})], "tool_use"))
         resp = post_message(login(viewer), prefix, session)
 
         assert resp.status_code == 200
@@ -154,21 +154,19 @@ class TestEventProtocol:
 
         events = frames(resp)
         names = [name for name, _ in events]
-        # Text arrives BEFORE usage, because usage is only known once the
-        # model has finished and the text is forwarded as it is produced.
-        # More than one text_delta is the point: a reply is not held back
-        # until it is complete.
+        # Provider prose is draft; only the server-rendered submission is
+        # delivered, after usage has been booked.
         assert names[0] == "turn_start"
-        assert names[-3:] == ["usage", "done", "turn_end"]
-        assert names.count("text_delta") > 1
+        assert names[-4:] == ["usage", "text_delta", "done", "turn_end"]
+        assert names.count("text_delta") == 1
         assert set(names) == {"turn_start", "text_delta", "usage", "done", "turn_end"}
 
         by_type = dict(events)
         assert by_type["turn_start"]["session_id"] == session.pk
         assert by_type["turn_start"]["model"] == "claude-sonnet-4-6"
         streamed = "".join(d["text"] for n, d in events if n == "text_delta")
-        assert streamed == "Revenue was $5.00."
-        assert by_type["done"]["stop_reason"] == "end_turn"
+        assert streamed == answer_review.MESSAGES["limitation"]
+        assert by_type["done"]["stop_reason"] == "stop"
         assert by_type["turn_end"]["session_id"] == session.pk
 
     def test_frames_are_well_formed_sse(self, login, viewer, prefix, session, assistant_config, fake_llm):
@@ -189,16 +187,14 @@ class TestEventProtocol:
             FakeResponse(
                 [ToolUseBlock("tu_1", "list_reports", {})], stop_reason="tool_use"
             ),
-            FakeResponse([TextBlock("There is one report: Player Overview.")]),
+            FakeResponse([ToolUseBlock("finish", "submit_answer", {"mode": "help"})], "tool_use"),
         )
         events = frames(post_message(login(viewer), prefix, session))
         names = [name for name, _ in events]
-        # The first response is a tool call with no prose, so its usage lands
-        # before any text; the second streams its answer and reports usage
-        # after it.
+        # Data tools retain their events. Submission bookkeeping stays
+        # internal, with usage preceding the server-rendered answer.
         assert names[:4] == ["turn_start", "usage", "tool_use", "tool_result"]
-        assert names[-3:] == ["usage", "done", "turn_end"]
-        assert set(names[4:-3]) == {"text_delta"}
+        assert names[-4:] == ["usage", "text_delta", "done", "turn_end"]
         tool_result = [d for n, d in events if n == "tool_result"][0]
         assert tool_result["is_error"] is False
         assert report_row.slug in tool_result["excerpt"]
@@ -389,11 +385,11 @@ class TestPersistenceAndSpend:
     def test_transcript_and_title_persisted(
         self, login, viewer, prefix, session, assistant_config, fake_llm
     ):
-        fake_llm(FakeResponse([TextBlock("Revenue was $5.00.")]))
+        fake_llm(FakeResponse([TextBlock("Unapproved revenue was $5.00."), ToolUseBlock("finish", "submit_answer", {"mode": "limitation"})], "tool_use"))
         drain(post_message(login(viewer), prefix, session, text="how was revenue?"))
         session.refresh_from_db()
         assert session.title == "how was revenue?"
-        roles_seen = [e["role"] for e in session.state["transcript"]]
+        roles_seen = [e["role"] for e in session.visible_transcript]
         assert roles_seen == ["user", "assistant"]
         assert session.state["usage"]["input_tokens"] == 1000
         assert session.state["usage"]["output_tokens"] == 500
