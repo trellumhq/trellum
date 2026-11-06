@@ -86,6 +86,24 @@ def test_from_users_is_the_hand_wired_path():
     assert comp.default_mode == "all_users"
 
 
+def test_engagement_outcome_keeps_statistics_and_skips_purchase_warning(capsys):
+    df = _users(n=400, seed=19)
+    df["returned"] = (df["days_active"] > 7).astype(int)
+    df.loc[df["rev"] == 0, "returned"] = 1
+    kwargs = dict(
+        metrics=[Metric("rev", kind="mean", fmt="currency"), Metric("returned", kind="rate")],
+        variant_col="bucket", control="ctl", test="new", user_col="uid",
+        exposure_col="days_active", n_days=14, iters=_ITERS,
+    )
+    purchase = ABCompare.from_users(df, **kwargs)
+    purchase_output = capsys.readouterr().out
+    engagement = ABCompare.from_users(df, outcome_type="engagement", **kwargs)
+    engagement_output = capsys.readouterr().out
+    assert engagement.modes == purchase.modes
+    assert "validate_user_df:payer-no-gross" in purchase_output
+    assert "validate_user_df:payer-no-gross" not in engagement_output
+
+
 def test_from_groups_equals_from_users():
     df = _users()
     comp_users = _front_door(df)

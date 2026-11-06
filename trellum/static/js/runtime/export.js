@@ -62,6 +62,9 @@
             useCORS: true,
             logging: false,
             windowWidth: container.scrollWidth,
+            onclone: function(doc) {
+                doc.querySelectorAll('.fw-annotation-details').forEach(function(details) { details.open = true; });
+            },
         }).then(function(canvas) {
             hidden.forEach(function(h) { h.el.style.display = h.prev; });
             if (btn) btn.classList.remove('running');

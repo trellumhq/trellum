@@ -883,7 +883,8 @@ class TestReviewStaysAdvertised:
     def test_describe_advertises_review(self):
         out = cli_mod._describe()
         assert "trellum review start" in out
-        assert "trellum review poll" in out
+        assert "trellum review poll --report <slug>" in out
+        assert "feedback session returned by the poll" in out
 
     def test_guide_topic_review_resolves(self):
         from trellum.agent import agentdoc

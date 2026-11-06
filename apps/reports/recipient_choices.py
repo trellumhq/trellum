@@ -126,8 +126,6 @@ def _eligibility(studio, report):
     blocked = bool(report_access.selected_report_access_block_reason())
     if not org.is_active or (report is not None and blocked and report.audience == Report.AUDIENCE_PRIVATE):
         return lambda user_ref: Q(pk__in=[])
-    has_private = report is not None and Report.objects.filter(
-        studio_id=studio.pk, audience=Report.AUDIENCE_PRIVATE).exists()
 
     def eligible(user_ref):
         ref = OuterRef(user_ref)
@@ -155,20 +153,28 @@ def _eligibility(studio, report):
         if not private:
             assigned = assigned.filter(grant__viewer_scope=PermissionGroupGrant.REPORT_SCOPE_SELECTED)
         assigned = Exists(assigned)
-        # A Viewer who holds the studio through a default role, a membership, or a grant that
-        # is not "selected reports" sees every non-private report; any other Viewer sees only
-        # the reports a group assigned. A studio with private reports needs an assignment for
-        # those, and while selected-report access is blocked only a studio without private
-        # reports is visible to Viewers at all.
+        # Studio-audience grants stay usable independently of Private rows.
+        # Private reports and selected-only assignments require scoped readiness.
         wide = default_role | Exists(direct) | Exists(grants.exclude(
             viewer_scope=PermissionGroupGrant.REPORT_SCOPE_SELECTED, role=roles.VIEWER))
         visible = manager
-        if not has_private:
-            visible = visible | (any_role & wide)
-        elif not blocked:
-            visible = visible | (any_role & wide & assigned if private else any_role & wide)
+        if not private:
+            if blocked:
+                studio_audience = (
+                    Exists(direct.filter(role=roles.VIEWER))
+                    | Exists(groups.filter(group__default_studio_role=roles.VIEWER))
+                    | Exists(grants.filter(role=roles.VIEWER, viewer_scope=PermissionGroupGrant.REPORT_SCOPE_ALL))
+                )
+                # Keep the legacy full-visibility path without treating a
+                # malformed grant as a valid Studio-audience grant when
+                # retained Private metadata restricts that full path.
+                full = wide & ~Exists(Report.objects.filter(
+                    studio_id=studio.pk, audience=Report.AUDIENCE_PRIVATE))
+                visible = visible | (any_role & (studio_audience | full))
+            else:
+                visible = visible | (any_role & wide)
         if not blocked:
-            visible = visible | (any_role & ~wide & assigned)
+            visible = visible | (any_role & assigned)
         return Q(superuser | (Exists(org_member) & visible))
 
     return eligible

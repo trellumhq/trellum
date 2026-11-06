@@ -253,24 +253,27 @@ def render_report(
                 page.wait_for_timeout(_POST_NETWORKIDLE_SETTLE_MS)
 
                 full_height = page.evaluate("document.documentElement.scrollHeight")
+                # Each viewport growth can expose another lazy component. Give
+                # it time to paint, then measure again; never chase a page that
+                # keeps growing indefinitely (at most 4 * 300ms of settling).
+                for _ in range(4):
+                    viewport_height = min(full_height, max_height_px)
+                    page.set_viewport_size({
+                        "width": _VIEWPORT_WIDTH, "height": viewport_height,
+                    })
+                    page.wait_for_timeout(300)
+                    full_height = page.evaluate("document.documentElement.scrollHeight")
+                    if full_height <= viewport_height or viewport_height == max_height_px:
+                        break
+
                 truncated = full_height > max_height_px
-                if truncated:
-                    # Clip by bounding the viewport rather than passing a
-                    # screenshot `clip` rect -- Playwright rejects clip
-                    # together with full_page, and a bounded viewport keeps
-                    # the same full_page code path for both cases.
-                    page.set_viewport_size({"width": _VIEWPORT_WIDTH, "height": max_height_px})
-                    page.wait_for_timeout(300)
-                    png = page.screenshot(full_page=False)
-                else:
-                    # Growing the viewport to the full page height brings any
-                    # still-lazy content below the original 900px fold within
-                    # the IntersectionObserver's view -- give it a moment to
-                    # render before the screenshot (mirrors the 300ms wait
-                    # the truncated branch above already relies on).
-                    page.set_viewport_size({"width": _VIEWPORT_WIDTH, "height": full_height})
-                    page.wait_for_timeout(300)
-                    png = page.screenshot(full_page=True)
+                # An explicit CSS-pixel clip also bounds content that changes
+                # during capture, after the last measurement. Keep device scale
+                # unchanged, and leave the document intact for the full PDF.
+                png = page.screenshot(full_page=False, clip={
+                    "x": 0, "y": 0, "width": _VIEWPORT_WIDTH,
+                    "height": min(full_height, max_height_px),
+                })
 
                 pdf = None
                 if want_pdf:

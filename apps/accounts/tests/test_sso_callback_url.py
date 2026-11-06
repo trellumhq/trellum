@@ -219,3 +219,20 @@ def test_provider_disabled_during_round_trip_cannot_exchange_code(client, cfg, p
     assert len(provider_http) == before
     assert "_auth_user_id" not in client.session
     assert not SocialAccount.objects.exists()
+
+
+def test_callback_state_is_bound_to_its_provider(client, cfg, other_org, provider_http):
+    OrgSSOConfig.objects.create(
+        org=other_org, enabled=True, issuer_url=ISSUER,
+        client_id="other-client", client_secret="synthetic-secret",
+        email_domains=["rival.example"],
+    )
+    query = _start(client)
+    before = len(provider_http)
+    response = _get(client, _route("callback", "oidc-rival"), {
+        "state": query["state"][0], "code": "mock-code",
+    })
+    assert response.status_code == 401
+    assert not any(request.url == TOKEN for request in provider_http[before:])
+    assert "_auth_user_id" not in client.session
+    assert not SocialAccount.objects.exists()

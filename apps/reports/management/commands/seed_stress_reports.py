@@ -43,7 +43,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.orgs.models import Organization
-from apps.reports.scan import ReportQuotaExceeded, sync_studio_registry
+from apps.reports.scan import RegistrySyncWarning, sync_studio_registry
 from apps.studios.models import Studio
 
 MARKER = "seeded-by: seed_stress_reports"
@@ -352,7 +352,7 @@ class Command(BaseCommand):
 
         try:
             total = sync_studio_registry(studio)
-        except ReportQuotaExceeded as exc:
+        except RegistrySyncWarning as exc:
             total = studio.reports.filter(present_in_scan=True).count()
             self.stderr.write(self.style.WARNING(str(exc)))
         self.stdout.write(self.style.SUCCESS(

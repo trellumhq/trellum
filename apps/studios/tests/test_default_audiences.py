@@ -89,3 +89,50 @@ def test_settings_describe_new_items_and_link_to_access(login, org_admin, org, s
     assert "Studio audience" in html
     assert "Existing items keep their audience" in html
     assert "choose Access in the Options menu" in html
+
+
+@pytest.mark.parametrize("cause", ["readiness", "edge-external"])
+def test_disabled_defaults_allow_removal_with_unchanged_private_sibling(
+    login, org_admin, org, studio, settings, cause,
+):
+    type(studio).objects.filter(pk=studio.pk).update(
+        default_report_audience="private", default_analysis_audience="private",
+    )
+    settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = cause != "readiness"
+    settings.TRELLUM_REPORT_ACCESS_MODEL = "edge-external" if cause == "edge-external" else "proxy"
+    existing = Report.objects.create(studio=studio, slug="existing-private", audience="private")
+    assert login(org_admin).post(_url(org, studio), _defaults("studio", "private")).status_code == 302
+    studio.refresh_from_db()
+    existing.refresh_from_db()
+    assert (studio.default_report_audience, studio.default_analysis_audience) == ("studio", "private")
+    assert existing.audience == "private"
+    entry = AuditLog.objects.get(action="studio.default_audiences_set")
+    assert entry.metadata["prior"] == {"default_report_audience": "private", "default_analysis_audience": "private"}
+    assert entry.metadata["new"]["default_report_audience"] == "studio"
+
+
+def test_default_form_compares_current_database_values_not_stale_instance(studio, settings):
+    from apps.studios.forms import DefaultAudiencesForm
+
+    settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = False
+    studio.default_report_audience = "private"  # An old draft, already removed from the DB.
+    form = DefaultAudiencesForm(_defaults("private", "studio"), instance=studio)
+    assert not form.is_valid()
+    assert "Private defaults cannot be enabled" in str(form.errors)
+    studio.refresh_from_db()
+    assert studio.default_report_audience == "studio"
+
+
+def test_admin_studio_form_cannot_introduce_private_defaults(studio, settings, rf, superuser):
+    from django.contrib.admin.sites import AdminSite
+    from apps.studios.admin import StudioAdmin
+    from apps.studios.models import Studio
+
+    settings.TRELLUM_REPORT_SCOPED_ACCESS_READY = False
+    request = rf.get("/admin/studios/studio/")
+    request.user = superuser
+    form_class = StudioAdmin(Studio, AdminSite()).get_form(request, studio)
+    form = form_class({"org": studio.org_id, "name": studio.name, "pool": studio.pool,
+                       "default_report_audience": "private", "default_analysis_audience": "studio"}, instance=studio)
+    assert not form.is_valid()
+    assert "Private defaults cannot be enabled" in str(form.errors["default_report_audience"])

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Report access is unavailable — trellum{% endblock %}
+{% block content %}
+<section class="panel ui-notice-page wide" aria-labelledby="report-access-heading">
+  <h1 id="report-access-heading">Report access is unavailable</h1>
+  <p class="muted">Private and selected report access is not configured for this deployment. Contact your administrator for help.</p>
+  {% if is_admin %}
+    {% if block_reason == "edge-external cannot enforce per-report permissions" %}
+      <p class="muted"><strong>Operator detail:</strong> the <code>edge-external</code> access model does not enforce per-report permissions. Configure a supported report access model and complete its scoped-access deployment setup before making private reports available.</p>
+    {% elif block_reason %}
+      <p class="muted"><strong>Operator detail:</strong> <code>TRELLUM_REPORT_SCOPED_ACCESS_READY</code> is not enabled. Complete the scoped-access deployment setup before enabling this setting.</p>
+    {% endif %}
+    <p><a class="ui-btn ghost" data-console-nav href="{{ access_url }}">Report access settings</a></p>
+  {% endif %}
+  <p><a class="ui-btn primary" data-console-nav href="{{ prefix }}/">Back to reports</a></p>
+</section>
+{% endblock %}

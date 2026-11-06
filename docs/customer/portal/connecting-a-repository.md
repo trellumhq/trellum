@@ -47,6 +47,41 @@ change set waits for someone to publish it.
 7. The data sources the commit declares are mirrored into the studio's
    [Data sources](/docs/latest/portal/connecting-your-data-sources/) page
 
+## Which files reach the studio
+
+Git sync copies the selected reports directory into the studio's `reports/`
+directory. It does not copy your entire repository into the studio project.
+Alongside the reports, it reads these files from the **parent of the selected
+directory**:
+
+- `config.yaml`, `metrics.yaml` and `events.yaml` are copied into the project
+  and included in report builds.
+- `assistant.md` is copied for the AI assistant's project instructions; it is
+  not included in report build sandboxes.
+- `data-sources/config.yaml` is read as source declarations. The portal
+  generates the build's data-source configuration from those declarations and
+  the connections configured in the portal, rather than copying this file as-is.
+
+For example, if the selected directory is `analytics/reports`, put
+`metrics.yaml` at `analytics/metrics.yaml` and source declarations at
+`analytics/data-sources/config.yaml`.
+
+A declared file source can also bring in a committed file outside the reports
+directory, such as `data/demo.sqlite`. Its path is relative to that same project
+root (`analytics/data/demo.sqlite` in the example). Publishing copies the file
+from the published commit, subject to the instance's file-size and per-publish
+data-file limits. Paths must stay inside the project and refer to regular files;
+symlinks and portal-owned destinations are rejected. Publishing does not
+overwrite a source's portal-managed upload. See
+[Connecting your data sources](/docs/latest/portal/connecting-your-data-sources/)
+for declarations, uploads and configuration status.
+
+Other sibling directories and arbitrary root files are not copied into the
+studio project. For example, placing instructions in `context/` or
+`.cursor/rules/` does not make them available to the portal assistant; use
+`assistant.md`. The one-time `import_project` command below has its own copy
+rules and does not expand what later Git syncs copy.
+
 ## Access tokens
 
 Use a token with read access to exactly the one repository. The portal never

@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "first_party_expected": 215,
+  "first_party_expected": 219,
   "routes": [
     {
       "id": "route-000",
@@ -10638,9 +10638,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "a5bad474cc39b47b7298b53b48b272de1a03b7227a44cff4dd631275c5fd5806",
+      "source_sha256": "2779e793e0e59a09a3aae0b7ba259866038178e6d7851569f73c8e56db85771a",
       "request_conditions": [],
-      "adapter_sha256": "fed022099559ac31c54392abea232b92753c590badf98473a34f2dfa93918312",
+      "adapter_sha256": "b5a4f1724d33513c18d9561a39acb31a9314ff68da95980c17a74d2dec3b0347",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -11052,11 +11052,11 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "a819eb1208266311a7c26dba9d96e39fcc3173cdd8117c8a69ecb01dc9ae249c",
+      "source_sha256": "484c77ee7c6e0d07ce5e808bc9c5e18b22fb41d70080c7bb1c399c927b26c532",
       "request_conditions": [
         "POST collection always creates; native action=toggle only changes field parsing, not an existing schedule toggle"
       ],
-      "adapter_sha256": "3bbc9f78eb881a2ca8db54e041282314e863da9c5c558988af95d18742b250d9",
+      "adapter_sha256": "5e8ebcadea3af1326f87c8d6fb8e0b15bcf47d6ff9949425ef3f837393b6e3b0",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -11508,9 +11508,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "de5fac66c06cd93969784206002bb7392d4bea86b3979ff1179f2191f46cc610",
+      "source_sha256": "aa496854903df34e39e0cb779263713464a7c04d2bd4d37538ea366b13b313e0",
       "request_conditions": [],
-      "adapter_sha256": "7d3b7d0d9596e414ef57d42ec94f78e75ed5849ffc343fabd04d092b60b53717",
+      "adapter_sha256": "70c4fdc22982b9e44ad364ed9b0ba3c3f30359b32bf7a34db8d8098dd40a6200",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -11579,11 +11579,11 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "c3d9f956d17d8459ec14fce253177460e30b671632f0e6a0bfd8f8cefed3bf3c",
+      "source_sha256": "05ac91feae33b7c8fc91722ea95537fcc03077b2af4cd3536cf0328c84d6ffea",
       "request_conditions": [
         "JSON POST is read-only choice transport with required CSRF; bearer write restrictions remain unchanged."
       ],
-      "adapter_sha256": "d1ee119690223ca93a667430acffcc7e94cd21c311662febd6cef9237a8aec89",
+      "adapter_sha256": "bae6a1852401c70f26348ca453c6b107172789f3fc90c8ede5d14a8a4e7a14d1",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -11646,9 +11646,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "bbea956c30532f5879935e0da58ce423800d873abbb1faeaf75dd0c49f7bbf56",
+      "source_sha256": "9f8f226256b8071fcb83c1b6c7d08706096c214582089b71006616271dd333ef",
       "request_conditions": [],
-      "adapter_sha256": "0bcc32e9e487898013654a2688def0d788fc01c6348c9ab8615ecb01067585d9",
+      "adapter_sha256": "676810cc53fea2544500f7f743511d1f5e04b8bdfca4c4bfbeda4bebb48ebdad",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -11708,9 +11708,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "471c1f2a8c82ca65ffd24cd5d51d121db4d408e7f2f283013689d38b2dd6b49b",
+      "source_sha256": "8f625c5fde59752d2653f6db10e9c3106ded9894a3afb92e90e9ead172cc4ce5",
       "request_conditions": [],
-      "adapter_sha256": "a5f21e5cfcb1dfe0956089fe4cd967b6ca96449db01e751d827063ff9982766c",
+      "adapter_sha256": "92ae09588e839277257478a9e4ae95dba661370f08b2a45407ee8b15857e2742",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -11838,9 +11838,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "91c48bcd0fd07a72ab443bda1527b9d510cd62c4be07650e11951f2012ebb743",
+      "source_sha256": "5dc6b343ac87eceea539f060187ebdb468b2f73eac2ecd1cd556ebfe49abc1f8",
       "request_conditions": [],
-      "adapter_sha256": "11619ba516c6e877167b78248faa2428efa6e284c828f054bf3dbd6da3653a3e",
+      "adapter_sha256": "26b65774b50661f3170249e93f8d2bf1473cda2442b646c1ebd119de9dae5b4b",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -11910,9 +11910,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "0dc763c1935c2c3d49dbdaecb2b8fda7e6c6ca684ae0c7c06d7d949d78ed674f",
+      "source_sha256": "eec8b0ebf1c7bc40d5d3bf6e077a83792cdaf5bc0f0349fa5cdd91195d8790ae",
       "request_conditions": [],
-      "adapter_sha256": "eca49793a3e558c3b8c17e4bea97fef33d7232dfb974793124b06334e8a62503",
+      "adapter_sha256": "b59656d2ac29f80d71ed9b0ca115b56a3d4a5254b5a55c7398eaaeb6e1313ea1",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -11976,9 +11976,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "9ce928040048f07cb22b52570953855d46e3751d6d6fbaa460bee8634ad1f2a1",
+      "source_sha256": "91c128eaac857785dc5568b39e1b0db3e422170db9e86065b1c6615267671a33",
       "request_conditions": [],
-      "adapter_sha256": "393dc7b27d27667320b91cf767ff193a0b1dd402d2cf173756e506184d02df9c",
+      "adapter_sha256": "673ee8714f4e9e9965d027d04bca3d51461c79df3fa5aaceb4784260db966181",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -12044,7 +12044,7 @@
       "verified_node_ids": [],
       "source_sha256": "fad1be328ad494d8594ce8254219fc28eaf222e240636676ca8dbe0317d32729",
       "request_conditions": [],
-      "adapter_sha256": "a87d6f8121c39762bc552c087831e8cd5ac1064b0f376c3ecb3bc9015266d803",
+      "adapter_sha256": "907af1aab670125702017699fda935a3cbf593b3e9cfd618f53a39344fa27739",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -12110,7 +12110,7 @@
       "verified_node_ids": [],
       "source_sha256": "3b34232d8faeea42e11e54cf56cb176976e2ede25f926edce7e3d5e7a27a10f3",
       "request_conditions": [],
-      "adapter_sha256": "516fb3da35fe618deefa2bc56d6657cea4d50525db384621c198786b24aeb285",
+      "adapter_sha256": "7536bf28f1437346d0425e1e45e01802c48a5d8bb8150d78a24d91f91ba18ee5",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -12172,7 +12172,7 @@
       "verified_node_ids": [],
       "source_sha256": "3e1a6135e91c1fa230d8ec12fad0909e05897782585c884044aef4c074222e61",
       "request_conditions": [],
-      "adapter_sha256": "59f108672e55d362c177cc2626ff6fa5d394d63e1542c8df9b9d30b285d054e3",
+      "adapter_sha256": "d3ef0a41272435ab3d9652ddbd772c6dbb89d694c734e7ce3207b1a8d4f0e2c2",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -12236,9 +12236,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "521551c5161d91c56b5ad4fec7bdbc07eb6be51b85ad39c18ec8305c55fda98e",
+      "source_sha256": "57eb8b5e8411a03abc0f926c61fc6160cfc5477fa3b8012ce69dec195d1e724a",
       "request_conditions": [],
-      "adapter_sha256": "521551c5161d91c56b5ad4fec7bdbc07eb6be51b85ad39c18ec8305c55fda98e",
+      "adapter_sha256": "57eb8b5e8411a03abc0f926c61fc6160cfc5477fa3b8012ce69dec195d1e724a",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -13106,9 +13106,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "bac23712828df66ef19d68ecddf58067f5b179743851276bbc233ba7be2e6674",
+      "source_sha256": "4f7f8d54f060f34996a5cd1cd90526f11efc91199071cab0aa7cd888257de2a4",
       "request_conditions": [],
-      "adapter_sha256": "593c1c680b27c6662e91dc158b65ce5783394df76af8dca5a5b5665f379df46e",
+      "adapter_sha256": "98b19a23d6bc046e9c36df3a20c368223befc923a4c7125b091394b1ff8077eb",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -13198,9 +13198,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "392f703acb0755edfdb1c6ca8dfe60927b737d01206b72088f05ec1bc3e21c11",
+      "source_sha256": "c8ecfd175a9da1af759b49343113312fc067d54c5427bc8b6869096f4235faa2",
       "request_conditions": [],
-      "adapter_sha256": "8193cb75b3ef68d7e59a7af4f237af963093a5f3267d1fcf43d71934ebd4c424",
+      "adapter_sha256": "bfcdc82bc13c560bfd9de91cda4c7e1724b60bab2f3b6a63c3d7c1da4f5bc21e",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -13281,9 +13281,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "e5c140533ff5644e7587c977fae11cb1ef506286bae2db4bdbd17f9c12b81464",
+      "source_sha256": "e502c7239a338241a7a37391e1f124b2bfe0028b211bdd208fb68bcf65c77cc2",
       "request_conditions": [],
-      "adapter_sha256": "99951ae969b47aca9897fa06df5fce5b1ff4b998073365a26d22c895f1c3fee5",
+      "adapter_sha256": "0585e4a8c8f6637787e4c02b69b5cef10fedbec9e37f2042905ecd12f36d8eb0",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -19243,9 +19243,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "82278fc56816addf3a3db8bb4e34022e0cf59b6184897431d8ab874a207c2009",
+      "source_sha256": "a0cc603f41ff919bfbf9f2d814f5d137c5017c3554b963c288d86d18291aaaac",
       "request_conditions": [],
-      "adapter_sha256": "1282b4b0bfa85741a779403dee6efdf8757b48810e294b187ec2f737f23cac5c",
+      "adapter_sha256": "a37e95c851bc34d9613f21e04c0780306b0589210d59f893f798fd424de6e439",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -21191,9 +21191,9 @@
       ],
       "verification": "pending",
       "verified_node_ids": [],
-      "source_sha256": "169f76494df37f74464b3185f25e6e5f271ce18f7ce096693d41a3546ddcc2f5",
+      "source_sha256": "2d104910957b89af66ba257caaceb1de37eea38b98eab5fcc40dde54b0fd572a",
       "request_conditions": [],
-      "adapter_sha256": "169f76494df37f74464b3185f25e6e5f271ce18f7ce096693d41a3546ddcc2f5",
+      "adapter_sha256": "2d104910957b89af66ba257caaceb1de37eea38b98eab5fcc40dde54b0fd572a",
       "principal_parameter_overrides": {
         "viewer-full": {
           "org_slug": "beta"
@@ -23120,6 +23120,321 @@
         "impersonated": {
           "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: studio-viewer",
           "planned_node_id": "apps/core/tests/portal_e2e/test_l3_routes.py::test_route[351-GET]",
+          "verification": "pending"
+        }
+      }
+    },
+    {
+      "id": "route-360",
+      "pattern": "s/<slug:org_slug>/<slug:studio_slug>/settings/assistant-sources",
+      "name": "studio-assistant-source-grants",
+      "view": "apps.assistant.source_grant_views.settings_page",
+      "first_party": true,
+      "case": "C18",
+      "shard": "L4",
+      "allowed_roles": [
+        "group-admin",
+        "operator",
+        "org-admin",
+        "studio-admin"
+      ],
+      "denied_roles": [
+        "anonymous",
+        "developer",
+        "inactive",
+        "private-viewer",
+        "revoked",
+        "viewer",
+        "viewer-full"
+      ],
+      "role_policy": "studio-admin",
+      "seeded_parameters": {
+        "org_slug": {
+          "value": "alpha"
+        },
+        "studio_slug": {
+          "value": "studio-0"
+        }
+      },
+      "disposition": "enhanced",
+      "scenarios": [
+        {
+          "method": "GET",
+          "action": null,
+          "planned_node_id": "apps/assistant/tests/test_source_grants_views.py::test_save_explicit_principals_revision_and_audit",
+          "verification": "pending"
+        },
+        {
+          "method": "POST",
+          "action": null,
+          "planned_node_id": "apps/assistant/tests/test_source_grants_views.py::test_save_explicit_principals_revision_and_audit",
+          "verification": "pending"
+        }
+      ],
+      "verification": "pending",
+      "verified_node_ids": [],
+      "source_sha256": "8795984948c1b9d8c91e054b1148572d1c6842c2aaa1138d324b5abd196427cc",
+      "request_conditions": [],
+      "adapter_sha256": "8795984948c1b9d8c91e054b1148572d1c6842c2aaa1138d324b5abd196427cc",
+      "principal_parameter_overrides": {
+        "viewer-full": {
+          "org_slug": "beta"
+        }
+      },
+      "conditional_roles": {
+        "group-member": {
+          "condition": "Active alpha member with group-derived all-public-reports viewer access; private report is unassigned. Policy context: studio-admin",
+          "planned_node_id": "apps/assistant/tests/test_source_grants_views.py::test_save_explicit_principals_revision_and_audit",
+          "verification": "pending"
+        },
+        "cross-org": {
+          "condition": "Active beta viewer requests primary alpha objects without alpha membership; global own-account/public entry and unconditional redirects differ from tenant data. Policy context: studio-admin",
+          "planned_node_id": "apps/assistant/tests/test_source_grants_views.py::test_save_explicit_principals_revision_and_audit",
+          "verification": "pending"
+        },
+        "impersonated": {
+          "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: studio-admin",
+          "planned_node_id": "apps/assistant/tests/test_source_grants_views.py::test_save_explicit_principals_revision_and_audit",
+          "verification": "pending"
+        },
+        "group-selected": {
+          "condition": "Active alpha member assigned only report-0000 through selected-report group grant; other report IDs require denial setup. Policy context: studio-admin",
+          "planned_node_id": "apps/assistant/tests/test_source_grants_views.py::test_save_explicit_principals_revision_and_audit",
+          "verification": "pending"
+        }
+      }
+    },
+    {
+      "id": "route-361",
+      "pattern": "s/<slug:org_slug>/<slug:studio_slug>/settings/assistant-sources/sources",
+      "name": "studio-assistant-source-choices",
+      "view": "apps.assistant.source_grant_views.sources",
+      "first_party": true,
+      "case": "C18",
+      "shard": "L4",
+      "allowed_roles": [
+        "group-admin",
+        "operator",
+        "org-admin",
+        "studio-admin"
+      ],
+      "denied_roles": [
+        "anonymous",
+        "developer",
+        "inactive",
+        "private-viewer",
+        "revoked",
+        "viewer",
+        "viewer-full"
+      ],
+      "role_policy": "studio-admin",
+      "seeded_parameters": {
+        "org_slug": {
+          "value": "alpha"
+        },
+        "studio_slug": {
+          "value": "studio-0"
+        }
+      },
+      "disposition": "enhanced",
+      "scenarios": [
+        {
+          "method": "GET",
+          "action": null,
+          "planned_node_id": "apps/assistant/tests/test_source_grants_views.py::test_save_explicit_principals_revision_and_audit",
+          "verification": "pending"
+        },
+        {
+          "method": "POST",
+          "action": null,
+          "planned_node_id": "apps/assistant/tests/test_source_grants_views.py::test_save_explicit_principals_revision_and_audit",
+          "verification": "pending"
+        }
+      ],
+      "verification": "pending",
+      "verified_node_ids": [],
+      "source_sha256": "01f86eff3c16e4390ef19a9694916c02cf9a978153646c75d0381c79ff0e8b33",
+      "request_conditions": [],
+      "adapter_sha256": "01f86eff3c16e4390ef19a9694916c02cf9a978153646c75d0381c79ff0e8b33",
+      "principal_parameter_overrides": {
+        "viewer-full": {
+          "org_slug": "beta"
+        }
+      },
+      "conditional_roles": {
+        "group-member": {
+          "condition": "Active alpha member with group-derived all-public-reports viewer access; private report is unassigned. Policy context: studio-admin",
+          "planned_node_id": "apps/assistant/tests/test_source_grants_views.py::test_save_explicit_principals_revision_and_audit",
+          "verification": "pending"
+        },
+        "cross-org": {
+          "condition": "Active beta viewer requests primary alpha objects without alpha membership; global own-account/public entry and unconditional redirects differ from tenant data. Policy context: studio-admin",
+          "planned_node_id": "apps/assistant/tests/test_source_grants_views.py::test_save_explicit_principals_revision_and_audit",
+          "verification": "pending"
+        },
+        "impersonated": {
+          "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: studio-admin",
+          "planned_node_id": "apps/assistant/tests/test_source_grants_views.py::test_save_explicit_principals_revision_and_audit",
+          "verification": "pending"
+        },
+        "group-selected": {
+          "condition": "Active alpha member assigned only report-0000 through selected-report group grant; other report IDs require denial setup. Policy context: studio-admin",
+          "planned_node_id": "apps/assistant/tests/test_source_grants_views.py::test_save_explicit_principals_revision_and_audit",
+          "verification": "pending"
+        }
+      }
+    },
+    {
+      "id": "route-362",
+      "pattern": "s/<slug:org_slug>/<slug:studio_slug>/settings/assistant-sources/principals",
+      "name": "studio-assistant-source-principals",
+      "view": "apps.assistant.source_grant_views.principals",
+      "first_party": true,
+      "case": "C18",
+      "shard": "L4",
+      "allowed_roles": [
+        "group-admin",
+        "operator",
+        "org-admin",
+        "studio-admin"
+      ],
+      "denied_roles": [
+        "anonymous",
+        "developer",
+        "inactive",
+        "private-viewer",
+        "revoked",
+        "viewer",
+        "viewer-full"
+      ],
+      "role_policy": "studio-admin",
+      "seeded_parameters": {
+        "org_slug": {
+          "value": "alpha"
+        },
+        "studio_slug": {
+          "value": "studio-0"
+        }
+      },
+      "disposition": "enhanced",
+      "scenarios": [
+        {
+          "method": "GET",
+          "action": null,
+          "planned_node_id": "apps/assistant/tests/test_source_grants_views.py::test_save_explicit_principals_revision_and_audit",
+          "verification": "pending"
+        },
+        {
+          "method": "POST",
+          "action": null,
+          "planned_node_id": "apps/assistant/tests/test_source_grants_views.py::test_save_explicit_principals_revision_and_audit",
+          "verification": "pending"
+        }
+      ],
+      "verification": "pending",
+      "verified_node_ids": [],
+      "source_sha256": "5010855870ffe0c8760238cbd403c84b8456a9fa303a7815744acdcb297da9d2",
+      "request_conditions": [],
+      "adapter_sha256": "5010855870ffe0c8760238cbd403c84b8456a9fa303a7815744acdcb297da9d2",
+      "principal_parameter_overrides": {
+        "viewer-full": {
+          "org_slug": "beta"
+        }
+      },
+      "conditional_roles": {
+        "group-member": {
+          "condition": "Active alpha member with group-derived all-public-reports viewer access; private report is unassigned. Policy context: studio-admin",
+          "planned_node_id": "apps/assistant/tests/test_source_grants_views.py::test_save_explicit_principals_revision_and_audit",
+          "verification": "pending"
+        },
+        "cross-org": {
+          "condition": "Active beta viewer requests primary alpha objects without alpha membership; global own-account/public entry and unconditional redirects differ from tenant data. Policy context: studio-admin",
+          "planned_node_id": "apps/assistant/tests/test_source_grants_views.py::test_save_explicit_principals_revision_and_audit",
+          "verification": "pending"
+        },
+        "impersonated": {
+          "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: studio-admin",
+          "planned_node_id": "apps/assistant/tests/test_source_grants_views.py::test_save_explicit_principals_revision_and_audit",
+          "verification": "pending"
+        },
+        "group-selected": {
+          "condition": "Active alpha member assigned only report-0000 through selected-report group grant; other report IDs require denial setup. Policy context: studio-admin",
+          "planned_node_id": "apps/assistant/tests/test_source_grants_views.py::test_save_explicit_principals_revision_and_audit",
+          "verification": "pending"
+        }
+      }
+    },
+    {
+      "id": "route-363",
+      "pattern": "s/<slug:org_slug>/<slug:studio_slug>/api/assistant/sessions/<int:session_id>/source-queries/<uuid:query_id>",
+      "name": "studio-assistant-source-query",
+      "view": "apps.assistant.source_views.query_status",
+      "first_party": true,
+      "case": "C21",
+      "shard": "L5",
+      "allowed_roles": [
+        "developer",
+        "group-admin",
+        "group-member",
+        "group-selected",
+        "operator",
+        "org-admin",
+        "private-viewer",
+        "studio-admin",
+        "viewer",
+        "viewer-full"
+      ],
+      "denied_roles": [
+        "anonymous",
+        "cross-org",
+        "inactive",
+        "revoked"
+      ],
+      "role_policy": "studio-viewer",
+      "seeded_parameters": {
+        "org_slug": {
+          "value": "alpha"
+        },
+        "studio_slug": {
+          "value": "studio-0"
+        },
+        "session_id": {
+          "provider": "seed.session_id",
+          "scenario_setup": "create-own-object-in-isolated-shard"
+        },
+        "query_id": {
+          "value": "11111111-1111-1111-1111-111111111111"
+        }
+      },
+      "disposition": "existing async",
+      "scenarios": [
+        {
+          "method": "GET",
+          "action": null,
+          "planned_node_id": "apps/assistant/tests/test_source_progress_browser.py::test_pending_success_resumes_once_with_structured_escaped_evidence",
+          "verification": "pending"
+        },
+        {
+          "method": "POST",
+          "action": null,
+          "planned_node_id": "apps/assistant/tests/test_source_progress_browser.py::test_pending_success_resumes_once_with_structured_escaped_evidence",
+          "verification": "pending"
+        }
+      ],
+      "verification": "pending",
+      "verified_node_ids": [],
+      "source_sha256": "9a09d38ac835c48e347f219987467528b0efd5fa9ebb271ed504896ab2bd0fe1",
+      "request_conditions": [],
+      "adapter_sha256": "9a09d38ac835c48e347f219987467528b0efd5fa9ebb271ed504896ab2bd0fe1",
+      "principal_parameter_overrides": {
+        "viewer-full": {
+          "org_slug": "beta"
+        }
+      },
+      "conditional_roles": {
+        "impersonated": {
+          "condition": "Requires active start/stop impersonation session, not login as a named user alone. Target is alpha org member with no studio grant; apply the route predicate to that effective target. Policy context: studio-viewer",
+          "planned_node_id": "apps/assistant/tests/test_source_progress_browser.py::test_pending_success_resumes_once_with_structured_escaped_evidence",
           "verification": "pending"
         }
       }
