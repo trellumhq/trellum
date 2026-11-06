@@ -275,6 +275,7 @@ class AuditLog(models.Model):
         indexes = [
             models.Index(fields=["org", "-created_at"]),
             models.Index(fields=["action", "-created_at"]),
+            models.Index(fields=["org", "action", "-created_at"], name="audit_org_action_time_idx"),
             # Category pills on the dashboard, and purge_audit's per-category
             # cutoff scan (apps.core.retention).
             models.Index(fields=["org", "category", "-created_at"]),

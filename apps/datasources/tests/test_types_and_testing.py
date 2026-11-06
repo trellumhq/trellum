@@ -59,8 +59,11 @@ class TestTypeFieldFiltering:
          {"path": "data-sources/files/x.duckdb", "upload": True}, None),
     ])
     def test_new_types_split_config_and_secrets(
-        self, login, org_admin, org, studio_tree, type_, posted, config, credentials,
+        self, login, org_admin, org, studio_tree, type_, posted, config, credentials, monkeypatch,
     ):
+        # Field persistence is independent of the save-time connection probe.
+        # Never let synthetic host/token values reach a real provider driver.
+        monkeypatch.setattr("apps.datasources.testing.test_datasource", lambda source: (True, "Connected."))
         url = f"/s/{org.slug}/{studio_tree.slug}/settings/datasources"
         login(org_admin).post(url, {"name": "src", "type": type_, **posted})
         ds = DataSource.objects.get(studio=studio_tree, name="src")
