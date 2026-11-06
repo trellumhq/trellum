@@ -395,6 +395,124 @@ function _fwBarLabelPlugin(spec) {
     };
 }
 
+/* Availability is opt-in and is evaluated from delivered raw contributors,
+   never from legacy skip-null subtotals or formatted values. Static rules carry
+   invalid source positions so duplicate labels remain independent points. */
+function _fwApplyLineAvailability(cfg, rows, spec) {
+    var rules = cfg.series_availability;
+    if (!rules || !rules.length) return spec;
+    var buckets = new Map();
+    if (cfg.dataset_id) rows.forEach(function(row) {
+        var key = String(row[cfg.x] != null ? row[cfg.x] : '');
+        if (!buckets.has(key)) buckets.set(key, []);
+        buckets.get(key).push(row);
+    });
+    spec = Object.assign({}, spec, {datasets: spec.datasets.map(function(ds) {
+        return Object.assign({}, ds, {data: ds.data.slice()});
+    })});
+    spec.availability = [];
+    rules.forEach(function(rule) {
+        var ds = spec.datasets[rule.series];
+        if (!ds) return;
+        ds.spanGaps = false;
+        var invalid = new Set(rule.unavailable || []), unavailable = [];
+        spec.labels.forEach(function(label, index) {
+            var kind = '';
+            if (!cfg.dataset_id) {
+                if (invalid.has(index)) kind = 'inputs';
+            } else {
+                var contributors = buckets.get(String(label)) || [];
+                if (!contributors.length || contributors.some(function(row) {
+                    return rule.required_columns.some(function(col) { return !Number.isFinite(row[col]); }) ||
+                        (rule.state_column !== undefined && row[rule.state_column] !== 'available');
+                })) kind = 'inputs';
+                else if (cfg.ratios) {
+                    var ratio = cfg.ratios[rule.series];
+                    var num = 0, den = 0;
+                    contributors.forEach(function(row) { num += row[ratio.numerator]; den += row[ratio.denominator]; });
+                    if (!Number.isFinite(den) || den <= 0) kind = 'denominator';
+                    else if (!Number.isFinite(num) || !Number.isFinite(num / den)) kind = 'aggregate';
+                } else {
+                    var total = 0, column = cfg.value_cols[rule.series];
+                    contributors.forEach(function(row) { total += row[column]; });
+                    if (!Number.isFinite(total)) kind = 'aggregate';
+                }
+            }
+            if (kind) {
+                ds.data[index] = null;
+                unavailable.push({label: label, kind: kind});
+            }
+        });
+        if (unavailable.length) spec.availability.push({series: rule.series, reason: rule.reason, points: unavailable});
+    });
+    return spec;
+}
+
+function _fwDescribeLineAvailability(canvas, add) {
+    var id = canvas.id + '-availability';
+    var tokens = (canvas.getAttribute('aria-describedby') || '').split(/\s+/)
+        .filter(function(token) { return token && token !== id; });
+    if (add) tokens.push(id);
+    if (tokens.length) canvas.setAttribute('aria-describedby', tokens.join(' '));
+    else canvas.removeAttribute('aria-describedby');
+}
+
+function _fwLineAvailabilityPlugin(availability) {
+    var note = null, owner = null, observer = null;
+    function clear() {
+        if (note) note.remove();
+        if (owner) _fwDescribeLineAvailability(owner, false);
+        note = null;
+    }
+    return {
+        id: 'fwLineAvailability',
+        afterInit: function(chart) {
+            owner = chart.canvas;
+            observer = new MutationObserver(function() {
+                if (document.getElementById(owner.id) === owner) return;
+                chart.destroy();
+                if (window._chartInstances[owner.id] === chart) delete window._chartInstances[owner.id];
+            });
+            observer.observe(document.body, {childList: true, subtree: true});
+        },
+        afterUpdate: function(chart) {
+            owner = chart.canvas;
+            var visible = availability.filter(function(item) { return chart.isDatasetVisible(item.series); });
+            if (!visible.length) { clear(); return; }
+            if (!note) {
+                note = document.createElement('div');
+                note.id = owner.id + '-availability';
+                note.className = 'fw-line-availability';
+            }
+            var lines = visible.map(function(item) {
+                var ds = chart.data.datasets[item.series];
+                var metric = ds.label || ('Series ' + (item.series + 1));
+                var reasons = item.reason ? [item.reason] : Array.from(new Set(item.points.map(function(p) {
+                    return p.kind === 'denominator' ? 'Undefined ratio: denominator is nonpositive or nonfinite.'
+                        : p.kind === 'aggregate' ? 'Nonfinite aggregate or ratio result.'
+                        : 'Incomplete supplied numeric inputs or unavailable supplied state.';
+                })));
+                var labels = item.points.slice(0, 3).map(function(p) { return String(p.label); }).join(', ');
+                var more = item.points.length > 3 ? '; ' + (item.points.length - 3) + ' more' : '';
+                return metric + ': ' + item.points.length + ' unavailable supplied ' +
+                    (item.points.length === 1 ? 'observation' : 'observations') + ' (' + labels + more + '). ' + reasons.join(' ');
+            });
+            var text = 'Selected-data context: ' + lines.join(' ');
+            if (note.textContent !== text) note.textContent = text;
+            // Follow the native plot/month/event siblings; never move event DOM
+            // (it may own keyboard focus) to put our own final sibling in place.
+            var anchor = document.getElementById(owner.id + '-event-details') ||
+                document.getElementById(owner.id + '-month-context') || owner.parentElement;
+            if (anchor && anchor.nextElementSibling !== note) anchor.after(note);
+            _fwDescribeLineAvailability(owner, true);
+        },
+        afterDestroy: function() {
+            if (observer) observer.disconnect();
+            clear();
+        }
+    };
+}
+
 /* Shared chart factory -- called by both static and live modes.
    spec: { type, labels, datasets, stacked, horizontal, showLegend, yFmt, tooltip } */
 function _createChart(id, canvas, spec) {
@@ -410,6 +528,8 @@ function _createChart(id, canvas, spec) {
         delete window._chartInstances[id];
     }
     delete canvas._fwEventDetailsState;
+    // A cloned replacement canvas may still carry the previous description.
+    if (!spec.availability) _fwDescribeLineAvailability(canvas, false);
     if (!spec.monthContext && window._fwClearMonthContext) window._fwClearMonthContext(canvas);
     var tc = window.getThemeColors();
     var axisFont = window._fwFontPx('--font-size-axis', 12);
@@ -553,7 +673,8 @@ function _createChart(id, canvas, spec) {
         options: chartOpts,
         plugins: (spec.monthContext ? [window._fwMonthContextPlugin()] : []).concat((spec.barValues || spec.stackLabels) ? [_fwBarLabelPlugin(spec)] : []).concat(
             spec.eventLabels === 'grouped' && window._fwLineEventLabelsPlugin
-                ? [window._fwLineEventLabelsPlugin(eventDetails, datedEvents)] : [])
+                ? [window._fwLineEventLabelsPlugin(eventDetails, datedEvents)] : []).concat(
+            spec.availability ? [_fwLineAvailabilityPlugin(spec.availability)] : [])
     });
     window._chartInstances[id]._fwThemeManagedAxes = true;
     window._chartInstances[id]._fwThemeManagedFonts = true;
@@ -572,7 +693,17 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
     var canvas = document.getElementById(id);
     if (!canvas) return;
     var previousBindings = window._fwCategoryChartBindings;
-    if (!cfg.category_colors && previousBindings && previousBindings.has(id)) {
+    var ownsAvailability = !!(cfg.series_availability && cfg.series_availability.length);
+    if (ownsAvailability && !canvas._fwAvailabilityOwned) {
+        canvas._fwAvailabilityOwned = true;
+        // First adoption also installs the scoped detached-canvas cleanup.
+        delete canvas._fwBarLive;
+    }
+    // Ordinary lines may gain/remove declarations during renderAll. Keep one
+    // scoped binding even before opt-in, so adoption cannot retain a legacy
+    // anonymous theme handler or a second subscription.
+    var scopedLive = cfg.category_colors || cfg.line_style === 'adaptive' || canvas._fwAvailabilityOwned;
+    if ((!scopedLive || !cfg.dataset_id || window._fwMetricsWorkspace) && previousBindings && previousBindings.has(id)) {
         previousBindings.get(id)(); previousBindings.delete(id);
         // The cached draw belonged to the binding just disposed. A reused
         // StackedBar config still has stack_labels, so it must bind again.
@@ -581,7 +712,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
 
     /* ── Live mode ─────────────────────────────────────────── */
     if (cfg.dataset_id) {
-        var taggedBars = cfg.bar_values || cfg.stack_labels || cfg.category_colors;
+        var taggedBars = cfg.bar_values || cfg.stack_labels || scopedLive;
         // Ordinary renderAll reuses the existing live subscription and controls.
         // Workspaces retain _fwLiveWrap's leased disposal/recreation behavior.
         if (taggedBars && !window._fwMetricsWorkspace && canvas._fwBarLive && canvas._fwBarLive.cfg === cfg) {
@@ -668,7 +799,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
             if (cfg.y1_max !== undefined) spec.y1Max = cfg.y1_max;
             if (cfg.show_labels) spec.showLabels = true;
             if (cfg.header_summary) spec.headerSummary = cfg.header_summary;
-            return spec;
+            return _fwApplyLineAvailability(cfg, labelRows, spec);
         }
 
         var labelRows;
@@ -1115,22 +1246,37 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
             }
         }
         if (taggedBars) canvas._fwBarLive = {cfg: cfg, draw: _drawLive};
-        if (cfg.category_colors && !window._fwMetricsWorkspace) {
+        if (scopedLive && !window._fwMetricsWorkspace) {
             // Opted-in charts own one binding across renderAll, changed configs
             // and canvas replacement. Untagged live charts retain their path.
             var bindings = window._fwCategoryChartBindings || (window._fwCategoryChartBindings = new Map());
             if (bindings.has(id)) bindings.get(id)();
-            var unsubscribe = window._fwFilterEngine.subscribe(cfg.dataset_id, id, _drawLive);
+            function current() {
+                if (document.getElementById(id) !== canvas) { dispose(); return; }
+                _drawLive(window._fwFilterEngine.getFiltered(cfg.dataset_id));
+            }
+            var unsubscribe = window._fwFilterEngine.subscribe(cfg.dataset_id, id, current);
             function onTheme() {
                 if (document.getElementById(id) !== canvas) {
                     bindings.get(id)(); bindings.delete(id); return;
                 }
                 _drawLive(window._fwFilterEngine.getFiltered(cfg.dataset_id));
             }
-            bindings.set(id, function() {
+            var observer = canvas._fwAvailabilityOwned ? new MutationObserver(function() {
+                if (document.getElementById(id) !== canvas) dispose();
+            }) : null;
+            function dispose() {
                 unsubscribe(); window.removeEventListener('fw-theme-change', onTheme);
                 if (barSignals) barSignals.abort();
-            });
+                if (observer) observer.disconnect();
+                if (bindings.get(id) === dispose) bindings.delete(id);
+                var chart = window._chartInstances[id];
+                if (document.getElementById(id) !== canvas && chart && chart.canvas === canvas) {
+                    chart.destroy(); delete window._chartInstances[id];
+                }
+            }
+            bindings.set(id, dispose);
+            if (observer) observer.observe(document.body, {childList: true, subtree: true});
             window.addEventListener('fw-theme-change', onTheme);
             _drawLive(window._fwFilterEngine.getFiltered(cfg.dataset_id));
         } else window._fwLiveWrap(id, cfg, _drawLive);
@@ -1157,7 +1303,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
         }};
     }
     var yFmt = cfg.yTickFormat === 'currency' ? function(v) { return fmtCompact$(v); } : undefined;
-    _createChart(id, canvas, {
+    _createChart(id, canvas, _fwApplyLineAvailability(cfg, null, {
         type: cfg.chartType, labels: cfg.labels, datasets: cfg.datasets,
         stacked: cfg.stacked, horizontal: cfg.horizontal,
         showLegend: cfg.showLegend !== false, yFmt: yFmt, tooltip: tooltip,
@@ -1172,7 +1318,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
         stackNormalized: false,
         stackLabelReason: cfg.stack_labels && (cfg.stack_labels.totals || cfg.stack_labels.percentages)
             ? _fwStaticStackLabelEligibility(cfg) : ''
-    });
+    }));
 };
 
 document.addEventListener('click', function(e) {

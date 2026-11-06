@@ -9,6 +9,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Optional keyword-only LineChart `series_availability` rules withhold incomplete
+  supplied observations as null gaps, preserving measured zeros and independent
+  sibling metrics. Static row positions and filtered bound sums/ratios are
+  supported; dynamic splits reject nonempty rules. Metric-labeled selected-data
+  reasons follow plot/month/event context and respect legend visibility.
+  Summaries and CSV use masked values. Added native examples and API guidance.
+
 - Add optional daily calendar-month labels and plot dividers to LineChart,
   AreaChart, vertical BarChart, StackedBar and ComboChart; preserve default
   output and supplied observations. Include native synthetic examples.

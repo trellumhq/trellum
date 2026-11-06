@@ -143,3 +143,12 @@
 }
 .fw-month-span { position: absolute; top: 0; height: 24px; text-align: center; white-space: nowrap; overflow: hidden; }
 .fw-month-accessible { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* Supplied LineChart availability context lives outside the fixed plot. */
+.fw-line-availability {
+    color: var(--text-secondary);
+    font-size: var(--font-size-label, 12px);
+    line-height: 1.5;
+    margin-top: 6px;
+    overflow-wrap: anywhere;
+}

@@ -3,6 +3,26 @@
 Each section documents a breaking or significant change, how to detect affected
 code, and the exact replacement.
 
+
+## Unreleased: supplied LineChart observation availability
+
+Keyword-only `series_availability=None` is additive on ordinary static/bound
+LineChart series and bound ratios. Nonempty rules intentionally withhold a
+supplied point when any selected raw contributor lacks finite required inputs
+or its declared state is not `available`. Complete zero remains zero; legacy
+undeclared skip-null sums remain unchanged. Dynamic `stack_by` and
+`stack_by_options` reject nonempty rules. Static points retain row positions;
+bound points use currently delivered/filtered x groups. Absent dates stay absent,
+and empty selections produce no observation or note. Explicit dataset binding
+still wins over `static=True`; prior positional/subclass calls remain valid.
+
+Short metric reasons follow plot/month/event context only for visible affected
+series. Summaries and CSV consume masked values; report/section captures include
+the note, while canvas-only captures omit it. Rebuild matching HTML/data/assets;
+older runtimes cannot enforce the new withholding semantics. No database or host
+migration is needed. See [the API and input contract](report-line-availability.md).
+
+
 ## Optional daily month context
 
 The five vertical category-axis chart families accept keyword-only

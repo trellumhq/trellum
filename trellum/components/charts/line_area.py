@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from numbers import Real
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
@@ -58,13 +59,8 @@ def _normalize_forecast_series(value: Any) -> Optional[list[int | str]]:
     return result
 
 
-def _forecast_series_indices(chart: "LineChart") -> list[int]:
-    """Resolve declarations against the chart's ordinary wide series."""
-    refs = _normalize_forecast_series(chart.forecast_series) or []
-    if not refs:
-        return []
-    if chart.stack_by or chart.stack_by_options:
-        raise ValueError("LineChart forecast_series is not supported with stack_by or stack_by_options because split series are dynamic.")
+def _actual_line_captions(chart: "LineChart") -> list[str]:
+    """Actual ordinary renderer/legend captions, including legacy fallbacks."""
     # Match the captions actually emitted by each existing renderer. Bound
     # wide series fall back to column names when y_labels is short or blank;
     # static series retain their existing zip behavior. The HTML legend also
@@ -77,8 +73,18 @@ def _forecast_series_indices(chart: "LineChart") -> list[int]:
         captions = ([authored[i] if i < len(authored) and authored[i] else column
                      for i, column in enumerate(columns)] if chart.dataset_id
                     else [label for label, _ in zip(authored, columns)])
-    labels = [str(label) if label else f"Series {i + 1}"
-              for i, label in enumerate(captions)]
+    return [str(label) if label else f"Series {i + 1}"
+            for i, label in enumerate(captions)]
+
+
+def _forecast_series_indices(chart: "LineChart") -> list[int]:
+    """Resolve declarations against the chart's ordinary wide series."""
+    refs = _normalize_forecast_series(chart.forecast_series) or []
+    if not refs:
+        return []
+    if chart.stack_by or chart.stack_by_options:
+        raise ValueError("LineChart forecast_series is not supported with stack_by or stack_by_options because split series are dynamic.")
+    labels = _actual_line_captions(chart)
     resolved: list[int] = []
     for ref in refs:
         if isinstance(ref, int):
@@ -98,6 +104,72 @@ def _forecast_series_indices(chart: "LineChart") -> list[int]:
     return resolved
 
 
+def _normalize_series_availability(value: Any) -> Optional[list[dict]]:
+    """Copy declarations and reject unsupported shapes before resolving series."""
+    if value is None:
+        return None
+    if not isinstance(value, (list, tuple)):
+        raise ValueError("LineChart series_availability must be a list or tuple of rule dicts.")
+    result = []
+    for rule in value:
+        if not isinstance(rule, dict):
+            raise ValueError("LineChart series_availability entries must be rule dicts.")
+        unknown = set(rule) - {"series", "required_columns", "state_column", "reason"}
+        if unknown:
+            raise ValueError(f"LineChart series_availability has unknown keys {sorted(unknown, key=str)}.")
+        ref = rule.get("series")
+        if isinstance(ref, bool) or not isinstance(ref, (int, str)):
+            raise ValueError("LineChart series_availability series must be a non-bool integer position or exact displayed caption.")
+        cols = rule.get("required_columns")
+        if (not isinstance(cols, (list, tuple)) or not cols
+                or any(not isinstance(c, str) or not c.strip() for c in cols)
+                or len(set(cols)) != len(cols)):
+            raise ValueError("LineChart series_availability required_columns must be nonempty distinct nonempty strings.")
+        for key in ("state_column", "reason"):
+            if key in rule and (not isinstance(rule[key], str) or not rule[key].strip()):
+                raise ValueError(f"LineChart series_availability {key} must be nonempty plain text.")
+        if "reason" in rule and (len(rule["reason"]) > 240 or any(ord(c) < 32 and c not in "\n\t\r" for c in rule["reason"])):
+            raise ValueError("LineChart series_availability reason must be plain text of at most 240 characters.")
+        result.append({**rule, "required_columns": list(cols)})
+    return result
+
+
+def _series_availability_config(chart: "LineChart") -> dict:
+    rules = _normalize_series_availability(chart.series_availability) or []
+    if not rules:
+        return {}
+    if chart.stack_by or chart.stack_by_options:
+        raise ValueError("LineChart series_availability is not supported with stack_by or stack_by_options because split series are dynamic.")
+    captions = _actual_line_captions(chart)
+    columns = chart.y if isinstance(chart.y, list) else [chart.y]
+    selected = set()
+    resolved = []
+    for rule in rules:
+        ref = rule["series"]
+        matches = ([ref] if isinstance(ref, int) and 0 <= ref < len(captions)
+                   else [i for i, caption in enumerate(captions) if caption == ref] if isinstance(ref, str) else [])
+        if len(matches) != 1:
+            raise ValueError(f"LineChart series_availability series {ref!r} must match exactly one plotted series; captions are {captions}.")
+        index = matches[0]
+        if index in selected or captions.count(captions[index]) != 1:
+            raise ValueError(f"LineChart series_availability duplicate target or shared displayed caption {captions[index]!r} is unsupported by the grouped legend.")
+        selected.add(index)
+        underlying = ([chart.ratios[index][k] for k in ("numerator", "denominator")]
+                      if chart.ratios and chart.dataset_id else [columns[index]])
+        if not set(underlying) <= set(rule["required_columns"]):
+            raise ValueError(f"LineChart series_availability required_columns must include underlying columns {underlying} for {captions[index]!r}.")
+        item = {**rule, "series": index}
+        if not chart.dataset_id:
+            # Static points retain their source row positions, including duplicate x labels.
+            item["unavailable"] = [i for i, row in enumerate(chart.df.to_dict("records"))
+                if any(not isinstance(row.get(col), Real) or isinstance(row.get(col), bool)
+                       or not math.isfinite(row[col]) for col in rule["required_columns"])
+                or ("state_column" in rule and (not isinstance(row.get(rule["state_column"]), str)
+                    or row[rule["state_column"]] != "available"))]
+        resolved.append(item)
+    return {"series_availability": resolved}
+
+
 def line_option_problems(chart: "LineChart") -> list[tuple[str, str]]:
     """Everything wrong with a LineChart's size, summary and interpolation.
 
@@ -106,6 +178,10 @@ def line_option_problems(chart: "LineChart") -> list[tuple[str, str]]:
     validator reports them all for a chart changed afterwards.
     """
     problems: list[tuple[str, str]] = []
+    try:
+        _series_availability_config(chart)
+    except ValueError as exc:
+        problems.append(("line-chart-availability-invalid", str(exc)))
     if not isinstance(chart.height, str) or chart.height not in LINE_CHART_HEIGHTS:
         problems.append((
             "line-chart-height-invalid",
@@ -200,6 +276,10 @@ class LineChart(_ChartBase):
     ``event_labels``: keyword-only ``"grouped"`` (default) draws numbered
     event markers with a collapsed list of original names and dates below
     the plot. ``"full"`` keeps legacy in-plot labels without a details row.
+
+    ``series_availability``: keyword-only rules requiring complete finite raw
+    supplied inputs per point. Invalid supplied observations become null gaps
+    with selected-data context below the plot. See docs/report-line-availability.md.
     """
 
     df: pd.DataFrame
@@ -241,6 +321,7 @@ class LineChart(_ChartBase):
     category_colors: Optional[dict] = field(default=None, kw_only=True)
     forecast_series: Optional[List[int | str] | tuple[int | str, ...]] = field(default=None, kw_only=True)
     event_labels: str = field(default="grouped", kw_only=True)
+    series_availability: Optional[list[dict] | tuple[dict, ...]] = field(default=None, kw_only=True)
 
     _component_type: str = field(default="line_chart", init=False, repr=False)
 
@@ -250,6 +331,7 @@ class LineChart(_ChartBase):
         _validate_header_context(self.header_context)
         _validate_category_colors(self.category_colors)
         self.forecast_series = _normalize_forecast_series(self.forecast_series)
+        self.series_availability = _normalize_series_availability(self.series_availability)
         problems = line_option_problems(self)
         if problems:
             raise ValueError(problems[0][1])
@@ -290,6 +372,7 @@ class LineChart(_ChartBase):
         month_config = _month_context_config(self)
         self._validate_event_labels()
         forecast_indices = _forecast_series_indices(self)
+        availability_config = _series_availability_config(self)
         category_config = _category_colors_config(self, ctx)
         cid = ctx.next_id()
 
@@ -302,6 +385,7 @@ class LineChart(_ChartBase):
             cfg_r: dict[str, Any] = {
                 "type": "chart",
                 **month_config,
+                **availability_config,
                 "dataset_id": self.dataset_id,
                 "chartType": "line",
                 "x": self.x,
@@ -346,6 +430,7 @@ class LineChart(_ChartBase):
             cfg: dict[str, Any] = {
                 "type": "chart",
                 **month_config,
+                **availability_config,
                 "dataset_id": self.dataset_id,
                 "chartType": "line",
                 "x": self.x,
@@ -387,13 +472,16 @@ class LineChart(_ChartBase):
         else:
             theme = ctx.theme
             datasets = []
+            declared = {r["series"] for r in availability_config.get("series_availability", [])}
             for i, (col, label) in enumerate(zip(y_cols, y_labels)):
                 has_custom_color = self.colors and i < len(self.colors)
                 color = (self.colors[i] if has_custom_color
                          else theme.chart_colors[i % len(theme.chart_colors)])
+                values = ([None] * len(self.df) if col not in self.df and i in declared
+                          else _clean_list(self.df[col].tolist()))
                 datasets.append({
                     "label": label,
-                    "data": _clean_list(self.df[col].tolist()),
+                    "data": values,
                     "borderColor": color,
                     "backgroundColor": f"{color}22",
                     "borderWidth": 2.5,
@@ -407,6 +495,7 @@ class LineChart(_ChartBase):
             ctx.register(cid, {
                 "type": "chart",
                 **month_config,
+                **availability_config,
                 "chartType": "line",
                 "labels": _clean_list(self.df[self.x].tolist()),
                 "datasets": datasets,
