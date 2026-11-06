@@ -94,6 +94,13 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             page.wait_for_function("id => window._chartInstances[id].data.datasets[0].data[0] === 1296",
                                    arg=area.get_attribute("id"))
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
+            page.get_by_role("link", name="comparison tables", exact=True).click()
+            comparison = page.locator('#sec-filterable-comparison-context')
+            comparison.get_by_role("button", name="Availability", exact=True).click()
+            assert comparison.locator('tbody tr').count() == 3
+            assert comparison.locator('tbody tr').first.locator('td').last.inner_text() == "—\nZero baseline"
+            assert comparison.locator('tbody tr').first.locator('td').nth(2).inner_text() == "$480"
+            assert table.locator('tbody tr').count() == 10
             # Every chart must own a real canvas and draw after scrolling into
             # view; scope-based data swaps cannot stand in for different layouts.
             for canvas in page.locator("canvas:visible").all():
