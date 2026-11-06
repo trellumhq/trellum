@@ -3,9 +3,9 @@
 The lifecycle test is the one that matters. It starts from a project that
 already has its own agent instructions, hooks, MCP servers and credentials,
 runs setup (twice), the portal connection, the discovery commands and the
-doctor, then removes -- and requires every file that existed before to come
-back byte-for-byte. The rest pin the refusals: what removal must leave alone
-rather than guess about.
+doctor, then removes -- and requires every preexisting file to come back
+byte-for-byte. Credential locking also leaves its private coordination file.
+The rest pin the refusals: what removal must leave alone rather than guess about.
 """
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ def _tree(root):
             for p in sorted(root.rglob("*")) if p.is_file()}
 
 
-def test_setup_then_remove_gives_the_project_back_byte_for_byte(tmp_path, capsys):
+def test_setup_then_remove_preserves_the_project_files_byte_for_byte(tmp_path, capsys):
     """Preexisting instructions, hooks, servers and secrets survive the whole
     lifecycle; only what setup added goes."""
     (tmp_path / "AGENTS.md").write_bytes(THEIR_AGENTS.encode("utf-8"))
@@ -82,6 +82,7 @@ def test_setup_then_remove_gives_the_project_back_byte_for_byte(tmp_path, capsys
     after = _tree(tmp_path)
     assert after.pop(".env") == with_portal[".env"], ".env must not be touched"
     before.pop(".env")
+    assert after.pop(".env.lock") == b"", "credential lock must contain no secret data"
     assert after == before
 
     # Removing again finds nothing, and setup can be run again afterwards.
