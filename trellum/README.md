@@ -1816,10 +1816,20 @@ the same existing analysis sharing permissions when published. Presentations
 provide four built-in layouts, stable slide IDs, JavaScript-free reading,
 keyboard navigation, mobile support, and a fullscreen meeting view.
 
+Presentations open as a document by default. Set `presentation_view: slides`
+in `report.yaml` (with `kind: analysis` and `format: presentation`) to open
+one slide at a time in a landscape deck. The numbered contents links,
+Previous/Next, and arrow/Home/End keys within the deck navigate its stable
+links; browser Back/Forward follows that history. **Read all slides** restores
+the document and **Slide view** returns to the linked slide. **Present** enters
+fullscreen only when clicked; Escape returns to the inline slide view. Print
+always includes every slide. `presentation_view: document` explicitly keeps
+the default. Both views use built-in theme tokens and safe Markdown only.
+
 The presentation file has a versioned ordered list. Each slide needs a unique,
 slug-like `id`, a `layout`, and a `title`. The supported layouts are `title`,
 `text`, `image`, and `image-text`; `text` is required for `text` and
-`image-text` layouts and optional for `title`. `image` and `image-text` layouts
+`image-text` layouts and optional for `title` and `image`. `image` and `image-text` layouts
 need a local evidence PNG path and descriptive `alt` text. Other slide keys
 are invalid:
 

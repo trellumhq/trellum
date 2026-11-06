@@ -23,7 +23,9 @@ pytestmark = pytest.mark.django_db
 
 READ_TOOLS = ["list_reports", "get_report_details", "query_report_data", "read_doc", "list_alerts", "get_alert"]
 #: ... plus the one read tool that needs the developer role (internal planning ticket #151).
-DEVELOPER_READ_TOOLS = READ_TOOLS + ["check_repo_changes"]
+METRIC_READ_TOOLS = ["list_metrics", "get_metric_definition", "query_metric"]
+DEVELOPER_READ_TOOLS = READ_TOOLS + ["check_repo_changes"] + METRIC_READ_TOOLS
+READ_TOOLS += METRIC_READ_TOOLS
 
 
 @pytest.fixture
@@ -259,7 +261,7 @@ class TestVisibility:
     ):
         _, secret = key_for(developer, org, write=True)
         names = tool_names(client, url, secret)
-        assert names[:len(READ_TOOLS)] == READ_TOOLS
+        assert [name for name in names if name in READ_TOOLS] == READ_TOOLS
         assert {"run_report", "test_data_source", "publish_repo_changes"} <= set(names)
         assert "configure_data_source" not in names
 

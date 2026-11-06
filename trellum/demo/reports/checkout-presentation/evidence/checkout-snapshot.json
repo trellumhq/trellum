@@ -1,0 +1,12 @@
+{
+  "period": "1–30 September 2026",
+  "data_kind": "synthetic",
+  "source": "../../checkout-findings/content.md",
+  "source_report": "https://trellum.dev/demo/cart-funnel/",
+  "fixture": "420 days ending 2026-10-07, seed 42",
+  "channels": "all",
+  "mobile": {"sessions": 99072, "product_views": 53407, "carts": 8851, "checkout_starts": 3657, "purchases": 1782},
+  "desktop": {"sessions": 44967, "product_views": 25962, "carts": 5994, "checkout_starts": 3434, "purchases": 2358},
+  "tablet": {"sessions": 12668, "purchases": 337},
+  "scenario_completion_increase_pp": 5
+}

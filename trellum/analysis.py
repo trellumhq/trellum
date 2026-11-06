@@ -42,10 +42,12 @@ class Article(Component):
 @dataclass
 class Presentation(Component):
     markup: str
+    view: str = "document"
     _component_type = "presentation"
 
     def render_html(self, ctx) -> str:
-        return f'<article class="fw-presentation" id="{ctx.next_id()}">{self.markup}</article>'
+        view = ' data-presentation-view="slides"' if self.view == "slides" else ""
+        return f'<article class="fw-presentation"{view} id="{ctx.next_id()}">{self.markup}</article>'
 
     @classmethod
     def css(cls) -> str:
@@ -273,7 +275,7 @@ def _presentation_slides(root: Path) -> list[dict]:
             required.add("text")
         if layout in ("image", "image-text"):
             required.update(("image", "alt"))
-        allowed = required | ({"text"} if layout == "title" else set())
+        allowed = required | {"text"}
         if required - set(slide):
             raise ValueError(f"{label} requires {', '.join(sorted(required - set(slide)))}")
         if set(slide) - allowed:
@@ -291,7 +293,7 @@ def _presentation_slides(root: Path) -> list[dict]:
     return slides
 
 
-def _presentation_markup(root: Path, output: Path) -> str:
+def _presentation_markup(root: Path, output: Path, view: str = "document") -> str:
     parser = MarkdownIt("commonmark", {"html": False}).enable("table")
     parser.validateLink = _link_allowed
     assets, sections, links = {}, [], []
@@ -299,7 +301,7 @@ def _presentation_markup(root: Path, output: Path) -> str:
     slides = _presentation_slides(root)
     used = {f"slide-{slide['id']}" for slide in slides}
     used.update(f"slide-{slide['id']}-title" for slide in slides)
-    for slide in slides:
+    for index, slide in enumerate(slides, 1):
         anchor = f"slide-{slide['id']}"
         title = html.escape(slide["title"])
         text = ""
@@ -327,11 +329,14 @@ def _presentation_markup(root: Path, output: Path) -> str:
                         f'rel="noopener" title="Enlarge image"><img id="{html.escape(evidence_id, quote=True)}" '
                         f'data-fw-kind="Evidence" data-fw-title="{alt}" src="{image_url}" alt="{alt}"></a>'
                         + (f'<figcaption>{caption}</figcaption>' if caption else "") + '</figure>')
+        number = (f'<span class="fw-slide-number" aria-hidden="true">{index:02} / {len(slides):02}</span>'
+                  if view == "slides" else "")
         sections.append(f'<section class="fw-section fw-slide fw-slide--{slide["layout"]}" id="{anchor}" '
                         f'data-fw-section-title="{html.escape(slide["title"], quote=True)}" '
-                        f'aria-labelledby="{anchor}-title"><h2 id="{anchor}-title">{title}</h2>'
+                        f'aria-labelledby="{anchor}-title">{number}<h2 id="{anchor}-title">{title}</h2>'
                         f'<div class="fw-slide-body">{text}{evidence}</div></section>')
-        links.append(f'<li><a href="#{anchor}">{title}</a></li>')
+        link_title = f'<span class="fw-slide-link-title">{title}</span>' if view == "slides" else title
+        links.append(f'<li><a href="#{anchor}">{link_title}</a></li>')
     _copy_assets(output, assets)
     return ('<nav class="fw-presentation-toc" aria-label="Slides"><strong>Slides</strong><ol>'
             + "".join(links) + '</ol></nav>' + "".join(sections))
@@ -342,18 +347,19 @@ class AnalysisReport(BaseReport):
 
     def generate(self, ctx) -> None:
         presentation = ctx.config.get("format", "article") == "presentation"
-        render = _presentation_markup if presentation else _article_markdown
-        markup = render(Path(self.report_dir), Path(ctx.output_dir))
+        view = ctx.config.get("presentation_view", "document")
+        root, output = Path(self.report_dir), Path(ctx.output_dir)
+        markup = _presentation_markup(root, output, view) if presentation else _article_markdown(root, output)
         author = ctx.config.get("author")
         if author:
             markup = f'<p class="fw-article-author">By {html.escape(author)}</p>' + markup
         title = html.escape(ctx.config.get("name", "Analysis"))
         markup = f'<h1 class="fw-article-title">{title}</h1>' + markup
-        ctx.add_section("", [(Presentation if presentation else Article)(markup)])
+        ctx.add_section("", [Presentation(markup, view) if presentation else Article(markup)])
         ctx.add_validation_check("analysis-content-safe", "pass",
                                  "Markdown and local PNG provenance validated",
                                  component="Presentation" if presentation else "Article")
         if presentation:
             ctx.add_validation_check("analysis-slides-valid", "pass",
-                                     "Version 1 slides, stable IDs and required fields validated",
+                                     f"Version 1 slides, stable IDs, required fields and {view} view validated",
                                      component="Presentation")

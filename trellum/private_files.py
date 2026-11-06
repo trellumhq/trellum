@@ -1,11 +1,11 @@
 """Private local credential files; callers must use a trusted local directory."""
 from __future__ import annotations
 
-from contextlib import contextmanager
 import os
-from pathlib import Path
 import stat
 import tempfile
+from contextlib import contextmanager
+from pathlib import Path
 
 
 class CredentialPersistenceError(OSError):
