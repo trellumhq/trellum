@@ -330,6 +330,36 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             expect(page.locator(f'#{availability_id}-availability')).to_have_count(1)
             assert page.evaluate('id => window._chartInstances[id].data.datasets[0].data', availability_id) == [17, 0, None, 43]
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
+            page.get_by_role('link', name='monthly averages', exact=True).click()
+            average_static = page.locator('canvas[data-fw-title="Daily orders · monthly averages"]')
+            average_static.scroll_into_view_if_needed()
+            average_static_id = average_static.get_attribute('id')
+            expect(page.locator(f'#{average_static_id}-monthly-average tbody tr')).to_have_count(3)
+            average_section = page.locator('#sec-monthly-averages-—-complete-selected-platform-contributions')
+            average_canvas = average_section.locator('canvas')
+            average_canvas.scroll_into_view_if_needed()
+            average_id = average_canvas.get_attribute('id')
+            page.wait_for_function('id => !!window._chartInstances[id]?._fwMonthlyAverage', arg=average_id)
+            assert page.evaluate('id => window._chartInstances[id]._fwMonthlyAverage.rows.map(r=>r.mean)', average_id) == [10, 59]
+            average_section.get_by_role('button', name='Web', exact=True).click()
+            page.wait_for_function('id => window._chartInstances[id]?._fwMonthlyAverage.rows[1].mean === 35', arg=average_id)
+            average_window = average_section.locator('.fw-date-range')
+            average_window.locator('.fw-date-trigger').click()
+            average_window.locator('input[data-edge="min"]').fill('2028-02-01')
+            average_window.locator('input[data-edge="min"]').dispatch_event('change')
+            average_window.locator('input[data-edge="max"]').fill('2028-02-02')
+            average_window.locator('input[data-edge="max"]').dispatch_event('change')
+            average_window.locator('.fw-date-trigger').click()
+            expect(page.locator(f'#{average_id}-monthly-average tbody tr')).to_have_count(1)
+            expect(page.locator(f'#{average_id}-monthly-average')).to_contain_text('2 / 2 days; 0 missing')
+            average_bar = page.locator('canvas[data-fw-title="Complete selected daily bars"]')
+            average_bar.scroll_into_view_if_needed()
+            average_bar_section = page.locator('#sec-monthly-averages-—-native-daily-bars')
+            average_bar_section.get_by_role('button', name='Direct', exact=True).click()
+            page.wait_for_function('id => window._chartInstances[id]?._fwMonthlyAverage.rows[0].mean === 1', arg=average_bar.get_attribute('id'))
+            assert page.evaluate('id => window._chartInstances[id]._fwMonthlyAverage.rows.map(r=>r.mean)', average_static_id) == [6, 12, 20]
+            expect(page.locator(f'#{average_id}-monthly-average tbody tr')).to_have_count(1)
+            assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
             # Every chart must own a real canvas and draw after scrolling into
             # view; scope-based data swaps cannot stand in for different layouts.
             for canvas in page.locator("canvas:visible").all():
