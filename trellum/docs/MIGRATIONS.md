@@ -3,6 +3,30 @@
 Each section documents a breaking or significant change, how to detect affected
 code, and the exact replacement.
 
+## Unreleased: DataTable search, sort and CSV population
+
+Rebuilding applies compact spacing, subtle row shading and right-aligned numeric
+columns. Existing constructor arguments and host APIs remain supported.
+
+`max_rows` now limits display after local search and sorting. Static tables embed
+every supplied row, so searches can find matches beyond the initial display and
+CSV exports all matches in table sort order. For large static inputs, use the
+existing bounded dataset/query mechanisms; `max_rows` is not a payload-size limit.
+Dataset tables export the population last delivered to the table, including its
+report filters and local search, without fetching a pending replacement result.
+
+Static `columns` now selects displayed/exported columns, as it already does for
+dataset tables. Static numeric CSV cells contain original numbers, rather than
+rounded display strings. Raw numeric values determine numeric sorting; text
+columns, including numeric-looking identifiers, sort as text. This can change
+order previously inferred from display strings. Equal values retain source order.
+
+Payload additions `numericColumns` and optional `rawRows` are backward compatible.
+Existing generated files keep their behavior; rebuild previously truncated static
+tables to include omitted rows. New code still accepts older payloads. Matching,
+available and export counts describe the actual table population. See
+[report data tables](report-data-tables.md) for precision and live-result details.
+
 ## Unreleased: standalone report choices and views
 
 Rebuilding applies a labeled, searchable, wrapping presentation to standalone

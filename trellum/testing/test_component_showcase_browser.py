@@ -1,5 +1,6 @@
 """The combined demo must render each module and keep its filters independent."""
 
+import csv
 import mimetypes
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -55,6 +56,27 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             tabs.get_by_role("tab", name="Revenue", exact=True).click()
             tabs.get_by_role("tab", name="Orders across all supported platforms — daily supplied totals").click()
             assert page.get_by_text("Orders by platform", exact=True).is_visible()
+            page.get_by_role("link", name="data tables", exact=True).click()
+            table = page.locator('.fw-section').filter(has=page.get_by_role(
+                "heading", name="DataTable — filtered population", exact=True))
+            table.locator('input[data-table-search]').fill("Reactivation")
+            table.get_by_role("button", name="Android", exact=True).click()
+            page.wait_for_function("el => el.textContent.includes('16 matching')",
+                                   arg=table.locator('.fw-table-note').element_handle())
+            table.get_by_role("columnheader").filter(has_text="Revenue").click()
+            with page.expect_download() as download_info:
+                table.get_by_role("button", name="Download CSV", exact=True).click()
+            download = download_info.value
+            assert download.suggested_filename == "component-showcase_table.csv"
+            with open(download.path(), encoding="utf-8-sig", newline="") as file:
+                rows = list(csv.DictReader(file))
+            assert len(rows) == 16
+            assert all(row['Platform'] == 'Android' and row['Campaign'] == 'Reactivation'
+                       for row in rows)
+            expected = sorted(range(49, 80, 2), key=lambda i: -(95 + i * 31 % 140 + i / 1000))
+            assert [row['Event ID'] for row in rows] == [f'{i + 1:05d}' for i in expected]
+            assert table.locator('tbody tr').count() == 10
+            assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
             # Every chart must own a real canvas and draw after scrolling into
             # view; scope-based data swaps cannot stand in for different layouts.
             for canvas in page.locator("canvas:visible").all():

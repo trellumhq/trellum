@@ -7,19 +7,16 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
 - Added optional alignment, full-number and precision presentation to KPI
   components, stacked MiniKpi labels, and mobile expansion for filtered KPI rows.
-
-### Added
 - Standalone report `Dropdown` labels, searchable wrapping choices and disabled
   empty feedback; underlined wrapping `TabGroup` tabs, searchable view selectors
   and an optional panel-width-responsive `sidebar` mode. Nested and sibling views
   preserve independent state, URL restoration and chart visibility.
 - A database-free report component showcase in the demo gallery, with interactive
-  LineChart size and filtered-summary examples.
-
-### Added
-
+  charts, layouts, KPI presentation, report controls and table search/export examples.
 - `LineChart(height=...)`: the plotting area is 220px (`"balanced"`, the
   default) at every viewport width, with optional `"compact"` (160px) and
   `"roomy"` (320px) sizes. The title is now kept in tile grids. Other charts keep
