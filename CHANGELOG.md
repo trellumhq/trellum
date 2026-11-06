@@ -9,6 +9,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Seed editable source/metric context and investigation guidance during project
+  setup and demo installation, preserving existing notes and ignoring local
+  analysis result exports by default.
+
 - Administrators can include hidden, expired and disabled reports on the regular
   Reports page with a default-off option. Cards and lists identify repository
   hiding, disabled builds, availability expiry and expired retained output.

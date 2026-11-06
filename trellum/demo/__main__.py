@@ -136,6 +136,10 @@ def main(argv: list[str] | None = None) -> int:
     if skipped and not args.force:
         print("\n  (files that already existed were kept -- pass --force to overwrite)")
 
+    from trellum.agent.agentsetup import write_project_files
+    for name, status in write_project_files(dest):
+        print(f"  {status:<10} {name}")
+
     if args.no_data:
         print("\nSkipped data generation (--no-data).")
         return 0
