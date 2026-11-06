@@ -47,7 +47,7 @@ def add_sections(ctx):
     # The campaign table intentionally ignores its own entity selection.
     accepted = ctx.config.setdefault("validation", {}).setdefault("accept_inactive_filters", {})
     accepted[CAMPAIGNS] = list(dict.fromkeys([*accepted.get(CAMPAIGNS, []), "campaign_key"]))
-    ctx.add_section("", [
+    ctx.add_section("Table drill-down — report selection", [
         DataSource(BASE, facts),
         FilterBar(BASE, facts, filters=[
             {"column": "Day", "type": "date_range"},

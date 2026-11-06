@@ -12,6 +12,7 @@ from trellum.validation.walk import (
     _df_columns,
     _get_filterable_types,
     _kpi_row_is_fully_static,
+    _resolve_ds_columns,
     _walk_components,
 )
 
@@ -250,7 +251,8 @@ def _check_datasource_filterbar(ctx: Any, comps: list[tuple[Any, str]], result: 
                         component="FilterBar", section=sec,
                     )
                 elif (isinstance(ds_map[target_ds_id], ScopedDataSource)
-                      and ds_map[target_ds_id].parent == fb.dataset_id):
+                      and ds_map[target_ds_id].parent == fb.dataset_id
+                      and all(src == target for src, target in col_map.items())):
                     # propagate_to a ScopedDataSource is unnecessary — scoped
                     # children inherit their parent's filters automatically.
                     result.warn(
@@ -261,8 +263,8 @@ def _check_datasource_filterbar(ctx: Any, comps: list[tuple[Any, str]], result: 
                         f"entry is redundant and may cause double-filtering.",
                         component="FilterBar", section=sec,
                     )
-                elif not isinstance(ds_map[target_ds_id], ScopedDataSource):
-                    target_cols = _df_columns(ds_map[target_ds_id].df)
+                if target_ds_id in ds_map:
+                    target_cols = _resolve_ds_columns(target_ds_id, ds_map)
                     for src_col, tgt_col in col_map.items():
                         if target_cols and tgt_col not in target_cols:
                             result.warn(

@@ -756,11 +756,13 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
             }
             el.querySelectorAll('[data-fw-drill-action]').forEach(function(button) {
                 var key = button._fwDrillKey;
-                var reason = !keyValid(key) ? 'No usable row key. A nonempty raw string is required.'
+                var reason = !keyValid(key) ? 'This row has no valid selection value.'
                     : target.reason || (!target.available(key) ? 'This key is unavailable in the selection dropdown.' : '');
                 button.disabled = !!reason;
                 button.title = reason;
-                button.setAttribute('aria-label', (button.textContent || 'Unnamed row') + (reason ? '. ' + reason : ' · select ' + spec.column));
+                var context = contexts.find(function(item) { return item.column === spec.column; });
+                var actionLabel = context ? context.label : spec.label_column;
+                button.setAttribute('aria-label', (button.textContent || 'Unnamed row') + (reason ? '. ' + reason : ' · select ' + actionLabel));
                 button.setAttribute('aria-pressed', String(!target.reason && target.values.indexOf(key) !== -1));
             });
             var emptySignature = JSON.stringify([matching, supplied, _searchTerm]);
@@ -810,8 +812,24 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
         window.addEventListener('fw-dropdowns-ready', function() { redraw(); update(); }, {signal: abort.signal});
         // Only opt-in tables own this observer. Disposal releases every strong
         // callback reference after removal/replacement; re-entry disposes first.
-        var observer = new MutationObserver(function() {
-            if (!el.isConnected) dispose(); else update();
+        function ownerTree(node) {
+            if (node.nodeType !== 1) return false;
+            var bar = node.closest('[data-fw-filter-bar]');
+            if (bar && bar.dataset.fwDsId === spec.dataset_id) return true;
+            return Array.from(node.querySelectorAll('[data-fw-filter-bar]')).some(function(candidate) {
+                return candidate.dataset.fwDsId === spec.dataset_id;
+            });
+        }
+        var observer = new MutationObserver(function(records) {
+            if (!el.isConnected) { dispose(); return; }
+            // Table draws and selection subscriptions already update their own
+            // state. Only owner insertion/removal or option changes need this
+            // fallback; unrelated charts must not rescan every row action.
+            if (records.some(function(record) {
+                var target = record.target.nodeType === 1 && record.target.closest('[data-fw-filter-bar]');
+                return (target && target.dataset.fwDsId === spec.dataset_id) ||
+                    Array.from(record.addedNodes).some(ownerTree) || Array.from(record.removedNodes).some(ownerTree);
+            })) update();
         });
         observer.observe(document.body, {childList: true, subtree: true});
         function dispose() {

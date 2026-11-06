@@ -414,6 +414,29 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             assert pin_scroll.evaluate('e=>e.clientHeight < 320')
             expect(total_events.locator('.fw-kpi-value')).to_have_text('$456.00')
             assert live.locator('.fw-kpi-value').first.inner_text() == '$18.4k'
+            page.get_by_role('link', name='row drill-down', exact=True).click()
+            drill_sources = page.locator('#sec-table-drill-down-—-source-observations')
+            drill_campaigns = page.locator('#sec-table-drill-down-—-campaign-observations')
+            drill_detail = page.locator('#sec-table-drill-down-—-selected-detail')
+            drill_sources.scroll_into_view_if_needed()
+            drill_sources.locator('[data-fw-drill-action]').first.click()
+            drill_campaigns.scroll_into_view_if_needed()
+            expect(drill_sources.locator('.fw-table-totals-note')).to_contain_text('56 matching rows')
+            expect(drill_campaigns.locator('.fw-table-totals-note')).to_contain_text('16 matching rows')
+            drill_campaigns.locator('[data-fw-drill-action]').first.click()
+            drill_detail.scroll_into_view_if_needed()
+            expect(drill_detail.locator('.fw-kpi-value')).to_have_text('192')
+            expect(drill_campaigns.locator('.fw-table-totals-note')).to_contain_text('16 matching rows')
+            drill_chart = drill_detail.locator('canvas')
+            drill_chart.scroll_into_view_if_needed()
+            page.wait_for_function('id => JSON.stringify(window._chartInstances[id]?.data.datasets[0].data) === "[45,47,49,51]"',
+                                   arg=drill_chart.get_attribute('id'))
+            drill_sources.get_by_role('button', name='Clear Source', exact=True).click()
+            expect(drill_campaigns.locator('.fw-table-totals-note')).to_contain_text('56 matching rows')
+            expect(drill_campaigns.get_by_role('button', name='Clear Campaign', exact=True)).to_have_count(0)
+            expect(pin_visits.locator('.fw-kpi-value')).to_have_text('$462.00')
+            expect(total_events.locator('.fw-kpi-value')).to_have_text('$456.00')
+            assert live.locator('.fw-kpi-value').first.inner_text() == '$18.4k'
             # Every chart must own a real canvas and draw after scrolling into
             # view; scope-based data swaps cannot stand in for different layouts.
             for canvas in page.locator("canvas:visible").all():

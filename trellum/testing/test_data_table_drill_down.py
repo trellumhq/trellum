@@ -159,6 +159,27 @@ def test_native_module_complete_diagnostics(tmp_path):
     render_report(ctx, auto_refresh=False)
 
 
+@pytest.mark.parametrize("owner,mapped,redundant,missing", [
+    ("base", "key", True, False),
+    ("peer", "key", False, False),
+    ("base", "Label", False, False),
+    ("peer", "absent", False, True),
+    ("base", "absent", False, True),
+])
+def test_scoped_propagation_checks_effective_columns_and_actual_redundancy(tmp_path, owner, mapped, redundant, missing):
+    df = frame()
+    ctx = context(tmp_path)
+    ctx.add_section("Scoped selections", [
+        DataSource("base", df), ScopedDataSource("peer", parent="base"),
+        ScopedDataSource("child", parent="base"),
+        FilterBar(owner, df, [{"column": "key"}], propagate_to={"child": {"key": mapped}}),
+    ])
+    result = validate_report(ctx)
+    codes = {check.id for check in result.checks}
+    assert ("propagate-to-scoped-ds" in codes) is redundant
+    assert ("propagate-column-missing" in codes) is missing
+
+
 @contextmanager
 def browser_report(path, width=1280, query="", extra=None):
     from playwright.sync_api import sync_playwright
@@ -236,6 +257,7 @@ def test_native_actions_population_math_context_search_and_csv(tmp_path):
         assert_population_totals(page, source, facts)
         button = page.locator(f"#{source} [data-fw-drill-action]").first
         source_key = button.evaluate("e=>e._fwDrillKey")
+        assert button.get_attribute("aria-label") == source_key + " · select Source"
         button.focus()
         page.keyboard.press("Enter")
         page.wait_for_function("([d,k])=>_fwTableDropdownOwner(d,'source_key').values[0]===k", arg=[m.DETAIL, source_key])
@@ -387,7 +409,7 @@ def test_duplicate_labels_raw_special_keys_disabled_rows_and_independent_instanc
         assert buttons.count() == 6
         assert buttons.first.bounding_box()["height"] > 30
         assert page.evaluate("document.documentElement.scrollWidth<=innerWidth")
-        assert buttons.nth(2).is_disabled() and "raw string" in buttons.nth(2).get_attribute("aria-label")
+        assert buttons.nth(2).is_disabled() and "selection value" in buttons.nth(2).get_attribute("aria-label")
         assert all(buttons.nth(i).is_disabled() for i in (2, 3, 4, 5))
         buttons.nth(0).click()
         page.wait_for_function("([d,c,v])=>_fwTableDropdownOwner(d,c).values[0]===v", arg=[special, column, keys[0]])
@@ -427,6 +449,22 @@ def test_owned_lifecycle_renderall_theme_hidden_replacement_and_config_removal(t
             page.locator(f"#{cid}").scroll_into_view_if_needed()
             page.wait_for_timeout(60)
         assert counts() == original
+        # Unrelated page mutations must not rescan row keys or dropdown options.
+        assert page.evaluate("""async () => {
+            const original = window._fwTableDropdownOwner;
+            let calls = 0;
+            window._fwTableDropdownOwner = function(...args) { calls++; return original(...args); };
+            const other = document.createElement('div');
+            try {
+                document.body.appendChild(other);
+                await new Promise(requestAnimationFrame);
+                other.textContent = 'An unrelated chart updated';
+                await new Promise(requestAnimationFrame);
+                other.remove();
+                await new Promise(requestAnimationFrame);
+                return calls;
+            } finally { other.remove(); window._fwTableDropdownOwner = original; }
+        }""") == 0
         select(page, m.DETAIL, "source_key", ["Paid search"])
         chip_context(page, cid).get_by_role("button", name="Clear Source", exact=True).focus()
         page.evaluate("([id,cfg])=>_fwRenderers.table(id,cfg)", [cid, data["components"][cid]])
