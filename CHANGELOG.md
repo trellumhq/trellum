@@ -9,6 +9,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Native synthetic acquisition Overview example with seven KPI cards, compact
+  daily summaries, doughnut breakdowns and collapsible detail in the component
+  showcase. Player Overview adds six compact daily trends and collapsible
+  Engagement/Revenue details while preserving its existing data and cards.
+
 - Per-dataset live-result identity and subscriptions, with owned retries,
   abortable requests and a 30-second client deadline. Redraws retain queried
   rows; source replacement and stale responses cannot overwrite newer results.

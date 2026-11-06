@@ -186,6 +186,21 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             expect(cohorts.locator('tbody td')).to_have_count(30)
             expect(tree.locator('tfoot td').last).to_have_text('$17,850.00')
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
+            page.get_by_role('link', name='Overview composition', exact=True).click()
+            overview = page.locator('#sec-overview-—-synthetic-acquisition-cohorts')
+            expect(overview.locator('.fw-kpi-value')).to_have_count(7)
+            trend = overview.locator('canvas[data-fw-title="Daily installs"]')
+            trend.scroll_into_view_if_needed()
+            trend_id = trend.get_attribute('id')
+            page.wait_for_function("id => window._chartInstances[id]?.data.datasets[0].data[0] === 849", arg=trend_id)
+            assert round(trend.bounding_box()['height']) == 160
+            overview.get_by_role('button', name='iOS', exact=True).click()
+            page.wait_for_function("id => window._chartInstances[id].data.datasets[0].data[0] === 381", arg=trend_id)
+            assert page.evaluate("window._fwFilterEngine.getFiltered('showcase_overview_daily').length") == 84
+            expect(sankey.locator('.fw-sankey-population')).to_contain_text('1000 players')
+            assert live.locator('.fw-kpi-value').first.inner_text() == '$18.4k'
+            overview.get_by_role('button', name='All', exact=True).first.click()
+            page.wait_for_function("id => window._chartInstances[id].data.datasets[0].data[0] === 849", arg=trend_id)
             page.get_by_role("link", name="line styles", exact=True).click()
             density = page.locator('[data-tab-id="showcase_line_density"]')
             density.get_by_role('tab', name='Sparse: 12 daily observations', exact=True).click()

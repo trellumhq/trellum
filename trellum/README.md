@@ -524,6 +524,11 @@ See [Sankey API and limits](docs/report-sankey-charts.md).
 
 ### KPIs
 
+The [synthetic Overview example](docs/report-overview-composition.md) combines
+ordinary KPI cards, doughnuts and six compact daily trends with summaries.
+The [Player Overview demo](docs/demo-player-overview.md) uses these compact
+trends with its existing daily data and collapsible detailed charts.
+
 | Component | Constructor | Description |
 |---|---|---|
 | `KpiRow` | `(kpis, dataset_id)` | Row of KPI cards. Each kpi: `{label, value, format}`. Live mode with `dataset_id` supports aggregation: `sum`, `abssum`, `ratio`, `count`, `purchase_pct`. |

@@ -6,6 +6,7 @@ from trellum import BaseReport
 from trellum.components import DataSource, FilterBar, Grid, LineChart, RawHTML
 
 from . import (
+    examples_overview,
     examples_cohorts,
     examples_sankeys,
     examples_annotations, examples_areas, examples_bars, examples_category_colors, examples_chart_context, examples_chart_summaries, examples_combos, examples_comparisons, examples_controls, examples_dates, examples_doughnuts, examples_heatmaps, examples_hierarchies, examples_kpis,
@@ -23,7 +24,8 @@ class ComponentShowcaseReport(BaseReport):
             "controls to explore the component behavior. Each group of examples "
             "has its own filters. Optional features are "
             "identified beside each example.</p>"
-            '<p>Jump to <a href="#sec-line-example-filters">line charts</a>, '
+            '<p>Jump to <a href="#sec-overview-—-synthetic-acquisition-cohorts">Overview composition</a>, '
+            '<a href="#sec-line-example-filters">line charts</a>, '
             '<a href="#sec-line-styles:-density-follows-the-plot">line styles</a>, '
             '<a href="#sec-line-forecasts-—-supplied-horizon-and-opt-in-styling">line forecasts</a>, '
             '<a href="#sec-line-availability-—-selected-supplied-observations">line availability</a>, '
@@ -142,3 +144,5 @@ class ComponentShowcaseReport(BaseReport):
         examples_treemaps.add_sections(ctx)
 
         examples_status_text.add_sections(ctx)
+
+        examples_overview.add_sections(ctx)
