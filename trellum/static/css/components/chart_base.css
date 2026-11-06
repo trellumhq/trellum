@@ -67,7 +67,8 @@
     transition: opacity 0.15s;
     display: inline-flex; align-items: center;
 }
-.fw-chart-container:hover .fw-chart-dl { opacity: 1; }
+.fw-chart-container:hover .fw-chart-dl,
+.fw-chart-dl:focus-visible { opacity: 1; }
 .fw-chart-dl:hover { color: var(--text-main); }
 
 /* ── LineChart plotting-area sizes ──

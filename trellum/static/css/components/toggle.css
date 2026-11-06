@@ -20,6 +20,7 @@
     color: var(--on-accent); font-weight: 600;
 }
 .fw-toggle-btn:hover:not(.active) { background: var(--bg-card-hover); }
+.fw-toggle-btn:focus-visible { outline-offset: -2px; }
 @media (max-width: 640px) {
     .fw-toggle-group {
         max-width: 100%;

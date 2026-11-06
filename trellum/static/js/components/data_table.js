@@ -551,13 +551,21 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
                         if (replacement) replacement.focus({preventScroll: true});
                     }
                 });
-                if (_pageSize) {
-                    th.tabIndex = 0;
-                    th.setAttribute('aria-sort', parseInt(th.dataset.colIdx, 10) === _sortCol ? (_sortDir > 0 ? 'ascending' : 'descending') : 'none');
-                    th.addEventListener('keydown', function(event) {
-                        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); th.click(); }
-                    });
-                }
+                if (!_pageSize) th.classList.add('fw-report-sortable');
+                th.tabIndex = 0;
+                th.setAttribute('aria-sort', parseInt(th.dataset.colIdx, 10) === _sortCol ? (_sortDir > 0 ? 'ascending' : 'descending') : 'none');
+                th.addEventListener('keydown', function(event) {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        th.click();
+                        // Ordinary pointer sorts keep their existing focus behavior.
+                        // Restore only the header replaced by keyboard activation.
+                        if (!_pageSize) {
+                            var replacement = el.querySelector('th[data-col-idx="' + th.dataset.colIdx + '"]');
+                            if (replacement) replacement.focus({preventScroll: true});
+                        }
+                    }
+                });
             });
         }
         if (_pageSize) {

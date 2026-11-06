@@ -131,6 +131,7 @@
     cursor: pointer; user-select: none;
 }
 .fw-table th.fw-sortable:hover { color: var(--text-main); }
+.fw-table th.fw-report-sortable:focus-visible { outline-offset: -2px; }
 .fw-table th .fw-sort-arrow {
     display: inline-block; margin-left: 4px;
     opacity: 0.35; font-size: 9px;
