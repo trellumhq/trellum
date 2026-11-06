@@ -58,6 +58,10 @@ def _check_datasource_filterbar(ctx: Any, comps: list[tuple[Any, str]], result: 
         elif isinstance(comp, FilterBar):
             fb_list.append((comp, sec))
 
+    from trellum.validation.checks.table_drill_down import check_table_drill_down
+
+    check_table_drill_down(comps, ds_map, result)
+
     # Each ScopedDataSource's parent must exist and must NOT itself be scoped.
     for sds, sec in scoped_list:
         if sds.parent not in ds_map:
@@ -245,7 +249,8 @@ def _check_datasource_filterbar(ctx: Any, comps: list[tuple[Any, str]], result: 
                         f"does not match any DataSource. Available: {list(ds_map.keys())}",
                         component="FilterBar", section=sec,
                     )
-                elif isinstance(ds_map[target_ds_id], ScopedDataSource):
+                elif (isinstance(ds_map[target_ds_id], ScopedDataSource)
+                      and ds_map[target_ds_id].parent == fb.dataset_id):
                     # propagate_to a ScopedDataSource is unnecessary — scoped
                     # children inherit their parent's filters automatically.
                     result.warn(
@@ -256,7 +261,7 @@ def _check_datasource_filterbar(ctx: Any, comps: list[tuple[Any, str]], result: 
                         f"entry is redundant and may cause double-filtering.",
                         component="FilterBar", section=sec,
                     )
-                else:
+                elif not isinstance(ds_map[target_ds_id], ScopedDataSource):
                     target_cols = _df_columns(ds_map[target_ds_id].df)
                     for src_col, tgt_col in col_map.items():
                         if target_cols and tgt_col not in target_cols:

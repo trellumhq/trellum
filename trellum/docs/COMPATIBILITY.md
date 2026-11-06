@@ -1,5 +1,18 @@
 # Framework Compatibility Policy
 
+## Unreleased: optional DataTable row drill-down
+
+Keyword-only `DataTable.drill_down=None` preserves default output and positional
+and subclass constructors. Opt-in declarations target existing dropdown owners
+and keep raw row keys separate from displayed/exported columns. Static and
+ordinary DataSource/ScopedDataSource populations and owners are supported;
+live-connected drill-down fails validation. Comparison/workspace tables ignore
+injected runtime options. `clear_on_parent_change=True` is a strict optional
+child-dropdown flag with nonempty `depends_on`; omitted/false cascades retain
+their prior behavior. No public filter API, host or database migration is needed.
+Rebuild matching HTML/data/runtime assets. Existing FilterBar URL serialization
+and its limitations remain; see [row drill-down](report-data-tables.md#optional-row-drill-down).
+
 ## Unreleased: optional DataTable matching-population totals
 
 Keyword-only `DataTable.totals=None` preserves existing callers and output.

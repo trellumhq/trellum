@@ -545,3 +545,12 @@ The next entry lands here when a Tier 1 surface changes — see the deprecation
 process in [COMPATIBILITY.md](COMPATIBILITY.md). An entry names the version that
 changed it, gives a search pattern for finding affected code, and shows the
 before and after.
+
+
+Optional DataTable row drill-down adds keyword-only `drill_down=None` and an
+optional dropdown `clear_on_parent_change` flag. Existing reports need no edits.
+Opting in requires declared raw string identities and one existing ordinary
+FilterBar dropdown owner for each target/context column; live-connected
+populations are unsupported. Rebuild report HTML/data/runtime together. See
+[row drill-down](report-data-tables.md#optional-row-drill-down) for scope wiring,
+selection-clearing behavior and unchanged URL serialization limits.

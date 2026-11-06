@@ -10,6 +10,7 @@ from typing import Any, List, Optional
 import pandas as pd
 
 from trellum.assets import load_css, load_js
+from trellum.components._table_drill_down import drill_down_config, raw_action_key
 from trellum.components._table_totals import totals_config, typed_inputs
 from trellum.components.base import Component, RenderContext
 from trellum.data.transforms import df_to_json_records, format_value
@@ -50,6 +51,11 @@ class DataTable(Component):
     header and declared total footer inside this table's bounded scroller;
     ``pin_height`` sets its positive CSS-pixel maximum height.
 
+    Keyword-only ``drill_down=None`` optionally makes a displayed label a
+    native action for an existing dropdown owner, with raw string row keys and
+    selection context. It supports static and ordinary dataset populations;
+    live-connected drill-down is unsupported. See docs/report-data-tables.md.
+
     A live-query-backed table is just a reactive table: declare
     ``LiveDataSource(id, query=..., df=snapshot)`` and pass
     ``dataset_id=id`` here like any other filter-aware component -- see
@@ -74,6 +80,7 @@ class DataTable(Component):
     pin_header: bool = field(default=False, kw_only=True)
     pin_footer: bool = field(default=False, kw_only=True)
     pin_height: int = field(default=320, kw_only=True)
+    drill_down: Optional[dict] = field(default=None, kw_only=True)
 
     # ComparisonTable's presentation metadata travels with the same population.
     _comparison: Optional[dict] = field(default=None, init=False, repr=False)
@@ -82,6 +89,7 @@ class DataTable(Component):
     _supports_dataset_id: bool = field(default=True, init=False, repr=False)
 
     def __post_init__(self) -> None:
+        self.drill_down = drill_down_config(self.drill_down, self.df, self.columns or list(self.df.columns))
         _validate_row_limit(self.row_limit)
         _validate_table_pinning(self.pin_header, self.pin_footer, self.pin_height)
         if self.totals is not None:
@@ -95,6 +103,7 @@ class DataTable(Component):
         row_limit = _validate_row_limit(self.row_limit)
         _validate_table_pinning(self.pin_header, self.pin_footer, self.pin_height)
         shading = self._cell_shading_config()
+        drill_down = drill_down_config(self.drill_down, self.df, self.columns or list(self.df.columns))
         totals = totals_config(self.totals, self.df, self.columns or list(self.df.columns))
         if self.pin_footer and not totals:
             raise ValueError("DataTable pin_footer requires nonempty totals declarations")
@@ -144,6 +153,9 @@ class DataTable(Component):
             if totals:
                 cfg["totals"] = totals
             _table_pinning_payload(cfg, self)
+            if drill_down and self._comparison is None:
+                cfg["drillDown"] = drill_down
+                cfg["title"] = self.title
             if self._comparison is not None:
                 cfg["comparison"] = self._comparison
             ctx.register(cid, cfg)
@@ -176,6 +188,10 @@ class DataTable(Component):
             reg["totals"] = totals
             reg["totalsInputs"] = typed_inputs(self.df, totals)
         _table_pinning_payload(reg, self)
+        if drill_down and self._comparison is None:
+            reg["drillDown"] = drill_down
+            reg["title"] = self.title
+            reg["drillDownKeys"] = [raw_action_key(value) for value in self.df[drill_down["value_column"]]]
         if numeric_cols or (self._comparison and self._comparison["context"] is not None):
             # Keep established text/date/boolean CSV representation; only
             # numeric cells need a separate unrounded value. Text-only catalog

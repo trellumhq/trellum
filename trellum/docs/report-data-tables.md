@@ -32,6 +32,7 @@ configuration remains unsupported.
 | `static` | `False` | Existing explicit opt-out from automatic dataset binding. |
 | `pin_header` | `False` | Keyword-only opt-in to pin the current table header inside its bounded scroller. |
 | `pin_footer` | `False` | Keyword-only opt-in to pin the existing semantic totals footer; requires nonempty `totals`. |
+| `drill_down` | `None` | Keyword-only row action targeting an existing ordinary dropdown, with selection context and explained empty feedback. |
 | `pin_height` | `320` | Positive integer maximum scroller height in CSS pixels when either pin option is enabled. |
 
 Static tables retain every supplied row. Dataset tables use every row delivered
@@ -253,3 +254,86 @@ expand hidden rows or columns. Rebuild existing reports to enable pinning.
 `examples_table_pinning.add_sections(ctx)` shows the static default and the
 three independent edge combinations, followed by bound, searchable, filterable
 observations with an additive footer and full-scope KPI.
+
+
+## Optional row drill-down
+
+`DataTable.drill_down=None` leaves payloads, markup and listeners unchanged.
+A nonempty mapping opts into native label-cell buttons; it does not make rows
+clickable or create another filter state:
+
+```python
+DataTable(facts, "Source observations", dataset_id="facts",
+          columns=["Source", "Day", "Installs"], row_limit=10,
+          drill_down={
+              "dataset_id": "detail",  # existing FilterBar owner
+              "column": "source_key",  # owner's dropdown column
+              "value_column": "source_key",  # raw row identity, may be hidden
+              "label_column": "Source",  # displayed action label
+              "context": [
+                  {"column": "source_key", "label": "Source"},
+                  {"column": "campaign_key", "label": "Campaign"},
+              ],
+          })
+```
+
+The table's `dataset_id` chooses its population; the action's `dataset_id`
+chooses the existing dropdown owner. Explicit table binding keeps precedence
+over `static`. Construction and rendering validate and copy the declaration.
+Only the four required keys and optional `context` are accepted; names must be
+nonempty strings. `label_column` must be displayed, while `value_column` can
+remain hidden. Context defaults to one item naming the target column as both
+column and label. Each item has exactly nonempty `column` and `label` strings,
+with no repeated columns. Report validation checks the effective datasource,
+target/context columns and exactly one compatible dropdown owner per column.
+Static tables and ordinary DataSource/ScopedDataSource populations and owners
+are supported. Live targets, live-backed populations/scopes and any connected
+live propagation are rejected, rather than acting on a retained snapshot.
+ComparisonTable and generated workspace tables do not acquire this option.
+
+Identities are declared raw nonempty strings, never formatted cell labels or
+row positions. Null, empty and non-string keys have disabled buttons with an
+accessible reason. Duplicate labels can have distinct keys; repeated
+observations of one key select the same entity. Unavailable options or invalid
+legacy owner references disable actions with a reason. Raw action metadata is
+separate from display/search/CSV; hidden keys never enter the selected export
+columns. Existing raw numeric and Decimal CSV precision is preserved.
+
+A row action replaces the dropdown selection with its key. Repeating the sole
+selected key clears it; native dropdown multiselect remains available. Buttons
+use native Enter/Space and expose actual selected keys with `aria-pressed`.
+Wrapping context outside the scroller shows actual dropdown selections,
+including multiple keys, verbatim. Named clear buttons use that same owner
+path. Context survives local search, display limits and incompatible report
+filters. Focus follows a surviving key, its clear action or the named table
+context when redraw removes the focused row.
+
+For parent/child selection, opt the child into
+`{"column": "campaign_key", "depends_on": "source_key", "clear_on_parent_change": True}`.
+A real parent-selection change clears that child even if its key remains
+available. Initial valid URL restoration, unchanged parents and reordered
+equivalent selection sets preserve the child. Omission/false preserves the
+existing option-narrowing and available-child behavior. The option requires a
+strict boolean on a dropdown with nonempty `depends_on`. Native dropdown
+changes, existing Clear actions, row buttons and context clear actions all
+use the same cascade, propagation and URL path.
+
+Empty opted-in tables retain their headers and dimensions without a tall empty
+body or invented totals. Local search explains its own empty result and offers
+Clear search, which changes only that table. Empty supplied or report-filtered
+populations have brief explanations beside retained selection context; clearing
+a local selection never widens date/platform automatically.
+
+`examples_table_drill_down.add_sections(ctx)` supplies 56 synthetic daily
+campaign/platform observations. Source actions read the independent base;
+campaign actions read a sibling scope receiving only source propagation;
+detail KPI/trend read a scope receiving both selections. The base date/platform
+FilterBar precedes these dependents. The campaign table explicitly accepts its
+inactive campaign filter in `validation.accept_inactive_filters`. Totals divide
+underlying sums for ratios; these are observations, not aggregate source ranks.
+
+URL state remains the existing FilterBar serialization. Its comma-delimited
+multiselect format cannot round-trip keys containing commas, and its writer
+serializes registered framework controls rather than retaining arbitrary query
+parameters. Multiple bars use dataset-qualified keys. Drill-down adds no
+separate URL state or URL-writer changes; rebuild matching report artifacts.

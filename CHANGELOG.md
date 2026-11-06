@@ -9,6 +9,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Optional keyword-only DataTable row drill-down through existing dropdown
+  owners, with raw string keys, clearable selection context and explained
+  local-search/report-filter empty results. Child dropdowns can explicitly
+  clear on parent changes. Added native daily observation examples and
+  validation excluding live-connected drill-down; defaults and CSV stay intact.
+
 - Optional keyword-only DataTable header and declared total-footer pinning in a
   bounded, keyboard-scrollable region. Defaults and comparison/workspace tables
   remain unchanged; matching totals and native capture scope are preserved.

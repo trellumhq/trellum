@@ -14,6 +14,7 @@ from __future__ import annotations
 import calendar
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from html import escape
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -23,6 +24,7 @@ import pandas as pd
 from trellum.assets import load_css, load_js
 from trellum.components.base import Component, RenderContext
 from trellum.components.filters import get_all_filters, get_filter
+from trellum.components.filters.dropdown import validate_parent_clear
 from trellum.components.live_filterable import BINDABLE_FILTER_TYPES as _BINDABLE_FILTER_TYPES
 from trellum.components.live_filterable import LiveDataSource  # noqa: F401 -- re-exported
 from trellum.components.live_filterable import bake_disabled as _bake_disabled
@@ -486,6 +488,10 @@ class FilterBar(Component):
     _component_type: str = field(default="filter_bar", init=False, repr=False)
     _no_section_wrap: bool = field(default=True, init=False, repr=False)
 
+    def __post_init__(self) -> None:
+        for f in self.filters:
+            validate_parent_clear(f)
+
     def render_html(self, ctx: RenderContext) -> str:
         cid = ctx.next_id()
         live_target = ctx.live_datasets.get(self.dataset_id)
@@ -501,6 +507,7 @@ class FilterBar(Component):
         bindings: list[dict] = []
 
         for i, f in enumerate(self.filters):
+            validate_parent_clear(f)
             col = f["column"]
             label = f.get("label", col)
             ftype = f.get("type", "dropdown")
@@ -557,7 +564,7 @@ class FilterBar(Component):
         if not live_target:
             return (
                 f'<div class="fw-filter-bar" id="{cid}" '
-                f'data-fw-filter-bar="1" data-fw-ds-id="{self.dataset_id}">'
+                f'data-fw-filter-bar="1" data-fw-ds-id="{escape(self.dataset_id, quote=True)}">'
                 f'{"".join(html_parts)}{share_btn}</div>'
             )
 
@@ -567,7 +574,7 @@ class FilterBar(Component):
         # never wires this bar and never issues a request.
         return (
             f'<div class="fw-filter-bar fw-live-bar" id="{cid}" '
-            f'data-fw-filter-bar="1" data-fw-ds-id="{self.dataset_id}" '
+            f'data-fw-filter-bar="1" data-fw-ds-id="{escape(self.dataset_id, quote=True)}" '
             f'data-live-state="standalone">'
             f'{"".join(html_parts)}{_live_meta_html()}{share_btn}</div>'
         )

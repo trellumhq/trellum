@@ -641,6 +641,15 @@ FilterBar("cpd_pkg", df, filters=[
 - Currently selected values that remain valid under the parent's new selection are preserved; values that drop out are removed and the URL is rewritten.
 - The child's options are derived using `getFilteredExcluding(dsId, [self_col])` so the child's own selection doesn't restrict its own options.
 
+For entity drill-down, a child dropdown can additionally declare
+`"clear_on_parent_change": True`. A real parent selection change then clears
+that child even if its key remains available. Initial valid URL restoration,
+unchanged selections and reordered equivalent sets preserve the child.
+Omitting the option or passing `False` retains the existing cascade behavior.
+It accepts only a boolean on a dropdown with nonempty `depends_on`. Native
+controls, row actions and clearable context share the same owner path; see
+[optional table row drill-down](docs/report-data-tables.md#optional-row-drill-down).
+
 ### Cross-DataSource Filter Propagation
 
 When datasets have different grains (e.g., daily vs monthly), use `FilterBar(propagate_to={target_ds: {src_col: tgt_col}})` to sync shared dimensions. Setting a filter on the source dataset automatically applies the equivalent filter on the target dataset using the mapped column name.

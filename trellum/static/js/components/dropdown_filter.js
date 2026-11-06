@@ -104,33 +104,41 @@ window._fwFilterTypes['dropdown'] = {
                     var sigParts = [];
                     for (var pi = 0; pi < parentCols.length; pi++) {
                         var pc = parentCols[pi];
-                        var found = '';
+                        var found = fc.clear_on_parent_change ? '[]' : '';
                         for (var fk in state) {
                             if (state[fk] && state[fk].column === pc) {
-                                found = JSON.stringify(state[fk].value || null);
+                                var value = state[fk].value;
+                                if (fc.clear_on_parent_change) {
+                                    if (Array.isArray(value)) value = Array.from(new Set(value)).sort();
+                                    else if ((state[fk].mode === 'equals' && value === '__all__') ||
+                                             (state[fk].mode === 'flag' && value === 'all')) value = [];
+                                    found = JSON.stringify(value);
+                                } else found = JSON.stringify(value || null);
                                 break;
                             }
                         }
                         sigParts.push(pc + '=' + found);
                     }
-                    var sig = sigParts.join('|');
+                    var sig = fc.clear_on_parent_change ? JSON.stringify(sigParts) : sigParts.join('|');
                     if (sig === lastParentSig) return;
+                    var clearChild = fc.clear_on_parent_change && lastParentSig !== null;
                     lastParentSig = sig;
 
                     var rows = window._fwFilterEngine.getFilteredExcluding(dsId, [selfCol]);
-                    var seen = {};
+                    var seen = Object.create(null);
                     for (var i = 0; i < rows.length; i++) {
                         var v = rows[i][selfCol];
                         if (v == null || v === '') continue;
                         seen[String(v)] = true;
                     }
                     var available = Object.keys(seen).sort();
-                    var availableSig = available.join('');
+                    var availableSig = JSON.stringify(available);
 
                     var currentSel = ss.getSelected() || [];
                     var preserved = currentSel.filter(function(v) {
                         return seen[String(v)];
                     });
+                    if (clearChild) preserved = [];
                     var optionsChanged = (availableSig !== lastOptionList);
                     lastOptionList = availableSig;
 
@@ -140,10 +148,14 @@ window._fwFilterTypes['dropdown'] = {
                             ss.setData(available.map(function(v) {
                                 return { text: v, value: v };
                             }));
-                            if (preserved.length) ss.setSelected(preserved);
+                            if (preserved.length || clearChild) ss.setSelected(preserved);
                         } finally {
                             self._batchMode = false;
                         }
+                    }
+                    if (clearChild && !optionsChanged) {
+                        self._batchMode = true;
+                        try { ss.setSelected([]); } finally { self._batchMode = false; }
                     }
                     // Push filter through only if the preserved set changed
                     // — protects against ghost selections after a parent

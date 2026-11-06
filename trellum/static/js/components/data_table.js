@@ -1,6 +1,9 @@
 window._fwRenderers['table'] = function renderTable(id, cfg) {
     var el = document.getElementById(id);
     if (!el) return;
+    var _drillReentryFocus = el._fwDrillFocus && el._fwDrillFocus();
+    if (el._fwDrillDispose) el._fwDrillDispose();
+    var _drill = null;
     // Pinning owns only DOM state; keep it on the node so detached tables can
     // be collected without an additional global registry or observer.
     _configurePinning(el, cfg);
@@ -379,6 +382,8 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
     }
 
     function _renderRows(columns, rows, totalRows) {
+        var drillFocus = _drill && (_drill.focus() || _drillReentryFocus);
+        _drillReentryFocus = null;
         var filtered = _searchTerm ? rows.filter(_matchSearch) : rows;
         filtered = _sortRows(filtered);
         _matchingRows = filtered;
@@ -431,15 +436,18 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
                     var color = _evalCondFmt(info ? row.raw[i] : v, condRules);
                     if (color) style = ' style="color:' + (comparison ? _escapeHtml(color) : color) + ';font-weight:600"';
                 }
+                var text = _escapeHtml(v != null ? v : '');
+                if (_drill && columns[i] === cfg.drillDown.label_column)
+                    text = '<button type="button" class="fw-table-row-action" data-fw-drill-action>' + text + '</button>';
                 if (info) return '<td' + cellClass + '><span' + style + '>' + _escapeHtml(info.text == null ? '' : info.text) + '</span>' +
                     (info.outcome ? '<span class="fw-comparison-outcome">' + _escapeHtml(info.outcome) + '</span>' : '') + '</td>';
                 if (i === barCol && barMax > 0) {
                     var num = parseFloat(String(v).replace(/[^0-9.\-]/g, ''));
                     var pct = isNaN(num) ? 0 : (num / barMax * 100);
                     return '<td' + cellClass + style + '><div class="fw-bar-cell"><div class="fw-bar-fill" style="width:'
-                        + pct.toFixed(1) + '%"></div><span>' + _escapeHtml(v != null ? v : '') + '</span></div></td>';
+                        + pct.toFixed(1) + '%"></div><span>' + text + '</span></div></td>';
                 }
-                return '<td' + cellClass + style + '>' + _escapeHtml(v != null ? v : '') + '</td>';
+                return '<td' + cellClass + style + '>' + text + '</td>';
             }).join('') + '</tr>';
         }).join('');
         var note = '<div class="fw-table-note" role="status">Showing ' + visible.length
@@ -484,6 +492,7 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
             el.after(scopeNote);
             el.querySelector('table').setAttribute('aria-describedby', totalsNoteId);
         }
+        if (_drill) _drill.drawn(visible, filtered.length, rows.length, drillFocus);
         if (_definitionAnchors) {
             el.querySelectorAll('tbody tr').forEach(function(row, index) {
                 var anchor = _definitionAnchors[visible[index].display[0]];
@@ -602,6 +611,10 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
         searchInput.oninput = search;
     }
 
+    if (cfg.drillDown && !comparison && cfg.workspacePageSize !== 25) {
+        _drill = _setupDrillDown();
+    }
+
     /* ── Live mode ── */
     if (cfg.dataset_id) {
         function _totalsRecord(record) {
@@ -626,17 +639,19 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
                     return String(v);
                 });
                 return _comparisonRow({display: display, raw: raw, index: index,
-                    totalsRecord: _totalsRecord(r)}, r, cols);
+                    totalsRecord: _totalsRecord(r), drillKey: _own(r, cfg.drillDown && cfg.drillDown.value_column)}, r, cols);
             });
             _lastRows = rows; _lastCols = cols; _lastTotal = rawRows.length;
             _renderRows(cols, rows, rawRows.length);
         }
-        window._fwLiveWrap(id, cfg, _drawTable);
+        if (_drill) _drill.population(_drawTable);
+        else window._fwLiveWrap(id, cfg, _drawTable);
     } else {
         /* ── Static mode ── */
         _lastRows = cfg.rows.map(function(row, index) {
             return _comparisonRow({display: row.slice(), raw: cfg.rawRows ? cfg.rawRows[index] : row,
-                    legacy: !cfg.rawRows && !Array.isArray(cfg.numericColumns), index: index},
+                    legacy: !cfg.rawRows && !Array.isArray(cfg.numericColumns), index: index,
+                    drillKey: cfg.drillDownKeys && cfg.drillDownKeys[index]},
                     cfg.comparisonRows ? cfg.comparisonRows[index] : {}, cfg.columns);
         });
         _lastCols = cfg.columns; _lastTotal = cfg.totalRows == null ? cfg.rows.length : cfg.totalRows;
@@ -646,6 +661,186 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
             if (_linked >= 0) _page = Math.floor(_linked / _pageSize) + 1;
         }
         _renderRows(_lastCols, _lastRows, _lastTotal);
+    }
+
+    function _setupDrillDown() {
+        var spec = cfg.drillDown, engine = window._fwFilterEngine, active = true;
+        var names = ['dataset_id', 'column', 'value_column', 'label_column'];
+        var valid = spec && typeof spec === 'object' && !Array.isArray(spec) && names.every(function(name) {
+            return typeof spec[name] === 'string' && spec[name].trim();
+        }) && Array.isArray(cfg.columns) && cfg.columns.indexOf(spec.label_column) !== -1 && Object.keys(spec).every(function(name) { return names.concat(['context']).indexOf(name) !== -1; });
+        var contexts = Array.isArray(spec.context) ? spec.context : [{column: spec.column, label: spec.column}];
+        var seenColumns = new Set();
+        valid = valid && (spec.context === undefined || Array.isArray(spec.context)) && contexts.every(function(item) {
+            if (!item || typeof item !== 'object' || Object.keys(item).sort().join(',') !== 'column,label' ||
+                typeof item.column !== 'string' || !item.column.trim() || typeof item.label !== 'string' || !item.label.trim() ||
+                seenColumns.has(item.column)) return false;
+            seenColumns.add(item.column); return true;
+        });
+        if (!valid) contexts = [{column: '', label: 'Row selection'}];
+        var subscriptions = [], abort = new AbortController(), drawPopulation = null;
+        var searchHandler = searchInput && searchInput.oninput, limitHandler = _rowLimitControl && _rowLimitControl.onchange;
+        var downloadButton = null, downloadHandler = null;
+        var chips = document.createElement('div'), empty = document.createElement('div');
+        chips.className = 'fw-table-selection'; chips.tabIndex = -1;
+        chips.setAttribute('role', 'group');
+        chips.setAttribute('aria-label', (cfg.title || 'Data table') + ' selection context');
+        empty.className = 'fw-table-drill-empty fw-table-note'; empty.setAttribute('role', 'status');
+        el.before(chips); el.after(empty);
+        var lastContext = null, matching = 0, supplied = 0;
+        function liveBacked(dataset) {
+            var seen = new Set();
+            while (dataset && !seen.has(dataset)) {
+                seen.add(dataset);
+                if (engine.isLiveDataset(dataset)) return true;
+                dataset = engine._scopes[dataset] && engine._scopes[dataset].parent;
+            }
+            return false;
+        }
+        function owner(column) {
+            if (!valid) return {reason: 'Row-action declaration is invalid.'};
+            if (liveBacked(cfg.dataset_id) || liveBacked(spec.dataset_id))
+                return {reason: 'Live drill-down is unavailable.'};
+            return window._fwTableDropdownOwner
+                ? window._fwTableDropdownOwner(spec.dataset_id, column)
+                : {reason: 'Selection dropdown is unavailable.'};
+        }
+        function keyValid(key) { return typeof key === 'string' && key.trim().length > 0; }
+        function focus() {
+            var node = document.activeElement;
+            if (el.contains(node) && node.hasAttribute('data-fw-drill-action'))
+                return {key: node._fwDrillKey, label: node.textContent};
+            if (chips.contains(node) && node._fwDrillColumn) return {column: node._fwDrillColumn};
+            if (node === chips) return {};
+            return null;
+        }
+        function restore(saved) {
+            if (!saved) return;
+            var target;
+            if (saved.key !== undefined) target = Array.from(el.querySelectorAll('[data-fw-drill-action]')).find(function(button) {
+                return button._fwDrillKey === saved.key && button.textContent === saved.label && !button.disabled;
+            });
+            if (!target) target = Array.from(chips.querySelectorAll('button')).find(function(button) {
+                return button._fwDrillColumn === (saved.column || spec.column);
+            });
+            (target || chips).focus({preventScroll: true});
+        }
+        function update() {
+            if (!active || !el.isConnected) return;
+            var saved = focus(), target = owner(spec.column);
+            var states = contexts.map(function(item) { return {item: item, owner: owner(item.column)}; });
+            var signature = JSON.stringify(states.map(function(state) {
+                return [state.item.column, state.owner.values, state.owner.reason];
+            }));
+            if (lastContext !== signature) {
+                lastContext = signature;
+                chips.replaceChildren();
+                var selected = false;
+                states.forEach(function(state) {
+                    var item = state.item, control = state.owner;
+                    if (control.reason) {
+                        var reason = document.createElement('span');
+                        reason.textContent = item.label + ': ' + control.reason; chips.appendChild(reason); return;
+                    }
+                    if (!control.values.length) return;
+                    selected = true;
+                    var chip = document.createElement('span'); chip.className = 'fw-table-selection-chip';
+                    var text = document.createElement('span');
+                    text.textContent = item.label + ': ' + control.values.join(', '); chip.appendChild(text);
+                    var button = document.createElement('button'); button.type = 'button';
+                    button.textContent = 'Clear ' + item.label;
+                    button._fwDrillColumn = item.column;
+                    chip.appendChild(button); chips.appendChild(chip);
+                });
+                if (!selected && !chips.childNodes.length) chips.textContent = 'All · no selections in this context';
+            }
+            el.querySelectorAll('[data-fw-drill-action]').forEach(function(button) {
+                var key = button._fwDrillKey;
+                var reason = !keyValid(key) ? 'No usable row key. A nonempty raw string is required.'
+                    : target.reason || (!target.available(key) ? 'This key is unavailable in the selection dropdown.' : '');
+                button.disabled = !!reason;
+                button.title = reason;
+                button.setAttribute('aria-label', (button.textContent || 'Unnamed row') + (reason ? '. ' + reason : ' · select ' + spec.column));
+                button.setAttribute('aria-pressed', String(!target.reason && target.values.indexOf(key) !== -1));
+            });
+            var emptySignature = JSON.stringify([matching, supplied, _searchTerm]);
+            if (empty._fwSignature !== emptySignature) {
+                empty._fwSignature = emptySignature; empty.replaceChildren();
+                if (!matching) {
+                    empty.appendChild(document.createTextNode(_searchTerm
+                        ? 'No rows match this table’s local search. '
+                        : cfg.dataset_id ? 'No observations match the current report filters and selection. Use the selection context to clear a local selection. '
+                            : 'No observations were supplied for this table. '));
+                    if (_searchTerm && searchInput) {
+                        var clear = document.createElement('button'); clear.type = 'button'; clear.textContent = 'Clear search';
+                        clear.onclick = function() {
+                            clearTimeout(el._fwTableSearchTimer); searchInput.value = ''; _searchTerm = '';
+                            _renderRows(_lastCols, _lastRows, _lastTotal); searchInput.focus({preventScroll: true});
+                        };
+                        empty.appendChild(clear);
+                    }
+                }
+                empty.hidden = matching > 0;
+            }
+            restore(saved);
+        }
+        function click(event) {
+            var button = event.target.closest('[data-fw-drill-action]');
+            if (!button || !el.contains(button) || button.disabled) return;
+            var control = owner(spec.column), key = button._fwDrillKey;
+            if (control.reason || !keyValid(key) || !control.available(key)) return;
+            var saved = focus();
+            control.select(control.values.length === 1 && control.values[0] === key ? [] : [key]);
+            update(); restore(saved);
+        }
+        chips.addEventListener('click', function(event) {
+            var button = event.target.closest('button');
+            if (!button || !chips.contains(button)) return;
+            var saved = focus(), control = owner(button._fwDrillColumn);
+            if (!control.reason) control.select([]);
+            update(); restore(saved);
+        }, {signal: abort.signal});
+        el.addEventListener('click', click, {signal: abort.signal});
+        if (valid) subscriptions.push(engine.subscribe(spec.dataset_id, id + '_drill_selection', update));
+        function redraw() {
+            if (active && el.isConnected && drawPopulation && engine.isReady(cfg.dataset_id))
+                drawPopulation(engine.getFiltered(cfg.dataset_id));
+        }
+        window.addEventListener('fw-theme-change', redraw, {signal: abort.signal});
+        window.addEventListener('fw-dropdowns-ready', function() { redraw(); update(); }, {signal: abort.signal});
+        // Only opt-in tables own this observer. Disposal releases every strong
+        // callback reference after removal/replacement; re-entry disposes first.
+        var observer = new MutationObserver(function() {
+            if (!el.isConnected) dispose(); else update();
+        });
+        observer.observe(document.body, {childList: true, subtree: true});
+        function dispose() {
+            if (!active) return;
+            active = false; observer.disconnect(); abort.abort();
+            subscriptions.forEach(function(unsubscribe) { unsubscribe(); });
+            chips.remove(); empty.remove(); clearTimeout(el._fwTableSearchTimer);
+            if (searchInput && searchInput.oninput === searchHandler) searchInput.oninput = null;
+            if (_rowLimitControl && _rowLimitControl.onchange === limitHandler) _rowLimitControl.onchange = null;
+            if (downloadButton && downloadButton.onclick === downloadHandler) downloadButton.onclick = null;
+            if (el._fwDrillDispose === dispose) { delete el._fwDrillDispose; delete el._fwDrillFocus; }
+        }
+        el._fwDrillDispose = dispose; el._fwDrillFocus = focus;
+        return {
+            focus: focus,
+            controls: function(button) { downloadButton = button; downloadHandler = button.onclick; },
+            drawn: function(visible, count, rows, saved) {
+                matching = count; supplied = rows;
+                el.querySelectorAll('[data-fw-drill-action]').forEach(function(button, index) {
+                    button._fwDrillKey = visible[index].drillKey;
+                });
+                update(); restore(saved);
+            },
+            population: function(draw) {
+                drawPopulation = draw;
+                subscriptions.push(engine.subscribe(cfg.dataset_id, id + '_drill_population', redraw));
+                redraw();
+            }
+        };
     }
 
     /* ── CSV download wiring ──
@@ -671,5 +866,6 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
             var csvRows = _matchingRows.map(function(row) { return row.raw.map(_csvClean); });
             window._fwDownloadCsv(_lastCols, csvRows, fn);
         };
+        if (_drill) _drill.controls(dlBtn);
     }
 };

@@ -159,6 +159,9 @@ window._fwRenderers['filter_bar'] = function(id, cfg) {
         }
     });
 
+    // Normal control readiness also wires tables mounted before this bar.
+    window.dispatchEvent(new CustomEvent('fw-dropdowns-ready', {detail: {dataset_id: dsId}}));
+
     // Share button
     var shareBtn = el.querySelector('.fw-share-btn');
     if (shareBtn) {
