@@ -8,8 +8,9 @@ from playwright.sync_api import expect
 from trellum.components import DataSource, FilterBar
 from trellum.rendering.html_builder import render_report
 from trellum.report import ReportContext
-from trellum.testing.test_interactions import _ReportServer, _playwright
-from trellum.testing.test_live_date_range import date_server
+from trellum.testing.test_interactions import _playwright as _playwright
+from trellum.testing.test_interactions import _ReportServer
+from trellum.testing.test_live_date_range import date_server as date_server
 
 
 @pytest.fixture(scope="module")

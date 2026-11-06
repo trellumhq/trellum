@@ -24,8 +24,8 @@ from trellum.validation.checks.datasource import (
     _check_datasource_filterbar,
     _check_slider_filter_columns,
 )
-from trellum.validation.checks.filter_accessibility import _check_filter_labels
 from trellum.validation.checks.effectiveness import _check_filter_effectiveness
+from trellum.validation.checks.filter_accessibility import _check_filter_labels
 from trellum.validation.checks.live_query import _check_live_queries
 from trellum.validation.checks.metrics import _check_metrics
 from trellum.validation.checks.rawhtml import _check_rawhtml

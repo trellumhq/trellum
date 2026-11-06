@@ -48,6 +48,8 @@ ClassicDarkTheme = Theme(
     bg_card_hover="#33334D",
     bg_header="#E84855",
     on_accent="#111111",
+    header_fill="#bc3540",
+    on_header="#ffffff",
 
     text_main="#e4e6eb",
     text_secondary="#9a9bb0",
