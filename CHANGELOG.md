@@ -325,6 +325,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Keep report toggle dimensions stable during responsive iframe resizing by
+  animating only their colors.
+
 - Include public framework API and compatibility guides in the standalone wheel.
 
 - Shared report CSV downloads now quote headers and lone carriage returns,

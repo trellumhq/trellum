@@ -13,7 +13,8 @@
     border: none; background: transparent;
     color: var(--text-main);
     cursor: pointer; white-space: nowrap;
-    transition: all 0.2s;
+    /* Responsive padding must settle immediately for content-sized embeds. */
+    transition: background-color 0.2s, color 0.2s;
 }
 .fw-toggle-btn.active {
     background: var(--primary-fill);
