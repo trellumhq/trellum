@@ -144,6 +144,22 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             assert page.evaluate("id => window._chartInstances[id].data.datasets.map((d,i) => window._chartInstances[id].isDatasetVisible(i))",
                                  combo.get_attribute('id')) == [True, True, False, True]
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
+            page.get_by_role("link", name="heatmaps", exact=True).click()
+            heatmap_section = page.locator('#sec-heatmaps-—-live-platform-quantities')
+            heatmap = heatmap_section.locator('canvas')
+            heatmap.scroll_into_view_if_needed()
+            page.wait_for_function("id => !!window._chartInstances[id]", arg=heatmap.get_attribute('id'))
+            heatmap_section.get_by_role('button', name='Android', exact=True).click()
+            page.wait_for_function("""id => window._chartInstances[id].data.datasets[0].data.some(
+                d => d.x === 'One' && d.y === 'Regular' && d.v === 75)""",
+                arg=heatmap.get_attribute('id'))
+            assert "Global linear" in heatmap_section.locator('.fw-heatmap-key').inner_text()
+            sparse_heatmap = page.locator('#sec-heatmaps-—-zero-and-absent-coordinates canvas')
+            sparse_heatmap.scroll_into_view_if_needed()
+            page.wait_for_function("id => !!window._chartInstances[id]", arg=sparse_heatmap.get_attribute('id'))
+            assert page.evaluate("id => window._chartInstances[id].data.datasets[0].data.map(d => d.v)",
+                                 sparse_heatmap.get_attribute('id')) == [0, 40, 80]
+            assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
             # Every chart must own a real canvas and draw after scrolling into
             # view; scope-based data swaps cannot stand in for different layouts.
             for canvas in page.locator("canvas:visible").all():

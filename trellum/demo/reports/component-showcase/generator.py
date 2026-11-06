@@ -6,7 +6,7 @@ from trellum import BaseReport
 from trellum.components import DataSource, FilterBar, Grid, LineChart, RawHTML
 
 from . import (
-    examples_areas, examples_combos, examples_comparisons, examples_controls, examples_dates, examples_doughnuts, examples_kpis,
+    examples_areas, examples_combos, examples_comparisons, examples_controls, examples_dates, examples_doughnuts, examples_heatmaps, examples_kpis,
     examples_layouts, examples_line_styles, examples_pivots, examples_tables,
 )
 
@@ -31,6 +31,7 @@ class ComponentShowcaseReport(BaseReport):
             '<a href="#sec-datatable-—-static-population">data tables</a>, '
             '<a href="#sec-explicit-weekly-comparisons">comparison tables</a>, '
             '<a href="#sec-pivot-tables-—-revenue-by-title-and-platform">pivot tables</a>, '
+            '<a href="#sec-heatmaps-—-global-quantity-scales">heatmaps</a>, '
             '<a href="#sec-doughnuts-—-compact-rings-and-optional-total">doughnuts</a> or '
             '<a href="#sec-date-ranges-—-daily-readings">date ranges</a>.</p>'
             '<p>For business reports, return to the <a href="../">demo gallery</a>: '
@@ -90,3 +91,5 @@ class ComponentShowcaseReport(BaseReport):
         examples_doughnuts.add_sections(ctx)
 
         examples_pivots.add_sections(ctx)
+
+        examples_heatmaps.add_sections(ctx)
