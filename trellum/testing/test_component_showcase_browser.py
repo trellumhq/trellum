@@ -129,6 +129,21 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
                                    arg=sparse.get_attribute('id'))
             assert page.evaluate("id => window._chartInstances[id].getDatasetMeta(0).data.every(p => p.options.radius === 2)",
                                  sparse.get_attribute('id'))
+            page.get_by_role("link", name="combo charts", exact=True).click()
+            combo_section = page.locator('#sec-combo-charts-—-daily-channel-observations')
+            combo = combo_section.locator('canvas[data-fw-title="Currency bars and count lines · live"]')
+            combo.scroll_into_view_if_needed()
+            page.wait_for_function("id => !!window._chartInstances[id]", arg=combo.get_attribute('id'))
+            combo_section.get_by_role('button', name='Direct', exact=True).click()
+            page.wait_for_function("id => window._chartInstances[id].data.datasets[0].data[0] === 900",
+                                   arg=combo.get_attribute('id'))
+            legend = page.locator(f"#{combo.get_attribute('id')}-combo-context")
+            assert legend.locator('[data-axis="y"] button').count() == 2
+            assert legend.locator('[data-axis="y1"] button').count() == 2
+            legend.locator('[data-axis="y1"]').get_by_role('button', name='Orders', exact=True).click()
+            assert page.evaluate("id => window._chartInstances[id].data.datasets.map((d,i) => window._chartInstances[id].isDatasetVisible(i))",
+                                 combo.get_attribute('id')) == [True, True, False, True]
+            assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
             # Every chart must own a real canvas and draw after scrolling into
             # view; scope-based data swaps cannot stand in for different layouts.
             for canvas in page.locator("canvas:visible").all():

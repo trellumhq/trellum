@@ -6,7 +6,7 @@ from trellum import BaseReport
 from trellum.components import DataSource, FilterBar, Grid, LineChart, RawHTML
 
 from . import (
-    examples_areas, examples_comparisons, examples_controls, examples_dates, examples_doughnuts, examples_kpis,
+    examples_areas, examples_combos, examples_comparisons, examples_controls, examples_dates, examples_doughnuts, examples_kpis,
     examples_layouts, examples_line_styles, examples_pivots, examples_tables,
 )
 
@@ -24,6 +24,7 @@ class ComponentShowcaseReport(BaseReport):
             '<p>Jump to <a href="#sec-line-example-filters">line charts</a>, '
             '<a href="#sec-line-styles:-density-follows-the-plot">line styles</a>, '
             '<a href="#sec-area-example-filters">area charts</a>, '
+            '<a href="#sec-combo-charts-—-daily-channel-observations">combo charts</a>, '
             '<a href="#sec-layout-example-filters">layouts</a>, '
             '<a href="#sec-kpi-cards-and-compact-metrics">KPI metrics</a>, '
             '<a href="#sec-standalone-choices">report controls</a>, '
@@ -73,6 +74,8 @@ class ComponentShowcaseReport(BaseReport):
         examples_kpis.add_sections(ctx)
 
         examples_areas.add_sections(ctx)
+
+        examples_combos.add_sections(ctx)
 
         examples_line_styles.add_sections(ctx)
 
