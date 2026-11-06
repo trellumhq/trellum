@@ -9,6 +9,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Optional observed-day monthly averages for ordinary daily LineChart and vertical
+  BarChart: explicit reporting intervals, complete additive daily inputs, clipped
+  guides and a native coverage table. Default plots and CSV remain unchanged.
+  Section captures include coverage; isolated opted-in analysis captures direct
+  authors to the report section. Added API guidance and synthetic native examples.
+
 - Optional keyword-only LineChart `series_availability` rules withhold incomplete
   supplied observations as null gaps, preserving measured zeros and independent
   sibling metrics. Static row positions and filtered bound sums/ratios are

@@ -530,6 +530,7 @@ function _createChart(id, canvas, spec) {
     delete canvas._fwEventDetailsState;
     // A cloned replacement canvas may still carry the previous description.
     if (!spec.availability) _fwDescribeLineAvailability(canvas, false);
+    if (!spec.monthlyAverage && window._fwClearMonthlyAverage) window._fwClearMonthlyAverage(canvas);
     if (!spec.monthContext && window._fwClearMonthContext) window._fwClearMonthContext(canvas);
     var tc = window.getThemeColors();
     var axisFont = window._fwFontPx('--font-size-axis', 12);
@@ -674,7 +675,8 @@ function _createChart(id, canvas, spec) {
         plugins: (spec.monthContext ? [window._fwMonthContextPlugin()] : []).concat((spec.barValues || spec.stackLabels) ? [_fwBarLabelPlugin(spec)] : []).concat(
             spec.eventLabels === 'grouped' && window._fwLineEventLabelsPlugin
                 ? [window._fwLineEventLabelsPlugin(eventDetails, datedEvents)] : []).concat(
-            spec.availability ? [_fwLineAvailabilityPlugin(spec.availability)] : [])
+            spec.availability ? [_fwLineAvailabilityPlugin(spec.availability)] : []).concat(
+            spec.monthlyAverage ? [window._fwMonthlyAveragePlugin(spec.monthlyAverage)] : [])
     });
     window._chartInstances[id]._fwThemeManagedAxes = true;
     window._chartInstances[id]._fwThemeManagedFonts = true;
@@ -699,10 +701,10 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
         // First adoption also installs the scoped detached-canvas cleanup.
         delete canvas._fwBarLive;
     }
-    // Ordinary lines may gain/remove declarations during renderAll. Keep one
-    // scoped binding even before opt-in, so adoption cannot retain a legacy
+    // Modern ordinary lines/bars may gain/remove declarations during renderAll.
+    // Keep one scoped binding before opt-in so adoption cannot retain an old
     // anonymous theme handler or a second subscription.
-    var scopedLive = cfg.category_colors || cfg.line_style === 'adaptive' || canvas._fwAvailabilityOwned;
+    var scopedLive = cfg.category_colors || cfg.line_style === 'adaptive' || cfg.bar_values || canvas._fwAvailabilityOwned;
     if ((!scopedLive || !cfg.dataset_id || window._fwMetricsWorkspace) && previousBindings && previousBindings.has(id)) {
         previousBindings.get(id)(); previousBindings.delete(id);
         // The cached draw belonged to the binding just disposed. A reused
@@ -799,7 +801,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
             if (cfg.y1_max !== undefined) spec.y1Max = cfg.y1_max;
             if (cfg.show_labels) spec.showLabels = true;
             if (cfg.header_summary) spec.headerSummary = cfg.header_summary;
-            return _fwApplyLineAvailability(cfg, labelRows, spec);
+            return window._fwMonthlyAverageSpec(cfg, labelRows, _fwApplyLineAvailability(cfg, labelRows, spec));
         }
 
         var labelRows;
@@ -1262,7 +1264,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                 }
                 _drawLive(window._fwFilterEngine.getFiltered(cfg.dataset_id));
             }
-            var observer = canvas._fwAvailabilityOwned ? new MutationObserver(function() {
+            var observer = (canvas._fwAvailabilityOwned || cfg.bar_values || cfg.monthly_average) ? new MutationObserver(function() {
                 if (document.getElementById(id) !== canvas) dispose();
             }) : null;
             function dispose() {
@@ -1303,7 +1305,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
         }};
     }
     var yFmt = cfg.yTickFormat === 'currency' ? function(v) { return fmtCompact$(v); } : undefined;
-    _createChart(id, canvas, _fwApplyLineAvailability(cfg, null, {
+    _createChart(id, canvas, window._fwMonthlyAverageSpec(cfg, null, _fwApplyLineAvailability(cfg, null, {
         type: cfg.chartType, labels: cfg.labels, datasets: cfg.datasets,
         stacked: cfg.stacked, horizontal: cfg.horizontal,
         showLegend: cfg.showLegend !== false, yFmt: yFmt, tooltip: tooltip,
@@ -1318,7 +1320,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
         stackNormalized: false,
         stackLabelReason: cfg.stack_labels && (cfg.stack_labels.totals || cfg.stack_labels.percentages)
             ? _fwStaticStackLabelEligibility(cfg) : ''
-    }));
+    })));
 };
 
 document.addEventListener('click', function(e) {

@@ -11,14 +11,15 @@ import pandas as pd
 
 from trellum.components.base import RenderContext
 from trellum.components.charts.base import (
+    _category_colors_config,
     _chart_container_html,
     _ChartBase,
-    _month_context_config,
     _clean_list,
+    _month_context_config,
+    _monthly_average_config,
     _stack_toggle_html,
-    _validate_header_context,
     _validate_category_colors,
-    _category_colors_config,
+    _validate_header_context,
 )
 
 #: Plotting-area heights a LineChart can ask for, in CSS pixels. The class a
@@ -286,6 +287,10 @@ class LineChart(_ChartBase):
     event markers with a collapsed list of original names and dates below
     the plot. ``"full"`` keeps legacy in-plot labels without a details row.
 
+    ``monthly_average=None`` optionally declares one additive daily quantity,
+    its inclusive reporting interval and observed-day monthly guides/coverage.
+    See ``docs/report-monthly-averages.md`` for input and scope requirements.
+
     ``series_availability``: keyword-only rules requiring complete finite raw
     supplied inputs per point. Invalid supplied observations become null gaps
     with selected-data context below the plot. See docs/report-line-availability.md.
@@ -326,6 +331,7 @@ class LineChart(_ChartBase):
     header_summary: Optional[Dict[str, Any]] = None
     # Author-declared daily reporting dates; see docs/report-month-context.md.
     month_context: bool = field(default=False, kw_only=True)
+    monthly_average: Optional[dict] = field(default=None, kw_only=True)
     header_context: Optional[str] = field(default=None, kw_only=True)
     category_colors: Optional[dict] = field(default=None, kw_only=True)
     forecast_series: Optional[List[int | str] | tuple[int | str, ...]] = field(default=None, kw_only=True)
@@ -336,6 +342,9 @@ class LineChart(_ChartBase):
 
     def __post_init__(self):
         _month_context_config(self)
+        _monthly_average_config(self)
+        if self.monthly_average is not None:
+            self.monthly_average = dict(self.monthly_average)
         self._validate_event_labels()
         _validate_header_context(self.header_context)
         _validate_category_colors(self.category_colors)
@@ -378,7 +387,7 @@ class LineChart(_ChartBase):
             raise ValueError("LineChart event_labels must be 'grouped' or 'full'.")
 
     def render_html(self, ctx: RenderContext) -> str:
-        month_config = _month_context_config(self)
+        month_config = {**_month_context_config(self), **_monthly_average_config(self)}
         self._validate_event_labels()
         forecast_indices = _forecast_series_indices(self)
         availability_config = _series_availability_config(self)

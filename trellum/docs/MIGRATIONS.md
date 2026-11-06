@@ -4,6 +4,22 @@ Each section documents a breaking or significant change, how to detect affected
 code, and the exact replacement.
 
 
+## Unreleased: observed-day monthly averages
+
+Ordinary LineChart and vertical BarChart accept keyword-only
+`monthly_average=None`. Opting in requires an explicit additive daily metric,
+unique or complete-sum aggregation, inclusive base dates and unit. At most 1200
+calendar months bound coverage rows. Default payloads, plot geometry and CSV
+remain unchanged; this does not enable `month_context`. Scoped date ranges
+intersect the declared interval; live-query scope is unsupported. Incomplete
+legacy daily subtotals suppress the option instead of changing plotted values.
+Coverage follows availability context in normal document flow. Native section
+captures include it; opted-in isolated plot analysis captures reject and direct
+authors to the report section. Raw external canvas images cannot include DOM
+coverage. Rebuild matching HTML/data/runtime assets. No host or database
+migration is needed. See [the API and coverage contract](report-monthly-averages.md).
+
+
 ## Unreleased: supplied LineChart observation availability
 
 Keyword-only `series_availability=None` is additive on ordinary static/bound

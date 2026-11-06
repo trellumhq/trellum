@@ -152,3 +152,21 @@
     margin-top: 6px;
     overflow-wrap: anywhere;
 }
+
+/* Opted-in daily coverage remains in normal section/capture flow. */
+.fw-monthly-average {
+    margin: 8px 0 var(--spacing-md);
+    color: var(--text-main);
+    font-size: var(--font-size-label, 12px);
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+.fw-monthly-average table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+.fw-monthly-average caption { text-align: left; margin-bottom: 8px; color: var(--text-context, var(--text-secondary)); }
+.fw-monthly-average th, .fw-monthly-average td {
+    text-align: left; vertical-align: top; padding: 6px;
+    border-bottom: 1px solid var(--border-color);
+    white-space: normal;
+}
+.fw-monthly-average th { font-weight: 600; }
+.fw-monthly-average p { margin: 0; }

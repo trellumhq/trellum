@@ -7,9 +7,12 @@ many chart types are on it."""
 
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Mapping
+from datetime import date
 from html import escape
+from numbers import Real
 from typing import Any, Dict, Optional
 
 import pandas as pd
@@ -110,6 +113,60 @@ def _month_context_config(chart: Component) -> dict[str, bool]:
             or getattr(chart, "top_n", None) is not None):
         raise ValueError("month_context requires a vertical chronological axis without sort or top_n")
     return {"month_context": True}
+
+
+def _monthly_average_config(chart: Component) -> dict[str, Any]:
+    """Copy and validate the explicit additive daily reporting contract."""
+    value = chart.monthly_average
+    if value is None:
+        return {}
+    keys = {"metric", "aggregation", "start", "end", "unit"}
+    if not isinstance(value, dict) or set(value) != keys:
+        raise ValueError("monthly_average requires exactly metric, aggregation, start, end and unit")
+    value = dict(value)
+    if value["metric"] != "daily_additive" or value["aggregation"] not in ("unique", "sum_complete"):
+        raise ValueError("monthly_average requires metric='daily_additive' and aggregation='unique' or 'sum_complete'")
+    dates = []
+    for key in ("start", "end"):
+        text = value[key]
+        if not isinstance(text, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", text):
+            raise ValueError("monthly_average dates must be canonical Gregorian YYYY-MM-DD")
+        try:
+            dates.append(date.fromisoformat(text))
+        except ValueError as exc:
+            raise ValueError("monthly_average dates must be real Gregorian days") from exc
+    start, end = dates
+    if start > end or (end.year - start.year) * 12 + end.month - start.month + 1 > 1200:
+        raise ValueError("monthly_average requires start <= end and at most 1200 calendar months")
+    unit = value["unit"]
+    if (not isinstance(unit, str) or not unit.strip() or len(unit) > 60
+            or any(ord(c) < 32 or ord(c) == 127 for c in unit) or re.search(r"[<>]", unit)):
+        raise ValueError("monthly_average unit must be nonempty plain text of at most 60 characters")
+    if (getattr(chart, "ratios", None) or getattr(chart, "y_format", None) in ("percent", "ratio")
+            or getattr(chart, "forecast_series", None) or getattr(chart, "stack_by", None)
+            or getattr(chart, "stack_by_options", None) or getattr(chart, "horizontal", False)
+            or getattr(chart, "sort", None) is not None or getattr(chart, "top_n", None) is not None
+            or getattr(chart, "stacked", False) or getattr(chart, "net_color", False)):
+        raise ValueError("monthly_average requires one ordinary additive daily line or vertical bar series")
+    columns = (chart.y if isinstance(chart.y, list) else [chart.y]) if chart._component_type == "line_chart" else (chart.y_cols or [chart.y])
+    # Bound series use column fallbacks; static series retain legacy zip behavior.
+    count = len(columns) if chart.dataset_id else min(len(columns), len(chart.y_labels or columns))
+    if count != 1:
+        raise ValueError("monthly_average requires exactly one plotted series")
+    if not chart.dataset_id:
+        if value["aggregation"] != "unique":
+            raise ValueError("monthly_average static snapshots require aggregation='unique'")
+        inputs = []
+        raw_values = chart.df[columns[0]].tolist() if columns[0] in chart.df else [None] * len(chart.df)
+        for raw in raw_values:
+            if raw is None or raw is pd.NA or (isinstance(raw, Real) and math.isnan(raw)):
+                inputs.append({"kind": "unknown"})
+            elif isinstance(raw, Real) and not isinstance(raw, bool) and math.isfinite(raw):
+                inputs.append({"kind": "finite", "value": float(raw)})
+            else:
+                inputs.append({"kind": "invalid"})
+        value["inputs"] = inputs
+    return {"monthly_average": value}
 
 
 class _ChartBase(Component):

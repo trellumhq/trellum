@@ -11,18 +11,19 @@ import pandas as pd
 from trellum.components.base import RenderContext
 from trellum.components.charts.base import (
     _DOWNLOAD_SVG,
+    _category_colors_config,
     _chart_container_html,
     _ChartBase,
-    _month_context_config,
     _clean_list,
+    _context_description_attr,
+    _header_context_html,
+    _month_context_config,
+    _monthly_average_config,
     _normalize_toggle_html,
     _stack_toggle_html,
     _title_html,
-    _header_context_html,
-    _context_description_attr,
-    _validate_header_context,
     _validate_category_colors,
-    _category_colors_config,
+    _validate_header_context,
 )
 
 
@@ -35,6 +36,10 @@ class BarChart(_ChartBase):
     Keyword-only ``show_values=None`` adds a right value column automatically
     for horizontal nonstacked categories; False hides it, True includes dates.
     See ``docs/report-bar-labels.md`` for fitting limits and static differences.
+
+    ``monthly_average=None`` optionally declares one additive daily quantity,
+    its inclusive reporting interval and observed-day monthly guides/coverage.
+    See ``docs/report-monthly-averages.md`` for input and scope requirements.
 
     Ratio mode: set ``ratios=[{numerator, denominator, label}]`` to plot
     sum(numerator) / sum(denominator) per x-value. Works in horizontal
@@ -77,12 +82,16 @@ class BarChart(_ChartBase):
     show_values: Optional[bool] = field(default=None, kw_only=True)
     # Author-declared daily reporting dates; see docs/report-month-context.md.
     month_context: bool = field(default=False, kw_only=True)
+    monthly_average: Optional[dict] = field(default=None, kw_only=True)
     header_context: Optional[str] = field(default=None, kw_only=True)
 
     _component_type: str = field(default="bar_chart", init=False, repr=False)
 
     def __post_init__(self) -> None:
         _month_context_config(self)
+        _monthly_average_config(self)
+        if self.monthly_average is not None:
+            self.monthly_average = dict(self.monthly_average)
         _validate_header_context(self.header_context)
         self._validate_values()
 
@@ -91,7 +100,7 @@ class BarChart(_ChartBase):
             raise ValueError("show_values must be bool or None")
 
     def render_html(self, ctx: RenderContext) -> str:
-        month_config = _month_context_config(self)
+        month_config = {**_month_context_config(self), **_monthly_average_config(self)}
         self._validate_values()
         cid = ctx.next_id()
         cols = self.y_cols or [self.y]

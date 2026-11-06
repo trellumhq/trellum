@@ -149,10 +149,26 @@
             && style.opacity !== '0';
     }
 
+    function _monthlyAverageCaptureGuard(target) {
+        var canvases = target.matches('canvas') ? [target] : target.querySelectorAll('canvas');
+        var components = window._reportData && window._reportData.components || {};
+        for (var canvas of canvases) {
+            var cfg = components[canvas.id], chart = window._chartInstances && window._chartInstances[canvas.id];
+            // Inspect the declaration too: lazy rendering must not bypass ownership.
+            if (!(cfg && cfg.monthly_average) && !(chart && chart._fwMonthlyAverage)) continue;
+            if (chart && !chart.isDatasetVisible(0)) continue;
+            var coverage = document.getElementById(canvas.id + '-monthly-average');
+            if (coverage && target.contains(coverage)) continue;
+            if (!coverage && target.classList.contains('fw-section')) continue;
+            return 'Capture the report section to include monthly-average coverage.';
+        }
+        return '';
+    }
+
     function _analysisTargets() {
         var out = [];
         document.querySelectorAll('.fw-chart-container').forEach(function(el) {
-            if (el.querySelector('canvas') && _analysisVisible(el)) out.push(el);
+            if (el.querySelector('canvas') && _analysisVisible(el) && !_monthlyAverageCaptureGuard(el)) out.push(el);
         });
         document.querySelectorAll('.fw-section').forEach(function(el) {
             if (_analysisVisible(el)) out.push(el);
@@ -492,6 +508,8 @@
     }
 
     function _analysisRender(target) {
+        var ownership = _monthlyAverageCaptureGuard(target);
+        if (ownership) return Promise.reject(new Error(ownership));
         var pending = _analysisPending();
         if (pending) return Promise.reject(new Error(pending));
         if (!document.fonts || !document.fonts.ready)
@@ -507,6 +525,8 @@
         return _fwLoadExportLib('html2canvas').then(function() { return document.fonts.ready; }).then(function() { return new Promise(function(resolve) {
                 requestAnimationFrame(function() { requestAnimationFrame(resolve); });
             }); }).then(function() { return _analysisFinalRender(target); }).then(function() {
+                var ownership = _monthlyAverageCaptureGuard(target);
+                if (ownership) throw new Error(ownership);
                 var recheck = _analysisPending();
                 if (recheck) throw new Error(recheck);
                 if (!target.isConnected || !_analysisVisible(target))

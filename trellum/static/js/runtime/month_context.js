@@ -1,3 +1,35 @@
+    // Shared strict calendar helpers; no Date parsing or timezone conversion.
+    window._fwDailyDate = function(label) {
+        if (typeof label !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(label)) return null;
+        var year = +label.slice(0, 4), month = +label.slice(5, 7), day = +label.slice(8, 10);
+        var leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+        var days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        if (year < 1 || month < 1 || month > 12 || day < 1 || day > days[month - 1]) return null;
+        return {year: year, month: month, day: day, days: days[month - 1]};
+    };
+    window._fwDailyCategoryEdge = function(chart, i) {
+        if (i === 0) return -Infinity;
+        if (i === chart.data.labels.length) return Infinity;
+        var x = chart.scales.x;
+        return (x.getPixelForValue(i - 1) + x.getPixelForValue(i)) / 2;
+    };
+    window._fwDailyCalendar = function(labels) {
+        if (!Array.isArray(labels) || !labels.length) return {reason: 'empty'};
+        var previous = '', groups = [];
+        for (var i = 0; i < labels.length; i++) {
+            var label = labels[i];
+            var parsed = window._fwDailyDate(label);
+            if (!parsed) return {reason: 'invalid-date'};
+            var year = parsed.year, month = parsed.month;
+            if (label === previous) return {reason: 'duplicate-date'};
+            if (label < previous) return {reason: 'unsorted-dates'};
+            var key = label.slice(0, 7), last = groups[groups.length - 1];
+            if (!last || last.key !== key) groups.push({key: key, month: month, year: label.slice(0, 4), start: i, end: i});
+            else last.end = i;
+            previous = label;
+        }
+        return {groups: groups};
+    };
     // Opt-in daily category context. Calendar validation never changes plot data.
     // A replacement canvas may inherit a description from an older instance.
     window._fwClearMonthContext = function(canvas) {
@@ -29,29 +61,8 @@
             row = null; container = null; boundaries = [];
             describe(chart, false);
         }
-        function calendar(labels) {
-            if (!Array.isArray(labels) || !labels.length) return {reason: 'empty'};
-            var previous = '', groups = [];
-            for (var i = 0; i < labels.length; i++) {
-                var label = labels[i];
-                if (typeof label !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(label))
-                    return {reason: 'invalid-date'};
-                var year = +label.slice(0, 4), month = +label.slice(5, 7), day = +label.slice(8, 10);
-                var leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
-                var days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-                if (year < 1 || month < 1 || month > 12 || day < 1 || day > days[month - 1])
-                    return {reason: 'invalid-date'};
-                if (label === previous) return {reason: 'duplicate-date'};
-                if (label < previous) return {reason: 'unsorted-dates'};
-                var key = label.slice(0, 7), last = groups[groups.length - 1];
-                if (!last || last.key !== key) groups.push({key: key, month: month, year: label.slice(0, 4), start: i, end: i});
-                else last.end = i;
-                previous = label;
-            }
-            return {groups: groups};
-        }
         function layout(chart) {
-            var result = calendar(chart.data.labels), x = chart.scales.x, area = chart.chartArea;
+            var result = window._fwDailyCalendar(chart.data.labels), x = chart.scales.x, area = chart.chartArea;
             if (result.reason || !x || x.type !== 'category' || !area || area.width <= 0) {
                 clear(chart);
                 chart._fwMonthContext = {status: 'omitted', reason: result.reason || 'unavailable-scale'};
@@ -68,21 +79,13 @@
             if (container.nextElementSibling !== row) container.after(row);
             container.classList.add('fw-has-month-context');
             describe(chart, true);
-            var count = chart.data.labels.length;
-            function center(i) { return x.getPixelForValue(i); }
-            function edge(i) {
-                // Outer months extend to the plot edge, including a single category.
-                if (i === 0) return -Infinity;
-                if (i === count) return Infinity;
-                return (center(i - 1) + center(i)) / 2;
-            }
             var css = getComputedStyle(row), ctx = chart.ctx;
             ctx.save();
             ctx.font = css.font;
             boundaries = [];
             var fragment = document.createDocumentFragment(), visible = [];
             result.groups.forEach(function(group, index) {
-                var start = edge(group.start), end = edge(group.end + 1);
+                var start = window._fwDailyCategoryEdge(chart, group.start), end = window._fwDailyCategoryEdge(chart, group.end + 1);
                 if (index && start >= area.left && start <= area.right) boundaries.push(start);
                 var left = Math.max(area.left, start), right = Math.min(area.right, end);
                 if (right <= left) return;

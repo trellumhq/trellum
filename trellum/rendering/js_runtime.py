@@ -36,6 +36,7 @@ RUNTIME_MODULES: tuple[str, ...] = (
     "chart_defaults",
     "annotations",
     "month_context",
+    "monthly_averages",
     "filter_engine",
     "cross_filter",
     "url_sync",
