@@ -1,5 +1,13 @@
 # Framework Migration Guide
 
+## Unreleased: optional HeatmapChart summaries
+
+Existing calls need no changes. Use
+`header_summary={"stat": "mean", "scope": "current_cells"}` to describe retained
+aggregate cells in raw units. Count, sum, min and max are also available;
+numeric input guards and preserved plot/CSV behavior are documented in
+[Heatmap summaries](report-heatmap-summaries.md). Rebuild report assets.
+
 ## Unreleased: optional metric views and Scatter summaries
 
 Existing calls need no changes. Import `MetricView` from `trellum.components`,

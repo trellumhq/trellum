@@ -11,7 +11,7 @@ _FORMATS = ("number", "currency", "percent", "chips", "ratio", "plain")
 
 def heatmap_summary_config(chart: Any) -> dict:
     """Validate and copy an author declaration, including after mutation."""
-    cfg = chart.header_summary
+    cfg = getattr(chart, "header_summary", None)
     if cfg is None:
         return {}
 

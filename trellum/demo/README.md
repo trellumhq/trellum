@@ -96,6 +96,8 @@ numeric results between its summary table and optional geography panels, with
 raw-fraction CSV and explicit display precision. The
 [Scatter summary examples](../docs/report-scatter-summaries.md) add optional
 coordinate statistics and entry counts to current ordinary/bubble plots.
+The [Heatmap summary examples](../docs/report-heatmap-summaries.md) compare
+raw-cell reducers, entry counts, normalized colors and unavailable inputs.
 
 `live-result-examples` is a separate native teaching report for displayed
 snapshot/query identity and returned-row scope. It uses bounded literal

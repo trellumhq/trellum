@@ -142,22 +142,9 @@ Twenty facts aggregate into four cells `[0,90,180,270]`, sum 540, mean 135,
 minimum 0, maximum 270, count 4. iOS/August 1 yields `[0,10,20,30]`, sum 60,
 mean 15. The 30 contribution is deliberately split into 12+18 source facts.
 
-The common showcase generator should import this module and call
-`examples_heatmap_summaries.add_sections(ctx)` alongside the other example
-modules. Its section navigation should include these four generated titles.
-No new public component export is necessary: `HeatmapChart` is already exported.
-
-Add the validator dispatch in `trellum/validation/checks/chart_options.py`:
-
-```python
-from trellum.components.charts._heatmap_summary import heatmap_option_problems
-
-# Inside the existing (comp, sec) loop:
-if _comp_name(comp) == "HeatmapChart":
-    for check_id, message in heatmap_option_problems(comp):
-        result.fail(check_id, message, component="HeatmapChart", section=sec)
-```
-
-The dedicated native tests invoke this hook directly alongside `compute_details`
-and `validate_report` to check both the family-specific declaration and the complete report. Link
-this page wherever chart-summary options are documented.
+The common showcase includes these four sections, reachable from its Heatmap
+summaries link. Import the existing `HeatmapChart` from `trellum.components`.
+The standard chart-options validator dispatches `heatmap_option_problems`
+and reports `chart-summary-invalid` for malformed declarations, including
+post-construction mutations. Native validation also retains structural
+filter coverage and column checks.

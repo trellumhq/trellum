@@ -525,6 +525,10 @@ and responsive plot heights remain available.
 count current point entries or summarize x/y coordinates, preserving ordinary
 and bubble plots. Coordinate reducers require complete finite pairs.
 
+[HeatmapChart header summaries](docs/report-heatmap-summaries.md) optionally
+count retained aggregate cell entries or summarize their raw values before
+color normalization, with explicit original-input eligibility.
+
 [FunnelChart header summaries](docs/report-funnel-summaries.md) optionally show
 a named stage, maximum stage-entry count or entry count above the current plot.
 They preserve stage ordering and do not infer conversions or cross-stage totals.

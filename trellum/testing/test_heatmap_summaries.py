@@ -20,6 +20,8 @@ from trellum.report import ReportContext
 from trellum.reporting.diagnostics import compute_details
 from trellum.themes import DEFAULT_THEME
 from trellum.validation import validate_report
+from trellum.validation.checks.chart_options import _check_chart_options
+from trellum.validation.result import ValidationResult
 
 ROOT = Path(__file__).resolve().parents[2]
 BASELINE = 'c9ca7bc258a6d5887f0a0861f7fc41a88541dad6'
@@ -70,6 +72,9 @@ def walk(components):
 def test_opt_out_exact_baseline_and_keyword_only_subclass_positions(dataset):
     args = (frame(), 'x', 'y', 'v', 'Title', ('#fff', '#000'), False, 'row', True, 'currency', dataset, True)
     assert render(HeatmapChart(*args)) == render(baseline_class()(*args))
+    result = ValidationResult(slug='historical-heatmap')
+    _check_chart_options([(baseline_class()(*args), 'Cells')], result)
+    assert result.checks == []
     assert inspect.signature(HeatmapChart).parameters['header_summary'].kind == inspect.Parameter.KEYWORD_ONLY
     @dataclass
     class Child(HeatmapChart):
@@ -94,6 +99,10 @@ def test_malformed_constructor_render_and_mutation_validation(declaration):
     with pytest.raises(ValueError, match='header_summary'):
         render(chart)
     assert [code for code, _ in heatmap_option_problems(chart)] == ['chart-summary-invalid']
+    result = ValidationResult(slug='heatmap-options')
+    _check_chart_options([(chart, 'Cells')], result)
+    assert [(c.id, c.level, c.component, c.section) for c in result.checks] == [
+        ('chart-summary-invalid', 'fail', 'HeatmapChart', 'Cells')]
 
 
 @pytest.mark.parametrize('value_format', ['number', 'currency', 'percent', 'chips', 'ratio', 'plain', 'unsupported'])

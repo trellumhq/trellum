@@ -9,6 +9,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Optional HeatmapChart headers summarizing current aggregate cell entries,
+  with explicit population scope and conservative numeric eligibility.
+
 - Bounded snapshot MetricView summaries, optional MiniKpi result bindings and
   ordinary DataTable column formats, with a Marketing geography example.
 - Optional ScatterChart header summaries for point-entry counts and x/y

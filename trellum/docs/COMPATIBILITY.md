@@ -1,5 +1,14 @@
 # Framework Compatibility Policy
 
+## Unreleased: optional HeatmapChart summaries
+
+Keyword-only `header_summary=None` preserves existing calls and default output.
+Opted-in headers describe retained aggregate cells after `drop_empty`, before
+color normalization. Numeric summaries require eligible original inputs;
+existing plot coercion, coordinate identity and CSV limitations remain.
+See [Heatmap summaries](report-heatmap-summaries.md). Rebuild matching assets;
+no database or host migration is required.
+
 ## Unreleased: snapshot metric views and table column formats
 
 `MetricView` adds a bounded derived dataset over an ordinary snapshot or one

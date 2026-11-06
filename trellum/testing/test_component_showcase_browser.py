@@ -171,6 +171,16 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             expect(scatter.locator('.fw-chart-summary-value')).to_have_text(['$10.50', '$15.00', '$4.00', '$5.00', '$20.00', '$30.00', '4'])
             expect(marketing.locator('.fw-mini-val').first).to_have_text('840')
             expect(funnels.locator('.fw-chart-summary-value')).to_have_text(['20', '180', '3'])
+            page.get_by_role('link', name='Heatmap summaries', exact=True).click()
+            heatmaps = page.locator('#sec-heatmap-summaries-—-filtered-cell-reducers-and-count')
+            heatmaps.scroll_into_view_if_needed()
+            for canvas in heatmaps.locator('canvas').all():
+                canvas.scroll_into_view_if_needed()
+            expect(heatmaps.locator('.fw-chart-summary-value')).to_have_text(['540', '135', '0.00', '270', '4'])
+            heatmaps.get_by_role('button', name='iOS', exact=True).click()
+            expect(heatmaps.locator('.fw-chart-summary-value')).to_have_text(['180', '45', '0.00', '90', '4'])
+            expect(scatter.locator('.fw-chart-summary-value').last).to_have_text('4')
+            expect(marketing.locator('.fw-mini-val').first).to_have_text('840')
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
             page.get_by_role("link", name="pivot tables", exact=True).click()
             pivot = page.locator('.fw-section').filter(has=page.get_by_role(
