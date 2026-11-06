@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from decimal import Decimal
 from typing import Any, List, Optional
 
 import pandas as pd
 
 from trellum.assets import load_css, load_js
 from trellum.components.base import Component, RenderContext
-from trellum.data.transforms import format_value
+from trellum.data.transforms import df_to_json_records, format_value
 
 _DOWNLOAD_SVG = (
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
@@ -34,6 +35,9 @@ class DataTable(Component):
 
     Pass ``dataset_id`` to make this table reactive to filter changes.
     When reactive, ``columns`` controls which DataFrame columns are shown.
+    ``columns`` also selects static display/export columns. ``max_rows`` only
+    limits display: search, stable sort and CSV use every supplied row (or
+    every row delivered by the dataset wrapper). CSV uses raw numeric values.
 
     A live-query-backed table is just a reactive table: declare
     ``LiveDataSource(id, query=..., df=snapshot)`` and pass
@@ -68,6 +72,13 @@ class DataTable(Component):
             f'title="Download CSV">{_DOWNLOAD_SVG}</button>'
         )
         show_search = self.searchable if self.searchable is not None else len(self.df) > 20
+        show_cols = self.columns or list(self.df.columns)
+        numeric_cols = [c for c in show_cols
+                        if c in self.df.columns
+                        and (pd.api.types.is_numeric_dtype(self.df[c].dtype)
+                            or pd.api.types.infer_dtype(self.df[c], skipna=True)
+                            in {"integer", "floating", "mixed-integer-float", "decimal"})
+                        and not pd.api.types.is_bool_dtype(self.df[c].dtype)]
         search_html = ""
         if show_search:
             search_html = (
@@ -78,7 +89,6 @@ class DataTable(Component):
             )
 
         if self.dataset_id:
-            show_cols = self.columns or list(self.df.columns)
             cfg: dict[str, Any] = {
                 "type": "table",
                 "dataset_id": self.dataset_id,
@@ -87,16 +97,19 @@ class DataTable(Component):
                 "barColumn": self.bar_column,
                 "searchable": show_search,
                 "sortable": self.sortable,
+                "numericColumns": numeric_cols,
             }
             if self.conditional_formats:
                 cfg["conditionalFormats"] = self.conditional_formats
             ctx.register(cid, cfg)
             return (
-                f'<div class="fw-table-header">{search_html}{dl_btn}</div>'
+                f'<div class="fw-table-header fw-data-table-header">{search_html}{dl_btn}</div>'
                 f'<div id="{cid}" class="fw-table-scroll"></div>'
             )
 
-        df = self.df.head(self.max_rows)
+        # Retain the supplied population. max_rows is a display limit applied
+        # after local search and sort, never a search or export limit.
+        df = self.df[show_cols]
         total = len(self.df)
 
         formatted = df.apply(
@@ -106,18 +119,40 @@ class DataTable(Component):
             "type": "table",
             "columns": list(df.columns),
             "rows": formatted.values.tolist(),
+            "numericColumns": numeric_cols,
             "totalRows": total,
             "maxRows": self.max_rows,
             "searchable": show_search,
             "sortable": self.sortable,
         }
+        if numeric_cols:
+            # Keep established text/date/boolean CSV representation; only
+            # numeric cells need a separate unrounded value. Text-only catalog
+            # tables need no duplicate row payload (workspace pages fill those
+            # rows from their catalog).
+            raw_rows = [row.copy() for row in reg["rows"]]
+            numeric_indices = [(show_cols.index(c), c) for c in numeric_cols]
+            for row, record in zip(raw_rows, df_to_json_records(df[numeric_cols])):
+                for index, column in numeric_indices:
+                    value = record[column]
+                    # JSON numbers cannot carry arbitrary decimal precision or
+                    # integers beyond JavaScript's exact range. Keep their
+                    # numeric text for lossless table sort and CSV.
+                    if isinstance(value, Decimal):
+                        value = str(value) if value.is_finite() else None
+                    elif pd.isna(value):
+                        value = None
+                    elif isinstance(value, int) and abs(value) > 2**53 - 1:
+                        value = str(value)
+                    row[index] = value
+            reg["rawRows"] = raw_rows
         if self.bar_column is not None:
             reg["barColumn"] = self.bar_column
         if self.conditional_formats:
             reg["conditionalFormats"] = self.conditional_formats
 
         table_html = (
-            f'<div class="fw-table-header">{search_html}{dl_btn}</div>'
+            f'<div class="fw-table-header fw-data-table-header">{search_html}{dl_btn}</div>'
             f'<div id="{cid}" class="fw-table-scroll"></div>'
         )
         ctx.register(cid, reg)

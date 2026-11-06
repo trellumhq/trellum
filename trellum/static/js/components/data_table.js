@@ -1,6 +1,7 @@
 window._fwRenderers['table'] = function renderTable(id, cfg) {
     var el = document.getElementById(id);
     if (!el) return;
+    var generation = el._fwTableGeneration = (el._fwTableGeneration || 0) + 1;
     var cf = cfg.conditionalFormats || {};
     /* Live tables (a live-query lookup) re-run this whole renderer on every
        commit, with different data each time. Without locked widths the
@@ -12,6 +13,8 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
     var _isLive = !!cfg.dataset_id;
     var _colWidths = _isLive ? (el._fwColWidths || null) : null;
     var _searchTerm = '';
+    var _matchingRows = [];
+    clearTimeout(el._fwTableSearchTimer);
     var _countEl = null;
     var _sortCol = -1;   /* -1 = no active sort */
     var _sortDir = 1;    /* 1 = asc, -1 = desc */
@@ -27,8 +30,8 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
         try { _definitionHash = decodeURIComponent(location.hash.slice(1)); } catch (error) {}
     }
     var _page = 1;
-    if (_pageSize && el._fwWorkspaceTableState) {
-        var saved = el._fwWorkspaceTableState;
+    if (el._fwTableState || (_pageSize && el._fwWorkspaceTableState)) {
+        var saved = el._fwTableState || el._fwWorkspaceTableState;
         _page = saved.page; _searchTerm = saved.term; _sortCol = saved.sortCol; _sortDir = saved.sortDir;
     }
     if (_pageSize) {
@@ -65,18 +68,59 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
         return { n: NaN, s: lower };
     }
 
+    // New payloads carry dtype metadata and raw values. Legacy snapshots
+    // still sort their formatted cells using the established numeric parser.
+    function _isNumericColumn(columns, rows, index) {
+        if (Array.isArray(cfg.numericColumns) && cfg.numericColumns.indexOf(columns[index]) >= 0) return true;
+        // An empty/unknown snapshot may not have a numeric dtype yet. Use
+        // actual raw numbers, never parsed display strings, in that case.
+        var values = rows.map(function(row) { return row.raw[index]; }).filter(function(v) { return v != null && v !== ''; });
+        return values.length > 0 && values.every(function(v) { return typeof v === 'number'; });
+    }
+
+    // Compare raw decimal text without rounding large integers/Decimals through
+    // parseFloat. Ordinary raw numbers use their round-trippable JS text.
+    function _numericKey(value) {
+        if (value == null || value === '') return null;
+        var m = String(value).match(/^([+-]?)(\d+)(?:\.(\d*))?(?:e([+-]?\d+))?$/i);
+        if (!m) return null;
+        var digits = (m[2] + (m[3] || '')).replace(/^0+/, '');
+        return {sign: digits ? (m[1] === '-' ? -1 : 1) : 0, digits: digits,
+            exponent: digits.length - (m[3] || '').length + Number(m[4] || 0)};
+    }
+
+    function _compareNumeric(a, b) {
+        if (!a || !b) return a ? -1 : (b ? 1 : 0);
+        if (a.sign !== b.sign) return a.sign - b.sign;
+        if (!a.sign) return 0;
+        if (a.exponent !== b.exponent) return (a.exponent < b.exponent ? -1 : 1) * a.sign;
+        var width = Math.max(a.digits.length, b.digits.length);
+        var left = a.digits.padEnd(width, '0'), right = b.digits.padEnd(width, '0');
+        return (left < right ? -1 : (left > right ? 1 : 0)) * a.sign;
+    }
+
     function _sortRows(rows) {
         if (_sortCol < 0) return rows;
         var sorted = rows.slice();
+        var numeric = _isNumericColumn(_lastCols, rows, _sortCol);
         sorted.sort(function(a, b) {
-            var ka = _sortKey(a[_sortCol]), kb = _sortKey(b[_sortCol]);
+            if (numeric && !a.legacy && !b.legacy) {
+                return _compareNumeric(_numericKey(a.raw[_sortCol]), _numericKey(b.raw[_sortCol]))
+                    * _sortDir || a.index - b.index;
+            }
+            function key(row) {
+                var v = row.raw[_sortCol];
+                if (row.legacy) return _sortKey(v);
+                return {n: NaN, s: v == null ? '' : String(v).toLowerCase()};
+            }
+            var ka = key(a), kb = key(b);
             var hasA = !isNaN(ka.n), hasB = !isNaN(kb.n);
             var r;
             if (hasA && hasB) r = ka.n - kb.n;
             else if (hasA) r = -1;
             else if (hasB) r = 1;
             else r = ka.s < kb.s ? -1 : (ka.s > kb.s ? 1 : 0);
-            return r * _sortDir;
+            return r * _sortDir || a.index - b.index;
         });
         return sorted;
     }
@@ -102,8 +146,8 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
 
     function _matchSearch(row) {
         if (!_searchTerm) return true;
-        for (var i = 0; i < row.length; i++) {
-            if (row[i] != null && String(row[i]).toLowerCase().indexOf(_searchTerm) >= 0) return true;
+        for (var i = 0; i < row.display.length; i++) {
+            if (row.display[i] != null && String(row.display[i]).toLowerCase().indexOf(_searchTerm) >= 0) return true;
         }
         return false;
     }
@@ -111,29 +155,34 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
     function _renderRows(columns, rows, totalRows) {
         var filtered = _searchTerm ? rows.filter(_matchSearch) : rows;
         filtered = _sortRows(filtered);
+        _matchingRows = filtered;
         var pages = _pageSize ? Math.max(1, Math.ceil(filtered.length / _pageSize)) : 1;
         if (_pageSize) _page = Math.min(pages, Math.max(1, _page));
-        var visible = _pageSize ? filtered.slice((_page - 1) * _pageSize, _page * _pageSize) : filtered;
+        el._fwTableState = {page: _page, term: _searchTerm, sortCol: _sortCol, sortDir: _sortDir};
+        var visible = _pageSize ? filtered.slice((_page - 1) * _pageSize, _page * _pageSize) : filtered.slice(0, cfg.maxRows);
+        var numericColumns = columns.map(function(c, index) { return _isNumericColumn(columns, rows, index); });
         var barCol = (cfg.barColumn != null) ? cfg.barColumn : -1;
         var barMax = 0;
         if (barCol >= 0) {
             filtered.forEach(function(row) {
-                var v = parseFloat(String(row[barCol]).replace(/[^0-9.\-]/g, ''));
+                var v = parseFloat(String(row.display[barCol]).replace(/[^0-9.\-]/g, ''));
                 if (!isNaN(v) && v > barMax) barMax = v;
             });
         }
         var hdr = columns.map(function(c, idx) {
             var label = _escapeHtml(c);
-            if (!cfg.sortable) return '<th>' + label + '</th>';
+            var numericClass = numericColumns[idx] ? ' fw-table-numeric' : '';
+            if (!cfg.sortable) return '<th class="' + numericClass.trim() + '">' + label + '</th>';
             var active = (idx === _sortCol);
             var arrow = '<span class="fw-sort-arrow">' +
                 (active ? (_sortDir > 0 ? '▲' : '▼') : '▲▼') + '</span>';
-            var cls = 'fw-sortable' + (active ? ' fw-sort-active' : '');
+            var cls = 'fw-sortable' + numericClass + (active ? ' fw-sort-active' : '');
             return '<th class="' + cls + '" data-col-idx="' + idx + '">'
                 + label + arrow + '</th>';
         }).join('');
         var body = visible.map(function(row) {
-            return '<tr>' + row.map(function(v, i) {
+            return '<tr>' + row.display.map(function(v, i) {
+                var cellClass = numericColumns[i] ? ' class="fw-table-numeric"' : '';
                 var condRules = cf[columns[i]];
                 var style = '';
                 if (condRules) {
@@ -143,22 +192,19 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
                 if (i === barCol && barMax > 0) {
                     var num = parseFloat(String(v).replace(/[^0-9.\-]/g, ''));
                     var pct = isNaN(num) ? 0 : (num / barMax * 100);
-                    return '<td' + style + '><div class="fw-bar-cell"><div class="fw-bar-fill" style="width:'
+                    return '<td' + cellClass + style + '><div class="fw-bar-cell"><div class="fw-bar-fill" style="width:'
                         + pct.toFixed(1) + '%"></div><span>' + _escapeHtml(v != null ? v : '') + '</span></div></td>';
                 }
-                return '<td' + style + '>' + _escapeHtml(v != null ? v : '') + '</td>';
+                return '<td' + cellClass + style + '>' + _escapeHtml(v != null ? v : '') + '</td>';
             }).join('') + '</tr>';
         }).join('');
-        var note = '';
-        if (_searchTerm) {
-            note = '<div class="fw-table-note">' + filtered.length + ' of ' + totalRows + ' rows</div>';
-        } else if (totalRows > cfg.maxRows) {
-            note = '<div class="fw-table-note">Showing ' + cfg.maxRows
-                + ' of ' + totalRows + ' rows — CSV download includes all ' + totalRows + '</div>';
-        }
+        var note = '<div class="fw-table-note" role="status">Showing ' + visible.length
+            + ' of ' + filtered.length + ' matching rows ('
+            + (rows.length < totalRows ? rows.length + ' available of ' : '') + totalRows
+            + ' supplied) — CSV exports ' + filtered.length + ' rows</div>';
         if (_pageSize) {
             note = '<div class="fw-table-note" data-workspace-table-status tabindex="-1" role="status">' + filtered.length + ' of ' + totalRows + ' rows · Page ' + _page + ' of ' + pages
-                + '</div><div class="fw-metric-actions" data-workspace-table-pager>'
+                + ' · CSV exports ' + filtered.length + ' rows</div><div class="fw-metric-actions" data-workspace-table-pager>'
                 + '<button type="button" data-workspace-table-previous' + (_page <= 1 ? ' disabled' : '') + '>Previous definitions</button>'
                 + '<button type="button" data-workspace-table-next' + (_page >= pages ? ' disabled' : '') + '>Next definitions</button></div>';
             el._fwWorkspaceTableState = {page: _page, term: _searchTerm, sortCol: _sortCol, sortDir: _sortDir};
@@ -170,12 +216,12 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
             }).join('') + '</colgroup>';
             tableAttr = ' style="table-layout:fixed"';
         }
-        el.innerHTML = '<table class="fw-table"' + tableAttr + '>' + colgroup
+        el.innerHTML = '<table class="fw-table fw-data-table"' + tableAttr + '>' + colgroup
             + '<thead><tr>' + hdr + '</tr></thead><tbody>'
             + body + '</tbody></table>' + note;
         if (_definitionAnchors) {
             el.querySelectorAll('tbody tr').forEach(function(row, index) {
-                var anchor = _definitionAnchors[visible[index][0]];
+                var anchor = _definitionAnchors[visible[index].display[0]];
                 if (anchor) row.id = anchor; // Exact catalog anchor through the DOM API.
             });
             var target = _definitionHash && document.getElementById(_definitionHash);
@@ -199,9 +245,8 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
             }
         }
         if (_countEl) {
-            _countEl.textContent = _searchTerm
-                ? filtered.length + ' / ' + totalRows
-                : '';
+            _countEl.textContent = filtered.length + ' matching · CSV ' + filtered.length;
+            _countEl.title = 'CSV includes every matching row in table sort order';
         }
         if (cfg.sortable) {
             el.querySelectorAll('th.fw-sortable').forEach(function(th) {
@@ -249,10 +294,10 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
     var _lastRows = null, _lastCols = null, _lastTotal = 0;
     var searchInput = document.querySelector('[data-table-search="' + id + '"]');
     if (searchInput && cfg.searchable) {
-        if (_pageSize && _searchTerm !== searchInput.value.trim().toLowerCase()) {
+        if (_searchTerm !== searchInput.value.trim().toLowerCase()) {
             _searchTerm = searchInput.value.trim().toLowerCase(); _page = 1;
         }
-        _countEl = _pageSize && searchInput.parentNode.querySelector('.fw-table-count');
+        _countEl = searchInput.parentNode.querySelector('.fw-table-count');
         if (!_countEl) {
             _countEl = document.createElement('span');
             _countEl.className = 'fw-table-count';
@@ -268,24 +313,26 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
                 if (_pageSize) _page = 1;
                 if (_lastRows) _renderRows(_lastCols, _lastRows, _lastTotal);
             }, 200);
+            el._fwTableSearchTimer = _debounce;
             if (_pageSize) el._fwWorkspaceSearchTimer = _debounce;
         }
-        if (_pageSize) searchInput.oninput = search;
-        else searchInput.addEventListener('input', search);
+        searchInput.oninput = search;
     }
 
     /* ── Live mode ── */
     if (cfg.dataset_id) {
         function _drawTable(rawRows) {
+            if (el._fwTableGeneration !== generation) return;
             var cols = cfg.columns;
-            var limited = rawRows.slice(0, cfg.maxRows);
-            var rows = limited.map(function(r) {
-                return cols.map(function(c) {
+            var rows = rawRows.map(function(r, index) {
+                var raw = cols.map(function(c) { return r[c]; });
+                var display = cols.map(function(c) {
                     var v = r[c];
                     if (v == null) return '';
                     if (typeof v === 'number') return fmtCompact(v);
                     return String(v);
                 });
+                return {display: display, raw: raw, index: index};
             });
             _lastRows = rows; _lastCols = cols; _lastTotal = rawRows.length;
             _renderRows(cols, rows, rawRows.length);
@@ -293,13 +340,17 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
         window._fwLiveWrap(id, cfg, _drawTable);
     } else {
         /* ── Static mode ── */
-        _lastRows = cfg.rows; _lastCols = cfg.columns; _lastTotal = cfg.totalRows;
+        _lastRows = cfg.rows.map(function(row, index) {
+            return {display: row, raw: cfg.rawRows ? cfg.rawRows[index] : row,
+                    legacy: !cfg.rawRows && !Array.isArray(cfg.numericColumns), index: index};
+        });
+        _lastCols = cfg.columns; _lastTotal = cfg.totalRows == null ? cfg.rows.length : cfg.totalRows;
         // A definition deep link opens the table page that holds its row.
         if (_definitionAnchors && _definitionHash && !el._fwWorkspaceTableState) {
             var _linked = cfg.rows.findIndex(function(row) { return _definitionAnchors[row[0]] === _definitionHash; });
             if (_linked >= 0) _page = Math.floor(_linked / _pageSize) + 1;
         }
-        _renderRows(cfg.columns, cfg.rows, cfg.totalRows);
+        _renderRows(_lastCols, _lastRows, _lastTotal);
     }
 
     /* ── CSV download wiring ──
@@ -319,19 +370,11 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
         dlBtn.onclick = function() {
             var slug = document.body.getAttribute('data-report-slug') || 'data';
             var fn = slug + '_table.csv';
-            if (cfg.dataset_id) {
-                var filtered = window._fwFilterEngine.getFiltered(cfg.dataset_id);
-                var cols = cfg.columns;
-                var csvRows = filtered.map(function(r) {
-                    return cols.map(function(c) { return _csvClean(r[c]); });
-                });
-                window._fwDownloadCsv(cols, csvRows, fn);
-            } else {
-                var csvRows = cfg.rows.map(function(row) {
-                    return row.map(_csvClean);
-                });
-                window._fwDownloadCsv(cfg.columns, csvRows, fn);
-            }
+            // Export the exact population used by the last completed draw.
+            // Never refetch from the filter engine: a live update may be pending
+            // while this component intentionally still displays its old result.
+            var csvRows = _matchingRows.map(function(row) { return row.raw.map(_csvClean); });
+            window._fwDownloadCsv(_lastCols, csvRows, fn);
         };
     }
 };

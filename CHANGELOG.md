@@ -47,6 +47,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   ratio while both pane minimums fit, and stack by panel width. Configure
   minimums with keyword-only `left_min_width` and `right_min_width`.
 
+- DataTables use compact spacing, subtle alternating rows and numeric column
+  alignment. Search and stable sorting cover every supplied row before display
+  limits; CSV exports all current matches in the chosen order with an accurate
+  count. Static exports retain raw numeric precision and honor `columns`.
 - `LineChart` now defaults to a 220px plotting area at every viewport width
   (previously 180 to 380px depending on the window, 200px in tile grids), and
   keeps its title in tile grids. Pass `height="roomy"` for 320px.

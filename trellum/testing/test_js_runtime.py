@@ -27,7 +27,7 @@ from trellum.rendering.js_runtime import generate_js_runtime
 from trellum.themes import THEME_REGISTRY
 
 
-def test_workspace_table_global_metadata_and_bounded_optin_leave_defaults_unchanged(capture_page):
+def test_workspace_table_pagination_keeps_ordinary_table_display_limit(capture_page):
     page = capture_page
     result = page.evaluate("""js => {
         document.body.innerHTML = '<div id="paged"></div><div id="ordinary"></div>';
@@ -52,7 +52,7 @@ def test_workspace_table_global_metadata_and_bounded_optin_leave_defaults_unchan
         delete window._fwMetricsWorkspace;
         return {before,first,next,ordinary,lastFocus,firstFocus};
     }""", load_js('components/data_table.js'))
-    assert result == {'before': 25, 'first': 'metric_0079owner_79', 'next': 'metric_0054owner_54', 'ordinary': 80,
+    assert result == {'before': 25, 'first': 'metric_0079owner_79', 'next': 'metric_0054owner_54', 'ordinary': 25,
                       'lastFocus': True, 'firstFocus': True}
 
 def test_workspace_definition_deep_link_opens_the_table_page_holding_the_row(capture_page):
@@ -74,7 +74,8 @@ def test_workspace_definition_deep_link_opens_the_table_page_holding_the_row(cap
         history.replaceState(null, '', location.pathname);
         return out;
     }""", load_js('components/data_table.js'))
-    assert result == {'first': 'metric_0050owner', 'linked': True, 'status': '80 of 80 rows · Page 3 of 4'}
+    assert result == {'first': 'metric_0050owner', 'linked': True,
+                      'status': '80 of 80 rows · Page 3 of 4 · CSV exports 80 rows'}
 
 
 def test_metric_draw_queue_coalesces_latest_filter_disposes_and_restores(capture_page):

@@ -17,7 +17,16 @@
     vertical-align: middle;
 }
 .fw-table tr:last-child td { border-bottom: none; }
+.fw-data-table th, .fw-data-table td { padding: 6px 12px; }
+.fw-data-table tbody tr:nth-child(even) td {
+    background: color-mix(in srgb, var(--bg-card-hover) 40%, transparent);
+}
+.fw-data-table .fw-table-numeric {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
 .fw-table tr:hover td { background: var(--bg-card-hover); }
+.fw-data-table tbody tr:hover td { background: var(--bg-card-hover); }
 .fw-table-note {
     font-size: var(--font-size-meta); color: var(--text-muted);
     margin-top: var(--spacing-sm);
@@ -33,6 +42,7 @@
     display: flex; justify-content: flex-end; align-items: center;
     margin-bottom: 4px;
 }
+.fw-data-table-header { flex-wrap: wrap; gap: 4px; }
 .fw-csv-btn {
     background: transparent; border: 1px solid var(--border-color);
     border-radius: var(--radius-control); padding: 4px 8px; cursor: pointer;
