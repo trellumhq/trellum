@@ -824,7 +824,7 @@ def member_export(request, org_slug, user_id):  # noqa: ARG001
     from apps.orgs import personal_data
 
     m = _target_membership(request, request.org, user_id)
-    payload = personal_data.export(m.user, request.org)
+    payload = personal_data.export(m.user, request.org, actor=request.user)
     audit(request, "person.export", target=m.user)
     # Named by primary key, not by address: the file gets forwarded, and the
     # person it is about is stated inside it anyway.

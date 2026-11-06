@@ -68,11 +68,14 @@ class Theme:
     radius_card: str = "var(--border-radius)"
     on_accent: str = "#ffffff"
     primary_fill: str = "var(--bg-header)"
-
     # Spacing
     spacing_sm: str = "8px"
     spacing_md: str = "16px"
     spacing_lg: str = "24px"
+
+    # Header ink and surface can differ from filled actions and chart accents.
+    header_fill: str = "var(--bg-header)"
+    on_header: str = "var(--on-accent)"
 
     def to_css_vars(self, selector: str = ":root") -> str:
         """Convert theme fields to CSS custom properties.
