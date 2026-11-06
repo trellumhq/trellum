@@ -67,6 +67,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Upgrade and roll back portal and runner images as a verified pair, with
+  preflight image checks, paired backup manifests and guarded database recovery.
+  Preserve Docker-only hosts and explicitly paired legacy-backup recovery.
+
+- Send report recovery emails only to current recipients whose failure
+  notification was accepted for the same incident and email address. Reports
+  that recover before their buffered failure notice is sent stay quiet.
+
 - Associate report filter labels with native and plugin controls, and expose
   selected toggle states without changing the layout.
 
