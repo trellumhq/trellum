@@ -35,6 +35,6 @@ def add_sections(ctx):
 
     no_columns = pd.DataFrame({"Team": ["North", "North", "South"], "Sales": [100, 900, 300]})
     ctx.add_section("Pivot tables — no column dimension and underlying average", [
-        RawHTML(html="<p>With no column dimension, the table keeps one header row. The grand average is based on all observations (433.33), not the average of the two row averages.</p>"),
+        RawHTML(html="<p>With no column dimension, the table keeps one header row. The grand average is based on all observations (433.33, displayed as 433 by the compact formatter), not the average of the two row averages.</p>"),
         PivotTable(no_columns, rows=["Team"], values="Sales", agg="avg", static=True),
     ])

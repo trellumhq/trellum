@@ -17,7 +17,8 @@ window._fwRenderers['pivot'] = function renderPivot(id, cfg) {
     var _aggFn = cfg.default_agg;
     var freeze = el.getAttribute('data-freeze') === 'true';
     var freezeHeight = parseInt(el.getAttribute('data-freeze-height'), 10) || 320;
-    var headerObserver = null;
+    if (el._fwPivotHeaderObserver) el._fwPivotHeaderObserver.disconnect();
+    el._fwPivotHeaderObserver = null;
 
     function _agg(arr) {
         if (!arr.length) return 0;
@@ -102,7 +103,7 @@ window._fwRenderers['pivot'] = function renderPivot(id, cfg) {
                     return '<td class="fw-pivot-value">' + valFmt(row._cells[c]) + '</td>';
                 }).join('');
             }
-            cells += '<td class="fw-pivot-value">' + valFmt(row._total) + '</td>';
+            cells += '<td class="fw-pivot-value fw-pivot-grand-col">' + valFmt(row._total) + '</td>';
             return '<tr>' + cells + '</tr>';
         }).join('');
 
@@ -113,14 +114,16 @@ window._fwRenderers['pivot'] = function renderPivot(id, cfg) {
                 return '<td class="fw-pivot-value">' + valFmt(_agg(p.colTotals[c])) + '</td>';
             }).join('');
         }
-        footer += '<td class="fw-pivot-value">' + valFmt(_agg(p.grandTotal)) + '</td>';
+        footer += '<td class="fw-pivot-value fw-pivot-grand-col">' + valFmt(_agg(p.grandTotal)) + '</td>';
         footer += '</tr>';
 
         el.style.maxHeight = freeze ? freezeHeight + 'px' : '';
         el.classList.toggle('fw-pivot-frozen', freeze);
         el.innerHTML = '<table class="fw-table fw-pivot-table"><thead><tr class="fw-pivot-group-row">' + hdr + '</tr>' + secondHdr + '</thead>'
             + '<tbody>' + body + '</tbody><tfoot>' + footer + '</tfoot></table>';
-        if (headerObserver) headerObserver.disconnect();
+        if (el._fwPivotHeaderObserver) el._fwPivotHeaderObserver.disconnect();
+        el._fwPivotHeaderObserver = null;
+        el.style.removeProperty("--fw-pivot-header-offset");
         if (freeze && secondHdr) {
             var firstHeader = el.querySelector('.fw-pivot-group-row');
             var updateOffset = function() {
@@ -128,8 +131,8 @@ window._fwRenderers['pivot'] = function renderPivot(id, cfg) {
             };
             updateOffset();
             if (window.ResizeObserver) {
-                headerObserver = new ResizeObserver(updateOffset);
-                headerObserver.observe(firstHeader);
+                el._fwPivotHeaderObserver = new ResizeObserver(updateOffset);
+                el._fwPivotHeaderObserver.observe(firstHeader);
             }
         }
     }

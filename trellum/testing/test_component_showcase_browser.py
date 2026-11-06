@@ -101,6 +101,21 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             assert comparison.locator('tbody tr').first.locator('td').last.inner_text() == "—\nZero baseline"
             assert comparison.locator('tbody tr').first.locator('td').nth(2).inner_text() == "$480"
             assert table.locator('tbody tr').count() == 10
+            page.get_by_role("link", name="doughnuts", exact=True).click()
+            doughnut = page.locator('.fw-section').filter(has=page.get_by_role(
+                "heading", name="Doughnuts — report filters and ring visibility", exact=True))
+            doughnut.get_by_role("button", name="Android", exact=True).click()
+            assert doughnut.locator('.fw-doughnut-center-value').inner_text() == "$40,000.00"
+            doughnut.locator('.fw-doughnut-entry').first.click()
+            assert doughnut.locator('.fw-doughnut-center-value').inner_text() == "$40,000.00"
+            assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
+            page.get_by_role("link", name="pivot tables", exact=True).click()
+            pivot = page.locator('.fw-section').filter(has=page.get_by_role(
+                "heading", name="Pivot tables — revenue by title and platform", exact=True))
+            pivot.get_by_role("button", name="Organic", exact=True).click()
+            assert pivot.locator('tbody tr').count() == 2
+            assert pivot.locator('tfoot td').last.inner_text() == "$5.7k"
+            assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
             # Every chart must own a real canvas and draw after scrolling into
             # view; scope-based data swaps cannot stand in for different layouts.
             for canvas in page.locator("canvas:visible").all():

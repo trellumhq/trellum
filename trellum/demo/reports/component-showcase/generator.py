@@ -6,8 +6,8 @@ from trellum import BaseReport
 from trellum.components import DataSource, FilterBar, Grid, LineChart, RawHTML
 
 from . import (
-    examples_areas, examples_comparisons, examples_controls, examples_dates, examples_kpis,
-    examples_layouts, examples_tables,
+    examples_areas, examples_comparisons, examples_controls, examples_dates, examples_doughnuts, examples_kpis,
+    examples_layouts, examples_pivots, examples_tables,
 )
 
 
@@ -27,7 +27,9 @@ class ComponentShowcaseReport(BaseReport):
             '<a href="#sec-kpi-cards-and-compact-metrics">KPI metrics</a>, '
             '<a href="#sec-standalone-choices">report controls</a>, '
             '<a href="#sec-datatable-—-static-population">data tables</a>, '
-            '<a href="#sec-explicit-weekly-comparisons">comparison tables</a> or '
+            '<a href="#sec-explicit-weekly-comparisons">comparison tables</a>, '
+            '<a href="#sec-pivot-tables-—-revenue-by-title-and-platform">pivot tables</a>, '
+            '<a href="#sec-doughnuts-—-compact-rings-and-optional-total">doughnuts</a> or '
             '<a href="#sec-date-ranges-—-daily-readings">date ranges</a>.</p>'
             '<p>For business reports, return to the <a href="../">demo gallery</a>: '
             "Player Overview, Monetization, Store Health and Live Ops show these "
@@ -78,3 +80,7 @@ class ComponentShowcaseReport(BaseReport):
         examples_comparisons.add_sections(ctx)
 
         examples_dates.add_sections(ctx)
+
+        examples_doughnuts.add_sections(ctx)
+
+        examples_pivots.add_sections(ctx)
