@@ -24,6 +24,7 @@ window._fwRenderers['kpi'] = function renderKpi(id, cfg) {
         var sub = document.createElement('div'); sub.className = 'fw-kpi-sub';
         sub.textContent = cfg.sub; el.appendChild(sub);
     }
+    if (window._fwKpiState) window._fwKpiState.render(el, cfg, null, false);
 };
 
 window._fwKpiFormat = function(value, format, fullNumber, precision) {

@@ -2,6 +2,20 @@
 
 This document defines the stability tiers for framework APIs and the deprecation process for removing or changing them.
 
+## KPI declaration metadata
+
+`KpiCard` adds keyword-only `availability`, `maturity` and `comparison`; bound
+`KpiRow` dictionaries share the same shape. These additive payload fields require
+matching rebuilt assets to apply their semantics. Older runtimes ignore them;
+do not mix new data with old runtime assets when withholding is required.
+Positional/subclass construction, metric claim overrides, explicit `dataset_id`
+precedence and old percent/currency units remain. Declared state does not change
+DataSource transport/loading or metric-registry policies. Missing explicit null
+constants in mixed rows now stay missing; undefined legacy ratio comparisons
+show neutral reasons, and true zero auto changes are neutral. Valid legacy
+reductions and explicit favorable-direction overrides remain. See
+[KPI states](report-kpi-states.md) and the [migration guide](MIGRATIONS.md).
+
 ## Stability Tiers
 
 ### Tier 1: Stable (breaking changes require a major version bump)

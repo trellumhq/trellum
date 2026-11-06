@@ -43,6 +43,28 @@ Positional/subclass constructors and explicit dataset binding precedence remain.
 Untagged payloads keep prior behavior; old runtimes ignore the additive tags.
 See [bar labels](report-bar-labels.md) for fitting limits and path differences.
 
+## Unreleased: declared KPI availability, maturity and comparisons
+
+Keyword-only `KpiCard.availability`, `maturity` and `comparison` mappings are
+additive; bound `KpiRow` dictionaries support the same validated shapes.
+Availability is author declared, with optional complete finite supplied-input
+checks and an explicit empty-population policy. Cohort metadata separates the
+final horizon from observed values and optional supplied forecasts. Comparisons
+explicitly select relative percent or percentage points and normalize declared
+metadata units; rates use each period's numerator/denominator aggregates.
+New relative comparisons require positive baselines; legacy signed math remains.
+
+Rebuild with matching assets. Existing positional/subclass construction, metric
+claims/overrides, main-value units and explicit dataset binding precedence remain.
+No declaration keeps existing reducer semantics. Two narrow corrections apply to
+old bound rows: explicit `value=None` without a reducer is a missing constant
+(em dash), and a legacy ratio delta with a zero/unavailable denominator displays
+a neutral dash/reason. True zero auto deltas are neutral; valid explicit direction
+overrides remain. Sum delta baselines are not inferred. Metric reasons are outside
+cards; comparison reasons retain the comparison line height. No database or host
+migration is required. See [KPI states](report-kpi-states.md) for exact units,
+reducer/completeness/empty policies, precedence and source-state boundaries.
+
 ## Unreleased: ComboChart axis descriptions and grouped legends
 
 Rebuild reports to add wrapping Left/bars and Right/lines context outside the

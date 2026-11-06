@@ -36,11 +36,12 @@ window._fwRenderers['kpi_row_live'] = function(id, cfg) {
             // Static value: render Python-computed constants that sit next
             // to live-aggregated siblings in the same KpiRow. Skip the agg
             // path so we don't collapse to sum(rows, undefined) === 0.
-            if (kpi.value !== undefined && kpi.value !== null
+            if (Object.prototype.hasOwnProperty.call(kpi, 'value')
                 && !kpi.agg && !kpi.column && !kpi.columns
                 && !kpi.numerator) {
                 var sdisp;
-                if (kpi.format === 'percent') {
+                if (kpi.value === null) sdisp = '—';
+                else if (kpi.format === 'percent') {
                     sdisp = (typeof kpi.value === 'number')
                         ? (kpi.full_number || kpi.precision != null
                             ? window._fwKpiFormat(kpi.value / 100, 'percent', kpi.full_number,
@@ -50,6 +51,7 @@ window._fwRenderers['kpi_row_live'] = function(id, cfg) {
                     sdisp = window._fwKpiFormat(kpi.value, kpi.format || 'number', kpi.full_number, kpi.precision);
                 }
                 _renderKpiValue(el, kpi, sdisp);
+                if (window._fwKpiState) window._fwKpiState.render(el, kpi, rows, true);
                 continue;
             }
             var val, agg = kpi.agg || 'sum';
@@ -121,32 +123,42 @@ window._fwRenderers['kpi_row_live'] = function(id, cfg) {
                 if (dAgg === 'ratio') {
                     var dn = A.sum(rows, kpi.delta_numerator || kpi.delta_col);
                     var dd = Math.abs(A.sum(rows, kpi.delta_denominator || kpi.denominator));
-                    dVal = dd > 0 ? (dn / dd) : 0;          // display scaling below
+                    var baselineCol = kpi.delta_denominator || kpi.denominator;
+                    var baselineKnown = rows.some(function(r) {
+                        return typeof r[baselineCol] === 'number' && Number.isFinite(r[baselineCol]);
+                    });
+                    dVal = dd > 0 ? (dn / dd) : null;       // display scaling below
                     if (dFmt === 'percent') dVal *= 100;
+                    if (dd === 0) dVal = null;
                 } else if (dAgg === 'abssum') {
                     dVal = A.absSum(rows, kpi.delta_col);
                 } else {
                     dVal = A.sum(rows, kpi.delta_col);
                 }
                 var dStr;
-                if (dFmt === 'percent') dStr = (dVal >= 0 ? '+' : '') + dVal.toFixed(1) + '%';
+                if (dVal === null) dStr = '— · ' + (baselineKnown ? 'zero baseline' : 'baseline unavailable');
+                else if (dFmt === 'percent') dStr = (dVal >= 0 ? '+' : '') + dVal.toFixed(1) + '%';
                 else if (dFmt === 'currency') dStr = (dVal >= 0 ? '+' : '') + fmtCompact$(dVal);
                 else dStr = (dVal >= 0 ? '+' : '') + fmtCompact(dVal);
                 var dDir = kpi.delta_direction || 'auto';
-                if (dDir === 'auto') dDir = dVal >= 0 ? 'up' : 'down';
+                if (dVal === null) dDir = '';
+                else if (dDir === 'auto') dDir = dVal === 0 ? '' : dVal > 0 ? 'up' : 'down';
                 deltaText = dStr;
                 deltaDirection = dDir;
             }
             _renderKpiValue(el, kpi, disp);
             if (deltaText) {
                 var delta = document.createElement('div');
-                delta.className = 'fw-kpi-delta ' + deltaDirection;
+                delta.className = 'fw-kpi-delta ' + deltaDirection
+                    + (dVal === null ? ' fw-kpi-declared-comparison' : '');
+                if (dVal === null) delta.title = deltaText;
                 var change = document.createElement('span');
                 change.className = 'fw-kpi-change';
                 change.textContent = deltaText;
                 delta.appendChild(change);
                 el.appendChild(delta);
             }
+            if (window._fwKpiState) window._fwKpiState.render(el, kpi, rows, true);
         }
     }
     window._fwLiveWrap(id, cfg, _render);

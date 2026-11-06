@@ -26,6 +26,10 @@ class KpiCard(Component):
             format from the definition at build time (explicit values win);
             the card still needs its own ``value`` -- a static card cannot
             aggregate.
+        availability: Optional authored availability or bound-input completeness
+            declaration. See ``docs/report-kpi-states.md`` for the public shape.
+        maturity: Optional supplied cohort state, age, observed value and forecast.
+        comparison: Optional explicit relative-percent or percentage-point change.
     """
     label: str = ""
     value: Any = None
@@ -40,6 +44,9 @@ class KpiCard(Component):
     alignment: str = field(default="left", kw_only=True)
     full_number: bool = field(default=False, kw_only=True)
     precision: Optional[int] = field(default=None, kw_only=True)
+    availability: Optional[Dict[str, Any]] = field(default=None, kw_only=True)
+    maturity: Optional[Dict[str, Any]] = field(default=None, kw_only=True)
+    comparison: Optional[Dict[str, Any]] = field(default=None, kw_only=True)
 
     _component_type: str = field(default="kpi_card", init=False, repr=False)
 
@@ -66,6 +73,7 @@ class KpiCard(Component):
             label = expanded.get("label", label)
             fmt = expanded.get("format", fmt)
         _validate_number_options(fmt, self.full_number, self.precision)
+        _validate_states(self.__dict__, bound=False)
 
         data: dict[str, Any] = {
             "type": "kpi",
@@ -85,6 +93,11 @@ class KpiCard(Component):
             data["forecast"] = self.forecast
         if self.sub:
             data["sub"] = self.sub
+        for key in ("availability", "maturity", "comparison"):
+            if getattr(self, key) is not None:
+                data[key] = getattr(self, key)
+        if self.comparison is not None and self.delta_direction is not None:
+            data["delta_direction"] = self.delta_direction
 
         ctx.register(cid, data)
 
@@ -97,11 +110,11 @@ class KpiCard(Component):
 
     @classmethod
     def css(cls) -> str:
-        return load_css("components/kpi_card.css")
+        return load_css("components/kpi_card.css") + "\n" + load_css("components/kpi_state.css")
 
     @classmethod
     def client_js(cls) -> str:
-        return load_js("components/kpi_card.js")
+        return load_js("components/kpi_state.js") + "\n" + load_js("components/kpi_card.js")
 
 
 @dataclass
@@ -142,12 +155,10 @@ class KpiRow(Component):
         if self.dataset_id:
             from trellum.metrics import expand_claim
 
-            kpis = [expand_claim(k) if isinstance(k, dict)
-                    else {"label": k.label, "format": k.format,
-                          "value": k.value, "alignment": k.alignment,
-                          "full_number": k.full_number, "precision": k.precision}
+            kpis = [expand_claim(k) if isinstance(k, dict) else _card_spec(k)
                     for k in self.kpis]
             for kpi in kpis:
+                _validate_states(kpi, bound=True)
                 _validate_number_options(kpi.get("format", "number"),
                                          kpi.get("full_number", False),
                                          kpi.get("precision"))
@@ -308,3 +319,137 @@ def _validate_number_options(fmt: str, full_number: bool, precision: Optional[in
         raise ValueError("precision must be an integer from 0 to 12")
     if (full_number or precision is not None) and fmt not in {"number", "currency", "percent", "ratio"}:
         raise ValueError("full_number and precision support number, currency, percent, and ratio formats")
+
+
+def _card_spec(card: KpiCard) -> dict[str, Any]:
+    from trellum.metrics import expand_claim
+
+    spec = {key: getattr(card, key) for key in (
+        "label", "format", "value", "alignment", "full_number", "precision",
+        "delta", "delta_direction", "forecast", "sub", "metric",
+        "availability", "maturity", "comparison") if getattr(card, key) is not None}
+    spec["value"] = card.value  # Explicit None is a constant too.
+    if card.metric:
+        if not card.label:
+            spec.pop("label", None)
+        if card.format == "number":
+            spec.pop("format", None)
+    return expand_claim(spec)
+
+
+def _validate_states(kpi: dict[str, Any], *, bound: bool) -> None:
+    """Validate only the opt-in declarations, including post-init mutations."""
+    import math
+
+    def mapping(value, keys, name):
+        if not isinstance(value, dict) or set(value) - set(keys):
+            raise ValueError(f"{name}: expected a mapping with keys {', '.join(keys)}")
+
+    def text(value, name):
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"{name} must be a nonempty string")
+
+    def finite(value):
+        return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+    def numeric(spec, name):
+        mapping(spec, ("value", "unit", "agg", "column", "numerator", "denominator"), name)
+        if spec.get("unit") not in ("number", "fraction", "percent"):
+            raise ValueError(f"{name}.unit must be number, fraction, or percent")
+        if "value" in spec:
+            if set(spec) != {"value", "unit"} or (spec["value"] is not None and not finite(spec["value"])):
+                raise ValueError(f"{name}: value must be finite or None, without reducer fields")
+        else:
+            if not bound:
+                raise ValueError(f"{name}: reducers require a dataset-bound row")
+            agg = spec.get("agg")
+            if not isinstance(agg, str):
+                raise ValueError(f"{name}: agg must be a supported reducer name")
+            required = {"sum": {"column"}, "abssum": {"column"}, "count": set(),
+                        "ratio": {"numerator", "denominator"}}.get(agg)
+            if required is None or set(spec) != required | {"agg", "unit"}:
+                raise ValueError(f"{name}: invalid reducer fields")
+            for key in required:
+                text(spec[key], f"{name}.{key}")
+            if agg == "ratio" and spec["unit"] != "fraction":
+                raise ValueError(f"{name}: ratio reducers return fraction units")
+            if agg != "ratio" and spec["unit"] != "number":
+                raise ValueError(f"{name}: rate reductions require numerator/denominator, not summed percentages")
+
+    availability = kpi.get("availability")
+    if availability is not None:
+        mapping(availability, ("state", "reason", "required_columns", "empty", "ratio_denominator"), "availability")
+        if "reason" in availability:
+            text(availability["reason"], "availability.reason")
+        if "state" in availability:
+            if availability["state"] not in ("available", "unavailable") or set(availability) - {"state", "reason"}:
+                raise ValueError("availability.state must be available or unavailable, without completeness fields")
+        else:
+            if not bound:
+                raise ValueError("availability completeness requires a dataset-bound row")
+            cols = availability.get("required_columns")
+            if not isinstance(cols, list) or not cols or any(not isinstance(c, str) or not c.strip() for c in cols):
+                raise ValueError("availability.required_columns must be a nonempty list of column names")
+            if availability.get("empty") not in ("zero", "unavailable"):
+                raise ValueError("availability.empty must explicitly be zero or unavailable")
+            if "ratio_denominator" in availability:
+                if availability["ratio_denominator"] != "nonzero" or kpi.get("agg") != "ratio":
+                    raise ValueError("availability.ratio_denominator requires agg=ratio and nonzero")
+                for key in ("numerator", "denominator"):
+                    text(kpi.get(key), f"availability ratio {key}")
+                if not {kpi["numerator"], kpi["denominator"]} <= set(cols):
+                    raise ValueError("availability ratio completeness must include numerator and denominator")
+
+    maturity = kpi.get("maturity")
+    if maturity is not None:
+        mapping(maturity, ("state", "state_column", "age", "age_column", "horizon", "cohort_column",
+                           "observed", "forecast", "reason"), "maturity")
+        horizon = maturity.get("horizon")
+        if not finite(horizon) or horizon <= 0:
+            raise ValueError("maturity.horizon must be positive finite days")
+        if ("state" in maturity) == ("state_column" in maturity) or ("age" in maturity) == ("age_column" in maturity):
+            raise ValueError("maturity requires exactly one state/state_column and age/age_column")
+        if "state" in maturity and maturity["state"] not in ("mature", "immature"):
+            raise ValueError("maturity.state must be mature or immature")
+        if "age" in maturity and (not finite(maturity["age"]) or maturity["age"] < 0):
+            raise ValueError("maturity.age must be nonnegative finite days")
+        if "state" in maturity and "age" in maturity:
+            if (maturity["state"] == "mature") != (maturity["age"] >= horizon):
+                raise ValueError("maturity.state must agree with age and horizon")
+        for key in ("state_column", "age_column", "cohort_column", "reason"):
+            if key in maturity:
+                text(maturity[key], f"maturity.{key}")
+        if bound and "cohort_column" not in maturity:
+            raise ValueError("bound maturity requires cohort_column to identify one selected cohort")
+        if not bound and any(key in maturity for key in ("state_column", "age_column", "cohort_column")):
+            raise ValueError("maturity source fields require a dataset-bound row")
+        if "observed" not in maturity:
+            raise ValueError("maturity.observed is required")
+        numeric(maturity["observed"], "maturity.observed")
+        if "forecast" in maturity:
+            numeric(maturity["forecast"], "maturity.forecast")
+        if kpi.get("forecast") is not None or kpi.get("sub"):
+            raise ValueError("maturity owns the two detail lines; omit legacy forecast/sub")
+
+    comparison = kpi.get("comparison")
+    if comparison is not None:
+        mapping(comparison, ("measure", "current", "baseline", "value", "precision", "reason"), "comparison")
+        measure = comparison.get("measure")
+        if measure not in ("relative_percent", "percentage_points"):
+            raise ValueError("comparison.measure must be relative_percent or percentage_points")
+        precision = comparison.get("precision", 1)
+        if isinstance(precision, bool) or not isinstance(precision, int) or not 0 <= precision <= 12:
+            raise ValueError("comparison.precision must be an integer from 0 to 12")
+        if "reason" in comparison:
+            text(comparison["reason"], "comparison.reason")
+        if "value" in comparison:
+            if not finite(comparison["value"]) or "current" in comparison or "baseline" in comparison:
+                raise ValueError("comparison.value must be a finite delta in the selected measure, without periods")
+        else:
+            for key in ("current", "baseline"):
+                numeric(comparison.get(key), f"comparison.{key}")
+            units = [comparison[key]["unit"] for key in ("current", "baseline")]
+            if ("number" in units and units != ["number", "number"]) or (measure == "percentage_points" and "number" in units):
+                raise ValueError("comparison units must be compatible; percentage_points requires rate units")
+        if kpi.get("delta_direction") not in (None, "auto", "up", "down"):
+            raise ValueError("comparison delta_direction must be auto, up, or down")

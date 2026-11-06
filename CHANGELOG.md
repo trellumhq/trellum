@@ -21,6 +21,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   scope and label eligibility. Added deterministic bar showcase examples while
   preserving plotted data, styles, heights, tooltips and CSV units.
 
+- Optional report KPI availability/completeness, declared cohort age with separate
+  observed/supplied forecast values, and explicit relative-percent or percentage-point
+  comparisons. Metric reasons sit below rows; unavailable comparisons retain current
+  values. Missing mixed-row constants and undefined legacy ratio comparisons display
+  dashes, while true zero auto changes are neutral. Added validated API documentation
+  and deterministic filterable KPI state examples.
+
 - ComboChart left/right axis descriptions and grouped native legend buttons with
   bar/line symbols, separate controls for matching captions on opposite axes,
   keyword-only unit descriptions, and deterministic live/static showcase examples.
