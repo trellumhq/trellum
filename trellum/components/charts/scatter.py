@@ -14,6 +14,7 @@ from trellum.components.charts.base import (
     _ChartBase,
     _scatter_radius,
     _scatter_val,
+    _validate_header_context,
 )
 
 
@@ -36,9 +37,13 @@ class ScatterChart(Component):
     y_format: str = "number"
     dataset_id: Optional[str] = None
     static: bool = False
+    header_context: Optional[str] = field(default=None, kw_only=True)
 
     _component_type: str = field(default="scatter_chart", init=False, repr=False)
     _supports_dataset_id: bool = field(default=True, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        _validate_header_context(self.header_context)
 
     def render_html(self, ctx: RenderContext) -> str:
         cid = ctx.next_id()
@@ -106,7 +111,7 @@ class ScatterChart(Component):
                 "tickColor": theme.tick_color,
             })
 
-        return _chart_container_html(cid, self.title)
+        return _chart_container_html(cid, self.title, header_context=self.header_context)
 
     @classmethod
     def cdn_deps(cls) -> list[str]:

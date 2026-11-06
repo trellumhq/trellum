@@ -3,6 +3,20 @@
 Each section documents a breaking or significant change, how to detect affected
 code, and the exact replacement.
 
+## Unreleased: chart header context
+
+All ten built-in chart classes accept the keyword-only `header_context: str | None`
+option. Existing positional constructor arguments and chart output remain
+unchanged when omitted. Supplied plain text is HTML-escaped and shown below the
+title and any existing LineChart summary; blank text adds no markup. It adds
+panel height outside the plot and does not change default or custom plot sizes.
+This authored string does not follow report filters, infer a period or timezone,
+or validate its meaning. The `LineChart.header_summary` API is unchanged.
+
+No data payload, host contract or database migration is required. Rebuild
+generated reports to show context. See [Chart header context](report-chart-header-context.md)
+for placement, examples and guidance.
+
 ## Unreleased: small status-text theme roles
 
 Rebuild reports with matching assets to apply the intentional built-in status

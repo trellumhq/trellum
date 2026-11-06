@@ -7,6 +7,7 @@ many chart types are on it."""
 
 from __future__ import annotations
 
+from html import escape
 from typing import Dict, Optional
 
 import pandas as pd
@@ -78,6 +79,7 @@ def _chart_container_html(
     container_class: str = "",
     title_class: str = "",
     summary: bool = False,
+    header_context: Optional[str] = None,
 ) -> str:
     """The chart's title, optional controls and canvas box.
 
@@ -91,6 +93,7 @@ def _chart_container_html(
         f'title="Download CSV">{_DOWNLOAD_SVG}</button>'
     )
     box = f"fw-chart-container {container_class}".strip()
+    context = _header_context_html(cid, header_context)
     if summary:
         head = (
             '<div class="fw-chart-head">'
@@ -102,10 +105,25 @@ def _chart_container_html(
     else:
         head = _title_html(title, cls=title_class)
     return (
-        f'{head}{extra_before}'
+        f'{head}{context}{extra_before}'
         f'<div class="{box}">'
-        f'<canvas id="{cid}"></canvas>{dl_btn}</div>'
+        f'<canvas id="{cid}"{_context_description_attr(cid, header_context)}></canvas>{dl_btn}</div>'
     )
+
+def _validate_header_context(value: Optional[str]) -> None:
+    if value is not None and not isinstance(value, str):
+        raise ValueError("header_context must be text or None")
+
+def _header_context_html(cid: str, value: Optional[str]) -> str:
+    _validate_header_context(value)
+    if value is None or not value.strip():
+        return ""
+    return (f'<div class="fw-chart-header-context" id="{cid}-header-context">'
+            f'{escape(value, quote=True)}</div>')
+
+def _context_description_attr(cid: str, value: Optional[str]) -> str:
+    _validate_header_context(value)
+    return f' aria-describedby="{cid}-header-context"' if value is not None and value.strip() else ""
 
 def _title_html(title: str, *, cls: str = "", margin: bool = True) -> str:
     if not title:

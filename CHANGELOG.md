@@ -9,6 +9,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Optional keyword-only `header_context` text on every built-in chart, rendered
+  below the title/LineChart summary without changing plot dimensions. Context is
+  escaped, wraps in narrow panels and remains independent of report selections;
+  omitted and blank values add no markup.
+
 - Keyword-only report Theme roles for favorable, unfavorable, forecast and context
   small text, with authored colors for all thirteen built-in themes and legacy
   aliases for custom themes. KPI status text and ComparisonTable auto colors use

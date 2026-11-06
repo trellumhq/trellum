@@ -12,6 +12,7 @@ from trellum.components.base import Component, RenderContext
 from trellum.components.charts.base import (
     _chart_container_html,
     _ChartBase,
+    _validate_header_context,
 )
 
 
@@ -40,11 +41,13 @@ class TreemapChart(Component):
     dataset_id: Optional[str] = None
     static: bool = False
     show_percentages: bool = field(default=False, kw_only=True)
+    header_context: Optional[str] = field(default=None, kw_only=True)
 
     _component_type: str = field(default="treemap_chart", init=False, repr=False)
     _supports_dataset_id: bool = field(default=True, init=False, repr=False)
 
     def __post_init__(self) -> None:
+        _validate_header_context(self.header_context)
         _validate_percentage_option(self.show_percentages)
 
     def render_html(self, ctx: RenderContext) -> str:
@@ -90,7 +93,7 @@ class TreemapChart(Component):
 
         return (
             '<div class="fw-treemap">'
-            + _chart_container_html(cid, self.title)
+            + _chart_container_html(cid, self.title, header_context=self.header_context)
             + f'<div class="fw-treemap-context" data-treemap-context="{cid}"></div>'
             + '</div>'
         )

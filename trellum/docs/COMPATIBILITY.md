@@ -35,6 +35,7 @@ These are the public contracts that reports and custom JS depend on. Changes mus
 | `window._fwEmbed` | Optional. A host stamps this `true` (same mechanism as `window._fwShareLink`, and alongside it) on a view served for framing by another origin — an embed link. The framework runtime does not act on it; it exists so host-injected scripts can tell an embedded view apart from a plain share view. Its companions `window._fwEmbedOrigins` and `window._fwEmbedBadge` are host-private and carry no framework contract. Absent (or `false`) on every other view. |
 | `report.yaml` schema | All documented fields in `AGENTS.md` |
 | `Component` public methods | `render_html(ctx)`, `client_js()`, `css()`, `cdn_deps()` |
+| Built-in chart header context | Optional keyword-only `header_context` on LineChart, AreaChart, BarChart, StackedBar, ComboChart, DoughnutChart, HeatmapChart, FunnelChart, TreemapChart and ScatterChart. This is generated presentation markup; it adds no `data.json` fields. |
 | `BaseReport` interface | `generate(ctx)`, `load_config(path)` |
 | `ReportContext` public methods | `add_section()`, `set_scope()`, `get_connection()`, `metrics()`, `mark()`, date properties |
 | `query_df()` signature | `query_df(conn, sql, params=None, cache_ttl=None, label=None, compact_text=True)`. Since 0.9.0 a repeated text column comes back as a `category` column unless `compact_text=False`; see MIGRATIONS.md. |

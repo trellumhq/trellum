@@ -17,6 +17,9 @@ from trellum.components.charts.base import (
     _normalize_toggle_html,
     _stack_toggle_html,
     _title_html,
+    _header_context_html,
+    _context_description_attr,
+    _validate_header_context,
 )
 
 
@@ -69,10 +72,12 @@ class BarChart(_ChartBase):
     top_n_show_other: bool = True  # If False, drop the "Other (N items)" bar
 
     show_values: Optional[bool] = field(default=None, kw_only=True)
+    header_context: Optional[str] = field(default=None, kw_only=True)
 
     _component_type: str = field(default="bar_chart", init=False, repr=False)
 
     def __post_init__(self) -> None:
+        _validate_header_context(self.header_context)
         self._validate_values()
 
     def _validate_values(self) -> None:
@@ -156,7 +161,7 @@ class BarChart(_ChartBase):
                 "tickColor": theme.tick_color,
             })
 
-        return _chart_container_html(cid, self.title)
+        return _chart_container_html(cid, self.title, header_context=self.header_context)
 
     def _apply_static_top_n(self, df: pd.DataFrame, cols: List[str]) -> pd.DataFrame:
         """Slice a static DataFrame to top-N + 'Other' before rendering.
@@ -226,10 +231,12 @@ class StackedBar(_ChartBase):
 
     show_totals: bool = field(default=False, kw_only=True)
     show_percentages: bool = field(default=False, kw_only=True)
+    header_context: Optional[str] = field(default=None, kw_only=True)
 
     _component_type: str = field(default="stacked_bar", init=False, repr=False)
 
     def __post_init__(self) -> None:
+        _validate_header_context(self.header_context)
         self._validate_stack_labels()
 
     def _validate_stack_labels(self) -> None:
@@ -291,7 +298,8 @@ class StackedBar(_ChartBase):
                     cid, self.normalize_toggle_id,
                 )
             controls_html = toggle_html + normalize_html
-            return _chart_container_html(cid, self.title, extra_before=controls_html)
+            return _chart_container_html(cid, self.title, extra_before=controls_html,
+                                         header_context=self.header_context)
 
         if self.show_totals or self.show_percentages:
             stack_labels["duplicate_columns"] = len(set(self.y_cols)) != len(self.y_cols)
@@ -325,7 +333,7 @@ class StackedBar(_ChartBase):
             "yTickFormat": self.value_format,
         })
 
-        return _chart_container_html(cid)
+        return _chart_container_html(cid, header_context=self.header_context)
 
 @dataclass
 class ComboChart(_ChartBase):
@@ -356,10 +364,12 @@ class ComboChart(_ChartBase):
     y1_max: Optional[float] = None  # Max value for right y-axis (line)
     left_axis_label: Optional[str] = field(default=None, kw_only=True)
     right_axis_label: Optional[str] = field(default=None, kw_only=True)
+    header_context: Optional[str] = field(default=None, kw_only=True)
 
     _component_type: str = field(default="combo_chart", init=False, repr=False)
 
     def __post_init__(self) -> None:
+        _validate_header_context(self.header_context)
         self._validate_axis_labels()
 
     def _validate_axis_labels(self) -> None:
@@ -464,9 +474,10 @@ class ComboChart(_ChartBase):
             )
             return (
                 f'{_title_html(self.title)}'
+                f'{_header_context_html(cid, self.header_context)}'
                 f'<div class="fw-chart-container" style="height: {self.height}px;">'
-                f'<canvas id="{cid}"></canvas>{dl_btn}</div>'
+                f'<canvas id="{cid}"{_context_description_attr(cid, self.header_context)}></canvas>{dl_btn}</div>'
             )
         return (
-            _chart_container_html(cid, self.title)
+            _chart_container_html(cid, self.title, header_context=self.header_context)
         )

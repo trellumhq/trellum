@@ -13,6 +13,9 @@ from trellum.components.charts.base import (
     _DOWNLOAD_SVG,
     _ChartBase,
     _clean_list,
+    _header_context_html,
+    _context_description_attr,
+    _validate_header_context,
 )
 
 
@@ -38,11 +41,13 @@ class DoughnutChart(Component):
     center_label: str = field(default="Total", kw_only=True)
     value_format: str = field(default="number", kw_only=True)
     precision: Optional[int] = field(default=None, kw_only=True)
+    header_context: Optional[str] = field(default=None, kw_only=True)
 
     _component_type: str = field(default="doughnut_chart", init=False, repr=False)
     _supports_dataset_id: bool = field(default=True, init=False, repr=False)
 
     def __post_init__(self) -> None:
+        _validate_header_context(self.header_context)
         if self.value_format not in {"number", "currency", "percent", "ratio", "plain", "chips"}:
             raise ValueError("Unsupported doughnut value_format")
         if self.precision is not None and (
@@ -106,9 +111,10 @@ class DoughnutChart(Component):
         )
         return (
             '<div class="fw-doughnut">'
+            f'{_header_context_html(cid, self.header_context)}'
             '<div class="fw-doughnut-layout">'
             '<div class="fw-chart-container fw-doughnut-ring">'
-            f'<canvas id="{cid}" role="img" aria-label="Doughnut chart; values in category legend"></canvas>'
+            f'<canvas id="{cid}" role="img" aria-label="Doughnut chart; values in category legend"{_context_description_attr(cid, self.header_context)}></canvas>'
             '<div class="fw-doughnut-center" hidden></div>'
             f'{dl_btn}</div>'
             '<div class="fw-doughnut-legend" aria-label="Category visibility and values"></div>'

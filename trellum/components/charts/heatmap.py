@@ -13,6 +13,7 @@ from trellum.components.base import Component, RenderContext
 from trellum.components.charts.base import (
     _chart_container_html,
     _ChartBase,
+    _validate_header_context,
 )
 
 
@@ -55,8 +56,10 @@ class HeatmapChart(Component):
     static: bool = False
     #: Draw formatted cell values when they fit; exact values remain in tooltips.
     show_values: bool = field(default=True, kw_only=True)
+    header_context: Optional[str] = field(default=None, kw_only=True)
 
     def __post_init__(self):
+        _validate_header_context(self.header_context)
         if not isinstance(self.show_values, bool):
             raise ValueError("HeatmapChart show_values must be a bool")
         if self.normalize not in (None, "row", "col"):
@@ -126,6 +129,7 @@ class HeatmapChart(Component):
         return _chart_container_html(
             cid, self.title,
             extra_before=f'<div class="fw-heatmap-key" data-heatmap-key="{cid}"></div>',
+            header_context=self.header_context,
         )
 
     def _aggregate_cells(self, df: pd.DataFrame) -> list[dict]:

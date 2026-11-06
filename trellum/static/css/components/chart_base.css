@@ -78,3 +78,11 @@
     font-size: 15px; font-weight: 600; color: var(--text-main);
     font-variant-numeric: tabular-nums;
 }
+.fw-chart-header-context {
+    margin: 0 0 8px;
+    font-size: var(--font-size-label);
+    color: var(--text-context, var(--text-secondary));
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}

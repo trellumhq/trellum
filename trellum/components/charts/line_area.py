@@ -14,6 +14,7 @@ from trellum.components.charts.base import (
     _ChartBase,
     _clean_list,
     _stack_toggle_html,
+    _validate_header_context,
 )
 
 #: Plotting-area heights a LineChart can ask for, in CSS pixels. The class a
@@ -173,10 +174,12 @@ class LineChart(_ChartBase):
     tension: float = field(default=0.0, kw_only=True)
     height: str = "balanced"
     header_summary: Optional[Dict[str, Any]] = None
+    header_context: Optional[str] = field(default=None, kw_only=True)
 
     _component_type: str = field(default="line_chart", init=False, repr=False)
 
     def __post_init__(self):
+        _validate_header_context(self.header_context)
         problems = line_option_problems(self)
         if problems:
             raise ValueError(problems[0][1])
@@ -187,6 +190,7 @@ class LineChart(_ChartBase):
             container_class=f"fw-line-chart fw-line-{self.height}",
             title_class="fw-line-chart-title",
             summary=self.header_summary is not None,
+            header_context=self.header_context,
         )
 
     def _summary_config(self) -> dict[str, Any]:
@@ -344,8 +348,12 @@ class AreaChart(_ChartBase):
     static: bool = False
     y_format: Optional[str] = None
     show_labels: bool = False  # Show data values on points
+    header_context: Optional[str] = field(default=None, kw_only=True)
 
     _component_type: str = field(default="area_chart", init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        _validate_header_context(self.header_context)
 
     def render_html(self, ctx: RenderContext) -> str:
         cid = ctx.next_id()
@@ -399,4 +407,4 @@ class AreaChart(_ChartBase):
                 "tickColor": theme.tick_color,
             })
 
-        return _chart_container_html(cid, self.title)
+        return _chart_container_html(cid, self.title, header_context=self.header_context)
