@@ -124,6 +124,29 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             assert pivot.locator('tbody tr').count() == 2
             assert pivot.locator('tfoot td').last.inner_text() == "$5.7k"
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
+            page.get_by_role("link", name="hierarchical tables", exact=True).click()
+            hierarchy = page.locator('[id="sec-hierarchy-—-complete,-collapsed"]')
+            tree = hierarchy.locator('.fw-hierarchy')
+            expect(tree.locator('tfoot td').last).to_have_text('$17,850.00')
+            tree.get_by_role('button', name='Paid search, 4 matching descendant facts', exact=True).click()
+            expect(tree.locator('tbody tr')).to_have_count(5)
+            expect(tree.locator('tfoot td').last).to_have_text('$17,850.00')
+            with page.expect_download() as hierarchy_download:
+                tree.locator('[data-leaf-csv]').click()
+            with open(hierarchy_download.value.path(), encoding='utf-8', newline='') as file:
+                hierarchy_rows = list(csv.DictReader(file))
+            assert len(hierarchy_rows) == len({r['record_id'] for r in hierarchy_rows}) == 12
+            assert all(r['row_type'] == 'leaf_fact' for r in hierarchy_rows)
+            hierarchy.get_by_role('button', name='iOS', exact=True).click()
+            expect(tree.locator('tfoot td').last).to_have_text('$10,250.00')
+            hierarchy.get_by_role('button', name='Web', exact=True).click()
+            expect(tree.locator('tfoot')).to_have_count(0)
+            expect(tree).to_contain_text('No leaf facts match this selection.')
+            hierarchy.get_by_role('button', name='All', exact=True).click()
+            expect(tree.locator('tbody tr')).to_have_count(5)
+            expect(tree.locator('tfoot td').last).to_have_text('$17,850.00')
+            assert pivot.locator('tfoot td').last.inner_text() == "$5.7k"
+            assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
             page.get_by_role("link", name="line styles", exact=True).click()
             density = page.locator('[data-tab-id="showcase_line_density"]')
             density.get_by_role('tab', name='Sparse: 12 daily observations', exact=True).click()

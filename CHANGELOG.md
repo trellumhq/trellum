@@ -9,6 +9,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Optional HierarchyTable with expandable additive leaf-fact summaries, exact
+  decimal totals, explicit completeness states and CSV independent of expansion.
+  Snapshot validation rejects ambiguous identities and incomplete source scope;
+  existing table defaults and selectors remain unchanged. Added native examples.
+
 - Optional keyword-only BarChart and AreaChart header summaries with explicit
   plotted-series scope, validated series selection and statistic formatting.
   Added native examples; default plots and existing LineChart summaries remain

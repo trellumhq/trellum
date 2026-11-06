@@ -4,7 +4,26 @@ from decimal import Decimal
 
 import pandas as pd
 
-from trellum.components.hierarchy_table import HierarchyTable
+from trellum.components.hierarchy_table import HierarchyTable, typed_dimension
+
+
+def _check_bound_identity(comp, frame):
+    """Refuse a snapshot codec that merges distinct typed dimension keys."""
+    from trellum.components.filterable import _serialize_columnar
+
+    names = [*comp.rows] + ([comp.column] if comp.column else [])
+    encoded = _serialize_columnar(frame[names])
+    dictionaries = encoded.get("_dict", {})
+    for raw, delivered in zip(frame[names].itertuples(index=False, name=None), encoded["_data"]):
+        for index, name in enumerate(names):
+            value = delivered[index]
+            if name in dictionaries:
+                value = dictionaries[name][value]
+            if typed_dimension(raw[index]) != typed_dimension(value):
+                raise ValueError(
+                    "HierarchyTable: DataSource encoding changes typed dimension "
+                    "identity; use static typed facts or distinct string keys"
+                )
 
 
 def check_hierarchy_tables(comps, ds_map, result):
@@ -61,6 +80,7 @@ def check_hierarchy_tables(comps, ds_map, result):
                     raise ValueError("HierarchyTable: live ancestry or live-connected propagation cannot supply complete parent scope")
             comp.prepare(frame)
             if comp.dataset_id:
+                _check_bound_identity(comp, frame)
                 for value in frame[comp.value]:
                     if isinstance(value, Decimal) or (pd.api.types.is_integer(value) and
                             not -(2**63) <= int(value) <= 2**64 - 1):

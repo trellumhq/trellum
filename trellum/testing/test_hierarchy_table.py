@@ -8,9 +8,9 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from trellum.components import DataSource, FilterBar, ScopedDataSource
+from trellum.components import DataSource, FilterBar, HierarchyTable, ScopedDataSource
 from trellum.components.base import RenderContext
-from trellum.components.hierarchy_table import HierarchyTable, typed_dimension
+from trellum.components.hierarchy_table import typed_dimension
 from trellum.rendering.html_builder import render_report
 from trellum.report import ReportContext
 from trellum.reporting.diagnostics import compute_details
@@ -18,7 +18,6 @@ from trellum.themes import DEFAULT_THEME
 from trellum.validation import validate_report
 from trellum.validation.checks.hierarchy_table import check_hierarchy_tables
 from trellum.validation.result import ValidationResult
-from trellum.validation.walk import _all_components
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -48,10 +47,34 @@ def context(path):
 def diagnostics(ctx):
     details = compute_details(ctx)
     result = validate_report(ctx, details=details)
-    comps = _all_components(ctx)
-    sources = {c.id:c for c, _ in comps if isinstance(c, (DataSource, ScopedDataSource))}
-    check_hierarchy_tables(comps, sources, result)
     return details, result
+
+
+def test_central_validator_refuses_source_codec_identity_collisions(tmp_path):
+    df = pd.DataFrame({
+        "id": [str(i) for i in range(20)],
+        "source": pd.Series([True, 1] * 10, dtype=object),
+        "value": [1] * 20,
+    })
+    hierarchy = HierarchyTable(df, rows=["source"], value="value",
+                               record_id="id", dataset_id="typed_source")
+    ctx = context(tmp_path)
+    ctx.add_section("Typed source", [
+        DataSource("typed_source", df),
+        FilterBar("typed_source", df, filters=[]),
+        hierarchy,
+    ])
+    result = validate_report(ctx)
+    assert any(c.id == "hierarchy-table-invalid" and "typed dimension identity" in c.message
+               for c in result.checks)
+    # The explicitly typed static path does not use the lossy source dictionary.
+    static = HierarchyTable(df, rows=["source"], value="value", record_id="id", static=True)
+    assert static.prepare(df)[0][0]["path"] != static.prepare(df)[0][1]["path"]
+    df["source"] = pd.Series(["true", "1"] * 10, dtype=object)
+    valid = ValidationResult("hierarchy")
+    check_hierarchy_tables([(hierarchy, "Typed source")],
+                           {"typed_source": DataSource("typed_source", df)}, valid)
+    assert valid.summary["fail"] == 0
 
 
 def test_native_examples_diagnostics_and_vendored_build(tmp_path):

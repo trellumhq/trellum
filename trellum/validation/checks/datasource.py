@@ -60,8 +60,10 @@ def _check_datasource_filterbar(ctx: Any, comps: list[tuple[Any, str]], result: 
             fb_list.append((comp, sec))
 
     from trellum.validation.checks.table_drill_down import check_table_drill_down
+    from trellum.validation.checks.hierarchy_table import check_hierarchy_tables
 
     check_table_drill_down(comps, ds_map, result)
+    check_hierarchy_tables(comps, ds_map, result)
 
     # Each ScopedDataSource's parent must exist and must NOT itself be scoped.
     for sds, sec in scoped_list:

@@ -6,7 +6,7 @@ If a component below can do it, you MUST use it.
 Charts:   LineChart, AreaChart, BarChart, StackedBar, ComboChart,
           DoughnutChart, HeatmapChart, FunnelChart, TreemapChart, ScatterChart
 KPIs:     KpiRow, KpiCard, MiniKpi
-Tables:   DataTable, ComparisonTable, PivotTable
+Tables:   DataTable, ComparisonTable, PivotTable, HierarchyTable
 Controls: Toggle, Dropdown, TabGroup, DateSelector
 Layout:   Section, Panel, Grid, SplitPane
 Filter:   DataSource + FilterBar (every component needs dataset_id=)
@@ -39,6 +39,7 @@ from trellum.components.filterable import (
     ScopedDataSource,
 )
 from trellum.components.header import ReportHeader
+from trellum.components.hierarchy_table import HierarchyTable
 from trellum.components.kpis import KpiCard, KpiRow, MiniKpi
 from trellum.components.layout import Grid, Panel, RawHTML, Section, SplitPane, Visible
 from trellum.components.report_metadata import ReportMetadata
@@ -47,7 +48,7 @@ from trellum.components.tables import ComparisonTable, DataTable, PivotTable
 __all__ = [
     "Component", "RenderContext",
     "LineChart", "AreaChart", "BarChart", "StackedBar", "ComboChart", "DoughnutChart", "HeatmapChart", "FunnelChart", "TreemapChart", "ScatterChart",
-    "DataTable", "ComparisonTable", "PivotTable",
+    "DataTable", "ComparisonTable", "PivotTable", "HierarchyTable",
     "KpiCard", "KpiRow", "MiniKpi",
     "Toggle", "Dropdown", "TabGroup", "DateSelector",
     "Section", "Panel", "Grid", "SplitPane",

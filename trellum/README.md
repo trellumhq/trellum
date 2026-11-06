@@ -532,6 +532,7 @@ same way, and the validator reports `line-chart-height-invalid` and
 | `DataTable` | `(df, title, dataset_id)` | Scrollable data table with CSV download. Auto-search when >20 rows. `max_rows`, `sortable`, `searchable`, `conditional_formats`, `bar_column`. |
 | `PivotTable` | `(df, rows, cols, values, agg, dataset_id)` | Interactive pivot grid. Users can change dimensions and aggregation via dropdowns. `agg`: `sum`/`count`/`avg`. `value_format`. |
 | `ComparisonTable` | `(df, title, value_col, compare_cols, dataset_id)` | Table with period comparison columns. |
+| `HierarchyTable` | `(df, title="", *, rows, value, record_id, column=None, dataset_id=None)` | Expandable additive leaf-fact summaries. Totals and CSV include collapsed descendants; incomplete results stay explicit. [API and scope](docs/report-hierarchy-tables.md). |
 
 ### Controls
 

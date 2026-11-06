@@ -6,7 +6,7 @@ from trellum import BaseReport
 from trellum.components import DataSource, FilterBar, Grid, LineChart, RawHTML
 
 from . import (
-    examples_annotations, examples_areas, examples_bars, examples_category_colors, examples_chart_context, examples_chart_summaries, examples_combos, examples_comparisons, examples_controls, examples_dates, examples_doughnuts, examples_heatmaps, examples_kpis,
+    examples_annotations, examples_areas, examples_bars, examples_category_colors, examples_chart_context, examples_chart_summaries, examples_combos, examples_comparisons, examples_controls, examples_dates, examples_doughnuts, examples_heatmaps, examples_hierarchies, examples_kpis,
     examples_kpi_states, examples_layouts, examples_line_availability, examples_line_forecasts, examples_line_styles, examples_month_context, examples_monthly_averages, examples_pivots, examples_status_text, examples_table_drill_down, examples_table_pinning, examples_table_row_limits, examples_table_shading, examples_table_totals, examples_tables, examples_treemaps,
 )
 
@@ -47,6 +47,7 @@ class ComponentShowcaseReport(BaseReport):
             '<a href="#sec-table-shading-—-snapshot-comparison">table shading</a>, '
             '<a href="#sec-explicit-weekly-comparisons">comparison tables</a>, '
             '<a href="#sec-pivot-tables-—-revenue-by-title-and-platform">pivot tables</a>, '
+            '<a href="#sec-hierarchy-—-complete,-collapsed">hierarchical tables</a>, '
             '<a href="#sec-heatmaps-—-global-quantity-scales">heatmaps</a>, '
             '<a href="#sec-treemaps-—-hierarchy-and-optional-shares">treemaps</a>, '
             '<a href="#sec-doughnuts-—-compact-rings-and-optional-total">doughnuts</a> or '
@@ -128,6 +129,7 @@ class ComponentShowcaseReport(BaseReport):
         examples_doughnuts.add_sections(ctx)
 
         examples_pivots.add_sections(ctx)
+        examples_hierarchies.add_sections(ctx)
 
         examples_heatmaps.add_sections(ctx)
 

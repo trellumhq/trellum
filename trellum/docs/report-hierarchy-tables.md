@@ -1,8 +1,8 @@
 # Hierarchy tables
 
 `HierarchyTable` is an optional native table, separate from `PivotTable`.
-Existing pivot selectors and table defaults are unchanged. Import from
-`trellum.components.hierarchy_table` until the public export is integrated.
+Existing pivot selectors and table defaults are unchanged. Import
+`HierarchyTable` from `trellum.components`.
 
 ```python
 HierarchyTable(
@@ -74,7 +74,10 @@ Raw metric export text exceeding 2,048 characters is rejected. The existing
 DataSource serializer cannot deliver Decimal objects or integers outside its
 64-bit JSON integer range; the hierarchy validator rejects those bound sources
 with guidance to use static typed facts. Static Decimal/large integers do not
-pass through that source serializer.
+pass through that source serializer. If source dictionary encoding would merge
+typed dimension identities (for example repeated Boolean `true` and numeric
+`1` in one column), validation rejects the bound table. Use static typed facts
+or distinct string keys; the shared source codec remains unchanged.
 
 Ordinary `DataSource` and `ScopedDataSource` snapshots use native filters.
 The complete effective source is validated, even when filtered output is small.
@@ -83,7 +86,7 @@ supplies the population; this table makes no claim about hidden database rows.
 `LiveDataSource` ancestry, live-connected propagation and chunked populations
 are rejected: a client slice cannot certify complete parent totals. Unready,
 missing or malformed runtime sources display a reason and cannot export stale
-facts. The new validation hook must run before rendering (integration below).
+facts. The report validator checks these requirements before rendering.
 
 Source limits apply before building/expanding the tree: 50,000 leaf facts,
 2,000 distinct prefix nodes, 32 bucket categories, 64,000 numeric cells at full
@@ -106,33 +109,10 @@ pagehide cleanup and removal observer. Re-entry disposes previous handlers;
 replacement/removal prevents stale callbacks. Focus stays on the same toggle,
 its closest visible ancestor, or a stable local control after filtering.
 
-## Integration
+## Examples and validation
 
-The component self-registers `hierarchy_table` JS and loads its scoped CSS
-and the existing `data_table_totals.js` dependency through the component asset
-collector. No global runtime renderer dispatcher changes are required.
-
-The lead should:
-
-1. Import `HierarchyTable` from `trellum.components.hierarchy_table` in
-   `trellum/components/__init__.py` and add `"HierarchyTable"` to its `__all__`,
-   following the other table exports. The root `trellum` module currently
-   exports no table classes and needs no new eager component imports.
-2. In `trellum/validation/checks/datasource.py`, after collecting `ds_map`, call
-   `check_hierarchy_tables(comps, ds_map, result)` imported from
-   `trellum.validation.checks.hierarchy_table`. The check records its completed
-   group and reports `hierarchy-table-invalid`. Run it before render admission.
-3. Include `examples_hierarchies.add_sections(ctx)` in the native component
-   showcase generator. Each of its four named sections owns an independent
-   source and native platform filter. The examples total 17,850 complete,
-   10,250 for iOS, and 16,850 known spend with one unavailable Android/Oct fact.
-   A Web filter produces the empty state. The flat PivotTable comparison is
-   explicitly optional.
-4. Add the API/limits to the shared compatibility and migration guidance and
-   link this page in the documentation index. Suggested changelog entry:
-   “Add optional HierarchyTable with expandable additive leaf-fact totals,
-   explicit completeness states and expansion-independent leaf CSV.”
-
-The dedicated test suite invokes the new check directly alongside ordinary
-native `compute_details(ctx)` and `validate_report`. Until step 2 lands, the
-central validator does not automatically run this additional check.
+The component showcase includes complete collapsed/expanded hierarchies and
+both incomplete-result policies, each with independent native platform filters.
+The report validator runs `hierarchy-table-invalid` against the complete effective
+source, including hidden views. The component registers its scoped renderer and
+loads existing decimal-total helpers through the normal asset collector.

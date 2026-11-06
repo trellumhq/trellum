@@ -1,5 +1,15 @@
 # Framework Migration Guide
 
+## Unreleased: optional HierarchyTable
+
+No existing report needs to change. Import `HierarchyTable` from
+`trellum.components` when an additive leaf-fact dataset needs expandable
+dimension rows. Supply a unique record ID and explicit dimensions/value;
+do not replace rate or distinct-count pivots with summed facts. The new
+component has its own completeness, identity and snapshot-scope validation.
+Rebuild matched report assets to use it. No host or database migration is needed.
+See [the hierarchy API](report-hierarchy-tables.md).
+
 ## Unreleased: optional BarChart and AreaChart summaries
 
 Existing calls need no changes. Authors may opt in with keyword-only

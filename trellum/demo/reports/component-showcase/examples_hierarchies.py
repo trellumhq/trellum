@@ -2,8 +2,7 @@
 
 import pandas as pd
 
-from trellum.components import DataSource, FilterBar, Panel, PivotTable
-from trellum.components.hierarchy_table import HierarchyTable
+from trellum.components import DataSource, FilterBar, HierarchyTable, Panel, PivotTable
 
 
 def spend_facts(*, incomplete=False):

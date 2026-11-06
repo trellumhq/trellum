@@ -1,5 +1,17 @@
 # Framework Compatibility Policy
 
+## Unreleased: optional HierarchyTable
+
+`HierarchyTable` is a new snapshot-only component; existing table constructors,
+PivotTable selectors and aggregation behavior are unchanged. It consumes
+uniquely identified additive leaf facts and includes collapsed descendants in
+every parent total. Incomplete inputs are withheld by default; explicit
+`known_subtotals=True` labels partial totals. CSV exports matching leaf facts
+once, independent of expansion. Live/chunked populations and source encoding
+that merges typed identities are rejected. Rebuild matching Python/HTML/data/
+runtime assets; no host or database migration is required.
+See [hierarchy tables](report-hierarchy-tables.md) for supported inputs and bounds.
+
 ## Unreleased: optional BarChart and AreaChart summaries
 
 Keyword-only `header_summary=None` preserves existing constructors, plots and
