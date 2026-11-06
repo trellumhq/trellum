@@ -140,7 +140,8 @@ jobs:
     if: needs.changes.outputs.portal == 'yes'
     name: django unit tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Leave time for setup and reports around the complete ordinary suite.
+    timeout-minutes: 20
     container:
       # Keep this tag aligned with the Playwright pin in requirements-django.txt.
       image: mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:51d31fdfacb0cff99a1a724152e34ae408d2bd4e7da310ff157450f49261cc59
@@ -225,7 +226,9 @@ jobs:
         # Docker integration runs in the sandbox jobs, where bind-mount paths
         # belong to the daemon's host rather than this test container. Heavy
         # tests are opt-in: see the django-heavy-tests job.
-        run: python scripts/test.py portal --workers 2 --junitxml .test-results/portal.xml --durations 20
+        # Stop on a failure so its traceback and JUnit report are available
+        # before later tests can consume the remaining job budget.
+        run: python scripts/test.py portal --workers 2 --fail-fast --junitxml .test-results/portal.xml --durations 20
 
       - name: Summarize test outcomes and timings
         if: always()
@@ -260,20 +263,19 @@ jobs:
       (github.event_name == 'workflow_dispatch' && inputs.heavy) ||
       (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'heavy-tests')))
     name: django heavy tests
-    runs-on: ubuntu-latest
+    # Live database and restore tests need the host Docker daemon and loopback ports.
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
-    container:
-      # Keep this tag aligned with the Playwright pin in requirements-django.txt.
-      image: mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:51d31fdfacb0cff99a1a724152e34ae408d2bd4e7da310ff157450f49261cc59
-      options: --ipc=host
     defaults:
       run:
         shell: bash
     env:
-      DATABASE_URL: postgres://trellum:trellum@postgres:5432/trellum_portal
+      DATABASE_URL: postgres://trellum:trellum@127.0.0.1:5432/trellum_portal
     services:
       postgres:
         image: postgres:16-alpine
+        ports:
+          - 5432:5432
         env:
           POSTGRES_USER: trellum
           POSTGRES_PASSWORD: trellum
@@ -286,25 +288,49 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
-          path: ~/.cache/pip
-          key: pip-${{ runner.os }}-${{ runner.arch }}-noble-py3.12-${{ hashFiles('requirements-django.txt', 'requirements-test.txt') }}
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            requirements-django.txt
+            requirements-test.txt
+            constraints.txt
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
 
-      - name: Trust the runner checkout for Git
-        # Tests read the checkout with git; inside the container it is owned
-        # by the runner user, so git refuses it as dubious ownership.
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Verify Docker and Compose for disposable database tests
+        run: |
+          docker version
+          docker compose version
 
       - name: Install dependencies
         run: |
           python -c "import sys; assert sys.version_info[:2] == (3, 12), sys.version"
           python -m pip install --upgrade pip
           python -m pip install -r requirements-django.txt -r requirements-test.txt
+
+      - name: Install live materialization drivers
+        # Django's psycopg 3 does not supply the framework's psycopg2 driver.
+        run: |
+          python -m pip install -c constraints.txt psycopg2-binary pymysql
+          python -c "import psycopg2, pymysql"
+
+      - name: Use the official Ubuntu archive for browser dependencies
+        # Keep the native runner: the live harness publishes Docker PostgreSQL
+        # on loopback. Azure's package mirror can exhaust the job timeout.
+        run: |
+          # Hosted runners can also route sources through a separate mirror list.
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            printf '%s\n' 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          fi
+          # Cover legacy sources.list and Ubuntu 24.04's deb822 .sources files.
+          # Change only the mirror URI; preserve suites, components and signing.
+          sudo find /etc/apt -type f \( -name '*.list' -o -name '*.sources' \) \
+            -exec sed -i -E 's@https?://azure\.archive\.ubuntu\.com/ubuntu/?([[:space:]]|$)@https://archive.ubuntu.com/ubuntu\1@g' {} +
+      - run: python -m playwright install --with-deps chromium webkit
 
       - name: Heavy test suite
         run: python scripts/test.py heavy --workers 2 --junitxml .test-results/heavy.xml --durations 20

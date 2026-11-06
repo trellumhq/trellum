@@ -32,6 +32,7 @@ from datetime import timezone as _dt_timezone
 from django.core import signing
 from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
+from django.db.models import Q
 from django.template.loader import render_to_string
 from django.utils import timezone
 from django.utils.safestring import mark_safe
@@ -332,7 +333,8 @@ def run_finished(run) -> None:
     Mails this report's alert audience (see :func:`alert_recipients`) on its
     first failure or a later state transition — never on a repeated failure
     or a repeated success — so a report that has been down for a week doesn't
-    re-alert its watchers on every retry.
+    re-alert its watchers on every retry. Recovery reaches only recipients
+    whose failure notice was accepted for that incident and email address.
     """
     try:
         _run_finished(run)
@@ -341,6 +343,7 @@ def run_finished(run) -> None:
 
 
 def _run_finished(run) -> None:
+    from apps.reports.models import BrokenReportPending, BrokenReportReceipt, Report
     from apps.runner.models import Run
 
     report = run.report
@@ -350,10 +353,9 @@ def _run_finished(run) -> None:
     # last known state".
     previous = (
         Run.objects.filter(report=report)
-        .exclude(pk=run.pk)
-        .filter(created_at__lt=run.created_at)
-        .exclude(status__in=Run.ACTIVE_STATUSES)
-        .order_by("-created_at")
+        .filter(_before_run(run))
+        .exclude(status__in=(*Run.ACTIVE_STATUSES, Run.STOPPED))
+        .order_by("-created_at", "-pk")
         .first()
     )
 
@@ -364,7 +366,7 @@ def _run_finished(run) -> None:
     was_broken = previous is not None and previous.status in FAILURE_STATUSES
     is_broken = run.status in FAILURE_STATUSES
     is_ok = run.status == Run.SUCCESS
-    if is_broken == was_broken or (is_ok and not was_broken):
+    if (is_broken and was_broken) or not (is_broken or is_ok):
         return  # no state change worth mailing about
 
     if is_broken:
@@ -375,30 +377,83 @@ def _run_finished(run) -> None:
         # The conditional claim and pending row commit together. A repeated
         # completion callback cannot requeue this run after the buffer flushes.
         with transaction.atomic():
+            Report.objects.select_for_update().get(pk=report.pk)
             if not Run.objects.filter(pk=run.pk, alert_processed_at__isnull=True).update(
                 alert_processed_at=timezone.now()
             ):
+                return
+            if _success_after(run).exists():
                 return
             _buffer_broken(report, run, previous)
     elif is_ok:
-        # A recovery inside the coalescing window must drop any of this
-        # report's still-pending "broken" rows -- otherwise the next flush
-        # mails a stale Broken notice for a report that has since recovered
-        # (the recipient would see Recovered followed by a confusing Broken
-        # for the same incident). Recovered mail itself is never buffered
-        # (see the module docstring), so this is safe to do unconditionally
-        # before sending it.
-        from apps.reports.models import BrokenReportPending
-
+        # Serialize consumption with receipt recording, never with network
+        # mail. Consume even when nobody is currently eligible. Restrict to
+        # this success so a delayed callback cannot consume a later incident.
         with transaction.atomic():
+            Report.objects.select_for_update().get(pk=report.pk)
             if not Run.objects.filter(pk=run.pk, alert_processed_at__isnull=True).update(
                 alert_processed_at=timezone.now()
             ):
                 return
-            BrokenReportPending.objects.filter(report=report).delete()
+            BrokenReportPending.objects.filter(report=report).filter(_before_run(run, "run__")).delete()
+            receipts = BrokenReportReceipt.objects.filter(report=report).filter(
+                _before_run(run, "failure_run__")
+            )
+            previous_success = (
+                Run.objects.filter(report=report, status=Run.SUCCESS)
+                .filter(_before_run(run)).order_by("-created_at", "-pk").first()
+            )
+            eligible = receipts
+            if previous_success is not None:
+                eligible = eligible.exclude(_before_run(previous_success, "failure_run__"))
+            accepted = set(eligible.values_list("user_id", "email"))
+            receipts.delete()
+            if _success_after(run).exists():
+                return
+        if not accepted:
+            return
         recipients = alert_recipients(report, "failure")
+        recipients = [user for user in recipients if (user.pk, user.email) in accepted]
         if recipients:
             _send_recovered(report, recipients)
+
+
+def _before_run(run, prefix=""):
+    """Stable run order, including rows created in the same clock tick."""
+    return Q(**{f"{prefix}created_at__lt": run.created_at}) | Q(
+        **{f"{prefix}created_at": run.created_at, f"{prefix}pk__lt": run.pk}
+    )
+
+
+def _success_after(run):
+    from apps.runner.models import Run
+
+    return Run.objects.filter(report_id=run.report_id, status=Run.SUCCESS).filter(
+        Q(created_at__gt=run.created_at) | Q(created_at=run.created_at, pk__gt=run.pk)
+    )
+
+
+def _failure_notice_current(run):
+    from apps.reports.models import BrokenReportPending
+
+    return (
+        BrokenReportPending.objects.filter(run_id=run.pk).exists()
+        and not _success_after(run).exists()
+    )
+
+
+def _record_broken_receipt(run, user, email):
+    from apps.reports.models import BrokenReportReceipt, Report
+
+    with transaction.atomic():
+        Report.objects.select_for_update().get(pk=run.report_id)
+        # Success can finish while transport is in flight. Never let its
+        # late acceptance resurrect evidence from that closed incident.
+        if _failure_notice_current(run):
+            BrokenReportReceipt.objects.update_or_create(
+                report_id=run.report_id, user_id=user.pk, email=email,
+                defaults={"failure_run": run},
+            )
 
 
 def _buffer_broken(report, run, previous) -> None:
@@ -477,10 +532,13 @@ def _send_broken(report, run, recipients, exclude_pks) -> None:
         "status_label": mark_safe("&#9888; BROKEN"),
         "duty_footer": True,
         "preview_text": error_excerpt.splitlines()[0][:140] if error_excerpt else "",
+        "_delivery_guard": lambda: _failure_notice_current(run),
     }
     subject = f"⚠ Broken · {report.name or report.slug}"
     for user in recipients:
-        _send_alert_mail(subject, "email/broken", ctx, report, user)
+        email = user.email
+        if _send_alert_mail(subject, "email/broken", ctx, report, user) > 0:
+            _record_broken_receipt(run, user, email)
 
 
 def _send_recovered(report, recipients) -> None:
@@ -547,19 +605,13 @@ def _flush_broken_buffers(*, force: bool) -> None:
 def _flush_studio_buffer(pending) -> None:
     from apps.reports.models import BrokenReportPending
 
-    # One row per broken-build TRANSITION, not per distinct report -- a
-    # report can rack up more than one within the same coalescing window
-    # (e.g. break, get cancelled by a user, then break again before the
-    # window elapses: a STOPPED run counts as neither broken nor recovered,
-    # see _run_finished, so the next failure is a fresh transition). Dedupe
-    # to one row per report -- keeping the newest, since `pending` arrives
-    # ordered oldest-first (see _flush_broken_buffers) and a later
-    # duplicate simply overwrites the earlier one in the dict below -- so a
-    # report breaking twice still takes the single-report path instead of
-    # wrongly tripping the multi-report summary on itself.
+    # Recheck loaded rows: a success may have superseded/deleted them since
+    # the coordinator read the buffer. Keep the newest row per report,
+    # including duplicate transitions buffered by older application code.
     by_report: dict[int, object] = {}
     for item in pending:
-        by_report[item.report_id] = item
+        if _failure_notice_current(item.run):
+            by_report[item.report_id] = item
     deduped = list(by_report.values())
 
     if len(deduped) == 1:
@@ -570,7 +622,7 @@ def _flush_studio_buffer(pending) -> None:
             if item.previous_run_id:
                 exclude_pks.add(item.previous_run_id)
             _send_broken(item.report, item.run, recipients, exclude_pks)
-    else:
+    elif deduped:
         _send_broken_summary(deduped)
     BrokenReportPending.objects.filter(pk__in=[p.pk for p in pending]).delete()
 
@@ -603,6 +655,7 @@ def _send_broken_summary(pending) -> None:
 
     per_user: dict[int, list[int]] = {}
     users_by_id: dict[int, object] = {}
+    pending_by_report = {item.report_id: item for item in pending}
     for report_pk, recipients in recipients_by_report.items():
         for user in recipients:
             per_user.setdefault(user.pk, []).append(report_pk)
@@ -610,6 +663,9 @@ def _send_broken_summary(pending) -> None:
 
     for user_id, report_pks in per_user.items():
         user = users_by_id[user_id]
+        report_pks = [pk for pk in report_pks if _failure_notice_current(pending_by_report[pk].run)]
+        if not report_pks:
+            continue
         items = [reports_meta[pk] for pk in report_pks]
         n = len(report_pks)
         subject = f"⚠ {n} broken · {studio.name}"
@@ -624,26 +680,33 @@ def _send_broken_summary(pending) -> None:
             "status_label": mark_safe(f"&#9888; {n} BROKEN"),
             "duty_footer": True,
             "preview_text": preview_text,
+            "_delivery_guard": lambda: all(
+                _failure_notice_current(pending_by_report[pk].run) for pk in report_pks
+            ),
         }
         try:
-            _send_simple(subject, "email/broken_summary", ctx, user)
+            email = user.email
+            if _send_simple(subject, "email/broken_summary", ctx, user) > 0:
+                for pk in report_pks:
+                    _record_broken_receipt(pending_by_report[pk].run, user, email)
         except Exception:  # noqa: BLE001
             logger.exception(
                 "notify: failed to send broken_summary for studio %s", studio.pk
             )
 
 
-def _send_alert_mail(subject, template_base, ctx, report, user) -> None:
+def _send_alert_mail(subject, template_base, ctx, report, user) -> int:
     """One alert recipient's mail. Guarded per-recipient so a single bad
     address can't stop the rest of the list from being notified. No
     unsubscribe link — this is operational duty mail to a studio's
     developers and admins, not a subscription (see :func:`alert_recipients`)."""
     try:
-        _send_simple(subject, template_base, ctx, user)
+        return _send_simple(subject, template_base, ctx, user)
     except Exception:  # noqa: BLE001
         logger.exception(
             "notify: failed to send %s for report %s", template_base, report.pk
         )
+        return 0
 
 
 def _send_simple(subject: str, template_base: str, ctx: dict, user) -> int:
@@ -690,6 +753,7 @@ def send_alert(rule, run, *, eligibility_check=None) -> AlertDelivery:
         "rule": rule,
         "run": run,
         "evidence": list((run.evidence or {}).get("cited") or []),
+        "response": (run.evidence or {}).get("response") or {},
         "report_url": _report_url(report),
         # Seeds a conversation with this run (apps.assistant.views.from_alert).
         "assistant_url": (

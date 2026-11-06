@@ -86,7 +86,7 @@ def _git(*args: str, cwd: Path) -> str:
         ["git", "-C", str(cwd), *args],
         capture_output=True, text=True, timeout=60, check=True,
     )
-    return out.stdout.strip()
+    return out.stdout if "-z" in args else out.stdout.strip()
 
 
 def _ensure_worktree(path: Path | None, *, require_clean: bool = True) -> Path:
@@ -214,15 +214,19 @@ def path_allowed(path: str) -> bool:
     """
     if any(path.startswith(d) for d in DENYLIST):
         return False
-    return any(path.startswith(w) for w in WHITELIST)
+    return any(path.startswith(w) if w.endswith("/") else path == w for w in WHITELIST)
 
 
 def _violations(worktree: Path, before_sha: str) -> list[str]:
     """Paths the fixer touched that it had no business touching."""
-    changed = _git("diff", "--name-only", f"{before_sha}..HEAD", cwd=worktree).splitlines()
+    # Disable rename collapsing so both the removed and added paths are checked.
+    # NUL delimiters preserve whitespace, newlines and Git-quoted filenames.
+    changed = _git("diff", "--no-renames", "--name-only", "-z",
+                   f"{before_sha}..HEAD", cwd=worktree).split("\0")
     dirty = [
-        line[3:].strip()
-        for line in _git("status", "--porcelain", cwd=worktree).splitlines()
+        entry[3:]
+        for entry in _git("status", "--porcelain", "--no-renames", "-z",
+                          "--untracked-files=all", cwd=worktree).split("\0") if entry
     ]
     return sorted(
         p for p in {*changed, *dirty} if p and not path_allowed(p)

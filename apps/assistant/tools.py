@@ -160,8 +160,9 @@ TOOL_SCHEMAS = [
         "description": (
             "Read actual numbers from a report's already-built output (no "
             "database hit, instant). Loads the named dataset from the report's "
-            "data.json, optionally filters rows, then aggregates. Prefer this "
-            "-- the only data the assistant reads is what reports have already published. "
+            "data.json, optionally filters rows, then aggregates. This tool reads "
+            "a report snapshot, not current database contents. For live data, discover "
+            "authorized sources with list_data_sources when that tool is available. "
             "Returns a markdown table (max 50 rows). Note: for chunked "
             "datasets only the inline (most recent) months are available."
         ),
@@ -379,6 +380,11 @@ TOOL_SCHEMAS = [
     },
 ]
 
+from apps.assistant.source_tools import SOURCE_SCHEMAS
+
+from apps.assistant.metric_tools import METRIC_SCHEMAS
+
+TOOL_SCHEMAS += SOURCE_SCHEMAS + METRIC_SCHEMAS
 _MUTATING = {s["name"] for s in TOOL_SCHEMAS if s["mutates"]}
 _BY_NAME = {s["name"]: s for s in TOOL_SCHEMAS}
 #: The keys the model providers accept; ``mutates`` / ``role`` are ours.
@@ -472,13 +478,24 @@ class AssistantToolbox:
     def _access_error(self, slug: str | None = None) -> str | None:
         """Re-resolve access at each data boundary so revocation takes effect."""
         if self.actor is not None and self.scope == "full" and slug:
-            from apps.core.report_access import selected_report_access_block_reason
+            from apps.core.report_access import (
+                expiry_enforcement_block_reason, report_administrator,
+                selected_report_access_block_reason,
+            )
             from apps.reports.models import Report
 
-            if selected_report_access_block_reason() and Report.objects.filter(
-                studio=self.studio, slug=slug, audience=Report.AUDIENCE_PRIVATE,
-            ).exists():
-                return "Private report access is temporarily unavailable."
+            report = Report.objects.select_related("studio__org").filter(studio=self.studio, slug=slug).first()
+            if report is not None:
+                # Manual hiding historically omitted the catalog, while this
+                # full-studio toolbox retained source/data access. Expiry is a
+                # content cutoff; keep the manual setting's scope unchanged.
+                if report.expires_at is not None and (
+                    expiry_enforcement_block_reason()
+                    or report.is_expired and not report_administrator(self.actor, report)
+                ):
+                    return "Report access is temporarily unavailable."
+                if report.audience == Report.AUDIENCE_PRIVATE and selected_report_access_block_reason():
+                    return "Private report access is temporarily unavailable."
         if self._executing_prechecked:
             return None
         if self.actor is None:  # Trusted internal callers and existing unit tests.
@@ -545,6 +562,12 @@ class AssistantToolbox:
         (viewer for all reads but ``check_repo_changes``); a mutating one also
         needs actions on. Checked when the catalogue is listed and again when
         a call arrives."""
+        from apps.assistant.metric_tools import METRIC_NAMES, available as metrics_available
+        if schema.get("name") in METRIC_NAMES and not metrics_available(self):
+            return False
+        from apps.assistant.source_tools import SOURCE_NAMES, available
+        if schema.get("name") in SOURCE_NAMES and not available(self):
+            return False
         if rank(self.role) < rank(schema.get("role", roles.VIEWER)):
             return False
         if self.is_report_bound and schema.get("name") == "check_repo_changes":
@@ -685,6 +708,13 @@ class AssistantToolbox:
             fn = self._extra[name][1]
         self.provenance = None
         self.proposal = None
+        self.source_pending = None
+        from apps.assistant.source_tools import SOURCE_NAMES, execute as execute_source
+        if name in SOURCE_NAMES:
+            fn = lambda a: execute_source(self, name, a)
+        from apps.assistant.metric_tools import METRIC_NAMES, execute as execute_metric
+        if name in METRIC_NAMES:
+            fn = lambda a: execute_metric(self, name, a)
         if fn is None:
             return f"Error: unknown tool '{name}'."
         if name in _BY_NAME and not self.allowed(_BY_NAME[name]):
@@ -773,9 +803,10 @@ class AssistantToolbox:
 
             from apps.reports.models import Report
             from apps.reports.registry_rows import all_rows
+            from apps.core.report_access import regular_reports
 
             reports = all_rows(
-                Report.objects.filter(studio=self.studio, present_in_scan=True), self.studio, self.studio.org, now=timezone.now()
+                regular_reports(Report.objects.filter(studio=self.studio, present_in_scan=True)), self.studio, self.studio.org, now=timezone.now()
             )
             self._reports = (
                 [report for report in reports if report.get("slug") == self.report_slug]
@@ -1153,6 +1184,11 @@ class AssistantToolbox:
         df, note = self.load_dataset(slug, dataset_id)
         if df is None:
             return note
+        from apps.assistant.metric_tools import guard_report_aggregation
+        limitation = guard_report_aggregation(self, slug, dataset_id, args)
+        if limitation:
+            self.provenance = None
+            return limitation
         total_rows = len(df)
         # Filtering rebinds `df` rather than mutating it, so holding the
         # original costs nothing and saves the 0-row branch below from
@@ -1202,6 +1238,13 @@ class AssistantToolbox:
         }
 
         if df.empty:
+            self.provenance.update(kind="report_query", status="answered", columns=list(df.columns),
+                                   rows=[], truncated=False)
+            from .answer_review import encoded
+            if len(encoded(self.provenance).encode()) > 65536:
+                self.provenance = None
+                return "Error: Structured report evidence exceeds the result byte limit; narrow the query."
+            self._pin_answer_report(slug)
             # Self-healing hint: tell the model what WOULD have matched so it
             # can correct the filter in one retry instead of giving up.
             hints = []
@@ -1229,7 +1272,9 @@ class AssistantToolbox:
                 return f"Error: metric column '{m.get('column')}' not in dataset."
 
         if metrics:
-            agg_spec = {m["column"]: m.get("agg", "sum") for m in metrics}
+            # All-NULL operands are missing evidence, not a measured zero.
+            agg_spec = {m["column"]: ((lambda values: values.sum(min_count=1))
+                                     if m.get("agg", "sum") == "sum" else m.get("agg")) for m in metrics}
             if group_by:
                 result = df.groupby(group_by, observed=True).agg(agg_spec).reset_index()
             else:
@@ -1246,13 +1291,42 @@ class AssistantToolbox:
         limit = min(int(args.get("limit") or _DATA_DISPLAY_CAP), 200)
         table = format_df_markdown(result, limit)
         self.provenance["rows_returned"] = min(len(result), limit)
+        preview = result.head(limit)
+        # pandas.to_json rounds floats by default. Preserve scalar values and
+        # normalize missing cells explicitly before the canonical JSON encoding.
+        cells = {"columns": list(preview.columns),
+                 "data": preview.astype(object).where(preview.notna(), None).values.tolist()}
+        self.provenance.update(kind="report_query", status="answered", columns=cells["columns"],
+                               rows=cells["data"], truncated=len(result) > limit)
+        from .answer_review import encoded
+        try:
+            evidence_size = len(encoded(self.provenance).encode())
+        except (ValueError, TypeError, OverflowError):
+            # Failed serialization must not leave non-JSON cells attached to
+            # the transcript: its database save uses this same provenance.
+            self.provenance = None
+            return "Error: Report results contain values that cannot be represented as analytical evidence."
+        if evidence_size > 65536:
+            self.provenance = None
+            return "Error: Structured report evidence exceeds the result byte limit; narrow the query."
+        self._pin_answer_report(slug)
         header = (
             f"Dataset '{dataset_id}' of report '{slug}' (built {built_at or 'unknown'}) — "
             f"{total_rows:,} rows total, {len(df):,} after filters, {len(result):,} result row(s)."
         )
         if note:
             header += "\n" + note
-        return header + "\n\n" + table + f"\n\nLink (with these filters applied): {link}"
+        return (header + "\n\n" + table + f"\n\nLink (with these filters applied): {link}"
+                + "\nStructured result cells: " + encoded({"columns": cells["columns"], "rows": cells["data"]}))
+
+    def _pin_answer_report(self, slug):
+        if self.session is not None:
+            reports = set(self.session.state.get("_metric_reports", []))
+            reports.add(slug)
+            if len(reports) > 100:
+                self.provenance = None
+                raise ValueError("Start a new conversation; report evidence reached its authorization limit.")
+            self.session.state["_metric_reports"] = sorted(reports)
 
     # read_doc ------------------------------------------------------------
     def _resolve_read_path(self, path: str) -> Path | None:
@@ -1286,6 +1360,24 @@ class AssistantToolbox:
                 f"Readable prefixes: {readable}."
             )
         rel = p.relative_to(self.project_root.resolve()).as_posix()
+        if self.actor is not None and rel.startswith("reports/") and len(Path(rel).parts) > 2:
+            # Source analyses can contain the report itself. Apply the same
+            # availability boundary, including manifests whose slug differs
+            # from their source directory, before returning any source bytes.
+            from trellum.report_config import load_content_config
+            from yaml import YAMLError
+
+            directory = Path(rel).parts[1]
+            source = self.project_root / "reports" / directory
+            slug = directory
+            if (source / "report.yaml").is_file():
+                try:
+                    slug = load_content_config(str(source)).get("slug", directory)
+                except (OSError, ValueError, YAMLError):
+                    return "Error: report source is unavailable."
+            error = self._access_error(slug)
+            if error:
+                return f"Error: {error}"
         if rel == "metrics.yaml":
             from apps.assistant.metric_context import registry_text
 

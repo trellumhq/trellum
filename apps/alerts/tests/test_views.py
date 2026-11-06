@@ -298,6 +298,35 @@ class TestRunLog:
         assert "disk on fire" in html
         assert html.index("disk on fire") < html.index("Revenue fell") < html.index("Nothing unusual")
 
+    def test_structured_response_renders_escaped_and_old_runs_keep_message_fallback(self, login, viewer, rule, prefix):
+        AlertRun.objects.create(rule=rule, decision="quiet", message="Old plain text explanation.")
+        AlertRun.objects.create(rule=rule, decision="alert", title="Structured",
+            message="Plain text compatibility message.",
+            evidence={"cited": ["Revenue: $700 in the completed week vs $1,000 last week."],
+                      "response": {"summary": "Revenue is <b>$700</b>.",
+                                   "why_it_matters": "The observed decline meets the rule.",
+                                   "what_to_check_next": "Check next week's result."}})
+        html = login(viewer).get(f"{prefix}/{rule.pk}").content.decode()
+        assert "Revenue is &lt;b&gt;$700&lt;/b&gt;." in html and "<b>$700</b>" not in html
+        assert "Why it matters" in html and "What to check next" in html
+        assert "Supporting figures" in html and "Old plain text explanation." in html
+
+    def test_draft_preview_returns_structured_response_and_escaped_html(self, login, owner, rule, prefix, fake_llm):
+        from apps.alerts.tests.conftest import decide
+
+        fake_llm(decide(True, summary="Revenue is <b>$700</b>.",
+                        why_it_matters="It meets the decline condition.",
+                        what_to_check_next="Compare the next completed week."))
+        response = login(owner).post(f"{prefix}/{rule.pk}/edit", {
+            **_form(rule), "action": "preview",
+        })
+        assert response.status_code == 200
+        result = response.context["result"]
+        assert result["response"]["summary"] == "Revenue is <b>$700</b>."
+        html = response.content.decode()
+        assert "Revenue is &lt;b&gt;$700&lt;/b&gt;." in html
+        assert "Why it matters" in html and "What to check next" in html
+
 
 class TestTestNow:
     def test_test_now_bills_requesting_developer_not_rule_owner(self, login, make_user, grant_studio,

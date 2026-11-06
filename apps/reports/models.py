@@ -46,6 +46,14 @@ class Report(models.Model):
     schedule_cron = models.CharField(max_length=100, blank=True, default="")
     schedule_timezone = models.CharField(max_length=64, blank=True, default="UTC")
     disabled = models.BooleanField(default=False)
+    #: Legacy portal override, retained for schema compatibility only.
+    #: Repository hidden state is authoritative.
+    hidden = models.BooleanField(null=True, blank=True)
+    #: A publishable hidden entry still in the source repository. Keep it out
+    #: of present_in_scan's existing build/automation consumers until unhidden.
+    archived_in_scan = models.BooleanField(null=True, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    expiry_timezone = models.CharField(max_length=64, null=True, blank=True)
     #: ``display.priority`` from report.yaml: lower sorts first, 99 is unranked (last).
     priority = models.IntegerField(default=99)
     config = models.JSONField(default=dict, blank=True)  # last-scanned report.yaml
@@ -87,6 +95,7 @@ class Report(models.Model):
     data_expired_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
+        indexes = [models.Index(fields=["expires_at"], name="report_expiry_idx")]
         constraints = [
             models.UniqueConstraint(fields=["studio", "slug"], name="uniq_report_per_studio")
         ]
@@ -94,6 +103,14 @@ class Report(models.Model):
 
     def __str__(self) -> str:
         return f"{self.studio}/{self.slug}"
+
+    @property
+    def is_hidden(self) -> bool:
+        return bool(self.archived_in_scan)
+
+    @property
+    def is_expired(self) -> bool:
+        return self.expires_at is not None and self.expires_at <= timezone.now()
 
 
 class ReportPermissionGrant(models.Model):
@@ -356,8 +373,8 @@ class BrokenReportPending(models.Model):
     pending rows — as one summary mail per recipient if there is more than
     one, or the normal single-report mail if there's just one — once the
     oldest of them has been waiting at least
-    ``notify.COALESCE_WINDOW_SECONDS``. Recovered-build mail is unaffected:
-    it is never buffered, and keeps sending immediately.
+    ``notify.COALESCE_WINDOW_SECONDS``. Recovery mail is never buffered;
+    accepted failure receipts determine its eligible recipients.
     """
 
     report = models.ForeignKey(Report, on_delete=models.CASCADE, related_name="+")
@@ -373,6 +390,26 @@ class BrokenReportPending(models.Model):
 
     def __str__(self) -> str:
         return f"broken-pending({self.report})"
+
+
+class BrokenReportReceipt(models.Model):
+    """Transport accepted a failure notice for this exact user/address.
+
+    The failure run identifies the incident: a successful run closes it.
+    Recovery consumes these rows, including recipients who lost access.
+    """
+
+    report = models.ForeignKey(Report, on_delete=models.CASCADE, related_name="+")
+    failure_run = models.ForeignKey("runner.Run", on_delete=models.CASCADE, related_name="+")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+")
+    email = models.EmailField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["report", "user", "email"], name="uniq_broken_receipt_recipient"
+            )
+        ]
 
 
 def _new_share_token() -> str:
@@ -478,7 +515,13 @@ class ShareLink(models.Model):
         "blocked by org policy" rather than genuinely dead: it resumes
         serving the moment the policy relaxes, with nothing to recreate.
         """
-        if not self.report.studio.org.is_active or self.revoked_at is not None:
+        from apps.core.report_access import expiry_enforcement_block_reason
+
+        if self.report.expires_at is not None and expiry_enforcement_block_reason():
+            return False
+        # Report availability also applies to embeds (which intentionally have
+        # no link expiry). Manual hiding keeps its existing portal-only scope.
+        if self.report.is_expired or not self.report.studio.org.is_active or self.revoked_at is not None:
             return False
         if self.embed:
             return policy is not None and policy.embed_links_enabled

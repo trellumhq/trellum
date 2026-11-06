@@ -25,3 +25,6 @@ Pillow>=13.0.0
 
 # Cross-platform OS locks for private local credential updates.
 portalocker>=3.2.0,<4
+
+# Pinned AST contract for restricted PostgreSQL assistant queries.
+sqlglot==30.22.0

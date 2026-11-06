@@ -10,6 +10,7 @@ def protect_windows(path):
     """
     import ctypes
     from ctypes import wintypes
+
     from trellum.private_files import CredentialPersistenceError
 
     advapi = ctypes.WinDLL("advapi32", use_last_error=True)

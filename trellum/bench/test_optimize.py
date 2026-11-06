@@ -1,10 +1,10 @@
-"""Optimizer safety checks: fake Git/processes only, never provider calls."""
+"""Optimizer safety checks: mocked agents and disposable Git repos, no providers."""
 from __future__ import annotations
 
 import importlib.util
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -234,3 +234,74 @@ def test_exhausted_limit_stops_before_any_benchmark(optimizer, monkeypatch, tmp_
     monkeypatch.setattr(optimizer, "_git", lambda *args, **kwargs: "bench/auto-test")
     monkeypatch.setattr(optimizer, "_run_matrix", lambda *args, **kwargs: pytest.fail("budget exceeded"))
     assert optimizer.main() == 0
+
+
+@pytest.mark.parametrize("path", ["trellum/AGENTS.md.extra", "trellum/README.md/child"])
+def test_whitelist_files_require_exact_names(optimizer, path):
+    assert not optimizer.path_allowed(path)
+
+
+@pytest.fixture
+def real_checkout(monkeypatch, tmp_path):
+    module = _load("optimize")
+    source = tmp_path / "source"
+    source.mkdir()
+
+    def git(*args, cwd=source):
+        return subprocess.run(
+            ["git", "-c", "user.name=Apollo Meijer", "-c",
+             "user.email=1136912+hajimeku@users.noreply.github.com", "-C", str(cwd), *args],
+            check=True, capture_output=True, text=True, timeout=30,
+        ).stdout.strip()
+
+    git("init", "-b", "bench/auto-primary")
+    (source / "trellum" / "docs").mkdir(parents=True)
+    (source / "trellum" / "docs" / "guide.md").write_text("original")
+    (source / "protected.txt").write_text("protected")
+    git("add", ".")
+    git("commit", "-m", "Initial fixture")
+    target = tmp_path / "target"
+    git("worktree", "add", "-b", "bench/auto-test", str(target))
+    monkeypatch.setattr(module, "_REPO_DIR", source)
+    return module, source, target, git
+
+
+@pytest.mark.heavy
+def test_real_git_checkout_and_revert_identity(real_checkout):
+    module, source, target, git = real_checkout
+    assert module._ensure_worktree(target) == target
+    with pytest.raises(SystemExit, match="Refusing target"):
+        module._ensure_worktree(source)
+    with pytest.raises(SystemExit, match="Refusing target"):
+        module._ensure_worktree(target / "trellum")
+    before = git("rev-parse", "HEAD", cwd=target)
+    protected = target / "protected.txt"
+    protected.write_text("attempt")
+    with pytest.raises(SystemExit, match="completely clean"):
+        module._ensure_worktree(target)
+    git("switch", "-c", "bench/auto-other", cwd=target)
+    with pytest.raises(SystemExit, match="branch changed"):
+        module._discard_fix(target, before, expected_branch="bench/auto-test")
+    assert protected.read_text() == "attempt"
+    git("switch", "bench/auto-test", cwd=target)
+    module._discard_fix(target, before, expected_branch="bench/auto-test")
+    assert protected.read_text() == "protected"
+
+
+@pytest.mark.heavy
+@pytest.mark.parametrize("committed", [False, True])
+def test_real_git_violations_preserve_names_and_rename_sources(real_checkout, committed):
+    module, _, target, git = real_checkout
+    before = git("rev-parse", "HEAD", cwd=target)
+    # Staged and committed renames must both flag the removed source.
+    git("mv", "protected.txt", "trellum/docs/moved.md", cwd=target)
+    if committed:
+        git("commit", "-m", "Fixture rename", cwd=target)
+    # A tracked modification used to lose its first filename character to strip().
+    (target / "trellum/docs/guide.md").write_text("changed")
+    names = ["trellum/docs/tab\tname.md", "trellum/docs/line\nname.md"]
+    for name in names:
+        (target / name).write_text("allowed")
+    bad = "private\nnotes.txt"
+    (target / bad).write_text("denied")
+    assert module._violations(target, before) == [bad, "protected.txt"]

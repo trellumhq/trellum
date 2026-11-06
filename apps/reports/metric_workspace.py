@@ -12,7 +12,7 @@ from django.views.decorators.http import require_GET
 from apps.core import roles
 from apps.core.choice_requests import choice_response
 from apps.core.permissions import require_studio_role
-from apps.core.report_access import require_full_studio_visibility
+from apps.core.report_access import regular_reports, require_full_studio_visibility
 from .models import MetricDefinition, Report, ReportMetricClaim, ReportSourceSummary
 from .metric_summaries import SOURCE_FRESH_SECONDS, claimed_count, usage_pending
 
@@ -38,8 +38,8 @@ def inline_definition_choices(studio, selected=()):
 
 
 def workspace_projection(studio, *, legacy=False):
-    report = Report.objects.filter(studio=studio, present_in_scan=True, kind=Report.KIND_REPORT,
-        slug='metrics', tags__contains=['metrics'], data_expired_at__isnull=True).select_related('source_summary').only(
+    report = regular_reports(Report.objects.filter(studio=studio, present_in_scan=True, kind=Report.KIND_REPORT,
+        slug='metrics', tags__contains=['metrics'], data_expired_at__isnull=True)).select_related('source_summary').only(
             'pk', 'slug', 'source_summary__id', 'source_summary__report_id', 'source_summary__state',
             'source_summary__quality', 'source_summary__observed_at', 'source_summary__served_at',
             'source_summary__workspace_version', 'source_summary__source_identity').first()

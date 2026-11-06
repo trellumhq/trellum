@@ -23,6 +23,22 @@ def _system_text(call) -> str:
 
 
 class TestDecision:
+    def test_structured_response_is_stored_separately_and_message_stays_plain_text(self, rule, fake_llm):
+        fake_llm(decide(True, message="Revenue is $700 this week, down from $1,000.",
+                        summary="Weekly revenue is $700, down from $1,000.",
+                        why_it_matters="This meets the requested 20% decline condition.",
+                        what_to_check_next="Check the next completed week for persistence."))
+        run = evaluator.evaluate_snapshot(
+            evaluator.RuleSnapshot.from_rule(rule), actor=rule.created_by, billing_user=rule.created_by,
+            execution_mode=AlertRun.MODE_TEST, history_namespace="structured-test",
+        )
+        assert run.message == "Revenue is $700 this week, down from $1,000."
+        assert run.evidence["response"] == {
+            "summary": "Weekly revenue is $700, down from $1,000.",
+            "why_it_matters": "This meets the requested 20% decline condition.",
+            "what_to_check_next": "Check the next completed week for persistence.",
+        }
+
     def test_unsaved_snapshot_preview_is_immutable_billed_and_not_persisted(self, rule, fake_llm, org):
         from dataclasses import FrozenInstanceError
 
@@ -30,7 +46,9 @@ class TestDecision:
         snapshot = evaluator.RuleSnapshot.from_rule(rule)
         with pytest.raises(FrozenInstanceError):
             snapshot.name = "Changed"
-        fake_llm(decide(True))
+        fake_llm(decide(True, summary="Revenue is $700 this week versus $1,000 last week.",
+                        why_it_matters="That is a 30% decline and meets the rule.",
+                        what_to_check_next="Compare the next completed week."))
         run = evaluator.evaluate_snapshot(
             snapshot, actor=rule.created_by, billing_user=rule.created_by,
             execution_mode=AlertRun.MODE_TEST, history_namespace="preview",
@@ -160,7 +178,9 @@ class TestDecision:
         rule.recipient_roles = ["developers"]
         rule.save()
         rule.recipient_groups.add(group)
-        fake_llm(decide(True))
+        fake_llm(decide(True, summary="Revenue is $700 this week versus $1,000 last week.",
+                        why_it_matters="That is a 30% decline and meets the rule.",
+                        what_to_check_next="Compare the next completed week."))
 
         run = evaluator.evaluate(rule)
 
@@ -172,7 +192,12 @@ class TestDecision:
         assert sorted(m.to[0] for m in mail.outbox) == expected
         msg = mail.outbox[0]
         assert "Revenue fell" in msg.subject
-        assert "Revenue is down 30% on the week." in msg.body
+        assert "Revenue is $700 this week versus $1,000 last week." in msg.body
+        assert "Why it matters:" in msg.body and "That is a 30% decline and meets the rule." in msg.body
+        assert "What to check next:" in msg.body and "Compare the next completed week." in msg.body
+        html_body = msg.alternatives[0][0]
+        assert "Why it matters" in html_body and "That is a 30% decline and meets the rule." in html_body
+        assert "Supporting figures" in html_body
         assert "gross_revenue 2026-09-07: 700 vs 1000" in msg.body
         assert f"/s/{org.slug}/{studio_tree.slug}/r/{rule.report.slug}/" in msg.body
         assert f"/s/{org.slug}/{studio_tree.slug}/assistant/from-alert/{run.pk}" in msg.body

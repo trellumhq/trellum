@@ -91,10 +91,11 @@ def test_rejections_do_not_spend_quota_and_both_causes_are_reported(
     assert list(studio_tree.reports.values_list("slug", flat=True)) == ["b-valid"]
 
 
-def test_rejection_diagnostics_are_bounded(studio_tree, monkeypatch, settings):
+def test_rejection_diagnostics_are_bounded(studio_tree, write_report, monkeypatch, settings):
     block(settings, "readiness")
+    directory = write_report("stub")
     monkeypatch.setattr("trellum.runner.scan_report_configs", lambda *a, **k: [
-        {"slug": f"private-{i:03}-" + "x" * 1000, "config": {"initial_audience": "private"}}
+        {"dir": str(directory), "slug": f"private-{i:03}-" + "x" * 1000, "config": {"initial_audience": "private"}}
         for i in range(100)
     ])
     with pytest.raises(ReportAdmissionRejected) as error:
@@ -106,15 +107,15 @@ def test_rejection_diagnostics_are_bounded(studio_tree, monkeypatch, settings):
 
 @pytest.mark.parametrize("audience", ["studio", "private"])
 def test_invalid_initial_value_on_existing_row_does_not_revalidate_audience(
-    studio_tree, monkeypatch, settings, audience,
+    studio_tree, write_report, monkeypatch, settings, audience,
 ):
     block(settings, "readiness")
     existing = Report.objects.create(studio=studio_tree, slug="existing", audience=audience)
     # The framework normally rejects malformed YAML before this boundary. If
     # a caller already supplied it, initial_audience remains creation-only.
     monkeypatch.setattr("trellum.runner.scan_report_configs", lambda *a, **k: [
-        {"slug": "existing", "config": {"initial_audience": {"invalid": True}, "name": "Updated"}},
-        {"slug": "valid", "config": {}},
+        {"dir": str(write_report("existing")), "slug": "existing", "config": {"initial_audience": {"invalid": True}, "name": "Updated"}},
+        {"dir": str(write_report("valid")), "slug": "valid", "config": {}},
     ])
     assert sync_studio_registry(studio_tree) == 2
     existing.refresh_from_db()
