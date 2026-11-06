@@ -395,6 +395,25 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             expect(total_events.locator('.fw-table-totals-note')).to_contain_text('1 matching rows')
             assert row_metrics.nth(1).inner_text() == '60'
             assert live.locator('.fw-kpi-value').first.inner_text() == '$18.4k'
+            page.get_by_role('link', name='table pinning', exact=True).click()
+            pin_snapshot = page.locator('#sec-datatable-pinning-—-static-snapshots')
+            for pin_table in pin_snapshot.locator('.fw-table-scroll').all():
+                pin_table.scroll_into_view_if_needed()
+            expect(pin_snapshot.locator('.fw-data-table-pinned')).to_have_count(3)
+            pin_visits = page.locator('#sec-datatable-pinning-—-filterable-observations')
+            pin_scroll = pin_visits.get_by_role('region', name='Pinned visit contributions')
+            expect(pin_scroll.locator('tbody tr')).to_have_count(10)
+            expect(pin_visits.locator('.fw-table-totals-note')).to_contain_text('42 matching rows')
+            pin_visits.get_by_role('button', name='Android', exact=True).click()
+            expect(pin_visits.locator('.fw-table-totals-note')).to_contain_text('21 matching rows')
+            expect(pin_visits.locator('.fw-kpi-value')).to_have_text('$462.00')
+            pin_visits.locator('[data-table-search]').fill('Visit 42')
+            expect(pin_scroll.locator('tbody tr')).to_have_count(1)
+            expect(pin_visits.locator('.fw-table-totals-note')).to_contain_text('1 matching rows')
+            expect(pin_visits.locator('.fw-kpi-value')).to_have_text('$462.00')
+            assert pin_scroll.evaluate('e=>e.clientHeight < 320')
+            expect(total_events.locator('.fw-kpi-value')).to_have_text('$456.00')
+            assert live.locator('.fw-kpi-value').first.inner_text() == '$18.4k'
             # Every chart must own a real canvas and draw after scrolling into
             # view; scope-based data swaps cannot stand in for different layouts.
             for canvas in page.locator("canvas:visible").all():

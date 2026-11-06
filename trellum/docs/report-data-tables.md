@@ -224,6 +224,9 @@ hierarchy, row drill-down or Pivot changes. ComparisonTable exposes no totals
 argument, and workspace definition catalogs ignore injected totals settings.
 Rebuild artifacts with matching Python and browser assets to enable totals.
 
+`examples_table_totals.add_sections(ctx)` supplies native off/on static,
+filtered 36-contributor and incomplete-input examples.
+
 ## Optional DataTable edge pinning
 
 `pin_header=False` and `pin_footer=False` are independent keyword-only
@@ -250,6 +253,3 @@ expand hidden rows or columns. Rebuild existing reports to enable pinning.
 `examples_table_pinning.add_sections(ctx)` shows the static default and the
 three independent edge combinations, followed by bound, searchable, filterable
 observations with an additive footer and full-scope KPI.
-
-`examples_table_totals.add_sections(ctx)` supplies native off/on static,
-filtered 36-contributor and incomplete-input examples.

@@ -1,14 +1,9 @@
 window._fwRenderers['table'] = function renderTable(id, cfg) {
     var el = document.getElementById(id);
     if (!el) return;
-    var pinNodes = window._fwDataTablePinNodes || (window._fwDataTablePinNodes = Object.create(null));
-    if (pinNodes[id] && pinNodes[id] !== el) {
-        _releasePinning(pinNodes[id]);
-        delete pinNodes[id];
-    }
+    // Pinning owns only DOM state; keep it on the node so detached tables can
+    // be collected without an additional global registry or observer.
     _configurePinning(el, cfg);
-    if (el._fwDataTablePinning) pinNodes[id] = el;
-    else delete pinNodes[id];
     var generation = el._fwTableGeneration = (el._fwTableGeneration || 0) + 1;
     var cf = cfg.conditionalFormats || {};
     var comparison = cfg.comparison;

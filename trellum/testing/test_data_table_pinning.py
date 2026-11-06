@@ -261,6 +261,21 @@ def test_native_pinned_edges_keyboard_search_and_capture(tmp_path, width):
         assert abs(head["y"] - box["y"]) <= 1
         assert abs(foot["y"] + foot["height"] - (box["y"] + box["height"])) <= 1
         assert scroller.locator("tbody tr").evaluate_all("rows=>rows.slice(0,3).map(r=>r.getBoundingClientRect().height)") == heights
+        # Either edge works alone; the other follows the ordinary table flow.
+        for pin_header, pin_footer in ((True, False), (False, True)):
+            page.evaluate("([id,cfg,h,f])=>_fwRenderers.table(id,{...cfg,pinHeader:h,pinFooter:f})",
+                          [cid, data["components"][cid], pin_header, pin_footer])
+            scroller.evaluate("e=>e.scrollTop=80")
+            box = scroller.bounding_box()
+            head = scroller.locator("thead th").first.bounding_box()
+            foot = scroller.locator("tfoot tr").bounding_box()
+            if pin_header:
+                assert abs(head["y"] - box["y"]) <= 1
+                assert foot["y"] + foot["height"] > box["y"] + box["height"] + 1
+            else:
+                assert head["y"] < box["y"] - 1
+                assert abs(foot["y"] + foot["height"] - (box["y"] + box["height"])) <= 1
+        page.evaluate("([id,cfg])=>_fwRenderers.table(id,cfg)", [cid, data["components"][cid]])
         scroller.focus()
         page.keyboard.press("PageDown")
         assert scroller.evaluate("e=>e.scrollTop>0")
@@ -274,6 +289,8 @@ def test_native_pinned_edges_keyboard_search_and_capture(tmp_path, width):
         section = scroller.locator('xpath=ancestor::*[contains(@class,"fw-section")][1]')
         for theme in ("trellum light", "trellum dark"):
             page.locator("#fwThemeSelect").select_option(theme)
+            section.screenshot(path=str(tmp_path / f"screen-{width}-{theme.replace(' ', '-')}.png"),
+                               animations="disabled")
             capture = section.evaluate("el=>fw.captureElementSnapshotForAnalysis(el)")
             assert capture["format"] == "trellum-analysis-capture"
             evidence = tmp_path / f"pinning-{width}-{theme.replace(' ', '-')}.png"
@@ -362,7 +379,7 @@ def test_native_pinned_edges_keyboard_search_and_capture(tmp_path, width):
         assert scroller.evaluate("e=>e.clientHeight < 220")
         assert scroller.evaluate("e=>e.scrollTop <= e.scrollHeight - e.clientHeight")
 
-        # Replacing the node releases its owned state. New authored attributes and style survive opt-out.
+        # Replacement nodes have independent state. Authored attributes survive opt-out.
         page.evaluate("""id=>{const old=document.getElementById(id), replacement=document.createElement('div');
           replacement.id=id;replacement.className='fw-table-scroll';replacement.setAttribute('role','group');
           replacement.setAttribute('tabindex','3');replacement.setAttribute('aria-label','Authored region');

@@ -54,9 +54,10 @@ def add_sections(ctx):
             {"column": "Platform", "label": "Platform", "type": "toggle"},
             {"column": "Source", "label": "Source", "type": "toggle"},
         ]),
-        RawHTML(html=("<p>42 distinct visits with additive sessions, purchases and revenue. Search and "
-                      "the Rows selector change only this table's display and CSV; report filters "
-                      "change both its delivered totals and the full-scope KPI.</p>")),
+        RawHTML(html=("<p>42 distinct visits with additive sessions, purchases and revenue. Search "
+                      "narrows this table's rows, totals and CSV. The Rows selector changes only "
+                      "how many matches are displayed. Report filters change the table and the "
+                      "full-scope KPI; local search leaves that KPI unchanged.</p>")),
         KpiRow([{"column": "Revenue", "label": "All filtered visit revenue", "agg": "sum", "format": "currency"}],
                dataset_id="table_pinning_visits"),
         DataTable(observations, "Pinned visit contributions", dataset_id="table_pinning_visits",
