@@ -63,6 +63,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Documentation
 
+- Add a customer GitHub Actions recipe for validating report changes before merge.
+
 - Default local human report previews to review mode, with scoped feedback
   polling and rebuild-before-reply guidance. Setup refreshes the managed
   guidance in existing projects while preserving their custom instructions.
@@ -90,6 +92,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   desktop and mobile screenshots side by side and direct links to synthetic demos.
 
 ### Fixed
+
+- Populate audit action choices with ordered, organization-scoped probes instead
+  of transferring duplicate history rows. Add a concurrent composite index for
+  large histories with uneven action usage across organizations; preserve all labels.
 
 - Keep nested and adjacent report tab panels independent when switching tabs or restoring tab selections from a URL.
 - Keep Reports and Analyses mounted while switching catalogs, and retain page
