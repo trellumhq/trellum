@@ -39,6 +39,8 @@ class DataTable(Component):
     ``columns`` also selects static display/export columns. ``max_rows`` only
     limits display: search, stable sort and CSV use every supplied row (or
     every row delivered by the dataset wrapper). CSV uses raw numeric values.
+    Keyword-only ``cell_shading`` optionally declares whole-column raw-unit
+    targets and ``higher``/``lower`` direction, without changing text colors.
 
     A live-query-backed table is just a reactive table: declare
     ``LiveDataSource(id, query=..., df=snapshot)`` and pass
@@ -58,6 +60,7 @@ class DataTable(Component):
     conditional_formats: Optional[dict] = None
     searchable: Optional[bool] = None
     live: Optional[dict] = None
+    cell_shading: Optional[dict] = field(default=None, kw_only=True)
 
     # ComparisonTable's presentation metadata travels with the same population.
     _comparison: Optional[dict] = field(default=None, init=False, repr=False)
@@ -68,6 +71,7 @@ class DataTable(Component):
     def render_html(self, ctx: RenderContext) -> str:
         if self.live:
             raise ValueError(_LIVE_LEGACY_ERROR)
+        shading = self._cell_shading_config()
 
         cid = ctx.next_id()
 
@@ -107,6 +111,8 @@ class DataTable(Component):
             }
             if self.conditional_formats:
                 cfg["conditionalFormats"] = self.conditional_formats
+            if shading:
+                cfg["cellShading"] = shading
             if self._comparison is not None:
                 cfg["comparison"] = self._comparison
             ctx.register(cid, cfg)
@@ -160,6 +166,19 @@ class DataTable(Component):
             reg["barColumn"] = self.bar_column
         if self.conditional_formats:
             reg["conditionalFormats"] = self.conditional_formats
+        if shading:
+            reg["cellShading"] = shading
+            # Mixed object columns cannot trust numeric-looking strings. Carry
+            # only their genuinely typed numeric cells separately, leaving the
+            # established display, rawRows and CSV representations untouched.
+            mixed = {}
+            for column in shading:
+                if column not in numeric_cols:
+                    mixed[column] = [
+                        str(v) if _finite_target(v) else None for v in self.df[column]
+                    ]
+            if mixed:
+                reg["cellShadingNumbers"] = mixed
         if self._comparison is not None:
             reg["comparison"] = self._comparison
             context = self._comparison["context"]
@@ -176,6 +195,29 @@ class DataTable(Component):
         ctx.register(cid, reg)
         return table_html
 
+    def _cell_shading_config(self) -> dict:
+        """Validate at render time as declarations may be mutated by authors."""
+        option = self.cell_shading
+        if option is None:
+            return {}
+        if not isinstance(option, dict):
+            raise ValueError("DataTable cell_shading must be a dict or None")
+        displayed = self.columns or list(self.df.columns)
+        if self._comparison is not None and self.columns is not None:
+            displayed = self.columns
+        result = {}
+        for column, spec in option.items():
+            if not isinstance(column, str) or column not in self.df.columns or column not in displayed:
+                raise ValueError("DataTable cell_shading columns must name supplied, displayed columns")
+            if not isinstance(spec, dict) or set(spec) != {"target", "direction"}:
+                raise ValueError("DataTable cell_shading entries require exactly target and direction")
+            if not isinstance(spec["direction"], str) or spec["direction"] not in ("higher", "lower"):
+                raise ValueError("DataTable cell_shading direction must be higher or lower")
+            if not _finite_target(spec["target"]):
+                raise ValueError("DataTable cell_shading target must be a finite int, float or Decimal (not bool)")
+            result[column] = {"target": str(spec["target"]), "direction": spec["direction"]}
+        return result
+
     @classmethod
     def css(cls) -> str:
         return load_css("components/data_table.css")
@@ -183,6 +225,16 @@ class DataTable(Component):
     @classmethod
     def client_js(cls) -> str:
         return load_js("components/data_table.js")
+
+
+def _finite_target(value) -> bool:
+    if isinstance(value, bool):
+        return False
+    if isinstance(value, int):
+        return True
+    if isinstance(value, Decimal):
+        return value.is_finite()
+    return isinstance(value, float) and math.isfinite(value)
 
 
 def _is_dimension(dtype) -> bool:
@@ -308,6 +360,8 @@ class ComparisonTable(Component):
             directions and missing-value reasons. No comparison is calculated.
             See ``trellum/docs/report-comparison-tables.md`` for raw units.
         show_divider: Keyword-only opt-out for the comparison group border.
+        cell_shading: Keyword-only whole-column raw-unit threshold declarations.
+            See ``trellum/docs/report-data-tables.md`` for units and type limits.
     """
     df: pd.DataFrame
     title: str
@@ -319,6 +373,7 @@ class ComparisonTable(Component):
     columns: Optional[List[str]] = None
     comparison_context: Optional[dict] = field(default=None, kw_only=True)
     show_divider: bool = field(default=True, kw_only=True)
+    cell_shading: Optional[dict] = field(default=None, kw_only=True)
 
     _component_type: str = field(default="comparison_table", init=False, repr=False)
     _supports_dataset_id: bool = field(default=True, init=False, repr=False)
@@ -340,6 +395,8 @@ class ComparisonTable(Component):
             title=self.title,
             max_rows=200,
             dataset_id=self.dataset_id,
+            static=self.static,
+            cell_shading=self.cell_shading,
             conditional_formats=cf,
             columns=(self.columns if self.columns is not None else
                      [c for c in self.df.columns

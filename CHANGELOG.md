@@ -14,6 +14,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   escaped, wraps in narrow panels and remains independent of report selections;
   omitted and blank values add no markup.
 
+- Optional keyword-only DataTable and ComparisonTable `cell_shading` with
+  author-defined raw-unit targets and higher/lower direction, exact static
+  numeric boundaries, theme-relative fills, a wrapping target key and accessible
+  cell outcomes. Default appearance, colored-number rules and CSV remain intact;
+  added deterministic native table examples and API/upgrade guidance.
+
 - Keyword-only report Theme roles for favorable, unfavorable, forecast and context
   small text, with authored colors for all thirteen built-in themes and legacy
   aliases for custom themes. KPI status text and ComparisonTable auto colors use

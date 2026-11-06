@@ -13,7 +13,7 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
     // unknown declarations are never parsed to infer a delta or direction.
     function _comparisonRow(row, record, columns) {
         if (!context) return row;
-        var spec = _own(context.metrics, record[context.metric_column]) || {};
+        var spec = _own(context.metrics, _own(record, context.metric_column)) || {};
         row.comparisonCells = columns.map(function(column, i) {
             var raw = row.raw[i], text = row.display[i], outcome = '', tone = '';
             var change = comparison.compareColumns.indexOf(column) >= 0;
@@ -140,7 +140,7 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
         if (!m) return null;
         var digits = (m[2] + (m[3] || '')).replace(/^0+/, '');
         return {sign: digits ? (m[1] === '-' ? -1 : 1) : 0, digits: digits,
-            exponent: digits.length - (m[3] || '').length + Number(m[4] || 0)};
+            exponent: BigInt(digits.length - (m[3] || '').length) + BigInt(m[4] || 0)};
     }
 
     function _compareNumeric(a, b) {
@@ -151,6 +151,47 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
         var width = Math.max(a.digits.length, b.digits.length);
         var left = a.digits.padEnd(width, '0'), right = b.digits.padEnd(width, '0');
         return (left < right ? -1 : (left > right ? 1 : 0)) * a.sign;
+    }
+
+    // Snapshot decimal text is typed by numericColumns; ordinary dataset
+    // strings are never promoted by potentially stale snapshot dtype metadata.
+    function _cellShading(row, column, index) {
+        var spec = _own(cfg.cellShading, column);
+        if (!spec) return null;
+        var value = row.raw[index], key = null;
+        var mixed = !cfg.dataset_id && _own(cfg.cellShadingNumbers, column);
+        if (mixed) key = _numericKey(mixed[row.index]);
+        else if (typeof value === 'number' && Number.isFinite(value)) key = _numericKey(value);
+        else if (!cfg.dataset_id && cfg.rawRows && typeof value === 'string' &&
+                 Array.isArray(cfg.numericColumns) && cfg.numericColumns.indexOf(column) >= 0)
+            key = _numericKey(value);
+        var target = _numericKey(spec.target);
+        if (!key || !target) return null;
+        var order = _compareNumeric(key, target);
+        var meets = spec.direction === 'lower' ? order <= 0 : order >= 0;
+        return {tone: meets ? 'meets' : 'misses', description: column + ': ' +
+            (meets ? 'Meets target' : (spec.direction === 'lower' ? 'Above target' : 'Below target')) +
+            ' (' + (spec.direction === 'lower' ? '≤ ' : '≥ ') + spec.target + ', original units)'};
+    }
+
+    // Keep the key outside the horizontal scroller and replace it on renderer
+    // re-entry. Text nodes avoid treating authored column names as markup.
+    var previousKey = el.previousElementSibling;
+    if (previousKey && previousKey.dataset.shadingFor === id) previousKey.remove();
+    if (cfg.cellShading && Object.keys(cfg.cellShading).length) {
+        var shadingKey = document.createElement('div');
+        shadingKey.className = 'fw-table-shading-key';
+        shadingKey.dataset.shadingFor = id;
+        var intro = document.createElement('span');
+        intro.textContent = 'Cell shading · original units. ';
+        shadingKey.appendChild(intro);
+        Object.keys(cfg.cellShading).forEach(function(column) {
+            var spec = _own(cfg.cellShading, column), item = document.createElement('span');
+            item.textContent = column + ': ' + (spec.direction === 'lower' ? '≤ ' : '≥ ') + spec.target +
+                ' meets target; ' + (spec.direction === 'lower' ? 'above' : 'below') + ' target otherwise. ';
+            shadingKey.appendChild(item);
+        });
+        el.before(shadingKey);
     }
 
     function _sortRows(rows) {
@@ -237,9 +278,12 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
         var body = visible.map(function(row) {
             return '<tr>' + row.display.map(function(v, i) {
                 var classes = _cellClass(columns[i], numericColumns[i]).trim();
+                var shading = _cellShading(row, columns[i], i);
+                if (shading) classes += ' fw-table-shading-' + shading.tone;
                 var cellClass = classes ? ' class="' + classes + '"' : '';
+                if (shading) cellClass += ' title="' + _escapeHtml(shading.description) + '"';
                 var info = row.comparisonCells && row.comparisonCells[i];
-                var condRules = cf[columns[i]];
+                var condRules = _own(cf, columns[i]);
                 var style = info && info.tone ? ' style="color:' + info.tone + ';font-weight:600"' : '';
                 if (condRules) {
                     var color = _evalCondFmt(info ? row.raw[i] : v, condRules);
@@ -393,9 +437,9 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
             if (el._fwTableGeneration !== generation) return;
             var cols = cfg.columns;
             var rows = rawRows.map(function(r, index) {
-                var raw = cols.map(function(c) { return r[c]; });
+                var raw = cols.map(function(c) { return _own(r, c); });
                 var display = cols.map(function(c) {
-                    var v = r[c];
+                    var v = _own(r, c);
                     if (v == null) return '';
                     if (typeof v === 'number') return fmtCompact(v);
                     return String(v);

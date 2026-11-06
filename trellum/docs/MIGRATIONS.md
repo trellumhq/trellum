@@ -17,6 +17,20 @@ No data payload, host contract or database migration is required. Rebuild
 generated reports to show context. See [Chart header context](report-chart-header-context.md)
 for placement, examples and guidance.
 
+## Unreleased: optional table threshold shading
+
+DataTable and ComparisonTable add keyword-only `cell_shading=None`. Omitted,
+`None` and empty mappings retain existing output/geometry. Existing positional
+and subclass arguments, explicit dataset binding precedence, conditional text
+colors, source units and search/sort/CSV populations are preserved. Each column
+requires an explicit finite numeric target and `higher`/`lower` direction;
+render-time validation also catches mutated declarations. Static exact numeric
+text uses decimal comparison, while dataset strings remain unclassified.
+Rebuild with matching CSS/JavaScript; old runtimes ignore the additive option.
+No host or database migration is required. See
+[report data tables](report-data-tables.md#optional-threshold-cell-shading) for
+units, precision and authored-color limits.
+
 ## Unreleased: small status-text theme roles
 
 Rebuild reports with matching assets to apply the intentional built-in status

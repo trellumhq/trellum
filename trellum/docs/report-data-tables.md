@@ -67,3 +67,56 @@ DataTables use compact spacing and subtle alternating backgrounds in each
 named theme. Numeric dtype columns align right with tabular figures. Textual
 IDs, dates and booleans remain text; formatted strings are not parsed to infer
 numeric alignment. No additional appearance options are needed.
+
+## Optional threshold cell shading
+
+Keyword-only `cell_shading=None` is off by default. `None`, an omitted option
+and `{}` add no payload, key or reserved space. Authors declare each target and
+whether higher or lower is favorable; metric names and signs imply nothing:
+
+```python
+from decimal import Decimal
+
+DataTable(df, "Cohort targets", cell_shading={
+    "cpi": {"target": Decimal("1.80"), "direction": "lower"},
+    "recovery_d30": {"target": 100, "direction": "higher"},
+})
+```
+
+Each entry has exactly `target` and `direction`. Columns must be string names
+present in both the supplied schema and displayed projection. Targets accept
+finite `int`, `float` or `Decimal` values, excluding booleans. Strings,
+NaN/infinity, other types, unknown keys and directions other than `higher` or
+`lower` raise `ValueError` at render time, including after option mutation.
+Existing positional and subclass parameters keep their positions.
+
+Targets use **original raw column units**. `lower` means raw value ≤ target;
+`higher` means raw value ≥ target. Equality meets the target, with no tolerance
+or rounded boundary. Fractional retention `.25` needs target `.25`; a source
+explicitly on a 0–100 scale needs target `25`. No conversion is inferred.
+Static integers and Decimals retain exact text for comparison, including large
+exponents; ordinary floats retain only the precision already supplied.
+
+Only genuine finite numeric cells are shaded. Nulls, nonfinite values,
+booleans, dates and text (including numeric-looking IDs and formatted numbers)
+remain unshaded. Static `rawRows` decimal/integer text is trusted only with its
+original `numericColumns` type declaration. Mixed static columns carry a small
+additional typed-numeric-only payload for shading, preserving their established
+CSV/display representation. Ordinary dataset deliveries require actual finite
+JavaScript numbers: numeric-looking strings are never promoted by stale snapshot
+dtype metadata. Precision lost by an upstream dataset serializer cannot be
+recovered; use a static numeric snapshot when exact Decimal/integer boundaries
+must survive transport.
+
+One wrapping key outside the horizontal scroller explains each column's target,
+direction and two outcomes. Classified cells expose their outcome and exact
+target in a native accessible title. Source/display/export strings, compact cell
+height, stripes, hover, bars, filters, search and stable sort remain intact.
+Favorable/unfavorable fills use existing theme tokens. Existing
+`conditional_formats` still owns foreground colors; custom authored colors
+remain the author's responsibility for readability against these subtle fills.
+There is no runtime shading toggle. Rebuild with matching assets to enable it.
+
+`examples_table_shading.add_sections(ctx)` in the component showcase provides
+default/opt-in snapshots, filterable cohort metrics with explicit text rules,
+lossless boundaries and a homogeneous retention comparison.

@@ -101,3 +101,13 @@ and exports all matching delivered rows; see [report data tables](report-data-ta
 
 The component showcase's `examples_comparisons.add_sections(ctx)` provides static,
 filterable, explicit-rule and legacy absolute-reference examples.
+
+Keyword-only `cell_shading` passes explicitly to the shared DataTable renderer;
+see [threshold cell shading](report-data-tables.md#optional-threshold-cell-shading).
+It compares raw values **before** comparison display formatting. For example,
+retention fractions displayed as 25% use a target of `.25`, not `25`. A declared
+target applies to every numeric cell in that column. Do not put a universal
+target on a heterogeneous-unit Current/Change column; use a homogeneous table
+or leave shading off. Comparison metric directions and automatic sign colors do
+not supply targets or threshold inheritance. Explicit colored-number rules keep
+precedence, and existing comparison outcome text is independent of target fills.

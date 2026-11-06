@@ -27,6 +27,27 @@
 }
 .fw-table tr:hover td { background: var(--bg-card-hover); }
 .fw-data-table tbody tr:hover td { background: var(--bg-card-hover); }
+.fw-data-table td.fw-table-shading-meets {
+    --fw-cell-shading-tone: var(--text-positive, var(--accent-green));
+}
+.fw-data-table td.fw-table-shading-misses {
+    --fw-cell-shading-tone: var(--text-negative, var(--accent-red));
+}
+.fw-data-table tbody tr td:is(.fw-table-shading-meets, .fw-table-shading-misses) {
+    background: color-mix(in srgb, var(--fw-cell-shading-tone) 12%, var(--bg-card));
+}
+.fw-data-table tbody tr:nth-child(even) td:is(.fw-table-shading-meets, .fw-table-shading-misses) {
+    background: color-mix(in srgb, var(--fw-cell-shading-tone) 12%, color-mix(in srgb, var(--bg-card-hover) 40%, var(--bg-card)));
+}
+.fw-data-table tbody tr:hover td:is(.fw-table-shading-meets, .fw-table-shading-misses) {
+    background: color-mix(in srgb, var(--fw-cell-shading-tone) 16%, var(--bg-card-hover));
+}
+.fw-table-shading-key {
+    display: flex; flex-wrap: wrap; gap: 2px 12px;
+    color: var(--text-context, var(--text-muted)); font-size: var(--font-size-meta);
+    margin-bottom: var(--spacing-sm); overflow-wrap: anywhere;
+}
+.fw-table-shading-key > span { min-width: 0; }
 .fw-table-note {
     font-size: var(--font-size-meta); color: var(--text-context, var(--text-muted));
     margin-top: var(--spacing-sm);
