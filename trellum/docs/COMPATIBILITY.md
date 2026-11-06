@@ -1,5 +1,21 @@
 # Framework Compatibility Policy
 
+## Unreleased: report result presentation
+
+New ordinary LineCharts default to `result_presentation=True`; no-result text
+uses the existing plot area, and retained live selections add context above it.
+Live-bound KPI rows and ordinary DataTables default to `live_context=True`,
+sharing one displayed-result note per dataset and native section. Notes add
+wrapping height; existing card sizes, plotted values and ordinary KPI/table
+loading feedback remain unchanged. Both keyword-only flags accept `False`
+to preserve the prior presentation. Legacy payloads without their markers and
+metrics workspace consumers retain their behavior.
+
+No host endpoint, artifact, constructor positional-argument or CSV change is
+required. See [Line result presentation](report-line-results.md) and
+[live KPI/table context](report-live-result-context.md) for scope, lifecycle,
+capture and completeness limits.
+
 ## Unreleased: live-result identity and request ownership
 
 The live-query binder adds detached per-dataset state and subscriptions without

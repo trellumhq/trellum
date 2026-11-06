@@ -1,5 +1,26 @@
 # Framework Migration Guide
 
+## Unreleased: report result presentation
+
+Ordinary LineCharts now show precise no-result messages within the plot and
+requested/displayed selection text above retained live results. Live-bound
+KpiRow/DataTable consumers show one grouped result-scope note per dataset and
+section. This is an intentional presentation change; it adds context height
+without changing card dimensions, data or generic KPI/table loading feedback.
+
+For layouts requiring the previous presentation, use keyword-only
+`LineChart(..., result_presentation=False)` or
+`KpiRow(..., live_context=False)` / `DataTable(..., live_context=False)`.
+No positional arguments or CSV schemas move. Old payloads remain unchanged.
+Review both widths with real live parameters: long selection text wraps.
+Report/section captures include the notes; raw canvas captures do not.
+
+Use the component showcase's Line result examples and the separate
+`live-result-examples` demo to verify behavior. Its standalone snapshot is
+usable without live hosting; request transitions require a live-query host.
+See [Line results](report-line-results.md) and
+[live result context](report-live-result-context.md).
+
 ## Unreleased: live-result identity and request ownership
 
 Existing reports need no source changes. Rebuild report assets together to gain

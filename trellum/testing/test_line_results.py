@@ -72,6 +72,8 @@ def test_production_classification_scope_guard_and_unhidden_vectors():
     assert.equal(text([]).overlay,'No matching data');
     assert.equal(text([],{...ready,phase:'pending',requested_params:{id:2}}).overlay,'Loading requested data\nRequested: id=2');
     assert.match(text([],{...ready,phase:'error',requested_params:{id:2}}).overlay,/Could not load/);
+    assert.match(text([],{...ready,phase:'pending'}).overlay,/Loading requested data/);
+    assert.match(text([],{...ready,phase:'error'}).overlay,/Could not load requested data/);
     assert.match(text([12],{...ready,phase:'pending',requested_params:{id:2},displayed_params:null}).context,/Displayed snapshot: unknown/);
     assert.match(text([12],{...ready,phase:'error',requested_params:{id:2}}).context,/Local subset.*orders/);
     assert.equal(text([12],{...ready,phase:'error'}).context,'');

@@ -6,6 +6,7 @@ from trellum import BaseReport
 from trellum.components import DataSource, FilterBar, Grid, LineChart, RawHTML
 
 from . import (
+    examples_line_results,
     examples_overview,
     examples_cohorts,
     examples_sankeys,
@@ -29,6 +30,7 @@ class ComponentShowcaseReport(BaseReport):
             '<a href="#sec-line-styles:-density-follows-the-plot">line styles</a>, '
             '<a href="#sec-line-forecasts-—-supplied-horizon-and-opt-in-styling">line forecasts</a>, '
             '<a href="#sec-line-availability-—-selected-supplied-observations">line availability</a>, '
+            '<a href="#sec-line-results-—-completed-data-and-measured-zeros">line result states</a>, '
             '<a href="#sec-annotations-—-synthetic-daily-comparison">dated events</a>, '
             '<a href="#sec-month-context-—-off-and-on">month context</a>, '
             '<a href="#sec-monthly-averages-—-partial-selection-and-observed-days">monthly averages</a>, '
@@ -61,6 +63,9 @@ class ComponentShowcaseReport(BaseReport):
             '<p>For business reports, return to the <a href="../">demo gallery</a>: '
             "Player Overview, Monetization, Store Health and Live Ops show these "
             "components in context.</p>"
+            '<p>The <a href="../live-result-examples/">Live Result Examples</a> report '
+            'demonstrates snapshot identity and returned-row scope. Its live '
+            'selection controls require a serving host; static pages keep the snapshot.</p>'
         ))])
 
         days = pd.date_range("2026-09-01", periods=30).strftime("%Y-%m-%d")
@@ -109,6 +114,7 @@ class ComponentShowcaseReport(BaseReport):
         examples_line_styles.add_sections(ctx)
         examples_line_forecasts.add_sections(ctx)
         examples_line_availability.add_sections(ctx)
+        examples_line_results.add_sections(ctx)
         examples_annotations.add_sections(ctx)
         examples_month_context.add_sections(ctx)
         examples_monthly_averages.add_sections(ctx)

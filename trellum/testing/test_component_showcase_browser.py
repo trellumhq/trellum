@@ -64,6 +64,16 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             tabs.get_by_role("tab", name="Revenue", exact=True).click()
             tabs.get_by_role("tab", name="Orders across all supported platforms — daily supplied totals").click()
             assert page.get_by_text("Orders by platform", exact=True).is_visible()
+            page.get_by_role("link", name="line result states", exact=True).click()
+            line_results = page.locator('#sec-line-results-—-local-subset-and-no-matches')
+            line_results.scroll_into_view_if_needed()
+            expect(line_results.locator('.fw-line-result-overlay')).to_have_text('No matching data')
+            line_results.get_by_role('button', name='Measured zero', exact=True).click()
+            expect(line_results.locator('.fw-line-result-overlay')).to_be_hidden()
+            line_id = line_results.locator('canvas').get_attribute('id')
+            assert page.evaluate('id => window._chartInstances[id].data.datasets[0].data', line_id) == [0, 0, 0]
+            assert page.get_by_role('link', name='Live Result Examples', exact=True).get_attribute('href') == '../live-result-examples/'
+            assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
             page.get_by_role("link", name="data tables", exact=True).click()
             table = page.locator('.fw-section').filter(has=page.get_by_role(
                 "heading", name="DataTable — filtered population", exact=True))

@@ -9,6 +9,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Ordinary LineCharts now distinguish no-result states and identify retained
+  live selections; `result_presentation=False` preserves the previous presentation.
+- Live-query KPI rows and ordinary tables identify displayed selections and
+  returned-row scope, with `live_context=False` available for existing layouts.
+  Added native Line result examples and a standalone Live Result Examples demo.
+
 - Native synthetic acquisition Overview example with seven KPI cards, compact
   daily summaries, doughnut breakdowns and collapsible detail in the component
   showcase. Player Overview adds six compact daily trends and collapsible

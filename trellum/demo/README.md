@@ -73,18 +73,26 @@ Extra arguments pass straight through to the framework:
 
 Missing fixtures are generated automatically the first time you need them.
 
-## Two businesses, a component showcase, and two analyses
+## Two businesses, component examples, and two analyses
 
 `component-showcase` brings interactive component examples together in the same
 gallery as the business reports. Its deterministic synthetic data needs no
 database. Use it to inspect default and optional behavior, then browse the
 business reports to see those components in context.
 
+`live-result-examples` is a separate native teaching report for displayed
+snapshot/query identity and returned-row scope. It uses bounded literal
+synthetic SQL through the existing `demo_db` connection, with no new tables.
+The standalone gallery shows its snapshot and disabled live controls; a
+live-query host enables Current/Alternative/Empty selections. Its local
+platform subset works in both modes. Loading, failure and limited-result
+notes appear only when actual requests have those states.
+
 The demo is organised the way the product is meant to be used: **per business,
 around the questions that business asks** — not as a catalogue of chart types.
 Few reports, each one big, because a feature reads better as a section of a
 real page than as a page of its own. Ten business reports sit beside the
-component showcase.
+component showcase and live-result teaching report.
 Every report answers a different question. The `metrics` report is generated
 rather than hand-written: `python -m trellum metrics
 --report` builds it from `metrics.yaml`, with one KPI and trend per bound

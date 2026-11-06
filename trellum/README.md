@@ -822,6 +822,13 @@ identity through [live-result state](docs/live-result-state.md). Redraws preserv
 queried rows; requests and body parsing have a 30-second client deadline.
 Completion time describes receipt of a result, not freshness of its source.
 
+Ordinary [LineCharts](docs/report-line-results.md) now distinguish no usable
+result from measured zeros and label retained requested/displayed selections.
+[Live KPI rows and tables](docs/report-live-result-context.md) share a note
+identifying the displayed snapshot/query and returned-row scope. The keyword-only
+`result_presentation=False` and `live_context=False` options respectively retain
+the previous presentation. The `live-result-examples` demo shows these together.
+
 **What ships where.** The SQL is written to `_live_queries.json` beside
 `_meta.json` for the host to read. It never enters `data.json` or
 `index.html` — the page carries only the query id, the param schema

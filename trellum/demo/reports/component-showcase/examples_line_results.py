@@ -35,5 +35,5 @@ def add_sections(ctx):
                       series_availability=[{"series": 0, "required_columns": ["value"],
                           "reason": "The source has not supplied these observations."}]),
         ]),
-        RawHTML(html="<p>Loading and failure require a hosted live source. The <a href='../live-result-states/'>hosted live result examples</a> explain requested and displayed selections while retaining actual prior observations. Standalone snapshots do not fabricate live requests.</p>"),
+        RawHTML(html="<p>Loading and failure require a hosted live source. The <a href='../live-result-examples/'>hosted live result examples</a> explain requested and displayed selections while retaining actual prior observations. Standalone snapshots do not fabricate live requests.</p>"),
     ])

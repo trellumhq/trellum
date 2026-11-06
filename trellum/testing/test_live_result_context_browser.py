@@ -324,9 +324,11 @@ def test_native_snapshot_unknown_missing_and_unarmed(reports, browser, flags):
 def test_native_context_lifecycle_reentry_replace_remove_and_unsubscribe(reports, browser):
     page, requests, pending, errors = open_native(browser, reports / 'current')
     try:
-        # Observe only the helper's subscriptions; the ordinary wrapper has its
-        # separate existing lifetime contract and is outside this presenter.
+        # Isolate this helper's subscription ownership. Other cases keep the
+        # Line presenter enabled to check both presenters together.
         page.evaluate('''() => {
+          Object.values(window._reportData.components).forEach(c=>delete c.line_result_presentation);
+          window.renderAll();
           const binder=window._fwLiveQuery,original=binder.subscribeDataset;
           window.__contextActive=0;
           binder.subscribeDataset=function(id,callback) {

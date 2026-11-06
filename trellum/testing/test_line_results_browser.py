@@ -121,7 +121,7 @@ def reports(tmp_path_factory):
     root = Path(os.environ.get('TRELLUM_LINE_RESULTS_EVIDENCE', str(tmp_path_factory.mktemp('native-line-results'))))
     for name in ['current', 'baseline']:
         build(root / name, historical=name == 'baseline')
-    build_scope_report(root / 'scoped', scoped=True)
+    build_scope_report(root / 'scoped', scoped=True, line_presentation=True)
     build(root / 'textual', with_textual=True)
     return root
 

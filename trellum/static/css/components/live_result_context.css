@@ -7,5 +7,5 @@
     min-width: 0;
     overflow-wrap: anywhere;
 }
-.fw-live-result-context > :first-child { color: var(--text-primary); }
+.fw-live-result-context > :first-child { color: var(--text-main); }
 .fw-live-result-context [hidden] { display: none; }

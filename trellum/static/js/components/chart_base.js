@@ -790,7 +790,7 @@ function _fwLineResultText(cfg, spec, rows, source, state, engine) {
             (source.subset ? '\nLocal subset of the displayed live parent (' + source.id + ').' : '');
     }
     if (usable && (!live || (state && state.has_result))) return {overlay: '', context: context};
-    if (transition && !same) return {overlay: action + '\nRequested: ' + requested, context: ''};
+    if (transition) return {overlay: action + '\nRequested: ' + requested, context: ''};
     if (live && (!state || !state.has_result)) return {overlay: 'Result unavailable', context: ''};
     if (cfg.dataset_id && (!source || !engine || !engine._columnar[source.id])) {
         return {overlay: 'Data not ready', context: ''};

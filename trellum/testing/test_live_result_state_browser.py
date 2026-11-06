@@ -33,7 +33,7 @@ COLUMNS = ['id', 'day', 'value', 'label']
 HOSTILE = '<img src=x onerror="window.__injected=1"> & ' + 'Long label ' * 30
 
 
-def build_report(output, *, baseline=False, scoped=False):
+def build_report(output, *, baseline=False, scoped=False, line_presentation=False):
     output.mkdir(parents=True, exist_ok=True)
     db = output / 'fixture.sqlite'
     conn = sqlite3.connect(db)
@@ -66,10 +66,11 @@ def build_report(output, *, baseline=False, scoped=False):
             ctx.add_section('', [source,
                 FilterBar(dataset, frame, filters=[{'type': 'text', 'column': 'id', 'param': 'id', 'label': 'Entity ID'}])])
             ctx.add_section('Orders', [
-                KpiRow(dataset_id=dataset, kpis=[{'label': 'Returned value', 'column': 'value', 'agg': 'sum', 'format': 'number'},
+                # This fixture isolates binder ownership from optional presenters.
+                KpiRow(dataset_id=dataset, live_context=False, kpis=[{'label': 'Returned value', 'column': 'value', 'agg': 'sum', 'format': 'number'},
                                                {'label': 'Observations', 'agg': 'count', 'format': 'number'}]),
-                LineChart(frame, x='day', y='value', title='Daily ' + dataset, dataset_id=dataset),
-                DataTable(frame, title='Returned ' + dataset, dataset_id=dataset, sortable=True),
+                LineChart(frame, x='day', y='value', title='Daily ' + dataset, dataset_id=dataset, result_presentation=line_presentation),
+                DataTable(frame, title='Returned ' + dataset, dataset_id=dataset, sortable=True, live_context=False),
             ])
         details = compute_details(ctx)
         validation = validate_report(ctx, details=details)
