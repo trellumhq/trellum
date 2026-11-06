@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 
 from trellum.components.base import RenderContext
+from trellum.components.charts._header_summary import header_summary_config
 from trellum.components.charts.base import (
     _DOWNLOAD_SVG,
     _category_colors_config,
@@ -36,6 +37,10 @@ class BarChart(_ChartBase):
     Keyword-only ``show_values=None`` adds a right value column automatically
     for horizontal nonstacked categories; False hides it, True includes dates.
     See ``docs/report-bar-labels.md`` for fitting limits and static differences.
+
+    Keyword-only ``header_summary=None`` optionally declares a statistic over
+    one final plotted series with ``scope='plotted_series'``. See
+    ``docs/report-chart-summaries.md`` for selection and validity requirements.
 
     ``monthly_average=None`` optionally declares one additive daily quantity,
     its inclusive reporting interval and observed-day monthly guides/coverage.
@@ -85,6 +90,8 @@ class BarChart(_ChartBase):
     monthly_average: Optional[dict] = field(default=None, kw_only=True)
     header_context: Optional[str] = field(default=None, kw_only=True)
 
+    header_summary: Optional[Dict[str, Any]] = field(default=None, kw_only=True)
+
     _component_type: str = field(default="bar_chart", init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -94,12 +101,14 @@ class BarChart(_ChartBase):
             self.monthly_average = dict(self.monthly_average)
         _validate_header_context(self.header_context)
         self._validate_values()
+        header_summary_config(self)
 
     def _validate_values(self) -> None:
         if self.show_values is not None and type(self.show_values) is not bool:
             raise ValueError("show_values must be bool or None")
 
     def render_html(self, ctx: RenderContext) -> str:
+        summary_config = header_summary_config(self)
         month_config = {**_month_context_config(self), **_monthly_average_config(self)}
         self._validate_values()
         cid = ctx.next_id()
@@ -115,6 +124,7 @@ class BarChart(_ChartBase):
             cfg: dict[str, Any] = {
                 "type": "chart",
                 **month_config,
+                **summary_config,
                 "dataset_id": self.dataset_id,
                 "chartType": "bar",
                 "bar_values": {"show": self.show_values},
@@ -167,6 +177,7 @@ class BarChart(_ChartBase):
             ctx.register(cid, {
                 "type": "chart",
                 **month_config,
+                **summary_config,
                 "chartType": "bar",
                 "bar_values": {"show": self.show_values},
                 "labels": _clean_list(df_to_render[self.x].tolist()),
@@ -179,7 +190,8 @@ class BarChart(_ChartBase):
                 "tickColor": theme.tick_color,
             })
 
-        return _chart_container_html(cid, self.title, header_context=self.header_context)
+        return _chart_container_html(cid, self.title, summary=self.header_summary is not None,
+                                     header_context=self.header_context)
 
     def _apply_static_top_n(self, df: pd.DataFrame, cols: List[str]) -> pd.DataFrame:
         """Slice a static DataFrame to top-N + 'Other' before rendering.

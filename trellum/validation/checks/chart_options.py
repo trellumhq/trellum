@@ -1,4 +1,4 @@
-"""LineChart sizing and header-summary options.
+"""Chart sizing and header-summary options.
 
 The component refuses a bad ``height`` or ``header_summary`` when it is built.
 These checks cover a chart whose options were changed afterwards, so a report
@@ -16,7 +16,15 @@ from trellum.validation.walk import _comp_name
 def _check_chart_options(comps: list[tuple[Any, str]], result: ValidationResult) -> None:
     from trellum.components.charts.line_area import line_option_problems
 
+    from trellum.components.charts._header_summary import header_summary_config
+
     for comp, sec in comps:
+        if _comp_name(comp) in ("BarChart", "AreaChart"):
+            try:
+                header_summary_config(comp)
+            except ValueError as exc:
+                result.fail("chart-summary-invalid", str(exc),
+                            component=_comp_name(comp), section=sec)
         if _comp_name(comp) != "LineChart":
             continue
         for check_id, message in line_option_problems(comp):

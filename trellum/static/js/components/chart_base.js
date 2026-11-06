@@ -61,9 +61,47 @@ function _fwSummarySeries(datasets, series) {
 
 function _fwUpdateHeaderSummary(id, summary, datasets, chartFmt) {
     var box = document.querySelector('[data-chart-summary="' + id + '"]');
-    if (!box || !summary) return;
+    if (!box) return;
+    var canvas = document.getElementById(id), descriptionId = id + '-summary-scope';
+    if (!summary) {
+        if (box.dataset.plottedScope) {
+            box.style.display = 'none';
+            box.querySelector('.fw-chart-summary-label').textContent = '';
+            box.querySelector('.fw-chart-summary-value').textContent = '';
+            box.removeAttribute('title');
+            box.removeAttribute('aria-label');
+            box.removeAttribute('role');
+            if (canvas) {
+                var remaining = (canvas.getAttribute('aria-describedby') || '').split(/\s+/)
+                    .filter(function(token) { return token && token !== descriptionId; });
+                if (remaining.length) canvas.setAttribute('aria-describedby', remaining.join(' '));
+                else canvas.removeAttribute('aria-describedby');
+            }
+        }
+        return;
+    }
+    if (box.dataset.plottedScope) box.style.removeProperty('display');
     var ds = _fwSummarySeries(datasets || [], summary.series);
     var value = ds ? _fwSummaryValue(ds.data || [], summary.stat) : null;
+    if (summary.scope === 'plotted_series') {
+        // The new explicit contract never formats overflow as a real statistic.
+        if (!Number.isFinite(value)) value = null;
+        if (typeof summary.series === 'string' && (datasets || []).filter(function(item) {
+            return item.label === summary.series;
+        }).length !== 1) { ds = null; value = null; }
+        box.dataset.plottedScope = 'true';
+        box.id = descriptionId;
+        box.setAttribute('role', 'note');
+        box.title = 'One final plotted series (' + (ds ? ds.label : summary.series) +
+            ') after filters, aggregation, sorting, Top-N and Other. Null and nonfinite values are excluded; zeros count. ' +
+            'Last means the final displayed finite entry. Zoom and legend hiding do not change this scope. ' +
+            'Stacked areas use the raw band values. Means of displayed ratios are unweighted; existing plotted zero-fill is retained.';
+        if (canvas) {
+            var described = (canvas.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean);
+            if (described.indexOf(descriptionId) < 0) described.push(descriptionId);
+            canvas.setAttribute('aria-describedby', described.join(' '));
+        }
+    }
     /* An explicit format wins; otherwise the value reads as the chart's own
        tooltips and axis do. */
     var fmt = summary.format ? window.getFormatter(summary.format) : (chartFmt || window.fmtCompact);
@@ -72,6 +110,8 @@ function _fwUpdateHeaderSummary(id, summary, datasets, chartFmt) {
     /* textContent only: the label comes from report configuration. */
     label.textContent = summary.label || '';
     out.textContent = value === null ? '\u2014' : fmt(value);
+    if (summary.scope === 'plotted_series') box.setAttribute('aria-label',
+        label.textContent + ': ' + out.textContent + '. ' + box.title);
 }
 
 /* Combo-only context. Use axis + caption identity, preserving intentional
@@ -688,12 +728,13 @@ function _createChart(id, canvas, spec) {
         if (focused) focused.focus({ preventScroll: true });
     }
     if (spec.comboAxes) delete canvas._fwComboFocusKey;
-    if (spec.headerSummary) _fwUpdateHeaderSummary(id, spec.headerSummary, spec.datasets, spec.yFmt);
+    _fwUpdateHeaderSummary(id, spec.headerSummary, spec.datasets, spec.yFmt);
 }
 
 window._fwRenderers['chart'] = function renderChart(id, cfg) {
     var canvas = document.getElementById(id);
     if (!canvas) return;
+    if (!cfg.header_summary) _fwUpdateHeaderSummary(id, null);
     var previousBindings = window._fwCategoryChartBindings;
     var ownsAvailability = !!(cfg.series_availability && cfg.series_availability.length);
     if (ownsAvailability && !canvas._fwAvailabilityOwned) {

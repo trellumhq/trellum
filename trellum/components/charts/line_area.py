@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 
 from trellum.components.base import RenderContext
+from trellum.components.charts._header_summary import header_summary_config
 from trellum.components.charts.base import (
     _category_colors_config,
     _chart_container_html,
@@ -538,6 +539,8 @@ class AreaChart(_ChartBase):
 
     Use ``stacked=True`` for stacked area (composition over time).
     Pass ``dataset_id`` for reactive filter support.
+    Keyword-only ``header_summary=None`` optionally summarizes one final raw
+    band with ``scope='plotted_series'``; see ``docs/report-chart-summaries.md``.
     """
 
     df: pd.DataFrame
@@ -554,13 +557,17 @@ class AreaChart(_ChartBase):
     month_context: bool = field(default=False, kw_only=True)
     header_context: Optional[str] = field(default=None, kw_only=True)
 
+    header_summary: Optional[Dict[str, Any]] = field(default=None, kw_only=True)
+
     _component_type: str = field(default="area_chart", init=False, repr=False)
 
     def __post_init__(self) -> None:
+        header_summary_config(self)
         _month_context_config(self)
         _validate_header_context(self.header_context)
 
     def render_html(self, ctx: RenderContext) -> str:
+        summary_config = header_summary_config(self)
         month_config = _month_context_config(self)
         cid = ctx.next_id()
         y_cols = self.y if isinstance(self.y, list) else [self.y]
@@ -570,6 +577,7 @@ class AreaChart(_ChartBase):
             cfg: dict[str, Any] = {
                 "type": "chart",
                 **month_config,
+                **summary_config,
                 "dataset_id": self.dataset_id,
                 "chartType": "line",
                 "x": self.x,
@@ -606,6 +614,7 @@ class AreaChart(_ChartBase):
             ctx.register(cid, {
                 "type": "chart",
                 **month_config,
+                **summary_config,
                 "chartType": "line",
                 "labels": _clean_list(self.df[self.x].tolist()),
                 "datasets": datasets,
@@ -615,4 +624,5 @@ class AreaChart(_ChartBase):
                 "tickColor": theme.tick_color,
             })
 
-        return _chart_container_html(cid, self.title, header_context=self.header_context)
+        return _chart_container_html(cid, self.title, summary=self.header_summary is not None,
+                                     header_context=self.header_context)
