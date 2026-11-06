@@ -134,7 +134,7 @@ function _fwDoughnutLegend(chart, root, cfg, population, supplied) {
     }
 }
 
-function _createDoughnut(id, canvas, labels, data, cfCfg, showLabels, cfg, population, supplied) {
+function _createDoughnut(id, canvas, labels, data, cfCfg, showLabels, cfg, population, supplied, categoryKeys) {
     if (window._chartInstances[id]) {
         window._chartInstances[id].destroy();
         delete window._chartInstances[id];
@@ -145,7 +145,10 @@ function _createDoughnut(id, canvas, labels, data, cfCfg, showLabels, cfg, popul
     var root = canvas.closest('.fw-doughnut');
     var tc = window.getThemeColors();
     var labelFont = window._fwFontPx('--font-size-label', 12);
-    var colors = labels.map(function(_, i) { return tc.chart_colors[i % tc.chart_colors.length]; });
+    var colors = labels.map(function(_, i) {
+        return window._fwCategoryColor(cfg.category_colors, categoryKeys && categoryKeys[i], tc.chart_colors) ||
+            tc.chart_colors[i % tc.chart_colors.length];
+    });
     var bgCard = getComputedStyle(document.documentElement).getPropertyValue('--bg-card').trim() || '#fff';
     var opts = {
         responsive: true, maintainAspectRatio: false,
@@ -189,9 +192,14 @@ function _createDoughnut(id, canvas, labels, data, cfCfg, showLabels, cfg, popul
             }
         };
     }
+    var dataset = { data: data, backgroundColor: colors, borderWidth: 2, borderColor: bgCard, _themeManaged: true };
+    if (cfg.category_colors) {
+        dataset._fwCategoryColors = cfg.category_colors;
+        dataset._fwCategoryKeys = categoryKeys;
+    }
     window._chartInstances[id] = new Chart(canvas, {
         type: 'doughnut',
-        data: { labels: labels, datasets: [{ data: data, backgroundColor: colors, borderWidth: 2, borderColor: bgCard, _themeManaged: true }] },
+        data: { labels: labels, datasets: [dataset] },
         options: opts,
         // Runs after shared theme code has set the actual dataset colors.
         plugins: [{ id: 'fwDoughnutLegend', afterUpdate: function(chart) {
@@ -230,14 +238,19 @@ window._fwRenderers['doughnut'] = function renderDoughnut(id, cfg) {
                 var values = groups.get(l) || [];
                 return { text: values.map(_fwDoughnutRaw).join(', '), invalid: values.some(function(v) { return typeof v !== 'number' || !Number.isFinite(v); }) };
             });
+            var membership = activeCfg.category_colors
+                ? window._fwCategoryMembership(rows, activeCfg.label_col) : null;
+            var categoryKeys = membership ? gr.labels.map(function(label) {
+                return membership.get(label) === true ? label : null;
+            }) : null;
             _createDoughnut(id, canvas, gr.labels, data,
                 activeCfg.crossFilter ? { crossFilter: activeCfg.crossFilter, dsId: activeCfg.dataset_id } : null,
-                activeCfg.show_labels, activeCfg, population, supplied);
+                activeCfg.show_labels, activeCfg, population, supplied, categoryKeys);
         } else {
             var supplied = activeCfg.data.map(function(v, i) {
                 return { text: activeCfg.supplied_values ? activeCfg.supplied_values[i] : _fwDoughnutRaw(v), invalid: typeof v !== 'number' || !Number.isFinite(v) };
             });
-            _createDoughnut(id, canvas, activeCfg.labels, activeCfg.data, null, activeCfg.show_labels, activeCfg, null, supplied);
+            _createDoughnut(id, canvas, activeCfg.labels, activeCfg.data, null, activeCfg.show_labels, activeCfg, null, supplied, activeCfg.category_keys);
         }
     }
     canvas._fwDoughnutConfig = cfg;

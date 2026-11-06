@@ -3,6 +3,23 @@
 Each section documents a breaking or significant change, how to detect affected
 code, and the exact replacement.
 
+## Unreleased: declared category palette slots
+
+LineChart, StackedBar and DoughnutChart add keyword-only `category_colors=None`.
+Omitted/None keeps existing configuration and markup. Declarations map explicit
+string categories in a named domain to current theme slots; per-chart named
+hex overrides take priority. Same-domain slot definitions must agree within one
+RenderContext, with column names and overrides allowed to differ. Dataset-bound
+line/bar splits and static/live doughnut labels are supported; static wide-column
+line/bar inputs reject this option. Numeric/null grouping, synthetic Other,
+unknown-category fallback and finite-palette repetition retain existing semantics.
+Existing static LineChart.colors remain authoritative; dataset-bound colors
+omission remains a limitation. No other chart family gains category mappings.
+Rebuild with matching JavaScript assets; older runtimes ignore the additive
+config. No host or database migration is required. See
+[declared category colors](report-category-colors.md) for validation and raw-key
+eligibility, including retained legacy grouping limitations.
+
 ## Unreleased: chart header context
 
 All ten built-in chart classes accept the keyword-only `header_context: str | None`

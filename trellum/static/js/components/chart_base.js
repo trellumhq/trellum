@@ -546,10 +546,14 @@ function _createChart(id, canvas, spec) {
 window._fwRenderers['chart'] = function renderChart(id, cfg) {
     var canvas = document.getElementById(id);
     if (!canvas) return;
+    var previousBindings = window._fwCategoryChartBindings;
+    if (!cfg.category_colors && previousBindings && previousBindings.has(id)) {
+        previousBindings.get(id)(); previousBindings.delete(id);
+    }
 
     /* ── Live mode ─────────────────────────────────────────── */
     if (cfg.dataset_id) {
-        var taggedBars = cfg.bar_values || cfg.stack_labels;
+        var taggedBars = cfg.bar_values || cfg.stack_labels || cfg.category_colors;
         // Ordinary renderAll reuses the existing live subscription and controls.
         // Workspaces retain _fwLiveWrap's leased disposal/recreation behavior.
         if (taggedBars && !window._fwMetricsWorkspace && canvas._fwBarLive && canvas._fwBarLive.cfg === cfg) {
@@ -640,6 +644,13 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
         function _drawLive(rows) {
             labelRows = rows;
             var colors = window.getThemeColors().chart_colors;
+            var declaration = cfg.category_colors && cfg.category_colors.column === activeStackBy
+                ? cfg.category_colors : null;
+            var membership = declaration ? window._fwCategoryMembership(rows, activeStackBy) : null;
+            function categoryColor(category) {
+                var fallback = window._fwGetLabelColor(cfg.dataset_id, category, colors);
+                return declaration ? window._fwCategoryColor(declaration, category, colors, membership) || fallback : fallback;
+            }
             var isLine = cfg.chartType === 'line';
 
             if (activeStackBy && isLine) {
@@ -669,7 +680,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                                 var lden = (lcolData[lspec.denominator] || [])[lxi] || 0;
                                 return lden > 0 ? lnum / lden : null;
                             });
-                            var lcolor = window._fwGetLabelColor(cfg.dataset_id, lname, colors);
+                            var lcolor = categoryColor(lname);
                             var llabel = multipleRatios ? (lname + ' · ' + lspec.label) : lname;
                             lineDatasets.push({
                                 label: llabel, data: lRatData,
@@ -704,7 +715,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                             }
                             return sum;
                         });
-                        var lcolor2 = window._fwGetLabelColor(cfg.dataset_id, lname2, colors);
+                        var lcolor2 = categoryColor(lname2);
                         lineDatasets.push({
                             label: lname2, data: lineData,
                             backgroundColor: lcolor2 + '22', borderColor: lcolor2,
@@ -736,7 +747,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                     for (var i = 0; i < pv.stackNames.length; i++) {
                         var colData = pv.datasets[pv.stackNames[i]];
                         if (i < limit) {
-                            var c = window._fwGetLabelColor(cfg.dataset_id, pv.stackNames[i], colors);
+                            var c = categoryColor(pv.stackNames[i]);
                             for (var ci = 0; ci < cfg.value_cols.length; ci++) {
                                 var vdata = [];
                                 for (var xi = 0; xi < pv.labels.length; xi++)
@@ -773,7 +784,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                             netData.push(net);
                         }
                         if (i < limit) {
-                            var c = window._fwGetLabelColor(cfg.dataset_id, pv.stackNames[i], colors);
+                            var c = categoryColor(pv.stackNames[i]);
                             datasets.push({ label: pv.stackNames[i], data: netData,
                                 backgroundColor: c + 'cc', borderColor: c, borderWidth: 1 });
                         } else {
@@ -1070,7 +1081,25 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
             }
         }
         if (taggedBars) canvas._fwBarLive = {cfg: cfg, draw: _drawLive};
-        window._fwLiveWrap(id, cfg, _drawLive);
+        if (cfg.category_colors && !window._fwMetricsWorkspace) {
+            // Opted-in charts own one binding across renderAll, changed configs
+            // and canvas replacement. Untagged live charts retain their path.
+            var bindings = window._fwCategoryChartBindings || (window._fwCategoryChartBindings = new Map());
+            if (bindings.has(id)) bindings.get(id)();
+            var unsubscribe = window._fwFilterEngine.subscribe(cfg.dataset_id, id, _drawLive);
+            function onTheme() {
+                if (document.getElementById(id) !== canvas) {
+                    bindings.get(id)(); bindings.delete(id); return;
+                }
+                _drawLive(window._fwFilterEngine.getFiltered(cfg.dataset_id));
+            }
+            bindings.set(id, function() {
+                unsubscribe(); window.removeEventListener('fw-theme-change', onTheme);
+                if (barSignals) barSignals.abort();
+            });
+            window.addEventListener('fw-theme-change', onTheme);
+            _drawLive(window._fwFilterEngine.getFiltered(cfg.dataset_id));
+        } else window._fwLiveWrap(id, cfg, _drawLive);
         return;
     }
 

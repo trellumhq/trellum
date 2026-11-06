@@ -9,6 +9,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Optional keyword-only `category_colors` on dataset-bound LineChart/StackedBar
+  category splits and static/live DoughnutChart labels. Explicit shared domains
+  map string categories to theme palette slots, with per-chart fixed overrides
+  and conflict validation. Default payloads, values, ordering and chart geometry
+  are preserved; added native deterministic examples and API/upgrade guidance.
+
 - Optional keyword-only `header_context` text on every built-in chart, rendered
   below the title/LineChart summary without changing plot dimensions. Context is
   escaped, wraps in narrow panels and remains independent of report selections;

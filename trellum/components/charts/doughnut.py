@@ -16,6 +16,8 @@ from trellum.components.charts.base import (
     _header_context_html,
     _context_description_attr,
     _validate_header_context,
+    _validate_category_colors,
+    _category_colors_config,
 )
 
 
@@ -42,12 +44,14 @@ class DoughnutChart(Component):
     value_format: str = field(default="number", kw_only=True)
     precision: Optional[int] = field(default=None, kw_only=True)
     header_context: Optional[str] = field(default=None, kw_only=True)
+    category_colors: Optional[dict] = field(default=None, kw_only=True)
 
     _component_type: str = field(default="doughnut_chart", init=False, repr=False)
     _supports_dataset_id: bool = field(default=True, init=False, repr=False)
 
     def __post_init__(self) -> None:
         _validate_header_context(self.header_context)
+        _validate_category_colors(self.category_colors)
         if self.value_format not in {"number", "currency", "percent", "ratio", "plain", "chips"}:
             raise ValueError("Unsupported doughnut value_format")
         if self.precision is not None and (
@@ -59,6 +63,7 @@ class DoughnutChart(Component):
             raise ValueError("Doughnut center_total must be bool and center_label must be text")
 
     def render_html(self, ctx: RenderContext) -> str:
+        category_config = _category_colors_config(self, ctx)
         cid = ctx.next_id()
 
         if self.dataset_id:
@@ -103,6 +108,10 @@ class DoughnutChart(Component):
             "value_format": self.value_format,
             "precision": self.precision,
         })
+        cfg_d.update(category_config)
+        if category_config and not self.dataset_id:
+            cfg_d["category_keys"] = [v if isinstance(v, str) else None
+                                      for v in self.df[self.label].tolist()]
         ctx.register(cid, cfg_d)
 
         dl_btn = (

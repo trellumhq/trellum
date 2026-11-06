@@ -15,6 +15,8 @@ from trellum.components.charts.base import (
     _clean_list,
     _stack_toggle_html,
     _validate_header_context,
+    _validate_category_colors,
+    _category_colors_config,
 )
 
 #: Plotting-area heights a LineChart can ask for, in CSS pixels. The class a
@@ -175,11 +177,13 @@ class LineChart(_ChartBase):
     height: str = "balanced"
     header_summary: Optional[Dict[str, Any]] = None
     header_context: Optional[str] = field(default=None, kw_only=True)
+    category_colors: Optional[dict] = field(default=None, kw_only=True)
 
     _component_type: str = field(default="line_chart", init=False, repr=False)
 
     def __post_init__(self):
         _validate_header_context(self.header_context)
+        _validate_category_colors(self.category_colors)
         problems = line_option_problems(self)
         if problems:
             raise ValueError(problems[0][1])
@@ -212,6 +216,7 @@ class LineChart(_ChartBase):
         return {"line_style": "adaptive", "tension": self.tension}
 
     def render_html(self, ctx: RenderContext) -> str:
+        category_config = _category_colors_config(self, ctx)
         cid = ctx.next_id()
 
         if self.ratios and self.dataset_id:
@@ -248,6 +253,7 @@ class LineChart(_ChartBase):
                 cfg_r["show_labels"] = True
             cfg_r.update(self._summary_config())
             cfg_r.update(self._style_config())
+            cfg_r.update(category_config)
             ctx.register(cid, cfg_r)
             toggle_html_r = ""
             if self.stack_by_options:
@@ -289,6 +295,7 @@ class LineChart(_ChartBase):
                 cfg["show_labels"] = True
             cfg.update(self._summary_config())
             cfg.update(self._style_config())
+            cfg.update(category_config)
             ctx.register(cid, cfg)
             toggle_html_l = ""
             if self.stack_by_options:

@@ -455,6 +455,13 @@ also works with a custom header component; there is no need to instantiate
 | `TreemapChart` | `(df, group_cols, value, title, dataset_id)` | Hierarchical treemap. `group_cols` is a list for nested grouping. Optional `color_col`. |
 | `ScatterChart` | `(df, x, y, title, dataset_id)` | Scatter or bubble chart. `size` column enables bubble mode. `color_by` splits by category. |
 
+`LineChart`, `StackedBar` and `DoughnutChart` support optional keyword-only
+`category_colors` declarations for explicitly related string categories and
+current theme palette slots, with per-chart named overrides. Line/bar inputs
+must be dataset-bound category splits; static/live doughnuts use their label
+column. See [declared category colors](docs/report-category-colors.md) for the
+validated API, theme behavior and retained fallback/grouping limitations.
+
 #### LineChart markers and interpolation
 
 Ordinary LineCharts adapt their 2px persistent dots to current plot spacing:

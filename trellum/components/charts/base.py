@@ -7,13 +7,15 @@ many chart types are on it."""
 
 from __future__ import annotations
 
+import re
+from collections.abc import Mapping
 from html import escape
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 import pandas as pd
 
 from trellum.assets import load_css, load_js
-from trellum.components.base import Component
+from trellum.components.base import Component, RenderContext
 
 #: The glyph on every chart's download button.
 _DOWNLOAD_SVG = (
@@ -36,6 +38,67 @@ def _clean_list(values: list) -> list:
         v
         for v in values
     ]
+
+def _validate_category_colors(value: Any) -> dict[str, Any] | None:
+    """Validate and copy the opt-in declaration without touching caller mappings."""
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise ValueError("category_colors must be a mapping or None")
+    if set(value) - {"domain", "column", "slots", "overrides"}:
+        raise ValueError("category_colors has unknown fields; use domain, column, slots, overrides")
+    for key in ("domain", "column"):
+        if not isinstance(value.get(key), str) or not value[key].strip():
+            raise ValueError(f"category_colors {key} must be a nonempty string")
+    slots = value.get("slots")
+    if not isinstance(slots, Mapping) or not slots:
+        raise ValueError("category_colors slots must be a nonempty mapping")
+    for category, index in slots.items():
+        if (not isinstance(category, str) or isinstance(index, bool)
+                or not isinstance(index, int) or not 0 <= index <= 2**31 - 1):
+            raise ValueError("category_colors slots require string categories and integer indices 0..2147483647")
+    overrides = value.get("overrides", {})
+    if not isinstance(overrides, Mapping):
+        raise ValueError("category_colors overrides must be a mapping")
+    for category, color in overrides.items():
+        if (category not in slots or not isinstance(color, str)
+                or not re.fullmatch(r"#[0-9a-fA-F]{6}", color)):
+            raise ValueError("category_colors overrides require declared categories and #RRGGBB colors")
+    result = {"domain": value["domain"], "column": value["column"], "slots": dict(slots)}
+    if "overrides" in value:
+        result["overrides"] = dict(overrides)
+    return result
+
+
+def _category_colors_config(chart: Component, ctx: RenderContext) -> dict[str, Any]:
+    """Check applicability after supplied binding, and report-wide domain identity.
+
+    Previously registered declarations belong to this RenderContext's render;
+    using them also makes reset() clear the domain definitions automatically.
+    Column names and chart-local overrides are deliberately not domain identity.
+    """
+    declaration = _validate_category_colors(chart.category_colors)
+    if declaration is None:
+        return {}
+    column = declaration["column"]
+    if chart._component_type == "doughnut_chart":
+        if column != chart.label:
+            raise ValueError("DoughnutChart category_colors column must equal label")
+    else:
+        if not chart.dataset_id:
+            raise ValueError("category_colors requires a dataset-bound category split; static wide-column "
+                             "LineChart/StackedBar y columns are series, not category rows")
+        splits = [chart.stack_by] + list((chart.stack_by_options or {}).values())
+        if column not in [s for s in splits if s]:
+            raise ValueError("category_colors column must be a configured stack_by or nonempty stack_by_options value")
+    for config in ctx.component_data.values():
+        previous = config.get("category_colors")
+        if (previous and previous["domain"] == declaration["domain"]
+                and previous["slots"] != declaration["slots"]):
+            raise ValueError(f"Conflicting category_colors slots for domain {declaration['domain']!r}; "
+                             "use identical category/slot definitions within one RenderContext")
+    return {"category_colors": declaration}
+
 
 class _ChartBase(Component):
     """Shared base for line/bar/stacked-bar charts that use ``renderChart``."""

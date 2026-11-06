@@ -20,6 +20,8 @@ from trellum.components.charts.base import (
     _header_context_html,
     _context_description_attr,
     _validate_header_context,
+    _validate_category_colors,
+    _category_colors_config,
 )
 
 
@@ -232,11 +234,13 @@ class StackedBar(_ChartBase):
     show_totals: bool = field(default=False, kw_only=True)
     show_percentages: bool = field(default=False, kw_only=True)
     header_context: Optional[str] = field(default=None, kw_only=True)
+    category_colors: Optional[dict] = field(default=None, kw_only=True)
 
     _component_type: str = field(default="stacked_bar", init=False, repr=False)
 
     def __post_init__(self) -> None:
         _validate_header_context(self.header_context)
+        _validate_category_colors(self.category_colors)
         self._validate_stack_labels()
 
     def _validate_stack_labels(self) -> None:
@@ -245,6 +249,7 @@ class StackedBar(_ChartBase):
                 raise ValueError(f"{name} must be bool")
 
     def render_html(self, ctx: RenderContext) -> str:
+        category_config = _category_colors_config(self, ctx)
         self._validate_stack_labels()
         cid = ctx.next_id()
         stack_labels = {"totals": self.show_totals, "percentages": self.show_percentages,
@@ -286,6 +291,7 @@ class StackedBar(_ChartBase):
                 cfg["max_stacks"] = self.max_stacks
             if not self.show_legend:
                 cfg["show_legend"] = False
+            cfg.update(category_config)
             ctx.register(cid, cfg)
             toggle_html = ""
             if self.stack_by_options:

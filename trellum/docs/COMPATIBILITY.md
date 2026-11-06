@@ -2,6 +2,18 @@
 
 This document defines the stability tiers for framework APIs and the deprecation process for removing or changing them.
 
+## Declared category colors
+
+Keyword-only `category_colors=None` is additive on LineChart, StackedBar and
+DoughnutChart only. Positional/subclass constructors, explicit dataset binding
+precedence and omitted-option payloads/markup are preserved. Definitions are
+validated again at render, after supplied bindings; no automatic binding is
+introduced. New declarations require matching rebuilt runtime assets. Existing
+static LineChart.colors keep their authored values; the dataset-bound colors
+omission remains. Static wide-column lines/bars reject category declarations;
+legacy aggregation semantics and limitations remain. See
+[category colors](report-category-colors.md) and [migration guidance](MIGRATIONS.md).
+
 ## KPI declaration metadata
 
 `KpiCard` adds keyword-only `availability`, `maturity` and `comparison`; bound
