@@ -20,6 +20,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   deterministic heatmap examples and responsive axis-slot sizing; existing
   aggregation, palettes and data/export boundaries remain.
 
+- Report treemap hierarchy colors, an encoding key, fitting labels and native
+  expandable full-path details with exact values. Keyword-only optional tile
+  shares default off and use the complete eligible supplied/filtered population.
+  Existing geometry, supplied-color behavior and CSV scope remain; deterministic
+  treemap examples and sizing/color limitations are documented.
+
 - Compact PivotTable rows, grouped category headers and a distinct grand-total
   band, plus keyword-only opt-in header/first-dimension freezing. Selectors,
   calculations and CSV scope remain unchanged.

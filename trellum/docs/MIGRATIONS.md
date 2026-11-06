@@ -37,6 +37,27 @@ required. Signed/nonfinite cells keep legacy calculations/geometry with honest
 context; null coercion, category-key collisions and empty matrix CSV limitations
 are unchanged. See [report heatmaps](report-heatmaps.md).
 
+## Unreleased: TreemapChart hierarchy and optional shares
+
+Rebuilding report treemaps adds one theme color per first-level hierarchy group,
+a wrapping encoding key, fitting native-size labels and expandable full-path
+details. Context adds panel height; rectangle geometry, values, spacing, borders
+and existing responsive plot heights are unchanged. Explicit `color_col` keeps
+its existing first-source-child behavior, including numeric row-order dependence;
+the encoding note discloses this without a quantitative color legend.
+
+Keyword-only `show_percentages=False` enables share lines only on fitting tile
+labels. It must be boolean. Existing positional/subclass constructors and
+explicit `dataset_id` precedence over `static=True` remain compatible. Shares
+use all current supplied/filtered values, including tiny and zero categories;
+empty/incomplete/signed/nonfinite or blank-hierarchy populations have unavailable
+shares, and zero-total shares are undefined. Authors must supply additive values.
+
+New metadata is additive; older payloads and wrappers remain safe. Rebuild with
+the matching runtime to enable this presentation. Legacy zero/signed/blank-parent
+sizing and header-only CSV remain unchanged. See [report treemaps](report-treemaps.md)
+for exact values, tuple identity, color semantics and compatibility details.
+
 ## Unreleased: PivotTable presentation and optional freezing
 
 PivotTable adds keyword-only `freeze=False` and `freeze_height=320`. The latter
