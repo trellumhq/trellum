@@ -8,7 +8,7 @@ class Migration(migrations.Migration):
     atomic = False
 
     dependencies = [
-        ('reports', '0027_source_summaries'),
+        ('reports', '0028_broken_report_receipt'),
         ('studios', '0013_studio_preference'),
     ]
 

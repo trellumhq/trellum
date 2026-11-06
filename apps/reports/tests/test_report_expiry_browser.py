@@ -149,16 +149,35 @@ def test_switching_drops_old_search_and_load_more_results(live_server, login, or
 
 def test_toggle_read_failure_is_not_presented_as_an_empty_catalog(live_server, login, org_admin, studio):
     Report.objects.create(studio=studio, slug='ordinary', name='Ordinary')
+    Report.objects.create(studio=studio, slug='hidden', name='Hidden', archived_in_scan=True, present_in_scan=False)
     with open_page(live_server, login(org_admin)) as page:
         page.goto(f'{live_server.url}/s/{studio.org.slug}/{studio.slug}/')
         expect(page.locator('tr[data-slug="ordinary"]')).to_be_visible()
         page.evaluate('CATALOG_RETRY_MS = []')
-        page.route('**/api/registry?*include_unavailable=1*', lambda route: route.fulfill(status=503, json={'error': 'unavailable'}))
+        def unavailable(route):
+            route.fulfill(status=503, json={'error': 'unavailable'})
+        pattern = '**/api/registry?*'
+        page.route(pattern, unavailable)
         page.locator('.discovery-switch').click()
-        expect(page.locator('#content')).to_contain_text('Reports could not be loaded.')
-        expect(page.locator('#content')).not_to_contain_text('No reports')
-        page.locator('.discovery-switch').click()
+        expect(page.locator('[data-catalog-navigation-error]')).to_contain_text('This catalog could not load.')
         expect(page.locator('tr[data-slug="ordinary"]')).to_be_visible()
+        expect(page.locator('#content')).not_to_contain_text('No reports')
+        expect(page.get_by_role('switch', name=LABEL)).not_to_be_checked()
+        expect(page.locator('#discoveryHelp')).to_be_hidden()
+        page.unroute(pattern, unavailable)
+        page.locator('.discovery-switch').click()
+        expect(page.locator('tr[data-slug="hidden"]')).to_be_visible()
+        expect(page.locator('[data-catalog-navigation-error]')).to_have_count(0)
+        # A failed opt-out retains the prior rows and their explicit Admin view.
+        page.route(pattern, unavailable)
+        page.locator('.discovery-switch').click()
+        expect(page.locator('[data-catalog-navigation-error]')).to_be_visible()
+        expect(page.locator('tr[data-slug="hidden"]')).to_be_visible()
+        expect(page.get_by_role('switch', name=LABEL)).to_be_checked()
+        expect(page.locator('#discoveryHelp')).to_be_visible()
+        page.unroute(pattern, unavailable)
+        page.locator('.discovery-switch').click()
+        expect(page.locator('tr[data-slug]')).to_have_count(1)
 
 
 @pytest.mark.heavy
@@ -259,3 +278,58 @@ def test_discovery_keeps_controls_in_place_with_category_overflow(
             restored = geometry()
             assert restored == before
         (ARTIFACTS / f'geometry-{width}.json').write_text(json.dumps(evidence, indent=2))
+
+
+def test_hidden_selection_survives_cancel_and_resets_on_mounted_navigation(
+    live_server, login, org_admin, studio,
+):
+    Report.objects.create(studio=studio, slug='ordinary', name='Ordinary')
+    Report.objects.create(studio=studio, slug='hidden', name='Hidden', archived_in_scan=True, present_in_scan=False)
+    Report.objects.create(studio=studio, slug='analysis', name='Analysis', kind=Report.KIND_ANALYSIS)
+    base = f'/s/{studio.org.slug}/{studio.slug}'
+    with open_page(live_server, login(org_admin)) as page:
+        # Enter through Analyses: its mounted template must later offer the
+        # administrator switch when Reports becomes the destination.
+        page.goto(live_server.url + base + '/analyses')
+        expect(page.locator('tr[data-slug="analysis"]')).to_be_visible()
+        expect(page.get_by_role('switch', name=LABEL)).to_have_count(0)
+        page.locator(f'.tl-console-nav-link[href="{base}/"]').click()
+        expect(page.locator('tr[data-slug="ordinary"]')).to_be_visible()
+        toggle = page.get_by_role('switch', name=LABEL)
+        expect(toggle).not_to_be_checked()
+        held = []
+        def hold(route):
+            held.append(route)
+        page.route('**/api/registry?*include_unavailable=1*', hold)
+        toggle.focus()
+        with page.expect_request('**/api/registry?*include_unavailable=1*'):
+            page.keyboard.press('Space')
+        page.wait_for_function('() => document.getElementById("content").dataset.catalogReady === "false"')
+        # A slow selection retains the ordinary rows until its primary read.
+        expect(page.locator('tr[data-slug="ordinary"]')).to_be_visible()
+        expect(page.locator('tr[data-slug="hidden"]')).to_have_count(0)
+        page.unroute('**/api/registry?*include_unavailable=1*', hold)
+        for route in held:
+            route.continue_()
+        expect(page.locator('tr[data-slug="hidden"]')).to_be_visible()
+        held.clear()
+        page.route('**/api/registry?kind=analysis*', hold)
+        page.locator(f'.tl-console-nav-link[href="{base}/analyses"]').click()
+        expect(page.get_by_role('button', name='Cancel loading', exact=True)).to_be_visible()
+        expect(page.locator('tr[data-slug="hidden"]')).to_be_visible()
+        page.get_by_role('button', name='Cancel loading', exact=True).click()
+        expect(toggle).to_be_checked()
+        expect(page.locator('tr[data-slug="hidden"]')).to_be_visible()
+        page.unroute('**/api/registry?kind=analysis*', hold)
+        for route in held:
+            try:
+                route.continue_()
+            except Exception:
+                pass  # cancellation aborted the read
+        page.locator(f'.tl-console-nav-link[href="{base}/analyses"]').click()
+        expect(page.locator('tr[data-slug="analysis"]')).to_be_visible()
+        expect(page.get_by_role('switch', name=LABEL)).to_have_count(0)
+        page.go_back()
+        expect(page.locator('tr[data-slug="ordinary"]')).to_be_visible()
+        expect(page.get_by_role('switch', name=LABEL)).not_to_be_checked()
+        expect(page.locator('tr[data-slug="hidden"]')).to_have_count(0)

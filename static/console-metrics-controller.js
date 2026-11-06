@@ -228,7 +228,7 @@
        themselves, so the first mount waits for them. */
     var main = document.querySelector('main[data-console-page]');
     var lifecycle = null, unmountPage = null, request = null, generation = 0, ready = Promise.resolve();
-    var here = location.href, pending = false, restoring = false;
+    var here = location.href, pending = false, restoring = false, feedback = null;
     var index = (history.state && history.state.trellumNavigation && history.state.trellumNavigation.index) || 0;
     window.TrellumNavigation = { navigate: function (href) { var url = new URL(href, location.href); if (inPair(url)) navigate(url); } };
 
@@ -290,37 +290,47 @@
     function navigate(url, options) {
         options = options || {};
         if (!options.guarded && !leave()) return;
+        if (window.TrellumConsoleShell.cancelNavigation) window.TrellumConsoleShell.cancelNavigation();
         if (!options.pop) savePosition();
         if (request) request.abort();
+        if (feedback) feedback.dispose();
         var id = ++generation; request = new AbortController();
         unmount(); pending = true; here = url.href;
         if (!options.pop) { ++index; history.pushState(entry([0, 0]), '', url.href); }
         mark('Metrics', url);
-        main.innerHTML = '<h1>Metrics</h1><p class="tl-console-navigation-status" role="status">Loading Metrics…</p>';
-        main.setAttribute('aria-busy', 'true'); focusHeading(); window.scrollTo(0, 0);
+        var flightFeedback = feedback = window.TrellumNavigationFeedback.start({ root: main, label: 'Metrics', signal: request.signal });
         var timeout = setTimeout(function () { if (id === generation) request.abort(); }, 30000);
         fetch(url.href, { credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: request.signal,
             headers: { 'X-Trellum-Navigation': '1', Accept: 'application/json' }
         }).then(function (response) {
             if (!response.ok || !(response.headers.get('Content-Type') || '').includes('application/json')) throw new Error('Navigation failed');
             return response.json();
-        }).then(function (data) {
+        }).then(async function (data) {
             if (id !== generation) return;
             if (new URL(data.url, location.origin).href !== url.href || typeof data.html !== 'string') throw new Error('Invalid fragment');
-            main.replaceChildren(clean(data.html)); main.removeAttribute('aria-busy'); mark(data.title, url);
+            await flightFeedback.beforeCommit();
+            if (id !== generation) return;
+            main.replaceChildren(clean(data.html)); mark(data.title, url);
             mount();
-            return ready.then(function () {
+            return ready.then(async function () {
                 if (id !== generation) return;
-                pending = false;
+                await flightFeedback.finish();
+                if (id !== generation) return;
+                pending = false; flightFeedback.dispose(); feedback = null;
                 requestAnimationFrame(function () {
                     if (id !== generation) return;
-                    if (options.position) window.scrollTo(options.position[0], options.position[1]); else focusHeading();
+                    if (options.position) window.scrollTo(options.position[0], options.position[1]); else { window.scrollTo(0, 0); focusHeading(); }
                     document.dispatchEvent(new CustomEvent('console:navigated', {detail: {url: url.href}}));
                 });
             });
-        }).catch(function () {
+        }).catch(async function () {
             if (id !== generation) return;
-            pending = false; main.removeAttribute('aria-busy');
+            await flightFeedback.finish();
+            if (id !== generation) return;
+            flightFeedback.dispose(); feedback = null;
+            pending = false;
+            // The retained page can be used again after a failed read.
+            mount();
             var waiting = main.querySelector('.tl-console-navigation-status'); if (waiting) waiting.remove();
             main.insertAdjacentHTML('beforeend', '<p role="alert">This page could not load. Open it directly to retry or sign in again.</p>');
             var link = document.createElement('a'); link.href = url.href; link.dataset.consoleNative = '1';
@@ -346,8 +356,12 @@
         index = saved.index;
         navigate(url, { pop: true, guarded: true, position: saved.position });
     });
+    document.addEventListener('console:native-start', function () {
+        ++generation; if (request) request.abort(); if (feedback) feedback.dispose(); unmount();
+    });
+    document.addEventListener('console:native-restored', function () { mount(); });
     window.addEventListener('scroll', savePosition, { passive: true });
-    window.addEventListener('pagehide', function () { savePosition(); ++generation; if (request) request.abort(); unmount(); });
+    window.addEventListener('pagehide', function () { savePosition(); ++generation; if (request) request.abort(); if (feedback) feedback.dispose(); unmount(); });
     window.addEventListener('pageshow', function (event) {
         if (!event.persisted) return;
         if (pending) navigate(new URL(here), { pop: true, guarded: true }); else mount();

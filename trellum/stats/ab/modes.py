@@ -9,7 +9,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 import pandas as pd
 
@@ -300,6 +300,7 @@ def build_modes_from_metrics(
     include: tuple[str, ...] = ("raw", "winsor", "cuped"),
     pre_window_days: int | None = None,
     validate: bool = True,
+    outcome_type: Literal["purchase", "engagement"] = "purchase",
 ) -> tuple[dict[str, dict[str, Any]], bool]:
     """Declared metrics + a variant column -> ABCompare ``modes``.
 
@@ -314,6 +315,8 @@ def build_modes_from_metrics(
     as ``primary > 0``. Anything beyond that family raises with a pointer
     to the follow-up in issue #30.
     """
+    if outcome_type not in ("purchase", "engagement"):
+        raise ValueError("outcome_type must be 'purchase' or 'engagement'")
     means_cur = [m for m in metrics if m.kind == "mean" and m.fmt == "currency"]
     rates = [m for m in metrics if m.kind == "rate"]
     counts = [m for m in metrics if m.kind == "mean" and m.fmt != "currency"]
@@ -377,6 +380,7 @@ def build_modes_from_metrics(
         iters=iters,
         pre_window_days=pre_window_days,
         validate=validate,
+        outcome_type=outcome_type,
         include_raw="raw" in include,
     )
     if "winsor" not in include:
@@ -416,6 +420,7 @@ def build_variance_modes(
     validate: bool = True,
     strict: bool = False,
     include_raw: bool = True,
+    outcome_type: Literal["purchase", "engagement"] = "purchase",
 ) -> dict[str, dict[str, Any]]:
     """One-shot builder for the three canonical A/B modes (raw / winsor / CUPED).
 
@@ -442,6 +447,8 @@ def build_variance_modes(
     already builds the raw mode from a different DataFrame (e.g. a daily
     aggregate that carries a timeseries the per-user table can't reproduce).
     """
+    if outcome_type not in ("purchase", "engagement"):
+        raise ValueError("outcome_type must be 'purchase' or 'engagement'")
     if df_user.empty:
         return {}
 
@@ -459,6 +466,7 @@ def build_variance_modes(
             control_label=control_label,
             test_label=test_label,
             strict=strict,
+            outcome_type=outcome_type,
         )
 
     modes: dict[str, dict[str, Any]] = {}

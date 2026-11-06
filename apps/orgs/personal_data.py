@@ -216,7 +216,7 @@ def _org_scope_q(org):
 
 # ── Export (Art. 15 access, Art. 20 portability) ─────────────────────────────
 
-def export(user, org) -> dict:
+def export(user, org, *, actor=None) -> dict:
     """Everything this installation holds about *user* that this organization's
     admin is entitled to hand them.
 
@@ -301,7 +301,7 @@ def export(user, org) -> dict:
                 user=user, studio__org=org
             ).select_related("studio")
         ],
-        "activity": _export_activity(user, org),
+        "activity": _export_activity(user, org, actor=actor),
     }
 
 
@@ -327,7 +327,31 @@ def _export_access(user, org) -> dict:
     }
 
 
-def _export_activity(user, org) -> dict:
+def _export_conversation(session, actor):
+    from django.core.exceptions import PermissionDenied
+    from apps.assistant.source_tools import check_history
+
+    source_history = bool((session.state or {}).get("_metric_reports") or (session.state or {}).get("_source_policies") or (session.state or {}).get("_source_pending"))
+    source_history = source_history or any(e.get("name") in {"list_data_sources", "describe_source", "query_source"}
+                                           or (e.get("provenance") or {}).get("kind") in {"source_query", "metric_query"}
+                                           for e in session.transcript)
+    withheld = False
+    if source_history:
+        # An admin exporting another person's account does not acquire that
+        # person's source-data access or private conversation authority.
+        withheld = actor is None or actor.pk != session.user_id
+        if not withheld:
+            try:
+                check_history(session, actor=actor, studio=session.studio)
+            except PermissionDenied:
+                withheld = True
+    return {"title": "Source conversation (content withheld)" if withheld else session.title,
+            "created_at": _dt(session.created_at), "updated_at": _dt(session.updated_at),
+            "transcript": [] if withheld else session.visible_transcript, "usage": session.usage,
+            **({"content_withheld": True} if withheld else {})}
+
+
+def _export_activity(user, org, *, actor=None) -> dict:
     return {
         "favourite_reports": [
             {
@@ -340,14 +364,8 @@ def _export_activity(user, org) -> dict:
             ).select_related("report__studio")
         ],
         "assistant_conversations": [
-            {
-                "title": s.title,
-                "created_at": _dt(s.created_at),
-                "updated_at": _dt(s.updated_at),
-                "transcript": s.transcript,
-                "usage": s.usage,
-            }
-            for s in AssistantSession.objects.filter(user=user, org=org)
+            _export_conversation(s, actor)
+            for s in AssistantSession.objects.filter(user=user, org=org).select_related("studio__org")
         ],
         "llm_spend": [
             {"month": u.month.isoformat(), "cost_usd": str(u.cost_usd)}

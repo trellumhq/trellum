@@ -11,7 +11,7 @@ import re
 
 from django.conf import settings
 
-from apps.core.themes import TOKEN_ORDER
+from apps.core.themes import TOKEN_ORDER, theme_mode_for
 
 REQUIRED_VARS = set(TOKEN_ORDER)
 
@@ -24,13 +24,21 @@ def _theme_blocks() -> dict[str, str]:
     }
 
 
+def _stray_theme_names(css: str) -> list[str]:
+    return re.findall(r'^\[data-theme="([\w -]+)"\]\s*\{', css, re.MULTILINE)
+
+
 def test_ui_css_does_not_redefine_the_theme_table():
     # The 13 themes moved to the framework. ui.css owns components and the
     # neutral management palette; a [data-theme] block here means the copy
     # crept back.
     css = (settings.BASE_DIR / "static" / "ui.css").read_text(encoding="utf-8")
-    stray = re.findall(r'^\[data-theme="([\w-]+)"\]\s*\{', css, re.MULTILINE)
+    stray = _stray_theme_names(css)
     assert not stray, f"ui.css redefines themes {stray} — they belong in the generated file"
+
+
+def test_stray_theme_guard_recognizes_a_spaced_theme_name():
+    assert _stray_theme_names('[data-theme="trellum light"] {') == ["trellum light"]
 
 
 def test_every_theme_defines_every_token():
@@ -45,7 +53,7 @@ def test_dark_themes_hover_shadow_is_not_the_light_value():
     # making cards LOSE elevation on hover. Never again.
     light_hover = "0 4px 12px rgba(0,0,0,0.08)"
     for theme, body in _theme_blocks().items():
-        if theme in ("trellum light", "light", "blossom"):
+        if theme_mode_for(theme) == "light":
             continue
         hover = re.search(r"--shadow-hover:\s*([^;]+);", body).group(1)
         assert light_hover not in hover, f"theme '{theme}' still has the light hover shadow"

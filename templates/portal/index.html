@@ -39,8 +39,8 @@ Light/Dark/Auto preference. Named report themes apply inside reports only.{% end
   <div class="folder-rail">
     <div class="folder-inner" id="folderTabs"></div>
     <label class="catalog-search"><span class="sr-only">Search {{ console_page_title|lower }}</span><input type="search" class="ui-input catalog-search-input" id="searchInput" data-page-search placeholder="Search {{ console_page_title|lower }}…" aria-label="Search {{ console_page_title|lower }}" autocomplete="off" spellcheck="false"><span class="catalog-search-count" id="catalogSearchCount" aria-live="polite" hidden></span></label>
-    {% if console_page_title == "Reports" and studio_role == "admin" %}
-    <div class="catalog-discovery">
+    {% if studio_role == "admin" %}
+    <div class="catalog-discovery"{% if console_page_title != "Reports" %} hidden{% endif %}>
       <svg class="discovery-icon" aria-hidden="true" viewBox="0 0 24 24" focusable="false"><path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.9 5.2A11 11 0 0 1 12 5c5 0 9 5 9 7a10 10 0 0 1-2.1 3.1M6.2 6.2C3.7 7.8 2 10.4 2 12c0 2 4 7 10 7 1.2 0 2.3-.2 3.3-.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <label class="discovery-switch" title="Includes every report status, including hidden, expired and disabled reports.">
         <span>Include hidden</span>
@@ -54,7 +54,7 @@ Light/Dark/Auto preference. Named report themes apply inside reports only.{% end
     <div class="catalog-toolbar" id="catalogToolbar"></div>
     {% endif %}
   </div>
-  {% if console_page_title == "Reports" and studio_role == "admin" %}
+  {% if studio_role == "admin" %}
   <div class="discovery-notice" id="discoveryHelp" hidden><span class="ui-badge">Admin view</span><span>Includes hidden, expired and disabled reports.</span></div>
   {% endif %}
 </div>
@@ -116,8 +116,8 @@ Light/Dark/Auto preference. Named report themes apply inside reports only.{% end
 <script src="{% static 'report_delivery.js' %}"></script>
 <script src="{% static 'choice-picker.js' %}"></script>
 <script src="{% static 'operations.js' %}"></script>
-<script src="{% static 'portal.js' %}"></script>
 <script src="{% static 'console-shell.js' %}"></script>
+<script src="{% static 'portal.js' %}"></script>
 <script src="{% static 'console-report-host.js' %}"></script>
 <script src="/api/assistant/widget.js" defer></script>
 </body>

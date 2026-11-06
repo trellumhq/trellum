@@ -1375,6 +1375,7 @@ body.mgmt .folder-rail input.catalog-search-input:focus { border-color: var(--ac
     }
     .catalog-admin-discovery .folder-inner { grid-column: auto; }
 }
+.catalog-discovery[hidden] { display: none; }
 .catalog-discovery { display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto; color: var(--text2); font-size: 12px; white-space: nowrap; }
 .discovery-icon { width: 15px; height: 15px; color: var(--text3); }
 .catalog-discovery .discovery-switch { display: inline-flex; align-items: center; gap: 7px; margin: 0; cursor: pointer; white-space: nowrap; }

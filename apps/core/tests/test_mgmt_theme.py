@@ -15,6 +15,8 @@ themes remain report-content preferences and never emit data-studio-theme on
 the catalog or management templates.
 """
 import pytest
+from django.conf import settings
+from django.templatetags.static import static
 
 from apps.core import roles
 from apps.studios.models import StudioPreference
@@ -64,7 +66,7 @@ class TestPageSplit:
             studio_tree.theme = studio_theme
             studio_tree.save(update_fields=["theme"])
         html = login(org_admin).get(f"/s/{org.slug}/{studio_tree.slug}/").content.decode()
-        assert "mgmt-theme" in html
+        assert static("theme-boot-mgmt.js") in html
         assert "PORTAL_THEME_IS_DEFAULT" not in html
         if studio_theme:
             assert f'data-theme="{studio_theme}"' not in html
@@ -73,11 +75,13 @@ class TestPageSplit:
 class TestMgmtBootUnchanged:
     def test_management_pages_use_mgmt_boot(self, login, org_admin, org):
         html = login(org_admin).get("/").content.decode()
-        assert "mgmt-theme" in html
+        assert static("theme-boot-mgmt.js") in html
 
     def test_mgmt_boot_clamps_to_light_or_dark(self, client, member):
         html = client.get("/login").content.decode()
-        assert "pref === 'light' || pref === 'dark'" in html
+        assert static("theme-boot-mgmt.js") in html
+        boot = (settings.BASE_DIR / "static/theme-boot-mgmt.js").read_text()
+        assert "pref === 'light' || pref === 'dark'" in boot
 
 
 class TestMgmtBootOrgDefaultMode:

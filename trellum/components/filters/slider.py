@@ -148,11 +148,11 @@ class SliderFilter(BaseFilter):
         return (
             f'<div class="{item_class}">'
             f'<div class="fw-filter-label-row">'
-            f'<label class="fw-filter-label">{label}</label>'
+            f'<span class="fw-filter-label" id="{fid}_label">{label}</span>'
             f'<span class="fw-slider-readout" data-filter-id="{fid}" '
             f'aria-live="polite">{readout}</span>'
             f'</div>'
-            f'<div class="fw-slider" data-filter-id="{fid}" data-mode="{mode}"></div>'
+            f'<div class="fw-slider" role="group" aria-labelledby="{fid}_label" data-filter-id="{fid}" data-mode="{mode}"></div>'
             f'</div>'
         )
 
