@@ -447,6 +447,15 @@ def test_live_raw_eligibility_with_actual_filters_and_normalization(tmp_path):
             labels = page.evaluate('id=>window._chartInstances[id]._fwBarLabelPaint', cid)
             assert {p['text'] for p in labels if p['kind'] == 'percentage'} == {'63%', '38%'}
             assert not any(p['index'] == 1 and p['kind'] == 'percentage' for p in labels)
+            # A percentage-only option describes its actual labels without
+            # claiming that totals are being shown.
+            page.evaluate('''id=>{window._reportData.components[id].stack_labels =
+              {totals:false,percentages:true,format:'currency'}; window.renderAll();}''', cid)
+            page.locator('#' + cid).scroll_into_view_if_needed()
+            expect(context).not_to_contain_text('Totals include')
+            expect(context).to_contain_text('Percentages use all matching series')
+            labels = page.evaluate('id=>window._chartInstances[id]._fwBarLabelPaint', cid)
+            assert {p['kind'] for p in labels} == {'percentage'}
             # Turning options off via a rebuilt config releases top padding and removes context.
             page.evaluate('''id=>{const cfg=window._reportData.components[id];
               cfg.stack_labels={totals:false,percentages:false,format:'currency'};

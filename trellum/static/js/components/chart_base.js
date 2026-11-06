@@ -256,12 +256,12 @@ function _fwBarLabelPlugin(spec) {
             var described = chart.canvas.getAttribute('aria-describedby') || '';
             chart.canvas.setAttribute('aria-describedby', (described + ' ' + context.id).trim());
         }
-        var text = 'Totals include visible bar segments only, in absolute ' + (stack.format || 'currency') + ' units; line overlays are excluded.';
+        var text = stack.totals ? 'Totals include visible bar segments only, in absolute ' + (stack.format || 'currency') + ' units; line overlays are excluded.' : '';
         if (spec.stackNormalized) text += ' Percentages use all matching series, including hidden series. Zero-total buckets have no share.';
         else if (stack.percentages) text += ' Percentage labels are available only for normalized breakdowns.';
         if (spec.stackLabelReason) text += ' Labels withheld: ' + spec.stackLabelReason + '.';
         else if (!chart.data.labels.length) text += ' No observations; no total or share labels.';
-        context.textContent = text;
+        context.textContent = text.trim();
     }
     function contrast(chart, fill) {
         // Browser color parsing + alpha composition against the actual card.

@@ -183,6 +183,25 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             positive = page.locator('#sec-readable-small-status-text .fw-kpi-delta.up').first
             assert positive.evaluate('el => getComputedStyle(el).color') == 'rgb(9, 109, 76)'
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
+            page.get_by_role('link', name='bar values and stack labels', exact=True).click()
+            bar_section = page.locator('#sec-bar-values-—-category-and-platform-observations')
+            bar = bar_section.locator('canvas[data-fw-title="Horizontal defaults · values automatic"]')
+            bar.scroll_into_view_if_needed()
+            bar_section.get_by_role('button', name='Mobile', exact=True).click()
+            page.wait_for_function("""id => window._chartInstances[id]?._fwBarLabelPaint?.some(
+                p => p.text === '$16.4k')""", arg=bar.get_attribute('id'))
+            stack_section = page.locator('#sec-stack-labels-—-daily-source-and-platform-observations')
+            stack = stack_section.locator('canvas[data-fw-title="Totals and fitting percentages · switch to Percentage"]')
+            stack.scroll_into_view_if_needed()
+            stack_section.get_by_role('button', name='Mobile', exact=True).click()
+            stack_id = stack.get_attribute('id')
+            page.locator(f'[data-normalize-toggle="{stack_id}"]').get_by_role('button', name='Percentage', exact=True).click()
+            page.wait_for_function("""id => window._chartInstances[id]?._fwBarLabelPaint?.some(
+                p => p.kind === 'percentage')""", arg=stack_id)
+            assert page.evaluate("""id => window._chartInstances[id]._fwBarLabelPaint
+                .filter(p => p.kind === 'total' && p.index === 0).map(p => p.text)""", stack_id) == ['$15.6k']
+            assert page.locator(f'[data-stack-label-context="{stack_id}"]').count() == 1
+            assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
             # Every chart must own a real canvas and draw after scrolling into
             # view; scope-based data swaps cannot stand in for different layouts.
             for canvas in page.locator("canvas:visible").all():
