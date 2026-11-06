@@ -400,11 +400,20 @@ def stream_turn(
         yield {"type": "error", "code": "new_conversation",
                "message": "This model cannot continue the private provider state. Start a new conversation."}
         return
+    from . import answer_review
+    from .tools import AssistantToolbox
+    review_required = purpose == "chat" and force_tool is None and isinstance(toolbox, AssistantToolbox)
+    schemas = [*toolbox.schemas, answer_review.SCHEMA] if review_required else toolbox.schemas
     if user_message is not None:
         entry = {"role": "user", "content": user_message, "ts": time.time()}
         if page_context:
             entry["page"] = page_context
         transcript_of(state).append(entry)
+        if review_required:
+            answer_review.start(state)
+    if review_required and "_answer_review" not in state:
+        # Old pending reads have no approval to carry forward.
+        answer_review.start(state)
     clock = _Clock(remaining, deadline_s)
     from .transport import TransportError, normalize_error
     try:
@@ -414,6 +423,9 @@ def stream_turn(
         return
     transcript = transcript_of(state)
     for turn in range(max_turns):
+        if getattr(toolbox, "session", None) is not None:
+            from apps.assistant.source_tools import check_history
+            check_history(toolbox.session, actor=toolbox.actor, studio=toolbox.studio)
         if config.budgeted and config.org_id and getattr(toolbox, "actor", None) is not None:
             from . import budget
             allowed, reason = budget.precheck(config.org_id, toolbox.actor)
@@ -423,6 +435,10 @@ def stream_turn(
         if clock.remaining() <= 0 or (turn and clock.remaining() < MIN_REMAINING_S):
             yield clock.expired_event()
             return
+        if review_required and state["_answer_review"].get("status") in {"accepted", "limited"}:
+            yield {"type": "done", "stop_reason": "stop"}
+            return
+        turn_system = [*system_blocks, answer_review.prompt(state)] if review_required else system_blocks
         messages = _with_page_context([dict(entry) for entry in transcript], transcript)
         for index, metadata in (state.get("_provider", {}).get("messages", {})).items():
             if int(index) < len(messages):
@@ -437,7 +453,7 @@ def stream_turn(
             heartbeat = time.monotonic()
             try:
                 timeout = None if math.isinf(clock.remaining()) else max(clock.remaining(), 0.001)
-                for event in adapter(config, messages, system_blocks, toolbox.schemas,
+                for event in adapter(config, messages, turn_system, schemas,
                                      max_tokens=max_tokens, force_tool=force_tool,
                                      timeout=timeout, purpose=purpose):
                     if clock.remaining() <= 0:
@@ -453,7 +469,8 @@ def stream_turn(
                         if event["text"]:
                             emitted = True
                             heartbeat = time.monotonic()
-                            yield event
+                            if not review_required:
+                                yield event
                     elif event.get("type") == "response":
                         if response is not None:
                             raise TransportError("protocol", "The provider returned multiple final responses.")
@@ -491,15 +508,26 @@ def stream_turn(
         add_usage(state, usage, cost)
         validation_error = None
         try:
-            _validate_response(response, toolbox.schemas, force_tool)
+            validation_schemas = [dict(schema, input_schema={"type": "object"})
+                                  if review_required and schema["name"] == answer_review.NAME else schema
+                                  for schema in schemas]
+            _validate_response(response, validation_schemas, force_tool)
         except TransportError as error:
             validation_error = error
         if validation_error is None:
-            transcript.append({"role": "assistant", "content": [_block_to_dict(b) for b in response["blocks"]],
-                               "ts": time.time(), "stop_reason": response["stop_reason"]})
+            blocks = [_block_to_dict(b) for b in response["blocks"]]
+            if review_required:
+                # Draft prose and unapproved submission arguments never enter
+                # outward history. Native signed blocks stay provider-private.
+                blocks = [dict(b, input={}) if b.get("name") == answer_review.NAME else b
+                          for b in blocks if b["type"] == "tool_use"]
+            if blocks:
+                transcript.append({"role": "assistant", "content": blocks,
+                                   **({"_internal": True} if review_required and all(b.get("name") == answer_review.NAME for b in blocks) else {}),
+                                   "ts": time.time(), "stop_reason": response["stop_reason"]})
             if any(block["type"] == "tool_use" for block in response["blocks"]):
                 state["_continuation_error"] = True
-            if response.get("provider_data"):
+            if response.get("provider_data") and blocks:
                 private = state.setdefault("_provider", {"identity": identity, "messages": {}})
                 private["messages"][str(len(transcript) - 1)] = response["provider_data"]
         yield {"type": "usage", "model": config.model,
@@ -512,15 +540,54 @@ def stream_turn(
             yield _provider_error(validation_error, config.base_url)
             return
         tools = [block for block in response["blocks"] if block["type"] == "tool_use"]
-        if not tools:
+        if not tools and not review_required:
             yield {"type": "done", "stop_reason": response["stop_reason"]}
             return
         if usage is None and config.budgeted:
             yield {"type": "error", "code": "metering",
                    "message": "The provider omitted usage. Test the connection before another budgeted request."}
             return
+        if review_required and not tools:
+            text, feedback = answer_review.reject(state, "A prose draft cannot finish this question; submit the structured assessment.")
+            if text:
+                answer_review.recheck(toolbox)
+                if clock.remaining() <= 0:
+                    yield clock.expired_event()
+                    return
+                yield answer_review.deliver(state, text)
+                yield {"type": "done", "stop_reason": "stop"}
+                return
+            transcript.append({"role": "user", "content": feedback, "_internal": True})
+            continue
         for tool_index, block in enumerate(tools):
             name, args = block["name"], block["input"]
+            if review_required and name == answer_review.NAME:
+                if len(tools) != 1:
+                    text, feedback = answer_review.reject(state, "Submit the assessment alone, after tool results are available.")
+                else:
+                    text, feedback = answer_review.submit(args, state, toolbox)
+                transcript.append({"role": "tool", "tool_use_id": block["id"], "name": name,
+                                   "input": {}, "result": feedback or "Submission handled by server.", "_internal": True})
+                if tool_index == len(tools) - 1:
+                    state.pop("_continuation_error", None)
+                if text:
+                    # Complete any other calls in this batch without executing
+                    # writes or leaving unmatched provider tool-use blocks.
+                    for deferred in tools[tool_index + 1:]:
+                        transcript.append({"role": "tool", "tool_use_id": deferred["id"],
+                                           "name": deferred["name"], "input": {},
+                                           "result": "Not executed: answer review limit reached.", "is_error": True})
+                    state.pop("_continuation_error", None)
+                    answer_review.recheck(toolbox)
+                    if clock.remaining() <= 0:
+                        yield clock.expired_event()
+                        return
+                    yield answer_review.deliver(state, text)
+                    yield {"type": "done", "stop_reason": "stop"}
+                    return
+                continue
+            # Stable per provider invocation, scoped by the persisted session.
+            toolbox.source_call_id = hashlib.sha256(block["id"].encode()).hexdigest()
             yield {"type": "tool_use", "id": block["id"], "name": name, "input": args}
             result = yield from _run_tool(toolbox, name, args, clock)
             if result is None:
@@ -537,10 +604,32 @@ def stream_turn(
             transcript.append(entry)
             if tool_index == len(tools) - 1:
                 state.pop("_continuation_error", None)
+            if getattr(toolbox, "source_pending", None):
+                # The database worker owns execution. Finish the provider's
+                # batch explicitly before pausing, so replay has no dangling
+                # tool calls, even when the model requested parallel tools.
+                for deferred in tools[tool_index + 1:]:
+                    transcript.append({
+                        "role": "tool", "tool_use_id": deferred["id"],
+                        "name": deferred["name"],
+                        "input": {} if review_required and deferred["name"] == answer_review.NAME else deferred["input"],
+                        **({"_internal": True} if review_required and deferred["name"] == answer_review.NAME else {}),
+                        "result": "Not executed: wait for the pending source read, then request this tool again.",
+                        "is_error": True, "ts": time.time(),
+                    })
+                state.pop("_continuation_error", None)
+                from apps.assistant.source_tools import status_url
+                state["_source_pending"] = {
+                    "id": toolbox.source_pending, "tool_use_id": block["id"],
+                    "status_url": status_url(toolbox.studio, toolbox.session, toolbox.source_pending),
+                }
             yield {"type": "tool_result", "id": block["id"], "name": name,
                    "excerpt": _excerpt(result, 400), "is_error": is_error, "provenance": provenance}
             if proposal:
                 yield {"type": "proposal", **proposal}
+            if getattr(toolbox, "source_pending", None):
+                yield {"type": "source_wait", **state["_source_pending"]}
+                return
     yield _turn_limit(max_turns)
 
 

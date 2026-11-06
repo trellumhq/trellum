@@ -52,6 +52,7 @@ _PARSE_CACHE_ENTRIES = 4
 #: nothing is force-fed into the prompt from these paths.
 READ_ALLOWLIST = (
     "reports",
+    "metrics.yaml",
     "assistant.md",
     "project_context",
     ".cursor/rules",
@@ -159,8 +160,9 @@ TOOL_SCHEMAS = [
         "description": (
             "Read actual numbers from a report's already-built output (no "
             "database hit, instant). Loads the named dataset from the report's "
-            "data.json, optionally filters rows, then aggregates. Prefer this "
-            "-- the only data the assistant reads is what reports have already published. "
+            "data.json, optionally filters rows, then aggregates. This tool reads "
+            "a report snapshot, not current database contents. For live data, discover "
+            "authorized sources with list_data_sources when that tool is available. "
             "Returns a markdown table (max 50 rows). Note: for chunked "
             "datasets only the inline (most recent) months are available."
         ),
@@ -216,8 +218,9 @@ TOOL_SCHEMAS = [
         "description": (
             "Read a documentation or schema file from this studio's project "
             "(e.g. project_context/database_schema.md, a report's report.yaml "
-            "or queries.py). Use to check table/column definitions before "
-            "writing SQL, or to explain how a report computes a metric."
+            "or queries.py; metrics.yaml definitions for project-wide access). "
+            "Use to check table/column definitions before writing SQL, or to "
+            "explain how a report computes a metric. Metric SQL requires source sharing."
         ),
         "input_schema": {
             "type": "object",
@@ -377,6 +380,11 @@ TOOL_SCHEMAS = [
     },
 ]
 
+from apps.assistant.source_tools import SOURCE_SCHEMAS
+
+from apps.assistant.metric_tools import METRIC_SCHEMAS
+
+TOOL_SCHEMAS += SOURCE_SCHEMAS + METRIC_SCHEMAS
 _MUTATING = {s["name"] for s in TOOL_SCHEMAS if s["mutates"]}
 _BY_NAME = {s["name"]: s for s in TOOL_SCHEMAS}
 #: The keys the model providers accept; ``mutates`` / ``role`` are ours.
@@ -543,6 +551,12 @@ class AssistantToolbox:
         (viewer for all reads but ``check_repo_changes``); a mutating one also
         needs actions on. Checked when the catalogue is listed and again when
         a call arrives."""
+        from apps.assistant.metric_tools import METRIC_NAMES, available as metrics_available
+        if schema.get("name") in METRIC_NAMES and not metrics_available(self):
+            return False
+        from apps.assistant.source_tools import SOURCE_NAMES, available
+        if schema.get("name") in SOURCE_NAMES and not available(self):
+            return False
         if rank(self.role) < rank(schema.get("role", roles.VIEWER)):
             return False
         if self.is_report_bound and schema.get("name") == "check_repo_changes":
@@ -683,6 +697,13 @@ class AssistantToolbox:
             fn = self._extra[name][1]
         self.provenance = None
         self.proposal = None
+        self.source_pending = None
+        from apps.assistant.source_tools import SOURCE_NAMES, execute as execute_source
+        if name in SOURCE_NAMES:
+            fn = lambda a: execute_source(self, name, a)
+        from apps.assistant.metric_tools import METRIC_NAMES, execute as execute_metric
+        if name in METRIC_NAMES:
+            fn = lambda a: execute_metric(self, name, a)
         if fn is None:
             return f"Error: unknown tool '{name}'."
         if name in _BY_NAME and not self.allowed(_BY_NAME[name]):
@@ -1151,6 +1172,11 @@ class AssistantToolbox:
         df, note = self.load_dataset(slug, dataset_id)
         if df is None:
             return note
+        from apps.assistant.metric_tools import guard_report_aggregation
+        limitation = guard_report_aggregation(self, slug, dataset_id, args)
+        if limitation:
+            self.provenance = None
+            return limitation
         total_rows = len(df)
         # Filtering rebinds `df` rather than mutating it, so holding the
         # original costs nothing and saves the 0-row branch below from
@@ -1200,6 +1226,13 @@ class AssistantToolbox:
         }
 
         if df.empty:
+            self.provenance.update(kind="report_query", status="answered", columns=list(df.columns),
+                                   rows=[], truncated=False)
+            from .answer_review import encoded
+            if len(encoded(self.provenance).encode()) > 65536:
+                self.provenance = None
+                return "Error: Structured report evidence exceeds the result byte limit; narrow the query."
+            self._pin_answer_report(slug)
             # Self-healing hint: tell the model what WOULD have matched so it
             # can correct the filter in one retry instead of giving up.
             hints = []
@@ -1227,7 +1260,9 @@ class AssistantToolbox:
                 return f"Error: metric column '{m.get('column')}' not in dataset."
 
         if metrics:
-            agg_spec = {m["column"]: m.get("agg", "sum") for m in metrics}
+            # All-NULL operands are missing evidence, not a measured zero.
+            agg_spec = {m["column"]: ((lambda values: values.sum(min_count=1))
+                                     if m.get("agg", "sum") == "sum" else m.get("agg")) for m in metrics}
             if group_by:
                 result = df.groupby(group_by, observed=True).agg(agg_spec).reset_index()
             else:
@@ -1244,13 +1279,42 @@ class AssistantToolbox:
         limit = min(int(args.get("limit") or _DATA_DISPLAY_CAP), 200)
         table = format_df_markdown(result, limit)
         self.provenance["rows_returned"] = min(len(result), limit)
+        preview = result.head(limit)
+        # pandas.to_json rounds floats by default. Preserve scalar values and
+        # normalize missing cells explicitly before the canonical JSON encoding.
+        cells = {"columns": list(preview.columns),
+                 "data": preview.astype(object).where(preview.notna(), None).values.tolist()}
+        self.provenance.update(kind="report_query", status="answered", columns=cells["columns"],
+                               rows=cells["data"], truncated=len(result) > limit)
+        from .answer_review import encoded
+        try:
+            evidence_size = len(encoded(self.provenance).encode())
+        except (ValueError, TypeError, OverflowError):
+            # Failed serialization must not leave non-JSON cells attached to
+            # the transcript: its database save uses this same provenance.
+            self.provenance = None
+            return "Error: Report results contain values that cannot be represented as analytical evidence."
+        if evidence_size > 65536:
+            self.provenance = None
+            return "Error: Structured report evidence exceeds the result byte limit; narrow the query."
+        self._pin_answer_report(slug)
         header = (
             f"Dataset '{dataset_id}' of report '{slug}' (built {built_at or 'unknown'}) — "
             f"{total_rows:,} rows total, {len(df):,} after filters, {len(result):,} result row(s)."
         )
         if note:
             header += "\n" + note
-        return header + "\n\n" + table + f"\n\nLink (with these filters applied): {link}"
+        return (header + "\n\n" + table + f"\n\nLink (with these filters applied): {link}"
+                + "\nStructured result cells: " + encoded({"columns": cells["columns"], "rows": cells["data"]}))
+
+    def _pin_answer_report(self, slug):
+        if self.session is not None:
+            reports = set(self.session.state.get("_metric_reports", []))
+            reports.add(slug)
+            if len(reports) > 100:
+                self.provenance = None
+                raise ValueError("Start a new conversation; report evidence reached its authorization limit.")
+            self.session.state["_metric_reports"] = sorted(reports)
 
     # read_doc ------------------------------------------------------------
     def _resolve_read_path(self, path: str) -> Path | None:
@@ -1264,7 +1328,7 @@ class AssistantToolbox:
             allowed = f"reports/{self.report_slug}"
             return p if rel == allowed or rel.startswith(allowed + "/") else None
         for prefix in READ_ALLOWLIST:
-            if rel == prefix or rel.startswith(prefix + "/"):
+            if rel == prefix or (prefix != "metrics.yaml" and rel.startswith(prefix + "/")):
                 return p
         return None
 
@@ -1272,6 +1336,10 @@ class AssistantToolbox:
         raw = (args.get("path") or "").strip()
         if not raw:
             return "Error: missing 'path' argument."
+        if Path(raw).as_posix() == "metrics.yaml":
+            from apps.assistant.metric_context import registry_text
+
+            return registry_text(self, detail=True)
         p = self._resolve_read_path(raw)
         if p is None:
             readable = f"reports/{self.report_slug}" if self.is_report_bound else ", ".join(READ_ALLOWLIST)
@@ -1280,6 +1348,10 @@ class AssistantToolbox:
                 f"Readable prefixes: {readable}."
             )
         rel = p.relative_to(self.project_root.resolve()).as_posix()
+        if rel == "metrics.yaml":
+            from apps.assistant.metric_context import registry_text
+
+            return registry_text(self, detail=True)
         if not self.share_report_source and (rel == "reports" or rel.startswith("reports/")):
             return (
                 "Error: reading report source is turned off for this organization "
