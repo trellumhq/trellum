@@ -86,6 +86,14 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             assert table.locator('tbody tr').count() == 10
             assert "16 matching" in table.locator('.fw-table-note').inner_text()
             page.keyboard.press("Escape")
+            page.get_by_role("link", name="area charts", exact=True).click()
+            area = page.locator('canvas[data-fw-title="Additive source mix · live filter"]')
+            area.scroll_into_view_if_needed()
+            page.locator('#sec-area-example-filters').get_by_role(
+                "button", name="Android", exact=True).click()
+            page.wait_for_function("id => window._chartInstances[id].data.datasets[0].data[0] === 1296",
+                                   arg=area.get_attribute("id"))
+            assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
             # Every chart must own a real canvas and draw after scrolling into
             # view; scope-based data swaps cannot stand in for different layouts.
             for canvas in page.locator("canvas:visible").all():

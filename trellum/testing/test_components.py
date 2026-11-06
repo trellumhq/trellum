@@ -134,8 +134,9 @@ def test_area_chart_fill_defaults_match_static_and_dataset_bound_paths():
         AreaChart(df, x="event_date", y=["revenue", "net_revenue"],
                   stacked=stacked, dataset_id="area-data", static=True).render_html(static_bound_ctx)
         static_bound = next(iter(static_bound_ctx.component_data.values()))
-        assert "datasets" in static_bound and "dataset_id" not in static_bound
-        assert [ds["fill"] for ds in static_bound["datasets"]] == fills
+        # Existing explicit dataset bindings retain precedence over static.
+        assert "datasets" not in static_bound and static_bound["dataset_id"] == "area-data"
+        assert static_bound["area_fill"] is True
 
 
 @pytest.mark.parametrize("name,factory", _CHART_SPECS, ids=[s[0] for s in _CHART_SPECS])

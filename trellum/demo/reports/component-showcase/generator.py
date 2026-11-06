@@ -22,6 +22,7 @@ class ComponentShowcaseReport(BaseReport):
             "has its own filters. Optional features are "
             "identified beside each example.</p>"
             '<p>Jump to <a href="#sec-line-example-filters">line charts</a>, '
+            '<a href="#sec-area-example-filters">area charts</a>, '
             '<a href="#sec-layout-example-filters">layouts</a>, '
             '<a href="#sec-kpi-cards-and-compact-metrics">KPI metrics</a>, '
             '<a href="#sec-standalone-choices">report controls</a>, '

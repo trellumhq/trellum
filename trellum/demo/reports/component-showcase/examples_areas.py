@@ -49,19 +49,19 @@ def add_sections(ctx):
                       y=["organic", "paid", "partner"],
                       y_labels=["Organic", "Paid", "Partner"],
                       title="Overlapping sources · static fixture",
-                      dataset_id="showcase_areas", static=True),
+                      static=True),
             AreaChart(df=frame.iloc[::2].reset_index(drop=True), x="day",
                       y=["organic", "paid", "partner"],
                       y_labels=["Organic", "Paid", "Partner"], stacked=True,
                       title="Additive source mix · static fixture",
-                      dataset_id="showcase_areas", static=True),
+                      static=True),
         ]),
     ])
 
-    zero_frame = frame[["day", "platform", "zero_series"]]
+    zero_frame = frame.iloc[::2][["day", "zero_series"]]
     ctx.add_section("Area chart — measured zero values", [
         AreaChart(df=zero_frame, x="day", y="zero_series",
                   y_labels=["Sparse measured series"],
                   title="Sparse and zero observations",
-                  dataset_id="showcase_areas", static=True),
+                  static=True),
     ])

@@ -312,8 +312,6 @@ class AreaChart(_ChartBase):
 
     Use ``stacked=True`` for stacked area (composition over time).
     Pass ``dataset_id`` for reactive filter support.
-    Set ``static=True`` to render the supplied DataFrame even when ``dataset_id``
-    is present.
     """
 
     df: pd.DataFrame
@@ -334,7 +332,7 @@ class AreaChart(_ChartBase):
         y_cols = self.y if isinstance(self.y, list) else [self.y]
         y_labels = self.y_labels or y_cols
 
-        if self.dataset_id and not self.static:
+        if self.dataset_id:
             cfg: dict[str, Any] = {
                 "type": "chart",
                 "dataset_id": self.dataset_id,

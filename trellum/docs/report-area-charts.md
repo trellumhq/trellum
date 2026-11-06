@@ -16,9 +16,9 @@ geometry. This mode represents additive data: each series must be a component
 that can be summed with the others. Do not stack overlapping totals or ratios.
 
 The fill appearance is consistent for static DataFrames and charts connected
-to a `DataSource`. Set `static=True` to render the supplied DataFrame even when
-`dataset_id` is also present; that chart does not update from filters. This
-supports a compact static fixture beside a live example. Labels,
+to a `DataSource`. For an explicit static fixture, omit `dataset_id` and set
+`static=True` to declare the intentional absence of a dataset binding. As before,
+an explicitly supplied `dataset_id` takes precedence. Labels,
 order, values, colors, tooltips, legends, filters, exports, and chart sizing
 retain their existing contracts. The lighter fills are an intentional
 appearance change. AreaChart retains its existing

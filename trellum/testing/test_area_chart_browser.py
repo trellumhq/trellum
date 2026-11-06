@@ -32,7 +32,7 @@ def _report(output):
         AreaChart(df, x="day", y=["a", "b", "c"], title="Stacked",
                   stacked=True, dataset_id="areas"),
         AreaChart(df.iloc[::2], x="day", y=["a", "b", "c"], title="Static stacked",
-                  stacked=True, dataset_id="areas", static=True),
+                  stacked=True, static=True),
     ])
     render_report(ctx, str(output), auto_refresh=False)
     copy_vendor_tree(output)
@@ -119,14 +119,24 @@ def _check_area_chart(width):
             page.wait_for_function("id => window._chartInstances[id].data.datasets[0].data[0] === 20", arg=stacked["id"])
             after_filter = page.evaluate("id=>window._chartInstances[id].data.datasets[0].data.slice()", stacked["id"])
             assert after_filter[0] == 20 and before_static[0] == 10
+            assert page.evaluate("id=>window._chartInstances[id].data.datasets[0].data.slice()", static_stacked["id"]) == before_static
             filtered_style = page.evaluate("""id => {const c=window._chartInstances[id];return {
               opacity:c.data.datasets.map(d=>d.backgroundColor.slice(-2)),
               targets:c.data.datasets.map((_,i)=>c.getDatasetMeta(i).$filler.fill)}}""", stacked["id"])
             assert filtered_style == {"opacity": ["a6"] * 3, "targets": ["origin", 0, 1]}
 
-            select = page.locator("select[aria-label='Switch theme']")
-            if select.count():
-                select.select_option(label="Light")
+            select = page.locator("#fwThemeSelect")
+            for theme in ("trellum dark", "trellum light"):
+                select.select_option(theme)
+                for chart in charts:
+                    page.locator(f"#{chart['id']}").scroll_into_view_if_needed()
+                    page.wait_for_function("""id => {
+                      const c = window._chartInstances[id], palette = window.getThemeColors().chart_colors;
+                      return c.data.datasets.every((d, i) =>
+                        d.borderColor === palette[i % palette.length] &&
+                        d.backgroundColor === d.borderColor + d._fillOpacity);
+                    }""", arg=chart["id"])
+                assert page.locator("html").get_attribute("data-theme") == theme
             page.evaluate("window.renderAll()")
             page.wait_for_function("id => !!window._chartInstances[id]", arg=stacked["id"])
             refreshed = page.evaluate("""id => {const c=window._chartInstances[id];return {
