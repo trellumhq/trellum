@@ -53,11 +53,12 @@ identities are valid declarations with unavailable results.
 
 ## Eligibility and numerical limits
 
-All **currently filtered original bar input columns**, including unselected
+For bound charts, all **currently filtered original bar input columns**, including unselected
 categories/columns, must contain finite native numbers. Bool, string (including
 numeric-looking strings), null, missing and unsafe integer inputs withhold the
-summary. Line input columns are ignored. Static charts retain only a compact
-original-input eligibility reason captured before legacy cleaning; they do not
+summary. Line input columns are ignored. Static charts guard only the selected
+source column and retain a compact original-input eligibility reason captured
+before legacy cleaning; they do not
 copy source rows. Original plotted values and aggregation remain unchanged.
 Finite signed and fractional values remain allowed. This conservative guard
 covers the delivered population only: it cannot establish warehouse completeness
@@ -65,8 +66,9 @@ or fix an already mis-grained source.
 
 Every selected final entry must also be usable; invalid entries are never
 skipped. Empty series/data show a dash; valid measured zero shows zero. Results
-must be finite with safe integer precision. A compensated scaled reduction avoids
-avoidable intermediate overflow in means; min/max/last do not calculate an
+must be finite with safe integer precision. Compensated reduction preserves small
+contributions after cancellation and uses scaling only if an intermediate total
+overflows; min/max/last do not calculate an
 unused sum. An unsafe/nonfinite sum or result shows a dash. No source cap,
 rounding, serialization or aggregation policy is added.
 
@@ -107,30 +109,7 @@ day multipliers 1/2 and platform multipliers 1/2. Full UA entries are [30, 60],
 total 90, mean 45, min 30, max/last 60; RT 180, Organic 270, overall 540.
 These are additive events, never distinct people. iOS plus August 1 yields UA 10.
 
-Shared integration owned by the report lead:
-
-- Add `examples_stacked_summaries` to the showcase generator's existing
-  `from . import (...)`, then call
-  `examples_stacked_summaries.add_sections(ctx)` after the Traffic examples.
-  Add this jump link to its existing navigation prose:
-  `<a href="#sec-stacked-summaries-—-static-off/on">Stacked summaries</a>`.
-  The other native anchors are `sec-stacked-summaries-—-selected-reducers`,
-  `sec-stacked-summaries-—-local-and-shared-controls` and
-  `sec-stacked-summaries-—-eligibility-and-identity`.
-- In `validation/checks/chart_options.py`, import
-  `stacked_summary_option_problems` from
-  `trellum.components.charts._stacked_summary`; in the `StackedBar` dispatch,
-  iterate its `(check_id, message)` results and call
-  `result.fail(check_id, message, component="StackedBar", section=sec)`:
-
-  ```python
-  from trellum.components.charts._stacked_summary import stacked_summary_option_problems
-
-  if _comp_name(comp) == "StackedBar":
-      for check_id, message in stacked_summary_option_problems(comp):
-          result.fail(check_id, message, component="StackedBar", section=sec)
-  ```
-- Link this page from the framework documentation index and compatibility notes.
-  No public component export is needed: `StackedBar` is already exported.
-- Suggested changelog: “Add opt-in StackedBar header summaries for one exact
-  final bar series in original units, with conservative input eligibility.”
+The shared showcase includes these sections through its Stacked summaries link.
+The shared chart-options validator dispatches `stacked_summary_option_problems`
+and reports `chart-summary-invalid` for malformed or mutated declarations.
+Import the existing `StackedBar` from `trellum.components`.

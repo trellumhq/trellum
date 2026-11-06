@@ -1,5 +1,13 @@
 # Framework Migration Guide
 
+## Unreleased: optional StackedBar summaries
+
+Existing calls need no changes. Use `header_summary={"stat": "sum",
+"scope": "absolute_series", "series": "UA"}` for one final bar series in its
+original units. Missing or ambiguous captions show an unavailable result.
+See [StackedBar summaries](report-stacked-summaries.md) for reducers, input
+eligibility and preserved Percentage CSV behavior. Rebuild report assets.
+
 ## Unreleased: optional HeatmapChart summaries
 
 Existing calls need no changes. Use

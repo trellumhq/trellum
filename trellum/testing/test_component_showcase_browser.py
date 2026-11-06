@@ -179,6 +179,15 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             expect(heatmaps.locator('.fw-chart-summary-value')).to_have_text(['540', '135', '0.00', '270', '4'])
             heatmaps.get_by_role('button', name='iOS', exact=True).click()
             expect(heatmaps.locator('.fw-chart-summary-value')).to_have_text(['180', '45', '0.00', '90', '4'])
+            page.get_by_role('link', name='Stacked summaries', exact=True).click()
+            stack_summaries = page.locator('#sec-stacked-summaries-—-selected-reducers')
+            stack_summaries.scroll_into_view_if_needed()
+            for canvas in stack_summaries.locator('canvas').all():
+                canvas.scroll_into_view_if_needed()
+            expect(stack_summaries.locator('.fw-chart-summary-value')).to_have_text(['90', '45', '30', '60', '60'])
+            stack_summaries.get_by_role('button', name='iOS', exact=True).click()
+            expect(stack_summaries.locator('.fw-chart-summary-value')).to_have_text(['30', '15', '10', '20', '20'])
+            expect(heatmaps.locator('.fw-chart-summary-value').first).to_have_text('180')
             expect(scatter.locator('.fw-chart-summary-value').last).to_have_text('4')
             expect(marketing.locator('.fw-mini-val').first).to_have_text('840')
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"

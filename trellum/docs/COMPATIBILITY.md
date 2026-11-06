@@ -1,5 +1,14 @@
 # Framework Compatibility Policy
 
+## Unreleased: optional StackedBar summaries
+
+Keyword-only `header_summary=None` preserves existing constructor positions,
+markup and payloads. Opted-in summaries require an exact final bar caption and
+retain original units in Percentage mode. Local/shared controls, plot heights,
+legacy static title omission and CSV units remain unchanged.
+See [StackedBar summaries](report-stacked-summaries.md) for input scope, owned
+listener cleanup and precision limits. Rebuild matching assets; no migration.
+
 ## Unreleased: optional HeatmapChart summaries
 
 Keyword-only `header_summary=None` preserves existing calls and default output.

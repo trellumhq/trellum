@@ -19,6 +19,8 @@ from trellum.report import ReportContext
 from trellum.reporting.diagnostics import compute_details
 from trellum.themes import DefaultTheme
 from trellum.validation import validate_report
+from trellum.validation.checks.chart_options import _check_chart_options
+from trellum.validation.result import ValidationResult
 from trellum.validation.walk import _all_components
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -57,11 +59,6 @@ def context(output):
 def validate(ctx):
     details = compute_details(ctx)
     result = validate_report(ctx, details=details)
-    # Lead integrates this pure dispatch in the shared validator separately.
-    for comp, section in _all_components(ctx):
-        if isinstance(comp, StackedBar):
-            for check_id, message in stacked_summary_option_problems(comp):
-                result.fail(check_id, message, component='StackedBar', section=section)
     issues = [(c.id, c.level, c.section, c.message) for c in result.checks if c.level in {'warn', 'fail'}]
     assert not issues, issues
     return details, result
@@ -76,6 +73,9 @@ def test_keyword_only_actual_baseline_html_payload(tmp_path):
                     {'height': 220, 'header_context': 'Context'}):
         comp = chart(**options)
         assert render(comp) == render(old.StackedBar(comp.df, comp.x, comp.y_cols, comp.title, **options))
+        result = ValidationResult(slug='historical-stacks')
+        _check_chart_options([(old.StackedBar(comp.df, comp.x, comp.y_cols, comp.title, **options), 'Stacks')], result)
+        assert result.checks == []
         assert 'stacked_summary' not in render(comp)[1]
         assert 'data-chart-summary=' not in render(comp)[0]
     html, cfg = render(chart(header_summary=SUMMARY))
@@ -100,6 +100,10 @@ def test_strict_construction_render_and_pure_mutation_diagnostics(bad):
         chart(header_summary=bad)
     comp = chart(); comp.header_summary = bad
     assert stacked_summary_option_problems(comp)[0][0] == 'chart-summary-invalid'
+    result = ValidationResult(slug='stacked-summary')
+    _check_chart_options([(comp, 'Stacks')], result)
+    assert [(c.id, c.level, c.component, c.section) for c in result.checks] == [
+        ('chart-summary-invalid', 'fail', 'StackedBar', 'Stacks')]
     with pytest.raises(ValueError, match='StackedBar header_summary'):
         render(comp)
 
@@ -135,6 +139,16 @@ def test_exact_captions_escaping_and_no_premature_identity_guess():
     assert cfg['stacked_summary']['series'] == option['series']
     assert not stacked_summary_option_problems(comp)  # Missing/ambiguous final identity is a runtime dash.
     assert 'stacked_summary_input_reason' not in render(replace(comp, dataset_id='raw'))[1]
+
+
+def test_static_summary_only_guards_its_selected_series():
+    comp = chart(header_summary=SUMMARY)
+    comp.df['Other'] = pd.Series([None, '2'], dtype=object)
+    comp.y_cols.append('Other')
+    assert stacked_summary_input_reason(comp) == ''
+    assert render(comp)[1]['stacked_summary_input_reason'] == ''
+    comp.header_summary = {**SUMMARY, 'series': 'Other'}
+    assert stacked_summary_input_reason(comp)
 
 
 def test_native_examples_oracle_and_zero_diagnostics(tmp_path):

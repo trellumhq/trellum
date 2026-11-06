@@ -56,7 +56,10 @@ def stacked_summary_option_problems(comp: Any) -> list[tuple[str, str]]:
 
 def stacked_summary_input_reason(comp: Any) -> str:
     """Compact static eligibility only; never copy or clean the plotted rows."""
-    for col in comp.y_cols:
+    selected = comp.header_summary["series"]
+    # Missing or repeated final captions are diagnosed by the rendered-series
+    # selector. Unselected static columns do not contribute to this statistic.
+    for col in [selected] if comp.y_cols.count(selected) == 1 else []:
         if col not in comp.df:
             return "Missing original bar values"
         for value in comp.df[col].tolist():

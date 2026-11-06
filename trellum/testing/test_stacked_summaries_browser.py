@@ -209,6 +209,9 @@ def test_real_js_reducer_precision_eligibility_and_exact_identity(reports, brows
             return {
                 stats:['sum','mean','min','max','last'].map(stat=>reduce([30,60],stat).value),
                 zero:reduce([0,0]).value, signed:reduce([-5,2]).value,
+                cancellation:reduce([1e15,1,-1e15]).value,
+                cancellationMean:reduce([1e15,1,-1e15],'mean').value,
+                tiny:reduce([1e15,.001,-1e15]).value,
                 invalid:[null,true,'3',NaN,Infinity,9007199254740992].map(v=>reduce([1,v]).reason),
                 overflow:reduce([Number.MAX_SAFE_INTEGER,Number.MAX_SAFE_INTEGER]).reason,
                 mean:reduce([Number.MAX_SAFE_INTEGER,Number.MAX_SAFE_INTEGER],'mean').value,
@@ -226,6 +229,9 @@ def test_real_js_reducer_precision_eligibility_and_exact_identity(reports, brows
         }''')
         assert result['stats'] == [90, 45, 30, 60, 60]
         assert result['zero'] == 0 and result['signed'] == -3
+        assert result['cancellation'] == 1
+        assert result['cancellationMean'] == pytest.approx(1 / 3)
+        assert result['tiny'] == .001
         assert all(result['invalid']) and result['overflow'] and result['empty'] and result['last']
         assert result['mean'] == result['max'] == 2 ** 53 - 1
         assert result['normalized'] == result['line'] == result['right'] == 90

@@ -529,6 +529,9 @@ and bubble plots. Coordinate reducers require complete finite pairs.
 count retained aggregate cell entries or summarize their raw values before
 color normalization, with explicit original-input eligibility.
 
+[StackedBar header summaries](docs/report-stacked-summaries.md) describe one
+exact final bar-series caption in original units, including in Percentage mode.
+
 [FunnelChart header summaries](docs/report-funnel-summaries.md) optionally show
 a named stage, maximum stage-entry count or entry count above the current plot.
 They preserve stage ordering and do not infer conversions or cross-stage totals.

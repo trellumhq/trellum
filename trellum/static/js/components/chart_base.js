@@ -136,15 +136,26 @@ function _fwStackSummaryResult(summary, datasets, inputReason) {
         result = values[0];
         values.forEach(function(v) { result = summary.stat === 'min' ? Math.min(result, v) : Math.max(result, v); });
     } else {
-        // Scaling also protects the mean from avoidable intermediate overflow.
-        var scale = values.reduce(function(m, v) { return Math.max(m, Math.abs(v)); }, 0);
-        var total = 0, correction = 0;
-        values.forEach(function(v) {
-            var next = scale ? v / scale - correction : 0;
-            var updated = total + next;
-            correction = (updated - total) - next; total = updated;
-        });
-        result = summary.stat === 'mean' ? total / values.length * scale : total * scale;
+        // Preserve small contributions after cancellation in original units.
+        // Only scale when an intermediate total cannot be represented.
+        function compensated(scale) {
+            var total = 0, correction = 0;
+            values.forEach(function(value) {
+                var v = value / scale, next = total + v;
+                correction += Math.abs(total) >= Math.abs(v) ? (total-next)+v : (v-next)+total;
+                total = next;
+            });
+            return [total, correction];
+        }
+        var divisor = summary.stat === 'mean' ? values.length : 1;
+        var parts = compensated(1);
+        if (parts.every(Number.isFinite)) {
+            result = parts[0] / divisor + parts[1] / divisor;
+        } else {
+            var scale = values.reduce(function(m, v) { return Math.max(m, Math.abs(v)); }, 0);
+            parts = compensated(scale || 1);
+            result = (parts[0] / divisor + parts[1] / divisor) * scale;
+        }
     }
     return _fwStackSummarySafe(result) ? {value: result, reason: ''} : unavailable('Nonfinite or unsafe summary result');
 }
@@ -191,7 +202,7 @@ function _fwUpdateStackSummary(canvas, summary, datasets, inputReason) {
     var value = result.value === null ? '—' : window.getFormatter(summary.format)(result.value);
     var description = span('fw-stacked-summary-description',
         'One final bar series (' + summary.series + ') in original absolute units, even in Percentage mode. ' +
-        'All current filtered supplied bar inputs must be finite native numbers with safe integers. ' +
+        'Selected static inputs, or all currently filtered bound bar inputs, must be finite native numbers with safe integers. ' +
         'After existing aggregation, pivot, sorting, max_stacks and Other; before percentage normalization. ' +
         'Every displayed entry counts, including plotted zero-fill; none are skipped. Last is the final displayed entry. ' +
         'Legend hiding and zoom do not change scope. Delivered population only; no warehouse completeness claim. ' + result.reason);

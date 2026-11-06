@@ -9,6 +9,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Optional StackedBar header summaries for one exact final bar series in
+  original units, with explicit input eligibility.
+
 - Optional HeatmapChart headers summarizing current aggregate cell entries,
   with explicit population scope and conservative numeric eligibility.
 
