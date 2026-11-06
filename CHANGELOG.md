@@ -33,6 +33,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Remeasure lazy report content before clipping emailed snapshots to their
+  height limit, with bounded viewport growth and settling.
+
 - Keep the demo Sessions per DAU metric unbound so the metrics catalog
   demonstrates an unmonitored definition.
 
