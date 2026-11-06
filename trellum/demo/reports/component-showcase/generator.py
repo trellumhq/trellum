@@ -5,6 +5,8 @@ import pandas as pd
 from trellum import BaseReport
 from trellum.components import DataSource, FilterBar, Grid, LineChart, RawHTML
 
+from . import examples_layouts
+
 
 class ComponentShowcaseReport(BaseReport):
     def generate(self, ctx):
@@ -50,3 +52,5 @@ class ComponentShowcaseReport(BaseReport):
             ]),
             LineChart(title="Roomy · 320px", height="roomy", **common),
         ])
+
+        examples_layouts.add_sections(ctx)

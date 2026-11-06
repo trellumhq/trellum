@@ -3,6 +3,35 @@
 Each section documents a breaking or significant change, how to detect affected
 code, and the exact replacement.
 
+## Unreleased: report chart sizes and panel-width layouts
+
+Existing constructor positional arguments remain accepted. No host API or
+artifact schema changes are required. Rebuilding a report applies these
+presentation changes; previously generated report files are unaffected.
+
+- Ordinary `LineChart` plots use 220px at every viewport width. Choose
+  `height="compact"` for 160px or `height="roomy"` for 320px. Optional
+  `header_summary` is off by default and follows the filtered plotted series.
+- `Grid(columns=...)` is now a maximum constrained by panel width. This also
+  applies when `min_width` is supplied: previously automatic grids ignored
+  `columns`. For an existing automatic grid intended to show four tiles across,
+  use `Grid(children, columns=4, min_width=320)` explicitly. The minimum is
+  preferred; narrower panels still fit one cell without overflow.
+- Automatic grids keep chart titles and breakdown controls visible, and use
+  the chart's own plot height. They no longer shorten non-LineChart plots to
+  200px. To omit redundant context explicitly, use the keyword-only
+  `show_titles=False` or `show_controls=False`; omission stops at nested Grids.
+- `SplitPane` keeps each child's full output together and stacks according to
+  its panel width instead of a viewport breakpoint. The existing ratio argument
+  is preserved. Set keyword-only `left_min_width` and `right_min_width` to tune
+  the stacking point; both default to 320px. Custom CSS that targets direct
+  SplitPane children should account for the new `.fw-split-pane` wrapper.
+
+Find affected authoring code with `rg 'LineChart\(|Grid\(|SplitPane\(' reports`.
+See [report layouts](report-layouts.md) for examples and the
+`component-showcase` demo for interactive configurations. KPI row arrangement,
+report filter values and date calculations are unchanged by these layout options.
+
 ## 0.9.0: pandas 3, and repeated text from `query_df` as `category` columns
 
 pandas 3.0 is now required, and `query_df` returns a text column whose values
