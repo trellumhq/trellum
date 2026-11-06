@@ -43,6 +43,13 @@ drivers come from `requirements-drivers-common.txt`. The installed-connector
 checks in `testing/test_snowflake_compat.py` run in the product environment and
 validate Connector 5.1 separately; fakesnow does not validate that connector.
 
+The harness pins fakesnow 0.12.1, whose SQLGlot requirement is `~=30.22.0`.
+Core requirements and wheel metadata both pin SQLGlot to `30.22.0` so the
+restricted PostgreSQL validator uses the same parser version in every
+environment. When updating either pin, resolve this harness too and run
+`testing/test_assistant_query.py` and the disposable PostgreSQL security tests
+in `testing/test_assistant_query_postgres.py` with the new parser installed.
+
 Docker Desktop, running, for anything beyond the embedded engines
 (sqlite, duckdb, fakesnow, file, api never need it).
 

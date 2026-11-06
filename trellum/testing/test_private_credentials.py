@@ -1,10 +1,9 @@
 """Synthetic local persistence only: no login, provider, or real credential paths."""
-from argparse import Namespace
-from concurrent.futures import ThreadPoolExecutor
 import io
 import os
-from pathlib import Path
 import stat
+from argparse import Namespace
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import Mock
 
 import pytest
@@ -139,6 +138,26 @@ def test_cache_writers_reload_even_with_identical_mtime(tmp_path, monkeypatch):
     assert {x['username'] for x in _cache(tmp_path).search('Account')} == {'one', 'two', 'three'}
 
 
+def test_search_removes_expired_tokens_and_preserves_other_cache_entries(tmp_path):
+    cache = _cache(tmp_path)
+    for name, expires_on in [('expired-one', '1'), ('expired-two', '2'), ('valid', '100')]:
+        token = {
+            'credential_type': 'AccessToken', 'home_account_id': name,
+            'environment': 'synthetic', 'client_id': 'synthetic-client',
+            'realm': 'test', 'target': 'scope', 'secret': 'synthetic-token',
+            'expires_on': expires_on,
+        }
+        cache.modify('AccessToken', token, token)
+    _add(_cache(tmp_path), 'other-writer')
+
+    assert [entry['home_account_id'] for entry in cache.search('AccessToken', now=10)] == ['valid']
+    # Read with a pre-expiry clock to prove cleanup reached the file, rather
+    # than having the next reader discard the expired tokens again.
+    fresh = _cache(tmp_path)
+    assert [entry['home_account_id'] for entry in fresh.search('AccessToken', now=0)] == ['valid']
+    assert [entry['username'] for entry in fresh.search('Account')] == ['other-writer']
+
+
 def test_cache_failed_replace_keeps_prior_cache_and_next_update_reloads(tmp_path, monkeypatch):
     cache = _cache(tmp_path)
     _add(cache, 'prior')
@@ -181,8 +200,9 @@ def test_secret_input_compatibility_and_alternatives(name, source, monkeypatch, 
 
 
 def test_lock_timeout_is_bounded_and_prior_file_survives(tmp_path, monkeypatch):
-    import portalocker
     import time
+
+    import portalocker
     path = tmp_path / '.env'
     path.write_text('KEEP=yes\n')
     times = iter([0, 11])
@@ -215,6 +235,7 @@ def test_existing_cache_login_uses_silent_auth_without_device_flow(tmp_path, mon
 @pytest.mark.parametrize('flag', ['--password', '--password-stdin', '--password-env'])
 def test_password_parser_accepts_existing_and_new_options(flag):
     import argparse
+
     from trellum.cli.commands.datasource import add_datasource_commands
     parser = argparse.ArgumentParser()
     add_datasource_commands(parser.add_subparsers())

@@ -51,10 +51,12 @@ def _update_env_file(path: str, values: dict[str, str]) -> list[str]:
     comments and unrelated settings, so existing lines are edited in place and
     only genuinely new keys are appended.
     """
-    from pathlib import Path
-    from dotenv import dotenv_values
-    from trellum.private_files import atomic_write, prepare_parent, private_lock, read_private
     import io
+    from pathlib import Path
+
+    from dotenv import dotenv_values
+
+    from trellum.private_files import atomic_write, prepare_parent, private_lock, read_private
 
     target = Path(path).absolute()
     prepare_parent(target)
