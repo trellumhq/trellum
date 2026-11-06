@@ -77,7 +77,9 @@ pull request `heavy-tests`. A skipped heavy job does not block the required
 checks; a requested one must pass. Marking happens in the root `conftest.py`.
 The heavy job runs on the native Ubuntu runner with Docker and Compose for
 live database and restore tests, and installs the pinned Playwright browsers.
-Local runs of those cases also need a working Docker daemon and Compose.
+Local runs of those cases also need a working Docker daemon and Compose;
+the materialization cases require `psycopg2-binary` and `pymysql` from the
+framework driver requirements. CI installs those two with `constraints.txt`.
 
 The local default is four workers; `portal` defaults to two. Set `--workers`
 from 1 to 16 to match available PostgreSQL connections, memory, and browser
