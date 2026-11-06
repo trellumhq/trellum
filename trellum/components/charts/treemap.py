@@ -14,6 +14,10 @@ from trellum.components.charts.base import (
     _ChartBase,
     _validate_header_context,
 )
+from trellum.components.charts._treemap_summary import (
+    treemap_static_summary_guard,
+    treemap_summary_config,
+)
 
 
 def _validate_percentage_option(value: bool) -> None:
@@ -30,6 +34,8 @@ class TreemapChart(Component):
     filter support. Keyword-only ``show_percentages`` adds a share line to
     fitting leaf labels; authors must supply complete nonnegative additive
     values. Full-path details retain values and eligible shares independently.
+    Keyword-only ``header_summary`` optionally reduces final plugin leaf entries;
+    numeric reducers conservatively require safe nonnegative supplied values.
     """
 
     df: pd.DataFrame
@@ -42,6 +48,7 @@ class TreemapChart(Component):
     static: bool = False
     show_percentages: bool = field(default=False, kw_only=True)
     header_context: Optional[str] = field(default=None, kw_only=True)
+    header_summary: Optional[dict] = field(default=None, kw_only=True)
 
     _component_type: str = field(default="treemap_chart", init=False, repr=False)
     _supports_dataset_id: bool = field(default=True, init=False, repr=False)
@@ -49,10 +56,14 @@ class TreemapChart(Component):
     def __post_init__(self) -> None:
         _validate_header_context(self.header_context)
         _validate_percentage_option(self.show_percentages)
+        treemap_summary_config(self)
 
     def render_html(self, ctx: RenderContext) -> str:
         # Also reject invalid mutations after construction.
         _validate_percentage_option(self.show_percentages)
+        summary = treemap_summary_config(self)
+        if summary and not self.dataset_id:
+            summary["summary_guard"] = treemap_static_summary_guard(self)
         cid = ctx.next_id()
 
         if self.dataset_id:
@@ -65,6 +76,7 @@ class TreemapChart(Component):
                 "value_format": self.value_format,
                 "title": self.title,
                 "show_percentages": self.show_percentages,
+                **summary,
             })
         else:
             rows = []
@@ -89,11 +101,13 @@ class TreemapChart(Component):
                     "null" if v is None or v is pd.NA else str(v)
                     for v in self.df[self.value].tolist()
                 ],
+                **summary,
             })
 
         return (
             '<div class="fw-treemap">'
-            + _chart_container_html(cid, self.title, header_context=self.header_context)
+            + _chart_container_html(cid, self.title, header_context=self.header_context,
+                                    summary=bool(summary))
             + f'<div class="fw-treemap-context" data-treemap-context="{cid}"></div>'
             + '</div>'
         )

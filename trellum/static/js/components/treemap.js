@@ -1,4 +1,120 @@
+/* Reduce completed plugin leaves only. Source membership verifies that legacy
+ * grouping retained the supplied input; it never certifies warehouse coverage. */
+function _fwTreemapSummaryResult(leaves, tree, rows, cfg) {
+    var summary = cfg.header_summary;
+    if (!leaves) return {value: null, reason: 'No completed hierarchy result.'};
+    if (summary.stat === 'count') return {value: leaves.length, reason: ''};
+    var safe = function(v) {
+        return typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= Number.MAX_SAFE_INTEGER;
+    };
+    if ((!cfg.dataset_id && cfg.summary_guard && !cfg.summary_guard.values_valid) ||
+            rows.some(function(row) { return !safe(row[cfg.value_col]); })) {
+        return {value: null, reason: 'Every supplied value must be finite, numeric, nonnegative and safe.'};
+    }
+    if (!cfg.group_cols.length || tree.some(function(row) {
+        return cfg.group_cols.some(function(col) { return !row[col].trim(); });
+    })) return {value: null, reason: 'Blank or suppressed hierarchy names.'};
+    if (!leaves.length) return {value: null, reason: 'No final leaf entries in current result.'};
+    var covered = new Set(), inputs = new Set(tree), complete = true;
+    leaves.forEach(function(raw) {
+        var children = raw._data && raw._data.children;
+        if (!children || !children.length) { complete = false; return; }
+        children.forEach(function(child) {
+            if (!inputs.has(child) || covered.has(child)) complete = false;
+            covered.add(child);
+        });
+    });
+    if (!complete || covered.size !== inputs.size) {
+        return {value: null, reason: 'Legacy leaves do not cover supplied hierarchy rows.'};
+    }
+    if (leaves.some(function(raw) { return !safe(raw.v); })) {
+        return {value: null, reason: 'Unsafe aggregate leaf value.'};
+    }
+    var value, correction = 0;
+    if (summary.stat === 'min' || summary.stat === 'max') {
+        value = leaves.reduce(function(best, raw) {
+            return summary.stat === 'min' ? Math.min(best, raw.v) : Math.max(best, raw.v);
+        }, leaves[0].v);
+    } else {
+        // The unweighted mean needs no potentially overflowing raw sum.
+        // Compensated addition in leaf/n units also preserves small zeros.
+        value = 0;
+        leaves.forEach(function(raw) {
+            var term = (summary.stat === 'mean' ? raw.v / leaves.length : raw.v) - correction;
+            var next = value + term; correction = (next - value) - term; value = next;
+        });
+    }
+    return safe(value) ? {value: value, reason: ''}
+        : {value: null, reason: 'Unsafe aggregate summary result.'};
+}
+
+function _fwTreemapSummary(canvas, cfg, result) {
+    var host = canvas.closest('.fw-treemap') || canvas._fwTreemapSummaryHost ||
+        (canvas.parentElement && canvas.parentElement.parentElement);
+    if (!host) return;
+    canvas._fwTreemapSummaryHost = host;
+    var box = host.querySelector('[data-chart-summary="' + canvas.id + '"]');
+    var scopeId = canvas.id + '-treemap-summary-scope', reasonId = canvas.id + '-treemap-summary-reason';
+    var tokens = (canvas.getAttribute('aria-describedby') || '').split(/\s+/).filter(function(t) {
+        return t && t !== scopeId && t !== reasonId;
+    });
+    if (cfg.header_summary) {
+        if (!box) {
+            var container = canvas.parentElement, before = container.previousElementSibling;
+            if (before && before.classList.contains('fw-chart-header-context')) before = before.previousElementSibling;
+            var head = document.createElement('div'); head.className = 'fw-chart-head';
+            if (before && before.classList.contains('fw-chart-title')) {
+                before.before(head); head.appendChild(before); before.style.marginBottom = '';
+            } else if (container.previousElementSibling && container.previousElementSibling.classList.contains('fw-chart-header-context')) {
+                container.previousElementSibling.before(head);
+            } else container.before(head);
+            box = document.createElement('div'); box.dataset.chartSummary = canvas.id; head.appendChild(box);
+        }
+        function span(cls, text) {
+            var node = document.createElement('span'); node.className = cls; node.textContent = text; return node;
+        }
+        result = result || {value: null, reason: 'No completed hierarchy result.'};
+        var summary = cfg.header_summary;
+        var value = result.value == null ? '—' : summary.stat === 'count' ? String(result.value)
+            : window.getFormatter(summary.format)(result.value);
+        box.className = 'fw-chart-summary fw-treemap-summary';
+        var scope = span('fw-treemap-summary-scope', 'Current final leaf entries' +
+            (summary.stat === 'count' ? ' · Count independent of numeric eligibility' : ''));
+        scope.id = scopeId;
+        var description = span('fw-treemap-summary-description',
+            'Current supplied or report-filtered final plugin leaf entries after existing grouping. ' +
+            'Includes leaves outside the view and without fitting labels; repeated full paths aggregate, identical names under different parents remain separate. ' +
+            'Not source facts, visible labels, matrix areas, paths or unique people. ' +
+            (summary.stat === 'count' ? 'Count is independent of numeric and geometry validity; it does not claim all source categories survived blank-parent suppression. ' :
+                'All raw values and final leaves must be finite, numeric, nonnegative and safe; all supplied hierarchy rows must be covered. ' +
+                (summary.stat === 'mean' ? 'Unweighted arithmetic mean of aggregate leaf entries. ' : '')) +
+            'No warehouse completeness or precision beyond the supplied finite snapshot is established.');
+        var children = [span('fw-chart-summary-label', summary.label), span('fw-chart-summary-value', value), scope, description];
+        tokens.push(scopeId);
+        if (result.reason) {
+            var reason = span('fw-treemap-summary-reason', result.reason); reason.id = reasonId;
+            children.push(reason); tokens.push(reasonId);
+        }
+        box.replaceChildren.apply(box, children); box.title = description.textContent;
+        scope.setAttribute('aria-label', scope.textContent + '. ' + description.textContent);
+    } else if (box) {
+        var parent = box.parentElement; box.remove();
+        if (parent.classList.contains('fw-chart-head')) {
+            var title = parent.querySelector('.fw-chart-title');
+            if (title) { title.style.marginBottom = '4px'; parent.replaceWith(title); }
+            else if (!parent.children.length) parent.remove();
+        }
+    }
+    if (tokens.length) canvas.setAttribute('aria-describedby', tokens.join(' '));
+    else canvas.removeAttribute('aria-describedby');
+}
+
 window._fwRenderers['treemap'] = function renderTreemap(id, cfg) {
+    var bindings = window._fwTreemapBindings || (window._fwTreemapBindings = {});
+    if (bindings[id]) bindings[id]();
+    if (window._fwMetricDrawLeases && window._fwMetricDrawLeases[id]) {
+        window._fwMetricDrawLeases[id](); delete window._fwMetricDrawLeases[id];
+    }
     var canvas = document.getElementById(id);
     if (!canvas) return;
     var host = canvas.closest('.fw-treemap');
@@ -12,8 +128,33 @@ window._fwRenderers['treemap'] = function renderTreemap(id, cfg) {
     var groupIndex = canvas._fwTreemapGroups;
     var fmtMap = { currency: fmtCompact$, number: fmtCompact, percent: fmtPercent };
     var valFmt = fmtMap[cfg.value_format] || fmtCompact;
+    var active = true, unsubscribe = function() {}, lifeOff = function() {}, lease = null;
+    var engine = window._fwFilterEngine;
+    function dispose() {
+        if (!active) return;
+        active = false; unsubscribe(); lifeOff(); observer.disconnect();
+        window.removeEventListener('fw-theme-change', drawCurrent);
+        if (lease) {
+            lease();
+            if (window._fwMetricDrawLeases[id] === lease) delete window._fwMetricDrawLeases[id];
+        }
+        if (bindings[id] === dispose) delete bindings[id];
+        if (document.getElementById(id) !== canvas) {
+            _fwTreemapSummary(canvas, {}, null);
+            var chart = window._chartInstances[id];
+            if (chart && chart.canvas === canvas) { chart.destroy(); delete window._chartInstances[id]; }
+        }
+    }
+    var observer = new MutationObserver(function() {
+        if (document.getElementById(id) !== canvas) dispose();
+    });
+    observer.observe(document.body, {childList: true, subtree: true});
+    bindings[id] = dispose;
+    _fwTreemapSummary(canvas, cfg, null);
 
     function _buildTreemap(rows) {
+        if (!active || document.getElementById(id) !== canvas) return;
+        if (cfg.header_summary) _fwTreemapSummary(canvas, cfg, null);
         rows = rows || [];
         var total = 0;
         var reason = rows.length ? '' : 'Shares unavailable: no supplied values.';
@@ -214,6 +355,7 @@ window._fwRenderers['treemap'] = function renderTreemap(id, cfg) {
         chart._fwThemeManagedFonts = true;
         var nodes = chart.data.datasets[0].data;
         var leaves = nodes.filter(function(raw) { return raw.l === groupCols.length - 1; });
+        if (cfg.header_summary) _fwTreemapSummary(canvas, cfg, _fwTreemapSummaryResult(leaves, tree, rows, cfg));
         var leafTotal = leaves.reduce(function(sum, raw) { return sum + raw.v; }, 0);
         if (!reason && Math.abs(leafTotal - total) > Math.max(1, total) * 1e-12) {
             reason = 'Shares unavailable: legacy leaves do not cover the supplied population.';
@@ -224,6 +366,7 @@ window._fwRenderers['treemap'] = function renderTreemap(id, cfg) {
         if (!context) return; // Older markup safely keeps its canvas renderer.
         var previous = context.querySelector('details');
         var wasOpen = previous && previous.open;
+        var hadFocus = previous && previous.contains(document.activeElement);
         context.replaceChildren();
         function text(tag, value, parent, className) {
             var el = document.createElement(tag); el.textContent = value;
@@ -282,24 +425,51 @@ window._fwRenderers['treemap'] = function renderTreemap(id, cfg) {
         });
         if (!leaves.length) text('p', 'No hierarchy leaves are available in this result.', details);
         text('p', 'Legacy sizing is unsupported for signed or all-zero values; blank parents can suppress leaves. CSV does not export populated hierarchy leaves.', details);
+        if (hadFocus) details.querySelector('summary').focus({preventScroll: true});
     }
 
-    var bindings = window._fwTreemapBindings || (window._fwTreemapBindings = {});
-    if (bindings[id]) { bindings[id](); delete bindings[id]; }
-    if (cfg.dataset_id && window._fwMetricsWorkspace) {
-        window._fwLiveWrap(id, cfg, _buildTreemap);
-        return;
-    }
-    var unsubscribe = cfg.dataset_id ? window._fwFilterEngine.subscribe(cfg.dataset_id, id, _buildTreemap) : function() {};
     function drawCurrent() {
         if (document.getElementById(id) !== canvas) {
-            bindings[id](); delete bindings[id]; return;
+            dispose(); return;
         }
-        _buildTreemap(cfg.dataset_id ? window._fwFilterEngine.getFiltered(cfg.dataset_id) : cfg.rows);
+        if (cfg.dataset_id && !engine.isReady(cfg.dataset_id)) {
+            _fwTreemapSummary(canvas, cfg, null); return;
+        }
+        _buildTreemap(cfg.dataset_id ? currentRows() : cfg.rows);
     }
-    window.addEventListener('fw-theme-change', drawCurrent);
-    bindings[id] = function() { unsubscribe(); window.removeEventListener('fw-theme-change', drawCurrent); };
-    drawCurrent();
+    function currentRows() {
+        // Structural parent replacement does not invalidate a scoped child's
+        // row cache in the legacy engine. Its existing read API applies all
+        // current filters without consulting that child cache.
+        return engine._scopes[cfg.dataset_id] ? engine.getFilteredExcluding(cfg.dataset_id, [])
+            : engine.getFiltered(cfg.dataset_id);
+    }
+    function bind() {
+        unsubscribe();
+        if (lease) { lease(); lease = null; }
+        if (cfg.dataset_id && window._fwMetricsWorkspace) {
+            window._fwLiveWrap(id, cfg, function(rows) {
+                if (engine.isReady(cfg.dataset_id)) _buildTreemap(engine._scopes[cfg.dataset_id] ? currentRows() : rows);
+                else _fwTreemapSummary(canvas, cfg, null);
+            });
+            lease = window._fwMetricDrawLeases[id];
+        } else {
+            unsubscribe = cfg.dataset_id ? engine.subscribe(cfg.dataset_id, id, drawCurrent) : function() {};
+            drawCurrent();
+        }
+    }
+    if (cfg.dataset_id && engine.subscribeLifecycle) lifeOff = engine.subscribeLifecycle(function(event) {
+        // Re-entry after a removed source or scoped-parent replacement needs
+        // a fresh row subscription. Existing filter state remains engine-owned.
+        var source = cfg.dataset_id, seen = new Set();
+        while (source && !seen.has(source)) {
+            seen.add(source);
+            if (source === event.dataset_id) { bind(); return; }
+            source = engine._scopes[source] && engine._scopes[source].parent;
+        }
+    });
+    if (!cfg.dataset_id || !window._fwMetricsWorkspace) window.addEventListener('fw-theme-change', drawCurrent);
+    bind();
 };
 
 function _fwTreemapRaw(value) {

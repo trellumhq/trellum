@@ -7,6 +7,8 @@
 .fw-treemap-key .fw-treemap-name { overflow-wrap: anywhere; min-width: 0; }
 .fw-treemap-context summary { cursor: pointer; padding: 10px 0; color: var(--text-main); }
 .fw-treemap-context summary:focus-visible { outline: 2px solid var(--text-main); outline-offset: 2px; }
+/* Explicitly retain closed disclosure scope in native raster captures too. */
+.fw-treemap-context details:not([open]) > :not(summary) { display: none; }
 .fw-treemap-details-scroll { max-width: 100%; overflow-x: auto; }
 .fw-treemap-context table { width: 100%; border-collapse: collapse; font-size: var(--font-size-table, 13px); }
 .fw-treemap-context th, .fw-treemap-context td { padding: 6px 8px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border-color); overflow-wrap: anywhere; }
@@ -15,3 +17,11 @@
 .fw-treemap-context .fw-treemap-raw { display: block; color: var(--text-secondary); font-size: var(--font-size-label, 12px); }
 .fw-treemap-path { display: inline; }
 @media (max-width: 640px) { .fw-treemap-context summary { min-height: 44px; box-sizing: border-box; } }
+.fw-treemap-summary .fw-treemap-summary-scope,
+.fw-treemap-summary .fw-treemap-summary-reason {
+    flex-basis: 100%; text-align: right; overflow-wrap: anywhere;
+}
+.fw-treemap-summary-description {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0;
+}
