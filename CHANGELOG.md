@@ -10,7 +10,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Documentation
 
 - Default local human report previews to review mode, with scoped feedback
-  polling and rebuild-before-reply guidance.
+  polling and rebuild-before-reply guidance. Setup refreshes the managed
+  guidance in existing projects while preserving their custom instructions.
 
 - Explain which repository files reach a studio during Git sync, including
   nested project roots, assistant instructions and declared data files.
