@@ -1,5 +1,13 @@
 # Framework Migration Guide
 
+## Unreleased: optional ComboChart summaries
+
+Existing calls need no changes. Use `header_summary={"stat": "sum",
+"scope": "axis_series", "axis": "left", "series": "Spend"}` to summarize
+one exact final bar-series caption. Right-axis lines use `axis="right"`.
+See [Combo summaries](report-combo-summaries.md) for formats, valid reducers
+and retained static/bound differences. Rebuild report assets; CSV is unchanged.
+
 ## Unreleased: optional Sankey summaries
 
 Existing calls need no changes. Complete-path charts accept

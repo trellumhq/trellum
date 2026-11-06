@@ -17,6 +17,8 @@ from trellum.report import ReportContext
 from trellum.reporting.diagnostics import compute_details
 from trellum.themes import DefaultTheme
 from trellum.validation import validate_report
+from trellum.validation.checks.chart_options import _check_chart_options
+from trellum.validation.result import ValidationResult
 from trellum.validation.walk import _all_components
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -57,10 +59,6 @@ def validate(ctx):
     details = compute_details(ctx)
     result = validate_report(ctx, details=details)
     issues = [(c.id, c.level, c.section, c.message) for c in result.checks if c.level in {'warn', 'fail'} and not c.suppressed]
-    # Lead wires the common dispatcher. Exercise the pure helper on every native
-    # Combo beside genuine validation, never call this a substitute validator.
-    issues += [(key, 'fail', section, message) for comp, section in _all_components(ctx)
-               if isinstance(comp, ComboChart) for key, message in combo_summary_option_problems(comp)]
     assert not issues, issues
     return details, result
 
@@ -78,6 +76,9 @@ def test_keyword_only_subclass_and_actual_baseline(tmp_path):
         comp = chart(**opts)
         legacy = old.ComboChart(comp.df, comp.x, comp.bar_cols, comp.line_cols, comp.title,
             bar_labels=comp.bar_labels, line_labels=comp.line_labels, **opts)
+        result = ValidationResult(slug='historical-combo')
+        _check_chart_options([(legacy, 'Combo')], result)
+        assert not result.checks
         assert render(comp) == render(legacy)
         assert 'combo_summary' not in render(comp)[1] and 'data-combo-summary=' not in render(comp)[0]
     html, cfg = render(chart(header_summary=SUMMARY))
@@ -99,6 +100,10 @@ def test_construction_render_and_pure_mutation_validation(bad):
     with pytest.raises(ValueError, match='ComboChart header_summary'): chart(header_summary=bad)
     comp = chart(); comp.header_summary = bad
     assert combo_summary_option_problems(comp)[0][0] == 'chart-summary-invalid'
+    result = ValidationResult(slug='mutated-combo')
+    _check_chart_options([(comp, 'Combo')], result)
+    assert [(c.id, c.level, c.component, c.section) for c in result.checks] == [
+        ('chart-summary-invalid', 'fail', 'ComboChart', 'Combo')]
     with pytest.raises(ValueError, match='ComboChart header_summary'): render(comp)
 
 

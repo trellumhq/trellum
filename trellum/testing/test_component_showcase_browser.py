@@ -207,6 +207,17 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             expect(sankey_summaries.locator('.fw-chart-summary-value')).to_have_text(['500', '220', '4'])
             expect(treemaps.locator('.fw-chart-summary-value').first).to_have_text('$300.00')
             expect(scatter.locator('.fw-chart-summary-value').last).to_have_text('4')
+            page.get_by_role('link', name='Combo summaries', exact=True).click()
+            combos = page.locator('#sec-combo-summaries-—-axis-identity-and-reducers')
+            combos.scroll_into_view_if_needed()
+            for canvas in combos.locator('canvas').all():
+                canvas.scroll_into_view_if_needed()
+            expect(combos.locator('.fw-combo-summary-value')).to_have_text(
+                ['$90.00', '$45.00', '$30.00', '$60.00', '$60.00', '27', '14', '$18.00', '180'])
+            combos.get_by_role('button', name='iOS', exact=True).click()
+            expect(combos.locator('.fw-combo-summary-value')).to_have_text(
+                ['$30.00', '$15.00', '$10.00', '$20.00', '$20.00', '9', '5', '$6.00', '60'])
+            expect(sankey_summaries.locator('.fw-chart-summary-value').first).to_have_text('500')
             expect(marketing.locator('.fw-mini-val').first).to_have_text('840')
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
             page.get_by_role("link", name="pivot tables", exact=True).click()

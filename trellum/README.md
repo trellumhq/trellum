@@ -539,6 +539,9 @@ results that exclude parent entries.
 [Sankey header summaries](docs/report-sankey-summaries.md) describe grouped
 complete paths or one declared adjacent boundary, retaining exact detail exports.
 
+[ComboChart header summaries](docs/report-combo-summaries.md) describe one final
+series on an explicit axis, with selected-input eligibility and existing units.
+
 [FunnelChart header summaries](docs/report-funnel-summaries.md) optionally show
 a named stage, maximum stage-entry count or entry count above the current plot.
 They preserve stage ordering and do not infer conversions or cross-stage totals.

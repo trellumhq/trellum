@@ -1,5 +1,14 @@
 # Framework Compatibility Policy
 
+## Unreleased: optional ComboChart summaries
+
+Keyword-only `header_summary=None` preserves historical output. A declaration
+selects one exact final caption on the left or right axis. Existing aggregation,
+plot geometry, nearest-series tooltips and raw CSV remain unchanged. See
+[Combo summaries](report-combo-summaries.md) for actual static/bound formatting,
+selected-input eligibility and retained limitations. Rebuild matching assets;
+no migration is required.
+
 ## Unreleased: optional Sankey summaries
 
 Keyword-only `header_summary=None` retains historical output. Path summaries

@@ -9,6 +9,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Optional ComboChart header summaries for one explicit axis and final series,
+  preserving chart values, legends, formats and CSV.
+
 - Optional Sankey header summaries for complete paths or a declared adjacent
   boundary, preserving exact supplied records and existing graph admission.
 

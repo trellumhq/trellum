@@ -110,7 +110,7 @@ runtime and is unchanged here. Incoming explicit scoped range URLs hydrate the
 correct independent filters; a subsequent serialized URL may lose that custom
 range. No engine, filter or URL-sync changes are part of this component option.
 
-## Native examples and integration
+## Native examples and validation
 
 `demo/reports/component-showcase/examples_combo_summaries.py` exposes
 `add_sections(ctx)`. It adds four named sections with independent dataset IDs
@@ -137,31 +137,11 @@ reports to acquire Python, runtime and CSS together; older runtimes ignore the
 new metadata and cannot display the summary. No artifact or host schema,
 dependency, version or migration changes are required.
 
-Common integration hooks (owned by the integrating change):
+The shared component showcase includes these four sections through its
+Combo summaries link, beside the ordinary Combo examples. The native
+chart-options validator dispatches `combo_summary_option_problems`, including
+mutated declarations, while accepting historical objects without this option.
+Import the existing `ComboChart` from `trellum.components`.
 
-1. In `demo/reports/component-showcase/generator.py`, import
-   `add_sections as add_combo_summary_sections` from `examples_combo_summaries`
-   alongside the other native examples modules, then call
-   `add_combo_summary_sections(ctx)` once alongside their `add_sections` calls.
-   The four named sections become native section navigation entries; retain
-   their independent filters and dataset IDs. Add this link to the existing
-   About paragraph: `<a href="#sec-combo-summaries-—-static-off/on">Combo summaries</a>`.
-2. In `validation/checks/chart_options.py`, import
-   `combo_summary_option_problems` from
-   `trellum.components.charts._combo_summary`. Within the existing component
-   loop, dispatch when `_comp_name(comp) == "ComboChart"`:
-
-   ```python
-   for check_id, message in combo_summary_option_problems(comp):
-       result.fail(check_id, message, component="ComboChart", section=sec)
-   ```
-
-3. Link this page beside `report-combos.md` and other summary guidance in the
-   component guide/docs navigation. The public class export remains unchanged.
-4. Proposed changelog: “Add opt-in ComboChart header summaries for one explicit
-   axis and final series, preserving chart values, legends, formats and CSV.”
-
-Owned tests call the pure diagnostic beside genuine
-`ReportContext → compute_details(ctx) → validate_report` until the common
-validator dispatch is integrated. Browser tests use native generated reports,
-vendored assets, actual downloaded CSV and native section/report captures.
+Browser checks use native generated reports, vendored assets, actual downloaded
+CSV and native section/report captures.
