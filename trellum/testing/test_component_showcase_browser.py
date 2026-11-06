@@ -377,6 +377,24 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             assert row_metrics.nth(1).inner_text() == '60'
             assert rows_choice.input_value() == 'all'
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
+            page.get_by_role('link', name='table totals', exact=True).click()
+            total_snapshot = page.locator('#sec-table-totals-—-exact-campaign-snapshot-off-and-on')
+            expect(total_snapshot.locator('tfoot tr')).to_have_text('Total$100.1030$120.121.20x120.0%')
+            total_events = page.locator('#sec-table-totals-—-all-matching-contributors')
+            expect(total_events.locator('tbody tr')).to_have_count(10)
+            expect(total_events.locator('.fw-table-totals-note')).to_contain_text('36 matching rows')
+            expect(total_events.locator('.fw-kpi-value')).to_have_text('$876.00')
+            page.locator('#sec-table-totals-—-delivered-event-filters').get_by_role(
+                'button', name='Android', exact=True).click()
+            expect(total_events.locator('.fw-table-totals-note')).to_contain_text('18 matching rows')
+            expect(total_events.locator('.fw-kpi-value')).to_have_text('$456.00')
+            total_events.locator('[data-table-search]').fill('Contributor 36')
+            expect(total_events.locator('tbody tr')).to_have_count(1)
+            expect(total_events.locator('tfoot tr')).to_have_text('Total$36.000$36.001.00x')
+            expect(total_events.locator('.fw-kpi-value')).to_have_text('$456.00')
+            expect(total_events.locator('.fw-table-totals-note')).to_contain_text('1 matching rows')
+            assert row_metrics.nth(1).inner_text() == '60'
+            assert live.locator('.fw-kpi-value').first.inner_text() == '$18.4k'
             # Every chart must own a real canvas and draw after scrolling into
             # view; scope-based data swaps cannot stand in for different layouts.
             for canvas in page.locator("canvas:visible").all():

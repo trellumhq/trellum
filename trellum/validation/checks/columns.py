@@ -253,6 +253,28 @@ def _check_columns(comps: list[tuple[Any, str]], ds_map: dict[str, Any], result:
                     )
 
         if name == "DataTable":
+            totals = getattr(comp, "totals", None)
+            if totals is not None:
+                from trellum.components._table_totals import totals_config
+
+                try:
+                    declared = totals_config(totals, df, getattr(comp, "columns", None) or list(df.columns))
+                except ValueError as error:
+                    result.fail("datatable-totals-invalid", str(error),
+                                component="DataTable", section=sec)
+                else:
+                    # Ratio components may be hidden from the displayed projection.
+                    # Check the actual bound source, including scoped ancestors.
+                    needed = {column for column, spec in declared.items() if spec["agg"] == "sum"}
+                    needed.update(spec[key] for spec in declared.values() if spec["agg"] == "ratio"
+                                  for key in ("numerator", "denominator"))
+                    missing = sorted(needed - cols)
+                    if missing:
+                        result.fail(
+                            "datatable-totals-column-missing",
+                            f"DataTable total inputs absent from its source: {', '.join(missing)}.",
+                            component="DataTable", section=sec,
+                        )
             cond_fmt = getattr(comp, "conditional_formats", None)
             if cond_fmt and cols:
                 for cf_col in cond_fmt:

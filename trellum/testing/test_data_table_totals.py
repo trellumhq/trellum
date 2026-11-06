@@ -270,6 +270,42 @@ def test_native_module_build_full_grain_validation(tmp_path):
     assert (tmp_path / "data.json").is_file()
 
 
+@pytest.mark.parametrize("scoped", [False, True])
+def test_validation_checks_hidden_ratio_inputs_on_actual_source(scoped):
+    from trellum.components import DataSource, ScopedDataSource
+    from trellum.validation.checks.columns import _check_columns
+    from trellum.validation.result import ValidationResult
+
+    frame = pd.DataFrame({"Label": ["a"], "Rate": [2], "Revenue": [20], "Spend": [10]})
+    sources = {"root": DataSource("root", frame.drop(columns="Spend"))}
+    if scoped:
+        sources["child"] = ScopedDataSource("child", parent="root")
+    table = DataTable(frame, "Declared inputs", columns=["Label", "Rate"],
+                      dataset_id="child" if scoped else "root", totals={"Rate": {
+                          "agg": "ratio", "numerator": "Revenue", "denominator": "Spend"}})
+    result = ValidationResult(slug="table-totals")
+    _check_columns([(table, "Totals")], sources, result)
+    assert result.summary["fail"] == 1
+    assert "datatable-totals-column-missing" in str(result.to_dict())
+    assert "Spend" in str(result.to_dict())
+    sources["root"] = DataSource("root", frame)
+    result = ValidationResult(slug="table-totals")
+    _check_columns([(table, "Totals")], sources, result)
+    assert result.summary["fail"] == result.summary["warn"] == 0
+
+
+def test_validation_reports_mutated_total_declaration():
+    from trellum.validation.checks.columns import _check_columns
+    from trellum.validation.result import ValidationResult
+
+    table = DataTable(_frame([1]), "Mutation", static=True, totals=_sum())
+    table.totals["n"]["precision"] = True
+    result = ValidationResult(slug="table-totals")
+    _check_columns([(table, "Totals")], {}, result)
+    assert result.summary["fail"] == 1
+    assert "datatable-totals-invalid" in str(result.to_dict())
+
+
 @pytest.fixture
 def totals_page(tmp_path, native_browser):
     ctx = _context(tmp_path / "current")

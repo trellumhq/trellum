@@ -169,6 +169,8 @@ Only `agg` is required for sums; ratios also require nonempty string
 accept `percent` (ratio × 100) and `ratio` (an `x` suffix). Precision must be
 an integer from 0 to 6, excluding booleans. Unknown options, columns, enums,
 floating precision, callbacks and malformed declarations raise `ValueError`.
+Report validation also checks hidden ratio inputs against the actual bound
+DataSource (or scoped ancestor), and reports mutated invalid declarations.
 
 Totals cover the last completed draw's matching delivered population **before**
 `row_limit` or `max_rows`. Report filters narrow that population; table search
