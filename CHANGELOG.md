@@ -9,6 +9,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Optional UTC calendar coverage notes and exact bucket hover context for
+  BarChart, with a native eight-chart example.
+
 - Optional bounded UTC period comparisons and per-series original-date context
   for ordinary LineChart tooltips, with a native flat/grouped comparison example.
 

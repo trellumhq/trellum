@@ -545,6 +545,11 @@ series on an explicit axis, with selected-input eligibility and existing units.
 [Report keyboard controls](docs/report-keyboard.md) cover ordinary table sorting,
 visible chart CSV focus and inset Toggle focus outlines.
 
+[CalendarCoverage](docs/report-kpi-buckets.md) adds optional shared UTC calendar
+coverage notes and exact authored bucket dates to ordinary bar tooltips.
+It preserves chart values and distinguishes selected partial buckets, observed
+dates, missing inputs and declared horizon maturity.
+
 [PeriodComparison](docs/report-period-comparison.md) provides optional explicit
 UTC period summaries, grouped tables and original-date context on line charts
 from one bounded snapshot, preserving the ordinary nearest-point tooltip.

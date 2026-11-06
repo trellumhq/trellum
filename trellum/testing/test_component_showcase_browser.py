@@ -239,6 +239,22 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             expect(combos.locator('.fw-combo-summary-value').first).to_have_text('$30.00')
             expect(marketing.locator('.fw-mini-val').first).to_have_text('840')
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
+            page.get_by_role('link', name='KPI calendar coverage', exact=True).click()
+            buckets = page.locator('#sec-kpi-buckets-—-eight-native-trends')
+            buckets.get_by_role('tab', name='Calendar context', exact=True).click()
+            buckets.locator('[data-toggle-id="kpi_buckets_on_grain"]').get_by_role(
+                'button', name='Weekly', exact=True).click()
+            coverage = buckets.locator('.fw-calendar-coverage').filter(visible=True)
+            expect(coverage).to_contain_text('16 weekly buckets; 2 partial calendar edges')
+            bucket_filter = page.locator('#sec-kpi-buckets-—-original-snapshot-and-filters')
+            bucket_filter.get_by_role('button', name='iOS', exact=True).click()
+            cost = buckets.locator('canvas[data-fw-title="Cost"]').filter(visible=True)
+            cost.scroll_into_view_if_needed()
+            page.wait_for_function("id => window._chartInstances[id]?.data.datasets[0].data[0] === 60",
+                                   arg=cost.get_attribute('id'))
+            assert page.evaluate("fw.filterEngine.getFiltered('showcase_kpi_bucket_facts').length") == 104
+            assert page.evaluate("fw.filterEngine.getFiltered('showcase_period_comparison')[0].A") == 7192
+            assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
             page.get_by_role("link", name="pivot tables", exact=True).click()
             pivot = page.locator('.fw-section').filter(has=page.get_by_role(
                 "heading", name="Pivot tables — revenue by title and platform", exact=True))

@@ -6,6 +6,7 @@ import pandas as pd
 
 from trellum.components import (
     BarChart,
+    CalendarCoverage,
     DataSource,
     FilterBar,
     Grid,
@@ -14,7 +15,7 @@ from trellum.components import (
     Toggle,
     Visible,
 )
-from trellum.components.calendar_coverage import CalendarCoverage, calendar_bounds
+from trellum.components.calendar_coverage import calendar_bounds
 
 SOURCE = "showcase_kpi_bucket_facts"
 GRAINS = ("daily", "weekly", "monthly", "quarterly")

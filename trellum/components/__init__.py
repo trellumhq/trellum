@@ -9,6 +9,7 @@ KPIs:     KpiRow, KpiCard, MiniKpi
 Tables:   DataTable, ComparisonTable, PivotTable, HierarchyTable, CohortTable
 Controls: Toggle, Dropdown, TabGroup, DateSelector
 Layout:   Section, Panel, Grid, SplitPane
+Context:  CalendarCoverage for authored UTC buckets and exact bar hover dates
 Filter:   DataSource + FilterBar (every component needs dataset_id=)
           ScopedDataSource for section-local filters (inherits parent filters)
           MetricView for bounded grouped snapshot metrics and ratios of sums
@@ -21,6 +22,7 @@ Advanced: RawHTML (ONLY when no component above can express the visualization)
 from trellum.components.ab_compare import ABCompare
 from trellum.components.ab_methodology import ABMethodologyNote
 from trellum.components.base import Component, RenderContext
+from trellum.components.calendar_coverage import CalendarCoverage
 from trellum.components.charts import (
     AreaChart,
     BarChart,
@@ -60,6 +62,6 @@ __all__ = [
     "Section", "Panel", "Grid", "SplitPane",
     "RawHTML", "Visible",
     "ABCompare", "ABMethodologyNote",
-    "ReportHeader", "ReportMetadata",
+    "ReportHeader", "ReportMetadata", "CalendarCoverage",
     "DataSource", "FilterBar", "ScopedDataSource", "LiveDataSource", "MetricView", "PeriodComparison",
 ]

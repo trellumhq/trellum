@@ -19,6 +19,7 @@ from typing import Any
 
 from trellum.validation.checks.annotations import _check_annotations
 from trellum.validation.checks.chart_options import _check_chart_options
+from trellum.validation.checks.calendar_coverage import _check_calendar_coverage
 from trellum.validation.checks.cohort_table import check_cohort_tables
 from trellum.validation.checks.columns import _check_columns
 from trellum.validation.checks.datasource import (
@@ -90,6 +91,7 @@ def validate_report(
         ds_map = {}
     _run("metric-views", check_metric_views, ctx, result)
     _run("period-comparison", check_period_comparison, ctx, result)
+    _run("calendar_coverage", _check_calendar_coverage, comps, result)
     _run("table-column-formats", check_column_formats, comps, result)
     _run("cohort tables", check_cohort_tables, comps, ds_map, result)
     _run("sankey charts", check_sankey_charts, comps, ds_map, result)

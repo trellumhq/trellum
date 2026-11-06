@@ -7,8 +7,7 @@ related charts. Omit the object from the layout for hover context alone; omit
 `bucket_context` from charts for a note alone. Both default to absent.
 
 ```python
-from trellum.components.calendar_coverage import CalendarCoverage
-from trellum.components import BarChart
+from trellum.components import BarChart, CalendarCoverage
 
 coverage = CalendarCoverage(
     dataset_id="acquisition_facts",
@@ -119,3 +118,10 @@ CSV downloads retain the existing schema and plotted values in original
 numeric units. Ratios remain fractions. Extra hover metadata is not exported
 to CSV. Native section, report PNG and PDF captures can include the visible
 shared note. Hover-only exact dates are not part of those images.
+
+Native hidden bar views are supported and recorded as informational diagnostics;
+unknown dataset-bound renderers still need initialization/reveal verification.
+Grain diagnostics cannot infer duplicated totals from a globally constant finite
+numeric column alone. They still inspect varying totals repeated within each
+bucket and structural filter coverage. Equal original D30 facts in the example
+remain additive; independent platform selections change their totals.

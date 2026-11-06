@@ -1,5 +1,13 @@
 # Framework Compatibility Policy
 
+## Unreleased: optional calendar coverage
+
+`CalendarCoverage` and `BarChart.bucket_context` are keyword-only opt-ins.
+Existing reports keep their plots, aggregation, nearest tooltips, CSV schema
+and layout. The optional shared note adds height; exact hover dates use an
+authored UTC calendar mapping over one complete snapshot. See the
+[calendar coverage guide](report-kpi-buckets.md) for bounds and limitations.
+
 ## Unreleased: explicit period comparisons
 
 `PeriodComparison` is an optional bounded snapshot projection. It leaves

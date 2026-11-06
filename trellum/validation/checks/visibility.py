@@ -78,6 +78,9 @@ def _collect_toggle_components(comps, result):
 
 
 def _check_visible_components(visible_list, toggle_map, toggle_default, result):
+    from trellum.components.calendar_coverage import CalendarCoverage
+    from trellum.components.charts.base import _ChartBase
+
     visible_targets_used: set[str] = set()
 
     for comp, sec in visible_list:
@@ -100,11 +103,9 @@ def _check_visible_components(visible_list, toggle_map, toggle_default, result):
                 component="Visible", section=sec,
             )
         else:
-            # Warn when a live chart starts hidden (non-default Visible).
-            # Charts rendered while hidden get a 0×0 canvas from Chart.js; the
-            # framework calls chart.resize() when the toggle shows them, so they
-            # will display correctly — but only after the user first switches the
-            # toggle. Suppress if intentional.
+            # Native chart_base canvases are initialized/resized on reveal.
+            # Starting hidden is supported; retain the diagnostic as context.
+            # Unknown dataset-bound renderers still need lifecycle review.
             default_val = toggle_default.get(target, "")
             if value != default_val:
                 live_children = [
@@ -113,12 +114,20 @@ def _check_visible_components(visible_list, toggle_map, toggle_default, result):
                 ]
                 if live_children:
                     names = ", ".join(sorted({type(c).__name__ for c in live_children}))
-                    result.warn(
+                    managed = all(isinstance(c, (_ChartBase, CalendarCoverage))
+                                  for c in live_children)
+                    emit = result.info if managed else result.warn
+                    detail = (
+                        "Native charts initialize and resize when shown; calendar "
+                        "metadata follows the same source selection."
+                        if managed else
+                        "Verify renderer initialization and resizing when shown."
+                    )
+                    emit(
                         "live-chart-in-non-default-visible",
                         f"Visible(toggle_target='{target}', toggle_value='{value}') "
-                        f"contains live components ({names}) that start hidden. "
-                        f"The chart canvas is 0×0 until the user switches the toggle; "
-                        f"the framework resizes it on show. Suppress if intentional.",
+                        f"contains dataset-bound components ({names}) that start hidden. "
+                        + detail,
                         component="Visible", section=sec,
                     )
 

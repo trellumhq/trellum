@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any, Literal
 
 import pandas as pd
@@ -126,9 +127,11 @@ def _detect_static_columns(df: Any, x_col: str | None, value_cols: list[str]) ->
 
     The actual mismatch we want to flag is "the DS has finer grain than
     the column — values were duplicated across sub-grain rows". So we
-    require both:
+    require all three:
       1. ``df.groupby(x_col).size().max() > 1`` (DS is finer than x), AND
-      2. the column's nunique never exceeds 1 within any group.
+      2. the column's nunique never exceeds 1 within any group, AND
+      3. more than one distinct value exists across x groups. A globally
+         constant finite numeric column cannot establish a coarser join.
     """
     if not isinstance(df, pd.DataFrame) or not x_col or x_col not in df.columns:
         return []
@@ -145,16 +148,17 @@ def _detect_static_columns(df: Any, x_col: str | None, value_cols: list[str]) ->
     for col in value_cols:
         if col not in df.columns:
             continue
-        # A literal unit column -- 1 on every row -- is a row counter, put
-        # there so `sum` means "count" and ratio aggs can divide by it. It is
-        # constant per x BY CONSTRUCTION, not because a coarser table was
-        # merged in, and the harm the check describes cannot occur: the
-        # column re-sums from row grain like any other measure. Three demo
-        # reports hit this false positive before the exemption was added.
+        # Equal original facts (including zero, fixed amounts and unit counts)
+        # cannot establish a coarser join. Require cross-x variation before
+        # treating within-x equality as evidence of a repeated aggregate.
+        # Missing/nonfinite columns remain outside this numeric exception.
         try:
-            if (df[col] == 1).all():
+            values = df[col]
+            if (pd.api.types.is_numeric_dtype(values)
+                    and values.nunique(dropna=False) == 1
+                    and math.isfinite(float(values.iloc[0]))):
                 continue
-        except Exception:
+        except (TypeError, ValueError, OverflowError):
             pass
         try:
             nu = df.groupby(x_col, dropna=False)[col].nunique(dropna=False)

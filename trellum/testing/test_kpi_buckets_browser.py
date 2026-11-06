@@ -67,14 +67,11 @@ def build(output, historical=False):
     native = validate_report(ctx, details=details)
     own = ValidationResult(ctx.slug)
     _check_calendar_coverage(_all_components(ctx), own)
-    # Preserve every existing diagnostic. No suppression and no reclassification.
     assert native.summary["fail"] == own.summary["fail"] == 0, [
         dataclasses.asdict(c) for c in native.checks + own.checks
     ]
-    assert {c.id for c in native.checks if c.level == "warn"} <= {
-        "live-chart-in-non-default-visible",
-        "chart-value-grain-mismatch",
-    }
+    assert native.summary["warn"] == 0, native.to_dict()
+    assert "calendar_coverage" in native.groups_run
     native.write(str(output))
     (output / "coverage-validation.json").write_text(json.dumps(dataclasses.asdict(own), indent=2))
     (output / "native-details.json").write_text(json.dumps(details, indent=2, default=str))

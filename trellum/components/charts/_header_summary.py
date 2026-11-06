@@ -31,7 +31,7 @@ def _plotted_labels(chart: Any) -> list:
 
 def header_summary_config(chart: Any) -> dict:
     """Validate author options against actual plotted identity on every render."""
-    cfg = chart.header_summary
+    cfg = getattr(chart, "header_summary", None)
     if cfg is None:
         return {}
 
