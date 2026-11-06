@@ -2,14 +2,14 @@
     min-height: 30px;
     padding: 5px 16px;
     display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px;
-    background: var(--bg-header);
-    color: rgba(255,255,255,0.85);
+    background: var(--header-fill, var(--bg-header));
+    color: var(--on-header, #fff);
     border-top: 1px solid rgba(255,255,255,0.12);
     font-size: var(--font-size-meta);
     position: sticky; top: var(--fw-header-h, 48px); z-index: 99;
 }
 .fw-report-metadata-item { display: inline-flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
-.fw-report-metadata-label { color: rgba(255,255,255,0.62); overflow-wrap: anywhere; }
+.fw-report-metadata-label { color: var(--on-header, #fff); overflow-wrap: anywhere; }
 .fw-report-metadata-value { overflow-wrap: anywhere; }
 .fw-report-chrome > .fw-report-metadata {
     min-height: 18px;
@@ -27,11 +27,11 @@
     background: rgba(255,255,255,0.5); flex-shrink: 0;
 }
 .fw-freshness.fresh .fw-fresh-dot { background: #00c48c; }
-.fw-freshness.fresh { color: rgba(255,255,255,0.85); }
+.fw-freshness.fresh { color: var(--on-header, #fff); }
 .fw-freshness.stale .fw-fresh-dot { background: #FFD166; box-shadow: 0 0 4px #FFD166; }
-.fw-freshness.stale { color: rgba(255,255,255,0.85); }
+.fw-freshness.stale { color: var(--on-header, #fff); }
 .fw-freshness.very-stale .fw-fresh-dot { background: #FF4081; box-shadow: 0 0 4px #FF4081; }
-.fw-freshness.very-stale { color: rgba(255,255,255,0.85); }
+.fw-freshness.very-stale { color: var(--on-header, #fff); }
 @media (max-width: 640px) {
     .fw-report-metadata { padding: 5px 12px; gap: 4px 10px; }
 }

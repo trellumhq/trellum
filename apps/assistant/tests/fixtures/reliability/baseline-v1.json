@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "parent_revision": "ea22161e60b5b77ab390e055d7a6558a24f11717",
+  "record_kind": "capability_inventory_not_model_measurement",
+  "observed_contracts": [
+    "trellum.metric_execution.execute_metric accepts explicit metric parameters and frozen now",
+    "Daily complete artifacts support sums, weighted ratios, final balances and per-day averages",
+    "Distinct daily counts cannot establish a multi-day distinct union",
+    "trellum.data.assistant_query.validate_query checks explicit PostgreSQL relation grants"
+  ],
+  "model_run": null,
+  "historical_model_accuracy": null,
+  "limitations": [
+    "No captured baseline model responses were supplied",
+    "No historical performance is inferred from current contracts or synthetic routing",
+    "Fixture business meanings are synthetic and await domain-owner review",
+    "Offline checks do not measure natural-language interpretation, portal permissions or remote database behavior"
+  ]
+}

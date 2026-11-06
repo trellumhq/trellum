@@ -37,7 +37,10 @@ def test_mobile_drawer_accessibility_contract():
 
 def test_theme_and_sidebar_state_are_available_before_styles():
     base = _read("templates/base.html")
-    boot = _read("templates/_theme_boot_mgmt.html")
+    boot_template = _read("templates/_theme_boot_mgmt.html")
+    boot = _read("static/theme-boot-mgmt.js")
+    assert "theme-boot-mgmt.js" in boot_template
+    assert "defer" not in boot_template and "async" not in boot_template
     assert base.index('{% include "_theme_boot_mgmt.html" %}') < base.index("console-shell.css")
     assert 'data-theme="light"' not in base
     assert "tl-console-collapsed" in boot

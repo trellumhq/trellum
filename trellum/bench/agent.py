@@ -169,13 +169,9 @@ def run_agent(prompt: str, scratch: Path, run_id: str, *,
         _claude_bin(), "-p",
         "--output-format", "json",
         "--max-turns", str(max_turns),
-        # An allowlist is the instinct here, but headless mode auto-denies
-        # anything unlisted -- an under-scoped list produces permission
-        # refusals that look like DX failures and poison the measurement. The
-        # scratch project is disposable and the agent already has Bash.
-        # ponytail: no filesystem jail; add deny rules before this runs
-        # unattended on a shared machine.
-        "--dangerously-skip-permissions",
+        # Headless runs must respect configured permissions. Denied tools are
+        # visible in the recorded result; this process is not a filesystem jail.
+        "--permission-mode", "default",
         "--model", model,
     ]
 

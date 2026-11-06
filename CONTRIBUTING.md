@@ -84,6 +84,9 @@ time, and the 20 slowest tests, and write JUnit XML under `.data-test/results/`.
 Use `--durations N` and `--junitxml PATH` to adjust reports. Paths are relative
 to the repository root even when invoking the script from another directory.
 `--collect-only` shows selected tests; `--dry-run` prints the command.
+`--fail-fast` stops after the first failure and writes the available test
+results. The ordinary portal CI job uses it; successful runs still execute the
+complete selected suite.
 The wrapper clears inherited `PYTEST_ADDOPTS` so shell defaults cannot silently
 filter coverage or change worker counts. Use plain pytest for other options.
 GitHub retains sanitized JUnit outcomes, test timing JSON, and summaries for

@@ -356,8 +356,8 @@ class BrokenReportPending(models.Model):
     pending rows — as one summary mail per recipient if there is more than
     one, or the normal single-report mail if there's just one — once the
     oldest of them has been waiting at least
-    ``notify.COALESCE_WINDOW_SECONDS``. Recovered-build mail is unaffected:
-    it is never buffered, and keeps sending immediately.
+    ``notify.COALESCE_WINDOW_SECONDS``. Recovery mail is never buffered;
+    accepted failure receipts determine its eligible recipients.
     """
 
     report = models.ForeignKey(Report, on_delete=models.CASCADE, related_name="+")
@@ -373,6 +373,26 @@ class BrokenReportPending(models.Model):
 
     def __str__(self) -> str:
         return f"broken-pending({self.report})"
+
+
+class BrokenReportReceipt(models.Model):
+    """Transport accepted a failure notice for this exact user/address.
+
+    The failure run identifies the incident: a successful run closes it.
+    Recovery consumes these rows, including recipients who lost access.
+    """
+
+    report = models.ForeignKey(Report, on_delete=models.CASCADE, related_name="+")
+    failure_run = models.ForeignKey("runner.Run", on_delete=models.CASCADE, related_name="+")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+")
+    email = models.EmailField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["report", "user", "email"], name="uniq_broken_receipt_recipient"
+            )
+        ]
 
 
 def _new_share_token() -> str:

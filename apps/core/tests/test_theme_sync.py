@@ -12,7 +12,7 @@ import pytest
 from django.conf import settings
 
 from apps.core.theme_overlay import ALLOWED_TOKENS, OVERLAY
-from apps.core.themes import GENERATED_PATH, ThemeContractError, render, validate
+from apps.core.themes import GENERATED_PATH, ThemeContractError, _distance, render, validate
 from trellum.themes import THEME_REGISTRY
 
 
@@ -79,9 +79,11 @@ def test_brand_and_danger_stay_apart_in_every_generated_theme():
     for theme, body in blocks:
         accent = re.search(r"--accent:\s*(#[0-9a-fA-F]{3,6})", body).group(1)
         red = re.search(r"--red:\s*(#[0-9a-fA-F]{3,6})", body).group(1)
-        rgb = lambda v: tuple(int(v.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))  # noqa: E731
-        distance = sum((x - y) ** 2 for x, y in zip(rgb(accent), rgb(red))) ** 0.5
-        assert distance > 40, f"theme '{theme}': --accent {accent} vs --red {red}"
+        assert _distance(accent, red) > 40, f"theme '{theme}': --accent {accent} vs --red {red}"
+
+
+def test_color_distance_accepts_three_digit_hex():
+    assert _distance("#abc", "#000") == pytest.approx((170**2 + 187**2 + 204**2) ** 0.5)
 
 
 def test_validate_rejects_a_theme_whose_danger_is_the_brand():

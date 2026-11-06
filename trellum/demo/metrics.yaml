@@ -16,12 +16,12 @@
 #
 # A RATIO's scaling follows its FORMAT. `agg: ratio` aggregates to
 # numerator / denominator, and only `format: percent` reads that as a
-# percentage and multiplies by a hundred. So a currency ratio (arpdau,
-# avg_transaction_value) and a plain one (sessions_per_dau) are ordinary live
-# metrics: bind them, claim them, and they filter and re-aggregate like
-# anything else. A report may still pass a Python-computed `value=` where it
-# has a reason to -- player-overview does, over its own frame -- but it is no
-# longer the only way to put one of these on a card.
+# percentage and multiplies by a hundred. The currency ratios (arpdau,
+# avg_transaction_value) are bound and claimed by reports. The plain ratio
+# sessions_per_dau stays defined but unbound to demonstrate an unmonitored
+# metric. A report may still pass a Python-computed `value=` where it has a
+# reason to -- player-overview does, over its own frame -- but it is no longer
+# the only way to put one of these on a card.
 #
 # `ad_share` is version 2 on purpose -- it demonstrates the catalog's amber
 # "stale" badge. v1 defined it as ad revenue's share of TOTAL revenue
@@ -185,7 +185,6 @@ metrics:
     denominator: dau
     sql: "sessions / dau"
     dimensions: [event_date, title, platform, region, spender_tier]
-    dataset: daily
     tags: [engagement]
 
   - name: ad_share

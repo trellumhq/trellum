@@ -147,7 +147,7 @@ class TestContentSecurityPolicy:
         from apps.core.middleware import ContentSecurityPolicyMiddleware
 
         assert ContentSecurityPolicyMiddleware._EXEMPT == {
-            "report-page", "report-asset", "share-entry", "share-asset",
+            "report-asset", "share-entry", "share-asset",
         }
         # The public scripts (including vendor-asset) are exempt by their
         # @public_asset marker; see apps/core/tests/test_public_assets.py.
