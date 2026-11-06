@@ -50,9 +50,14 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             page.locator("#sec-line-example-filters").get_by_role(
                 "button", name="Android", exact=True).click()
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
+            page.get_by_role("link", name="report controls", exact=True).click()
+            tabs = page.locator('[data-tab-id="showcase_controls_tabs"]')
+            tabs.get_by_role("tab", name="Revenue", exact=True).click()
+            tabs.get_by_role("tab", name="Orders across all supported platforms — daily supplied totals").click()
+            assert page.get_by_text("Orders by platform", exact=True).is_visible()
             # Every chart must own a real canvas and draw after scrolling into
             # view; scope-based data swaps cannot stand in for different layouts.
-            for canvas in page.locator("canvas").all():
+            for canvas in page.locator("canvas:visible").all():
                 canvas.scroll_into_view_if_needed()
                 page.wait_for_function("id => !!window._chartInstances[id]",
                                        arg=canvas.get_attribute("id"))

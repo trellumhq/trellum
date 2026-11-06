@@ -5,7 +5,7 @@ import pandas as pd
 from trellum import BaseReport
 from trellum.components import DataSource, FilterBar, Grid, LineChart, RawHTML
 
-from . import examples_kpis, examples_layouts
+from . import examples_controls, examples_kpis, examples_layouts
 
 
 class ComponentShowcaseReport(BaseReport):
@@ -19,8 +19,9 @@ class ComponentShowcaseReport(BaseReport):
             "has its own filters. Optional features are "
             "identified beside each example.</p>"
             '<p>Jump to <a href="#sec-line-example-filters">line charts</a>, '
-            '<a href="#sec-layout-example-filters">layouts</a> or '
-            '<a href="#sec-kpi-cards-and-compact-metrics">KPI metrics</a>.</p>'
+            '<a href="#sec-layout-example-filters">layouts</a>, '
+            '<a href="#sec-kpi-cards-and-compact-metrics">KPI metrics</a> or '
+            '<a href="#sec-standalone-choices">report controls</a>.</p>'
             '<p>For business reports, return to the <a href="../">demo gallery</a>: '
             "Player Overview, Monetization, Store Health and Live Ops show these "
             "components in context.</p>"
@@ -60,3 +61,5 @@ class ComponentShowcaseReport(BaseReport):
         examples_layouts.add_sections(ctx)
 
         examples_kpis.add_sections(ctx)
+
+        examples_controls.add_sections(ctx)
