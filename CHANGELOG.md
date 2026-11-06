@@ -9,6 +9,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Compact PivotTable rows, grouped category headers and a distinct grand-total
+  band, plus keyword-only opt-in header/first-dimension freezing. Selectors,
+  calculations and CSV scope remain unchanged.
+
 - Optional explicit report ComparisonTable context for supplied periods, metric
   units, favorable directions and unavailable reasons, with textual change
   outcomes and static/filterable comparison examples. Raw CSV units are retained.

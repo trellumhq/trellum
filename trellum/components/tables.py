@@ -214,11 +214,18 @@ class PivotTable(Component):
     value_format: str = "number"
     dataset_id: Optional[str] = None
     static: bool = False
+    freeze: bool = field(default=False, kw_only=True)
+    freeze_height: int = field(default=320, kw_only=True)
 
     _component_type: str = field(default="pivot_table", init=False, repr=False)
     _supports_dataset_id: bool = field(default=True, init=False, repr=False)
 
     def render_html(self, ctx: RenderContext) -> str:
+        if not isinstance(self.freeze, bool):
+            raise ValueError("freeze must be a bool")
+        if (isinstance(self.freeze_height, bool) or not isinstance(self.freeze_height, int)
+                or self.freeze_height <= 0):
+            raise ValueError("freeze_height must be a positive integer")
         cid = ctx.next_id()
         all_cols = list(self.df.columns)
         dim_cols = [c for c in all_cols if _is_dimension(self.df[c].dtype)]
@@ -262,7 +269,9 @@ class PivotTable(Component):
         return (
             f'<div class="fw-pivot-controls" id="{cid}_ctrl"></div>'
             f'<div class="fw-table-header">{dl_btn}</div>'
-            f'<div id="{cid}" class="fw-table-scroll"></div>'
+            f'<div id="{cid}" class="fw-table-scroll fw-pivot-scroll"'
+            f' data-freeze="{str(self.freeze).lower()}"'
+            f' data-freeze-height="{self.freeze_height}"></div>'
         )
 
     @classmethod

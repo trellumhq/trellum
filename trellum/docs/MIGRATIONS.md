@@ -3,6 +3,18 @@
 Each section documents a breaking or significant change, how to detect affected
 code, and the exact replacement.
 
+## Unreleased: PivotTable presentation and optional freezing
+
+PivotTable adds keyword-only `freeze=False` and `freeze_height=320`. The latter
+must be a positive integer and applies only when `freeze=True`. Existing
+positional arguments and subclasses remain compatible. The default table gains
+compact spacing, grouped column-category headings, subtle striping and a quiet
+grand-total band. Frozen mode uses a bounded local scroller and pins both header
+rows and the first row-dimension column; other dimension columns remain
+scrollable. Selectors, values, totals, aggregation and CSV scope are unchanged.
+See [report pivots](report-pivots.md) for existing grouping, null and export
+limitations.
+
 ## Unreleased: ComparisonTable presentation and declared context
 
 Rebuilding comparison tables adds a theme-border divider before the comparison
