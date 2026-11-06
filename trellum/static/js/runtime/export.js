@@ -187,6 +187,8 @@
         var container = document.querySelector('.fw-container');
         if (!container) return;
         var metricError = _metricViewCaptureError(container, _analysisComponents().components);
+        // Authored calendar context owns its snapshot-completion status.
+        if (!metricError && window._fwCalendarCoverage) metricError = window._fwCalendarCoverage.captureError(container, _analysisComponents().components);
         if (metricError) { _analysisMessage(metricError, true); return; }
         var btn = document.getElementById('fwExportBtn');
         if (btn) btn.classList.add('running');
@@ -541,6 +543,8 @@
             if (nonVisual[cfg.type]) continue;
             if (cfg.dataset_id && window.fw.filterEngine && !window.fw.filterEngine.isReady(cfg.dataset_id))
                 return 'This section is still loading its data. Wait and try again.';
+            if (cfg.type === 'calendar_coverage' && root.dataset.coverageReady !== 'true')
+                return 'Calendar coverage is still resolving its source snapshot.';
             if (cfg.type === 'sankey') {
                 var sankey = root.closest('.fw-sankey');
                 var sankeyState = sankey && sankey.dataset.sankeyState;

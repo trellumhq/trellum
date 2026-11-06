@@ -856,6 +856,9 @@ function _createChart(id, canvas, spec) {
         } : { display: false }
     };
     if (spec.comboAxes) plugins.fwLegend.comboAxes = spec.comboAxes;
+    // Ordinary BarChart bucket context: wrap the completed painted title path.
+    if (spec.calendarCoverage) canvas._fwCalendarCoverage = spec.calendarCoverage;
+    else delete canvas._fwCalendarCoverage;
     if (spec.tooltip) {
         plugins.tooltip = spec.tooltip;
     } else if (spec.horizontal) {
@@ -982,7 +985,9 @@ function _createChart(id, canvas, spec) {
             spec.eventLabels === 'grouped' && window._fwLineEventLabelsPlugin
                 ? [window._fwLineEventLabelsPlugin(eventDetails, datedEvents)] : []).concat(
             spec.availability ? [_fwLineAvailabilityPlugin(spec.availability)] : []).concat(
-            spec.monthlyAverage ? [window._fwMonthlyAveragePlugin(spec.monthlyAverage)] : [])
+            spec.monthlyAverage ? [window._fwMonthlyAveragePlugin(spec.monthlyAverage)] : []).concat(
+            // Ordinary BarChart calendar tooltip cleanup is option-owned.
+            spec.calendarCoverage ? [window._fwCalendarCoverage.plugin()] : [])
     });
     if (spec.stackedControlView) window._chartInstances[id]._fwStackControlView = spec.stackedControlView;
     window._chartInstances[id]._fwThemeManagedAxes = true;
@@ -1155,6 +1160,8 @@ function _fwRememberStackControlView(chart) {
 window._fwRenderers['chart'] = function renderChart(id, cfg) {
     var canvas = document.getElementById(id);
     if (!canvas) return;
+    // Ordinary BarChart bucket context owns only its optional lifecycle binding.
+    if (!cfg.bucket_context && canvas._fwCalendarDispose) canvas._fwCalendarDispose();
     if (canvas._fwLineResult && (cfg.line_result_presentation !== true || window._fwMetricsWorkspace)) canvas._fwLineResult.dispose();
     if (!cfg.combo_axes || !cfg.combo_summary) _fwClearComboSummary(canvas);
     if (!cfg.stacked_summary) _fwClearStackSummary(canvas);
@@ -1203,6 +1210,8 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
         // Ordinary renderAll reuses the existing live subscription and controls.
         // Workspaces retain _fwLiveWrap's leased disposal/recreation behavior.
         if (taggedBars && !window._fwMetricsWorkspace && canvas._fwBarLive && canvas._fwBarLive.cfg === cfg) {
+            // Re-entry reclaims only the Bar calendar source lifecycle.
+            if (cfg.bucket_context) window._fwCalendarCoverage.bind(canvas, cfg, canvas._fwBarLive.draw);
             canvas._fwBarLive.draw(window._fwFilterEngine.getFiltered(cfg.dataset_id));
             return;
         }
@@ -1298,12 +1307,16 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
             if (cfg.header_summary) spec.headerSummary = cfg.header_summary;
             // Line point-context is applied to the completed ordinary spec only.
             if (cfg.point_context) spec = window._fwLinePointContextSpec(cfg, labelRows, spec);
+            // Bar-only calendar declaration; no shared aggregation changes.
+            if (cfg.bucket_context) spec = window._fwCalendarCoverage.spec(cfg, labelRows, spec);
             return _fwUpdateLineResult(canvas, cfg,
                 window._fwMonthlyAverageSpec(cfg, labelRows, _fwApplyLineAvailability(cfg, labelRows, spec)), labelRows);
         }
 
         var labelRows;
         function _drawLive(rows) {
+            // A single native scope reads fresh parent rows after replacement.
+            if (cfg.bucket_context) rows = window._fwCalendarCoverage.rows(cfg.bucket_context);
             labelRows = rows;
             var colors = window.getThemeColors().chart_colors;
             var declaration = cfg.category_colors && cfg.category_colors.column === activeStackBy
@@ -1745,6 +1758,8 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                     stacked: cfg.stacked, horizontal: cfg.horizontal, showLegend: datasets2.length > 1, yFmt: yFmt2, tooltip: tt2 }));
             }
         }
+        // Ordinary BarChart context owns structural source replacement updates.
+        if (cfg.bucket_context) window._fwCalendarCoverage.bind(canvas, cfg, _drawLive);
         if (taggedBars) canvas._fwBarLive = chartOwner ? {cfg: cfg, draw: _drawLive, scope: stackScope,
             source: stackSource, stackGroup: stackGroup, normalizeGroup: normalizeGroup} : {cfg: cfg, draw: _drawLive};
         if (scopedLive && !window._fwMetricsWorkspace) {

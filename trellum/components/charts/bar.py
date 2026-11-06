@@ -45,6 +45,10 @@ class BarChart(_ChartBase):
     one final plotted series with ``scope='plotted_series'``. See
     ``docs/report-chart-summaries.md`` for selection and validity requirements.
 
+    ``bucket_context=None`` optionally references a shared CalendarCoverage
+    declaration for exact authored bucket dates in hover. See
+    ``docs/report-kpi-buckets.md`` for supported snapshots and calendar rules.
+
     ``monthly_average=None`` optionally declares one additive daily quantity,
     its inclusive reporting interval and observed-day monthly guides/coverage.
     See ``docs/report-monthly-averages.md`` for input and scope requirements.
@@ -87,6 +91,8 @@ class BarChart(_ChartBase):
     top_n: Optional[int] = None  # Cap to top/bottom N x-values + "Other" bucket
     top_n_show_other: bool = True  # If False, drop the "Other (N items)" bar
 
+    bucket_context: Any = field(default=None, kw_only=True)
+
     show_values: Optional[bool] = field(default=None, kw_only=True)
     # Author-declared daily reporting dates; see docs/report-month-context.md.
     month_context: bool = field(default=False, kw_only=True)
@@ -98,6 +104,8 @@ class BarChart(_ChartBase):
     _component_type: str = field(default="bar_chart", init=False, repr=False)
 
     def __post_init__(self) -> None:
+        from trellum.components.calendar_coverage import bucket_context_config
+        bucket_context_config(self)
         _month_context_config(self)
         _monthly_average_config(self)
         if self.monthly_average is not None:
@@ -111,6 +119,11 @@ class BarChart(_ChartBase):
             raise ValueError("show_values must be bool or None")
 
     def render_html(self, ctx: RenderContext) -> str:
+        from trellum.components.calendar_coverage import bucket_context_config
+        bucket_config = bucket_context_config(self)
+        if bucket_config:
+            # Referenced metadata owns its assets even without a visible note.
+            ctx._seen_types.add(type(self.bucket_context))
         summary_config = header_summary_config(self)
         month_config = {**_month_context_config(self), **_monthly_average_config(self)}
         self._validate_values()
@@ -126,6 +139,7 @@ class BarChart(_ChartBase):
                             cols = list(cols) + [r[k]]
             cfg: dict[str, Any] = {
                 "type": "chart",
+                **bucket_config,
                 **month_config,
                 **summary_config,
                 "dataset_id": self.dataset_id,
@@ -179,6 +193,7 @@ class BarChart(_ChartBase):
                 })
             ctx.register(cid, {
                 "type": "chart",
+                **bucket_config,
                 **month_config,
                 **summary_config,
                 "chartType": "bar",

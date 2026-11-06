@@ -282,6 +282,8 @@
         : null;
 
     function _renderComps(comps) {
+        // Optional calendar notes own their config-removal cleanup.
+        if (window._fwCalendarCoverage) window._fwCalendarCoverage.reconcile(comps);
         var epoch = workspace ? (window._fwWorkspaceRenderEpoch = (window._fwWorkspaceRenderEpoch || 0) + 1) : 0;
         var deferred = [], pendingVisible = 0, deferredDone = false, completed = false;
         var only = workspace && new URLSearchParams(location.search).get('only');
