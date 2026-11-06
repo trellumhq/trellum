@@ -1,5 +1,18 @@
 # Framework Migration Guide
 
+## Unreleased: optional metric views and Scatter summaries
+
+Existing calls need no changes. Import `MetricView` from `trellum.components`,
+declare its parent snapshot before the view, then bind MiniKpis or a native
+DataTable to its result. Use `column_formats` for currency/rate display while
+keeping raw CSV units. See [metric view examples](report-metric-views.md).
+
+Opt into Scatter headers with `header_summary={"stat": "mean",
+"scope": "point_entries", "axis": "x"}`, or choose count/min/max as documented.
+Existing plot sizes, coordinates, grouping and generic CSV limitations remain.
+See [Scatter summaries](report-scatter-summaries.md). Rebuild matching assets;
+no database or host migration is required.
+
 ## Unreleased: optional shared StackedBar controls and height
 
 Existing calls need no changes. To share breakdown/normalization controls, declare

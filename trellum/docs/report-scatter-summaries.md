@@ -111,21 +111,12 @@ mean x/y 7/10 and max y 15; Android day 2 gives count 2, mean x/y 28/40 and
 min y 20. The data is synthetic and does not claim an original-report or
 unique-person grain.
 
-Shared validator dispatch should import
-`scatter_option_problems` from `trellum.components.charts._scatter_summary`.
-For each `ScatterChart` in `_check_chart_options`, emit each returned
-`(check_id, message)` with component `ScatterChart` and the current section.
-The helper is pure and returns `chart-summary-invalid` for malformed declarations.
-No common public export is needed; ScatterChart is already exported.
+The shared chart-options validator reports `chart-summary-invalid` for malformed
+ScatterChart declarations, including mutations after construction.
 
-The existing shared grain diagnostic assumes aggregation by x and warns when
-value columns repeat within x. Scatter preserves independent pairs, so that
-heuristic needs a family exemption in the shared diagnostics: skip
-`_detect_static_columns` for ScatterChart, while retaining structural filter
-coverage. This is separate from summary validation and applies equally with
+The shared grain diagnostic assumes aggregation by x and warns when value
+columns repeat within x. Scatter preserves independent pairs, so it skips that
+aggregate heuristic while retaining structural filter coverage and column
+validation. This is separate from summary validation and applies equally with
 the option off. The deterministic fixture intentionally includes duplicate x
 coordinates; changing or deduplicating it would change the population.
-
-Link this page from the report component docs/navigation. Proposed changelog:
-“Add optional ScatterChart header summaries for explicit point-entry counts
-and x/y minimum, maximum or unweighted mean, preserving existing plots.”

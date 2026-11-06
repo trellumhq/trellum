@@ -517,6 +517,31 @@ def test_duplicate_datasource_fails():
 # ---------------------------------------------------------------------------
 
 
+def test_scatter_points_skip_aggregate_grain_heuristic_but_keep_filter_coverage():
+    from trellum.components import DataSource, FilterBar, LineChart, ScatterChart
+    from trellum.reporting.diagnostics import compute_details
+
+    df = pd.DataFrame({'x': [1, 1, 2, 2], 'y': [10, 10, 20, 20],
+                       'platform': ['ios', 'android', 'ios', 'android']})
+    ctx = _make_ctx()
+    ctx.add_section('Points and aggregates', [
+        DataSource('points', df), DataSource('uncovered', df),
+        FilterBar('points', df, filters=[{'column': 'platform'}], propagate_to={'uncovered': {}}),
+        ScatterChart(df, 'x', 'y', title='Separate pairs', dataset_id='points'),
+        LineChart(df, 'x', 'y', title='Repeated aggregate', dataset_id='points'),
+        ScatterChart(df, 'x', 'y', title='Uncovered pairs', dataset_id='uncovered'),
+    ])
+    details = compute_details(ctx)
+    result = validate_report(ctx, details=details)
+    grain = _find_checks(result, check_id='chart-value-grain-mismatch')
+    assert [c.component for c in grain] == ['LineChart']
+    coverage = _find_checks(result, check_id='chart-filter-coverage')
+    assert [(c.component, c.dataset_id) for c in coverage] == [('ScatterChart', 'uncovered')]
+    scatter = [r for r in details['filter_matrix'] if r['chart_kind'] == 'ScatterChart']
+    assert all(r['static_value_columns'] == [] for r in scatter)
+    assert [f['status'] for r in scatter if r['dataset_id'] == 'points' for f in r['filters']] == ['active']
+
+
 def test_unit_indicator_column_is_not_a_grain_mismatch():
     """A literal 1-per-row column is a row counter, not a coarse merge.
 

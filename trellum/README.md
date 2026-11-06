@@ -521,6 +521,10 @@ same way, and the validator reports `line-chart-height-invalid` and
 shared StackedBar breakdown/mode controls and `height=220`. Default local controls
 and responsive plot heights remain available.
 
+[ScatterChart header summaries](docs/report-scatter-summaries.md) optionally
+count current point entries or summarize x/y coordinates, preserving ordinary
+and bubble plots. Coordinate reducers require complete finite pairs.
+
 [FunnelChart header summaries](docs/report-funnel-summaries.md) optionally show
 a named stage, maximum stage-entry count or entry count above the current plot.
 They preserve stage ordering and do not infer conversions or cross-stage totals.
@@ -536,6 +540,12 @@ Exact details and CSV preserve the declared population model.
 See [Sankey API and limits](docs/report-sankey-charts.md).
 
 ### KPIs
+
+[MetricView](docs/report-metric-views.md) shares bounded filtered sum/count/ratio
+results between optional `MiniKpi.binding` consumers and native DataTables.
+The Marketing example retains its summary table and offers geography panels.
+DataTable `column_formats` gives those numeric results explicit currency/rate
+display while preserving raw sorting and CSV values.
 
 The [synthetic Overview example](docs/report-overview-composition.md) combines
 ordinary KPI cards, doughnuts and six compact daily trends with summaries.
@@ -1617,6 +1627,7 @@ Every report generation automatically runs a post-generation validator that chec
 | Column validation | `chart-column-missing`, `ratios-without-dataset-id`, `ratios-missing-keys`, `ratios-column-missing`, `stackedbar-option-column-missing` |
 | LineChart options | `line-chart-height-invalid`, `line-chart-summary-invalid`, `line-chart-tension-invalid` |
 | StackedBar options | `stacked-bar-height-invalid`, `stacked-bar-controls-invalid`, `stacked-bar-control-id-missing`, `stacked-bar-control-owner-invalid`, `stacked-bar-control-options-invalid` |
+| Snapshot metric views / table formats | `metric-view-invalid`, `mini-kpi-binding-invalid`, `datatable-column-formats-invalid` |
 | Toggle / Visible wiring | `visible-target-missing`, `visible-value-missing`, `toggle-unused`, `rawhtml-toggle-id-mismatch` |
 | Scope system | `scope-empty`, `scope-no-default` |
 | YAML schema | `yaml-missing-required`, `yaml-missing-data-sources`, `yaml-cron-invalid`, `report-description-weak` |

@@ -91,6 +91,12 @@ The [Traffic Composition examples](../docs/report-traffic-composition.md) compar
 local and shared controls, responsive and 220px plots, independent event/revenue
 denominators and collapsible source facts.
 
+The [Marketing geography example](../docs/report-metric-views.md) shares filtered
+numeric results between its summary table and optional geography panels, with
+raw-fraction CSV and explicit display precision. The
+[Scatter summary examples](../docs/report-scatter-summaries.md) add optional
+coordinate statistics and entry counts to current ordinary/bubble plots.
+
 `live-result-examples` is a separate native teaching report for displayed
 snapshot/query identity and returned-row scope. It uses bounded literal
 synthetic SQL through the existing `demo_db` connection, with no new tables.

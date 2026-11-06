@@ -34,9 +34,7 @@ def _diagnose(ctx, output, name):
     EVIDENCE.mkdir(parents=True, exist_ok=True)
     (EVIDENCE / (name + '-diagnostics.json')).write_text(json.dumps(
         {'validation': result.to_dict(), 'details': details}, default=str, indent=2))
-    # Preserve all diagnostics. The separate zero-diagnostics unit gate catches
-    # the existing aggregated-x grain heuristic applied to separate point pairs.
-    assert [c.message for c in result.checks if c.level == 'fail'] == []
+    assert [c.message for c in result.checks if c.level in ('warn', 'fail')] == []
     from trellum.validation.walk import _walk_components
     for section in ctx.sections:
         for component, _ in _walk_components(section['components'], section_title=section['title']):

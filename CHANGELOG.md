@@ -9,6 +9,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Bounded snapshot MetricView summaries, optional MiniKpi result bindings and
+  ordinary DataTable column formats, with a Marketing geography example.
+- Optional ScatterChart header summaries for point-entry counts and x/y
+  minimum, maximum or unweighted mean, preserving existing plots.
+
 - Optional shared controls and fixed plot heights for StackedBar, with native
   Traffic Composition examples and validation of shared control owners.
 

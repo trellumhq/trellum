@@ -274,7 +274,10 @@ def _compute_view_matrix(
         # filtered, even if the FilterBar reaches the DS structurally.
         x_col = getattr(comp, "x", None)
         value_cols = _chart_value_columns(comp)
-        static_cols = _detect_static_columns(ds_dfs.get(ds_id), x_col, value_cols)
+        # Scatter retains each coordinate pair; repeated x/y values do not
+        # imply an aggregate duplicated at a coarser x grain.
+        static_cols = ([] if kind == "ScatterChart" else
+                       _detect_static_columns(ds_dfs.get(ds_id), x_col, value_cols))
 
         # Find ALL FilterBars whose primary or propagate_to includes
         # this chart's DataSource. Compose their filter columns so a

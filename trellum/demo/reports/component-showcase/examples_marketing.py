@@ -1,8 +1,7 @@
 """Independent, fully observed synthetic acquisition-cohort geography example."""
 import pandas as pd
 
-from trellum.components import DataSource, DataTable, FilterBar, Grid, MiniKpi, Panel, RawHTML, Section, TabGroup
-from trellum.components.metric_views import MetricView
+from trellum.components import DataSource, DataTable, FilterBar, Grid, MetricView, MiniKpi, Panel, RawHTML, Section, TabGroup
 
 SOURCE = 'showcase_marketing_facts'
 RESULT = 'showcase_marketing_geography'

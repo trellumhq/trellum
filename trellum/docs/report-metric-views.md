@@ -1,7 +1,7 @@
 # Filtered metric views
 
 `MetricView(id, *, parent, groups, metrics)` is a nonvisual dataset registrar.
-Import it from `trellum.components.metric_views`. Declare an ordinary unchunked
+Import it from `trellum.components`. Declare an ordinary unchunked
 snapshot `DataSource` first, optionally followed by one `ScopedDataSource`, then
 its MetricView, then the consumers. Chained views, live sources, propagated-live
 scope, arbitrary expressions and joins are unsupported. This calculates facts
@@ -82,10 +82,9 @@ Unsubscribe is idempotent. This hook is separate from ordinary row subscribers;
 init/remove do not acquire ordinary notifications or change live request policy.
 Consumers must ignore their own publications and unsubscribe on disposal.
 
-Until central dispatch is wired, call
-`validation.checks.metric_views.check_metric_views(ctx, result)` alongside
-`validate_report(ctx, details=compute_details(ctx))`. No warning suppression is
-needed for valid bindings. Native capture keeps current exporter behavior:
+The standard `validate_report(ctx, details=compute_details(ctx))` dispatches
+MetricView, MiniKpi binding and DataTable column-format checks. No warning
+suppression is needed for valid bindings. Native capture keeps current exporter behavior:
 only the active tab and expanded disclosures appear; horizontally scrolled
 wide tables capture the current viewport, not all offscreen columns. Open the
 summary and source-fact disclosures to initialize their lazy tables before a

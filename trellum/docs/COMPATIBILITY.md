@@ -1,5 +1,24 @@
 # Framework Compatibility Policy
 
+## Unreleased: snapshot metric views and table column formats
+
+`MetricView` adds a bounded derived dataset over an ordinary snapshot or one
+scoped snapshot. Keyword-only `MiniKpi.binding=None` and
+`DataTable.column_formats=None` preserve existing supplied metrics and table
+formatting. Explicit column formats affect display/search; CSV and numeric sort
+retain raw values. Comparison and workspace tables keep their existing formats.
+See [metric views and formatting](report-metric-views.md) for source bounds,
+precision, lifecycle and capture scope. No database or host migration is needed.
+
+## Unreleased: optional ScatterChart summaries
+
+Keyword-only `header_summary=None` preserves existing constructors and plots.
+Opted-in summaries count point entries or summarize one coordinate of complete
+finite pairs; they do not summarize bubble pixels or infer rates. Structural
+filter checks remain active, while the aggregate-by-x grain heuristic no longer
+misclassifies separate Scatter points. Rebuild report assets; see
+[Scatter summary guidance](report-scatter-summaries.md).
+
 ## Unreleased: optional shared StackedBar controls and height
 
 Keyword-only `show_controls=True` and `height=None` preserve existing constructors,

@@ -16,11 +16,15 @@ from trellum.validation.walk import _comp_name
 def _check_chart_options(comps: list[tuple[Any, str]], result: ValidationResult) -> None:
     from trellum.components.charts.line_area import line_option_problems
     from trellum.components.charts._funnel_summary import funnel_option_problems
+    from trellum.components.charts._scatter_summary import scatter_option_problems
     from trellum.components.charts.bar import stack_option_problems
 
     from trellum.components.charts._header_summary import header_summary_config, doughnut_summary_config
 
     for comp, sec in comps:
+        if _comp_name(comp) == "ScatterChart":
+            for check_id, message in scatter_option_problems(comp):
+                result.fail(check_id, message, component="ScatterChart", section=sec)
         if _comp_name(comp) == "StackedBar":
             for check_id, message in stack_option_problems(comp):
                 if check_id == "stacked-bar-height-invalid":

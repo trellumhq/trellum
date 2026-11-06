@@ -18,6 +18,8 @@ from trellum.report import ReportContext
 from trellum.reporting.diagnostics import compute_details
 from trellum.themes import DEFAULT_THEME
 from trellum.validation import validate_report
+from trellum.validation.checks.chart_options import _check_chart_options
+from trellum.validation.result import ValidationResult
 
 ROOT = Path(__file__).resolve().parents[2]
 BASELINE = '6043ce4b9288b169bebbb6ce272884ff570b5c6a'
@@ -85,6 +87,10 @@ def test_invalid_construction_render_mutation(declaration):
     with pytest.raises(ValueError, match='header_summary'):
         render(chart)
     assert [code for code, _ in scatter_option_problems(chart)] == ['chart-summary-invalid']
+    result = ValidationResult(slug='scatter-options')
+    _check_chart_options([(chart, 'Point summaries')], result)
+    assert [(c.id, c.level, c.component, c.section) for c in result.checks] == [
+        ('chart-summary-invalid', 'fail', 'ScatterChart', 'Point summaries')]
 
 
 @pytest.mark.parametrize('stat,axis,label', [('count', None, 'Point entries'), ('min', 'x', 'Minimum x'),

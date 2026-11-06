@@ -110,6 +110,25 @@ def test_static_mini_exact_baseline_and_keyword_only():
     assert [k for k,p in inspect.signature(MiniKpi).parameters.items() if p.kind == p.POSITIONAL_OR_KEYWORD] == ['label', 'value', 'format', 'metric']
 
 
+def test_public_component_and_shared_validator_dispatch(tmp_path):
+    from trellum.components import DataTable, MetricView as PublicMetricView
+    from trellum.validation import validate_report
+
+    assert PublicMetricView is MetricView
+    frame = pd.DataFrame([{'country': 'GB', 'cost': 2, 'installs': 1}])
+    metric = view()
+    mini = MiniKpi('Cost', binding={'dataset_id': 'result', 'group': 'missing', 'metric': 'cost'})
+    table = DataTable(frame, 'Costs', columns=['cost'], dataset_id='facts')
+    table.column_formats = {'cost': {'format': 'unknown'}}
+    ctx = ReportContext(config={'name': 'Metric validation', 'studio': 'test', 'category': 'Test',
+        'description': 'Validate snapshot result bindings and explicit table formatting declarations.'},
+        slug='metric-validation', output_dir=str(tmp_path))
+    ctx.add_section('Results', [DataSource('facts', frame), metric, mini, table])
+    result = validate_report(ctx)
+    assert {(c.id, c.section) for c in result.checks if c.level == 'fail'} == {
+        ('mini-kpi-binding-invalid', 'Results'), ('datatable-column-formats-invalid', 'Results')}
+
+
 @pytest.mark.parametrize('kind', ['missing', 'chained', 'chunked', 'scope-chain', 'later', 'bad-column', 'live', 'propagated-live', 'late-propagated-live'])
 def test_validator_rejects_parent_contract(kind, tmp_path):
     from trellum.components import LiveDataSource

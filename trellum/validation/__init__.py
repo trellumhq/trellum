@@ -29,6 +29,7 @@ from trellum.validation.checks.datasource import (
 from trellum.validation.checks.effectiveness import _check_filter_effectiveness
 from trellum.validation.checks.live_query import _check_live_queries
 from trellum.validation.checks.metrics import _check_metrics
+from trellum.validation.checks.metric_views import check_metric_views, check_column_formats
 from trellum.validation.checks.rawhtml import _check_rawhtml
 from trellum.validation.checks.scopes import _check_scopes
 from trellum.validation.checks.sankey import check_sankey_charts
@@ -85,6 +86,8 @@ def validate_report(
                   _check_datasource_filterbar, ctx, comps, result)
     if ds_map is None:
         ds_map = {}
+    _run("metric-views", check_metric_views, ctx, result)
+    _run("table-column-formats", check_column_formats, comps, result)
     _run("cohort tables", check_cohort_tables, comps, ds_map, result)
     _run("sankey charts", check_sankey_charts, comps, ds_map, result)
     _run("dataset id integrity", _check_dataset_id_integrity, comps, ds_map, result)
