@@ -3,6 +3,58 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
     if (!el) return;
     var generation = el._fwTableGeneration = (el._fwTableGeneration || 0) + 1;
     var cf = cfg.conditionalFormats || {};
+    var comparison = cfg.comparison;
+    var context = comparison && comparison.context;
+    function _own(object, key) {
+        return object && Object.prototype.hasOwnProperty.call(object, key) ? object[key] : undefined;
+    }
+
+    // Only raw finite numbers carry comparison meaning. Display strings and
+    // unknown declarations are never parsed to infer a delta or direction.
+    function _comparisonRow(row, record, columns) {
+        if (!context) return row;
+        var spec = _own(context.metrics, record[context.metric_column]) || {};
+        row.comparisonCells = columns.map(function(column, i) {
+            var raw = row.raw[i], text = row.display[i], outcome = '', tone = '';
+            var change = comparison.compareColumns.indexOf(column) >= 0;
+            var period = _own(context.period_labels, column) !== undefined || column === comparison.valueColumn;
+            if (!change && !period) return null;
+            var numeric = typeof raw === 'number' && Number.isFinite(raw);
+            var unavailable = raw == null || (typeof raw === 'number' && !Number.isFinite(raw));
+            var measure = spec.change_measure;
+            var delta = change && ['relative_percent', 'percentage_points', 'absolute'].indexOf(measure) >= 0;
+            var format = spec.format || 'number';
+            var precision = change ? spec.change_precision : spec.precision;
+            if (precision == null) precision = change ? 1 : 2;
+            if (unavailable) {
+                text = '—';
+                var reasonColumn = _own(context.reason_columns, column);
+                var reason = reasonColumn && _own(record, reasonColumn);
+                outcome = reason == null || reason === '' ? 'Unavailable' : String(reason);
+            } else if (numeric && (!change || delta || measure === 'value')) {
+                var value = raw, suffix = '', prefix = '';
+                if (change && measure === 'relative_percent') { value *= 100; suffix = '%'; }
+                else if (change && measure === 'percentage_points') suffix = ' pp';
+                else if (format === 'percent') { value *= 100; suffix = '%'; }
+                else if (format === 'currency') prefix = '$';
+                else if (format === 'ratio') suffix = 'x';
+                // Round only the display; CSV retains the original supplied unit.
+                text = (delta && raw > 0 ? '+' : (value < 0 ? '-' : '')) + prefix +
+                    Math.abs(value).toLocaleString('en-US', {minimumFractionDigits: precision, maximumFractionDigits: precision}) + suffix;
+                if (delta) {
+                    if (raw === 0) outcome = 'Unchanged';
+                    else if (spec.direction === 'higher' || spec.direction === 'lower') {
+                        var improved = (raw > 0) === (spec.direction === 'higher');
+                        outcome = improved ? 'Improved' : 'Worsened';
+                        if (comparison.autoColors) tone = improved ? 'var(--accent-green)' : 'var(--accent-red)';
+                    }
+                }
+            } else if (numeric && change) text = String(raw);
+            row.display[i] = String(text == null ? '' : text) + (outcome ? ' ' + outcome : '');
+            return {text: text, outcome: outcome, tone: tone};
+        });
+        return row;
+    }
     /* Live tables (a live-query lookup) re-run this whole renderer on every
        commit, with different data each time. Without locked widths the
        columns re-fit to each user's rows and the table visibly jumps. Capture
@@ -11,7 +63,9 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
        layout so only the rows change, never the shape. Static tables keep
        their natural, resize-friendly widths. */
     var _isLive = !!cfg.dataset_id;
-    var _colWidths = _isLive ? (el._fwColWidths || null) : null;
+    // Declared comparison headers size the columns naturally on each viewport,
+    // like the static comparison. Keep the ordinary/live-table width contract.
+    var _colWidths = _isLive && !context ? (el._fwColWidths || null) : null;
     var _searchTerm = '';
     var _matchingRows = [];
     clearTimeout(el._fwTableSearchTimer);
@@ -170,8 +224,8 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
             });
         }
         var hdr = columns.map(function(c, idx) {
-            var label = _escapeHtml(c);
-            var numericClass = numericColumns[idx] ? ' fw-table-numeric' : '';
+            var label = _escapeHtml(context ? (_own(context.period_labels, c) || _own(context.change_labels, c) || c) : c);
+            var numericClass = _cellClass(c, numericColumns[idx]);
             if (!cfg.sortable) return '<th class="' + numericClass.trim() + '">' + label + '</th>';
             var active = (idx === _sortCol);
             var arrow = '<span class="fw-sort-arrow">' +
@@ -182,13 +236,17 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
         }).join('');
         var body = visible.map(function(row) {
             return '<tr>' + row.display.map(function(v, i) {
-                var cellClass = numericColumns[i] ? ' class="fw-table-numeric"' : '';
+                var classes = _cellClass(columns[i], numericColumns[i]).trim();
+                var cellClass = classes ? ' class="' + classes + '"' : '';
+                var info = row.comparisonCells && row.comparisonCells[i];
                 var condRules = cf[columns[i]];
-                var style = '';
+                var style = info && info.tone ? ' style="color:' + info.tone + ';font-weight:600"' : '';
                 if (condRules) {
-                    var color = _evalCondFmt(v, condRules);
-                    if (color) style = ' style="color:' + color + ';font-weight:600"';
+                    var color = _evalCondFmt(info ? row.raw[i] : v, condRules);
+                    if (color) style = ' style="color:' + (comparison ? _escapeHtml(color) : color) + ';font-weight:600"';
                 }
+                if (info) return '<td' + cellClass + '><span' + style + '>' + _escapeHtml(info.text == null ? '' : info.text) + '</span>' +
+                    (info.outcome ? '<span class="fw-comparison-outcome">' + _escapeHtml(info.outcome) + '</span>' : '') + '</td>';
                 if (i === barCol && barMax > 0) {
                     var num = parseFloat(String(v).replace(/[^0-9.\-]/g, ''));
                     var pct = isNaN(num) ? 0 : (num / barMax * 100);
@@ -216,7 +274,7 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
             }).join('') + '</colgroup>';
             tableAttr = ' style="table-layout:fixed"';
         }
-        el.innerHTML = '<table class="fw-table fw-data-table"' + tableAttr + '>' + colgroup
+        el.innerHTML = '<table class="fw-table fw-data-table' + (comparison ? ' fw-comparison-table' : '') + (context ? ' fw-comparison-context' : '') + '"' + tableAttr + '>' + colgroup
             + '<thead><tr>' + hdr + '</tr></thead><tbody>'
             + body + '</tbody></table>' + note;
         if (_definitionAnchors) {
@@ -235,7 +293,7 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
         // First natural render of a live table: lock its column widths so the
         // next commit's data cannot reshape it. Stored on the element because
         // the live path re-invokes this whole function with a fresh closure.
-        if (_isLive && !_colWidths) {
+        if (_isLive && !context && !_colWidths) {
             var ths = el.querySelectorAll('thead th');
             if (ths.length === columns.length) {
                 _colWidths = Array.prototype.map.call(ths, function(th) {
@@ -290,6 +348,16 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
         }
     }
 
+    function _cellClass(column, numeric) {
+        var classes = numeric ? ' fw-table-numeric' : '';
+        if (!comparison) return classes;
+        var first = cfg.columns.find(function(c) { return comparison.compareColumns.indexOf(c) >= 0; });
+        if (comparison.showDivider && column === first) classes += ' fw-comparison-divider';
+        if (column === comparison.valueColumn) classes += ' fw-comparison-primary';
+        if (context && (comparison.compareColumns.indexOf(column) >= 0 || _own(context.period_labels, column) !== undefined || column === comparison.valueColumn)) classes += ' fw-table-numeric';
+        return classes;
+    }
+
     /* ── Search wiring ── */
     var _lastRows = null, _lastCols = null, _lastTotal = 0;
     var searchInput = document.querySelector('[data-table-search="' + id + '"]');
@@ -332,7 +400,7 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
                     if (typeof v === 'number') return fmtCompact(v);
                     return String(v);
                 });
-                return {display: display, raw: raw, index: index};
+                return _comparisonRow({display: display, raw: raw, index: index}, r, cols);
             });
             _lastRows = rows; _lastCols = cols; _lastTotal = rawRows.length;
             _renderRows(cols, rows, rawRows.length);
@@ -341,8 +409,9 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
     } else {
         /* ── Static mode ── */
         _lastRows = cfg.rows.map(function(row, index) {
-            return {display: row, raw: cfg.rawRows ? cfg.rawRows[index] : row,
-                    legacy: !cfg.rawRows && !Array.isArray(cfg.numericColumns), index: index};
+            return _comparisonRow({display: row.slice(), raw: cfg.rawRows ? cfg.rawRows[index] : row,
+                    legacy: !cfg.rawRows && !Array.isArray(cfg.numericColumns), index: index},
+                    cfg.comparisonRows ? cfg.comparisonRows[index] : {}, cfg.columns);
         });
         _lastCols = cfg.columns; _lastTotal = cfg.totalRows == null ? cfg.rows.length : cfg.totalRows;
         // A definition deep link opens the table page that holds its row.

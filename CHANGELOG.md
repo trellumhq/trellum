@@ -9,6 +9,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Optional explicit report ComparisonTable context for supplied periods, metric
+  units, favorable directions and unavailable reasons, with textual change
+  outcomes and static/filterable comparison examples. Raw CSV units are retained.
+
 - Added optional alignment, full-number and precision presentation to KPI
   components, stacked MiniKpi labels, and mobile expansion for filtered KPI rows.
 - Standalone report `Dropdown` labels, searchable wrapping choices and disabled
@@ -42,6 +46,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   labels, quieter presets, recorded-date context, unavailable-bound feedback
   and viewport-bounded keyboard-accessible pickers. Range calculations and
   URL behavior are preserved.
+
+- Report comparison tables use a subtle theme-border group divider and primary
+  value emphasis, with the existing compact striped DataTable presentation.
 
 - Display report KPI comparisons as subtle pills within their existing line
   height, and use readable tabular values for inline and stacked MiniKpi metrics.

@@ -3,6 +3,27 @@
 Each section documents a breaking or significant change, how to detect affected
 code, and the exact replacement.
 
+## Unreleased: ComparisonTable presentation and declared context
+
+Rebuilding comparison tables adds a theme-border divider before the comparison
+group and emphasizes an existing `value_col`. Compact striped rows, numeric
+alignment, full-population matching and raw CSV use DataTable's existing path.
+Use keyword-only `show_divider=False` to omit the divider.
+
+Existing positional constructors and dataclass subclasses remain supported;
+legacy absolute comparison columns and formatted-string sign rules are unchanged.
+The historically unused `value_col` is still allowed to be absent. No values are
+recalculated and no automatic dates or delta units are introduced.
+
+Keyword-only `comparison_context` opts into supplied period/change headers,
+per-metric formats/direction and explanatory outcome text. Relative-percent inputs
+are fractions; percentage-point inputs are already in points. Null/nonfinite
+changes show a dash and a supplied reason or Unavailable. Reason columns are
+hidden by default; explicitly select them to display/export them. CSV retains
+selected source names and raw units, without outcome columns. Explicit conditional
+formats, including an empty dict, globally suppress automatic context colors.
+See [report comparison tables](report-comparison-tables.md) for the full contract.
+
 ## Unreleased: DataTable search, sort and CSV population
 
 Rebuilding applies compact spacing, subtle row shading and right-aligned numeric

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from decimal import Decimal
+import math
 from typing import Any, List, Optional
 
 import pandas as pd
@@ -58,6 +59,9 @@ class DataTable(Component):
     searchable: Optional[bool] = None
     live: Optional[dict] = None
 
+    # ComparisonTable's presentation metadata travels with the same population.
+    _comparison: Optional[dict] = field(default=None, init=False, repr=False)
+
     _component_type: str = field(default="data_table", init=False, repr=False)
     _supports_dataset_id: bool = field(default=True, init=False, repr=False)
 
@@ -73,6 +77,8 @@ class DataTable(Component):
         )
         show_search = self.searchable if self.searchable is not None else len(self.df) > 20
         show_cols = self.columns or list(self.df.columns)
+        if self._comparison is not None and self.columns is not None:
+            show_cols = self.columns
         numeric_cols = [c for c in show_cols
                         if c in self.df.columns
                         and (pd.api.types.is_numeric_dtype(self.df[c].dtype)
@@ -101,6 +107,8 @@ class DataTable(Component):
             }
             if self.conditional_formats:
                 cfg["conditionalFormats"] = self.conditional_formats
+            if self._comparison is not None:
+                cfg["comparison"] = self._comparison
             ctx.register(cid, cfg)
             return (
                 f'<div class="fw-table-header fw-data-table-header">{search_html}{dl_btn}</div>'
@@ -125,14 +133,15 @@ class DataTable(Component):
             "searchable": show_search,
             "sortable": self.sortable,
         }
-        if numeric_cols:
+        if numeric_cols or (self._comparison and self._comparison["context"] is not None):
             # Keep established text/date/boolean CSV representation; only
             # numeric cells need a separate unrounded value. Text-only catalog
             # tables need no duplicate row payload (workspace pages fill those
             # rows from their catalog).
             raw_rows = [row.copy() for row in reg["rows"]]
-            numeric_indices = [(show_cols.index(c), c) for c in numeric_cols]
-            for row, record in zip(raw_rows, df_to_json_records(df[numeric_cols])):
+            raw_cols = show_cols if self._comparison and self._comparison["context"] is not None else numeric_cols
+            numeric_indices = [(show_cols.index(c), c) for c in raw_cols]
+            for row, record in zip(raw_rows, df_to_json_records(df[raw_cols])):
                 for index, column in numeric_indices:
                     value = record[column]
                     # JSON numbers cannot carry arbitrary decimal precision or
@@ -140,7 +149,8 @@ class DataTable(Component):
                     # numeric text for lossless table sort and CSV.
                     if isinstance(value, Decimal):
                         value = str(value) if value.is_finite() else None
-                    elif pd.isna(value):
+                    elif pd.isna(value) or (self._comparison is not None
+                                           and isinstance(value, float) and not math.isfinite(value)):
                         value = None
                     elif isinstance(value, int) and abs(value) > 2**53 - 1:
                         value = str(value)
@@ -150,6 +160,14 @@ class DataTable(Component):
             reg["barColumn"] = self.bar_column
         if self.conditional_formats:
             reg["conditionalFormats"] = self.conditional_formats
+        if self._comparison is not None:
+            reg["comparison"] = self._comparison
+            context = self._comparison["context"]
+            if context is not None:
+                metadata_cols = list(dict.fromkeys([
+                    context["metric_column"], *context.get("reason_columns", {}).values(),
+                ]))
+                reg["comparisonRows"] = df_to_json_records(self.df[metadata_cols])
 
         table_html = (
             f'<div class="fw-table-header fw-data-table-header">{search_html}{dl_btn}</div>'
@@ -262,11 +280,12 @@ class PivotTable(Component):
 
 @dataclass
 class ComparisonTable(Component):
-    """Table with period comparison columns and automatic conditional formatting.
+    """Supplied comparisons with optional explicit context and outcome text.
 
     Comparison columns (``compare_cols``) are automatically color-coded:
     positive values in green, negative in red.  Pass explicit
-    ``conditional_formats`` to override the auto-generated rules.
+    ``conditional_formats`` to override the auto-generated rules. Keyword-only
+    ``comparison_context`` opts into metric-aware supplied-change semantics.
 
     Args:
         df: DataFrame with rows to compare.
@@ -276,6 +295,10 @@ class ComparisonTable(Component):
         dataset_id: Optional DataSource ID for filter reactivity.
         conditional_formats: Explicit rules (overrides auto-generation).
         columns: Optional list of columns to display.
+        comparison_context: Keyword-only supplied period labels, metric units,
+            directions and missing-value reasons. No comparison is calculated.
+            See ``trellum/docs/report-comparison-tables.md`` for raw units.
+        show_divider: Keyword-only opt-out for the comparison group border.
     """
     df: pd.DataFrame
     title: str
@@ -285,13 +308,18 @@ class ComparisonTable(Component):
     static: bool = False
     conditional_formats: Optional[dict] = None
     columns: Optional[List[str]] = None
+    comparison_context: Optional[dict] = field(default=None, kw_only=True)
+    show_divider: bool = field(default=True, kw_only=True)
 
     _component_type: str = field(default="comparison_table", init=False, repr=False)
     _supports_dataset_id: bool = field(default=True, init=False, repr=False)
 
     def render_html(self, ctx: RenderContext) -> str:
+        context = self.comparison_context
+        if context is not None:
+            self._validate_context(context)
         cf = self.conditional_formats
-        if cf is None:
+        if cf is None and context is None:
             cf = {}
             for col in self.compare_cols:
                 cf[col] = [
@@ -304,9 +332,49 @@ class ComparisonTable(Component):
             max_rows=200,
             dataset_id=self.dataset_id,
             conditional_formats=cf,
-            columns=self.columns,
+            columns=(self.columns if self.columns is not None else
+                     [c for c in self.df.columns
+                      if context is None or c not in context.get("reason_columns", {}).values()]),
         )
+        delegate._comparison = {
+            "context": context, "compareColumns": self.compare_cols,
+            "valueColumn": self.value_col, "showDivider": self.show_divider,
+            "autoColors": self.conditional_formats is None,
+        }
         return ctx.render_child(delegate)
+
+    def _validate_context(self, context: dict) -> None:
+        """Validate new declarations without tightening the legacy call contract."""
+        def invalid(message):
+            raise ValueError("ComparisonTable comparison_context: " + message)
+
+        if not isinstance(context, dict):
+            invalid("must be a dict")
+        if not isinstance(context.get("metric_column"), str) or context["metric_column"] not in self.df.columns:
+            invalid("metric_column must name a supplied column")
+        for name in ("period_labels", "change_labels", "reason_columns", "metrics"):
+            mapping = context.get(name, {})
+            if not isinstance(mapping, dict) or not all(isinstance(k, str) for k in mapping):
+                invalid(name + " must be a dict with string keys")
+            if name != "metrics" and not all(isinstance(v, str) for v in mapping.values()):
+                invalid(name + " must contain string values")
+        for column, reason in context.get("reason_columns", {}).items():
+            if column not in self.df.columns or reason not in self.df.columns:
+                invalid("reason_columns must name supplied value and reason columns")
+        for name in ("period_labels", "change_labels"):
+            if any(c not in self.df.columns for c in context.get(name, {})):
+                invalid(name + " must name supplied columns")
+        for metric, spec in context.get("metrics", {}).items():
+            if not isinstance(spec, dict):
+                invalid("metrics entries must be dicts")
+            for name in ("direction", "format", "change_measure"):
+                if name in spec and not isinstance(spec[name], str):
+                    invalid(metric + "." + name + " must be a string")
+            if "format" in spec and spec["format"] not in {"number", "currency", "percent", "ratio"}:
+                invalid(metric + ".format must be number, currency, percent or ratio")
+            for name in ("precision", "change_precision"):
+                if name in spec and (type(spec[name]) is not int or not 0 <= spec[name] <= 12):
+                    invalid(metric + "." + name + " must be an integer from 0 to 12")
 
     @classmethod
     def css(cls) -> str:

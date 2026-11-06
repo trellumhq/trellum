@@ -76,6 +76,17 @@
     opacity: 0.35; font-size: 9px;
 }
 .fw-table th.fw-sort-active .fw-sort-arrow { opacity: 1; }
+.fw-comparison-table .fw-comparison-divider {
+    border-left: 1px solid var(--border-color);
+}
+.fw-comparison-table td.fw-comparison-primary { font-weight: 600; }
+.fw-comparison-context { min-width: 550px; }
+.fw-comparison-context th { text-transform: none; letter-spacing: normal; }
+.fw-comparison-context td { white-space: nowrap; }
+.fw-comparison-outcome {
+    display: block; font-size: var(--font-size-meta);
+    color: var(--text-muted); font-weight: normal; white-space: normal;
+}
 @media (max-width: 640px) {
     .fw-table { font-size: var(--font-size-table); }
     .fw-table th,
