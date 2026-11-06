@@ -1,6 +1,11 @@
 from trellum.themes.theme import Theme
 
 SunsetTheme = Theme(
+    text_positive="#7bc67e",
+    text_negative="#ef8d7f",
+    text_warning="#f5b942",
+    text_context="#b4a59a",
+
     bg_main="#1c1210",
     bg_card="#2d1f1a",
     bg_card_hover="#3a2820",

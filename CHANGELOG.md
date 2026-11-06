@@ -9,6 +9,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Keyword-only report Theme roles for favorable, unfavorable, forecast and context
+  small text, with authored colors for all thirteen built-in themes and legacy
+  aliases for custom themes. KPI status text and ComparisonTable auto colors use
+  these tones; palettes, authored rules, values and component layouts remain.
+  Added deterministic native status-text examples and API/upgrade guidance.
+
 - ComboChart left/right axis descriptions and grouped native legend buttons with
   bar/line symbols, separate controls for matching captions on opposite axes,
   keyword-only unit descriptions, and deterministic live/static showcase examples.

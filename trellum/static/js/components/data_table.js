@@ -46,7 +46,7 @@ window._fwRenderers['table'] = function renderTable(id, cfg) {
                     else if (spec.direction === 'higher' || spec.direction === 'lower') {
                         var improved = (raw > 0) === (spec.direction === 'higher');
                         outcome = improved ? 'Improved' : 'Worsened';
-                        if (comparison.autoColors) tone = improved ? 'var(--accent-green)' : 'var(--accent-red)';
+                        if (comparison.autoColors) tone = improved ? 'var(--text-positive, var(--accent-green))' : 'var(--text-negative, var(--accent-red))';
                     }
                 }
             } else if (numeric && change) text = String(raw);

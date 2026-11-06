@@ -11,6 +11,11 @@ _CLASSIC_CHART_COLORS = [
 ]
 
 ClassicLightTheme = Theme(
+    text_positive="#0a6e4d",
+    text_negative="#ae3232",
+    text_warning="#865606",
+    text_context="#5d6169",
+
     bg_main="#f0f2f5",
     bg_card="#ffffff",
     bg_card_hover="#f8f9fc",
@@ -43,6 +48,11 @@ ClassicLightTheme = Theme(
 )
 
 ClassicDarkTheme = Theme(
+    text_positive="#18ca97",
+    text_negative="#ff93b7",
+    text_warning="#ffd166",
+    text_context="#b4b5bf",
+
     bg_main="#1A1A2E",
     bg_card="#2A2A3E",
     bg_card_hover="#33334D",

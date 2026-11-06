@@ -28,10 +28,10 @@
 }
 .fw-kpi-forecast {
     font-size: var(--font-size-interface); font-weight: 600;
-    color: var(--accent-yellow); margin-top: 3px;
+    color: var(--text-warning, var(--accent-yellow)); margin-top: 3px;
 }
-.fw-kpi-sub { font-size: var(--font-size-meta); color: var(--text-muted); margin-top: 4px; }
-.fw-kpi-delta { font-size: var(--font-size-small); margin-top: 4px; }
+.fw-kpi-sub { font-size: var(--font-size-meta); color: var(--text-context, var(--text-muted)); margin-top: 4px; }
+.fw-kpi-delta { font-size: var(--font-size-small); margin-top: 4px; color: var(--text-context, var(--text-main)); }
 .fw-kpi-change {
     /* Inline paint keeps the existing comparison line box and card height. */
     border-radius: 4px;
@@ -40,8 +40,8 @@
     background: color-mix(in srgb, currentColor 12%, transparent);
     box-decoration-break: clone;
 }
-.fw-kpi-delta.up { color: var(--accent-green); }
-.fw-kpi-delta.down { color: var(--accent-red); }
+.fw-kpi-delta.up { color: var(--text-positive, var(--accent-green)); }
+.fw-kpi-delta.down { color: var(--text-negative, var(--accent-red)); }
 @media (max-width: 900px) {
     .fw-kpi-grid { grid-template-columns: repeat(3, 1fr); }
     .fw-kpi-card .fw-kpi-value { font-size: var(--font-size-kpi); }

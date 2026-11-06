@@ -1,6 +1,11 @@
 from trellum.themes.theme import Theme
 
 MonokaiTheme = Theme(
+    text_positive="#abe439",
+    text_negative="#fdc2d7",
+    text_warning="#e6db74",
+    text_context="#d4d3cd",
+
     bg_main="#272822",
     bg_card="#3e3d32",
     bg_card_hover="#49483e",

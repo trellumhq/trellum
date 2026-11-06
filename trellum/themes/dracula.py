@@ -1,6 +1,11 @@
 from trellum.themes.theme import Theme
 
 DraculaTheme = Theme(
+    text_positive="#97fcb1",
+    text_negative="#ffe1e1",
+    text_warning="#f1fa8c",
+    text_context="#e5e8f0",
+
     bg_main="#282a36",
     bg_card="#44475a",
     bg_card_hover="#4e5270",

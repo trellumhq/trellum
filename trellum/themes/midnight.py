@@ -1,6 +1,11 @@
 from trellum.themes.theme import Theme
 
 MidnightTheme = Theme(
+    text_positive="#34d399",
+    text_negative="#fa9090",
+    text_warning="#fbbf24",
+    text_context="#a8b1be",
+
     bg_main="#0f1729",
     bg_card="#1a2744",
     bg_card_hover="#213157",

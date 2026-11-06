@@ -1,6 +1,11 @@
 from trellum.themes.theme import Theme
 
 OceanTheme = Theme(
+    text_positive="#2dd4bf",
+    text_negative="#f690c5",
+    text_warning="#fbbf24",
+    text_context="#8eb9c9",
+
     bg_main="#0d1b2a",
     bg_card="#1b2838",
     bg_card_hover="#233548",

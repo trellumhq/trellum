@@ -28,7 +28,7 @@
 .fw-table tr:hover td { background: var(--bg-card-hover); }
 .fw-data-table tbody tr:hover td { background: var(--bg-card-hover); }
 .fw-table-note {
-    font-size: var(--font-size-meta); color: var(--text-muted);
+    font-size: var(--font-size-meta); color: var(--text-context, var(--text-muted));
     margin-top: var(--spacing-sm);
 }
 .fw-bar-cell { position: relative; min-width: 80px; }
@@ -85,7 +85,7 @@
 .fw-comparison-context td { white-space: nowrap; }
 .fw-comparison-outcome {
     display: block; font-size: var(--font-size-meta);
-    color: var(--text-muted); font-weight: normal; white-space: normal;
+    color: var(--text-context, var(--text-muted)); font-weight: normal; white-space: normal;
 }
 @media (max-width: 640px) {
     .fw-table { font-size: var(--font-size-table); }

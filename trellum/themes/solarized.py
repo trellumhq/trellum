@@ -1,6 +1,11 @@
 from trellum.themes.theme import Theme
 
 SolarizedTheme = Theme(
+    text_positive="#b6c265",
+    text_negative="#f0a6a4",
+    text_warning="#d2b865",
+    text_context="#b3bec1",
+
     bg_main="#002b36",
     bg_card="#073642",
     bg_card_hover="#0a4050",

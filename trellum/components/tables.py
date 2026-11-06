@@ -332,8 +332,8 @@ class ComparisonTable(Component):
             cf = {}
             for col in self.compare_cols:
                 cf[col] = [
-                    {"op": ">", "value": 0, "color": "var(--accent-green)"},
-                    {"op": "<", "value": 0, "color": "var(--accent-red)"},
+                    {"op": ">", "value": 0, "color": "var(--text-positive, var(--accent-green))"},
+                    {"op": "<", "value": 0, "color": "var(--text-negative, var(--accent-red))"},
                 ]
         delegate = DataTable(
             df=self.df,

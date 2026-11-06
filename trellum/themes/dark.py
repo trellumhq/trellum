@@ -1,6 +1,11 @@
 from trellum.themes.theme import Theme
 
 DarkTheme = Theme(
+    text_positive="#00c48c",
+    text_negative="#f87878",
+    text_warning="#ffd166",
+    text_context="#9ba1ac",
+
     bg_main="#111315",
     bg_card="#181b1f",
     bg_card_hover="#23272d",
