@@ -33,6 +33,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Strengthen theme regression checks for spaced names, light/dark classification
+  and three-digit hex colors.
+
 - Remeasure lazy report content before clipping emailed snapshots to their
   height limit, with bounded viewport growth and settling.
 
