@@ -144,8 +144,9 @@ class DateRangeFilter(BaseFilter):
                     opts.append(f'<option value="{val}"{sel}>{val}</option>')
             return (
                 f'<div class="fw-date-hour-row fw-date-field">'
-                f'<label class="fw-date-field-label" for="{safe_fid}-{edge}-hour">{name} time</label>'
-                f'<select id="{safe_fid}-{edge}-hour" class="fw-date-hour" '
+                f'<label id="{safe_fid}-{edge}-hour-label" class="fw-date-field-label" for="{safe_fid}-{edge}-hour">{name} time</label>'
+                f'<select id="{safe_fid}-{edge}-hour" name="{safe_fid}-{edge}-hour" class="fw-date-hour" '
+                f'aria-labelledby="{safe_fid}-label {safe_fid}-{edge}-hour-label" '
                 f'data-edge="{edge}-hour"{disabled}>{"".join(opts)}</select></div>'
             )
 
@@ -159,14 +160,15 @@ class DateRangeFilter(BaseFilter):
 
         return (
             f'<div class="fw-filter-item fw-filter-date-item">'
-            f'<label class="fw-filter-label" for="{safe_fid}-trigger">{escape(label)}</label>'
-            f'<div class="fw-date-range" data-filter-id="{fid}" '
+            f'<label class="fw-filter-label" id="{safe_fid}-label" for="{safe_fid}-trigger">{escape(label)}</label>'
+            f'<div class="fw-date-range" role="group" aria-labelledby="{safe_fid}-label" data-filter-id="{safe_fid}" '
             f'data-hourly="{str(hourly).lower()}">'
             # Trigger button
             f'<button id="{safe_fid}-trigger" class="fw-date-trigger" type="button"{disabled} '
+            f'aria-labelledby="{safe_fid}-label {safe_fid}-value" '
             f'aria-expanded="false" aria-controls="{popover_id}" aria-haspopup="dialog" '
             f'aria-describedby="{unavailable_id if unavailable else reference_id}">'
-            f'<span class="fw-date-trigger-text">{trigger_text}</span>'
+            f'<span class="fw-date-trigger-text" id="{safe_fid}-value">{trigger_text}</span>'
             f'<svg class="fw-date-trigger-icon" viewBox="0 0 20 20" fill="currentColor">'
             f'<path d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 '
             f'002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 '
@@ -178,8 +180,9 @@ class DateRangeFilter(BaseFilter):
             f'<div class="fw-date-popover-row">'
             f'<div class="fw-date-endpoint">'
             f'<div class="fw-date-field">'
-            f'<label class="fw-date-field-label" for="{safe_fid}-min">Start date</label>'
-            f'<input id="{safe_fid}-min" type="date" class="fw-date-input" data-edge="min"{disabled} '
+            f'<label class="fw-date-field-label" id="{safe_fid}-min-label" for="{safe_fid}-min">Start date</label>'
+            f'<input id="{safe_fid}-min" name="{safe_fid}-min" aria-labelledby="{safe_fid}-label {safe_fid}-min-label" '
+            f'type="date" class="fw-date-input" data-edge="min"{disabled} '
             f'value="{min_date_only}" min="{data_min}" max="{data_max}" '
             f'autocomplete="off" data-bwignore="true" '
             f'data-1p-ignore="true" data-lpignore="true">'
@@ -187,8 +190,9 @@ class DateRangeFilter(BaseFilter):
             f'{hour_field("min", min_time, "Start")}</div>'
             f'<div class="fw-date-endpoint">'
             f'<div class="fw-date-field">'
-            f'<label class="fw-date-field-label" for="{safe_fid}-max">End date</label>'
-            f'<input id="{safe_fid}-max" type="date" class="fw-date-input" data-edge="max"{disabled} '
+            f'<label class="fw-date-field-label" id="{safe_fid}-max-label" for="{safe_fid}-max">End date</label>'
+            f'<input id="{safe_fid}-max" name="{safe_fid}-max" aria-labelledby="{safe_fid}-label {safe_fid}-max-label" '
+            f'type="date" class="fw-date-input" data-edge="max"{disabled} '
             f'value="{max_date_only}" min="{data_min}" max="{data_max}" '
             f'autocomplete="off" data-bwignore="true" '
             f'data-1p-ignore="true" data-lpignore="true">'

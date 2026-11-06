@@ -252,6 +252,7 @@ def _assert_groups(page, title):
     details = _details(page, title)
     assert details.locator("[data-event-item]").count() == len(indexes)
     assert sorted(map(int, details.locator("[data-event-item]").evaluate_all("els=>els.map(e=>e.dataset.eventItem)"))) == sorted(indexes)
+    assert not page.evaluate("id => !!window._chartInstances[id]._fwAnnotationDetails", state["id"])
     return state
 
 

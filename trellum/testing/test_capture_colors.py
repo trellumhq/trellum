@@ -355,7 +355,7 @@ def test_clone_failure_and_renderer_failure_restore_native_controls(native_captu
                     if(mode==='synchronous')throw new Error('forced renderer error');
                     if(mode==='renderer')return Promise.reject(new Error('forced renderer error'));
                     const onclone=options.onclone;
-                    options.onclone=(doc,root)=>{onclone(doc,root);throw new Error('forced clone error')};
+                    options.onclone=async(doc,root)=>{await onclone(doc,root);throw new Error('forced clone error')};
                     return real(target,options);
                 };
                 try{await fw.captureElementSnapshotForAnalysis(el);return null}
@@ -377,7 +377,7 @@ def test_clone_failure_and_renderer_failure_restore_native_controls(native_captu
         assert _state(page) == before
         # Exercise the full-report rejection path too, with a real clone.
         page.evaluate("""()=>{window.realCapture=window.html2canvas;window.html2canvas=(el,options)=>{
-            const onclone=options.onclone;options.onclone=(doc,root)=>{onclone(doc,root);throw new Error('forced clone error')};
+            const onclone=options.onclone;options.onclone=async(doc,root)=>{await onclone(doc,root);throw new Error('forced clone error')};
             return realCapture(el,options)};fw.exportPNG();}""")
         page.locator(".fw-analysis-error").wait_for()
         assert "forced clone error" in page.locator(".fw-analysis-error").inner_text()

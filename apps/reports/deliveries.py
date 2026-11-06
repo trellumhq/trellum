@@ -12,7 +12,7 @@ from apps.core.models import InstanceConfig
 from apps.core.audit import audit
 from apps.core.request_access import request_org_access
 from apps.core import roles
-from apps.core.report_access import can_view_report
+from apps.core.report_access import can_view_report, report_audience_block_reason
 from apps.orgs.models import Organization
 from apps.reports.models import EmailSchedule
 
@@ -26,9 +26,13 @@ def can_manage_schedule(request, schedule):
     key = getattr(request, "api_key", None)
     if key is not None and (key.org_id != org.pk or not getattr(key, "can_write", False)):
         return False
+    role = request_org_access(request, org).role_for(schedule.report.studio)
+    # Expiry blocks content and sends, while existing developers retain their
+    # controls to disable or remove a delivery, including existing schedules
+    # whose report was subsequently hidden from the catalog.
     return bool(request.user.is_authenticated and request.user.is_active
-        and can_view_report(request.user, schedule.report, request=request)
-        and roles.at_least(request_org_access(request, org).role_for(schedule.report.studio), roles.DEVELOPER))
+        and roles.at_least(role, roles.DEVELOPER)
+        and not report_audience_block_reason(request.user, schedule.report, request=request))
 
 
 def schedule_for_request(request, schedule_id, *, report=None):

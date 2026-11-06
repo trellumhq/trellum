@@ -12,13 +12,13 @@ claiming anything worked. A wrong password is reported here, in the same breath
 as the attempt, rather than at the next report build.
 
 The password is deliberately awkward to pass in bulk: prompted when there is a
-terminal, accepted as a flag when there is not. The values that identify a
+terminal, with stdin and environment input for automation. Existing flag input
+remains supported. The values that identify a
 source are structural and fine to script; the secret is the person's.
 """
 
 from __future__ import annotations
 
-import getpass
 import os
 import re
 import sys
@@ -51,39 +51,68 @@ def _update_env_file(path: str, values: dict[str, str]) -> list[str]:
     comments and unrelated settings, so existing lines are edited in place and
     only genuinely new keys are appended.
     """
-    lines: list[str] = []
-    if os.path.isfile(path):
-        with open(path, encoding="utf-8") as fh:
-            lines = fh.read().splitlines()
+    import io
+    from pathlib import Path
 
-    remaining = dict(values)
-    out: list[str] = []
-    for line in lines:
-        key = line.split("=", 1)[0].strip() if "=" in line else ""
-        if key in remaining:
-            out.append(f"{key}={remaining.pop(key)}")
-        else:
-            out.append(line)
+    from dotenv import dotenv_values
 
-    if remaining:
-        if out and out[-1].strip():
-            out.append("")
+    from trellum.private_files import atomic_write, prepare_parent, private_lock, read_private
+
+    target = Path(path).absolute()
+    prepare_parent(target)
+    with private_lock(target):
+        try:
+            original = read_private(target)
+        except FileNotFoundError:
+            original = ""
+        from dotenv.parser import parse_stream
+        newline = "\r\n" if "\r\n" in original else "\n"
+        out = []
+        remaining = dict(values)
+        for binding in parse_stream(io.StringIO(original)):
+            key = binding.key
+            if key in values:
+                # Remove duplicate assignments too: dotenv uses the last value.
+                comment = _env_comment(binding.original.string)
+                if key in remaining:
+                    value = remaining.pop(key)
+                    out.append(f"{key}={_env_value(value)}{comment}{newline}")
+                elif comment:
+                    out.append(comment.lstrip() + newline)
+            else:
+                out.append(binding.original.string)
+        if remaining and out and not out[-1].endswith(("\n", "\r")):
+            out.append(newline)
         for key, value in remaining.items():
-            out.append(f"{key}={value}")
-
-    with open(path, "w", encoding="utf-8") as fh:
-        fh.write("\n".join(out).rstrip("\n") + "\n")
+            out.append(f"{key}={_env_value(value)}{newline}")
+        content = "".join(out)
+        parsed = dotenv_values(stream=io.StringIO(content), interpolate=False)
+        if any(parsed.get(key) != value for key, value in values.items()):
+            raise ValueError("Credential settings could not be represented safely in .env.")
+        atomic_write(target, content)
     return list(values)
+
+
+def _env_comment(assignment: str) -> str:
+    match = re.fullmatch(
+        r"\s*(?:export\s+)?[A-Za-z_][A-Za-z0-9_]*\s*=\s*"
+        r"(?:'(?:\\.|[^'])*'|\"(?:\\.|[^\"])*\"|[^'\"\r\n]*?)"
+        r"([ \t]+#[^\r\n]*)?(?:\r?\n)?", assignment,
+    )
+    return (match.group(1) or "") if match else ""
+
+
+def _env_value(value: str) -> str:
+    if value and re.fullmatch(r"[A-Za-z0-9_./:@%+,=-]+", value):
+        return value
+    return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
 
 
 def _resolve_password(args, needs_credentials: bool) -> str | None:
     if not needs_credentials or not args.user:
         return None
-    if args.password is not None:
-        return args.password
-    if sys.stdin.isatty():
-        return getpass.getpass(f"Password for {args.user}: ")
-    return None
+    from trellum.cli.secrets import resolve_secret
+    return resolve_secret(args, "password", f"Password for {args.user}: ")
 
 
 def cmd_datasource_add(args) -> int:
@@ -131,11 +160,15 @@ def cmd_datasource_add(args) -> int:
         # The prefix is recorded even when no credentials are supplied now, so
         # adding them later is editing .env rather than rediscovering this.
         entry["credentials"] = {"local": prefix}
-        password = _resolve_password(args, needs_credentials=True)
+        try:
+            password = _resolve_password(args, needs_credentials=True)
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
         if args.user and password is None and args.password is None:
             print(
                 f"No password given and no terminal to prompt on. Pass "
-                f"--password, or set {prefix}_PASS in .env yourself.",
+                f"--password-stdin, --password-env NAME, or set {prefix}_PASS in .env yourself.",
                 file=sys.stderr,
             )
             return 1
@@ -157,7 +190,12 @@ def cmd_datasource_add(args) -> int:
         env_values = {f"{prefix}_USER": args.user}
         if password is not None:
             env_values[f"{prefix}_PASS"] = password
-        written_keys = _update_env_file(os.path.join(root, ".env"), env_values)
+        try:
+            written_keys = _update_env_file(os.path.join(root, ".env"), env_values)
+        except (OSError, ValueError):
+            print("Could not save private credentials; check file access and retry. "
+                  "The source declaration was saved, but credentials were not confirmed.", file=sys.stderr)
+            return 1
         # Make them visible to this process too, so the connection test below
         # exercises the same values a fresh run would read from .env.
         for key, value in env_values.items():
@@ -242,8 +280,8 @@ def add_datasource_commands(sub) -> None:
     add.add_argument("--port", type=int, help="defaults to the driver's port")
     add.add_argument("--database")
     add.add_argument("--user")
-    add.add_argument("--password",
-                     help="prompted for when omitted and a terminal is present")
+    from trellum.cli.secrets import add_secret_arguments
+    add_secret_arguments(add, "password", "prompted when omitted; prefer --password-stdin or --password-env")
     add.add_argument("--path", help="file path for sqlite / duckdb / file types")
     add.add_argument("--description")
     add.add_argument("--force", action="store_true",

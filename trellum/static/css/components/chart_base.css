@@ -41,6 +41,8 @@
     margin-bottom: var(--spacing-md);
 }
 .fw-chart-container, .fw-table-scroll { max-width: 100%; }
+.fw-annotation-details { margin-bottom: var(--spacing-md); overflow-wrap: anywhere; }
+.fw-annotation-details summary { cursor: pointer; }
 .fw-chart-container canvas {
     position: absolute !important;
     top: 0; left: 0;

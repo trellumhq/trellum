@@ -14,7 +14,10 @@ LineChart(rows, "day", "orders", "Selected orders", dataset_id="orders")
 ```
 
 Only `"grouped"` and `"full"` are accepted, including when options are changed
-before rendering. `"full"` retains the existing in-plot labels and adds no list.
+before rendering. `"full"` uses in-plot labels with collision protection:
+crowded labels move into the ordinary event-details disclosure, while sparse
+labels remain in the plot. Grouped mode keeps its separate numbered markers
+and expandable list.
 Static, dataset-bound wide-series, ratios and dynamic stack paths support the
 option. Explicit `dataset_id` still takes precedence over `static=True`; omit
 `dataset_id` for an independent static example. Area, Bar and Combo charts and
@@ -65,9 +68,10 @@ timezone, continuous coverage or calendar inference is made.
 ## Exports and rebuilding
 
 CSV and chart-only data downloads retain supplied values and existing names.
-Native canvas PNG/PDF capture includes markers. Normal report export preserves
-the current collapsed/expanded disclosure state; it does not expand lists or add
-a scope footer. Collapsed exports show marker numbers/counts without full names;
+Native canvas PNG/PDF capture includes markers. For grouped mode, normal report export preserves
+the current collapsed/expanded disclosure state and does not add a scope footer.
+Full-label collision disclosures expand in the export clone only; their on-screen
+state remains unchanged. Collapsed exports show marker numbers/counts without full names;
 expand the list before report export to include event names. Long expanded lists
 retain their local scroll viewport in screen capture.
 

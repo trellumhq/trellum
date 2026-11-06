@@ -30,7 +30,7 @@ from django.shortcuts import render
 
 from apps.core import roles
 from apps.core.permissions import require_studio_role
-from apps.core.report_access import require_full_studio_visibility
+from apps.core.report_access import regular_reports, require_full_studio_visibility
 
 #: ``safe_load`` with libyaml when it is installed: the same safe subset, about
 #: five times faster on a few thousand events.
@@ -236,7 +236,7 @@ def report_config_events(studio) -> list[dict]:
     from trellum.runner import local_annotation_events
 
     out: list[dict] = []
-    reports = Report.objects.filter(studio=studio, present_in_scan=True).only(
+    reports = regular_reports(Report.objects.filter(studio=studio, present_in_scan=True)).only(
         "slug", "config", "studio_id"
     )
     for report in reports:

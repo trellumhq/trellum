@@ -19,6 +19,11 @@
     var catalogPath = window.location.pathname;
     var catalogTitle = document.title;
     var catalogPageTitle = (shell.querySelector('[data-console-page-title]') || {}).textContent || '';
+    window.addEventListener('trellum:catalog-committed', function () {
+        catalogPath = location.pathname;
+        catalogTitle = document.title;
+        catalogPageTitle = (shell.querySelector('[data-console-page-title]') || {}).textContent || '';
+    });
     var active = null;
     var serial = 0;
     var timeout = null;
@@ -177,8 +182,9 @@
         catalog.removeAttribute('inert');
         document.body.classList.remove('tl-console-report-hosting');
         document.body.classList.remove('tl-console-presenting');
-        setPageTitle(catalogPageTitle);
-        document.title = catalogTitle;
+        if (!catalog.hasAttribute('data-catalog-navigating')) {
+            setPageTitle(catalogPageTitle); document.title = catalogTitle;
+        }
         notifyAssistant(null);
         /* Listeners may announce trellum:catalog-loading synchronously, which
            defers the restoration below until the catalog is ready again. */

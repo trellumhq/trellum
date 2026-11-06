@@ -76,9 +76,10 @@ class DropdownFilter(BaseFilter):
         return (
             f'<div class="fw-filter-item">'
             f'<div class="fw-filter-label-row">'
-            f'<label class="fw-filter-label">{escape(str(label))}</label>'
+            f'<label class="fw-filter-label" id="{escape(fid, quote=True)}_label" for="{escape(fid, quote=True)}_input">{escape(str(label))}</label>'
             f'{actions}</div>'
-            f'<select class="fw-dropdown" data-filter-id="{fid}" '
+            f'<select class="fw-dropdown" id="{escape(fid, quote=True)}_input" name="{escape(fid, quote=True)}" '
+            f'aria-labelledby="{escape(fid, quote=True)}_label" data-filter-id="{escape(fid, quote=True)}" '
             f'data-filter-col="{escape(col, quote=True)}"{multiple_attr} placeholder="(All)"></select>'
             f'</div>'
         )

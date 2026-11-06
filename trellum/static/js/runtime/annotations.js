@@ -192,8 +192,9 @@
                         backgroundColor: solidColor, padding: {x: 4, y: 2}, borderRadius: 3}
                 };
             }
+            var key = (annos['ev_box_' + i] ? 'ev_box_' : 'ev_line_') + i;
+            annos[key]._fwEvent = ev;
             if (dated) {
-                var key = 'ev_' + (annos['ev_box_' + i] ? 'box_' : 'line_') + i;
                 annos[key].label.display = false;
                 dated.push({key: key, index: i, event: ev, annotation: annos[key]});
             }
@@ -470,6 +471,70 @@
         };
     }
     window._fwLineEventLabelsPlugin = _lineEventLabelsPlugin;
+    // Use the annotation plugin's measured label rectangles: date spacing alone
+    // cannot predict collisions after resizing, date snapping or font changes.
+    // Sparse charts keep their labels; crowded charts retain every marker and
+    // expose the complete events through a native keyboard-accessible disclosure.
+    if (typeof Chart !== 'undefined') Chart.register({
+        id: 'fwAnnotationLabels',
+        afterUpdate: function(chart) {
+            // Grouped LineCharts own numbered labels and their disclosure.
+            if (chart._fwDatedEvents) return;
+            var config = chart.config.options.plugins;
+            var annotations = config && config.annotation && config.annotation.annotations;
+            var plugin = window['chartjs-plugin-annotation'];
+            if (!plugin || !annotations) return;
+            var area = chart.chartArea, accepted = [], events = [], hidden = false;
+            plugin.getAnnotations(chart).forEach(function(element) {
+                var annotation = annotations[element.options.id];
+                if (!annotation || !annotation._fwEvent || !element.label || element.skip) return;
+                events.push(annotation._fwEvent);
+                var label = element.label;
+                var rect = {x: label.x, y: label.y, w: label.width, h: label.height};
+                var fits = rect.x >= area.left && rect.x + rect.w <= area.right;
+                var overlaps = accepted.some(function(other) {
+                    return rect.x < other.x + other.w + 4 && other.x < rect.x + rect.w + 4
+                        && rect.y < other.y + other.h + 2 && other.y < rect.y + rect.h + 2;
+                });
+                label.options.display = fits && !overlaps;
+                if (label.options.display) accepted.push(rect);
+                else hidden = true;
+            });
+            var details = chart._fwAnnotationDetails;
+            if (!hidden) {
+                if (details) details.remove();
+                chart._fwAnnotationDetails = null;
+                return;
+            }
+            if (!details) {
+                details = document.createElement('details');
+                details.className = 'fw-annotation-details';
+                details.appendChild(document.createElement('summary'));
+                details.appendChild(document.createElement('ul'));
+                var container = chart.canvas.closest('.fw-chart-container') || chart.canvas.parentElement;
+                container.insertAdjacentElement('afterend', details);
+                chart._fwAnnotationDetails = details;
+            }
+            details.firstChild.textContent = 'Event details (' + events.length + ')';
+            var text = events.map(function(ev) {
+                return ev.date + (ev.end_date && ev.end_date !== ev.date ? ' – ' + ev.end_date : '')
+                    + ' · ' + ((_ANNO_STYLES[ev.type] || {}).label || ev.type || 'Releases')
+                    + ' · ' + ev.label;
+            });
+            var signature = JSON.stringify(text);
+            if (details._fwEvents === signature) return;
+            details._fwEvents = signature;
+            details.lastChild.replaceChildren();
+            text.forEach(function(value) {
+                var item = document.createElement('li');
+                item.textContent = value;
+                details.lastChild.appendChild(item);
+            });
+        },
+        afterDestroy: function(chart) {
+            if (chart._fwAnnotationDetails) chart._fwAnnotationDetails.remove();
+        }
+    });
 
     function _refreshAllAnnotations() {
         var instances = window._chartInstances || {};

@@ -14,14 +14,17 @@ from django.db.models import (
     Exists,
     Func,
     OuterRef,
+    Q,
     TextField,
     Value,
 )
 from django.db.models.functions import Coalesce, Concat, Lower, NullIf
 from django.utils import timezone
 
+from apps.core import roles
 from apps.core.pagination import page_metadata
-from apps.core.report_access import visible_reports
+from apps.core.report_access import hidden_reports_q, registered_reports, selected_report_access_block_reason, visible_reports
+from apps.core.request_access import request_org_access
 
 from .models import Report, ReportFavorite
 from .registry_rows import (
@@ -96,7 +99,7 @@ def search(relation, q):
     return relation.annotate(search_text=Lower(text)).filter(search_text__contains=q)
 
 
-def registry_relation(request, *, kind=None):
+def registry_relation(request, *, kind=None, params=None):
     """The present reports the viewer may list, in registry order.
 
     Listings fail closed like every availability-filtered list: while selected
@@ -106,10 +109,26 @@ def registry_relation(request, *, kind=None):
     check_catalog_context(request)
     if kind not in (None, Report.KIND_REPORT, Report.KIND_ANALYSIS):
         raise ValueError("Invalid catalog kind")
-    relation = Report.objects.filter(studio=request.studio, present_in_scan=True)
+    params = params if params is not None else getattr(request, "GET", {})
+    include = params.get("include_unavailable", "0")
+    if include not in ("0", "1"):
+        raise ValueError("Invalid catalog state")
+    include = include == "1" and request_org_access(request, request.org).role_for(request.studio) == roles.ADMIN
+    relation = registered_reports(Report.objects.filter(studio=request.studio))
+    if not include:
+        relation = relation.filter(present_in_scan=True, disabled=False, data_expired_at__isnull=True)
     if kind is not None:
         relation = relation.filter(kind=kind)
-    relation = visible_reports(request.user, relation, request=request)
+    relation = visible_reports(request.user, relation, request=request, include_unavailable=include)
+    # Metadata discovery does not bypass Private audience readiness.
+    if include and selected_report_access_block_reason():
+        relation = relation.exclude(Q(audience=Report.AUDIENCE_PRIVATE) & (
+            hidden_reports_q() | Q(disabled=True) | Q(data_expired_at__isnull=False)
+            | Q(expires_at__lte=timezone.now())
+        ))
+    relation = relation.annotate(catalog_favorite=Exists(
+        ReportFavorite.objects.filter(user_id=request.user.pk, report_id=OuterRef("pk"))
+    ))
     return relation if request.user.is_active else relation.none()
 
 
@@ -140,7 +159,7 @@ def registry_page_payload(request, params, *, kind=None, now=None):
     locally."""
     page, limit = _params(params)
     now = now or timezone.now()
-    relation = registry_relation(request, kind=kind)
+    relation = registry_relation(request, kind=kind, params=params)
     recent = recent_slugs(params)
     q, tab = params.get("q", ""), params.get("tab", "all")
     if q:

@@ -947,9 +947,9 @@ The loop, from your seat:
 
 1. `python -m trellum review start reports/<slug>` — builds if output is
    missing (`--rebuild` to force), starts or reuses the background server,
-   enables review mode, and opens the browser. If a server predating review
-   mode holds the port, rerun with `--restart-server`.
-2. `python -m trellum review poll` — **BLOCKS** until the user sends
+   enables review mode, and opens the browser. Share its printed URL. If a
+   server predating review mode holds the port, rerun with `--restart-server`.
+2. `python -m trellum review poll --report <slug>` — **BLOCKS** until the user sends
    feedback. From an agent harness, run it with a generous timeout or as a
    tracked background task; if it gets killed, just rerun it — queued
    feedback is never lost. Exit codes: `0` feedback arrived, `2` your
@@ -958,13 +958,14 @@ The loop, from your seat:
    `python -m trellum.run reports/<slug> --no-serve`. The browser notices
    the rebuild and reloads itself within ~2 seconds — never hand-edit
    `output/` HTML, and never restart the server to "refresh".
-4. `python -m trellum review poll --session <session> --reply "what you changed"`
-   uses the session returned with the picked-up feedback. The reply appears
-   in the browser's chat and completes that feedback, then
-   the command waits for the next round.
+4. Use the session returned with the picked-up feedback when replying:
+   `python -m trellum review poll --report <slug> --session <session>
+   --reply "what you changed"`. The reply appears in the browser's chat and
+   completes that feedback, then the command waits for the next round.
 5. Repeat until poll exits `3` (the user pressed End, or Send & End — that
    final batch still arrives first). `python -m trellum review end` ends
-   it from your side when the user asks you to wrap up in conversation.
+   it from your side when the user asks you to wrap up in conversation. For
+   an explicitly requested plain preview without feedback, use `trellum serve`.
 
 **Several reports, several agents, one project:** one server serves the
 whole `output/` tree and one review session spans it — every report page
@@ -1161,7 +1162,15 @@ A report task is **not done** until you have:
 2. Surfaced every **FAIL** and **WARN** to the user with check ID, affected component/section, and a concrete fix.
 3. **Fixed every FAIL.** WARNs should be fixed unless intentionally accepted (then suppress in `report.yaml` under `validation.suppress` with a one-line reason for why).
 4. If the report has zero FAILs and zero WARNs, said so explicitly.
-5. **Handed the user a clickable link.** The last action before reporting done is `python -m trellum serve --background` — it starts (or reuses) a detached server, prints the URLs, and returns immediately — and your final message to the user must contain the printed report URL. A finished build the user cannot click is not finished. (Keep using `--no-serve` for the build/iterate loop itself; the link is the closing move, not a per-build cost.)
+5. **Human review handoff.** When a person is reviewing a local report,
+   start it with `python -m trellum review start reports/<slug>` and share the
+   printed URL. Keep `python -m trellum review poll --report <slug>` active;
+   after changes, rebuild with `python -m trellum.run reports/<slug>
+   --no-serve`, then reply through the scoped poll and continue until the user
+   ends review. End the session with `python -m trellum review end` when the
+   user asks you to wrap up. Build-only and CI work stops after the build;
+   use `python -m trellum serve --background` only for an explicitly requested
+   plain preview without review feedback.
 
 Severity:
 

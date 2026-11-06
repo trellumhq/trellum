@@ -75,6 +75,11 @@ python scripts/test.py local <paths> --heavy
 In GitHub, start the `portal` workflow manually with `heavy` set, or label a
 pull request `heavy-tests`. A skipped heavy job does not block the required
 checks; a requested one must pass. Marking happens in the root `conftest.py`.
+The heavy job runs on the native Ubuntu runner with Docker and Compose for
+live database and restore tests, and installs the pinned Playwright browsers.
+Local runs of those cases also need a working Docker daemon and Compose;
+the materialization cases require `psycopg2-binary` and `pymysql` from the
+framework driver requirements. CI installs those two with `constraints.txt`.
 
 The local default is four workers; `portal` defaults to two. Set `--workers`
 from 1 to 16 to match available PostgreSQL connections, memory, and browser
@@ -84,6 +89,9 @@ time, and the 20 slowest tests, and write JUnit XML under `.data-test/results/`.
 Use `--durations N` and `--junitxml PATH` to adjust reports. Paths are relative
 to the repository root even when invoking the script from another directory.
 `--collect-only` shows selected tests; `--dry-run` prints the command.
+`--fail-fast` stops after the first failure and writes the available test
+results. The ordinary portal CI job uses it; successful runs still execute the
+complete selected suite.
 The wrapper clears inherited `PYTEST_ADDOPTS` so shell defaults cannot silently
 filter coverage or change worker counts. Use plain pytest for other options.
 GitHub retains sanitized JUnit outcomes, test timing JSON, and summaries for

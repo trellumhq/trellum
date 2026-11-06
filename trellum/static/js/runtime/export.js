@@ -122,9 +122,13 @@
         });
         function cleanup() { frames.forEach(function(frame) { frame.remove(); }); }
         options.backgroundColor = convert(options.backgroundColor);
-        options.onclone = function(doc, root) {
+        var originalOnclone = options.onclone;
+        options.onclone = async function(doc, root) {
             var frame = doc.defaultView.frameElement;
             if (frame && frames.indexOf(frame) < 0) frames.push(frame);
+            // Caller changes (such as full event disclosures) must precede
+            // computed-paint conversion and retain their rejection/cleanup path.
+            if (originalOnclone) await originalOnclone.call(this, doc, root);
             hoveredRows.forEach(function(row) {
                 var host = doc.getElementById(row.id);
                 var cloned = host && host.querySelectorAll('tbody tr')[row.index];
@@ -204,6 +208,9 @@
             useCORS: true,
             logging: false,
             windowWidth: container.scrollWidth,
+            onclone: function(doc) {
+                doc.querySelectorAll('.fw-annotation-details').forEach(function(details) { details.open = true; });
+            },
         }); }).then(function(canvas) {
             hidden.forEach(function(h) { h.el.style.display = h.prev; });
             if (btn) btn.classList.remove('running');

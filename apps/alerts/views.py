@@ -169,6 +169,7 @@ def rule_form(request, org_slug, studio_slug, rule_id=None):  # noqa: ARG001
             "condition": run.condition_label,
             "title": run.title,
             "message": run.message,
+            "response": (run.evidence or {}).get("response", {}),
             "evidence": (run.evidence or {}).get("cited", []),
             "interpretation": run.interpretation or {},
             "simulation": run.simulated_disposition,

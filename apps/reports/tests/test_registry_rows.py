@@ -222,7 +222,10 @@ def test_unknown_output_is_unknown_not_present(studio, org_admin):
 @pytest.mark.django_db
 def test_expired_data_has_no_output_even_when_the_summary_is_unknown(studio, org_admin):
     Report.objects.create(studio=studio, slug="expired", data_expired_at=NOW)
-    row = whole(request(org_admin, studio))[0]
+    req = request(org_admin, studio)
+    req.GET = {"include_unavailable": "1"}
+    assert whole(request(org_admin, studio)) == []
+    row = whole(req)[0]
     assert row["has_output"] is False and row["html_entry"] == ""
 
 
@@ -274,6 +277,8 @@ def test_the_wait_ends_when_its_reason_does(studio, org_admin):
     binding.delete()
     report.disabled = True
     report.save(update_fields=["disabled"])
+    assert whole(req) == []
+    req.GET = {"include_unavailable": "1"}
     assert whole(req)[0]["waiting"] is False
     report.disabled = False
     report.config = {}

@@ -15,6 +15,7 @@ from django.db.models.functions import Coalesce, NullIf
 from django.utils import timezone
 from django.utils.functional import cached_property
 
+from apps.core.report_access import regular_reports
 from apps.reports.models import Report, ReportExperimentSummary
 
 PAGE_SIZE = 200
@@ -28,7 +29,7 @@ def relation(studio, today):
     """Typed lifecycle and result eligibility without reading report config/runtime."""
     count = ReportExperimentSummary.objects.filter(summary_id=OuterRef('summary_id')).order_by().values('summary_id').annotate(n=Count('pk')).values('n')
     report_name = Coalesce(NullIf(F('summary__report__name'), Value('')), F('summary__report__slug'))
-    entries = ReportExperimentSummary.objects.filter(summary__report__studio=studio, summary__report__present_in_scan=True)
+    entries = ReportExperimentSummary.objects.filter(summary__report__in=regular_reports(Report.objects.filter(studio=studio, present_in_scan=True)))
     entries = entries.annotate(declaration_count=Subquery(count), declaration_name=KeyTextTransform('name', 'declaration'), declared_test_name=KeyTextTransform('test_name', 'declaration'))
     entries = entries.annotate(name=Case(When(declaration_count__gt=1, then=Coalesce(NullIf(F('declaration_name'), Value('')), NullIf(F('declared_test_name'), Value('')), report_name, output_field=CharField())), default=report_name, output_field=CharField()), lifecycle=Case(
         When(start_date__isnull=True, then=Value('unknown')),

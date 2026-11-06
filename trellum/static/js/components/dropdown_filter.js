@@ -66,6 +66,13 @@ window._fwFilterTypes['dropdown'] = {
             });
             self._ssInstances[fid] = ss;
             sel._fwSlimSelect = ss;
+            // SlimSelect copies aria-labelledby to its visible combobox. Its
+            // search input lives in a portal outside the filter bar.
+            var label = document.getElementById(sel.getAttribute('aria-labelledby'));
+            if (label) {
+                ss.render.content.search.input.setAttribute('aria-label', 'Search ' + label.textContent.trim());
+                label.addEventListener('click', function() { ss.render.main.main.focus(); });
+            }
             if (fc && fc._urlValues && fc._urlValues.length) {
                 ss.setSelected(fc._urlValues);
             } else if (fc && fc.default_empty) {

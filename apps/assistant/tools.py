@@ -478,13 +478,24 @@ class AssistantToolbox:
     def _access_error(self, slug: str | None = None) -> str | None:
         """Re-resolve access at each data boundary so revocation takes effect."""
         if self.actor is not None and self.scope == "full" and slug:
-            from apps.core.report_access import selected_report_access_block_reason
+            from apps.core.report_access import (
+                expiry_enforcement_block_reason, report_administrator,
+                selected_report_access_block_reason,
+            )
             from apps.reports.models import Report
 
-            if selected_report_access_block_reason() and Report.objects.filter(
-                studio=self.studio, slug=slug, audience=Report.AUDIENCE_PRIVATE,
-            ).exists():
-                return "Private report access is temporarily unavailable."
+            report = Report.objects.select_related("studio__org").filter(studio=self.studio, slug=slug).first()
+            if report is not None:
+                # Manual hiding historically omitted the catalog, while this
+                # full-studio toolbox retained source/data access. Expiry is a
+                # content cutoff; keep the manual setting's scope unchanged.
+                if report.expires_at is not None and (
+                    expiry_enforcement_block_reason()
+                    or report.is_expired and not report_administrator(self.actor, report)
+                ):
+                    return "Report access is temporarily unavailable."
+                if report.audience == Report.AUDIENCE_PRIVATE and selected_report_access_block_reason():
+                    return "Private report access is temporarily unavailable."
         if self._executing_prechecked:
             return None
         if self.actor is None:  # Trusted internal callers and existing unit tests.
@@ -792,9 +803,10 @@ class AssistantToolbox:
 
             from apps.reports.models import Report
             from apps.reports.registry_rows import all_rows
+            from apps.core.report_access import regular_reports
 
             reports = all_rows(
-                Report.objects.filter(studio=self.studio, present_in_scan=True), self.studio, self.studio.org, now=timezone.now()
+                regular_reports(Report.objects.filter(studio=self.studio, present_in_scan=True)), self.studio, self.studio.org, now=timezone.now()
             )
             self._reports = (
                 [report for report in reports if report.get("slug") == self.report_slug]
@@ -1348,6 +1360,24 @@ class AssistantToolbox:
                 f"Readable prefixes: {readable}."
             )
         rel = p.relative_to(self.project_root.resolve()).as_posix()
+        if self.actor is not None and rel.startswith("reports/") and len(Path(rel).parts) > 2:
+            # Source analyses can contain the report itself. Apply the same
+            # availability boundary, including manifests whose slug differs
+            # from their source directory, before returning any source bytes.
+            from trellum.report_config import load_content_config
+            from yaml import YAMLError
+
+            directory = Path(rel).parts[1]
+            source = self.project_root / "reports" / directory
+            slug = directory
+            if (source / "report.yaml").is_file():
+                try:
+                    slug = load_content_config(str(source)).get("slug", directory)
+                except (OSError, ValueError, YAMLError):
+                    return "Error: report source is unavailable."
+            error = self._access_error(slug)
+            if error:
+                return f"Error: {error}"
         if rel == "metrics.yaml":
             from apps.assistant.metric_context import registry_text
 

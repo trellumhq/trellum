@@ -11,6 +11,8 @@
 .al-run-head time { color:var(--text3); font-size:var(--fs-md); }
 .al-run-title { font-weight:650; }
 .al-run-msg { margin:6px 0 0; white-space:pre-wrap; color:var(--text2); }
+.al-run-section { margin:8px 0 0; color:var(--text2); white-space:pre-wrap; }
+.al-run-section b { display:block; margin-bottom:2px; color:var(--text); }
 .al-run-evidence { margin:6px 0 0; padding-left:18px; font-family:var(--mono); font-size:var(--fs-sm); color:var(--text2); }
 .al-run-meta { margin-top:6px; font-size:var(--fs-sm); color:var(--text3); }
 .al-run-error { margin:6px 0 0; color:var(--red); white-space:pre-wrap; }
@@ -75,9 +77,12 @@
       <span class="ui-badge">{{ run.outcome_label }}</span>
       <time datetime="{{ run.started_at|date:'c' }}">{{ run.started_at|date:"Y-m-d H:i" }}{% if run.finished_at %} → {{ run.finished_at|date:"H:i:s" }}{% endif %}</time>
     </div>
-    {% if run.decision == "quiet" and run.message %}<p class="al-run-msg"><span class="muted">Why it stayed quiet:</span> {{ run.message }}</p>
-    {% elif run.message %}<p class="al-run-msg">{{ run.message }}</p>{% endif %}
-    {% if run.evidence.cited %}<ul class="al-run-evidence">{% for line in run.evidence.cited %}<li>{{ line }}</li>{% endfor %}</ul>{% endif %}
+    {% with response=run.evidence.response %}
+    {% if response.summary %}<p class="al-run-msg">{{ response.summary }}</p>{% elif run.message %}<p class="al-run-msg">{% if run.decision == "quiet" %}<span class="muted">Why it stayed quiet:</span> {% endif %}{{ run.message }}</p>{% endif %}
+    {% if response.why_it_matters %}<p class="al-run-section"><b>Why it matters</b>{{ response.why_it_matters }}</p>{% endif %}
+    {% if response.what_to_check_next %}<p class="al-run-section"><b>What to check next</b>{{ response.what_to_check_next }}</p>{% endif %}
+    {% endwith %}
+    {% if run.evidence.cited %}<p class="al-run-meta">Supporting figures</p><ul class="al-run-evidence">{% for line in run.evidence.cited %}<li>{{ line }}</li>{% endfor %}</ul>{% endif %}
     {% if run.error %}<p class="al-run-error">{{ run.error }}</p>{% endif %}
     {% if run.delivery_reason %}<p class="al-run-msg">{{ run.delivery_reason }}</p>{% endif %}
     {% if run.simulated_disposition %}<p class="al-run-meta">Read-only policy simulation: {{ run.simulated_disposition }} · {{ run.simulated_reason }}</p>{% endif %}

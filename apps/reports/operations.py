@@ -124,7 +124,9 @@ def operations_relation(request):
     _check_context(request)
     # Developer/full visibility is authoritative for private reports too. No
     # viewer or C14 generated-metrics exclusion belongs in this relation.
-    return Report.objects.filter(studio_id=request.studio.pk, present_in_scan=True)
+    from apps.core.report_access import hidden_reports_q
+
+    return Report.objects.filter(studio_id=request.studio.pk, present_in_scan=True).exclude(hidden_reports_q())
 
 
 def _row_bytes(page_size):

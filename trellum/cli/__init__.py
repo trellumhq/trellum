@@ -146,7 +146,11 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("what", choices=["project", "hooks", "portal", "reporting"])
     s.add_argument("--dest", help="project directory (setup project|portal; default: cwd)")
     s.add_argument("--url", help="setup portal: the studio, <portal>/s/<org>/<studio>")
-    s.add_argument("--key", help="setup portal: a personal API key, trellum_pk_...")
+    from trellum.cli.secrets import add_secret_arguments
+    add_secret_arguments(s, "key", "setup portal: a personal API key; prefer --key-stdin or --key-env")
+    s.add_argument("--remove", action="store_true",
+                   help="setup project: remove what setup project/portal added (only "
+                        "Trellum's own parts; your content, other hooks and .env stay)")
     s.add_argument("--timezone", help="reporting timezone (IANA name)")
     s.add_argument("--day-start", help="reporting-day start, HH:MM")
     s.add_argument("--metrics-build-time", help="daily Metrics build time, HH:MM")

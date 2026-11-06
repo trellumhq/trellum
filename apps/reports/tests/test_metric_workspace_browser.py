@@ -182,6 +182,9 @@ def test_navigation_cancels_old_workspace_before_delayed_payload_finishes(metric
         assert workspace_http['held'].wait(5)
         page.get_by_role('link', name='Overview', exact=True).click()
         page.wait_for_url('**/metrics')
+        # The outgoing workspace stays mounted while the destination loads.
+        # Overview must still commit without waiting for its held payload.
+        page.locator('#metWorkspace').wait_for(state='detached')
         assert page.locator('#metWorkspace').count() == 0
         workspace_http['release'].set(); page.wait_for_timeout(300)
         assert page.locator('#metWorkspace').count() == 0

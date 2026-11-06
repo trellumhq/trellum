@@ -32,6 +32,15 @@ def private(report_row):
     return report_row
 
 
+@pytest.fixture
+def scan_entry(write_report):
+    def entry(slug, config):
+        directory = write_report(slug)
+        (directory / "content.md").write_text("# Analysis")
+        return {"dir": str(directory), "slug": slug, "config": config}
+    return entry
+
+
 def assert_access(user, report, expected):
     assert can_view_report(user, report) is expected
     assert bulk_can_view_report([user], report) == {user.pk: expected}
@@ -108,13 +117,13 @@ def test_private_corrupt_cross_org_assignment_never_grants(
 
 @pytest.mark.parametrize("kind", [Report.KIND_REPORT, Report.KIND_ANALYSIS])
 @pytest.mark.parametrize("default", [Report.AUDIENCE_STUDIO, Report.AUDIENCE_PRIVATE])
-def test_new_scan_sets_kind_default_before_build(studio_tree, monkeypatch, kind, default):
+def test_new_scan_sets_kind_default_before_build(studio_tree, scan_entry, monkeypatch, kind, default):
     field = "default_analysis_audience" if kind == Report.KIND_ANALYSIS else "default_report_audience"
     setattr(studio_tree, field, default)
     studio_tree.save()
     config = {"kind": kind}
     monkeypatch.setattr("trellum.runner.scan_report_configs", lambda *a, **k: [
-        {"slug": "new", "config": config},
+        scan_entry("new", config),
     ])
     sync_studio_registry(studio_tree)
     report = studio_tree.reports.get(slug="new")
@@ -128,10 +137,10 @@ def test_new_scan_sets_kind_default_before_build(studio_tree, monkeypatch, kind,
     assert report.audience == default
 
 
-def test_initial_override_and_explicit_decision_survive_scan(studio_tree, monkeypatch):
+def test_initial_override_and_explicit_decision_survive_scan(studio_tree, scan_entry, monkeypatch):
     config = {"initial_audience": "private"}
     monkeypatch.setattr("trellum.runner.scan_report_configs", lambda *a, **k: [
-        {"slug": "new", "config": config},
+        scan_entry("new", config),
     ])
     sync_studio_registry(studio_tree)
     report = studio_tree.reports.get(slug="new")
@@ -144,9 +153,9 @@ def test_initial_override_and_explicit_decision_survive_scan(studio_tree, monkey
 
 
 @pytest.mark.parametrize("unsafe", [None, True, "public", "PRIVATE", [], {}])
-def test_scan_rejects_invalid_initial_audience(studio_tree, monkeypatch, unsafe):
+def test_scan_rejects_invalid_initial_audience(studio_tree, scan_entry, monkeypatch, unsafe):
     monkeypatch.setattr("trellum.runner.scan_report_configs", lambda *a, **k: [
-        {"slug": "unsafe", "config": {"initial_audience": unsafe}},
+        scan_entry("unsafe", {"initial_audience": unsafe}),
     ])
     with pytest.raises(ValidationError):
         sync_studio_registry(studio_tree)
@@ -280,13 +289,13 @@ def test_bulk_permission_query_count_does_not_grow_per_user(
     assert all(result.values())
 
 
-def test_scan_uses_updated_defaults_from_database_with_stale_studio(studio_tree, monkeypatch):
+def test_scan_uses_updated_defaults_from_database_with_stale_studio(studio_tree, scan_entry, monkeypatch):
     from apps.studios.models import Studio
 
     Studio.objects.filter(pk=studio_tree.pk).update(default_report_audience="private")
     assert studio_tree.default_report_audience == "studio"
     monkeypatch.setattr("trellum.runner.scan_report_configs", lambda *a, **k: [
-        {"slug": "new", "config": {}},
+        scan_entry("new", {}),
     ])
     sync_studio_registry(studio_tree)
     assert studio_tree.reports.get().audience == "private"
