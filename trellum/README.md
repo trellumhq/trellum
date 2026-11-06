@@ -455,6 +455,18 @@ also works with a custom header component; there is no need to instantiate
 | `TreemapChart` | `(df, group_cols, value, title, dataset_id)` | Hierarchical treemap. `group_cols` is a list for nested grouping. Optional `color_col`. |
 | `ScatterChart` | `(df, x, y, title, dataset_id)` | Scatter or bubble chart. `size` column enables bubble mode. `color_by` splits by category. |
 
+#### LineChart markers and interpolation
+
+Ordinary LineCharts adapt their 2px persistent dots to current plot spacing:
+connected points need at least 12 CSS pixels between neighbours; isolated finite
+observations always retain dots, including zero. All hover targets remain.
+`tension=0.35` optionally enables curves; keyword-only `tension` defaults to 0.0
+and must be a finite number in [0, 1], excluding booleans. Curves infer movement
+between observations and can overshoot; they are not averages, forecasts or
+monotone estimates. Values, null gaps, axes, CSV and 2.5px line width remain.
+See [ordinary line styles](docs/report-line-styles.md) for lifecycle and payload
+compatibility details.
+
 #### LineChart height and header summary
 
 `LineChart` plots in a 220px area at every viewport width. Pass
@@ -1550,7 +1562,7 @@ Every report generation automatically runs a post-generation validator that chec
 | Theme compatibility | `theme-invalid`, `rawhtml-cached-theme-colors`, `rawhtml-hardcoded-colors` |
 | Annotation support | `annotations-enabled-no-events`, `annotations-studio-mismatch`, `annotations-non-date-x-axis` |
 | Column validation | `chart-column-missing`, `ratios-without-dataset-id`, `ratios-missing-keys`, `ratios-column-missing`, `stackedbar-option-column-missing` |
-| LineChart options | `line-chart-height-invalid`, `line-chart-summary-invalid` |
+| LineChart options | `line-chart-height-invalid`, `line-chart-summary-invalid`, `line-chart-tension-invalid` |
 | Toggle / Visible wiring | `visible-target-missing`, `visible-value-missing`, `toggle-unused`, `rawhtml-toggle-id-mismatch` |
 | Scope system | `scope-empty`, `scope-no-default` |
 | YAML schema | `yaml-missing-required`, `yaml-missing-data-sources`, `yaml-cron-invalid`, `report-description-weak` |

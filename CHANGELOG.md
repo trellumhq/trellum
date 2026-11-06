@@ -13,6 +13,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   band, plus keyword-only opt-in header/first-dimension freezing. Selectors,
   calculations and CSV scope remain unchanged.
 
+- Ordinary report LineChart dots adapt to current plot spacing while isolated
+  finite measurements remain visible, including zero beyond 400 labels. Optional
+  keyword-only `tension` enables curves (straight by default), with validation and
+  deterministic density, gap, interpolation and filtered-ratio examples.
+
 - Optional explicit report ComparisonTable context for supplied periods, metric
   units, favorable directions and unavailable reasons, with textual change
   outcomes and static/filterable comparison examples. Raw CSV units are retained.

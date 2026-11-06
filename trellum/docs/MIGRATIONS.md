@@ -15,6 +15,23 @@ scrollable. Selectors, values, totals, aggregation and CSV scope are unchanged.
 See [report pivots](report-pivots.md) for existing grouping, null and export
 limitations.
 
+## Unreleased: ordinary LineChart adaptive points and optional curves
+
+Rebuild reports to apply persistent dots based on current plot spacing (12 CSS
+pixels between connected observations). Isolated finite observations, including
+zero, retain dots at any label count. All measurements, hover targets, null gaps,
+CSV and existing line widths/heights remain. AreaChart and ComboChart are unchanged.
+
+Keyword-only `tension=0.35` opts into curves; default `0.0` remains straight.
+Finite numbers in [0, 1] are accepted, excluding booleans; later invalid mutations
+produce `line-chart-tension-invalid`. Existing positional and subclass arguments
+retain their positions. Curves can overshoot and are not averages or forecasts.
+
+New `line_style`/`tension` payload metadata is additive. The new runtime keeps
+legacy behavior for untagged payloads. Old runtimes load new payloads; rebuild
+with the matching runtime to apply live curves and adaptive points. Host APIs and
+explicit dataset binding precedence remain. See [line styles](report-line-styles.md).
+
 ## Unreleased: ComparisonTable presentation and declared context
 
 Rebuilding comparison tables adds a theme-border divider before the comparison

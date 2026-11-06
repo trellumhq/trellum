@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -40,7 +41,7 @@ def _line_series_labels(chart: "LineChart") -> list[str]:
 
 
 def line_option_problems(chart: "LineChart") -> list[tuple[str, str]]:
-    """Everything wrong with a LineChart's ``height`` and ``header_summary``.
+    """Everything wrong with a LineChart's size, summary and interpolation.
 
     Returns ``(check id, message)`` pairs; empty when the options are usable.
     The component raises on the first one at construction, and the report
@@ -52,6 +53,13 @@ def line_option_problems(chart: "LineChart") -> list[tuple[str, str]]:
             "line-chart-height-invalid",
             f"LineChart height={chart.height!r} must be one of "
             f"{sorted(LINE_CHART_HEIGHTS)}.",
+        ))
+    if (isinstance(chart.tension, bool)
+            or not isinstance(chart.tension, (int, float))
+            or not 0 <= chart.tension <= 1 or not math.isfinite(chart.tension)):
+        problems.append((
+            "line-chart-tension-invalid",
+            f"LineChart tension={chart.tension!r} must be a finite number from 0 to 1.",
         ))
     cfg = chart.header_summary
     if cfg is None:
@@ -116,6 +124,11 @@ class LineChart(_ChartBase):
     ``y`` and ``ratios``. Long-format friendly — prefer this over
     hand-listing one ``y`` column per category.
 
+    ``tension``: keyword-only cubic interpolation, finite 0..1 (default 0,
+    straight). Curves infer movement between observations and can overshoot;
+    they are not averages, forecasts or monotone estimates. Persistent dots
+    adapt to current plot spacing; isolated finite observations keep a dot.
+
     ``height``: size of the plotting area, the same at every viewport width.
     ``"balanced"`` (default) is 220px, ``"compact"`` 160px and ``"roomy"``
     320px. The title stays visible at every size, including in tile grids.
@@ -157,6 +170,7 @@ class LineChart(_ChartBase):
     # raise this when the long tail itself is the point of the chart.
     max_stacks: Optional[int] = None
     show_labels: bool = False  # Show data values on line points
+    tension: float = field(default=0.0, kw_only=True)
     height: str = "balanced"
     header_summary: Optional[Dict[str, Any]] = None
 
@@ -189,6 +203,9 @@ class LineChart(_ChartBase):
         if cfg.get("format"):
             out["format"] = cfg["format"]
         return {"header_summary": out}
+
+    def _style_config(self) -> dict[str, Any]:
+        return {"line_style": "adaptive", "tension": self.tension}
 
     def render_html(self, ctx: RenderContext) -> str:
         cid = ctx.next_id()
@@ -226,6 +243,7 @@ class LineChart(_ChartBase):
             if self.show_labels:
                 cfg_r["show_labels"] = True
             cfg_r.update(self._summary_config())
+            cfg_r.update(self._style_config())
             ctx.register(cid, cfg_r)
             toggle_html_r = ""
             if self.stack_by_options:
@@ -266,6 +284,7 @@ class LineChart(_ChartBase):
             if self.show_labels:
                 cfg["show_labels"] = True
             cfg.update(self._summary_config())
+            cfg.update(self._style_config())
             ctx.register(cid, cfg)
             toggle_html_l = ""
             if self.stack_by_options:
@@ -288,7 +307,7 @@ class LineChart(_ChartBase):
                     "backgroundColor": f"{color}22",
                     "borderWidth": 2.5,
                     "pointRadius": 2,
-                    "tension": 0,
+                    "tension": self.tension,
                     "spanGaps": False,
                     "_themeManaged": not has_custom_color,
                 })
@@ -302,6 +321,7 @@ class LineChart(_ChartBase):
                 "tickColor": theme.tick_color,
                 "textSecondary": theme.text_secondary,
                 **self._summary_config(),
+                **self._style_config(),
             })
 
         return self._container(cid)

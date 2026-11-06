@@ -1,3 +1,25 @@
+/* Ordinary LineChart only. Immediate source neighbours define connectivity;
+   null/nonfinite values are gaps, including at measured zero. Scriptable
+   options resolve on every update using the current plot scale (resize/zoom).
+   Each point does at most two neighbour checks; no observations are removed. */
+function _fwLinePointRadius(ctx) {
+    var data = ctx.dataset.data, i = ctx.dataIndex;
+    if (!Number.isFinite(data[i])) return 0;
+    var before = i > 0 && Number.isFinite(data[i - 1]);
+    var after = i + 1 < data.length && Number.isFinite(data[i + 1]);
+    if (!before && !after) return 2;
+    var x = ctx.chart.scales.x;
+    if (!x) return 2;
+    var at = x.getPixelForValue(i);
+    if (before && Math.abs(at - x.getPixelForValue(i - 1)) < 12) return 0;
+    if (after && Math.abs(at - x.getPixelForValue(i + 1)) < 12) return 0;
+    return 2;
+}
+
+function _fwLinePointColor(ctx) {
+    return ctx.dataset.borderColor;
+}
+
 /* Header summary: one statistic over one plotted series. It reads the
    datasets the chart was just given, so it can only ever describe the line on
    screen -- after filters, aggregation and ratio division alike. Missing and
@@ -130,7 +152,15 @@ function _createChart(id, canvas, spec) {
             if (ds.borderRadius === undefined) ds.borderRadius = 3;
         });
     }
-    if ((spec.type === 'line') && spec.labels && spec.labels.length > 400) {
+    if (spec.lineStyle === 'adaptive') {
+        spec.datasets.forEach(function(ds) {
+            ds.pointRadius = _fwLinePointRadius;
+            ds.pointBorderColor = _fwLinePointColor;
+            ds.pointBackgroundColor = _fwLinePointColor;
+            ds.tension = spec.tension;
+        });
+    }
+    if (spec.lineStyle !== 'adaptive' && (spec.type === 'line') && spec.labels && spec.labels.length > 400) {
         spec.datasets.forEach(function(ds) {
             if (ds.pointRadius === undefined || ds.pointRadius > 0) ds.pointRadius = 0;
         });
@@ -231,6 +261,10 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
         });
 
         function _mkSpec(spec) {
+            if (cfg.line_style === 'adaptive') {
+                spec.lineStyle = cfg.line_style;
+                spec.tension = cfg.tension;
+            }
             if (cfg.crossFilter && cfg.dataset_id) {
                 spec.crossFilter = (cfg.crossFilterMode === 'dataset' && activeStackBy)
                     ? activeStackBy : cfg.crossFilter;
@@ -703,6 +737,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
         type: cfg.chartType, labels: cfg.labels, datasets: cfg.datasets,
         stacked: cfg.stacked, horizontal: cfg.horizontal,
         showLegend: cfg.showLegend !== false, yFmt: yFmt, tooltip: tooltip,
+        lineStyle: cfg.line_style, tension: cfg.tension,
         headerSummary: cfg.header_summary
     });
 };
