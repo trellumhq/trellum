@@ -9,6 +9,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- ComboChart left/right axis descriptions and grouped native legend buttons with
+  bar/line symbols, separate controls for matching captions on opposite axes,
+  keyword-only unit descriptions, and deterministic live/static showcase examples.
+  Existing plotted data, scales, heights, nearest tooltips and CSV are preserved.
+
 - Compact PivotTable rows, grouped category headers and a distinct grand-total
   band, plus keyword-only opt-in header/first-dimension freezing. Selectors,
   calculations and CSV scope remain unchanged.

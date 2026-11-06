@@ -1,0 +1,33 @@
+/* Combo context is outside the plot; the canvas keeps its existing height. */
+.fw-chart-legend.fw-combo-context {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px 16px; max-width: 100%; margin-bottom: 8px;
+    font-size: var(--font-size-label); color: var(--text-secondary);
+}
+.fw-combo-context .fw-combo-axis { min-width: 0; overflow-wrap: anywhere; }
+.fw-chart-legend.fw-combo-context[hidden] { display: none; }
+.fw-combo-context .fw-combo-axis[data-axis="y"] { grid-column: 1; }
+.fw-combo-context .fw-combo-axis[data-axis="y1"] { grid-column: 2; text-align: right; }
+.fw-combo-context .fw-combo-heading { font-weight: 600; }
+.fw-combo-context .fw-combo-description { margin-bottom: 4px; }
+.fw-combo-context .fw-combo-items { display: flex; flex-wrap: wrap; gap: 4px; }
+.fw-combo-context [data-axis="y1"] .fw-combo-items { justify-content: flex-end; }
+.fw-combo-context button.cl {
+    min-width: 0; max-width: 100%; min-height: 32px;
+    font-family: inherit; text-align: start; white-space: normal;
+    touch-action: manipulation;
+}
+.fw-combo-context .fw-combo-label { min-width: 0; overflow-wrap: anywhere; }
+.fw-combo-context .fw-combo-symbol { width: 14px; flex: 0 0 14px; }
+.fw-combo-context .fw-combo-symbol.bar { height: 9px; background: var(--series-color); }
+.fw-combo-context .fw-combo-symbol.line {
+    height: 0; border-top: 2.5px solid var(--series-color); position: relative;
+}
+.fw-combo-context .fw-combo-symbol.line::after {
+    content: ''; position: absolute; width: 5px; height: 5px; border-radius: 50%;
+    background: var(--series-color); left: 5px; top: -4px;
+}
+.fw-combo-context button.cl:focus-visible { outline: 2px solid var(--text-main); outline-offset: 2px; }
+@media (max-width: 640px), (pointer: coarse) {
+    .fw-combo-context button.cl { min-height: 44px; }
+}

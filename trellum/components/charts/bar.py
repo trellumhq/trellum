@@ -294,8 +294,10 @@ class StackedBar(_ChartBase):
 class ComboChart(_ChartBase):
     """Dual-axis combo chart: bars on the left y-axis, lines on the right y-axis.
 
-    Replaces the most common RawHTML pattern. Uses the same _createChart
-    factory that already supports y1 axis detection.
+    Keyword-only ``left_axis_label`` / ``right_axis_label`` describe supplied
+    metric units. Defaults list actual series captions. Context and legend
+    controls sit outside the plot, preserving its existing height and scales.
+    See ``docs/report-combos.md`` for static/live formatting differences.
     """
 
     df: pd.DataFrame
@@ -315,13 +317,33 @@ class ComboChart(_ChartBase):
     height: Optional[int] = None  # Custom chart height in pixels
     y_max: Optional[float] = None  # Max value for left y-axis
     y1_max: Optional[float] = None  # Max value for right y-axis (line)
+    left_axis_label: Optional[str] = field(default=None, kw_only=True)
+    right_axis_label: Optional[str] = field(default=None, kw_only=True)
 
     _component_type: str = field(default="combo_chart", init=False, repr=False)
 
+    def __post_init__(self) -> None:
+        self._validate_axis_labels()
+
+    def _validate_axis_labels(self) -> None:
+        for name in ("left_axis_label", "right_axis_label"):
+            value = getattr(self, name)
+            if value is not None and (not isinstance(value, str) or not value.strip()):
+                raise ValueError(f"{name} must be a nonempty string or None")
+
+    @classmethod
+    def css(cls) -> str:
+        from trellum.assets import load_css
+
+        return super().css() + load_css("components/combo_chart.css")
+
     def render_html(self, ctx: RenderContext) -> str:
+        self._validate_axis_labels()
         cid = ctx.next_id()
         b_labels = self.bar_labels or self.bar_cols
         l_labels = self.line_labels or self.line_cols
+        combo_axes = {"left_label": self.left_axis_label,
+                      "right_label": self.right_axis_label}
 
         if self.dataset_id:
             cfg = {
@@ -333,6 +355,7 @@ class ComboChart(_ChartBase):
                 "y_labels": b_labels,
                 "stacked": self.stacked_bars,
                 "combo": True,
+                "combo_axes": combo_axes,
                 "line_cols": self.line_cols,
                 "line_labels": l_labels,
                 "bar_format": self.bar_format,
@@ -386,6 +409,7 @@ class ComboChart(_ChartBase):
             ctx.register(cid, {
                 "type": "chart",
                 "chartType": "bar",
+                "combo_axes": combo_axes,
                 "labels": _clean_list(self.df[self.x].tolist()),
                 "datasets": datasets,
                 "stacked": self.stacked_bars,

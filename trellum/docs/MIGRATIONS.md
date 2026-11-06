@@ -3,6 +3,21 @@
 Each section documents a breaking or significant change, how to detect affected
 code, and the exact replacement.
 
+## Unreleased: ComboChart axis descriptions and grouped legends
+
+Rebuild reports to add wrapping Left/bars and Right/lines context outside the
+existing canvas. Keyword-only `left_axis_label=None` and `right_axis_label=None`
+accept nonempty strings to declare units; defaults list actual series captions.
+Existing positional/subclass arguments and explicit dataset binding precedence
+are preserved. Same captions on opposite axes now have separate native legend
+buttons; same-axis captions remain paired. Values, scales, plot heights, nearest
+tooltips and raw CSV scope remain unchanged. Static format/bounds/label option
+omissions remain; an axis description does not activate those options.
+
+New `combo_axes` payload metadata scopes this behavior to rebuilt ComboCharts.
+Untagged payloads and other chart families keep their legacy legends. Older
+runtimes ignore the metadata safely. See [report combos](report-combos.md).
+
 ## Unreleased: PivotTable presentation and optional freezing
 
 PivotTable adds keyword-only `freeze=False` and `freeze_height=320`. The latter

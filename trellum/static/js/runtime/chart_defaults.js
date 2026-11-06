@@ -252,6 +252,10 @@
             afterInit: function(chart) {
                 var opts = chart.options.plugins && chart.options.plugins.fwLegend;
                 if (opts && opts.display === false) return;
+                if (opts && opts.comboAxes && window._fwComboLegendUpdate) {
+                    window._fwComboLegendUpdate(chart);
+                    return;
+                }
                 if (chart.data.datasets.length < 2) return;
                 // Doughnut/pie legends use position:bottom style
                 var isDoughnut = chart.config.type === 'doughnut' || chart.config.type === 'pie';
@@ -269,6 +273,11 @@
                 this._buildButtons(chart);
             },
             _buildButtons: function(chart) {
+                var comboOpts = chart.config.options.plugins && chart.config.options.plugins.fwLegend;
+                if (comboOpts && comboOpts.comboAxes && window._fwComboLegendUpdate) {
+                    window._fwComboLegendUpdate(chart);
+                    return;
+                }
                 var legEl = chart._fwLegendEl;
                 if (!legEl) return;
                 legEl.innerHTML = '';
@@ -320,6 +329,15 @@
                 });
             },
             beforeDestroy: function(chart) {
+                if (chart._fwLegendEl && chart._fwLegendEl.classList.contains('fw-combo-context')) {
+                    if (chart._fwLegendEl.contains(document.activeElement)) {
+                        chart.canvas._fwComboFocusKey = document.activeElement.dataset.comboKey;
+                    }
+                    var described = (chart.canvas.getAttribute('aria-describedby') || '').split(/\s+/)
+                        .filter(function(id) { return id && id !== chart._fwLegendEl.id; });
+                    if (described.length) chart.canvas.setAttribute('aria-describedby', described.join(' '));
+                    else chart.canvas.removeAttribute('aria-describedby');
+                }
                 if (chart._fwLegendEl) {
                     chart._fwLegendEl.remove();
                     chart._fwLegendEl = null;

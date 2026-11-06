@@ -67,9 +67,116 @@ function _fwUpdateHeaderSummary(id, summary, datasets, chartFmt) {
     out.textContent = value === null ? '\u2014' : fmt(value);
 }
 
+/* Combo-only context. Use axis + caption identity, preserving intentional
+   same-axis pairs. Reconcile nodes so chart.update() retains keyboard focus. */
+window._fwComboLegendUpdate = function(chart) {
+    var axes = chart.config.options.plugins.fwLegend.comboAxes;
+    var root = chart._fwLegendEl;
+    if (!root) {
+        root = document.createElement('div');
+        root.id = chart.canvas.id + '-combo-context';
+        root.className = 'fw-chart-legend fw-combo-context';
+        chart.canvas.parentElement.before(root);
+        chart._fwLegendEl = root;
+        var described = chart.canvas.getAttribute('aria-describedby') || '';
+        chart.canvas.setAttribute('aria-describedby', (described + ' ' + root.id).trim());
+    }
+    var keyFor = function(ds, i) {
+        return JSON.stringify([ds.yAxisID || 'y', ds.label || 'Series ' + (i + 1)]);
+    };
+    ['y', 'y1'].forEach(function(axis) {
+        var entries = new Map();
+        chart.data.datasets.forEach(function(ds, i) {
+            if ((ds.yAxisID || 'y') !== axis) return;
+            var key = keyFor(ds, i);
+            if (!entries.has(key)) entries.set(key, {ds: ds, index: i});
+        });
+        var group = root.querySelector('[data-axis="' + axis + '"]');
+        if (!entries.size) { if (group) group.remove(); return; }
+        if (!group) {
+            group = document.createElement('div');
+            group.className = 'fw-combo-axis';
+            group.dataset.axis = axis;
+            group.setAttribute('role', 'group');
+            var heading = document.createElement('div');
+            heading.className = 'fw-combo-heading';
+            heading.textContent = axis === 'y' ? 'Left · bars' : 'Right · lines';
+            group.setAttribute('aria-label', axis === 'y' ? 'Left axis · bars' : 'Right axis · lines');
+            var description = document.createElement('div');
+            description.className = 'fw-combo-description';
+            var items = document.createElement('div');
+            items.className = 'fw-combo-items';
+            group.append(heading, description, items);
+            root.appendChild(group);
+        }
+        group.querySelector('.fw-combo-description').textContent =
+            (axis === 'y' ? axes.left_label : axes.right_label) ||
+            Array.from(entries.values()).map(function(e) {
+                return e.ds.label || 'Series ' + (e.index + 1);
+            }).join(', ');
+        var items = group.querySelector('.fw-combo-items');
+        var buttons = new Map(Array.from(items.children).map(function(btn) {
+            return [btn.dataset.comboKey, btn];
+        }));
+        entries.forEach(function(entry, key) {
+            var btn = buttons.get(key), ds = entry.ds, i = entry.index;
+            if (!btn) {
+                btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'cl';
+                btn.dataset.comboKey = key;
+                btn.title = 'Click to toggle  •  Double-click (or Shift-click) to show only this';
+                var symbol = document.createElement('span');
+                symbol.className = 'fw-combo-symbol ' + (axis === 'y1' ? 'line' : 'bar');
+                symbol.setAttribute('aria-hidden', 'true');
+                var label = document.createElement('span');
+                label.className = 'fw-combo-label';
+                label.textContent = ds.label || 'Series ' + (i + 1);
+                btn.append(symbol, label);
+                var isolate = function() {
+                    var isolated = chart.data.datasets.every(function(d, j) {
+                        return (keyFor(d, j) === key) === chart.isDatasetVisible(j);
+                    });
+                    chart.data.datasets.forEach(function(d, j) {
+                        chart.setDatasetVisibility(j, isolated || keyFor(d, j) === key);
+                    });
+                    chart.update();
+                };
+                btn.addEventListener('click', function(e) {
+                    if (e.shiftKey || e.metaKey) { isolate(); return; }
+                    var first = chart.data.datasets.findIndex(function(d, j) { return keyFor(d, j) === key; });
+                    var visible = chart.isDatasetVisible(first);
+                    chart.data.datasets.forEach(function(d, j) {
+                        if (keyFor(d, j) === key) chart.setDatasetVisibility(j, !visible);
+                    });
+                    chart.update();
+                });
+                btn.addEventListener('dblclick', function(e) {
+                    e.preventDefault(); e.stopPropagation(); isolate();
+                });
+                items.appendChild(btn);
+            }
+            var visible = chart.isDatasetVisible(i);
+            var color = ds.borderColor || ds.backgroundColor;
+            if (typeof color === 'object') color = Array.isArray(color) ? color[0] : '#888';
+            btn.style.setProperty('--series-color', color);
+            btn.classList.toggle('active', visible);
+            btn.setAttribute('aria-pressed', String(visible));
+            btn.style.borderColor = visible ? color : 'var(--border-color)';
+            btn.style.background = visible ? color + '20' : 'transparent';
+        });
+        buttons.forEach(function(btn, key) { if (!entries.has(key)) btn.remove(); });
+    });
+    root.hidden = !root.children.length;
+};
+
 /* Shared chart factory -- called by both static and live modes.
    spec: { type, labels, datasets, stacked, horizontal, showLegend, yFmt, tooltip } */
 function _createChart(id, canvas, spec) {
+    var comboFocus = spec.comboAxes && document.activeElement &&
+        document.activeElement.closest('.fw-combo-context') &&
+        document.activeElement.closest('.fw-combo-context').id === id + '-combo-context'
+        ? document.activeElement.dataset.comboKey : (spec.comboAxes && canvas._fwComboFocusKey);
     if (window._chartInstances[id]) {
         window._chartInstances[id].destroy();
         delete window._chartInstances[id];
@@ -99,6 +206,7 @@ function _createChart(id, canvas, spec) {
             }
         } : { display: false }
     };
+    if (spec.comboAxes) plugins.fwLegend.comboAxes = spec.comboAxes;
     if (spec.tooltip) {
         plugins.tooltip = spec.tooltip;
     } else if (spec.horizontal) {
@@ -205,6 +313,14 @@ function _createChart(id, canvas, spec) {
     });
     window._chartInstances[id]._fwThemeManagedAxes = true;
     window._chartInstances[id]._fwThemeManagedFonts = true;
+    if (comboFocus) {
+        var context = window._chartInstances[id]._fwLegendEl;
+        var focused = context && Array.from(context.querySelectorAll('button')).find(function(btn) {
+            return btn.dataset.comboKey === comboFocus;
+        });
+        if (focused) focused.focus({ preventScroll: true });
+    }
+    if (spec.comboAxes) delete canvas._fwComboFocusKey;
     if (spec.headerSummary) _fwUpdateHeaderSummary(id, spec.headerSummary, spec.datasets, spec.yFmt);
 }
 
@@ -637,6 +753,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                     return ctx.dataset.label + ': ' + fmt(ctx.parsed.y);
                 }}};
                 _createChart(id, canvas, _mkSpec({ labels: gr4.labels, datasets: datasets4,
+                    comboAxes: cfg.combo_axes,
                     stacked: cfg.stacked, showLegend: true, tooltip: tt4,
                     showLabels: cfg.show_labels,
                     yFmt: function(v) { return yFmt4(v); },
@@ -738,7 +855,8 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
         stacked: cfg.stacked, horizontal: cfg.horizontal,
         showLegend: cfg.showLegend !== false, yFmt: yFmt, tooltip: tooltip,
         lineStyle: cfg.line_style, tension: cfg.tension,
-        headerSummary: cfg.header_summary
+        headerSummary: cfg.header_summary,
+        comboAxes: cfg.combo_axes
     });
 };
 
