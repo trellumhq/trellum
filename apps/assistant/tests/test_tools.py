@@ -103,6 +103,9 @@ class TestQueryReportData:
         })
         assert "(built 2026-03-02T04:00:00Z)" in result
         assert toolbox.provenance == {
+            "kind": "report_query", "status": "answered",
+            "columns": ["date", "revenue"],
+            "rows": [["2026-03-01", 100], ["2026-03-02", 200]], "truncated": False,
             "report": "player-overview",
             "report_name": "Player-Overview",
             "built_at": "2026-03-02T04:00:00Z",

@@ -321,6 +321,13 @@ itself — ask it rather than reading its source.** Run from the repository root
 ```
 
 `trellum` alone is not on PATH, so name the interpreter as shown.
+
+For human-facing local previews, the current default is
+`{py} -m trellum review start reports/<slug>`. Keep
+`{py} -m trellum review poll --report <slug>` active; rebuild with `--no-serve`
+before replying with the feedback session, and continue until the user ends
+review. Follow `{py} -m trellum guide review` for the full loop. Build-only work
+stops after the build; use plain preview only when explicitly requested.
 {portal}{end}
 """
 
