@@ -6,7 +6,8 @@
 -r ../requirements-drivers-common.txt
 
 pytest
-fakesnow>=0.9
+# Keep the emulator reproducible and compatible with the core SQLGlot pin.
+fakesnow==0.12.1
 # fakesnow still imports snowflake.connector.converter, removed in connector 5.
 # This emulator-only environment uses connector 4; product images and the
 # connector compatibility suite use 5.1+. Never apply product constraints here.
