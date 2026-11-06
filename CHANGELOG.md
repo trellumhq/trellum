@@ -48,6 +48,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Keep report recovery notices functional under enforced Content Security
+  Policy, recover automatically when storage returns, and show rejected or
+  unconfirmed rebuild requests without automatically repeating them.
+
 - Keep dense chart event labels readable and expose crowded events through
   keyboard-accessible details, included in report image and PDF exports.
 
