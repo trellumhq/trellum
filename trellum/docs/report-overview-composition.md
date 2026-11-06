@@ -128,12 +128,12 @@ Run from the repository root with the repository Python environment:
 
 ```sh
 PYTHONPATH="$PWD" FW_PROJECT_ROOT="$PWD/trellum/demo" \
-  /home/haarbal/projects/trellum/.venv/bin/python scripts/test.py local \
+  python scripts/test.py local \
   trellum/testing/test_overview_composition.py \
   trellum/testing/test_overview_composition_browser.py --workers 1
 
 PYTHONPATH="$PWD" FW_PROJECT_ROOT="$PWD/trellum/demo" \
-  /home/haarbal/projects/trellum/.venv/bin/python scripts/test.py local \
+  python scripts/test.py local \
   trellum/testing/test_overview_composition_browser.py --heavy -k 390 --workers 1
 ```
 

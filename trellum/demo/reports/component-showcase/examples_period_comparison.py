@@ -5,8 +5,7 @@ import calendar
 import pandas as pd
 
 from trellum.components import (ComparisonTable, DataSource, DataTable, FilterBar, Grid, LineChart,
-                                Panel, RawHTML, Section, TabGroup, Toggle, Visible)
-from trellum.components.period_comparison import PeriodComparison
+                                Panel, PeriodComparison, RawHTML, Section, TabGroup, Toggle, Visible)
 
 SOURCE = 'showcase_period_facts'
 RESULT = 'showcase_period_comparison'

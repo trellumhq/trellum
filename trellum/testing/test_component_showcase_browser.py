@@ -228,6 +228,16 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             expect(keyboard.locator('tbody tr').first.locator('td').first).to_have_text('Largest amount')
             expect(combos.locator('.fw-combo-summary-value').first).to_have_text('$30.00')
             expect(marketing.locator('.fw-mini-val').first).to_have_text('840')
+            page.get_by_role('link', name='Period comparison', exact=True).click()
+            periods = page.locator('#sec-period-comparison')
+            periods.get_by_role('button', name='iOS', exact=True).click()
+            page.wait_for_function("fw.filterEngine.getFiltered('showcase_period_comparison')[0].A === 7192")
+            periods.get_by_role('tab', name='Grouped comparison', exact=True).click()
+            expect(periods.get_by_role('tab', name='Grouped comparison', exact=True)).to_have_attribute('aria-selected', 'true')
+            periods.get_by_role('tab', name='Original dates on', exact=True).click()
+            expect(periods.get_by_text('A: 2026-10-01 through 2026-10-31 inclusive · B: 2026-09-01 through 2026-09-30 inclusive · UTC calendar activity.', exact=True)).to_be_visible()
+            expect(combos.locator('.fw-combo-summary-value').first).to_have_text('$30.00')
+            expect(marketing.locator('.fw-mini-val').first).to_have_text('840')
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
             page.get_by_role("link", name="pivot tables", exact=True).click()
             pivot = page.locator('.fw-section').filter(has=page.get_by_role(

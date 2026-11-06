@@ -12,7 +12,6 @@ from trellum.rendering.cdn import copy_vendor_tree
 from trellum.rendering.html_builder import render_report
 from trellum.reporting.diagnostics import compute_details
 from trellum.validation import validate_report
-from trellum.validation.checks.period_comparison import check_period_comparison
 from trellum.testing.test_period_comparison import example_context, oracle
 from trellum.testing.test_chart_header_summaries_browser import _route
 from trellum.testing.test_marketing_composition_browser import download_csv
@@ -22,7 +21,7 @@ EVIDENCE = Path(os.environ.get('TRELLUM_PERIOD_EVIDENCE', '/tmp/trellum-period-c
 
 def build(output):
     ctx, module = example_context(output)
-    details = compute_details(ctx); result = validate_report(ctx, details=details); check_period_comparison(ctx, result)
+    details = compute_details(ctx); result = validate_report(ctx, details=details)
     issues = [(c.id,c.level,c.section,c.message) for c in result.checks if c.level in {'warn','fail'}]
     assert issues == [], issues
     render_report(ctx, str(output), auto_refresh=False); copy_vendor_tree(output)
@@ -253,7 +252,7 @@ def test_native_scope_reentry_has_one_owned_projection(tmp_path):
         components.insert(1,ScopedDataSource(scope+'_subset',m.SOURCE))
         next(c for c in components if c.__class__.__name__=='PeriodComparison').parent=scope+'_subset'
         scopes[scope]=(m.RESULT,14384*factor)
-    details=compute_details(ctx);result=validate_report(ctx,details=details);check_period_comparison(ctx,result)
+    details=compute_details(ctx);result=validate_report(ctx,details=details)
     assert [(c.id,c.message) for c in result.checks if c.level in {'warn','fail'}]==[]
     render_report(ctx,str(tmp_path),auto_refresh=False);copy_vendor_tree(tmp_path)
     with sync_playwright() as pw:

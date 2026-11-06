@@ -6,6 +6,7 @@ from trellum import BaseReport
 from trellum.components import DataSource, FilterBar, Grid, LineChart, RawHTML
 
 from . import (
+    examples_period_comparison,
     examples_keyboard,
     examples_combo_summaries,
     examples_sankey_summaries,
@@ -38,6 +39,7 @@ class ComponentShowcaseReport(BaseReport):
             "identified beside each example.</p>"
             '<p>Jump to <a href="#sec-overview-—-synthetic-acquisition-cohorts">Overview composition</a>, '
             '<a href="#sec-marketing-geography">Marketing geography</a>, '
+            '<a href="#sec-period-comparison">Period comparison</a>, '
             '<a href="#sec-scatter-summaries-—-off-and-on">Scatter summaries</a>, '
             '<a href="#sec-heatmap-summaries-—-static-off-and-on">Heatmap summaries</a>, '
             '<a href="#sec-stacked-summaries-—-static-off/on">Stacked summaries</a>, '
@@ -159,6 +161,7 @@ class ComponentShowcaseReport(BaseReport):
         examples_table_shading.add_sections(ctx)
 
         examples_comparisons.add_sections(ctx)
+        examples_period_comparison.add_sections(ctx)
 
         examples_dates.add_sections(ctx)
 

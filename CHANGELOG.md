@@ -9,6 +9,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Optional bounded UTC period comparisons and per-series original-date context
+  for ordinary LineChart tooltips, with a native flat/grouped comparison example.
+
 - Optional ComboChart header summaries for one explicit axis and final series,
   preserving chart values, legends, formats and CSV.
 

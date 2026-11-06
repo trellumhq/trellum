@@ -12,6 +12,7 @@ Layout:   Section, Panel, Grid, SplitPane
 Filter:   DataSource + FilterBar (every component needs dataset_id=)
           ScopedDataSource for section-local filters (inherits parent filters)
           MetricView for bounded grouped snapshot metrics and ratios of sums
+          PeriodComparison for explicit UTC periods over snapshot facts
           LiveDataSource + FilterBar (param bindings) for a declared live
           query -- see ctx.declare_live_query and LiveDataSource's docstring
 Advanced: RawHTML (ONLY when no component above can express the visualization)
@@ -45,6 +46,7 @@ from trellum.components.hierarchy_table import HierarchyTable
 from trellum.components.cohort_table import CohortTable
 from trellum.components.kpis import KpiCard, KpiRow, MiniKpi
 from trellum.components.metric_views import MetricView
+from trellum.components.period_comparison import PeriodComparison
 from trellum.components.layout import Grid, Panel, RawHTML, Section, SplitPane, Visible
 from trellum.components.report_metadata import ReportMetadata
 from trellum.components.tables import ComparisonTable, DataTable, PivotTable
@@ -59,5 +61,5 @@ __all__ = [
     "RawHTML", "Visible",
     "ABCompare", "ABMethodologyNote",
     "ReportHeader", "ReportMetadata",
-    "DataSource", "FilterBar", "ScopedDataSource", "LiveDataSource", "MetricView",
+    "DataSource", "FilterBar", "ScopedDataSource", "LiveDataSource", "MetricView", "PeriodComparison",
 ]

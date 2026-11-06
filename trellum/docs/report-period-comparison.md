@@ -7,7 +7,7 @@ LineChart output and nearest-point hover remain unchanged when `point_context`
 is omitted.
 
 ```python
-from trellum.components.period_comparison import PeriodComparison
+from trellum.components import PeriodComparison
 
 periods = PeriodComparison(
     'periods', parent='activity', toggle_id='period', default='MoM',
@@ -34,7 +34,7 @@ selected native control and subscribes to its parent; it never installs
 All new PeriodComparison options after `id` are keyword-only. Inputs are copied
 into the browser configuration. A declaration is checked at construction,
 rendering and by `check_period_comparison(ctx, result)` in each native scope.
-The central validator should call that hook; direct imports are supported.
+The central validator runs this hook; direct imports are also supported.
 
 ## Dates, arithmetic and admission
 
@@ -154,7 +154,7 @@ known date/window columns. Date text is strict ISO daily; window text is literal
 plain text, at most 240 characters. The painted tooltip title displays the exact
 original date of the hovered series; its literal window appears in body lines. A and B are resolved separately,
 including for the same aligned x. The existing nearest-point selection, body,
-formatting and styles are retained. The helper owns a copied title callback;
+formatting and styles are retained. The helper owns copied title and label callbacks;
 it does not mutate authored configuration or install HTML renderers.
 
 For static charts, replace the column fields with `records`, a list matching the
@@ -182,6 +182,10 @@ results with explicit reasons, rather than unfinished computations. Dataset
 metrics count the delivered raw facts once and describe derived schemas with
 zero warehouse-fact rows/bytes.
 
+Image captures retain the current horizontal table viewport. Narrow screens
+may require scrolling to see B and change columns; CSV includes all selected
+columns. The existing browser PDF exporter retains its single raster page.
+
 ## Native example and integration
 
 `demo/reports/component-showcase/examples_period_comparison.py:add_sections(ctx)`
@@ -194,19 +198,9 @@ synthetic UTC daily facts across October 2025, September 2026 and October 2026.
 The context panels derive their authored text from the same Python preset
 mapping used by the projection. There is no report-specific calculation JS.
 
-Common wiring for maintainers:
-
-1. Export `PeriodComparison` from `trellum.components` and its `__all__` list, following the existing MetricView pattern.
-   The framework root does not currently re-export components; no root export is needed.
-2. Import `check_period_comparison` in `validation/__init__.py` and call it once
-   per report (`check_period_comparison(ctx, result)`), alongside metric checks.
-   It also checks bound/static point-context admission and output collisions.
-3. Add `examples_period_comparison.add_sections(ctx)` to the component-showcase
-   generator and its example-module loading convention. Add its section name to
-   the showcase navigation/expected-section checks.
-4. Link this page from the common component/API docs and compatibility index.
-   Suggested changelog: “Add opt-in bounded UTC period comparisons and per-series
-   original-date context for ordinary LineChart tooltips.”
+The component is exported from `trellum.components`. Central validation checks
+its source, Toggle, output schemas and LineChart point context. The shared
+component showcase links directly to this native example.
 
 No dependency, chart-library, portal, migration, release or version change is
 required. Existing period controls, supplied comparisons, KPI layout and other

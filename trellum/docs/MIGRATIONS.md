@@ -1,5 +1,14 @@
 # Framework Migration Guide
 
+## Unreleased: explicit period comparisons
+
+Existing reports need no changes. Import optional `PeriodComparison` from
+`trellum.components`, declare its snapshot and matching native Toggle first,
+then bind tables and charts to the derived outputs. Add LineChart
+`point_context` only when original dates are available. The
+[period comparison guide](report-period-comparison.md) covers limits, complete
+calendar windows, grouped presentation and unchanged CSV units.
+
 ## Unreleased: report keyboard controls
 
 Rebuild reports to obtain keyboard sorting on existing `sortable=True` tables

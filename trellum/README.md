@@ -545,6 +545,10 @@ series on an explicit axis, with selected-input eligibility and existing units.
 [Report keyboard controls](docs/report-keyboard.md) cover ordinary table sorting,
 visible chart CSV focus and inset Toggle focus outlines.
 
+[PeriodComparison](docs/report-period-comparison.md) provides optional explicit
+UTC period summaries, grouped tables and original-date context on line charts
+from one bounded snapshot, preserving the ordinary nearest-point tooltip.
+
 [FunnelChart header summaries](docs/report-funnel-summaries.md) optionally show
 a named stage, maximum stage-entry count or entry count above the current plot.
 They preserve stage ordering and do not infer conversions or cross-stage totals.

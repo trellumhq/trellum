@@ -1,5 +1,15 @@
 # Framework Compatibility Policy
 
+## Unreleased: explicit period comparisons
+
+`PeriodComparison` is an optional bounded snapshot projection. It leaves
+existing supplied comparisons and their controls unchanged. Ordinary LineChart
+`point_context=None` is keyword-only; omitted context preserves the existing
+tooltip and payload. Opt-in original dates require unambiguous wide-series
+identities. UTC windows, completeness and unsupported source contracts are
+documented in [period comparisons](report-period-comparison.md). Chart CSV
+retains its plotted-value schema and excludes the extra hover context.
+
 ## Unreleased: report keyboard controls
 
 Ordinary sortable table headers now participate in keyboard navigation and

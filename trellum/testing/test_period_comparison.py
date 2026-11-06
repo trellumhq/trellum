@@ -97,7 +97,8 @@ def test_all_metrics_deltas_daily_vectors(tmp_path, platform, preset):
 
 def test_native_diagnostics_and_schemas(tmp_path):
     ctx, m = example_context(tmp_path)
-    details = compute_details(ctx); result = validate_report(ctx, details=details); check_period_comparison(ctx, result)
+    details = compute_details(ctx); result = validate_report(ctx, details=details)
+    assert 'period-comparison' in result.groups_run
     assert [(c.id, c.message) for c in result.checks if c.level in {'warn', 'fail'}] == []
     assert details['totals']['total_rows'] == 184
     derived = [d for d in details['datasets'] if d.get('kind') == 'derived_period_comparison']
@@ -168,23 +169,21 @@ def test_invalid_limits_group_partitions_schema_and_precision(tmp_path):
 
 def test_native_order_collision_chaining_and_ambiguous_context(tmp_path):
     from trellum.components import DataSource, Toggle, LineChart
-    from trellum.validation.result import ValidationResult
-    from trellum.components.period_comparison import PeriodComparison
     import pandas as pd
     _,m=example_context(tmp_path)
-    # Check within the actual native section model, independently of common dispatch.
+    # Public dispatch must reject malformed native source/control declarations.
     for components in (
         [m.projection(),DataSource(m.SOURCE,m.facts())],
         [DataSource(m.SOURCE,m.facts()),Toggle(m.PERIOD,list(m.PRESETS),'WoW'),m.projection()],
         [DataSource(m.SOURCE,m.facts()),Toggle(m.PERIOD,list(m.PRESETS),'MoM'),m.projection(),DataSource(m.RESULT+'_daily',m.facts())],
     ):
         ctx=ReportContext(config={'name':'Admission'},slug='admission',output_dir=str(tmp_path))
-        ctx.add_section('Admission',components);result=ValidationResult('period-admission');check_period_comparison(ctx,result)
-        assert any(c.level=='fail' for c in result.checks)
+        ctx.add_section('Admission',components);result=validate_report(ctx, details=compute_details(ctx))
+        assert any(c.level=='fail' and c.id.startswith('period-comparison') for c in result.checks)
     frame=pd.DataFrame({'x':[1,1],'v':[1,2],'date':['2026-10-01','2026-10-02'],'window':['A','A']})
     line=LineChart(frame,'x','v',dataset_id='facts',point_context=[{'series':0,'date_column':'date','window_column':'window'}])
     ctx=ReportContext(config={'name':'Ambiguous'},slug='ambiguous',output_dir=str(tmp_path))
-    ctx.add_section('Admission',[DataSource('facts',frame),line]);result=ValidationResult('period-admission');check_period_comparison(ctx,result)
+    ctx.add_section('Admission',[DataSource('facts',frame),line]);result=validate_report(ctx, details=compute_details(ctx))
     assert any(c.id=='line-chart-point-context-invalid' for c in result.checks)
 
 
@@ -193,5 +192,6 @@ def test_owned_validation_leaves_unrelated_optional_control_ids_alone(tmp_path):
     from trellum.validation.result import ValidationResult
     ctx=ReportContext(config={'name':'Ordinary controls'},slug='ordinary-controls',output_dir=str(tmp_path))
     ctx.add_section('Controls',[TabGroup([]),TabGroup([])])
-    result=ValidationResult('ordinary-controls');check_period_comparison(ctx,result)
+    result=ValidationResult('ordinary-controls')
+    check_period_comparison(ctx,result)
     assert not result.checks
