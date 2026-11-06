@@ -594,6 +594,34 @@ def test_presentation_review_targets_are_stable_and_unique_across_slides(present
     assert 'id="slide-first"' in body and 'class="fw-section fw-slide fw-slide--image-text"' in body
 
 
+@pytest.mark.parametrize("view", [None, "document", "slides"])
+def test_built_presentation_view_and_validation(presentation, view):
+    config = BaseReport.load_config(str(presentation))
+    if view is not None:
+        config["presentation_view"] = view
+    (presentation / "report.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
+    image = presentation / "evidence" / "chart.png"
+    image.write_bytes(_png())
+    _write_slides(presentation, [
+        {"id": "opening", "layout": "title", "title": "A question", "text": "A short answer."},
+        {"id": "chart", "layout": "image", "title": "A scenario", "image": "evidence/chart.png",
+         "alt": "Scenario evidence", "text": "**Assumption:** a fixed comparison."},
+    ])
+    output = Path(run_report(str(presentation), fail_on_validation=True))
+    page = (output / "index.html").read_text(encoding="utf-8")
+    body = page.split('<article class="fw-presentation"', 1)[1].split('</article>', 1)[0]
+    assert ('data-presentation-view="slides"' in body) is (view == "slides")
+    assert ('class="fw-slide-number"' in body) is (view == "slides")
+    assert 'id="slide-opening-passage-1"' in body
+    assert 'id="slide-chart-passage-1"' in body
+    assert '<strong>Assumption:</strong>' in body
+    # Every slide is in the artifact; the player alone chooses inline visibility.
+    assert ' hidden' not in body
+    checks = json.loads((output / "_validation.json").read_bytes())["checks"]
+    check = next(check for check in checks if check["id"] == "analysis-slides-valid")
+    assert f'{view or "document"} view validated' in check["message"]
+
+
 @pytest.mark.parametrize("slides, message", [
     ([], "non-empty"),
     (["slide"], "mapping"),

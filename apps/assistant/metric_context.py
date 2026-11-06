@@ -23,7 +23,7 @@ DETAIL_FIELDS = SUMMARY_FIELDS + (
 UNAVAILABLE = "Metric registry unavailable in this conversation; no canonical definition was checked."
 
 
-def _load(root):
+def _load(root, *, document=False):
     # O_NOFOLLOW also closes the check/open symlink race. O_NONBLOCK plus the
     # regular-file check prevents a repository-controlled FIFO from hanging.
     path = root / "metrics.yaml"
@@ -76,7 +76,7 @@ def _load(root):
                     raise ValueError("metric list")
             elif value is not None and type(value) not in (str, int, float, bool):
                 raise ValueError("metric scalar")
-    return metrics
+    return raw if document else metrics
 
 
 def registry_text(toolbox, *, detail=False):

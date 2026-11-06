@@ -6,6 +6,8 @@
 google-cloud-bigquery>=3.0.0
 db-dtypes>=1.0.0
 psycopg2-binary>=2.9.0
+# Assistant source reads use psycopg 3 and bounded libpq cancellation.
+psycopg[binary]==3.3.4
 pymysql>=1.1.0
 clickhouse-connect>=0.7.0
 duckdb>=1.0.0

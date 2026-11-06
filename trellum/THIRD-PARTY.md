@@ -112,6 +112,16 @@ are redistributed in a container image.
 | botocore | Apache-2.0 |
 | boto3 | [Apache-2.0](https://github.com/boto/boto3/blob/1.43.106/LICENSE) |
 
+### Authentication compatibility test support
+
+The framework CI installs these packages only to exercise optional authentication
+backends. They are not added to the standalone framework's runtime dependencies.
+
+| Package | Licence |
+| --- | --- |
+| rsa | Apache-2.0 |
+| ldap3 | LGPL-3.0-or-later |
+
 ### `../requirements-django.txt` — native cloud AI additions
 
 These are control-plane dependencies; the standalone framework does not import
