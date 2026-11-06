@@ -19,6 +19,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - Remove the former waitlist notice from the website privacy page.
 
+- Refresh the checkout presentation with four visual decision slides, stage
+  comparisons and an explicitly hypothetical recovery scenario. Presentations
+  can opt into a single-slide view with a read-all option.
+
 - Showcase reports, written analyses, and presentations in the README, with
   desktop and mobile screenshots side by side and direct links to synthetic demos.
 
