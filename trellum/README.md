@@ -517,6 +517,10 @@ summary on a chart that plots several series without naming one are rejected the
 same way, and the validator reports `line-chart-height-invalid` and
 `line-chart-summary-invalid` for charts changed after construction.
 
+[FunnelChart header summaries](docs/report-funnel-summaries.md) optionally show
+a named stage, maximum stage-entry count or entry count above the current plot.
+They preserve stage ordering and do not infer conversions or cross-stage totals.
+
 [DoughnutChart header summaries](docs/report-doughnut-summaries.md) are optional:
 declare `header_summary={"stat": "sum", "scope": "all_categories"}` for
 additive amounts, or choose `max` or `count`. They include hidden entries in

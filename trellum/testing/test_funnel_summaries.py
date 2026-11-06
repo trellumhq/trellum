@@ -103,14 +103,18 @@ def test_config_header_context_and_source_are_independent():
     assert funnel_summary_config(FunnelChart(df, 'stage', 'amount')) == {}
 
 
-def test_native_examples_diagnostics_and_direct_mutation_validation(tmp_path):
+def test_native_examples_diagnostics_and_mutation_validation(tmp_path):
     ctx = example_context(tmp_path)
     result = validate_report(ctx, details=compute_details(ctx))
     assert [(c.id, c.level, c.message) for c in result.checks if c.level in {'warn', 'fail'}] == []
-    # Lead owns shared dispatch. Test this unit's exact hook directly until integration.
     chart = FunnelChart(frame(), 'stage', 'amount', static=True)
     chart.header_summary = {}
-    assert funnel_option_problems(chart)[0][0] == 'chart-summary-invalid'
+    ctx.add_section('Invalid declaration', [chart])
+    result = validate_report(ctx, details=compute_details(ctx))
+    failures = [c for c in result.checks if c.id == 'chart-summary-invalid' and c.level == 'fail']
+    assert len(failures) == 1
+    assert failures[0].component == 'FunnelChart'
+    assert failures[0].section == 'Invalid declaration'
 
 
 def test_static_serialization_keeps_legacy_values_without_provenance_copy():

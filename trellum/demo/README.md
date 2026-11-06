@@ -84,6 +84,9 @@ Its [Doughnut summary examples](../docs/report-doughnut-summaries.md) compare
 off/on headers, filtered totals/maxima/counts, independent center totals and
 static duplicate-label entries.
 
+The [Funnel summary examples](../docs/report-funnel-summaries.md) show named
+stages, maximum counts and entry counts while retaining existing plot layouts.
+
 `live-result-examples` is a separate native teaching report for displayed
 snapshot/query identity and returned-row scope. It uses bounded literal
 synthetic SQL through the existing `demo_db` connection, with no new tables.

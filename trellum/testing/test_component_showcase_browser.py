@@ -133,6 +133,13 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             summaries.get_by_role('button', name='iOS', exact=True).click()
             expect(summaries.locator('.fw-doughnut-summary-value')).to_have_text(['40', '30', '3'])
             assert doughnut.locator('.fw-doughnut-center-value').inner_text() == "$40,000.00"
+            page.get_by_role('link', name='funnel summaries', exact=True).click()
+            funnels = page.locator('#sec-funnel-summaries-—-filtered-stages')
+            funnels.scroll_into_view_if_needed()
+            expect(funnels.locator('.fw-chart-summary-value')).to_have_text(['60', '540', '3'])
+            funnels.get_by_role('button', name='iOS', exact=True).click()
+            expect(funnels.locator('.fw-chart-summary-value')).to_have_text(['20', '180', '3'])
+            expect(summaries.locator('.fw-doughnut-summary-value')).to_have_text(['40', '30', '3'])
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
             page.get_by_role("link", name="pivot tables", exact=True).click()
             pivot = page.locator('.fw-section').filter(has=page.get_by_role(

@@ -31,7 +31,7 @@ def _diagnose(ctx, output):
     result = validate_report(ctx, details=details)
     issues = [(c.id, c.level, c.section, c.message) for c in result.checks if c.level in {'warn', 'fail'}]
     assert issues == [], issues
-    # Direct unit-owned hook pending the lead's common chart-options dispatch.
+    # Exercise the family hook as well as the shared report validation above.
     def walk(components):
         for component in components:
             if isinstance(component, FunnelChart):

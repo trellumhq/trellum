@@ -114,25 +114,13 @@ Android is twice iOS. Combined grouped entries are 540, 300, 60; `max=540`,
 Completed 0 and max 160. The static duplicate snapshot is Completed 10, Completed
 20, Opened 50: max 50, count 3, selected Completed unavailable.
 
-Common integration points (outside this module):
-
-1. Import `examples_funnel_summaries` in the showcase generator and call
-   `examples_funnel_summaries.add_sections(ctx)` alongside other examples. Add the
-   four exact section titles to the showcase's summary navigation grouping.
-2. In `validation/checks/chart_options.py`, import
-   `funnel_option_problems` from `trellum.components.charts._funnel_summary`.
-   For `_comp_name(comp) == "FunnelChart"`, iterate its `(check_id, message)`
-   results and call `result.fail(check_id, message, component="FunnelChart",
-   section=sec)`. This detects mutated declarations before rendering.
-3. Link this page from the common chart/component docs and record compatibility:
-   the new option is keyword-only and defaults off; CSV schema is unchanged.
-4. Suggested changelog: “Add optional FunnelChart header summaries for a named
-   stage, largest current stage entry, or stage-entry count.”
+The component showcase includes these sections and a direct navigation link.
+Shared chart-option validation detects declarations mutated after construction
+and reports `chart-summary-invalid` before rendering.
 
 Focused checks live in `testing/test_funnel_summaries.py` and
 `testing/test_funnel_summaries_browser.py`. The native browser fixtures use
-ReportContext, report diagnostics/validation and vendored assets, plus direct
-funnel-option validation while the shared dispatch is pending. They compare
+ReportContext, report diagnostics/validation and vendored assets. They compare
 actual baseline Python/JavaScript/CSS output at 1280 and 390 pixels in light and
 dark themes; phone checks are heavy. The reducer's Node checks exercise arithmetic
 independently and are not themselves a full report validation.

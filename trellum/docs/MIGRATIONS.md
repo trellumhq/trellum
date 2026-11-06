@@ -1,5 +1,15 @@
 # Framework Migration Guide
 
+## Unreleased: optional FunnelChart summaries
+
+Existing calls need no changes. Opt in with keyword-only
+`header_summary={"stat": "stage", "scope": "current_stages", "stage": "Completed"}`
+for a uniquely named stage, or choose `max`/`count` without `stage`. The summary
+adds context above the unchanged plot; stages may overlap people and are not
+summed together. Rebuild matching report assets; no database or host migration
+is required. See [Funnel summaries](report-funnel-summaries.md) and the component
+showcase for eligibility, current grouping and capture behavior.
+
 ## Unreleased: optional DoughnutChart summaries
 
 Existing calls need no changes. Opt in with keyword-only

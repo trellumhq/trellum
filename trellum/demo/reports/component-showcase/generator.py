@@ -6,6 +6,7 @@ from trellum import BaseReport
 from trellum.components import DataSource, FilterBar, Grid, LineChart, RawHTML
 
 from . import (
+    examples_funnel_summaries,
     examples_doughnut_summaries,
     examples_line_results,
     examples_overview,
@@ -41,6 +42,7 @@ class ComponentShowcaseReport(BaseReport):
             '<a href="#sec-area-example-filters">area charts</a>, '
             '<a href="#sec-bar-values-—-category-and-platform-observations">bar values and stack labels</a>, '
             '<a href="#sec-combo-charts-—-daily-channel-observations">combo charts</a>, '
+            '<a href="#sec-funnel-summaries-—-off-and-on">funnel summaries</a>, '
             '<a href="#sec-layout-example-filters">layouts</a>, '
             '<a href="#sec-kpi-cards-and-compact-metrics">KPI metrics</a>, '
             '<a href="#sec-kpi-states-—-supplied-observation-completeness">KPI states and comparisons</a>, '
@@ -142,6 +144,7 @@ class ComponentShowcaseReport(BaseReport):
 
         examples_doughnuts.add_sections(ctx)
         examples_doughnut_summaries.add_sections(ctx)
+        examples_funnel_summaries.add_sections(ctx)
 
         examples_pivots.add_sections(ctx)
         examples_hierarchies.add_sections(ctx)

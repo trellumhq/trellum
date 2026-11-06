@@ -1,5 +1,14 @@
 # Framework Compatibility Policy
 
+## Unreleased: optional FunnelChart summaries
+
+Keyword-only `header_summary=None` preserves existing constructors, plots and
+CSV schema. Explicit named-stage, maximum or entry-count declarations use
+`scope="current_stages"`; no sequential conversion or cross-stage total is
+inferred. Invalid amounts and ambiguous labels explain unavailable summaries.
+Existing grouping/order is preserved. Rebuild matching report assets; no host
+or database migration is required. See [Funnel summaries](report-funnel-summaries.md).
+
 ## Unreleased: optional DoughnutChart summaries
 
 Keyword-only `header_summary=None` preserves existing constructors, markup,

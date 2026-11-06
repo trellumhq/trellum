@@ -9,6 +9,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Optional FunnelChart header summaries for a named stage, largest current
+  stage entry or stage-entry count, with native examples and validation.
+
 - Optional DoughnutChart header summaries for current category-entry totals,
   maxima and counts, with explicit scope, guarded amounts and native examples.
 

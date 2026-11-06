@@ -1,4 +1,5 @@
 /* Only an opted-in funnel header owns these scope and eligibility lines. */
+.fw-funnel-summary-reason:empty { display: none; }
 .fw-funnel-summary .fw-funnel-summary-scope,
 .fw-funnel-summary .fw-funnel-summary-reason {
     flex-basis: 100%; text-align: right; overflow-wrap: anywhere;
