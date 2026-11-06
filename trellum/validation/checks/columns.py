@@ -31,6 +31,21 @@ def _check_columns(comps: list[tuple[Any, str]], ds_map: dict[str, Any], result:
         else:
             cols = set()
 
+        if name == "DataTable":
+            from trellum.components.tables import _validate_table_pinning
+
+            try:
+                _validate_table_pinning(
+                    getattr(comp, "pin_header", False),
+                    getattr(comp, "pin_footer", False),
+                    getattr(comp, "pin_height", 320),
+                )
+                if getattr(comp, "pin_footer", False) and not getattr(comp, "totals", None):
+                    raise ValueError("DataTable pin_footer requires nonempty totals declarations")
+            except ValueError as error:
+                result.fail("datatable-pinning-invalid", str(error),
+                            component="DataTable", section=sec)
+
         if not cols:
             continue
 

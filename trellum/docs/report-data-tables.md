@@ -30,6 +30,9 @@ configuration remains unsupported.
 | `conditional_formats` | `None` | Existing per-column colored-number rules, using `op`, `value` and `color`. |
 | `bar_column` | `None` | Existing zero-based displayed column index for background bars. |
 | `static` | `False` | Existing explicit opt-out from automatic dataset binding. |
+| `pin_header` | `False` | Keyword-only opt-in to pin the current table header inside its bounded scroller. |
+| `pin_footer` | `False` | Keyword-only opt-in to pin the existing semantic totals footer; requires nonempty `totals`. |
+| `pin_height` | `320` | Positive integer maximum scroller height in CSS pixels when either pin option is enabled. |
 
 Static tables retain every supplied row. Dataset tables use every row delivered
 to the component by the normal filter/live wrapper. Within that population,
@@ -220,6 +223,33 @@ hidden rows/columns or add an export-only total. This option adds no pinning,
 hierarchy, row drill-down or Pivot changes. ComparisonTable exposes no totals
 argument, and workspace definition catalogs ignore injected totals settings.
 Rebuild artifacts with matching Python and browser assets to enable totals.
+
+## Optional DataTable edge pinning
+
+`pin_header=False` and `pin_footer=False` are independent keyword-only
+DataTable options. When enabled, the current header and/or the existing
+`totals` footer stay at the edge of the same bounded vertical and horizontal
+scroller. `pin_footer=True` requires a nonempty validated `totals` declaration;
+it never creates a total. If there are no matching rows, the normal total
+footer remains absent. Header pinning does not require totals.
+
+`pin_height=320` is a positive integer maximum height in CSS pixels. The
+scroller shrinks to its content when the table is short or empty. Columns,
+including the first column, scroll horizontally together. Search, CSV and Rows
+controls and the totals scope note stay outside the scroller. The focusable
+scroll region uses the table title as its accessible name, or “Data table” when
+the title is empty. Native keyboard scrolling remains available.
+
+With both flags false, pinning adds no payload, markup, classes, attributes or
+reserved space. Pinning is not available on `ComparisonTable`, does not affect
+Pivot tables or workspace catalogs, and does not change filtering, sorting,
+display limits, CSV rows or total scope. Native captures preserve the visible
+bounded viewport, sticky edges and ordinary totals scope note; they do not
+expand hidden rows or columns. Rebuild existing reports to enable pinning.
+
+`examples_table_pinning.add_sections(ctx)` shows the static default and the
+three independent edge combinations, followed by bound, searchable, filterable
+observations with an additive footer and full-scope KPI.
 
 `examples_table_totals.add_sections(ctx)` supplies native off/on static,
 filtered 36-contributor and incomplete-input examples.

@@ -535,6 +535,12 @@ component_ids per claimed metric) is unchanged.
 **Before 0.2.0 there was nothing to migrate.** 0.1.0 was the first release, so
 no report written against it needed editing.
 
+Optional DataTable edge pinning adds keyword-only `pin_header`, `pin_footer`
+and `pin_height` options. Existing declarations keep their default output and
+require no migration; rebuild reports that opt in. `pin_footer=True` requires
+an existing nonempty `totals` declaration. See
+[report data tables](report-data-tables.md#optional-datatable-edge-pinning).
+
 The next entry lands here when a Tier 1 surface changes — see the deprecation
 process in [COMPATIBILITY.md](COMPATIBILITY.md). An entry names the version that
 changed it, gives a search pattern for finding affected code, and shows the

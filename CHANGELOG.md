@@ -9,6 +9,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Optional keyword-only DataTable header and declared total-footer pinning in a
+  bounded, keyboard-scrollable region. Defaults and comparison/workspace tables
+  remain unchanged; matching totals and native capture scope are preserved.
+
 - Optional keyword-only DataTable totals declare additive sums and weighted
   ratios over matching delivered rows before display limits, using bounded
   decimal arithmetic and independent completeness reasons. Added native

@@ -1,4 +1,21 @@
 .fw-table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.fw-table-scroll.fw-data-table-pinned {
+    max-height: var(--fw-data-table-pin-height);
+    overflow: auto;
+    overscroll-behavior: contain;
+}
+.fw-data-table-pinned:focus-visible { outline: 2px solid var(--accent-red); outline-offset: 2px; }
+.fw-data-table-pinned .fw-data-table thead th { background: var(--bg-card); }
+.fw-data-table-pinned.fw-pin-header .fw-data-table thead th {
+    position: sticky; top: 0; z-index: 2;
+}
+.fw-data-table-pinned.fw-pin-footer .fw-data-table tfoot {
+    position: sticky; bottom: 0; z-index: 2;
+}
+.fw-data-table-pinned.fw-pin-footer .fw-data-table tfoot th,
+.fw-data-table-pinned.fw-pin-footer .fw-data-table tfoot td {
+    background-color: var(--bg-card);
+}
 .fw-table {
     width: 100%; border-collapse: collapse;
     font-size: var(--font-size-table); min-width: 320px;

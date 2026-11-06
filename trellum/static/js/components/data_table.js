@@ -1,12 +1,74 @@
 window._fwRenderers['table'] = function renderTable(id, cfg) {
     var el = document.getElementById(id);
     if (!el) return;
+    var pinNodes = window._fwDataTablePinNodes || (window._fwDataTablePinNodes = Object.create(null));
+    if (pinNodes[id] && pinNodes[id] !== el) {
+        _releasePinning(pinNodes[id]);
+        delete pinNodes[id];
+    }
+    _configurePinning(el, cfg);
+    if (el._fwDataTablePinning) pinNodes[id] = el;
+    else delete pinNodes[id];
     var generation = el._fwTableGeneration = (el._fwTableGeneration || 0) + 1;
     var cf = cfg.conditionalFormats || {};
     var comparison = cfg.comparison;
     var context = comparison && comparison.context;
     function _own(object, key) {
         return object && Object.prototype.hasOwnProperty.call(object, key) ? object[key] : undefined;
+    }
+
+    function _configurePinning(node, config) {
+        var enabled = config.workspacePageSize !== 25 && !config.comparison &&
+            !!(config.pinHeader || config.pinFooter);
+        var owned = node._fwDataTablePinning || (node._fwDataTablePinning = {});
+        function setOwned(name, value) {
+            if (owned[name] && node.getAttribute(name) === owned[name].value) {
+                node.setAttribute(name, value);
+                owned[name].value = value;
+            } else if (!node.hasAttribute(name)) {
+                node.setAttribute(name, value);
+                owned[name] = {value: value};
+            }
+        }
+        if (enabled) {
+            if (!owned.classAdded && !node.classList.contains('fw-data-table-pinned')) {
+                node.classList.add('fw-data-table-pinned'); owned.classAdded = true;
+            }
+            if (!owned.maxHeight && !node.style.getPropertyValue('--fw-data-table-pin-height')) {
+                node.style.setProperty('--fw-data-table-pin-height', config.pinHeight + 'px');
+                owned.maxHeight = config.pinHeight + 'px';
+            } else if (owned.maxHeight && node.style.getPropertyValue('--fw-data-table-pin-height') === owned.maxHeight) {
+                node.style.setProperty('--fw-data-table-pin-height', config.pinHeight + 'px');
+                owned.maxHeight = config.pinHeight + 'px';
+            }
+            ['fw-pin-header', 'fw-pin-footer'].forEach(function(name) {
+                var requested = name === 'fw-pin-header' ? !!config.pinHeader : !!config.pinFooter;
+                if (requested && !node.classList.contains(name)) {
+                    node.classList.add(name);
+                    (owned.classes || (owned.classes = {}))[name] = true;
+                } else if (!requested && owned.classes && owned.classes[name]) {
+                    node.classList.remove(name); delete owned.classes[name];
+                }
+            });
+            setOwned('role', 'region');
+            setOwned('tabindex', '0');
+            setOwned('aria-label', config.title || 'Data table');
+            return;
+        }
+        _releasePinning(node);
+    }
+
+    function _releasePinning(node) {
+        var owned = node._fwDataTablePinning;
+        if (!owned) return;
+        if (owned.classAdded) node.classList.remove('fw-data-table-pinned');
+        if (owned.classes) Object.keys(owned.classes).forEach(function(name) { node.classList.remove(name); });
+        if (owned.maxHeight && node.style.getPropertyValue('--fw-data-table-pin-height') === owned.maxHeight)
+            node.style.removeProperty('--fw-data-table-pin-height');
+        ['role', 'tabindex', 'aria-label'].forEach(function(name) {
+            if (owned[name] && node.getAttribute(name) === owned[name].value) node.removeAttribute(name);
+        });
+        delete node._fwDataTablePinning;
     }
 
     // Only raw finite numbers carry comparison meaning. Display strings and

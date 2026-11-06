@@ -46,6 +46,9 @@ class DataTable(Component):
     targets and ``higher``/``lower`` direction, without changing text colors.
     Keyword-only ``totals`` declares additive sums or weighted ratios over
     matching delivered rows before display limits; column one labels Total.
+    Keyword-only ``pin_header`` and ``pin_footer`` opt into pinning the current
+    header and declared total footer inside this table's bounded scroller;
+    ``pin_height`` sets its positive CSS-pixel maximum height.
 
     A live-query-backed table is just a reactive table: declare
     ``LiveDataSource(id, query=..., df=snapshot)`` and pass
@@ -68,6 +71,9 @@ class DataTable(Component):
     cell_shading: Optional[dict] = field(default=None, kw_only=True)
     row_limit: Optional[int | str] = field(default=None, kw_only=True)
     totals: Optional[dict] = field(default=None, kw_only=True)
+    pin_header: bool = field(default=False, kw_only=True)
+    pin_footer: bool = field(default=False, kw_only=True)
+    pin_height: int = field(default=320, kw_only=True)
 
     # ComparisonTable's presentation metadata travels with the same population.
     _comparison: Optional[dict] = field(default=None, init=False, repr=False)
@@ -77,15 +83,21 @@ class DataTable(Component):
 
     def __post_init__(self) -> None:
         _validate_row_limit(self.row_limit)
+        _validate_table_pinning(self.pin_header, self.pin_footer, self.pin_height)
         if self.totals is not None:
             self.totals = totals_config(self.totals, self.df, self.columns or list(self.df.columns))
+        if self.pin_footer and not self.totals:
+            raise ValueError("DataTable pin_footer requires nonempty totals declarations")
 
     def render_html(self, ctx: RenderContext) -> str:
         if self.live:
             raise ValueError(_LIVE_LEGACY_ERROR)
         row_limit = _validate_row_limit(self.row_limit)
+        _validate_table_pinning(self.pin_header, self.pin_footer, self.pin_height)
         shading = self._cell_shading_config()
         totals = totals_config(self.totals, self.df, self.columns or list(self.df.columns))
+        if self.pin_footer and not totals:
+            raise ValueError("DataTable pin_footer requires nonempty totals declarations")
 
         cid = ctx.next_id()
 
@@ -131,6 +143,7 @@ class DataTable(Component):
                 cfg["rowLimit"] = row_limit
             if totals:
                 cfg["totals"] = totals
+            _table_pinning_payload(cfg, self)
             if self._comparison is not None:
                 cfg["comparison"] = self._comparison
             ctx.register(cid, cfg)
@@ -162,6 +175,7 @@ class DataTable(Component):
         if totals:
             reg["totals"] = totals
             reg["totalsInputs"] = typed_inputs(self.df, totals)
+        _table_pinning_payload(reg, self)
         if numeric_cols or (self._comparison and self._comparison["context"] is not None):
             # Keep established text/date/boolean CSV representation; only
             # numeric cells need a separate unrounded value. Text-only catalog
@@ -259,6 +273,21 @@ def _validate_row_limit(value):
     if type(value) is str and value == "all":
         return value
     raise ValueError('DataTable row_limit must be None, 10, 20, 50, 100 or "all"')
+
+
+def _validate_table_pinning(pin_header, pin_footer, pin_height):
+    if type(pin_header) is not bool or type(pin_footer) is not bool:
+        raise ValueError("DataTable pin_header and pin_footer must be bool")
+    if type(pin_height) is not int or pin_height <= 0:
+        raise ValueError("DataTable pin_height must be a positive integer")
+
+
+def _table_pinning_payload(config, table):
+    if table.pin_header or table.pin_footer:
+        config["title"] = table.title
+        config["pinHeader"] = table.pin_header
+        config["pinFooter"] = table.pin_footer
+        config["pinHeight"] = table.pin_height
 
 
 def _row_limit_control(value, cid):

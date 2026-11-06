@@ -422,3 +422,10 @@ non-additive time rules cannot be replaced by an overall sum. Ratio operand
 reductions are conservatively routed to `query_metric` for weighted calculation
 or a granted source query. Raw reads and descriptive min/max/count/nunique reads
 remain exploratory and receive no approved-calculation assurance.
+
+## Optional DataTable pinning
+
+New builds may opt in to keyword-only `DataTable.pin_header`, `pin_footer` and
+`pin_height`; all default to the existing unpinned output. Footer pinning
+requires declared totals. Existing reports need no edits; rebuild only to use
+the new behavior. See [report data tables](report-data-tables.md#optional-datatable-edge-pinning).
