@@ -40,9 +40,8 @@ def _classes(html: str, prefix: str) -> list[str]:
 # ── Appended fields keep existing calls working ──────────────
 
 def test_new_fields_come_last_so_positional_calls_are_unchanged():
-    names = [f.name for f in dataclasses.fields(LineChart) if f.init]
-    assert names[-3:] == ["height", "header_summary", "header_context"]
-    assert next(f for f in dataclasses.fields(LineChart) if f.name == "header_context").kw_only is True
+    names = [f.name for f in dataclasses.fields(LineChart) if f.init and not f.kw_only]
+    assert names[-2:] == ["height", "header_summary"]
     assert names[:5] == ["df", "x", "y", "title", "y_labels"]
     chart = LineChart(_df(), "day", "revenue", "Revenue")
     assert (chart.height, chart.header_summary) == ("balanced", None)

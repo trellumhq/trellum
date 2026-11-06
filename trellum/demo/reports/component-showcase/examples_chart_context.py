@@ -47,7 +47,7 @@ def add_sections(ctx):
             BarChart(segments, "channel", "revenue", "Independent static bar",
                      static=True, header_context="USD; supplied snapshot"),
             DoughnutChart(segments, "channel", "revenue", "", static=True,
-                          header_context="Supplied snapshot: six categories across three sources\nLong labels wrap within narrow panels"),
+                          header_context="Supplied snapshot: three channels\nLong labels wrap within narrow panels"),
         ]),
         Grid(columns=1, show_titles=False, children=[
             LineChart(daily, "day", "orders", "Hidden title, visible summary and context",

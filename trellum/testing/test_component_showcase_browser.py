@@ -216,6 +216,18 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             assert cohort_section.locator('.fw-kpi-forecast').first.inner_text() == 'Observed D3 · 8.00%'
             assert cohort_section.locator('.fw-kpi-sub').first.inner_text() == 'Forecast D7 · 15.00%'
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
+            page.get_by_role('link', name='chart context', exact=True).click()
+            context_section = page.locator('#sec-chart-header-context-—-filtered-revenue-and-summary')
+            context_canvas = context_section.locator('canvas')
+            context_canvas.scroll_into_view_if_needed()
+            context_section.get_by_role('button', name='Partner', exact=True).click()
+            page.wait_for_function("id => window._chartInstances[id]?.data.datasets[0].data[0] === 52",
+                                   arg=context_canvas.get_attribute('id'))
+            expect(context_section.locator('.fw-chart-summary-value')).to_have_text('372')
+            assert context_section.locator('.fw-chart-header-context').inner_text() == 'Orders; sum of matching completed orders'
+            assert context_canvas.get_attribute('aria-describedby').split().count(
+                context_canvas.get_attribute('id') + '-header-context') == 1
+            assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
             # Every chart must own a real canvas and draw after scrolling into
             # view; scope-based data swaps cannot stand in for different layouts.
             for canvas in page.locator("canvas:visible").all():
