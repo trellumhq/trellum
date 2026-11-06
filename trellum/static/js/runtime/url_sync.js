@@ -1,3 +1,17 @@
+    // TabGroup emits its control followed by contiguous sibling panels.
+    // Descendant queries mix nested groups; walking past the last panel
+    // changes adjacent groups. SlimSelect inserts its UI after the select.
+    function _showTabPanel(control, index) {
+        var panel = control.nextElementSibling;
+        if (panel && panel.classList.contains('ss-main')) panel = panel.nextElementSibling;
+        var i = 0;
+        while (panel && panel.classList.contains('fw-tab-panel')) {
+            panel.style.display = i === index ? '' : 'none';
+            i++;
+            panel = panel.nextElementSibling;
+        }
+    }
+
     // ── URL Filter Sync ────────────────────────────────
     // Reads/writes FilterBar state from/to URL query params
     // so users can share links with pre-applied filters.
@@ -225,8 +239,7 @@
                         }
                     });
                     if (idx >= 0) {
-                        var panels = g.parentElement.querySelectorAll('.fw-tab-panel');
-                        panels.forEach(function(p, i) { p.style.display = i === idx ? '' : 'none'; });
+                        _showTabPanel(g, idx);
                     }
                 }
             });
@@ -239,16 +252,7 @@
                     sel.value = urlVal;
                     var idx = parseInt(urlVal, 10);
                     if (!isNaN(idx)) {
-                        var wrapper = sel.closest('.ss-main');
-                        var el = (wrapper ? wrapper.parentElement : sel).nextElementSibling;
-                        var pi = 0;
-                        while (el) {
-                            if (el.classList && el.classList.contains('fw-tab-panel')) {
-                                el.style.display = pi === idx ? '' : 'none';
-                                pi++;
-                            }
-                            el = el.nextElementSibling;
-                        }
+                        _showTabPanel(sel, idx);
                     }
                 }
             });
