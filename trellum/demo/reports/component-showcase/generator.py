@@ -5,7 +5,10 @@ import pandas as pd
 from trellum import BaseReport
 from trellum.components import DataSource, FilterBar, Grid, LineChart, RawHTML
 
-from . import examples_controls, examples_dates, examples_kpis, examples_layouts, examples_tables
+from . import (
+    examples_areas, examples_controls, examples_dates, examples_kpis,
+    examples_layouts, examples_tables,
+)
 
 
 class ComponentShowcaseReport(BaseReport):
@@ -63,6 +66,8 @@ class ComponentShowcaseReport(BaseReport):
         examples_layouts.add_sections(ctx)
 
         examples_kpis.add_sections(ctx)
+
+        examples_areas.add_sections(ctx)
 
         examples_controls.add_sections(ctx)
 

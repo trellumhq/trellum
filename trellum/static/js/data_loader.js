@@ -220,7 +220,9 @@
                     if (!ds._themeManaged) return;
                     var newColor = tc.chart_colors[i % tc.chart_colors.length];
                     ds.borderColor = newColor;
-                    if (chart.config.type === 'line') {
+                    if (ds._areaFill && '_fillOpacity' in ds) {
+                        ds.backgroundColor = ds._fillOpacity ? newColor + ds._fillOpacity : newColor;
+                    } else if (chart.config.type === 'line') {
                         ds.backgroundColor = newColor + '22';
                     } else {
                         ds.backgroundColor = newColor + 'cc';

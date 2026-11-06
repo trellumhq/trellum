@@ -106,6 +106,38 @@ def test_chart_render_html(name, factory):
     assert "type" in registered, f"{name}: registered data missing 'type' key"
 
 
+def test_area_chart_fill_defaults_match_static_and_dataset_bound_paths():
+    df = _sample_df()
+    for stacked, opacity, border, fills in (
+        (False, "1f", 2, ["origin", "origin"]),
+        (True, "a6", 1.5, ["origin", "-1"]),
+    ):
+        static_ctx = _make_ctx()
+        AreaChart(df, x="event_date", y=["revenue", "net_revenue"],
+                  stacked=stacked).render_html(static_ctx)
+        static = next(iter(static_ctx.component_data.values()))
+        assert [ds["backgroundColor"][-2:] for ds in static["datasets"]] == [opacity] * 2
+        assert [ds["borderWidth"] for ds in static["datasets"]] == [border] * 2
+        assert [ds["fill"] for ds in static["datasets"]] == fills
+        assert [ds["data"] for ds in static["datasets"]] == [
+            _sample_df()[column].tolist() for column in ("revenue", "net_revenue")
+        ]
+
+        live_ctx = _make_ctx()
+        AreaChart(df, x="event_date", y=["revenue", "net_revenue"],
+                  stacked=stacked, dataset_id="area-data").render_html(live_ctx)
+        live = next(iter(live_ctx.component_data.values()))
+        assert live["area_fill"] is True and live["stacked"] is stacked
+        assert live["value_cols"] == ["revenue", "net_revenue"]
+
+        static_bound_ctx = _make_ctx()
+        AreaChart(df, x="event_date", y=["revenue", "net_revenue"],
+                  stacked=stacked, dataset_id="area-data", static=True).render_html(static_bound_ctx)
+        static_bound = next(iter(static_bound_ctx.component_data.values()))
+        assert "datasets" in static_bound and "dataset_id" not in static_bound
+        assert [ds["fill"] for ds in static_bound["datasets"]] == fills
+
+
 @pytest.mark.parametrize("name,factory", _CHART_SPECS, ids=[s[0] for s in _CHART_SPECS])
 def test_chart_with_dataset_id(name, factory):
     ctx = _make_ctx()

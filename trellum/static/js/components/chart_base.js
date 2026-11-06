@@ -653,12 +653,13 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
                         backgroundColor: isLine ? c2 + '22' : c2 + 'cc', borderColor: c2,
                         borderWidth: isLine ? 2.5 : 1, pointRadius: isLine ? 2 : undefined, tension: 0 };
                     if (cfg.area_fill) {
-                        ds2.fill = true;
-                        ds2.backgroundColor = cfg.stacked ? c2 : c2 + '33';
-                        ds2._fillOpacity = cfg.stacked ? '' : '33';
+                        ds2.fill = cfg.stacked && i2 > 0 ? '-1' : 'origin';
+                        ds2.backgroundColor = c2 + (cfg.stacked ? 'a6' : '1f');
+                        ds2._fillOpacity = cfg.stacked ? 'a6' : '1f';
+                        ds2._areaFill = true;
                         ds2.pointRadius = 0;
                         ds2.tension = 0;
-                        ds2.borderWidth = cfg.stacked ? 1 : 2;
+                        ds2.borderWidth = cfg.stacked ? 1.5 : 2;
                     }
                     datasets2.push(ds2);
                 }

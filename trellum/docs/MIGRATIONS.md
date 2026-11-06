@@ -42,6 +42,16 @@ for `.fw-date-endpoint` wrappers. Date/time classes, `data-edge` attributes and
 Start/End query order remain intact. See [report date ranges](report-date-ranges.md)
 for API usage and pre-existing precision, timezone and open-link limitations.
 
+## Unreleased: AreaChart fill appearance
+
+AreaChart now renders ordinary overlapping fills at approximately 12% opacity
+with the existing 2px outline. Stacked additive areas use approximately 65%
+opacity and 1.5px boundaries; subsequent visible series fill to the preceding
+visible series. No constructor arguments or data contracts changed. Rebuild
+reports to pick up the intentional visual change. See
+[`report-area-charts.md`](report-area-charts.md) for usage and unchanged
+aggregation, scaling and missing-data behavior.
+
 ## Unreleased: standalone report choices and views
 
 Rebuilding applies a labeled, searchable, wrapping presentation to standalone

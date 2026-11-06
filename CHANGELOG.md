@@ -34,6 +34,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- AreaChart defaults use lighter overlapping fills and translucent additive
+  stacked bands that follow the preceding visible series. The component
+  showcase includes deterministic static and filterable examples.
+
 - Present report date ranges with readable locale-aware dates, paired endpoint
   labels, quieter presets, recorded-date context, unavailable-bound feedback
   and viewport-bounded keyboard-accessible pickers. Range calculations and
