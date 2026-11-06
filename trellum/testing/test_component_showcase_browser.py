@@ -292,6 +292,30 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
                                    arg=event_live_id)
             expect(event_details.locator('summary')).to_contain_text('13 events')
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
+            page.get_by_role('link', name='month context', exact=True).click()
+            month_static = page.locator('canvas[data-fw-title="Daily line · month context"]')
+            month_static.scroll_into_view_if_needed()
+            month_static_id = month_static.get_attribute('id')
+            expect(page.locator(f'#{month_static_id}-month-context .fw-month-span')).to_have_count(3)
+            month_section = page.locator('#sec-month-context-—-independent-daily-selection')
+            month_line = month_section.locator('canvas[data-fw-title="Selected daily line"]')
+            month_line.scroll_into_view_if_needed()
+            month_id = month_line.get_attribute('id')
+            month_section.get_by_role('button', name='Web', exact=True).click()
+            month_section.get_by_role('button', name='Partner', exact=True).click()
+            month_window = month_section.locator('.fw-date-range')
+            month_window.locator('.fw-date-trigger').click()
+            month_window.locator('input[data-edge="min"]').fill('2026-10-01')
+            month_window.locator('input[data-edge="min"]').dispatch_event('change')
+            month_window.locator('input[data-edge="max"]').fill('2026-10-03')
+            month_window.locator('input[data-edge="max"]').dispatch_event('change')
+            page.wait_for_function("""id => window._chartInstances[id]?.data.labels.length === 3
+                && window._chartInstances[id]?.data.datasets[0].data[0] === 43""", arg=month_id)
+            expect(page.locator(f'#{month_id}-month-context .fw-month-accessible')).to_have_text(['October 2026'])
+            expect(page.locator(f'#{month_static_id}-month-context .fw-month-span')).to_have_count(3)
+            month_window.locator('.fw-date-trigger').click()
+            expect(event_details.locator('summary')).to_contain_text('13 events')
+            assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
             # Every chart must own a real canvas and draw after scrolling into
             # view; scope-based data swaps cannot stand in for different layouts.
             for canvas in page.locator("canvas:visible").all():
