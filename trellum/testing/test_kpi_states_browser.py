@@ -61,6 +61,8 @@ def build_reports(root):
         {"case": "Zero", "current": 480, "change": 480, "baseline": 0, "pct": 0, "cash": 0},
         {"case": "Unavailable", "current": 500, "change": None, "baseline": None, "pct": None, "cash": None},
         {"case": "Signed", "current": -50, "change": 50, "baseline": -100, "pct": -5, "cash": -2},
+        {"case": "Overflow", "current": 1, "change": 1, "baseline": 1e308, "pct": 0, "cash": 0},
+        {"case": "Overflow", "current": 1, "change": 1, "baseline": 1e308, "pct": 0, "cash": 0},
     ])
     ctx.add_section("Legacy unit contracts", [
         DataSource("kpi_legacy_states", legacy),
@@ -75,6 +77,13 @@ def build_reports(root):
             {"label": "Fraction? legacy scale", "value": .08, "format": "percent"},
             KpiCard(label="Supplied override", value=.22, format="percent", delta="Authored +2 pp", delta_direction="down",
                     comparison={"measure": "percentage_points", "value": 99}),
+        ], dataset_id="kpi_legacy_states"),
+        KpiRow([
+            {"label": "Reducer overrides unused constant", "value": None, "agg": "sum", "column": "current",
+             "availability": {"required_columns": ["current"], "empty": "unavailable"}},
+            {"label": "Finite denominator", "agg": "ratio", "numerator": "change", "denominator": "baseline",
+             "availability": {"required_columns": ["change", "baseline"], "empty": "unavailable",
+                              "ratio_denominator": "nonzero"}},
         ], dataset_id="kpi_legacy_states"),
     ])
     empty = pd.DataFrame(columns=["amount"])
@@ -296,10 +305,18 @@ def test_declared_kpi_states_paint_filter_and_geometry(tmp_path, width):
         assert legacy.locator('.fw-kpi-card').nth(1).bounding_box()['height'] == legacy_height
         legacy.get_by_role('button', name='Signed', exact=True).click()
         assert changes.nth(1).inner_text() == '+50.0%'  # Legacy abs baseline parity.
+        legacy.get_by_role('button', name='Overflow', exact=True).click()
+        assert changes.nth(1).inner_text() == '— · baseline unavailable'
+        assert legacy.locator('.fw-kpi-grid').last.locator('.fw-kpi-value').all_inner_texts() == ['2', '—']
+        assert legacy.locator('.fw-kpi-state-note').last.inner_text() == 'Finite denominator: denominator unavailable'
 
         # Safe text, long wrapping notes, short comparison line with full accessible text.
         page.evaluate("""() => {
             const card = document.querySelector('.fw-kpi-card');
+            const description = document.createElement('p');
+            description.id = 'authored-metric-description'; description.textContent = 'Supplied metric definition';
+            document.body.appendChild(description);
+            card.setAttribute('aria-describedby', description.id);
             window._fwRenderers.kpi(card.id, {label:'<b>Metric</b>',value:12,
                 availability:{state:'unavailable',reason:'<img src=x onerror=alert(1)> ' + 'long context '.repeat(25)},
                 comparison:{measure:'relative_percent',current:{value:12,unit:'number'},baseline:{value:null,unit:'number'},reason:'Unavailable ' + 'context '.repeat(30)}});
@@ -309,6 +326,9 @@ def test_declared_kpi_states_paint_filter_and_geometry(tmp_path, width):
         assert page.locator('.fw-kpi-state-note').first.locator('img').count() == 0
         assert first.locator('.fw-kpi-delta').evaluate('n => n.getBoundingClientRect().height') < 25
         assert len(first.locator('.fw-kpi-delta').get_attribute('title')) > 100
+        assert first.get_attribute('aria-describedby').split() == ['authored-metric-description', first.get_attribute('id') + '_state_note']
+        page.evaluate("id => window._fwRenderers.kpi(id, {label:'Restored', value:12})", first.get_attribute('id'))
+        assert first.get_attribute('aria-describedby') == 'authored-metric-description'
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         # Theme changes and repeated renders never duplicate external notes.
         count = page.locator('.fw-kpi-state-note').count()
@@ -316,6 +336,12 @@ def test_declared_kpi_states_paint_filter_and_geometry(tmp_path, width):
             page.locator('#fwThemeSelect').select_option(theme)
             expect(page.locator('html')).to_have_attribute('data-theme', theme)
             page.evaluate('window.renderAll()')
+            cohorts.get_by_role('button', name='Young', exact=True).click()
+            assert cohort_cards.first.locator('.fw-kpi-sub').evaluate("""el => {
+                const probe = document.createElement('span'); probe.style.color = 'var(--text-warning)';
+                el.appendChild(probe); const expected = getComputedStyle(probe).color; probe.remove();
+                return getComputedStyle(el).color === expected;
+            }""")
             page.mouse.move(0, 0)
             page.evaluate('window.scrollTo(0,0)')
             # Card theme transitions must finish before recording the actual paint.

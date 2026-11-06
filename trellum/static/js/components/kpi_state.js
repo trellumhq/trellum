@@ -12,7 +12,7 @@ window._fwKpiState = (function() {
         else if (spec.agg === 'ratio') {
             var den = A.sum(rows, spec.denominator);
             // New ratios support nonnegative denominators; legacy math is untouched.
-            if (rows.some(function(r) { return r[spec.denominator] < 0; }) || den <= 0) return null;
+            if (rows.some(function(r) { return r[spec.denominator] < 0; }) || !finite(den) || den <= 0) return null;
             v = A.sum(rows, spec.numerator) / den;
         } else v = spec.agg === 'abssum' ? A.absSum(rows, spec.column) : A.sum(rows, spec.column);
         return finite(v) ? v : null;
@@ -44,9 +44,12 @@ window._fwKpiState = (function() {
     }
     function note(el, label, reason) {
         var nid = el.id + '_state_note', existing = document.getElementById(nid);
+        var descriptions = (el.getAttribute('aria-describedby') || '').split(/\s+/)
+            .filter(function(id) { return id && id !== nid; });
         if (!reason) {
             if (existing) existing.remove();
-            el.removeAttribute('aria-describedby');
+            if (descriptions.length) el.setAttribute('aria-describedby', descriptions.join(' '));
+            else el.removeAttribute('aria-describedby');
             return;
         }
         var grid = el.closest('.fw-kpi-grid'), parent;
@@ -70,7 +73,7 @@ window._fwKpiState = (function() {
         existing.className = 'fw-kpi-state-note' + (el.classList.contains('fw-kpi-extra') ? ' fw-kpi-note-extra' : '');
         existing.textContent = (label || 'Metric') + ': ' + reason;
         if (parent) parent.appendChild(existing); // Finish each row draw in metric reading order.
-        el.setAttribute('aria-describedby', nid);
+        el.setAttribute('aria-describedby', descriptions.concat(nid).join(' '));
     }
     function line(el, cls, text) {
         var node = document.createElement('div'); node.className = cls;
@@ -87,11 +90,14 @@ window._fwKpiState = (function() {
                 if (!rows.length && a.empty === 'unavailable') reason = a.reason || 'no matching observations';
                 else if (rows.some(function(r) { return a.required_columns.some(function(c) { return !finite(r[c]); }); })) {
                     reason = a.reason || 'incomplete inputs';
-                } else if (a.ratio_denominator && (!rows.length || window._fwAggregate.sum(rows, kpi.denominator) === 0)) {
-                    reason = a.reason || 'zero denominator';
+                } else if (a.ratio_denominator) {
+                    var den = window._fwAggregate.sum(rows, kpi.denominator);
+                    if (!finite(den)) reason = a.reason || 'denominator unavailable';
+                    else if (!rows.length || den === 0) reason = a.reason || 'zero denominator';
                 }
             }
-            if (!reason && Object.prototype.hasOwnProperty.call(kpi, 'value') && kpi.value === null) {
+            if (!reason && Object.prototype.hasOwnProperty.call(kpi, 'value') && kpi.value === null
+                && !kpi.agg && !kpi.column && !kpi.columns && !kpi.numerator) {
                 reason = a.reason || 'value unavailable';
             }
         }

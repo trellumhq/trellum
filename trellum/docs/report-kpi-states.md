@@ -46,7 +46,7 @@ partial-input/subtotal and empty-sum behavior. No formatted string determines
 validity. A registered empty population is treated the same as a no-match
 filtered population under this explicit policy.
 
-To withhold a declared ratio with a zero summed denominator, add
+To require a finite, nonzero summed denominator for a declared ratio, add
 `"ratio_denominator": "nonzero"` and include **both** the KPI's numerator and
 denominator in `required_columns`. This option requires `agg="ratio"` and
 also withholds an empty denominator, even with `empty="zero"`. Otherwise the
@@ -73,7 +73,7 @@ Literal values must be finite numbers (not booleans), or `None` to declare an
 unavailable observation/period. Reducers require a bound row; they require all
 referenced inputs to be finite numeric values. Empty sum/abssum/ratio is
 unavailable, while empty count is zero. New ratio metadata supports
-nonnegative denominator inputs and a strictly positive summed denominator;
+nonnegative denominator inputs and a finite, strictly positive summed denominator;
 signed or zero denominators are unavailable. It does not reinterpret legacy
 ratio reducers. All non-ratio metadata reducers use `unit="number"`; summing
 precomputed percentages is not supported by this new API. Use each period's
@@ -186,7 +186,7 @@ Two narrow presentation corrections also apply to old bound rows:
   as an em dash, rather than falling through to `sum(undefined)=0`. Other
   constant units, absent `value` keys and aggregation specifications retain
   their behavior. Add availability for a metric-specific external reason.
-- A legacy ratio delta with a zero or absent numeric denominator shows a
+- A legacy ratio delta with a zero, absent numeric or nonfinite aggregate denominator shows a
   neutral dash/reason instead of favorable `+0.0%`. True zero auto deltas are
   neutral; explicit valid up/down overrides remain. Valid signed legacy
   baselines still use the absolute denominator. A sum delta cannot reveal its

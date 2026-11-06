@@ -146,6 +146,7 @@ assert.equal(S.resolve({agg:'sum',column:'x',unit:'number'},[]),null);
 assert.equal(S.resolve({agg:'count',unit:'number'},[]),0);
 assert.equal(S.resolve(rate('n','d'),[{n:1,d:-1},{n:2,d:3}]),null);
 assert.equal(S.resolve(rate('n','d'),[{n:1,d:0}]),null);
+assert.equal(S.resolve(rate('n','d'),[{n:1,d:1e308},{n:1,d:1e308}]),null);
 assert.equal(S.comparison(spec,[...rows,{n:1,d:5,bn:null,bd:4}]).text,'— · baseline unavailable');
 """
     result = subprocess.run(["node", "-e", script], capture_output=True, text=True)

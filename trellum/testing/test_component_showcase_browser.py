@@ -202,6 +202,20 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
                 .filter(p => p.kind === 'total' && p.index === 0).map(p => p.text)""", stack_id) == ['$15.6k']
             assert page.locator(f'[data-stack-label-context="{stack_id}"]').count() == 1
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
+            page.get_by_role('link', name='KPI states and comparisons', exact=True).click()
+            state_section = page.locator('#sec-kpi-states-—-supplied-observation-completeness')
+            state_section.get_by_role('button', name='Missing', exact=True).click()
+            expect(state_section.locator('.fw-kpi-value').nth(1)).to_have_text('—')
+            assert state_section.locator('.fw-kpi-value').nth(3).inner_text() == '1'
+            assert state_section.locator('.fw-kpi-state-note').filter(has_text='Complete revenue:').count() == 1
+            cohort_section = page.locator('#sec-kpi-states-—-declared-cohort-age-and-horizon')
+            cohort_section.get_by_role('button', name='Mature', exact=True).click()
+            expect(cohort_section.locator('.fw-kpi-value').first).to_have_text('14.00%')
+            cohort_section.get_by_role('button', name='Young', exact=True).click()
+            expect(cohort_section.locator('.fw-kpi-value').first).to_contain_text('Age 3d · <7d')
+            assert cohort_section.locator('.fw-kpi-forecast').first.inner_text() == 'Observed D3 · 8.00%'
+            assert cohort_section.locator('.fw-kpi-sub').first.inner_text() == 'Forecast D7 · 15.00%'
+            assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
             # Every chart must own a real canvas and draw after scrolling into
             # view; scope-based data swaps cannot stand in for different layouts.
             for canvas in page.locator("canvas:visible").all():

@@ -127,9 +127,9 @@ window._fwRenderers['kpi_row_live'] = function(id, cfg) {
                     var baselineKnown = rows.some(function(r) {
                         return typeof r[baselineCol] === 'number' && Number.isFinite(r[baselineCol]);
                     });
-                    dVal = dd > 0 ? (dn / dd) : null;       // display scaling below
-                    if (dFmt === 'percent') dVal *= 100;
-                    if (dd === 0) dVal = null;
+                    dVal = Number.isFinite(dd) && dd > 0 ? (dn / dd) : null;
+                    if (dVal !== null && dFmt === 'percent') dVal *= 100;
+                    if (!Number.isFinite(dd)) baselineKnown = false;
                 } else if (dAgg === 'abssum') {
                     dVal = A.absSum(rows, kpi.delta_col);
                 } else {

@@ -1,19 +1,20 @@
 /* State context stays outside card geometry and uses the report theme. */
 .fw-kpi-state-note {
     font-size: var(--font-size-small);
-    color: var(--text-secondary);
+    color: var(--text-context, var(--text-secondary));
     margin: 4px 0 8px;
     overflow-wrap: anywhere;
 }
 .fw-kpi-notes:empty { display: none; }
 .fw-kpi-age {
     font-size: var(--font-size-meta);
-    color: var(--text-secondary);
+    color: var(--text-context, var(--text-secondary));
     font-weight: 400;
     margin-left: 8px;
     vertical-align: middle;
 }
-.fw-kpi-observed { color: var(--text-secondary); }
+.fw-kpi-observed { color: var(--text-context, var(--text-secondary)); }
+.fw-kpi-has-maturity .fw-kpi-sub { color: var(--text-warning, var(--accent-yellow)); }
 .fw-kpi-declared-comparison, .fw-kpi-has-maturity .fw-kpi-forecast, .fw-kpi-has-maturity .fw-kpi-sub {
     white-space: nowrap;
     overflow: hidden;
