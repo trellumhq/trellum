@@ -100,6 +100,18 @@ def _category_colors_config(chart: Component, ctx: RenderContext) -> dict[str, A
     return {"category_colors": declaration}
 
 
+def _month_context_config(chart: Component) -> dict[str, bool]:
+    """Validate the author's daily-label declaration, including after mutation."""
+    if type(chart.month_context) is not bool:
+        raise ValueError("month_context must be bool")
+    if not chart.month_context:
+        return {}
+    if (getattr(chart, "horizontal", False) or getattr(chart, "sort", None) is not None
+            or getattr(chart, "top_n", None) is not None):
+        raise ValueError("month_context requires a vertical chronological axis without sort or top_n")
+    return {"month_context": True}
+
+
 class _ChartBase(Component):
     """Shared base for line/bar/stacked-bar charts that use ``renderChart``."""
 

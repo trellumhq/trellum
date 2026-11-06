@@ -3,6 +3,18 @@
 Each section documents a breaking or significant change, how to detect affected
 code, and the exact replacement.
 
+## Optional daily month context
+
+The five vertical category-axis chart families accept keyword-only
+`month_context=False`. Existing calls retain their output. `True` declares
+supplied daily reporting dates and adds a 24px month row plus dividers only
+for valid, unique, increasing canonical dates. Horizontal/ranked bars cannot
+opt in. No dates, values or monthly statistics are inferred. Explicit dataset
+binding still wins over `static=True`. Rebuild reports to pick up the runtime;
+no host migration or export runtime update is required. See
+[the input and capture contract](report-month-context.md).
+
+
 ## LineChart event-label presentation
 
 Rebuilt ordinary LineCharts now default to `event_labels="grouped"` (keyword-only).

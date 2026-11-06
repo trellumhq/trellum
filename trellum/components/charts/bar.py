@@ -13,6 +13,7 @@ from trellum.components.charts.base import (
     _DOWNLOAD_SVG,
     _chart_container_html,
     _ChartBase,
+    _month_context_config,
     _clean_list,
     _normalize_toggle_html,
     _stack_toggle_html,
@@ -74,11 +75,14 @@ class BarChart(_ChartBase):
     top_n_show_other: bool = True  # If False, drop the "Other (N items)" bar
 
     show_values: Optional[bool] = field(default=None, kw_only=True)
+    # Author-declared daily reporting dates; see docs/report-month-context.md.
+    month_context: bool = field(default=False, kw_only=True)
     header_context: Optional[str] = field(default=None, kw_only=True)
 
     _component_type: str = field(default="bar_chart", init=False, repr=False)
 
     def __post_init__(self) -> None:
+        _month_context_config(self)
         _validate_header_context(self.header_context)
         self._validate_values()
 
@@ -87,6 +91,7 @@ class BarChart(_ChartBase):
             raise ValueError("show_values must be bool or None")
 
     def render_html(self, ctx: RenderContext) -> str:
+        month_config = _month_context_config(self)
         self._validate_values()
         cid = ctx.next_id()
         cols = self.y_cols or [self.y]
@@ -100,6 +105,7 @@ class BarChart(_ChartBase):
                             cols = list(cols) + [r[k]]
             cfg: dict[str, Any] = {
                 "type": "chart",
+                **month_config,
                 "dataset_id": self.dataset_id,
                 "chartType": "bar",
                 "bar_values": {"show": self.show_values},
@@ -151,6 +157,7 @@ class BarChart(_ChartBase):
                 })
             ctx.register(cid, {
                 "type": "chart",
+                **month_config,
                 "chartType": "bar",
                 "bar_values": {"show": self.show_values},
                 "labels": _clean_list(df_to_render[self.x].tolist()),
@@ -233,12 +240,15 @@ class StackedBar(_ChartBase):
 
     show_totals: bool = field(default=False, kw_only=True)
     show_percentages: bool = field(default=False, kw_only=True)
+    # Author-declared daily reporting dates; see docs/report-month-context.md.
+    month_context: bool = field(default=False, kw_only=True)
     header_context: Optional[str] = field(default=None, kw_only=True)
     category_colors: Optional[dict] = field(default=None, kw_only=True)
 
     _component_type: str = field(default="stacked_bar", init=False, repr=False)
 
     def __post_init__(self) -> None:
+        _month_context_config(self)
         _validate_header_context(self.header_context)
         _validate_category_colors(self.category_colors)
         self._validate_stack_labels()
@@ -249,6 +259,7 @@ class StackedBar(_ChartBase):
                 raise ValueError(f"{name} must be bool")
 
     def render_html(self, ctx: RenderContext) -> str:
+        month_config = _month_context_config(self)
         category_config = _category_colors_config(self, ctx)
         self._validate_stack_labels()
         cid = ctx.next_id()
@@ -258,6 +269,7 @@ class StackedBar(_ChartBase):
         if self.dataset_id:
             cfg = {
                 "type": "chart",
+                **month_config,
                 "dataset_id": self.dataset_id,
                 "chartType": "bar",
                 "stack_labels": stack_labels,
@@ -324,6 +336,7 @@ class StackedBar(_ChartBase):
 
         ctx.register(cid, {
             "type": "chart",
+            **month_config,
             "chartType": "bar",
             "stack_labels": stack_labels,
             "labels": _clean_list(self.df[self.x].tolist()),
@@ -370,11 +383,14 @@ class ComboChart(_ChartBase):
     y1_max: Optional[float] = None  # Max value for right y-axis (line)
     left_axis_label: Optional[str] = field(default=None, kw_only=True)
     right_axis_label: Optional[str] = field(default=None, kw_only=True)
+    # Author-declared daily reporting dates; see docs/report-month-context.md.
+    month_context: bool = field(default=False, kw_only=True)
     header_context: Optional[str] = field(default=None, kw_only=True)
 
     _component_type: str = field(default="combo_chart", init=False, repr=False)
 
     def __post_init__(self) -> None:
+        _month_context_config(self)
         _validate_header_context(self.header_context)
         self._validate_axis_labels()
 
@@ -391,6 +407,7 @@ class ComboChart(_ChartBase):
         return super().css() + load_css("components/combo_chart.css")
 
     def render_html(self, ctx: RenderContext) -> str:
+        month_config = _month_context_config(self)
         self._validate_axis_labels()
         cid = ctx.next_id()
         b_labels = self.bar_labels or self.bar_cols
@@ -401,6 +418,7 @@ class ComboChart(_ChartBase):
         if self.dataset_id:
             cfg = {
                 "type": "chart",
+                **month_config,
                 "dataset_id": self.dataset_id,
                 "chartType": "bar",
                 "x": self.x,
@@ -461,6 +479,7 @@ class ComboChart(_ChartBase):
                 })
             ctx.register(cid, {
                 "type": "chart",
+                **month_config,
                 "chartType": "bar",
                 "combo_axes": combo_axes,
                 "labels": _clean_list(self.df[self.x].tolist()),

@@ -12,6 +12,7 @@ from trellum.components.base import RenderContext
 from trellum.components.charts.base import (
     _chart_container_html,
     _ChartBase,
+    _month_context_config,
     _clean_list,
     _stack_toggle_html,
     _validate_header_context,
@@ -234,6 +235,8 @@ class LineChart(_ChartBase):
     tension: float = field(default=0.0, kw_only=True)
     height: str = "balanced"
     header_summary: Optional[Dict[str, Any]] = None
+    # Author-declared daily reporting dates; see docs/report-month-context.md.
+    month_context: bool = field(default=False, kw_only=True)
     header_context: Optional[str] = field(default=None, kw_only=True)
     category_colors: Optional[dict] = field(default=None, kw_only=True)
     forecast_series: Optional[List[int | str] | tuple[int | str, ...]] = field(default=None, kw_only=True)
@@ -242,6 +245,7 @@ class LineChart(_ChartBase):
     _component_type: str = field(default="line_chart", init=False, repr=False)
 
     def __post_init__(self):
+        _month_context_config(self)
         self._validate_event_labels()
         _validate_header_context(self.header_context)
         _validate_category_colors(self.category_colors)
@@ -283,6 +287,7 @@ class LineChart(_ChartBase):
             raise ValueError("LineChart event_labels must be 'grouped' or 'full'.")
 
     def render_html(self, ctx: RenderContext) -> str:
+        month_config = _month_context_config(self)
         self._validate_event_labels()
         forecast_indices = _forecast_series_indices(self)
         category_config = _category_colors_config(self, ctx)
@@ -296,6 +301,7 @@ class LineChart(_ChartBase):
                         all_cols.append(r[k])
             cfg_r: dict[str, Any] = {
                 "type": "chart",
+                **month_config,
                 "dataset_id": self.dataset_id,
                 "chartType": "line",
                 "x": self.x,
@@ -339,6 +345,7 @@ class LineChart(_ChartBase):
         if self.dataset_id:
             cfg: dict[str, Any] = {
                 "type": "chart",
+                **month_config,
                 "dataset_id": self.dataset_id,
                 "chartType": "line",
                 "x": self.x,
@@ -399,6 +406,7 @@ class LineChart(_ChartBase):
                 })
             ctx.register(cid, {
                 "type": "chart",
+                **month_config,
                 "chartType": "line",
                 "labels": _clean_list(self.df[self.x].tolist()),
                 "datasets": datasets,
@@ -430,14 +438,18 @@ class AreaChart(_ChartBase):
     static: bool = False
     y_format: Optional[str] = None
     show_labels: bool = False  # Show data values on points
+    # Author-declared daily reporting dates; see docs/report-month-context.md.
+    month_context: bool = field(default=False, kw_only=True)
     header_context: Optional[str] = field(default=None, kw_only=True)
 
     _component_type: str = field(default="area_chart", init=False, repr=False)
 
     def __post_init__(self) -> None:
+        _month_context_config(self)
         _validate_header_context(self.header_context)
 
     def render_html(self, ctx: RenderContext) -> str:
+        month_config = _month_context_config(self)
         cid = ctx.next_id()
         y_cols = self.y if isinstance(self.y, list) else [self.y]
         y_labels = self.y_labels or y_cols
@@ -445,6 +457,7 @@ class AreaChart(_ChartBase):
         if self.dataset_id:
             cfg: dict[str, Any] = {
                 "type": "chart",
+                **month_config,
                 "dataset_id": self.dataset_id,
                 "chartType": "line",
                 "x": self.x,
@@ -480,6 +493,7 @@ class AreaChart(_ChartBase):
                 })
             ctx.register(cid, {
                 "type": "chart",
+                **month_config,
                 "chartType": "line",
                 "labels": _clean_list(self.df[self.x].tolist()),
                 "datasets": datasets,

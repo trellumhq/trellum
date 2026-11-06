@@ -9,6 +9,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Add optional daily calendar-month labels and plot dividers to LineChart,
+  AreaChart, vertical BarChart, StackedBar and ComboChart; preserve default
+  output and supplied observations. Include native synthetic examples.
+
 - Ordinary report LineChart defaults to grouped dated-event markers with a
   collapsed list of original event names, exact dates/ranges and types.
   Keyword-only `event_labels="full"` retains full in-plot labels; payloads with

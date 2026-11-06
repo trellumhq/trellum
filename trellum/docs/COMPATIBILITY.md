@@ -2,6 +2,18 @@
 
 This document defines the stability tiers for framework APIs and the deprecation process for removing or changing them.
 
+## Optional daily month context
+
+The five vertical category-axis chart families accept keyword-only
+`month_context=False`. Existing calls retain their output. `True` declares
+supplied daily reporting dates and adds a 24px month row plus dividers only
+for valid, unique, increasing canonical dates. Horizontal/ranked bars cannot
+opt in. No dates, values or monthly statistics are inferred. Explicit dataset
+binding still wins over `static=True`. Rebuild reports to pick up the runtime;
+no host migration or export runtime update is required. See
+[the input and capture contract](report-month-context.md).
+
+
 ## LineChart dated-event labels
 
 New LineChart builds default to keyword-only `event_labels="grouped"`: numbered

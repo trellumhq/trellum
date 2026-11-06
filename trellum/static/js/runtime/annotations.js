@@ -282,8 +282,10 @@
                 list.className = 'fw-event-list';
                 root.append(heading, note, list);
             }
-            if (chart.canvas.parentElement.nextElementSibling !== root)
-                chart.canvas.parentElement.after(root);
+            var slot = chart.canvas.parentElement;
+            if (slot.nextElementSibling && slot.nextElementSibling.id === chart.canvas.id + '-month-context')
+                slot = slot.nextElementSibling;
+            if (slot.nextElementSibling !== root) slot.after(root);
             root.hidden = false;
             describe(chart, true);
             var count = groups.reduce(function(n, g) { return n + g.events.length; }, 0);

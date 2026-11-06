@@ -126,3 +126,20 @@
 .fw-event-list ul { margin: 0; padding-left: 22px; }
 .fw-event-list li { margin: 4px 0; white-space: normal; }
 .fw-event-details :focus-visible { outline: 2px solid var(--text-main); outline-offset: 2px; }
+
+/* The optional row adds exactly 24px; retain the existing gap after context. */
+.fw-chart-container.fw-has-month-context { margin-bottom: 0; }
+.fw-month-context {
+    position: relative;
+    box-sizing: border-box;
+    height: 24px;
+    padding: 0;
+    margin: 0 0 var(--spacing-md);
+    overflow: hidden;
+    font-family: inherit;
+    font-size: var(--font-size-label);
+    color: var(--text-context, var(--text-secondary));
+    line-height: 24px;
+}
+.fw-month-span { position: absolute; top: 0; height: 24px; text-align: center; white-space: nowrap; overflow: hidden; }
+.fw-month-accessible { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

@@ -410,6 +410,7 @@ function _createChart(id, canvas, spec) {
         delete window._chartInstances[id];
     }
     delete canvas._fwEventDetailsState;
+    if (!spec.monthContext && window._fwClearMonthContext) window._fwClearMonthContext(canvas);
     var tc = window.getThemeColors();
     var axisFont = window._fwFontPx('--font-size-axis', 12);
     var labelFont = window._fwFontPx('--font-size-label', 12);
@@ -550,7 +551,7 @@ function _createChart(id, canvas, spec) {
         type: spec.type || 'bar',
         data: { labels: spec.labels, datasets: spec.datasets },
         options: chartOpts,
-        plugins: ((spec.barValues || spec.stackLabels) ? [_fwBarLabelPlugin(spec)] : []).concat(
+        plugins: (spec.monthContext ? [window._fwMonthContextPlugin()] : []).concat((spec.barValues || spec.stackLabels) ? [_fwBarLabelPlugin(spec)] : []).concat(
             spec.eventLabels === 'grouped' && window._fwLineEventLabelsPlugin
                 ? [window._fwLineEventLabelsPlugin(eventDetails, datedEvents)] : [])
     });
@@ -638,6 +639,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
         }, barListener);
 
         function _mkSpec(spec) {
+            if (cfg.month_context === true) spec.monthContext = true;
             if (cfg.event_labels) spec.eventLabels = cfg.event_labels;
             if (cfg.bar_values) {
                 spec.barValues = cfg.bar_values;
@@ -1161,6 +1163,7 @@ window._fwRenderers['chart'] = function renderChart(id, cfg) {
         showLegend: cfg.showLegend !== false, yFmt: yFmt, tooltip: tooltip,
         lineStyle: cfg.line_style, tension: cfg.tension,
         forecastSeries: cfg.forecast_series,
+        monthContext: cfg.month_context === true,
         eventLabels: cfg.event_labels,
         headerSummary: cfg.header_summary,
         comboAxes: cfg.combo_axes,
