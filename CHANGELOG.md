@@ -87,6 +87,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Populate audit action choices with ordered, organization-scoped probes instead
+  of transferring duplicate history rows. Add a concurrent composite index for
+  large histories with uneven action usage across organizations; preserve all labels.
+
 - Keep nested and adjacent report tab panels independent when switching tabs or restoring tab selections from a URL.
 - Keep Reports and Analyses mounted while switching catalogs, and retain page
   content during Metrics and native navigation. Loading feedback appears only

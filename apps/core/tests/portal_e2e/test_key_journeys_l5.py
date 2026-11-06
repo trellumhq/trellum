@@ -41,16 +41,21 @@ def test_operations_run_log_registry_refresh(journey, variant):
         run = journey.database(latest_run)
         assert run['status'] == 'success' and run['exit_code'] == 0
         journey.checkpoint('run-terminal')
-        # The run's own log is readable from the same row.
-        row.locator('details.ops-secondary summary').click()
-        row.get_by_role('button', name='Log').click()
-        expect(page.locator('body')).to_contain_text('Published to LocalBackend', timeout=30000)
+        # Accepted runs open their own log. Clicking Log here would close it,
+        # leaving the previous text visible until the toggle's reads finish.
+        log = page.locator('#opsTermBody_report-0001')
+        expect(log).to_be_visible(timeout=30000)
+        expect(log).to_contain_text('Published to LocalBackend', timeout=30000)
         journey.checkpoint('log-visible')
         bind(journey, 'route-174', 'POST', None, 'org-admin', spec, ())
         # Registry refresh is a durable maintenance action: accepted, then a terminal state.
         refresh = page.locator('[data-ops-action=refresh]')
-        refresh.scroll_into_view_if_needed()
-        refresh.click()
+        # Locator click owns scrolling and re-resolves after an Operations render.
+        with page.expect_response(lambda r: r.request.method == 'POST' and r.url.endswith('/api/system/registry/refresh')) as accepted:
+            refresh.click()
+        assert accepted.value.status == 202
+        assert accepted.value.json()['operation_id']
+        journey.checkpoint('refresh-accepted')
         actions, deadline_ok = [], False
         for _ in range(60):
             actions = journey.database(refresh_actions)
@@ -60,6 +65,7 @@ def test_operations_run_log_registry_refresh(journey, variant):
             page.wait_for_timeout(1000)
         assert deadline_ok, actions
         assert [item['state'] for item in actions] == ['succeeded'], actions
+        expect(page.locator('body')).to_contain_text('Registry refreshed', timeout=30000)
         journey.checkpoint('refresh-terminal')
         bind(journey, 'route-157', 'POST', None, 'org-admin', spec, ())
         record_metrics(journey, page)
