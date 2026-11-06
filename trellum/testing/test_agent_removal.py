@@ -315,6 +315,22 @@ def test_setup_preserves_custom_hooks_and_mixed_groups():
     assert agentsetup.merge_hooks(merged) == (merged, False)
 
 
+@pytest.mark.parametrize("hooks", [None, 17, "custom", {"command": "their-tool"}])
+def test_setup_and_removal_preserve_malformed_hook_groups(tmp_path, hooks):
+    settings = {"hooks": {"SessionStart": [{"matcher": "", "hooks": hooks}]}}
+    path = tmp_path / ".claude" / "settings.json"
+    _write_json(path, settings)
+    original = path.read_bytes()
+
+    agentsetup.write_project_files(tmp_path)
+    installed = path.read_bytes()
+    assert json.loads(installed)["hooks"]["SessionStart"][0] == settings["hooks"]["SessionStart"][0]
+    agentsetup.write_project_files(tmp_path)
+    assert path.read_bytes() == installed
+    agentremoval.remove(tmp_path)
+    assert path.read_bytes() == original
+
+
 def test_removal_keeps_project_directory(tmp_path):
     _write_json(tmp_path / ".mcp.json", {"mcpServers": {"trellum": agentsetup.mcp_servers(PORTAL_URL)[".mcp.json"]}})
     agentremoval.remove(tmp_path)

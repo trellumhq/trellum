@@ -221,7 +221,9 @@ def merge_hooks(settings: dict,
         # Repair the historical bare command, without dropping its neighbours.
         kept = []
         for group in existing:
-            if isinstance(group, dict) and set(group) == {"matcher", "hooks"} and group["matcher"] == groups[0]["matcher"]:
+            if (isinstance(group, dict) and set(group) == {"matcher", "hooks"}
+                    and group["matcher"] == groups[0]["matcher"]
+                    and isinstance(group["hooks"], list)):
                 left = [h for h in group["hooks"] if h != {"type": "command", "command": "trellum"}]
                 if left:
                     kept.append({**group, "hooks": left})
