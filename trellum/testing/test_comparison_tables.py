@@ -189,8 +189,8 @@ def test_real_comparisons_filters_csv_themes_and_local_scroll(comparison_page, w
         assert rows.nth(5).locator("td").nth(3).inner_text() == "—\nAwaiting day 7"
         assert rows.nth(6).locator("td").nth(3).inner_text() == "—\nNo current data"
         assert rows.nth(7).locator("td").nth(3).inner_text() == "+11.6%"
-        assert rows.nth(1).locator("td").nth(3).locator("span").first.evaluate("e => e.style.color") == "var(--accent-green)"
-        assert rows.nth(2).locator("td").nth(3).locator("span").first.evaluate("e => e.style.color") == "var(--accent-red)"
+        assert rows.nth(1).locator("td").nth(3).locator("span").first.evaluate("e => e.style.color") == "var(--text-positive, var(--accent-green))"
+        assert rows.nth(2).locator("td").nth(3).locator("span").first.evaluate("e => e.style.color") == "var(--text-negative, var(--accent-red))"
         for n in (3, 4, 5, 6, 7):
             assert rows.nth(n).locator("td").nth(3).locator("span").first.evaluate("e => e.style.color") == ""
         exported = _export(page, cid)

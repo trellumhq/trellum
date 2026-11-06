@@ -173,6 +173,16 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
                 'rows => rows.reduce((sum, row) => sum + Number(row.dataset.value), 0)') == 35015
             assert treemap_section.locator('tbody tr').first.get_attribute('data-path') == '["North","Store"]'
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
+            page.get_by_role("link", name="status text", exact=True).click()
+            status_section = page.locator('#sec-status-text-with-declared-metric-directions')
+            status_section.locator('tbody tr').first.wait_for()
+            status_section.get_by_role('button', name='Context', exact=True).click()
+            expect(status_section.locator('tbody tr')).to_have_count(2)
+            assert status_section.locator('tbody tr').last.locator('td').last.inner_text() == '—\nNo prior period'
+            page.locator('#fwThemeSelect').select_option('trellum light')
+            positive = page.locator('#sec-readable-small-status-text .fw-kpi-delta.up').first
+            assert positive.evaluate('el => getComputedStyle(el).color') == 'rgb(9, 109, 76)'
+            assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
             # Every chart must own a real canvas and draw after scrolling into
             # view; scope-based data swaps cannot stand in for different layouts.
             for canvas in page.locator("canvas:visible").all():
