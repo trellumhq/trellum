@@ -43,8 +43,8 @@ class TextFilter(BaseFilter):
         maxlen = int(f.get("max_length", DEFAULT_MAX_LENGTH))
         return (
             f'<div class="fw-filter-item">'
-            f'<label class="fw-filter-label">{label}</label>'
-            f'<input type="text" class="fw-text-filter" data-filter-id="{fid}" '
+            f'<label class="fw-filter-label" id="{fid}_label" for="{fid}_input">{label}</label>'
+            f'<input type="text" class="fw-text-filter" id="{fid}_input" name="{fid}" aria-labelledby="{fid}_label" data-filter-id="{fid}" '
             f'data-filter-col="{col}" maxlength="{maxlen}" '
             f'placeholder="{placeholder}" autocomplete="off" '
             f'data-bwignore="true" data-1p-ignore="true" data-lpignore="true">'

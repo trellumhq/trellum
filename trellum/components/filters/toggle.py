@@ -50,14 +50,14 @@ class ToggleFilter(BaseFilter):
         btns: list[str] = []
         if not no_all:
             active = " active" if default == "All" else ""
-            btns.append(f'<button class="fw-toggle-btn{active}">All</button>')
+            btns.append(f'<button aria-pressed="{str(bool(active)).lower()}" class="fw-toggle-btn{active}">All</button>')
         for opt in options:
             active = " active" if str(default) == opt else ""
-            btns.append(f'<button class="fw-toggle-btn{active}">{opt}</button>')
+            btns.append(f'<button aria-pressed="{str(bool(active)).lower()}" class="fw-toggle-btn{active}">{opt}</button>')
         return (
             f'<div class="fw-filter-item">'
-            f'<label class="fw-filter-label">{label}</label>'
-            f'<div class="fw-toggle-group" data-filter-id="{fid}">'
+            f'<span class="fw-filter-label" id="{fid}_label">{label}</span>'
+            f'<div class="fw-toggle-group" role="group" aria-labelledby="{fid}_label" data-filter-id="{fid}">'
             f'{"".join(btns)}</div></div>'
         )
 

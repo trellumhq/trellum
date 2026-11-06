@@ -1,8 +1,9 @@
 kind: analysis
 format: presentation
+presentation_view: slides
 name: Northwind checkout decision
 slug: checkout-presentation
-description: A four-slide decision brief comparing September 2026 synthetic mobile and desktop checkout evidence, assumptions and the recommended investigation.
+description: Four slides on Northwind’s mobile conversion opportunity, where the funnel loses shoppers, what a modest improvement could mean, and what to investigate next. Synthetic September 2026 data.
 author: Northwind Analytics (demo)
 studio: northwind
 category: Product

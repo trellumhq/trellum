@@ -211,6 +211,22 @@ class TestValidateUserDf:
         codes = [c for sev, c, _ in findings if sev == "WARN"]
         assert "payer-no-gross" in codes
 
+    def test_engagement_skips_only_purchase_consistency(self) -> None:
+        df = _make_user_df(n=500)
+        zero_idx = df.index[df["gross_revenue"] == 0][0]
+        df.loc[zero_idx, "is_payer"] = 1
+        df.loc[1, "is_payer"] = 2
+        df.loc[2, "gross_revenue"] = -1
+        findings = validate_user_df(df, outcome_type="engagement", print_findings=False)
+        codes = [code for _, code, _ in findings]
+        assert "payer-no-gross" not in codes
+        assert "payer-not-binary" in codes
+        assert "negative-revenue" in codes
+
+    def test_invalid_outcome_type_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="outcome_type must be 'purchase' or 'engagement'"):
+            validate_user_df(_make_user_df(n=100), outcome_type="disabled", print_findings=False)
+
     def test_ads_revenue_with_no_payer_is_silent(self) -> None:
         """gross > 0 + is_payer = 0 (ad watchers) must NOT trigger a warning."""
         df = _make_user_df(n=500)

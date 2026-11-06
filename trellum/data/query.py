@@ -341,24 +341,14 @@ def _get_msal_cache():
     with _msal_cache_lock:
         if _msal_cache is not None:
             return _msal_cache
-        import msal
+        from trellum.data.token_cache import load_cache
 
-        cache = msal.SerializableTokenCache()
-        os.makedirs(os.path.dirname(_MSAL_CACHE_PATH), exist_ok=True)
-        if os.path.isfile(_MSAL_CACHE_PATH):
-            with open(_MSAL_CACHE_PATH) as f:
-                cache.deserialize(f.read())
-        _msal_cache = cache
-        return cache
+        _msal_cache = load_cache(_MSAL_CACHE_PATH)
+        return _msal_cache
 
 
 def _save_msal_cache():
-    """Persist the MSAL token cache to disk."""
-    if _msal_cache is None or not _msal_cache.has_state_changed:
-        return
-    os.makedirs(os.path.dirname(_MSAL_CACHE_PATH), exist_ok=True)
-    with open(_MSAL_CACHE_PATH, "w", encoding="utf-8") as f:
-        f.write(_msal_cache.serialize())
+    """Cache mutations are persisted immediately under the interprocess lock."""
 
 
 def _get_onedrive_token(tenant_id, client_id, client_secret):

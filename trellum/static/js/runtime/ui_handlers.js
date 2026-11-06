@@ -71,8 +71,7 @@
         btns.forEach(function(b) { b.classList.remove('active'); });
         btn.classList.add('active');
         const idx = btns.indexOf(btn);
-        const panels = group.parentElement.querySelectorAll('.fw-tab-panel');
-        panels.forEach(function(p, i) { p.style.display = i === idx ? '' : 'none'; });
+        _showTabPanel(group, idx);
         if (window._fwUrlSync && group.dataset.tabId) window._fwUrlSync.write();
     });
 
@@ -81,16 +80,7 @@
         const sel = e.target.closest('.fw-tab-dropdown');
         if (!sel) return;
         const idx = parseInt(sel.value, 10);
-        var wrapper = sel.closest('.ss-main');
-        var el = (wrapper ? wrapper.parentElement : sel).nextElementSibling;
-        var pi = 0;
-        while (el) {
-            if (el.classList && el.classList.contains('fw-tab-panel')) {
-                el.style.display = pi === idx ? '' : 'none';
-                pi++;
-            }
-            el = el.nextElementSibling;
-        }
+        _showTabPanel(sel, idx);
         if (window._fwUrlSync && sel.dataset.tabId) window._fwUrlSync.write();
     });
 

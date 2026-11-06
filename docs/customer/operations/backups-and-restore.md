@@ -127,5 +127,5 @@ wait for the schedules to come round.
 
 !!! note
     To undo a bad **upgrade** rather than recover from a disaster, use
-    `scripts/rollback.sh`, which does the above and re-pins the previous image.
+    `scripts/rollback.sh`, which restores its recorded database snapshot and re-pins both previous images.
     See [Upgrades](/docs/latest/install/upgrades/).
