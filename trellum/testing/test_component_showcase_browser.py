@@ -12,13 +12,17 @@ from trellum.runner.discovery import discover_report
 
 
 def test_component_showcase_sections_and_independent_filters(tmp_path):
-    from playwright.sync_api import sync_playwright
+    from playwright.sync_api import expect, sync_playwright
 
     source = Path(__file__).resolve().parents[1] / "demo/reports/component-showcase"
     report = discover_report(str(source))
     ctx = ReportContext(config=report.load_config(str(source)),
                         slug="component-showcase", output_dir=str(tmp_path))
     report().generate(ctx)
+    from trellum.reporting.diagnostics import compute_details
+    from trellum.validation import validate_report
+    result = validate_report(ctx, details=compute_details(ctx))
+    assert result.summary["warn"] == result.summary["fail"] == 0, result.to_dict()
     render_report(ctx, str(tmp_path), auto_refresh=False)
     copy_vendor_tree(tmp_path)
 
@@ -59,10 +63,10 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             page.get_by_role("link", name="data tables", exact=True).click()
             table = page.locator('.fw-section').filter(has=page.get_by_role(
                 "heading", name="DataTable — filtered population", exact=True))
+            table.locator("tbody tr").first.wait_for()
             table.locator('input[data-table-search]').fill("Reactivation")
             table.get_by_role("button", name="Android", exact=True).click()
-            page.wait_for_function("el => el.textContent.includes('16 matching')",
-                                   arg=table.locator('.fw-table-note').element_handle())
+            expect(table.locator(".fw-table-note")).to_contain_text("16 matching")
             table.get_by_role("columnheader").filter(has_text="Revenue").click()
             with page.expect_download() as download_info:
                 table.get_by_role("button", name="Download CSV", exact=True).click()
@@ -116,6 +120,15 @@ def test_component_showcase_sections_and_independent_filters(tmp_path):
             assert pivot.locator('tbody tr').count() == 2
             assert pivot.locator('tfoot td').last.inner_text() == "$5.7k"
             assert live.locator(".fw-kpi-value").first.inner_text() == "$18.4k"
+            page.get_by_role("link", name="line styles", exact=True).click()
+            density = page.locator('[data-tab-id="showcase_line_density"]')
+            density.get_by_role('tab', name='Sparse: 12 daily observations', exact=True).click()
+            sparse = page.locator('canvas[data-fw-title="Sparse: 12 daily observations"]')
+            sparse.scroll_into_view_if_needed()
+            page.wait_for_function("id => window._chartInstances[id]?.getDatasetMeta(0).data.length === 12",
+                                   arg=sparse.get_attribute('id'))
+            assert page.evaluate("id => window._chartInstances[id].getDatasetMeta(0).data.every(p => p.options.radius === 2)",
+                                 sparse.get_attribute('id'))
             # Every chart must own a real canvas and draw after scrolling into
             # view; scope-based data swaps cannot stand in for different layouts.
             for canvas in page.locator("canvas:visible").all():

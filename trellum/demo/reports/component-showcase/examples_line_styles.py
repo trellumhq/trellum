@@ -57,8 +57,11 @@ def add_sections(ctx):
                                  static=True, tension=tension)
                        for title, tension in (("Default straight path", 0), ("Optional curve: tension 0.35", .35))]),
     ])
-    frame = pd.concat([_frame(181).assign(platform=platform, users=users)
-                       for platform, users in (("iOS", 10), ("Android", 20))], ignore_index=True)
+    frame = pd.concat([_frame(181).assign(
+        platform=platform, users=users,
+        observations=lambda data: data.observations * multiplier)
+        for platform, users, multiplier in (("iOS", 10, 1), ("Android", 20, 1.6))
+    ], ignore_index=True)
     dataset = "showcase_line_styles"
     ctx.add_section("Line styles: filtered observations and ratios", [
         DataSource(dataset, frame),

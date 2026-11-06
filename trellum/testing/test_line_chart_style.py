@@ -319,7 +319,8 @@ def test_example_module_builds_with_zero_warn_fail(tmp_path):
     spec.loader.exec_module(module)
     ctx = _context(tmp_path)
     module.add_sections(ctx)
-    result = validate_report(ctx)
+    from trellum.reporting.diagnostics import compute_details
+    result = validate_report(ctx, details=compute_details(ctx))
     assert result.summary["warn"] == result.summary["fail"] == 0, [dataclasses.asdict(c) for c in result.checks if c.level in ("warn", "fail")]
     render_report(ctx, str(tmp_path), auto_refresh=False, validation=result)
     result.write(str(tmp_path))
